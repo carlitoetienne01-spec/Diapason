@@ -1,5 +1,5 @@
 [package]
-name = "openjarvis-desktop"
+name = "diapason-desktop"
 version = "1.0.1"
 description = "OpenJarvis Desktop — Native AI assistant with energy monitoring, trace debugging, and learning visualization"
 edition = "2021"
