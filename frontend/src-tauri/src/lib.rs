@@ -2856,19 +2856,23 @@ pub fn run() {
                     eprintln!("Warning: could not register Cmd+Shift+Space: {e}");
                 }
 
-                // Push-to-talk: Cmd+Alt+Space hold (Pressed → start, Released → stop)
-                let ptt = Shortcut::new(Some(Modifiers::META | Modifiers::ALT), Code::Space);
-                let app_handle = app.handle().clone();
-                if let Err(e) = app.global_shortcut().on_shortcut(ptt, move |_app, _sc, ev| {
-                    let event_name = match ev.state {
-                        ShortcutState::Pressed => "ptt-start",
-                        ShortcutState::Released => "ptt-stop",
-                        _ => return,
-                    };
-                    let _ = app_handle.emit(event_name, ());
-                }) {
-                    eprintln!("Warning: could not register Cmd+Alt+Space PTT: {e}");
-                }
+                // Push-to-talk is DELIBERATELY not registered here.
+                //
+                // There were two independent dictation chains: this one
+                // (Cmd+Alt+Space → ptt-start/ptt-stop → getUserMedia inside the
+                // WebView → paste_to_frontmost) and the Python one (hold
+                // Control → CGEventTap → sounddevice → faster-whisper →
+                // clipboard-preserving paste), which runs as a LaunchAgent.
+                //
+                // The Python chain is the product: it works with every window
+                // closed, which this one cannot — getUserMedia lives in the
+                // WebView, so closing the window silences the microphone while
+                // the shortcut still fires. Two chains also meant two hotkeys
+                // and two answers to "why did nothing happen".
+                //
+                // To restore the in-window chain, re-register the shortcut
+                // below and stop the agent (`jarvis dictate-service uninstall`).
+                let _ = (ShortcutState::Pressed, ShortcutState::Released);
 
                 // Talk to Jarvis (realtime orb): Option/Alt+Space toggle
                 let talk = Shortcut::new(Some(Modifiers::ALT), Code::Space);
