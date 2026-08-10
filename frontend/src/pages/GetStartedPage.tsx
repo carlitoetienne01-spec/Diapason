@@ -13,6 +13,7 @@ import {
   Check,
   Cpu,
   CheckCircle2,
+  AlertCircle,
   MessageSquare,
   ArrowRight,
 } from 'lucide-react';
@@ -253,6 +254,26 @@ function HostedView() {
 function DesktopView() {
   const navigate = useNavigate();
 
+  // "All systems running" used to be written in the markup, unconditionally:
+  // it said everything was fine even with the backend down. It now reflects an
+  // actual probe, and re-probes on window focus so a backend started after the
+  // app does not leave a stale "unreachable".
+  const [healthy, setHealthy] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const probe = () => {
+      checkHealth().then((ok) => {
+        if (!cancelled) setHealthy(ok);
+      });
+    };
+    probe();
+    window.addEventListener('focus', probe);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', probe);
+    };
+  }, []);
+
   return (
     <>
       <div className="text-center mb-14">
@@ -276,7 +297,7 @@ function DesktopView() {
           className="inline-block text-[11px] font-mono px-2.5 py-1 rounded-full"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}
         >
-          v2.8
+          v{__APP_VERSION__}
         </span>
       </div>
 
@@ -284,12 +305,26 @@ function DesktopView() {
         className="rounded-xl p-6 mb-8 text-center"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
       >
-        <div className="flex items-center justify-center gap-2 mb-2" style={{ color: 'var(--color-accent)' }}>
-          <CheckCircle2 size={18} />
-          <span className="text-sm font-medium">All systems running</span>
+        <div
+          className="flex items-center justify-center gap-2 mb-2"
+          style={{
+            color:
+              healthy === false ? 'var(--color-danger, #e5484d)' : 'var(--color-accent)',
+          }}
+        >
+          {healthy === false ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+          <span className="text-sm font-medium">
+            {healthy === null
+              ? 'Checking backend…'
+              : healthy
+                ? 'Backend reachable'
+                : 'Backend unreachable'}
+          </span>
         </div>
         <p className="text-xs mb-5" style={{ color: 'var(--color-text-tertiary)' }}>
-          Ollama inference engine, API server, and AI model are active.
+          {healthy === false
+            ? 'Start it with `jarvis serve`, then this page will update on focus.'
+            : 'The API server is answering on this machine.'}
         </p>
         <button
           onClick={() => navigate('/')}
@@ -306,11 +341,20 @@ function DesktopView() {
 
       <div className="flex flex-col gap-3 mb-8">
         <Section icon={Cpu} title="Keyboard Shortcuts" defaultOpen>
+          {/* Only shortcuts that are actually registered. "Cmd+N New chat" was
+              listed here and bound nowhere — no handler exists for KeyN. */}
           <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+K</kbd> Model picker</div>
             <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+I</kbd> System panel</div>
-            <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+N</kbd> New chat</div>
+            <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+Shift+Space</kbd> Quick overlay</div>
+            <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Alt+Space</kbd> Talk to Jarvis</div>
           </div>
+          <p className="text-xs mt-3" style={{ color: 'var(--color-text-tertiary)' }}>
+            Dictation runs as a separate background service: hold{' '}
+            <kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Control</kbd>{' '}
+            anywhere and speak — it works with this window closed. Manage it with{' '}
+            <code>jarvis dictate-service</code>.
+          </p>
         </Section>
       </div>
     </>

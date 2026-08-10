@@ -1,13 +1,24 @@
+import { readFileSync } from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Single source of truth for the version shown in the UI. It was hard-coded
+// as "v2.8" in GetStartedPage while package.json and tauri.conf.json both said
+// 1.0.1 — a number no build could ever correct, because nothing linked them.
+const pkgVersion = JSON.parse(
+  readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
+).version as string;
+
 // VITE_SUPABASE_ANON_KEY is intentionally NOT required here: a missing key
 // disables the savings leaderboard at runtime (see src/lib/supabase.ts) rather
 // than failing the build, so the package/app stays publishable without it.
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkgVersion),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

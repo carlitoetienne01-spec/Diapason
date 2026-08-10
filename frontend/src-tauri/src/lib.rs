@@ -2811,6 +2811,33 @@ pub fn run() {
                 .item(&quit)
                 .build()?;
 
+            // Keep the health item alive and actually update it. It used to
+            // read "Health: starting..." forever — there was no set_text call
+            // anywhere in this file — so the tray asserted a state it never
+            // checked, and still said "starting" hours later with the backend
+            // down. Poll every 10s and tell the truth.
+            {
+                let health_item = health.clone();
+                tauri::async_runtime::spawn(async move {
+                    let url = format!("{}/health", api_base());
+                    let client = reqwest::Client::new();
+                    loop {
+                        let label = match client
+                            .get(&url)
+                            .timeout(std::time::Duration::from_secs(3))
+                            .send()
+                            .await
+                        {
+                            Ok(r) if r.status().is_success() => "Backend: reachable",
+                            Ok(_) => "Backend: error",
+                            Err(_) => "Backend: unreachable",
+                        };
+                        let _ = health_item.set_text(label);
+                        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    }
+                });
+            }
+
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("OpenJarvis")
