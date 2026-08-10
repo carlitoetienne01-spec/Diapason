@@ -715,6 +715,27 @@ class PasteToFrontmostTool(BaseTool):
 
         try:
             if sys.platform == "darwin":
+                # Preferred path: save the clipboard, paste, restore it. The
+                # old pbcopy+osascript path below overwrote whatever the user
+                # had copied and never put it back — a daily papercut for a
+                # tool that fires dozens of times an hour. Falls back to that
+                # path only if PyObjC is unavailable.
+                try:
+                    from openjarvis.desktop.clipboard import paste_text
+
+                    if paste_text(text):
+                        return ToolResult(
+                            tool_name="paste_to_frontmost",
+                            content=(
+                                "Pasted into frontmost app "
+                                "(clipboard preserved)"
+                            ),
+                            success=True,
+                            metadata={"chars": len(text), "clipboard_restored": True},
+                        )
+                except ImportError:
+                    pass  # PyObjC not installed — fall through to legacy path
+
                 p = subprocess.run(
                     ["pbcopy"],
                     input=text.encode("utf-8"),
