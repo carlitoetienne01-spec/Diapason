@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from openjarvis.tools.storage.dense import (
+from diapason.tools.storage.dense import (
     DenseMemory,
     MdChunk,
     chunk_markdown,

@@ -48,7 +48,7 @@ export default defineConfig({
     }),
   ],
   build: {
-    outDir: '../src/openjarvis/server/static',
+    outDir: '../src/diapason/server/static',
     emptyOutDir: true,
     minify: 'esbuild',
     rollupOptions: {

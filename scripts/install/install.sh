@@ -644,7 +644,7 @@ detach_bg_orchestrator() {
     fi
     local models
     models=$("$VENV_DIR/bin/python" - <<'PYEOF' 2>/dev/null || true
-from openjarvis.core.config import detect_hardware, recommend_model
+from diapason.core.config import detect_hardware, recommend_model
 hw = detect_hardware()
 tier = recommend_model(hw, "ollama")
 TIERS = ["qwen3.5:2b", "qwen3.5:4b", "qwen3.5:9b", "qwen3.5:27b"]

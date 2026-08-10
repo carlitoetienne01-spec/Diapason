@@ -67,4 +67,4 @@ WORKDIR /app
 
 LABEL openjarvis-sandbox=true
 
-ENTRYPOINT ["python", "-m", "openjarvis.sandbox.entrypoint"]
+ENTRYPOINT ["python", "-m", "diapason.sandbox.entrypoint"]

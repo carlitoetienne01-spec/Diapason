@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/install/**'
-      - 'src/openjarvis/cli/**'
+      - 'src/diapason/cli/**'
       - 'tests/install/**'
       - '.github/workflows/installer-integration.yml'
   schedule:

@@ -156,7 +156,7 @@ eval-sheets = ["gspread>=6.0", "google-auth>=2.0"]
 mining-pearl-cpu = [
     # Pearl Python packages (py-pearl-mining, miner-base, pearl-gateway) are
     # not on PyPI yet. They are installed at first `mine init` via the
-    # build-from-pin path in src/openjarvis/mining/_install.py:build_from_pin().
+    # build-from-pin path in src/diapason/mining/_install.py:build_from_pin().
     # When Pearl publishes wheels, replace the line below with version pins.
     #
     # The extra remains as a feature-flag namespace so users can run
@@ -203,7 +203,7 @@ git_describe_command = [
 ]
 # Builds without a git checkout (e.g. the `COPY src/ src/` Docker stages, which
 # never include .git) can't run `git describe`. Without a fallback that would
-# hard-fail the build. Mirror the runtime sentinel in src/openjarvis/__init__.py.
+# hard-fail the build. Mirror the runtime sentinel in src/diapason/__init__.py.
 # Such builds can inject the real version via SETUPTOOLS_SCM_PRETEND_VERSION.
 fallback_version = "0.0.0+unknown"
 
@@ -244,16 +244,16 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/openjarvis/evals/datasets/*.py" = ["E501"]
-"src/openjarvis/evals/scorers/*.py" = ["E501"]
+"src/diapason/evals/datasets/*.py" = ["E501"]
+"src/diapason/evals/scorers/*.py" = ["E501"]
 # hybrid/ is research code with long prompt strings and paradigm-specific
 # config dicts — same relaxation as evals research code above. The ``**`` glob
 # also covers subpackages (e.g. hybrid/skillorchestra/), which the prior
 # ``hybrid/*.py`` glob missed.
-"src/openjarvis/agents/hybrid/**/*.py" = ["E501"]
+"src/diapason/agents/hybrid/**/*.py" = ["E501"]
 # research_loop.py carries long prompt strings too (documented in CLAUDE.md);
 # the ignore was missing here.
-"src/openjarvis/agents/research_loop.py" = ["E501"]
+"src/diapason/agents/research_loop.py" = ["E501"]
 
 [dependency-groups]
 dev = [

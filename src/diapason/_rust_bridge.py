@@ -1,7 +1,7 @@
-"""Single point of contact between Python and the Rust ``diapason_rust`` module.
+"""Single point of contact between Python and the Rust ``openjarvis_rust`` module.
 
 Every Python module that wants to delegate to Rust should import helpers from
-here rather than importing ``diapason_rust`` directly.  The Rust backend is
+here rather than importing ``openjarvis_rust`` directly.  The Rust backend is
 mandatory — if it cannot be imported, a hard ``ImportError`` is raised.
 """
 
@@ -21,19 +21,19 @@ if TYPE_CHECKING:
 
 @functools.lru_cache(maxsize=1)
 def get_rust_module() -> _types.ModuleType:
-    """Return the ``diapason_rust`` module.
+    """Return the ``openjarvis_rust`` module.
 
     Raises ``ImportError`` if the compiled extension is not available.
     The Rust backend is mandatory for all modules that have Rust
     implementations — there is no Python fallback.
     """
-    import diapason_rust  # type: ignore[import-untyped]
+    import openjarvis_rust  # type: ignore[import-untyped]
 
-    return diapason_rust
+    return openjarvis_rust
 
 
 def _detect_rust() -> bool:
-    """Return ``True`` if the compiled ``diapason_rust`` extension is importable.
+    """Return ``True`` if the compiled ``openjarvis_rust`` extension is importable.
 
     Computed once at import time. Modules with a Python fallback (e.g.
     ``security.ssrf``) consult this flag instead of hardcoding availability,

@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
-from openjarvis.core import open_browser
+from diapason.core import open_browser
 
 CONFIG_DIR = Path.home() / ".openjarvis" / "connectors"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
