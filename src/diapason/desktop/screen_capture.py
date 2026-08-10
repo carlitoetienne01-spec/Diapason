@@ -37,7 +37,7 @@ def capture_screen_to_temp(*, monitor: int = 0) -> str:
     ``monitor``: 1-based display index for macOS ``screencapture -D``.
     ``0`` = default / primary.
     """
-    # Prefer shared CLI helper path so jarvis ask --screen stays consistent
+    # Prefer shared CLI helper path so diapason ask --screen stays consistent
     if sys.platform == "darwin" and shutil.which("screencapture"):
         fd, path = tempfile.mkstemp(prefix="oj_screen_", suffix=".png")
         os.close(fd)

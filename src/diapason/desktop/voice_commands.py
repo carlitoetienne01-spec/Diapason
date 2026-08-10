@@ -351,7 +351,7 @@ def finalize_dictation(
             "meta": {"wake_word": wake_hit},
         }
 
-    # Bare wake (« Hey Jarvis ») → hint UI to open Talk
+    # Bare wake (« Hey Diapason ») → hint UI to open Talk
     if wake_hit and not stripped:
         return {
             "mode": "wake",

@@ -1,4 +1,4 @@
-"""CLI: jarvis clap-listen — double-clap → welcome sequence (+ optional trigger file)."""
+"""CLI: diapason clap-listen — double-clap → welcome sequence (+ optional trigger file)."""
 
 from __future__ import annotations
 

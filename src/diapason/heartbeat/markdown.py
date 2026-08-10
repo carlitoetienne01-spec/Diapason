@@ -20,7 +20,7 @@ class HeartbeatTask:
 
 DEFAULT_HEARTBEAT = """# HEARTBEAT
 > Ambient task queue. Heartbeat drains the first unchecked item under ## Now.
-> Add tasks with: jarvis heartbeat add "…"
+> Add tasks with: diapason heartbeat add "…"
 
 ## Now
 - [ ] Check calendar for meetings in the next 2 hours

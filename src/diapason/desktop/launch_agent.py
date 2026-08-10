@@ -1,7 +1,7 @@
 """Install Diapason background services as macOS LaunchAgents.
 
-Two services use this: the dictation agent (`jarvis dictate`) and the API
-server (`jarvis serve`). They differ only in label and arguments, so the
+Two services use this: the dictation agent (`diapason dictate`) and the API
+server (`diapason serve`). They differ only in label and arguments, so the
 plist builder is parameterised rather than duplicated.
 
 A LaunchAgent (not a LaunchDaemon) runs in the user's GUI session at login,

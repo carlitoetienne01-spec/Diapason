@@ -2901,7 +2901,7 @@ pub fn run() {
                 // below and stop the agent (`jarvis dictate-service uninstall`).
                 let _ = (ShortcutState::Pressed, ShortcutState::Released);
 
-                // Talk to Jarvis (realtime orb): Option/Alt+Space toggle
+                // Talk to Diapason (realtime orb): Option/Alt+Space toggle
                 let talk = Shortcut::new(Some(Modifiers::ALT), Code::Space);
                 let talk_handle = app.handle().clone();
                 if let Err(e) = app.global_shortcut().on_shortcut(talk, move |app, _sc, ev| {

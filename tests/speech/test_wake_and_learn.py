@@ -45,10 +45,10 @@ def test_wake_check_text_fires():
     hits: list[str] = []
     listener = WakeWordListener(
         hits.append,
-        cfg=WakeListenConfig(cooldown_s=0.0, phrases=("jarvis", "hey jarvis")),
+        cfg=WakeListenConfig(cooldown_s=0.0, phrases=("diapason", "hey diapason")),
         once=False,
     )
-    assert listener.check_text("Hey Jarvis") is True
+    assert listener.check_text("Hey Diapason") is True
     assert hits
     assert listener.check_text("bonjour") is False
 

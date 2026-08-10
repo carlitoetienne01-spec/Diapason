@@ -1,4 +1,4 @@
-"""``jarvis routines`` — cron routine catalog."""
+"""``diapason routines`` — cron routine catalog."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def routines_run(routine_id: str, force: bool, dry_run: bool) -> None:
             _print_run(console, routine_id, out)
             return
         except Exception as exc:
-            console.print(f"[yellow]Jarvis unavailable ({exc}); dry run.[/yellow]")
+            console.print(f"[yellow]Diapason unavailable ({exc}); dry run.[/yellow]")
 
     out = run_routine(routine, system=system, force=force, workspace=_workspace())
     _print_run(console, routine_id, out)
@@ -142,7 +142,7 @@ def routines_sync() -> None:
         for r in summary.get("routines") or []:
             flag = "on" if r.get("active") else "off"
             console.print(f"  {r['task_id']} [{flag}]")
-        console.print("[dim]Start the daemon with: jarvis scheduler start[/dim]")
+        console.print("[dim]Start the daemon with: diapason scheduler start[/dim]")
     finally:
         store.close()
 

@@ -188,7 +188,7 @@ class TestBuildManagedSystemPrompt:
         )
 
         soul = tmp_path / "SOUL.md"
-        soul.write_text("You are Jarvis, a meticulous local-first assistant.")
+        soul.write_text("You are Diapason, a meticulous local-first assistant.")
         # Other persona files point at non-existent paths — only SOUL is set.
         return SimpleNamespace(
             memory_files=MemoryFilesConfig(soul_path=str(soul)),

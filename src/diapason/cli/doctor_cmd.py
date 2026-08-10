@@ -1,4 +1,4 @@
-"""``jarvis doctor`` — run diagnostic checks on the OpenJarvis installation."""
+"""``diapason doctor`` — run diagnostic checks on the OpenJarvis installation."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _check_config_exists() -> CheckResult:
         "Config file",
         "warn",
         f"Not found at {DEFAULT_CONFIG_PATH}",
-        details="Run `jarvis init` to generate a config file.",
+        details="Run `diapason init` to generate a config file.",
     )
 
 
@@ -380,7 +380,7 @@ def _check_heartbeat_routines() -> CheckResult:
             "Heartbeat / routines",
             "ok",
             f"heartbeat={hb} · routines={rt}",
-            details="jarvis routines sync && jarvis scheduler start",
+            details="diapason routines sync && diapason scheduler start",
         )
     except Exception as exc:
         return CheckResult("Heartbeat / routines", "warn", str(exc))

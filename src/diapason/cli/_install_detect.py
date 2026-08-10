@@ -1,5 +1,5 @@
 """Detect how OpenJarvis was installed so we can show the right upgrade
-command (and run the right upgrade command for ``jarvis self-update``).
+command (and run the right upgrade command for ``diapason self-update``).
 
 Three install paths are supported today:
 

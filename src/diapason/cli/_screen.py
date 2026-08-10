@@ -1,4 +1,4 @@
-"""Screen capture for vision input (``jarvis ask --screen``).
+"""Screen capture for vision input (``diapason ask --screen``).
 
 Captures a monitor to a temporary PNG. On macOS prefers ``screencapture``.
 On Windows uses .NET ``System.Drawing``. Other platforms fall back to

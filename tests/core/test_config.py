@@ -111,10 +111,10 @@ class TestTomlLoading:
         must reach the runtime config, not be dropped by load_config()."""
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
-            '[system_prompt]\nprefix = "You are Jarvis."\nsoul_max_chars = 999\n'
+            '[system_prompt]\nprefix = "You are Diapason."\nsoul_max_chars = 999\n'
         )
         cfg = load_config(toml_file)
-        assert cfg.system_prompt.prefix == "You are Jarvis."
+        assert cfg.system_prompt.prefix == "You are Diapason."
         assert cfg.system_prompt.soul_max_chars == 999
 
     def test_config_without_system_prompt_block_defaults(self, tmp_path: Path) -> None:
@@ -242,7 +242,7 @@ class TestAgentConfigNew:
         deny the model's training identity so distilled models stop
         claiming to be Claude/ChatGPT/etc."""
         prompt = AgentConfig().default_system_prompt
-        assert "OpenJarvis" in prompt
+        assert "Diapason" in prompt
         assert "not Claude" in prompt
 
 
@@ -544,7 +544,7 @@ class TestWhatsAppBaileysChannelConfig:
     def test_defaults(self) -> None:
         wc = WhatsAppBaileysChannelConfig()
         assert wc.auth_dir == ""
-        assert wc.assistant_name == "Jarvis"
+        assert wc.assistant_name == "Diapason"
         assert wc.assistant_has_own_number is False
 
     def test_custom_values(self) -> None:

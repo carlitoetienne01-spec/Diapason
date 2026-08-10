@@ -6,7 +6,7 @@ import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
 import { Sparkles, PanelRightOpen, PanelRightClose, Database, MessageSquare, X, AudioLines } from 'lucide-react';
 import { listConnectors } from '../../lib/connectors-api';
-import { openTalkToJarvis } from '../TalkToJarvisHost';
+import { openTalkToDiapason } from '../TalkToDiapasonHost';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -76,16 +76,16 @@ export function ChatArea() {
       {/* Toggle bar */}
       <div className="flex items-center justify-end gap-1 px-3 py-1.5 shrink-0">
         <button
-          onClick={() => openTalkToJarvis()}
+          onClick={() => openTalkToDiapason()}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
           style={{
             background: 'var(--color-accent)',
             color: 'var(--color-on-accent, #fff)',
           }}
-          title="Talk to Jarvis — realtime voice (⌥Space)"
+          title="Talk to Diapason — realtime voice (⌥Space)"
         >
           <AudioLines size={14} />
-          Talk to Jarvis
+          Talk to Diapason
         </button>
         <button
           onClick={toggleSystemPanel}

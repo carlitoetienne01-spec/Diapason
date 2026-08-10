@@ -1,4 +1,4 @@
-"""``jarvis operators`` — operator lifecycle management commands."""
+"""``diapason operators`` — operator lifecycle management commands."""
 
 from __future__ import annotations
 

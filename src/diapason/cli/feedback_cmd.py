@@ -1,4 +1,4 @@
-"""``jarvis feedback`` — trace feedback management CLI."""
+"""``diapason feedback`` — trace feedback management CLI."""
 
 from __future__ import annotations
 

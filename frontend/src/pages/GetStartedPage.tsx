@@ -200,7 +200,7 @@ function HostedView() {
         <Sparkles size={32} />
       </div>
       <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-        OpenJarvis
+        Diapason
       </h1>
       <p
         className="text-sm mb-6 leading-relaxed max-w-md mx-auto"
@@ -284,7 +284,7 @@ function DesktopView() {
           <Sparkles size={32} />
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          OpenJarvis Desktop
+          Diapason Desktop
         </h1>
         <p
           className="text-sm mb-4 leading-relaxed max-w-md mx-auto"
@@ -347,7 +347,7 @@ function DesktopView() {
             <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+K</kbd> Model picker</div>
             <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+I</kbd> System panel</div>
             <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Cmd+Shift+Space</kbd> Quick overlay</div>
-            <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Alt+Space</kbd> Talk to Jarvis</div>
+            <div><kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Alt+Space</kbd> Talk to Diapason</div>
           </div>
           <p className="text-xs mt-3" style={{ color: 'var(--color-text-tertiary)' }}>
             Dictation runs as a separate background service: hold{' '}
@@ -380,7 +380,7 @@ function SelfHostedView() {
           <Sparkles size={32} />
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          OpenJarvis
+          Diapason
         </h1>
         <p
           className="text-sm mb-4 leading-relaxed max-w-md mx-auto"

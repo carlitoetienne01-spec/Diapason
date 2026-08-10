@@ -198,7 +198,7 @@ def _run_morning_digest(*, system: Any = None, speak: bool = False) -> str:
             return f"Morning digest failed: {exc}"
 
     return (
-        "No morning digest available. Run: jarvis digest --fresh "
+        "No morning digest available. Run: diapason digest --fresh "
         "(or enable [digest] + connectors)."
     )
 

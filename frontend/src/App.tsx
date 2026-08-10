@@ -15,7 +15,7 @@ import { useAppStore } from './lib/store';
 import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } from './lib/api';
 import { OptInModal } from './components/OptInModal';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
-import { TalkToJarvisHost } from './components/TalkToJarvisHost';
+import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 
 export default function App() {
@@ -196,7 +196,7 @@ export default function App() {
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
-      <TalkToJarvisHost />
+      <TalkToDiapasonHost />
       {commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />

@@ -1,4 +1,4 @@
-"""``jarvis eval`` — evaluation framework CLI commands."""
+"""``diapason eval`` — evaluation framework CLI commands."""
 
 from __future__ import annotations
 

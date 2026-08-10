@@ -22,7 +22,7 @@ def test_build_frozen_prefix(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -31,7 +31,7 @@ def test_build_frozen_prefix(memory_dir: Path):
         system_prompt_config=SystemPromptConfig(),
     )
     prompt = builder.build()
-    assert "Jarvis" in prompt
+    assert "Diapason" in prompt
     assert "helpful research assistant" in prompt
     assert "concise answers" in prompt
     assert "Alice" in prompt
@@ -44,7 +44,7 @@ def test_config_prefix_prepended(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -54,7 +54,7 @@ def test_config_prefix_prepended(memory_dir: Path):
     )
     prompt = builder.build()
     assert prompt.startswith("ALWAYS ANSWER AS JARVIS.")
-    assert "You are Jarvis." in prompt
+    assert "You are Diapason." in prompt
     # Prefix is visible in the inspection API too (#457), as a frozen section.
     section_names = [s.name for s in builder.sections()]
     assert section_names[0] == "prefix"
@@ -68,7 +68,7 @@ def test_empty_prefix_leaves_prompt_unchanged(memory_dir: Path):
 
     def _make(prefix: str) -> SystemPromptBuilder:
         return SystemPromptBuilder(
-            agent_template="You are Jarvis.",
+            agent_template="You are Diapason.",
             memory_files_config=MemoryFilesConfig(
                 soul_path=str(memory_dir / "SOUL.md"),
                 memory_path=str(memory_dir / "MEMORY.md"),
@@ -88,7 +88,7 @@ def test_frozen_prefix_stability(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -107,7 +107,7 @@ def test_char_limit_truncation(memory_dir: Path):
 
     (memory_dir / "SOUL.md").write_text("x" * 10000)
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -125,7 +125,7 @@ def test_skill_index_in_prompt(memory_dir: Path):
 
     skills = [("api_health_check", "Check API health across all endpoints")]
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -143,7 +143,7 @@ def test_dynamic_section_appended(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -160,7 +160,7 @@ def test_sections_expose_prompt_metadata(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -191,7 +191,7 @@ def test_sections_keep_frozen_file_content_stable(memory_dir: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(memory_dir / "SOUL.md"),
             memory_path=str(memory_dir / "MEMORY.md"),
@@ -211,7 +211,7 @@ def test_missing_files_handled(tmp_path: Path):
     from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
-        agent_template="You are Jarvis.",
+        agent_template="You are Diapason.",
         memory_files_config=MemoryFilesConfig(
             soul_path=str(tmp_path / "missing_soul.md"),
             memory_path=str(tmp_path / "missing_memory.md"),
@@ -220,4 +220,4 @@ def test_missing_files_handled(tmp_path: Path):
         system_prompt_config=SystemPromptConfig(),
     )
     prompt = builder.build()
-    assert "Jarvis" in prompt
+    assert "Diapason" in prompt

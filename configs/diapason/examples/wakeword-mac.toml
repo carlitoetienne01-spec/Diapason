@@ -1,4 +1,4 @@
-# Wake-word Mac — local « Hey Jarvis » → Talk
+# Wake-word Mac — local « Hey Diapason » → Talk
 # Install notes: keep [speech.realtime] for Live; run `jarvis wake-listen` in a terminal
 # (or as a login item) while the OpenJarvis UI is open.
 #

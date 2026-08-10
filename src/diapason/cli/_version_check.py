@@ -134,7 +134,7 @@ def _do_check() -> None:
                 f"\033[33mA new version of OpenJarvis is available "
                 f"(v{current} → v{latest})\n"
                 f"Update: {cmd}\n"
-                f"Or run: jarvis self-update\033[0m\n\n"
+                f"Or run: diapason self-update\033[0m\n\n"
             )
     except InvalidVersion:
         pass

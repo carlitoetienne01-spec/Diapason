@@ -6,7 +6,7 @@ Global hotkeys and paste-to-frontmost live in the **Tauri** binary, not the Pyth
 
 | Shortcut | Event | Effect |
 |----------|-------|--------|
-| **⌥Space** (Alt+Space) | `talk-toggle` | Open/close Talk to Jarvis |
+| **⌥Space** (Alt+Space) | `talk-toggle` | Open/close Talk to Diapason |
 | **⌘⌥Space** (Cmd+Alt+Space) | `ptt-start` / `ptt-stop` | Push-to-talk → paste to frontmost app |
 | **⌘⇧Space** | overlay | Native overlay toggle |
 

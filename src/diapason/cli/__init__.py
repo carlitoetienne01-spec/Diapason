@@ -70,7 +70,7 @@ def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
     setup_logging(verbose=verbose, quiet=quiet)
 
     # Check for updates on interactive commands. The banner is noise in
-    # demo recordings of ``jarvis ask --research``, so skip it whenever
+    # demo recordings of ``diapason ask --research``, so skip it whenever
     # the research flag is in argv (cheap argv sniff — Click hasn't
     # parsed the subcommand's args yet at this point).
     import sys
@@ -83,7 +83,7 @@ def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
 
         # Run the PyPI version poll off the hot path: on a cache miss it does
         # a blocking urlopen (up to 3s) that otherwise delays every command,
-        # notably `jarvis serve` startup (#263). It's best-effort and never
+        # notably `diapason serve` startup (#263). It's best-effort and never
         # raises, and the nudge prints to stderr, so a daemon thread is safe —
         # for long-lived commands (serve) it finishes; for short commands that
         # exit first, the check is simply skipped this run (same as a miss).
@@ -149,7 +149,7 @@ cli.add_command(digest, "digest")
 # deep-research setup pulls the ingestion pipeline (embeddings/numpy). Guard it
 # so a broken or slow numpy on Windows — which can raise at IMPORT time, not
 # just ImportError (#404) — can never take down the whole CLI, including
-# `jarvis serve`. Invoking `jarvis deep-research-setup` without the deps still
+# `diapason serve`. Invoking `diapason deep-research-setup` without the deps still
 # errors clearly on demand.
 try:
     from diapason.cli.deep_research_setup_cmd import deep_research_setup

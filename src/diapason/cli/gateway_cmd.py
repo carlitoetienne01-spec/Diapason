@@ -1,4 +1,4 @@
-"""``jarvis gateway start|stop|status|logs`` — multi-channel gateway management."""
+"""``diapason gateway start|stop|status|logs`` — multi-channel gateway management."""
 
 from __future__ import annotations
 

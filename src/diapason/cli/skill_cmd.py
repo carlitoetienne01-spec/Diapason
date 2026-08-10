@@ -211,7 +211,7 @@ def _get_resolver(source: str, url: str = ""):
 def install(query: str, with_scripts: bool, force: bool, url: str, yes_dangerous: bool):
     """Install a skill from a source.
 
-    Example: ``jarvis skill install hermes:apple-notes``
+    Example: ``diapason skill install hermes:apple-notes``
     """
     console = Console()
     source, name = _parse_source_query(query)
@@ -530,7 +530,7 @@ def search(query: str, source: str):
     console.print(table)
     console.print(
         f"[dim]{len(rows)} match(es). "
-        f"Install with: jarvis skill install <source>:<name>[/dim]"
+        f"Install with: diapason skill install <source>:<name>[/dim]"
     )
 
 

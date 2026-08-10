@@ -1,4 +1,4 @@
-"""CLI: jarvis wake-listen — local mic wake word → open Talk."""
+"""CLI: diapason wake-listen — local mic wake word → open Talk."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def wake_listen(
     backend: str,
     fake_text: str,
 ) -> None:
-    """Listen for « Hey Jarvis » and open Talk (talk_open trigger).
+    """Listen for « Hey Diapason » and open Talk (talk_open trigger).
 
     Backends: phrase_gate (Whisper+regex) or openwakeword (ML hey_jarvis).
     """

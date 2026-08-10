@@ -20,7 +20,7 @@ def check_and_route(ctx: click.Context) -> None:
     """Called from the root group when no subcommand is invoked.
 
     Returns None and does nothing if a subcommand is being invoked
-    (the user typed something specific like ``jarvis ask``).
+    (the user typed something specific like ``diapason ask``).
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -32,4 +32,4 @@ def check_and_route(ctx: click.Context) -> None:
     if _cfg.DEFAULT_CONFIG_PATH.exists():
         ctx.invoke(chat_cmd)
     else:
-        ctx.invoke(init_cmd, from_bare_jarvis=True)
+        ctx.invoke(init_cmd, from_bare_diapason=True)

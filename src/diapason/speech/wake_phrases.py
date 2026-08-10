@@ -1,4 +1,4 @@
-"""Wake-word phrase matching (Diapason-style text gate for « Jarvis »)."""
+"""Wake-word phrase matching (Diapason-style text gate for « Diapason »)."""
 
 from __future__ import annotations
 
@@ -7,20 +7,19 @@ from typing import Sequence
 
 # Longer variants first for alternation.
 DEFAULT_WAKE_VARIANTS: tuple[str, ...] = (
-    "hey jarvis",
-    "dis jarvis",
-    "ok jarvis",
-    "okay jarvis",
-    "salut jarvis",
-    "bonjour jarvis",
-    "hi jarvis",
-    "hello jarvis",
-    "jar vis",
-    "jar-vis",
-    "jarvise",
-    "jervis",
-    "djarvis",
-    "jarvis",
+    "hey diapason",
+    "dis diapason",
+    "ok diapason",
+    "okay diapason",
+    "salut diapason",
+    "bonjour diapason",
+    "hi diapason",
+    "hello diapason",
+    "dia pason",
+    "dia-pason",
+    "diapasons",
+    "diapazon",
+    "diapason",
 )
 
 DEFAULT_WAKE_PREFIXES: tuple[str, ...] = (
@@ -55,7 +54,7 @@ def build_wake_pattern(
     variant_group = "|".join(_escape(v) for v in vars_sorted)
     prefix_group = "|".join(_escape(p) for p in prefs_sorted)
     # Name alone OR prefix + name; require separator or end after name.
-    # If variant already includes prefix (hey jarvis), still OK.
+    # If variant already includes prefix (hey diapason), still OK.
     pattern = (
         rf"^(?:(?:{prefix_group}){_SEP}*)?(?:{variant_group})(?:{_SEP}+|$)"
     )
@@ -70,7 +69,7 @@ def has_wake_word(
     *,
     pattern: re.Pattern[str] | None = None,
 ) -> bool:
-    """True if text opens with an address to Jarvis."""
+    """True if text opens with an address to Diapason."""
     t = (text or "").strip()
     if not t:
         return False

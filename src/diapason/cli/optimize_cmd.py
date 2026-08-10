@@ -1,4 +1,4 @@
-"""``jarvis optimize`` — LLM-driven configuration optimization CLI."""
+"""``diapason optimize`` — LLM-driven configuration optimization CLI."""
 
 from __future__ import annotations
 

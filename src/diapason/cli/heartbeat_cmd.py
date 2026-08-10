@@ -1,4 +1,4 @@
-"""``jarvis heartbeat`` — ambient HEARTBEAT.md queue."""
+"""``diapason heartbeat`` — ambient HEARTBEAT.md queue."""
 
 from __future__ import annotations
 

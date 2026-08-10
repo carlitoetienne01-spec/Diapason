@@ -2,7 +2,7 @@
 
 This package provides the automatic memory service that extracts durable facts
 from conversations in the background and persists them across sessions. It is
-started and stopped as part of the ``jarvis serve`` / ``jarvis chat`` lifecycle
+started and stopped as part of the ``diapason serve`` / ``diapason chat`` lifecycle
 and configured via the ``[memory]`` section of ``config.toml``.
 """
 

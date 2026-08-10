@@ -1,4 +1,4 @@
-"""``jarvis add`` — quick MCP server setup."""
+"""``diapason add`` — quick MCP server setup."""
 
 from __future__ import annotations
 
@@ -80,9 +80,9 @@ def add(server_name: str, key: str | None, extra_args: str | None) -> None:
 
     Quick setup for common MCP servers:
 
-      jarvis add github --key TOKEN
-      jarvis add filesystem
-      jarvis add slack --key TOKEN
+      diapason add github --key TOKEN
+      diapason add filesystem
+      diapason add slack --key TOKEN
 
     Known servers: github, filesystem, slack, postgres, brave-search,
     memory, puppeteer, google-maps

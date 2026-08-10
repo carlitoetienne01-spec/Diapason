@@ -10,11 +10,11 @@ from diapason.speech.wakeword import WakeListenConfig, WakeWordListener
 
 
 def test_has_wake_word_en_fr():
-    assert has_wake_word("Hey Jarvis")
-    assert has_wake_word("jarvis")
-    assert has_wake_word("Dis Jarvis, ouvre Cursor")
-    assert has_wake_word("ok jarvis what's up")
-    assert has_wake_word("JARVIS")
+    assert has_wake_word("Hey Diapason")
+    assert has_wake_word("diapason")
+    assert has_wake_word("Dis Diapason, ouvre Cursor")
+    assert has_wake_word("ok diapason what's up")
+    assert has_wake_word("DIAPASON")
 
 
 def test_has_wake_word_rejects_mid_sentence():
@@ -24,9 +24,9 @@ def test_has_wake_word_rejects_mid_sentence():
 
 
 def test_strip_wake_word():
-    assert strip_wake_word("Jarvis, ouvre YouTube") == "ouvre YouTube"
-    assert "Cursor" in strip_wake_word("Hey Jarvis ouvre Cursor")
-    assert strip_wake_word("Dis Jarvis") == ""
+    assert strip_wake_word("Diapason, ouvre YouTube") == "ouvre YouTube"
+    assert "Cursor" in strip_wake_word("Hey Diapason ouvre Cursor")
+    assert strip_wake_word("Dis Diapason") == ""
 
 
 def test_finalize_wake_command(monkeypatch):
@@ -44,7 +44,7 @@ def test_finalize_wake_command(monkeypatch):
         },
     )
     out = vc.finalize_dictation(
-        "Hey Jarvis ouvre Cursor", polish=True, llm_polish=False, use_dictionary=False
+        "Hey Diapason ouvre Cursor", polish=True, llm_polish=False, use_dictionary=False
     )
     assert out["mode"] == "command"
     assert out["meta"]["wake_word"] is True
@@ -54,7 +54,7 @@ def test_finalize_wake_command(monkeypatch):
 def test_finalize_bare_wake_suggests_talk(monkeypatch):
     from diapason.desktop.voice_commands import finalize_dictation
 
-    out = finalize_dictation("Hey Jarvis", polish=True, llm_polish=False, use_dictionary=False)
+    out = finalize_dictation("Hey Diapason", polish=True, llm_polish=False, use_dictionary=False)
     assert out["mode"] == "wake"
     assert out["meta"]["suggest"] == "talk_open"
 
@@ -66,9 +66,9 @@ def test_listener_check_text_fires_once():
         cfg=WakeListenConfig(cooldown_s=0.0),
         once=True,
     )
-    assert listener.check_text("Hey Jarvis") is True
-    assert listener.check_text("Hey Jarvis") is False  # once
-    assert calls == ["Hey Jarvis"]
+    assert listener.check_text("Hey Diapason") is True
+    assert listener.check_text("Hey Diapason") is False  # once
+    assert calls == ["Hey Diapason"]
 
 
 def test_listener_cooldown():
@@ -78,8 +78,8 @@ def test_listener_cooldown():
         cfg=WakeListenConfig(cooldown_s=10.0),
         once=False,
     )
-    assert listener.check_text("Jarvis") is True
-    assert listener.check_text("Jarvis") is False
+    assert listener.check_text("Diapason") is True
+    assert listener.check_text("Diapason") is False
     assert len(calls) == 1
 
 

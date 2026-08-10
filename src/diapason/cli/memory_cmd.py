@@ -1,4 +1,4 @@
-"""``jarvis memory`` — memory management subcommands."""
+"""``diapason memory`` — memory management subcommands."""
 
 from __future__ import annotations
 

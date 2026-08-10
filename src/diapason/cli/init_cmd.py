@@ -1,4 +1,4 @@
-"""``jarvis init`` — detect hardware, generate config, write to disk."""
+"""``diapason init`` — detect hardware, generate config, write to disk."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from diapason.core.config import (
     recommend_model,
 )
 
-# Engines supported by ``jarvis init --engine``.
+# Engines supported by ``diapason init --engine``.
 _SUPPORTED_ENGINES = [
     "ollama",
     "vllm",
@@ -80,9 +80,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             f"     ollama pull {pull_model}\n"
             "\n"
             "  3. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "vllm": (
             "Next steps:\n"
@@ -92,9 +92,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     vllm serve Qwen/Qwen3-4B\n"
             "\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "llamacpp": (
             "Next steps:\n"
@@ -104,9 +104,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     llama-server -m path/to/model.gguf\n"
             "\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "sglang": (
             "Next steps:\n"
@@ -116,9 +116,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     python -m sglang.launch_server --model-path Qwen/Qwen3-8B\n"
             "\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "mlx": (
             "Next steps:\n"
@@ -128,9 +128,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     mlx_lm.server --model mlx-community/Qwen2.5-7B-4bit\n"
             "\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "lmstudio": (
             "Next steps:\n"
@@ -141,9 +141,9 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "  2. Load a model and start the local server (port 1234)\n"
             "\n"
             "  3. Try it out:\n"
-            '     jarvis ask "Hello"\n'
+            '     diapason ask "Hello"\n'
             "\n"
-            "  Run `jarvis doctor` to verify your setup."
+            "  Run `diapason doctor` to verify your setup."
         ),
         "exo": (
             "Next steps:\n\n"
@@ -151,8 +151,8 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     pip install exo\n"
             "     exo\n\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n\n'
-            "  Run `jarvis doctor` to verify your setup."
+            '     diapason ask "Hello"\n\n'
+            "  Run `diapason doctor` to verify your setup."
         ),
         "nexa": (
             "Next steps:\n\n"
@@ -160,8 +160,8 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     pip install nexaai\n"
             "     nexa server\n\n"
             "  2. Try it out:\n"
-            '     jarvis ask "Hello"\n\n'
-            "  Run `jarvis doctor` to verify your setup."
+            '     diapason ask "Hello"\n\n'
+            "  Run `diapason doctor` to verify your setup."
         ),
         "lemonade": (
             "Next steps:\n\n"
@@ -169,8 +169,8 @@ def _next_steps_text(engine: str, model: str = "") -> str:
             "     https://lemonade-server.ai/\n\n"
             "  2. Start the Lemonade server\n\n"
             "  3. Try it out:\n"
-            '     jarvis ask "Hello"\n\n'
-            "  Run `jarvis doctor` to verify your setup."
+            '     diapason ask "Hello"\n\n'
+            "  Run `diapason doctor` to verify your setup."
         ),
     }
     return steps.get(engine, steps["ollama"])
@@ -190,7 +190,7 @@ def _quick_privacy_check(console: Console) -> None:
             elif r.status == "fail":
                 console.print(f"  [red]\u2717[/red] {r.message}")
     console.print()
-    console.print("  Run [cyan]jarvis scan[/cyan] for a full environment audit.")
+    console.print("  Run [cyan]diapason scan[/cyan] for a full environment audit.")
 
 
 def _do_download(engine: str, model: str, spec, console: Console) -> None:
@@ -284,7 +284,7 @@ def _do_download(engine: str, model: str, spec, console: Console) -> None:
             "wakeword-mac",
             "heartbeat-routines",
             "screen-vision",
-            "jarvis-desktop",
+            "diapason-desktop",
         ],
         case_sensitive=False,
     ),
@@ -296,7 +296,7 @@ def _do_download(engine: str, model: str, spec, console: Console) -> None:
     is_flag=True,
     default=False,
     hidden=True,
-    help="Run init non-interactively; called by the bare-jarvis first-run guard.",
+    help="Run init non-interactively; called by the bare-diapason first-run guard.",
 )
 @click.pass_context
 def init(
@@ -310,7 +310,7 @@ def init(
     host: Optional[str] = None,
     enable_digest: bool = False,
     preset: Optional[str] = None,
-    from_bare_jarvis: bool = False,
+    from_bare_diapason: bool = False,
 ) -> None:
     """Detect hardware and generate ~/.diapason/config.toml."""
     print_banner(quiet=(ctx.obj or {}).get("quiet", False))
@@ -357,7 +357,7 @@ def init(
         )
         console.print(
             "\n  Edit the config to customize, then run "
-            "[bold]jarvis doctor[/bold] to verify."
+            "[bold]diapason doctor[/bold] to verify."
         )
         return
 
@@ -379,8 +379,8 @@ def init(
     # Resolve engine: explicit flag > interactive selection > auto-detect
     if engine is None and config is None:
         recommended = recommend_engine(hw)
-        # Bare-jarvis cold path: use the recommended engine non-interactively.
-        if from_bare_jarvis:
+        # Bare-diapason cold path: use the recommended engine non-interactively.
+        if from_bare_diapason:
             engine = recommended
         else:
             console.print()
@@ -479,7 +479,7 @@ def init(
 enabled = true
 schedule = "0 7 * * *"
 timezone = "America/Los_Angeles"
-persona = "jarvis"
+persona = "diapason"
 honorific = "sir"
 tts_backend = "cartesia"
 voice_id = "c8f7835e-28a3-4f0c-80d7-c1302ac62aae"
@@ -504,8 +504,8 @@ sources = ["hackernews", "news_rss"]
         toml_content = target.read_text()
         console.print(
             "[green]Morning Digest config added.[/green] "
-            "Run [bold]jarvis connect gdrive[/bold] to connect "
-            "Google services, then [bold]jarvis digest --fresh[/bold]."
+            "Run [bold]diapason connect gdrive[/bold] to connect "
+            "Google services, then [bold]diapason digest --fresh[/bold]."
         )
 
     console.print("[green]Config written successfully.[/green]")
@@ -514,7 +514,7 @@ sources = ["hackernews", "news_rss"]
     soul_path = DEFAULT_CONFIG_DIR / "SOUL.md"
     if not soul_path.exists():
         soul_path.write_text(
-            "# Agent Persona\n\nYou are Jarvis, a helpful personal AI assistant.\n"
+            "# Agent Persona\n\nYou are Diapason, a helpful personal AI assistant.\n"
         )
 
     memory_path = DEFAULT_CONFIG_DIR / "MEMORY.md"
@@ -545,14 +545,14 @@ sources = ["hackernews", "news_rss"]
             f"  [dim](selected for {avail:.0f} GB available memory)[/dim]"
         )
 
-        if not no_download and not from_bare_jarvis and spec:
+        if not no_download and not from_bare_diapason and spec:
             prompt = f"  Download {model} (~{size_gb:.1f} GB) now?"
             if click.confirm(prompt, default=True):
                 _do_download(selected_engine, model, spec, console)
             else:
                 console.print(
                     f"\n  Skipped. Download later with:\n"
-                    f"    [bold]jarvis model pull {model}[/bold]"
+                    f"    [bold]diapason model pull {model}[/bold]"
                 )
 
     if not skip_scan:

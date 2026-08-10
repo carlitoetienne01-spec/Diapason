@@ -78,7 +78,7 @@ def test_guard_raises_only_on_the_refused_case():
 
 
 def test_guard_message_points_to_the_explicit_command():
-    with pytest.raises(ImplicitDownloadBlocked, match="jarvis model pull base"):
+    with pytest.raises(ImplicitDownloadBlocked, match="diapason model pull base"):
         guard_implicit_download("base", local_only=True, already_cached=False)
 
 

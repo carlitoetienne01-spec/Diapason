@@ -173,7 +173,7 @@ export function TalkOrb({
             {transcripts.slice(-8).map((t, i) => (
               <div key={`${t.role}-${i}`}>
                 <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                  {t.role === 'user' ? 'You' : 'Jarvis'}
+                  {t.role === 'user' ? 'You' : 'Diapason'}
                 </span>
                 {': '}
                 {t.text}

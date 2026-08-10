@@ -3,10 +3,10 @@
 ## What this is
 
 A low-latency **audio in ↔ audio out** session so OpenJarvis can talk like a
-person (interruptible), similar to commercial "Talk to Jarvis" / Gemini Live.
+person (interruptible), similar to commercial "Talk to Diapason" / Gemini Live.
 
 This is **not** the turn-based STT → agent → TTS pipeline used by dictation
-(PTT). For always-on « Hey Jarvis », see `WAKEWORD.md` and `jarvis wake-listen`.
+(PTT). For always-on « Hey Diapason », see `WAKEWORD.md` and `jarvis wake-listen`.
 and welcome-clap.
 
 ## Config
@@ -39,7 +39,7 @@ Server messages: `ready`, `audio`, `transcript`, `tool`, `interrupted`, `error`,
 
 ## UI / hotkeys
 
-- Chat header **Talk to Jarvis**
+- Chat header **Talk to Diapason**
 - Global **⌥Space** (Alt+Space) — desktop Tauri + web when focused
 - Space = interrupt, Esc = close
 

@@ -3,8 +3,8 @@ import { TalkOrb } from './Chat/TalkOrb';
 import { useVoiceLive } from '../hooks/useVoiceLive';
 import { fetchScreenShareStatus, isTauri, pollTriggers } from '../lib/api';
 
-/** Global Talk-to-Jarvis host (Alt+Space / wake-word / button). */
-export function TalkToJarvisHost() {
+/** Global Talk-to-Diapason host (Alt+Space / wake-word / button). */
+export function TalkToDiapasonHost() {
   const [open, setOpen] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const voice = useVoiceLive();
@@ -144,6 +144,6 @@ export function TalkToJarvisHost() {
   );
 }
 
-export function openTalkToJarvis(): void {
+export function openTalkToDiapason(): void {
   window.dispatchEvent(new CustomEvent('openjarvis-talk-open'));
 }

@@ -116,7 +116,7 @@ class FasterWhisperBackend(SpeechBackend):
             # WhisperModel fetches the weights over the network if they are not
             # cached; under [privacy] local_only that background fetch is the
             # very thing the mode forbids. An already-cached model is fine
-            # (nothing leaves), and `jarvis model pull` is the explicit path.
+            # (nothing leaves), and `diapason model pull` is the explicit path.
             from diapason.core.local_mode import local_only
             from diapason.speech.model_integrity import (
                 faster_whisper_cached,

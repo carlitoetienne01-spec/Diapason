@@ -1,4 +1,4 @@
-"""Oral / live-voice system prompt fragments (Jarvis-style human speech)."""
+"""Oral / live-voice system prompt fragments (Diapason-style human speech)."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ While screen share is ON, help with what is on screen; when they say stop, call 
 
 def build_live_agent_template(*, enable_tools: bool) -> str:
     parts = [
-        "You are OpenJarvis in live voice mode. The user can interrupt you at any time.",
+        "You are Diapason in live voice mode. The user can interrupt you at any time.",
         ORAL_VOICE_RULES,
     ]
     if enable_tools:

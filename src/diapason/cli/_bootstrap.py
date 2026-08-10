@@ -1,7 +1,7 @@
 """Cloud-key auto-detection and initial-config writing.
 
 Used by both ``install.sh`` (via ``jarvis _bootstrap --write-config``)
-and ``jarvis init`` (so there is a single source of truth for the
+and ``diapason init`` (so there is a single source of truth for the
 TOML rendered at install time).
 """
 
@@ -71,7 +71,7 @@ def detect_cloud_keys() -> Optional[CloudProvider]:
 # Initial config writer
 # ---------------------------------------------------------------------------
 
-_DEFAULT_SOUL = "# Agent Persona\n\nYou are Jarvis, a helpful personal AI assistant.\n"
+_DEFAULT_SOUL = "# Agent Persona\n\nYou are Diapason, a helpful personal AI assistant.\n"
 _DEFAULT_MEMORY = "# Agent Memory\n\n"
 _DEFAULT_USER = "# User Profile\n\n"
 
@@ -111,7 +111,7 @@ def write_initial_config(
     """Render the initial ``config.toml`` and seed memory files.
 
     Called by both ``install.sh`` (via ``jarvis _bootstrap --write-config``)
-    and ``jarvis init`` so the TOML format has one definition.
+    and ``diapason init`` so the TOML format has one definition.
     """
     _cfg.DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -137,7 +137,7 @@ def write_initial_config(
     base_toml = (
         f"# OpenJarvis configuration\n"
         f"{hardware_line}{gpu_comment}\n"
-        f"# Full reference config: jarvis init --full\n"
+        f"# Full reference config: diapason init --full\n"
         f"\n"
         f"{provenance}\n"
         f"\n"

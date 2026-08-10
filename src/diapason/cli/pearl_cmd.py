@@ -1,4 +1,4 @@
-"""``jarvis pearl`` — thin wrappers around Pearl's native CLIs."""
+"""``diapason pearl`` — thin wrappers around Pearl's native CLIs."""
 
 from __future__ import annotations
 

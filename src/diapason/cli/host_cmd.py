@@ -1,4 +1,4 @@
-"""``jarvis host`` — download and serve a model locally with auto backend setup."""
+"""``diapason host`` — download and serve a model locally with auto backend setup."""
 
 from __future__ import annotations
 
@@ -316,10 +316,10 @@ def host(
     Examples:
 
     \b
-      jarvis host mlx-community/Qwen2.5-7B-4bit --backend mlx
-      jarvis host Qwen/Qwen3-8B --backend vllm
-      jarvis host qwen3:8b --backend ollama
-      jarvis host meta-llama/Llama-3-8B -b sglang
+      diapason host mlx-community/Qwen2.5-7B-4bit --backend mlx
+      diapason host Qwen/Qwen3-8B --backend vllm
+      diapason host qwen3:8b --backend ollama
+      diapason host meta-llama/Llama-3-8B -b sglang
     """
     console = Console()
 

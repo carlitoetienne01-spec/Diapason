@@ -1,4 +1,4 @@
-"""``jarvis config`` — configuration inspection commands."""
+"""``diapason config`` — configuration inspection commands."""
 
 from __future__ import annotations
 
@@ -346,7 +346,7 @@ def _coerce_value(value: str, target_type: type) -> object:
 @click.argument("key")
 @click.argument("value")
 def set_config(key: str, value: str) -> None:
-    """Set a configuration value (e.g. jarvis config set engine.ollama.host URL)."""
+    """Set a configuration value (e.g. diapason config set engine.ollama.host URL)."""
     import tomlkit
 
     from diapason.core.config import DEFAULT_CONFIG_DIR, validate_config_key

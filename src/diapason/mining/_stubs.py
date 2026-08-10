@@ -26,7 +26,7 @@ from diapason.core.config import HardwareInfo
 class MiningCapabilities:
     """Result of a provider's ``detect()`` call.
 
-    ``reason`` is human-readable and surfaced verbatim by ``jarvis mine doctor``
+    ``reason`` is human-readable and surfaced verbatim by ``diapason mine doctor``
     when ``supported=False``.
     """
 
@@ -118,7 +118,7 @@ class MiningProvider(ABC):
         """Return whether this provider can run on the given combo.
 
         Must be a pure inspection — no subprocess, no network, no Docker. Used
-        by ``jarvis mine doctor`` and ``jarvis mine init`` for fast capability
+        by ``diapason mine doctor`` and ``diapason mine init`` for fast capability
         reporting.
         """
 

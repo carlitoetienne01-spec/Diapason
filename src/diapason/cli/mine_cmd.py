@@ -1,4 +1,4 @@
-"""``jarvis mine`` command group."""
+"""``diapason mine`` command group."""
 
 from __future__ import annotations
 
@@ -290,7 +290,7 @@ def doctor() -> None:
 
     click.echo("Pearl node")
     if mining_cfg is None:
-        _row("RPC", False, "no [mining] config - run `jarvis mine init`")
+        _row("RPC", False, "no [mining] config - run `diapason mine init`")
     else:
         url = mining_cfg.extra.get("pearld_rpc_url", DEFAULT_PEARLD_RPC_URL)
         user = mining_cfg.extra.get("pearld_rpc_user", "rpcuser")
@@ -435,7 +435,7 @@ def init(
             if not cap.supported:
                 raise click.ClickException(
                     f"vllm-pearl not supported on this host: {cap.reason}\n"
-                    "See `jarvis mine models` and `jarvis mine doctor` for details."
+                    "See `diapason mine models` and `diapason mine doctor` for details."
                 )
         elif not local_model_path.exists():
             raise click.ClickException(
@@ -465,7 +465,7 @@ def init(
     if pearld_password_env not in os.environ:
         click.echo(
             f"Warning: ${pearld_password_env} is not set. "
-            "Set it before `jarvis mine start`.",
+            "Set it before `diapason mine start`.",
             err=True,
         )
 
@@ -531,7 +531,7 @@ pearld_rpc_password_env = "{pearld_password_env}"
     if selected_provider == "vllm-pearl":
         click.echo(f"Resolving image {image}...")
         PearlDockerLauncher(client=_docker_from_env()).ensure_image(image)
-    click.echo("Done. Run `jarvis mine start` to begin mining.")
+    click.echo("Done. Run `diapason mine start` to begin mining.")
 
 
 @mine.command()
@@ -542,11 +542,11 @@ def start() -> None:
     cfg = load_config().mining
     if cfg is None:
         raise click.ClickException(
-            "no [mining] section in config - run `jarvis mine init`"
+            "no [mining] section in config - run `diapason mine init`"
         )
     provider = MinerRegistry.get(cfg.provider)()
     asyncio.run(provider.start(cfg))
-    click.echo(f"Started {cfg.provider}. Run `jarvis mine status` for live stats.")
+    click.echo(f"Started {cfg.provider}. Run `diapason mine status` for live stats.")
 
 
 @mine.command()
@@ -695,7 +695,7 @@ def validate_model(
         record(
             "Sidecar",
             False,
-            "absent - run `jarvis mine start` first",
+            "absent - run `diapason mine start` first",
         )
     else:
         record("Sidecar", True, f"present ({SIDECAR_PATH})")

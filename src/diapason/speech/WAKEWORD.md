@@ -3,7 +3,7 @@
 ## What ships
 
 1. **Text gate (PTT)** — after STT, if the transcript starts with
-   « Jarvis », « Hey Jarvis », « Dis Jarvis », OpenJarvis strips the wake phrase
+   « Jarvis », « Hey Diapason », « Dis Jarvis », OpenJarvis strips the wake phrase
    and routes the rest as a voice command (or opens Talk if the phrase is alone).
 
 2. **Always-on listener (opt-in)** — ``jarvis wake-listen`` opens the mic locally,
@@ -28,12 +28,12 @@
 
 ```bash
 # Simulate without mic
-jarvis wake-listen --text "Hey Jarvis"
+jarvis wake-listen --text "Hey Diapason"
 
 # phrase_gate (Whisper)
 jarvis wake-listen --debug
 
-# ML wake (hey Jarvis)
+# ML wake (hey Diapason)
 uv sync --extra speech-wake
 # in config.toml: backend = "openwakeword"
 jarvis wake-listen --backend openwakeword --debug

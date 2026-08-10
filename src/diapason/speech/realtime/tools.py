@@ -7,7 +7,7 @@ from typing import Any, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
-# Jarvis-parity allow-list for live voice.
+# Diapason-parity allow-list for live voice.
 DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "open_anything",
     "open_uri",

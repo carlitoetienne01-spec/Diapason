@@ -697,7 +697,7 @@ def _identity_config():
     from diapason.core.config import JarvisConfig
 
     cfg = JarvisConfig()
-    cfg.agent.default_system_prompt = "You are OpenJarvis."
+    cfg.agent.default_system_prompt = "You are Diapason."
     cfg.analytics.enabled = False
     return cfg
 

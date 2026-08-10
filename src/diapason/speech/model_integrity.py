@@ -9,7 +9,7 @@ Two gaps this closes:
 * faster-whisper downloads its model on first transcription — silently, over
   the network. Under ``[privacy] local_only`` a *silent* fetch is exactly what
   the user asked not to happen. ``should_allow_download`` encodes the policy:
-  an implicit download is refused, an explicit ``jarvis model pull`` is
+  an implicit download is refused, an explicit ``diapason model pull`` is
   allowed, and an already-cached model is always fine (nothing leaves).
 
 Both are pure functions so the policy is unit-tested, not left to a live pull.
@@ -61,7 +61,7 @@ def should_allow_download(
 
     * Already cached → always allowed: using a model that is already on disk
       sends nothing.
-    * Explicit (the user ran ``jarvis model pull``) → allowed even in
+    * Explicit (the user ran ``diapason model pull``) → allowed even in
       local-only: a foreground request is consent.
     * Implicit under local-only → refused: a background fetch triggered by the
       first dictation is the silent network access local-only forbids.
@@ -91,7 +91,7 @@ def guard_implicit_download(
         return
     raise ImplicitDownloadBlocked(
         f"Model {model_name!r} is not downloaded and local-only mode is on, so "
-        f"it was not fetched automatically. Run `jarvis model pull {model_name}` "
+        f"it was not fetched automatically. Run `diapason model pull {model_name}` "
         "to download it explicitly, or set [privacy] local_only = false."
     )
 
