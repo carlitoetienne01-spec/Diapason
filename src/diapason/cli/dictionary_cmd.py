@@ -1,4 +1,4 @@
-"""CLI: jarvis dictionary — teach the recogniser your own vocabulary.
+"""CLI: diapason dictionary — teach the recogniser your own vocabulary.
 
 Two mechanisms, one list: the words bias recognition BEFORE transcription
 (faster-whisper hotwords), and the misheard variants are replaced AFTER it.
@@ -25,7 +25,7 @@ def list_words() -> None:
     if not entries:
         click.echo(
             "Dictionary is empty. Add a word with:\n"
-            "  jarvis dictionary add Carlito --variant 'Karli 2-1'"
+            "  diapason dictionary add Carlito --variant 'Karli 2-1'"
         )
         return
     for e in entries:

@@ -1,4 +1,4 @@
-"""CLI: jarvis dictate — hold the hotkey, speak, release, text appears.
+"""CLI: diapason dictate — hold the hotkey, speak, release, text appears.
 
 Wires the push-to-talk stack to the configured speech backend and the
 clipboard-preserving paste. Runs headless (no window needed); needs
@@ -98,7 +98,7 @@ def dictate(
     if backend is None:
         click.echo(
             "No speech backend available. In local-only mode, run "
-            "`jarvis model pull base` first, or set [privacy] local_only = false.",
+            "`diapason model pull base` first, or set [privacy] local_only = false.",
             err=True,
         )
         sys.exit(1)
@@ -341,8 +341,8 @@ def _run_setup(config) -> None:
     if is_ready(checks):
         click.echo(
             click.style("Ready.", fg="green")
-            + " Hold the key and speak — run `jarvis dictate`, or "
-            "`jarvis dictate-service install` to run it at login."
+            + " Hold the key and speak — run `diapason dictate`, or "
+            "`diapason dictate-service install` to run it at login."
         )
     else:
         n = len(blocking_failures(checks))

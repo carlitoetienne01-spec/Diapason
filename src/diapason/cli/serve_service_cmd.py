@@ -1,8 +1,8 @@
-"""CLI: jarvis serve-service — keep the API server running at login.
+"""CLI: diapason serve-service — keep the API server running at login.
 
 The desktop app talks to the Python backend on 127.0.0.1:8000. Without this,
 the app shows "Backend unreachable" until someone remembers to run
-`jarvis serve` in a terminal — and loses it again when that terminal closes.
+`diapason serve` in a terminal — and loses it again when that terminal closes.
 
 Unlike the dictation agent, this one needs no TCC permissions: it opens a
 loopback socket and touches neither the keyboard nor the microphone. So it
@@ -50,7 +50,7 @@ def install(host: str, port: int) -> None:
         click.echo(
             f"Refusing to bind {host!r} from a background service: it would "
             "expose the API beyond this machine. Use 127.0.0.1, or run "
-            "`jarvis serve` manually if you really mean to.",
+            "`diapason serve` manually if you really mean to.",
             err=True,
         )
         sys.exit(1)
@@ -75,7 +75,7 @@ def install(host: str, port: int) -> None:
     else:
         click.echo(
             "WARNING: launchd did not accept the job. Check "
-            "`jarvis serve-service logs`.",
+            "`diapason serve-service logs`.",
             err=True,
         )
 

@@ -1,4 +1,4 @@
-"""CLI: jarvis dictate-service — run dictation in the background at login."""
+"""CLI: diapason dictate-service — run dictation in the background at login."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def install() -> None:
     else:
         click.echo(
             "WARNING: launchd did not accept the job. Run "
-            "`jarvis dictate-service status` to check.",
+            "`diapason dictate-service status` to check.",
             err=True,
         )
 
@@ -55,7 +55,7 @@ def install() -> None:
     click.echo(
         f"Opening the three panes. Enable {app_bundle.BUNDLE_NAME!r} under "
         "Input Monitoring and Accessibility. Microphone is requested the "
-        "first time it records — approve the popup. Then run:  jarvis "
+        "first time it records — approve the popup. Then run:  diapason "
         "dictate-service restart",
         err=True,
     )

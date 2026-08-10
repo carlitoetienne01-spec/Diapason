@@ -1,4 +1,4 @@
-"""CLI: jarvis dictation-history — read back what you dictated."""
+"""CLI: diapason dictation-history — read back what you dictated."""
 
 from __future__ import annotations
 

@@ -90,7 +90,7 @@ def check_model(config=None) -> Check:
                 ok=False,
                 detail="no backend could be resolved",
                 fix=(
-                    "Run `jarvis model pull small`, or set [privacy] "
+                    "Run `diapason model pull small`, or set [privacy] "
                     "local_only = false to allow a cloud backend."
                 ),
             )
@@ -104,7 +104,7 @@ def check_model(config=None) -> Check:
             name="Speech model",
             ok=False,
             detail=f"could not check: {exc}",
-            fix="Run `jarvis doctor` for details.",
+            fix="Run `diapason doctor` for details.",
         )
 
 
@@ -118,7 +118,7 @@ def check_service() -> Check:
             name="Background service",
             ok=loaded,
             detail="running at login" if loaded else "not installed",
-            fix="" if loaded else "Run `jarvis dictate-service install`.",
+            fix="" if loaded else "Run `diapason dictate-service install`.",
             blocking=False,  # dictation works in the foreground without it
         )
     except Exception as exc:  # noqa: BLE001
@@ -149,7 +149,7 @@ def check_hotkey(config=None) -> Check:
         detail=f"hold {key.capitalize()}"
         + (f" (config says {raw!r}, which is not a bare modifier)" if coerced else ""),
         fix=(
-            f"Run `jarvis config set dictation.hotkey {key}` "
+            f"Run `diapason config set dictation.hotkey {key}` "
             f"(one of: {', '.join(SUPPORTED_HOTKEYS)})."
             if coerced
             else ""

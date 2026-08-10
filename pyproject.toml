@@ -92,6 +92,19 @@ desktop = [
     "python-multipart>=0.0.9",
     "faster-whisper>=1.0",
 ]
+# Push-to-talk dictation stack (macOS). The whole chain — global hotkey
+# (CGEventTap), mic capture, clipboard paste, menu bar — is pure Python via
+# PyObjC, so no compilation and no node-gyp. Platform-gated so a Linux/Windows
+# install of the base package is unaffected.
+dictation = [
+    "sounddevice>=0.4",
+    "faster-whisper>=1.0",
+    "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-AVFoundation>=10; sys_platform == 'darwin'",
+    "rumps>=0.4; sys_platform == 'darwin'",
+]
 openhands = ["openhands-sdk>=1.0; python_version >= '3.12'"]
 gpu-metrics = ["pynvml>=12.0"]
 energy-amd = ["amdsmi>=6.1"]
