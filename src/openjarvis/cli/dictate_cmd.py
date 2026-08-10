@@ -49,12 +49,19 @@ def _quiet_library_noise() -> None:
     help="Diagnose the microphone: record 3s, print level and transcript.",
 )
 @click.option(
+    "--setup",
+    is_flag=True,
+    help="Check everything dictation needs and say what is missing.",
+)
+@click.option(
     "--menu-bar/--no-menu-bar",
     default=False,
     show_default=True,
     help="Show a status icon in the menu bar (needs a GUI session).",
 )
-def dictate(hotkey: str, check: bool, mic_test: bool, menu_bar: bool) -> None:
+def dictate(
+    hotkey: str, check: bool, mic_test: bool, setup: bool, menu_bar: bool
+) -> None:
     """Start global push-to-talk dictation."""
     from openjarvis.core.config import load_config
     from openjarvis.desktop.dictation_service import DictationService
@@ -70,6 +77,9 @@ def dictate(hotkey: str, check: bool, mic_test: bool, menu_bar: bool) -> None:
         return
     if mic_test:
         _run_mic_test(config)
+        return
+    if setup:
+        _run_setup(config)
         return
     raw = hotkey or getattr(config.dictation, "hotkey", "") or "control"
     # The push-to-talk tap listens for a BARE modifier, not a chord. The
@@ -310,3 +320,34 @@ def _run_check(raw_hotkey: str) -> None:
         )
         sys.exit(1)
     click.echo(f"\nOK — {counts['down']} down, {counts['up']} up. The hotkey works.")
+
+
+def _run_setup(config) -> None:
+    """Print every requirement, its state, and the one next action."""
+    from openjarvis.desktop.setup_check import blocking_failures, is_ready, run_all
+
+    checks = run_all(config)
+    click.echo("Dictation setup\n")
+    for c in checks:
+        colour = "green" if c.ok else ("red" if c.blocking else "yellow")
+        click.echo(
+            f"  {click.style(c.symbol, fg=colour)} "
+            f"{c.name:<20} {c.detail}"
+        )
+        if c.fix:
+            click.echo(f"      → {c.fix}")
+
+    click.echo("")
+    if is_ready(checks):
+        click.echo(
+            click.style("Ready.", fg="green")
+            + " Hold the key and speak — run `jarvis dictate`, or "
+            "`jarvis dictate-service install` to run it at login."
+        )
+    else:
+        n = len(blocking_failures(checks))
+        click.echo(
+            click.style(f"{n} thing(s) still to fix", fg="red")
+            + " — see the arrows above, then rerun this check."
+        )
+        sys.exit(1)
