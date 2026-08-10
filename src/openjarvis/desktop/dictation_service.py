@@ -58,7 +58,12 @@ class DictationService:
         hotkey: str = "control",
         capture_factory: CaptureFactory = MicCapture,
         clock: Callable[[], float] | None = None,
-        silence_rms: float = 0.5,
+        # Field observation (Carlito's MacBook mic): normal speech lands at
+        # level ~1.0 on the 0–100 RMS scale, while true silence sits well
+        # under 0.05. The earlier floor of 0.5 left only a 2× margin to real
+        # speech — a soft-spoken word could be discarded as silence. 0.15
+        # keeps ~7× margin to speech while still rejecting an untouched mic.
+        silence_rms: float = 0.15,
         on_status: Callable[[str], None] | None = None,
     ) -> None:
         self._transcribe = transcribe

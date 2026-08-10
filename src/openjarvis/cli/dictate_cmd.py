@@ -15,6 +15,23 @@ import click
 logger = logging.getLogger(__name__)
 
 
+def _quiet_library_noise() -> None:
+    """Silence library chatter that prints mid-dictation and reads as broken.
+
+    faster-whisper's mel filterbank emits numpy RuntimeWarnings (divide by
+    zero / overflow in matmul) on ordinary speech frames — harmless, upstream,
+    and printed straight into the session. Scoped to that one module so real
+    warnings elsewhere still surface.
+    """
+    import warnings
+
+    warnings.filterwarnings(
+        "ignore",
+        category=RuntimeWarning,
+        module=r"faster_whisper\.feature_extractor",
+    )
+
+
 @click.command("dictate")
 @click.option(
     "--hotkey",
@@ -39,6 +56,7 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
     from openjarvis.desktop.keycodes import SUPPORTED_HOTKEYS, normalize_hotkey
     from openjarvis.speech._discovery import get_speech_backend
 
+    _quiet_library_noise()
     config = load_config()
 
     if check:
@@ -158,6 +176,7 @@ def _run_mic_test(config) -> None:
     from openjarvis.desktop.mic_capture import MicCapture, rms_level
     from openjarvis.speech._discovery import get_speech_backend
 
+    _quiet_library_noise()
     backend = get_speech_backend(config)
     if backend is None:
         click.echo("No speech backend available.", err=True)

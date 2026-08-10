@@ -68,7 +68,11 @@ class FasterWhisperBackend(SpeechBackend):
         if fallback is None:
             return self._compute_type
 
-        logger.warning(
+        # INFO, not WARNING: on Apple Silicon this fallback fires on every
+        # single run (CTranslate2 has no float16 CPU path), so it is expected
+        # behaviour, not an anomaly. As a WARNING it printed into the middle
+        # of every dictation session and read like something was broken.
+        logger.info(
             "CTranslate2 compute_type=%r is not supported on device=%r; "
             "using %r instead",
             self._compute_type,
