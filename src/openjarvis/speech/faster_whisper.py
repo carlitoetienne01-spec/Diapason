@@ -34,12 +34,34 @@ class FasterWhisperBackend(SpeechBackend):
         model_size: str = "base",
         device: str = "auto",
         compute_type: str = "float16",
+        use_dictionary_hints: bool = True,
     ) -> None:
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
         self._model: Optional[WhisperModel] = None
         self._last_error: Optional[str] = None
+        # Bias recognition toward the user's own vocabulary. The dictionary
+        # already fixed mistakes AFTER the fact (apply_dictionary in
+        # dictate_polish); ``transcription_hints`` was written to fix them
+        # BEFORE, and had no caller at all. Feeding it to faster-whisper's
+        # ``hotwords`` is what stops a name like "Carlito" coming back as
+        # "Karli 2-1" in the first place — a post-hoc replacement cannot
+        # recover a name the recogniser never proposed.
+        self._use_dictionary_hints = use_dictionary_hints
+
+    def _hotwords(self) -> Optional[str]:
+        """Space-joined vocabulary from the personal dictionary, or None."""
+        if not self._use_dictionary_hints:
+            return None
+        try:
+            from openjarvis.speech.dictation_dictionary import transcription_hints
+
+            words = transcription_hints()
+            return " ".join(words) if words else None
+        except Exception:  # noqa: BLE001 - hints are an optimisation, never required
+            logger.debug("could not build transcription hints", exc_info=True)
+            return None
 
     def _resolve_compute_type(self) -> str:
         """Pick a CTranslate2 compute type supported by the configured device."""
@@ -140,6 +162,9 @@ class FasterWhisperBackend(SpeechBackend):
                 kwargs = {}
                 if language:
                     kwargs["language"] = language
+                hotwords = self._hotwords()
+                if hotwords:
+                    kwargs["hotwords"] = hotwords
 
                 segments_iter, info = model.transcribe(tmp.name, **kwargs)
                 segments_list = list(segments_iter)

@@ -213,12 +213,25 @@ _SKIP_LEARN_TOKENS = frozenset(
 )
 
 
+# A dictionary entry is a WORD or a short phrase — a name, a piece of jargon.
+# Without an upper bound, auto-learning happily stored a 1 MB string: each
+# pass learned the previous entry plus more, doubling every time, until the
+# dictionary was 2 MB of "pasting......" and the hotwords prompt was longer
+# than the audio. These caps are what stop that runaway.
+_MAX_LEARN_CHARS = 80
+_MAX_LEARN_TOKENS = 6
+
+
 def _learnable_phrase(text: str) -> bool:
     t = (text or "").strip()
     if not t or len(t) < 2:
         return False
+    if len(t) > _MAX_LEARN_CHARS:
+        return False
     tokens = re.findall(r"[\w''-]+", t, flags=re.UNICODE)
     if not tokens:
+        return False
+    if len(tokens) > _MAX_LEARN_TOKENS:
         return False
     if all(tok.lower() in _SKIP_LEARN_TOKENS for tok in tokens):
         return False
@@ -311,6 +324,11 @@ def transcription_hints(
     for e in ranked:
         w = e.word.strip()
         if not w or w.lower() in seen:
+            continue
+        # Defensive: a hint is a word, and this list is fed straight to the
+        # recogniser as a prompt. An oversized entry — from a dictionary
+        # poisoned before the learn-time caps existed — must not be sent.
+        if len(w) > _MAX_LEARN_CHARS:
             continue
         seen.add(w.lower())
         words.append(w)
