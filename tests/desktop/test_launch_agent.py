@@ -55,3 +55,47 @@ def test_label_and_paths_are_stable():
     assert launch_agent.LABEL == "com.openjarvis.dictate"
     assert launch_agent.plist_path().name == "com.openjarvis.dictate.plist"
     assert "LaunchAgents" in str(launch_agent.plist_path())
+
+
+# ── Two services share one builder ───────────────────────────────────────────
+
+
+def test_serve_agent_has_its_own_label_and_arguments():
+    """Dictation and the API server differ only in label and args."""
+    d = plistlib.loads(
+        launch_agent.build_plist(
+            python="/venv/bin/python",
+            workdir="/home",
+            out_log="/l/serve.out.log",
+            err_log="/l/serve.err.log",
+            label=launch_agent.SERVE_LABEL,
+            args=["/venv/bin/python", "-m", "openjarvis.cli", "serve",
+                  "--host", "127.0.0.1", "--port", "8000"],
+        ).encode()
+    )
+    assert d["Label"] == "com.openjarvis.serve"
+    assert "--host" in d["ProgramArguments"]
+    assert "127.0.0.1" in d["ProgramArguments"]
+
+
+def test_the_two_labels_are_distinct():
+    """Same label would make one service boot the other out."""
+    assert launch_agent.LABEL != launch_agent.SERVE_LABEL
+
+
+def test_plist_paths_do_not_collide():
+    assert launch_agent.plist_path(launch_agent.LABEL) != launch_agent.plist_path(
+        launch_agent.SERVE_LABEL
+    )
+
+
+def test_dictation_defaults_are_unchanged():
+    """Parameterising must not have altered the existing agent."""
+    d = _plist()
+    assert d["Label"] == "com.openjarvis.dictate"
+    assert d["ProgramArguments"] == [
+        "/venv/bin/python",
+        "-m",
+        "openjarvis.cli",
+        "dictate",
+    ]

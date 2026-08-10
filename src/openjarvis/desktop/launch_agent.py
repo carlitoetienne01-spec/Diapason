@@ -1,4 +1,8 @@
-"""Install `jarvis dictate` as a macOS LaunchAgent — background, no terminal.
+"""Install OpenJarvis background services as macOS LaunchAgents.
+
+Two services use this: the dictation agent (`jarvis dictate`) and the API
+server (`jarvis serve`). They differ only in label and arguments, so the
+plist builder is parameterised rather than duplicated.
 
 A LaunchAgent (not a LaunchDaemon) runs in the user's GUI session at login,
 which is required: the key tap and the paste both need a logged-in graphical
@@ -18,11 +22,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-LABEL = "com.openjarvis.dictate"
+LABEL = "com.openjarvis.dictate"           # dictation agent
+SERVE_LABEL = "com.openjarvis.serve"        # API server
 
 
-def plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+def plist_path(label: str = LABEL) -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
 
 
 def log_dir() -> Path:
@@ -46,6 +51,8 @@ def build_plist(
     out_log: str,
     err_log: str,
     executable: str | None = None,
+    label: str = LABEL,
+    args: list[str] | None = None,
 ) -> str:
     """Render the LaunchAgent plist.
 
@@ -55,18 +62,20 @@ def build_plist(
     interpreter keeps the agent usable on a machine where the bundle could not
     be built, at the cost of a mic that macOS will never authorise.
     """
-    args = (
-        [executable]
-        if executable
-        else [python, "-m", "openjarvis.cli", "dictate"]
-    )
+    if args is not None:
+        program_args = args
+    elif executable:
+        program_args = [executable]
+    else:
+        program_args = [python, "-m", "openjarvis.cli", "dictate"]
+    args = program_args
     args_xml = "\n".join(f"        <string>{_xml_escape(a)}</string>" for a in args)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{LABEL}</string>
+    <string>{label}</string>
     <key>ProgramArguments</key>
     <array>
 {args_xml}
@@ -103,7 +112,13 @@ def _uid() -> int:
     return os.getuid()
 
 
-def install(*, executable: str | None = None) -> Path:
+def install(
+    *,
+    executable: str | None = None,
+    label: str = LABEL,
+    args: list[str] | None = None,
+    log_prefix: str = "dictate",
+) -> Path:
     """Write the plist and bootstrap it into the user's launchd domain.
 
     Logs are truncated here: they accumulate one block per (re)start, and a
@@ -112,12 +127,12 @@ def install(*, executable: str | None = None) -> Path:
     """
     logs = log_dir()
     logs.mkdir(parents=True, exist_ok=True)
-    for name in ("dictate.out.log", "dictate.err.log"):
+    for name in (f"{log_prefix}.out.log", f"{log_prefix}.err.log"):
         try:
             (logs / name).write_text("", encoding="utf-8")
         except OSError:
             pass
-    path = plist_path()
+    path = plist_path(label)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         build_plist(
@@ -125,17 +140,19 @@ def install(*, executable: str | None = None) -> Path:
             # HOME, not the project dir: the project may sit under a
             # TCC-protected folder the agent cannot read.
             workdir=str(Path.home()),
-            out_log=str(logs / "dictate.out.log"),
-            err_log=str(logs / "dictate.err.log"),
+            out_log=str(logs / f"{log_prefix}.out.log"),
+            err_log=str(logs / f"{log_prefix}.err.log"),
             executable=executable,
+            label=label,
+            args=args,
         ),
         encoding="utf-8",
     )
-    _bootstrap(path)
+    _bootstrap(path, label=label)
     return path
 
 
-def _bootstrap(path: Path, *, attempts: int = 5) -> bool:
+def _bootstrap(path: Path, *, attempts: int = 5, label: str = LABEL) -> bool:
     """Reload the agent, tolerating launchd's asynchronous unload.
 
     ``bootout`` returns before the job is fully gone, so an immediate
@@ -146,7 +163,7 @@ def _bootstrap(path: Path, *, attempts: int = 5) -> bool:
     import time
 
     subprocess.run(
-        ["launchctl", "bootout", f"gui/{_uid()}/{LABEL}"],
+        ["launchctl", "bootout", f"gui/{_uid()}/{label}"],
         capture_output=True,
         check=False,
     )
@@ -163,32 +180,32 @@ def _bootstrap(path: Path, *, attempts: int = 5) -> bool:
     return False
 
 
-def uninstall() -> bool:
+def uninstall(label: str = LABEL) -> bool:
     """Stop the agent and remove its plist. Returns True if a plist existed."""
     subprocess.run(
-        ["launchctl", "bootout", f"gui/{_uid()}/{LABEL}"],
+        ["launchctl", "bootout", f"gui/{_uid()}/{label}"],
         capture_output=True,
         check=False,
     )
-    path = plist_path()
+    path = plist_path(label)
     if path.exists():
         path.unlink()
         return True
     return False
 
 
-def kickstart() -> None:
+def kickstart(label: str = LABEL) -> None:
     """Force a (re)start now, after permissions are granted."""
     subprocess.run(
-        ["launchctl", "kickstart", "-k", f"gui/{_uid()}/{LABEL}"],
+        ["launchctl", "kickstart", "-k", f"gui/{_uid()}/{label}"],
         capture_output=True,
         check=False,
     )
 
 
-def is_loaded() -> bool:
+def is_loaded(label: str = LABEL) -> bool:
     r = subprocess.run(
-        ["launchctl", "print", f"gui/{_uid()}/{LABEL}"],
+        ["launchctl", "print", f"gui/{_uid()}/{label}"],
         capture_output=True,
         check=False,
     )
