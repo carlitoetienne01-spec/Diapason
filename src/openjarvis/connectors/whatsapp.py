@@ -87,6 +87,9 @@ class WhatsAppConnector(BaseConnector):
     connector_id = "whatsapp"
     display_name = "WhatsApp"
     auth_type = "filesystem"
+    # Données strictement sur cette machine (base SQLite locale, osascript,
+    # ou fichiers) — vérifié : aucun client HTTP ni URL distante dans ce module.
+    is_local = True
 
     def __init__(self, export_path: str = "") -> None:
         self._export_path = Path(export_path) if export_path else Path("")

@@ -660,7 +660,13 @@ class MailSendTool(BaseTool):
     """Send the frontmost Mail draft — only when confirm=true (spoken yes)."""
 
     tool_id = "mail_send"
-    is_local = True
+    # is_local décrit le trajet de la DONNÉE, pas celui du code. Cet outil
+    # s'exécute bien sur la machine — il pilote Mail.app par osascript — mais
+    # son effet est de faire partir le contenu chez un serveur de courrier.
+    # Déclaré local, il échappait au garde-frontière de ToolExecutor comme au
+    # mode local : c'est l'envoi le plus explicite qui soit, il ne peut pas
+    # être le seul non couvert.
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -738,7 +744,13 @@ class MessagesSendTool(BaseTool):
     """Send an iMessage/SMS — only when confirm=true (spoken yes)."""
 
     tool_id = "messages_send"
-    is_local = True
+    # is_local décrit le trajet de la DONNÉE, pas celui du code. Cet outil
+    # s'exécute bien sur la machine — il pilote Messages.app par osascript — mais
+    # son effet est de faire partir le contenu chez les serveurs iMessage/SMS.
+    # Déclaré local, il échappait au garde-frontière de ToolExecutor comme au
+    # mode local : c'est l'envoi le plus explicite qui soit, il ne peut pas
+    # être le seul non couvert.
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:

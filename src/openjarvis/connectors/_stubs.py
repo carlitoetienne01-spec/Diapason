@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import functools
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional
 
 from openjarvis.tools._stubs import ToolSpec
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -74,6 +78,52 @@ class BaseConnector(ABC):
     connector_id: str
     display_name: str
     auth_type: str  # "oauth" | "local" | "bridge" | "filesystem"
+
+    # Does the DATA stay on this machine? Deliberately not derived from
+    # ``auth_type``, which describes the credential mechanism and not the data
+    # path: ``hackernews`` and ``news_rss`` both declare ``auth_type="local"``
+    # meaning "needs no login", while one queries hacker-news.firebaseio.com
+    # and the other fetches remote feeds. Conflating the two would have opened
+    # exactly the hole this guard exists to close.
+    #
+    # Fail-closed: a connector that does not claim locality does not get it.
+    is_local: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Install the local-only guard on every connector subclass.
+
+        ``sync`` is abstract, so a guard in its body would never run; it is
+        wrapped at subclass-definition time instead.
+
+        A refused connector yields NOTHING rather than raising. That is the
+        honest degradation for this layer: ``digest_collect`` iterates several
+        connectors, so a morning digest in local-only mode still contains
+        Apple Health, Notes and iMessage instead of failing whole.
+        """
+        super().__init_subclass__(**kwargs)
+        sync = cls.__dict__.get("sync")
+        if sync is None or getattr(sync, "_local_only_guarded", False):
+            return
+        if getattr(sync, "__isabstractmethod__", False):
+            return
+
+        @functools.wraps(sync)
+        def _guarded_sync(
+            self: "BaseConnector", *args: Any, **kw: Any
+        ) -> Iterator[Any]:
+            if not getattr(self, "is_local", False):
+                from openjarvis.core.local_mode import local_only
+
+                if local_only():
+                    name = getattr(self, "connector_id", "") or cls.__name__
+                    logger.info(
+                        "local-mode: connector %r is remote — yielding nothing", name
+                    )
+                    return iter(())
+            return sync(self, *args, **kw)
+
+        _guarded_sync._local_only_guarded = True  # type: ignore[attr-defined]
+        cls.sync = _guarded_sync  # type: ignore[method-assign]
 
     @abstractmethod
     def is_connected(self) -> bool:

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import functools
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ChannelStatus(str, Enum):
@@ -42,6 +46,50 @@ class BaseChannel(ABC):
     """
 
     channel_id: str
+
+    # Fail-closed, like connectors: a channel that does not claim locality is
+    # treated as remote. Nearly all of the ~30 adapters are messaging
+    # platforms, so the safe default is also the common case.
+    is_local: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Install the local-only guard on every channel subclass.
+
+        Both ``send`` and ``connect`` are wrapped. Guarding only ``send``
+        would leave the standing gateways open: a Discord or Slack adapter
+        holds a websocket to a third party for as long as the daemon runs,
+        which is an outbound connection whether or not a message is ever sent.
+
+        ``send`` returns False rather than raising, so refusing a message
+        cannot bring down a long-running daemon loop.
+        """
+        super().__init_subclass__(**kwargs)
+
+        def _install(name: str, on_refusal: Any) -> None:
+            original = cls.__dict__.get(name)
+            if original is None or getattr(original, "_local_only_guarded", False):
+                return
+            if getattr(original, "__isabstractmethod__", False):
+                return
+
+            @functools.wraps(original)
+            def _guarded(self: "BaseChannel", *args: Any, **kw: Any) -> Any:
+                if not getattr(self, "is_local", False):
+                    from openjarvis.core.local_mode import local_only
+
+                    if local_only():
+                        cid = getattr(self, "channel_id", "") or cls.__name__
+                        logger.info(
+                            "local-mode: channel %r is remote — %s refused", cid, name
+                        )
+                        return on_refusal
+                return original(self, *args, **kw)
+
+            _guarded._local_only_guarded = True  # type: ignore[attr-defined]
+            setattr(cls, name, _guarded)
+
+        _install("send", False)
+        _install("connect", None)
 
     @abstractmethod
     def connect(self) -> None:

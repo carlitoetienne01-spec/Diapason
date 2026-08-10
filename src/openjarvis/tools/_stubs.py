@@ -8,7 +8,9 @@ Each tool is registered via ``@ToolRegistry.register("name")`` and implements
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import json
+import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -16,6 +18,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import ToolCall, ToolResult
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ToolSpec — metadata describing a tool's interface
@@ -52,6 +56,51 @@ class BaseTool(ABC):
 
     tool_id: str
     is_local: bool = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Install the local-only guard on every tool subclass.
+
+        A guard written inside ``BaseTool.execute`` would never run: the
+        method is abstract, so subclasses replace it outright. Wrapping it at
+        subclass-definition time is what makes the contract structural instead
+        of a convention someone has to remember.
+
+        It also covers what a guard on the dispatcher cannot. ``ToolExecutor``
+        is already bypassed today by ``server/api_routes.py``,
+        ``agents/hybrid/_base.py`` and ``desktop/welcome_runner.py``, which
+        call ``Tool().execute(...)`` directly — a class-level wrapper catches
+        all three, and every future one.
+
+        Subclasses that do not define their own ``execute`` inherit the
+        already-wrapped parent version, so the guard is never applied twice.
+        """
+        super().__init_subclass__(**kwargs)
+        execute = cls.__dict__.get("execute")
+        if execute is None or getattr(execute, "_local_only_guarded", False):
+            return
+        if getattr(execute, "__isabstractmethod__", False):
+            return
+
+        @functools.wraps(execute)
+        def _guarded_execute(self: "BaseTool", **params: Any) -> ToolResult:
+            if not getattr(self, "is_local", True):
+                from openjarvis.core.local_mode import REFUSAL_HINT, local_only
+
+                if local_only():
+                    name = getattr(self, "tool_id", "") or cls.__name__
+                    logger.info(
+                        "local-mode: refused tool %r — it is declared remote", name
+                    )
+                    return ToolResult(
+                        tool_name=name,
+                        content=f"Tool {name!r} needs the network. {REFUSAL_HINT}",
+                        success=False,
+                        metadata={"nothing_left_the_machine": True},
+                    )
+            return execute(self, **params)
+
+        _guarded_execute._local_only_guarded = True  # type: ignore[attr-defined]
+        cls.execute = _guarded_execute  # type: ignore[method-assign]
 
     @property
     @abstractmethod

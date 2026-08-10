@@ -1407,6 +1407,92 @@ class LocalCloudAgent(BaseAgent):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Local-only gate
+# ---------------------------------------------------------------------------
+#
+# This family bypasses every other layer: it speaks to Anthropic, OpenAI,
+# OpenRouter and Gemini directly, without going through the engine registry or
+# the tool executor. Guarding the `_call_cloud` dispatcher would not be enough
+# either — conductor.py and minions.py call the individual `_call_*` methods
+# UNBOUND, so the dispatcher is routinely skipped.
+#
+# Replacing the functions on the class covers both the dispatcher and the
+# unbound calls, because both resolve the attribute at call time. They are
+# staticmethods, so the replacement must be re-wrapped as one or the
+# descriptor protocol would turn them into instance methods.
+
+_CLOUD_CALLS = (
+    "_call_anthropic",
+    "_call_openai",
+    "_call_openrouter",
+    "_call_gemini",
+    "_call_anthropic_agent",
+    "_call_openai_agent",
+    "_call_gemini_agent",
+    "_call_cloud",
+)
+
+
+def _install_local_only_gate() -> None:
+    import functools as _functools
+
+    def _refuse(fn: Any, label: str) -> Any:
+        @_functools.wraps(fn)
+        def _guarded(*args: Any, **kwargs: Any) -> Any:
+            from openjarvis.core.local_mode import (
+                REFUSAL_HINT,
+                LocalOnlyError,
+                local_only,
+            )
+
+            if local_only():
+                raise LocalOnlyError(
+                    f"Hybrid agent call {label!r} targets a cloud provider. "
+                    f"{REFUSAL_HINT}"
+                )
+            return fn(*args, **kwargs)
+
+        return _guarded
+
+    for _name in _CLOUD_CALLS:
+        _fn = getattr(LocalCloudAgent, _name, None)
+        if _fn is None or getattr(_fn, "_local_only_guarded", False):
+            continue
+        _wrapped = _refuse(_fn, _name)
+        _wrapped._local_only_guarded = True  # type: ignore[attr-defined]
+        setattr(LocalCloudAgent, _name, staticmethod(_wrapped))
+
+    # _call_vllm is judged on its endpoint rather than blanket-refused: a
+    # purely local paradigm must keep working, and its endpoint is normally
+    # loopback.
+    _vllm = getattr(LocalCloudAgent, "_call_vllm", None)
+    if _vllm is not None and not getattr(_vllm, "_local_only_guarded", False):
+        import functools as _ft
+
+        @_ft.wraps(_vllm)
+        def _guarded_vllm(model: str, endpoint: str, *args: Any, **kwargs: Any) -> Any:
+            from openjarvis.core.local_mode import (
+                REFUSAL_HINT,
+                LocalOnlyError,
+                host_is_local,
+                local_only,
+            )
+
+            if local_only() and not host_is_local(endpoint):
+                raise LocalOnlyError(
+                    f"vLLM endpoint {endpoint!r} is not on this machine. "
+                    f"{REFUSAL_HINT}"
+                )
+            return _vllm(model, endpoint, *args, **kwargs)
+
+        _guarded_vllm._local_only_guarded = True  # type: ignore[attr-defined]
+        LocalCloudAgent._call_vllm = staticmethod(_guarded_vllm)  # type: ignore[assignment]
+
+
+_install_local_only_gate()
+
+
 __all__ = [
     "ANTHROPIC_WEB_SEARCH_TOOL",
     "GEMINI_SEARCH_COST_PER_CALL",

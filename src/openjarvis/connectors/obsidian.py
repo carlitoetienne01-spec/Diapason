@@ -105,6 +105,9 @@ class ObsidianConnector(BaseConnector):
     connector_id = "obsidian"
     display_name = "Obsidian / Markdown"
     auth_type = "filesystem"
+    # Données strictement sur cette machine (base SQLite locale, osascript,
+    # ou fichiers) — vérifié : aucun client HTTP ni URL distante dans ce module.
+    is_local = True
 
     def __init__(self, vault_path: str = "") -> None:
         self._vault_path = vault_path

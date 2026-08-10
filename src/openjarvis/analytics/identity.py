@@ -45,5 +45,19 @@ def reset_anon_id(path: Path | str) -> str:
 
 
 def is_analytics_enabled(cfg: AnalyticsConfig) -> bool:
-    """Return True if analytics is enabled in config."""
-    return cfg.enabled
+    """Return True if analytics is enabled in config.
+
+    Local-only mode overrides ``[analytics] enabled``, which ships as True
+    with a hard-coded PostHog host and project key. Telemetry is anonymous and
+    carries no conversation content, but "nothing leaves this machine" that
+    still phones home on every launch is not a promise — it is a caveat.
+
+    This single predicate is the whole gate: ``AnalyticsClient.__init__``
+    consults it before calling ``_init_sdk``, so under local-only no PostHog
+    client is ever constructed and the project key is never read.
+    """
+    if not cfg.enabled:
+        return False
+    from openjarvis.core.local_mode import local_only
+
+    return not local_only()

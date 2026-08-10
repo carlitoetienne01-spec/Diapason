@@ -78,6 +78,9 @@ class AppleHealthConnector(BaseConnector):
     connector_id = "apple_health"
     display_name = "Apple Health"
     auth_type = "local"
+    # Données strictement sur cette machine (base SQLite locale, osascript,
+    # ou fichiers) — vérifié : aucun client HTTP ni URL distante dans ce module.
+    is_local = True
 
     def __init__(
         self,

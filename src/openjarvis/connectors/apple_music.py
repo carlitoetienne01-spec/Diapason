@@ -130,6 +130,9 @@ class AppleMusicConnector(BaseConnector):
     connector_id = "apple_music"
     display_name = "Apple Music"
     auth_type = "local"
+    # Données strictement sur cette machine (base SQLite locale, osascript,
+    # ou fichiers) — vérifié : aucun client HTTP ni URL distante dans ce module.
+    is_local = True
 
     def __init__(self) -> None:
         self._status = SyncStatus()

@@ -77,6 +77,9 @@ class IMessageConnector(BaseConnector):
     connector_id = "imessage"
     display_name = "iMessage"
     auth_type = "local"
+    # Données strictement sur cette machine (base SQLite locale, osascript,
+    # ou fichiers) — vérifié : aucun client HTTP ni URL distante dans ce module.
+    is_local = True
 
     def __init__(self, db_path: str = "") -> None:
         self._db_path: Path = Path(db_path) if db_path else _DEFAULT_DB_PATH

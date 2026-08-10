@@ -19,7 +19,29 @@ def create_realtime_session(
     max_tool_steps: int = 12,
     allowed_tools: Optional[Sequence[str]] = None,
 ) -> RealtimeVoiceSession:
-    """Create a provider session. Raises ``ValueError`` for unknown providers."""
+    """Create a provider session. Raises ``ValueError`` for unknown providers.
+
+    Raises :class:`LocalOnlyError` under ``[privacy] local_only``: every
+    realtime provider is remote, so there is no honest degradation here.
+    """
+    # The gravest path in the codebase: a realtime session streams RAW
+    # MICROPHONE PCM to Gemini or OpenAI continuously — not a finished
+    # sentence, everything the microphone hears for as long as the socket is
+    # open. And the provider is chosen by the CLIENT (a query parameter or the
+    # `start` frame in server/voice_live_routes.py), so a guard placed on the
+    # caller's default would be bypassed by anyone passing ?provider=openai.
+    #
+    # The guard therefore sits on the factory, which no provider can avoid,
+    # and fires before the session object exists — hence before any API key is
+    # read from the environment by a provider constructor.
+    from openjarvis.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
+
+    if local_only():
+        raise LocalOnlyError(
+            "Realtime voice needs a remote provider and there is no local one, "
+            f"so the microphone stream was refused. {REFUSAL_HINT}"
+        )
+
     name = (provider or "").strip().lower()
     common = dict(
         api_key=api_key,

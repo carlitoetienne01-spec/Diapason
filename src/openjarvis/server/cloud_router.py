@@ -348,7 +348,24 @@ async def stream_cloud(
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ) -> AsyncIterator[str]:
-    """Stream tokens from a cloud provider for the given model."""
+    """Stream tokens from a cloud provider for the given model.
+
+    Raises :class:`LocalOnlyError` under ``[privacy] local_only``.
+    """
+    # This module bypasses the engine layer entirely — it speaks httpx to the
+    # providers itself — so the guard installed in engine/_discovery.py does
+    # not cover it. It is the path the desktop GUI uses, which makes it the
+    # most travelled cloud route in the product.
+    #
+    # The refusal precedes _load_keys() and every provider branch: under
+    # local-only no credential is read and no request is built.
+    from openjarvis.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
+
+    if local_only():
+        raise LocalOnlyError(
+            f"Model {model!r} is served by a cloud provider. {REFUSAL_HINT}"
+        )
+
     provider = get_provider(model)
 
     if provider == "openai":

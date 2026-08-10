@@ -39,6 +39,9 @@ class LocalTriggerChannel(BaseChannel):
     """
 
     channel_id = "local_trigger"
+    # Fichier ou socket sur cette machine — aucun client HTTP, aucune URL
+    # distante dans ce module. Vérifié.
+    is_local = True
 
     def __init__(
         self,
