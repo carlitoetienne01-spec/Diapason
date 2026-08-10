@@ -29,36 +29,6 @@ class AccessibilityError(RuntimeError):
     """Raised when the event tap cannot be created (permission not granted)."""
 
 
-def is_trusted() -> bool:
-    """True when this process may observe keyboard events (Accessibility)."""
-    try:
-        from ApplicationServices import AXIsProcessTrusted  # type: ignore
-
-        return bool(AXIsProcessTrusted())
-    except Exception:  # noqa: BLE001 - if we can't check, assume ok
-        return True
-
-
-def request_accessibility() -> bool:
-    """Pop the macOS Accessibility prompt, adding this app to the list.
-
-    Returns the current trust state. Showing the system dialog is the reliable
-    way to surface the *right* entry (the responsible process) in the
-    Accessibility pane, instead of asking the user to hunt for and add it by
-    hand. The grant still needs a toggle + terminal restart to take effect.
-    """
-    try:
-        from ApplicationServices import (  # type: ignore
-            AXIsProcessTrustedWithOptions,
-        )
-
-        # Key is the CFString "AXTrustedCheckOptionPrompt"; pass it literally
-        # so we don't depend on the constant being exported by the binding.
-        return bool(AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True}))
-    except Exception:  # noqa: BLE001
-        return is_trusted()
-
-
 class HotkeyListener:
     """Fire ``on_down``/``on_up`` when the bound modifier is pressed/released."""
 
@@ -106,22 +76,17 @@ class HotkeyListener:
         """Create the tap and pump its run loop on a daemon thread."""
         import Quartz  # type: ignore
 
-        # A listen-only keyboard tap is starved of events without Accessibility
-        # (or Input Monitoring). The tap can still be *created*, so checking
-        # trust up front gives a real error instead of silent dead keys.
-        try:
-            from ApplicationServices import (  # type: ignore
-                AXIsProcessTrusted,
-            )
+        # A listen-only keyboard tap is starved of events without INPUT
+        # MONITORING — not Accessibility. The tap can still be *created*, so
+        # checking up front gives a real error instead of silent dead keys.
+        from openjarvis.desktop.permissions import input_monitoring_ok
 
-            trusted = bool(AXIsProcessTrusted())
-        except Exception:  # noqa: BLE001 - if we can't check, don't block
-            trusted = True
-        if not trusted:
+        if not input_monitoring_ok():
             raise AccessibilityError(
-                "This process is not trusted for Accessibility, so the key tap "
-                "would receive no events. Grant it in System Settings › Privacy "
-                "& Security › Accessibility (add your terminal app), then retry."
+                "This process lacks Input Monitoring, so the key tap receives "
+                "no events. Grant it in System Settings › Privacy & Security › "
+                "Input Monitoring (add your terminal app), fully quit and "
+                "reopen the terminal, then retry."
             )
 
         def _tap_callback(proxy, type_, event, refcon):

@@ -70,16 +70,7 @@ def dictate(hotkey: str, check: bool) -> None:
 
         paste_text(text)
 
-    from openjarvis.desktop.hotkey import is_trusted, request_accessibility
-
-    if not is_trusted():
-        click.echo(
-            "Accessibility is not granted. Opening the macOS prompt — enable "
-            "your terminal app under Accessibility, then fully quit and reopen "
-            "the terminal and rerun `jarvis dictate`.",
-            err=True,
-        )
-        request_accessibility()
+    if not _ensure_permissions():
         sys.exit(1)
 
     service = DictationService(transcribe=_transcribe, paste=_paste, hotkey=key)
@@ -108,6 +99,37 @@ def dictate(hotkey: str, check: bool) -> None:
         click.echo("Dictation stopped.")
 
 
+def _ensure_permissions() -> bool:
+    """Check the two TCC permissions dictation needs; prompt for any missing.
+
+    Input Monitoring is the one that actually gates the key tap; Accessibility
+    gates the paste. Both are requested so the user grants them in one pass.
+    Returns True only when nothing is missing.
+    """
+    from openjarvis.desktop import permissions
+
+    missing = permissions.missing_for_dictation()
+    if not missing:
+        return True
+
+    click.echo(
+        "Dictation needs these macOS permissions, still missing: "
+        + ", ".join(missing),
+        err=True,
+    )
+    click.echo(
+        "Opening the system prompts. Enable your terminal app under EACH of "
+        "them in System Settings › Privacy & Security, then FULLY quit (Cmd-Q) "
+        "and reopen the terminal, and rerun.",
+        err=True,
+    )
+    if "Input Monitoring" in missing:
+        permissions.request_input_monitoring()
+    if "Accessibility" in missing:
+        permissions.request_accessibility()
+    return False
+
+
 def _run_check(raw_hotkey: str) -> None:
     """Echo hotkey transitions for 15s — isolates the tap from mic/model."""
     import time
@@ -126,17 +148,7 @@ def _run_check(raw_hotkey: str) -> None:
         counts["up"] += 1
         click.echo(f"  {key.capitalize()} UP    (#{counts['up']})")
 
-    from openjarvis.desktop.hotkey import is_trusted, request_accessibility
-
-    if not is_trusted():
-        click.echo(
-            "Accessibility is not granted. Opening the macOS prompt now — "
-            "click Open System Settings, enable your terminal app under "
-            "Accessibility, then FULLY quit and reopen the terminal and rerun "
-            "this check.",
-            err=True,
-        )
-        request_accessibility()
+    if not _ensure_permissions():
         sys.exit(1)
 
     listener = HotkeyListener(hotkey=key, on_down=_down, on_up=_up)
