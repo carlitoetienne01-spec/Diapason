@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from openjarvis.recipes.loader import (
+from diapason.recipes.loader import (
     Recipe,
     discover_recipes,
     load_recipe,

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
+from diapason.cli import cli
 
 
 class TestBenchSkillsCommand:
@@ -17,7 +17,7 @@ class TestBenchSkillsCommand:
         assert "condition" in result.output.lower()
 
     def test_runs_all_conditions_with_mocked_runner(self, tmp_path: Path) -> None:
-        from openjarvis.evals.skill_benchmark import (
+        from diapason.evals.skill_benchmark import (
             ConditionComparison,
             ConditionResult,
             SkillBenchmarkConfig,
@@ -52,11 +52,11 @@ class TestBenchSkillsCommand:
         )
 
         with patch(
-            "openjarvis.evals.skill_benchmark.SkillBenchmarkRunner.run_all_conditions",
+            "diapason.evals.skill_benchmark.SkillBenchmarkRunner.run_all_conditions",
             return_value=fake_cmp,
         ):
             with patch(
-                "openjarvis.evals.skill_benchmark.SkillBenchmarkRunner.write_report",
+                "diapason.evals.skill_benchmark.SkillBenchmarkRunner.write_report",
                 return_value=tmp_path / "fake-report.md",
             ):
                 result = CliRunner().invoke(
@@ -77,7 +77,7 @@ class TestBenchSkillsCommand:
                 assert "skills_optimized_dspy" in result.output
 
     def test_runs_single_condition(self, tmp_path: Path) -> None:
-        from openjarvis.evals.skill_benchmark import ConditionResult
+        from diapason.evals.skill_benchmark import ConditionResult
 
         fake_result = ConditionResult(
             condition="skills_optimized_dspy",
@@ -92,7 +92,7 @@ class TestBenchSkillsCommand:
         )
 
         with patch(
-            "openjarvis.evals.skill_benchmark.SkillBenchmarkRunner.run_condition",
+            "diapason.evals.skill_benchmark.SkillBenchmarkRunner.run_condition",
             return_value=fake_result,
         ):
             result = CliRunner().invoke(

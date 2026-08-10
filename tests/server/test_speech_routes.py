@@ -8,7 +8,7 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from openjarvis.speech._stubs import TranscriptionResult  # noqa: E402
+from diapason.speech._stubs import TranscriptionResult  # noqa: E402
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def mock_speech_backend():
 def app_with_speech(mock_speech_backend):
     from fastapi import FastAPI
 
-    from openjarvis.server.api_routes import speech_router
+    from diapason.server.api_routes import speech_router
 
     app = FastAPI()
     app.state.speech_backend = mock_speech_backend
@@ -66,7 +66,7 @@ def test_transcribe_endpoint_offloads_backend_work(client, mock_speech_backend):
     )
 
     with patch(
-        "openjarvis.server.api_routes.asyncio.to_thread",
+        "diapason.server.api_routes.asyncio.to_thread",
         new_callable=AsyncMock,
     ) as mock_to_thread:
         mock_to_thread.return_value = expected
@@ -126,7 +126,7 @@ def test_health_no_backend():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from openjarvis.server.api_routes import speech_router
+    from diapason.server.api_routes import speech_router
 
     app = FastAPI()
     app.state.speech_backend = None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Dict, List
 
-from openjarvis.engine._stubs import InferenceEngine
+from diapason.engine._stubs import InferenceEngine
 
 
 class FakeEngine(InferenceEngine):

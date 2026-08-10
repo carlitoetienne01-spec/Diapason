@@ -9,11 +9,11 @@ from unittest import mock
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
-from openjarvis.core.config import JarvisConfig
+from diapason.cli import cli
+from diapason.core.config import JarvisConfig
 
 # Import the actual module (not the Click command attribute)
-_ask_mod = importlib.import_module("openjarvis.cli.ask")
+_ask_mod = importlib.import_module("diapason.cli.ask")
 
 
 def _mock_engine_response():
@@ -35,8 +35,8 @@ def _patch_ask(monkeypatch, tmp_path, *, engine_result=None, no_engine=False):
     # Re-register SimpleAgent after the autouse `_clean_registries` conftest
     # fixture clears it. ``JarvisConfig().agent.default_agent`` defaults to
     # ``"simple"``, so ``jarvis ask "..."`` (no --agent) routes through it.
-    from openjarvis.agents.simple import SimpleAgent
-    from openjarvis.core.registry import AgentRegistry
+    from diapason.agents.simple import SimpleAgent
+    from diapason.core.registry import AgentRegistry
 
     if not AgentRegistry.contains("simple"):
         AgentRegistry.register_value("simple", SimpleAgent)

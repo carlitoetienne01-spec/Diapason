@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from openjarvis.speech.dictation_dictionary import (
+from diapason.speech.dictation_dictionary import (
     DictionaryEntry,
     apply_dictionary,
     learn_from_correction,
     load_dictionary,
     save_dictionary,
 )
-from openjarvis.speech.wakeword import (
+from diapason.speech.wakeword import (
     WakeListenConfig,
     WakeWordListener,
     resolve_backend,

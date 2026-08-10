@@ -6,9 +6,9 @@ import time
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
-from openjarvis.agents._stubs import AgentResult
-from openjarvis.agents.channel_agent import ChannelAgent, classify_query
-from openjarvis.channels._stubs import (
+from diapason.agents._stubs import AgentResult
+from diapason.agents.channel_agent import ChannelAgent, classify_query
+from diapason.channels._stubs import (
     BaseChannel,
     ChannelHandler,
     ChannelMessage,

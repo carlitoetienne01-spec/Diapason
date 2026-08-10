@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
+from diapason.cli import cli
 
 
 class TestSkillCmd:
@@ -59,7 +59,7 @@ class TestSkillCmd:
         """)
         )
         with patch(
-            "openjarvis.cli.skill_cmd._get_skill_paths",
+            "diapason.cli.skill_cmd._get_skill_paths",
             return_value=[tmp_path],
         ):
             result = CliRunner().invoke(cli, ["skill", "list"])
@@ -84,7 +84,7 @@ class TestSkillCmd:
         """)
         )
         with patch(
-            "openjarvis.cli.skill_cmd._get_skill_paths",
+            "diapason.cli.skill_cmd._get_skill_paths",
             return_value=[tmp_path],
         ):
             result = CliRunner().invoke(cli, ["skill", "info", "info_skill"])
@@ -100,7 +100,7 @@ class TestSkillRemoveCommand:
 
     def test_remove_missing_skill(self, tmp_path: Path) -> None:
         with patch(
-            "openjarvis.cli.skill_cmd._get_skill_paths",
+            "diapason.cli.skill_cmd._get_skill_paths",
             return_value=[tmp_path],
         ):
             result = CliRunner().invoke(cli, ["skill", "remove", "ghost", "--yes"])
@@ -122,7 +122,7 @@ class TestSkillRemoveCommand:
         """)
         )
         with patch(
-            "openjarvis.cli.skill_cmd._get_skill_paths",
+            "diapason.cli.skill_cmd._get_skill_paths",
             return_value=[tmp_path],
         ):
             result = CliRunner().invoke(cli, ["skill", "remove", "to_remove", "--yes"])
@@ -137,11 +137,11 @@ class TestSkillSearchCommand:
         assert result.exit_code == 0
 
     def test_search_no_sources_configured(self) -> None:
-        from openjarvis.core.config import JarvisConfig, SkillsConfig
+        from diapason.core.config import JarvisConfig, SkillsConfig
 
         cfg = JarvisConfig()
         cfg.skills = SkillsConfig(sources=[])
-        with patch("openjarvis.cli.skill_cmd.load_config", return_value=cfg):
+        with patch("diapason.cli.skill_cmd.load_config", return_value=cfg):
             result = CliRunner().invoke(cli, ["skill", "search", "anything"])
             assert result.exit_code != 0
             assert "no skill sources" in result.output.lower()
@@ -149,12 +149,12 @@ class TestSkillSearchCommand:
     def test_search_filters_results(self) -> None:
         from pathlib import Path as _P
 
-        from openjarvis.core.config import (
+        from diapason.core.config import (
             JarvisConfig,
             SkillsConfig,
             SkillSourceConfig,
         )
-        from openjarvis.skills.sources.base import ResolvedSkill
+        from diapason.skills.sources.base import ResolvedSkill
 
         class _FakeResolver:
             def sync(self) -> None:
@@ -182,9 +182,9 @@ class TestSkillSearchCommand:
 
         cfg = JarvisConfig()
         cfg.skills = SkillsConfig(sources=[SkillSourceConfig(source="hermes")])
-        with patch("openjarvis.cli.skill_cmd.load_config", return_value=cfg):
+        with patch("diapason.cli.skill_cmd.load_config", return_value=cfg):
             with patch(
-                "openjarvis.cli.skill_cmd._get_resolver",
+                "diapason.cli.skill_cmd._get_resolver",
                 return_value=_FakeResolver(),
             ):
                 result = CliRunner().invoke(cli, ["skill", "search", "notes"])
@@ -219,7 +219,7 @@ class TestSkillSourcesCommand:
     def test_sources_lists_configured_sources(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 
-        from openjarvis.core.config import (
+        from diapason.core.config import (
             JarvisConfig,
             SkillsConfig,
             SkillSourceConfig,
@@ -232,7 +232,7 @@ class TestSkillSourcesCommand:
                 SkillSourceConfig(source="openclaw"),
             ]
         )
-        with patch("openjarvis.cli.skill_cmd.load_config", return_value=cfg):
+        with patch("diapason.cli.skill_cmd.load_config", return_value=cfg):
             result = CliRunner().invoke(cli, ["skill", "sources"])
             assert result.exit_code == 0
             assert "hermes" in result.output
@@ -253,7 +253,7 @@ class TestSkillDiscoverCommand:
                 return []
 
         with patch(
-            "openjarvis.cli.skill_cmd._get_trace_store",
+            "diapason.cli.skill_cmd._get_trace_store",
             return_value=_EmptyStore(),
         ):
             result = CliRunner().invoke(cli, ["skill", "discover", "--dry-run"])
@@ -262,7 +262,7 @@ class TestSkillDiscoverCommand:
     def test_discover_writes_when_not_dry_run(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 
-        from openjarvis.core.types import StepType, Trace, TraceStep
+        from diapason.core.types import StepType, Trace, TraceStep
 
         def _trace():
             return Trace(
@@ -293,11 +293,11 @@ class TestSkillDiscoverCommand:
 
         output_dir = tmp_path / "discovered"
         with patch(
-            "openjarvis.cli.skill_cmd._get_trace_store",
+            "diapason.cli.skill_cmd._get_trace_store",
             return_value=_Store(),
         ):
             with patch(
-                "openjarvis.cli.skill_cmd._get_discovered_dir",
+                "diapason.cli.skill_cmd._get_discovered_dir",
                 return_value=output_dir,
             ):
                 result = CliRunner().invoke(
@@ -318,7 +318,7 @@ class TestSkillShowOverlayCommand:
         from unittest.mock import patch
 
         with patch(
-            "openjarvis.cli.skill_cmd._get_overlay_dir",
+            "diapason.cli.skill_cmd._get_overlay_dir",
             return_value=tmp_path / "no-such",
         ):
             result = CliRunner().invoke(cli, ["skill", "show-overlay", "nonexistent"])
@@ -327,7 +327,7 @@ class TestSkillShowOverlayCommand:
     def test_show_overlay_displays_optimized(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 
-        from openjarvis.skills.overlay import SkillOverlay, write_overlay
+        from diapason.skills.overlay import SkillOverlay, write_overlay
 
         write_overlay(
             SkillOverlay(
@@ -342,7 +342,7 @@ class TestSkillShowOverlayCommand:
         )
 
         with patch(
-            "openjarvis.cli.skill_cmd._get_overlay_dir",
+            "diapason.cli.skill_cmd._get_overlay_dir",
             return_value=tmp_path,
         ):
             result = CliRunner().invoke(

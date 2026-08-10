@@ -9,12 +9,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytest.importorskip("fastapi", reason="openjarvis[server] not installed")
+pytest.importorskip("fastapi", reason="diapason[server] not installed")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from openjarvis.server.webhook_routes import create_webhook_router
+from diapason.server.webhook_routes import create_webhook_router
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ class TestTwilioWebhook:
 
     def test_valid_twilio_webhook(self, twilio_client, mock_bridge):
         with patch(
-            "openjarvis.server.webhook_routes._validate_twilio_signature",
+            "diapason.server.webhook_routes._validate_twilio_signature",
             return_value=True,
         ):
             resp = twilio_client.post(
@@ -57,7 +57,7 @@ class TestTwilioWebhook:
 
     def test_invalid_signature_rejected(self, twilio_client):
         with patch(
-            "openjarvis.server.webhook_routes._validate_twilio_signature",
+            "diapason.server.webhook_routes._validate_twilio_signature",
             return_value=False,
         ):
             resp = twilio_client.post(

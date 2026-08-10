@@ -4,8 +4,8 @@
 class TestSystemLearningIntegration:
     def test_learning_orchestrator_not_created_when_disabled(self):
         """Default config has training_enabled=False, so no orchestrator."""
-        from openjarvis.core.config import JarvisConfig
-        from openjarvis.system import SystemBuilder
+        from diapason.core.config import JarvisConfig
+        from diapason.system import SystemBuilder
 
         config = JarvisConfig()
         assert config.learning.training_enabled is False
@@ -14,9 +14,9 @@ class TestSystemLearningIntegration:
 
     def test_learning_orchestrator_created_when_enabled(self):
         """When training_enabled=True, orchestrator is created."""
-        from openjarvis.core.config import JarvisConfig
-        from openjarvis.learning.learning_orchestrator import LearningOrchestrator
-        from openjarvis.system import SystemBuilder
+        from diapason.core.config import JarvisConfig
+        from diapason.learning.learning_orchestrator import LearningOrchestrator
+        from diapason.system import SystemBuilder
 
         config = JarvisConfig()
         config.learning.training_enabled = True
@@ -25,7 +25,7 @@ class TestSystemLearningIntegration:
 
     def test_config_has_training_fields(self):
         """LearningConfig has the training pipeline fields."""
-        from openjarvis.core.config import LearningConfig
+        from diapason.core.config import LearningConfig
 
         config = LearningConfig()
         assert config.training_enabled is False
@@ -37,7 +37,7 @@ class TestSystemLearningIntegration:
 
     def test_training_components_exported(self):
         """Learning package exports all training components."""
-        from openjarvis.learning import (
+        from diapason.learning import (
             AgentConfigEvolver,
             LearningOrchestrator,
             LoRATrainer,

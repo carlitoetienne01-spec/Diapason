@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.skills.parser import SkillParseError, SkillParser
+from diapason.skills.parser import SkillParseError, SkillParser
 
 
 class TestStrictRequiredFields:
@@ -162,7 +162,7 @@ class TestTolerantFieldMapping:
                 "name": "test",
                 "description": "x",
                 "metadata": {
-                    "openjarvis": {
+                    "diapason": {
                         "version": "9.9.9",
                         "tags": ["already", "mapped"],
                     },
@@ -194,8 +194,8 @@ class TestTolerantFieldMapping:
             "weird_field": "preserved",
         }
         manifest = parser.parse_frontmatter(original)
-        # Stored under metadata.openjarvis.original_frontmatter
-        oj = manifest.metadata.get("openjarvis", {})
+        # Stored under metadata.diapason.original_frontmatter
+        oj = manifest.metadata.get("diapason", {})
         assert "original_frontmatter" in oj
         assert oj["original_frontmatter"]["weird_field"] == "preserved"
 
@@ -209,5 +209,5 @@ class TestTolerantFieldMapping:
             }
         )
         # Platforms get rendered into a compatibility string under metadata
-        oj = manifest.metadata.get("openjarvis", {})
+        oj = manifest.metadata.get("diapason", {})
         assert "platforms" in oj or "compatibility" in oj

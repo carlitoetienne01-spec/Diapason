@@ -22,13 +22,13 @@ from unittest.mock import patch
 
 import pytest
 
-from openjarvis.channels._stubs import BaseChannel
-from openjarvis.connectors._stubs import BaseConnector, Document, SyncStatus
-from openjarvis.core.local_mode import LocalOnlyError
-from openjarvis.core.types import ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolSpec
+from diapason.channels._stubs import BaseChannel
+from diapason.connectors._stubs import BaseConnector, Document, SyncStatus
+from diapason.core.local_mode import LocalOnlyError
+from diapason.core.types import ToolResult
+from diapason.tools._stubs import BaseTool, ToolSpec
 
-_LOAD_CONFIG = "openjarvis.core.config.load_config"
+_LOAD_CONFIG = "diapason.core.config.load_config"
 
 
 @dataclass
@@ -144,7 +144,7 @@ def test_mail_and_messages_send_are_declared_remote():
     Both tools declared is_local=True, which exempted the most explicit send
     in the product from the boundary guard and from local-only alike.
     """
-    from openjarvis.tools.voice_mac_tools import MailSendTool, MessagesSendTool
+    from diapason.tools.voice_mac_tools import MailSendTool, MessagesSendTool
 
     assert MailSendTool.is_local is False
     assert MessagesSendTool.is_local is False
@@ -179,12 +179,12 @@ def test_locality_is_not_read_from_auth_type():
     # Imported directly rather than through ConnectorRegistry: the root
     # conftest clears every registry between tests, and registration happens
     # once at import time.
-    from openjarvis.connectors.apple_health import AppleHealthConnector
-    from openjarvis.connectors.hackernews import HackerNewsConnector
-    from openjarvis.connectors.imessage import IMessageConnector
-    from openjarvis.connectors.news_rss import NewsRSSConnector
-    from openjarvis.connectors.obsidian import ObsidianConnector
-    from openjarvis.connectors.weather import WeatherConnector
+    from diapason.connectors.apple_health import AppleHealthConnector
+    from diapason.connectors.hackernews import HackerNewsConnector
+    from diapason.connectors.imessage import IMessageConnector
+    from diapason.connectors.news_rss import NewsRSSConnector
+    from diapason.connectors.obsidian import ObsidianConnector
+    from diapason.connectors.weather import WeatherConnector
 
     for cls in (HackerNewsConnector, NewsRSSConnector, WeatherConnector):
         assert cls.is_local is False, cls.__name__
@@ -202,7 +202,7 @@ def test_a_connector_that_claims_nothing_is_treated_as_remote():
 
 def test_realtime_voice_is_refused_under_local_only():
     """Raw microphone PCM streamed continuously — the gravest path."""
-    from openjarvis.speech.realtime.factory import create_realtime_session
+    from diapason.speech.realtime.factory import create_realtime_session
 
     with _mode(True):
         with pytest.raises(LocalOnlyError):
@@ -211,7 +211,7 @@ def test_realtime_voice_is_refused_under_local_only():
 
 def test_realtime_refusal_precedes_provider_dispatch():
     """Even an unknown provider is refused, so no constructor is reached."""
-    from openjarvis.speech.realtime.factory import create_realtime_session
+    from diapason.speech.realtime.factory import create_realtime_session
 
     with _mode(True):
         with pytest.raises(LocalOnlyError):
@@ -223,7 +223,7 @@ def test_realtime_refusal_precedes_provider_dispatch():
 
 def test_stream_cloud_is_refused_under_local_only():
     """This module speaks httpx directly, so the engine gate misses it."""
-    from openjarvis.server.cloud_router import stream_cloud
+    from diapason.server.cloud_router import stream_cloud
 
     async def _drain() -> None:
         async for _ in stream_cloud("gpt-4o", []):
@@ -251,7 +251,7 @@ class _Channel(BaseChannel):
         return "SENT"
 
     def status(self):
-        from openjarvis.channels._stubs import ChannelStatus
+        from diapason.channels._stubs import ChannelStatus
 
         return ChannelStatus.CONNECTED
 
@@ -315,8 +315,8 @@ def test_analytics_is_disabled_by_local_only():
     caveat rather than a promise. The predicate is the whole gate:
     AnalyticsClient consults it before building the SDK client.
     """
-    from openjarvis.analytics.identity import is_analytics_enabled
-    from openjarvis.core.config import AnalyticsConfig
+    from diapason.analytics.identity import is_analytics_enabled
+    from diapason.core.config import AnalyticsConfig
 
     cfg = AnalyticsConfig()
     cfg.enabled = True
@@ -328,8 +328,8 @@ def test_analytics_is_disabled_by_local_only():
 
 
 def test_local_only_does_not_re_enable_analytics_the_user_turned_off():
-    from openjarvis.analytics.identity import is_analytics_enabled
-    from openjarvis.core.config import AnalyticsConfig
+    from diapason.analytics.identity import is_analytics_enabled
+    from diapason.core.config import AnalyticsConfig
 
     cfg = AnalyticsConfig()
     cfg.enabled = False
@@ -346,7 +346,7 @@ def test_hybrid_cloud_call_is_refused_even_when_called_unbound():
     A guard on the `_call_cloud` dispatcher alone would be routinely skipped,
     which is why the functions themselves are replaced on the class.
     """
-    from openjarvis.agents.hybrid._base import LocalCloudAgent
+    from diapason.agents.hybrid._base import LocalCloudAgent
 
     with _mode(True):
         with pytest.raises(LocalOnlyError):
@@ -357,7 +357,7 @@ def test_hybrid_cloud_call_is_refused_even_when_called_unbound():
 
 def test_hybrid_methods_stay_staticmethods_after_wrapping():
     """Re-wrapping matters: without it the descriptor turns them into methods."""
-    from openjarvis.agents.hybrid._base import LocalCloudAgent
+    from diapason.agents.hybrid._base import LocalCloudAgent
 
     for name in ("_call_anthropic", "_call_openai", "_call_vllm"):
         assert isinstance(LocalCloudAgent.__dict__[name], staticmethod), name
@@ -365,7 +365,7 @@ def test_hybrid_methods_stay_staticmethods_after_wrapping():
 
 def test_hybrid_vllm_is_judged_on_its_endpoint():
     """A purely local paradigm must keep working under local-only."""
-    from openjarvis.agents.hybrid._base import LocalCloudAgent
+    from diapason.agents.hybrid._base import LocalCloudAgent
 
     with _mode(True):
         with pytest.raises(LocalOnlyError):

@@ -6,11 +6,11 @@ import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from openjarvis.desktop.screen_share import (
+from diapason.desktop.screen_share import (
     get_screen_share,
     reset_screen_share_for_tests,
 )
-from openjarvis.tools.screen_vision_tools import (
+from diapason.tools.screen_vision_tools import (
     ScreenShareStartTool,
     ScreenShareStatusTool,
     ScreenShareStopTool,
@@ -62,7 +62,7 @@ def test_share_tools_with_config(monkeypatch):
 
     def fake_describe(**kwargs):
         frames["n"] += 1
-        from openjarvis.core.types import ToolResult
+        from diapason.core.types import ToolResult
 
         return ToolResult(
             tool_name="screen_describe",
@@ -70,9 +70,9 @@ def test_share_tools_with_config(monkeypatch):
             success=True,
         )
 
-    with patch("openjarvis.tools.screen_vision_tools._vision_config", return_value=cfg):
+    with patch("diapason.tools.screen_vision_tools._vision_config", return_value=cfg):
         with patch(
-            "openjarvis.tools.screen_vision_tools.describe_screen",
+            "diapason.tools.screen_vision_tools.describe_screen",
             side_effect=fake_describe,
         ):
             start = ScreenShareStartTool().execute()
@@ -92,7 +92,7 @@ def test_share_tools_with_config(monkeypatch):
 def test_share_start_disabled():
     reset_screen_share_for_tests()
     with patch(
-        "openjarvis.tools.screen_vision_tools._vision_config",
+        "diapason.tools.screen_vision_tools._vision_config",
         return_value=SimpleNamespace(enabled=False),
     ):
         result = ScreenShareStartTool().execute()
@@ -101,9 +101,9 @@ def test_share_start_disabled():
 
 
 def test_voice_allowlist_share_tools():
-    import openjarvis.tools.screen_vision_tools  # noqa: F401
+    import diapason.tools.screen_vision_tools  # noqa: F401
 
-    from openjarvis.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
+    from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
 
     for tid in (
         "screen_share_start",

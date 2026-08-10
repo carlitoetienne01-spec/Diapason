@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from openjarvis.agents._stubs import AgentContext
-from openjarvis.agents.native_openhands import NativeOpenHandsAgent
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.core.registry import AgentRegistry
-from openjarvis.core.types import Conversation, Message, Role, ToolCall, ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolSpec
+from diapason.agents._stubs import AgentContext
+from diapason.agents.native_openhands import NativeOpenHandsAgent
+from diapason.core.events import EventBus, EventType
+from diapason.core.registry import AgentRegistry
+from diapason.core.types import Conversation, Message, Role, ToolCall, ToolResult
+from diapason.tools._stubs import BaseTool, ToolSpec
 
 # ---------------------------------------------------------------------------
 # Helpers

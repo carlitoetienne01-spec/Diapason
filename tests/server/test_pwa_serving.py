@@ -10,7 +10,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from openjarvis.server.app import create_app  # noqa: E402
+from diapason.server.app import create_app  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers

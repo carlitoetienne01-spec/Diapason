@@ -1,10 +1,10 @@
-"""Tests for openjarvis.cli._bg_state."""
+"""Tests for diapason.cli._bg_state."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.cli import _bg_state
+from diapason.cli import _bg_state
 
 
 def test_get_status_empty(tmp_openjarvis_home: Path) -> None:

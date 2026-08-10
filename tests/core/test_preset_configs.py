@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from openjarvis.core.config import JarvisConfig, load_config
+from diapason.core.config import JarvisConfig, load_config
 
 PRESETS_DIR = (
-    Path(__file__).resolve().parents[2] / "configs" / "openjarvis" / "examples"
+    Path(__file__).resolve().parents[2] / "configs" / "diapason" / "examples"
 )
 
 

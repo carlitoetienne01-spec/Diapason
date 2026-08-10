@@ -6,7 +6,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from openjarvis.cli.doctor_cmd import doctor
+from diapason.cli.doctor_cmd import doctor
 
 
 def test_doctor_shows_bg_section_when_state_present(tmp_openjarvis_home: Path) -> None:

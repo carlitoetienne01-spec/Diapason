@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from openjarvis.skills.tool_translator import TOOL_TRANSLATION, ToolTranslator
+from diapason.skills.tool_translator import TOOL_TRANSLATION, ToolTranslator
 
 
 class TestTranslationTable:

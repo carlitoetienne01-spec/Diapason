@@ -34,16 +34,16 @@ def test_docker_env_example_present():
 
 
 def test_systemd_unit_binds_public_and_requires_env_file():
-    text = _read("systemd/openjarvis.service")
+    text = _read("systemd/diapason.service")
     # Public bind -> must pull in an EnvironmentFile (no leading '-', so the
     # unit fails to start if it's missing).
     assert "--host 0.0.0.0" in text
-    assert "EnvironmentFile=/etc/openjarvis/env" in text
+    assert "EnvironmentFile=/etc/diapason/env" in text
     assert "\n-EnvironmentFile" not in text and "=-/etc" not in text
 
 
 def test_launchd_plist_binds_loopback():
-    text = _read("launchd/com.openjarvis.plist")
+    text = _read("launchd/com.diapason.plist")
     # Personal-device default: loopback, not the network.
     assert "<string>127.0.0.1</string>" in text
     assert "<string>0.0.0.0</string>" not in text
@@ -60,7 +60,7 @@ def test_launchd_plist_binds_loopback():
     ],
 )
 def test_check_bind_safety(host, api_key, should_exit):
-    from openjarvis.server.auth_middleware import check_bind_safety
+    from diapason.server.auth_middleware import check_bind_safety
 
     if should_exit:
         with pytest.raises(SystemExit):

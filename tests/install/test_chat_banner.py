@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.cli import _bg_state
-from openjarvis.cli._chat_banner import render_startup_banner
+from diapason.cli import _bg_state
+from diapason.cli._chat_banner import render_startup_banner
 
 
 def test_banner_empty_when_all_ready(tmp_openjarvis_home: Path) -> None:

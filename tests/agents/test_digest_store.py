@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from openjarvis.agents.digest_store import DigestArtifact, DigestStore
+from diapason.agents.digest_store import DigestArtifact, DigestStore
 
 
 def test_store_and_retrieve(tmp_path):

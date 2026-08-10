@@ -7,24 +7,24 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from openjarvis.tools.screen_vision_tools import (
+from diapason.tools.screen_vision_tools import (
     ScreenDescribeTool,
     reset_rate_limit_for_tests,
 )
 
 
 def test_screencapture_darwin_argv(tmp_path: Path):
-    from openjarvis.desktop import screen_capture as sc
+    from diapason.desktop import screen_capture as sc
 
     out = tmp_path / "shot.png"
     out.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
 
-    with patch("openjarvis.desktop.screen_capture.sys.platform", "darwin"):
-        with patch("openjarvis.desktop.screen_capture.shutil.which", return_value="/usr/sbin/screencapture"):
-            with patch("openjarvis.desktop.screen_capture.tempfile.mkstemp") as mk:
+    with patch("diapason.desktop.screen_capture.sys.platform", "darwin"):
+        with patch("diapason.desktop.screen_capture.shutil.which", return_value="/usr/sbin/screencapture"):
+            with patch("diapason.desktop.screen_capture.tempfile.mkstemp") as mk:
                 mk.return_value = (3, str(out))
-                with patch("openjarvis.desktop.screen_capture.os.close"):
-                    with patch("openjarvis.desktop.screen_capture.subprocess.run") as run:
+                with patch("diapason.desktop.screen_capture.os.close"):
+                    with patch("diapason.desktop.screen_capture.subprocess.run") as run:
                         run.return_value = SimpleNamespace(
                             returncode=0, stdout="", stderr=""
                         )
@@ -41,7 +41,7 @@ def test_screen_describe_disabled():
     reset_rate_limit_for_tests()
     tool = ScreenDescribeTool()
     with patch(
-        "openjarvis.tools.screen_vision_tools._vision_config",
+        "diapason.tools.screen_vision_tools._vision_config",
         return_value=SimpleNamespace(enabled=False),
     ):
         result = tool.execute(question="what is this?")
@@ -71,14 +71,14 @@ def test_screen_describe_local_ok():
     fake_cfg.engine.default = "ollama"
     fake_cfg.intelligence.default_model = "gemma3:4b"
 
-    with patch("openjarvis.tools.screen_vision_tools._vision_config", return_value=cfg):
+    with patch("diapason.tools.screen_vision_tools._vision_config", return_value=cfg):
         with patch(
-            "openjarvis.tools.screen_vision_tools.capture_screen_b64",
+            "diapason.tools.screen_vision_tools.capture_screen_b64",
             return_value=(base64.b64encode(b"png").decode(), {"bytes": 3, "monitor": 1}),
         ):
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "openjarvis.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=engine
                 ):
                     result = tool.execute(question="What do you see?")
     assert result.success
@@ -110,14 +110,14 @@ def test_screen_describe_blocks_cloud():
     fake_cfg.engine.default = "openai"
     fake_cfg.intelligence.default_model = "gpt-4o"
 
-    with patch("openjarvis.tools.screen_vision_tools._vision_config", return_value=cfg):
+    with patch("diapason.tools.screen_vision_tools._vision_config", return_value=cfg):
         with patch(
-            "openjarvis.tools.screen_vision_tools.capture_screen_b64",
+            "diapason.tools.screen_vision_tools.capture_screen_b64",
             return_value=("YQ==", {"bytes": 1}),
         ):
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "openjarvis.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=engine
                 ):
                     result = tool.execute(question="see?")
     assert result.success is False
@@ -146,14 +146,14 @@ def test_screen_describe_rate_limit():
     fake_cfg.engine.default = "ollama"
     fake_cfg.intelligence.default_model = "gemma3:4b"
 
-    with patch("openjarvis.tools.screen_vision_tools._vision_config", return_value=cfg):
+    with patch("diapason.tools.screen_vision_tools._vision_config", return_value=cfg):
         with patch(
-            "openjarvis.tools.screen_vision_tools.capture_screen_b64",
+            "diapason.tools.screen_vision_tools.capture_screen_b64",
             return_value=("YQ==", {"bytes": 1}),
         ):
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "openjarvis.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=engine
                 ):
                     first = tool.execute(question="a")
                     second = tool.execute(question="b")
@@ -163,8 +163,8 @@ def test_screen_describe_rate_limit():
 
 
 def test_voice_allowlist_includes_screen_describe():
-    import openjarvis.tools.screen_vision_tools  # noqa: F401
-    from openjarvis.speech.realtime.tools import (
+    import diapason.tools.screen_vision_tools  # noqa: F401
+    from diapason.speech.realtime.tools import (
         DEFAULT_VOICE_TOOL_IDS,
         list_voice_tool_ids,
     )
@@ -185,10 +185,10 @@ def test_voice_allowlist_includes_screen_describe():
 # function is never called at all.
 
 
-_VISION_CFG = "openjarvis.tools.screen_vision_tools._vision_config"
-_CAPTURE = "openjarvis.tools.screen_vision_tools.capture_screen_b64"
-_GET_ENGINE = "openjarvis.engine._discovery.get_engine"
-_LOAD_CFG = "openjarvis.core.config.load_config"
+_VISION_CFG = "diapason.tools.screen_vision_tools._vision_config"
+_CAPTURE = "diapason.tools.screen_vision_tools.capture_screen_b64"
+_GET_ENGINE = "diapason.engine._discovery.get_engine"
+_LOAD_CFG = "diapason.core.config.load_config"
 
 
 def _refusing_cfg(**overrides) -> SimpleNamespace:
@@ -219,7 +219,7 @@ def test_refused_cloud_request_never_captures_the_screen():
 
     with patch(_VISION_CFG, return_value=_refusing_cfg()):
         with patch(_CAPTURE) as capture:
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(_GET_ENGINE, return_value=engine):
                     result = tool.execute(question="see?")
 
@@ -242,11 +242,11 @@ def test_missing_model_never_captures_the_screen():
     fake_cfg.intelligence.default_model = ""
 
     with patch(
-        "openjarvis.tools.screen_vision_tools._vision_config",
+        "diapason.tools.screen_vision_tools._vision_config",
         return_value=_refusing_cfg(model="", engine="ollama"),
     ):
         with patch(_CAPTURE) as capture:
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(_GET_ENGINE, return_value=engine):
                     result = tool.execute(question="see?")
 
@@ -270,11 +270,11 @@ def test_local_only_overrides_allow_cloud():
 
     # allow_cloud = True would previously have been enough to send.
     with patch(
-        "openjarvis.tools.screen_vision_tools._vision_config",
+        "diapason.tools.screen_vision_tools._vision_config",
         return_value=_refusing_cfg(allow_cloud=True),
     ):
         with patch(_CAPTURE) as capture:
-            with patch("openjarvis.core.config.load_config", return_value=fake_cfg):
+            with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(_GET_ENGINE, return_value=engine):
                     result = tool.execute(question="see?")
 

@@ -15,7 +15,7 @@ def app():
     except ImportError:
         pytest.skip("fastapi not installed")
 
-    from openjarvis.server.connectors_router import create_connectors_router
+    from diapason.server.connectors_router import create_connectors_router
 
     _app = FastAPI()
     router = create_connectors_router()
@@ -113,8 +113,8 @@ def test_trigger_sync(app, tmp_path: Path) -> None:
 
 def test_connect_slack_bot_token_returns_400(app, tmp_path: Path) -> None:
     """POST connect with an xoxb- token is rejected 400 and writes nothing."""
-    from openjarvis.connectors.slack_connector import SlackConnector
-    from openjarvis.server.connectors_router import _instances
+    from diapason.connectors.slack_connector import SlackConnector
+    from diapason.server.connectors_router import _instances
 
     creds = tmp_path / "slack.json"
     _instances["slack"] = SlackConnector(credentials_path=str(creds))
@@ -136,15 +136,15 @@ def test_connect_granola_invalid_key_returns_400_keeps_existing(
     import json
     from unittest.mock import patch
 
-    from openjarvis.connectors.granola import GranolaConnector, GranolaKeyError
-    from openjarvis.server.connectors_router import _instances
+    from diapason.connectors.granola import GranolaConnector, GranolaKeyError
+    from diapason.server.connectors_router import _instances
 
     creds = tmp_path / "granola.json"
     creds.write_text(json.dumps({"token": "grl_real_existing_key"}))
     _instances["granola"] = GranolaConnector(credentials_path=str(creds))
     try:
         with patch(
-            "openjarvis.connectors.granola._granola_api_validate_key",
+            "diapason.connectors.granola._granola_api_validate_key",
             side_effect=GranolaKeyError(
                 "Invalid API key. Check your key in Granola Settings → API."
             ),

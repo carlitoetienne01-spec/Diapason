@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from openjarvis.speech.clap_listener import ClapConfig, ClapDetector, rms_mono
+from diapason.speech.clap_listener import ClapConfig, ClapDetector, rms_mono
 
 
 def _cfg(**kwargs) -> ClapConfig:
@@ -56,7 +56,7 @@ def test_gap_too_large_starts_new_pair():
 
 
 def test_local_trigger_emit(tmp_path):
-    from openjarvis.channels.local_trigger import LocalTriggerChannel
+    from diapason.channels.local_trigger import LocalTriggerChannel
 
     path = tmp_path / "t.jsonl"
     ch = LocalTriggerChannel(path=path)

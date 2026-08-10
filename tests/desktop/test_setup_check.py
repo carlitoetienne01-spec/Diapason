@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from openjarvis.desktop import setup_check
-from openjarvis.desktop.setup_check import (
+from diapason.desktop import setup_check
+from diapason.desktop.setup_check import (
     Check,
     blocking_failures,
     check_hotkey,
@@ -13,7 +13,7 @@ from openjarvis.desktop.setup_check import (
     is_ready,
 )
 
-_PERM = "openjarvis.desktop.permissions"
+_PERM = "diapason.desktop.permissions"
 
 
 def test_permissions_are_reported_one_by_one():
@@ -95,7 +95,7 @@ def test_hotkey_check_passes_on_a_bare_modifier():
 
 def test_model_check_reports_a_missing_backend_with_a_fix():
     with patch(
-        "openjarvis.speech._discovery.get_speech_backend", return_value=None
+        "diapason.speech._discovery.get_speech_backend", return_value=None
     ):
         c = setup_check.check_model()
     assert c.ok is False
@@ -105,7 +105,7 @@ def test_model_check_reports_a_missing_backend_with_a_fix():
 def test_checks_never_raise_even_when_a_probe_explodes():
     """A setup screen that crashes is worse than one reporting a failure."""
     with patch(
-        "openjarvis.speech._discovery.get_speech_backend",
+        "diapason.speech._discovery.get_speech_backend",
         side_effect=RuntimeError("boom"),
     ):
         c = setup_check.check_model()

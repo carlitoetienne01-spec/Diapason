@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from openjarvis.desktop import clipboard, keycodes, mic_capture
-from openjarvis.desktop.ptt import Action, PushToTalk, State
+from diapason.desktop import clipboard, keycodes, mic_capture
+from diapason.desktop.ptt import Action, PushToTalk, State
 
 # ── keycodes ─────────────────────────────────────────────────────────────────
 

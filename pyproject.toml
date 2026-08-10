@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "OpenJarvis"
+name = "Diapason"
 dynamic = ["version"]
 description = "OpenJarvis — modular AI assistant backend with composable intelligence primitives"
 readme = "README.md"
@@ -166,8 +166,9 @@ Repository = "https://github.com/open-jarvis/OpenJarvis"
 Issues = "https://github.com/open-jarvis/OpenJarvis/issues"
 
 [project.scripts]
-jarvis = "openjarvis.cli:main"
-openjarvis-eval = "openjarvis.evals.cli:main"
+diapason = "diapason.cli:main"
+jarvis = "diapason.cli:main"  # alias historique
+diapason-eval = "diapason.evals.cli:main"
 
 # Version is derived from git tags by hatch-vcs (see #526). For source/editable
 # checkouts this yields the true `git describe` version (e.g. 1.0.3.dev109+g<sha>)
@@ -197,11 +198,11 @@ fallback_version = "0.0.0+unknown"
 openjarvis-rust = { path = "rust/crates/openjarvis-python" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/openjarvis"]
+packages = ["src/diapason"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/openjarvis/agents/claude_code_runner" = "_node_modules/claude_code_runner"
-"src/openjarvis/channels/whatsapp_baileys_bridge" = "_node_modules/whatsapp_baileys_bridge"
+"src/diapason/agents/claude_code_runner" = "_node_modules/claude_code_runner"
+"src/diapason/channels/whatsapp_baileys_bridge" = "_node_modules/whatsapp_baileys_bridge"
 "scripts/install" = "_install_scripts"
 "deploy/windows" = "_deploy/windows"
 

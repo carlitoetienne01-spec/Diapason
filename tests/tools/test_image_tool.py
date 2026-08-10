@@ -6,7 +6,7 @@ import builtins
 import sys
 from unittest.mock import MagicMock
 
-from openjarvis.tools.image_tool import ImageGenerateTool
+from diapason.tools.image_tool import ImageGenerateTool
 
 
 class TestImageGenerateTool:

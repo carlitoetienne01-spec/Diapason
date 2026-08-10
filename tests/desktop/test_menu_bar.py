@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from openjarvis.desktop import menu_bar
-from openjarvis.desktop.menu_bar import DictationMenuBar, build_menu, title_for
+from diapason.desktop import menu_bar
+from diapason.desktop.menu_bar import DictationMenuBar, build_menu, title_for
 
 
 def _labels(items):

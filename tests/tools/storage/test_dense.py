@@ -19,13 +19,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from openjarvis.tools.storage.dense import (
+from diapason.tools.storage.dense import (
     DenseMemory,
     MdChunk,
     chunk_markdown,
     dedupe_chunks,
 )
-from openjarvis.tools.storage.embeddings import OllamaEmbedder
+from diapason.tools.storage.embeddings import OllamaEmbedder
 
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "docs"
 _EMBED_MODEL = "nomic-embed-text"
@@ -238,7 +238,7 @@ class TestDedupeChunks:
 
     def test_dedupes_boilerplate_across_three_files(self):
         """Same blurb in 3+ files → keep one canonical, drop the rest."""
-        body = "openjarvis runs entirely on your hardware no cloud needed local first"
+        body = "diapason runs entirely on your hardware no cloud needed local first"
         chunks = [
             _mk(body, "docs/index.md"),
             _mk(body, "docs/downloads.md"),
@@ -285,7 +285,7 @@ class TestDedupeChunks:
         test uses a paragraph long enough to put Jaccard above 0.7.
         """
         common = (
-            "openjarvis is a personal ai platform that runs entirely on your "
+            "diapason is a personal ai platform that runs entirely on your "
             "own hardware no cloud apis required by default the project is "
             "open source apache 2 licensed and supports ollama vllm sglang "
             "and llama cpp inference engines with auto detection of your "
@@ -311,7 +311,7 @@ class TestDedupeChunks:
         ``Downloads`` vs ``Installation``) would have lower Jaccard.
         """
         body = (
-            "openjarvis runs entirely on your hardware no cloud needed "
+            "diapason runs entirely on your hardware no cloud needed "
             "local first foundation"
         )
         chunks = [
@@ -360,7 +360,7 @@ class TestDedupeChunks:
 
     def test_does_not_remove_more_than_corpus(self):
         """Sanity: removed_count <= input_count, output_count >= 1 per cluster."""
-        body = "boilerplate about how openjarvis runs entirely on your hardware locally"
+        body = "boilerplate about how diapason runs entirely on your hardware locally"
         chunks = [_mk(body, f"f{i}.md") for i in range(10)]
         survivors, report = dedupe_chunks(chunks, min_files_for_dup=3)
         # 10 files all duplicates → 1 survives

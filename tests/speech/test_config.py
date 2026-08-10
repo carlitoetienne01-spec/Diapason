@@ -1,6 +1,6 @@
 """Tests for speech configuration."""
 
-from openjarvis.core.config import JarvisConfig, SpeechConfig
+from diapason.core.config import JarvisConfig, SpeechConfig
 
 
 def test_speech_config_defaults():
@@ -23,6 +23,6 @@ def test_jarvis_config_has_speech():
 
 def test_jarvis_system_has_speech_backend():
     """JarvisSystem has a speech_backend attribute."""
-    from openjarvis.system import JarvisSystem
+    from diapason.system import JarvisSystem
 
     assert "speech_backend" in JarvisSystem.__dataclass_fields__

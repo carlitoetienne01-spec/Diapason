@@ -7,18 +7,18 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from openjarvis.agents._stubs import (
+from diapason.agents._stubs import (
     AgentContext,
     AgentResult,
     BaseAgent,
     ToolUsingAgent,
 )
-from openjarvis.cli.chat_cmd import _read_input, chat
-from openjarvis.core.config import JarvisConfig
-from openjarvis.core.events import Event, EventBus, EventType
-from openjarvis.core.registry import AgentRegistry, ToolRegistry
-from openjarvis.core.types import ToolCall, ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolSpec
+from diapason.cli.chat_cmd import _read_input, chat
+from diapason.core.config import JarvisConfig
+from diapason.core.events import Event, EventBus, EventType
+from diapason.core.registry import AgentRegistry, ToolRegistry
+from diapason.core.types import ToolCall, ToolResult
+from diapason.tools._stubs import BaseTool, ToolSpec
 
 
 class _SimpleChatAgent(BaseAgent):
@@ -107,9 +107,9 @@ class TestChatAgents:
         AgentRegistry.register_value("simple_chat_agent", _SimpleChatAgent)
 
         with (
-            patch("openjarvis.cli.chat_cmd.load_config", return_value=config),
-            patch("openjarvis.engine.get_engine", return_value=("mock", engine)),
-            patch("openjarvis.intelligence.register_builtin_models"),
+            patch("diapason.cli.chat_cmd.load_config", return_value=config),
+            patch("diapason.engine.get_engine", return_value=("mock", engine)),
+            patch("diapason.intelligence.register_builtin_models"),
         ):
             result = CliRunner().invoke(
                 chat,
@@ -170,11 +170,11 @@ class TestChatAgents:
         AgentRegistry.register_value("simple_chat_agent", _SimpleChatAgent)
 
         with (
-            patch("openjarvis.cli.chat_cmd.load_config", return_value=config),
-            patch("openjarvis.engine.get_engine", return_value=("mock", engine)),
-            patch("openjarvis.intelligence.register_builtin_models"),
+            patch("diapason.cli.chat_cmd.load_config", return_value=config),
+            patch("diapason.engine.get_engine", return_value=("mock", engine)),
+            patch("diapason.intelligence.register_builtin_models"),
             patch(
-                "openjarvis.memory.build_memory_service",
+                "diapason.memory.build_memory_service",
                 side_effect=_build_memory_service,
             ),
         ):
@@ -202,9 +202,9 @@ class TestChatAgents:
         ToolRegistry.register_value("dangerous_chat", _DangerousChatTool)
 
         with (
-            patch("openjarvis.cli.chat_cmd.load_config", return_value=config),
-            patch("openjarvis.engine.get_engine", return_value=("mock", engine)),
-            patch("openjarvis.intelligence.register_builtin_models"),
+            patch("diapason.cli.chat_cmd.load_config", return_value=config),
+            patch("diapason.engine.get_engine", return_value=("mock", engine)),
+            patch("diapason.intelligence.register_builtin_models"),
         ):
             result = CliRunner().invoke(
                 chat,

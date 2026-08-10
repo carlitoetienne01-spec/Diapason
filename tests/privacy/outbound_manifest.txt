@@ -38,6 +38,7 @@ cli/config_cmd.py
 cli/init_cmd.py
 cli/mine_cmd.py
 cli/model.py
+cli/serve_service_cmd.py
 connectors/dropbox.py
 connectors/embeddings.py
 connectors/gcalendar.py

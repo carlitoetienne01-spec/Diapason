@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from openjarvis.tools.file_read import FileReadTool
+from diapason.tools.file_read import FileReadTool
 
 
 class TestFileReadTool:

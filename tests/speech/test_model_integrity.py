@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from openjarvis.speech.model_integrity import (
+from diapason.speech.model_integrity import (
     ImplicitDownloadBlocked,
     guard_implicit_download,
     sha256_file,
@@ -87,13 +87,13 @@ def test_guard_message_points_to_the_explicit_command():
 
 def test_faster_whisper_refuses_silent_download_under_local_only():
     """First-use transcription must not quietly fetch a model in local-only."""
-    from openjarvis.speech.faster_whisper import FasterWhisperBackend
+    from diapason.speech.faster_whisper import FasterWhisperBackend
 
     backend = FasterWhisperBackend(model_size="base")
 
-    with patch("openjarvis.core.local_mode.local_only", return_value=True):
+    with patch("diapason.core.local_mode.local_only", return_value=True):
         with patch(
-            "openjarvis.speech.model_integrity.faster_whisper_cached",
+            "diapason.speech.model_integrity.faster_whisper_cached",
             return_value=False,
         ):
             with pytest.raises(ImplicitDownloadBlocked):

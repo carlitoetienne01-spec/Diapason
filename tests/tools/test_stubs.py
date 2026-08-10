@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.core.types import ToolCall, ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolExecutor, ToolSpec
+from diapason.core.events import EventBus, EventType
+from diapason.core.types import ToolCall, ToolResult
+from diapason.tools._stubs import BaseTool, ToolExecutor, ToolSpec
 
 # ---------------------------------------------------------------------------
 # Helpers

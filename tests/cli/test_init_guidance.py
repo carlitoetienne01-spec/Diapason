@@ -7,8 +7,8 @@ from unittest import mock
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
-from openjarvis.cli.init_cmd import _next_steps_text
+from diapason.cli import cli
+from diapason.cli.init_cmd import _next_steps_text
 
 _NO_DL = "--no-download"
 
@@ -19,9 +19,9 @@ class TestInitShowsNextSteps:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "llamacpp", _NO_DL])
         assert result.exit_code == 0
@@ -34,9 +34,9 @@ class TestInitShowsNextSteps:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "llamacpp", _NO_DL])
         assert result.exit_code == 0
@@ -94,9 +94,9 @@ class TestMinimalConfig:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "ollama", _NO_DL])
         assert result.exit_code == 0
@@ -112,9 +112,9 @@ class TestMinimalConfig:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(
                 cli,
@@ -133,9 +133,9 @@ class TestInitDownloadPrompt:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(
                 cli, ["init", "--engine", "ollama"], input="n\n"
@@ -148,9 +148,9 @@ class TestInitDownloadPrompt:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "ollama", _NO_DL])
         assert result.exit_code == 0
@@ -162,10 +162,10 @@ class TestInitEmptyModelFallback:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.recommend_model", return_value=""),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.recommend_model", return_value=""),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "llamacpp"])
         assert result.exit_code == 0
@@ -193,13 +193,13 @@ class TestInitDownloadDispatch:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
             mock.patch(
-                "openjarvis.cli.init_cmd.ollama_pull",
+                "diapason.cli.init_cmd.ollama_pull",
                 return_value=True,
             ) as mock_pull,
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(
                 cli, ["init", "--engine", "ollama"], input="y\n"
@@ -211,9 +211,9 @@ class TestInitDownloadDispatch:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner"),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner"),
         ):
             result = CliRunner().invoke(cli, ["init", "--engine", "vllm"], input="y\n")
         assert result.exit_code == 0
@@ -225,11 +225,11 @@ class TestInitPrivacyHook:
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
         with (
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
-            mock.patch("openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
-            mock.patch("openjarvis.cli.init_cmd.PrivacyScanner") as MockScanner,
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
+            mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path),
+            mock.patch("diapason.cli.init_cmd.PrivacyScanner") as MockScanner,
         ):
-            from openjarvis.cli.scan_cmd import ScanResult
+            from diapason.cli.scan_cmd import ScanResult
 
             instance = MockScanner.return_value
             instance.run_quick.return_value = [

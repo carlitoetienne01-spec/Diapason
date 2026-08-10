@@ -20,7 +20,7 @@ def _isolate_traces_db(tmp_path, monkeypatch):
     wrapping it to rewrite ``traces.db_path`` only affects calls made during
     the test — there is no global leak.
     """
-    from openjarvis.core import config as _config
+    from diapason.core import config as _config
 
     real_load_config = _config.load_config
     db_path = str(tmp_path / "traces.db")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.core.config import (
+from diapason.core.config import (
     AgentConfig,
     ChannelConfig,
     EngineConfig,
@@ -424,7 +424,7 @@ class TestSandboxConfig:
     def test_defaults(self) -> None:
         sc = SandboxConfig()
         assert sc.enabled is False
-        assert sc.image == "openjarvis-sandbox:latest"
+        assert sc.image == "diapason-sandbox:latest"
         assert sc.timeout == 300
         assert sc.workspace == ""
         assert sc.mount_allowlist_path == ""
@@ -502,7 +502,7 @@ class TestSchedulerConfig:
 class TestApplyTomlSectionListNormalization:
     def test_apply_toml_section_list_to_str_field(self) -> None:
         """TOML arrays assigned to str-typed fields should be joined with ','."""
-        from openjarvis.core.config import ToolsConfig, _apply_toml_section
+        from diapason.core.config import ToolsConfig, _apply_toml_section
 
         target = ToolsConfig()
         tools = ["code_interpreter", "web_search", "file_read"]
@@ -513,7 +513,7 @@ class TestApplyTomlSectionListNormalization:
     def test_apply_toml_section_list_to_property_setter(self) -> None:
         """TOML arrays passed to backward-compat property setters should be
         normalized to comma-separated strings, not passed as raw lists."""
-        from openjarvis.core.config import _apply_toml_section
+        from diapason.core.config import _apply_toml_section
 
         target = LearningConfig()
         _apply_toml_section(
@@ -527,7 +527,7 @@ class TestApplyTomlSectionListNormalization:
 
     def test_apply_toml_section_agent_tools_list(self) -> None:
         """Agent tools should work as a TOML array."""
-        from openjarvis.core.config import _apply_toml_section
+        from diapason.core.config import _apply_toml_section
 
         target = AgentConfig()
         _apply_toml_section(
@@ -568,7 +568,7 @@ class TestWhatsAppBaileysChannelConfig:
 
 
 def test_mining_config_absent_means_none(tmp_path):
-    from openjarvis.core.config import load_config
+    from diapason.core.config import load_config
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("")  # empty config
@@ -579,8 +579,8 @@ def test_mining_config_absent_means_none(tmp_path):
 def test_mining_config_solo_parsed(tmp_path):
     from pathlib import Path
 
-    from openjarvis.core.config import load_config
-    from openjarvis.mining._stubs import SoloTarget
+    from diapason.core.config import load_config
+    from diapason.mining._stubs import SoloTarget
 
     src = Path(__file__).parent.parent / "mining" / "fixtures" / "config_minimal.toml"
     target = tmp_path / "config.toml"
@@ -598,8 +598,8 @@ def test_mining_config_solo_parsed(tmp_path):
 def test_mining_config_pool_parsed_as_pool_target(tmp_path):
     from pathlib import Path
 
-    from openjarvis.core.config import load_config
-    from openjarvis.mining._stubs import PoolTarget
+    from diapason.core.config import load_config
+    from diapason.mining._stubs import PoolTarget
 
     src = Path(__file__).parent.parent / "mining" / "fixtures" / "config_pool_v2.toml"
     target = tmp_path / "config.toml"

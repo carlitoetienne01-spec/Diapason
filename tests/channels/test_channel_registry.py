@@ -6,8 +6,8 @@ from typing import List
 
 import pytest
 
-from openjarvis.channels._stubs import BaseChannel, ChannelHandler, ChannelStatus
-from openjarvis.core.registry import ChannelRegistry
+from diapason.channels._stubs import BaseChannel, ChannelHandler, ChannelStatus
+from diapason.core.registry import ChannelRegistry
 
 
 class TestChannelRegistry:

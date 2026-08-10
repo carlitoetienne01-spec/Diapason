@@ -7,7 +7,7 @@ import sys
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
 
-from openjarvis.cli.scan_cmd import PrivacyScanner, ScanResult
+from diapason.cli.scan_cmd import PrivacyScanner, ScanResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -446,11 +446,11 @@ class TestJsonOutput:
     def test_json_output_structure(self) -> None:
         from click.testing import CliRunner
 
-        from openjarvis.cli.scan_cmd import scan
+        from diapason.cli.scan_cmd import scan
 
         runner = CliRunner()
         with patch(
-            "openjarvis.cli.scan_cmd.PrivacyScanner.run_all",
+            "diapason.cli.scan_cmd.PrivacyScanner.run_all",
             return_value=[
                 ScanResult("Test", "ok", "all good", "all"),
             ],

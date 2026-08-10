@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.core.config import MemoryFilesConfig, SystemPromptConfig
+from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
 
 
 def test_base_agent_uses_builder(tmp_path: Path):
@@ -11,7 +11,7 @@ def test_base_agent_uses_builder(tmp_path: Path):
     memory = tmp_path / "MEMORY.md"
     memory.write_text("- User likes Python")
 
-    from openjarvis.prompt.builder import SystemPromptBuilder
+    from diapason.prompt.builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(
         agent_template="You are a helpful assistant.",

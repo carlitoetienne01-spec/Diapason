@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from openjarvis.sandbox.mount_security import (
+from diapason.sandbox.mount_security import (
     DEFAULT_BLOCKED_PATTERNS,
     AllowedRoot,
     MountAllowlist,

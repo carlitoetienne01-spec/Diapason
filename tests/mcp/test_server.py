@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.mcp.protocol import (
+from diapason.mcp.protocol import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
     MCPRequest,
 )
-from openjarvis.mcp.server import MCPServer
-from openjarvis.tools.calculator import CalculatorTool
-from openjarvis.tools.think import ThinkTool
+from diapason.mcp.server import MCPServer
+from diapason.tools.calculator import CalculatorTool
+from diapason.tools.think import ThinkTool
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ class TestMCPServer:
         assert "protocolVersion" in result
         assert "capabilities" in result
         assert "serverInfo" in result
-        assert result["serverInfo"]["name"] == "openjarvis"
+        assert result["serverInfo"]["name"] == "diapason"
 
     def test_initialize_capabilities(self, server):
         req = MCPRequest(method="initialize", id=1)

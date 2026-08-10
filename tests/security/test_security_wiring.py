@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from openjarvis.agents._stubs import AgentResult, ToolUsingAgent
-from openjarvis.core.config import (
+from diapason.agents._stubs import AgentResult, ToolUsingAgent
+from diapason.core.config import (
     CapabilitiesConfig,
     JarvisConfig,
     SecurityConfig,
 )
-from openjarvis.core.events import EventBus
-from openjarvis.security import setup_security
+from diapason.core.events import EventBus
+from diapason.security import setup_security
 
 
 class _ConcreteAgent(ToolUsingAgent):

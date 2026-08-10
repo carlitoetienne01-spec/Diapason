@@ -7,10 +7,10 @@ from unittest import mock
 
 import pytest
 
-from openjarvis.core.registry import EngineRegistry
-from openjarvis.core.types import Message, Role
-from openjarvis.engine._base import EngineConnectionError
-from openjarvis.engine.cloud import (
+from diapason.core.registry import EngineRegistry
+from diapason.core.types import Message, Role
+from diapason.engine._base import EngineConnectionError
+from diapason.engine.cloud import (
     _MINIMAX_MODELS,
     PRICING,
     CloudEngine,

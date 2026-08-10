@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.core.types import RoutingContext
-from openjarvis.learning._stubs import QueryAnalyzer, RouterPolicy
-from openjarvis.learning.routing.router import DefaultQueryAnalyzer
+from diapason.core.types import RoutingContext
+from diapason.learning._stubs import QueryAnalyzer, RouterPolicy
+from diapason.learning.routing.router import DefaultQueryAnalyzer
 
 
 class _DummyRouter(RouterPolicy):

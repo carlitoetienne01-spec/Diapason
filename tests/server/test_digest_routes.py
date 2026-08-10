@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-pytest.importorskip("fastapi", reason="openjarvis[server] not installed")
+pytest.importorskip("fastapi", reason="diapason[server] not installed")
 
-from openjarvis.agents.digest_store import DigestArtifact, DigestStore
+from diapason.agents.digest_store import DigestArtifact, DigestStore
 
 
 @pytest.fixture()
@@ -38,8 +38,8 @@ def _make_app(db_path: str):
 
     from fastapi import FastAPI
 
-    from openjarvis.agents.digest_store import DigestStore
-    from openjarvis.server.digest_routes import create_digest_router
+    from diapason.agents.digest_store import DigestStore
+    from diapason.server.digest_routes import create_digest_router
 
     # Patch get_today to fall back to get_latest — avoids timezone issues in CI
     original_get_today = DigestStore.get_today
@@ -82,7 +82,7 @@ def test_get_digest_404(tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from openjarvis.server.digest_routes import create_digest_router
+    from diapason.server.digest_routes import create_digest_router
 
     app = FastAPI()
     app.include_router(create_digest_router(db_path=str(tmp_path / "empty.db")))

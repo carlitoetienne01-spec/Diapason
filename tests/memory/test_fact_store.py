@@ -1,4 +1,4 @@
-"""Tests for the persistent fact store (openjarvis.memory.store)."""
+"""Tests for the persistent fact store (diapason.memory.store)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from openjarvis.core.registry import FactStoreRegistry
-from openjarvis.memory.store import LocalFactStore, create_fact_store
+from diapason.core.registry import FactStoreRegistry
+from diapason.memory.store import LocalFactStore, create_fact_store
 
 
 def test_add_and_list(tmp_path):

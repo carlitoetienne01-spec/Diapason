@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 class TestJarvisDirectExtendedFields:
     def test_generate_full_includes_framework_and_commit(self) -> None:
-        from openjarvis.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
 
         # Build the backend without invoking __init__ (which would spin up an
         # engine); set required attrs directly. JarvisDirectBackend.generate_full
@@ -34,7 +34,7 @@ class TestJarvisDirectExtendedFields:
             temperature=0.0,
             max_tokens=2048,
         )
-        assert result["framework"] == "openjarvis"
+        assert result["framework"] == "diapason"
         assert "framework_commit" in result
         assert result["tool_calls"] == 0  # direct = no tool calls
         assert result["turn_count"] == 1  # direct = single turn

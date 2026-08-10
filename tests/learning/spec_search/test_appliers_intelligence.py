@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.learning.spec_search.execute.base import ApplyContext
-from openjarvis.learning.spec_search.models import (
+from diapason.learning.spec_search.execute.base import ApplyContext
+from diapason.learning.spec_search.models import (
     Edit,
     EditOp,
     EditPillar,
@@ -62,7 +62,7 @@ class TestSetModelForQueryClassApplier:
     """Tests for SetModelForQueryClassApplier."""
 
     def test_validate_ok(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.intelligence import (
+        from diapason.learning.spec_search.execute.appliers.intelligence import (
             SetModelForQueryClassApplier,
         )
 
@@ -72,7 +72,7 @@ class TestSetModelForQueryClassApplier:
         assert result.ok
 
     def test_apply_updates_config(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.intelligence import (
+        from diapason.learning.spec_search.execute.appliers.intelligence import (
             SetModelForQueryClassApplier,
         )
 
@@ -83,7 +83,7 @@ class TestSetModelForQueryClassApplier:
         assert "qwen2.5-coder:14b" in content
 
     def test_apply_adds_new_query_class(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.intelligence import (
+        from diapason.learning.spec_search.execute.appliers.intelligence import (
             SetModelForQueryClassApplier,
         )
 
@@ -100,7 +100,7 @@ class TestSetModelParamApplier:
     """Tests for SetModelParamApplier."""
 
     def test_validate_ok(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.intelligence import (
+        from diapason.learning.spec_search.execute.appliers.intelligence import (
             SetModelParamApplier,
         )
 
@@ -110,7 +110,7 @@ class TestSetModelParamApplier:
         assert result.ok
 
     def test_apply_writes_param(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.intelligence import (
+        from diapason.learning.spec_search.execute.appliers.intelligence import (
             SetModelParamApplier,
         )
 

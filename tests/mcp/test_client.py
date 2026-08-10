@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.mcp.client import MCPClient
-from openjarvis.mcp.protocol import MCPError
-from openjarvis.mcp.server import MCPServer
-from openjarvis.mcp.transport import InProcessTransport
-from openjarvis.tools._stubs import ToolSpec
-from openjarvis.tools.calculator import CalculatorTool
-from openjarvis.tools.think import ThinkTool
+from diapason.mcp.client import MCPClient
+from diapason.mcp.protocol import MCPError
+from diapason.mcp.server import MCPServer
+from diapason.mcp.transport import InProcessTransport
+from diapason.tools._stubs import ToolSpec
+from diapason.tools.calculator import CalculatorTool
+from diapason.tools.think import ThinkTool
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ class TestMCPClient:
         result = client.initialize()
         assert "protocolVersion" in result
         assert "serverInfo" in result
-        assert result["serverInfo"]["name"] == "openjarvis"
+        assert result["serverInfo"]["name"] == "diapason"
         assert client._initialized is True
 
     def test_initialize_sets_capabilities(self, client):

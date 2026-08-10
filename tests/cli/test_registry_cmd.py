@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
-from openjarvis.core.registry import (
+from diapason.cli import cli
+from diapason.core.registry import (
     ToolRegistry,
 )
 
@@ -48,7 +48,7 @@ class TestRegistryCmd:
     def test_registry_show_tool_registry(self) -> None:
         """Test that showing the tool registry displays entries."""
         # Trigger tool registration
-        import openjarvis.tools  # noqa: F401
+        import diapason.tools  # noqa: F401
 
         result = CliRunner().invoke(cli, ["registry", "show", "tool"])
         assert result.exit_code == 0
@@ -58,7 +58,7 @@ class TestRegistryCmd:
     def test_registry_show_tool_registry_verbose(self) -> None:
         """Test that showing the tool registry with verbose flag shows details."""
         # Trigger tool registration
-        import openjarvis.tools  # noqa: F401
+        import diapason.tools  # noqa: F401
 
         result = CliRunner().invoke(cli, ["registry", "show", "tool", "-v"])
         assert result.exit_code == 0
@@ -73,7 +73,7 @@ class TestRegistryCmd:
     def test_registry_show_accepts_aliases(self) -> None:
         """Test that registry show accepts various aliases."""
         # Trigger tool registration
-        import openjarvis.tools  # noqa: F401
+        import diapason.tools  # noqa: F401
 
         # Test with 'tools' alias
         result = CliRunner().invoke(cli, ["registry", "show", "tools"])
@@ -112,7 +112,7 @@ class TestRegistryCmd:
         from unittest.mock import patch
 
         with patch(
-            "openjarvis.core.registry.ToolRegistry.keys",
+            "diapason.core.registry.ToolRegistry.keys",
             side_effect=Exception("Test error"),
         ):
             result = CliRunner().invoke(cli, ["registry", "show", "tool"])
@@ -134,7 +134,7 @@ class TestRegistryCmd:
         from unittest.mock import patch
 
         # Patch the entire import to raise an exception
-        with patch.dict("sys.modules", {"openjarvis.core.registry": None}):
+        with patch.dict("sys.modules", {"diapason.core.registry": None}):
             # This tests the outer exception handler
             result = CliRunner().invoke(cli, ["registry", "show", "tool"])
             assert result.exit_code == 0

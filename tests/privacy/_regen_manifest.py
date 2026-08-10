@@ -23,7 +23,7 @@ _HEADER = (
 
 def main() -> None:
     here = Path(__file__).resolve().parent
-    src = here.parent.parent / "src" / "openjarvis"
+    src = here.parent.parent / "src" / "diapason"
     mods = sorted(scan_outbound_modules(src))
     (here / "outbound_manifest.txt").write_text(
         _HEADER + "\n".join(mods) + "\n", encoding="utf-8"

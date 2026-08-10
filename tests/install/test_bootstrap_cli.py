@@ -12,7 +12,7 @@ else:
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
+from diapason.cli import cli
 
 
 def test_bootstrap_command_writes_config(

@@ -1,5 +1,6 @@
 <div align="center">
-  <img alt="OpenJarvis" src="assets/OpenJarvis_Horizontal_Logo.png" width="400">
+  <h1>Diapason</h1>
+  <p><em>(dérivé d'OpenJarvis — Personal AI, On Personal Devices)</em></p>
 
   <p><i>Personal AI, On Personal Devices.</i></p>
 

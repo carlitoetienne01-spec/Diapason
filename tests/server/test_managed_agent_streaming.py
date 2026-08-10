@@ -13,8 +13,8 @@ import pytest
 
 pytest.importorskip("fastapi")  # agent_manager_routes imports FastAPI at module load
 
-from openjarvis.core.types import Role  # noqa: E402
-from openjarvis.server.agent_manager_routes import (  # noqa: E402
+from diapason.core.types import Role  # noqa: E402
+from diapason.server.agent_manager_routes import (  # noqa: E402
     _build_managed_system_prompt,
     _instantiate_managed_tool,
     _replay_history_messages,
@@ -182,7 +182,7 @@ class TestBuildManagedSystemPrompt:
     """
 
     def _config_with_soul(self, tmp_path):
-        from openjarvis.core.config import (
+        from diapason.core.config import (
             MemoryFilesConfig,
             SystemPromptConfig,
         )
@@ -207,7 +207,7 @@ class TestBuildManagedSystemPrompt:
         assert "You are a helpful assistant." in result
 
     def test_agent_template_is_preserved(self, tmp_path):
-        from openjarvis.core.config import MemoryFilesConfig, SystemPromptConfig
+        from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
 
         # No persona files configured (all default paths).
         app_config = SimpleNamespace(
@@ -226,8 +226,8 @@ class TestBuildManagedSystemPrompt:
         constructed SystemPromptBuilder produces (same path the CLI uses),
         so streaming chat and `jarvis ask` assemble the prompt identically.
         """
-        from openjarvis.core.config import MemoryFilesConfig, SystemPromptConfig
-        from openjarvis.prompt.builder import SystemPromptBuilder
+        from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
+        from diapason.prompt.builder import SystemPromptBuilder
 
         app_config = SimpleNamespace(
             memory_files=MemoryFilesConfig(),

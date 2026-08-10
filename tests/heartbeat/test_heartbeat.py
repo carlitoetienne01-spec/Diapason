@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from openjarvis.heartbeat.markdown import (
+from diapason.heartbeat.markdown import (
     append_task,
     clear_done,
     mark_done,
@@ -13,17 +13,17 @@ from openjarvis.heartbeat.markdown import (
     pending_now,
     read_heartbeat,
 )
-from openjarvis.heartbeat.quiet import in_quiet_hours
-from openjarvis.heartbeat.runner import run_heartbeat_tick
-from openjarvis.heartbeat.routines import (
+from diapason.heartbeat.quiet import in_quiet_hours
+from diapason.heartbeat.runner import run_heartbeat_tick
+from diapason.heartbeat.routines import (
     Routine,
     ensure_routines_file,
     get_routine,
     load_routines,
     set_routine_enabled,
 )
-from openjarvis.heartbeat.kinds import run_routine
-from openjarvis.heartbeat.sync import HEARTBEAT_TASK_ID, sync_heartbeat_and_routines
+from diapason.heartbeat.kinds import run_routine
+from diapason.heartbeat.sync import HEARTBEAT_TASK_ID, sync_heartbeat_and_routines
 
 
 SAMPLE = """# HEARTBEAT
@@ -133,9 +133,9 @@ def test_run_prompt_silent(tmp_path: Path):
 
 
 def test_sync_creates_tasks(tmp_path: Path):
-    from openjarvis.core.config import HeartbeatConfig, RoutinesConfig, JarvisConfig
-    from openjarvis.scheduler.scheduler import TaskScheduler
-    from openjarvis.scheduler.store import SchedulerStore
+    from diapason.core.config import HeartbeatConfig, RoutinesConfig, JarvisConfig
+    from diapason.scheduler.scheduler import TaskScheduler
+    from diapason.scheduler.store import SchedulerStore
 
     ws = tmp_path / "ws"
     db = tmp_path / "sched.db"

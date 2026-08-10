@@ -2,17 +2,17 @@
 
 from unittest.mock import patch
 
-from openjarvis.core.config import JarvisConfig
+from diapason.core.config import JarvisConfig
 
 
 def test_get_speech_backend_explicit():
     """Explicit backend selection works."""
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     config = JarvisConfig()
     config.speech.backend = "faster-whisper"
 
-    with patch("openjarvis.speech._discovery._create_backend") as mock_create:
+    with patch("diapason.speech._discovery._create_backend") as mock_create:
         mock_backend = type(
             "MockBackend",
             (),
@@ -30,7 +30,7 @@ def test_get_speech_backend_explicit():
 
 def test_get_speech_backend_returns_none_if_nothing_available():
     """Returns None when no backend can be created."""
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     config = JarvisConfig()
     config.speech.backend = "nonexistent"
@@ -41,7 +41,7 @@ def test_get_speech_backend_returns_none_if_nothing_available():
 
 def test_auto_discovery_priority():
     """Auto mode tries backends in priority order."""
-    from openjarvis.speech._discovery import DISCOVERY_ORDER
+    from diapason.speech._discovery import DISCOVERY_ORDER
 
     assert DISCOVERY_ORDER[0] == "faster-whisper"
     assert "openai" in DISCOVERY_ORDER
@@ -58,7 +58,7 @@ def test_auto_discovery_priority():
 # merely that its result is discarded.
 
 
-_CREATE = "openjarvis.speech._discovery._create_backend"
+_CREATE = "diapason.speech._discovery._create_backend"
 
 
 def _local_only_config(backend: str = "auto") -> JarvisConfig:
@@ -69,7 +69,7 @@ def _local_only_config(backend: str = "auto") -> JarvisConfig:
 
 
 def test_local_only_never_falls_back_to_cloud_when_the_local_backend_fails():
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     attempted: list[str] = []
 
@@ -87,7 +87,7 @@ def test_local_only_never_falls_back_to_cloud_when_the_local_backend_fails():
 
 def test_local_only_refuses_an_explicitly_configured_cloud_backend():
     """An explicit choice does not outrank the global switch."""
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     with patch(_CREATE) as mock_create:
         assert get_speech_backend(_local_only_config("deepgram")) is None
@@ -96,7 +96,7 @@ def test_local_only_refuses_an_explicitly_configured_cloud_backend():
 
 def test_local_only_still_returns_a_working_local_backend():
     """Counter-proof: the guard refuses the cloud, not the feature."""
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     sentinel = object()
     with patch(_CREATE, return_value=sentinel):
@@ -105,7 +105,7 @@ def test_local_only_still_returns_a_working_local_backend():
 
 def test_cloud_fallback_still_works_when_local_only_is_off():
     """Counter-proof: default behaviour is unchanged for cloud users."""
-    from openjarvis.speech._discovery import get_speech_backend
+    from diapason.speech._discovery import get_speech_backend
 
     attempted: list[str] = []
 

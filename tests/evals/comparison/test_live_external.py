@@ -36,7 +36,7 @@ class TestLiveExternal:
     def test_hermes_runner_emits_valid_json(self, tmp_path: Path) -> None:
         runner = (
             Path(__file__).resolve().parents[3]
-            / "src/openjarvis/evals/backends/external/_runners/hermes_runner.py"
+            / "src/diapason/evals/backends/external/_runners/hermes_runner.py"
         )
         out_json = tmp_path / "out.json"
         env = dict(os.environ)
@@ -74,7 +74,7 @@ class TestLiveExternal:
     def test_openclaw_runner_emits_valid_json(self, tmp_path: Path) -> None:
         runner = (
             Path(__file__).resolve().parents[3]
-            / "src/openjarvis/evals/backends/external/_runners/openclaw_runner.mjs"
+            / "src/diapason/evals/backends/external/_runners/openclaw_runner.mjs"
         )
         if not runner.exists():
             pytest.skip("openclaw_runner.mjs not present")

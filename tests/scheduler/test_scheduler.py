@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openjarvis.scheduler.scheduler import ScheduledTask, TaskScheduler
-from openjarvis.scheduler.store import SchedulerStore
+from diapason.scheduler.scheduler import ScheduledTask, TaskScheduler
+from diapason.scheduler.store import SchedulerStore
 
 
 @pytest.fixture()

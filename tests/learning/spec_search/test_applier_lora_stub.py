@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from openjarvis.learning.spec_search.execute.base import ApplyContext
-from openjarvis.learning.spec_search.models import (
+from diapason.learning.spec_search.execute.base import ApplyContext
+from diapason.learning.spec_search.models import (
     Edit,
     EditOp,
     EditPillar,
@@ -32,7 +32,7 @@ class TestLoraStubApplier:
     """Tests for LoraStubApplier."""
 
     def test_validate_returns_not_ok(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.lora_stub import (
+        from diapason.learning.spec_search.execute.appliers.lora_stub import (
             LoraStubApplier,
         )
 
@@ -43,7 +43,7 @@ class TestLoraStubApplier:
         assert "v2" in result.reason.lower() or "deferred" in result.reason.lower()
 
     def test_apply_raises_not_implemented(self, tmp_path: Path) -> None:
-        from openjarvis.learning.spec_search.execute.appliers.lora_stub import (
+        from diapason.learning.spec_search.execute.appliers.lora_stub import (
             LoraStubApplier,
         )
 

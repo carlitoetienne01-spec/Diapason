@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.evals.core.types import EvalResult, RunConfig, RunSummary
+from diapason.evals.core.types import EvalResult, RunConfig, RunSummary
 
 # ---------------------------------------------------------------------------
 # FLOPs estimation in EvalResult
@@ -78,8 +78,8 @@ class TestRunnerFlopsComputation:
 
     def test_flops_computed_from_metadata(self):
         """When param_count_b is in metadata, FLOPs are estimated."""
-        from openjarvis.evals.core.runner import EvalRunner
-        from openjarvis.evals.core.types import EvalRecord
+        from diapason.evals.core.runner import EvalRunner
+        from diapason.evals.core.types import EvalRecord
 
         config = RunConfig(
             benchmark="test",
@@ -121,8 +121,8 @@ class TestRunnerFlopsComputation:
 
     def test_flops_zero_without_metadata(self):
         """When no param_count_b in metadata, FLOPs should be 0."""
-        from openjarvis.evals.core.runner import EvalRunner
-        from openjarvis.evals.core.types import EvalRecord
+        from diapason.evals.core.runner import EvalRunner
+        from diapason.evals.core.types import EvalRecord
 
         config = RunConfig(
             benchmark="test",
@@ -157,8 +157,8 @@ class TestRunnerFlopsComputation:
 
     def test_flops_uses_active_params_for_moe(self):
         """For MoE models, FLOPs should use active_params_b, not total."""
-        from openjarvis.evals.core.runner import EvalRunner
-        from openjarvis.evals.core.types import EvalRecord
+        from diapason.evals.core.runner import EvalRunner
+        from diapason.evals.core.types import EvalRecord
 
         config = RunConfig(
             benchmark="test",
@@ -207,7 +207,7 @@ class TestSummaryToDict:
     """Test that _summary_to_dict includes the telemetry_summary section."""
 
     def test_telemetry_summary_present(self):
-        from openjarvis.evals.core.runner import _summary_to_dict
+        from diapason.evals.core.runner import _summary_to_dict
 
         s = RunSummary(
             benchmark="test",
@@ -252,7 +252,7 @@ class TestSummaryToDict:
         assert ts["ipj"] == 0.016
 
     def test_flops_fields_in_summary_dict(self):
-        from openjarvis.evals.core.runner import _summary_to_dict
+        from diapason.evals.core.runner import _summary_to_dict
 
         s = RunSummary(
             benchmark="test",
@@ -283,7 +283,7 @@ class TestFlushResult:
     """Test that _flush_result includes estimated_flops in JSONL output."""
 
     def test_estimated_flops_in_jsonl(self, tmp_path):
-        from openjarvis.evals.core.runner import EvalRunner
+        from diapason.evals.core.runner import EvalRunner
 
         config = RunConfig(
             benchmark="test",
@@ -322,7 +322,7 @@ class TestResultToTraceDict:
     """Test that _result_to_trace_dict includes estimated_flops."""
 
     def test_estimated_flops_in_trace(self):
-        from openjarvis.evals.core.runner import _result_to_trace_dict
+        from diapason.evals.core.runner import _result_to_trace_dict
 
         result = EvalResult(
             record_id="test-1",
@@ -342,10 +342,10 @@ class TestResultToTraceDict:
 class TestDirectBackendGpuMetrics:
     """Verify JarvisDirectBackend sets gpu_metrics on config."""
 
-    @patch("openjarvis.system.SystemBuilder")
+    @patch("diapason.system.SystemBuilder")
     def test_gpu_metrics_propagated(self, mock_builder_cls):
         """When gpu_metrics=True, the builder config should be updated."""
-        from openjarvis.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
 
         mock_builder = MagicMock()
         mock_builder_cls.return_value = mock_builder
@@ -370,10 +370,10 @@ class TestDirectBackendGpuMetrics:
         # Verify gpu_metrics was set to True on config
         assert mock_config.telemetry.gpu_metrics is True
 
-    @patch("openjarvis.system.SystemBuilder")
+    @patch("diapason.system.SystemBuilder")
     def test_gpu_metrics_not_set_when_false(self, mock_builder_cls):
         """When gpu_metrics=False, the builder config should not be touched."""
-        from openjarvis.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
 
         mock_builder = MagicMock()
         mock_builder_cls.return_value = mock_builder
@@ -408,7 +408,7 @@ class TestTauBenchTelemetryPassthrough:
 
     def test_set_engine_config_stores_flags(self):
         """set_engine_config should store telemetry and gpu_metrics."""
-        from openjarvis.evals.datasets.taubench import TauBenchDataset
+        from diapason.evals.datasets.taubench import TauBenchDataset
 
         ds = TauBenchDataset.__new__(TauBenchDataset)
         ds._domains = ["airline"]
@@ -432,11 +432,11 @@ class TestTauBenchTelemetryPassthrough:
         assert ds._telemetry is True
         assert ds._gpu_metrics is True
 
-    @patch("openjarvis.evals.execution.taubench_env.TauBenchTaskEnv")
+    @patch("diapason.evals.execution.taubench_env.TauBenchTaskEnv")
     def test_create_task_env_passes_flags(self, mock_env_cls):
         """create_task_env should forward telemetry flags."""
-        from openjarvis.evals.core.types import EvalRecord
-        from openjarvis.evals.datasets.taubench import TauBenchDataset
+        from diapason.evals.core.types import EvalRecord
+        from diapason.evals.datasets.taubench import TauBenchDataset
 
         ds = TauBenchDataset.__new__(TauBenchDataset)
         ds._domains = ["airline"]
@@ -482,8 +482,8 @@ class TestExpandSuiteModelMetadata:
     """Verify expand_suite passes param_count_b and active_params_b to RunConfig."""
 
     def test_metadata_includes_params(self):
-        from openjarvis.evals.core.config import expand_suite
-        from openjarvis.evals.core.types import (
+        from diapason.evals.core.config import expand_suite
+        from diapason.evals.core.types import (
             BenchmarkConfig,
             DefaultsConfig,
             EvalSuiteConfig,
@@ -536,8 +536,8 @@ class TestTelemetryEndToEnd:
 
     def test_telemetry_fields_populated(self):
         """When backend returns telemetry data, EvalResult captures it."""
-        from openjarvis.evals.core.runner import EvalRunner
-        from openjarvis.evals.core.types import EvalRecord
+        from diapason.evals.core.runner import EvalRunner
+        from diapason.evals.core.types import EvalRecord
 
         config = RunConfig(
             benchmark="test",

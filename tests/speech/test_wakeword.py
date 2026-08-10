@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from openjarvis.speech.wake_phrases import has_wake_word, strip_wake_word
-from openjarvis.speech.wakeword import WakeListenConfig, WakeWordListener
+from diapason.speech.wake_phrases import has_wake_word, strip_wake_word
+from diapason.speech.wakeword import WakeListenConfig, WakeWordListener
 
 
 def test_has_wake_word_en_fr():
@@ -30,7 +30,7 @@ def test_strip_wake_word():
 
 
 def test_finalize_wake_command(monkeypatch):
-    from openjarvis.desktop import voice_commands as vc
+    from diapason.desktop import voice_commands as vc
 
     monkeypatch.setattr(
         vc,
@@ -52,7 +52,7 @@ def test_finalize_wake_command(monkeypatch):
 
 
 def test_finalize_bare_wake_suggests_talk(monkeypatch):
-    from openjarvis.desktop.voice_commands import finalize_dictation
+    from diapason.desktop.voice_commands import finalize_dictation
 
     out = finalize_dictation("Hey Jarvis", polish=True, llm_polish=False, use_dictionary=False)
     assert out["mode"] == "wake"
@@ -85,8 +85,8 @@ def test_listener_cooldown():
 
 def test_trigger_poll_route(tmp_path: Path):
     from fastapi.testclient import TestClient
-    from openjarvis.channels.local_trigger import LocalTriggerChannel
-    from openjarvis.server.trigger_routes import create_trigger_router
+    from diapason.channels.local_trigger import LocalTriggerChannel
+    from diapason.server.trigger_routes import create_trigger_router
 
     path = tmp_path / "t.jsonl"
     ch = LocalTriggerChannel(path=path)

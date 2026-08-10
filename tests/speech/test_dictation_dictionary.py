@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from openjarvis.desktop.voice_commands import finalize_dictation, parse_voice_command
-from openjarvis.speech.dictate_polish import polish_dictation, polish_pipeline
-from openjarvis.speech.dictation_dictionary import (
+from diapason.desktop.voice_commands import finalize_dictation, parse_voice_command
+from diapason.speech.dictate_polish import polish_dictation, polish_pipeline
+from diapason.speech.dictation_dictionary import (
     DictionaryEntry,
     apply_dictionary,
     save_dictionary,
 )
-from openjarvis.speech.llm_polish import llm_polish_text
+from diapason.speech.llm_polish import llm_polish_text
 
 
 def test_polish_removes_fillers_en_fr():
@@ -89,7 +89,7 @@ def test_command_untouched_by_polish():
 def test_command_with_filler_still_command():
     # Filler strip retry for command parse
     with patch(
-        "openjarvis.desktop.voice_commands.execute_voice_action",
+        "diapason.desktop.voice_commands.execute_voice_action",
         return_value={"handled": True, "kind": "focus_app", "success": True},
     ):
         cmd = finalize_dictation("um open Spotify", polish=True, llm_polish=False)
@@ -122,7 +122,7 @@ def test_llm_polish_mock_engine():
     engine.engine_id = "ollama"
     engine.is_cloud = False
     engine.generate.return_value = {"content": "Hello world, this is clean."}
-    with patch("openjarvis.core.config.load_config") as load:
+    with patch("diapason.core.config.load_config") as load:
         cfg = MagicMock()
         cfg.intelligence.default_model = "test-model"
         cfg.engine.default = "ollama"
@@ -147,7 +147,7 @@ def test_llm_polish_timeout_returns_none():
         return {"content": "late"}
 
     engine.generate.side_effect = slow
-    with patch("openjarvis.core.config.load_config") as load:
+    with patch("diapason.core.config.load_config") as load:
         cfg = MagicMock()
         cfg.intelligence.default_model = "test-model"
         cfg.engine.default = "ollama"

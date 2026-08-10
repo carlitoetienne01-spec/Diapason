@@ -7,7 +7,7 @@ from pathlib import Path
 
 class TestJarvisAgentBackendSkillsKwargs:
     def test_default_skills_enabled_true(self):
-        from openjarvis.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
 
         # Construction should not raise even if no model/engine is reachable
         # because we don't call generate(). The kwargs themselves should be
@@ -27,7 +27,7 @@ class TestJarvisAgentBackendSkillsKwargs:
         assert backend._system.config.skills.enabled is True
 
     def test_skills_enabled_false_disables_skills(self):
-        from openjarvis.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
 
         try:
             backend = JarvisAgentBackend(
@@ -42,7 +42,7 @@ class TestJarvisAgentBackendSkillsKwargs:
         assert backend._system.skill_manager is None
 
     def test_overlay_dir_kwarg_applied_to_config(self, tmp_path: Path):
-        from openjarvis.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
 
         custom = tmp_path / "custom-overlays"
         try:
@@ -63,7 +63,7 @@ class TestJarvisAgentBackendSkillsKwargs:
         the new kwargs without raising TypeError."""
         import inspect
 
-        from openjarvis.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
 
         sig = inspect.signature(JarvisAgentBackend.__init__)
         assert "skills_enabled" in sig.parameters

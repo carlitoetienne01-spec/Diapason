@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from openjarvis.agents.native_react import REACT_SYSTEM_PROMPT, NativeReActAgent
+from diapason.agents.native_react import REACT_SYSTEM_PROMPT, NativeReActAgent
 
 
 class _StubEngine:
@@ -74,9 +74,9 @@ class TestSystemBuilderCapturesFewShot:
         stashes them on the JarvisSystem instance for _run_agent to
         forward to tool-using agents."""
 
-        from openjarvis.skills.manager import SkillManager
-        from openjarvis.skills.overlay import SkillOverlay, write_overlay
-        from openjarvis.skills.types import SkillManifest
+        from diapason.skills.manager import SkillManager
+        from diapason.skills.overlay import SkillOverlay, write_overlay
+        from diapason.skills.types import SkillManifest
 
         # Build an overlay so the manager picks up real few-shot examples
         overlay_dir = tmp_path / "overlays"
@@ -92,7 +92,7 @@ class TestSystemBuilderCapturesFewShot:
             overlay_dir,
         )
 
-        from openjarvis.core.events import EventBus
+        from diapason.core.events import EventBus
 
         mgr = SkillManager(bus=EventBus(), overlay_dir=overlay_dir)
         mgr._skills["seeded-skill"] = SkillManifest(
@@ -114,8 +114,8 @@ class TestRunAgentForwardsExamples:
         agent_kwargs when the agent class has accepts_tools=True."""
         from unittest.mock import patch
 
-        from openjarvis.agents._stubs import AgentResult
-        from openjarvis.system import JarvisSystem
+        from diapason.agents._stubs import AgentResult
+        from diapason.system import JarvisSystem
 
         captured_kwargs: dict = {}
 
@@ -149,7 +149,7 @@ class TestRunAgentForwardsExamples:
         system._mcp_clients = []
 
         with patch(
-            "openjarvis.core.registry.AgentRegistry.get",
+            "diapason.core.registry.AgentRegistry.get",
             return_value=_CapturingAgent,
         ):
             system._run_agent(

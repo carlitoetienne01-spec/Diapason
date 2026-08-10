@@ -8,7 +8,7 @@ from unittest.mock import patch
 import click
 import pytest
 
-from openjarvis.evals.cli import BACKENDS, _build_backend
+from diapason.evals.cli import BACKENDS, _build_backend
 
 
 class TestBuildBackendDispatch:
@@ -50,7 +50,7 @@ class TestBuildBackendDispatch:
             )
 
     def test_hermes_returns_hermes_backend(self) -> None:
-        from openjarvis.evals.comparison.third_party import (
+        from diapason.evals.comparison.third_party import (
             ThirdPartyConfig,
             ThirdPartyEntry,
         )
@@ -67,12 +67,12 @@ class TestBuildBackendDispatch:
         )
         with (
             patch(
-                "openjarvis.evals.backends.external.hermes_agent.load_third_party_config",
+                "diapason.evals.backends.external.hermes_agent.load_third_party_config",
                 return_value=cfg,
             ),
-            patch("openjarvis.evals.backends.external.hermes_agent.verify_commit_pin"),
+            patch("diapason.evals.backends.external.hermes_agent.verify_commit_pin"),
         ):
-            from openjarvis.evals.backends.external import HermesBackend
+            from diapason.evals.backends.external import HermesBackend
 
             backend = _build_backend(
                 backend_name="hermes",

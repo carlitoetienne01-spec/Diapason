@@ -1,11 +1,11 @@
-"""Tests for openjarvis.cli._first_run.check_and_route."""
+"""Tests for diapason.cli._first_run.check_and_route."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from openjarvis.cli import _first_run
+from diapason.cli import _first_run
 
 
 def _ctx_with_invocation(name: str | None) -> MagicMock:
@@ -42,11 +42,11 @@ def test_routes_to_init_when_no_config(tmp_openjarvis_home: Path) -> None:
 
 
 def test_handles_missing_state_dir(tmp_path: Path, monkeypatch) -> None:
-    """When ~/.openjarvis doesn't exist at all, route to init."""
+    """When ~/.diapason doesn't exist at all, route to init."""
     fresh_home = tmp_path / "fresh"
-    monkeypatch.setattr("openjarvis.core.config.DEFAULT_CONFIG_DIR", fresh_home)
+    monkeypatch.setattr("diapason.core.config.DEFAULT_CONFIG_DIR", fresh_home)
     monkeypatch.setattr(
-        "openjarvis.core.config.DEFAULT_CONFIG_PATH", fresh_home / "config.toml"
+        "diapason.core.config.DEFAULT_CONFIG_PATH", fresh_home / "config.toml"
     )
     ctx = _ctx_with_invocation(None)
     _first_run.check_and_route(ctx)
@@ -69,9 +69,9 @@ def test_root_group_invokes_guard_on_bare_jarvis(
     def _recorder(ctx) -> None:
         calls.append(ctx.invoked_subcommand)
 
-    monkeypatch.setattr("openjarvis.cli._first_run.check_and_route", _recorder)
+    monkeypatch.setattr("diapason.cli._first_run.check_and_route", _recorder)
 
-    from openjarvis.cli import cli
+    from diapason.cli import cli
 
     runner = CliRunner()
     runner.invoke(cli, [], catch_exceptions=False)
@@ -89,9 +89,9 @@ def test_root_group_does_not_invoke_guard_on_subcommand(
     def _recorder(ctx) -> None:
         calls.append(ctx.invoked_subcommand)
 
-    monkeypatch.setattr("openjarvis.cli._first_run.check_and_route", _recorder)
+    monkeypatch.setattr("diapason.cli._first_run.check_and_route", _recorder)
 
-    from openjarvis.cli import cli
+    from diapason.cli import cli
 
     runner = CliRunner()
     runner.invoke(cli, ["--help"], catch_exceptions=False)

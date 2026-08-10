@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from openjarvis.desktop.smart_intents import (
+from diapason.desktop.smart_intents import (
     KIND_AMAZON,
     KIND_APP,
     KIND_NONE,
@@ -13,7 +13,7 @@ from openjarvis.desktop.smart_intents import (
     KIND_YOUTUBE,
     parse_smart_intent,
 )
-from openjarvis.desktop.voice_commands import parse_voice_command
+from diapason.desktop.voice_commands import parse_voice_command
 
 
 def test_youtube_search_fr():
@@ -103,11 +103,11 @@ def test_voice_command_routes_spotify():
 
 
 def test_open_anything_uses_smart_youtube():
-    from openjarvis.tools.desktop_tools import OpenAnythingTool
+    from diapason.tools.desktop_tools import OpenAnythingTool
 
     tool = OpenAnythingTool()
-    with patch("openjarvis.tools.desktop_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.desktop_tools._run") as run:
+    with patch("diapason.tools.desktop_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.desktop_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""
@@ -121,7 +121,7 @@ def test_open_anything_uses_smart_youtube():
 
 
 def test_mail_compose_intent_fr():
-    from openjarvis.desktop.smart_intents import KIND_MAIL_COMPOSE, parse_smart_intent
+    from diapason.desktop.smart_intents import KIND_MAIL_COMPOSE, parse_smart_intent
 
     intent = parse_smart_intent(
         "écris un mail à ada@example.com sujet Reunion disant On se voit demain"
@@ -131,7 +131,7 @@ def test_mail_compose_intent_fr():
 
 
 def test_messages_compose_intent_fr():
-    from openjarvis.desktop.smart_intents import (
+    from diapason.desktop.smart_intents import (
         KIND_MESSAGES_COMPOSE,
         parse_smart_intent,
     )
@@ -145,7 +145,7 @@ def test_messages_compose_intent_fr():
 
 
 def test_email_intent_en():
-    from openjarvis.desktop.smart_intents import KIND_MAIL_COMPOSE, parse_smart_intent
+    from diapason.desktop.smart_intents import KIND_MAIL_COMPOSE, parse_smart_intent
 
     intent = parse_smart_intent("email bob@example.com about the invoice")
     assert intent.kind == KIND_MAIL_COMPOSE
@@ -153,7 +153,7 @@ def test_email_intent_en():
 
 
 def test_ouvre_mails_still_gmail():
-    from openjarvis.desktop.smart_intents import KIND_GMAIL, parse_smart_intent
+    from diapason.desktop.smart_intents import KIND_GMAIL, parse_smart_intent
 
     intent = parse_smart_intent("ouvre mes mails")
     assert intent.kind == KIND_GMAIL

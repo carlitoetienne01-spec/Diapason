@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from openjarvis.cli import _version_check
-from openjarvis.cli._version_check import (
+from diapason.cli import _version_check
+from diapason.cli._version_check import (
     _check_disabled,
     _config_disabled,
     _fetch_latest_stable,
@@ -24,7 +24,7 @@ def _clean_env(monkeypatch, tmp_path):
     for v in ("OPENJARVIS_NO_UPDATE_CHECK", "CI", "OPENJARVIS_CONFIG"):
         monkeypatch.delenv(v, raising=False)
     # Point config + cache at empty tmp paths so tests don't see the
-    # developer's real ~/.openjarvis state.
+    # developer's real ~/.diapason state.
     monkeypatch.setenv("OPENJARVIS_CONFIG", str(tmp_path / "no-config.toml"))
     monkeypatch.setattr(_version_check, "_CACHE_PATH", tmp_path / "version-check.json")
 
@@ -221,30 +221,30 @@ class TestGetLatestVersion:
 
 
 class TestCheckForUpdates:
-    @patch("openjarvis.cli._version_check._do_check")
+    @patch("diapason.cli._version_check._do_check")
     def test_runs_for_ask_command(self, mock_do):
         check_for_updates("ask")
         mock_do.assert_called_once()
 
-    @patch("openjarvis.cli._version_check._do_check")
+    @patch("diapason.cli._version_check._do_check")
     def test_runs_for_doctor_command(self, mock_do):
         """Widened list: doctor wasn't checked before."""
         check_for_updates("doctor")
         mock_do.assert_called_once()
 
-    @patch("openjarvis.cli._version_check._do_check")
+    @patch("diapason.cli._version_check._do_check")
     def test_skips_unknown_command(self, mock_do):
         check_for_updates("_bootstrap")
         mock_do.assert_not_called()
 
-    @patch("openjarvis.cli._version_check._do_check")
+    @patch("diapason.cli._version_check._do_check")
     def test_ci_env_short_circuits_widely(self, mock_do, monkeypatch):
         monkeypatch.setenv("CI", "1")
         check_for_updates("ask")
         mock_do.assert_not_called()
 
     @patch(
-        "openjarvis.cli._version_check._do_check",
+        "diapason.cli._version_check._do_check",
         side_effect=Exception("boom"),
     )
     def test_exception_in_do_check_never_propagates(self, mock_do):

@@ -23,9 +23,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.channels._stubs import ChannelMessage
-from openjarvis.channels.twitter_channel import TwitterChannel
-from openjarvis.tools.http_request import HttpRequestTool
+from diapason.channels._stubs import ChannelMessage
+from diapason.channels.twitter_channel import TwitterChannel
+from diapason.tools.http_request import HttpRequestTool
 
 # Add examples dir to path so we can import the bot module
 _EXAMPLES_DIR = os.path.join(
@@ -481,12 +481,12 @@ class TestEnvVarExpansion:
         with (
             patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_test123"}),
             patch(
-                "openjarvis._rust_bridge.get_rust_module",
+                "diapason._rust_bridge.get_rust_module",
                 return_value=mock_rust,
             ),
-            patch("openjarvis.tools.http_request.check_ssrf", return_value=None),
+            patch("diapason.tools.http_request.check_ssrf", return_value=None),
             patch(
-                "openjarvis.tools.http_request.httpx.request",
+                "diapason.tools.http_request.httpx.request",
                 return_value=mock_resp,
             ) as mock_req,
         ):
@@ -523,12 +523,12 @@ class TestEnvVarExpansion:
         with (
             patch.dict(os.environ, env, clear=True),
             patch(
-                "openjarvis._rust_bridge.get_rust_module",
+                "diapason._rust_bridge.get_rust_module",
                 return_value=mock_rust,
             ),
-            patch("openjarvis.tools.http_request.check_ssrf", return_value=None),
+            patch("diapason.tools.http_request.check_ssrf", return_value=None),
             patch(
-                "openjarvis.tools.http_request.httpx.request",
+                "diapason.tools.http_request.httpx.request",
                 return_value=mock_resp,
             ) as mock_req,
         ):
@@ -558,12 +558,12 @@ class TestEnvVarExpansion:
 
         with (
             patch(
-                "openjarvis._rust_bridge.get_rust_module",
+                "diapason._rust_bridge.get_rust_module",
                 return_value=mock_rust,
             ),
-            patch("openjarvis.tools.http_request.check_ssrf", return_value=None),
+            patch("diapason.tools.http_request.check_ssrf", return_value=None),
             patch(
-                "openjarvis.tools.http_request.httpx.request",
+                "diapason.tools.http_request.httpx.request",
                 return_value=mock_resp,
             ) as mock_req,
         ):
@@ -793,10 +793,10 @@ class TestGitHubIssueCreation:
 
         with (
             patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_testtoken123"}),
-            patch("openjarvis._rust_bridge.get_rust_module", return_value=mock_rust),
-            patch("openjarvis.tools.http_request.check_ssrf", return_value=None),
+            patch("diapason._rust_bridge.get_rust_module", return_value=mock_rust),
+            patch("diapason.tools.http_request.check_ssrf", return_value=None),
             patch(
-                "openjarvis.tools.http_request.httpx.request",
+                "diapason.tools.http_request.httpx.request",
                 return_value=mock_resp,
             ) as mock_req,
         ):
@@ -847,10 +847,10 @@ class TestGitHubIssueCreation:
 
         with (
             patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_testtoken123"}),
-            patch("openjarvis._rust_bridge.get_rust_module", return_value=mock_rust),
-            patch("openjarvis.tools.http_request.check_ssrf", return_value=None),
+            patch("diapason._rust_bridge.get_rust_module", return_value=mock_rust),
+            patch("diapason.tools.http_request.check_ssrf", return_value=None),
             patch(
-                "openjarvis.tools.http_request.httpx.request",
+                "diapason.tools.http_request.httpx.request",
                 return_value=mock_resp,
             ) as mock_req,
         ):

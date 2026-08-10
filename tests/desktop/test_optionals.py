@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from openjarvis.heartbeat.kinds import run_routine
-from openjarvis.heartbeat.routines import Routine
-from openjarvis.tools.voice_mac_tools import MailSendTool, MessagesSendTool
+from diapason.heartbeat.kinds import run_routine
+from diapason.heartbeat.routines import Routine
+from diapason.tools.voice_mac_tools import MailSendTool, MessagesSendTool
 
 
 def test_mail_send_requires_confirm():
@@ -27,7 +27,7 @@ def test_messages_send_requires_confirm():
 
 
 def test_email_mode_auto_uses_frontmost(monkeypatch):
-    from openjarvis.desktop import voice_commands as vc
+    from diapason.desktop import voice_commands as vc
 
     class _D:
         polish = True
@@ -45,10 +45,10 @@ def test_email_mode_auto_uses_frontmost(monkeypatch):
                 text_gate = False
 
     monkeypatch.setattr(
-        "openjarvis.core.config.load_config", lambda: _Cfg()
+        "diapason.core.config.load_config", lambda: _Cfg()
     )
     with patch(
-        "openjarvis.desktop.frontmost.is_email_composer_context",
+        "diapason.desktop.frontmost.is_email_composer_context",
         return_value=True,
     ):
         out = vc.finalize_dictation(
@@ -62,7 +62,7 @@ def test_email_mode_auto_uses_frontmost(monkeypatch):
 
 def test_routine_idle_precheck_skips(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "openjarvis.desktop.idle.idle_seconds", lambda: 30.0
+        "diapason.desktop.idle.idle_seconds", lambda: 30.0
     )
     routine = Routine(
         id="idle-test",
@@ -79,7 +79,7 @@ def test_routine_idle_precheck_skips(monkeypatch, tmp_path: Path):
 
 def test_routine_idle_precheck_passes(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
-        "openjarvis.desktop.idle.idle_seconds", lambda: 900.0
+        "diapason.desktop.idle.idle_seconds", lambda: 900.0
     )
     routine = Routine(
         id="idle-test-ok",
@@ -89,7 +89,7 @@ def test_routine_idle_precheck_passes(monkeypatch, tmp_path: Path):
         payload={"message": "nudge"},
         pre_check={"idleMinSeconds": 600},
     )
-    with patch("openjarvis.heartbeat.kinds._quiet_from_config", return_value=False):
+    with patch("diapason.heartbeat.kinds._quiet_from_config", return_value=False):
         out = run_routine(routine, force=False, workspace=str(tmp_path))
     assert out.get("skipped") is not True or out.get("reason") != "idle_below_min"
     assert out["ok"] is True
@@ -101,8 +101,8 @@ def test_config_set_roundtrip(tmp_path: Path, monkeypatch):
     cfg_path.write_text("[desktop.vision]\nenabled = false\n", encoding="utf-8")
     monkeypatch.setenv("OPENJARVIS_CONFIG", str(cfg_path))
 
-    from openjarvis.core.config import load_config
-    from openjarvis.server.config_routes import get_config_snippet, set_config_value
+    from diapason.core.config import load_config
+    from diapason.server.config_routes import get_config_snippet, set_config_value
 
     load_config.cache_clear()
     typed = set_config_value("desktop.vision.enabled", True)
@@ -115,8 +115,8 @@ def test_config_set_roundtrip(tmp_path: Path, monkeypatch):
 def test_screen_share_status_route():
     from fastapi.testclient import TestClient
 
-    from openjarvis.desktop.screen_share import reset_screen_share_for_tests
-    from openjarvis.server.screen_share_routes import create_screen_share_router
+    from diapason.desktop.screen_share import reset_screen_share_for_tests
+    from diapason.server.screen_share_routes import create_screen_share_router
     from fastapi import FastAPI
 
     reset_screen_share_for_tests()

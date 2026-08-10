@@ -21,7 +21,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolate_dictation_history(tmp_path, monkeypatch):
-    from openjarvis.desktop import dictation_history
+    from diapason.desktop import dictation_history
 
     monkeypatch.setattr(
         dictation_history,
@@ -33,7 +33,7 @@ def _isolate_dictation_history(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _isolate_dictation_dictionary(tmp_path, monkeypatch):
-    from openjarvis.speech import dictation_dictionary
+    from diapason.speech import dictation_dictionary
 
     monkeypatch.setattr(
         dictation_dictionary,

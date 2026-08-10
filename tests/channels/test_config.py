@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from openjarvis.core.config import ChannelConfig, JarvisConfig, load_config
+from diapason.core.config import ChannelConfig, JarvisConfig, load_config
 
 
 class TestChannelConfigDefaults:

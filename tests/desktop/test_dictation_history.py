@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from openjarvis.desktop.dictation_history import (
+from diapason.desktop.dictation_history import (
     DictationEntry,
     append_entry,
     clear_history,

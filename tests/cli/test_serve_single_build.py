@@ -22,14 +22,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
+from diapason.cli import cli
 
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
-# ``openjarvis.cli.serve`` as an attribute resolves to the click *command*
+# ``diapason.cli.serve`` as an attribute resolves to the click *command*
 # (re-exported on the package); grab the real module to monkeypatch its globals.
-serve_mod = importlib.import_module("openjarvis.cli.serve")
+serve_mod = importlib.import_module("diapason.cli.serve")
 
 
 def _fake_engine() -> MagicMock:
@@ -52,10 +52,10 @@ def _repopulate_registries() -> None:
     import importlib
     import sys
 
-    import openjarvis.agents  # noqa: F401
-    import openjarvis.tools  # noqa: F401
-    import openjarvis.tools.storage  # noqa: F401
-    from openjarvis.core.registry import (
+    import diapason.agents  # noqa: F401
+    import diapason.tools  # noqa: F401
+    import diapason.tools.storage  # noqa: F401
+    from diapason.core.registry import (
         AgentRegistry,
         MemoryRegistry,
         ToolRegistry,
@@ -63,7 +63,7 @@ def _repopulate_registries() -> None:
 
     if not AgentRegistry.keys():
         for mod_name in list(sys.modules):
-            if mod_name.startswith("openjarvis.agents.") and not mod_name.endswith(
+            if mod_name.startswith("diapason.agents.") and not mod_name.endswith(
                 "_stubs"
             ):
                 try:
@@ -74,7 +74,7 @@ def _repopulate_registries() -> None:
     if not ToolRegistry.keys():
         for mod_name in list(sys.modules):
             if (
-                mod_name.startswith("openjarvis.tools.")
+                mod_name.startswith("diapason.tools.")
                 and not mod_name.endswith("_stubs")
                 and not mod_name.endswith("agent_tools")
             ):
@@ -86,7 +86,7 @@ def _repopulate_registries() -> None:
     if not MemoryRegistry.keys():
         for mod_name in list(sys.modules):
             if mod_name.startswith(
-                "openjarvis.tools.storage."
+                "diapason.tools.storage."
             ) and not mod_name.endswith("_stubs"):
                 try:
                     importlib.reload(sys.modules[mod_name])
@@ -100,7 +100,7 @@ def _run_serve(tmp_path, monkeypatch, *, build_spy, set_system_spy):
     Returns the CliRunner result. The server is never actually started
     (``uvicorn.run`` is a no-op) and no real engine is contacted.
     """
-    from openjarvis.core.config import JarvisConfig
+    from diapason.core.config import JarvisConfig
 
     _repopulate_registries()
 
@@ -134,15 +134,15 @@ def _run_serve(tmp_path, monkeypatch, *, build_spy, set_system_spy):
     sec.engine = engine
     sec.capability_policy = None
     sec.audit_logger = None
-    monkeypatch.setattr("openjarvis.security.setup_security", lambda *a, **k: sec)
+    monkeypatch.setattr("diapason.security.setup_security", lambda *a, **k: sec)
 
     with (
         patch(
-            "openjarvis.system.builder.SystemBuilder.build",
+            "diapason.system.builder.SystemBuilder.build",
             build_spy,
         ),
         patch(
-            "openjarvis.agents.executor.AgentExecutor.set_system",
+            "diapason.agents.executor.AgentExecutor.set_system",
             set_system_spy,
         ),
         patch("uvicorn.run", lambda *a, **k: None),

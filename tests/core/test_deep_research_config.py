@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from openjarvis.core.config import (
+from diapason.core.config import (
     DeepResearchConfig,
     HardwareInfo,
     JarvisConfig,

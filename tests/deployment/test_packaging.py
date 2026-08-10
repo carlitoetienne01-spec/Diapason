@@ -1,8 +1,8 @@
-"""Guards for the openjarvis-rust packaging split (#584 / #615).
+"""Guards for the diapason-rust packaging split (#584 / #615).
 
 ``openjarvis_rust`` is the native PyO3 extension. It is NOT published to PyPI,
 so it must not appear in the published ``desktop`` extra — listing it there
-breaks ``pip install openjarvis[desktop]`` at install time. It lives in the uv
+breaks ``pip install diapason[desktop]`` at install time. It lives in the uv
 ``desktop-native`` dependency group instead (excluded from wheel metadata),
 which the desktop app installs from source via
 ``uv sync --group desktop-native``.
@@ -27,20 +27,20 @@ def _pyproject() -> dict:
 
 def test_openjarvis_rust_not_in_published_desktop_extra() -> None:
     desktop = _pyproject()["project"]["optional-dependencies"]["desktop"]
-    assert not any("openjarvis-rust" in dep for dep in desktop), (
-        "openjarvis-rust must not be in the published `desktop` extra — it is "
-        "not on PyPI, so it breaks `pip install openjarvis[desktop]`."
+    assert not any("diapason-rust" in dep for dep in desktop), (
+        "diapason-rust must not be in the published `desktop` extra — it is "
+        "not on PyPI, so it breaks `pip install diapason[desktop]`."
     )
 
 
 def test_openjarvis_rust_lives_in_uv_dependency_group() -> None:
     group = _pyproject()["dependency-groups"]["desktop-native"]
-    assert any("openjarvis-rust" in dep for dep in group)
+    assert any("diapason-rust" in dep for dep in group)
 
 
 def test_openjarvis_rust_has_local_uv_path_source() -> None:
-    src = _pyproject()["tool"]["uv"]["sources"]["openjarvis-rust"]
-    assert src["path"] == "rust/crates/openjarvis-python"
+    src = _pyproject()["tool"]["uv"]["sources"]["diapason-rust"]
+    assert src["path"] == "rust/crates/diapason-python"
 
 
 def test_desktop_app_syncs_the_native_group() -> None:

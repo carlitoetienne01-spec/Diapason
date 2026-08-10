@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional
 
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.core.types import Message, Role
-from openjarvis.tools.storage._stubs import MemoryBackend, RetrievalResult
-from openjarvis.tools.storage.context import (
+from diapason.core.events import EventBus, EventType
+from diapason.core.types import Message, Role
+from diapason.tools.storage._stubs import MemoryBackend, RetrievalResult
+from diapason.tools.storage.context import (
     ContextConfig,
     build_context_message,
     format_context,
@@ -175,7 +175,7 @@ def test_inject_context_publishes_event():
     backend = _FakeMemory(results)
     messages = [Message(role=Role.USER, content="hello")]
 
-    import openjarvis.tools.storage.context as mod
+    import diapason.tools.storage.context as mod
 
     original = mod.get_event_bus
     mod.get_event_bus = lambda: bus

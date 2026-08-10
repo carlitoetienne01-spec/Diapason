@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.core import get_python_executable
-from openjarvis.tools.shell_exec import ShellExecTool
+from diapason.core import get_python_executable
+from diapason.tools.shell_exec import ShellExecTool
 
 
 def _rust_output(stdout: str = "", stderr: str = "", code: int = 0) -> str:
@@ -40,10 +40,10 @@ def _make_mock_rust(side_effect=None, return_value=None):
 
 class TestShellExecTool:
     def test_registered_via_tools_package_import(self):
-        import openjarvis.tools as tools_pkg
-        from openjarvis.core.registry import ToolRegistry
+        import diapason.tools as tools_pkg
+        from diapason.core.registry import ToolRegistry
 
-        sys.modules.pop("openjarvis.tools.shell_exec", None)
+        sys.modules.pop("diapason.tools.shell_exec", None)
         importlib.reload(tools_pkg)
 
         assert ToolRegistry.contains("shell_exec")
@@ -76,7 +76,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="echo hello")
@@ -90,7 +90,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="echo error_msg >&2")
@@ -115,7 +115,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="echo ok", timeout=999)
@@ -128,7 +128,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="pwd", working_dir=str(tmp_path))
@@ -187,7 +187,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="echo ok")
@@ -204,7 +204,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="exit 42")
@@ -232,7 +232,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="true")
@@ -258,7 +258,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="echo ok")
@@ -271,7 +271,7 @@ class TestShellExecTool:
         )
         tool = ShellExecTool()
         with patch(
-            "openjarvis._rust_bridge.get_rust_module",
+            "diapason._rust_bridge.get_rust_module",
             return_value=mock_mod,
         ):
             result = tool.execute(command="/nonexistent_binary")

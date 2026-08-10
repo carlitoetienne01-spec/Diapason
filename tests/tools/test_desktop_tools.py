@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from openjarvis.tools.desktop_tools import FocusAppTool, OpenUriTool, PasteToFrontmostTool
+from diapason.tools.desktop_tools import FocusAppTool, OpenUriTool, PasteToFrontmostTool
 
 
 def test_open_uri_darwin():
     tool = OpenUriTool()
-    with patch("openjarvis.tools.desktop_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.desktop_tools._run") as run:
+    with patch("diapason.tools.desktop_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.desktop_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""
@@ -31,7 +31,7 @@ def test_paste_to_frontmost_empty():
 
 
 def test_looks_like_url_and_normalize():
-    from openjarvis.tools.desktop_tools import looks_like_url, normalize_url, web_search_url
+    from diapason.tools.desktop_tools import looks_like_url, normalize_url, web_search_url
 
     assert looks_like_url("youtube.com")
     assert looks_like_url("https://example.com/x")
@@ -41,11 +41,11 @@ def test_looks_like_url_and_normalize():
 
 
 def test_open_anything_url(monkeypatch):
-    from openjarvis.tools.desktop_tools import OpenAnythingTool
+    from diapason.tools.desktop_tools import OpenAnythingTool
 
     tool = OpenAnythingTool()
-    with patch("openjarvis.tools.desktop_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.desktop_tools._run") as run:
+    with patch("diapason.tools.desktop_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.desktop_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""
@@ -55,11 +55,11 @@ def test_open_anything_url(monkeypatch):
 
 
 def test_open_anything_search(monkeypatch):
-    from openjarvis.tools.desktop_tools import OpenAnythingTool
+    from diapason.tools.desktop_tools import OpenAnythingTool
 
     tool = OpenAnythingTool()
-    with patch("openjarvis.tools.desktop_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.desktop_tools._run") as run:
+    with patch("diapason.tools.desktop_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.desktop_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""
@@ -72,15 +72,15 @@ def test_open_anything_search(monkeypatch):
 
 
 def test_open_anything_app(monkeypatch):
-    from openjarvis.tools.desktop_tools import OpenAnythingTool
+    from diapason.tools.desktop_tools import OpenAnythingTool
 
     tool = OpenAnythingTool()
-    with patch("openjarvis.tools.desktop_tools.sys.platform", "darwin"):
+    with patch("diapason.tools.desktop_tools.sys.platform", "darwin"):
         with patch(
-            "openjarvis.tools.desktop_tools.resolve_mac_app_name",
+            "diapason.tools.desktop_tools.resolve_mac_app_name",
             return_value="Safari",
         ):
-            with patch("openjarvis.tools.desktop_tools._run") as run:
+            with patch("diapason.tools.desktop_tools._run") as run:
                 run.return_value.returncode = 0
                 run.return_value.stderr = ""
                 run.return_value.stdout = ""

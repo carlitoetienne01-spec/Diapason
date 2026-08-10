@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from openjarvis.skills.index import SkillIndex
+from diapason.skills.index import SkillIndex
 
 
 class TestSkillIndex:
@@ -17,7 +17,7 @@ class TestSkillIndex:
             name = "research"
             version = "0.1.0"
             description = "Research a topic"
-            author = "openjarvis"
+            author = "diapason"
             source = "github.com/openjarvis/skills/research"
             sha256 = "abc123"
             tags = ["research"]
@@ -46,7 +46,7 @@ class TestSkillIndex:
             name = "web_research"
             version = "0.1.0"
             description = "Search the web"
-            author = "openjarvis"
+            author = "diapason"
             source = "github.com/openjarvis/skills/web_research"
             sha256 = "abc"
             tags = ["research"]
@@ -56,7 +56,7 @@ class TestSkillIndex:
             name = "code_review"
             version = "0.1.0"
             description = "Review code"
-            author = "openjarvis"
+            author = "diapason"
             source = "github.com/openjarvis/skills/code_review"
             sha256 = "def"
             tags = ["coding"]

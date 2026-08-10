@@ -6,11 +6,11 @@ import base64
 
 import pytest
 
-from openjarvis.core.config import JarvisConfig, SpeechConfig, VoiceRealtimeConfig
-from openjarvis.speech.realtime.base import SessionEvent
-from openjarvis.speech.realtime.bridge import event_to_client_json
-from openjarvis.speech.realtime.factory import create_realtime_session
-from openjarvis.speech.realtime.pcm import b64_to_pcm16, pcm16_to_b64, resample_pcm16
+from diapason.core.config import JarvisConfig, SpeechConfig, VoiceRealtimeConfig
+from diapason.speech.realtime.base import SessionEvent
+from diapason.speech.realtime.bridge import event_to_client_json
+from diapason.speech.realtime.factory import create_realtime_session
+from diapason.speech.realtime.pcm import b64_to_pcm16, pcm16_to_b64, resample_pcm16
 
 
 def test_speech_config_has_realtime_defaults():
@@ -50,7 +50,7 @@ def test_factory_gemini_and_openai():
 
 
 def test_oral_prompt_contains_clarification_and_brevity():
-    from openjarvis.speech.realtime.oral_prompt import build_live_agent_template
+    from diapason.speech.realtime.oral_prompt import build_live_agent_template
 
     text = build_live_agent_template(enable_tools=True)
     assert "two or three sentences" in text.lower() or "2–3" in text or "three sentences" in text
@@ -60,11 +60,11 @@ def test_oral_prompt_contains_clarification_and_brevity():
 
 
 def test_default_voice_tools_include_jarvis_parity():
-    import openjarvis.tools.desktop_tools  # noqa: F401
-    import openjarvis.tools.voice_mac_tools  # noqa: F401
-    import openjarvis.tools.web_search  # noqa: F401
+    import diapason.tools.desktop_tools  # noqa: F401
+    import diapason.tools.voice_mac_tools  # noqa: F401
+    import diapason.tools.web_search  # noqa: F401
 
-    from openjarvis.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
+    from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
 
     for tid in (
         "open_anything",
@@ -122,7 +122,7 @@ def test_event_to_client_json():
 
 
 def test_voice_tool_budget():
-    from openjarvis.speech.realtime.tools import VoiceToolBudget
+    from diapason.speech.realtime.tools import VoiceToolBudget
 
     b = VoiceToolBudget(2)
     assert b.allow()
@@ -132,7 +132,7 @@ def test_voice_tool_budget():
 
 
 def test_voice_tool_allowlist_and_execute_unknown():
-    from openjarvis.speech.realtime.tools import (
+    from diapason.speech.realtime.tools import (
         execute_voice_tool,
         gemini_function_declarations,
         list_voice_tool_ids,
@@ -148,7 +148,7 @@ def test_voice_tool_allowlist_and_execute_unknown():
 
 
 def test_openai_tools_schema_shape():
-    from openjarvis.speech.realtime.tools import openai_tools_schema
+    from diapason.speech.realtime.tools import openai_tools_schema
 
     tools = openai_tools_schema()
     for t in tools:
@@ -159,7 +159,7 @@ def test_openai_tools_schema_shape():
 
 
 def test_gemini_parse_audio_part():
-    from openjarvis.speech.realtime.gemini_live import GeminiLiveSession
+    from diapason.speech.realtime.gemini_live import GeminiLiveSession
 
     session = GeminiLiveSession(api_key="test")
     payload = {
@@ -181,7 +181,7 @@ def test_gemini_parse_audio_part():
 
 
 def test_openai_parse_audio_delta():
-    from openjarvis.speech.realtime.openai_realtime import OpenAIRealtimeSession
+    from diapason.speech.realtime.openai_realtime import OpenAIRealtimeSession
 
     session = OpenAIRealtimeSession(api_key="test")
     events = session._parse_event(

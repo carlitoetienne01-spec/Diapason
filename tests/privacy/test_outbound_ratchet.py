@@ -25,7 +25,7 @@ from pathlib import Path
 
 from tests.privacy._outbound_scan import scan_outbound_modules
 
-_SRC = Path(__file__).resolve().parent.parent.parent / "src" / "openjarvis"
+_SRC = Path(__file__).resolve().parent.parent.parent / "src" / "diapason"
 _MANIFEST = Path(__file__).resolve().parent / "outbound_manifest.txt"
 
 

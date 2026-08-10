@@ -2801,7 +2801,7 @@ pub fn run() {
             let health = MenuItemBuilder::with_id("health", "Health: starting...")
                 .enabled(false)
                 .build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit OpenJarvis").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit Diapason").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show)
@@ -2840,7 +2840,7 @@ pub fn run() {
 
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("OpenJarvis")
+                .tooltip("Diapason")
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => {

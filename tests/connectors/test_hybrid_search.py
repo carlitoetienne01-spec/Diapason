@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from openjarvis.connectors.hybrid_search import HybridSearch
-from openjarvis.connectors.store import KnowledgeStore
+from diapason.connectors.hybrid_search import HybridSearch
+from diapason.connectors.store import KnowledgeStore
 
 
 def _store_doc(

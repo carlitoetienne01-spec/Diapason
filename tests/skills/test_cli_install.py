@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
+from diapason.cli import cli
 
 
 def _build_fake_hermes_cache(cache_root: Path) -> None:
@@ -32,7 +32,7 @@ def _build_fake_hermes_cache(cache_root: Path) -> None:
 class TestCliInstallE2E:
     def test_install_hermes_skill_e2e(self, tmp_path: Path) -> None:
         """jarvis skill install hermes:research-skill installs to target dir."""
-        from openjarvis.skills.sources.hermes import HermesResolver
+        from diapason.skills.sources.hermes import HermesResolver
 
         cache = tmp_path / "hermes-cache"
         target = tmp_path / "target"
@@ -46,7 +46,7 @@ class TestCliInstallE2E:
 
         # Patch the helper that builds resolvers in the CLI
         with patch(
-            "openjarvis.cli.skill_cmd._get_resolver",
+            "diapason.cli.skill_cmd._get_resolver",
             lambda src, url="": _make_resolver(),
         ):
             # Patch HermesResolver.sync to no-op (cache is already built)
@@ -54,7 +54,7 @@ class TestCliInstallE2E:
                 # Patch the SkillImporter constructor used inside the install
                 # command so it writes to our test target instead of
                 # ~/.openjarvis/skills/.
-                from openjarvis.skills.importer import SkillImporter as _SI
+                from diapason.skills.importer import SkillImporter as _SI
 
                 original_init = _SI.__init__
 

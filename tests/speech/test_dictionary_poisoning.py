@@ -8,7 +8,7 @@ handed to the recogniser as a hotwords prompt longer than the audio itself.
 
 from __future__ import annotations
 
-from openjarvis.speech.dictation_dictionary import (
+from diapason.speech.dictation_dictionary import (
     DictionaryEntry,
     _learnable_phrase,
     transcription_hints,

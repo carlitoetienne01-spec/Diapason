@@ -19,11 +19,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.core.config import JarvisConfig
-from openjarvis.core.local_mode import LocalOnlyError
-from openjarvis.engine._discovery import _engine_key_is_remote, _make_engine
+from diapason.core.config import JarvisConfig
+from diapason.core.local_mode import LocalOnlyError
+from diapason.engine._discovery import _engine_key_is_remote, _make_engine
 
-_REGISTRY_GET = "openjarvis.core.registry.EngineRegistry.get"
+_REGISTRY_GET = "diapason.core.registry.EngineRegistry.get"
 
 
 def _cfg(*, local: bool, ollama_host: str = "") -> JarvisConfig:
@@ -107,7 +107,7 @@ def test_cloud_engine_is_still_built_when_local_only_is_off():
 
 def test_discovery_skips_remote_engines_instead_of_crashing():
     """`_probe` catches the refusal, so a cloud engine simply vanishes."""
-    from openjarvis.engine._discovery import discover_engines
+    from diapason.engine._discovery import discover_engines
 
     config = _cfg(local=True)
     healthy = MagicMock()
@@ -116,7 +116,7 @@ def test_discovery_skips_remote_engines_instead_of_crashing():
     def _fake_get(key):
         return lambda **_: healthy
 
-    keys_at = "openjarvis.core.registry.EngineRegistry.keys"
+    keys_at = "diapason.core.registry.EngineRegistry.keys"
     with patch(keys_at, return_value=["cloud", "ollama"]):
         with patch(_REGISTRY_GET, side_effect=_fake_get):
             found = dict(discover_engines(config))

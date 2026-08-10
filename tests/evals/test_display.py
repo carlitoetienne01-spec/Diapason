@@ -1,4 +1,4 @@
-"""Tests for the Rich display helpers in openjarvis.evals.core.display."""
+"""Tests for the Rich display helpers in diapason.evals.core.display."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from openjarvis.evals.core.display import (
+from diapason.evals.core.display import (
     print_banner,
     print_completion,
     print_metrics_table,
@@ -16,7 +16,7 @@ from openjarvis.evals.core.display import (
     print_subject_table,
     print_suite_summary,
 )
-from openjarvis.evals.core.types import MetricStats, RunSummary
+from diapason.evals.core.types import MetricStats, RunSummary
 
 
 def _make_console() -> tuple[Console, StringIO]:

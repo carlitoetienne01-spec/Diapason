@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from openjarvis.core.registry import TTSRegistry
-from openjarvis.speech.tts import TTSResult
+from diapason.core.registry import TTSRegistry
+from diapason.speech.tts import TTSResult
 
 # ---------------------------------------------------------------------------
 # TTSResult tests
@@ -37,19 +37,19 @@ def test_tts_result_save(tmp_path):
 
 
 def test_cartesia_registered():
-    from openjarvis.speech.cartesia_tts import CartesiaTTSBackend
+    from diapason.speech.cartesia_tts import CartesiaTTSBackend
 
     TTSRegistry.register_value("cartesia", CartesiaTTSBackend)
     assert TTSRegistry.contains("cartesia")
 
 
 def test_cartesia_synthesize():
-    from openjarvis.speech.cartesia_tts import CartesiaTTSBackend
+    from diapason.speech.cartesia_tts import CartesiaTTSBackend
 
     backend = CartesiaTTSBackend(api_key="fake-key")
 
     with patch(
-        "openjarvis.speech.cartesia_tts._cartesia_synthesize",
+        "diapason.speech.cartesia_tts._cartesia_synthesize",
         return_value=b"fake-audio-mp3-bytes",
     ):
         result = backend.synthesize("Hello world", voice_id="test-voice")
@@ -65,14 +65,14 @@ def test_cartesia_synthesize():
 
 
 def test_kokoro_registered():
-    from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+    from diapason.speech.kokoro_tts import KokoroTTSBackend
 
     TTSRegistry.register_value("kokoro", KokoroTTSBackend)
     assert TTSRegistry.contains("kokoro")
 
 
 def test_kokoro_health_false_without_package():
-    from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+    from diapason.speech.kokoro_tts import KokoroTTSBackend
 
     backend = KokoroTTSBackend()
     # Without kokoro installed, health returns False
@@ -85,19 +85,19 @@ def test_kokoro_health_false_without_package():
 
 
 def test_openai_tts_registered():
-    from openjarvis.speech.openai_tts import OpenAITTSBackend
+    from diapason.speech.openai_tts import OpenAITTSBackend
 
     TTSRegistry.register_value("openai_tts", OpenAITTSBackend)
     assert TTSRegistry.contains("openai_tts")
 
 
 def test_openai_tts_synthesize():
-    from openjarvis.speech.openai_tts import OpenAITTSBackend
+    from diapason.speech.openai_tts import OpenAITTSBackend
 
     backend = OpenAITTSBackend(api_key="fake-key")
 
     with patch(
-        "openjarvis.speech.openai_tts._openai_tts_request",
+        "diapason.speech.openai_tts._openai_tts_request",
         return_value=b"fake-openai-audio",
     ):
         result = backend.synthesize("Hello", voice_id="nova")
@@ -112,14 +112,14 @@ def test_openai_tts_synthesize():
 
 
 def test_elevenlabs_registered():
-    from openjarvis.speech.elevenlabs_tts import ElevenLabsTTSBackend
+    from diapason.speech.elevenlabs_tts import ElevenLabsTTSBackend
 
     TTSRegistry.register_value("elevenlabs", ElevenLabsTTSBackend)
     assert TTSRegistry.contains("elevenlabs")
 
 
 def test_elevenlabs_synthesize_and_cache(tmp_path):
-    from openjarvis.speech.elevenlabs_tts import ElevenLabsTTSBackend
+    from diapason.speech.elevenlabs_tts import ElevenLabsTTSBackend
 
     backend = ElevenLabsTTSBackend(
         api_key="fake-key",
@@ -129,7 +129,7 @@ def test_elevenlabs_synthesize_and_cache(tmp_path):
     )
 
     with patch(
-        "openjarvis.speech.elevenlabs_tts._elevenlabs_tts_request",
+        "diapason.speech.elevenlabs_tts._elevenlabs_tts_request",
         return_value=b"fake-el-audio",
     ) as mock_req:
         result = backend.synthesize("Welcome home", voice_id="voice123")
@@ -144,7 +144,7 @@ def test_elevenlabs_synthesize_and_cache(tmp_path):
 
 
 def test_elevenlabs_health_requires_key():
-    from openjarvis.speech.elevenlabs_tts import ElevenLabsTTSBackend
+    from diapason.speech.elevenlabs_tts import ElevenLabsTTSBackend
 
     assert ElevenLabsTTSBackend(api_key="").health() is False
     assert ElevenLabsTTSBackend(api_key="sk").health() is True

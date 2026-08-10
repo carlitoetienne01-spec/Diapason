@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.core.local_mode import engine_is_local, local_only
+from diapason.core.local_mode import engine_is_local, local_only
 
 # ── Doubles ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ def test_local_only_fails_closed_on_a_config_without_privacy_section():
 
 
 def test_local_only_loads_the_active_config_when_none_is_passed():
-    with patch("openjarvis.core.config.load_config", return_value=_cfg(True)) as loader:
+    with patch("diapason.core.config.load_config", return_value=_cfg(True)) as loader:
         assert local_only() is True
     loader.assert_called_once()
 
@@ -113,7 +113,7 @@ def test_privacy_section_is_loaded_from_toml(tmp_path):
     in a real config.toml parsed fine and was silently discarded — the mode
     could only ever be turned on from Python. This pins the wiring.
     """
-    from openjarvis.core.config import load_config
+    from diapason.core.config import load_config
 
     path = tmp_path / "config.toml"
     path.write_text("[privacy]\nlocal_only = true\n", encoding="utf-8")
@@ -125,7 +125,7 @@ def test_privacy_section_is_loaded_from_toml(tmp_path):
 
 def test_privacy_key_is_settable_from_the_cli():
     """`jarvis config set privacy.local_only true` must validate."""
-    from openjarvis.core.config import validate_config_key
+    from diapason.core.config import validate_config_key
 
     assert validate_config_key("privacy.local_only") is bool
 
@@ -134,7 +134,7 @@ def test_privacy_key_is_settable_from_the_cli():
 
 
 def test_loopback_is_local():
-    from openjarvis.core.local_mode import host_is_local
+    from diapason.core.local_mode import host_is_local
 
     for url in (
         "http://localhost:11434",
@@ -148,7 +148,7 @@ def test_loopback_is_local():
 
 def test_a_lan_address_is_not_local():
     """192.168.1.50 is someone else's computer, not this one."""
-    from openjarvis.core.local_mode import host_is_local
+    from diapason.core.local_mode import host_is_local
 
     for url in (
         "http://192.168.1.50:11434",
@@ -161,7 +161,7 @@ def test_a_lan_address_is_not_local():
 
 def test_unparseable_or_empty_hosts_are_not_local():
     """A host we cannot read is not a host we can vouch for."""
-    from openjarvis.core.local_mode import host_is_local
+    from diapason.core.local_mode import host_is_local
 
     assert host_is_local("") is False
     assert host_is_local("   ") is False
@@ -169,9 +169,9 @@ def test_unparseable_or_empty_hosts_are_not_local():
 
 
 def test_unix_sockets_are_local():
-    from openjarvis.core.local_mode import host_is_local
+    from diapason.core.local_mode import host_is_local
 
-    assert host_is_local("/var/run/openjarvis.sock") is True
+    assert host_is_local("/var/run/diapason.sock") is True
     assert host_is_local("unix:///tmp/x.sock") is True
 
 
@@ -179,7 +179,7 @@ def test_unix_sockets_are_local():
 
 
 def test_assert_may_leave_raises_under_local_only():
-    from openjarvis.core.local_mode import LocalOnlyError, assert_may_leave
+    from diapason.core.local_mode import LocalOnlyError, assert_may_leave
 
     with pytest.raises(LocalOnlyError) as excinfo:
         assert_may_leave(
@@ -190,7 +190,7 @@ def test_assert_may_leave_raises_under_local_only():
 
 def test_assert_may_leave_is_silent_for_loopback_even_under_local_only():
     """Guarding a path that never left costs nothing."""
-    from openjarvis.core.local_mode import assert_may_leave
+    from diapason.core.local_mode import assert_may_leave
 
     assert_may_leave(
         "the prompt", destination="http://localhost:11434", config=_cfg(True)
@@ -198,7 +198,7 @@ def test_assert_may_leave_is_silent_for_loopback_even_under_local_only():
 
 
 def test_assert_may_leave_is_silent_when_local_only_is_off():
-    from openjarvis.core.local_mode import assert_may_leave
+    from diapason.core.local_mode import assert_may_leave
 
     assert_may_leave(
         "the prompt", destination="https://api.openai.com", config=_cfg(False)
@@ -207,7 +207,7 @@ def test_assert_may_leave_is_silent_when_local_only_is_off():
 
 def test_assert_may_leave_refuses_an_unknown_destination_under_local_only():
     """No destination given means no proof it was loopback."""
-    from openjarvis.core.local_mode import LocalOnlyError, assert_may_leave
+    from diapason.core.local_mode import LocalOnlyError, assert_may_leave
 
     with pytest.raises(LocalOnlyError):
         assert_may_leave("the screenshot", config=_cfg(True))

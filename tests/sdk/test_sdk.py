@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import openjarvis
-from openjarvis.core.config import JarvisConfig
-from openjarvis.sdk import Jarvis, MemoryHandle
+import diapason
+from diapason.core.config import JarvisConfig
+from diapason.sdk import Jarvis, MemoryHandle
 
 
 def _make_engine(content="Hello from SDK"):
@@ -39,7 +39,7 @@ class TestJarvisInit:
 
     def test_version_property(self):
         j = Jarvis(config=JarvisConfig())
-        assert j.version == openjarvis.__version__
+        assert j.version == diapason.__version__
         j.close()
 
     def test_engine_key_override(self):
@@ -56,7 +56,7 @@ class TestJarvisInit:
 class TestJarvisAsk:
     def test_ask_returns_string(self):
         engine = _make_engine("The answer is 42.")
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig(), model="test-model")
             result = j.ask("What is the answer?")
             assert result == "The answer is 42."
@@ -64,7 +64,7 @@ class TestJarvisAsk:
 
     def test_ask_with_model_override(self):
         engine = _make_engine()
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig())
             j.ask("Hello", model="custom-model")
             # Verify engine.generate was called with the custom model
@@ -73,8 +73,8 @@ class TestJarvisAsk:
             j.close()
 
     def test_ask_with_agent(self):
-        from openjarvis.agents._stubs import AgentResult
-        from openjarvis.core.registry import AgentRegistry
+        from diapason.agents._stubs import AgentResult
+        from diapason.core.registry import AgentRegistry
 
         engine = _make_engine()
 
@@ -89,14 +89,14 @@ class TestJarvisAsk:
 
         AgentRegistry.register_value("mock-agent", MockAgent)
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig(), model="test-model")
             result = j.ask("Hello", agent="mock-agent")
             assert result == "Agent response"
             j.close()
 
     def test_ask_no_engine_raises(self):
-        with patch("openjarvis.sdk.get_engine", return_value=None):
+        with patch("diapason.sdk.get_engine", return_value=None):
             j = Jarvis(config=JarvisConfig())
             with pytest.raises(RuntimeError, match="No inference engine"):
                 j.ask("Hello")
@@ -104,7 +104,7 @@ class TestJarvisAsk:
 
     def test_ask_full_returns_dict(self):
         engine = _make_engine("Full response")
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig(), model="test-model")
             result = j.ask_full("Hello")
             assert isinstance(result, dict)
@@ -117,14 +117,14 @@ class TestJarvisAsk:
 class TestJarvisModels:
     def test_list_models(self):
         engine = _make_engine()
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig())
             models = j.list_models()
             assert models == ["test-model"]
             j.close()
 
     def test_list_engines(self):
-        from openjarvis.core.registry import EngineRegistry
+        from diapason.core.registry import EngineRegistry
 
         EngineRegistry.register_value("test-eng", object)
         j = Jarvis(config=JarvisConfig())
@@ -226,7 +226,7 @@ class TestJarvisStreaming:
 
         engine.stream = mock_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig(), model="test-model")
             tokens = []
             async for token in j.ask_stream("Hi"):
@@ -244,7 +244,7 @@ class TestJarvisStreaming:
 
         engine.stream = mock_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig(), model="test-model")
             chunks = []
             async for chunk in j.ask_full_stream("Hi"):
@@ -275,7 +275,7 @@ class TestJarvisStreaming:
 
         engine.stream = mock_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
+        with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
             j = Jarvis(config=JarvisConfig())
             tokens = []
             async for token in j.ask_stream("Hi", model="custom-model"):

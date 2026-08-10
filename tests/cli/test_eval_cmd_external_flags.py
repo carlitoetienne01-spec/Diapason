@@ -7,7 +7,7 @@ from click.testing import CliRunner
 
 class TestEvalCmdExternalFlags:
     def test_help_lists_external_backend_flags(self) -> None:
-        from openjarvis.cli.eval_cmd import eval_run
+        from diapason.cli.eval_cmd import eval_run
 
         runner = CliRunner()
         result = runner.invoke(eval_run, ["--help"])
@@ -17,7 +17,7 @@ class TestEvalCmdExternalFlags:
         assert "hermes" in result.output
 
     def test_help_backend_choices_include_hermes_openclaw(self) -> None:
-        from openjarvis.cli.eval_cmd import eval_run
+        from diapason.cli.eval_cmd import eval_run
 
         runner = CliRunner()
         result = runner.invoke(eval_run, ["--help"])

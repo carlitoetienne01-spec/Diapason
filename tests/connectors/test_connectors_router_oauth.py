@@ -57,13 +57,13 @@ def hermetic_connectors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
     Ensures connector instances created by the router's ``_get_or_create``
     resolve to the same directory the OAuth callback writes to, and that the
-    test leaves ``~/.openjarvis`` untouched.
+    test leaves ``~/.diapason`` untouched.
 
     Why this is more than a one-line monkeypatch: the autouse registry-clear
     fixture causes ``_ensure_connectors_registered()`` to ``importlib.reload``
     each connector module on the first router call, which re-executes the
     module body. To survive that reload we patch ``DEFAULT_CONFIG_DIR`` at its
-    *source* (``openjarvis.core.config``) — every connector re-derives
+    *source* (``diapason.core.config``) — every connector re-derives
     ``_DEFAULT_CREDENTIALS_PATH`` from it on reload, so the tmp dir sticks.
     We also pre-register + pre-reload the connectors inside the fixture so the
     reload happens while the patch is live, then reset module state on
@@ -72,10 +72,10 @@ def hermetic_connectors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
     import importlib
     import sys
 
-    import openjarvis.connectors.oauth as oauth_mod
-    import openjarvis.core.config as config_mod
-    import openjarvis.server.connectors_router as router_mod
-    from openjarvis.core.registry import ConnectorRegistry
+    import diapason.connectors.oauth as oauth_mod
+    import diapason.core.config as config_mod
+    import diapason.server.connectors_router as router_mod
+    from diapason.core.registry import ConnectorRegistry
 
     conn_dir = tmp_path / "connectors"
     conn_dir.mkdir(parents=True, exist_ok=True)
@@ -90,11 +90,11 @@ def hermetic_connectors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
     # patched DEFAULT_CONFIG_DIR now, before any request, and register them so
     # the router's lazy reload-on-empty-registry path is a no-op.
     google_mods = [
-        "openjarvis.connectors.gdrive",
-        "openjarvis.connectors.gcalendar",
-        "openjarvis.connectors.gcontacts",
-        "openjarvis.connectors.gmail",
-        "openjarvis.connectors.google_tasks",
+        "diapason.connectors.gdrive",
+        "diapason.connectors.gcalendar",
+        "diapason.connectors.gcontacts",
+        "diapason.connectors.gmail",
+        "diapason.connectors.google_tasks",
     ]
     for name in google_mods:
         if name in sys.modules:
@@ -105,7 +105,7 @@ def hermetic_connectors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
     router_mod._instances.clear()
     ConnectorRegistry.clear()
     # Restore the connector modules to their real (unpatched) default paths so
-    # subsequent tests in the same process see ~/.openjarvis again.
+    # subsequent tests in the same process see ~/.diapason again.
     for name in google_mods:
         if name in sys.modules:
             importlib.reload(sys.modules[name])
@@ -113,7 +113,7 @@ def hermetic_connectors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 @pytest.fixture()
 def client(hermetic_connectors: Path) -> Iterator[TestClient]:
-    from openjarvis.server.connectors_router import create_connectors_router
+    from diapason.server.connectors_router import create_connectors_router
 
     app = FastAPI()
     app.include_router(create_connectors_router())
@@ -137,7 +137,7 @@ def test_connect_client_pair_returns_oauth_required_no_browser(
     Covers every Google connector that shares the OAuth provider, proving the
     sibling connectors are fixed too (not just gdrive).
     """
-    with patch("openjarvis.core.open_browser") as mock_browser:
+    with patch("diapason.core.open_browser") as mock_browser:
         resp = client.post(
             f"/v1/connectors/{connector_id}/connect", json={"code": _CLIENT_PAIR}
         )
@@ -217,7 +217,7 @@ def test_oauth_start_without_creds_returns_400(client: TestClient) -> None:
 def test_oauth_callback_exchanges_and_connects(
     client: TestClient, hermetic_connectors: Path
 ) -> None:
-    import openjarvis.connectors.oauth as oauth_mod
+    import diapason.connectors.oauth as oauth_mod
 
     client.post("/v1/connectors/gdrive/connect", json={"code": _CLIENT_PAIR})
 
@@ -241,7 +241,7 @@ def test_oauth_callback_exchanges_and_connects(
         assert saved["refresh_token"] == "1//REAL"
 
     # The connector now reports connected, and GET /connectors agrees.
-    from openjarvis.connectors.gdrive import GDriveConnector
+    from diapason.connectors.gdrive import GDriveConnector
 
     assert GDriveConnector().is_connected() is True
 
@@ -259,7 +259,7 @@ def test_oauth_callback_error_param_renders_failure(client: TestClient) -> None:
 def test_oauth_callback_exchange_failure_renders_error(
     client: TestClient,
 ) -> None:
-    import openjarvis.connectors.oauth as oauth_mod
+    import diapason.connectors.oauth as oauth_mod
 
     client.post("/v1/connectors/gdrive/connect", json={"code": _CLIENT_PAIR})
 

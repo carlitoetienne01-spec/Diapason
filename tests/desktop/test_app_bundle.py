@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import plistlib
 
-from openjarvis.desktop import app_bundle
+from diapason.desktop import app_bundle
 
 
 def test_info_plist_declares_microphone_usage():
@@ -27,16 +27,16 @@ def test_info_plist_is_an_agent_not_a_windowed_app():
 
 def test_info_plist_has_a_stable_identity():
     info = app_bundle.build_info_plist()
-    assert info["CFBundleIdentifier"] == "com.openjarvis.dictation"
+    assert info["CFBundleIdentifier"] == "com.diapason.dictation"
     assert info["CFBundleExecutable"] == app_bundle.EXECUTABLE_NAME
-    assert info["CFBundleName"] == "OpenJarvis Dictation"
+    assert info["CFBundleName"] == "Diapason Dictation"
 
 
 def test_launcher_execs_so_launchd_tracks_the_python_process():
     """`exec` matters: launchd watches the process it spawned."""
     script = app_bundle.build_launcher_script("/venv/bin/python", "/proj")
     assert script.startswith("#!/bin/sh")
-    assert 'exec "/venv/bin/python" -m openjarvis.cli dictate' in script
+    assert 'exec "/venv/bin/python" -m diapason.cli dictate' in script
 
 
 def test_launcher_never_cds_into_a_tcc_protected_project_dir():
@@ -62,7 +62,7 @@ def test_build_creates_a_runnable_bundle(tmp_path):
 
     with open(bundle / "Contents" / "Info.plist", "rb") as fh:
         info = plistlib.load(fh)
-    assert info["CFBundleIdentifier"] == "com.openjarvis.dictation"
+    assert info["CFBundleIdentifier"] == "com.diapason.dictation"
     assert app_bundle.is_installed(bundle) is True
 
 

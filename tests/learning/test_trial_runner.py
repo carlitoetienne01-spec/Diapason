@@ -1,12 +1,12 @@
-"""Tests for openjarvis.optimize.trial_runner module."""
+"""Tests for diapason.optimize.trial_runner module."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from openjarvis.evals.core.types import RunConfig, RunSummary
-from openjarvis.learning.optimize.trial_runner import TrialRunner
-from openjarvis.learning.optimize.types import TrialConfig, TrialResult
+from diapason.evals.core.types import RunConfig, RunSummary
+from diapason.learning.optimize.trial_runner import TrialRunner
+from diapason.learning.optimize.types import TrialConfig, TrialResult
 
 
 class TestTrialRunnerInit:
@@ -179,11 +179,11 @@ class TestRunTrial:
         defaults.update(overrides)
         return RunSummary(**defaults)
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_returns_trial_result(
         self,
         mock_runner_cls,
@@ -216,11 +216,11 @@ class TestRunTrial:
         mock_runner_cls.assert_called_once()
         mock_runner_instance.run.assert_called_once()
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_accuracy_from_summary(
         self,
         mock_runner_cls,
@@ -240,11 +240,11 @@ class TestRunTrial:
 
         assert result.accuracy == 0.92
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_tokens_summed(
         self,
         mock_runner_cls,
@@ -267,11 +267,11 @@ class TestRunTrial:
 
         assert result.total_tokens == 5000
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_summary_attached(
         self,
         mock_runner_cls,
@@ -291,11 +291,11 @@ class TestRunTrial:
 
         assert result.summary is summary
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_failure_modes_on_errors(
         self,
         mock_runner_cls,
@@ -316,11 +316,11 @@ class TestRunTrial:
         assert len(result.failure_modes) == 1
         assert "5" in result.failure_modes[0]
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_no_failure_modes_when_clean(
         self,
         mock_runner_cls,
@@ -340,11 +340,11 @@ class TestRunTrial:
 
         assert result.failure_modes == []
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_closes_backends(
         self,
         mock_runner_cls,
@@ -367,11 +367,11 @@ class TestRunTrial:
         mock_backend.close.assert_called_once()
         mock_judge.close.assert_called_once()
 
-    @patch("openjarvis.evals.cli._build_scorer")
-    @patch("openjarvis.evals.cli._build_judge_backend")
-    @patch("openjarvis.evals.cli._build_dataset")
-    @patch("openjarvis.evals.cli._build_backend")
-    @patch("openjarvis.evals.core.runner.EvalRunner")
+    @patch("diapason.evals.cli._build_scorer")
+    @patch("diapason.evals.cli._build_judge_backend")
+    @patch("diapason.evals.cli._build_dataset")
+    @patch("diapason.evals.cli._build_backend")
+    @patch("diapason.evals.core.runner.EvalRunner")
     def test_run_trial_populates_sample_scores(
         self,
         mock_runner_cls,
@@ -380,7 +380,7 @@ class TestRunTrial:
         mock_build_judge,
         mock_build_scorer,
     ) -> None:
-        from openjarvis.evals.core.types import EvalResult
+        from diapason.evals.core.types import EvalResult
 
         summary = self._make_summary()
         mock_runner_instance = MagicMock()

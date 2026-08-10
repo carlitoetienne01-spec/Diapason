@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_anthropic_cache_breakpoint_added():
-    from openjarvis.engine.cloud import _annotate_anthropic_cache
+    from diapason.engine.cloud import _annotate_anthropic_cache
 
     messages = [
         {"role": "system", "content": "You are Jarvis. ## Persona\nHelpful assistant."},
@@ -16,7 +16,7 @@ def test_anthropic_cache_breakpoint_added():
 
 
 def test_non_system_messages_unchanged():
-    from openjarvis.engine.cloud import _annotate_anthropic_cache
+    from diapason.engine.cloud import _annotate_anthropic_cache
 
     messages = [
         {"role": "user", "content": "Hello"},
@@ -28,7 +28,7 @@ def test_non_system_messages_unchanged():
 
 
 def test_already_list_content_gets_cache_control():
-    from openjarvis.engine.cloud import _annotate_anthropic_cache
+    from diapason.engine.cloud import _annotate_anthropic_cache
 
     messages = [
         {"role": "system", "content": [{"type": "text", "text": "You are Jarvis."}]},

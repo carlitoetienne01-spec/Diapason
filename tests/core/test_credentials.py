@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from openjarvis.core.credentials import (
+from diapason.core.credentials import (
     delete_credential,
     get_credential_status,
     inject_credentials,

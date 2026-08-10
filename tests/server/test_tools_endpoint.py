@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 try:
-    from openjarvis.server.agent_manager_routes import build_tools_list
+    from diapason.server.agent_manager_routes import build_tools_list
 except ImportError:
     build_tools_list = None
 
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_tools_endpoint_returns_list():
-    from openjarvis.server.agent_manager_routes import build_tools_list
+    from diapason.server.agent_manager_routes import build_tools_list
 
     tools = build_tools_list()
     assert isinstance(tools, list)
@@ -32,7 +32,7 @@ def test_tools_endpoint_returns_list():
 
 
 def test_tools_includes_channels():
-    from openjarvis.server.agent_manager_routes import build_tools_list
+    from diapason.server.agent_manager_routes import build_tools_list
 
     tools = build_tools_list()
     names = {t["name"] for t in tools}
@@ -41,7 +41,7 @@ def test_tools_includes_channels():
 
 
 def test_browser_meta_group():
-    from openjarvis.server.agent_manager_routes import build_tools_list
+    from diapason.server.agent_manager_routes import build_tools_list
 
     tools = build_tools_list()
     names = {t["name"] for t in tools}
@@ -51,7 +51,7 @@ def test_browser_meta_group():
 
 def test_web_search_available_without_tavily_key(monkeypatch):
     """DuckDuckGo fallback keeps web search usable without Tavily."""
-    from openjarvis.server.agent_manager_routes import build_tools_list
+    from diapason.server.agent_manager_routes import build_tools_list
 
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     tools = build_tools_list()
@@ -66,9 +66,9 @@ def test_tool_credentials_browser_lifecycle(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from openjarvis.server.agent_manager_routes import create_agent_manager_router
+    from diapason.server.agent_manager_routes import create_agent_manager_router
 
-    monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "openjarvis-home"))
+    monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "diapason-home"))
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     app = FastAPI()
     tools_router = create_agent_manager_router(MagicMock())[3]

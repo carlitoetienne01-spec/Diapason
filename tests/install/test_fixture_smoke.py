@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.core import config as config_mod
+from diapason.core import config as config_mod
 
 
 def test_fixture_redirects_default_config_dir(tmp_openjarvis_home: Path) -> None:

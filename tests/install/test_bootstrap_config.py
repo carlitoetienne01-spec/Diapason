@@ -1,4 +1,4 @@
-"""Tests for openjarvis.cli._bootstrap.write_initial_config."""
+"""Tests for diapason.cli._bootstrap.write_initial_config."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-from openjarvis.cli import _bootstrap
-from openjarvis.core.config import GpuInfo, HardwareInfo
+from diapason.cli import _bootstrap
+from diapason.core.config import GpuInfo, HardwareInfo
 
 
 def test_writes_minimal_local_config(tmp_openjarvis_home: Path) -> None:
@@ -95,7 +95,7 @@ def test_handles_special_chars_in_model_name(tmp_openjarvis_home: Path) -> None:
 
 def test_jarvis_config_has_install_provenance_fields() -> None:
     """Top-level provenance fields should be addressable as attributes."""
-    from openjarvis.core.config import JarvisConfig
+    from diapason.core.config import JarvisConfig
 
     cfg = JarvisConfig()
     assert hasattr(cfg, "installed_at")
@@ -108,7 +108,7 @@ def test_load_config_parses_provenance_from_toml(
     tmp_openjarvis_home: Path,
 ) -> None:
     """If config.toml has installed_at/installer_version at top level, load them."""
-    from openjarvis.core.config import load_config
+    from diapason.core.config import load_config
 
     cfg_path = tmp_openjarvis_home / "config.toml"
     cfg_path.write_text(

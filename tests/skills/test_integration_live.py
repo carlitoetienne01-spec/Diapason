@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.skills.manager import SkillManager
-from openjarvis.skills.tool_adapter import SkillTool
-from openjarvis.system import SystemBuilder
+from diapason.core.events import EventBus, EventType
+from diapason.skills.manager import SkillManager
+from diapason.skills.tool_adapter import SkillTool
+from diapason.system import SystemBuilder
 
 
 @pytest.mark.live
@@ -126,10 +126,10 @@ class TestSkillEventsAndTracing:
 
     def test_skill_execution_emits_events(self):
         """Running a structured skill emits SKILL_EXECUTE_START/END events."""
-        from openjarvis.core.types import ToolResult
-        from openjarvis.skills.executor import SkillExecutor
-        from openjarvis.skills.types import SkillManifest, SkillStep
-        from openjarvis.tools._stubs import BaseTool, ToolExecutor, ToolSpec
+        from diapason.core.types import ToolResult
+        from diapason.skills.executor import SkillExecutor
+        from diapason.skills.types import SkillManifest, SkillStep
+        from diapason.tools._stubs import BaseTool, ToolExecutor, ToolSpec
 
         class EchoTool(BaseTool):
             tool_id = "echo"

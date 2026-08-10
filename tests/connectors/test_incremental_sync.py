@@ -8,10 +8,10 @@ from typing import Iterator, List, Optional
 
 import pytest
 
-from openjarvis.connectors._stubs import BaseConnector, Document, SyncStatus
-from openjarvis.connectors.pipeline import IngestionPipeline
-from openjarvis.connectors.store import KnowledgeStore
-from openjarvis.connectors.sync_engine import SyncEngine
+from diapason.connectors._stubs import BaseConnector, Document, SyncStatus
+from diapason.connectors.pipeline import IngestionPipeline
+from diapason.connectors.store import KnowledgeStore
+from diapason.connectors.sync_engine import SyncEngine
 
 # ---------------------------------------------------------------------------
 # TimestampConnector — records the `since` value it receives

@@ -9,8 +9,8 @@ instructions.
 
 from __future__ import annotations
 
-from openjarvis.core.config import MemoryFilesConfig, SystemPromptConfig
-from openjarvis.prompt.builder import SystemPromptBuilder
+from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
+from diapason.prompt.builder import SystemPromptBuilder
 
 
 def _builder_with_soul(tmp_path, text="You are Kira."):
@@ -53,7 +53,7 @@ class TestPersonaSections:
 
 class TestApplyPersona:
     def test_appends_to_base_prompt(self, tmp_path):
-        from openjarvis.agents.simple import SimpleAgent
+        from diapason.agents.simple import SimpleAgent
 
         agent = SimpleAgent(object(), "m", prompt_builder=_builder_with_soul(tmp_path))
         out = agent._apply_persona("MONITOR INSTRUCTIONS")
@@ -61,7 +61,7 @@ class TestApplyPersona:
         assert "You are Kira." in out
 
     def test_noop_without_builder(self):
-        from openjarvis.agents.simple import SimpleAgent
+        from diapason.agents.simple import SimpleAgent
 
         agent = SimpleAgent(object(), "m")
         assert agent._apply_persona("BASE") == "BASE"
@@ -71,7 +71,7 @@ class TestPersistentAgentsReceivePromptBuilder:
     """The __init__ chain must forward prompt_builder through to BaseAgent."""
 
     def test_monitor_operative_forwards_prompt_builder(self, tmp_path):
-        from openjarvis.agents.monitor_operative import MonitorOperativeAgent
+        from diapason.agents.monitor_operative import MonitorOperativeAgent
 
         builder = _builder_with_soul(tmp_path)
         agent = MonitorOperativeAgent(object(), "m", prompt_builder=builder)
@@ -81,7 +81,7 @@ class TestPersistentAgentsReceivePromptBuilder:
         assert "You are Kira." in applied
 
     def test_operative_forwards_prompt_builder(self, tmp_path):
-        from openjarvis.agents.operative import OperativeAgent
+        from diapason.agents.operative import OperativeAgent
 
         builder = _builder_with_soul(tmp_path)
         agent = OperativeAgent(object(), "m", prompt_builder=builder)
@@ -89,7 +89,7 @@ class TestPersistentAgentsReceivePromptBuilder:
         assert "You are Kira." in agent._apply_persona("OP INSTRUCTIONS")
 
     def test_monitor_operative_without_builder_is_unaffected(self):
-        from openjarvis.agents.monitor_operative import MonitorOperativeAgent
+        from diapason.agents.monitor_operative import MonitorOperativeAgent
 
         agent = MonitorOperativeAgent(object(), "m")
         assert agent._prompt_builder is None

@@ -6,7 +6,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from openjarvis.server.api_routes import include_all_routes  # noqa: E402
+from diapason.server.api_routes import include_all_routes  # noqa: E402
 
 
 def _make_app():
@@ -67,7 +67,7 @@ class TestMemoryRustMissing:
         def _boom():
             raise ImportError("No module named 'openjarvis_rust'")
 
-        import openjarvis._rust_bridge as bridge
+        import diapason._rust_bridge as bridge
 
         monkeypatch.setattr(bridge, "get_rust_module", _boom)
         return TestClient(_make_app())
@@ -124,7 +124,7 @@ class TestMetricsRoute:
         client = TestClient(_make_app())
         resp = client.get("/metrics")
         assert resp.status_code == 200
-        assert "openjarvis" in resp.text or "No metrics" in resp.text
+        assert "diapason" in resp.text or "No metrics" in resp.text
 
 
 class TestSkillRoutes:

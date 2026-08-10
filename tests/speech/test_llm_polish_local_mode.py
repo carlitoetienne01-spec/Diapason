@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
-from openjarvis.speech.llm_polish import llm_polish_text
+from diapason.speech.llm_polish import llm_polish_text
 
 _SENTENCE = "euh donc on se voit demain matin je crois"
 
@@ -43,7 +43,7 @@ def test_local_only_refuses_a_remote_engine_without_calling_it():
     """The sentence must not reach the engine at all — not merely be discarded."""
     remote = _engine("openai", True)
 
-    with patch("openjarvis.core.config.load_config", return_value=_Cfg(True)):
+    with patch("diapason.core.config.load_config", return_value=_Cfg(True)):
         result = llm_polish_text(_SENTENCE, engine=remote)
 
     assert result is None
@@ -55,7 +55,7 @@ def test_local_only_allows_a_local_engine():
     local = _engine("ollama", False)
     local.generate.return_value = {"content": "On se voit demain matin."}
 
-    with patch("openjarvis.core.config.load_config", return_value=_Cfg(True)):
+    with patch("diapason.core.config.load_config", return_value=_Cfg(True)):
         result = llm_polish_text(_SENTENCE, engine=local)
 
     local.generate.assert_called_once()
@@ -67,7 +67,7 @@ def test_a_remote_engine_is_still_used_when_local_only_is_off():
     remote = _engine("openai", True)
     remote.generate.return_value = {"content": "On se voit demain matin."}
 
-    with patch("openjarvis.core.config.load_config", return_value=_Cfg(False)):
+    with patch("diapason.core.config.load_config", return_value=_Cfg(False)):
         result = llm_polish_text(_SENTENCE, engine=remote)
 
     remote.generate.assert_called_once()
@@ -78,5 +78,5 @@ def test_an_engine_that_declares_nothing_is_treated_as_remote():
     """Silence is not consent: an engine with no locality signal is refused."""
     opaque = MagicMock(spec=[])  # neither engine_id nor is_cloud
 
-    with patch("openjarvis.core.config.load_config", return_value=_Cfg(True)):
+    with patch("diapason.core.config.load_config", return_value=_Cfg(True)):
         assert llm_polish_text(_SENTENCE, engine=opaque) is None

@@ -93,7 +93,7 @@ def module_is_outbound(source: str) -> bool:
 
 
 def scan_outbound_modules(src_root: Path) -> Set[str]:
-    """Return the set of ``openjarvis/...`` paths that are outbound-capable."""
+    """Return the set of ``diapason/...`` paths that are outbound-capable."""
     found: Set[str] = set()
     for path in _iter_sources(src_root):
         try:

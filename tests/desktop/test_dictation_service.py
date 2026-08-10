@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from openjarvis.desktop.dictation_service import DictationService, float_mono_to_wav
+from diapason.desktop.dictation_service import DictationService, float_mono_to_wav
 
 
 class _FakeCapture:
@@ -231,7 +231,7 @@ def test_status_reports_a_crash_instead_of_swallowing_it():
 
 def test_successful_dictation_is_recorded_in_history(tmp_path, monkeypatch):
     """History reflects what was DELIVERED, so it is written after the paste."""
-    from openjarvis.desktop import dictation_history
+    from diapason.desktop import dictation_history
 
     hist = tmp_path / "h.jsonl"
     monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)
@@ -250,7 +250,7 @@ def test_successful_dictation_is_recorded_in_history(tmp_path, monkeypatch):
 
 
 def test_nothing_is_recorded_when_nothing_was_pasted(tmp_path, monkeypatch):
-    from openjarvis.desktop import dictation_history
+    from diapason.desktop import dictation_history
 
     hist = tmp_path / "h.jsonl"
     monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)
@@ -265,7 +265,7 @@ def test_nothing_is_recorded_when_nothing_was_pasted(tmp_path, monkeypatch):
 
 def test_history_failure_never_breaks_a_successful_dictation(monkeypatch):
     """Bookkeeping is not allowed to lose the user their sentence."""
-    from openjarvis.desktop import dictation_history
+    from diapason.desktop import dictation_history
 
     def _boom(*_a, **_kw):
         raise OSError("disk full")
@@ -281,7 +281,7 @@ def test_history_failure_never_breaks_a_successful_dictation(monkeypatch):
 
 
 def test_history_can_be_turned_off(tmp_path, monkeypatch):
-    from openjarvis.desktop import dictation_history
+    from diapason.desktop import dictation_history
 
     hist = tmp_path / "h.jsonl"
     monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)

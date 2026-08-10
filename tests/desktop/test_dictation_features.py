@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from openjarvis.desktop.voice_commands import parse_voice_command, finalize_dictation
-from openjarvis.speech.dictate_polish import polish_dictation
+from diapason.desktop.voice_commands import parse_voice_command, finalize_dictation
+from diapason.speech.dictate_polish import polish_dictation
 
 
 def test_polish_removes_fillers():
@@ -51,7 +51,7 @@ def test_finalize_command_vs_paste():
 
 
 def test_monitor_bounds_smoke():
-    from openjarvis.desktop.monitors import monitor_bounds, sorted_monitor_rects
+    from diapason.desktop.monitors import monitor_bounds, sorted_monitor_rects
 
     rects = sorted_monitor_rects()
     assert len(rects) >= 1

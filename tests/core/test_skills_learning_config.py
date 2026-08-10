@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from openjarvis.core.config import LearningConfig, SkillsLearningConfig
-from openjarvis.core.paths import get_config_dir
+from diapason.core.config import LearningConfig, SkillsLearningConfig
+from diapason.core.paths import get_config_dir
 
 
 class TestSkillsLearningConfig:

@@ -9,12 +9,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from openjarvis.agents._stubs import AgentContext, AgentResult, ToolUsingAgent
-from openjarvis.cli import cli
-from openjarvis.core.types import ToolCall, ToolResult
-from openjarvis.tools._stubs import BaseTool, ToolSpec
+from diapason.agents._stubs import AgentContext, AgentResult, ToolUsingAgent
+from diapason.cli import cli
+from diapason.core.types import ToolCall, ToolResult
+from diapason.tools._stubs import BaseTool, ToolSpec
 
-_ask_mod = importlib.import_module("openjarvis.cli.ask")
+_ask_mod = importlib.import_module("diapason.cli.ask")
 
 
 def _mock_engine(content="Hello from engine"):
@@ -34,9 +34,9 @@ def _mock_engine(content="Hello from engine"):
 
 def _register_agents():
     """Re-register agents after registry clear."""
-    from openjarvis.agents.orchestrator import OrchestratorAgent
-    from openjarvis.agents.simple import SimpleAgent
-    from openjarvis.core.registry import AgentRegistry
+    from diapason.agents.orchestrator import OrchestratorAgent
+    from diapason.agents.simple import SimpleAgent
+    from diapason.core.registry import AgentRegistry
 
     for name, cls in [
         ("simple", SimpleAgent),
@@ -48,12 +48,12 @@ def _register_agents():
 
 def _register_tools():
     """Re-register tools after registry clear."""
-    from openjarvis.core.registry import ToolRegistry
-    from openjarvis.tools.calculator import CalculatorTool
-    from openjarvis.tools.file_read import FileReadTool
-    from openjarvis.tools.llm_tool import LLMTool
-    from openjarvis.tools.retrieval import RetrievalTool
-    from openjarvis.tools.think import ThinkTool
+    from diapason.core.registry import ToolRegistry
+    from diapason.tools.calculator import CalculatorTool
+    from diapason.tools.file_read import FileReadTool
+    from diapason.tools.llm_tool import LLMTool
+    from diapason.tools.retrieval import RetrievalTool
+    from diapason.tools.think import ThinkTool
 
     for name, cls in [
         ("calculator", CalculatorTool),
@@ -107,8 +107,8 @@ class _EngineSetup:
 
 @pytest.fixture
 def agent_setup():
-    from openjarvis.core.config import JarvisConfig
-    from openjarvis.core.registry import AgentRegistry, ToolRegistry
+    from diapason.core.config import JarvisConfig
+    from diapason.core.registry import AgentRegistry, ToolRegistry
 
     engine = _mock_engine("unused")
     config = JarvisConfig()
@@ -152,7 +152,7 @@ def mock_setup():
         patch.object(_ask_mod, "register_builtin_models"),
         patch.object(_ask_mod, "merge_discovered_models"),
     ):
-        from openjarvis.core.config import JarvisConfig
+        from diapason.core.config import JarvisConfig
 
         mock_cfg.return_value = JarvisConfig()
         mock_ge.return_value = ("mock", engine)
@@ -236,7 +236,7 @@ class TestAskAgentOption:
     ):
         """When config's ``default_agent`` is blank and --agent is omitted,
         the original direct-to-engine path is preserved."""
-        from openjarvis.core.config import JarvisConfig
+        from diapason.core.config import JarvisConfig
 
         cfg = JarvisConfig()
         cfg.agent.default_agent = ""
@@ -289,8 +289,8 @@ class TestAskAgentOption:
 
 class TestBuildTools:
     def test_build_calculator(self, mock_setup):
-        from openjarvis.cli.ask import _build_tools
-        from openjarvis.core.config import JarvisConfig
+        from diapason.cli.ask import _build_tools
+        from diapason.core.config import JarvisConfig
 
         _register_tools()
         config = JarvisConfig()
@@ -299,8 +299,8 @@ class TestBuildTools:
         assert tools[0].tool_id == "calculator"
 
     def test_build_think(self, mock_setup):
-        from openjarvis.cli.ask import _build_tools
-        from openjarvis.core.config import JarvisConfig
+        from diapason.cli.ask import _build_tools
+        from diapason.core.config import JarvisConfig
 
         _register_tools()
         config = JarvisConfig()
@@ -309,24 +309,24 @@ class TestBuildTools:
         assert tools[0].tool_id == "think"
 
     def test_build_unknown_tool_skipped(self, mock_setup):
-        from openjarvis.cli.ask import _build_tools
-        from openjarvis.core.config import JarvisConfig
+        from diapason.cli.ask import _build_tools
+        from diapason.core.config import JarvisConfig
 
         config = JarvisConfig()
         tools = _build_tools(["nonexistent"], config, mock_setup, "test-model")
         assert len(tools) == 0
 
     def test_build_empty_names(self, mock_setup):
-        from openjarvis.cli.ask import _build_tools
-        from openjarvis.core.config import JarvisConfig
+        from diapason.cli.ask import _build_tools
+        from diapason.core.config import JarvisConfig
 
         config = JarvisConfig()
         tools = _build_tools(["", " "], config, mock_setup, "test-model")
         assert len(tools) == 0
 
     def test_build_multiple_tools(self, mock_setup):
-        from openjarvis.cli.ask import _build_tools
-        from openjarvis.core.config import JarvisConfig
+        from diapason.cli.ask import _build_tools
+        from diapason.core.config import JarvisConfig
 
         _register_tools()
         config = JarvisConfig()
@@ -346,7 +346,7 @@ class TestPersonaFilesReachModel:
         self, runner, monkeypatch, tmp_path
     ):
         """SOUL.md content must appear in the system message sent to the engine."""
-        from openjarvis.core.config import JarvisConfig
+        from diapason.core.config import JarvisConfig
 
         # Write a SOUL.md with a unique sentinel string we can grep for
         soul = tmp_path / "SOUL.md"
@@ -401,7 +401,7 @@ class TestPersonaFilesReachModel:
     ):
         """OrchestratorAgent's __init__ doesn't accept ``prompt_builder``;
         the wiring must skip it silently rather than crash."""
-        from openjarvis.core.config import JarvisConfig
+        from diapason.core.config import JarvisConfig
 
         soul = tmp_path / "SOUL.md"
         soul.write_text("ORCH_PERSONA_SENTINEL", encoding="utf-8")

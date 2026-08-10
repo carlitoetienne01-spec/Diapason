@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import plistlib
 
-from openjarvis.desktop import launch_agent
+from diapason.desktop import launch_agent
 
 
 def _plist(**kw):
@@ -20,12 +20,12 @@ def _plist(**kw):
 
 def test_plist_is_valid_and_runs_dictate_via_module():
     d = _plist()
-    assert d["Label"] == "com.openjarvis.dictate"
-    # -m openjarvis.cli, not a console script that might not be on PATH.
+    assert d["Label"] == "com.diapason.dictate"
+    # -m diapason.cli, not a console script that might not be on PATH.
     assert d["ProgramArguments"] == [
         "/venv/bin/python",
         "-m",
-        "openjarvis.cli",
+        "diapason.cli",
         "dictate",
     ]
 
@@ -52,8 +52,8 @@ def test_plist_escapes_special_chars_in_paths():
 
 
 def test_label_and_paths_are_stable():
-    assert launch_agent.LABEL == "com.openjarvis.dictate"
-    assert launch_agent.plist_path().name == "com.openjarvis.dictate.plist"
+    assert launch_agent.LABEL == "com.diapason.dictate"
+    assert launch_agent.plist_path().name == "com.diapason.dictate.plist"
     assert "LaunchAgents" in str(launch_agent.plist_path())
 
 
@@ -69,11 +69,11 @@ def test_serve_agent_has_its_own_label_and_arguments():
             out_log="/l/serve.out.log",
             err_log="/l/serve.err.log",
             label=launch_agent.SERVE_LABEL,
-            args=["/venv/bin/python", "-m", "openjarvis.cli", "serve",
+            args=["/venv/bin/python", "-m", "diapason.cli", "serve",
                   "--host", "127.0.0.1", "--port", "8000"],
         ).encode()
     )
-    assert d["Label"] == "com.openjarvis.serve"
+    assert d["Label"] == "com.diapason.serve"
     assert "--host" in d["ProgramArguments"]
     assert "127.0.0.1" in d["ProgramArguments"]
 
@@ -92,10 +92,10 @@ def test_plist_paths_do_not_collide():
 def test_dictation_defaults_are_unchanged():
     """Parameterising must not have altered the existing agent."""
     d = _plist()
-    assert d["Label"] == "com.openjarvis.dictate"
+    assert d["Label"] == "com.diapason.dictate"
     assert d["ProgramArguments"] == [
         "/venv/bin/python",
         "-m",
-        "openjarvis.cli",
+        "diapason.cli",
         "dictate",
     ]

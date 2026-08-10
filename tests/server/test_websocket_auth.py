@@ -17,10 +17,10 @@ from fastapi import FastAPI  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
 
-from openjarvis.core.events import EventBus, EventType  # noqa: E402
-from openjarvis.server.api_routes import include_all_routes  # noqa: E402
-from openjarvis.server.auth_middleware import websocket_authorized  # noqa: E402
-from openjarvis.server.ws_bridge import create_ws_router  # noqa: E402
+from diapason.core.events import EventBus, EventType  # noqa: E402
+from diapason.server.api_routes import include_all_routes  # noqa: E402
+from diapason.server.auth_middleware import websocket_authorized  # noqa: E402
+from diapason.server.ws_bridge import create_ws_router  # noqa: E402
 
 
 def _ws(query=None, headers=None):

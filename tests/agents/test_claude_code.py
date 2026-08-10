@@ -8,15 +8,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import openjarvis.agents  # noqa: F401 -- trigger registration
-from openjarvis.agents._stubs import AgentResult
-from openjarvis.agents.claude_code import (
+import diapason.agents  # noqa: F401 -- trigger registration
+from diapason.agents._stubs import AgentResult
+from diapason.agents.claude_code import (
     _OUTPUT_END,
     _OUTPUT_START,
     ClaudeCodeAgent,
 )
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.core.registry import AgentRegistry
+from diapason.core.events import EventBus, EventType
+from diapason.core.registry import AgentRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

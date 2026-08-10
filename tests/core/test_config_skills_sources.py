@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.core.config import SkillsConfig, SkillSourceConfig, load_config
+from diapason.core.config import SkillsConfig, SkillSourceConfig, load_config
 
 
 class TestSkillSourceConfig:

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from openjarvis.mcp.protocol import MCPRequest
-from openjarvis.mcp.server import MCPServer
-from openjarvis.tools.calculator import CalculatorTool
-from openjarvis.tools.think import ThinkTool
+from diapason.mcp.protocol import MCPRequest
+from diapason.mcp.server import MCPServer
+from diapason.tools.calculator import CalculatorTool
+from diapason.tools.think import ThinkTool
 
 
 @pytest.fixture
@@ -112,7 +112,7 @@ class TestAutoDiscovery:
 
 class TestStorageToolAnnotations:
     def test_memory_store_destructive(self):
-        from openjarvis.tools.storage_tools import MemoryStoreTool
+        from diapason.tools.storage_tools import MemoryStoreTool
 
         server = MCPServer([MemoryStoreTool()])
         req = MCPRequest(method="tools/list", id=1)
@@ -122,7 +122,7 @@ class TestStorageToolAnnotations:
         assert tool["annotations"]["readOnlyHint"] is False
 
     def test_memory_retrieve_read_only(self):
-        from openjarvis.tools.storage_tools import MemoryRetrieveTool
+        from diapason.tools.storage_tools import MemoryRetrieveTool
 
         server = MCPServer([MemoryRetrieveTool()])
         req = MCPRequest(method="tools/list", id=1)

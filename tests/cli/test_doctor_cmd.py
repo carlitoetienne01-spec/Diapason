@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from openjarvis.cli import cli
-from openjarvis.cli.doctor_cmd import (
+from diapason.cli import cli
+from diapason.cli.doctor_cmd import (
     CheckResult,
     _check_config_exists,
     _check_default_model,
@@ -34,15 +34,15 @@ class TestDoctorRuns:
         mock_config.intelligence.default_model = ""
 
         with (
-            patch("openjarvis.cli.doctor_cmd.load_config", return_value=mock_config),
+            patch("diapason.cli.doctor_cmd.load_config", return_value=mock_config),
             patch(
-                "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
+                "diapason.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
                 Path("/tmp/nonexistent/config.toml"),
             ),
-            patch("openjarvis.cli.doctor_cmd._check_engines", return_value=[]),
-            patch("openjarvis.cli.doctor_cmd._check_models", return_value=[]),
+            patch("diapason.cli.doctor_cmd._check_engines", return_value=[]),
+            patch("diapason.cli.doctor_cmd._check_models", return_value=[]),
             patch(
-                "openjarvis.cli.doctor_cmd._check_speech_backend",
+                "diapason.cli.doctor_cmd._check_speech_backend",
                 return_value=CheckResult("Speech backend", "ok", "mock ready"),
             ),
         ):
@@ -58,15 +58,15 @@ class TestDoctorJsonOutput:
         mock_config.intelligence.default_model = ""
 
         with (
-            patch("openjarvis.cli.doctor_cmd.load_config", return_value=mock_config),
+            patch("diapason.cli.doctor_cmd.load_config", return_value=mock_config),
             patch(
-                "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
+                "diapason.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
                 Path("/tmp/nonexistent/config.toml"),
             ),
-            patch("openjarvis.cli.doctor_cmd._check_engines", return_value=[]),
-            patch("openjarvis.cli.doctor_cmd._check_models", return_value=[]),
+            patch("diapason.cli.doctor_cmd._check_engines", return_value=[]),
+            patch("diapason.cli.doctor_cmd._check_models", return_value=[]),
             patch(
-                "openjarvis.cli.doctor_cmd._check_speech_backend",
+                "diapason.cli.doctor_cmd._check_speech_backend",
                 return_value=CheckResult("Speech backend", "ok", "mock ready"),
             ),
         ):
@@ -94,7 +94,7 @@ class TestCheckConfigMissing:
     def test_check_config_missing(self) -> None:
         """Warning when config file does not exist."""
         with patch(
-            "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
+            "diapason.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
             Path("/tmp/nonexistent/config.toml"),
         ):
             result = _check_config_exists()
@@ -105,7 +105,7 @@ class TestCheckConfigMissing:
 class TestCheckEngineProbing:
     def test_check_engine_probing(self) -> None:
         """Engine health check reports reachable/unreachable engines."""
-        from openjarvis.cli.doctor_cmd import CheckResult
+        from diapason.cli.doctor_cmd import CheckResult
 
         mock_engine_healthy = MagicMock()
         mock_engine_healthy.health.return_value = True
@@ -146,7 +146,7 @@ class TestCheckDefaultModel:
         """Leaving default model empty should be treated as valid auto-routing."""
         mock_config = MagicMock()
         mock_config.intelligence.default_model = ""
-        with patch("openjarvis.cli.doctor_cmd.load_config", return_value=mock_config):
+        with patch("diapason.cli.doctor_cmd.load_config", return_value=mock_config):
             result = _check_default_model()
         assert result.status == "ok"
         assert "auto" in result.message.lower()
@@ -159,7 +159,7 @@ class TestCheckSpeechBackend:
         backend.health.return_value = True
 
         with patch(
-            "openjarvis.speech._discovery.get_speech_backend",
+            "diapason.speech._discovery.get_speech_backend",
             return_value=backend,
         ):
             result = _check_speech_backend()
@@ -174,7 +174,7 @@ class TestCheckSpeechBackend:
         backend.last_error.return_value = "missing cublas64_12.dll"
 
         with patch(
-            "openjarvis.speech._discovery.get_speech_backend",
+            "diapason.speech._discovery.get_speech_backend",
             return_value=backend,
         ):
             result = _check_speech_backend()
@@ -185,7 +185,7 @@ class TestCheckSpeechBackend:
 
     def test_check_speech_backend_missing_uses_desktop_hint(self) -> None:
         with patch(
-            "openjarvis.speech._discovery.get_speech_backend",
+            "diapason.speech._discovery.get_speech_backend",
             return_value=None,
         ):
             result = _check_speech_backend()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from openjarvis.desktop.welcome_runner import WelcomeClapSettings, run_welcome_sequence
+from diapason.desktop.welcome_runner import WelcomeClapSettings, run_welcome_sequence
 
 
 def test_run_welcome_calls_tools():
@@ -18,11 +18,11 @@ def test_run_welcome_calls_tools():
     )
 
     with (
-        patch("openjarvis.tools.desktop_tools.OpenUriTool") as OpenUri,
-        patch("openjarvis.tools.desktop_tools.OpenBrowserOnMonitorTool") as Chrome,
-        patch("openjarvis.tools.desktop_tools.FocusAppTool") as Focus,
-        patch("openjarvis.tools.desktop_tools.PlayAudioFileTool") as Play,
-        patch("openjarvis.tools.text_to_speech.TextToSpeechTool") as TTS,
+        patch("diapason.tools.desktop_tools.OpenUriTool") as OpenUri,
+        patch("diapason.tools.desktop_tools.OpenBrowserOnMonitorTool") as Chrome,
+        patch("diapason.tools.desktop_tools.FocusAppTool") as Focus,
+        patch("diapason.tools.desktop_tools.PlayAudioFileTool") as Play,
+        patch("diapason.tools.text_to_speech.TextToSpeechTool") as TTS,
     ):
         for cls in (OpenUri, Chrome, Focus, Play, TTS):
             inst = MagicMock()

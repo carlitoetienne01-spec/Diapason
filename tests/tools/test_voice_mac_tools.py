@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from openjarvis.tools.voice_mac_tools import (
+from diapason.tools.voice_mac_tools import (
     CalendarQueryTool,
     FindFilesTool,
     MailComposeTool,
@@ -15,15 +15,15 @@ from openjarvis.tools.voice_mac_tools import (
 
 def test_calendar_query_non_darwin():
     tool = CalendarQueryTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "linux"):
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "linux"):
         result = tool.execute(when="today")
     assert result.success is False
 
 
 def test_calendar_query_darwin_ok():
     tool = CalendarQueryTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stdout = "Events for today:\n09:00 — Standup\n"
             run.return_value.stderr = ""
@@ -34,8 +34,8 @@ def test_calendar_query_darwin_ok():
 
 def test_spotify_play_search_uri():
     tool = SpotifyPlayTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""
@@ -52,9 +52,9 @@ def test_find_files_empty_query():
 
 def test_find_files_mdfind():
     tool = FindFilesTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools.shutil.which", return_value="mdfind"):
-            with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools.shutil.which", return_value="mdfind"):
+            with patch("diapason.tools.voice_mac_tools._run") as run:
                 run.return_value.returncode = 0
                 run.return_value.stdout = "/Users/x/Documents/facture.pdf\n"
                 run.return_value.stderr = ""
@@ -65,8 +65,8 @@ def test_find_files_mdfind():
 
 def test_mail_compose_draft_not_sent():
     tool = MailComposeTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stdout = "ok"
             run.return_value.stderr = ""
@@ -86,8 +86,8 @@ def test_mail_compose_draft_not_sent():
 
 def test_mail_compose_mailto_fallback():
     tool = MailComposeTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
             fail = type("R", (), {"returncode": 1, "stdout": "", "stderr": "denied"})()
             ok = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
             run.side_effect = [fail, ok]
@@ -99,8 +99,8 @@ def test_mail_compose_mailto_fallback():
 
 def test_messages_compose_opens_sms_uri():
     tool = MessagesComposeTool()
-    with patch("openjarvis.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("openjarvis.tools.voice_mac_tools._run") as run:
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
             run.return_value.returncode = 0
             run.return_value.stderr = ""
             run.return_value.stdout = ""

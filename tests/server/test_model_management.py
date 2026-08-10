@@ -10,7 +10,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from openjarvis.server.app import create_app  # noqa: E402
+from diapason.server.app import create_app  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,7 +208,7 @@ class TestStreamingResilience:
     def test_stream_without_agent_uses_direct_engine(self):
         """When no tools in request, streaming should use engine.stream directly
         even if an agent is configured (for real token-by-token output)."""
-        from openjarvis.agents._stubs import AgentResult
+        from diapason.agents._stubs import AgentResult
 
         engine = _make_engine()
         agent = MagicMock()
@@ -281,7 +281,7 @@ class TestModelsEndpointExtended:
         client = TestClient(app)
 
         with patch(
-            "openjarvis.server.routes.asyncio.to_thread",
+            "diapason.server.routes.asyncio.to_thread",
             new_callable=AsyncMock,
         ) as mock_to_thread:
             mock_to_thread.return_value = ["qwen3.5:4b"]

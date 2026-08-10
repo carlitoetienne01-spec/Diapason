@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from openjarvis.agents.executor import AgentExecutor
-from openjarvis.agents.manager import AgentManager
-from openjarvis.agents.scheduler import AgentScheduler
-from openjarvis.core.events import EventBus
+from diapason.agents.executor import AgentExecutor
+from diapason.agents.manager import AgentManager
+from diapason.agents.scheduler import AgentScheduler
+from diapason.core.events import EventBus
 from tests.agents.fake_engine import FakeEngine
 
 

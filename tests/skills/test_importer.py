@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openjarvis.skills.importer import SkillImporter
-from openjarvis.skills.parser import SkillParser
-from openjarvis.skills.sources.base import ResolvedSkill
-from openjarvis.skills.tool_translator import ToolTranslator
+from diapason.skills.importer import SkillImporter
+from diapason.skills.parser import SkillParser
+from diapason.skills.sources.base import ResolvedSkill
+from diapason.skills.tool_translator import ToolTranslator
 
 
 def _make_resolved(tmp_path: Path, body: str = "Body") -> ResolvedSkill:
