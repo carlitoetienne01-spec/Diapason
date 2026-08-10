@@ -137,10 +137,10 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
 
 
 def _ensure_permissions() -> bool:
-    """Check the two TCC permissions dictation needs; prompt for any missing.
+    """Check the three TCC permissions dictation needs; prompt for any missing.
 
-    Input Monitoring is the one that actually gates the key tap; Accessibility
-    gates the paste. Both are requested so the user grants them in one pass.
+    Input Monitoring gates the key tap, Microphone gates capture, Accessibility
+    gates the paste. All are requested so the user grants them in one pass.
     Returns True only when nothing is missing.
     """
     from openjarvis.desktop import permissions
@@ -162,8 +162,12 @@ def _ensure_permissions() -> bool:
     )
     if "Input Monitoring" in missing:
         permissions.request_input_monitoring()
+    if "Microphone" in missing:
+        permissions.request_microphone()
     if "Accessibility" in missing:
         permissions.request_accessibility()
+    for name in missing:
+        permissions.open_pane(name)
     return False
 
 

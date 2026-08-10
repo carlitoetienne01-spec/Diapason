@@ -43,16 +43,18 @@ def install() -> None:
     )
     click.echo(f"  {_sys.executable}", err=True)
     click.echo(
-        "Opening Input Monitoring and Accessibility now. Find the entry named "
-        "'Python' (added when the agent first ran) and switch it ON in BOTH "
-        "panes, then run:  jarvis dictate-service restart",
+        "Opening Input Monitoring, Microphone and Accessibility now. Find "
+        "the entry named 'Python' (added when the agent first ran) and "
+        "switch it ON in ALL THREE panes, then run:  jarvis "
+        "dictate-service restart",
         err=True,
     )
     # Trigger the requests (populate the lists) and open both panes.
     permissions.request_input_monitoring()
+    permissions.request_microphone()
     permissions.request_accessibility()
-    permissions.open_pane("Input Monitoring")
-    permissions.open_pane("Accessibility")
+    for _pane in ("Input Monitoring", "Microphone", "Accessibility"):
+        permissions.open_pane(_pane)
 
 
 @dictate_service.command("uninstall")
