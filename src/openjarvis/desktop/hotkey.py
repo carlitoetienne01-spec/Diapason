@@ -29,6 +29,36 @@ class AccessibilityError(RuntimeError):
     """Raised when the event tap cannot be created (permission not granted)."""
 
 
+def is_trusted() -> bool:
+    """True when this process may observe keyboard events (Accessibility)."""
+    try:
+        from ApplicationServices import AXIsProcessTrusted  # type: ignore
+
+        return bool(AXIsProcessTrusted())
+    except Exception:  # noqa: BLE001 - if we can't check, assume ok
+        return True
+
+
+def request_accessibility() -> bool:
+    """Pop the macOS Accessibility prompt, adding this app to the list.
+
+    Returns the current trust state. Showing the system dialog is the reliable
+    way to surface the *right* entry (the responsible process) in the
+    Accessibility pane, instead of asking the user to hunt for and add it by
+    hand. The grant still needs a toggle + terminal restart to take effect.
+    """
+    try:
+        from ApplicationServices import (  # type: ignore
+            AXIsProcessTrustedWithOptions,
+        )
+
+        # Key is the CFString "AXTrustedCheckOptionPrompt"; pass it literally
+        # so we don't depend on the constant being exported by the binding.
+        return bool(AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True}))
+    except Exception:  # noqa: BLE001
+        return is_trusted()
+
+
 class HotkeyListener:
     """Fire ``on_down``/``on_up`` when the bound modifier is pressed/released."""
 

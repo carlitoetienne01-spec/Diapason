@@ -70,6 +70,18 @@ def dictate(hotkey: str, check: bool) -> None:
 
         paste_text(text)
 
+    from openjarvis.desktop.hotkey import is_trusted, request_accessibility
+
+    if not is_trusted():
+        click.echo(
+            "Accessibility is not granted. Opening the macOS prompt — enable "
+            "your terminal app under Accessibility, then fully quit and reopen "
+            "the terminal and rerun `jarvis dictate`.",
+            err=True,
+        )
+        request_accessibility()
+        sys.exit(1)
+
     service = DictationService(transcribe=_transcribe, paste=_paste, hotkey=key)
 
     try:
@@ -113,6 +125,19 @@ def _run_check(raw_hotkey: str) -> None:
     def _up() -> None:
         counts["up"] += 1
         click.echo(f"  {key.capitalize()} UP    (#{counts['up']})")
+
+    from openjarvis.desktop.hotkey import is_trusted, request_accessibility
+
+    if not is_trusted():
+        click.echo(
+            "Accessibility is not granted. Opening the macOS prompt now — "
+            "click Open System Settings, enable your terminal app under "
+            "Accessibility, then FULLY quit and reopen the terminal and rerun "
+            "this check.",
+            err=True,
+        )
+        request_accessibility()
+        sys.exit(1)
 
     listener = HotkeyListener(hotkey=key, on_down=_down, on_up=_up)
     try:
