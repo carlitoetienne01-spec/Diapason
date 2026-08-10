@@ -26,7 +26,12 @@ logger = logging.getLogger(__name__)
     is_flag=True,
     help="Diagnose the hotkey: echo key down/up for 15s, no mic, no model.",
 )
-def dictate(hotkey: str, check: bool) -> None:
+@click.option(
+    "--mic-test",
+    is_flag=True,
+    help="Diagnose the microphone: record 3s, print level and transcript.",
+)
+def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
     """Start global push-to-talk dictation."""
     from openjarvis.core.config import load_config
     from openjarvis.desktop.dictation_service import DictationService
@@ -38,6 +43,9 @@ def dictate(hotkey: str, check: bool) -> None:
 
     if check:
         _run_check(hotkey or getattr(config.dictation, "hotkey", "") or "control")
+        return
+    if mic_test:
+        _run_mic_test(config)
         return
     raw = hotkey or getattr(config.dictation, "hotkey", "") or "control"
     # The push-to-talk tap listens for a BARE modifier, not a chord. The
@@ -73,7 +81,14 @@ def dictate(hotkey: str, check: bool) -> None:
     if not _ensure_permissions():
         sys.exit(1)
 
-    service = DictationService(transcribe=_transcribe, paste=_paste, hotkey=key)
+    service = DictationService(
+        transcribe=_transcribe,
+        paste=_paste,
+        hotkey=key,
+        # Every stage reports to the terminal. Without this, a muted mic, a
+        # silent buffer and a failed paste all look the same: "nothing".
+        on_status=lambda msg: click.echo(f"  [{msg}]"),
+    )
 
     try:
         service.start()
@@ -128,6 +143,59 @@ def _ensure_permissions() -> bool:
     if "Accessibility" in missing:
         permissions.request_accessibility()
     return False
+
+
+def _run_mic_test(config) -> None:
+    """Record 3 s, print the level, transcribe, print the text.
+
+    Isolates microphone + STT from the hotkey and the paste: if this works
+    but dictation pastes nothing, the problem is on the other side (tap or
+    Cmd+V); if the level stays at ~0, it is the Microphone permission.
+    """
+    import time
+
+    from openjarvis.desktop.dictation_service import float_mono_to_wav
+    from openjarvis.desktop.mic_capture import MicCapture, rms_level
+    from openjarvis.speech._discovery import get_speech_backend
+
+    backend = get_speech_backend(config)
+    if backend is None:
+        click.echo("No speech backend available.", err=True)
+        sys.exit(1)
+
+    click.echo("Recording 3 seconds — SPEAK NOW…")
+    cap = MicCapture()
+    try:
+        cap.start()
+    except Exception as exc:  # noqa: BLE001 - surface device errors verbatim
+        click.echo(f"Could not open the microphone: {exc}", err=True)
+        click.echo(
+            "Grant Microphone to your terminal app (System Settings › "
+            "Privacy & Security › Microphone), then retry.",
+            err=True,
+        )
+        sys.exit(1)
+    time.sleep(3)
+    audio = cap.stop()
+
+    level = rms_level(audio) if len(audio) else 0.0
+    click.echo(f"Captured {len(audio) / 16_000.0:.1f}s, level {level:.2f} (0–100).")
+
+    if len(audio) == 0 or level < 0.05:
+        click.echo(
+            "\nThe microphone delivered silence. macOS gives an app muted "
+            "audio when Microphone permission is missing — enable your "
+            "terminal app under System Settings › Privacy & Security › "
+            "Microphone, fully quit and reopen the terminal, then retry.",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo("Transcribing…")
+    result = backend.transcribe(float_mono_to_wav(audio), format="wav")
+    text = (getattr(result, "text", "") or "").strip()
+    click.echo(f"Transcript: {text!r}" if text else "Transcript came back empty.")
+    click.echo("\nMic + transcription OK." if text else "", err=False)
 
 
 def _run_check(raw_hotkey: str) -> None:

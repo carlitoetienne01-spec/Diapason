@@ -175,3 +175,55 @@ def test_silence_below_floor_is_not_transcribed():
     svc.on_down()
     svc.on_up()
     assert calls == []  # neither transcribed nor pasted
+
+
+def test_status_narrates_the_happy_path():
+    """Each stage reports; 'nothing happened' is no longer indistinguishable."""
+    statuses = []
+    svc, _caps, pasted, clk = _service()
+    svc._on_status = statuses.append
+
+    svc.on_down()
+    clk["t"] = 0.8
+    svc.on_up()
+
+    assert pasted == ["bonjour le monde"]
+    assert statuses[0] == "recording…"
+    assert any(s.startswith("captured ") for s in statuses)
+    assert "transcribing…" in statuses
+    assert statuses[-1] == "pasted ✓"
+
+
+def test_status_explains_a_silent_buffer():
+    quiet = np.full(16_000, 0.001, dtype="float32")
+    statuses = []
+
+    svc = DictationService(
+        transcribe=lambda _w: "x",
+        paste=lambda _t: None,
+        capture_factory=lambda: _FakeCapture(quiet),
+        clock=lambda: 0.0,
+        on_status=statuses.append,
+    )
+    svc.on_down()
+    svc.on_up()
+    assert any("silence floor" in s for s in statuses)
+
+
+def test_status_reports_a_crash_instead_of_swallowing_it():
+    """A capture that raises must surface as an ERROR status, not vanish."""
+    statuses = []
+
+    class _Boom:
+        def start(self, **_):
+            raise RuntimeError("device unavailable")
+
+    svc = DictationService(
+        transcribe=lambda _w: "x",
+        paste=lambda _t: None,
+        capture_factory=_Boom,
+        clock=lambda: 0.0,
+        on_status=statuses.append,
+    )
+    svc.on_down()
+    assert any(s.startswith("ERROR") and "device unavailable" in s for s in statuses)
