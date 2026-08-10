@@ -45,6 +45,13 @@ class HotkeyListener:
         self._thread: Optional[threading.Thread] = None
         self._runloop = None
         self._down = False
+        # PyObjC does NOT keep the Python callback / tap / source alive just
+        # because the C layer holds them. If they are only locals in start(),
+        # the garbage collector reclaims them and the tap goes silent — the
+        # exact "nothing happens when I press the key" failure. Hold them.
+        self._tap = None
+        self._source = None
+        self._callback = None
 
     def _handle(self, keycode: int, flags: int) -> None:
         """Dispatch one flagsChanged event. Debounced to real transitions."""
@@ -69,7 +76,34 @@ class HotkeyListener:
         """Create the tap and pump its run loop on a daemon thread."""
         import Quartz  # type: ignore
 
+        # A listen-only keyboard tap is starved of events without Accessibility
+        # (or Input Monitoring). The tap can still be *created*, so checking
+        # trust up front gives a real error instead of silent dead keys.
+        try:
+            from ApplicationServices import (  # type: ignore
+                AXIsProcessTrusted,
+            )
+
+            trusted = bool(AXIsProcessTrusted())
+        except Exception:  # noqa: BLE001 - if we can't check, don't block
+            trusted = True
+        if not trusted:
+            raise AccessibilityError(
+                "This process is not trusted for Accessibility, so the key tap "
+                "would receive no events. Grant it in System Settings › Privacy "
+                "& Security › Accessibility (add your terminal app), then retry."
+            )
+
         def _tap_callback(proxy, type_, event, refcon):
+            # A tap disabled by timeout/user-input must be re-enabled or it
+            # stays dead for the rest of the session.
+            if type_ in (
+                Quartz.kCGEventTapDisabledByTimeout,
+                Quartz.kCGEventTapDisabledByUserInput,
+            ):
+                if self._tap is not None:
+                    Quartz.CGEventTapEnable(self._tap, True)
+                return event
             keycode = Quartz.CGEventGetIntegerValueField(
                 event, Quartz.kCGKeyboardEventKeycode
             )
@@ -77,7 +111,8 @@ class HotkeyListener:
             self._handle(int(keycode), int(flags))
             return event  # never swallow — we only observe
 
-        tap = Quartz.CGEventTapCreate(
+        self._callback = _tap_callback
+        self._tap = Quartz.CGEventTapCreate(
             Quartz.kCGSessionEventTap,
             Quartz.kCGHeadInsertEventTap,
             Quartz.kCGEventTapOptionListenOnly,
@@ -85,21 +120,21 @@ class HotkeyListener:
             _tap_callback,
             None,
         )
-        if tap is None:
+        if self._tap is None:
             raise AccessibilityError(
                 "Could not create the keyboard event tap. Grant Accessibility "
-                "to this app in System Settings › Privacy & Security › "
+                "to your terminal app in System Settings › Privacy & Security › "
                 "Accessibility, then retry."
             )
 
-        source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+        self._source = Quartz.CFMachPortCreateRunLoopSource(None, self._tap, 0)
 
         def _run() -> None:
             self._runloop = Quartz.CFRunLoopGetCurrent()
             Quartz.CFRunLoopAddSource(
-                self._runloop, source, Quartz.kCFRunLoopCommonModes
+                self._runloop, self._source, Quartz.kCFRunLoopCommonModes
             )
-            Quartz.CGEventTapEnable(tap, True)
+            Quartz.CGEventTapEnable(self._tap, True)
             Quartz.CFRunLoopRun()
 
         self._thread = threading.Thread(target=_run, daemon=True, name="hotkey-tap")
