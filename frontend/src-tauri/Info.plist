@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the bundle's Info.plist by tauri-bundler on macOS builds.
+
+  These are not optional niceties. macOS refuses a TCC-protected resource
+  outright when its usage-description key is missing: no prompt is shown, the
+  request simply fails. Before this file existed the bundle declared none of
+  them, so a packaged OpenJarvis could not record audio at all — dictation
+  worked only in an unsigned development build on the developer's own machine.
+
+  Note what is NOT here: Accessibility (AXIsProcessTrusted), required for a
+  global key tap, has no Info.plist key. It is granted per-binary in System
+  Settings › Privacy & Security › Accessibility, and the grant is bound to the
+  code-signing identity — with an ad-hoc identity ("-" in tauri.conf.json) it
+  is revoked on every rebuild.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>OpenJarvis records audio only while you hold the dictation key, so it can turn your speech into text.</string>
+
+    <key>NSAppleEventsUsageDescription</key>
+    <string>OpenJarvis uses Apple Events to read which application is in front and to insert dictated text into it.</string>
+
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>OpenJarvis captures the screen only when you ask it to describe what is displayed.</string>
+
+    <!-- Menu-bar / background operation: dictation must work with the main
+         window closed, which is the whole point of a push-to-talk key. -->
+    <key>LSUIElement</key>
+    <false/>
+</dict>
+</plist>

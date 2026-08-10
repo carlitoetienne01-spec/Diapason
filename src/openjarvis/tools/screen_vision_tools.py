@@ -94,21 +94,18 @@ def describe_screen(
     model = str(getattr(cfg, "model", "") or "").strip()
     engine_key = str(getattr(cfg, "engine", "") or "").strip()
 
-    try:
-        b64, meta = capture_screen_b64(
-            monitor=mon,
-            max_dimension=max_dim,
-            keep_temp=keep_temp,
-        )
-    except Exception as exc:
-        return ToolResult(
-            tool_name="screen_describe", content=str(exc), success=False
-        )
-
-    _last_capture_monotonic = time.monotonic()
-
+    # ── AUTHORISE FIRST, CAPTURE SECOND ──────────────────────────────────
+    # The previous order captured the screen and only then decided whether it
+    # was allowed to be sent. capture_screen_b64 goes through
+    # capture_screen_to_temp, so a request that was about to be refused still
+    # wrote a full-screen image to a temp file. Refusing after the fact
+    # protects the network but not the disk.
+    #
+    # Everything that can refuse — no engine, remote engine, no model — now
+    # runs before any image of the user's screen is allowed to exist.
     try:
         from openjarvis.core.config import load_config
+        from openjarvis.core.local_mode import local_only
         from openjarvis.engine._discovery import get_engine
 
         config = load_config()
@@ -134,6 +131,12 @@ def describe_screen(
             else:
                 is_local = not bool(getattr(engine, "is_cloud", False))
 
+        # [privacy] local_only outranks [desktop.vision] allow_cloud. A
+        # per-domain switch may only ever be more restrictive than the global
+        # one, never less — otherwise the global switch is a suggestion.
+        if local_only(config):
+            allow_cloud = False
+
         if not allow_cloud and not is_local:
             return ToolResult(
                 tool_name="screen_describe",
@@ -143,7 +146,7 @@ def describe_screen(
                     "or set [desktop.vision] allow_cloud = true."
                 ),
                 success=False,
-                metadata={"engine": engine_id, "local": False},
+                metadata={"engine": engine_id, "local": False, "captured": False},
             )
 
         resolved_model = model or (config.intelligence.default_model or "").strip()
@@ -156,7 +159,29 @@ def describe_screen(
                 ),
                 success=False,
             )
+    except Exception as exc:
+        logger.exception("screen_describe: engine resolution failed")
+        return ToolResult(
+            tool_name="screen_describe",
+            content=f"Screen vision failed: {exc}",
+            success=False,
+        )
 
+    # Authorised — only now may an image of the screen exist.
+    try:
+        b64, meta = capture_screen_b64(
+            monitor=mon,
+            max_dimension=max_dim,
+            keep_temp=keep_temp,
+        )
+    except Exception as exc:
+        return ToolResult(
+            tool_name="screen_describe", content=str(exc), success=False
+        )
+
+    _last_capture_monotonic = time.monotonic()
+
+    try:
         result = engine.generate(
             [Message(role=Role.USER, content=q, images=[b64])],
             model=resolved_model,

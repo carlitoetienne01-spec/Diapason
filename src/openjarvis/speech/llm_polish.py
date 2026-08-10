@@ -77,6 +77,26 @@ def llm_polish_text(
         if eng is None:
             return None
 
+        # Local-only mode covers the WHOLE dictation path, not just the
+        # transcription. This function received whatever engine the config
+        # named and sent the dictated sentence to it without ever asking
+        # whether it ran on this machine — so a user dictating with a local
+        # Whisper still had every phrase polished in the cloud.
+        #
+        # There is no cloud-free way to polish with a remote engine, so in
+        # local-only mode the answer is "no polish" — never "polish
+        # elsewhere". Returning None makes the caller keep the raw text,
+        # which is exactly the degradation the user asked for.
+        from openjarvis.core.local_mode import engine_is_local, local_only
+
+        if local_only(cfg) and not engine_is_local(eng):
+            logger.info(
+                "llm polish skipped: engine %r is remote and local-only mode is on — "
+                "raw text kept, nothing was sent",
+                getattr(eng, "engine_id", "?"),
+            )
+            return None
+
         messages = [
             Message(role=Role.SYSTEM, content=system),
             Message(

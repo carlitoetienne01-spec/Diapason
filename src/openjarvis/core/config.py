@@ -1690,6 +1690,33 @@ class DigestConfig:
     )
 
 
+@dataclass(slots=True)
+class PrivacyConfig:
+    """The single, authoritative answer to "may this leave the machine?".
+
+    Before this section existed the question was asked in three unrelated
+    places, each covering one path and none covering the rest:
+
+    * ``speech.wakeword.require_local_only`` — declared, never read anywhere.
+    * ``desktop.vision.allow_cloud`` — vision only.
+    * nothing at all for speech-to-text or for LLM polish, which is how a
+      failing local Whisper silently reached OpenAI and how dictation polish
+      reached a cloud engine.
+
+    A promise that is enforced on some paths and not others is not a promise.
+    ``local_only`` is therefore checked by every outbound path, and the
+    per-domain switches may only ever be *more* restrictive than it — never
+    less. Turning ``local_only`` on cannot be overridden by any of them.
+
+    The default stays ``False`` so that existing cloud setups keep working:
+    flipping a privacy default silently would break users without telling
+    them. Set ``local_only = true`` under ``[privacy]`` for a machine where
+    nothing may leave.
+    """
+
+    local_only: bool = False
+
+
 @dataclass
 class JarvisConfig:
     """Top-level configuration for OpenJarvis."""
@@ -1709,6 +1736,7 @@ class JarvisConfig:
     traces: TracesConfig = field(default_factory=TracesConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
@@ -2000,6 +2028,7 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
             "analytics",
             "traces",
             "security",
+            "privacy",
             "channel",
             "tools",
             "sandbox",

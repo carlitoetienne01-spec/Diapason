@@ -116,6 +116,11 @@ def test_polish_false_returns_rawish():
 
 def test_llm_polish_mock_engine():
     engine = MagicMock()
+    # Polish now refuses a remote engine under local-only mode, and an engine
+    # that declares no locality counts as remote. The config below already
+    # meant a local Ollama; say so on the engine too.
+    engine.engine_id = "ollama"
+    engine.is_cloud = False
     engine.generate.return_value = {"content": "Hello world, this is clean."}
     with patch("openjarvis.core.config.load_config") as load:
         cfg = MagicMock()

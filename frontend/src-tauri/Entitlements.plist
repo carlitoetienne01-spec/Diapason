@@ -16,5 +16,17 @@
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <!-- Microphone. Without this entitlement a hardened-runtime build is
+         denied audio input by macOS before any application code runs, so
+         push-to-talk dictation fails on every machine except one running an
+         unsigned development build. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Apple Events. Every osascript path — reading the frontmost
+         application, pasting into it, driving Safari or Mail — is an Apple
+         Event. Without this, those tools fail with errAEEventNotPermitted
+         instead of prompting for Automation access. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
 </dict>
 </plist>
