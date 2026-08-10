@@ -86,6 +86,23 @@ class FasterWhisperBackend(SpeechBackend):
                     "Install with: uv sync --extra desktop"
                 )
                 raise ImportError(self._last_error)
+            # Local-only refuses a SILENT first-use download. Constructing
+            # WhisperModel fetches the weights over the network if they are not
+            # cached; under [privacy] local_only that background fetch is the
+            # very thing the mode forbids. An already-cached model is fine
+            # (nothing leaves), and `jarvis model pull` is the explicit path.
+            from openjarvis.core.local_mode import local_only
+            from openjarvis.speech.model_integrity import (
+                faster_whisper_cached,
+                guard_implicit_download,
+            )
+
+            guard_implicit_download(
+                self._model_size,
+                local_only=local_only(),
+                already_cached=faster_whisper_cached(self._model_size),
+            )
+
             compute_type = self._resolve_compute_type()
             self._model = WhisperModel(
                 self._model_size,
