@@ -96,6 +96,26 @@ def request_accessibility() -> bool:
         return accessibility_ok()
 
 
+_PANE = "x-apple.systempreferences:com.apple.preference.security"
+_PANES = {
+    "Input Monitoring": f"{_PANE}?Privacy_ListenEvent",
+    "Accessibility": f"{_PANE}?Privacy_Accessibility",
+}
+
+
+def open_pane(name: str) -> None:
+    """Open the given Privacy & Security pane in System Settings."""
+    url = _PANES.get(name)
+    if not url:
+        return
+    try:
+        import subprocess
+
+        subprocess.run(["open", url], capture_output=True, check=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def missing_for_dictation() -> list[str]:
     """Return the human names of permissions still needed, in order to grant."""
     missing = []

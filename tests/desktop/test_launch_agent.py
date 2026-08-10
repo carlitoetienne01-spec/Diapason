@@ -30,11 +30,13 @@ def test_plist_is_valid_and_runs_dictate_via_module():
     ]
 
 
-def test_plist_restarts_and_runs_at_login():
+def test_plist_runs_at_login_and_restarts_on_crash_only():
     d = _plist()
     assert d["RunAtLoad"] is True
-    assert d["KeepAlive"] is True
-    assert d["ThrottleInterval"] >= 1  # don't hammer restarts on fast failure
+    # KeepAlive restarts on CRASH only — a clean exit (waiting for a
+    # permission grant) must NOT loop and re-prompt.
+    assert d["KeepAlive"] == {"SuccessfulExit": False}
+    assert d["ThrottleInterval"] >= 1
 
 
 def test_plist_captures_logs():

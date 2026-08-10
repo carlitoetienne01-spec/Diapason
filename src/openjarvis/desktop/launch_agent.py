@@ -61,10 +61,15 @@ def build_plist(*, python: str, workdir: str, out_log: str, err_log: str) -> str
     <string>{_xml_escape(workdir)}</string>
     <key>RunAtLoad</key>
     <true/>
-    <!-- Restart if it exits (crash, or a transient device error). -->
+    <!-- Restart on CRASH only, not on a clean exit. When permissions are not
+         yet granted the process exits 0 on purpose and must NOT be relaunched
+         in a loop (that spam of prompts is exactly what a naive KeepAlive:true
+         produced). After the grant, `dictate-service restart` starts it fresh. -->
     <key>KeepAlive</key>
-    <true/>
-    <!-- Don't hammer restarts if it fails fast (e.g. missing permission). -->
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>ProcessType</key>

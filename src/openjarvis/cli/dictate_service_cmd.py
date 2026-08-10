@@ -30,27 +30,29 @@ def install() -> None:
 
     # The critical caveat, surfaced rather than buried: the agent runs the
     # Python binary, so it needs its OWN TCC grants — Terminal's do not carry.
-    missing = permissions.missing_for_dictation()
-    if missing:
-        click.echo("")
-        click.echo(
-            "IMPORTANT: the background agent runs Python directly, not your "
-            "terminal, so it needs its own permissions: " + ", ".join(missing),
-            err=True,
-        )
-        click.echo(
-            "Opening the system prompts now. In System Settings › Privacy & "
-            "Security, enable the entry for Python (it appears when the agent "
-            "first runs), under EACH pane, then run: jarvis dictate-service "
-            "restart",
-            err=True,
-        )
-        if "Input Monitoring" in missing:
-            permissions.request_input_monitoring()
-        if "Accessibility" in missing:
-            permissions.request_accessibility()
-    else:
-        click.echo("Permissions already granted — dictation is live now.")
+    import sys as _sys
+
+    # Check permissions from the SAME interpreter the agent runs, so the
+    # verdict matches the agent's real TCC identity (a Python binary), not the
+    # terminal's.
+    click.echo("")
+    click.echo(
+        "IMPORTANT: the background agent runs this Python binary directly, "
+        "not your terminal — it needs its OWN permissions:",
+        err=True,
+    )
+    click.echo(f"  {_sys.executable}", err=True)
+    click.echo(
+        "Opening Input Monitoring and Accessibility now. Find the entry named "
+        "'Python' (added when the agent first ran) and switch it ON in BOTH "
+        "panes, then run:  jarvis dictate-service restart",
+        err=True,
+    )
+    # Trigger the requests (populate the lists) and open both panes.
+    permissions.request_input_monitoring()
+    permissions.request_accessibility()
+    permissions.open_pane("Input Monitoring")
+    permissions.open_pane("Accessibility")
 
 
 @dictate_service.command("uninstall")

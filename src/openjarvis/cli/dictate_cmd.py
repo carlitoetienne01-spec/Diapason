@@ -97,7 +97,11 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
         paste_text(text)
 
     if not _ensure_permissions():
-        sys.exit(1)
+        # Exit 0, not 1: missing permission is a "come back after granting"
+        # state, not a crash. Under the LaunchAgent (KeepAlive on failure
+        # only) a clean exit avoids a restart loop that would re-prompt every
+        # few seconds. The user grants, then runs `dictate-service restart`.
+        sys.exit(0)
 
     service = DictationService(
         transcribe=_transcribe,
