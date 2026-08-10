@@ -48,7 +48,13 @@ def _quiet_library_noise() -> None:
     is_flag=True,
     help="Diagnose the microphone: record 3s, print level and transcript.",
 )
-def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
+@click.option(
+    "--menu-bar/--no-menu-bar",
+    default=False,
+    show_default=True,
+    help="Show a status icon in the menu bar (needs a GUI session).",
+)
+def dictate(hotkey: str, check: bool, mic_test: bool, menu_bar: bool) -> None:
     """Start global push-to-talk dictation."""
     from openjarvis.core.config import load_config
     from openjarvis.desktop.dictation_service import DictationService
@@ -103,14 +109,37 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
         # few seconds. The user grants, then runs `dictate-service restart`.
         sys.exit(0)
 
+    # Optional menu-bar presence: a background service otherwise has no face.
+    bar = None
+    if menu_bar:
+        from openjarvis.desktop.menu_bar import DictationMenuBar
+
+        bar = DictationMenuBar(hotkey=key)
+
+    def _status(msg: str) -> None:
+        click.echo(f"  [{msg}]")
+        if bar is not None:
+            # Map the human status line onto the icon's coarse states.
+            state = (
+                "recording"
+                if msg.startswith("recording")
+                else "transcribing"
+                if msg.startswith("transcribing")
+                else "pasting"
+                if msg.startswith("pasting")
+                else "idle"
+            )
+            bar.set_state(state)
+
     service = DictationService(
         transcribe=_transcribe,
         paste=_paste,
         hotkey=key,
         # Every stage reports to the terminal. Without this, a muted mic, a
         # silent buffer and a failed paste all look the same: "nothing".
-        on_status=lambda msg: click.echo(f"  [{msg}]"),
+        on_status=_status,
         model_name=str(getattr(config.speech, "model", "") or ""),
+        on_transcript=(bar.set_last_text if bar is not None else None),
     )
 
     try:
@@ -123,6 +152,18 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
         f"Dictation ready. Hold the {key.capitalize()} key and speak, then "
         "release. Double-tap for hands-free. Ctrl-C to quit."
     )
+
+    if bar is not None:
+        # rumps owns the main thread once started, so the blocking wait below
+        # is replaced by its run loop. Quitting the menu stops the service.
+        bar._on_quit = service.stop
+        try:
+            bar.run()
+        except Exception as exc:  # noqa: BLE001 - fall back to headless
+            click.echo(f"Menu bar unavailable ({exc}); running headless.", err=True)
+        else:
+            click.echo("Dictation stopped.")
+            return
 
     # Block the main thread until interrupted; the tap runs on its own run
     # loop thread. threading.Event().wait() is interruptible by Ctrl-C.

@@ -67,7 +67,10 @@ class DictationService:
         on_status: Callable[[str], None] | None = None,
         history: bool = True,
         model_name: str = "",
+        on_transcript: Callable[[str], None] | None = None,
     ) -> None:
+        # Observer for anything that wants the delivered text (menu bar, UI).
+        self._on_transcript = on_transcript
         self._history = history
         self._model_name = model_name
         self._transcribe = transcribe
@@ -163,6 +166,11 @@ class DictationService:
         self._paste(text)
         self._status("pasted ✓")
         self._record(text, seconds)
+        if self._on_transcript is not None:
+            try:
+                self._on_transcript(text)
+            except Exception:  # noqa: BLE001 - an observer must not break dictation
+                logger.debug("transcript observer raised", exc_info=True)
         return text
 
     def _record(self, text: str, seconds: float) -> None:
