@@ -1,0 +1,10 @@
+[skill]
+name = "voice-command"
+description = "Open apps or URLs from a short spoken command (ouvre Cursor, open Spotify, go to claude.ai)"
+version = "0.2.0"
+author = "openjarvis"
+
+[[skill.steps]]
+tool_name = "run_voice_command"
+arguments_template = '{"text": "{command}"}'
+output_key = "result"

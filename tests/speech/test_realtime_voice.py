@@ -1,0 +1,192 @@
+"""Unit tests for realtime voice helpers (no live network)."""
+
+from __future__ import annotations
+
+import base64
+
+import pytest
+
+from openjarvis.core.config import JarvisConfig, SpeechConfig, VoiceRealtimeConfig
+from openjarvis.speech.realtime.base import SessionEvent
+from openjarvis.speech.realtime.bridge import event_to_client_json
+from openjarvis.speech.realtime.factory import create_realtime_session
+from openjarvis.speech.realtime.pcm import b64_to_pcm16, pcm16_to_b64, resample_pcm16
+
+
+def test_speech_config_has_realtime_defaults():
+    cfg = SpeechConfig()
+    assert isinstance(cfg.realtime, VoiceRealtimeConfig)
+    assert cfg.realtime.enabled is True
+    assert cfg.realtime.provider == "gemini"
+
+
+def test_jarvis_config_nested_realtime():
+    cfg = JarvisConfig()
+    assert cfg.speech.realtime.provider == "gemini"
+
+
+def test_pcm_roundtrip():
+    raw = b"\x00\x01\xff\xfe" * 8
+    assert b64_to_pcm16(pcm16_to_b64(raw)) == raw
+
+
+def test_resample_same_rate_noop():
+    raw = b"\x00\x00" * 16
+    assert resample_pcm16(raw, 16000, 16000) == raw
+
+
+def test_factory_unknown_provider():
+    with pytest.raises(ValueError, match="Unknown realtime"):
+        create_realtime_session("bogus")
+
+
+def test_factory_gemini_and_openai():
+    g = create_realtime_session("gemini", voice="Zephyr")
+    assert g.provider_id == "gemini"
+    assert g.input_sample_rate == 16000
+    o = create_realtime_session("openai", voice="alloy")
+    assert o.provider_id == "openai"
+    assert o.input_sample_rate == 24000
+
+
+def test_oral_prompt_contains_clarification_and_brevity():
+    from openjarvis.speech.realtime.oral_prompt import build_live_agent_template
+
+    text = build_live_agent_template(enable_tools=True)
+    assert "two or three sentences" in text.lower() or "2–3" in text or "three sentences" in text
+    assert "clarif" in text.lower()
+    assert "calendar_query" in text
+    assert "find_files" in text
+
+
+def test_default_voice_tools_include_jarvis_parity():
+    import openjarvis.tools.desktop_tools  # noqa: F401
+    import openjarvis.tools.voice_mac_tools  # noqa: F401
+    import openjarvis.tools.web_search  # noqa: F401
+
+    from openjarvis.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
+
+    for tid in (
+        "open_anything",
+        "calendar_query",
+        "spotify_play",
+        "web_search",
+        "find_files",
+        "mail_compose",
+        "messages_compose",
+        "screen_describe",
+        "screen_share_start",
+        "screen_share_stop",
+        "screen_share_status",
+    ):
+        assert tid in DEFAULT_VOICE_TOOL_IDS
+    ids = list_voice_tool_ids()
+    assert "open_anything" in ids
+    assert "calendar_query" in ids
+    assert "spotify_play" in ids
+    assert "find_files" in ids
+    assert "web_search" in ids
+    assert "mail_compose" in ids
+    assert "messages_compose" in ids
+    assert "screen_describe" in ids
+    assert "screen_share_start" in ids
+    assert "screen_share_stop" in ids
+
+
+
+def test_event_to_client_json():
+    assert event_to_client_json(SessionEvent(kind="ready")) == {"type": "ready"}
+    audio = event_to_client_json(
+        SessionEvent(kind="audio", audio_b64="abc", sample_rate=24000)
+    )
+    assert audio["type"] == "audio"
+    assert audio["data"] == "abc"
+    tx = event_to_client_json(
+        SessionEvent(kind="transcript", role="user", text="hi", final=True)
+    )
+    assert tx == {
+        "type": "transcript",
+        "role": "user",
+        "text": "hi",
+        "final": True,
+    }
+    tool = event_to_client_json(
+        SessionEvent(kind="tool", tool_name="focus_app", tool_ok=True, detail="Focused")
+    )
+    assert tool == {
+        "type": "tool",
+        "name": "focus_app",
+        "ok": True,
+        "detail": "Focused",
+    }
+
+
+def test_voice_tool_budget():
+    from openjarvis.speech.realtime.tools import VoiceToolBudget
+
+    b = VoiceToolBudget(2)
+    assert b.allow()
+    b.consume()
+    b.consume()
+    assert not b.allow()
+
+
+def test_voice_tool_allowlist_and_execute_unknown():
+    from openjarvis.speech.realtime.tools import (
+        execute_voice_tool,
+        gemini_function_declarations,
+        list_voice_tool_ids,
+    )
+
+    ids = list_voice_tool_ids()
+    assert "open_uri" in ids or ids == []  # desktop tools may be registered
+    decls = gemini_function_declarations()
+    assert isinstance(decls, list)
+    denied = execute_voice_tool("rm_rf_everything", {})
+    assert denied["ok"] is False
+    assert "not allowed" in denied["error"].lower()
+
+
+def test_openai_tools_schema_shape():
+    from openjarvis.speech.realtime.tools import openai_tools_schema
+
+    tools = openai_tools_schema()
+    for t in tools:
+        assert t.get("type") == "function"
+        assert "function" in t
+        assert "name" in t["function"]
+
+
+
+def test_gemini_parse_audio_part():
+    from openjarvis.speech.realtime.gemini_live import GeminiLiveSession
+
+    session = GeminiLiveSession(api_key="test")
+    payload = {
+        "serverContent": {
+            "modelTurn": {
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": "audio/pcm",
+                            "data": base64.b64encode(b"\x01\x02").decode(),
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    events = session._parse_server_message(payload)
+    assert any(e.kind == "audio" for e in events)
+
+
+def test_openai_parse_audio_delta():
+    from openjarvis.speech.realtime.openai_realtime import OpenAIRealtimeSession
+
+    session = OpenAIRealtimeSession(api_key="test")
+    events = session._parse_event(
+        {"type": "response.audio.delta", "delta": "qq=="}
+    )
+    assert len(events) == 1
+    assert events[0].kind == "audio"
+    assert events[0].audio_b64 == "qq=="

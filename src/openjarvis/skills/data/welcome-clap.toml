@@ -1,0 +1,35 @@
+[skill]
+name = "welcome-clap"
+description = "Desktop welcome sequence: song, Chrome sites, ElevenLabs TTS, focus Cursor"
+version = "0.1.0"
+author = "openjarvis"
+
+[[skill.steps]]
+tool_name = "open_uri"
+arguments_template = '{"uri": "{song_uri}"}'
+output_key = "song"
+
+[[skill.steps]]
+tool_name = "open_browser_on_monitor"
+arguments_template = '{"url": "{claude_url}", "monitor": {claude_monitor}, "fullscreen": true, "label": "Claude"}'
+output_key = "claude"
+
+[[skill.steps]]
+tool_name = "open_browser_on_monitor"
+arguments_template = '{"url": "{binance_url}", "monitor": {binance_monitor}, "fullscreen": true, "label": "Binance"}'
+output_key = "binance"
+
+[[skill.steps]]
+tool_name = "text_to_speech"
+arguments_template = '{"text": "{welcome_phrase}", "backend": "elevenlabs", "voice_id": "{elevenlabs_voice_id}"}'
+output_key = "tts_path"
+
+[[skill.steps]]
+tool_name = "play_audio_file"
+arguments_template = '{"path": "{tts_path}"}'
+output_key = "played"
+
+[[skill.steps]]
+tool_name = "focus_app"
+arguments_template = '{"app_name": "Cursor", "fullscreen": true}'
+output_key = "cursor"

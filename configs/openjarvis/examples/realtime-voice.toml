@@ -1,0 +1,22 @@
+# Install: jarvis init --preset realtime-voice
+#
+# Realtime voice (Talk mode) — Jarvis-parity oral + Mac tools
+#
+# Requires GEMINI_API_KEY / GOOGLE_API_KEY (Gemini Live) and/or OPENAI_API_KEY.
+# Optional: TAVILY_API_KEY for richer web_search (else DuckDuckGo fallback).
+# macOS Privacy: Calendar, Full Disk Access (for find_files), Automation (Spotify).
+# Start server: jarvis serve
+# Then open the desktop/web UI → "Talk to Jarvis" (⌥Space)
+
+[speech]
+backend = "auto"
+
+[speech.realtime]
+enabled = true
+provider = "gemini"
+model = "gemini-2.0-flash-live-001"
+voice = "Zephyr"
+language = "fr"
+enable_tools = true
+max_tool_steps = 12
+# tools = "open_anything,calendar_query,spotify_play,web_search,find_files,focus_app,open_uri,open_browser_on_monitor,run_voice_command"

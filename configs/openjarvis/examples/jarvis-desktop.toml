@@ -1,0 +1,64 @@
+# Jarvis desktop parity — vision + dictation + heartbeat + wake gate
+# jarvis init --preset jarvis-desktop
+#
+# Optional follow-ups:
+#   jarvis routines sync && jarvis scheduler start
+#   jarvis wake-listen
+#   ollama pull gemma3:4b   # vision model
+# Grant: Screen Recording, Automation (Mail/Messages), Mic
+
+[engine]
+default = "ollama"
+
+[intelligence]
+default_model = "qwen3.5:4b"
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[speech.realtime]
+enabled = true
+provider = "gemini"
+enable_tools = true
+
+[speech.wakeword]
+enabled = false
+backend = "auto"
+text_gate = true
+sensitivity = 0.5
+
+[dictation]
+polish = true
+dictionary = true
+llm_polish = false
+email_mode = "auto"
+auto_learn = true
+paste_to_frontmost = true
+
+[desktop.vision]
+enabled = true
+monitor = 1
+max_dimension = 1280
+allow_cloud = false
+model = "gemma3:4b"
+rate_limit_ms = 1500
+share_interval_s = 5.0
+share_max_minutes = 30.0
+
+[scheduler]
+enabled = true
+poll_interval = 60
+
+[heartbeat]
+enabled = true
+interval_seconds = 1800
+speak = false
+notify = true
+quiet_hours_enabled = true
+quiet_hours_start = "22:00"
+quiet_hours_end = "07:00"
+
+[routines]
+enabled = true
+allow_shell = false

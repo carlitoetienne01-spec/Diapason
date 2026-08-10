@@ -1,0 +1,41 @@
+# Wake-word Mac — local « Hey Jarvis » → Talk
+# Install notes: keep [speech.realtime] for Live; run `jarvis wake-listen` in a terminal
+# (or as a login item) while the OpenJarvis UI is open.
+#
+# phrase_gate: sounddevice + numpy + faster-whisper
+# openwakeword (ML): uv sync --extra speech-wake  then backend = "openwakeword" or "auto"
+
+[engine]
+default = "ollama"
+
+[intelligence]
+default_model = "qwen3.5:4b"
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[speech]
+backend = "auto"
+
+[speech.realtime]
+enabled = true
+provider = "gemini"
+enable_tools = true
+
+[speech.wakeword]
+enabled = true
+backend = "auto"
+phrases = "jarvis, hey jarvis, dis jarvis"
+action = "talk"
+cooldown_s = 2.5
+sensitivity = 0.5
+text_gate = true
+require_local_only = true
+
+[dictation]
+polish = true
+dictionary = true
+llm_polish = false
+auto_learn = true
+voice_commands = true

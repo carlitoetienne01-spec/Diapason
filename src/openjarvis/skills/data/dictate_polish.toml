@@ -1,0 +1,10 @@
+[skill]
+name = "dictate_polish"
+description = "Polish raw dictation: fix punctuation, remove fillers, keep meaning"
+version = "0.2.0"
+author = "openjarvis"
+
+[[skill.steps]]
+tool_name = "think"
+arguments_template = "{\"thought\": \"You clean speech-to-text. Output ONLY the cleaned text. Preserve meaning. Remove fillers; fix punctuation/capitalization; apply self-corrections; 'readme dot md' → readme.md. Never invent signatures.\\n\\n===SPEECH===\\n{raw_text}\\n===END===\"}"
+output_key = "polished"

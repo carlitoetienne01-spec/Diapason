@@ -1,0 +1,43 @@
+# Welcome Clap — double-clap desktop welcome (ported from jarvis-main)
+# Install: jarvis init --preset welcome-clap
+#
+# Run welcome on clap:
+#   uv run jarvis clap-listen
+# Immediate test (no mic):
+#   uv run jarvis clap-listen --fire
+# Debug mic levels:
+#   uv run jarvis clap-listen --debug
+#
+# Requires: ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID
+# Optional: sounddevice + numpy for clap-listen
+# macOS: Accessibility for Chrome/Cursor window control
+
+[engine]
+default = "ollama"
+
+[intelligence]
+default_model = "qwen3.5:4b"
+
+[agent]
+default_agent = "simple"
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[speech]
+
+[welcome_clap]
+song_uri = "https://open.spotify.com/track/39shmbIHICJ2Wxnk1fPSdz?si=2900c75c2e2d4b82"
+claude_url = "https://claude.ai/new"
+claude_monitor = 1
+binance_url = "https://www.binance.com/en/trade/BTC_USDT"
+binance_monitor = 1
+welcome_phrase = "Welcome home sir. Systems online."
+elevenlabs_voice_id = ""
+focus_app = "Cursor"
+fullscreen = true
+after_song_delay_s = 1.0
+open_claude = true
+open_binance = true
+once_per_process = true

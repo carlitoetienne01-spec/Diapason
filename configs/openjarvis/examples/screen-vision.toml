@@ -1,0 +1,35 @@
+# Screen vision — one-shot screenshot describe
+# jarvis init --preset screen-vision
+#
+# Requires: Screen Recording permission + a local vision model
+#   ollama pull gemma3:4b
+#   # or: llava, moondream, …
+#
+# Then: jarvis ask --screen "qu'est-ce que tu vois ?"
+# Live: « regarde mon écran »
+
+[engine]
+default = "ollama"
+
+[intelligence]
+default_model = "gemma3:4b"
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[speech.realtime]
+enabled = true
+provider = "gemini"
+enable_tools = true
+
+[desktop.vision]
+enabled = true
+monitor = 1
+max_dimension = 1280
+allow_cloud = false
+model = "gemma3:4b"
+rate_limit_ms = 1500
+keep_temp = false
+share_interval_s = 5.0
+share_max_minutes = 30.0

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "en-k8s",
+      "word": "Kubernetes",
+      "original_word": "cooper netes",
+      "replacements": ["kube netes", "cooper netes", "kubernetes"],
+      "pronunciation": "koo-ber-NET-eez",
+      "locale": "en",
+      "usage_count": 2
+    },
+    {
+      "id": "en-openai",
+      "word": "OpenAI",
+      "replacements": ["open a i", "open ai", "openay"],
+      "locale": "en",
+      "usage_count": 3
+    },
+    {
+      "id": "fr-diapason",
+      "word": "Diapason",
+      "original_word": "diapazon",
+      "replacements": ["diapazon", "diapasom", "diapason"],
+      "locale": "fr",
+      "usage_count": 1
+    },
+    {
+      "id": "fr-openjarvis",
+      "word": "OpenJarvis",
+      "replacements": ["open jarvis", "openjarvis", "open jarvice"],
+      "locale": "fr",
+      "usage_count": 2
+    }
+  ]
+}
