@@ -227,3 +227,70 @@ def test_status_reports_a_crash_instead_of_swallowing_it():
     )
     svc.on_down()
     assert any(s.startswith("ERROR") and "device unavailable" in s for s in statuses)
+
+
+def test_successful_dictation_is_recorded_in_history(tmp_path, monkeypatch):
+    """History reflects what was DELIVERED, so it is written after the paste."""
+    from openjarvis.desktop import dictation_history
+
+    hist = tmp_path / "h.jsonl"
+    monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)
+
+    svc, _caps, pasted, clk = _service()
+    svc._model_name = "small"
+    svc.on_down()
+    clk["t"] = 1.0
+    svc.on_up()
+
+    assert pasted == ["bonjour le monde"]
+    entries = dictation_history.load_history(hist)
+    assert len(entries) == 1
+    assert entries[0].text == "bonjour le monde"
+    assert entries[0].model == "small"
+
+
+def test_nothing_is_recorded_when_nothing_was_pasted(tmp_path, monkeypatch):
+    from openjarvis.desktop import dictation_history
+
+    hist = tmp_path / "h.jsonl"
+    monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)
+
+    svc, _caps, pasted, _clk = _service(transcript="   ")
+    svc.on_down()
+    svc.on_up()
+
+    assert pasted == []
+    assert dictation_history.load_history(hist) == []
+
+
+def test_history_failure_never_breaks_a_successful_dictation(monkeypatch):
+    """Bookkeeping is not allowed to lose the user their sentence."""
+    from openjarvis.desktop import dictation_history
+
+    def _boom(*_a, **_kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(dictation_history, "append_entry", _boom)
+
+    svc, _caps, pasted, clk = _service()
+    svc.on_down()
+    clk["t"] = 1.0
+    svc.on_up()
+
+    assert pasted == ["bonjour le monde"]  # paste still happened
+
+
+def test_history_can_be_turned_off(tmp_path, monkeypatch):
+    from openjarvis.desktop import dictation_history
+
+    hist = tmp_path / "h.jsonl"
+    monkeypatch.setattr(dictation_history, "default_history_path", lambda: hist)
+
+    svc, _caps, pasted, clk = _service()
+    svc._history = False
+    svc.on_down()
+    clk["t"] = 1.0
+    svc.on_up()
+
+    assert pasted == ["bonjour le monde"]
+    assert dictation_history.load_history(hist) == []

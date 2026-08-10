@@ -65,7 +65,11 @@ class DictationService:
         # keeps ~7× margin to speech while still rejecting an untouched mic.
         silence_rms: float = 0.15,
         on_status: Callable[[str], None] | None = None,
+        history: bool = True,
+        model_name: str = "",
     ) -> None:
+        self._history = history
+        self._model_name = model_name
         self._transcribe = transcribe
         self._paste = paste
         self._hotkey = hotkey
@@ -158,7 +162,44 @@ class DictationService:
         self._status(f"pasting {len(text)} chars…")
         self._paste(text)
         self._status("pasted ✓")
+        self._record(text, seconds)
         return text
+
+    def _record(self, text: str, seconds: float) -> None:
+        """Save to the local history. Never lets a bookkeeping error surface.
+
+        Recorded AFTER a successful paste, so the history reflects what was
+        actually delivered rather than every attempt.
+        """
+        if not self._history:
+            return
+        try:
+            import time
+
+            from openjarvis.desktop.dictation_history import (
+                DictationEntry,
+                append_entry,
+            )
+
+            app = ""
+            try:
+                from openjarvis.desktop.frontmost import frontmost_app_name
+
+                app = frontmost_app_name() or ""
+            except Exception:  # noqa: BLE001 - the app name is a nicety
+                pass
+
+            append_entry(
+                DictationEntry(
+                    text=text,
+                    timestamp=time.time(),
+                    duration_s=round(seconds, 2),
+                    app=app,
+                    model=self._model_name,
+                )
+            )
+        except Exception:  # noqa: BLE001 - history must never break dictation
+            logger.debug("could not record dictation history", exc_info=True)
 
     def _discard(self) -> None:
         cap, self._capture = self._capture, None

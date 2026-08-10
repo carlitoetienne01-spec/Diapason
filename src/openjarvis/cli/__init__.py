@@ -16,6 +16,7 @@ from openjarvis.cli.chat_cmd import chat
 from openjarvis.cli.clap_cmd import clap_listen
 from openjarvis.cli.dictate_cmd import dictate
 from openjarvis.cli.dictate_service_cmd import dictate_service
+from openjarvis.cli.dictation_history_cmd import dictation_history
 from openjarvis.cli.wake_cmd import wake_listen
 from openjarvis.cli.compose_cmd import compose
 from openjarvis.cli.config_cmd import config
@@ -112,6 +113,7 @@ cli.add_command(channels, "channels")
 cli.add_command(clap_listen, "clap-listen")
 cli.add_command(dictate, "dictate")
 cli.add_command(dictate_service, "dictate-service")
+cli.add_command(dictation_history, "dictation-history")
 cli.add_command(wake_listen, "wake-listen")
 cli.add_command(scheduler, "scheduler")
 cli.add_command(heartbeat, "heartbeat")

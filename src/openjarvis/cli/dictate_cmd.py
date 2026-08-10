@@ -110,6 +110,7 @@ def dictate(hotkey: str, check: bool, mic_test: bool) -> None:
         # Every stage reports to the terminal. Without this, a muted mic, a
         # silent buffer and a failed paste all look the same: "nothing".
         on_status=lambda msg: click.echo(f"  [{msg}]"),
+        model_name=str(getattr(config.speech, "model", "") or ""),
     )
 
     try:
