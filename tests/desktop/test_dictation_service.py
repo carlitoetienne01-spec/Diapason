@@ -156,3 +156,22 @@ def test_wav_encoding_clips_out_of_range_samples():
         frames = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
     assert frames[0] == 32767   # +2.0 clipped to +full scale
     assert frames[1] == -32767  # -2.0 clipped to -full scale
+
+
+def test_silence_below_floor_is_not_transcribed():
+    """A near-silent buffer skips the model — avoids Whisper hallucinations."""
+    quiet = np.full(16_000, 0.001, dtype="float32")  # RMS ~0.1, below floor 0.5
+    calls = []
+
+    def _factory():
+        return _FakeCapture(quiet)
+
+    svc = DictationService(
+        transcribe=lambda w: calls.append(w) or "hallucinated text",
+        paste=lambda t: calls.append(("paste", t)),
+        capture_factory=_factory,
+        clock=lambda: 0.0,
+    )
+    svc.on_down()
+    svc.on_up()
+    assert calls == []  # neither transcribed nor pasted

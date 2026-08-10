@@ -58,11 +58,17 @@ class DictationService:
         hotkey: str = "control",
         capture_factory: CaptureFactory = MicCapture,
         clock: Callable[[], float] | None = None,
+        silence_rms: float = 0.5,
     ) -> None:
         self._transcribe = transcribe
         self._paste = paste
         self._hotkey = hotkey
         self._capture_factory = capture_factory
+        # Below this RMS (on the 0–100 scale) the buffer is treated as silence
+        # and never sent to the transcriber. Skipping silence avoids a model
+        # invocation — and, more importantly, the "you. thanks for watching"
+        # hallucinations Whisper emits on empty audio.
+        self._silence_rms = silence_rms
         self._ptt = PushToTalk()
         self._capture: Optional[MicCapture] = None
         self._listener = None
@@ -96,6 +102,11 @@ class DictationService:
             return None
         audio = cap.stop()
         if audio is None or len(audio) == 0:
+            return None
+        from openjarvis.desktop.mic_capture import rms_level
+
+        if rms_level(audio) < self._silence_rms:
+            logger.debug("dictation: buffer below silence floor, not transcribing")
             return None
         text = (self._transcribe(float_mono_to_wav(audio)) or "").strip()
         if not text:
