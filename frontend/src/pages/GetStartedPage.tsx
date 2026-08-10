@@ -393,7 +393,7 @@ function SelfHostedView() {
           className="inline-block text-[11px] font-mono px-2.5 py-1 rounded-full"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}
         >
-          v2.8
+          v{__APP_VERSION__}
         </span>
       </div>
 

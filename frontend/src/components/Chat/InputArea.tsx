@@ -185,7 +185,12 @@ export function InputArea() {
     }
   }, [stopRecording]);
 
-  // Desktop global PTT: Cmd+Alt+Space → record → paste into frontmost app
+  // In-window PTT listener, kept but currently INERT: the Cmd+Alt+Space
+  // shortcut that emitted ptt-start/ptt-stop is no longer registered
+  // (see src-tauri/src/lib.rs). Dictation is the background service,
+  // which records outside the WebView and so works with this window
+  // closed. The listener stays so restoring the shortcut is a one-line
+  // change in Rust, with nothing to rewire here.
   const pttGlobalRef = useRef(false);
   useEffect(() => {
     if (!isTauri()) return;

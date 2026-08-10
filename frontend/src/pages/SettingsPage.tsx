@@ -794,20 +794,36 @@ export function SettingsPage() {
                 </span>
               </div>
             </SettingRow>
+            {/* These counters come from InputArea (the in-window mic button),
+                so they say nothing about the background service. Labelled for
+                what they actually measure rather than left to imply they
+                cover all dictation. */}
             <SettingRow
-              label="Dictation stats"
-              description="Hold mic or Cmd+Alt+Space (desktop) for push-to-talk"
+              label="In-window dictation"
+              description="Counted from the mic button in Chat. Background dictation is not included — see jarvis dictation-history stats"
             >
               <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                 {dictationStats.sessions} sessions · {dictationStats.characters} chars
               </span>
             </SettingRow>
+            {/* Was "PTT hotkey: ⌘⌥Space". That shortcut is no longer
+                registered: it drove an in-window chain that went silent the
+                moment the window closed, while still firing. Dictation is the
+                background service now, and it holds a bare Control. */}
             <SettingRow
-              label="PTT hotkey"
-              description="Desktop push-to-talk + wake text-gate. Always-on: jarvis wake-listen"
+              label="Dictation hotkey"
+              description="Background service — works with this window closed. Change it with: jarvis config set dictation.hotkey control|option|fn"
             >
               <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>
-                ⌘⌥Space
+                Hold Control
+              </span>
+            </SettingRow>
+            <SettingRow
+              label="Dictation service"
+              description="Install, check or stop it: jarvis dictate-service install | status | logs | uninstall"
+            >
+              <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                jarvis dictate --setup
               </span>
             </SettingRow>
             <SettingRow
@@ -1012,7 +1028,7 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow
               label="Desktop app rebuild"
-              description="Global hotkeys (⌥Space / ⌘⌥Space) are in Tauri — rebuild after Rust changes"
+              description="Global hotkeys (⌥Space, ⌘⇧Space) live in Tauri — rebuild after Rust changes"
             >
               <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-secondary)' }}>
                 ./scripts/rebuild-desktop.sh
