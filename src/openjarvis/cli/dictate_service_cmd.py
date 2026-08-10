@@ -22,38 +22,44 @@ def _require_macos() -> None:
 def install() -> None:
     """Install and start dictation at login (no terminal needed)."""
     _require_macos()
-    from openjarvis.desktop import launch_agent, permissions
+    from openjarvis.desktop import app_bundle, launch_agent, permissions
 
-    path = launch_agent.install()
+    # The .app is what makes Microphone grantable at all: TCC needs an
+    # Info.plist with NSMicrophoneUsageDescription, which a bare interpreter
+    # launched by launchd does not have.
+    bundle = app_bundle.build()
+    click.echo(f"Built app bundle → {bundle}")
+
+    path = launch_agent.install(
+        executable=str(app_bundle.executable_path(bundle))
+    )
     click.echo(f"Installed LaunchAgent → {path}")
-    click.echo("It will start at every login and restart itself if it exits.")
+    if launch_agent.is_loaded():
+        click.echo("It will start at every login and restart itself if it crashes.")
+    else:
+        click.echo(
+            "WARNING: launchd did not accept the job. Run "
+            "`jarvis dictate-service status` to check.",
+            err=True,
+        )
 
-    # The critical caveat, surfaced rather than buried: the agent runs the
-    # Python binary, so it needs its OWN TCC grants — Terminal's do not carry.
-    import sys as _sys
-
-    # Check permissions from the SAME interpreter the agent runs, so the
-    # verdict matches the agent's real TCC identity (a Python binary), not the
-    # terminal's.
+    # The critical caveat, surfaced rather than buried: TCC grants attach to
+    # the bundle, so the ones you gave your terminal do not carry over.
     click.echo("")
     click.echo(
-        "IMPORTANT: the background agent runs this Python binary directly, "
-        "not your terminal — it needs its OWN permissions:",
+        f"The agent now runs as an app named {app_bundle.BUNDLE_NAME!r}, "
+        "which needs its OWN macOS permissions (your terminal's do not carry "
+        "over).",
         err=True,
     )
-    click.echo(f"  {_sys.executable}", err=True)
     click.echo(
-        "Opening Input Monitoring, Microphone and Accessibility now. Find "
-        "the entry named 'Python' (added when the agent first ran) and "
-        "switch it ON in ALL THREE panes, then run:  jarvis "
+        f"Opening the three panes. Enable {app_bundle.BUNDLE_NAME!r} under "
+        "Input Monitoring and Accessibility. Microphone is requested the "
+        "first time it records — approve the popup. Then run:  jarvis "
         "dictate-service restart",
         err=True,
     )
-    # Trigger the requests (populate the lists) and open both panes.
-    permissions.request_input_monitoring()
-    permissions.request_microphone()
-    permissions.request_accessibility()
-    for _pane in ("Input Monitoring", "Microphone", "Accessibility"):
+    for _pane in ("Input Monitoring", "Accessibility", "Microphone"):
         permissions.open_pane(_pane)
 
 
@@ -61,11 +67,18 @@ def install() -> None:
 def uninstall() -> None:
     """Stop dictation and remove it from login."""
     _require_macos()
-    from openjarvis.desktop import launch_agent
+    import shutil
+
+    from openjarvis.desktop import app_bundle, launch_agent
 
     existed = launch_agent.uninstall()
+    bundle = app_bundle.default_bundle_path()
+    if bundle.exists():
+        shutil.rmtree(bundle, ignore_errors=True)
     click.echo(
-        "Removed the dictation LaunchAgent." if existed else "Nothing installed."
+        "Removed the dictation LaunchAgent and app bundle."
+        if existed
+        else "Nothing installed."
     )
 
 

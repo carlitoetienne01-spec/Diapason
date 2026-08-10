@@ -39,13 +39,27 @@ def _xml_escape(s: str) -> str:
     )
 
 
-def build_plist(*, python: str, workdir: str, out_log: str, err_log: str) -> str:
-    """Render the LaunchAgent plist. Runs `python -m openjarvis.cli dictate`.
+def build_plist(
+    *,
+    python: str,
+    workdir: str,
+    out_log: str,
+    err_log: str,
+    executable: str | None = None,
+) -> str:
+    """Render the LaunchAgent plist.
 
-    ``-m openjarvis.cli`` rather than the console script so the agent does not
-    depend on a ``jarvis`` entry point being on any PATH.
+    When *executable* is given (the .app bundle's launcher), launchd runs THAT
+    — which is what gives the process a bundle identity, and therefore the
+    ability to hold Microphone permission at all. Falling back to the bare
+    interpreter keeps the agent usable on a machine where the bundle could not
+    be built, at the cost of a mic that macOS will never authorise.
     """
-    args = [python, "-m", "openjarvis.cli", "dictate"]
+    args = (
+        [executable]
+        if executable
+        else [python, "-m", "openjarvis.cli", "dictate"]
+    )
     args_xml = "\n".join(f"        <string>{_xml_escape(a)}</string>" for a in args)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -89,33 +103,64 @@ def _uid() -> int:
     return os.getuid()
 
 
-def install() -> Path:
-    """Write the plist and bootstrap it into the user's launchd domain."""
+def install(*, executable: str | None = None) -> Path:
+    """Write the plist and bootstrap it into the user's launchd domain.
+
+    Logs are truncated here: they accumulate one block per (re)start, and a
+    stale wall of "still missing" lines from an earlier attempt makes the
+    current state impossible to read.
+    """
     logs = log_dir()
     logs.mkdir(parents=True, exist_ok=True)
+    for name in ("dictate.out.log", "dictate.err.log"):
+        try:
+            (logs / name).write_text("", encoding="utf-8")
+        except OSError:
+            pass
     path = plist_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         build_plist(
             python=sys.executable,
-            workdir=str(Path.cwd()),
+            # HOME, not the project dir: the project may sit under a
+            # TCC-protected folder the agent cannot read.
+            workdir=str(Path.home()),
             out_log=str(logs / "dictate.out.log"),
             err_log=str(logs / "dictate.err.log"),
+            executable=executable,
         ),
         encoding="utf-8",
     )
-    # bootout first so a re-install picks up a changed plist; ignore if absent.
+    _bootstrap(path)
+    return path
+
+
+def _bootstrap(path: Path, *, attempts: int = 5) -> bool:
+    """Reload the agent, tolerating launchd's asynchronous unload.
+
+    ``bootout`` returns before the job is fully gone, so an immediate
+    ``bootstrap`` loses a race and fails with "service already loaded" —
+    silently, since the output was being discarded. Retrying briefly is the
+    documented way through it.
+    """
+    import time
+
     subprocess.run(
         ["launchctl", "bootout", f"gui/{_uid()}/{LABEL}"],
         capture_output=True,
         check=False,
     )
-    subprocess.run(
-        ["launchctl", "bootstrap", f"gui/{_uid()}", str(path)],
-        capture_output=True,
-        check=False,
-    )
-    return path
+    for attempt in range(attempts):
+        result = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{_uid()}", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return True
+        time.sleep(0.3 * (attempt + 1))
+    return False
 
 
 def uninstall() -> bool:
