@@ -26,10 +26,22 @@ def dictate(hotkey: str) -> None:
     from openjarvis.core.config import load_config
     from openjarvis.desktop.dictation_service import DictationService
     from openjarvis.desktop.hotkey import AccessibilityError
+    from openjarvis.desktop.keycodes import SUPPORTED_HOTKEYS, normalize_hotkey
     from openjarvis.speech._discovery import get_speech_backend
 
     config = load_config()
-    key = hotkey or getattr(config.dictation, "hotkey", "") or "control"
+    raw = hotkey or getattr(config.dictation, "hotkey", "") or "control"
+    # The push-to-talk tap listens for a BARE modifier, not a chord. The
+    # existing config may carry a Tauri accelerator like "Cmd+Alt+Space",
+    # which normalize_hotkey coerces to the default. Tell the user which key
+    # is actually live instead of echoing a value that does nothing.
+    key = normalize_hotkey(raw)
+    if key != raw.strip().lower():
+        click.echo(
+            f"Note: {raw!r} is not a bare modifier; using {key!r}. "
+            f"Set dictation.hotkey to one of {', '.join(SUPPORTED_HOTKEYS)}.",
+            err=True,
+        )
 
     backend = get_speech_backend(config)
     if backend is None:
@@ -57,7 +69,10 @@ def dictate(hotkey: str) -> None:
         click.echo(str(exc), err=True)
         sys.exit(1)
 
-    click.echo(f"Dictation ready. Hold {key!r} and speak. Ctrl-C to quit.")
+    click.echo(
+        f"Dictation ready. Hold the {key.capitalize()} key and speak, then "
+        "release. Double-tap for hands-free. Ctrl-C to quit."
+    )
 
     # Block the main thread until interrupted; the tap runs on its own run
     # loop thread. threading.Event().wait() is interruptible by Ctrl-C.
