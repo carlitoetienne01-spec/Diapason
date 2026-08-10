@@ -34,7 +34,19 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["local_only", "LocalOnlyError", "REFUSAL_HINT"]
+__all__ = [
+    "local_only",
+    "engine_is_local",
+    "host_is_local",
+    "assert_may_leave",
+    "LocalOnlyError",
+    "REFUSAL_HINT",
+]
+
+# Strict loopback only. RFC1918 addresses are deliberately absent: an Ollama
+# on 192.168.1.50 is another machine, therefore another promise. Reaching it
+# is a separate decision the user has not made by ticking "local only".
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"})
 
 
 class LocalOnlyError(RuntimeError):
@@ -52,6 +64,68 @@ REFUSAL_HINT = (
     "Local-only mode is on ([privacy] local_only = true), so nothing was sent. "
     "Set local_only = false to allow cloud engines."
 )
+
+
+def host_is_local(url_or_host: str) -> bool:
+    """True when a URL or host designates this machine.
+
+    Reaching loopback is not leaving, so ``http://localhost:11434`` (Ollama),
+    the internal FastAPI server and the Apple Foundation Models shim stay
+    available in local-only mode — they are the whole point of it.
+
+    A private-network address is NOT local here. ``192.168.1.50`` is someone
+    else's computer; sending a dictation there is still sending it away, and
+    the user did not consent to that by asking for local-only.
+
+    Anything unparseable is treated as remote: a host we cannot read is not a
+    host we can vouch for.
+    """
+    raw = (url_or_host or "").strip()
+    if not raw:
+        return False
+    if raw.startswith("/") or raw.startswith("unix:"):
+        return True  # unix socket — cannot leave the machine
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(raw if "//" in raw else f"//{raw}")
+        host = (parsed.hostname or "").strip().lower()
+    except Exception:  # noqa: BLE001 - unparseable is not vouchable
+        return False
+    if not host:
+        return False
+    return host in _LOOPBACK_HOSTS or host.endswith(".localhost")
+
+
+def assert_may_leave(
+    what: str,
+    *,
+    destination: str = "",
+    config: Optional["JarvisConfig"] = None,
+) -> None:
+    """Raise :class:`LocalOnlyError` when ``what`` may not leave this machine.
+
+    The single idiom every outbound path calls **before** reading a credential
+    or producing the payload. Two things make it a contract rather than a
+    style:
+
+    * it raises rather than returning a boolean, so a caller cannot forget to
+      branch on the answer;
+    * ``destination`` short-circuits it for loopback, so guarding a path costs
+      nothing when that path was never leaving in the first place.
+
+    ``what`` is a short human description used in the message — "the dictated
+    text", "the screenshot". It must never contain the data itself.
+    """
+    if destination and host_is_local(destination):
+        return
+    if not local_only(config):
+        return
+    where = f" to {destination}" if destination else ""
+    logger.info(
+        "local-mode: refused to send %s%s — nothing left the machine", what, where
+    )
+    raise LocalOnlyError(f"Refusing to send {what}{where}. {REFUSAL_HINT}")
 
 
 def local_only(config: Optional["JarvisConfig"] = None) -> bool:

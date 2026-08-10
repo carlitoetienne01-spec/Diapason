@@ -31,8 +31,52 @@ _HOST_MAP: Dict[str, str | None] = {
 }
 
 
+# Engines whose transport is a remote provider, whatever the config says.
+# Keyed rather than probed because the verdict must be available BEFORE the
+# class is instantiated — CloudEngine.__init__ reads eight API-key environment
+# variables in its constructor (engine/cloud.py), so asking the instance
+# afterwards is already too late.
+_REMOTE_ENGINE_KEYS = frozenset({"cloud", "litellm"})
+
+
+def _engine_key_is_remote(key: str, config: JarvisConfig) -> bool:
+    """True when constructing ``key`` would mean talking to another machine.
+
+    Host-based engines are judged on their configured host, not on their name:
+    an Ollama pointed at ``http://localhost:11434`` is local, the same Ollama
+    pointed at a LAN box is not.
+    """
+    from openjarvis.core.local_mode import host_is_local
+
+    if key in _REMOTE_ENGINE_KEYS:
+        return True
+    host_attr = _HOST_MAP.get(key)
+    if host_attr is None:
+        return False  # in-process (gemma_cpp) — nothing leaves
+    host = getattr(config.engine, host_attr, None)
+    if not host:
+        return False  # class default, which is loopback for every host engine
+    return not host_is_local(str(host))
+
+
 def _make_engine(key: str, config: JarvisConfig) -> InferenceEngine:
     """Instantiate a registered engine with the appropriate config host."""
+    # Refuse BEFORE construction. This is the widest single guard in the
+    # codebase: every path that reaches a cloud model — chat, ask, agents,
+    # research, polish, vision, the server — resolves its engine here. Placing
+    # the check at the call sites instead would have meant guarding ten of
+    # them and forgetting the eleventh, and would still have let
+    # CloudEngine.__init__ read every API key on the machine first.
+    from openjarvis.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
+
+    if local_only(config) and _engine_key_is_remote(key, config):
+        logger.info(
+            "local-mode: refusing to construct remote engine %r "
+            "— no credential was read",
+            key,
+        )
+        raise LocalOnlyError(f"Engine {key!r} is remote. {REFUSAL_HINT}")
+
     cls = EngineRegistry.get(key)
 
     # gemma_cpp: pass config fields instead of host

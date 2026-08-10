@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from openjarvis.core.local_mode import engine_is_local, local_only
 
 # ── Doubles ──────────────────────────────────────────────────────────────────
@@ -126,3 +128,86 @@ def test_privacy_key_is_settable_from_the_cli():
     from openjarvis.core.config import validate_config_key
 
     assert validate_config_key("privacy.local_only") is bool
+
+
+# ── host_is_local: what counts as "not leaving" ──────────────────────────────
+
+
+def test_loopback_is_local():
+    from openjarvis.core.local_mode import host_is_local
+
+    for url in (
+        "http://localhost:11434",
+        "http://127.0.0.1:8000/v1/chat",
+        "http://[::1]:8079",
+        "localhost:11434",
+        "http://api.localhost:3000",
+    ):
+        assert host_is_local(url) is True, url
+
+
+def test_a_lan_address_is_not_local():
+    """192.168.1.50 is someone else's computer, not this one."""
+    from openjarvis.core.local_mode import host_is_local
+
+    for url in (
+        "http://192.168.1.50:11434",
+        "http://10.0.0.7:8000",
+        "https://api.openai.com/v1",
+        "https://generativelanguage.googleapis.com",
+    ):
+        assert host_is_local(url) is False, url
+
+
+def test_unparseable_or_empty_hosts_are_not_local():
+    """A host we cannot read is not a host we can vouch for."""
+    from openjarvis.core.local_mode import host_is_local
+
+    assert host_is_local("") is False
+    assert host_is_local("   ") is False
+    assert host_is_local("http://") is False
+
+
+def test_unix_sockets_are_local():
+    from openjarvis.core.local_mode import host_is_local
+
+    assert host_is_local("/var/run/openjarvis.sock") is True
+    assert host_is_local("unix:///tmp/x.sock") is True
+
+
+# ── assert_may_leave: raises so a caller cannot forget to branch ─────────────
+
+
+def test_assert_may_leave_raises_under_local_only():
+    from openjarvis.core.local_mode import LocalOnlyError, assert_may_leave
+
+    with pytest.raises(LocalOnlyError) as excinfo:
+        assert_may_leave(
+            "the dictated text", destination="https://api.openai.com", config=_cfg(True)
+        )
+    assert excinfo.value.nothing_left_the_machine is True
+
+
+def test_assert_may_leave_is_silent_for_loopback_even_under_local_only():
+    """Guarding a path that never left costs nothing."""
+    from openjarvis.core.local_mode import assert_may_leave
+
+    assert_may_leave(
+        "the prompt", destination="http://localhost:11434", config=_cfg(True)
+    )
+
+
+def test_assert_may_leave_is_silent_when_local_only_is_off():
+    from openjarvis.core.local_mode import assert_may_leave
+
+    assert_may_leave(
+        "the prompt", destination="https://api.openai.com", config=_cfg(False)
+    )
+
+
+def test_assert_may_leave_refuses_an_unknown_destination_under_local_only():
+    """No destination given means no proof it was loopback."""
+    from openjarvis.core.local_mode import LocalOnlyError, assert_may_leave
+
+    with pytest.raises(LocalOnlyError):
+        assert_may_leave("the screenshot", config=_cfg(True))
