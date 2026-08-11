@@ -42,11 +42,12 @@ document.body.appendChild(canvas);
 const reducedMotion =
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-// The panel is a wide, short banner, so the point budget buys detail across
-// the width rather than depth the geometry cannot show at this height.
+// The densest lattice: the ribbon spreads its rows vertically, so the strand
+// count is what decides whether the bundle reads as a full sheaf or as a few
+// scattered threads.
 const scene = new AIEntityScene({
   canvas,
-  quality: 'high',
+  quality: 'ultra',
   reducedMotion,
   framing: 'banner',
 });

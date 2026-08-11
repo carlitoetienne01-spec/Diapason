@@ -81,8 +81,11 @@ export const AI_ENTITY_CONFIG = {
 
   /** The banner's ribbon: rows become strands stacked vertically. */
   ribbon: {
-    /** Vertical extent of the strand bundle, in world units. */
-    spread: 1.15,
+    /** Vertical extent of the strand bundle, in world units. Generous on
+     * purpose: the reference's ribbons are thick sheaves, not thin bands.
+     * Widening this alone would thin the strands out, so the banner also
+     * runs at the densest lattice — the two go together. */
+    spread: 2.45,
     /** What little depth the strands keep, so the bundle still has body. */
     depth: 0.4,
     /** Alternations across the width. Four to five reads as a waveform; one
@@ -96,7 +99,7 @@ export const AI_ENTITY_CONFIG = {
     falloff: 0.55,
     /** The second, thinner ribbon: its phase offset, its share of the
      * thickness and of the light. */
-    second: { phase: 2.35, spread: 0.5, glow: 0.55 },
+    second: { phase: 2.35, spread: 0.62, glow: 0.6 },
     /** How far a loud band lifts the peak sitting over it. This is what makes
      * one crest dominate, and makes which one depend on what was said. */
     peakGain: 1.5,

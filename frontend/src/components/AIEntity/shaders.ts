@@ -254,7 +254,7 @@ void main() {
   float bandEnergy = sampleBands(u * 0.55);
   float centreBias = exp(-1.1 * u * u);
   float peak = 1.0 + bandEnergy * ${f(C.ribbon.peakGain)} * centreBias * uEqMix;
-  float ribbonWave = trace * peak * uAmplitude * 0.62;
+  float ribbonWave = trace * peak * uAmplitude * 0.48;
 
   // Ribbon mode. The rows stop being depth and become strands stacked in Y,
   // each following the same curve — which is exactly what the reference's
@@ -269,9 +269,11 @@ void main() {
   if (isSecond > 0.5) {
     float p2 = phase + bundlePhase;
     bundleWave = (sin(p2) * 0.72 + sin(p2 * 0.47 + 1.7) * 0.42) * peak
-               * uAmplitude * 0.5;
+               * uAmplitude * 0.4;
   }
-  float fan = 0.45 + 0.55 * (0.5 + 0.5 * cos(u * 2.1 + uTime * 0.21 * uSpeed));
+  // Opens far wider than before: the reference's sheaves flare where the
+  // wave turns, and stay full rather than tapering to a thread.
+  float fan = 0.62 + 0.38 * (0.5 + 0.5 * cos(u * 1.7 + uTime * 0.19 * uSpeed));
   float thickness = mix(1.0, ${f(C.ribbon.second.spread)}, isSecond);
   float ribbonY = v * ${f(C.ribbon.spread)} * fan * thickness;
   // Voice stretches the whole bundle vertically. This is the motion asked
