@@ -58,3 +58,15 @@ export function translate(locale: Locale, key: MessageKey, vars?: Vars): string 
       : raw;
   return interpolate(text, vars);
 }
+
+/**
+ * True when a string is a catalogue key.
+ *
+ * The setup screen mixes both kinds: its own step labels are keys, while the
+ * progress detail arrives from the Rust side as free English text. Guessing
+ * wrong either way shows the user a raw key or an untranslated sentence, so
+ * the distinction is made explicitly rather than by convention.
+ */
+export function isMessageKey(value: string): value is MessageKey {
+  return Object.prototype.hasOwnProperty.call(MESSAGES.en, value);
+}

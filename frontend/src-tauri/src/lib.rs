@@ -270,11 +270,15 @@ fn resolve_bin(name: &str) -> String {
 /// Checks OPENJARVIS_ROOT env var, walks up from the executable, then
 /// probes common clone locations.
 fn find_project_root() -> Option<std::path::PathBuf> {
-    // 1. Explicit env var override
-    if let Ok(root) = std::env::var("OPENJARVIS_ROOT") {
-        let path = std::path::PathBuf::from(&root);
-        if path.join("pyproject.toml").exists() {
-            return Some(path);
+    // 1. Explicit env var override. DIAPASON_ROOT is the current name;
+    //    OPENJARVIS_ROOT still works so an existing shell profile does not
+    //    break silently — the same contract as the Python side.
+    for var in ["DIAPASON_ROOT", "OPENJARVIS_ROOT"] {
+        if let Ok(root) = std::env::var(var) {
+            let path = std::path::PathBuf::from(&root);
+            if path.join("pyproject.toml").exists() {
+                return Some(path);
+            }
         }
     }
 
@@ -295,6 +299,10 @@ fn find_project_root() -> Option<std::path::PathBuf> {
     let home = home_dir();
     let direct = [
         format!("{home}/Diapason"),
+        // Where a downloaded copy actually lands. Its absence is why an app
+        // installed to /Applications — and therefore unable to find the root
+        // by walking up from its own executable — fell through to cloning.
+        format!("{home}/Downloads/Diapason"),
         format!("{home}/projects/hazy/Diapason"),
         format!("{home}/projects/Diapason"),
         format!("{home}/src/Diapason"),
@@ -1154,7 +1162,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             let mut s = status.lock().await;
             s.error = Some(format!(
                 "{} exists but is not a valid Diapason project. \
-                 Remove it and relaunch, or set OPENJARVIS_ROOT to the correct path.",
+                 Remove it and relaunch, or set DIAPASON_ROOT to the correct path.",
                 clone_target,
             ));
             return;
@@ -1170,7 +1178,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 "clone",
                 "--depth",
                 "1",
-                "https://github.com/open-diapason/Diapason.git",
+                "https://github.com/open-jarvis/OpenJarvis.git",
                 &clone_target,
             ])
             .stdout(std::process::Stdio::null())
@@ -1187,7 +1195,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
+                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
                         stderr.trim(),
                         clone_target,
                     ));
@@ -1197,7 +1205,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
+                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
                         e, clone_target,
                     ));
                     return;

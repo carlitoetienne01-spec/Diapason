@@ -175,10 +175,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/open-diapason/Diapason"
-Documentation = "https://open-diapason.github.io/Diapason/"
-Repository = "https://github.com/open-diapason/Diapason"
-Issues = "https://github.com/open-diapason/Diapason/issues"
+Homepage = "https://github.com/open-jarvis/OpenJarvis"
+Documentation = "https://open-jarvis.github.io/OpenJarvis/"
+Repository = "https://github.com/open-jarvis/OpenJarvis"
+Issues = "https://github.com/open-jarvis/OpenJarvis/issues"
 
 [project.scripts]
 diapason = "diapason.cli:main"

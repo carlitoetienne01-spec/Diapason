@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isMessageKey, type MessageKey } from '../i18n/translate';
 
 import { useTranslation } from '../i18n/useTranslation';
 import { Loader2, CheckCircle2, XCircle, Cpu, Server, Database } from 'lucide-react';
@@ -11,9 +12,9 @@ import {
 import { useAppStore } from '../lib/store';
 
 const STEPS = [
-  { key: 'ollama_ready', label: 'Inference Engine', icon: Cpu, detail: 'Starting Ollama...' },
-  { key: 'model_ready', label: 'AI Model', icon: Database, detail: 'Loading model...' },
-  { key: 'server_ready', label: 'API Server', icon: Server, detail: 'Starting server...' },
+  { key: 'ollama_ready', label: 'setup.step.inferenceEngine' as MessageKey, icon: Cpu, detail: 'setup.detail.startingOllama' },
+  { key: 'model_ready', label: 'setup.step.aiModel', icon: Database, detail: 'setup.detail.loadingModel' },
+  { key: 'server_ready', label: 'setup.step.apiServer' as MessageKey, icon: Server, detail: 'setup.detail.startingServer' },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]['key'];
@@ -26,11 +27,14 @@ function StepRow({
   detail,
 }: {
   icon: typeof Cpu;
-  label: string;
+  label: MessageKey;
   done: boolean;
   active: boolean;
   detail: string;
 }) {
+  // The step list is a module constant, where a hook cannot run, so it holds
+  // keys and the translation happens here, at render.
+  const { t } = useTranslation();
   return (
     <div
       className="flex items-center gap-4 px-5 py-4 rounded-xl transition-all"
@@ -54,10 +58,14 @@ function StepRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-          {label}
+          {t(label)}
         </div>
         <div className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)', maxWidth: '280px' }}>
-          {done ? 'Ready' : active ? detail : 'Waiting...'}
+          {done
+            ? t('setup.ready')
+            : active
+              ? (isMessageKey(detail) ? t(detail) : detail)
+              : t('setup.waiting')}
         </div>
       </div>
       <div className="shrink-0">
@@ -149,9 +157,9 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
         <div className="flex flex-col gap-2 mb-8">
           {(status?.source === 'custom'
             ? [
-                { key: 'ollama_ready' as const, label: 'Inference Engine', icon: Cpu, detail: 'Connecting to your server...' },
-                { key: 'model_ready' as const, label: 'Endpoint', icon: Database, detail: 'Checking endpoint...' },
-                { key: 'server_ready' as const, label: 'API Server', icon: Server, detail: 'Starting server...' },
+                { key: 'ollama_ready' as const, label: 'setup.step.inferenceEngine' as MessageKey, icon: Cpu, detail: 'setup.detail.connecting' },
+                { key: 'model_ready' as const, label: 'setup.step.endpoint' as MessageKey, icon: Database, detail: 'setup.detail.checkingEndpoint' },
+                { key: 'server_ready' as const, label: 'setup.step.apiServer' as MessageKey, icon: Server, detail: 'setup.detail.startingServer' },
               ]
             : STEPS
           ).map((step) => (
