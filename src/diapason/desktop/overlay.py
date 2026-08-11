@@ -147,6 +147,9 @@ class DictationOverlay:
         # a half-updated pair is indistinguishable from the frame before it.
         self.state = "idle"
         self.level = 0.0
+        # Spectral shape, written from the audio thread like level. A tuple so
+        # a frame can never read a half-rebuilt list.
+        self.bands: tuple = ()
         self._phase = 0.0
         self._alpha = 0.0
         self._hide_at = 0.0
@@ -168,6 +171,10 @@ class DictationOverlay:
 
     def set_level(self, level: float) -> None:
         self.level = level
+
+    def set_bands(self, bands) -> None:
+        """Per-band energies, 0–1, low frequencies first."""
+        self.bands = tuple(bands)
 
     def on_status(self, message: str) -> None:
         """Adapter for ``DictationService(on_status=…)``."""
@@ -257,10 +264,12 @@ class DictationOverlay:
             return
         self._bridge_at = now
         self._pushed_state = state
+        bands = ",".join(f"{value:.3f}" for value in self.bands)
         script = (
             f"window.diapasonOverlay&&"
             f"(window.diapasonOverlay.setState('{state}'),"
-            f"window.diapasonOverlay.setLevel({self.level:.4f}))"
+            f"window.diapasonOverlay.setLevel({self.level:.4f}),"
+            f"window.diapasonOverlay.setBands([{bands}]))"
         )
         try:
             view.evaluateJavaScript_completionHandler_(script, None)

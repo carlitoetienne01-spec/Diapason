@@ -72,6 +72,38 @@ function buildGeometry(quality: AIQuality): BufferGeometry {
   return geometry;
 }
 
+/**
+ * Colour per state, mixed in by how loud the field is.
+ *
+ * The earlier hand-drawn indicator changed colour between recording,
+ * transcribing and done, and that was the fastest thing to read at a glance —
+ * faster than any shape. These keep that, while staying inside a palette that
+ * still belongs to the same object.
+ */
+/**
+ * How present the state colour is before the voice adds to it.
+ *
+ * Listening keeps a low floor on purpose: the colour should visibly answer
+ * speech rather than announce the mode. Thinking sits high because there is no
+ * voice left to drive it — that is the whole point of the state.
+ */
+const STATE_TINT_FLOOR: Record<AIState, number> = {
+  idle: 0.0,
+  listening: 0.12,
+  thinking: 0.9,
+  speaking: 0.45,
+};
+
+const STATE_TINTS: Record<AIState, readonly [number, number, number]> = {
+  idle: C.colors.mid,
+  listening: [0.62, 0.94, 1.0],
+  thinking: [1.0, 0.66, 0.24],
+  speaking: [0.55, 0.9, 1.0],
+};
+
+/** Scratch colour, so the render loop allocates nothing per frame. */
+const TEMP_COLOR = new Color();
+
 function cellSize(quality: AIQuality): number {
   return C.geometry.width / GRID[quality].cols;
 }
@@ -102,9 +134,13 @@ export class AIEntityScene {
   /** Eased toward the active state's profile; never snapped. */
   private readonly live: LiveProfile = { ...STATE_PROFILES.idle };
   private target: StateProfile = STATE_PROFILES.idle;
+  private stateName: AIState = 'idle';
 
   private intensity = 1;
   private bands: AudioBands = SILENT_BANDS;
+  /** Spectrum, when someone supplies one. Empty means "no equaliser". */
+  private spectrum: number[] = [];
+  private readonly tint = new Color(...C.colors.bright);
 
   private readonly pointer = new Vector2(0, 0);
   private readonly pointerEased = new Vector2(0, 0);
@@ -170,6 +206,14 @@ export class AIEntityScene {
         uSize: { value: C.points.baseSize },
         uMaxSize: { value: C.points.maxSize },
         uCell: { value: cellSize(this.quality) },
+        // Sixteen slots because GLSL wants a fixed-size array; uBandCount says
+        // how many are real. Zero bands leaves uEqMix at 0 and the field
+        // behaves exactly as it did before the analyser existed.
+        uBands: { value: new Float32Array(16) },
+        uBandCount: { value: 0 },
+        uEqMix: { value: 0 },
+        uTint: { value: new Color(...C.colors.bright) },
+        uTintFloor: { value: 0 },
         uDeep: { value: new Color(...C.colors.deep) },
         uMidColor: { value: new Color(...C.colors.mid) },
         uBright: { value: new Color(...C.colors.bright) },
@@ -190,6 +234,7 @@ export class AIEntityScene {
   }
 
   setState(state: AIState): void {
+    this.stateName = state;
     const profile = STATE_PROFILES[state];
     this.target = this.reducedMotion ? calmProfile(profile) : profile;
   }
@@ -200,6 +245,11 @@ export class AIEntityScene {
 
   setBands(bands: AudioBands): void {
     this.bands = bands;
+  }
+
+  /** Per-band energies, 0–1, low frequencies first. */
+  setSpectrum(values: readonly number[]): void {
+    this.spectrum = values.slice(0, 16).map((v) => (Number.isFinite(v) ? v : 0));
   }
 
   setReducedMotion(reduced: boolean, state: AIState): void {
@@ -255,10 +305,21 @@ export class AIEntityScene {
     const halfV = ((C.camera.fov * Math.PI) / 180) / 2;
     const halfTarget = (C.geometry.width * C.camera.framedWidth) / 2;
     const ideal = halfTarget / Math.max(Math.tan(halfV) * aspect, 0.0001);
-    this.applyDistance(
-      Math.min(Math.max(ideal, C.camera.minDistance), C.camera.maxDistance),
+    const distance = Math.min(
+      Math.max(ideal, C.camera.minDistance),
+      C.camera.maxDistance,
     );
+    this.applyDistance(distance);
     this.camera.updateProjectionMatrix();
+
+    // On a very wide, short banner the clamped distance leaves the field
+    // occupying a third of the frame with emptiness either side. Rather than
+    // pull the camera closer — which would put the near rows in the viewer's
+    // face — the field itself is stretched horizontally to meet the frame.
+    // Never squeezed: below 1 the wave would bunch up and lose its silhouette.
+    const visibleWidth = 2 * distance * Math.tan(halfV) * aspect;
+    const wanted = (visibleWidth * C.camera.framedWidth) / C.geometry.width;
+    this.points.scale.x = Math.max(1, Math.min(wanted, C.camera.maxStretch));
   }
 
   start(): void {
@@ -338,6 +399,22 @@ export class AIEntityScene {
     u.uMid.value = this.bands.mid;
     u.uHigh.value = this.bands.high;
     u.uIntensity.value = 0.35 + 0.65 * this.intensity;
+
+    const array = u.uBands.value as Float32Array;
+    for (let i = 0; i < array.length; i++) {
+      array[i] = this.spectrum[i] ?? 0;
+    }
+    u.uBandCount.value = this.spectrum.length;
+    // Eased rather than switched: a spectrum arriving mid-word would
+    // otherwise snap the surface into a new shape.
+    const wanted = this.spectrum.length ? 1 : 0;
+    u.uEqMix.value += (wanted - u.uEqMix.value) * 0.12;
+
+    const target = STATE_TINTS[this.stateName] ?? C.colors.bright;
+    this.tint.lerp(TEMP_COLOR.setRGB(target[0], target[1], target[2]), 0.06);
+    (u.uTint.value as Color).copy(this.tint);
+    const floor = STATE_TINT_FLOOR[this.stateName] ?? 0;
+    u.uTintFloor.value += (floor - u.uTintFloor.value) * 0.06;
   }
 
   /** Watch the rolling frame time and step quality down (or back up) rather

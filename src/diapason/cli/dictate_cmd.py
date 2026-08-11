@@ -204,10 +204,14 @@ def dictate(
 
         if indicator is None:
             return MicCapture()
-        # The meter is fed straight from the audio callback, so the bars move
-        # with the real signal: a flat indicator means a silent microphone,
-        # which is the diagnosis the user actually needs.
-        return MicCapture(level_cb=indicator.set_level)
+        # The meter is fed straight from the audio callback, so the display
+        # moves with the real signal: a flat indicator means a silent
+        # microphone, which is the diagnosis the user actually needs. The
+        # bands carry the spectral shape on top of the loudness.
+        return MicCapture(
+            level_cb=indicator.set_level,
+            bands_cb=indicator.set_bands,
+        )
 
     def _status(msg: str) -> None:
         click.echo(f"  [{msg}]")

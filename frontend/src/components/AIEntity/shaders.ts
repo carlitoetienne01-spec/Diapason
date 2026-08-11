@@ -82,6 +82,17 @@ uniform float uSize;
 uniform float uMaxSize;
 uniform float uCell;
 
+// Spectral shape, low frequencies first. uEqMix is 0 whenever nobody supplies
+// bands, which is what keeps the Talk panel — same shader, no analyser —
+// exactly as it was.
+uniform float uBands[16];
+uniform float uBandCount;
+uniform float uEqMix;
+uniform vec3 uTint;
+// Minimum tint for the current state. Gating the colour purely on loudness
+// left "transcribing" grey, because by then nobody is speaking.
+uniform float uTintFloor;
+
 uniform vec3 uDeep;
 uniform vec3 uMidColor;
 uniform vec3 uBright;
@@ -93,6 +104,33 @@ varying float vAlpha;
 ${NOISE}
 
 const float PI = 3.141592653589793;
+
+/**
+ * Read the spectrum at a horizontal position, interpolating between bands.
+ *
+ * Twelve bars drawn as twelve steps reads as a cheap meter. Interpolating —
+ * and smoothing the interpolant — turns the same twelve numbers into one
+ * continuous ridge, which is what makes it look like a voice rather than a
+ * bar chart.
+ */
+float sampleBands(float u) {
+  float count = max(uBandCount, 1.0);
+  // Mirrored: lows at the centre, highs toward the ends. Mapped left-to-right
+  // instead, the display leans permanently to one side, because speech energy
+  // sits in the low-mids — and a lopsided shape is the opposite of calm.
+  float pos = clamp(abs(u) * (count - 1.0), 0.0, count - 1.0);
+  int i = int(floor(pos));
+  float f = pos - float(i);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = 0.0;
+  float b = 0.0;
+  for (int k = 0; k < 16; k++) {
+    if (k == i) a = uBands[k];
+    if (k == i + 1) b = uBands[k];
+  }
+  if (i + 1 >= int(count)) b = a;
+  return mix(a, b, f);
+}
 
 void main() {
   float u = position.x / ${f(C.geometry.width * 0.5)};
@@ -138,6 +176,14 @@ void main() {
   // main wave, overall level lifts the whole field, bass deepens it.
   float voice = (uMid * 0.95 + uLevel * 0.55) * uAudioDrive;
   height += voice * env * 1.15;
+
+  // The spectrum MODULATES the field instead of replacing it. Driving the
+  // silhouette directly makes the shape follow wherever speech energy happens
+  // to sit — a lopsided lump, or a W when it straddles the centre. Multiplying
+  // keeps the wide, centred form and lets the voice make it swell and ripple,
+  // which is both calmer and easier to read.
+  float spectrum = sampleBands(u);
+  height = mix(height, height * (0.5 + spectrum * 2.2), uEqMix);
   height *= env;
 
   float x = u * ${f(C.geometry.width * 0.5)};
@@ -168,6 +214,11 @@ void main() {
   vec3 col = mix(uDeep, uMidColor, smoothstep(0.12, 0.56, hn));
   col = mix(col, uBright, smoothstep(0.54, 0.86, hn));
   col = mix(col, uPeak, smoothstep(0.8, 1.0, hn) * spark);
+
+  // State tint, pulled in by how loud this part of the field actually is, so
+  // the colour answers the voice instead of merely announcing a mode.
+  float heat = clamp(max(uTintFloor, spectrum * uEqMix + uLevel * 0.6), 0.0, 1.0);
+  col = mix(col, uTint, heat * 0.85);
 
   // Depth cue: points further from the camera recede, both in size and light.
   float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);

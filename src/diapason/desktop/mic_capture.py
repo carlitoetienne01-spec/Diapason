@@ -71,9 +71,21 @@ class MicCapture:
     testable via ``_ingest``; only ``start``/``stop`` touch hardware.
     """
 
-    def __init__(self, *, target_rate: int = TARGET_SAMPLE_RATE, level_cb=None):
+    def __init__(
+        self,
+        *,
+        target_rate: int = TARGET_SAMPLE_RATE,
+        level_cb=None,
+        bands_cb=None,
+    ):
         self._target_rate = target_rate
         self._level_cb = level_cb
+        # Spectral shape, for a display that behaves like an equaliser. A
+        # single RMS number can only move everything together; bands say where
+        # in the spectrum the energy actually is. Optional: nothing downstream
+        # is required to want them.
+        self._bands_cb = bands_cb
+        self._smoother = None
         self._chunks: List["Any"] = []  # noqa: F821
         self._lock = threading.Lock()
         self._stream = None
@@ -89,9 +101,31 @@ class MicCapture:
                 self._level_cb(self.level)
             except Exception:  # noqa: BLE001 - a UI callback must not kill audio
                 logger.debug("level callback raised", exc_info=True)
+        if self._bands_cb is not None:
+            self._emit_bands(mono, src_rate)
         resampled = resample_linear(mono, src_rate, self._target_rate)
         with self._lock:
             self._chunks.append(resampled)
+
+    def _emit_bands(self, mono: "Any", src_rate: int) -> None:  # noqa: F821
+        """Analyse the block and hand the smoothed bands to the observer.
+
+        Runs on the audio callback thread, so it is guarded like the level
+        callback: a display error must never interrupt capture.
+        """
+        try:
+            from diapason.desktop.spectrum import (
+                BandSmoother,
+                band_energies,
+                scaled_by_level,
+            )
+
+            if self._smoother is None:
+                self._smoother = BandSmoother()
+            raw = band_energies(mono, src_rate)
+            self._bands_cb(scaled_by_level(self._smoother.push(raw), self.level))
+        except Exception:  # noqa: BLE001 - analysis is decoration, audio is not
+            logger.debug("band analysis raised", exc_info=True)
 
     def buffer(self) -> "Any":  # noqa: F821
         """Concatenate everything captured so far as one 16 kHz mono array."""

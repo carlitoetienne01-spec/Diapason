@@ -40,6 +40,9 @@ export const AI_ENTITY_CONFIG = {
      * faded to nothing, so letting them spill costs nothing visually and
      * avoids shrinking the entity to a thread on a narrow screen. */
     framedWidth: 0.97,
+    /** Ceiling on the horizontal stretch used to fill a wide banner. Beyond
+     * this the lattice columns separate visibly and the surface goes sparse. */
+    maxStretch: 3.2,
     lookAt: [0, -0.05, 0] as const,
     /** Pointer parallax ceiling, in world units. Deliberately tiny: the shot
      * stays cinematic, the user never "orbits a model". */

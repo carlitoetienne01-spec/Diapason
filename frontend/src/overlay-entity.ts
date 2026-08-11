@@ -28,6 +28,7 @@ declare global {
     diapasonOverlay: {
       setState: (state: string) => void;
       setLevel: (level: number) => void;
+      setBands: (bands: number[]) => void;
       setQuality: (quality: string) => void;
       ready: boolean;
     };
@@ -86,6 +87,11 @@ window.diapasonOverlay = {
   },
   setLevel(level) {
     target = Number.isFinite(level) ? Math.max(0, level) : 0;
+  },
+  setBands(bands) {
+    // The native side sends the spectrum every frame it has one; the scene
+    // eases it in, so an empty array simply lets the equaliser fade out.
+    scene.setSpectrum(Array.isArray(bands) ? bands : []);
   },
   setQuality(quality) {
     if (['low', 'medium', 'high', 'ultra'].includes(quality)) {
