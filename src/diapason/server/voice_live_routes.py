@@ -181,11 +181,15 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
 @voice_live_router.get("/v1/voice/live/health")
 async def voice_live_health(request: Request) -> dict[str, Any]:
     """Report realtime voice availability (keys + config)."""
-    import os
 
     defaults = _realtime_defaults(request.app.state)
-    gemini = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-    openai = bool(os.environ.get("OPENAI_API_KEY"))
+    from diapason.core.cloud_keys import get_cloud_key
+
+    # Same resolution as the sessions themselves (env, then the desktop
+    # Keychain) — a health check that looks in fewer places than the code it
+    # describes reports "unconfigured" for keys that would in fact work.
+    gemini = bool(get_cloud_key("GEMINI_API_KEY", "GOOGLE_API_KEY"))
+    openai = bool(get_cloud_key("OPENAI_API_KEY"))
     tool_ids: list[str] = []
     if defaults.get("enable_tools"):
         try:

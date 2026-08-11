@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from typing import Any, AsyncIterator, Optional, Sequence
 
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
@@ -44,11 +43,13 @@ class GeminiLiveSession(RealtimeVoiceSession):
         max_tool_steps: int = 12,
         allowed_tools: Optional[Sequence[str]] = None,
     ) -> None:
-        self._api_key = (
-            api_key
-            or os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GOOGLE_API_KEY")
-            or ""
+        from diapason.core.cloud_keys import get_cloud_key
+
+        # Environment first, then the desktop app's Keychain store — the
+        # LaunchAgent server never receives the app's env injection, so the
+        # key pasted into Settings must be reachable from here too.
+        self._api_key = api_key or get_cloud_key(
+            "GEMINI_API_KEY", "GOOGLE_API_KEY"
         )
         self._model = model or _DEFAULT_MODEL
         self._voice = voice or "Zephyr"

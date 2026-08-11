@@ -74,6 +74,10 @@ export const MESSAGES = {
     'setup.step.apiServer': 'API Server',
     'setup.step.endpoint': 'Endpoint',
     'setup.step.inferenceEngine': 'Inference Engine',
+    'talk.missingKeyGemini':
+      'Gemini API key missing — paste yours in Settings › API keys, then try again.',
+    'talk.missingKeyOpenai':
+      'OpenAI API key missing — paste yours in Settings › API keys, then try again.',
     'error.title': 'Something went wrong',
     'error.unexpected': 'An unexpected error occurred.',
     'setup.ingest.background': 'Sync will continue in the background',
@@ -1116,6 +1120,10 @@ export const MESSAGES = {
     'setup.step.apiServer': 'Serveur API',
     'setup.step.endpoint': 'Point de terminaison',
     'setup.step.inferenceEngine': "Moteur d'inférence",
+    'talk.missingKeyGemini':
+      'Clé API Gemini manquante — collez la vôtre dans Réglages › Clés API, puis réessayez.',
+    'talk.missingKeyOpenai':
+      'Clé API OpenAI manquante — collez la vôtre dans Réglages › Clés API, puis réessayez.',
     'error.title': "Une erreur s'est produite",
     'error.unexpected': "Une erreur inattendue s'est produite.",
     'setup.ingest.background': 'La synchronisation se poursuit en arrière-plan',

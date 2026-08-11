@@ -189,7 +189,11 @@ export function TalkOrb({
 
           {error && (
             <p className="mt-3 text-xs text-center" style={{ color: 'var(--color-error)' }}>
-              {error}
+              {error === 'missing-key-gemini'
+                ? t('talk.missingKeyGemini')
+                : error === 'missing-key-openai'
+                  ? t('talk.missingKeyOpenai')
+                  : error}
             </p>
           )}
         </div>

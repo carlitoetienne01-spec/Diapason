@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from typing import Any, AsyncIterator, Optional, Sequence
 
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
@@ -41,7 +40,9 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
         max_tool_steps: int = 12,
         allowed_tools: Optional[Sequence[str]] = None,
     ) -> None:
-        self._api_key = api_key or os.environ.get("OPENAI_API_KEY") or ""
+        from diapason.core.cloud_keys import get_cloud_key
+
+        self._api_key = api_key or get_cloud_key("OPENAI_API_KEY")
         self._model = model or _DEFAULT_MODEL
         self._voice = voice or "alloy"
         self._instructions = instructions

@@ -169,6 +169,24 @@ export function useVoiceLive() {
       setStatusLabel('Connecting…');
 
       const chosen = opts?.provider || provider;
+
+      // Fail with the real reason before opening a socket. Without this, a
+      // missing API key surfaces as a bare "WebSocket error" — the server
+      // accepts the connection and immediately drops it, which tells the
+      // user nothing about what to fix.
+      try {
+        const health = await fetchVoiceLiveHealth();
+        const configured = (health as any)?.providers?.[chosen]?.configured;
+        if (configured === false) {
+          setState('idle');
+          setStatusLabel('Idle');
+          setError(chosen === 'gemini' ? 'missing-key-gemini' : 'missing-key-openai');
+          return;
+        }
+      } catch {
+        // Health unreachable: let the socket attempt report connectivity.
+      }
+
       const ws = new WebSocket(voiceLiveWsUrl({ provider: chosen }));
       wsRef.current = ws;
 
