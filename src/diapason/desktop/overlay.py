@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import math
+from pathlib import Path
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -45,12 +46,38 @@ FULL_SCALE = 4.0
 SHAPE = (0.55, 0.75, 0.92, 1.0, 0.92, 0.75, 0.55)
 
 # Sized so the bars sit in a capsule with padding roughly equal to its corner
-# radius — wider and the indicator reads as a mostly-empty pill.
+# radius — wider and the indicator reads as a mostly-empty pill. Used by the
+# fallback renderer only; the web entity gets the banner geometry below.
 PANEL_WIDTH = 132.0
 PANEL_HEIGHT = 44.0
 # Clear of the Dock at its default size, without floating in mid-screen.
 BOTTOM_MARGIN = 120.0
 FPS = 30.0
+
+# The entity is a wide field: shown in a 132-point capsule one would see a
+# sliver of it and nothing of the wave. As a banner it gets the silhouette it
+# was designed around.
+BANNER_HEIGHT = 190.0
+BANNER_MARGIN = 78.0
+# Bridge calls are cheaper than a frame but not free, and the page smooths and
+# redraws on its own clock — so the level is pushed at a third of the frame
+# rate rather than on every tick.
+BRIDGE_HZ = 20.0
+
+# Dictation has its own vocabulary; the entity has four faces. "recording"
+# maps to listening because that is literally what is happening: the machine
+# is hearing the user, not talking.
+WEB_STATE = {
+    "recording": "listening",
+    "transcribing": "thinking",
+    "done": "thinking",
+    "idle": "idle",
+}
+
+
+def overlay_page() -> Path:
+    """Where the bundled entity page lives inside the package."""
+    return Path(__file__).with_name("overlay_page.html")
 
 
 def normalized_level(level: float) -> float:
@@ -126,6 +153,10 @@ class DictationOverlay:
         self._window = None
         self._view = None
         self._timer = None
+        # True once the WebGL entity is up; False means the drawn-bar fallback.
+        self._web = False
+        self._bridge_at = 0.0
+        self._pushed_state = ""
 
     # -- thread-safe inputs -------------------------------------------------
 
@@ -168,6 +199,74 @@ class DictationOverlay:
 
     # -- AppKit -------------------------------------------------------------
 
+    def _make_web_view(self):  # pragma: no cover - needs a window server
+        """A transparent WKWebView showing the bundled entity, or None.
+
+        Returning None rather than raising is deliberate: every reason this
+        can fail — no WebKit binding, no bundled page — is a reason to fall
+        back to the drawn bars, not to leave the user with no indicator.
+        """
+        page = overlay_page()
+        if not page.is_file():
+            logger.debug("overlay page missing at %s", page)
+            return None
+        try:
+            from Foundation import NSURL, NSMakeRect  # type: ignore
+            from WebKit import WKWebView, WKWebViewConfiguration  # type: ignore
+        except Exception:  # noqa: BLE001 - pyobjc-framework-WebKit absent
+            logger.debug("WebKit unavailable; drawing the fallback", exc_info=True)
+            return None
+
+        try:
+            config = WKWebViewConfiguration.alloc().init()
+            view = WKWebView.alloc().initWithFrame_configuration_(
+                NSMakeRect(0, 0, 100, 100), config
+            )
+            # Three separate things each paint a white page if left alone: the
+            # web view's own backdrop, its opacity, and the document body.
+            # The body is handled in the bundled HTML; these are the other two.
+            view.setValue_forKey_(False, "drawsBackground")
+            view.setOpaque_(False)
+            from AppKit import NSColor  # type: ignore
+
+            view.setBackgroundColor_(NSColor.clearColor())
+
+            url = NSURL.fileURLWithPath_(str(page))
+            view.loadFileURL_allowingReadAccessToURL_(url, url)
+            return view
+        except Exception:  # noqa: BLE001
+            logger.debug("could not build the web overlay", exc_info=True)
+            return None
+
+    def _push(self) -> None:  # pragma: no cover - needs a window server
+        """Hand the current state and level to the page.
+
+        Called from the panel's timer, i.e. the main thread — which is the
+        only thread allowed to touch a WKWebView. The audio and key-tap
+        threads still only assign to plain attributes.
+        """
+        import time
+
+        view = self._view
+        if view is None:
+            return
+        now = time.monotonic()
+        state = WEB_STATE.get(self.state, "idle")
+        # State changes go through immediately; the level is rate-limited.
+        if state == self._pushed_state and now - self._bridge_at < 1.0 / BRIDGE_HZ:
+            return
+        self._bridge_at = now
+        self._pushed_state = state
+        script = (
+            f"window.diapasonOverlay&&"
+            f"(window.diapasonOverlay.setState('{state}'),"
+            f"window.diapasonOverlay.setLevel({self.level:.4f}))"
+        )
+        try:
+            view.evaluateJavaScript_completionHandler_(script, None)
+        except Exception:  # noqa: BLE001 - the page may not have loaded yet
+            logger.debug("overlay bridge call failed", exc_info=True)
+
     def _build(self) -> None:  # pragma: no cover - needs a window server
         from AppKit import (  # type: ignore
             NSApplication,
@@ -188,22 +287,37 @@ class DictationOverlay:
         # with the menu bar instead of fighting it for the run loop.
         NSApplication.sharedApplication()
 
-        view = _make_view_class()(self)
+        # The real entity if WebKit and the bundled page are both available,
+        # the hand-drawn bars otherwise. A missing browser engine should cost
+        # fidelity, never the indicator itself.
+        view = self._make_web_view()
+        self._web = view is not None
+        if view is None:
+            view = _make_view_class()(self)
+
+        width = PANEL_WIDTH if not self._web else 0.0
+        height = PANEL_HEIGHT if not self._web else BANNER_HEIGHT
+        margin = BOTTOM_MARGIN if not self._web else BANNER_MARGIN
 
         screen = NSScreen.mainScreen()
         frame = screen.frame()
-        x = frame.origin.x + (frame.size.width - PANEL_WIDTH) / 2.0
-        y = frame.origin.y + BOTTOM_MARGIN
+        if self._web:
+            width = frame.size.width
+        x = frame.origin.x + (frame.size.width - width) / 2.0
+        y = frame.origin.y + margin
 
         window = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(x, y, PANEL_WIDTH, PANEL_HEIGHT),
+            NSMakeRect(x, y, width, height),
             NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
             NSBackingStoreBuffered,
             False,
         )
         window.setOpaque_(False)
         window.setBackgroundColor_(NSColor.clearColor())
-        window.setHasShadow_(True)
+        # A shadow suits an opaque capsule; under a full-width transparent
+        # banner it would draw a rectangle along the bottom of the screen —
+        # exactly the artefact the whole design avoids.
+        window.setHasShadow_(not self._web)
         # Above ordinary windows but below menus/alerts. 25 is
         # NSStatusWindowLevel; naming it numerically avoids a constant that
         # moved between PyObjC releases.
@@ -267,6 +381,11 @@ class DictationOverlay:
             if self._window is not None:
                 self._window.setAlphaValue_(self._alpha)
             if self._alpha <= 0.0:
+                return
+
+            if self._web:
+                # The page owns its own frame loop; this only feeds it.
+                self._push()
                 return
 
             self._phase += 1.0 / FPS

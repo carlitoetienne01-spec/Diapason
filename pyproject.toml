@@ -103,6 +103,8 @@ dictation = [
     "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
     "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
     "pyobjc-framework-AVFoundation>=10; sys_platform == 'darwin'",
+    # Le panneau de dictée affiche l'entité WebGL dans une WKWebView.
+    "pyobjc-framework-WebKit>=10; sys_platform == 'darwin'",
     "rumps>=0.4; sys_platform == 'darwin'",
 ]
 openhands = ["openhands-sdk>=1.0; python_version >= '3.12'"]

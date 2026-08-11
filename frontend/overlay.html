@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diapason — dictation overlay</title>
+    <style>
+      /* The panel behind this is transparent; anything opaque here would
+         reinstate exactly the rectangle the entity is meant not to have. */
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+      body { -webkit-user-select: none; user-select: none; }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/overlay-entity.ts"></script>
+  </body>
+</html>

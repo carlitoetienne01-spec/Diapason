@@ -136,3 +136,6 @@ learning.db
 minion_logs/
 *.oj-debug.json
 oj-debug.*.json
+
+# Intermédiaire du bundle d'overlay ; seul overlay_page.html est versionné.
+frontend/.overlay-build/
