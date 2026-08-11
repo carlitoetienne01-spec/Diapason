@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import { Play, Pause, Volume2 } from 'lucide-react';
 
 interface AudioPlayerProps {
@@ -12,6 +14,7 @@ function formatTime(seconds: number): string {
 }
 
 export function AudioPlayer({ src }: AudioPlayerProps) {
+  const { t } = useTranslation();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -87,9 +90,7 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
           <span
             className="text-xs font-medium"
             style={{ color: 'var(--color-text-secondary)' }}
-          >
-            Morning Digest
-          </span>
+          >{t('chat.audio.morningDigest')}</span>
         </div>
 
         <div

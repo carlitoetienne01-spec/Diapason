@@ -1,4 +1,6 @@
 import { DollarSign, TrendingDown, Cloud, HardDrive } from 'lucide-react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import { useAppStore } from '../../lib/store';
 
 const CLOUD_PRICING = [
@@ -8,15 +10,14 @@ const CLOUD_PRICING = [
 ];
 
 export function CostComparison() {
+  const { t } = useTranslation();
   const savings = useAppStore((s) => s.savings);
 
   if (!savings || savings.total_tokens === 0) {
     return (
       <div className="hud-panel p-6">
         <h3 className="hud-label flex items-center gap-2 mb-4">
-          <DollarSign size={12} style={{ color: 'var(--color-success)' }} />
-          Cost Comparison
-        </h3>
+          <DollarSign size={12} style={{ color: 'var(--color-success)' }} />{t('dashboard.cost.title')}</h3>
         <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
           <span className="hud-mono">awaiting first inference…</span>
         </div>
@@ -41,9 +42,7 @@ export function CostComparison() {
       >
         <HardDrive size={18} style={{ color: 'var(--color-accent)' }} />
         <div className="flex-1">
-          <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-            Local (your hardware)
-          </div>
+          <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{t('dashboard.cost.local')}</div>
           <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {savings.total_calls} requests &middot; {savings.total_tokens.toLocaleString()} tokens
           </div>
@@ -52,9 +51,7 @@ export function CostComparison() {
           <div className="text-lg font-semibold" style={{ color: 'var(--color-success)' }}>
             ${savings.local_cost.toFixed(4)}
           </div>
-          <div className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
-            electricity only
-          </div>
+          <div className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{t('dashboard.cost.electricityOnly')}</div>
         </div>
       </div>
 

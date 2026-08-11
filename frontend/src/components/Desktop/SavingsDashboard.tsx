@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { LEADERBOARD_ENABLED, SUPABASE_ANON_KEY, SUPABASE_URL } from '../../lib/supabase';
+import { useTranslation } from '../../i18n/useTranslation';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -283,6 +284,7 @@ function getOrCreateAnonId(): string {
 const REFRESH_INTERVAL_MS = 5000;
 
 export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
+  const { t } = useTranslation();
   const [data, setData] = useState<SavingsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -344,15 +346,15 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
     const trimmed = nameInput.trim();
     const trimmedEmail = emailInput.trim();
     if (!trimmed || trimmed.length < 2 || trimmed.length > 30) {
-      setNameError('Name must be 2-30 characters');
+      setNameError(t('dashboard.savings.share.errorNameLength'));
       return;
     }
     if (isProfane(trimmed)) {
-      setNameError('Please choose a different name');
+      setNameError(t('dashboard.savings.share.errorNameRejected'));
       return;
     }
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setNameError('Please enter a valid email address');
+      setNameError(t('dashboard.savings.share.errorEmailInvalid'));
       return;
     }
     setNameError('');
@@ -379,13 +381,13 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
     return (
       <div style={styles.container}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Savings Dashboard</h2>
+          <h2 style={styles.title}>{t('dashboard.savings.title')}</h2>
         </div>
         <div style={styles.emptyState}>
           <div style={{ fontSize: 40, opacity: 0.4 }}>$</div>
           <div style={styles.emptyText}>
-            No savings data available.<br />
-            Start making inference requests to see savings vs cloud providers.
+            {t('dashboard.savings.empty.title')}<br />
+            {t('dashboard.savings.empty.hint')}
           </div>
         </div>
       </div>
@@ -407,10 +409,10 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
 
       {/* Header */}
       <div style={styles.header}>
-        <h2 style={styles.title}>Savings Dashboard</h2>
+        <h2 style={styles.title}>{t('dashboard.savings.title')}</h2>
         <span style={styles.liveBadge}>
           <span style={styles.liveDot} />
-          Live - {REFRESH_INTERVAL_MS / 1000}s
+          {t('dashboard.savings.live', { seconds: REFRESH_INTERVAL_MS / 1000 })}
         </span>
       </div>
 
@@ -420,10 +422,10 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       {showOptIn ? (
         <div style={{ ...styles.statCard, marginBottom: 24, padding: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: colors.text }}>
-            Share Your Savings
+            {t('dashboard.savings.share.title')}
           </div>
           <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 14, lineHeight: 1.5 }}>
-            Opt in to privately share your savings for the chance to win a Mac Mini!
+            {t('dashboard.savings.share.description')}
           </div>
           <div style={{ marginBottom: 8 }}>
             <input
@@ -431,7 +433,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
               value={nameInput}
               onChange={(e) => { setNameInput(e.target.value); setNameError(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleOptInJoin(); }}
-              placeholder="Display name for leaderboard"
+              placeholder={t('dashboard.savings.share.namePlaceholder')}
               maxLength={30}
               style={{
                 width: '100%',
@@ -448,15 +450,17 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>
-              Email <span style={{ color: colors.red }}>*</span>
-              <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>(never shown publicly)</span>
+              {t('common.email')} <span style={{ color: colors.red }}>*</span>
+              <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>
+                {t('dashboard.savings.share.emailPrivacy')}
+              </span>
             </div>
             <input
               type="email"
               value={emailInput}
               onChange={(e) => { setEmailInput(e.target.value); setNameError(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleOptInJoin(); }}
-              placeholder="your@email.com"
+              placeholder={t('common.emailPlaceholder')}
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -487,7 +491,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
                 cursor: 'pointer',
               }}
             >
-              Join Leaderboard
+              {t('dashboard.savings.share.join')}
             </button>
             <button
               onClick={() => setShowOptIn(false)}
@@ -501,7 +505,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
                 cursor: 'pointer',
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             {optInEnabled && (
               <button
@@ -517,7 +521,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
                   marginLeft: 'auto',
                 }}
               >
-                Opt Out
+                {t('dashboard.savings.share.optOut')}
               </button>
             )}
           </div>
@@ -540,7 +544,9 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
               gap: 6,
             }}
           >
-            {optInEnabled ? `Sharing as "${displayName}"` : 'Share Your Savings'}
+            {optInEnabled
+              ? t('dashboard.savings.share.sharingAs', { name: displayName })
+              : t('dashboard.savings.share.title')}
           </button>
           <a
             href="https://open-diapason.github.io/Diapason/leaderboard"
@@ -548,7 +554,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
             rel="noopener noreferrer"
             style={{ fontSize: 12, color: colors.accent, textDecoration: 'none' }}
           >
-            View Leaderboard ↗
+            {t('dashboard.savings.viewLeaderboard')} ↗
           </a>
         </div>
       )}
@@ -556,25 +562,25 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       {/* Stat cards row */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Total Requests</div>
+          <div style={styles.statLabel}>{t('dashboard.savings.stat.requests')}</div>
           <div style={styles.statValue}>
             {(data?.total_calls ?? 0).toLocaleString()}
           </div>
         </div>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Total Tokens</div>
+          <div style={styles.statLabel}>{t('dashboard.savings.stat.tokens')}</div>
           <div style={styles.statValue}>
             {(data?.total_tokens ?? 0).toLocaleString()}
           </div>
         </div>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Session Duration</div>
+          <div style={styles.statLabel}>{t('dashboard.savings.stat.duration')}</div>
           <div style={styles.statValue}>
             {fmtDuration(data?.session_duration_hours ?? 0)}
           </div>
         </div>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Local Cost</div>
+          <div style={styles.statLabel}>{t('dashboard.savings.stat.localCost')}</div>
           <div style={{ ...styles.statValue, color: colors.green }}>
             {fmtDollar(data?.local_cost ?? 0)}
           </div>
@@ -582,7 +588,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       </div>
 
       {/* Provider savings cards */}
-      <div style={styles.sectionHeading}>Savings vs Cloud Providers*</div>
+      <div style={styles.sectionHeading}>{t('dashboard.savings.section.providers')}*</div>
       <div style={styles.providersGrid}>
         {providers.map((p) => (
           <div
@@ -597,11 +603,11 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
             <div style={styles.savingsAmount}>{fmtDollar(p.total_cost)}</div>
             <div style={styles.breakdown}>
               <div>
-                <div style={styles.breakdownLabel}>Input Saved</div>
+                <div style={styles.breakdownLabel}>{t('dashboard.savings.breakdown.input')}</div>
                 <div style={styles.breakdownValue}>{fmtDollar(p.input_cost)}</div>
               </div>
               <div>
-                <div style={styles.breakdownLabel}>Output Saved</div>
+                <div style={styles.breakdownLabel}>{t('dashboard.savings.breakdown.output')}</div>
                 <div style={styles.breakdownValue}>{fmtDollar(p.output_cost)}</div>
               </div>
             </div>
@@ -610,36 +616,38 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       </div>
 
       <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
-        *Savings estimates assume local models (e.g. Qwen, Nemotron, Kimi) produce roughly the same number of tokens per request, on average, as closed-source cloud models.
+        *{t('dashboard.savings.footnote')}
       </div>
 
       {/* Cloud Agent Platforms */}
       {cloudAgent && (
         <>
-          <div style={styles.sectionHeading}>vs Cloud Agent Platforms</div>
+          <div style={styles.sectionHeading}>{t('dashboard.savings.section.cloudAgents')}</div>
           <div style={styles.cloudAgentCard}>
-            <div style={styles.providerName}>Typical Cloud Agent Platform</div>
-            <div style={styles.providerModel}>based on published API pricing tiers</div>
+            <div style={styles.providerName}>{t('dashboard.savings.cloudAgent.name')}</div>
+            <div style={styles.providerModel}>{t('dashboard.savings.cloudAgent.basis')}</div>
             <div style={styles.cloudAgentGrid}>
               <div>
-                <div style={styles.breakdownLabel}>MODERATE USE</div>
+                <div style={styles.breakdownLabel}>{t('dashboard.savings.cloudAgent.moderate')}</div>
                 <div style={{ ...styles.breakdownValue, color: colors.yellow, fontSize: 20 }}>
-                  ${cloudAgent.moderate_low}&ndash;{cloudAgent.moderate_high}/mo
+                  ${cloudAgent.moderate_low}&ndash;{cloudAgent.moderate_high}
+                  {t('dashboard.savings.cloudAgent.perMonth')}
                 </div>
               </div>
               <div>
-                <div style={styles.breakdownLabel}>HEAVY USE</div>
+                <div style={styles.breakdownLabel}>{t('dashboard.savings.cloudAgent.heavy')}</div>
                 <div style={{ ...styles.breakdownValue, color: colors.red, fontSize: 20 }}>
-                  ${cloudAgent.heavy_low}&ndash;{cloudAgent.heavy_high}+/mo
+                  ${cloudAgent.heavy_low}&ndash;{cloudAgent.heavy_high}+
+                  {t('dashboard.savings.cloudAgent.perMonth')}
                 </div>
               </div>
               <div>
-                <div style={styles.breakdownLabel}>YOUR COST</div>
+                <div style={styles.breakdownLabel}>{t('dashboard.savings.cloudAgent.yourCost')}</div>
                 <div style={{ ...styles.breakdownValue, color: colors.green, fontSize: 24 }}>
                   $0.00
                 </div>
                 <div style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
-                  local inference
+                  {t('dashboard.savings.cloudAgent.localInference')}
                 </div>
               </div>
             </div>
@@ -648,7 +656,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       )}
 
       {/* Monthly Projection */}
-      <div style={styles.sectionHeading}>Monthly Projection</div>
+      <div style={styles.sectionHeading}>{t('dashboard.savings.section.projection')}</div>
       <div style={styles.providersGrid}>
         {providers.map((p) => (
           <div
@@ -658,13 +666,15 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
               borderTop: `3px solid ${PROVIDER_COLORS[p.provider] ?? colors.accent}`,
             }}
           >
-            <div style={styles.providerName}>vs {p.label}</div>
-            <div style={styles.providerModel}>projected monthly savings</div>
+            <div style={styles.providerName}>
+              {t('dashboard.savings.projection.vsProvider', { provider: p.label })}
+            </div>
+            <div style={styles.providerModel}>{t('dashboard.savings.projection.subtitle')}</div>
             <div style={styles.savingsAmount}>
               {fmtDollar(projection[p.provider] ?? 0)}
             </div>
             <div style={{ fontSize: 12, color: colors.textMuted }}>
-              per month at current rate
+              {t('dashboard.savings.projection.rate')}
             </div>
           </div>
         ))}

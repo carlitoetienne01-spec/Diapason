@@ -1,4 +1,6 @@
 import { Sparkles, MessageSquare, ArrowRight } from 'lucide-react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import { SOURCE_CATALOG } from '../../types/connectors';
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,7 @@ export function ReadyScreen({
   connectedSources: string[];
   onStart: (query?: string) => void;
 }) {
+  const { t } = useTranslation();
   const starters = getStarterQueries(connectedSources);
 
   const connectedCards = connectedSources
@@ -107,9 +110,7 @@ export function ReadyScreen({
 
       {/* Headline */}
       <div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          You're all set!
-        </h2>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>{t('setup.ready.title')}</h2>
         <p className="text-sm max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>
           {connectedCards.length > 0
             ? `Connected ${connectedCards.length} source${connectedCards.length !== 1 ? 's' : ''}: ${connectedCards.map((c) => c!.display_name).join(', ')}.`
@@ -121,9 +122,7 @@ export function ReadyScreen({
       {/* Starter queries */}
       <div className="w-full max-w-sm flex flex-col gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider mb-1 text-left"
-          style={{ color: 'var(--color-text-tertiary)' }}>
-          Try asking
-        </p>
+          style={{ color: 'var(--color-text-tertiary)' }}>{t('setup.ready.tryAsking')}</p>
         {starters.map((q) => (
           <StarterCard key={q} query={q} onSelect={onStart} />
         ))}
@@ -134,9 +133,7 @@ export function ReadyScreen({
         onClick={() => onStart()}
         className="px-8 py-3 rounded-xl font-semibold text-sm transition-all"
         style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
-      >
-        Open Chat
-      </button>
+      >{t('setup.ready.openChat')}</button>
     </div>
   );
 }

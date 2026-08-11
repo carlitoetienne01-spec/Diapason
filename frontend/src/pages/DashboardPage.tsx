@@ -1,8 +1,11 @@
 import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
+
+import { useTranslation } from '../i18n/useTranslation';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
 
 export function DashboardPage() {
+  const { t } = useTranslation();
   const now = new Date();
   const stamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
@@ -11,9 +14,7 @@ export function DashboardPage() {
       <div className="max-w-5xl mx-auto">
         <header className="mb-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-              System Overview
-            </h1>
+            <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>{t('dashboard.systemOverview')}</h1>
             <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
               {stamp}
             </div>

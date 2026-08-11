@@ -1,5 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+
+import { TranslationProvider } from './i18n/useTranslation';
 import { BrowserRouter } from 'react-router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
@@ -34,11 +36,16 @@ initApiBase().finally(() => {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <ErrorBoundary>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </ErrorBoundary>
+      {/* The provider wraps the boundary, not the other way round: the
+          boundary's own "something went wrong" screen is the one moment the
+          user most needs to be spoken to in their language. */}
+      <TranslationProvider>
+        <ErrorBoundary>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </ErrorBoundary>
+      </TranslationProvider>
     </StrictMode>,
   );
 });

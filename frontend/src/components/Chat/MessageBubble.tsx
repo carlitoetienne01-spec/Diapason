@@ -11,6 +11,7 @@ import { ToolCallCard } from './ToolCallCard';
 import { ResearchTimeline } from './ResearchTimeline';
 import { rehypeCitations } from '../../lib/rehype-citations';
 import { XRayFooter } from './XRayFooter';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { ChatMessage } from '../../types';
 
 function stripThinkTags(text: string): string {
@@ -38,6 +39,7 @@ function getTextContent(node: any): string {
 }
 
 function CodeBlockPre({ children, ...props }: any) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const codeElement = Array.isArray(children) ? children[0] : children;
   const className = codeElement?.props?.className || '';
@@ -69,7 +71,7 @@ function CodeBlockPre({ children, ...props }: any) {
           onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? t('common.copied') : t('common.copy')}
         </button>
       </div>
       <pre {...props} style={{ margin: 0, borderRadius: 0 }}>
@@ -80,6 +82,7 @@ function CodeBlockPre({ children, ...props }: any) {
 }
 
 function CopyMessageButton({ content }: { content: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -93,7 +96,8 @@ function CopyMessageButton({ content }: { content: string }) {
       onClick={handleCopy}
       className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
       style={{ color: 'var(--color-text-tertiary)' }}
-      title="Copy message"
+      title={t('chat.message.copy')}
+      aria-label={t('chat.message.copy')}
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>

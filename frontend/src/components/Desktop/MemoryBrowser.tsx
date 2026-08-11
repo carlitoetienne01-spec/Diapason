@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type React from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from '../../i18n/useTranslation';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -202,6 +203,7 @@ function truncate(text: string, max: number): string {
 // ---------------------------------------------------------------------------
 
 export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MemoryChunk[]>([]);
   const [resultTotal, setResultTotal] = useState(0);
@@ -260,26 +262,26 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>Memory Browser</div>
+      <div style={styles.header}>{t('memory.title')}</div>
 
       {/* Stats panel */}
       {stats && (
         <div style={styles.statsPanel}>
           <div style={styles.statCard}>
             <div style={styles.statValue}>{stats.backend}</div>
-            <div style={styles.statLabel}>Backend</div>
+            <div style={styles.statLabel}>{t('memory.stat.backend')}</div>
           </div>
           <div style={styles.statCard}>
             <div style={styles.statValue}>{stats.total_documents.toLocaleString()}</div>
-            <div style={styles.statLabel}>Documents</div>
+            <div style={styles.statLabel}>{t('memory.stat.documents')}</div>
           </div>
           <div style={styles.statCard}>
             <div style={styles.statValue}>{stats.total_chunks.toLocaleString()}</div>
-            <div style={styles.statLabel}>Chunks</div>
+            <div style={styles.statLabel}>{t('memory.stat.chunks')}</div>
           </div>
           <div style={styles.statCard}>
             <div style={styles.statValue}>{formatBytes(stats.index_size_bytes)}</div>
-            <div style={styles.statLabel}>Index Size</div>
+            <div style={styles.statLabel}>{t('memory.stat.indexSize')}</div>
           </div>
         </div>
       )}
@@ -289,7 +291,7 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
         <input
           style={styles.input}
           type="text"
-          placeholder="Search memory..."
+          placeholder={t('memory.search.placeholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -302,7 +304,7 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
           onClick={handleSearch}
           disabled={searching || !query.trim()}
         >
-          {searching ? 'Searching...' : 'Search'}
+          {searching ? t('common.searching') : t('common.search')}
         </button>
       </div>
 
@@ -310,13 +312,13 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
 
       {/* Results */}
       {hasSearched && results.length === 0 && !error && (
-        <div style={styles.emptyState}>No results found for "{query}"</div>
+        <div style={styles.emptyState}>{t('memory.empty.noResults', { query })}</div>
       )}
 
       {results.length > 0 && (
         <>
           <div style={styles.resultCount}>
-            Showing {results.length} of {resultTotal} results
+            {t('memory.results.count', { count: results.length, total: resultTotal })}
           </div>
           <div style={styles.resultsList}>
             {results.map((chunk, i) => {
@@ -326,7 +328,7 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
                   {/* Score bar */}
                   <div style={styles.scoreContainer}>
                     <div style={styles.scoreHeader}>
-                      <span style={styles.scoreLabel}>Relevance</span>
+                      <span style={styles.scoreLabel}>{t('memory.result.relevance')}</span>
                       <span style={styles.scoreValue}>{scorePercent}%</span>
                     </div>
                     <div style={styles.scoreBar}>
@@ -362,7 +364,7 @@ export function MemoryBrowser({ apiUrl }: { apiUrl: string }) {
       )}
 
       {!hasSearched && !stats && (
-        <div style={styles.emptyState}>Enter a query to search memory</div>
+        <div style={styles.emptyState}>{t('memory.empty.prompt')}</div>
       )}
     </div>
   );

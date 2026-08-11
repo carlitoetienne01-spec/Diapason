@@ -67,6 +67,10 @@ import type { ConnectRequest } from '../types/connectors';
 import { listConnectors, connectSource } from '../lib/connectors-api';
 import type { ToolCallInfo } from '../types';
 import { ToolCallCard } from '../components/Chat/ToolCallCard';
+import { useTranslation } from '../i18n/useTranslation';
+
+/** The translation function, threaded into the module-level formatters. */
+type TFn = ReturnType<typeof useTranslation>['t'];
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -97,25 +101,51 @@ function statusColor(s: string): string {
   return STATUS_COLOR[s as AgentStatus] || 'var(--color-text-tertiary)';
 }
 
+/** Lifecycle status, in words. Unknown values fall back to the raw string. */
+function statusLabel(t: TFn, status: string): string {
+  switch (status) {
+    case 'idle': return t('agents.status.idle');
+    case 'running': return t('agents.status.running');
+    case 'paused': return t('agents.status.paused');
+    case 'error': return t('agents.status.error');
+    case 'archived': return t('agents.status.archived');
+    case 'needs_attention': return t('agents.status.needsAttention');
+    case 'budget_exceeded': return t('agents.status.budgetExceeded');
+    case 'stalled': return t('agents.status.stalled');
+    default: return status.replace('_', ' ');
+  }
+}
+
+/** Trace outcome, in words. Unknown values fall back to the raw string. */
+function outcomeLabel(t: TFn, outcome: string): string {
+  switch (outcome) {
+    case 'success': return t('agents.logs.outcomeSuccess');
+    case 'error': return t('agents.logs.outcomeFailure');
+    default: return outcome;
+  }
+}
+
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const color = statusColor(status);
   return (
     <span
       className="px-2 py-0.5 rounded-full text-xs font-medium"
       style={{ background: color + '20', color }}
     >
-      {status.replace('_', ' ')}
+      {statusLabel(t, status)}
     </span>
   );
 }
 
 function StatusDot({ status }: { status: string }) {
+  const { t } = useTranslation();
   const color = statusColor(status);
   return (
     <span
       className="w-2 h-2 rounded-full inline-block flex-shrink-0"
       style={{ background: color }}
-      title={status}
+      title={statusLabel(t, status)}
     />
   );
 }
@@ -125,45 +155,72 @@ function formatCost(cost?: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
-function formatRelativeTime(ts?: number | null): string {
-  if (!ts) return 'Never';
+function formatRelativeTime(t: TFn, ts?: number | null): string {
+  if (!ts) return t('common.time.never');
   const diff = Date.now() - ts * 1000;
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('common.time.justNow');
+  if (mins < 60) return t('common.time.minutesAgo', { count: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t('common.time.hoursAgo', { count: hours });
+  return t('common.time.daysAgo', { count: Math.floor(hours / 24) });
 }
 
-function formatSchedule(type?: string, value?: string): string {
-  if (!type || type === 'manual') return 'Manual';
+/** Weekday abbreviation for a cron day-of-week digit (1 = Monday). */
+function dayName(t: TFn, dow: string): string {
+  switch (dow) {
+    case '1': return t('common.day.mon');
+    case '2': return t('common.day.tue');
+    case '3': return t('common.day.wed');
+    case '4': return t('common.day.thu');
+    case '5': return t('common.day.fri');
+    case '6': return t('common.day.sat');
+    case '7': return t('common.day.sun');
+    default: return dow;
+  }
+}
+
+/**
+ * A whole hour, written the way the language writes clock time. Both the
+ * 12-hour and the 24-hour reading are passed in, so English can say "9:00 AM"
+ * and French "9 h 00" from the same call.
+ */
+function formatHour(t: TFn, h: number): string {
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return h < 12
+    ? t('agents.schedule.timeAm', { h12, h24: h })
+    : t('agents.schedule.timePm', { h12, h24: h });
+}
+
+/** Short hour label for the schedule pickers ("9 AM" / "9 h"). */
+function formatHourShort(t: TFn, h: number): string {
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return h < 12
+    ? t('agents.schedule.hourAm', { h12, h24: h })
+    : t('agents.schedule.hourPm', { h12, h24: h });
+}
+
+function formatSchedule(t: TFn, type?: string, value?: string): string {
+  if (!type || type === 'manual') return t('agents.schedule.manual');
   if (type === 'cron' && value) {
     // Try to display human-readable for common cron patterns
     const parts = value.trim().split(/\s+/);
     if (parts.length === 5) {
       const [min, hour, , , dow] = parts;
       const hourNum = parseInt(hour, 10);
-      const formatHour = (h: number) => {
-        if (h === 0) return '12:00 AM';
-        if (h < 12) return `${h}:00 AM`;
-        if (h === 12) return '12:00 PM';
-        return `${h - 12}:00 PM`;
-      };
       // Daily pattern: 0 H * * *
       if (min === '0' && !isNaN(hourNum) && parts[2] === '*' && parts[3] === '*' && dow === '*') {
-        return `Daily at ${formatHour(hourNum)}`;
+        return t('agents.schedule.dailyAt', { time: formatHour(t, hourNum) });
       }
       // Weekly pattern: 0 H * * days
       if (min === '0' && !isNaN(hourNum) && parts[2] === '*' && parts[3] === '*' && dow !== '*') {
-        const DAY_NAMES: Record<string, string> = { '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat', '7': 'Sun' };
-        const dayList = dow.split(',').map(d => DAY_NAMES[d] || d).join(', ');
-        return `Weekly on ${dayList} at ${formatHour(hourNum)}`;
+        const dayList = dow.split(',').map((d) => dayName(t, d)).join(', ');
+        return t('agents.schedule.weeklyAt', { days: dayList, time: formatHour(t, hourNum) });
       }
     }
-    return `Cron: ${value}`;
+    return t('agents.schedule.cronValue', { value });
   }
-  if (type === 'cron') return 'Cron';
+  if (type === 'cron') return t('agents.schedule.cron');
   if (type === 'interval' && value) {
     const total = parseInt(value);
     if (!isNaN(total) && total > 0) {
@@ -174,11 +231,11 @@ function formatSchedule(type?: string, value?: string): string {
       if (h > 0) parts.push(`${h}h`);
       if (m > 0) parts.push(`${m}m`);
       if (s > 0) parts.push(`${s}s`);
-      return `Every ${parts.join(' ') || '0s'}`;
+      return t('agents.schedule.every', { interval: parts.join(' ') || '0s' });
     }
-    return `Every ${value}`;
+    return t('agents.schedule.every', { interval: value });
   }
-  return type || 'Manual';
+  return type;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,18 +328,32 @@ interface WizardState {
 }
 
 
-const TEMPLATE_INSTRUCTIONS: Record<string, string> = {
-  'daily-briefing': 'Every morning, give me a fun quote of the day, summarize my top important emails, list any meetings today from my calendar, and tell me the weather for [my city].',
-  'daily_briefing': 'Every morning, give me a fun quote of the day, summarize my top important emails, list any meetings today from my calendar, and tell me the weather for [my city].',
-  'research-monitor': 'Search for the latest news and papers on [your topic]. Summarize the top 3 most relevant findings and explain why they matter.',
-  'research_monitor': 'Search for the latest news and papers on [your topic]. Summarize the top 3 most relevant findings and explain why they matter.',
-  'code-reviewer': 'Review the latest commits in [repo]. Check for bugs, security issues, and style violations. Summarize findings with file paths and line numbers.',
-  'code_reviewer': 'Review the latest commits in [repo]. Check for bugs, security issues, and style violations. Summarize findings with file paths and line numbers.',
-  'meeting-prep': 'Before my next meeting, pull context from my emails, messages, and past meetings with the attendees. Summarize key topics and suggest talking points.',
-  'meeting_prep': 'Before my next meeting, pull context from my emails, messages, and past meetings with the attendees. Summarize key topics and suggest talking points.',
-  'personal_deep_research': 'Search across all my personal data — messages, emails, meetings, documents, and notes — to answer [my question]. Cite your sources.',
-  'inbox_triager': 'Check my recent emails and messages. Categorize them by priority (urgent, important, FYI, spam). Summarize the top items I should act on.',
-};
+/**
+ * Starter instruction for a template. Written out at the point of use rather
+ * than in a module-level table, because a hook cannot run at module scope.
+ */
+function templateInstruction(t: TFn, templateId: string): string {
+  switch (templateId) {
+    case 'daily-briefing':
+    case 'daily_briefing':
+      return t('agents.template.dailyBriefing');
+    case 'research-monitor':
+    case 'research_monitor':
+      return t('agents.template.researchMonitor');
+    case 'code-reviewer':
+    case 'code_reviewer':
+      return t('agents.template.codeReviewer');
+    case 'meeting-prep':
+    case 'meeting_prep':
+      return t('agents.template.meetingPrep');
+    case 'personal_deep_research':
+      return t('agents.template.personalDeepResearch');
+    case 'inbox_triager':
+      return t('agents.template.inboxTriager');
+    default:
+      return '';
+  }
+}
 
 function Tooltip({ text }: { text: string }) {
   return <span className="inline-block ml-1 cursor-help" style={{ color: 'var(--color-text-tertiary)', fontSize: 10 }} title={text}>(?)</span>;
@@ -317,30 +388,34 @@ const TOOL_CATEGORY_ORDER = [
   'other',
 ];
 
-const TOOL_CATEGORY_LABELS: Record<string, string> = {
-  filesystem: 'filesystem',
-  system: 'shell & exec',
-  code: 'code & repl',
-  vcs: 'git',
-  storage: 'memory · storage',
-  memory: 'memory',
-  knowledge: 'knowledge',
-  knowledge_graph: 'knowledge graph',
-  search: 'search',
-  network: 'network',
-  browser: 'browser',
-  database: 'database',
-  data: 'data',
-  math: 'math',
-  reasoning: 'reasoning',
-  inference: 'inference',
-  media: 'media',
-  audio: 'audio',
-  skill: 'skills',
-  channel: 'channel primitives',
-  communication: 'channels',
-  other: 'other',
-};
+/** Section heading for a tool category; unknown ids show their raw id. */
+function toolCategoryLabel(t: TFn, category: string): string {
+  switch (category) {
+    case 'filesystem': return t('agents.toolCategory.filesystem');
+    case 'system': return t('agents.toolCategory.system');
+    case 'code': return t('agents.toolCategory.code');
+    case 'vcs': return t('agents.toolCategory.vcs');
+    case 'storage': return t('agents.toolCategory.storage');
+    case 'memory': return t('agents.toolCategory.memory');
+    case 'knowledge': return t('agents.toolCategory.knowledge');
+    case 'knowledge_graph': return t('agents.toolCategory.knowledgeGraph');
+    case 'search': return t('agents.toolCategory.search');
+    case 'network': return t('agents.toolCategory.network');
+    case 'browser': return t('agents.toolCategory.browser');
+    case 'database': return t('agents.toolCategory.database');
+    case 'data': return t('agents.toolCategory.data');
+    case 'math': return t('agents.toolCategory.math');
+    case 'reasoning': return t('agents.toolCategory.reasoning');
+    case 'inference': return t('agents.toolCategory.inference');
+    case 'media': return t('agents.toolCategory.media');
+    case 'audio': return t('agents.toolCategory.audio');
+    case 'skill': return t('agents.toolCategory.skill');
+    case 'channel': return t('agents.toolCategory.channel');
+    case 'communication': return t('agents.toolCategory.communication');
+    case 'other': return t('agents.toolCategory.other');
+    default: return category;
+  }
+}
 
 function ToolsPicker({
   tools,
@@ -351,6 +426,7 @@ function ToolsPicker({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState<ToolInfo | null>(null);
   const [pulseKey, setPulseKey] = useState(0);
 
@@ -358,14 +434,14 @@ function ToolsPicker({
   // directly callable by the LLM — the agent talks to them through the
   // `channel_send` tool. Showing them in the tools picker is misleading,
   // so filter them out; channel bindings are configured separately.
-  const tollableTools = tools.filter((t) => t.source !== 'channel');
+  const tollableTools = tools.filter((tool) => tool.source !== 'channel');
 
   // Group by category, respecting the preferred order then alphabetical.
   const grouped = (() => {
     const buckets: Record<string, ToolInfo[]> = {};
-    for (const t of tollableTools) {
-      const cat = TOOL_CATEGORY_ORDER.includes(t.category) ? t.category : 'other';
-      (buckets[cat] ||= []).push(t);
+    for (const tool of tollableTools) {
+      const cat = TOOL_CATEGORY_ORDER.includes(tool.category) ? tool.category : 'other';
+      (buckets[cat] ||= []).push(tool);
     }
     for (const cat of Object.keys(buckets)) {
       buckets[cat].sort((a, b) => a.name.localeCompare(b.name));
@@ -375,13 +451,13 @@ function ToolsPicker({
       .map((cat) => ({ category: cat, items: buckets[cat] }));
   })();
 
-  const configurable = tollableTools.filter((t) => t.configured).map((t) => t.name);
+  const configurable = tollableTools.filter((tool) => tool.configured).map((tool) => tool.name);
   const allSelected =
     configurable.length > 0 && configurable.every((n) => selected.includes(n));
 
   const toggle = (name: string) => {
     const next = selected.includes(name)
-      ? selected.filter((t) => t !== name)
+      ? selected.filter((n) => n !== name)
       : [...selected, name];
     onChange(next);
     setPulseKey((k) => k + 1);
@@ -390,8 +466,10 @@ function ToolsPicker({
   const hint = hovered
     ? hovered.configured
       ? hovered.description || hovered.name
-      : `Needs ${hovered.credential_keys.join(', ') || 'credentials'}`
-    : 'hover a tool for details';
+      : t('agents.tools.needsCredentials', {
+          keys: hovered.credential_keys.join(', ') || t('agents.tools.credentials'),
+        })
+    : t('agents.tools.hoverHint');
 
   return (
     <div>
@@ -400,7 +478,7 @@ function ToolsPicker({
           className="block text-[13px] font-medium"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          Tools
+          {t('common.tools')}
         </label>
         <div className="flex items-center gap-2">
           <span
@@ -443,7 +521,7 @@ function ToolsPicker({
               (e.currentTarget.style.color = 'var(--color-text-tertiary)')
             }
           >
-            {allSelected ? 'none' : 'all'}
+            {allSelected ? t('agents.tools.selectNone') : t('agents.tools.selectAll')}
           </button>
         </div>
       </div>
@@ -451,8 +529,7 @@ function ToolsPicker({
         className="text-[10.5px] mb-2"
         style={{ color: 'var(--color-text-tertiary)' }}
       >
-        What the agent is allowed to call. An empty selection makes a
-        chat-only agent.
+        {t('agents.tools.help')}
       </p>
       {tools.length === 0 ? (
         <div
@@ -463,7 +540,7 @@ function ToolsPicker({
             color: 'var(--color-text-tertiary)',
           }}
         >
-          Loading available tools…
+          {t('agents.tools.loading')}
         </div>
       ) : (
         <div
@@ -492,7 +569,7 @@ function ToolsPicker({
                   }}
                 >
                   <span style={{ opacity: 0.5 }}>─</span>
-                  <span>{TOOL_CATEGORY_LABELS[category] || category}</span>
+                  <span>{toolCategoryLabel(t, category)}</span>
                   <span
                     className="flex-1"
                     style={{
@@ -644,6 +721,7 @@ function LaunchWizard({
   onClose: () => void;
   onLaunched: () => void;
 }) {
+  const { t } = useTranslation();
   const UNIVERSAL_DEFAULTS = {
     memoryExtraction: 'structured_json',
     observationCompression: 'summarize',
@@ -692,7 +770,7 @@ function LaunchWizard({
         templateId: tpl.id,
         templateData: tpl,
         name: '',
-        instruction: (tpl as any).instruction || TEMPLATE_INSTRUCTIONS[tpl.id] || '',
+        instruction: (tpl as any).instruction || templateInstruction(t, tpl.id),
         model: recommendedModel || w.model,
         scheduleType: (tpl as any).schedule_type || 'manual',
         scheduleValue: (tpl as any).schedule_value || '',
@@ -722,7 +800,7 @@ function LaunchWizard({
   }
 
   async function handleLaunch() {
-    if (!wizard.name.trim()) { toast.error('Name is required'); return; }
+    if (!wizard.name.trim()) { toast.error(t('agents.wizard.nameRequired')); return; }
     setLaunching(true);
     try {
       // Map friendly schedule presets to API schedule_type/schedule_value
@@ -758,10 +836,10 @@ function LaunchWizard({
         template_id: wizard.templateId || undefined,
         config,
       });
-      toast.success(`Agent "${wizard.name}" created`);
+      toast.success(t('agents.wizard.created', { name: wizard.name }));
       onLaunched();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create agent');
+      toast.error(err.message || t('agents.wizard.createFailed'));
     } finally {
       setLaunching(false);
     }
@@ -785,7 +863,7 @@ function LaunchWizard({
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
         <div className="rounded-xl p-6 w-full max-w-lg" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>New Agent — Choose Template</h2>
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>{t('agents.wizard.chooseTemplate')}</h2>
             <button onClick={onClose} className="p-1 rounded hover:bg-opacity-10" style={{ color: 'var(--color-text-tertiary)' }}><X size={18} /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -805,8 +883,8 @@ function LaunchWizard({
                 <div className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', textAlign: 'left' }}>{tpl.description}</div>
                 {(tpl as any).tools && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {((tpl as any).tools as string[]).slice(0, 4).map((t: string) => (
-                      <span key={t} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--color-accent-purple) 12%, transparent)', color: 'var(--color-accent-purple)' }}>{t}</span>
+                    {((tpl as any).tools as string[]).slice(0, 4).map((tool: string) => (
+                      <span key={tool} className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--color-accent-purple) 12%, transparent)', color: 'var(--color-accent-purple)' }}>{tool}</span>
                     ))}
                     {((tpl as any).tools as string[]).length > 4 && (
                       <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: 'var(--color-text-tertiary)' }}>+{((tpl as any).tools as string[]).length - 4}</span>
@@ -824,9 +902,9 @@ function LaunchWizard({
             >
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-lg">⚙️</span>
-                <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Custom Agent</span>
+                <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{t('agents.wizard.customAgent')}</span>
               </div>
-              <div className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', textAlign: 'left' }}>Start from scratch. Pick your own tools, schedule, and behavior.</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', textAlign: 'left' }}>{t('agents.wizard.customAgentDesc')}</div>
             </button>
           </div>
         </div>
@@ -842,7 +920,9 @@ function LaunchWizard({
           <div className="flex items-center gap-2">
             <button onClick={() => setWizard((w) => ({ ...w, step: 1 }))} className="p-1 rounded" style={{ color: 'var(--color-text-tertiary)' }}><ChevronLeft size={18} /></button>
             <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-              {wizard.templateData ? `New ${wizard.templateData.name}` : 'New Custom Agent'}
+              {wizard.templateData
+                ? t('agents.wizard.newFromTemplate', { template: wizard.templateData.name })
+                : t('agents.wizard.newCustomAgent')}
             </h2>
           </div>
           <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--color-text-tertiary)' }}><X size={18} /></button>
@@ -851,11 +931,11 @@ function LaunchWizard({
         <div className="space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Agent Name</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.wizard.nameLabel')}</label>
             <input
               value={wizard.name}
               onChange={(e) => setWizard((w) => ({ ...w, name: e.target.value }))}
-              placeholder="e.g. AI Research Tracker"
+              placeholder={t('agents.wizard.namePlaceholder')}
               className="w-full px-3 py-2 rounded-lg text-sm bg-transparent"
               style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             />
@@ -863,18 +943,18 @@ function LaunchWizard({
 
           {/* Instruction */}
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>What should this agent do?</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.wizard.instructionLabel')}</label>
             <textarea
               value={wizard.instruction}
               onChange={(e) => setWizard((w) => ({ ...w, instruction: e.target.value }))}
-              placeholder="e.g. Monitor the latest research papers on reasoning and chain-of-thought in LLMs"
+              placeholder={t('agents.wizard.instructionPlaceholder')}
               rows={3}
               className="w-full px-3 py-2 rounded-lg text-sm bg-transparent resize-none"
               style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             />
             {wizard.instruction.includes('[') && (
               <p className="text-[10px] mt-1" style={{ color: 'var(--color-warning)' }}>
-                Replace the [bracketed text] with your own values
+                {t('agents.wizard.bracketHint')}
               </p>
             )}
           </div>
@@ -891,7 +971,7 @@ function LaunchWizard({
           {/* Model + Schedule row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Intelligence</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.field.intelligence')}</label>
               <select
                 value={wizard.model}
                 onChange={(e) => setWizard((w) => ({ ...w, model: e.target.value }))}
@@ -900,24 +980,24 @@ function LaunchWizard({
               >
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.id}{m.id === recommendedModel ? ' (recommended)' : ''}
+                    {m.id}{m.id === recommendedModel ? ` ${t('agents.wizard.recommendedSuffix')}` : ''}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Schedule</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.field.schedule')}</label>
               <select
                 value={wizard.scheduleType}
                 onChange={(e) => setWizard((w) => ({ ...w, scheduleType: e.target.value, scheduleValue: e.target.value === 'manual' ? '' : w.scheduleValue }))}
                 className="w-full px-3 py-2 rounded-lg text-sm"
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               >
-                <option value="manual">Manual (run on demand)</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="hourly">Every N hours</option>
-                <option value="cron">Custom (cron expression)</option>
+                <option value="manual">{t('agents.schedule.manualOnDemand')}</option>
+                <option value="daily">{t('agents.schedule.daily')}</option>
+                <option value="weekly">{t('agents.schedule.weekly')}</option>
+                <option value="hourly">{t('agents.schedule.everyNHours')}</option>
+                <option value="cron">{t('agents.schedule.customCron')}</option>
               </select>
               {wizard.scheduleType === 'daily' && (
                 <select
@@ -926,23 +1006,21 @@ function LaunchWizard({
                   className="w-full px-3 py-1.5 rounded-lg text-xs mt-1.5"
                   style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 >
-                  {Array.from({ length: 24 }, (_, i) => {
-                    const label = i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`;
-                    return <option key={i} value={String(i)}>{label}</option>;
-                  })}
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={String(i)}>{formatHourShort(t, i)}</option>
+                  ))}
                 </select>
               )}
               {wizard.scheduleType === 'weekly' && (
                 <div className="mt-1.5 space-y-1.5">
                   <div className="flex gap-1">
-                    {(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] as const).map((day, idx) => {
-                      const dayNum = String(idx + 1);
+                    {(['1', '2', '3', '4', '5', '6', '7'] as const).map((dayNum) => {
                       const cronParts = wizard.scheduleValue.match(/\*\s+\*\s+(.+)$/);
                       const selectedDays = cronParts ? cronParts[1].split(',') : [];
                       const isSelected = selectedDays.includes(dayNum);
                       return (
                         <button
-                          key={day}
+                          key={dayNum}
                           type="button"
                           onClick={() => {
                             const newDays = isSelected ? selectedDays.filter(d => d !== dayNum) : [...selectedDays, dayNum].sort();
@@ -957,7 +1035,7 @@ function LaunchWizard({
                             border: `1px solid ${isSelected ? 'var(--color-accent)' : 'var(--color-border)'}`,
                           }}
                         >
-                          {day}
+                          {dayName(t, dayNum)}
                         </button>
                       );
                     })}
@@ -972,16 +1050,15 @@ function LaunchWizard({
                     className="w-full px-3 py-1.5 rounded-lg text-xs"
                     style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                   >
-                    {Array.from({ length: 24 }, (_, i) => {
-                      const label = i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`;
-                      return <option key={i} value={String(i)}>{label}</option>;
-                    })}
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>{formatHourShort(t, i)}</option>
+                    ))}
                   </select>
                 </div>
               )}
               {wizard.scheduleType === 'hourly' && (
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Every</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.schedule.everyLabel')}</span>
                   <input
                     type="number" min="1" max="24"
                     value={(() => { const secs = parseInt(wizard.scheduleValue || '0', 10); return secs > 0 ? Math.round(secs / 3600) : 1; })()}
@@ -992,7 +1069,7 @@ function LaunchWizard({
                     className="w-14 px-2 py-1 rounded text-xs text-center"
                     style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                   />
-                  <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>hours</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.schedule.hoursUnit')}</span>
                 </div>
               )}
               {wizard.scheduleType === 'cron' && (
@@ -1011,11 +1088,11 @@ function LaunchWizard({
           {wizard.selectedTools.length > 0 && (
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                Tools <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>(from template)</span>
+                {t('common.tools')} <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>{t('agents.wizard.fromTemplate')}</span>
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {wizard.selectedTools.map((t) => (
-                  <span key={t} className="text-xs px-2 py-1 rounded" style={{ background: 'color-mix(in srgb, var(--color-accent-purple) 12%, transparent)', color: 'var(--color-accent-purple)' }}>{t}</span>
+                {wizard.selectedTools.map((tool) => (
+                  <span key={tool} className="text-xs px-2 py-1 rounded" style={{ background: 'color-mix(in srgb, var(--color-accent-purple) 12%, transparent)', color: 'var(--color-accent-purple)' }}>{tool}</span>
                 ))}
               </div>
             </div>
@@ -1024,74 +1101,74 @@ function LaunchWizard({
           {/* Advanced Settings */}
           <details className="rounded-lg" style={{ border: '1px solid var(--color-border)' }}>
             <summary className="px-3 py-2 cursor-pointer text-sm font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
-              Advanced Settings <span className="text-xs font-normal">(optional)</span>
+              {t('agents.wizard.advanced')} <span className="text-xs font-normal">{t('common.optional')}</span>
             </summary>
             <div className="px-3 pb-3 pt-1 space-y-3" style={{ borderTop: '1px solid var(--color-border)' }}>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Memory Extraction<Tooltip text="How the agent remembers context between runs" /></label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.memoryExtraction')}<Tooltip text={t('agents.advanced.memoryExtractionHelp')} /></label>
                   <select value={wizard.memoryExtraction} onChange={(e) => setWizard((w) => ({ ...w, memoryExtraction: e.target.value }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                    <option value="structured_json">Structured JSON</option>
-                    <option value="causality_graph">Causality Graph</option>
-                    <option value="scratchpad">Scratchpad</option>
-                    <option value="none">None</option>
+                    <option value="structured_json">{t('agents.advanced.structuredJson')}</option>
+                    <option value="causality_graph">{t('agents.advanced.causalityGraph')}</option>
+                    <option value="scratchpad">{t('agents.advanced.scratchpad')}</option>
+                    <option value="none">{t('common.none')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Observation Compression<Tooltip text="How the agent summarizes long tool outputs" /></label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.observationCompression')}<Tooltip text={t('agents.advanced.observationCompressionHelp')} /></label>
                   <select value={wizard.observationCompression} onChange={(e) => setWizard((w) => ({ ...w, observationCompression: e.target.value }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                    <option value="summarize">Summarize</option>
-                    <option value="truncate">Truncate</option>
-                    <option value="none">None</option>
+                    <option value="summarize">{t('agents.advanced.summarize')}</option>
+                    <option value="truncate">{t('agents.advanced.truncate')}</option>
+                    <option value="none">{t('common.none')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Retrieval Strategy<Tooltip text="How the agent searches your knowledge base" /></label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.retrievalStrategy')}<Tooltip text={t('agents.advanced.retrievalStrategyHelp')} /></label>
                   <select value={wizard.retrievalStrategy} onChange={(e) => setWizard((w) => ({ ...w, retrievalStrategy: e.target.value }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
                     <option value="sqlite">BM25 (SQLite FTS5)</option>
-                    <option value="hybrid">Hybrid (BM25 + Semantic)</option>
+                    <option value="hybrid">{t('agents.advanced.hybrid')}</option>
                     <option value="colbert">ColBERTv2</option>
-                    <option value="none">None</option>
+                    <option value="none">{t('common.none')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Task Decomposition<Tooltip text="How the agent breaks complex tasks into steps" /></label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.taskDecomposition')}<Tooltip text={t('agents.advanced.taskDecompositionHelp')} /></label>
                   <select value={wizard.taskDecomposition} onChange={(e) => setWizard((w) => ({ ...w, taskDecomposition: e.target.value }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                    <option value="hierarchical">Hierarchical</option>
-                    <option value="phased">Phased</option>
-                    <option value="monolithic">Monolithic</option>
+                    <option value="hierarchical">{t('agents.advanced.hierarchical')}</option>
+                    <option value="phased">{t('agents.advanced.phased')}</option>
+                    <option value="monolithic">{t('agents.advanced.monolithic')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Max Turns</label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.maxTurns')}</label>
                   <input type="number" value={wizard.maxTurns} onChange={(e) => setWizard((w) => ({ ...w, maxTurns: parseInt(e.target.value, 10) || 25 }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Temperature</label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.temperature')}</label>
                   <input type="number" step="0.1" min="0" max="2" value={wizard.temperature}
                     onChange={(e) => setWizard((w) => ({ ...w, temperature: parseFloat(e.target.value) || 0.3 }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Budget ($)</label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.budget')}</label>
                   <input type="number" step="0.01" value={wizard.budget} onChange={(e) => setWizard((w) => ({ ...w, budget: e.target.value }))}
-                    placeholder="Unlimited"
+                    placeholder={t('common.unlimited')}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
                 </div>
                 <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>Schedule Type</label>
+                  <label className="block text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.advanced.scheduleType')}</label>
                   <select value={wizard.scheduleType} onChange={(e) => setWizard((w) => ({ ...w, scheduleType: e.target.value, scheduleValue: e.target.value === 'manual' ? '' : w.scheduleValue }))}
                     className="w-full px-2 py-1 rounded text-xs" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                    <option value="manual">Manual</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="hourly">Every N hours</option>
-                    <option value="cron">Custom (cron)</option>
+                    <option value="manual">{t('agents.schedule.manual')}</option>
+                    <option value="daily">{t('agents.schedule.daily')}</option>
+                    <option value="weekly">{t('agents.schedule.weekly')}</option>
+                    <option value="hourly">{t('agents.schedule.everyNHours')}</option>
+                    <option value="cron">{t('agents.schedule.customCronShort')}</option>
                   </select>
                 </div>
               </div>
@@ -1106,10 +1183,10 @@ function LaunchWizard({
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
               style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', opacity: launching || !wizard.name.trim() ? 0.5 : 1 }}
             >
-              {launching ? 'Creating...' : 'Launch Agent'}
+              {launching ? t('agents.wizard.creating') : t('agents.wizard.launch')}
             </button>
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -1129,6 +1206,7 @@ function OverflowMenu({
   agentId: string;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -1149,7 +1227,7 @@ function OverflowMenu({
         }}
         className="p-1 rounded cursor-pointer"
         style={{ color: 'var(--color-text-tertiary)' }}
-        title="More actions"
+        title={t('common.moreActions')}
       >
         <MoreHorizontal size={14} />
       </button>
@@ -1167,7 +1245,7 @@ function OverflowMenu({
             className="w-full text-left px-3 py-1.5 text-xs cursor-pointer flex items-center gap-2"
             style={{ color: 'var(--color-error)' }}
           >
-            <Trash2 size={12} /> Delete
+            <Trash2 size={12} /> {t('common.delete')}
           </button>
         </div>
       )}
@@ -1200,6 +1278,7 @@ function AgentCard({
   onChat: (id: string) => void;
   onEdit: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const canPause = agent.status === 'running' || agent.status === 'idle';
   const canResume = agent.status === 'paused';
   const canRecover = agent.status === 'error' || agent.status === 'stalled' || agent.status === 'needs_attention';
@@ -1225,16 +1304,16 @@ function AgentCard({
 
       {/* Row 2: Schedule + last run */}
       <div className="text-xs mb-2 flex items-center gap-3" style={{ color: 'var(--color-text-tertiary)' }}>
-        <span>{formatSchedule(agent.schedule_type, agent.schedule_value)}</span>
+        <span>{formatSchedule(t, agent.schedule_type, agent.schedule_value)}</span>
         <span>·</span>
-        <span>Last run: {formatRelativeTime(agent.last_run_at)}</span>
+        <span>{t('agents.card.lastRun', { time: formatRelativeTime(t, agent.last_run_at) })}</span>
       </div>
 
       {/* Row 3: Stats */}
       <div className="flex items-center gap-4 mb-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
         <span className="flex items-center gap-1">
           <Activity size={11} />
-          {agent.total_runs ?? 0} runs
+          {t('agents.card.runs', { count: agent.total_runs ?? 0 })}
         </span>
         <span className="flex items-center gap-1">
           <DollarSign size={11} />
@@ -1246,7 +1325,7 @@ function AgentCard({
       {(agent.config?.max_cost as number) > 0 && (
         <div className="mb-3">
           <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
-            <span>Budget</span>
+            <span>{t('agents.field.budget')}</span>
             <span>
               {formatCost(agent.total_cost)} / ${(agent.config?.max_cost as number).toFixed(0)}
             </span>
@@ -1274,7 +1353,7 @@ function AgentCard({
           onClick={(e) => { e.stopPropagation(); onChat(agent.id); }}
           className="p-1.5 rounded cursor-pointer transition-colors"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
-          title="Chat with agent"
+          title={t('agents.card.chatTitle')}
         >
           <MessageSquare size={13} />
         </button>
@@ -1282,7 +1361,7 @@ function AgentCard({
           onClick={(e) => { e.stopPropagation(); onEdit(agent.id); }}
           className="p-1.5 rounded cursor-pointer transition-colors"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
-          title="Edit agent"
+          title={t('agents.card.editTitle')}
         >
           <Pencil size={13} />
         </button>
@@ -1290,16 +1369,16 @@ function AgentCard({
           onClick={() => onRun(agent.id)}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
           style={{ background: 'var(--color-accent)' + '15', color: 'var(--color-accent)' }}
-          title="Run now"
+          title={t('agents.card.runNowTitle')}
         >
-          <Zap size={11} /> Run Now
+          <Zap size={11} /> {t('agents.actions.runNow')}
         </button>
         {canPause && (
           <button
             onClick={() => onPause(agent.id)}
             className="p-1 rounded cursor-pointer"
             style={{ color: 'var(--color-text-secondary)' }}
-            title="Pause"
+            title={t('agents.actions.pause')}
           >
             <Pause size={13} />
           </button>
@@ -1309,7 +1388,7 @@ function AgentCard({
             onClick={() => onResume(agent.id)}
             className="p-1 rounded cursor-pointer"
             style={{ color: 'var(--color-success)' }}
-            title="Resume"
+            title={t('agents.actions.resume')}
           >
             <Play size={13} />
           </button>
@@ -1319,9 +1398,9 @@ function AgentCard({
             onClick={() => onRecover(agent.id)}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer"
             style={{ background: 'var(--color-error)20', color: 'var(--color-error)' }}
-            title="Recover agent"
+            title={t('agents.card.recoverTitle')}
           >
-            <AlertTriangle size={11} /> Recover
+            <AlertTriangle size={11} /> {t('agents.actions.recover')}
           </button>
         )}
         <div className="ml-auto">
@@ -1337,6 +1416,7 @@ function AgentCard({
 // ---------------------------------------------------------------------------
 
 function AgentInstructionSection({ agent, onAgentUpdated }: { agent: ManagedAgent; onAgentUpdated: () => void }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const currentInstruction = (agent.config?.instruction as string) || '';
@@ -1356,14 +1436,14 @@ function AgentInstructionSection({ agent, onAgentUpdated }: { agent: ManagedAgen
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
     >
       <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Instruction</h3>
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{t('agents.instruction.title')}</h3>
         {!editing && (
           <button
             onClick={() => { setDraft(currentInstruction); setEditing(true); }}
             className="text-xs px-2 py-0.5 rounded cursor-pointer"
             style={{ color: 'var(--color-accent)', border: '1px solid var(--color-accent)', opacity: 0.8 }}
           >
-            Edit
+            {t('common.edit')}
           </button>
         )}
       </div>
@@ -1378,13 +1458,13 @@ function AgentInstructionSection({ agent, onAgentUpdated }: { agent: ManagedAgen
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
           <div className="flex gap-2">
-            <button onClick={save} className="text-xs px-3 py-1 rounded font-medium cursor-pointer" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>Save</button>
-            <button onClick={() => setEditing(false)} className="text-xs px-3 py-1 rounded cursor-pointer" style={{ color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}>Cancel</button>
+            <button onClick={save} className="text-xs px-3 py-1 rounded font-medium cursor-pointer" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>{t('common.save')}</button>
+            <button onClick={() => setEditing(false)} className="text-xs px-3 py-1 rounded cursor-pointer" style={{ color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}>{t('common.cancel')}</button>
           </div>
         </div>
       ) : (
         <p className="text-sm" style={{ color: currentInstruction ? 'var(--color-text)' : 'var(--color-text-tertiary)' }}>
-          {currentInstruction || '(No instruction set — click Edit to add one)'}
+          {currentInstruction || t('agents.instruction.empty')}
         </p>
       )}
     </div>
@@ -1392,6 +1472,7 @@ function AgentInstructionSection({ agent, onAgentUpdated }: { agent: ManagedAgen
 }
 
 function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAgentUpdated: () => void }) {
+  const { t } = useTranslation();
   const [editingModel, setEditingModel] = useState(false);
   const [changingModel, setChangingModel] = useState(false);
   const [models, setModels] = useState<string[]>([]);
@@ -1450,7 +1531,7 @@ function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAge
       const newConfig = { ...(agent.config || {}), model: newModel };
       await updateManagedAgent(agent.id, { config: newConfig });
       onAgentUpdated();
-      toast.success(`Model changed to ${newModel}`);
+      toast.success(t('agents.config.modelChanged', { model: newModel }));
     } catch { /* ignore */ }
     setEditingModel(false);
     setChangingModel(false);
@@ -1463,9 +1544,9 @@ function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAge
       : 'var(--color-text-tertiary)';
 
   const rows: [string, React.ReactNode][] = [
-    ['Intelligence', editingModel ? (
+    [t('agents.field.intelligence'), editingModel ? (
       changingModel ? (
-        <span className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>Switching model...</span>
+        <span className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.config.switchingModel')}</span>
       ) : (
         <select
           autoFocus
@@ -1479,7 +1560,7 @@ function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAge
             const installed = isModelInstalled(m);
             return (
               <option key={m} value={m} style={!installed ? { color: 'var(--color-text-tertiary)' } : undefined}>
-                {m}{!installed ? ' (not installed)' : ''}
+                {m}{!installed ? ` ${t('agents.config.notInstalled')}` : ''}
               </option>
             );
           })}
@@ -1497,14 +1578,16 @@ function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAge
             flexShrink: 0,
           }}
           title={
-            modelAvailable === 'available' ? 'Model running'
-              : modelAvailable === 'unavailable' ? 'Model not available'
-                : 'Could not check model status'
+            modelAvailable === 'available' ? t('agents.config.modelRunning')
+              : modelAvailable === 'unavailable' ? t('agents.config.modelUnavailable')
+                : t('agents.config.modelUnknown')
           }
         />
-        <span style={{ color: 'var(--color-text)' }}>{currentModel}</span>
+        <span style={{ color: 'var(--color-text)' }}>
+          {currentModel === '(default)' ? t('agents.config.modelDefault') : currentModel}
+        </span>
         {modelAvailable === 'unavailable' && (
-          <span className="text-xs" style={{ color: 'var(--color-error)' }}>Not available</span>
+          <span className="text-xs" style={{ color: 'var(--color-error)' }}>{t('common.notAvailable')}</span>
         )}
         <button
           onClick={startEditingModel}
@@ -1515,15 +1598,15 @@ function AgentConfigGrid({ agent, onAgentUpdated }: { agent: ManagedAgent; onAge
             opacity: 0.8,
           }}
         >
-          Change
+          {t('common.change')}
         </button>
       </span>
     )],
-    ['Agent Type', <span key="at">{agent.agent_type}</span>],
-    ['Schedule', <span key="sc">{formatSchedule(agent.schedule_type, agent.schedule_value)}</span>],
-    ['Last Run', <span key="lr">{formatRelativeTime(agent.last_run_at)}</span>],
-    ['Budget', <span key="bg">{agent.budget ? formatCost(agent.budget) : 'Unlimited'}</span>],
-    ['Learning', <span key="le">{agent.learning_enabled ? 'Enabled' : 'Disabled'}</span>],
+    [t('agents.field.agentType'), <span key="at">{agent.agent_type}</span>],
+    [t('agents.field.schedule'), <span key="sc">{formatSchedule(t, agent.schedule_type, agent.schedule_value)}</span>],
+    [t('agents.field.lastRun'), <span key="lr">{formatRelativeTime(t, agent.last_run_at)}</span>],
+    [t('agents.field.budget'), <span key="bg">{agent.budget ? formatCost(agent.budget) : t('common.unlimited')}</span>],
+    [t('agents.field.learning'), <span key="le">{agent.learning_enabled ? t('common.enabled') : t('common.disabled')}</span>],
   ];
 
   return (
@@ -1584,6 +1667,7 @@ function stepToToolCall(
 // users can interrogate the agent about its work ("tell me more about X").
 // ---------------------------------------------------------------------------
 function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: string; agentStatus: string; onRunStateChange?: () => void }) {
+  const { t, locale } = useTranslation();
   const [agent, setAgent] = useState<ManagedAgent | null>(null);
   const [activity, setActivity] = useState('');
   const [running, setRunning] = useState(agentStatus === 'running');
@@ -1669,7 +1753,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
           setElapsedMs(0);
           setRunning(true);
           setErrorMsg('');
-          setLiveItems([{ kind: 'note', id: `start-${ev.timestamp}`, label: 'Run started' }]);
+          setLiveItems([{ kind: 'note', id: `start-${ev.timestamp}`, label: t('agents.interact.runStarted') }]);
           break;
         }
         case 'tool_call_start': {
@@ -1718,14 +1802,14 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
         case 'agent_tick_end':
         case 'agent_tick_error': {
           if (ev.type === 'agent_tick_error') {
-            setErrorMsg(String(data.error || 'The run failed.'));
+            setErrorMsg(String(data.error || t('agents.interact.runFailed')));
           }
           finishRun();
           break;
         }
       }
     },
-    [finishRun],
+    [finishRun, t],
   );
 
   useAgentEvents(agentId, onEvent, [
@@ -1767,7 +1851,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
     setQuestion(q);
     setErrorMsg('');
     setSending(true);
-    setLiveItems([{ kind: 'note', id: 'queued', label: 'Starting run…' }]);
+    setLiveItems([{ kind: 'note', id: 'queued', label: t('agents.interact.startingRun') }]);
     startRef.current = Date.now();
     setElapsedMs(0);
     try {
@@ -1777,7 +1861,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
       setRunning(true);
       onRunStateChange?.(); // flip the parent status badge to "running" now
     } catch {
-      setErrorMsg('Could not start the agent run.');
+      setErrorMsg(t('agents.interact.startError'));
       setLiveItems([]);
     } finally {
       setSending(false);
@@ -1797,7 +1881,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
           style={{ color: 'var(--color-text)' }}
         >
           <Activity size={14} style={{ color: 'var(--color-accent)' }} />
-          Activity trace
+          {t('agents.interact.trace')}
         </div>
         <div
           className="flex items-center gap-2 text-xs"
@@ -1809,14 +1893,16 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
                 className="inline-block w-2 h-2 rounded-full animate-pulse"
                 style={{ background: 'var(--color-accent)' }}
               />
-              Running{elapsedMs > 0 ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : ''}
+              {t('agents.interact.running')}{elapsedMs > 0 ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : ''}
             </>
           ) : (
             <>
               {agent?.last_run_at
-                ? `Last run ${new Date(agent.last_run_at * 1000).toLocaleString()}`
-                : 'Idle'}
-              {lastTrace && ` · ${lastTrace.outcome}`}
+                ? t('agents.interact.lastRunAt', {
+                    date: new Date(agent.last_run_at * 1000).toLocaleString(locale),
+                  })
+                : t('agents.interact.idle')}
+              {lastTrace && ` · ${outcomeLabel(t, lastTrace.outcome)}`}
             </>
           )}
         </div>
@@ -1834,7 +1920,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
       >
         {question && (
           <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            <span style={{ color: 'var(--color-text-secondary)' }}>Question:</span> {question}
+            <span style={{ color: 'var(--color-text-secondary)' }}>{t('agents.interact.question')}</span> {question}
           </div>
         )}
 
@@ -1876,7 +1962,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
               style={{ color: 'var(--color-text-secondary)' }}
             >
               <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
-              {activity || 'Agent is working…'}
+              {activity || t('agents.interact.working')}
             </div>
           </>
         ) : (
@@ -1899,7 +1985,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
                 }}
               >
                 <div className="text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
-                  Result
+                  {t('agents.interact.result')}
                 </div>
                 <div className="prose prose-sm prose-invert max-w-none">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{findings}</ReactMarkdown>
@@ -1911,7 +1997,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
                   className="text-sm text-center py-8"
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
-                  No runs yet. Ask a question below to run the agent.
+                  {t('agents.interact.empty')}
                 </div>
               )
             )}
@@ -1931,7 +2017,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
               handleAsk();
             }
           }}
-          placeholder={isBusy ? 'Agent is running…' : "Ask a follow-up about this agent's work…"}
+          placeholder={isBusy ? t('agents.interact.placeholderBusy') : t('agents.interact.placeholder')}
           disabled={isBusy}
           className="w-full px-3 py-2 rounded-lg text-sm bg-transparent outline-none resize-none"
           style={{
@@ -1943,7 +2029,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
         />
         <div className="flex items-center justify-between mt-2">
           <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            Sends your question as an ad-hoc run — results appear in the trace above.
+            {t('agents.interact.hint')}
           </span>
           <button
             onClick={handleAsk}
@@ -1956,7 +2042,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
             }}
           >
             {isBusy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-            {isBusy ? 'Running' : 'Ask'}
+            {isBusy ? t('agents.interact.running') : t('agents.interact.ask')}
           </button>
         </div>
       </div>
@@ -1969,6 +2055,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
 // ---------------------------------------------------------------------------
 
 function ChannelsTab({ agentId }: { agentId: string }) {
+  const { t, locale } = useTranslation();
   const [connectors, setConnectors] = useState<
     Array<{ connector_id: string; display_name: string; connected: boolean; chunks: number }>
   >([]);
@@ -2042,7 +2129,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
         color: 'var(--color-text-secondary)',
         fontSize: 12, marginBottom: 12,
       }}>
-        Data sources your agent can search across
+        {t('sources.agentIntro')}
       </div>
 
       {/* Connected sources grid */}
@@ -2054,7 +2141,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
         }}>
           {connected.map((c) => {
             const meta = SOURCE_CATALOG.find(s => s.connector_id === c.connector_id);
-            const unit = meta?.unitLabel || 'items';
+            const unit = meta?.unitLabel || t('sources.itemsUnit');
             const isReconnecting = expandedId === c.connector_id;
             return (
             <div
@@ -2078,8 +2165,8 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                   </div>
                   <div style={{ fontSize: 12, color: c.chunks > 0 ? 'var(--color-success)' : 'var(--color-warning)' }}>
                     {c.chunks > 0
-                      ? `${c.chunks.toLocaleString()} ${unit}`
-                      : 'Connected — no data synced yet'}
+                      ? `${c.chunks.toLocaleString(locale)} ${unit}`
+                      : t('sources.connectedNoData')}
                   </div>
                 </div>
                 <button
@@ -2092,7 +2179,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     borderRadius: 4, cursor: 'pointer',
                   }}
                 >
-                  {isReconnecting ? 'Cancel' : 'Reconnect'}
+                  {isReconnecting ? t('common.cancel') : t('common.reconnect')}
                 </button>
               </div>
               {isReconnecting && meta?.steps && (
@@ -2104,7 +2191,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     fontSize: 12, color: 'var(--color-warning)',
                     marginBottom: 8,
                   }}>
-                    Re-enter credentials to reconnect this source.
+                    {t('sources.reenterCredentials')}
                   </div>
                   {meta.steps.map((step, i) => (
                     <div
@@ -2120,7 +2207,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                         color: 'var(--color-accent-purple)', fontSize: 10,
                         fontWeight: 600, marginBottom: 3,
                       }}>
-                        STEP {i + 1}
+                        {t('sources.step', { n: i + 1 })}
                       </div>
                       <div style={{ fontSize: 12, marginBottom: step.url ? 4 : 0 }}>
                         {step.label}
@@ -2135,7 +2222,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                             textDecoration: 'underline',
                           }}
                         >
-                          {step.urlLabel || 'Open'} →
+                          {step.urlLabel || t('common.open')} →
                         </a>
                       )}
                     </div>
@@ -2195,13 +2282,13 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     </div>
                     <div style={{ fontSize: 12,
                       color: 'var(--color-text-secondary)' }}>
-                      Not connected
+                      {t('sources.notConnected')}
                     </div>
                   </div>
                   <span style={{
                     color: 'var(--color-accent-purple)', fontSize: 11, fontWeight: 500,
                   }}>
-                    {isExpanded ? '\u2715 Close' : '+ Add'}
+                    {isExpanded ? `\u2715 ${t('common.close')}` : `+ ${t('common.add')}`}
                   </span>
                 </div>
 
@@ -2225,7 +2312,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                           color: 'var(--color-accent-purple)', fontSize: 10,
                           fontWeight: 600, marginBottom: 3,
                         }}>
-                          STEP {i + 1}
+                          {t('sources.step', { n: i + 1 })}
                         </div>
                         <div style={{
                           fontSize: 12, marginBottom: step.url ? 4 : 0,
@@ -2242,7 +2329,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                               textDecoration: 'underline',
                             }}
                           >
-                            {step.urlLabel || 'Open'} {'\u2192'}
+                            {step.urlLabel || t('common.open')} {'\u2192'}
                           </a>
                         )}
                       </div>
@@ -2260,7 +2347,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                       fontSize: 10, color: 'var(--color-text-secondary)',
                       textAlign: 'center', marginTop: 8,
                     }}>
-                      {'\uD83D\uDD12'} Read-only access {'\u00B7'} No data leaves your device
+                      {'\uD83D\uDD12'} {t('sources.privacyNote')}
                     </div>
                   </div>
                 )}
@@ -2282,6 +2369,7 @@ function InlineConnectForm({
   loading: boolean;
   onSubmit: (req: ConnectRequest) => void;
 }) {
+  const { t } = useTranslation();
   const [inputs, setInputs] = useState<Record<string, string>>({});
 
   const update = (name: string, value: string) =>
@@ -2334,7 +2422,7 @@ function InlineConnectForm({
           borderRadius: 6, fontSize: 12, cursor: 'pointer',
         }}
       >
-        {loading ? 'Connecting...' : 'Connect'}
+        {loading ? t('common.connecting') : t('common.connect')}
       </button>
     </div>
   );
@@ -2363,32 +2451,10 @@ interface MessagingChannelConfig {
   howToUse: (cfg: Record<string, unknown>) => string;
 }
 
-const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
-  // SendBlue (iMessage + SMS) is handled by the dedicated SendBlueWizard above.
-  // These are the other supported channels.
-  {
-    type: 'slack',
-    name: 'Slack',
-    icon: '#',
-    description: 'DM your agent in any Slack workspace',
-    setupSteps: [
-      '1. Go to api.slack.com/apps → click "Create New App" → choose "From an app manifest"',
-      '2. Select your workspace. When asked for the manifest format, choose JSON. Then paste the manifest below (click "Copy" to copy it):',
-      'COPYABLE:{"display_information":{"name":"Diapason"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"Diapason","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}',
-      '3. Click "Next" → review the summary → click "Create". Then go to "Install App" in the left sidebar → click "Install to Workspace" → click "Allow"',
-      '4. In the left sidebar, click "OAuth & Permissions". Copy the "Bot User OAuth Token" (starts with xoxb-...)',
-      '5. In the left sidebar, click "Basic Information" → scroll to "App-Level Tokens" → click "Generate Token and Scopes" → name it "socket" → click "Add Scope" → select "connections:write" → click "Generate" → copy the token (starts with xapp-...)',
-      '6. (Optional) Still in "Basic Information", scroll to "Display Information" → upload the Diapason icon as the app icon',
-      '7. Paste both tokens below and click Connect',
-    ],
-    fields: [
-      { key: 'bot_token', label: 'Bot Token', placeholder: 'xoxb-...', type: 'password', required: true },
-      { key: 'app_token', label: 'App Token', placeholder: 'xapp-...', type: 'password', required: true },
-    ],
-    activeLabel: () => 'Connected to Slack',
-    howToUse: () => 'Open Slack and DM @Diapason to talk to your agent.',
-  },
-];
+// The manifest users paste into Slack. It is a JSON payload, not prose, so it
+// stays out of the catalogue and out of any translation pass.
+const SLACK_APP_MANIFEST =
+  '{"display_information":{"name":"Diapason"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"Diapason","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}';
 
 // ---------------------------------------------------------------------------
 // SendBlue webhook step — ngrok tunnel + registration
@@ -2399,6 +2465,7 @@ function SendBlueWebhookStep({
 }: {
   apiKey: string; apiSecret: string; selectedNumber: string;
 }) {
+  const { t } = useTranslation();
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'registering' | 'done' | 'error'>('idle');
 
@@ -2421,7 +2488,7 @@ function SendBlueWebhookStep({
         borderRadius: 6, padding: 12, marginBottom: 12, textAlign: 'center',
       }}>
         <div style={{ fontSize: 11, color: 'var(--color-success)', fontWeight: 600, marginBottom: 4 }}>
-          {'\u2713'} Your agent is now reachable via iMessage / SMS
+          {'\u2713'} {t('agents.sendblue.reachable')}
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-success)' }}>{selectedNumber}</div>
       </div>
@@ -2430,7 +2497,7 @@ function SendBlueWebhookStep({
       <div style={{ marginTop: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>4</span>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Set up webhook to receive texts</span>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{t('agents.sendblue.webhookTitle')}</span>
         </div>
         <div style={{
           fontSize: 11, lineHeight: 1.6,
@@ -2440,9 +2507,9 @@ function SendBlueWebhookStep({
           borderRadius: 6,
           borderLeft: '3px solid var(--color-accent, var(--color-accent-purple))',
         }}>
-          <div><strong>1.</strong> Open a terminal and run: <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>ngrok http 8000</code></div>
-          <div style={{ marginTop: 4 }}><strong>2.</strong> Copy the <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>https://</code> forwarding URL</div>
-          <div style={{ marginTop: 4 }}><strong>3.</strong> Paste it below and click "Register Webhook"</div>
+          <div><strong>1.</strong> {t('agents.sendblue.webhookStep1')} <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>ngrok http 8000</code></div>
+          <div style={{ marginTop: 4 }}><strong>2.</strong> {t('agents.sendblue.webhookStep2')} <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>https://</code></div>
+          <div style={{ marginTop: 4 }}><strong>3.</strong> {t('agents.sendblue.webhookStep3')}</div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <input
@@ -2466,24 +2533,24 @@ function SendBlueWebhookStep({
               opacity: !webhookUrl.trim() || webhookStatus === 'registering' ? 0.5 : 1,
             }}
           >
-            {webhookStatus === 'registering' ? 'Registering...'
-              : webhookStatus === 'done' ? 'Registered!'
-              : webhookStatus === 'error' ? 'Retry'
-              : 'Register Webhook'}
+            {webhookStatus === 'registering' ? t('agents.sendblue.registering')
+              : webhookStatus === 'done' ? t('agents.sendblue.registered')
+              : webhookStatus === 'error' ? t('common.retry')
+              : t('agents.sendblue.registerWebhook')}
           </button>
         </div>
         {webhookStatus === 'done' && (
           <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 6 }}>
-            Webhook registered! Incoming texts will be forwarded to your agent.
+            {t('agents.sendblue.webhookSuccess')}
           </div>
         )}
         {webhookStatus === 'error' && (
           <div style={{ fontSize: 11, color: 'var(--color-error)', marginTop: 6 }}>
-            Failed to register. Check your ngrok URL and try again.
+            {t('agents.sendblue.webhookError')}
           </div>
         )}
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
-          Don't have ngrok? <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>Download it free</a>
+          {t('agents.sendblue.noNgrok')} <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>{t('agents.sendblue.downloadNgrok')}</a>
         </div>
       </div>
     </div>
@@ -2505,6 +2572,7 @@ function SendBlueWizard({
   onDone: () => void;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [step, setStep] = useState<'idle' | 'creds' | 'verifying' | 'verified' | 'connecting' | 'done' | 'test'>('idle');
   const [apiKey, setApiKey] = useState('');
@@ -2579,7 +2647,7 @@ function SendBlueWizard({
         setSelectedNumber('');
         setStep('verified');
       } else {
-        setError('Invalid credentials. Check your API key and secret.');
+        setError(t('agents.sendblue.invalidCredentials'));
         setStep('creds');
       }
     } catch (e) {
@@ -2639,7 +2707,9 @@ function SendBlueWizard({
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: 13 }}>iMessage / SMS</div>
             <div style={{ fontSize: 11, color: healthy ? 'var(--color-success)' : 'var(--color-warning)' }}>
-              {healthy ? `Active on ${activeNumber}` : `Disconnected — ${activeNumber}`}
+              {healthy
+                ? t('agents.sendblue.activeOn', { number: activeNumber })
+                : t('agents.sendblue.disconnectedOn', { number: activeNumber })}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2649,16 +2719,16 @@ function SendBlueWizard({
                 disabled={reconnecting}
                 style={{ ...btnPrimary, fontSize: 10, padding: '3px 10px' }}
               >
-                {reconnecting ? '...' : 'Reconnect'}
+                {reconnecting ? '...' : t('common.reconnect')}
               </button>
             )}
             <span style={{
               background: healthy ? 'color-mix(in srgb, var(--color-success) 22%, transparent)' : 'color-mix(in srgb, var(--color-warning) 18%, var(--color-bg))',
               color: healthy ? 'var(--color-success)' : 'var(--color-warning)',
               padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600,
-            }}>{healthy ? 'Active' : 'Disconnected'}</span>
+            }}>{healthy ? t('common.active') : t('common.disconnected')}</span>
             <button onClick={() => setExpanded(true)} style={btnSecondary}>
-              Details
+              {t('common.details')}
             </button>
           </div>
         </div>
@@ -2674,27 +2744,27 @@ function SendBlueWizard({
           <span style={{ fontSize: 18, marginRight: 10 }}>{'\uD83D\uDCAC'}</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: 13 }}>iMessage / SMS</div>
-            <div style={{ fontSize: 11, color: 'var(--color-success)' }}>Active on {activeNumber}</div>
+            <div style={{ fontSize: 11, color: 'var(--color-success)' }}>{t('agents.sendblue.activeOn', { number: activeNumber })}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setExpanded(false)} style={btnSecondary}>Collapse</button>
-            <button onClick={() => onRemove(binding!.id)} style={{ ...btnSecondary, color: 'var(--color-error)' }}>Remove</button>
+            <button onClick={() => setExpanded(false)} style={btnSecondary}>{t('common.collapse')}</button>
+            <button onClick={() => onRemove(binding!.id)} style={{ ...btnSecondary, color: 'var(--color-error)' }}>{t('common.remove')}</button>
           </div>
         </div>
         <div style={{ borderTop: '1px solid var(--color-border)', padding: 14, background: 'var(--color-bg)' }}>
           <div style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.6 }}>
-            {'\u2192'} Text <strong>{activeNumber}</strong> from any phone to talk to your agent.
-            Responses arrive as iMessage (blue bubbles) when possible, SMS otherwise.
+            {'\u2192'} {t('agents.sendblue.textPrefix')} <strong>{activeNumber}</strong>{' '}
+            {t('agents.sendblue.textSuffix')}
           </div>
 
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 8, fontWeight: 600 }}>
-            Send a test message
+            {t('agents.sendblue.sendTestTitle')}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               value={testNumber}
               onChange={(e) => { setTestNumber(e.target.value); setTestSent(false); }}
-              placeholder="Your phone number (+1...)"
+              placeholder={t('agents.sendblue.phonePlaceholder')}
               style={{ ...inputStyle, flex: 1 }}
             />
             <button
@@ -2702,7 +2772,7 @@ function SendBlueWizard({
               disabled={!testNumber.trim() || testSent}
               style={{ ...btnPrimary, opacity: !testNumber.trim() ? 0.5 : 1 }}
             >
-              {testSent ? 'Sent!' : 'Send Test'}
+              {testSent ? t('agents.sendblue.sent') : t('agents.sendblue.sendTest')}
             </button>
           </div>
           {error && <div style={{ color: 'var(--color-error)', fontSize: 11, marginTop: 6 }}>{error}</div>}
@@ -2723,14 +2793,14 @@ function SendBlueWizard({
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>iMessage / SMS</div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-            Your agent gets its own phone number — text it via iMessage or SMS
+            {t('agents.sendblue.description')}
           </div>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); setStep(step === 'idle' ? 'creds' : 'idle'); }}
           style={{ fontSize: 10, padding: '3px 12px', background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', border: 'none', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}
         >
-          {step === 'idle' ? 'Set Up' : 'Cancel'}
+          {step === 'idle' ? t('common.setUp') : t('common.cancel')}
         </button>
       </div>
 
@@ -2739,38 +2809,38 @@ function SendBlueWizard({
         <div style={{ borderTop: '1px solid var(--color-border)', padding: 14, background: 'var(--color-bg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>1</span>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Create a SendBlue account</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{t('agents.sendblue.step1Title')}</span>
           </div>
           <button
             onClick={() => window.open('https://dashboard.sendblue.com/company-signup', '_blank')}
             style={{ ...btnPrimary, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            Open SendBlue signup {'\u2192'}
+            {t('agents.sendblue.openSignup')} {'\u2192'}
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>2</span>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Paste your API credentials</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{t('agents.sendblue.step2Title')}</span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-            Go to your{' '}
+            {t('agents.sendblue.credsIntroBefore')}{' '}
             <a href="https://dashboard.sendblue.co/api-credentials" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>
-              SendBlue API Credentials page
+              {t('agents.sendblue.credsLinkLabel')}
             </a>{' '}
-            and copy the API Key and API Secret.
+            {t('agents.sendblue.credsIntroAfter')}
           </div>
 
           <div style={{ marginBottom: 8 }}>
             <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 3, fontWeight: 500 }}>
-              API Key ID *
+              {t('agents.sendblue.apiKeyLabel')} *
             </label>
-            <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Your API key ID" style={inputStyle} />
+            <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={t('agents.sendblue.apiKeyPlaceholder')} style={inputStyle} />
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 3, fontWeight: 500 }}>
-              API Secret Key *
+              {t('agents.sendblue.apiSecretLabel')} *
             </label>
-            <input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="Your API secret key" type="password" style={inputStyle} />
+            <input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder={t('agents.sendblue.apiSecretPlaceholder')} type="password" style={inputStyle} />
           </div>
 
           {error && <div style={{ color: 'var(--color-error)', fontSize: 11, marginBottom: 8 }}>{error}</div>}
@@ -2780,7 +2850,7 @@ function SendBlueWizard({
             disabled={!apiKey.trim() || !apiSecret.trim() || step === 'verifying'}
             style={{ ...btnPrimary, opacity: !apiKey.trim() || !apiSecret.trim() ? 0.5 : 1 }}
           >
-            {step === 'verifying' ? 'Verifying...' : 'Verify & Find Number'}
+            {step === 'verifying' ? t('agents.sendblue.verifying') : t('agents.sendblue.verify')}
           </button>
         </div>
       )}
@@ -2790,18 +2860,18 @@ function SendBlueWizard({
         <div style={{ borderTop: '1px solid var(--color-border)', padding: 14, background: 'var(--color-bg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ background: 'var(--color-success)', color: 'var(--color-on-accent)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{'\u2713'}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-success)' }}>Credentials verified</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-success)' }}>{t('agents.sendblue.credentialsVerified')}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>3</span>
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Your agent's phone number</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{t('agents.sendblue.step3Title')}</span>
           </div>
 
           {numbers.length > 1 ? (
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 3, fontWeight: 500 }}>
-                Select a number for your agent
+                {t('agents.sendblue.selectNumber')}
               </label>
               <select
                 value={selectedNumber}
@@ -2820,7 +2890,7 @@ function SendBlueWizard({
               <span style={{ fontSize: 20 }}>{'\uD83D\uDCF1'}</span>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-success)' }}>{selectedNumber}</div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>This will be your agent's phone number</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('agents.sendblue.numberConfirm')}</div>
               </div>
             </div>
           ) : (
@@ -2831,11 +2901,11 @@ function SendBlueWizard({
                 padding: '8px 10px', background: 'var(--color-bg-secondary)',
                 borderRadius: 6, borderLeft: '3px solid var(--color-accent-purple)',
               }}>
-                Copy the phone number shown under <strong>"Send from"</strong> in your SendBlue dashboard
-                and paste it below. On the free tier this is a shared number.
+                {t('agents.sendblue.numberHintBefore')} <strong>"Send from"</strong>{' '}
+                {t('agents.sendblue.numberHintAfter')}
               </div>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 3, fontWeight: 500 }}>
-                SendBlue phone number *
+                {t('agents.sendblue.numberLabel')} *
               </label>
               <input
                 value={selectedNumber}
@@ -2853,7 +2923,7 @@ function SendBlueWizard({
             disabled={step === 'connecting' || !selectedNumber.trim()}
             style={{ ...btnPrimary, opacity: !selectedNumber.trim() ? 0.5 : 1 }}
           >
-            {step === 'connecting' ? 'Connecting...' : 'Activate Phone Number'}
+            {step === 'connecting' ? t('common.connecting') : t('agents.sendblue.activate')}
           </button>
         </div>
       )}
@@ -2871,6 +2941,7 @@ function SendBlueWizard({
 }
 
 function MessagingTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [bindings, setBindings] = useState<ChannelBinding[]>([]);
   const [setupType, setSetupType] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -2922,13 +2993,42 @@ function MessagingTab({ agentId }: { agentId: string }) {
     fontSize: 12, boxSizing: 'border-box',
   };
 
+  // Built here rather than at module scope: every label goes through the
+  // translation hook, and a hook cannot run outside a component.
+  // SendBlue (iMessage + SMS) is handled by the dedicated SendBlueWizard
+  // above; these are the other supported channels.
+  const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
+    {
+      type: 'slack',
+      name: 'Slack',
+      icon: '#',
+      description: t('agents.messaging.slack.description'),
+      setupSteps: [
+        t('agents.messaging.slack.step1'),
+        t('agents.messaging.slack.step2'),
+        `COPYABLE:${SLACK_APP_MANIFEST}`,
+        t('agents.messaging.slack.step3'),
+        t('agents.messaging.slack.step4'),
+        t('agents.messaging.slack.step5'),
+        t('agents.messaging.slack.step6'),
+        t('agents.messaging.slack.step7'),
+      ],
+      fields: [
+        { key: 'bot_token', label: t('agents.messaging.slack.botToken'), placeholder: 'xoxb-...', type: 'password', required: true },
+        { key: 'app_token', label: t('agents.messaging.slack.appToken'), placeholder: 'xapp-...', type: 'password', required: true },
+      ],
+      activeLabel: () => t('agents.messaging.slack.connected'),
+      howToUse: () => t('agents.messaging.slack.howToUse'),
+    },
+  ];
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{
         color: 'var(--color-text-secondary)',
         fontSize: 12, marginBottom: 14,
       }}>
-        Connect a messaging channel so you can talk to your agent from your phone or other devices.
+        {t('agents.messaging.intro')}
       </div>
 
       {/* SendBlue wizard — primary option */}
@@ -2945,7 +3045,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
         textTransform: 'uppercase', letterSpacing: 1,
         margin: '14px 0 8px', fontWeight: 600,
       }}>
-        Other messaging channels
+        {t('agents.messaging.others')}
       </div>
 
       {MESSAGING_CHANNELS.map((ch) => {
@@ -2991,7 +3091,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
                     background: 'color-mix(in srgb, var(--color-success) 22%, transparent)', color: 'var(--color-success)',
                     padding: '2px 8px', borderRadius: 10,
                     fontSize: 10, fontWeight: 600,
-                  }}>Active</span>
+                  }}>{t('common.active')}</span>
                   <button
                     onClick={() => handleRemove(binding.id)}
                     style={{
@@ -3001,7 +3101,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
                       border: '1px solid var(--color-border)',
                       borderRadius: 4, cursor: 'pointer',
                     }}
-                  >Remove</button>
+                  >{t('common.remove')}</button>
                 </div>
               ) : (
                 <button
@@ -3016,7 +3116,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
                     cursor: 'pointer', fontWeight: 600,
                   }}
                 >
-                  {isSetup ? 'Cancel' : 'Set Up'}
+                  {isSetup ? t('common.cancel') : t('common.setUp')}
                 </button>
               )}
             </div>
@@ -3079,7 +3179,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
                                 border: 'none', borderRadius: 3,
                                 cursor: 'pointer', fontWeight: 600,
                               }}
-                            >Copy</button>
+                            >{t('common.copy')}</button>
                           </div>
                         </div>
                       );
@@ -3125,7 +3225,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
                     marginTop: 4,
                   }}
                 >
-                  {loading ? 'Connecting...' : 'Connect'}
+                  {loading ? t('common.connecting') : t('common.connect')}
                 </button>
               </div>
             )}
@@ -3141,6 +3241,7 @@ function MessagingTab({ agentId }: { agentId: string }) {
 // ---------------------------------------------------------------------------
 
 function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEnabled: boolean }) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<LearningLogEntry[]>([]);
   const [triggering, setTriggering] = useState(false);
 
@@ -3165,7 +3266,7 @@ function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEn
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Learning</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{t('agents.field.learning')}</span>
           <span
             className="text-xs px-2 py-0.5 rounded-full"
             style={{
@@ -3173,7 +3274,7 @@ function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEn
               color: learningEnabled ? 'var(--color-success)' : 'var(--color-text-tertiary)',
             }}
           >
-            {learningEnabled ? 'Enabled' : 'Disabled'}
+            {learningEnabled ? t('common.enabled') : t('common.disabled')}
           </span>
         </div>
         <button
@@ -3187,12 +3288,12 @@ function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEn
           }}
         >
           <RefreshCw size={12} className={triggering ? 'animate-spin' : ''} />
-          Run Learning
+          {t('agents.learning.run')}
         </button>
       </div>
       {logs.length === 0 ? (
         <div className="text-sm text-center py-8" style={{ color: 'var(--color-text-tertiary)' }}>
-          No learning events yet. Run the agent or trigger learning manually.
+          {t('agents.learning.empty')}
         </div>
       ) : (
         <div className="space-y-2">
@@ -3210,7 +3311,7 @@ function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEn
                   {entry.event_type}
                 </span>
                 <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                  {formatRelativeTime(entry.created_at)}
+                  {formatRelativeTime(t, entry.created_at)}
                 </span>
               </div>
               {entry.description && (
@@ -3229,18 +3330,19 @@ function LearningTab({ agentId, learningEnabled }: { agentId: string; learningEn
 // ---------------------------------------------------------------------------
 
 function LogsTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [traces, setTraces] = useState<AgentTrace[]>([]);
   const [learningEntries, setLearningEntries] = useState<LearningLogEntry[]>([]);
   const [expandedTrace, setExpandedTrace] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [t, l] = await Promise.all([
+      const [fetchedTraces, fetchedLearning] = await Promise.all([
         fetchAgentTraces(agentId),
         fetchLearningLog(agentId),
       ]);
-      setTraces(t);
-      setLearningEntries(l);
+      setTraces(fetchedTraces);
+      setLearningEntries(fetchedLearning);
     } catch {
       // ignore
     }
@@ -3268,7 +3370,7 @@ function LogsTab({ agentId }: { agentId: string }) {
     | { kind: 'learning'; data: LearningLogEntry; ts: number };
 
   const timeline: TimelineEntry[] = [
-    ...traces.map((t): TimelineEntry => ({ kind: 'trace', data: t, ts: t.started_at })),
+    ...traces.map((trace): TimelineEntry => ({ kind: 'trace', data: trace, ts: trace.started_at })),
     ...learningEntries.map((e): TimelineEntry => ({ kind: 'learning', data: e, ts: e.created_at })),
   ].sort((a, b) => b.ts - a.ts);
 
@@ -3282,11 +3384,11 @@ function LogsTab({ agentId }: { agentId: string }) {
   };
 
   const learningEventLabel = (eventType: string) => {
-    if (eventType === 'query_start') return 'Query';
-    if (eventType === 'query_complete') return 'Complete';
-    if (eventType === 'tool_call') return 'Tool Call';
-    if (eventType === 'tool_result') return 'Tool Result';
-    if (eventType === 'query_error') return 'Error';
+    if (eventType === 'query_start') return t('agents.logs.query');
+    if (eventType === 'query_complete') return t('agents.logs.complete');
+    if (eventType === 'tool_call') return t('agents.logs.toolCall');
+    if (eventType === 'tool_result') return t('agents.logs.toolResult');
+    if (eventType === 'query_error') return t('common.error');
     return eventType;
   };
 
@@ -3294,15 +3396,15 @@ function LogsTab({ agentId }: { agentId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-          Activity Log
+          {t('agents.logs.title')}
         </span>
         <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-          {timeline.length} entr{timeline.length !== 1 ? 'ies' : 'y'} (auto-refreshing)
+          {t('agents.logs.entryCount', { count: timeline.length })} {t('agents.logs.autoRefresh')}
         </span>
       </div>
       {timeline.length === 0 ? (
         <div className="text-sm text-center py-8" style={{ color: 'var(--color-text-tertiary)' }}>
-          No activity yet. Send a message or run the agent to generate logs.
+          {t('agents.logs.empty')}
         </div>
       ) : (
         <div className="space-y-2">
@@ -3332,7 +3434,7 @@ function LogsTab({ agentId }: { agentId: string }) {
                       </span>
                     </div>
                     <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {formatRelativeTime(e.created_at)}
+                      {formatRelativeTime(t, e.created_at)}
                     </span>
                   </div>
                   <div className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
@@ -3343,32 +3445,32 @@ function LogsTab({ agentId }: { agentId: string }) {
             }
 
             // Trace entry
-            const t = entry.data;
-            const errorDetail = t.metadata?.error_detail as
+            const trace = entry.data;
+            const errorDetail = trace.metadata?.error_detail as
               | { error_type: string; error_message: string; suggested_action: string }
               | undefined;
-            const isError = t.outcome !== 'success';
-            const isExpanded = expandedTrace === t.id;
+            const isError = trace.outcome !== 'success';
+            const isExpanded = expandedTrace === trace.id;
 
             return (
               <div
-                key={`trace-${t.id}`}
+                key={`trace-${trace.id}`}
                 className="rounded-lg p-3 text-sm cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-                onClick={() => isError && errorDetail && setExpandedTrace(isExpanded ? null : t.id)}
+                onClick={() => isError && errorDetail && setExpandedTrace(isExpanded ? null : trace.id)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span
                       className="w-2 h-2 rounded-full inline-block"
-                      style={{ background: t.outcome === 'success' ? 'var(--color-success)' : 'var(--color-error)' }}
+                      style={{ background: trace.outcome === 'success' ? 'var(--color-success)' : 'var(--color-error)' }}
                     />
-                    <span style={{ color: 'var(--color-text)' }}>{t.outcome}</span>
+                    <span style={{ color: 'var(--color-text)' }}>{outcomeLabel(t, trace.outcome)}</span>
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                       style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}
                     >
-                      Trace
+                      {t('agents.logs.trace')}
                     </span>
                     {errorDetail && (
                       <span
@@ -3385,21 +3487,21 @@ function LogsTab({ agentId }: { agentId: string }) {
                     )}
                   </div>
                   <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                    {formatRelativeTime(t.started_at)}
+                    {formatRelativeTime(t, trace.started_at)}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                  <span>{t.duration.toFixed(1)}s</span>
-                  <span>{t.steps} step{t.steps !== 1 ? 's' : ''}</span>
+                  <span>{trace.duration.toFixed(1)}s</span>
+                  <span>{t('agents.logs.stepCount', { count: trace.steps })}</span>
                 </div>
                 {isExpanded && errorDetail && (
                   <div className="mt-2 pt-2 space-y-1.5 text-xs" style={{ borderTop: '1px solid var(--color-border)' }}>
                     <div>
-                      <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>Error: </span>
+                      <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.logs.errorLabel')} </span>
                       <span style={{ color: 'var(--color-text)' }}>{errorDetail.error_message}</span>
                     </div>
                     <div>
-                      <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>Action: </span>
+                      <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{t('agents.logs.actionLabel')} </span>
                       <span style={{ color: 'var(--color-text)' }}>{errorDetail.suggested_action}</span>
                     </div>
                   </div>
@@ -3418,6 +3520,7 @@ function LogsTab({ agentId }: { agentId: string }) {
 // ---------------------------------------------------------------------------
 
 export function AgentsPage() {
+  const { t } = useTranslation();
   const managedAgents = useAppStore((s) => s.managedAgents);
   const setManagedAgents = useAppStore((s) => s.setManagedAgents);
   const selectedAgentId = useAppStore((s) => s.selectedAgentId);
@@ -3480,8 +3583,8 @@ export function AgentsPage() {
     try {
       await runManagedAgent(id);
     } catch (err: any) {
-      toast.error('Failed to start agent', {
-        description: err.message || 'Unknown error',
+      toast.error(t('agents.runFailed'), {
+        description: err.message || t('common.unknownError'),
       });
       await refresh();
       return;
@@ -3491,8 +3594,8 @@ export function AgentsPage() {
       try {
         const agent = await fetchManagedAgent(id);
         if (agent.status === 'error') {
-          toast.error(`Agent "${agent.name}" failed`, {
-            description: agent.summary_memory?.replace(/^ERROR: /, '') || 'Unknown error',
+          toast.error(t('agents.agentFailed', { name: agent.name }), {
+            description: agent.summary_memory?.replace(/^ERROR: /, '') || t('common.unknownError'),
           });
           useAppStore.getState().addLogEntry({
             timestamp: Date.now(), level: 'error', category: 'model',
@@ -3508,14 +3611,14 @@ export function AgentsPage() {
     try {
       const result = await recoverManagedAgent(id);
       if (result.checkpoint) {
-        toast.success('Agent recovered from checkpoint');
+        toast.success(t('agents.recoveredCheckpoint'));
       } else {
-        toast.success('Agent reset to idle (no checkpoint available)');
+        toast.success(t('agents.recoveredReset'));
       }
       setDetailTab('overview');
     } catch (err: any) {
-      toast.error('Recovery failed', {
-        description: err.message || 'Unknown error',
+      toast.error(t('agents.recoveryFailed'), {
+        description: err.message || t('common.unknownError'),
       });
     }
     await refresh();
@@ -3529,8 +3632,8 @@ export function AgentsPage() {
         for (const agent of agents) {
           const prev = prevStatuses.current[agent.id];
           if (prev && prev !== 'error' && agent.status === 'error') {
-            toast.error(`Agent "${agent.name}" failed`, {
-              description: agent.summary_memory?.replace(/^ERROR: /, '') || 'Unknown error',
+            toast.error(t('agents.agentFailed', { name: agent.name }), {
+              description: agent.summary_memory?.replace(/^ERROR: /, '') || t('common.unknownError'),
             });
           }
           prevStatuses.current[agent.id] = agent.status;
@@ -3543,12 +3646,12 @@ export function AgentsPage() {
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
-  }, [setManagedAgents]);
+  }, [setManagedAgents, t]);
 
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--color-text-tertiary)' }}>
-        Loading agents...
+        {t('agents.loading')}
       </div>
     );
   }
@@ -3558,18 +3661,18 @@ export function AgentsPage() {
   if (selectedAgent) {
     const successRate =
       tasks.length > 0
-        ? Math.round((tasks.filter((t) => t.status === 'completed').length / tasks.length) * 100)
+        ? Math.round((tasks.filter((task) => task.status === 'completed').length / tasks.length) * 100)
         : null;
 
     const DETAIL_TABS = [
-      { id: 'interact', label: 'Interact', icon: MessageSquare },
-      { id: 'overview', label: 'Overview', icon: Activity },
-      { id: 'channels', label: 'Data Sources', icon: Database },
-      { id: 'messaging', label: 'Messaging Channels', icon: Wifi },
-      { id: 'tasks', label: 'Tasks', icon: ListTodo },
-      { id: 'memory', label: 'Memory', icon: Brain },
-      { id: 'learning', label: 'Learning', icon: Settings },
-      { id: 'logs', label: 'Logs', icon: FileText },
+      { id: 'interact', label: t('agents.tab.interact'), icon: MessageSquare },
+      { id: 'overview', label: t('agents.tab.overview'), icon: Activity },
+      { id: 'channels', label: t('nav.dataSources'), icon: Database },
+      { id: 'messaging', label: t('agents.tab.messaging'), icon: Wifi },
+      { id: 'tasks', label: t('agents.tab.tasks'), icon: ListTodo },
+      { id: 'memory', label: t('agents.tab.memory'), icon: Brain },
+      { id: 'learning', label: t('agents.tab.learning'), icon: Settings },
+      { id: 'logs', label: t('agents.tab.logs'), icon: FileText },
     ] as const;
 
     return (
@@ -3581,7 +3684,7 @@ export function AgentsPage() {
           className="flex items-center gap-1 mb-4 text-sm cursor-pointer"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          <ChevronLeft size={16} /> Back to agents
+          <ChevronLeft size={16} /> {t('agents.backToList')}
         </button>
 
         {/* Header */}
@@ -3607,7 +3710,7 @@ export function AgentsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
                 style={{ background: 'var(--color-success)20', color: 'var(--color-success)', border: '1px solid var(--color-success)40' }}
               >
-                <MessageSquare size={13} /> Chat ready — just type below
+                <MessageSquare size={13} /> {t('agents.chatReady')}
               </span>
             ) : (
               <button
@@ -3615,7 +3718,7 @@ export function AgentsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer font-medium"
                 style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
               >
-                <Zap size={13} /> Run Now
+                <Zap size={13} /> {t('agents.actions.runNow')}
               </button>
             )}
             {(selectedAgent.status === 'running' || selectedAgent.status === 'idle') && (
@@ -3624,7 +3727,7 @@ export function AgentsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               >
-                <Pause size={13} /> Pause
+                <Pause size={13} /> {t('agents.actions.pause')}
               </button>
             )}
             {selectedAgent.status === 'paused' && (
@@ -3633,7 +3736,7 @@ export function AgentsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer"
                 style={{ background: 'var(--color-success)20', color: 'var(--color-success)', border: '1px solid var(--color-success)40' }}
               >
-                <Play size={13} /> Resume
+                <Play size={13} /> {t('agents.actions.resume')}
               </button>
             )}
             {(selectedAgent.status === 'error' || selectedAgent.status === 'stalled' || selectedAgent.status === 'needs_attention') && (
@@ -3642,12 +3745,12 @@ export function AgentsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer"
                 style={{ background: 'var(--color-error)20', color: 'var(--color-error)', border: '1px solid var(--color-error)40' }}
               >
-                <AlertTriangle size={13} /> Recover
+                <AlertTriangle size={13} /> {t('agents.actions.recover')}
               </button>
             )}
             <button
               onClick={async () => {
-                if (window.confirm(`Delete ${selectedAgent.name}? This cannot be undone.`)) {
+                if (window.confirm(t('agents.deleteConfirm', { name: selectedAgent.name }))) {
                   await deleteManagedAgent(selectedAgent.id);
                   setSelectedAgentId(null);
                   await refresh();
@@ -3655,7 +3758,7 @@ export function AgentsPage() {
               }}
               className="p-1.5 rounded-lg cursor-pointer transition-colors"
               style={{ color: 'var(--color-error)', background: 'var(--color-error)15' }}
-              title="Delete agent"
+              title={t('agents.deleteTitle')}
             >
               <Trash2 size={15} />
             </button>
@@ -3693,7 +3796,7 @@ export function AgentsPage() {
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
             >
               <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
-                Configuration
+                {t('agents.overview.configuration')}
               </h3>
               <AgentConfigGrid agent={selectedAgent} onAgentUpdated={refresh} />
               <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
@@ -3714,19 +3817,19 @@ export function AgentsPage() {
               >
                 <Database size={16} style={{ color: 'var(--color-accent)', flexShrink: 0, marginTop: 2 }} />
                 <div style={{ color: 'var(--color-text-secondary)' }}>
-                  <strong>Tip:</strong> Connect your personal data in the{' '}
+                  <strong>{t('agents.overview.tipLabel')}</strong> {t('agents.overview.tipBefore')}{' '}
                   <button
                     onClick={() => setDetailTab('channels')}
                     className="cursor-pointer underline"
                     style={{ color: 'var(--color-accent)', background: 'none', border: 'none', padding: 0, font: 'inherit' }}
-                  >Data Sources</button>{' '}
-                  tab, then set up{' '}
+                  >{t('nav.dataSources')}</button>{' '}
+                  {t('agents.overview.tipMiddle')}{' '}
                   <button
                     onClick={() => setDetailTab('messaging')}
                     className="cursor-pointer underline"
                     style={{ color: 'var(--color-accent)', background: 'none', border: 'none', padding: 0, font: 'inherit' }}
-                  >Messaging Channels</button>{' '}
-                  to talk to this agent from your phone.
+                  >{t('agents.tab.messaging')}</button>{' '}
+                  {t('agents.overview.tipAfter')}
                 </div>
               </div>
             )}
@@ -3754,19 +3857,19 @@ export function AgentsPage() {
                   <div className="flex gap-0 flex-wrap items-stretch">
                     {/* Agent Statistics */}
                     <div className="pr-5">
-                      <p style={sectionTitle}>Agent Statistics</p>
+                      <p style={sectionTitle}>{t('agents.stats.title')}</p>
                       <div className="flex gap-5">
                         <div>
                           <p className="text-xl font-bold leading-none" style={{ color: 'var(--color-text)' }}>{selectedAgent.total_runs ?? 0}</p>
-                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Total Queries</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.stats.totalQueries')}</p>
                         </div>
                         <div>
                           <p className="text-xl font-bold leading-none" style={{ color: 'var(--color-text)' }}>{inTok.toLocaleString()}</p>
-                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Input Tokens</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.stats.inputTokens')}</p>
                         </div>
                         <div>
                           <p className="text-xl font-bold leading-none" style={{ color: 'var(--color-text)' }}>{outTok.toLocaleString()}</p>
-                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Output Tokens</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.stats.outputTokens')}</p>
                         </div>
                       </div>
                     </div>
@@ -3774,22 +3877,22 @@ export function AgentsPage() {
                       <div style={{ width: 1, background: 'var(--color-border)' }} />
                       {/* Local Utilization */}
                       <div className="px-5">
-                        <p style={sectionTitle}>Local Utilization</p>
+                        <p style={sectionTitle}>{t('agents.stats.localUtilization')}</p>
                         <div className="flex gap-5">
                           <div>
                             <p className="text-xl font-bold leading-none" style={{ color: 'var(--color-success)' }}>{fmtFlops}</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Compute</p>
+                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.stats.compute')}</p>
                           </div>
                           <div>
                             <p className="text-xl font-bold leading-none" style={{ color: 'var(--color-success)' }}>{energyKj.toFixed(2)} kJ</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Energy</p>
+                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('agents.stats.energy')}</p>
                           </div>
                         </div>
                       </div>
                       <div style={{ width: 1, background: 'var(--color-border)' }} />
                       {/* Dollars Saved */}
                       <div className="pl-5">
-                        <p style={sectionTitle}>Dollars Saved vs.</p>
+                        <p style={sectionTitle}>{t('agents.stats.savedVs')}</p>
                         <div className="flex gap-5">
                           {providers.map((p) => {
                             const cost = (inTok / 1e6) * p.inPer1M + (outTok / 1e6) * p.outPer1M;
@@ -3814,7 +3917,7 @@ export function AgentsPage() {
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
               >
                 <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
-                  Messaging Channels
+                  {t('agents.tab.messaging')}
                 </h3>
                 {channels.map((b) => (
                   <div key={b.id} className="text-sm py-1" style={{ color: 'var(--color-text)' }}>
@@ -3842,31 +3945,31 @@ export function AgentsPage() {
         {/* Tab: Tasks */}
         {detailTab === 'tasks' && (
           <div className="space-y-2">
-            {tasks.map((t) => (
+            {tasks.map((task) => (
               <div
-                key={t.id}
+                key={task.id}
                 className="p-3 rounded-lg"
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
               >
                 <div className="flex justify-between items-start gap-3">
                   <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-                    {t.description}
+                    {task.description}
                   </span>
                   <span
                     className="text-xs px-2 py-0.5 rounded flex-shrink-0"
                     style={{
-                      background: statusColor(t.status) + '20',
-                      color: statusColor(t.status),
+                      background: statusColor(task.status) + '20',
+                      color: statusColor(task.status),
                     }}
                   >
-                    {t.status}
+                    {task.status}
                   </span>
                 </div>
               </div>
             ))}
             {tasks.length === 0 && (
               <div className="text-sm py-8 text-center" style={{ color: 'var(--color-text-tertiary)' }}>
-                No tasks assigned.
+                {t('agents.tasks.empty')}
               </div>
             )}
           </div>
@@ -3879,10 +3982,10 @@ export function AgentsPage() {
             style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
           >
             <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: 'var(--color-text-secondary)' }}>
-              <Brain size={14} /> Summary Memory
+              <Brain size={14} /> {t('agents.memory.title')}
             </h3>
             <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--color-text)' }}>
-              {selectedAgent.summary_memory || 'Agent has no stored memory yet.'}
+              {selectedAgent.summary_memory || t('agents.memory.empty')}
             </p>
           </div>
         )}
@@ -3921,7 +4024,7 @@ export function AgentsPage() {
       <header className="mb-6">
         <div className="flex justify-between items-center">
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-            Agents
+            {t('nav.agents')}
           </h1>
           <button
             onClick={() => agentManagerAvailable && setShowWizard(true)}
@@ -3932,11 +4035,11 @@ export function AgentsPage() {
               color: agentManagerAvailable === false ? 'var(--color-text-tertiary)' : 'var(--color-on-accent)',
             }}
           >
-            <Plus size={15} /> New Agent
+            <Plus size={15} /> {t('agents.newAgent')}
           </button>
         </div>
         <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
-          Long-running autonomous agents that can monitor sources, run tasks on a schedule, and message you through connected channels.
+          {t('agents.subtitle')}
         </p>
       </header>
 
@@ -3950,7 +4053,7 @@ export function AgentsPage() {
           }}
         >
           <AlertTriangle size={16} />
-          <span>Agent manager is not enabled. Set <code className="font-mono text-xs">agent_manager.enabled = true</code> in your config.</span>
+          <span>{t('agents.managerDisabledBefore')} <code className="font-mono text-xs">agent_manager.enabled = true</code> {t('agents.managerDisabledAfter')}</span>
         </div>
       )}
 
@@ -3985,9 +4088,9 @@ export function AgentsPage() {
         <div className="text-center py-16" style={{ color: 'var(--color-text-tertiary)' }}>
           <Bot size={48} className="mx-auto mb-4 opacity-30" />
           <p className="mb-2 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-            No agents yet
+            {t('agents.emptyTitle')}
           </p>
-          <p className="text-sm mb-6">Create your first agent to get started with autonomous task management.</p>
+          <p className="text-sm mb-6">{t('agents.emptyBody')}</p>
           <button
             onClick={() => agentManagerAvailable && setShowWizard(true)}
             disabled={agentManagerAvailable === false}
@@ -3997,7 +4100,7 @@ export function AgentsPage() {
               color: agentManagerAvailable === false ? 'var(--color-text-tertiary)' : 'var(--color-on-accent)',
             }}
           >
-            <Plus size={15} /> Launch your first agent
+            <Plus size={15} /> {t('agents.emptyCta')}
           </button>
         </div>
       )}

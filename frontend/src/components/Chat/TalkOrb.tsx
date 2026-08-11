@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { AIState } from '../AIEntity/types';
 
 // Three.js is half a megabyte and is needed only once this panel opens, so it
@@ -63,6 +64,8 @@ export function TalkOrb({
   onInterrupt,
   onClose,
 }: TalkOrbProps) {
+  const { t } = useTranslation();
+
   if (!open) return null;
 
   const active = state === 'listening' || state === 'speaking' || state === 'connecting';
@@ -94,9 +97,9 @@ export function TalkOrb({
                   color: '#e8a090',
                   border: '1px solid rgba(220, 80, 60, 0.35)',
                 }}
-                title="Screen share active — say « arrête le partage » to stop"
+                title={t('chat.talk.screenShareTooltip')}
               >
-                Sharing screen
+                {t('chat.talk.sharingScreen')}
               </span>
             )}
           </div>
@@ -105,7 +108,8 @@ export function TalkOrb({
             onClick={onClose}
             className="p-1.5 rounded-md cursor-pointer"
             style={{ color: 'var(--color-text-tertiary)' }}
-            title="Close (Esc)"
+            title={t('chat.talk.close')}
+            aria-label={t('chat.talk.close')}
           >
             <X size={16} />
           </button>
@@ -125,7 +129,7 @@ export function TalkOrb({
               border: 'none',
               padding: 0,
             }}
-            title={active ? 'Click or Space to interrupt' : 'Start talking'}
+            title={active ? t('chat.talk.interruptHint') : t('chat.talk.startHint')}
           >
             {/* No fallback: an empty box for a few hundred milliseconds reads
                 as loading, a placeholder shape reads as a glitch. */}
@@ -141,10 +145,10 @@ export function TalkOrb({
           </button>
 
           <p className="mt-5 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
-            Just speak.
+            {t('chat.talk.justSpeak')}
           </p>
           <p className="mt-1 text-sm text-center max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Realtime voice · ⌥Space toggle · Space interrupt · Esc close
+            {t('chat.talk.shortcuts')}
           </p>
 
           <div className="mt-4 flex items-center gap-2">
@@ -169,7 +173,7 @@ export function TalkOrb({
                 className="text-xs px-3 py-1.5 rounded-md cursor-pointer"
                 style={{ background: 'var(--color-error)', color: '#fff' }}
               >
-                End
+                {t('chat.talk.end')}
               </button>
             ) : (
               <button
@@ -178,7 +182,7 @@ export function TalkOrb({
                 className="text-xs px-3 py-1.5 rounded-md cursor-pointer"
                 style={{ background: 'var(--color-accent)', color: '#fff' }}
               >
-                Start
+                {t('chat.talk.start')}
               </button>
             )}
           </div>
@@ -198,18 +202,18 @@ export function TalkOrb({
               color: 'var(--color-text-secondary)',
             }}
           >
-            {toolEvents.slice(-4).map((t, i) => (
-              <div key={`tool-${i}`} style={{ color: t.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
-                Tool · {t.name}{t.detail ? ` — ${t.detail}` : ''}
+            {toolEvents.slice(-4).map((ev, i) => (
+              <div key={`tool-${i}`} style={{ color: ev.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
+                {t('chat.talk.tool')} · {ev.name}{ev.detail ? ` — ${ev.detail}` : ''}
               </div>
             ))}
-            {transcripts.slice(-8).map((t, i) => (
-              <div key={`${t.role}-${i}`}>
+            {transcripts.slice(-8).map((line, i) => (
+              <div key={`${line.role}-${i}`}>
                 <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                  {t.role === 'user' ? 'You' : 'Diapason'}
+                  {line.role === 'user' ? t('common.you') : 'Diapason'}
                 </span>
                 {': '}
-                {t.text}
+                {line.text}
               </div>
             ))}
           </div>
@@ -219,7 +223,9 @@ export function TalkOrb({
           className="px-4 py-2 text-[11px] text-center"
           style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
         >
-          Temps réel · {provider === 'gemini' ? 'Gemini Live' : 'gpt-realtime'} · tools · ⌥Space
+          {t('chat.talk.footer', {
+            provider: provider === 'gemini' ? 'Gemini Live' : 'gpt-realtime',
+          })}
         </div>
       </div>
     </div>

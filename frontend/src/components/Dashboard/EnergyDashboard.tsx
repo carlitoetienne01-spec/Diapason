@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import {
   LineChart,
   Line,
@@ -65,6 +67,7 @@ function StatCard({
 }
 
 export function EnergyDashboard() {
+  const { t } = useTranslation();
   const savings = useAppStore((s) => s.savings);
   const [energy, setEnergy] = useState<EnergyData | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
@@ -115,9 +118,7 @@ export function EnergyDashboard() {
     return (
       <div className="hud-panel p-6">
         <h3 className="hud-label flex items-center gap-2 mb-4">
-          <Zap size={12} style={{ color: 'var(--color-accent)' }} />
-          Energy Monitoring
-        </h3>
+          <Zap size={12} style={{ color: 'var(--color-accent)' }} />{t('dashboard.energy.title')}</h3>
         <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
           <span className="hud-mono">{error || 'awaiting telemetry stream…'}</span>
         </div>
@@ -128,9 +129,7 @@ export function EnergyDashboard() {
   return (
     <div className="hud-panel p-6">
       <h3 className="hud-label flex items-center gap-2 mb-4">
-        <Zap size={12} style={{ color: 'var(--color-accent)' }} />
-        Energy Monitoring
-      </h3>
+        <Zap size={12} style={{ color: 'var(--color-accent)' }} />{t('dashboard.energy.title')}</h3>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <StatCard

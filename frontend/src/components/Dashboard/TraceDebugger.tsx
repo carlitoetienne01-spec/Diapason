@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import { GitBranch, Clock, ChevronRight, ChevronDown } from 'lucide-react';
 
 interface TraceStepData {
@@ -118,6 +120,7 @@ function StepDetail({ step, index }: { step: TraceStep; index: number }) {
 }
 
 export function TraceDebugger() {
+  const { t } = useTranslation();
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,9 +148,7 @@ export function TraceDebugger() {
     return (
       <div className="hud-panel p-6">
         <h3 className="hud-label flex items-center gap-2 mb-4">
-          <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />
-          Trace Debugger
-        </h3>
+          <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />{t('dashboard.trace.title')}</h3>
         <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
           <span className="hud-mono">{error}</span>
         </div>
@@ -158,14 +159,10 @@ export function TraceDebugger() {
   return (
     <div className="hud-panel p-6">
       <h3 className="hud-label flex items-center gap-2 mb-4">
-        <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />
-        Trace Debugger
-      </h3>
+        <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />{t('dashboard.trace.title')}</h3>
 
       {traces.length === 0 ? (
-        <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-          No traces yet. Start making queries to see them here.
-        </div>
+        <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>{t('dashboard.trace.empty')}</div>
       ) : (
         <div className="flex gap-4 h-80">
           {/* Trace list */}
@@ -192,9 +189,7 @@ export function TraceDebugger() {
                 ))}
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-                Select a trace to view details
-              </div>
+              <div className="h-full flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>{t('dashboard.trace.selectPrompt')}</div>
             )}
           </div>
         </div>

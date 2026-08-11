@@ -8,6 +8,7 @@ import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
+import { useTranslation } from '../../i18n/useTranslation';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -76,6 +77,7 @@ function useResearchCorpusSync(enabled: boolean): {
 }
 
 export function InputArea() {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -169,9 +171,12 @@ export function InputArea() {
         }
         if (finalized.mode === 'command' && finalized.action?.handled) {
           if (finalized.action.success) {
-            toast.success(finalized.action.detail || `Commande: ${finalized.action.target}`);
+            toast.success(
+              finalized.action.detail ||
+                t('chat.input.commandRan', { target: finalized.action.target ?? '' }),
+            );
           } else {
-            toast.error(finalized.action.detail || 'Commande vocale échouée');
+            toast.error(finalized.action.detail || t('chat.input.commandFailed'));
           }
           return;
         }
@@ -183,7 +188,7 @@ export function InputArea() {
     } catch {
       // Not recording or transcription error — ignore
     }
-  }, [stopRecording]);
+  }, [stopRecording, t]);
 
   // In-window PTT listener, kept but currently INERT: the Cmd+Alt+Space
   // shortcut that emitted ptt-start/ptt-stop is no longer registered
@@ -233,9 +238,12 @@ export function InputArea() {
 
             if (finalized?.mode === 'command' && finalized.action?.handled) {
               if (finalized.action.success) {
-                toast.success(finalized.action.detail || `Commande: ${finalized.action.target}`);
+                toast.success(
+                  finalized.action.detail ||
+                    t('chat.input.commandRan', { target: finalized.action.target ?? '' }),
+                );
               } else {
-                toast.error(finalized.action.detail || 'Commande vocale échouée');
+                toast.error(finalized.action.detail || t('chat.input.commandFailed'));
               }
               return;
             }
@@ -244,11 +252,11 @@ export function InputArea() {
             if (fromGlobal) {
               try {
                 await invoke('paste_to_frontmost', { text: polished });
-                toast.success('Dictée collée');
+                toast.success(t('chat.input.dictationPasted'));
               } catch (err) {
                 setInput((prev) => (prev ? prev + ' ' + polished : polished));
                 toast.error(
-                  err instanceof Error ? err.message : 'Paste failed — text in chat',
+                  err instanceof Error ? err.message : t('chat.input.pasteFailed'),
                 );
               }
             } else {
@@ -267,7 +275,7 @@ export function InputArea() {
       unlistenStart?.();
       unlistenStop?.();
     };
-  }, [handleMicPointerDown, stopRecording]);
+  }, [handleMicPointerDown, stopRecording, t]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -289,7 +297,7 @@ export function InputArea() {
     const content = input.trim();
     if (!content || streamState.isStreaming) return;
     if (!selectedModel) {
-      toast.error('Pick a model first (⌘K)');
+      toast.error(t('chat.input.pickModel'));
       return;
     }
 
@@ -347,7 +355,7 @@ export function InputArea() {
 
     setStreamState({
       isStreaming: true,
-      phase: deepResearch ? 'Researching...' : 'Generating...',
+      phase: deepResearch ? t('chat.stream.researching') : t('chat.stream.generating'),
       elapsedMs: 0,
       activeToolCalls: [],
       content: '',
@@ -377,7 +385,7 @@ export function InputArea() {
               status: 'pending',
             };
             researchTraces.push(trace);
-            setStreamState({ phase: `Searching: ${trace.query}` });
+            setStreamState({ phase: t('chat.stream.searching', { query: trace.query }) });
             updateLastAssistant(
               convId,
               accumulatedContent,
@@ -449,10 +457,10 @@ export function InputArea() {
             // missing, KnowledgeStore locked, etc.). Without surfacing the
             // message, the user sees only the generic "No response was
             // generated" fallback and has no way to self-diagnose.
-            const msg = ev.message || 'Research failed (no detail provided)';
+            const msg = ev.message || t('chat.research.noDetail');
             accumulatedContent = accumulatedContent
-              ? `${accumulatedContent}\n\n**Research stopped:** ${msg}`
-              : `**Research failed:** ${msg}`;
+              ? `${accumulatedContent}\n\n${t('chat.research.stopped', { message: msg })}`
+              : t('chat.research.failed', { message: msg });
             setStreamState({ content: accumulatedContent, phase: '' });
             useAppStore.getState().addLogEntry({
               timestamp: Date.now(),
@@ -494,9 +502,9 @@ export function InputArea() {
         const eventName = sseEvent.event;
 
         if (eventName === 'agent_turn_start') {
-          setStreamState({ phase: 'Agent thinking...' });
+          setStreamState({ phase: t('chat.stream.agentThinking') });
         } else if (eventName === 'inference_start') {
-          setStreamState({ phase: 'Generating...' });
+          setStreamState({ phase: t('chat.stream.generating') });
           useAppStore.getState().addLogEntry({
             timestamp: Date.now(), level: 'info', category: 'chat',
             message: `Generating with ${selectedModel}...`,
@@ -512,7 +520,7 @@ export function InputArea() {
             };
             toolCalls.push(tc);
             setStreamState({
-              phase: `Calling ${data.tool}...`,
+              phase: t('chat.stream.callingTool', { tool: data.tool }),
               activeToolCalls: [...toolCalls],
             });
             updateLastAssistant(convId, accumulatedContent, [...toolCalls]);
@@ -533,7 +541,7 @@ export function InputArea() {
               tc.result = data.result;
             }
             setStreamState({
-              phase: 'Generating...',
+              phase: t('chat.stream.generating'),
               activeToolCalls: [...toolCalls],
             });
             updateLastAssistant(convId, accumulatedContent, [...toolCalls]);
@@ -567,11 +575,11 @@ export function InputArea() {
     } catch (err: any) {
       if (err.name === 'AbortError') {
         // User cancelled or model switch — keep whatever was accumulated
-        if (!accumulatedContent) accumulatedContent = '(Generation stopped)';
+        if (!accumulatedContent) accumulatedContent = t('chat.input.generationStopped');
       } else {
         const errMsg = err?.message || String(err);
         accumulatedContent =
-          accumulatedContent || `Error: ${errMsg}`;
+          accumulatedContent || t('chat.input.error', { message: errMsg });
         useAppStore.getState().addLogEntry({
           timestamp: Date.now(), level: 'error', category: 'chat',
           message: `Stream error: ${errMsg}`,
@@ -582,7 +590,7 @@ export function InputArea() {
       useAppStore.getState().setLiveEnergy(null);
     } finally {
       if (!accumulatedContent) {
-        accumulatedContent = 'No response was generated. Please try again.';
+        accumulatedContent = t('chat.input.noResponse');
       }
       const totalMs = Date.now() - startTime;
       const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'openrouter/', 'MiniMax-', 'chatgpt-'];
@@ -657,6 +665,7 @@ export function InputArea() {
     deepResearch,
     temperature,
     maxTokens,
+    t,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -681,10 +690,10 @@ export function InputArea() {
               border: `1px solid ${deepResearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
               color: deepResearch ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
             }}
-            title={deepResearch ? 'Deep Research: on' : 'Deep Research: off'}
+            title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
           >
             <Search size={12} />
-            Deep Research
+            {t('common.deepResearch')}
           </button>
         </div>
         {deepResearch && corpusSync.syncing && corpusSync.itemsSynced > 0 && (
@@ -692,11 +701,11 @@ export function InputArea() {
             className="text-[11px] leading-snug"
             style={{ color: 'var(--color-text-tertiary)' }}
           >
-            Searching over{' '}
+            {t('chat.input.searchingOver')}{' '}
             <span key={corpusSync.itemsSynced} className="sync-bump" style={{ color: 'var(--color-text-secondary)' }}>
               {corpusSync.itemsSynced.toLocaleString()}
             </span>{' '}
-            items — sync in progress, results will improve as more data is indexed.
+            {t('chat.input.searchingOverSuffix', { count: corpusSync.itemsSynced })}
           </div>
         )}
       </div>
@@ -713,7 +722,9 @@ export function InputArea() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedModel ? 'Message Diapason...' : 'Pick a model first (⌘K)...'}
+          placeholder={
+            selectedModel ? t('chat.input.placeholder') : t('chat.input.placeholderNoModel')
+          }
           rows={1}
           className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
@@ -724,7 +735,8 @@ export function InputArea() {
             onClick={stopStreaming}
             className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer"
             style={{ background: 'var(--color-error)', color: 'var(--color-on-accent)' }}
-            title="Stop generating"
+            title={t('chat.input.stopGenerating')}
+            aria-label={t('chat.input.stopGenerating')}
           >
             <Square size={16} />
           </button>
@@ -741,7 +753,8 @@ export function InputArea() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || modelLoading || !selectedModel}
-              title={selectedModel ? 'Send message' : 'Pick a model first (⌘K)'}
+              title={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
+              aria-label={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
               className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-default"
               style={{
                 background: input.trim() ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
@@ -755,8 +768,8 @@ export function InputArea() {
       </div>
       <div className="flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>
-          <kbd className="font-mono">Enter</kbd> to send &middot;{' '}
-          <kbd className="font-mono">Shift+Enter</kbd> for new line
+          <kbd className="font-mono">Enter</kbd> {t('chat.input.toSend')} &middot;{' '}
+          <kbd className="font-mono">Shift+Enter</kbd> {t('chat.input.forNewLine')}
         </span>
       </div>
     </div>

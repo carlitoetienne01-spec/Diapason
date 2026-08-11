@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Cpu, X, Download, Loader2, Trash2, Check, Cloud, Key, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../lib/store';
+import { useTranslation } from '../i18n/useTranslation';
+import type { MessageKey } from '../i18n/translate';
 import {
   pullModel,
   deleteModel,
@@ -11,27 +13,41 @@ import {
   saveCloudKey,
 } from '../lib/api';
 
+/**
+ * A model entry as the palette shows it.
+ *
+ * `name` is the vendor's own product name and stays as written in every
+ * language; only the qualifier after it (`note`) is a translated phrase, held
+ * here as a catalogue key because module scope cannot call the hook.
+ */
+interface CatalogueModel {
+  id: string;
+  size: string;
+  name: string;
+  note?: MessageKey;
+}
+
 /** Popular models that users can download from the catalogue. */
-const CATALOGUE_MODELS = [
-  { id: 'qwen3.5:0.8b', size: '~1 GB', desc: 'Qwen 3.5 0.8B — fast, lightweight' },
-  { id: 'qwen3.5:2b', size: '~2.7 GB', desc: 'Qwen 3.5 2B' },
-  { id: 'qwen3.5:4b', size: '~3.4 GB', desc: 'Qwen 3.5 4B — recommended default' },
-  { id: 'qwen3.5:9b', size: '~6.6 GB', desc: 'Qwen 3.5 9B' },
-  { id: 'qwen3.5:27b', size: '~17 GB', desc: 'Qwen 3.5 27B' },
-  { id: 'qwen3.5:35b', size: '~24 GB', desc: 'Qwen 3.5 35B' },
-  { id: 'qwen3.5:122b', size: '~81 GB', desc: 'Qwen 3.5 122B — largest' },
-  { id: 'llama3.3:latest', size: '~4.9 GB', desc: 'Llama 3.3 8B' },
-  { id: 'mistral:latest', size: '~4.1 GB', desc: 'Mistral 7B' },
-  { id: 'gemma3:latest', size: '~3.3 GB', desc: 'Gemma 3 4B' },
-  { id: 'deepseek-r1:7b', size: '~4.7 GB', desc: 'DeepSeek R1 7B' },
-  { id: 'phi4:latest', size: '~9.1 GB', desc: 'Phi-4 14B' },
+const CATALOGUE_MODELS: CatalogueModel[] = [
+  { id: 'qwen3.5:0.8b', size: '~1 GB', name: 'Qwen 3.5 0.8B', note: 'models.note.fastLightweight' },
+  { id: 'qwen3.5:2b', size: '~2.7 GB', name: 'Qwen 3.5 2B' },
+  { id: 'qwen3.5:4b', size: '~3.4 GB', name: 'Qwen 3.5 4B', note: 'models.note.recommendedDefault' },
+  { id: 'qwen3.5:9b', size: '~6.6 GB', name: 'Qwen 3.5 9B' },
+  { id: 'qwen3.5:27b', size: '~17 GB', name: 'Qwen 3.5 27B' },
+  { id: 'qwen3.5:35b', size: '~24 GB', name: 'Qwen 3.5 35B' },
+  { id: 'qwen3.5:122b', size: '~81 GB', name: 'Qwen 3.5 122B', note: 'models.note.largest' },
+  { id: 'llama3.3:latest', size: '~4.9 GB', name: 'Llama 3.3 8B' },
+  { id: 'mistral:latest', size: '~4.1 GB', name: 'Mistral 7B' },
+  { id: 'gemma3:latest', size: '~3.3 GB', name: 'Gemma 3 4B' },
+  { id: 'deepseek-r1:7b', size: '~4.7 GB', name: 'DeepSeek R1 7B' },
+  { id: 'phi4:latest', size: '~9.1 GB', name: 'Phi-4 14B' },
 ];
 
 /** Cloud provider definitions */
 interface CloudProvider {
   name: string;
   envKey: string;
-  models: Array<{ id: string; desc: string }>;
+  models: Array<{ id: string; name: string; note?: MessageKey }>;
 }
 
 const CLOUD_PROVIDERS: CloudProvider[] = [
@@ -39,36 +55,36 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
     name: 'OpenAI',
     envKey: 'OPENAI_API_KEY',
     models: [
-      { id: 'gpt-4o', desc: 'GPT-4o — fast, multimodal' },
-      { id: 'gpt-4o-mini', desc: 'GPT-4o Mini — cheap, fast' },
-      { id: 'o3-mini', desc: 'o3-mini — reasoning' },
+      { id: 'gpt-4o', name: 'GPT-4o', note: 'models.note.fastMultimodal' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', note: 'models.note.cheapFast' },
+      { id: 'o3-mini', name: 'o3-mini', note: 'models.note.reasoning' },
     ],
   },
   {
     name: 'Anthropic',
     envKey: 'ANTHROPIC_API_KEY',
     models: [
-      { id: 'claude-sonnet-4-6', desc: 'Claude Sonnet 4.6 — balanced' },
-      { id: 'claude-opus-4-6', desc: 'Claude Opus 4.6 — most capable' },
-      { id: 'claude-haiku-4-5', desc: 'Claude Haiku 4.5 — fastest' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', note: 'models.note.balanced' },
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', note: 'models.note.mostCapable' },
+      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', note: 'models.note.fastest' },
     ],
   },
   {
     name: 'Google',
     envKey: 'GEMINI_API_KEY',
     models: [
-      { id: 'gemini-2.5-pro', desc: 'Gemini 2.5 Pro — flagship' },
-      { id: 'gemini-2.5-flash', desc: 'Gemini 2.5 Flash — fast' },
-      { id: 'gemini-3-pro', desc: 'Gemini 3 Pro — latest' },
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', note: 'models.note.flagship' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', note: 'models.note.fast' },
+      { id: 'gemini-3-pro', name: 'Gemini 3 Pro', note: 'models.note.latest' },
     ],
   },
   {
     name: 'OpenRouter',
     envKey: 'OPENROUTER_API_KEY',
     models: [
-      { id: 'openrouter/auto', desc: 'Auto — best model for the task' },
-      { id: 'openrouter/anthropic/claude-sonnet-4', desc: 'Claude Sonnet 4 via OpenRouter' },
-      { id: 'openrouter/deepseek/deepseek-r1', desc: 'DeepSeek R1 via OpenRouter' },
+      { id: 'openrouter/auto', name: 'Auto', note: 'models.note.bestForTask' },
+      { id: 'openrouter/anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', note: 'models.note.viaOpenRouter' },
+      { id: 'openrouter/deepseek/deepseek-r1', name: 'DeepSeek R1', note: 'models.note.viaOpenRouter' },
     ],
   },
 ];
@@ -76,6 +92,7 @@ const CLOUD_PROVIDERS: CloudProvider[] = [
 type Tab = 'installed' | 'catalogue' | 'cloud';
 
 export function CommandPalette() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [tab, setTab] = useState<Tab>('installed');
@@ -100,6 +117,12 @@ export function CommandPalette() {
   const installedIds = new Set(models.map((m) => m.id));
   const desktopKeyStorage = isTauri();
 
+  /** Product name plus its translated qualifier, e.g. "Gemma 3 4B — rapide". */
+  const modelLabel = useCallback(
+    (m: { name: string; note?: MessageKey }) => (m.note ? `${m.name} — ${t(m.note)}` : m.name),
+    [t],
+  );
+
   const refreshCloudKeyStatus = useCallback(async () => {
     if (!desktopKeyStorage) {
       setCloudKeyStatus({});
@@ -109,9 +132,9 @@ export function CommandPalette() {
       setCloudKeyStatus(await getCloudKeyStatus());
       setCloudKeyError(null);
     } catch (e: any) {
-      setCloudKeyError(e?.message || 'Failed to read cloud key status');
+      setCloudKeyError(e?.message || t('models.cloudKeyStatusFailed'));
     }
-  }, [desktopKeyStorage]);
+  }, [desktopKeyStorage, t]);
 
   const filtered = tab === 'installed'
     ? (query
@@ -120,7 +143,7 @@ export function CommandPalette() {
     : tab === 'catalogue'
     ? CATALOGUE_MODELS.filter((m) =>
         !installedIds.has(m.id) &&
-        (!query || m.id.toLowerCase().includes(query.toLowerCase()) || m.desc.toLowerCase().includes(query.toLowerCase()))
+        (!query || m.id.toLowerCase().includes(query.toLowerCase()) || modelLabel(m).toLowerCase().includes(query.toLowerCase()))
       )
     : []; // cloud tab doesn't use filtered
 
@@ -151,12 +174,12 @@ export function CommandPalette() {
     if (modelId !== previousModel) {
       const { setModelLoading, addLogEntry } = useAppStore.getState();
       setModelLoading(true);
-      addLogEntry({ timestamp: Date.now(), level: 'info', category: 'model', message: `Switching to ${modelId}...` });
+      addLogEntry({ timestamp: Date.now(), level: 'info', category: 'model', message: t('logs.model.switching', { model: modelId }) });
       try {
         await preloadModel(modelId);
-        addLogEntry({ timestamp: Date.now(), level: 'info', category: 'model', message: `${modelId} loaded` });
+        addLogEntry({ timestamp: Date.now(), level: 'info', category: 'model', message: t('logs.model.loaded', { model: modelId }) });
       } catch (e: any) {
-        addLogEntry({ timestamp: Date.now(), level: 'error', category: 'model', message: `Failed to load ${modelId}: ${e.message}` });
+        addLogEntry({ timestamp: Date.now(), level: 'error', category: 'model', message: t('logs.model.loadFailed', { model: modelId, error: e.message }) });
       } finally {
         setModelLoading(false);
       }
@@ -178,15 +201,15 @@ export function CommandPalette() {
       setPullSuccess(modelId);
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(), level: 'info', category: 'model',
-        message: `Downloaded ${modelId}`,
+        message: t('logs.model.downloaded', { model: modelId }),
       });
       await refreshModels();
       setSelectedModel(modelId);
     } catch (e: any) {
-      setPullError(e.message || 'Download failed');
+      setPullError(e.message || t('common.downloadFailed'));
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(), level: 'error', category: 'model',
-        message: `Download failed for ${modelId}: ${e.message}`,
+        message: t('logs.model.downloadFailed', { model: modelId, error: e.message }),
       });
     } finally {
       setPulling(null);
@@ -199,7 +222,7 @@ export function CommandPalette() {
       await deleteModel(modelId);
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(), level: 'info', category: 'model',
-        message: `Deleted ${modelId}`,
+        message: t('logs.model.deleted', { model: modelId }),
       });
       await refreshModels();
       if (selectedModel === modelId) {
@@ -229,11 +252,15 @@ export function CommandPalette() {
       await refreshCloudKeyStatus();
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(), level: 'info', category: 'model',
-        message: `${provider.name} API key ${keyValue ? 'saved' : 'removed'}. Refreshing model list...`,
+        // Two whole sentences rather than an interpolated verb: "saved" and
+        // "removed" do not agree the same way once the sentence is French.
+        message: keyValue
+          ? t('logs.model.apiKeySaved', { provider: provider.name })
+          : t('logs.model.apiKeyRemoved', { provider: provider.name }),
       });
       await refreshModels();
     } catch (e: any) {
-      setCloudKeyError(e?.message || `Failed to save ${provider.name} API key`);
+      setCloudKeyError(e?.message || t('models.saveKeyFailed', { provider: provider.name }));
     } finally {
       setSavingKey(null);
     }
@@ -260,9 +287,9 @@ export function CommandPalette() {
   };
 
   const TAB_LABELS: Record<Tab, string> = {
-    installed: `Installed Models (${models.length})`,
-    catalogue: 'Download',
-    cloud: 'Cloud Models',
+    installed: t('models.tab.installed', { count: models.length }),
+    catalogue: t('common.download'),
+    cloud: t('models.tab.cloud'),
   };
 
   return (
@@ -312,7 +339,7 @@ export function CommandPalette() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={tab === 'installed' ? 'Search installed models...' : 'Search models to download...'}
+              placeholder={tab === 'installed' ? t('models.searchInstalled') : t('models.searchCatalogue')}
               className="flex-1 bg-transparent outline-none text-sm"
               style={{ color: 'var(--color-text)' }}
             />
@@ -334,7 +361,7 @@ export function CommandPalette() {
         )}
         {pullSuccess && (
           <div className="px-4 py-2 text-xs flex items-center gap-1.5" style={{ color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 5%, transparent)' }}>
-            <Check size={12} /> Downloaded {pullSuccess} successfully
+            <Check size={12} /> {t('models.downloadSuccess', { model: pullSuccess })}
           </div>
         )}
         {tab === 'cloud' && cloudKeyError && (
@@ -349,8 +376,8 @@ export function CommandPalette() {
             filtered.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                 {models.length === 0
-                  ? 'No models available — switch to "Download" to get started'
-                  : 'No matching models'}
+                  ? t('models.emptyInstalled')
+                  : t('models.noMatches')}
               </div>
             ) : (
               (filtered as typeof models).map((model, idx) => {
@@ -377,7 +404,7 @@ export function CommandPalette() {
                       </div>
                       {isActive && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}>
-                          Active
+                          {t('common.active')}
                         </span>
                       )}
                     </button>
@@ -386,7 +413,7 @@ export function CommandPalette() {
                       disabled={isDeleting}
                       className="p-1 rounded transition-colors cursor-pointer"
                       style={{ color: 'var(--color-text-tertiary)', opacity: 0 }}
-                      title="Delete model"
+                      title={t('models.deleteModel')}
                       onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--color-error)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
                     >
@@ -406,7 +433,7 @@ export function CommandPalette() {
                     <Download size={16} style={{ color: 'var(--color-text-tertiary)' }} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm truncate" style={{ color: 'var(--color-text)' }}>{model.id}</div>
-                      <div className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>{model.desc} &middot; {model.size}</div>
+                      <div className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>{modelLabel(model)} &middot; {model.size}</div>
                     </div>
                     <button
                       onClick={() => handlePull(model.id)}
@@ -418,21 +445,21 @@ export function CommandPalette() {
                         opacity: (isPulling || (pulling && !isPulling)) ? 0.5 : 1,
                       }}
                     >
-                      {isPulling ? <><Loader2 size={12} className="animate-spin" /> Downloading...</> :
-                       justInstalled ? <><Check size={12} /> Installed</> :
-                       <><Download size={12} /> Download</>}
+                      {isPulling ? <><Loader2 size={12} className="animate-spin" /> {t('common.downloading')}</> :
+                       justInstalled ? <><Check size={12} /> {t('models.installed')}</> :
+                       <><Download size={12} /> {t('common.download')}</>}
                     </button>
                   </div>
                 );
               })}
               <div className="px-4 py-3 mt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
-                <div className="text-[11px] mb-2" style={{ color: 'var(--color-text-tertiary)' }}>Or enter any Ollama model name:</div>
+                <div className="text-[11px] mb-2" style={{ color: 'var(--color-text-tertiary)' }}>{t('models.customPrompt')}</div>
                 <div className="flex gap-2">
                   <input
                     type="text" value={customModel}
                     onChange={(e) => setCustomModel(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCustomPull(); } }}
-                    placeholder="e.g. codellama:7b"
+                    placeholder={t('models.customPlaceholder')}
                     className="flex-1 text-sm px-3 py-1.5 rounded-lg outline-none"
                     style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
                   />
@@ -441,7 +468,7 @@ export function CommandPalette() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
                     style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', opacity: (!customModel.trim() || pulling) ? 0.5 : 1 }}
                   >
-                    <Download size={12} /> Pull
+                    <Download size={12} /> {t('models.pull')}
                   </button>
                 </div>
               </div>
@@ -451,8 +478,8 @@ export function CommandPalette() {
             <div className="px-4 py-2">
               <div className="text-[11px] mb-3" style={{ color: 'var(--color-text-tertiary)' }}>
                 {desktopKeyStorage
-                  ? 'Add your API keys to use cloud models. Keys are stored in secure desktop storage.'
-                  : 'Configure cloud provider keys in the server environment to use cloud models.'}
+                  ? t('models.cloudKeysDesktop')
+                  : t('models.cloudKeysServer')}
               </div>
 
               {CLOUD_PROVIDERS.map((provider) => {
@@ -469,7 +496,7 @@ export function CommandPalette() {
                       <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{provider.name}</span>
                       {hasKey && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)' }}>
-                          Connected
+                          {t('common.connected')}
                         </span>
                       )}
                     </div>
@@ -483,7 +510,7 @@ export function CommandPalette() {
                           value={key}
                           onChange={(e) => setApiKeys((prev) => ({ ...prev, [provider.envKey]: e.target.value }))}
                           onBlur={() => handleKeyBlur(provider)}
-                          placeholder={hasSavedKey ? 'Saved in secure storage' : provider.envKey}
+                          placeholder={hasSavedKey ? t('models.keyInSecureStorage') : provider.envKey}
                           disabled={!desktopKeyStorage || isSaving}
                           className="flex-1 text-xs px-2 py-1.5 bg-transparent outline-none font-mono"
                           style={{ color: 'var(--color-text)' }}
@@ -502,7 +529,7 @@ export function CommandPalette() {
                           className="px-2 py-1 rounded-lg text-[10px] cursor-pointer"
                           style={{ color: 'var(--color-error)', border: '1px solid var(--color-error)', opacity: isSaving ? 0.5 : 1 }}
                         >
-                          {isSaving ? 'Saving' : 'Remove'}
+                          {isSaving ? t('common.saving') : t('common.remove')}
                         </button>
                       )}
                     </div>
@@ -527,12 +554,12 @@ export function CommandPalette() {
                                   {model.id}
                                 </div>
                                 <div className="text-[10px] truncate" style={{ color: 'var(--color-text-tertiary)' }}>
-                                  {model.desc}
+                                  {modelLabel(model)}
                                 </div>
                               </div>
                               {isActive && (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}>
-                                  Active
+                                  {t('common.active')}
                                 </span>
                               )}
                             </button>
@@ -554,14 +581,14 @@ export function CommandPalette() {
         >
           {tab === 'installed' ? (
             <>
-              <span><kbd className="font-mono">↑↓</kbd> Navigate</span>
-              <span><kbd className="font-mono">Enter</kbd> Select</span>
-              <span><kbd className="font-mono">Esc</kbd> Close</span>
+              <span><kbd className="font-mono">↑↓</kbd> {t('common.navigate')}</span>
+              <span><kbd className="font-mono">{t('common.key.enter')}</kbd> {t('common.select')}</span>
+              <span><kbd className="font-mono">{t('common.key.esc')}</kbd> {t('common.close')}</span>
             </>
           ) : tab === 'catalogue' ? (
-            <span>Models are downloaded from the Ollama registry</span>
+            <span>{t('models.catalogueSource')}</span>
           ) : (
-            <span>API keys are stored locally and never sent to Diapason servers</span>
+            <span>{t('models.keysStayLocal')}</span>
           )}
         </div>
       </div>

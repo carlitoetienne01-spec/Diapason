@@ -1,4 +1,6 @@
 import { useRef, useEffect } from 'react';
+
+import { useTranslation } from '../i18n/useTranslation';
 import { Copy, Trash2 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 
@@ -14,6 +16,7 @@ function formatTime(ts: number): string {
 }
 
 export function LogsPage() {
+  const { t } = useTranslation();
   const logEntries = useAppStore((s) => s.logEntries);
   const clearLogs = useAppStore((s) => s.clearLogs);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -34,9 +37,7 @@ export function LogsPage() {
       <div className="max-w-4xl mx-auto w-full flex flex-col flex-1 overflow-hidden">
         <header className="mb-6 shrink-0">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-              Logs
-            </h1>
+            <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>{t('nav.logs')}</h1>
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
                 {logEntries.length} entries
@@ -46,15 +47,13 @@ export function LogsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               >
-                <Copy size={12} /> Copy All
-              </button>
+                <Copy size={12} />{t('logs.copyAll')}</button>
               <button
                 onClick={clearLogs}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               >
-                <Trash2 size={12} /> Clear
-              </button>
+                <Trash2 size={12} />{t('common.clear')}</button>
             </div>
           </div>
           <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>

@@ -10,6 +10,7 @@ import {
 import { SOURCE_CATALOG } from '../../types/connectors';
 import { connectSource, getConnector } from '../../lib/connectors-api';
 import { getBase } from '../../lib/api';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { ConnectRequest, ConnectorMeta } from '../../types/connectors';
 
 // ---------------------------------------------------------------------------
@@ -92,11 +93,12 @@ function FilesystemPanel({
   onSkip: () => void;
   isConnecting: boolean;
 }) {
+  const { t } = useTranslation();
   const [path, setPath] = useState('');
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-        Enter the path to your local {displayName} folder.
+        {t('sources.filesystem.prompt', { name: displayName })}
       </p>
       <div className="flex gap-2">
         <input
@@ -122,7 +124,7 @@ function FilesystemPanel({
           }}
         >
           {isConnecting ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
-          Connect
+          {t('common.connect')}
         </button>
       </div>
       <button
@@ -130,7 +132,7 @@ function FilesystemPanel({
         className="text-xs self-start"
         style={{ color: 'var(--color-text-tertiary)' }}
       >
-        Skip for now
+        {t('sources.skipForNow')}
       </button>
     </div>
   );
@@ -151,6 +153,7 @@ function OAuthPanel({
   onSkip: () => void;
   isConnecting: boolean;
 }) {
+  const { t } = useTranslation();
   const [waiting, setWaiting] = useState(false);
 
   const startOAuth = () => {
@@ -184,13 +187,13 @@ function OAuthPanel({
     <div className="flex flex-col gap-4">
       <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
         {waiting
-          ? `Waiting for ${displayName} authorization... Complete it in the browser window.`
-          : `Connect your ${displayName} account with one click.`}
+          ? t('sources.oauth.waiting', { name: displayName })
+          : t('sources.oauth.prompt', { name: displayName })}
       </p>
       {waiting ? (
         <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-accent)' }}>
           <Loader2 size={16} className="animate-spin" />
-          Waiting for authorization...
+          {t('sources.oauth.waitingShort')}
         </div>
       ) : (
         <button
@@ -202,7 +205,7 @@ function OAuthPanel({
           }}
         >
           <ExternalLink size={14} />
-          Connect {displayName}
+          {t('sources.connectNamed', { name: displayName })}
         </button>
       )}
       <button
@@ -210,7 +213,7 @@ function OAuthPanel({
         className="text-xs self-start"
         style={{ color: 'var(--color-text-tertiary)' }}
       >
-        Skip for now
+        {t('sources.skipForNow')}
       </button>
     </div>
   );
@@ -227,11 +230,11 @@ function LocalPanel({
   onSkip: () => void;
   isConnecting: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-        {displayName} reads data directly from your Mac. Make sure the app is installed and
-        Full Disk Access is granted to Diapason in System Settings.
+        {t('sources.local.prompt', { name: displayName })}
       </p>
       <div
         className="px-4 py-3 rounded-lg text-sm"
@@ -240,8 +243,7 @@ function LocalPanel({
           color: 'var(--color-text-secondary)',
         }}
       >
-        <strong>System Settings</strong> → Privacy &amp; Security → Full Disk Access →
-        enable Diapason
+        <strong>{t('sources.local.systemSettings')}</strong> → {t('sources.local.fullDiskAccessPath')}
       </div>
       <button
         onClick={() => onConnect({})}
@@ -255,14 +257,14 @@ function LocalPanel({
         }}
       >
         {isConnecting && <Loader2 size={14} className="animate-spin" />}
-        Check Access
+        {t('sources.local.checkAccess')}
       </button>
       <button
         onClick={onSkip}
         className="text-xs self-start"
         style={{ color: 'var(--color-text-tertiary)' }}
       >
-        Skip for now
+        {t('sources.skipForNow')}
       </button>
     </div>
   );
@@ -283,6 +285,7 @@ function StepByStepPanel({
   onSkip: () => void;
   isConnecting: boolean;
 }) {
+  const { t } = useTranslation();
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const steps = connector.steps || [];
   const fields = connector.inputFields || [];
@@ -345,7 +348,7 @@ function StepByStepPanel({
             color: 'var(--color-accent-purple)', fontSize: 11,
             fontWeight: 600, marginBottom: 4,
           }}>
-            STEP {i + 1}
+            {t('sources.step', { number: i + 1 })}
           </div>
           <div style={{
             color: 'var(--color-text)',
@@ -363,7 +366,7 @@ function StepByStepPanel({
                 textDecoration: 'underline',
               }}
             >
-              {step.urlLabel || 'Open'} &rarr;
+              {step.urlLabel || t('common.open')} &rarr;
             </a>
           )}
         </div>
@@ -404,7 +407,7 @@ function StepByStepPanel({
         fontSize: 11, color: 'var(--color-text-secondary)',
         marginBottom: 12, textAlign: 'center',
       }}>
-        Read-only access &middot; No data leaves your device
+        {t('sources.readOnlyNote')}
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
@@ -420,7 +423,9 @@ function StepByStepPanel({
             cursor: 'pointer',
           }}
         >
-          {isConnecting ? 'Connecting...' : `Connect ${connector.display_name}`}
+          {isConnecting
+            ? t('common.connecting')
+            : t('sources.connectNamed', { name: connector.display_name })}
         </button>
         <button
           onClick={onSkip}
@@ -433,7 +438,7 @@ function StepByStepPanel({
             cursor: 'pointer',
           }}
         >
-          Skip
+          {t('common.skip')}
         </button>
       </div>
     </div>
@@ -451,6 +456,7 @@ export function SourceConnectFlow({
   selectedIds: string[];
   onComplete: () => void;
 }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<SourceEntry[]>(() =>
     selectedIds.map((id) => ({ id, state: 'pending' as SourceState })),
   );
@@ -500,7 +506,7 @@ export function SourceConnectFlow({
       <div className="w-48 shrink-0 flex flex-col gap-1 py-1">
         <p className="text-xs font-semibold uppercase tracking-wider mb-2"
           style={{ color: 'var(--color-text-tertiary)' }}>
-          Sources
+          {t('sources.listTitle')}
         </p>
         {entries.map((entry, idx) => {
           const card = SOURCE_CATALOG.find((c) => c.connector_id === entry.id);
@@ -545,7 +551,7 @@ export function SourceConnectFlow({
               <div className="flex items-center gap-2 text-sm"
                 style={{ color: 'var(--color-accent)' }}>
                 <CheckCircle2 size={18} />
-                Connected
+                {t('common.connected')}
               </div>
             ) : activeCard.steps ? (
               <StepByStepPanel
@@ -583,7 +589,7 @@ export function SourceConnectFlow({
           <div className="flex flex-col items-center justify-center flex-1 gap-3">
             <CheckCircle2 size={32} style={{ color: 'var(--color-accent)' }} />
             <p className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>
-              All sources configured
+              {t('sources.allConfigured')}
             </p>
           </div>
         )}
@@ -595,7 +601,7 @@ export function SourceConnectFlow({
               className="w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all"
               style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
             >
-              Continue →
+              {t('common.continue')} →
             </button>
           </div>
         )}

@@ -5,8 +5,10 @@ import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
+import { useTranslation } from '../i18n/useTranslation';
 
 export function Layout() {
+  const { t } = useTranslation();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
 
@@ -44,13 +46,13 @@ export function Layout() {
             className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ background: 'var(--color-error)' }}
           />
-          <span>Cannot reach Diapason backend</span>
+          <span>{t('common.backendUnreachable')}</span>
           <button
             onClick={() => navigate('/settings')}
             className="text-sm underline cursor-pointer ml-auto shrink-0"
             style={{ color: 'var(--color-accent)' }}
           >
-            Change URL
+            {t('common.changeUrl')}
           </button>
         </div>
       )}

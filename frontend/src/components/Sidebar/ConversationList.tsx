@@ -1,24 +1,30 @@
 import { Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAppStore } from '../../lib/store';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
   searchQuery: string;
 }
 
-function formatRelativeTime(timestamp: number): string {
+type Translate = ReturnType<typeof useTranslation>['t'];
+
+// `t` is passed in rather than read from a hook: this runs per row inside the
+// render, and a hook cannot be called from a plain helper.
+function formatRelativeTime(timestamp: number, t: Translate): string {
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t('common.time.justNow');
+  if (minutes < 60) return t('common.time.minutesAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t('common.time.hoursAgo', { count: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return t('common.time.daysAgo', { count: days });
   return new Date(timestamp).toLocaleDateString();
 }
 
 export function ConversationList({ searchQuery }: Props) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const conversations = useAppStore((s) => s.conversations);
   const activeId = useAppStore((s) => s.activeId);
@@ -34,7 +40,7 @@ export function ConversationList({ searchQuery }: Props) {
   if (filtered.length === 0) {
     return (
       <div className="px-3 py-8 text-center text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-        {searchQuery ? 'No matching chats' : 'No conversations yet'}
+        {searchQuery ? t('sidebar.noMatchingChats') : t('sidebar.noConversations')}
       </div>
     );
   }
@@ -74,7 +80,7 @@ export function ConversationList({ searchQuery }: Props) {
                 {conv.title}
               </div>
               <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-                {formatRelativeTime(conv.updatedAt)}
+                {formatRelativeTime(conv.updatedAt, t)}
               </div>
             </button>
             <button
@@ -86,7 +92,8 @@ export function ConversationList({ searchQuery }: Props) {
               style={{ color: 'var(--color-text-tertiary)' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-error)')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
-              title="Delete conversation"
+              title={t('sidebar.deleteConversation')}
+              aria-label={t('sidebar.deleteConversation')}
             >
               <Trash2 size={14} />
             </button>

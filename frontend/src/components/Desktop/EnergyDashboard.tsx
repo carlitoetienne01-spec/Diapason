@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+import { useTranslation } from '../../i18n/useTranslation';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -195,10 +197,17 @@ function formatTimestamp(ts: string): string {
   }
 }
 
-function thermalIndicator(avgPower: number): { label: string; color: string } {
-  if (avgPower < 50) return { label: 'Cool', color: colors.green };
-  if (avgPower < 150) return { label: 'Warm', color: colors.yellow };
-  return { label: 'Hot', color: colors.red };
+// The label is picked here but translated at render: this helper runs outside a
+// component, where a hook cannot be called, so it hands back a catalogue key.
+type ThermalKey =
+  | 'dashboard.energy.thermalCool'
+  | 'dashboard.energy.thermalWarm'
+  | 'dashboard.energy.thermalHot';
+
+function thermalIndicator(avgPower: number): { labelKey: ThermalKey; color: string } {
+  if (avgPower < 50) return { labelKey: 'dashboard.energy.thermalCool', color: colors.green };
+  if (avgPower < 150) return { labelKey: 'dashboard.energy.thermalWarm', color: colors.yellow };
+  return { labelKey: 'dashboard.energy.thermalHot', color: colors.red };
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +217,7 @@ function thermalIndicator(avgPower: number): { label: string; color: string } {
 const REFRESH_INTERVAL_MS = 5000;
 
 export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
+  const { t } = useTranslation();
   const [energyData, setEnergyData] = useState<EnergyData | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -264,13 +274,13 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
     return (
       <div style={styles.container}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Energy Monitor</h2>
+          <h2 style={styles.title}>{t('dashboard.energy.title')}</h2>
         </div>
         <div style={styles.emptyState}>
           <div style={styles.emptyIcon}>&#x26A1;</div>
           <div style={styles.emptyText}>
-            No energy data available.<br />
-            Ensure an energy monitor backend (NVIDIA, AMD, Apple, or RAPL) is configured.
+            {t('dashboard.energy.emptyTitle')}<br />
+            {t('dashboard.energy.emptyHint')}
           </div>
         </div>
       </div>
@@ -291,10 +301,10 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
 
       {/* Header */}
       <div style={styles.header}>
-        <h2 style={styles.title}>Energy Monitor</h2>
+        <h2 style={styles.title}>{t('dashboard.energy.title')}</h2>
         <span style={styles.liveBadge}>
           <span style={styles.liveDot} />
-          Live - {REFRESH_INTERVAL_MS / 1000}s
+          {t('dashboard.energy.live', { seconds: REFRESH_INTERVAL_MS / 1000 })}
         </span>
       </div>
 
@@ -304,7 +314,7 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
       {/* Summary cards */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Total Energy</div>
+          <div style={styles.statLabel}>{t('dashboard.energy.totalEnergy')}</div>
           <div style={styles.statValue}>
             {energyData?.total_energy_j !== undefined
               ? formatEnergy(energyData.total_energy_j)
@@ -313,7 +323,7 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
         </div>
 
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Energy per Token</div>
+          <div style={styles.statLabel}>{t('dashboard.energy.energyPerToken')}</div>
           <div style={styles.statValue}>
             {energyData?.energy_per_token_j !== undefined ? (
               <>
@@ -327,7 +337,7 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
         </div>
 
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Avg Power Draw</div>
+          <div style={styles.statLabel}>{t('dashboard.energy.avgPower')}</div>
           <div style={styles.statValue}>
             {energyData?.avg_power_w !== undefined ? (
               <>
@@ -341,22 +351,22 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
         </div>
 
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Thermal Status</div>
+          <div style={styles.statLabel}>{t('dashboard.energy.thermalStatus')}</div>
           <div style={{ ...styles.thermalStatus, color: thermal.color }}>
-            {thermal.label}
+            {t(thermal.labelKey)}
           </div>
         </div>
 
         {telemetry?.total_requests !== undefined && (
           <div style={styles.statCard}>
-            <div style={styles.statLabel}>Total Requests</div>
+            <div style={styles.statLabel}>{t('dashboard.energy.totalRequests')}</div>
             <div style={styles.statValue}>{telemetry.total_requests.toLocaleString()}</div>
           </div>
         )}
 
         {telemetry?.total_tokens !== undefined && (
           <div style={styles.statCard}>
-            <div style={styles.statLabel}>Total Tokens</div>
+            <div style={styles.statLabel}>{t('dashboard.energy.totalTokens')}</div>
             <div style={styles.statValue}>{telemetry.total_tokens.toLocaleString()}</div>
           </div>
         )}
@@ -365,7 +375,7 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
       {/* Power chart */}
       {chartData.length > 0 && (
         <div style={styles.chartContainer}>
-          <div style={styles.chartTitle}>Power Draw Over Time (W)</div>
+          <div style={styles.chartTitle}>{t('dashboard.energy.powerChartTitle')}</div>
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={chartData} margin={{ top: 4, right: 20, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />

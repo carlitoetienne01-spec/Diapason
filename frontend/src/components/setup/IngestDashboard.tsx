@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getSyncStatus } from '../../lib/connectors-api';
 import { SOURCE_CATALOG } from '../../types/connectors';
@@ -93,6 +95,7 @@ export function IngestDashboard({
   connectedIds: string[];
   onReady: () => void;
 }) {
+  const { t } = useTranslation();
   const [statuses, setStatuses] = useState<Record<string, SyncStatus | null>>(() =>
     Object.fromEntries(connectedIds.map((id) => [id, null])),
   );
@@ -169,9 +172,7 @@ export function IngestDashboard({
           Start Researching →
         </button>
         {!allDone && (
-          <p className="text-center text-xs mt-2" style={{ color: 'var(--color-text-tertiary)' }}>
-            Sync will continue in the background
-          </p>
+          <p className="text-center text-xs mt-2" style={{ color: 'var(--color-text-tertiary)' }}>{t('setup.ingest.background')}</p>
         )}
       </div>
     </div>

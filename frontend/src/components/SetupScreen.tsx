@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+
+import { useTranslation } from '../i18n/useTranslation';
 import { Loader2, CheckCircle2, XCircle, Cpu, Server, Database } from 'lucide-react';
 import {
   getSetupStatus,
@@ -75,6 +77,7 @@ function StepRow({
 }
 
 export function SetupScreen({ onReady }: { onReady: () => void }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const handedOffRef = useRef(false);
   const poll = useCallback(async () => {
@@ -139,9 +142,7 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
             Diapason
           </h1>
-          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Setting up your local AI...
-          </p>
+          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t('setup.starting')}</p>
         </div>
 
         {/* Steps */}

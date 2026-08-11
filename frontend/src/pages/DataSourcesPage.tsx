@@ -26,6 +26,12 @@ import { SOURCE_CATALOG } from '../types/connectors';
 import type { ConnectRequest } from '../types/connectors';
 import { listConnectors, connectSource, disconnectSource, getSyncStatus, triggerSync, startServerOAuth } from '../lib/connectors-api';
 import type { SyncStatus } from '../types/connectors';
+import { useTranslation } from '../i18n/useTranslation';
+
+/** The `t` returned by useTranslation, so module-level helpers can be handed
+ *  one instead of illegally calling the hook outside a component. */
+type Translate = ReturnType<typeof useTranslation>['t'];
+type TranslationKey = Parameters<Translate>[0];
 
 // ---------------------------------------------------------------------------
 // Inline connect form (reused from AgentsPage pattern)
@@ -40,6 +46,7 @@ function InlineConnectForm({
   loading: boolean;
   onSubmit: (req: ConnectRequest) => void;
 }) {
+  const { t } = useTranslation();
   const [inputs, setInputs] = useState<Record<string, string>>({});
 
   const update = (name: string, value: string) =>
@@ -92,7 +99,7 @@ function InlineConnectForm({
           borderRadius: 6, fontSize: 12, cursor: 'pointer',
         }}
       >
-        Connect
+        {t('common.connect')}
       </button>
     </div>
   );
@@ -105,6 +112,7 @@ function InlineConnectForm({
 const ACCEPTED_EXTENSIONS = '.txt,.md,.pdf,.docx,.csv';
 
 function UploadForm({ onDone }: { onDone?: () => void }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<'paste' | 'upload'>('paste');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -126,15 +134,15 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `Upload failed: ${res.status}`);
+        throw new Error(err.detail || t('sources.upload.failedStatus', { status: res.status }));
       }
       const data = await res.json();
-      setResult(`Added ${data.chunks_added} chunk${data.chunks_added !== 1 ? 's' : ''} to knowledge base`);
+      setResult(t('sources.upload.added', { count: data.chunks_added }));
       setTitle('');
       setContent('');
       onDone?.();
     } catch (err: any) {
-      setError(err.message || 'Upload failed');
+      setError(err.message || t('sources.upload.failed'));
     } finally {
       setBusy(false);
     }
@@ -156,15 +164,20 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `Upload failed: ${res.status}`);
+        throw new Error(err.detail || t('sources.upload.failedStatus', { status: res.status }));
       }
       const data = await res.json();
-      setResult(`Added ${data.chunks_added} chunk${data.chunks_added !== 1 ? 's' : ''} from ${files.length} file${files.length !== 1 ? 's' : ''}`);
+      setResult(
+        t('sources.upload.addedFromFiles', {
+          count: data.chunks_added,
+          files: t('sources.upload.fileCount', { count: files.length }),
+        }),
+      );
       setFiles([]);
       setTitle('');
       onDone?.();
     } catch (err: any) {
-      setError(err.message || 'Upload failed');
+      setError(err.message || t('sources.upload.failed'));
     } finally {
       setBusy(false);
     }
@@ -193,10 +206,10 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
       <div style={{ display: 'flex', gap: 4, marginBottom: 10,
         background: 'var(--color-bg)', borderRadius: 6, padding: 2 }}>
         <button style={tabStyle(tab === 'paste')} onClick={() => setTab('paste')}>
-          Paste Text
+          {t('sources.upload.tabPaste')}
         </button>
         <button style={tabStyle(tab === 'upload')} onClick={() => setTab('upload')}>
-          Upload Files
+          {t('sources.upload.tabUpload')}
         </button>
       </div>
 
@@ -204,7 +217,7 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Title (optional)"
+        placeholder={t('sources.upload.titlePlaceholder')}
         style={inputStyle}
       />
 
@@ -213,7 +226,7 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Paste your text here..."
+            placeholder={t('sources.upload.contentPlaceholder')}
             rows={6}
             style={{
               ...inputStyle,
@@ -232,7 +245,7 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
               borderRadius: 6, fontSize: 12, cursor: 'pointer',
             }}
           >
-            {busy ? 'Adding...' : 'Add to Knowledge Base'}
+            {busy ? t('sources.upload.adding') : t('sources.upload.addToKb')}
           </button>
         </>
       )}
@@ -264,7 +277,7 @@ function UploadForm({ onDone }: { onDone?: () => void }) {
               borderRadius: 6, fontSize: 12, cursor: 'pointer',
             }}
           >
-            {busy ? 'Uploading...' : 'Upload & Index'}
+            {busy ? t('sources.upload.uploading') : t('sources.upload.uploadAndIndex')}
           </button>
         </>
       )}
@@ -332,6 +345,7 @@ function GmailOAuthAdvanced({
   loading: boolean;
   onConnect: (req: ConnectRequest) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <div style={{ marginTop: 12 }}>
@@ -348,7 +362,7 @@ function GmailOAuthAdvanced({
           textDecoration: 'underline',
         }}
       >
-        {open ? 'Hide advanced' : 'Advanced: Connect with Google OAuth'}
+        {open ? t('sources.gmail.hideAdvanced') : t('sources.gmail.showAdvanced')}
       </button>
       {open && (
         <div
@@ -361,17 +375,16 @@ function GmailOAuthAdvanced({
           }}
         >
           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>
-            For developers with an existing Google Cloud project. Enable the
-            Gmail API and create a Desktop OAuth client at{' '}
+            {t('sources.gmail.oauthIntro')}{' '}
             <a
               href="https://console.cloud.google.com/apis/credentials"
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}
             >
-              Google Cloud Credentials →
+              {t('sources.gmail.oauthLinkLabel')}
             </a>{' '}
-            then paste the Client ID and Client Secret below.
+            {t('sources.gmail.oauthOutro')}
           </div>
           <InlineConnectForm
             fields={[
@@ -392,38 +405,34 @@ function GmailOAuthAdvanced({
 // ---------------------------------------------------------------------------
 
 // Sync status display component with progress bar
-function formatTimeAgo(iso: string | null | undefined): string | null {
+function formatTimeAgo(iso: string | null | undefined, t: Translate): string | null {
   if (!iso) return null;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return null;
-  const diffSec = (Date.now() - t) / 1000;
-  if (diffSec < 30) return 'just now';
-  if (diffSec < 60) return 'less than a min ago';
+  const stamp = new Date(iso).getTime();
+  if (Number.isNaN(stamp)) return null;
+  const diffSec = (Date.now() - stamp) / 1000;
+  if (diffSec < 30) return t('common.justNow');
+  if (diffSec < 60) return t('common.lessThanMinuteAgo');
   if (diffSec < 3600) {
-    const m = Math.round(diffSec / 60);
-    return `${m} min${m === 1 ? '' : 's'} ago`;
+    return t('common.minutesAgo', { count: Math.round(diffSec / 60) });
   }
   if (diffSec < 86400) {
-    const h = Math.round(diffSec / 3600);
-    return `${h} hr${h === 1 ? '' : 's'} ago`;
+    return t('common.hoursAgo', { count: Math.round(diffSec / 3600) });
   }
-  const d = Math.round(diffSec / 86400);
-  return `${d} day${d === 1 ? '' : 's'} ago`;
+  return t('common.daysAgo', { count: Math.round(diffSec / 86400) });
 }
 
 /** Render how far back the corpus extends, given the oldest indexed
  *  item's timestamp. Returns null when there isn't enough data yet. */
-function formatBacklogRange(iso: string | null | undefined): string | null {
+function formatBacklogRange(iso: string | null | undefined, t: Translate): string | null {
   if (!iso) return null;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return null;
-  const days = (Date.now() - t) / 86400_000;
-  if (days < 7) return 'past few days';
-  if (days < 30) return 'past month';
-  if (days < 90) return 'past 3 months';
-  if (days < 365) return 'past year';
-  const years = Math.round(days / 365);
-  return `past ${years} year${years === 1 ? '' : 's'}`;
+  const stamp = new Date(iso).getTime();
+  if (Number.isNaN(stamp)) return null;
+  const days = (Date.now() - stamp) / 86400_000;
+  if (days < 7) return t('sources.range.days');
+  if (days < 30) return t('sources.range.month');
+  if (days < 90) return t('sources.range.months3');
+  if (days < 365) return t('sources.range.year');
+  return t('sources.range.years', { count: Math.round(days / 365) });
 }
 
 function SyncStatusDisplay({
@@ -439,6 +448,7 @@ function SyncStatusDisplay({
   connectorId: string;
   onSyncTriggered: () => void;
 }) {
+  const { t } = useTranslation();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
 
@@ -449,7 +459,7 @@ function SyncStatusDisplay({
       await triggerSync(connectorId);
       onSyncTriggered();
     } catch (err: any) {
-      setSyncError(err.message || 'Sync failed');
+      setSyncError(err.message || t('sources.sync.failed'));
     } finally {
       setSyncing(false);
     }
@@ -460,7 +470,7 @@ function SyncStatusDisplay({
     return (
       <div>
         <div style={{ fontSize: 12, color: 'var(--color-error)', marginBottom: 4 }}>
-          Error: {sync.error}
+          {t('sources.sync.error', { message: sync.error })}
         </div>
         <button
           onClick={handleSync}
@@ -472,7 +482,7 @@ function SyncStatusDisplay({
             cursor: 'pointer', fontWeight: 600,
             opacity: syncing ? 0.5 : 1,
           }}
-        >{syncing ? 'Retrying...' : 'Retry Sync'}</button>
+        >{syncing ? t('common.retrying') : t('sources.sync.retry')}</button>
       </div>
     );
   }
@@ -483,7 +493,7 @@ function SyncStatusDisplay({
   // both the syncing and idle branches need to display consistently.
   const totalIndexed = sync?.items_synced ?? chunks;
   const itemsTotal = sync?.items_total ?? 0;
-  const backlogRange = formatBacklogRange(sync?.oldest_item_date);
+  const backlogRange = formatBacklogRange(sync?.oldest_item_date, t);
   // "Complete inbox" — the user has indexed everything reachable. Only
   // surface this label when idle (during a sync we always show how far
   // back we've gotten so far).
@@ -492,11 +502,11 @@ function SyncStatusDisplay({
 
   // Actively syncing — single status line + reassurance line.
   if (sync?.state === 'syncing' || syncing) {
-    const rangeLabel = backlogRange ?? 'building corpus';
+    const rangeLabel = backlogRange ?? t('sources.sync.buildingCorpus');
     return (
       <div>
         <div style={{ fontSize: 11, color: 'var(--color-warning)', marginBottom: 4 }}>
-          Indexed{' '}
+          {t('sources.sync.indexed')}{' '}
           <span key={totalIndexed} className="sync-bump">
             {totalIndexed.toLocaleString()} {unitLabel}
           </span>{' '}
@@ -504,11 +514,11 @@ function SyncStatusDisplay({
             ({rangeLabel})
           </span>{' '}
           <span style={{ color: 'var(--color-text-tertiary)' }}>
-            · Still indexing…
+            {'· '}{t('sources.sync.stillIndexing')}
           </span>
         </div>
         <div style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)' }}>
-          Deep Research available now · results improve as more {unitLabel} are indexed
+          {t('sources.sync.deepResearchNote', { unit: unitLabel })}
         </div>
       </div>
     );
@@ -517,15 +527,15 @@ function SyncStatusDisplay({
   // Idle — already has indexed items: show the corpus size + range or
   // "complete inbox" label, plus how long ago we last refreshed it.
   if (totalIndexed > 0) {
-    const lastSyncLabel = formatTimeAgo(sync?.last_sync);
+    const lastSyncLabel = formatTimeAgo(sync?.last_sync, t);
     const rangeLabel = isComplete
-      ? 'complete inbox'
+      ? t('sources.sync.completeInbox')
       : backlogRange;
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--color-success)' }}>
-            Indexed {totalIndexed.toLocaleString()} {unitLabel}
+            {t('sources.sync.indexed')} {totalIndexed.toLocaleString()} {unitLabel}
             {rangeLabel && (
               <span style={{ color: 'var(--color-text-tertiary)' }}>
                 {' '}({rangeLabel})
@@ -533,7 +543,7 @@ function SyncStatusDisplay({
             )}
             {lastSyncLabel && (
               <span style={{ color: 'var(--color-text-tertiary)' }}>
-                {' · '}Last synced {lastSyncLabel}
+                {' · '}{t('sources.sync.lastSynced', { time: lastSyncLabel })}
               </span>
             )}
           </span>
@@ -547,7 +557,7 @@ function SyncStatusDisplay({
               border: '1px solid var(--color-border)',
               borderRadius: 3, cursor: 'pointer',
             }}
-          >{syncing ? '...' : 'Re-sync'}</button>
+          >{syncing ? '...' : t('sources.sync.resync')}</button>
         </div>
         {syncError && (
           <div style={{ fontSize: 11, color: 'var(--color-error)', marginTop: 4 }}>
@@ -565,8 +575,8 @@ function SyncStatusDisplay({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
           {hasSynced
-            ? `Synced — 0 ${unitLabel} found`
-            : 'Connected — not synced yet'}
+            ? t('sources.sync.syncedNothingFound', { unit: unitLabel })
+            : t('sources.sync.notSyncedYet')}
         </span>
         <button
           onClick={handleSync}
@@ -578,11 +588,11 @@ function SyncStatusDisplay({
             cursor: 'pointer', fontWeight: 600,
             opacity: syncing ? 0.5 : 1,
           }}
-        >{syncing ? 'Syncing...' : hasSynced ? 'Re-sync' : 'Sync Now'}</button>
+        >{syncing ? t('sources.sync.syncing') : hasSynced ? t('sources.sync.resync') : t('sources.sync.syncNow')}</button>
       </div>
       {hasSynced && connectorId === 'slack' && (
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
-          Tip: invite the bot to channels with /invite @Diapason, then re-sync
+          {t('sources.sync.slackTip')}
         </div>
       )}
       {syncError && (
@@ -595,6 +605,7 @@ function SyncStatusDisplay({
 }
 
 function DataSourcesSection() {
+  const { t } = useTranslation();
   const cachedConnectors = useAppStore((s) => s.cachedConnectors);
   const setCachedConnectors = useAppStore((s) => s.setCachedConnectors);
   const connectors = cachedConnectors ?? [];
@@ -650,6 +661,10 @@ function DataSourcesSection() {
 
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectStage, setConnectStage] = useState<string>('');
+  // Progress is tracked as its own number rather than sniffed out of the stage
+  // label — the label is translated, so matching English words in it would
+  // freeze the bar at 25% in every other language.
+  const [connectProgress, setConnectProgress] = useState<number>(25);
   const [connectError, setConnectError] = useState<string>('');
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
@@ -670,7 +685,8 @@ function DataSourcesSection() {
   const handleConnect = async (id: string, req: ConnectRequest) => {
     setLoading(true);
     setConnectingId(id);
-    setConnectStage('Connecting...');
+    setConnectStage(t('common.connecting'));
+    setConnectProgress(25);
     setConnectError('');
     try {
       const resp = await connectSource(id, req);
@@ -682,11 +698,13 @@ function DataSourcesSection() {
       // and wait for the callback to flip the connector to connected. Without
       // this the connector would stay "pending" forever — the exact #512 bug.
       if (resp.status === 'oauth_required') {
-        setConnectStage('Opening Google sign-in...');
+        setConnectStage(t('sources.connect.openingGoogle'));
+        setConnectProgress(25);
         await startServerOAuth(id, resp.oauth_start);
       }
 
-      setConnectStage('Connected! Starting sync...');
+      setConnectStage(t('sources.connect.startingSync'));
+      setConnectProgress(50);
 
       // Wait for connector to show as connected
       for (let i = 0; i < 20; i++) {
@@ -702,11 +720,15 @@ function DataSourcesSection() {
           })));
           break;
         }
-        setConnectStage(i < 5 ? 'Authenticating...' : 'Waiting for connection...');
+        setConnectStage(
+          i < 5 ? t('sources.connect.authenticating') : t('sources.connect.waiting'),
+        );
+        setConnectProgress(25);
       }
 
       // Trigger sync
-      setConnectStage('Syncing data...');
+      setConnectStage(t('sources.connect.syncingData'));
+      setConnectProgress(75);
       try {
         await triggerSync(id);
       } catch { /* sync may already be running */ }
@@ -717,9 +739,9 @@ function DataSourcesSection() {
       loadConnectors();
       loadSyncStatuses();
     } catch (err: any) {
-      let errorMsg = err.message || 'Connection failed';
+      let errorMsg = err.message || t('common.connectionFailed');
       if (id === 'gmail_imap' && (errorMsg.includes('auth') || errorMsg.includes('credentials') || errorMsg.includes('LOGIN'))) {
-        errorMsg = 'Invalid credentials — make sure you\'re using an App Password (16 characters), not your regular Gmail password.';
+        errorMsg = t('sources.connect.gmailBadCredentials');
       }
       setConnectError(errorMsg);
       setConnectStage('');
@@ -767,7 +789,7 @@ function DataSourcesSection() {
       <div className="flex flex-col gap-5">
         <section>
           <div className="hud-label mb-2" style={{ color: 'var(--color-text-tertiary)' }}>
-            Loading sources…
+            {t('sources.loading')}
           </div>
           <div className="flex flex-col gap-2">
             {[0, 1, 2, 3].map((i) => (
@@ -794,7 +816,7 @@ function DataSourcesSection() {
         <section>
           <div className="hud-label mb-2 flex items-center gap-2">
             <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: 999, background: 'var(--color-success)' }} />
-            Connected · {connected.length}
+            {t('sources.connectedCount', { count: connected.length })}
           </div>
           <div className="flex flex-col gap-2">
           {connected.map((c) => {
@@ -843,7 +865,7 @@ function DataSourcesSection() {
                       opacity: disconnectingId === c.connector_id ? 0.5 : 1,
                     }}
                   >
-                    {disconnectingId === c.connector_id ? 'Disconnecting…' : 'Disconnect'}
+                    {disconnectingId === c.connector_id ? t('sources.disconnecting') : t('sources.disconnect')}
                   </button>
                 </div>
               </div>
@@ -858,7 +880,7 @@ function DataSourcesSection() {
         <section>
           <div className="hud-label mb-2 flex items-center gap-2">
             <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: 999, background: 'var(--color-text-tertiary)' }} />
-            Available · {notConnected.length}
+            {t('sources.availableCount', { count: notConnected.length })}
           </div>
           <div className="grid grid-cols-2 gap-2">
           {notConnected.map((c) => {
@@ -888,18 +910,18 @@ function DataSourcesSection() {
                       {meta?.display_name ?? c.display_name}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
-                      {meta?.description ?? 'Not connected'}
+                      {meta?.description ?? t('sources.notConnected')}
                     </div>
                   </div>
                   <span style={{ color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 500 }}>
-                    {isExpanded ? '× Close' : '+ Add'}
+                    {isExpanded ? `× ${t('common.close')}` : `+ ${t('common.add')}`}
                   </span>
                 </div>
 
                 {isExpanded && c.connector_id === 'upload' && (
                   <div style={{ borderTop: '1px solid var(--color-border)', padding: 12 }}>
                     <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
-                      Paste text or upload files (.txt, .md, .pdf, .docx, .csv) to add them to your knowledge base.
+                      {t('sources.upload.description')}
                     </div>
                     <UploadForm onDone={loadConnectors} />
                   </div>
@@ -918,7 +940,7 @@ function DataSourcesSection() {
                         }}
                       >
                         <div style={{ color: 'var(--color-accent-purple)', fontSize: 10, fontWeight: 600, marginBottom: 3 }}>
-                          STEP {i + 1}
+                          {t('sources.stepNumber', { number: i + 1 })}
                         </div>
                         <div style={{ fontSize: 12, marginBottom: step.url ? 4 : 0 }}>{step.label}</div>
                         {step.url && (
@@ -928,7 +950,7 @@ function DataSourcesSection() {
                             rel="noopener noreferrer"
                             style={{ color: 'var(--color-accent)', fontSize: 11, textDecoration: 'underline' }}
                           >
-                            {step.urlLabel || 'Open'} &rarr;
+                            {step.urlLabel || t('common.open')} &rarr;
                           </a>
                         )}
                       </div>
@@ -949,7 +971,7 @@ function DataSourcesSection() {
                     {meta?.troubleshooting && (
                       <details className="mt-2">
                         <summary className="text-[11px] cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
-                          Having trouble?
+                          {t('sources.havingTrouble')}
                         </summary>
                         <ul className="mt-1 space-y-1">
                           {meta.troubleshooting.map((tip: string, i: number) => (
@@ -981,7 +1003,7 @@ function DataSourcesSection() {
                         }}>
                           <div style={{
                             height: '100%', borderRadius: 2, background: 'var(--color-warning)',
-                            width: connectStage.includes('Sync') ? '75%' : connectStage.includes('Connected') ? '50%' : '25%',
+                            width: `${connectProgress}%`,
                             transition: 'width 0.5s ease',
                           }} />
                         </div>
@@ -1011,21 +1033,29 @@ function DataSourcesSection() {
 
 interface ChannelField {
   key: string;
+  /** Slack's own field names \u2014 deliberately not translated, so they match
+   *  what the user reads in the Slack admin UI. */
   label: string;
   placeholder: string;
   type?: 'text' | 'password';
   required?: boolean;
 }
 
+/** A setup step is either prose to translate, or a verbatim blob (the Slack
+ *  app manifest) that must be copied byte-for-byte and so is never localised. */
+type ChannelSetupStep =
+  | { kind: 'text'; key: TranslationKey }
+  | { kind: 'copyable'; text: string };
+
 interface MessagingChannelConfig {
   type: string;
   name: string;
   icon: string;
-  description: string;
-  setupSteps: string[];
+  descriptionKey: TranslationKey;
+  setupSteps: ChannelSetupStep[];
   fields: ChannelField[];
-  activeLabel: (cfg: Record<string, unknown>) => string;
-  howToUse: (cfg: Record<string, unknown>) => string;
+  activeLabelKey: TranslationKey;
+  howToUseKey: TranslationKey;
 }
 
 const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
@@ -1033,23 +1063,23 @@ const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
     type: 'slack',
     name: 'Slack',
     icon: '#',
-    description: 'DM your agent in any Slack workspace',
+    descriptionKey: 'channels.slack.description',
     setupSteps: [
-      '1. Go to api.slack.com/apps \u2192 click "Create New App" \u2192 choose "From an app manifest"',
-      '2. Select your workspace. When asked for the manifest format, choose JSON. Then paste the manifest below (click "Copy" to copy it):',
-      'COPYABLE:{"display_information":{"name":"Diapason"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"Diapason","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}',
-      '3. Click "Next" \u2192 review the summary \u2192 click "Create". Then go to "Install App" in the left sidebar \u2192 click "Install to Workspace" \u2192 click "Allow"',
-      '4. In the left sidebar, click "OAuth & Permissions". Copy the "Bot User OAuth Token" (starts with xoxb-...)',
-      '5. In the left sidebar, click "Basic Information" \u2192 scroll to "App-Level Tokens" \u2192 click "Generate Token and Scopes" \u2192 name it "socket" \u2192 click "Add Scope" \u2192 select "connections:write" \u2192 click "Generate" \u2192 copy the token (starts with xapp-...)',
-      '6. (Optional) Still in "Basic Information", scroll to "Display Information" \u2192 upload the Diapason icon as the app icon',
-      '7. Paste both tokens below and click Connect',
+      { kind: 'text', key: 'channels.slack.step1' },
+      { kind: 'text', key: 'channels.slack.step2' },
+      { kind: 'copyable', text: '{"display_information":{"name":"Diapason"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"Diapason","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}' },
+      { kind: 'text', key: 'channels.slack.step3' },
+      { kind: 'text', key: 'channels.slack.step4' },
+      { kind: 'text', key: 'channels.slack.step5' },
+      { kind: 'text', key: 'channels.slack.step6' },
+      { kind: 'text', key: 'channels.slack.step7' },
     ],
     fields: [
       { key: 'bot_token', label: 'Bot Token', placeholder: 'xoxb-...', type: 'password', required: true },
       { key: 'app_token', label: 'App Token', placeholder: 'xapp-...', type: 'password', required: true },
     ],
-    activeLabel: () => 'Connected to Slack',
-    howToUse: () => 'Open Slack and DM @Diapason to talk to your agent.',
+    activeLabelKey: 'channels.slack.active',
+    howToUseKey: 'channels.slack.howToUse',
   },
 ];
 
@@ -1065,6 +1095,7 @@ function SendBlueSection({
   onDone: () => void;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
@@ -1107,7 +1138,9 @@ function SendBlueSection({
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: 13 }}>iMessage + SMS</div>
             <div style={{ fontSize: 11, color: 'var(--color-success)' }}>
-              Active &mdash; text {(cfg.phone_number as string) || 'your number'} to chat
+              {t('channels.sendblue.activeLabel', {
+                phone: (cfg.phone_number as string) || t('channels.sendblue.yourNumber'),
+              })}
             </div>
           </div>
           <button
@@ -1119,7 +1152,7 @@ function SendBlueSection({
               border: '1px solid var(--color-border)',
               borderRadius: 4, cursor: 'pointer',
             }}
-          >Remove</button>
+          >{t('common.remove')}</button>
         </div>
         {health && (
           <div style={{
@@ -1127,7 +1160,11 @@ function SendBlueSection({
             padding: '8px 14px', fontSize: 11,
             color: 'var(--color-text-secondary)',
           }}>
-            Webhook: {health.webhook_registered ? 'registered' : 'not registered'}
+            {t('channels.sendblue.webhookStatus', {
+              status: health.webhook_registered
+                ? t('channels.sendblue.registeredState')
+                : t('channels.sendblue.notRegisteredState'),
+            })}
             {health.phone_number && ` \u2022 ${health.phone_number}`}
           </div>
         )}
@@ -1145,11 +1182,11 @@ function SendBlueSection({
   // Not active — setup wizard
   const steps = [
     {
-      title: 'Get SendBlue API keys',
+      title: t('channels.sendblue.step1Title'),
       content: (
         <div>
           <div style={{ fontSize: 12, marginBottom: 8 }}>
-            SendBlue lets your agent send and receive iMessages and SMS. You need an account and API credentials.
+            {t('channels.sendblue.step1Intro')}
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <a
@@ -1158,7 +1195,7 @@ function SendBlueSection({
               rel="noopener noreferrer"
               style={{ color: 'var(--color-accent)', fontSize: 12, textDecoration: 'underline' }}
             >
-              1. Sign up at sendblue.co &rarr;
+              {t('channels.sendblue.signUpLink')} &rarr;
             </a>
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -1168,11 +1205,11 @@ function SendBlueSection({
               rel="noopener noreferrer"
               style={{ color: 'var(--color-accent)', fontSize: 12, textDecoration: 'underline' }}
             >
-              2. Go to your API Credentials page &rarr;
+              {t('channels.sendblue.credentialsLink')} &rarr;
             </a>
           </div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
-            Copy the "API Key" and "API Secret" from the credentials page and paste them below.
+            {t('channels.sendblue.copyKeys')}
           </div>
           <input value={apiKey} onChange={(e) => setApiKey(e.target.value)}
             placeholder="API Key" style={{ ...inputStyle, marginTop: 4 }} />
@@ -1183,11 +1220,11 @@ function SendBlueSection({
       canAdvance: apiKey.trim() && apiSecret.trim(),
     },
     {
-      title: 'Enter your phone number',
+      title: t('channels.sendblue.step2Title'),
       content: (
         <div>
           <div style={{ fontSize: 12, marginBottom: 8 }}>
-            Which phone number should SendBlue use? This is the number people will text to reach your agent.
+            {t('channels.sendblue.step2Intro')}
           </div>
           <input value={phone} onChange={(e) => setPhone(e.target.value)}
             placeholder="+1XXXXXXXXXX" style={inputStyle} />
@@ -1196,11 +1233,11 @@ function SendBlueSection({
       canAdvance: phone.trim().length >= 10,
     },
     {
-      title: 'Set up webhook (ngrok tunnel)',
+      title: t('channels.sendblue.step3Title'),
       content: (
         <div>
           <div style={{ fontSize: 12, marginBottom: 8 }}>
-            SendBlue needs a public URL to send incoming messages to your local server. Use ngrok to create a tunnel.
+            {t('channels.sendblue.step3Intro')}
           </div>
           <div style={{
             fontSize: 11, lineHeight: 1.6,
@@ -1210,9 +1247,9 @@ function SendBlueSection({
             borderRadius: 6,
             borderLeft: '3px solid var(--color-accent, var(--color-accent-purple))',
           }}>
-            <div><strong>1.</strong> Open a terminal and run: <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>ngrok http 8000</code></div>
-            <div style={{ marginTop: 4 }}><strong>2.</strong> Copy the <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>https://</code> forwarding URL (e.g. https://abc123.ngrok.io)</div>
-            <div style={{ marginTop: 4 }}><strong>3.</strong> Paste it below and click "Register Webhook"</div>
+            <div><strong>1.</strong> {t('channels.sendblue.ngrok1')} <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>ngrok http 8000</code></div>
+            <div style={{ marginTop: 4 }}><strong>2.</strong> {t('channels.sendblue.ngrok2Before')} <code style={{ color: 'var(--color-accent)', background: 'var(--color-bg)', padding: '1px 4px', borderRadius: 3 }}>https://</code> {t('channels.sendblue.ngrok2After')}</div>
+            <div style={{ marginTop: 4 }}><strong>3.</strong> {t('channels.sendblue.ngrok3')}</div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
@@ -1232,24 +1269,24 @@ function SendBlueSection({
                 opacity: !webhookUrl.trim() || webhookStatus === 'registering' ? 0.5 : 1,
               }}
             >
-              {webhookStatus === 'registering' ? 'Registering...'
-                : webhookStatus === 'done' ? 'Registered!'
-                : webhookStatus === 'error' ? 'Retry'
-                : 'Register Webhook'}
+              {webhookStatus === 'registering' ? t('channels.sendblue.registering')
+                : webhookStatus === 'done' ? t('channels.sendblue.registeredDone')
+                : webhookStatus === 'error' ? t('common.retry')
+                : t('channels.sendblue.registerWebhook')}
             </button>
           </div>
           {webhookStatus === 'done' && (
             <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 6 }}>
-              Webhook registered! Incoming texts will be forwarded to your agent.
+              {t('channels.sendblue.registerSuccess')}
             </div>
           )}
           {webhookStatus === 'error' && (
             <div style={{ fontSize: 11, color: 'var(--color-error)', marginTop: 6 }}>
-              Failed to register webhook. Check your ngrok URL and SendBlue credentials.
+              {t('channels.sendblue.registerError')}
             </div>
           )}
           <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
-            Don't have ngrok? <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>Download it free</a>. You can also skip this step and register the webhook later.
+            {t('channels.sendblue.noNgrok')} <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>{t('channels.sendblue.downloadNgrok')}</a>. {t('channels.sendblue.skipWebhook')}
           </div>
         </div>
       ),
@@ -1282,7 +1319,7 @@ function SendBlueSection({
       setWebhookUrl('');
       setWebhookStatus('idle');
     } catch (err: any) {
-      setError(err.message || 'Failed to connect');
+      setError(err.message || t('common.connectionFailed'));
     } finally {
       setLoading(false);
     }
@@ -1306,11 +1343,11 @@ function SendBlueSection({
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>iMessage + SMS (SendBlue)</div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-            Let people text your agent from any phone
+            {t('channels.sendblue.tagline')}
           </div>
         </div>
         <span style={{ color: 'var(--color-accent-purple)', fontSize: 11, fontWeight: 500 }}>
-          {step >= 0 ? 'Set Up' : '+ Add'}
+          {step >= 0 ? t('common.setUp') : `+ ${t('common.add')}`}
         </span>
       </div>
 
@@ -1349,7 +1386,7 @@ function SendBlueSection({
                   border: '1px solid var(--color-border)',
                   borderRadius: 5, cursor: 'pointer',
                 }}
-              >Back</button>
+              >{t('common.back')}</button>
             )}
             {step < steps.length - 1 ? (
               <button
@@ -1362,7 +1399,7 @@ function SendBlueSection({
                   cursor: 'pointer', fontWeight: 600,
                   opacity: steps[step]?.canAdvance ? 1 : 0.5,
                 }}
-              >Next</button>
+              >{t('common.next')}</button>
             ) : (
               <button
                 onClick={handleFinish}
@@ -1374,7 +1411,7 @@ function SendBlueSection({
                   cursor: 'pointer', fontWeight: 600,
                   opacity: loading || !steps[step]?.canAdvance ? 0.5 : 1,
                 }}
-              >{loading ? 'Connecting...' : 'Connect'}</button>
+              >{loading ? t('common.connecting') : t('common.connect')}</button>
             )}
           </div>
         </div>
@@ -1384,6 +1421,7 @@ function SendBlueSection({
 }
 
 function MessagingSection({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [bindings, setBindings] = useState<ChannelBinding[]>([]);
   const [setupType, setSetupType] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -1443,7 +1481,6 @@ function MessagingSection({ agentId }: { agentId: string }) {
       {/* Other messaging channels */}
       {MESSAGING_CHANNELS.map((ch) => {
         const binding = bindings.find((b) => b.channel_type === ch.type);
-        const cfg = (binding?.config || {}) as Record<string, unknown>;
         const isSetup = setupType === ch.type;
         const canConnect = ch.fields.every((f) => !f.required || formValues[f.key]?.trim());
 
@@ -1464,7 +1501,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                   fontSize: 11,
                   color: binding ? 'var(--color-success)' : 'var(--color-text-secondary)',
                 }}>
-                  {binding ? ch.activeLabel(cfg) : ch.description}
+                  {binding ? t(ch.activeLabelKey) : t(ch.descriptionKey)}
                 </div>
               </div>
               {binding ? (
@@ -1473,7 +1510,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                     background: 'color-mix(in srgb, var(--color-success) 22%, transparent)', color: 'var(--color-success)',
                     padding: '2px 8px', borderRadius: 10,
                     fontSize: 10, fontWeight: 600,
-                  }}>Active</span>
+                  }}>{t('common.active')}</span>
                   <button
                     onClick={() => handleRemove(binding.id)}
                     style={{
@@ -1482,7 +1519,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                       border: '1px solid var(--color-border)',
                       borderRadius: 4, cursor: 'pointer',
                     }}
-                  >Remove</button>
+                  >{t('common.remove')}</button>
                 </div>
               ) : (
                 <button
@@ -1492,7 +1529,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                     color: 'var(--color-on-accent)', border: 'none', borderRadius: 5,
                     cursor: 'pointer', fontWeight: 600,
                   }}
-                >{isSetup ? 'Cancel' : 'Set Up'}</button>
+                >{isSetup ? t('common.cancel') : t('common.setUp')}</button>
               )}
             </div>
 
@@ -1503,7 +1540,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
               }}>
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                   <span style={{ flexShrink: 0 }}>{'\u2192'}</span>
-                  <span>{ch.howToUse(cfg)}</span>
+                  <span>{t(ch.howToUseKey)}</span>
                 </div>
               </div>
             )}
@@ -1522,8 +1559,8 @@ function MessagingSection({ agentId }: { agentId: string }) {
                   borderLeft: '3px solid var(--color-accent, var(--color-accent-purple))',
                 }}>
                   {ch.setupSteps.map((s, i) => {
-                    if (s.startsWith('COPYABLE:')) {
-                      const text = s.slice(9);
+                    if (s.kind === 'copyable') {
+                      const text = s.text;
                       return (
                         <div key={i} style={{ marginBottom: 6, marginTop: 4 }}>
                           <div style={{
@@ -1545,13 +1582,13 @@ function MessagingSection({ agentId }: { agentId: string }) {
                                 border: 'none', borderRadius: 3,
                                 cursor: 'pointer', fontWeight: 600,
                               }}
-                            >Copy</button>
+                            >{t('common.copy')}</button>
                           </div>
                         </div>
                       );
                     }
                     return (
-                      <div key={i} style={{ marginBottom: i < ch.setupSteps.length - 1 ? 4 : 0 }}>{s}</div>
+                      <div key={i} style={{ marginBottom: i < ch.setupSteps.length - 1 ? 4 : 0 }}>{t(s.key)}</div>
                     );
                   })}
                 </div>
@@ -1582,7 +1619,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                     cursor: 'pointer', fontWeight: 600,
                     opacity: loading || !canConnect ? 0.5 : 1, marginTop: 4,
                   }}
-                >{loading ? 'Connecting...' : 'Connect'}</button>
+                >{loading ? t('common.connecting') : t('common.connect')}</button>
               </div>
             )}
           </div>
@@ -1597,6 +1634,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
 // ---------------------------------------------------------------------------
 
 function MemorySection() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [statsError, setStatsError] = useState('');
 
@@ -1623,8 +1661,8 @@ function MemorySection() {
   const loadStats = useCallback(() => {
     getMemoryStats()
       .then((s) => { setStats(s); setStatsError(''); })
-      .catch(() => setStatsError('Could not reach memory backend'));
-  }, []);
+      .catch(() => setStatsError(t('memory.backendUnreachable')));
+  }, [t]);
 
   useEffect(() => {
     loadStats();
@@ -1652,7 +1690,7 @@ function MemorySection() {
     if (isTauri()) {
       try {
         const { open } = await import('@tauri-apps/plugin-dialog');
-        const selected = await open({ directory: true, multiple: false, title: 'Select folder to index' });
+        const selected = await open({ directory: true, multiple: false, title: t('memory.selectFolderTitle') });
         if (selected) setIndexPath(selected as string);
         return;
       } catch {
@@ -1680,11 +1718,11 @@ function MemorySection() {
     setIndexError('');
     try {
       const res = await indexMemoryPath(indexPath.trim());
-      setIndexResult(`Indexed ${res.chunks_indexed} chunk${res.chunks_indexed !== 1 ? 's' : ''}`);
+      setIndexResult(t('memory.indexedChunks', { count: res.chunks_indexed }));
       setIndexPath('');
       loadStats();
     } catch (err: any) {
-      setIndexError(err.message || 'Indexing failed');
+      setIndexError(err.message || t('memory.indexFailed'));
     } finally {
       setIndexing(false);
     }
@@ -1697,11 +1735,11 @@ function MemorySection() {
     setStoreError('');
     try {
       await storeMemory(storeContent.trim());
-      setStoreResult('Stored successfully');
+      setStoreResult(t('memory.storeSuccess'));
       setStoreContent('');
       loadStats();
     } catch (err: any) {
-      setStoreError(err.message || 'Failed to store');
+      setStoreError(err.message || t('memory.storeFailed'));
     } finally {
       setStoring(false);
     }
@@ -1726,7 +1764,7 @@ function MemorySection() {
               <Brain size={18} style={{ color: 'var(--color-accent-purple)' }} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Memory Backend</h3>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{t('memory.backendTitle')}</h3>
               {statsError ? (
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{statsError}</p>
               ) : stats ? (
@@ -1735,11 +1773,14 @@ function MemorySection() {
                     background: stats.entries > 0 ? 'var(--color-success)' : 'var(--color-text-tertiary)',
                   }} />
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                    {stats.backend} &middot; {stats.entries.toLocaleString()} {stats.entries === 1 ? 'chunk' : 'chunks'}
+                    {stats.backend} &middot; {t('memory.chunkCount', {
+                      count: stats.entries,
+                      n: stats.entries.toLocaleString(),
+                    })}
                   </span>
                 </div>
               ) : (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>Connecting...</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{t('common.connecting')}</p>
               )}
             </div>
           </div>
@@ -1749,7 +1790,7 @@ function MemorySection() {
                 {stats.entries.toLocaleString()}
               </div>
               <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
-                indexed
+                {t('memory.indexedLabel')}
               </div>
             </div>
           )}
@@ -1763,7 +1804,7 @@ function MemorySection() {
       >
         <div className="flex items-center gap-2 mb-3">
           <Search size={14} style={{ color: 'var(--color-accent-purple)' }} />
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Search Memory</h3>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{t('memory.searchTitle')}</h3>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 relative">
@@ -1771,7 +1812,7 @@ function MemorySection() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-              placeholder="What are you looking for?"
+              placeholder={t('memory.searchPlaceholder')}
               className="w-full text-sm px-3 py-2 rounded-lg outline-none transition-colors"
               style={{
                 background: 'var(--color-bg)',
@@ -1791,7 +1832,7 @@ function MemorySection() {
             }}
           >
             {searching ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
-            {searching ? 'Searching' : 'Search'}
+            {searching ? t('common.searching') : t('common.search')}
           </button>
         </div>
 
@@ -1799,7 +1840,7 @@ function MemorySection() {
         {searchDone && searchResults.length === 0 && (
           <div className="flex flex-col items-center py-6 gap-2">
             <Search size={20} style={{ color: 'var(--color-text-tertiary)', opacity: 0.4 }} />
-            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>No matching memories found</p>
+            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t('memory.noResults')}</p>
           </div>
         )}
         {searchResults.length > 0 && (
@@ -1829,7 +1870,7 @@ function MemorySection() {
                         ? 'var(--color-warning)'
                         : 'var(--color-text-tertiary)',
                   }}>
-                    {(r.score * 100).toFixed(0)}% match
+                    {t('memory.matchPercent', { percent: (r.score * 100).toFixed(0) })}
                   </span>
                   {r.metadata?.source != null && (
                     <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -1852,10 +1893,10 @@ function MemorySection() {
         >
           <div className="flex items-center gap-2 mb-3">
             <FolderOpen size={14} style={{ color: 'var(--color-accent-purple)' }} />
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Index Folder</h3>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{t('memory.indexFolderTitle')}</h3>
           </div>
           <p className="text-xs mb-3" style={{ color: 'var(--color-text-tertiary)' }}>
-            Scan a folder and index all supported files into memory.
+            {t('memory.indexFolderDescription')}
           </p>
           <div className="flex gap-2 mb-2">
             <input
@@ -1880,7 +1921,7 @@ function MemorySection() {
                 }}
               >
                 <FolderOpen size={12} />
-                Browse
+                {t('common.browse')}
               </button>
             )}
           </div>
@@ -1895,7 +1936,7 @@ function MemorySection() {
             }}
           >
             {indexing && <Loader2 size={13} className="animate-spin" />}
-            {indexing ? 'Indexing files...' : 'Index'}
+            {indexing ? t('memory.indexing') : t('memory.index')}
           </button>
           {indexResult && (
             <p className="text-xs mt-2 font-medium" style={{ color: 'var(--color-success)' }}>{indexResult}</p>
@@ -1912,15 +1953,15 @@ function MemorySection() {
         >
           <div className="flex items-center gap-2 mb-3">
             <FileText size={14} style={{ color: 'var(--color-accent-purple)' }} />
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Store Text</h3>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{t('memory.storeTitle')}</h3>
           </div>
           <p className="text-xs mb-3" style={{ color: 'var(--color-text-tertiary)' }}>
-            Paste any text to add directly to your memory store.
+            {t('memory.storeDescription')}
           </p>
           <textarea
             value={storeContent}
             onChange={(e) => setStoreContent(e.target.value)}
-            placeholder="Paste or type content here..."
+            placeholder={t('memory.storePlaceholder')}
             rows={4}
             className="w-full text-sm px-3 py-2 rounded-lg outline-none resize-y"
             style={{
@@ -1943,7 +1984,7 @@ function MemorySection() {
             }}
           >
             {storing && <Loader2 size={13} className="animate-spin" />}
-            {storing ? 'Storing...' : 'Store'}
+            {storing ? t('memory.storing') : t('memory.store')}
           </button>
           {storeResult && (
             <p className="text-xs mt-2 font-medium" style={{ color: 'var(--color-success)' }}>{storeResult}</p>
@@ -1962,6 +2003,7 @@ function MemorySection() {
 // ---------------------------------------------------------------------------
 
 export function DataSourcesPage() {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<ManagedAgent[]>([]);
   const [activeTab, setActiveTab] = useState<'sources' | 'messaging' | 'memory'>('sources');
   const [creatingAgent, setCreatingAgent] = useState(false);
@@ -1981,7 +2023,7 @@ export function DataSourcesPage() {
     setCreatingAgent(true);
     try {
       const agent = await createManagedAgent({
-        name: "My Assistant",
+        name: t('agents.defaultAssistantName'),
         template_id: "personal_deep_research",
       });
       setAgents((prev) => [...prev, agent]);
@@ -1991,7 +2033,7 @@ export function DataSourcesPage() {
     } finally {
       setCreatingAgent(false);
     }
-  }, [firstAgent]);
+  }, [firstAgent, t]);
 
   // Auto-create agent when switching to messaging tab
   useEffect(() => {
@@ -2001,9 +2043,9 @@ export function DataSourcesPage() {
   }, [activeTab, firstAgent, creatingAgent, ensureAgent]);
 
   const tabs = [
-    { id: 'sources' as const, label: 'Data Sources', icon: Database },
-    { id: 'messaging' as const, label: 'Messaging Channels', icon: MessageSquare },
-    { id: 'memory' as const, label: 'Memory', icon: Brain },
+    { id: 'sources' as const, label: t('sources.tab.sources'), icon: Database },
+    { id: 'messaging' as const, label: t('sources.tab.messaging'), icon: MessageSquare },
+    { id: 'memory' as const, label: t('sources.tab.memory'), icon: Brain },
   ];
 
   return (
@@ -2011,10 +2053,10 @@ export function DataSourcesPage() {
       <div className="max-w-5xl mx-auto">
       <header className="mb-6">
         <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-          Data Sources, Channels &amp; Memory
+          {t('sources.pageTitle')}
         </h1>
         <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
-          Connect personal data so the assistant can search across everything, and set up messaging channels to chat from your phone.
+          {t('sources.pageSubtitle')}
         </p>
       </header>
 
@@ -2056,7 +2098,7 @@ export function DataSourcesPage() {
           ) : creatingAgent ? (
             <div className="flex items-center gap-3 p-4 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
-              Setting up your assistant...
+              {t('sources.settingUpAssistant')}
             </div>
           ) : null
         )}

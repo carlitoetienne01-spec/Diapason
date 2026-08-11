@@ -1,4 +1,6 @@
 import { useState } from 'react';
+
+import { useTranslation } from '../../i18n/useTranslation';
 import {
   Mail,
   Hash,
@@ -116,6 +118,7 @@ const CATEGORIES: { key: 'communication' | 'documents' | 'pim'; label: string }[
 ];
 
 export function SourcePicker({ onContinue }: { onContinue: (selectedIds: string[]) => void }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) => {
@@ -134,12 +137,8 @@ export function SourcePicker({ onContinue }: { onContinue: (selectedIds: string[
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
-          Connect your sources
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          Choose which data sources to include in your personal knowledge base.
-        </p>
+        <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>{t('setup.sources.title')}</h2>
+        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t('setup.sources.help')}</p>
       </div>
 
       {/* Cards by category */}

@@ -16,6 +16,12 @@ import {
   fetchAgentTraces,
 } from '../../lib/api';
 import type { ManagedAgent, AgentTask, AgentMessage, AgentTemplate, LearningLogEntry, AgentTrace } from '../../lib/api';
+import { useTranslation } from '../../i18n/useTranslation';
+
+// Module-level helpers cannot call the hook, so they take `t` as an argument
+// and the components hand it down.
+type Translate = ReturnType<typeof useTranslation>['t'];
+type TranslationKey = Parameters<Translate>[0];
 
 // ---------------------------------------------------------------------------
 // Colors — Catppuccin Mocha
@@ -65,25 +71,42 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
   stalled: C.yellow,
 };
 
+const STATUS_LABEL_KEY: Record<AgentStatus, TranslationKey> = {
+  idle: 'agents.status.idle',
+  running: 'agents.status.running',
+  paused: 'agents.status.paused',
+  error: 'agents.status.error',
+  archived: 'agents.status.archived',
+  needs_attention: 'agents.status.needsAttention',
+  budget_exceeded: 'agents.status.budgetExceeded',
+  stalled: 'agents.status.stalled',
+};
+
 function statusDotColor(s: string): string {
   return STATUS_COLOR[s as AgentStatus] || C.overlay0;
 }
 
-function formatRelativeTime(ts?: number | null): string {
-  if (!ts) return 'Never';
-  const diff = Date.now() - ts * 1000;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function statusLabel(t: Translate, s: string): string {
+  const key = STATUS_LABEL_KEY[s as AgentStatus];
+  // An unknown status from the server still has to read as something.
+  return key ? t(key) : s.replace('_', ' ');
 }
 
-function formatSchedule(type?: string, value?: string): string {
-  if (!type || type === 'manual') return 'Manual';
-  if (type === 'cron') return value ? `Cron: ${value}` : 'Cron';
-  if (type === 'interval') return value ? `Every ${value}` : 'Interval';
+function formatRelativeTime(t: Translate, ts?: number | null): string {
+  if (!ts) return t('agents.time.never');
+  const diff = Date.now() - ts * 1000;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return t('agents.time.justNow');
+  if (mins < 60) return t('agents.time.minutesAgo', { count: mins });
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return t('agents.time.hoursAgo', { count: hours });
+  return t('agents.time.daysAgo', { count: Math.floor(hours / 24) });
+}
+
+function formatSchedule(t: Translate, type?: string, value?: string): string {
+  if (!type || type === 'manual') return t('agents.schedule.manual');
+  if (type === 'cron') return value ? t('agents.schedule.cronValue', { value }) : t('agents.schedule.cron');
+  if (type === 'interval') return value ? t('agents.schedule.intervalValue', { value }) : t('agents.schedule.interval');
   return type;
 }
 
@@ -97,13 +120,13 @@ function formatCost(cost?: number): string {
 // Launch Wizard
 // ---------------------------------------------------------------------------
 
-const AVAILABLE_TOOLS = [
-  { id: 'web_search', label: 'Web Search' },
-  { id: 'code_interpreter', label: 'Code Interpreter' },
-  { id: 'file_read', label: 'File Read' },
-  { id: 'shell_exec', label: 'Shell Exec' },
-  { id: 'browser', label: 'Browser' },
-  { id: 'calculator', label: 'Calculator' },
+const AVAILABLE_TOOLS: { id: string; labelKey: TranslationKey }[] = [
+  { id: 'web_search', labelKey: 'agents.tool.webSearch' },
+  { id: 'code_interpreter', labelKey: 'agents.tool.codeInterpreter' },
+  { id: 'file_read', labelKey: 'agents.tool.fileRead' },
+  { id: 'shell_exec', labelKey: 'agents.tool.shellExec' },
+  { id: 'browser', labelKey: 'agents.tool.browser' },
+  { id: 'calculator', labelKey: 'agents.tool.calculator' },
 ];
 
 interface WizardState {
@@ -128,6 +151,7 @@ function LaunchWizard({
   onClose: () => void;
   onLaunched: () => void;
 }) {
+  const { t } = useTranslation();
   const [wizard, setWizard] = useState<WizardState>({
     step: 1,
     templateId: '',
@@ -147,18 +171,18 @@ function LaunchWizard({
 
   function toggleTool(id: string) {
     const next = wizard.selectedTools.includes(id)
-      ? wizard.selectedTools.filter((t) => t !== id)
+      ? wizard.selectedTools.filter((toolId) => toolId !== id)
       : [...wizard.selectedTools, id];
     update({ selectedTools: next });
   }
 
   function selectTemplate(id: string) {
-    const tpl = templates.find((t) => t.id === id);
+    const tpl = templates.find((candidate) => candidate.id === id);
     update({ templateId: id, name: tpl?.name || wizard.name });
   }
 
   async function handleLaunch() {
-    if (!wizard.name.trim()) { setError('Agent name is required.'); return; }
+    if (!wizard.name.trim()) { setError(t('agents.wizard.nameRequired')); return; }
     setLaunching(true);
     setError('');
     try {
@@ -176,7 +200,7 @@ function LaunchWizard({
       });
       onLaunched();
     } catch {
-      setError('Failed to create agent. Please try again.');
+      setError(t('agents.wizard.createFailed'));
     } finally {
       setLaunching(false);
     }
@@ -203,6 +227,29 @@ function LaunchWizard({
     ...inputStyle, cursor: 'pointer',
   };
 
+  const reviewRows: { key: string; label: string; value: string }[] = [
+    { key: 'name', label: t('common.name'), value: wizard.name || t('agents.wizard.unnamed') },
+    {
+      key: 'template',
+      label: t('agents.wizard.template'),
+      value: wizard.templateId
+        ? (templates.find((tpl) => tpl.id === wizard.templateId)?.name ?? wizard.templateId)
+        : t('agents.wizard.templateCustom'),
+    },
+    { key: 'schedule', label: t('agents.field.schedule'), value: formatSchedule(t, wizard.scheduleType, wizard.scheduleValue) },
+    {
+      key: 'tools',
+      label: t('common.tools'),
+      value: wizard.selectedTools.length > 0 ? wizard.selectedTools.join(', ') : t('common.none'),
+    },
+    { key: 'budget', label: t('agents.field.budget'), value: wizard.budget ? `$${wizard.budget}` : t('common.unlimited') },
+    {
+      key: 'learning',
+      label: t('agents.tab.learning'),
+      value: wizard.learningEnabled ? t('common.enabled') : t('common.disabled'),
+    },
+  ];
+
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={dialogStyle}>
@@ -210,7 +257,7 @@ function LaunchWizard({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: C.accent, fontSize: 16 }}>◈</span>
-            <span style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>Launch Agent</span>
+            <span style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>{t('agents.wizard.title')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {/* Step indicator */}
@@ -230,7 +277,7 @@ function LaunchWizard({
                 </span>
               ))}
             </div>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.overlay0, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 2 }}>
+            <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', color: C.overlay0, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 2 }}>
               ✕
             </button>
           </div>
@@ -242,7 +289,7 @@ function LaunchWizard({
           {wizard.step === 1 && (
             <div>
               <p style={{ color: C.subtext0, fontSize: 13, marginBottom: 12 }}>
-                Choose a template or start from scratch
+                {t('agents.wizard.templateIntro')}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <button
@@ -254,23 +301,23 @@ function LaunchWizard({
                     cursor: 'pointer',
                   }}
                 >
-                  <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>Custom Agent</div>
-                  <div style={{ color: C.overlay0, fontSize: 11, marginTop: 2 }}>Start from scratch with full control</div>
+                  <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>{t('agents.wizard.customAgent')}</div>
+                  <div style={{ color: C.overlay0, fontSize: 11, marginTop: 2 }}>{t('agents.wizard.customAgentHint')}</div>
                 </button>
-                {templates.map((t) => (
+                {templates.map((tpl) => (
                   <button
-                    key={t.id}
-                    onClick={() => selectTemplate(t.id)}
+                    key={tpl.id}
+                    onClick={() => selectTemplate(tpl.id)}
                     style={{
                       textAlign: 'left', padding: 12, borderRadius: 8,
-                      background: wizard.templateId === t.id ? C.accent + '20' : C.surface0,
-                      border: `1px solid ${wizard.templateId === t.id ? C.accent : C.border}`,
+                      background: wizard.templateId === tpl.id ? C.accent + '20' : C.surface0,
+                      border: `1px solid ${wizard.templateId === tpl.id ? C.accent : C.border}`,
                       cursor: 'pointer',
                     }}
                   >
-                    <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>{t.name}</div>
-                    {t.description && (
-                      <div style={{ color: C.overlay0, fontSize: 11, marginTop: 2 }}>{t.description.slice(0, 80)}</div>
+                    <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>{tpl.name}</div>
+                    {tpl.description && (
+                      <div style={{ color: C.overlay0, fontSize: 11, marginTop: 2 }}>{tpl.description.slice(0, 80)}</div>
                     )}
                   </button>
                 ))}
@@ -283,12 +330,12 @@ function LaunchWizard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label style={{ display: 'block', color: C.subtext0, fontSize: 12, marginBottom: 6, fontWeight: 500 }}>
-                  Agent Name *
+                  {t('agents.wizard.nameLabel')}
                 </label>
                 <input
                   style={inputStyle}
                   type="text"
-                  placeholder="e.g. Research Assistant"
+                  placeholder={t('agents.wizard.namePlaceholder')}
                   value={wizard.name}
                   onChange={(e) => update({ name: e.target.value })}
                 />
@@ -297,21 +344,21 @@ function LaunchWizard({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ display: 'block', color: C.subtext0, fontSize: 12, marginBottom: 6, fontWeight: 500 }}>
-                    Schedule Type
+                    {t('agents.wizard.scheduleType')}
                   </label>
                   <select
                     style={selectStyle}
                     value={wizard.scheduleType}
                     onChange={(e) => update({ scheduleType: e.target.value })}
                   >
-                    <option value="manual">Manual</option>
-                    <option value="cron">Cron</option>
-                    <option value="interval">Interval</option>
+                    <option value="manual">{t('agents.schedule.manual')}</option>
+                    <option value="cron">{t('agents.schedule.cron')}</option>
+                    <option value="interval">{t('agents.schedule.interval')}</option>
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', color: C.subtext0, fontSize: 12, marginBottom: 6, fontWeight: 500 }}>
-                    Schedule Value
+                    {t('agents.wizard.scheduleValue')}
                   </label>
                   <input
                     style={{ ...inputStyle, opacity: wizard.scheduleType === 'manual' ? 0.4 : 1 }}
@@ -326,7 +373,7 @@ function LaunchWizard({
 
               <div>
                 <label style={{ display: 'block', color: C.subtext0, fontSize: 12, marginBottom: 6, fontWeight: 500 }}>
-                  Tools
+                  {t('common.tools')}
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {AVAILABLE_TOOLS.map((tool) => (
@@ -344,7 +391,7 @@ function LaunchWizard({
                         checked={wizard.selectedTools.includes(tool.id)}
                         onChange={() => toggleTool(tool.id)}
                       />
-                      <span style={{ color: C.text, fontSize: 12 }}>{tool.label}</span>
+                      <span style={{ color: C.text, fontSize: 12 }}>{t(tool.labelKey)}</span>
                     </label>
                   ))}
                 </div>
@@ -353,12 +400,12 @@ function LaunchWizard({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ display: 'block', color: C.subtext0, fontSize: 12, marginBottom: 6, fontWeight: 500 }}>
-                    Budget ($, optional)
+                    {t('agents.wizard.budgetLabel')}
                   </label>
                   <input
                     style={inputStyle}
                     type="number"
-                    placeholder="e.g. 5.00"
+                    placeholder={t('agents.wizard.budgetPlaceholder')}
                     min="0"
                     step="0.01"
                     value={wizard.budget}
@@ -376,7 +423,7 @@ function LaunchWizard({
                       checked={wizard.learningEnabled}
                       onChange={(e) => update({ learningEnabled: e.target.checked })}
                     />
-                    <span style={{ color: C.text, fontSize: 12 }}>Enable Learning</span>
+                    <span style={{ color: C.text, fontSize: 12 }}>{t('agents.wizard.enableLearning')}</span>
                   </label>
                 </div>
               </div>
@@ -386,19 +433,12 @@ function LaunchWizard({
           {/* Step 3: Review */}
           {wizard.step === 3 && (
             <div>
-              <p style={{ color: C.subtext0, fontSize: 13, marginBottom: 12 }}>Review your configuration</p>
+              <p style={{ color: C.subtext0, fontSize: 13, marginBottom: 12 }}>{t('agents.wizard.reviewIntro')}</p>
               <div style={{ background: C.surface0, borderRadius: 8, padding: 16, border: `1px solid ${C.border}` }}>
-                {[
-                  ['Name', wizard.name || '(unnamed)'],
-                  ['Template', wizard.templateId ? (templates.find((t) => t.id === wizard.templateId)?.name ?? wizard.templateId) : 'Custom'],
-                  ['Schedule', formatSchedule(wizard.scheduleType, wizard.scheduleValue)],
-                  ['Tools', wizard.selectedTools.length > 0 ? wizard.selectedTools.join(', ') : 'None'],
-                  ['Budget', wizard.budget ? `$${wizard.budget}` : 'Unlimited'],
-                  ['Learning', wizard.learningEnabled ? 'Enabled' : 'Disabled'],
-                ].map(([label, value]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                    <span style={{ color: C.overlay0 }}>{label}</span>
-                    <span style={{ color: C.text }}>{value}</span>
+                {reviewRows.map((row) => (
+                  <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                    <span style={{ color: C.overlay0 }}>{row.label}</span>
+                    <span style={{ color: C.text }}>{row.value}</span>
                   </div>
                 ))}
               </div>
@@ -415,14 +455,14 @@ function LaunchWizard({
             onClick={() => wizard.step > 1 ? update({ step: (wizard.step - 1) as 1 | 2 | 3 }) : onClose()}
             style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: 'none', color: C.subtext0, cursor: 'pointer', fontSize: 13 }}
           >
-            {wizard.step === 1 ? 'Cancel' : 'Back'}
+            {wizard.step === 1 ? t('common.cancel') : t('common.back')}
           </button>
           {wizard.step < 3 ? (
             <button
               onClick={() => update({ step: (wizard.step + 1) as 2 | 3 })}
               style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: C.accent, color: C.bg, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
-              Next
+              {t('common.next')}
             </button>
           ) : (
             <button
@@ -430,7 +470,7 @@ function LaunchWizard({
               disabled={launching}
               style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: C.accent, color: C.bg, cursor: launching ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: launching ? 0.7 : 1 }}
             >
-              {launching ? 'Launching...' : 'Launch'}
+              {launching ? t('agents.wizard.launching') : t('agents.launch')}
             </button>
           )}
         </div>
@@ -444,12 +484,16 @@ function LaunchWizard({
 // ---------------------------------------------------------------------------
 
 function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'immediate' | 'queued'>('queued');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const modeLabel = (m: string) =>
+    m === 'immediate' ? t('agents.mode.immediate') : t('agents.mode.queued');
 
   const loadMessages = useCallback(async () => {
     try {
@@ -462,8 +506,8 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
 
   useEffect(() => {
     loadMessages();
-    const t = setInterval(loadMessages, 5000);
-    return () => clearInterval(t);
+    const timer = setInterval(loadMessages, 5000);
+    return () => clearInterval(timer);
   }, [loadMessages]);
 
   useEffect(() => {
@@ -479,7 +523,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
       setInput('');
       await loadMessages();
     } catch {
-      setError('Failed to send message.');
+      setError(t('agents.chat.sendFailed'));
     } finally {
       setSending(false);
     }
@@ -495,7 +539,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {messages.length === 0 && (
           <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 32 }}>
-            No messages yet. Send a message to the agent below.
+            {t('agents.chat.empty')}
           </div>
         )}
         {messages.map((msg) => {
@@ -517,7 +561,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
               >
                 <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
                 <div style={{ color: C.overlay0, fontSize: 10, marginTop: 4, textAlign: isUser ? 'right' : 'left' }}>
-                  {isUser ? `You · ${msg.mode}` : 'Agent'} · {msg.status}
+                  {isUser ? `${t('agents.chat.you')} · ${modeLabel(msg.mode)}` : t('common.agent')} · {msg.status}
                 </div>
               </div>
             </div>
@@ -538,7 +582,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Send a message to this agent… (Enter to send)"
+            placeholder={t('agents.chat.placeholder')}
             rows={2}
             style={{
               width: '100%', padding: '8px 12px', borderRadius: 6,
@@ -548,7 +592,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
             }}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: C.overlay0, fontSize: 11 }}>Mode:</span>
+            <span style={{ color: C.overlay0, fontSize: 11 }}>{t('agents.chat.modeLabel')}</span>
             {(['queued', 'immediate'] as const).map((m) => (
               <button
                 key={m}
@@ -560,7 +604,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
                   color: mode === m ? C.accent : C.overlay0,
                 }}
               >
-                {m}
+                {modeLabel(m)}
               </button>
             ))}
           </div>
@@ -575,7 +619,7 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
             flexShrink: 0,
           }}
         >
-          Send
+          {t('common.send')}
         </button>
       </div>
     </div>
@@ -587,6 +631,8 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
 // ---------------------------------------------------------------------------
 
 function TasksTab({ tasks }: { tasks: AgentTask[] }) {
+  const { t } = useTranslation();
+
   const taskStatusColor = (s: string) => {
     if (s === 'completed') return C.green;
     if (s === 'failed') return C.red;
@@ -595,26 +641,26 @@ function TasksTab({ tasks }: { tasks: AgentTask[] }) {
   };
 
   if (tasks.length === 0) {
-    return <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 32 }}>No tasks found.</div>;
+    return <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 32 }}>{t('agents.tasks.empty')}</div>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {tasks.map((t) => (
-        <div key={t.id} style={{ background: C.surface0, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+      {tasks.map((task) => (
+        <div key={task.id} style={{ background: C.surface0, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: C.text, fontSize: 13, flex: 1, marginRight: 12 }}>{t.description}</span>
+            <span style={{ color: C.text, fontSize: 13, flex: 1, marginRight: 12 }}>{task.description}</span>
             <span style={{
               display: 'inline-block', padding: '2px 8px', borderRadius: 4,
               fontSize: 11, fontWeight: 600, flexShrink: 0,
-              background: taskStatusColor(t.status) + '25',
-              color: taskStatusColor(t.status),
+              background: taskStatusColor(task.status) + '25',
+              color: taskStatusColor(task.status),
             }}>
-              {t.status}
+              {task.status}
             </span>
           </div>
           <div style={{ color: C.overlay0, fontSize: 11, marginTop: 4 }}>
-            Created {formatRelativeTime(t.created_at)}
+            {t('agents.tasks.created', { time: formatRelativeTime(t, task.created_at) })}
           </div>
         </div>
       ))}
@@ -627,17 +673,19 @@ function TasksTab({ tasks }: { tasks: AgentTask[] }) {
 // ---------------------------------------------------------------------------
 
 function MemoryTab({ agent }: { agent: ManagedAgent }) {
+  const { t } = useTranslation();
+
   return (
     <div>
       <div style={{ color: C.subtext0, fontSize: 12, marginBottom: 8, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Summary Memory
+        {t('agents.memory.title')}
       </div>
       <div style={{ background: C.surface0, borderRadius: 8, padding: 14, border: `1px solid ${C.border}` }}>
         <pre style={{
           color: C.text, fontSize: 12, whiteSpace: 'pre-wrap', margin: 0,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace", lineHeight: 1.6,
         }}>
-          {agent.summary_memory || 'No memory stored yet.'}
+          {agent.summary_memory || t('agents.memory.empty')}
         </pre>
       </div>
     </div>
@@ -655,6 +703,7 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
   onResume: () => void;
   onRecover: () => void;
 }) {
+  const { t } = useTranslation();
   const canPause = agent.status === 'running' || agent.status === 'idle';
   const canResume = agent.status === 'paused';
   const canRecover = agent.status === 'error' || agent.status === 'stalled' || agent.status === 'needs_attention';
@@ -673,39 +722,39 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
       {/* Stats */}
       <div style={{ background: C.surface0, borderRadius: 8, padding: '12px 16px', border: `1px solid ${C.border}` }}>
         <div style={rowStyle}>
-          <span style={labelStyle}>Status</span>
+          <span style={labelStyle}>{t('common.status')}</span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
             background: statusColor + '20', color: statusColor,
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, display: 'inline-block' }} />
-            {agent.status.replace('_', ' ')}
+            {statusLabel(t, agent.status)}
           </span>
         </div>
         <div style={rowStyle}>
-          <span style={labelStyle}>Agent Type</span>
+          <span style={labelStyle}>{t('agents.field.agentType')}</span>
           <span style={valueStyle}>{agent.agent_type}</span>
         </div>
         <div style={rowStyle}>
-          <span style={labelStyle}>Schedule</span>
-          <span style={valueStyle}>{formatSchedule(agent.schedule_type, agent.schedule_value)}</span>
+          <span style={labelStyle}>{t('agents.field.schedule')}</span>
+          <span style={valueStyle}>{formatSchedule(t, agent.schedule_type, agent.schedule_value)}</span>
         </div>
         <div style={rowStyle}>
-          <span style={labelStyle}>Last Run</span>
-          <span style={valueStyle}>{formatRelativeTime(agent.last_run_at)}</span>
+          <span style={labelStyle}>{t('agents.field.lastRun')}</span>
+          <span style={valueStyle}>{formatRelativeTime(t, agent.last_run_at)}</span>
         </div>
         <div style={rowStyle}>
-          <span style={labelStyle}>Total Runs</span>
+          <span style={labelStyle}>{t('agents.field.totalRuns')}</span>
           <span style={valueStyle}>{agent.total_runs ?? 0}</span>
         </div>
         <div style={rowStyle}>
-          <span style={labelStyle}>Total Cost</span>
+          <span style={labelStyle}>{t('agents.field.totalCost')}</span>
           <span style={valueStyle}>{formatCost(agent.total_cost)}</span>
         </div>
         <div style={{ ...rowStyle, borderBottom: 'none' }}>
-          <span style={labelStyle}>Budget</span>
-          <span style={valueStyle}>{agent.budget !== undefined ? `$${agent.budget}` : 'Unlimited'}</span>
+          <span style={labelStyle}>{t('agents.field.budget')}</span>
+          <span style={valueStyle}>{agent.budget !== undefined ? `$${agent.budget}` : t('common.unlimited')}</span>
         </div>
         {/* Budget progress bar */}
         {agent.budget !== undefined && agent.budget > 0 && (
@@ -740,7 +789,7 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
             cursor: 'pointer', fontSize: 12, fontWeight: 600,
           }}
         >
-          ▶ Run Now
+          ▶ {t('agents.actions.runNow')}
         </button>
         {canPause && (
           <button
@@ -751,7 +800,7 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
               cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}
           >
-            ⏸ Pause
+            ⏸ {t('agents.actions.pause')}
           </button>
         )}
         {canResume && (
@@ -763,7 +812,7 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
               cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}
           >
-            ▶ Resume
+            ▶ {t('agents.actions.resume')}
           </button>
         )}
         {canRecover && (
@@ -775,7 +824,7 @@ function OverviewTab({ agent, onRun, onPause, onResume, onRecover }: {
               cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}
           >
-            ↺ Recover
+            ↺ {t('agents.actions.recover')}
           </button>
         )}
       </div>
@@ -796,6 +845,7 @@ function LearningTabContent({
   agentId: string;
   learningEnabled: boolean;
 }) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<LearningLogEntry[]>([]);
   const [triggering, setTriggering] = useState(false);
 
@@ -820,14 +870,14 @@ function LearningTabContent({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ color: C.subtext0, fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Learning
+            {t('agents.tab.learning')}
           </span>
           <span style={{
             fontSize: 11, padding: '1px 8px', borderRadius: 8,
             background: learningEnabled ? C.green + '25' : C.surface0,
             color: learningEnabled ? C.green : C.overlay0,
           }}>
-            {learningEnabled ? 'Enabled' : 'Disabled'}
+            {learningEnabled ? t('common.enabled') : t('common.disabled')}
           </span>
         </div>
         <button
@@ -839,12 +889,12 @@ function LearningTabContent({
             fontSize: 12, fontWeight: 600, opacity: triggering ? 0.6 : 1,
           }}
         >
-          {triggering ? 'Running...' : 'Run Learning'}
+          {triggering ? t('agents.learning.running') : t('agents.learning.trigger')}
         </button>
       </div>
       {logs.length === 0 ? (
         <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 32 }}>
-          No learning events yet. Run the agent or trigger learning manually.
+          {t('agents.learning.empty')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -861,7 +911,7 @@ function LearningTabContent({
                   {entry.event_type}
                 </span>
                 <span style={{ color: C.overlay0, fontSize: 11 }}>
-                  {formatRelativeTime(entry.created_at)}
+                  {formatRelativeTime(t, entry.created_at)}
                 </span>
               </div>
               {entry.description && (
@@ -882,6 +932,7 @@ function LearningTabContent({
 // ---------------------------------------------------------------------------
 
 function LogsTabContent({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
+  const { t } = useTranslation();
   const [traces, setTraces] = useState<AgentTrace[]>([]);
 
   useEffect(() => {
@@ -891,7 +942,7 @@ function LogsTabContent({ apiUrl, agentId }: { apiUrl: string; agentId: string }
   if (traces.length === 0) {
     return (
       <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 32 }}>
-        No execution traces yet. Run the agent to generate traces.
+        {t('agents.logs.empty')}
       </div>
     );
   }
@@ -900,14 +951,14 @@ function LogsTabContent({ apiUrl, agentId }: { apiUrl: string; agentId: string }
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ color: C.subtext0, fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Execution Traces
+          {t('agents.logs.title')}
         </span>
         <span style={{ color: C.overlay0, fontSize: 11 }}>
-          {traces.length} trace{traces.length !== 1 ? 's' : ''}
+          {t('agents.logs.traceCount', { count: traces.length })}
         </span>
       </div>
-      {traces.map((t) => (
-        <div key={t.id} style={{
+      {traces.map((trace) => (
+        <div key={trace.id} style={{
           background: C.surface0, borderRadius: 8, padding: '10px 14px',
           border: `1px solid ${C.border}`,
         }}>
@@ -915,17 +966,19 @@ function LogsTabContent({ apiUrl, agentId }: { apiUrl: string; agentId: string }
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
                 width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
-                background: t.outcome === 'success' ? C.green : C.red,
+                background: trace.outcome === 'success' ? C.green : C.red,
               }} />
-              <span style={{ color: C.text, fontSize: 13 }}>{t.outcome}</span>
+              <span style={{ color: C.text, fontSize: 13 }}>
+                {trace.outcome === 'success' ? t('agents.logs.outcomeSuccess') : t('agents.logs.outcomeFailure')}
+              </span>
             </div>
             <span style={{ color: C.overlay0, fontSize: 11 }}>
-              {formatRelativeTime(t.started_at)}
+              {formatRelativeTime(t, trace.started_at)}
             </span>
           </div>
           <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 11, color: C.overlay0 }}>
-            <span>{t.duration.toFixed(1)}s</span>
-            <span>{t.steps} step{t.steps !== 1 ? 's' : ''}</span>
+            <span>{trace.duration.toFixed(1)}s</span>
+            <span>{t('agents.logs.stepCount', { count: trace.steps })}</span>
           </div>
         </div>
       ))}
@@ -939,13 +992,13 @@ function LogsTabContent({ apiUrl, agentId }: { apiUrl: string; agentId: string }
 
 type DetailTab = 'overview' | 'interact' | 'tasks' | 'memory' | 'learning' | 'logs';
 
-const DETAIL_TABS: { id: DetailTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'interact', label: 'Interact' },
-  { id: 'tasks', label: 'Tasks' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'learning', label: 'Learning' },
-  { id: 'logs', label: 'Logs' },
+const DETAIL_TABS: { id: DetailTab; labelKey: TranslationKey }[] = [
+  { id: 'overview', labelKey: 'agents.tab.overview' },
+  { id: 'interact', labelKey: 'agents.tab.interact' },
+  { id: 'tasks', labelKey: 'agents.tab.tasks' },
+  { id: 'memory', labelKey: 'agents.tab.memory' },
+  { id: 'learning', labelKey: 'agents.tab.learning' },
+  { id: 'logs', labelKey: 'agents.tab.logs' },
 ];
 
 function DetailPanel({
@@ -965,6 +1018,7 @@ function DetailPanel({
   onResume: (id: string) => void;
   onRecover: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const dotColor = statusDotColor(agent.status);
 
@@ -977,7 +1031,11 @@ function DetailPanel({
           <h2 style={{ color: C.text, fontSize: 18, fontWeight: 700, margin: 0 }}>{agent.name}</h2>
         </div>
         <div style={{ color: C.overlay0, fontSize: 12 }}>
-          {agent.agent_type} · Schedule: {formatSchedule(agent.schedule_type, agent.schedule_value)} · Last run: {formatRelativeTime(agent.last_run_at)}
+          {agent.agent_type}
+          {' · '}
+          {t('agents.detail.scheduleWith', { value: formatSchedule(t, agent.schedule_type, agent.schedule_value) })}
+          {' · '}
+          {t('agents.detail.lastRunWith', { value: formatRelativeTime(t, agent.last_run_at) })}
         </div>
       </div>
 
@@ -996,7 +1054,7 @@ function DetailPanel({
               marginBottom: -1,
             }}
           >
-            {tab.label}
+            {t(tab.labelKey)}
           </button>
         ))}
       </div>
@@ -1035,6 +1093,7 @@ interface Props {
 }
 
 export function AgentsPanel({ apiUrl }: Props) {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<ManagedAgent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
@@ -1055,8 +1114,8 @@ export function AgentsPanel({ apiUrl }: Props) {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 10_000);
-    return () => clearInterval(t);
+    const timer = setInterval(refresh, 10_000);
+    return () => clearInterval(timer);
   }, [refresh]);
 
   useEffect(() => {
@@ -1090,18 +1149,18 @@ export function AgentsPanel({ apiUrl }: Props) {
   }, [apiUrl, refresh]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this agent? This cannot be undone.')) return;
+    if (!confirm(t('agents.list.deleteConfirm'))) return;
     await deleteManagedAgent(apiUrl, id).catch(() => {});
     if (selectedId === id) setSelectedId(null);
     refresh();
-  }, [apiUrl, selectedId, refresh]);
+  }, [apiUrl, selectedId, refresh, t]);
 
   const selected = agents.find((a) => a.id === selectedId) ?? null;
 
   if (loading) {
     return (
       <div style={{ padding: 40, color: C.overlay0, textAlign: 'center' }}>
-        Loading agents...
+        {t('agents.loading')}
       </div>
     );
   }
@@ -1112,7 +1171,7 @@ export function AgentsPanel({ apiUrl }: Props) {
       <div style={{ width: 300, flexShrink: 0, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>Agents ({agents.length})</span>
+          <span style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>{t('agents.list.title', { count: agents.length })}</span>
           <button
             onClick={() => setShowWizard(true)}
             style={{
@@ -1121,7 +1180,7 @@ export function AgentsPanel({ apiUrl }: Props) {
               cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}
           >
-            + Launch
+            + {t('agents.launch')}
           </button>
         </div>
 
@@ -1154,24 +1213,25 @@ export function AgentsPanel({ apiUrl }: Props) {
                       background: 'none', border: 'none', color: C.overlay0,
                       cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0, lineHeight: 1,
                     }}
-                    title="Delete agent"
+                    title={t('agents.list.deleteTitle')}
+                    aria-label={t('agents.list.deleteTitle')}
                   >
                     ×
                   </button>
                 </div>
                 <div style={{ color: C.overlay0, fontSize: 11, marginTop: 4 }}>
-                  {formatSchedule(a.schedule_type, a.schedule_value)}
+                  {formatSchedule(t, a.schedule_type, a.schedule_value)}
                 </div>
                 <div style={{ color: C.overlay1, fontSize: 11, marginTop: 2 }}>
-                  Last run: {formatRelativeTime(a.last_run_at)}
+                  {t('agents.detail.lastRunWith', { value: formatRelativeTime(t, a.last_run_at) })}
                 </div>
               </div>
             );
           })}
           {agents.length === 0 && (
             <div style={{ color: C.overlay0, fontSize: 13, textAlign: 'center', marginTop: 40 }}>
-              No agents found.<br />
-              <span style={{ fontSize: 12 }}>Click "+ Launch" to create one.</span>
+              {t('agents.list.empty')}<br />
+              <span style={{ fontSize: 12 }}>{t('agents.list.emptyHint')}</span>
             </div>
           )}
         </div>
@@ -1191,7 +1251,7 @@ export function AgentsPanel({ apiUrl }: Props) {
           />
         ) : (
           <div style={{ color: C.overlay0, textAlign: 'center', marginTop: 80, fontSize: 14 }}>
-            Select an agent to view details
+            {t('agents.detail.empty')}
           </div>
         )}
       </div>

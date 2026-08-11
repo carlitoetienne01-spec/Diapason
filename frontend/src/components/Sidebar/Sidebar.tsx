@@ -20,8 +20,10 @@ import {
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,6 +42,12 @@ export function Sidebar() {
 
   const ThemeIcon = settings.theme === 'light' ? Sun : settings.theme === 'dark' ? Moon : Monitor;
   const nextTheme = settings.theme === 'light' ? 'dark' : settings.theme === 'dark' ? 'system' : 'light';
+  const themeName = (theme: string) =>
+    theme === 'light'
+      ? t('settings.theme.light')
+      : theme === 'dark'
+        ? t('settings.theme.dark')
+        : t('settings.theme.system');
 
   const messages = useAppStore((s) => s.messages);
   const handleNewChat = () => {
@@ -53,13 +61,13 @@ export function Sidebar() {
   };
 
   const navItems = [
-    { path: '/', icon: MessageSquare, label: 'Chat' },
-    { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
-    { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    { path: '/agents', icon: Bot, label: 'Agents' },
-    { path: '/logs', icon: ScrollText, label: 'Logs' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
-    { path: '/get-started', icon: Rocket, label: 'Get Started' },
+    { path: '/', icon: MessageSquare, label: t('nav.chat') },
+    { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
+    { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
+    { path: '/agents', icon: Bot, label: t('nav.agents') },
+    { path: '/logs', icon: ScrollText, label: t('nav.logs') },
+    { path: '/settings', icon: Settings, label: t('nav.settings') },
+    { path: '/get-started', icon: Rocket, label: t('nav.getStarted') },
   ];
 
   return (
@@ -72,6 +80,8 @@ export function Sidebar() {
           style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
+          title={t('sidebar.expand')}
+          aria-label={t('sidebar.expand')}
         >
           <PanelLeft size={18} />
         </button>
@@ -99,6 +109,8 @@ export function Sidebar() {
               style={{ color: 'var(--color-text-secondary)' }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              title={t('sidebar.collapse')}
+              aria-label={t('sidebar.collapse')}
             >
               <PanelLeftClose size={18} />
             </button>
@@ -109,7 +121,10 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={`Theme: ${settings.theme} (click for ${nextTheme})`}
+                title={t('sidebar.themeTooltip', {
+                  current: themeName(settings.theme),
+                  next: themeName(nextTheme),
+                })}
               >
                 <ThemeIcon size={16} />
               </button>
@@ -119,7 +134,8 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title="New chat"
+                title={t('sidebar.newChat')}
+                aria-label={t('sidebar.newChat')}
               >
                 <Plus size={18} />
               </button>
@@ -149,12 +165,12 @@ export function Sidebar() {
                 style={{ color: deepResearch ? 'var(--color-accent)' : 'var(--color-text)' }}
               >
                 {deepResearch
-                  ? 'Deep Research'
-                  : selectedModel || serverInfo?.model || 'Select model'}
+                  ? t('common.deepResearch')
+                  : selectedModel || serverInfo?.model || t('sidebar.selectModel')}
               </span>
               {modelLoading && (
                 <span className="text-[10px] block text-left" style={{ color: 'var(--color-accent)' }}>
-                  Loading model...
+                  {t('sidebar.loadingModel')}
                 </span>
               )}
             </div>
@@ -177,7 +193,7 @@ export function Sidebar() {
               <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
               <input
                 type="text"
-                placeholder="Search chats..."
+                placeholder={t('sidebar.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 bg-transparent outline-none text-sm"

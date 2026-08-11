@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Lock, Zap, DollarSign, Cpu, Trophy, X } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { isProfane } from '../lib/profanity';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface OptInModalProps {
   onClose: () => void;
 }
 
 export function OptInModal({ onClose }: OptInModalProps) {
+  const { t } = useTranslation();
   const setOptIn = useAppStore((s) => s.setOptIn);
   const optInDisplayName = useAppStore((s) => s.optInDisplayName);
   const optInEnabled = useAppStore((s) => s.optInEnabled);
@@ -23,19 +25,19 @@ export function OptInModal({ onClose }: OptInModalProps) {
     const trimmed = name.trim();
     const trimmedEmail = email.trim();
     if (!trimmed) {
-      setError('Please enter a display name');
+      setError(t('leaderboard.error.nameRequired'));
       return;
     }
     if (trimmed.length < 2 || trimmed.length > 30) {
-      setError('Name must be 2-30 characters');
+      setError(t('leaderboard.error.nameLength'));
       return;
     }
     if (isProfane(trimmed)) {
-      setError('Please choose a different name');
+      setError(t('leaderboard.error.nameNotAllowed'));
       return;
     }
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setError('Please enter a valid email address');
+      setError(t('leaderboard.error.emailInvalid'));
       return;
     }
     setError('');
@@ -50,10 +52,10 @@ export function OptInModal({ onClose }: OptInModalProps) {
   };
 
   const features = [
-    { icon: Lock, label: 'Private — no IP or hardware info shared publicly' },
-    { icon: Zap, label: 'Track energy savings from local inference' },
-    { icon: DollarSign, label: 'See how much you save vs cloud providers' },
-    { icon: Cpu, label: 'Measure FLOPs and request efficiency' },
+    { icon: Lock, label: t('leaderboard.feature.private') },
+    { icon: Zap, label: t('leaderboard.feature.energy') },
+    { icon: DollarSign, label: t('leaderboard.feature.cost') },
+    { icon: Cpu, label: t('leaderboard.feature.efficiency') },
   ];
 
   return (
@@ -80,6 +82,7 @@ export function OptInModal({ onClose }: OptInModalProps) {
           style={{ color: 'var(--color-text-tertiary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          aria-label={t('common.close')}
         >
           <X size={16} />
         </button>
@@ -100,14 +103,13 @@ export function OptInModal({ onClose }: OptInModalProps) {
             className="text-xl font-semibold text-center mb-2"
             style={{ color: 'var(--color-text)' }}
           >
-            Share Your Savings
+            {t('leaderboard.shareSavings')}
           </h2>
           <p
             className="text-sm text-center mb-6 leading-relaxed"
             style={{ color: 'var(--color-text-secondary)' }}
           >
-            Opt in to privately share your energy, dollar, FLOPs, and request
-            savings for the chance to win a Mac Mini!
+            {t('leaderboard.optInBody')}
           </p>
 
           {/* Feature list */}
@@ -142,7 +144,7 @@ export function OptInModal({ onClose }: OptInModalProps) {
               >
                 <Trophy size={14} />
                 <span className="text-sm font-medium">
-                  You're on the leaderboard!
+                  {t('leaderboard.joined')}
                 </span>
               </div>
               <div className="flex gap-2 justify-center">
@@ -154,14 +156,14 @@ export function OptInModal({ onClose }: OptInModalProps) {
                     color: 'var(--color-on-accent)',
                   }}
                 >
-                  Done
+                  {t('common.done')}
                 </button>
                 <button
                   onClick={handleOptOut}
                   className="px-5 py-2.5 rounded-xl text-sm transition-colors cursor-pointer"
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
-                  Opt Out
+                  {t('leaderboard.optOut')}
                 </button>
               </div>
             </div>
@@ -173,7 +175,7 @@ export function OptInModal({ onClose }: OptInModalProps) {
                   className="block text-xs font-medium mb-1.5"
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
-                  Display Name
+                  {t('leaderboard.displayName')}
                 </label>
                 <input
                   type="text"
@@ -185,7 +187,7 @@ export function OptInModal({ onClose }: OptInModalProps) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleJoin();
                   }}
-                  placeholder="Choose a name for the leaderboard"
+                  placeholder={t('leaderboard.namePlaceholder')}
                   maxLength={30}
                   className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-colors"
                   style={{
@@ -203,8 +205,8 @@ export function OptInModal({ onClose }: OptInModalProps) {
                   className="block text-xs font-medium mb-1.5"
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
-                  Email <span style={{ color: 'var(--color-error)' }}>*</span>
-                  <span className="font-normal ml-1" style={{ color: 'var(--color-text-tertiary)' }}>(never shown publicly)</span>
+                  {t('leaderboard.email')} <span style={{ color: 'var(--color-error)' }}>*</span>
+                  <span className="font-normal ml-1" style={{ color: 'var(--color-text-tertiary)' }}>{t('leaderboard.emailNote')}</span>
                 </label>
                 <input
                   type="email"
@@ -216,7 +218,7 @@ export function OptInModal({ onClose }: OptInModalProps) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleJoin();
                   }}
-                  placeholder="your@email.com"
+                  placeholder={t('leaderboard.emailPlaceholder')}
                   className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-colors"
                   style={{
                     background: 'var(--color-bg-secondary)',
@@ -245,14 +247,14 @@ export function OptInModal({ onClose }: OptInModalProps) {
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
               >
-                Join Leaderboard
+                {t('leaderboard.join')}
               </button>
               <button
                 onClick={onClose}
                 className="w-full py-2 text-sm transition-colors cursor-pointer mt-2"
                 style={{ color: 'var(--color-text-tertiary)' }}
               >
-                No Thanks
+                {t('leaderboard.noThanks')}
               </button>
             </>
           )}
