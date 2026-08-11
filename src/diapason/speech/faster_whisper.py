@@ -22,6 +22,42 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# What Whisper's front end expects. A bare sample array carries no rate, so
+# handing it audio at any other rate would silently transpose the speech.
+WHISPER_RATE = 16_000
+
+
+def _decode_pcm_wav(audio: bytes):
+    """Decode 16 kHz mono 16-bit PCM WAV to a float32 array, or None.
+
+    Deliberately narrow: it accepts exactly the shape the dictation path
+    already produces and refuses everything else, so the caller falls back to
+    the demuxer rather than this function guessing at a conversion. Returning
+    None is the safe answer — it costs a temp file, never a wrong result.
+    """
+    try:
+        import io
+        import wave
+
+        import numpy as np
+
+        with wave.open(io.BytesIO(audio)) as wav:
+            if (
+                wav.getcomptype() != "NONE"
+                or wav.getsampwidth() != 2
+                or wav.getnchannels() != 1
+                or wav.getframerate() != WHISPER_RATE
+            ):
+                return None
+            frames = wav.readframes(wav.getnframes())
+    except Exception:  # noqa: BLE001 - not a WAV we understand; use the demuxer
+        return None
+    if not frames:
+        return None
+    import numpy as np
+
+    return np.frombuffer(frames, dtype="<i2").astype("float32") / 32768.0
+
 
 @SpeechRegistry.register("faster-whisper")
 class FasterWhisperBackend(SpeechBackend):
@@ -35,12 +71,28 @@ class FasterWhisperBackend(SpeechBackend):
         device: str = "auto",
         compute_type: str = "float16",
         use_dictionary_hints: bool = True,
+        language: str = "",
     ) -> None:
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
         self._model: Optional[WhisperModel] = None
         self._last_error: Optional[str] = None
+        # Configured language, or "auto" / "" to detect.
+        self._language = (language or "").strip()
+        # Whisper runs a separate detection pass whenever no language is
+        # given, and on this machine that pass costs roughly as much as the
+        # decode itself — measured 1.90 s -> 1.13 s per 4-second French clip
+        # once the language is known. Detection is also least reliable
+        # exactly where dictation lives: a two-second utterance.
+        #
+        # So detect ONCE, then reuse. The first utterance of a session pays
+        # for it, every later one is fast, and nobody has to guess a locale
+        # or edit a config file to get the speedup.
+        self._detected: Optional[str] = None
+        # (value,) so a cached "no hotwords" is distinguishable from "unread".
+        self._hotwords_cache: Optional[tuple] = None
+        self._hotwords_stamp: int = -1
         # Bias recognition toward the user's own vocabulary. The dictionary
         # already fixed mistakes AFTER the fact (apply_dictionary in
         # dictate_polish); ``transcription_hints`` was written to fix them
@@ -51,17 +103,68 @@ class FasterWhisperBackend(SpeechBackend):
         self._use_dictionary_hints = use_dictionary_hints
 
     def _hotwords(self) -> Optional[str]:
-        """Space-joined vocabulary from the personal dictionary, or None."""
+        """Space-joined vocabulary from the personal dictionary, or None.
+
+        Cached against the dictionary file's mtime: this used to re-read and
+        JSON-parse the file inside every transcription, on the one code path
+        where the user is sitting there waiting. Keying on mtime keeps an
+        edit picked up on the next utterance without paying for the read on
+        every one.
+        """
         if not self._use_dictionary_hints:
             return None
         try:
-            from diapason.speech.dictation_dictionary import transcription_hints
+            from diapason.speech.dictation_dictionary import (
+                default_dictionary_path,
+                transcription_hints,
+            )
+
+            try:
+                stamp = default_dictionary_path().stat().st_mtime_ns
+            except OSError:
+                stamp = 0  # no dictionary yet; still worth caching the miss
+            if self._hotwords_cache is not None and self._hotwords_stamp == stamp:
+                return self._hotwords_cache[0]
 
             words = transcription_hints()
-            return " ".join(words) if words else None
+            value = " ".join(words) if words else None
+            self._hotwords_cache = (value,)
+            self._hotwords_stamp = stamp
+            return value
         except Exception:  # noqa: BLE001 - hints are an optimisation, never required
             logger.debug("could not build transcription hints", exc_info=True)
             return None
+
+    def preload(self) -> bool:
+        """Build the model now rather than on the user's first keypress.
+
+        Under the LaunchAgent the service starts at login and then sits idle,
+        so without this the first dictation of the day pays several seconds
+        of model construction while the user is already talking.
+        """
+        try:
+            self._ensure_model()
+            return True
+        except Exception:  # noqa: BLE001 - stay usable; the first call retries
+            logger.debug("model preload failed", exc_info=True)
+            return False
+
+    def _effective_language(self, requested: Optional[str]) -> Optional[str]:
+        """Which language to decode as, or None to let Whisper detect.
+
+        Precedence: the per-call argument, then the configured language, then
+        whatever was detected earlier in this session. ``"auto"`` is an
+        explicit request to detect every time — the escape hatch for someone
+        who genuinely switches language mid-session and would rather pay for
+        it than be pinned to the first thing they said.
+        """
+        for candidate in (requested, self._language):
+            value = (candidate or "").strip()
+            if value.lower() == "auto":
+                return None
+            if value:
+                return value
+        return self._detected
 
     def _resolve_compute_type(self) -> str:
         """Pick a CTranslate2 compute type supported by the configured device."""
@@ -149,37 +252,51 @@ class FasterWhisperBackend(SpeechBackend):
         try:
             model = self._ensure_model()
 
-            # Write audio to a temp file (faster-whisper needs a file path).
-            # delete=False + manual unlink: on Windows an open
-            # NamedTemporaryFile holds an exclusive handle, so PyAV's reopen
-            # of tmp.name inside model.transcribe() fails with EACCES.
-            suffix = f".{format}" if not format.startswith(".") else format
-            tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-            try:
-                with tmp:
-                    tmp.write(audio)
+            kwargs = {}
+            effective = self._effective_language(language)
+            if effective:
+                kwargs["language"] = effective
+            hotwords = self._hotwords()
+            if hotwords:
+                kwargs["hotwords"] = hotwords
 
-                kwargs = {}
-                if language:
-                    kwargs["language"] = language
-                hotwords = self._hotwords()
-                if hotwords:
-                    kwargs["hotwords"] = hotwords
-
-                segments_iter, info = model.transcribe(tmp.name, **kwargs)
+            samples = _decode_pcm_wav(audio) if format.lstrip(".") == "wav" else None
+            if samples is not None:
+                # Straight from memory. The dictation path already holds a
+                # float32 array; encoding it to WAV, writing it to disk and
+                # having PyAV decode it back was a round trip to nowhere that
+                # measured ~27% of the total transcription time.
+                segments_iter, info = model.transcribe(samples, **kwargs)
                 segments_list = list(segments_iter)
-            finally:
+            else:
+                # Anything else (mp3, m4a…) still needs a demuxer, and
+                # faster-whisper takes a path for that. delete=False + manual
+                # unlink: on Windows an open NamedTemporaryFile holds an
+                # exclusive handle, so PyAV's reopen fails with EACCES.
+                suffix = f".{format}" if not format.startswith(".") else format
+                tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
                 try:
-                    os.unlink(tmp.name)
-                except OSError as unlink_exc:
-                    logger.debug(
-                        "Could not remove temp audio file %s: %s",
-                        tmp.name,
-                        unlink_exc,
-                    )
+                    with tmp:
+                        tmp.write(audio)
+                    segments_iter, info = model.transcribe(tmp.name, **kwargs)
+                    segments_list = list(segments_iter)
+                finally:
+                    try:
+                        os.unlink(tmp.name)
+                    except OSError as unlink_exc:
+                        logger.debug(
+                            "Could not remove temp audio file %s: %s",
+                            tmp.name,
+                            unlink_exc,
+                        )
         except Exception as exc:
             self._last_error = str(exc)
             raise
+
+        # Remember a detected language so the next utterance can skip the
+        # detection pass entirely.
+        if not self._language and self._detected is None:
+            self._detected = getattr(info, "language", None)
 
         # Build result
         text = "".join(seg.text for seg in segments_list).strip()

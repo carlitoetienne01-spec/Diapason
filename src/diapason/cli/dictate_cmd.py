@@ -121,9 +121,35 @@ def dictate(
         )
         sys.exit(1)
 
+    use_dictionary = bool(getattr(config.dictation, "dictionary", True))
+
+    def _correct(text: str) -> str:
+        """Apply the personal dictionary to raw model output.
+
+        The dictionary exists precisely to fix words the recogniser gets
+        wrong every time — "Karlito" for "Carlito". It was wired into the
+        HTTP dictation route only, so the desktop push-to-talk path, which is
+        the one people actually use, pasted raw Whisper output and the
+        corrections never applied.
+
+        Only the correction step is borrowed, NOT ``finalize_dictation``:
+        that also parses voice commands and calls ``execute_voice_action``,
+        so routing dictation through it would let a spoken sentence launch an
+        application instead of being typed.
+        """
+        if not use_dictionary or not text.strip():
+            return text
+        try:
+            from diapason.speech.dictation_dictionary import apply_dictionary
+
+            return apply_dictionary(text)
+        except Exception:  # noqa: BLE001 - a correction must never lose the text
+            logger.debug("dictionary correction failed", exc_info=True)
+            return text
+
     def _transcribe(wav_bytes: bytes) -> str:
         result = backend.transcribe(wav_bytes, format="wav")
-        return getattr(result, "text", "") or ""
+        return _correct(getattr(result, "text", "") or "")
 
     def _paste(text: str) -> None:
         from diapason.desktop.clipboard import paste_text
@@ -218,6 +244,15 @@ def dictate(
     except AccessibilityError as exc:
         click.echo(str(exc), err=True)
         sys.exit(1)
+
+    # Build the model before announcing readiness. The service starts at
+    # login and then sits idle, so otherwise the first dictation of the day
+    # pays model construction while the user is already talking — and
+    # "ready" would be a lie.
+    preload = getattr(backend, "preload", None)
+    if callable(preload):
+        click.echo("Loading the speech model…")
+        preload()
 
     click.echo(
         f"Dictation ready. Hold the {key.capitalize()} key and speak, then "

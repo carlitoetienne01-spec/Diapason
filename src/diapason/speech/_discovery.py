@@ -43,6 +43,10 @@ def _create_backend(
                 model_size=config.speech.model,
                 device=config.speech.device,
                 compute_type=config.speech.compute_type,
+                # [speech] language existed and was documented, but nothing
+                # ever handed it to the decoder — so setting it changed
+                # nothing while every utterance still paid for detection.
+                language=config.speech.language,
             )
         elif key == "openai":
             api_key = os.environ.get("OPENAI_API_KEY", "")

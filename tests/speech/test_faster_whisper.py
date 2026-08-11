@@ -183,3 +183,165 @@ def test_faster_whisper_supported_formats():
         assert "wav" in formats
         assert "mp3" in formats
         assert "webm" in formats
+
+
+# ── language: configured, cached, or detected ────────────────────────────────
+
+
+class TestEffectiveLanguage:
+    """Whisper runs a separate detection pass whenever no language is given.
+
+    On a 4-second French clip that pass costs about as much as the decode
+    itself, and it is least reliable exactly where dictation lives — a
+    two-second utterance. So the language is resolved once and reused.
+    """
+
+    def test_configured_language_wins(self):
+        backend = FasterWhisperBackend(language="fr")
+        assert backend._effective_language(None) == "fr"
+
+    def test_explicit_call_argument_beats_config(self):
+        backend = FasterWhisperBackend(language="fr")
+        assert backend._effective_language("en") == "en"
+
+    def test_none_until_something_is_known(self):
+        assert FasterWhisperBackend()._effective_language(None) is None
+
+    def test_detected_language_is_reused(self):
+        backend = FasterWhisperBackend()
+        backend._detected = "fr"
+        assert backend._effective_language(None) == "fr"
+
+    def test_auto_forces_detection_every_time(self):
+        """The escape hatch for someone who really does switch language."""
+        backend = FasterWhisperBackend(language="auto")
+        backend._detected = "fr"
+        assert backend._effective_language(None) is None
+
+    def test_blank_and_whitespace_are_not_a_language(self):
+        assert FasterWhisperBackend(language="   ")._effective_language(None) is None
+
+    def test_detection_is_remembered_after_a_transcription(self):
+        mock_info = MagicMock()
+        mock_info.language = "fr"
+        mock_info.language_probability = 0.99
+        mock_info.duration = 1.0
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter(()), mock_info)
+
+        with patch(
+            "diapason.speech.faster_whisper.WhisperModel", return_value=mock_model
+        ):
+            backend = FasterWhisperBackend(model_size="base", device="cpu")
+            backend.transcribe(b"not a wav")
+            assert backend._detected == "fr"
+
+            backend.transcribe(b"not a wav")
+            assert mock_model.transcribe.call_args.kwargs["language"] == "fr"
+
+    def test_configured_language_is_never_overwritten_by_detection(self):
+        mock_info = MagicMock()
+        mock_info.language = "en"
+        mock_info.language_probability = 0.99
+        mock_info.duration = 1.0
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter(()), mock_info)
+
+        with patch(
+            "diapason.speech.faster_whisper.WhisperModel", return_value=mock_model
+        ):
+            backend = FasterWhisperBackend(model_size="base", language="fr")
+            backend.transcribe(b"not a wav")
+            assert backend._detected is None
+            assert backend._effective_language(None) == "fr"
+
+
+# ── the in-memory WAV fast path ──────────────────────────────────────────────
+
+
+class TestDecodePcmWav:
+    """Encoding a float array to WAV, writing it to disk and having PyAV
+    decode it back measured ~27% of transcription time — a round trip to
+    nowhere, since the dictation path starts with the array."""
+
+    @staticmethod
+    def _wav(samples, *, rate=16_000, channels=1, width=2):
+        import io
+        import struct
+        import wave
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(channels)
+            w.setsampwidth(width)
+            w.setframerate(rate)
+            w.writeframes(
+                b"".join(struct.pack("<h", int(s * 32767)) for s in samples)
+            )
+        return buf.getvalue()
+
+    def test_round_trips_the_dictation_format(self):
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        samples = [0.0, 0.5, -0.5, 0.25]
+        out = _decode_pcm_wav(self._wav(samples))
+        assert out is not None
+        assert len(out) == 4
+        for got, want in zip(out, samples):
+            assert abs(got - want) < 1e-4
+
+    def test_rejects_a_rate_whisper_would_misread(self):
+        """A bare sample array carries no rate; the wrong one transposes speech."""
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        assert _decode_pcm_wav(self._wav([0.1] * 8, rate=44_100)) is None
+
+    def test_rejects_stereo(self):
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        assert _decode_pcm_wav(self._wav([0.1] * 8, channels=2)) is None
+
+    def test_rejects_non_wav_bytes(self):
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        assert _decode_pcm_wav(b"definitely not a wav") is None
+
+    def test_rejects_empty_audio(self):
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        assert _decode_pcm_wav(self._wav([])) is None
+
+    def test_dictation_output_takes_the_fast_path(self):
+        """The format DictationService actually produces must qualify —
+        otherwise the optimisation silently never applies."""
+        import numpy as np
+
+        from diapason.desktop.dictation_service import float_mono_to_wav
+        from diapason.speech.faster_whisper import _decode_pcm_wav
+
+        audio = np.linspace(-0.4, 0.4, 1600, dtype="float32")
+        decoded = _decode_pcm_wav(float_mono_to_wav(audio))
+        assert decoded is not None
+        assert np.abs(decoded - audio).max() < 1e-3
+
+    def test_wav_input_never_touches_the_disk(self):
+        import numpy as np
+
+        from diapason.desktop.dictation_service import float_mono_to_wav
+
+        mock_info = MagicMock()
+        mock_info.language = "fr"
+        mock_info.language_probability = 0.9
+        mock_info.duration = 0.1
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = (iter(()), mock_info)
+
+        with patch(
+            "diapason.speech.faster_whisper.WhisperModel", return_value=mock_model
+        ):
+            backend = FasterWhisperBackend(model_size="base", language="fr")
+            backend.transcribe(float_mono_to_wav(np.zeros(1600, dtype="float32")))
+
+        passed = mock_model.transcribe.call_args.args[0]
+        assert not isinstance(passed, str), "a path means it went via a temp file"
+        assert len(passed) == 1600
