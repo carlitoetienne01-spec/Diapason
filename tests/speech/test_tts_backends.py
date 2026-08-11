@@ -17,7 +17,7 @@ def test_tts_result_dataclass():
         audio=b"fake-audio-bytes",
         format="mp3",
         duration_seconds=3.5,
-        voice_id="jarvis-v1",
+        voice_id="diapason-v1",
     )
     assert result.audio == b"fake-audio-bytes"
     assert result.format == "mp3"

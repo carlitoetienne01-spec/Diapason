@@ -90,7 +90,7 @@ class RunConfig:
     episode_mode: bool = False
     dataset_subset: Optional[str] = None
     # Override the agent harness's max_turns budget. Default None means use
-    # the JarvisConfig.agent.max_turns value (typically 10). Set higher when
+    # the DiapasonConfig.agent.max_turns value (typically 10). Set higher when
     # running thinking/reasoning models that consume turns on intermediate
     # reasoning before producing tool calls.
     max_turns: Optional[int] = None
@@ -238,7 +238,7 @@ class ExecutionConfig:
     sheets_worksheet: str = "Results"
     sheets_credentials_path: str = ""
     # Override the agent harness's per-run max_turns budget. None falls back
-    # to JarvisConfig.agent.max_turns (default 10). Bump to 30-50 for
+    # to DiapasonConfig.agent.max_turns (default 10). Bump to 30-50 for
     # thinking/reasoning models on agentic benchmarks (GAIA, LiveResearch).
     max_turns: Optional[int] = None
     # terminal-bench harness budgets (see RunConfig for semantics).
@@ -267,7 +267,7 @@ class BenchmarkConfig:
     """Configuration for a single benchmark in the eval suite."""
 
     name: str = ""
-    backend: str = "jarvis-direct"
+    backend: str = "diapason-direct"
     max_samples: Optional[int] = None
     split: Optional[str] = None
     agent: Optional[str] = None

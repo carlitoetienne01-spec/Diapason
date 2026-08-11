@@ -1,4 +1,4 @@
-"""Tests for intent-based agent routing in JarvisSystem."""
+"""Tests for intent-based agent routing in DiapasonSystem."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ class TestDetectAgentIntent:
 
     @pytest.fixture()
     def system(self):
-        """Create a minimal JarvisSystem instance for testing _detect_agent_intent."""
-        from diapason.system import JarvisSystem
+        """Create a minimal DiapasonSystem instance for testing _detect_agent_intent."""
+        from diapason.system import DiapasonSystem
 
         mock_engine = MagicMock()
         mock_engine.engine_name = "mock"
-        sys = JarvisSystem.__new__(JarvisSystem)
+        sys = DiapasonSystem.__new__(DiapasonSystem)
         sys.engine = mock_engine
         sys.model = "test-model"
         sys.agent_name = "simple"
@@ -33,7 +33,7 @@ class TestDetectAgentIntent:
     def test_good_morning_jarvis_triggers_digest(self, system):
         with patch("diapason.core.registry.AgentRegistry") as reg:
             reg.contains.return_value = True
-            result = system._detect_agent_intent("Good morning Jarvis")
+            result = system._detect_agent_intent("Good morning Diapason")
             assert result == "morning_digest"
 
     def test_morning_digest_triggers(self, system):

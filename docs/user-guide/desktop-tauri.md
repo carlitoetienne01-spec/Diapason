@@ -33,5 +33,5 @@ Wrong path (do **not** use): `cd desktop && npm run tauri build` — the app liv
 uv sync --extra desktop
 # optional ML wake:
 uv sync --extra speech-wake
-jarvis serve
+diapason serve
 ```

@@ -2,7 +2,7 @@
 name = "voice-command"
 description = "Open apps or URLs from a short spoken command (ouvre Cursor, open Spotify, go to claude.ai)"
 version = "0.2.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "run_voice_command"

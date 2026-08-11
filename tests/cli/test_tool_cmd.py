@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis tool`` CLI commands."""
+"""Tests for the ``diapason tool`` CLI commands."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from diapason.core.registry import ToolRegistry
 
 
 class TestToolCmd:
-    """Test cases for the jarvis tool CLI group."""
+    """Test cases for the diapason tool CLI group."""
 
     def test_tool_group_help(self) -> None:
         """Test that the tool group help displays correctly."""

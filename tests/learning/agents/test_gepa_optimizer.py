@@ -81,15 +81,15 @@ class TestGEPAOptimizerOptimize:
                 assert "gepa" in result["reason"].lower()
 
 
-class TestOpenJarvisGEPAAdapter:
+class TestDiapasonGEPAAdapter:
     def test_adapter_init(self) -> None:
         from diapason.core.config import GEPAOptimizerConfig
         from diapason.learning.agents.gepa_optimizer import (
-            OpenJarvisGEPAAdapter,
+            DiapasonGEPAAdapter,
         )
 
         mock_store = MagicMock()
-        adapter = OpenJarvisGEPAAdapter(
+        adapter = DiapasonGEPAAdapter(
             mock_store,
             "native_react",
             GEPAOptimizerConfig(),

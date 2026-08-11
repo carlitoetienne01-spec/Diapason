@@ -36,25 +36,25 @@ engine = "ollama"
 
 [[benchmarks]]
 name = "coding_assistant"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 30
 
 [[benchmarks]]
 name = "security_scanner"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 30
 
 [[benchmarks]]
 name = "daily_digest"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 30
 
 [[benchmarks]]
 name = "doc_qa"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 30
 
 [[benchmarks]]
 name = "browser_assistant"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 30

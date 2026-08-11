@@ -2,7 +2,7 @@
 name = "todo-from-notes"
 description = "Extract actionable todo items from unstructured notes"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

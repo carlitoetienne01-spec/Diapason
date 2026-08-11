@@ -2,7 +2,7 @@
 name = "meeting-notes"
 description = "Generate structured meeting notes from a transcript or raw notes"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

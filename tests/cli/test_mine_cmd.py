@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis mine`` CLI."""
+"""Tests for the ``diapason mine`` CLI."""
 
 from __future__ import annotations
 
@@ -383,7 +383,7 @@ def test_mine_doctor_without_config(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "Pearl Mining Doctor" in result.output
-    assert "jarvis mine init" in result.output
+    assert "diapason mine init" in result.output
 
 
 def test_mine_status_no_session(tmp_path: Path, monkeypatch) -> None:

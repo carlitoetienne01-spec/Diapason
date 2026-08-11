@@ -27,5 +27,5 @@ num_gpus = 1
 
 [[benchmarks]]
 name = "liveresearchbench"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 50

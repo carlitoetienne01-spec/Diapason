@@ -133,7 +133,7 @@ def test_create_fact_store_uses_fact_store_registry(tmp_path):
     assert isinstance(store, CustomFactStore)
 
 
-def test_create_fact_store_default_path_uses_openjarvis_home(tmp_path, monkeypatch):
+def test_create_fact_store_default_path_uses_diapason_home(tmp_path, monkeypatch):
     monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
 
     store = create_fact_store("local")

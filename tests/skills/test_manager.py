@@ -465,14 +465,14 @@ class TestSkillManagerOverlayLoading:
         from unittest.mock import patch
 
         from diapason.core.config import (
-            JarvisConfig,
+            DiapasonConfig,
             LearningConfig,
             SkillsLearningConfig,
         )
         from diapason.core.events import EventBus
         from diapason.skills.manager import SkillManager
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.learning = LearningConfig()
         cfg.learning.skills = SkillsLearningConfig(
             overlay_dir=str(tmp_path / "configured-overlays")

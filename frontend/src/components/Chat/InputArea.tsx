@@ -164,7 +164,7 @@ export function InputArea() {
       try {
         const finalized = await finalizeDictation(text, true);
         if (finalized.mode === 'wake' || finalized.meta?.suggest === 'talk_open') {
-          window.dispatchEvent(new CustomEvent('openjarvis-talk-open'));
+          window.dispatchEvent(new CustomEvent('diapason-talk-open'));
           return;
         }
         if (finalized.mode === 'command' && finalized.action?.handled) {
@@ -227,7 +227,7 @@ export function InputArea() {
             }
 
             if (finalized?.mode === 'wake' || finalized?.meta?.suggest === 'talk_open') {
-              window.dispatchEvent(new CustomEvent('openjarvis-talk-open'));
+              window.dispatchEvent(new CustomEvent('diapason-talk-open'));
               return;
             }
 

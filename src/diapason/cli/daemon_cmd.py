@@ -39,7 +39,7 @@ def _write_pid(pid: int) -> None:
 
 @click.group()
 def daemon() -> None:
-    """Manage the OpenJarvis server daemon."""
+    """Manage the Diapason server daemon."""
 
 
 @daemon.command()
@@ -55,7 +55,7 @@ def start(
     model_name: str | None,
     agent_name: str | None,
 ) -> None:
-    """Start the OpenJarvis server as a background daemon."""
+    """Start the Diapason server as a background daemon."""
     console = Console(stderr=True)
 
     existing = _read_pid()
@@ -107,7 +107,7 @@ def start(
     _write_pid(proc.pid)
 
     console.print(
-        f"[green]OpenJarvis server started[/green] (PID {proc.pid})\n"
+        f"[green]Diapason server started[/green] (PID {proc.pid})\n"
         f"  URL: http://{bind_host}:{bind_port}\n"
         f"  Log: {_LOG_FILE}"
     )
@@ -115,7 +115,7 @@ def start(
 
 @daemon.command()
 def stop() -> None:
-    """Stop the running OpenJarvis server daemon."""
+    """Stop the running Diapason server daemon."""
     console = Console(stderr=True)
     pid = _read_pid()
     if pid is None:
@@ -147,7 +147,7 @@ def stop() -> None:
 @daemon.command()
 @click.pass_context
 def restart(ctx: click.Context) -> None:
-    """Restart the OpenJarvis server daemon."""
+    """Restart the Diapason server daemon."""
     console = Console(stderr=True)
     pid = _read_pid()
     if pid is not None:
@@ -158,7 +158,7 @@ def restart(ctx: click.Context) -> None:
 
 @daemon.command()
 def status() -> None:
-    """Show status of the OpenJarvis server daemon."""
+    """Show status of the Diapason server daemon."""
     console = Console(stderr=True)
     pid = _read_pid()
     if pid is None:

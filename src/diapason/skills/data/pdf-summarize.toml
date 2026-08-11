@@ -2,7 +2,7 @@
 name = "pdf-summarize"
 description = "Extract text from a PDF document and generate a structured summary"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "pdf_extract"

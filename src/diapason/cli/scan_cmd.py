@@ -452,7 +452,7 @@ def _render_results(results: List[ScanResult]) -> None:
 
     console = Console()
     console.print()
-    console.print("[bold]OpenJarvis Security Scan[/bold]")
+    console.print("[bold]Diapason Security Scan[/bold]")
     console.print()
 
     table = Table(show_header=True, header_style="bold", show_lines=True)
@@ -483,7 +483,7 @@ def _render_results(results: List[ScanResult]) -> None:
     if fail_count:
         console.print(
             "[red bold]Action required:[/red bold] address critical findings "
-            "before storing sensitive data with OpenJarvis."
+            "before storing sensitive data with Diapason."
         )
         console.print()
     elif warn_count:

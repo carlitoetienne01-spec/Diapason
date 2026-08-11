@@ -96,7 +96,7 @@ impl PyToolCall {
 
 #[pyclass(name = "Config")]
 pub struct PyConfig {
-    pub inner: diapason_core::JarvisConfig,
+    pub inner: diapason_core::DiapasonConfig,
 }
 
 #[pymethods]
@@ -104,7 +104,7 @@ impl PyConfig {
     #[new]
     fn new() -> Self {
         Self {
-            inner: diapason_core::JarvisConfig::default(),
+            inner: diapason_core::DiapasonConfig::default(),
         }
     }
 

@@ -1,6 +1,6 @@
 """TauBench V2 dataset provider — multi-turn customer service benchmark.
 
-Wraps the tau2-bench framework for evaluation within OpenJarvis.
+Wraps the tau2-bench framework for evaluation within Diapason.
 Supports airline, retail, and telecom domains.
 
 Reference: https://github.com/sierra-research/tau2-bench

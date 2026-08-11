@@ -1,6 +1,6 @@
 /** Local dictation usage stats (Diapason-inspired polish). */
 
-const STORAGE_KEY = 'openjarvis.dictation.stats';
+const STORAGE_KEY = 'diapason.dictation.stats';
 
 export type DictationStats = {
   sessions: number;

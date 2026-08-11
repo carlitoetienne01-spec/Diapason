@@ -2,7 +2,7 @@
 name = "dependency-audit"
 description = "Check project dependencies for known vulnerabilities and outdated packages"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

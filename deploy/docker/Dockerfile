@@ -72,13 +72,13 @@ WORKDIR /app
 # Run as an unprivileged user — the server needs no root privileges, so dropping
 # them limits the blast radius of a compromise (#565). The app writes only to
 # $HOME (config/cache/state), which is owned by this user.
-RUN groupadd --system --gid 10001 openjarvis && \
-    useradd --system --uid 10001 --gid openjarvis \
-        --create-home --home-dir /home/openjarvis openjarvis
-ENV HOME=/home/openjarvis
-USER openjarvis
+RUN groupadd --system --gid 10001 diapason && \
+    useradd --system --uid 10001 --gid diapason \
+        --create-home --home-dir /home/diapason diapason
+ENV HOME=/home/diapason
+USER diapason
 
 EXPOSE 8000
 
-ENTRYPOINT ["jarvis"]
+ENTRYPOINT ["diapason"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

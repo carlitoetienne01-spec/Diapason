@@ -1,14 +1,14 @@
 # Dictation Mac — push-to-talk + polish + paste / voice commands
-# Install: jarvis init --preset dictation-mac
+# Install: diapason init --preset dictation-mac
 #
 # Desktop: hold Cmd+Alt+Space → STT → polish → dictionary → paste frontmost
 #          or say "ouvre Cursor" / "open Spotify" → launches app
 # Mic button hold: same finalize into chat (or runs command)
 #
-# Optional: copy configs/openjarvis/dictation_dictionary.example.json
-#           to ~/.openjarvis/dictation_dictionary.json and edit words.
+# Optional: copy configs/diapason/dictation_dictionary.example.json
+#           to ~/.diapason/dictation_dictionary.json and edit words.
 #
-# Grant: Microphone + Accessibility for OpenJarvis
+# Grant: Microphone + Accessibility for Diapason
 
 [engine]
 default = "ollama"
@@ -28,7 +28,7 @@ port = 8000
 [dictation]
 polish = true
 dictionary = true
-# dictionary_path = ""          # empty → ~/.openjarvis/dictation_dictionary.json
+# dictionary_path = ""          # empty → ~/.diapason/dictation_dictionary.json
 llm_polish = false              # opt-in LLM cleanup (needs engine + model)
 email_mode = "off"              # off | on | auto
 llm_timeout_ms = 2000

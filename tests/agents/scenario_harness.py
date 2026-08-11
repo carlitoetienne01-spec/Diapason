@@ -14,7 +14,7 @@ from tests.agents.fake_engine import FakeEngine
 
 @dataclass(slots=True)
 class FakeSystem:
-    """Lightweight stand-in for JarvisSystem — just engine + model."""
+    """Lightweight stand-in for DiapasonSystem — just engine + model."""
 
     engine: FakeEngine
     model: str = "fake-model"

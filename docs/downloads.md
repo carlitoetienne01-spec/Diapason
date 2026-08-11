@@ -1,23 +1,23 @@
 ---
 title: Downloads
-description: Download the OpenJarvis desktop app, browser app, CLI, or Python SDK
+description: Download the Diapason desktop app, browser app, CLI, or Python SDK
 ---
 
 # Downloads
 
-OpenJarvis runs entirely on your hardware. Choose the interface that fits your workflow.
+Diapason runs entirely on your hardware. Choose the interface that fits your workflow.
 
 ---
 
 ## Desktop App
 
-The desktop app is a native window for the OpenJarvis chat UI. All inference and backend
+The desktop app is a native window for the Diapason chat UI. All inference and backend
 processing happens on your local machine — the app connects to the backend you start locally.
 
 !!! info "Backend required"
     Start the backend before opening the desktop app. The quickstart script handles everything:
     ```bash
-    git clone https://github.com/open-jarvis/OpenJarvis.git && cd OpenJarvis
+    git clone https://github.com/open-diapason/Diapason.git && cd Diapason
     ./scripts/quickstart.sh
     ```
 
@@ -25,30 +25,30 @@ processing happens on your local machine — the app connects to the backend you
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| macOS (Universal) | [:material-download: **OpenJarvis.dmg**](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-v1.0.2/OpenJarvis_1.0.1_universal.dmg) | Apple Silicon + Intel |
-| Windows (64-bit) | [:material-download: **OpenJarvis-setup.exe**](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-v1.0.2/OpenJarvis_1.0.1_x64-setup.exe) | Windows 10+ |
-| Linux (DEB) | [:material-download: **OpenJarvis.deb**](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-v1.0.2/OpenJarvis_1.0.1_amd64.deb) | Ubuntu, Debian |
-| Linux (RPM) | [:material-download: **OpenJarvis.rpm**](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-v1.0.2/OpenJarvis-1.0.1-1.x86_64.rpm) | Fedora, RHEL |
-| Linux (AppImage) | [:material-download: **OpenJarvis.AppImage**](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-v1.0.2/OpenJarvis_1.0.1_amd64.AppImage) | Any distro |
+| macOS (Universal) | [:material-download: **Diapason.dmg**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg) | Apple Silicon + Intel |
+| Windows (64-bit) | [:material-download: **Diapason-setup.exe**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe) | Windows 10+ |
+| Linux (DEB) | [:material-download: **Diapason.deb**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb) | Ubuntu, Debian |
+| Linux (RPM) | [:material-download: **Diapason.rpm**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm) | Fedora, RHEL |
+| Linux (AppImage) | [:material-download: **Diapason.AppImage**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.AppImage) | Any distro |
 
 !!! tip "All releases"
-    Browse all versions on the [GitHub Releases](https://github.com/open-jarvis/OpenJarvis/releases) page.
+    Browse all versions on the [GitHub Releases](https://github.com/open-diapason/Diapason/releases) page.
 
 ### macOS: "app is damaged" fix
 
 macOS Gatekeeper quarantines apps downloaded from the internet that aren't notarized
-by Apple. If you see **"OpenJarvis is damaged and can't be opened"**, run this in
+by Apple. If you see **"Diapason is damaged and can't be opened"**, run this in
 Terminal to clear the quarantine flag:
 
 ```bash
-xattr -cr /Applications/OpenJarvis.app
+xattr -cr /Applications/Diapason.app
 ```
 
 Then open the app normally. If you installed from the DMG but haven't moved it to
 `/Applications` yet, point the command at wherever the `.app` bundle is:
 
 ```bash
-xattr -cr ~/Downloads/OpenJarvis.app
+xattr -cr ~/Downloads/Diapason.app
 ```
 
 !!! note
@@ -69,8 +69,8 @@ The backend (Ollama, Python API server, inference) runs separately on your machi
 ### Build from source
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis/frontend
+git clone https://github.com/open-diapason/Diapason.git
+cd Diapason/frontend
 npm install
 npm run tauri:build
 ```
@@ -87,8 +87,8 @@ your machine and the frontend connects via `localhost`.
 ### One-command setup
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/open-diapason/Diapason.git
+cd Diapason
 ./scripts/quickstart.sh
 ```
 
@@ -107,8 +107,8 @@ If you prefer to run each step yourself:
 === "Step 1: Clone and install"
 
     ```bash
-    git clone https://github.com/open-jarvis/OpenJarvis.git
-    cd OpenJarvis
+    git clone https://github.com/open-diapason/Diapason.git
+    cd Diapason
     uv sync --extra desktop
     cd frontend && npm install && cd ..
     ```
@@ -124,7 +124,7 @@ If you prefer to run each step yourself:
 === "Step 3: Start backend"
 
     ```bash
-    uv run jarvis serve --port 8000
+    uv run diapason serve --port 8000
     ```
 
 === "Step 4: Start frontend"
@@ -148,44 +148,44 @@ Then open [http://localhost:5173](http://localhost:5173).
 
 ## CLI
 
-The command-line interface is the fastest way to interact with OpenJarvis
+The command-line interface is the fastest way to interact with Diapason
 programmatically. Every feature is accessible from the terminal.
 
 ### Install
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/open-diapason/Diapason.git
+cd Diapason
 uv sync
 ```
 
 ### Verify
 
 ```bash
-jarvis --version
-# jarvis, version 0.1.0
+diapason --version
+# diapason, version 0.1.0
 ```
 
 ### First commands
 
 ```bash
 # Ask a question
-jarvis ask "What is the capital of France?"
+diapason ask "What is the capital of France?"
 
 # Use an agent with tools
-jarvis ask --agent orchestrator --tools calculator "What is 137 * 42?"
+diapason ask --agent orchestrator --tools calculator "What is 137 * 42?"
 
 # Start the API server
-jarvis serve --port 8000
+diapason serve --port 8000
 
 # Run diagnostics
-jarvis doctor
+diapason doctor
 
 # List available models
-jarvis model list
+diapason model list
 
 # Interactive chat
-jarvis chat
+diapason chat
 ```
 
 !!! info "Inference backend required"
@@ -197,22 +197,22 @@ jarvis chat
 
 ## Python SDK
 
-For programmatic access, the `Jarvis` class provides a high-level sync API.
+For programmatic access, the `Diapason` class provides a high-level sync API.
 
 ### Install
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/open-diapason/Diapason.git
+cd Diapason
 uv sync
 ```
 
 ### Quick example
 
 ```python
-from openjarvis import Jarvis
+from diapason import Diapason
 
-j = Jarvis()
+j = Diapason()
 print(j.ask("Explain quicksort in two sentences."))
 j.close()
 ```
@@ -235,7 +235,7 @@ print(result["turns"])         # number of agent turns
 For full control, use the `SystemBuilder`:
 
 ```python
-from openjarvis import SystemBuilder
+from diapason import SystemBuilder
 
 system = (
     SystemBuilder()

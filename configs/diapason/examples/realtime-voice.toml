@@ -1,11 +1,11 @@
-# Install: jarvis init --preset realtime-voice
+# Install: diapason init --preset realtime-voice
 #
 # Realtime voice (Talk mode) — Diapason-parity oral + Mac tools
 #
 # Requires GEMINI_API_KEY / GOOGLE_API_KEY (Gemini Live) and/or OPENAI_API_KEY.
 # Optional: TAVILY_API_KEY for richer web_search (else DuckDuckGo fallback).
 # macOS Privacy: Calendar, Full Disk Access (for find_files), Automation (Spotify).
-# Start server: jarvis serve
+# Start server: diapason serve
 # Then open the desktop/web UI → "Talk to Diapason" (⌥Space)
 
 [speech]

@@ -36,7 +36,7 @@ _AGENT_TICK_DEFAULT_MODEL = "gemma4:31b"
 class AgentExecutor:
     """Executes a single tick for a managed agent.
 
-    Constructor receives a JarvisSystem reference for access to engine,
+    Constructor receives a DiapasonSystem reference for access to engine,
     tools, config, memory backends, and all other primitives.
     """
 
@@ -53,7 +53,7 @@ class AgentExecutor:
         self._trace_store = trace_store
 
     def set_system(self, system: Any) -> None:
-        """Deferred system injection — called after JarvisSystem is constructed."""
+        """Deferred system injection — called after DiapasonSystem is constructed."""
         self._system = system
 
     def _set_activity(self, agent_id: str, activity: str) -> None:
@@ -258,10 +258,10 @@ class AgentExecutor:
 
         config = agent.get("config", {})
 
-        # Resolve engine + model from JarvisSystem
+        # Resolve engine + model from DiapasonSystem
         engine = self._system.engine if self._system else None
         if engine is None:
-            raise FatalError("No engine available in JarvisSystem")
+            raise FatalError("No engine available in DiapasonSystem")
         model = (
             config.get("model")
             or _AGENT_TICK_DEFAULT_MODEL

@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Tuple
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.registry import EngineRegistry
 from diapason.engine._base import InferenceEngine
 
@@ -39,7 +39,7 @@ _HOST_MAP: Dict[str, str | None] = {
 _REMOTE_ENGINE_KEYS = frozenset({"cloud", "litellm"})
 
 
-def _engine_key_is_remote(key: str, config: JarvisConfig) -> bool:
+def _engine_key_is_remote(key: str, config: DiapasonConfig) -> bool:
     """True when constructing ``key`` would mean talking to another machine.
 
     Host-based engines are judged on their configured host, not on their name:
@@ -59,7 +59,7 @@ def _engine_key_is_remote(key: str, config: JarvisConfig) -> bool:
     return not host_is_local(str(host))
 
 
-def _make_engine(key: str, config: JarvisConfig) -> InferenceEngine:
+def _make_engine(key: str, config: DiapasonConfig) -> InferenceEngine:
     """Instantiate a registered engine with the appropriate config host."""
     # Refuse BEFORE construction. This is the widest single guard in the
     # codebase: every path that reaches a cloud model — chat, ask, agents,
@@ -145,7 +145,7 @@ def _maybe_register_mining_sidecar_engine() -> None:
     EngineRegistry.register_value("vllm-pearl-mining", _cls)
 
 
-def discover_engines(config: JarvisConfig) -> List[Tuple[str, InferenceEngine]]:
+def discover_engines(config: DiapasonConfig) -> List[Tuple[str, InferenceEngine]]:
     """Probe registered engines and return ``[(key, instance)]`` for healthy ones.
 
     Results are sorted with the config default engine first.
@@ -200,7 +200,7 @@ def discover_models(
 
 
 def get_engine(
-    config: JarvisConfig,
+    config: DiapasonConfig,
     engine_key: str | None = None,
     model: str | None = None,
 ) -> Tuple[str, InferenceEngine] | None:

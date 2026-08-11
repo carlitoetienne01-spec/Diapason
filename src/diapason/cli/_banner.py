@@ -1,8 +1,8 @@
-"""Startup banner — OpenJarvis wordmark + tagline."""
+"""Startup banner — Diapason wordmark + tagline."""
 
 from __future__ import annotations
 
-# "OpenJarvis" rendered in the figlet "standard" font. Stored as plain text
+# "Diapason" rendered in the figlet "standard" font. Stored as plain text
 # (no inline Rich markup) so the backslashes in the glyphs don't collide with
 # Rich's [tag] markup or Python raw-string escaping — colour is applied at
 # print time via a style argument. The "standard" font renders a clearly
@@ -21,7 +21,7 @@ _TAGLINE = "Personal AI, On Personal Devices"
 
 
 def print_banner(quiet: bool = False) -> None:
-    """Print the OpenJarvis startup banner. No-op when quiet."""
+    """Print the Diapason startup banner. No-op when quiet."""
     if quiet:
         return
     try:

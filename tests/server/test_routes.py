@@ -56,9 +56,9 @@ def _make_agent(content="Hello from agent"):
 
 
 def _test_config():
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
 
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.analytics.enabled = False
     cfg.traces.enabled = False
     return cfg
@@ -694,9 +694,9 @@ def _make_capturing_engine(captured: list):
 
 
 def _identity_config():
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
 
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.agent.default_system_prompt = "You are Diapason."
     cfg.analytics.enabled = False
     return cfg
@@ -707,7 +707,7 @@ class TestIdentityPromptInjection:
 
     The desktop UI posts only user/assistant turns to the
     OpenAI-compatible ``/v1/chat/completions`` endpoint, so the engine never
-    saw OpenJarvis's identity system prompt and the model answered from its
+    saw Diapason's identity system prompt and the model answered from its
     training identity ("I'm Claude", "I am Qwen", ...). The engine-direct
     server handlers must now inject ``agent.default_system_prompt`` whenever
     the client omits a system message — and must NOT inject a second one when
@@ -802,7 +802,7 @@ class TestIdentityPromptInjection:
         """Regression: /v1/chat/completions previously injected only the bare
         ``default_system_prompt`` blurb via a hand-rolled lookup, bypassing
         ``SystemPromptBuilder`` entirely — so SOUL.md/MEMORY.md/USER.md
-        persona files never applied to this path, unlike ``jarvis ask`` and
+        persona files never applied to this path, unlike ``diapason ask`` and
         the managed-agent routes. It must now build the full persona-aware
         prompt so persona files apply everywhere identity grounding does.
         """
@@ -943,9 +943,9 @@ def _traces_enabled_config(tmp_path):
     traces; pinning an explicit config + tmp db keeps them hermetic and
     parallel-safe under ``pytest -n auto``.
     """
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
 
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.traces.enabled = True
     cfg.traces.db_path = str(tmp_path / "traces.db")
     cfg.analytics.enabled = False

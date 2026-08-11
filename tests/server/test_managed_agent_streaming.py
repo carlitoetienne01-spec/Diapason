@@ -224,7 +224,7 @@ class TestBuildManagedSystemPrompt:
     def test_matches_cli_builder_output(self, tmp_path):
         """Parity check: the helper produces exactly what a directly-
         constructed SystemPromptBuilder produces (same path the CLI uses),
-        so streaming chat and `jarvis ask` assemble the prompt identically.
+        so streaming chat and `diapason ask` assemble the prompt identically.
         """
         from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
         from diapason.prompt.builder import SystemPromptBuilder

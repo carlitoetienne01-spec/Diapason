@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from diapason.speech.wake_phrases import has_wake_word, strip_wake_word
 from diapason.speech.wakeword import WakeListenConfig, WakeWordListener
@@ -18,8 +17,8 @@ def test_has_wake_word_en_fr():
 
 
 def test_has_wake_word_rejects_mid_sentence():
-    assert not has_wake_word("le jarvis de iron man")
-    assert not has_wake_word("I like jarvis movies")
+    assert not has_wake_word("le diapason de iron man")
+    assert not has_wake_word("I like diapason movies")
     assert not has_wake_word("")
 
 
@@ -85,6 +84,7 @@ def test_listener_cooldown():
 
 def test_trigger_poll_route(tmp_path: Path):
     from fastapi.testclient import TestClient
+
     from diapason.channels.local_trigger import LocalTriggerChannel
     from diapason.server.trigger_routes import create_trigger_router
 

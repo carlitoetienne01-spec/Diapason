@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus
 from diapason.system import QueryOrchestrator
 
@@ -36,7 +36,7 @@ class _FakeEngine:
 class _FakeSystem:
     """Minimum surface QueryOrchestrator reads — no subsystems wired."""
 
-    config: JarvisConfig = field(default_factory=JarvisConfig)
+    config: DiapasonConfig = field(default_factory=DiapasonConfig)
     bus: EventBus = field(default_factory=EventBus)
     engine: Any = None
     engine_key: str = "fake"
@@ -76,7 +76,7 @@ class TestAskDirectEngineMode:
 
     def test_uses_config_defaults_when_omitted(self):
         engine = _FakeEngine({"content": ""})
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.intelligence.temperature = 0.42
         config.intelligence.max_tokens = 77
         system = _FakeSystem(config=config, engine=engine)

@@ -31,5 +31,5 @@ routing = "heuristic"
 
 [eval]
 benchmarks = ["terminalbench"]
-backend = "jarvis-agent"
+backend = "diapason-agent"
 max_samples = 50

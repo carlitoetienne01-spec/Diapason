@@ -16,7 +16,7 @@ import pytest
 def _isolate_traces_db(tmp_path, monkeypatch):
     """Point ``config.traces.db_path`` at a temp file for every server test.
 
-    ``load_config`` returns a fresh ``JarvisConfig`` per call (no caching), so
+    ``load_config`` returns a fresh ``DiapasonConfig`` per call (no caching), so
     wrapping it to rewrite ``traces.db_path`` only affects calls made during
     the test — there is no global leak.
     """

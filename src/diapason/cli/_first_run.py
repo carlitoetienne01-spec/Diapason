@@ -1,6 +1,6 @@
-"""Bare-`jarvis` first-run guard.
+"""Bare-`diapason` first-run guard.
 
-When the user types ``jarvis`` with no subcommand, route them to the
+When the user types ``diapason`` with no subcommand, route them to the
 chat command if a config exists, otherwise into the init wizard with
 the ``--from-bare-jarvis`` flag (which lets init suppress the
 launch-chat prompt and auto-confirm downstream questions).

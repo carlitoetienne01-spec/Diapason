@@ -77,9 +77,9 @@ def routines_run(routine_id: str, force: bool, dry_run: bool) -> None:
     system = None
     if not dry_run:
         try:
-            from diapason.sdk import Jarvis
+            from diapason.sdk import Diapason
 
-            with Jarvis() as j:
+            with Diapason() as j:
                 out = run_routine(
                     routine, system=j, force=force, workspace=_workspace()
                 )

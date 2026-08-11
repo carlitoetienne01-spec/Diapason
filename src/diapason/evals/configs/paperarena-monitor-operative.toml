@@ -33,7 +33,7 @@ num_gpus = 2
 
 [[benchmarks]]
 name = "paperarena"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = [

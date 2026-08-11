@@ -1,4 +1,4 @@
-"""Detect how OpenJarvis was installed so we can show the right upgrade
+"""Detect how Diapason was installed so we can show the right upgrade
 command (and run the right upgrade command for ``diapason self-update``).
 
 Three install paths are supported today:
@@ -28,7 +28,7 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class InstallInfo:
-    """How OpenJarvis was installed."""
+    """How Diapason was installed."""
 
     kind: str  # "pypi" | "uv-tool" | "editable-git" | "unknown"
     upgrade_command: str

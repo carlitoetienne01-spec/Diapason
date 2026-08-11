@@ -7,18 +7,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus
 from diapason.core.types import Role
-from diapason.system import JarvisSystem
+from diapason.system import DiapasonSystem
 
 
 @pytest.fixture()
 def minimal_system():
     engine = MagicMock()
     engine.generate.return_value = {"content": "ok", "usage": {}}
-    return JarvisSystem(
-        config=JarvisConfig(),
+    return DiapasonSystem(
+        config=DiapasonConfig(),
         bus=EventBus(),
         engine=engine,
         engine_key="mock",

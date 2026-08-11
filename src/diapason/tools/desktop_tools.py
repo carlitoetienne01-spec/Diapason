@@ -760,7 +760,7 @@ class PasteToFrontmostTool(BaseTool):
                         tool_name="paste_to_frontmost",
                         content=(
                             "Clipboard set but paste failed — grant Accessibility "
-                            "to Terminal/OpenJarvis. "
+                            "to Terminal/Diapason. "
                             + (r.stderr or "").strip()
                         ),
                         success=False,

@@ -181,9 +181,9 @@ def digest(
         # Trigger on-demand generation
         console.print("[yellow]Generating fresh digest...[/yellow]")
         try:
-            from diapason.sdk import Jarvis
+            from diapason.sdk import Diapason
 
-            with Jarvis() as j:
+            with Diapason() as j:
                 j.ask("Generate my morning digest", agent="morning_digest")
         except Exception as exc:
             console.print(f"[red]Failed to generate digest: {exc}[/red]")

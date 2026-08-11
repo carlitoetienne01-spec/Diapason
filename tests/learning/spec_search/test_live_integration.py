@@ -124,7 +124,7 @@ class TestDiagnosisRunnerLive:
             session_id="live-test-001",
             config={
                 "config_path": config_dir / "config.toml",
-                "openjarvis_home": config_dir,
+                "diapason_home": config_dir,
             },
             max_turns=5,  # Keep it cheap
             max_cost_usd=1.0,

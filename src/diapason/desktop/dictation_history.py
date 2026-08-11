@@ -7,7 +7,7 @@ actually heard — which is how you find out that "small" fixes the proper nouns
 
 Design constraints that follow from the privacy contract:
 
-* **Local only.** A JSONL file under the OpenJarvis config dir. Nothing here
+* **Local only.** A JSONL file under the Diapason config dir. Nothing here
   is ever sent anywhere; the outbound ratchet has no reason to see this module.
 * **Opt-out and bounded.** Off by default is wrong (an invisible history is
   the point of a history), but unbounded growth is a liability: a dictation

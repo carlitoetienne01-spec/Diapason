@@ -19,8 +19,8 @@ import click
 # ---------------------------------------------------------------------------
 
 FRAMEWORKS: Dict[str, Dict[str, str]] = {
-    "diapason": {"backend_id": "jarvis-agent"},
-    "diapason-distilled": {"backend_id": "jarvis-agent"},
+    "diapason": {"backend_id": "diapason-agent"},
+    "diapason-distilled": {"backend_id": "diapason-agent"},
     "hermes": {"backend_id": "hermes"},
     "openclaw": {"backend_id": "openclaw"},
 }

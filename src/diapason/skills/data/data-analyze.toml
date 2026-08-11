@@ -2,7 +2,7 @@
 name = "data-analyze"
 description = "Analyze a data file and generate statistical insights and visualizations"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

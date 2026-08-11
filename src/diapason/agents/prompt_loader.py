@@ -23,8 +23,8 @@ from diapason.core.paths import get_config_dir
 logger = logging.getLogger(__name__)
 
 
-def _openjarvis_home() -> Path:
-    """Resolve the OpenJarvis root, honoring OPENJARVIS_HOME / XDG_DATA_HOME."""
+def _diapason_home() -> Path:
+    """Resolve the Diapason root, honoring OPENJARVIS_HOME / XDG_DATA_HOME."""
     return get_config_dir()
 
 
@@ -34,7 +34,7 @@ def load_system_prompt_override(agent_name: str) -> str | None:
     Looks for ``$OPENJARVIS_HOME/agents/<agent_name>/system_prompt.md``.
     ``OPENJARVIS_HOME`` defaults to ``~/.diapason`` when unset.
     """
-    home = _openjarvis_home()
+    home = _diapason_home()
     prompt_path = home / "agents" / agent_name / "system_prompt.md"
     if not prompt_path.exists():
         return None
@@ -59,7 +59,7 @@ def load_few_shot_exemplars(
     Looks for ``$OPENJARVIS_HOME/agents/<agent_name>/few_shot.json``.
     Expected format: ``[{"input": "Q", "output": "A"}, ...]``.
     """
-    home = _openjarvis_home()
+    home = _diapason_home()
     fs_path = home / "agents" / agent_name / "few_shot.json"
     if not fs_path.exists():
         return []

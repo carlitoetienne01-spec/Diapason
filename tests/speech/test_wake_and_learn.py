@@ -83,14 +83,14 @@ def test_apply_bumps_usage(tmp_path: Path):
     save_dictionary(
         [
             DictionaryEntry(
-                word="OpenJarvis",
-                original_word="open jarvis",
-                replacements=["open jarvis"],
+                word="Diapason",
+                original_word="open diapason",
+                replacements=["open diapason"],
                 usage_count=0,
             )
         ],
         path,
     )
-    apply_dictionary("try open jarvis now", path=path, bump_usage=True)
+    apply_dictionary("try open diapason now", path=path, bump_usage=True)
     entries = load_dictionary(path)
     assert entries[0].usage_count >= 1

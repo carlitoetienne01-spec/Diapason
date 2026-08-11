@@ -71,7 +71,7 @@ class TestReactSystemPromptPlaceholder:
 class TestSystemBuilderCapturesFewShot:
     def test_skill_manager_examples_stored_on_system(self, tmp_path):
         """SystemBuilder.build() pulls examples from SkillManager and
-        stashes them on the JarvisSystem instance for _run_agent to
+        stashes them on the DiapasonSystem instance for _run_agent to
         forward to tool-using agents."""
 
         from diapason.skills.manager import SkillManager
@@ -115,7 +115,7 @@ class TestRunAgentForwardsExamples:
         from unittest.mock import patch
 
         from diapason.agents._stubs import AgentResult
-        from diapason.system import JarvisSystem
+        from diapason.system import DiapasonSystem
 
         captured_kwargs: dict = {}
 
@@ -128,8 +128,8 @@ class TestRunAgentForwardsExamples:
             def run(self, query, context=None, **kw):
                 return AgentResult(content="ok", turns=1)
 
-        # Build a minimal JarvisSystem with the captured examples
-        system = JarvisSystem.__new__(JarvisSystem)
+        # Build a minimal DiapasonSystem with the captured examples
+        system = DiapasonSystem.__new__(DiapasonSystem)
         system.config = MagicMock()
         system.config.intelligence.temperature = 0.0
         system.config.intelligence.max_tokens = 100

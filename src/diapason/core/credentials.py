@@ -21,7 +21,7 @@ _LOCK = threading.Lock()
 
 
 def _default_path() -> Path:
-    """Resolve the credentials file under the OpenJarvis root (env-aware)."""
+    """Resolve the credentials file under the Diapason root (env-aware)."""
     return get_config_dir() / "credentials.toml"
 
 

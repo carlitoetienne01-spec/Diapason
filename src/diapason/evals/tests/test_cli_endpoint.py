@@ -1,7 +1,7 @@
 """--base-url/--api-key forwarding through the eval CLI plumbing.
 
 Covers the fix for the eval-CLI endpoint gap: the flags used to be silently
-dropped for jarvis-direct/jarvis-agent and ignored by terminalbench-native
+dropped for diapason-direct/diapason-agent and ignored by terminalbench-native
 (which hardcoded api_base="http://localhost:8000/v1").
 """
 
@@ -27,7 +27,7 @@ def _quiet_console() -> Console:
 def _tb_config(**overrides) -> RunConfig:
     defaults = dict(
         benchmark="terminalbench-native",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="my-model",
         max_samples=1,
         max_workers=1,
@@ -38,10 +38,10 @@ def _tb_config(**overrides) -> RunConfig:
 
 
 class TestBuildBackendForwardsEndpoint:
-    @patch("diapason.evals.backends.jarvis_direct.JarvisDirectBackend")
-    def test_jarvis_direct_receives_base_url_and_api_key(self, mock_cls):
+    @patch("diapason.evals.backends.diapason_direct.DiapasonDirectBackend")
+    def test_diapason_direct_receives_base_url_and_api_key(self, mock_cls):
         _build_backend(
-            "jarvis-direct",
+            "diapason-direct",
             "vllm",
             "orchestrator",
             [],
@@ -52,10 +52,10 @@ class TestBuildBackendForwardsEndpoint:
         assert kwargs["base_url"] == "http://node7:8123/v1"
         assert kwargs["api_key"] == "sk-k"
 
-    @patch("diapason.evals.backends.jarvis_agent.JarvisAgentBackend")
-    def test_jarvis_agent_receives_base_url_and_api_key(self, mock_cls):
+    @patch("diapason.evals.backends.diapason_agent.DiapasonAgentBackend")
+    def test_diapason_agent_receives_base_url_and_api_key(self, mock_cls):
         _build_backend(
-            "jarvis-agent",
+            "diapason-agent",
             "vllm",
             "orchestrator",
             ["calculator"],
@@ -66,12 +66,12 @@ class TestBuildBackendForwardsEndpoint:
         assert kwargs["base_url"] == "http://node7:8123/v1"
         assert kwargs["api_key"] == "sk-k"
 
-    @patch("diapason.evals.backends.jarvis_direct.JarvisDirectBackend")
+    @patch("diapason.evals.backends.diapason_direct.DiapasonDirectBackend")
     def test_suite_mode_scopes_endpoint_to_external_backends(self, mock_cls):
         """[backend.external] suite semantics stay hermes/openclaw-only:
         first_party_endpoint=False must not forward to first-party."""
         _build_backend(
-            "jarvis-direct",
+            "diapason-direct",
             "vllm",
             "orchestrator",
             [],

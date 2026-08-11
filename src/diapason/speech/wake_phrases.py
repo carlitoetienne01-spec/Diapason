@@ -81,7 +81,7 @@ def strip_wake_word(
     *,
     pattern: re.Pattern[str] | None = None,
 ) -> str:
-    """Remove leading wake address. « Jarvis, ouvre YouTube » → « ouvre YouTube »."""
+    """Remove leading wake address. « Diapason, ouvre YouTube » → « ouvre YouTube »."""
     t = (text or "").strip()
     if not t:
         return ""

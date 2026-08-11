@@ -69,7 +69,7 @@ def test_unknown_install_falls_back_to_pypi(tmp_path, monkeypatch):
     assert info.upgrade_command == "pip install --upgrade diapason"
 
 
-def test_missing_openjarvis_file_falls_back_to_pypi(monkeypatch):
+def test_missing_diapason_file_falls_back_to_pypi(monkeypatch):
     """diapason unimportable / no __file__ — still get a sane default."""
     with patch("diapason.cli._install_detect.Path") as mock_path:
         mock_path.side_effect = Exception("boom")

@@ -1,4 +1,4 @@
-"""Tests for the env-aware OpenJarvis home-directory resolver (issue #462).
+"""Tests for the env-aware Diapason home-directory resolver (issue #462).
 
 Covers the single-root consolidation: ``$DIAPASON_HOME`` >
 ``$XDG_DATA_HOME/diapason`` > ``~/.diapason``, backward compatibility
@@ -36,7 +36,7 @@ class TestGetConfigDir:
         _clear_env(monkeypatch)
         assert paths.get_config_dir() == (Path.home() / ".diapason").resolve()
 
-    def test_respects_openjarvis_home(
+    def test_respects_diapason_home(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
@@ -52,7 +52,7 @@ class TestGetConfigDir:
         # Single nested 'diapason' dir under XDG_DATA_HOME.
         assert paths.get_config_dir() == (tmp_path / "diapason").resolve()
 
-    def test_openjarvis_home_wins_over_xdg(
+    def test_diapason_home_wins_over_xdg(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
@@ -61,7 +61,7 @@ class TestGetConfigDir:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg_loses"))
         assert paths.get_config_dir() == oj.resolve()
 
-    def test_expands_user_in_openjarvis_home(
+    def test_expands_user_in_diapason_home(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)

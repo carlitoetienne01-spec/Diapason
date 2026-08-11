@@ -81,7 +81,7 @@ class TestSendBlueWebhook:
             json={
                 "from_number": "+19127130720",
                 "to_number": "+15551234567",
-                "content": "Hello Jarvis",
+                "content": "Hello Diapason",
                 "message_handle": "msg-001",
                 "is_outbound": False,
                 "status": "RECEIVED",

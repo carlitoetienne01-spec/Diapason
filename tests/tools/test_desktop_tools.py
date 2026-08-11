@@ -31,7 +31,11 @@ def test_paste_to_frontmost_empty():
 
 
 def test_looks_like_url_and_normalize():
-    from diapason.tools.desktop_tools import looks_like_url, normalize_url, web_search_url
+    from diapason.tools.desktop_tools import (
+        looks_like_url,
+        normalize_url,
+        web_search_url,
+    )
 
     assert looks_like_url("youtube.com")
     assert looks_like_url("https://example.com/x")

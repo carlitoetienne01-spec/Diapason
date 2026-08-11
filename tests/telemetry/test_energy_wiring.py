@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from diapason.cli import cli
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus, EventType
 from diapason.core.types import Message, Role, TelemetryRecord
 from diapason.telemetry.aggregator import AggregatedStats, TelemetryAggregator
@@ -82,14 +82,14 @@ def _mock_energy_monitor():
 
 
 def _energy_config(tmp_path, gpu_metrics=True):
-    """Build a JarvisConfig with energy monitoring enabled."""
-    cfg = JarvisConfig()
+    """Build a DiapasonConfig with energy monitoring enabled."""
+    cfg = DiapasonConfig()
     cfg.telemetry.enabled = True
     cfg.telemetry.gpu_metrics = gpu_metrics
     cfg.telemetry.energy_vendor = ""
     cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
     # These tests exercise engine-level instrumentation, not agent dispatch.
-    # `jarvis ask` (no --agent) now falls back to ``agent.default_agent``
+    # `diapason ask` (no --agent) now falls back to ``agent.default_agent``
     # which defaults to "simple", and conftest clears the registry per test.
     # Opt out explicitly so the CLI uses direct-engine mode here.
     cfg.agent.default_agent = ""
@@ -322,22 +322,22 @@ class TestSdkWiring:
 
     def test_engine_wrapped_in_ensure_engine(self):
         """_ensure_engine wraps with InstrumentedEngine."""
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with patch(
             "diapason.sdk.get_engine",
             return_value=("mock", engine),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             j._ensure_engine()
             assert isinstance(j._engine, InstrumentedEngine)
             j.close()
 
     def test_energy_monitor_stored(self, tmp_path):
-        """Energy monitor is created and stored on Jarvis instance."""
-        from diapason.sdk import Jarvis
+        """Energy monitor is created and stored on Diapason instance."""
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
         cfg = _energy_config(tmp_path, gpu_metrics=True)
@@ -353,7 +353,7 @@ class TestSdkWiring:
                 return_value=mock_monitor,
             ),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             j._ensure_engine()
             assert j._energy_monitor is mock_monitor
             j.close()
@@ -361,24 +361,24 @@ class TestSdkWiring:
 
     def test_no_energy_monitor_when_gpu_metrics_off(self):
         """No energy monitor when gpu_metrics=False."""
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = False
 
         with patch(
             "diapason.sdk.get_engine",
             return_value=("mock", engine),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             j._ensure_engine()
             assert j._energy_monitor is None
             j.close()
 
     def test_ask_full_records_energy(self, tmp_path):
         """ask_full records energy via InstrumentedEngine."""
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
         cfg = _energy_config(tmp_path, gpu_metrics=True)
@@ -394,7 +394,7 @@ class TestSdkWiring:
                 return_value=mock_monitor,
             ),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             result = j.ask_full("Hello")
             assert result["content"] == "Test response"
             j.close()
@@ -409,10 +409,10 @@ class TestSdkWiring:
 
     def test_close_cleans_up_energy_monitor(self):
         """close() releases the energy monitor."""
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = True
         mock_monitor = _mock_energy_monitor()
 
@@ -426,7 +426,7 @@ class TestSdkWiring:
                 return_value=mock_monitor,
             ),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             j._ensure_engine()
             j.close()
             mock_monitor.close.assert_called_once()
@@ -434,10 +434,10 @@ class TestSdkWiring:
 
     def test_double_close_safe(self):
         """Double close doesn't crash."""
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _mock_engine()
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = True
         mock_monitor = _mock_energy_monitor()
 
@@ -451,7 +451,7 @@ class TestSdkWiring:
                 return_value=mock_monitor,
             ),
         ):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             j._ensure_engine()
             j.close()
             j.close()  # should not raise
@@ -581,7 +581,7 @@ class TestBenchWiring:
             },
         }
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = True
         mock_monitor = _mock_energy_monitor()
 
@@ -622,7 +622,7 @@ class TestBenchWiring:
             },
         }
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = False
 
         with (
@@ -656,7 +656,7 @@ class TestBenchWiring:
             },
         }
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.gpu_metrics = False
 
         with (

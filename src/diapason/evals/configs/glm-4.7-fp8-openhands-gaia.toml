@@ -37,7 +37,7 @@ num_gpus = 8                      # TP=8
 # Agentic: GAIA — requires file reading, web search, multi-step reasoning
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = ["code_interpreter", "web_search", "file_read", "calculator", "think"]
 max_samples = 50

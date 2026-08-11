@@ -6,20 +6,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus
-from diapason.system import JarvisSystem, SystemBuilder
+from diapason.system import DiapasonSystem, SystemBuilder
 
 
-class TestJarvisSystem:
+class TestDiapasonSystem:
     def test_ask_direct_mode(self):
         engine = MagicMock()
         engine.generate.return_value = {
             "content": "Hello!",
             "usage": {"prompt_tokens": 5, "completion_tokens": 3},
         }
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -36,8 +36,8 @@ class TestJarvisSystem:
             "content": "OK",
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -53,8 +53,8 @@ class TestJarvisSystem:
             "content": "Direct response",
             "usage": {},
         }
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -72,8 +72,8 @@ class TestJarvisSystem:
             "content": "Direct response",
             "usage": {},
         }
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -102,8 +102,8 @@ class TestJarvisSystem:
             AgentRegistry.register_value("test-system-agent", TestAgent)
 
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -116,8 +116,8 @@ class TestJarvisSystem:
     def test_ask_unknown_agent(self):
         """Unknown agent should return an error dict."""
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -130,8 +130,8 @@ class TestJarvisSystem:
     def test_ask_passes_temperature_and_max_tokens(self):
         engine = MagicMock()
         engine.generate.return_value = {"content": "OK", "usage": {}}
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -144,8 +144,8 @@ class TestJarvisSystem:
 
     def test_close(self):
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -156,8 +156,8 @@ class TestJarvisSystem:
     def test_close_with_telemetry(self):
         engine = MagicMock()
         telem = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -170,8 +170,8 @@ class TestJarvisSystem:
     def test_close_with_trace_store(self):
         engine = MagicMock()
         trace = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -183,8 +183,8 @@ class TestJarvisSystem:
 
     def test_build_tools_empty(self):
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -195,8 +195,8 @@ class TestJarvisSystem:
 
     def test_build_tools_unknown_tool(self):
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -208,61 +208,61 @@ class TestJarvisSystem:
 
 class TestSystemBuilder:
     def test_builder_fluent_api(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         result = builder.engine("ollama").model("test").agent("simple")
         assert result is builder  # fluent
 
     def test_builder_stores_config(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         assert builder._config is config
 
     def test_builder_engine_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.engine("vllm")
         assert builder._engine_key == "vllm"
 
     def test_builder_model_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.model("my-model")
         assert builder._model == "my-model"
 
     def test_builder_agent_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.agent("orchestrator")
         assert builder._agent_name == "orchestrator"
 
     def test_builder_tools_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.tools(["calculator", "think"])
         assert builder._tool_names == ["calculator", "think"]
 
     def test_builder_telemetry_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.telemetry(False)
         assert builder._telemetry is False
 
     def test_builder_traces_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         builder.traces(True)
         assert builder._traces is True
 
     def test_builder_event_bus_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         bus = EventBus()
         builder.event_bus(bus)
         assert builder._bus is bus
 
     def test_builder_chaining(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = (
             SystemBuilder(config)
             .engine("ollama")
@@ -280,41 +280,41 @@ class TestSystemBuilder:
         assert builder._traces is False
 
     def test_import_works(self):
-        from diapason.system import JarvisSystem, SystemBuilder
+        from diapason.system import DiapasonSystem, SystemBuilder
 
-        assert JarvisSystem is not None
+        assert DiapasonSystem is not None
         assert SystemBuilder is not None
 
     def test_builder_default_config(self):
         """SystemBuilder with no config should load defaults."""
         builder = SystemBuilder()
         assert builder._config is not None
-        assert isinstance(builder._config, JarvisConfig)
+        assert isinstance(builder._config, DiapasonConfig)
 
     def test_builder_build_raises_without_engine(self):
         """build() should raise RuntimeError when no engine is available."""
-        config = JarvisConfig()
+        config = DiapasonConfig()
         # Use a nonsense engine key to ensure no engine is found
         builder = SystemBuilder(config).engine("nonexistent_engine_xyz_123")
         with pytest.raises(RuntimeError, match="No inference engine"):
             builder.build()
 
     def test_builder_sandbox_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         result = builder.sandbox(True)
         assert result is builder  # fluent
         assert builder._sandbox is True
 
     def test_builder_scheduler_setter(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = SystemBuilder(config)
         result = builder.scheduler(True)
         assert result is builder  # fluent
         assert builder._scheduler is True
 
     def test_builder_sandbox_scheduler_chaining(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         builder = (
             SystemBuilder(config)
             .engine("ollama")
@@ -328,7 +328,7 @@ class TestSystemBuilder:
 
 
 class TestSystemBuilderEngineInstance:
-    """Explicit engine injection (jarvis eval --base-url path)."""
+    """Explicit engine injection (diapason eval --base-url path)."""
 
     @staticmethod
     def _fake_engine(healthy: bool = True) -> MagicMock:
@@ -340,7 +340,7 @@ class TestSystemBuilderEngineInstance:
         return engine
 
     def test_engine_instance_is_fluent(self):
-        builder = SystemBuilder(JarvisConfig())
+        builder = SystemBuilder(DiapasonConfig())
         engine = self._fake_engine()
         result = builder.engine_instance(engine, key="my-endpoint")
         assert result is builder
@@ -348,7 +348,7 @@ class TestSystemBuilderEngineInstance:
         assert builder._engine_instance_key == "my-endpoint"
 
     def test_resolve_engine_returns_injected_instance(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         engine = self._fake_engine(healthy=True)
         builder = SystemBuilder(config).engine_instance(engine, key="endpoint")
         resolved_engine, resolved_key = builder._resolve_engine(config)
@@ -356,7 +356,7 @@ class TestSystemBuilderEngineInstance:
         assert resolved_key == "endpoint"
 
     def test_unhealthy_injected_instance_raises_naming_host(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         engine = self._fake_engine(healthy=False)
         builder = SystemBuilder(config).engine_instance(engine, key="endpoint")
         with pytest.raises(RuntimeError, match=r"http://127\.0\.0\.1:18999"):
@@ -365,7 +365,7 @@ class TestSystemBuilderEngineInstance:
     def test_unhealthy_injected_instance_never_consults_discovery(self):
         """The observed failure mode: an explicit endpoint must NOT be
         silently replaced by whatever other engine discovery finds."""
-        config = JarvisConfig()
+        config = DiapasonConfig()
         engine = self._fake_engine(healthy=False)
         builder = SystemBuilder(config).engine_instance(engine)
         with patch("diapason.engine._discovery.get_engine") as mock_get_engine:
@@ -374,7 +374,7 @@ class TestSystemBuilderEngineInstance:
         mock_get_engine.assert_not_called()
 
     def test_healthy_injected_instance_never_consults_discovery(self):
-        config = JarvisConfig()
+        config = DiapasonConfig()
         engine = self._fake_engine(healthy=True)
         builder = SystemBuilder(config).engine_instance(engine, key="endpoint")
         with patch("diapason.engine._discovery.get_engine") as mock_get_engine:
@@ -385,7 +385,7 @@ class TestSystemBuilderEngineInstance:
     def test_build_wires_injected_engine(self):
         """build() must use the injected engine (possibly behind security
         wrappers) instead of running discovery."""
-        config = JarvisConfig()
+        config = DiapasonConfig()
         engine = self._fake_engine(healthy=True)
         engine.list_models.return_value = ["stub-model"]
         builder = (
@@ -406,12 +406,12 @@ class TestSystemBuilderEngineInstance:
             system.close()
 
 
-class TestJarvisSystemClose:
+class TestDiapasonSystemClose:
     def test_close_with_scheduler_store(self):
         engine = MagicMock()
         sched_store = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -424,8 +424,8 @@ class TestJarvisSystemClose:
     def test_close_with_scheduler(self):
         engine = MagicMock()
         scheduler = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -438,8 +438,8 @@ class TestJarvisSystemClose:
     def test_close_with_memory_backend(self):
         engine = MagicMock()
         mem = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -452,8 +452,8 @@ class TestJarvisSystemClose:
     def test_close_with_session_store(self):
         engine = MagicMock()
         sess = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -466,8 +466,8 @@ class TestJarvisSystemClose:
     def test_close_with_workflow_engine(self):
         engine = MagicMock()
         wf = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -479,8 +479,8 @@ class TestJarvisSystemClose:
 
     def test_system_fields_default_none(self):
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -493,8 +493,8 @@ class TestJarvisSystemClose:
     def test_close_with_agent_scheduler(self):
         engine = MagicMock()
         agent_scheduler = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",
@@ -506,8 +506,8 @@ class TestJarvisSystemClose:
 
     def test_system_agent_fields_default_none(self):
         engine = MagicMock()
-        system = JarvisSystem(
-            config=JarvisConfig(),
+        system = DiapasonSystem(
+            config=DiapasonConfig(),
             bus=EventBus(),
             engine=engine,
             engine_key="mock",

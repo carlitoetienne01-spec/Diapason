@@ -1,4 +1,4 @@
-"""Verify jarvis eval run exposes --base-url / --api-key for hermes/openclaw."""
+"""Verify diapason eval run exposes --base-url / --api-key for hermes/openclaw."""
 
 from __future__ import annotations
 

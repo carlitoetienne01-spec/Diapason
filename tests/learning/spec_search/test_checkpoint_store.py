@@ -23,7 +23,7 @@ def _git(cwd: Path, *args: str) -> str:
 def _setup_isolated_repo_root(tmp_path: Path) -> Path:
     """Create a fake diapason-home directory tree with config files for the
     CheckpointStore to track. Returns the root."""
-    root = tmp_path / "openjarvis_home"
+    root = tmp_path / "diapason_home"
     (root / "agents" / "simple").mkdir(parents=True)
     (root / "tools").mkdir(parents=True)
     (root / "config.toml").write_text("[learning]\nenabled = true\n")
@@ -74,7 +74,7 @@ class TestCheckpointStoreInit:
 
         source_root = paths._find_source_root()
         assert source_root is not None
-        bad_root = source_root / "fake_openjarvis_home"
+        bad_root = source_root / "fake_diapason_home"
 
         store = CheckpointStore(bad_root)
         with pytest.raises(paths.ConfigurationError):

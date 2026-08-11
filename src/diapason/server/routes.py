@@ -46,7 +46,7 @@ def _to_messages(chat_messages) -> list[Message]:
 
 
 def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message]:
-    """Prepend OpenJarvis's identity system prompt when the client omits one.
+    """Prepend Diapason's identity system prompt when the client omits one.
 
     The desktop UI's chat backend posts only user/assistant turns to
     ``/v1/chat/completions`` (see ``frontend/.../Chat/InputArea.tsx``), so

@@ -1,4 +1,4 @@
-"""Tests for context injection integration in ``jarvis ask``."""
+"""Tests for context injection integration in ``diapason ask``."""
 
 from __future__ import annotations
 
@@ -35,14 +35,14 @@ def test_get_memory_backend_returns_backend_even_when_empty(
     which is the kind of ambiguity that leads to silent grounding
     failures downstream.
     """
-    from diapason.core.config import JarvisConfig, MemoryConfig
+    from diapason.core.config import DiapasonConfig, MemoryConfig
     from diapason.core.registry import MemoryRegistry
     from diapason.tools.storage.sqlite import SQLiteMemory
 
     if not MemoryRegistry.contains("sqlite"):
         MemoryRegistry.register_value("sqlite", SQLiteMemory)
 
-    config = JarvisConfig()
+    config = DiapasonConfig()
     config.memory = MemoryConfig(
         db_path=str(tmp_path / "empty.db"),
     )
@@ -61,7 +61,7 @@ def test_get_memory_backend_returns_backend_with_docs(
     monkeypatch,
 ):
     """_get_memory_backend returns a backend when docs exist."""
-    from diapason.core.config import JarvisConfig, MemoryConfig
+    from diapason.core.config import DiapasonConfig, MemoryConfig
     from diapason.core.registry import MemoryRegistry
     from diapason.tools.storage.sqlite import SQLiteMemory
 
@@ -69,7 +69,7 @@ def test_get_memory_backend_returns_backend_with_docs(
         MemoryRegistry.register_value("sqlite", SQLiteMemory)
 
     db_path = str(tmp_path / "test.db")
-    config = JarvisConfig()
+    config = DiapasonConfig()
     config.memory = MemoryConfig(db_path=db_path)
 
     # Pre-populate with a document

@@ -1,4 +1,4 @@
-"""WorkflowEngine — executes a WorkflowGraph against a JarvisSystem."""
+"""WorkflowEngine — executes a WorkflowGraph against a DiapasonSystem."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class WorkflowEngine:
     def run(
         self,
         graph: WorkflowGraph,
-        system: Any = None,  # JarvisSystem
+        system: Any = None,  # DiapasonSystem
         *,
         initial_input: str = "",
         context: Optional[Dict[str, Any]] = None,

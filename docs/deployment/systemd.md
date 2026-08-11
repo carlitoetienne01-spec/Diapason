@@ -1,43 +1,43 @@
 # systemd Service (Linux)
 
-OpenJarvis includes a systemd unit file for running the API server as a managed background service on Linux. This provides automatic startup on boot, crash recovery, and integration with standard Linux service management tools.
+Diapason includes a systemd unit file for running the API server as a managed background service on Linux. This provides automatic startup on boot, crash recovery, and integration with standard Linux service management tools.
 
 ## Prerequisites
 
 Before installing the service, ensure that:
 
-1. OpenJarvis is installed in a virtual environment at `/opt/openjarvis/.venv` (or adjust paths accordingly).
-2. A dedicated `openjarvis` system user exists (recommended for security).
+1. Diapason is installed in a virtual environment at `/opt/diapason/.venv` (or adjust paths accordingly).
+2. A dedicated `diapason` system user exists (recommended for security).
 3. An inference engine (such as Ollama) is running and accessible.
 
 Create the user and installation directory:
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/openjarvis openjarvis
-sudo -u openjarvis python3 -m venv /opt/openjarvis/.venv
-sudo -u openjarvis git clone https://github.com/open-jarvis/OpenJarvis.git /opt/openjarvis/OpenJarvis
-cd /opt/openjarvis/OpenJarvis && sudo -u openjarvis uv sync --extra server
+sudo useradd --system --create-home --home-dir /opt/diapason diapason
+sudo -u diapason python3 -m venv /opt/diapason/.venv
+sudo -u diapason git clone https://github.com/open-diapason/Diapason.git /opt/diapason/Diapason
+cd /opt/diapason/Diapason && sudo -u diapason uv sync --extra server
 ```
 
 ## Installing the Service
 
 The unit binds `0.0.0.0`, so an **API key is required** — and the unit
-declares `EnvironmentFile=/etc/openjarvis/env` (no `-` prefix), so it will
+declares `EnvironmentFile=/etc/diapason/env` (no `-` prefix), so it will
 **fail to start** until that file exists with a key. Create it first:
 
 ```bash
-sudo mkdir -p /etc/openjarvis
-echo "OPENJARVIS_API_KEY=$(jarvis auth generate-key)" | sudo tee /etc/openjarvis/env
-sudo chmod 600 /etc/openjarvis/env
+sudo mkdir -p /etc/diapason
+echo "OPENJARVIS_API_KEY=$(diapason auth generate-key)" | sudo tee /etc/diapason/env
+sudo chmod 600 /etc/diapason/env
 ```
 
 Then copy the unit file, reload the daemon, and enable the service:
 
 ```bash
-sudo cp deploy/systemd/openjarvis.service /etc/systemd/system/
+sudo cp deploy/systemd/diapason.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable openjarvis
-sudo systemctl start openjarvis
+sudo systemctl enable diapason
+sudo systemctl start diapason
 ```
 
 Clients must send `Authorization: Bearer <key>` on `/v1/*` and `/api/*`
@@ -47,26 +47,26 @@ can drop the `EnvironmentFile` line.)
 Verify it is running:
 
 ```bash
-sudo systemctl status openjarvis
+sudo systemctl status diapason
 ```
 
 ## Service File Reference
 
-The provided unit file at `deploy/systemd/openjarvis.service`:
+The provided unit file at `deploy/systemd/diapason.service`:
 
 ```ini
 [Unit]
-Description=OpenJarvis API Server
+Description=Diapason API Server
 After=network.target
 
 [Service]
 Type=simple
-User=openjarvis
-WorkingDirectory=/opt/openjarvis
-ExecStart=/opt/openjarvis/.venv/bin/jarvis serve --host 0.0.0.0 --port 8000
+User=diapason
+WorkingDirectory=/opt/diapason
+ExecStart=/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
-Environment=HOME=/opt/openjarvis
+Environment=HOME=/opt/diapason
 
 [Install]
 WantedBy=multi-user.target
@@ -76,7 +76,7 @@ WantedBy=multi-user.target
 
 | Directive     | Value              | Description                                                                 |
 |---------------|--------------------|-----------------------------------------------------------------------------|
-| `Description` | `OpenJarvis API Server` | Human-readable name shown in `systemctl status` and logs.              |
+| `Description` | `Diapason API Server` | Human-readable name shown in `systemctl status` and logs.              |
 | `After`       | `network.target`   | Delays startup until the network stack is available, since the server binds to a network socket and may need to reach a remote engine. |
 
 ### `[Service]` Section
@@ -84,12 +84,12 @@ WantedBy=multi-user.target
 | Directive          | Value                                                              | Description                                                                                     |
 |--------------------|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
 | `Type`             | `simple`                                                           | The process started by `ExecStart` is the main service process. systemd considers the service started immediately. |
-| `User`             | `openjarvis`                                                       | Runs the server as the `openjarvis` user rather than root, limiting the blast radius of any security issue. |
-| `WorkingDirectory` | `/opt/openjarvis`                                                  | Sets the working directory for the process. This is where OpenJarvis looks for local files and writes data. |
-| `ExecStart`        | `/opt/openjarvis/.venv/bin/jarvis serve --host 0.0.0.0 --port 8000` | The command to start the server. Uses the full path to the `jarvis` binary inside the virtual environment. |
+| `User`             | `diapason`                                                       | Runs the server as the `diapason` user rather than root, limiting the blast radius of any security issue. |
+| `WorkingDirectory` | `/opt/diapason`                                                  | Sets the working directory for the process. This is where Diapason looks for local files and writes data. |
+| `ExecStart`        | `/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000` | The command to start the server. Uses the full path to the `diapason` binary inside the virtual environment. |
 | `Restart`          | `on-failure`                                                       | Automatically restarts the service if it exits with a non-zero exit code. Does not restart on clean shutdown (`systemctl stop`). |
 | `RestartSec`       | `5`                                                                | Waits 5 seconds before attempting a restart, preventing rapid restart loops if the service crashes immediately on startup. |
-| `Environment`      | `HOME=/opt/openjarvis`                                             | Sets the `HOME` environment variable so OpenJarvis finds its configuration at `~/.openjarvis/config.toml` (resolving to `/opt/openjarvis/.openjarvis/config.toml`). |
+| `Environment`      | `HOME=/opt/diapason`                                             | Sets the `HOME` environment variable so Diapason finds its configuration at `~/.diapason/config.toml` (resolving to `/opt/diapason/.diapason/config.toml`). |
 
 ### `[Install]` Section
 
@@ -104,7 +104,7 @@ WantedBy=multi-user.target
 Edit the `ExecStart` line to change the host or port:
 
 ```ini
-ExecStart=/opt/openjarvis/.venv/bin/jarvis serve --host 127.0.0.1 --port 9000
+ExecStart=/opt/diapason/.venv/bin/diapason serve --host 127.0.0.1 --port 9000
 ```
 
 !!! tip
@@ -112,10 +112,10 @@ ExecStart=/opt/openjarvis/.venv/bin/jarvis serve --host 127.0.0.1 --port 9000
 
 ### Setting the Engine and Model
 
-Pass additional flags to `jarvis serve`:
+Pass additional flags to `diapason serve`:
 
 ```ini
-ExecStart=/opt/openjarvis/.venv/bin/jarvis serve --host 0.0.0.0 --port 8000 --engine ollama --model qwen3:8b
+ExecStart=/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000 --engine ollama --model qwen3:8b
 ```
 
 ### Adding Environment Variables
@@ -124,7 +124,7 @@ Add multiple `Environment` directives or use `EnvironmentFile` for complex confi
 
 ```ini
 [Service]
-Environment=HOME=/opt/openjarvis
+Environment=HOME=/opt/diapason
 Environment=OPENJARVIS_ENGINE_DEFAULT=vllm
 Environment=OPENJARVIS_OLLAMA_HOST=http://localhost:11434
 ```
@@ -133,7 +133,7 @@ Or load from a file:
 
 ```ini
 [Service]
-EnvironmentFile=/opt/openjarvis/.env
+EnvironmentFile=/opt/diapason/.env
 ```
 
 ### Changing the User
@@ -143,9 +143,9 @@ If you prefer a different service user, update both the `User` directive and the
 ```ini
 [Service]
 User=myuser
-WorkingDirectory=/home/myuser/openjarvis
-ExecStart=/home/myuser/openjarvis/.venv/bin/jarvis serve --host 0.0.0.0 --port 8000
-Environment=HOME=/home/myuser/openjarvis
+WorkingDirectory=/home/myuser/diapason
+ExecStart=/home/myuser/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000
+Environment=HOME=/home/myuser/diapason
 ```
 
 ### Using a Configuration File
@@ -153,31 +153,31 @@ Environment=HOME=/home/myuser/openjarvis
 Ensure the configuration file exists at the path where `HOME` points:
 
 ```bash
-sudo -u openjarvis mkdir -p /opt/openjarvis/.openjarvis
-sudo -u openjarvis cp config.toml /opt/openjarvis/.openjarvis/config.toml
+sudo -u diapason mkdir -p /opt/diapason/.diapason
+sudo -u diapason cp config.toml /opt/diapason/.diapason/config.toml
 ```
 
-The server reads `~/.openjarvis/config.toml` on startup, where `~` resolves from the `HOME` environment variable.
+The server reads `~/.diapason/config.toml` on startup, where `~` resolves from the `HOME` environment variable.
 
 ## Viewing Logs
 
-OpenJarvis logs are captured by journald. View them with `journalctl`:
+Diapason logs are captured by journald. View them with `journalctl`:
 
 ```bash
 # View all logs for the service
-sudo journalctl -u openjarvis
+sudo journalctl -u diapason
 
 # Follow logs in real time
-sudo journalctl -u openjarvis -f
+sudo journalctl -u diapason -f
 
 # View logs since the last boot
-sudo journalctl -u openjarvis -b
+sudo journalctl -u diapason -b
 
 # View logs from the last hour
-sudo journalctl -u openjarvis --since "1 hour ago"
+sudo journalctl -u diapason --since "1 hour ago"
 
 # View only error-level messages
-sudo journalctl -u openjarvis -p err
+sudo journalctl -u diapason -p err
 ```
 
 ## Managing the Service
@@ -186,72 +186,72 @@ sudo journalctl -u openjarvis -p err
 
 ```bash
 # Start the service
-sudo systemctl start openjarvis
+sudo systemctl start diapason
 
 # Stop the service
-sudo systemctl stop openjarvis
+sudo systemctl stop diapason
 
 # Restart the service (stop + start)
-sudo systemctl restart openjarvis
+sudo systemctl restart diapason
 
 # Reload configuration without full restart (sends SIGHUP)
-sudo systemctl reload-or-restart openjarvis
+sudo systemctl reload-or-restart diapason
 ```
 
 ### Check Status
 
 ```bash
-sudo systemctl status openjarvis
+sudo systemctl status diapason
 ```
 
 Example output:
 
 ```
-● openjarvis.service - OpenJarvis API Server
-     Loaded: loaded (/etc/systemd/system/openjarvis.service; enabled; preset: enabled)
+● diapason.service - Diapason API Server
+     Loaded: loaded (/etc/systemd/system/diapason.service; enabled; preset: enabled)
      Active: active (running) since Fri 2026-02-21 10:00:00 UTC; 2h ago
-   Main PID: 12345 (jarvis)
+   Main PID: 12345 (diapason)
       Tasks: 4 (limit: 4915)
      Memory: 256.0M
         CPU: 1min 23s
-     CGroup: /system.slice/openjarvis.service
-             └─12345 /opt/openjarvis/.venv/bin/python /opt/openjarvis/.venv/bin/jarvis serve --host 0.0.0.0 --port 8000
+     CGroup: /system.slice/diapason.service
+             └─12345 /opt/diapason/.venv/bin/python /opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000
 ```
 
 ### Enable and Disable on Boot
 
 ```bash
 # Enable automatic start on boot
-sudo systemctl enable openjarvis
+sudo systemctl enable diapason
 
 # Disable automatic start on boot
-sudo systemctl disable openjarvis
+sudo systemctl disable diapason
 ```
 
 ### Apply Changes After Editing the Unit File
 
-After modifying `/etc/systemd/system/openjarvis.service`, reload the systemd daemon and restart the service:
+After modifying `/etc/systemd/system/diapason.service`, reload the systemd daemon and restart the service:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart openjarvis
+sudo systemctl restart diapason
 ```
 
 ## Running Alongside Ollama
 
-If Ollama is also managed via systemd, you can add an ordering dependency so the OpenJarvis service waits for Ollama to start:
+If Ollama is also managed via systemd, you can add an ordering dependency so the Diapason service waits for Ollama to start:
 
 ```ini
 [Unit]
-Description=OpenJarvis API Server
+Description=Diapason API Server
 After=network.target ollama.service
 Requires=ollama.service
 ```
 
 | Directive  | Description                                                              |
 |------------|--------------------------------------------------------------------------|
-| `After`    | Ensures OpenJarvis starts after Ollama.                                  |
-| `Requires` | If Ollama fails to start, OpenJarvis will not start either.              |
+| `After`    | Ensures Diapason starts after Ollama.                                  |
+| `Requires` | If Ollama fails to start, Diapason will not start either.              |
 
 !!! note
-    Use `Wants` instead of `Requires` if you want OpenJarvis to start even when Ollama is unavailable (for example, if you plan to start Ollama manually later).
+    Use `Wants` instead of `Requires` if you want Diapason to start even when Ollama is unavailable (for example, if you plan to start Ollama manually later).

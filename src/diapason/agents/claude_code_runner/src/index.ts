@@ -1,5 +1,5 @@
 /**
- * OpenJarvis Claude Code Runner
+ * Diapason Claude Code Runner
  *
  * Reads a JSON request from stdin, invokes the Claude Agent SDK,
  * and writes sentinel-wrapped JSON output to stdout.

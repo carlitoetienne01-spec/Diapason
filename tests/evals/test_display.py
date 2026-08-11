@@ -29,7 +29,7 @@ def _make_summary(**overrides) -> RunSummary:
     defaults = dict(
         benchmark="supergpqa",
         category="reasoning",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="qwen3:8b",
         total_samples=50,
         scored_samples=48,
@@ -63,7 +63,7 @@ class TestPrintBanner:
         console, buf = _make_console()
         print_banner(console)
         output = buf.getvalue()
-        assert "OpenJarvis" in output or "___" in output
+        assert "Diapason" in output or "___" in output
 
     def test_contains_version(self):
         console, buf = _make_console()
@@ -87,7 +87,7 @@ class TestPrintRunHeader:
             console,
             benchmark="supergpqa",
             model="qwen3:8b",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             samples=50,
             workers=4,
         )
@@ -102,7 +102,7 @@ class TestPrintRunHeader:
             console,
             benchmark="supergpqa",
             model="qwen3:8b",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             samples=50,
             workers=4,
             warmup=5,

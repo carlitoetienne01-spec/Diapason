@@ -1,4 +1,4 @@
-"""Tests for ``jarvis quickstart`` command."""
+"""Tests for ``diapason quickstart`` command."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from diapason.core.config import CapabilitiesConfig, JarvisConfig, SecurityConfig
+from diapason.core.config import CapabilitiesConfig, DiapasonConfig, SecurityConfig
 from diapason.core.events import EventBus
 from diapason.security import SecurityContext, setup_security
 
@@ -20,8 +20,8 @@ def _make_mock_engine() -> MagicMock:
     return engine
 
 
-def _make_config(*, enabled: bool = True, caps_enabled: bool = False) -> JarvisConfig:
-    cfg = JarvisConfig()
+def _make_config(*, enabled: bool = True, caps_enabled: bool = False) -> DiapasonConfig:
+    cfg = DiapasonConfig()
     cfg.security = SecurityConfig(
         enabled=enabled,
         secret_scanner=True,

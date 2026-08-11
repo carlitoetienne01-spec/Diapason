@@ -2,7 +2,7 @@
 name = "file-deduplicator"
 description = "Find and report duplicate files in a directory by comparing checksums"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "shell_exec"

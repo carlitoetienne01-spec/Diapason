@@ -1,11 +1,11 @@
-"""Structural protocols for substituting fakes in place of JarvisSystem."""
+"""Structural protocols for substituting fakes in place of DiapasonSystem."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional, Protocol
 
 if TYPE_CHECKING:
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
     from diapason.core.events import EventBus
     from diapason.engine._stubs import InferenceEngine
     from diapason.security.capabilities import CapabilityPolicy
@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 
 
 class OrchestratorDeps(Protocol):
-    """Minimum surface of JarvisSystem that QueryOrchestrator depends on.
+    """Minimum surface of DiapasonSystem that QueryOrchestrator depends on.
 
     Tests can satisfy this with a lightweight class — no need to construct
-    the full JarvisSystem dataclass or materialize every subsystem.
+    the full DiapasonSystem dataclass or materialize every subsystem.
     """
 
-    config: JarvisConfig
+    config: DiapasonConfig
     bus: EventBus
     engine: InferenceEngine
     engine_key: str

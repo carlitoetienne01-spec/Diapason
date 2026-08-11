@@ -231,7 +231,7 @@ def scheduler_run_task(agent_name: str, dry_run: bool) -> None:
 
     Finds the first active scheduled task whose agent matches AGENT_NAME
     and runs it right now — useful for testing and for launchd invocation
-    when OpenJarvis is not running as a persistent daemon.
+    when Diapason is not running as a persistent daemon.
 
     Example (launchd plist ProgramArguments):
         diapason scheduler run-task proactive

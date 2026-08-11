@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from diapason.heartbeat.quiet import in_quiet_hours
 from diapason.heartbeat.routines import Routine, record_run

@@ -2,7 +2,7 @@
 name = "dictate_polish"
 description = "Polish raw dictation: fix punctuation, remove fillers, keep meaning"
 version = "0.2.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "think"

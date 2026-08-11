@@ -34,26 +34,26 @@ num_gpus = 8
 
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = ["think", "calculator", "code_interpreter", "web_search", "file_read"]
 
 [[benchmarks]]
 name = "frames"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 50
 
 [[benchmarks]]
 name = "deepplanning"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = ["think", "calculator", "code_interpreter"]
 
 [[benchmarks]]
 name = "lifelong-agent"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 subset = "knowledge_graph"

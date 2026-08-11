@@ -1,6 +1,6 @@
-"""`diapason self-update` — upgrade OpenJarvis to the latest release.
+"""`diapason self-update` — upgrade Diapason to the latest release.
 
-Runs the right upgrade command for how the user installed OpenJarvis:
+Runs the right upgrade command for how the user installed Diapason:
 
 - PyPI installs get ``pip install --upgrade diapason``.
 - uv-tool installs get ``uv tool upgrade diapason``.
@@ -25,7 +25,7 @@ from diapason.cli._install_detect import detect_install
 @click.command(
     "self-update",
     help=(
-        "Upgrade OpenJarvis to the latest release. Detects how you "
+        "Upgrade Diapason to the latest release. Detects how you "
         "installed (pip, uv tool, editable git) and runs the right "
         "command. Use --check to only print the upgrade command "
         "without running it."
@@ -46,7 +46,7 @@ def self_update(check: bool, yes: bool) -> None:
     info = detect_install()
     current = diapason.__version__
 
-    click.echo(f"Current OpenJarvis version: v{current}")
+    click.echo(f"Current Diapason version: v{current}")
     click.echo(f"Install method: {info.kind}")
     click.echo(f"Upgrade command: {info.upgrade_command}")
 

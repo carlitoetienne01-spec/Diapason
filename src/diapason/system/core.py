@@ -1,4 +1,4 @@
-"""JarvisSystem — the fully wired system dataclass."""
+"""DiapasonSystem — the fully wired system dataclass."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus
 from diapason.core.types import Message, Role
 from diapason.engine._stubs import InferenceEngine
@@ -50,10 +50,10 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class JarvisSystem:
+class DiapasonSystem:
     """Fully wired system -- the single source of truth for primitive composition."""
 
-    config: JarvisConfig
+    config: DiapasonConfig
     bus: EventBus
     engine: InferenceEngine
     engine_key: str
@@ -320,11 +320,11 @@ class JarvisSystem:
             self.agent_scheduler.stop()
         self._close_mcp_clients()
 
-    def __enter__(self) -> JarvisSystem:
+    def __enter__(self) -> DiapasonSystem:
         return self
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
 
-__all__ = ["JarvisSystem"]
+__all__ = ["DiapasonSystem"]

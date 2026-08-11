@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# jarvis-uninstall.sh — clean removal of OpenJarvis from $HOME.
+# diapason-uninstall.sh — clean removal of Diapason from $HOME.
 #
 # Removes:
-#   ~/.openjarvis/
-#   ~/.local/bin/jarvis
-#   ~/.local/bin/jarvis-uninstall
+#   ~/.diapason/
+#   ~/.local/bin/diapason
+#   ~/.local/bin/diapason-uninstall
 #
 # Does NOT remove: ollama, uv, or the Rust toolchain.
 
 set -euo pipefail
 
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
+OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
 
 if [[ -f "$OPENJARVIS_HOME/.state/bg.pid" ]]; then
     pid=$(cat "$OPENJARVIS_HOME/.state/bg.pid" 2>/dev/null || echo "")
@@ -29,7 +29,7 @@ if [[ -d "$OPENJARVIS_HOME" ]]; then
     echo "Removed $OPENJARVIS_HOME"
 fi
 
-for f in "$HOME/.local/bin/jarvis" "$HOME/.local/bin/jarvis-uninstall"; do
+for f in "$HOME/.local/bin/diapason" "$HOME/.local/bin/diapason-uninstall"; do
     if [[ -L "$f" ]] || [[ -f "$f" ]]; then
         rm -f "$f"
         echo "Removed $f"
@@ -38,7 +38,7 @@ done
 
 cat <<EOF
 
-OpenJarvis removed.
+Diapason removed.
 
 Left intact (may be used by other tools):
   - Ollama       (uninstall: brew uninstall ollama  /  rm -f /usr/local/bin/ollama)

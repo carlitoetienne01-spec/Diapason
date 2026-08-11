@@ -163,9 +163,9 @@ class TestBuildMessages:
         assert messages[1].role == Role.USER
 
     def test_empty_config_default_no_system_message(self, monkeypatch):
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
 
-        empty_cfg = JarvisConfig()
+        empty_cfg = DiapasonConfig()
         empty_cfg.agent.default_system_prompt = ""
         monkeypatch.setattr("diapason.agents._stubs.load_config", lambda: empty_cfg)
 

@@ -59,8 +59,8 @@ KNOWN_BENCHMARKS = {
 }
 
 KNOWN_BACKENDS = {
-    "jarvis-direct": "Engine-level inference (local or cloud)",
-    "jarvis-agent": "Agent-level inference with tool calling",
+    "diapason-direct": "Engine-level inference (local or cloud)",
+    "diapason-agent": "Agent-level inference with tool calling",
     "hermes": "Real Hermes Agent (Nous Research) via subprocess",
     "openclaw": "Real OpenClaw via Node subprocess",
     "terminalbench-native": (
@@ -138,9 +138,9 @@ def eval_list() -> None:
 @click.option(
     "--backend",
     "backend",
-    default="jarvis-direct",
+    default="diapason-direct",
     type=click.Choice(
-        ["jarvis-direct", "jarvis-agent", "hermes", "openclaw", "terminalbench-native"]
+        ["diapason-direct", "diapason-agent", "hermes", "openclaw", "terminalbench-native"]
     ),
     help=(
         "Inference backend. For hermes/openclaw, also pass --base-url and "
@@ -153,7 +153,7 @@ def eval_list() -> None:
     default=None,
     help=(
         "OpenAI-compatible endpoint for the model under eval. Required for "
-        "hermes/openclaw; for jarvis-direct/jarvis-agent/terminalbench-native "
+        "hermes/openclaw; for diapason-direct/diapason-agent/terminalbench-native "
         "it bypasses engine discovery and targets this URL directly "
         "(env: JARVIS_BACKEND_BASE_URL)."
     ),
@@ -172,7 +172,7 @@ def eval_list() -> None:
     "--agent",
     "agent_name",
     default=None,
-    help="Agent name for jarvis-agent backend.",
+    help="Agent name for diapason-agent backend.",
 )
 @click.option(
     "-e",

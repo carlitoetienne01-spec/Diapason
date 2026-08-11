@@ -17,7 +17,7 @@ if [[ -z "$MODEL" ]]; then
     exit 2
 fi
 
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
+OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
 STATE_DIR="$OPENJARVIS_HOME/.state/models"
 mkdir -p "$STATE_DIR"
 

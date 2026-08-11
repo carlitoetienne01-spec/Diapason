@@ -1,4 +1,4 @@
-"""Optimization framework for OpenJarvis configuration tuning."""
+"""Optimization framework for Diapason configuration tuning."""
 
 from diapason.learning.optimize.config import (
     load_benchmark_specs,

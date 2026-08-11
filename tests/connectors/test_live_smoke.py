@@ -1,6 +1,6 @@
 """Live smoke test — full pipeline with real markdown files.
 
-NOT mocked. Uses the actual OpenJarvis docs/ directory as an Obsidian-like vault.
+NOT mocked. Uses the actual Diapason docs/ directory as an Obsidian-like vault.
 Exercises: ObsidianConnector → SyncEngine → KnowledgeStore → knowledge_search tool.
 """
 
@@ -17,7 +17,7 @@ from diapason.connectors.store import KnowledgeStore
 from diapason.connectors.sync_engine import SyncEngine
 from diapason.tools.knowledge_search import KnowledgeSearchTool
 
-# Use the real OpenJarvis docs directory
+# Use the real Diapason docs directory
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
 
 

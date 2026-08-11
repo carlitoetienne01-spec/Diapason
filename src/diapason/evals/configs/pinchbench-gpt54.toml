@@ -25,7 +25,7 @@ engine = "cloud"
 
 [[benchmarks]]
 name = "pinchbench"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = [
     "think", "file_read", "file_write", "web_search", "shell_exec",

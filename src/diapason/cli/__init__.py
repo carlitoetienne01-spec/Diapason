@@ -1,4 +1,4 @@
-"""Command-line interface for OpenJarvis (Click-based)."""
+"""Command-line interface for Diapason (Click-based)."""
 
 from __future__ import annotations
 
@@ -14,23 +14,20 @@ from diapason.cli.channel_cmd import channel
 from diapason.cli.channels_cmd import channels
 from diapason.cli.chat_cmd import chat
 from diapason.cli.clap_cmd import clap_listen
-from diapason.cli.dictate_cmd import dictate
-from diapason.cli.dictate_service_cmd import dictate_service
-from diapason.cli.dictation_history_cmd import dictation_history
-from diapason.cli.dictionary_cmd import dictionary
-from diapason.cli.serve_service_cmd import serve_service
-from diapason.cli.wake_cmd import wake_listen
 from diapason.cli.compose_cmd import compose
 from diapason.cli.config_cmd import config
 from diapason.cli.connect_cmd import connect
 from diapason.cli.daemon_cmd import restart, start, status, stop
+from diapason.cli.dictate_cmd import dictate
+from diapason.cli.dictate_service_cmd import dictate_service
+from diapason.cli.dictation_history_cmd import dictation_history
+from diapason.cli.dictionary_cmd import dictionary
 from diapason.cli.digest_cmd import digest
 from diapason.cli.doctor_cmd import doctor
 from diapason.cli.eval_cmd import eval_group
 from diapason.cli.feedback_cmd import feedback_group
 from diapason.cli.gateway_cmd import gateway
 from diapason.cli.heartbeat_cmd import heartbeat
-from diapason.cli.routines_cmd import routines
 from diapason.cli.host_cmd import host
 from diapason.cli.init_cmd import init
 from diapason.cli.memory_cmd import memory
@@ -41,14 +38,17 @@ from diapason.cli.optimize_cmd import optimize_group
 from diapason.cli.pearl_cmd import pearl
 from diapason.cli.quickstart_cmd import quickstart
 from diapason.cli.registry_cmd import registry
+from diapason.cli.routines_cmd import routines
 from diapason.cli.scan_cmd import scan
 from diapason.cli.scheduler_cmd import scheduler
 from diapason.cli.self_update_cmd import self_update
 from diapason.cli.serve import serve
+from diapason.cli.serve_service_cmd import serve_service
 from diapason.cli.skill_cmd import skill
 from diapason.cli.telemetry_cmd import telemetry
 from diapason.cli.tool_cmd import tool
 from diapason.cli.vault_cmd import vault
+from diapason.cli.wake_cmd import wake_listen
 from diapason.cli.workflow_cmd import workflow
 
 
@@ -93,7 +93,7 @@ def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
             daemon=True,
         ).start()
 
-    # First-run guard — routes bare `jarvis` to chat or init.
+    # First-run guard — routes bare `diapason` to chat or init.
     if ctx.invoked_subcommand is None:
         from diapason.cli._first_run import check_and_route
 
@@ -180,7 +180,7 @@ except ImportError:
 
 
 def main() -> None:
-    """Entry point registered as ``jarvis`` console script."""
+    """Entry point registered as ``diapason`` console script."""
     import sys
 
     if sys.platform == "win32":

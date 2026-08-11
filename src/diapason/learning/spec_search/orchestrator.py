@@ -51,7 +51,7 @@ class SpecSearchOrchestrator:
         judge: Any,
         session_store: Any,
         checkpoint_store: Any,
-        openjarvis_home: Path,
+        diapason_home: Path,
         scorer: Callable[..., BenchmarkSnapshot] | None = None,
     ) -> "SpecSearchOrchestrator":
         """Build a single-session orchestrator from a SpecSearchLearningConfig.
@@ -74,7 +74,7 @@ class SpecSearchOrchestrator:
             judge=judge,
             session_store=session_store,
             checkpoint_store=checkpoint_store,
-            openjarvis_home=openjarvis_home,
+            diapason_home=diapason_home,
             autonomy_mode=autonomy,
             scorer=scorer,
             benchmark_version=config.benchmark_version,
@@ -97,7 +97,7 @@ class SpecSearchOrchestrator:
         judge: Any,
         session_store: Any,
         checkpoint_store: Any,
-        openjarvis_home: Path,
+        diapason_home: Path,
         autonomy_mode: AutonomyMode = AutonomyMode.TIERED,
         scorer: Callable[..., BenchmarkSnapshot] | None = None,
         benchmark_version: str = "personal_v1",
@@ -116,7 +116,7 @@ class SpecSearchOrchestrator:
         self._judge = judge
         self._session_store = session_store
         self._checkpoint_store = checkpoint_store
-        self._home = Path(openjarvis_home)
+        self._home = Path(diapason_home)
         self._autonomy = autonomy_mode
         self._scorer = scorer
         self._bench_version = benchmark_version
@@ -197,7 +197,7 @@ class SpecSearchOrchestrator:
                 session_id=session_id,
                 config={
                     "config_path": self._home / "config.toml",
-                    "openjarvis_home": self._home,
+                    "diapason_home": self._home,
                 },
                 max_turns=self._max_tool_calls,
                 max_cost_usd=self._max_cost,
@@ -239,7 +239,7 @@ class SpecSearchOrchestrator:
             self._session_store.save_session(session)
 
             ctx = ApplyContext(
-                openjarvis_home=self._home,
+                diapason_home=self._home,
                 session_id=session_id,
             )
             registry = _build_registry()

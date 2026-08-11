@@ -305,7 +305,7 @@ class FindFilesTool(BaseTool):
                 elif r.returncode != 0:
                     hint = (
                         " Spotlight search failed. Grant Full Disk Access to "
-                        "Terminal/OpenJarvis in System Settings → Privacy & Security."
+                        "Terminal/Diapason in System Settings → Privacy & Security."
                     )
                     return ToolResult(
                         tool_name="find_files",

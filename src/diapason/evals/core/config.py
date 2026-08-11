@@ -33,8 +33,8 @@ else:
 logger = logging.getLogger(__name__)
 
 VALID_BACKENDS = {
-    "jarvis-direct",
-    "jarvis-agent",
+    "diapason-direct",
+    "diapason-agent",
     "terminalbench-native",
     "hermes",
     "openclaw",
@@ -191,7 +191,7 @@ def load_eval_config(path: str | Path) -> EvalSuiteConfig:
         if not b.get("name"):
             raise EvalConfigError("Each [[benchmarks]] entry must have a 'name' field")
 
-        backend = b.get("backend", "jarvis-direct")
+        backend = b.get("backend", "diapason-direct")
         if backend not in VALID_BACKENDS:
             raise EvalConfigError(
                 f"Invalid backend '{backend}' for benchmark '{b['name']}'. "

@@ -93,7 +93,7 @@ class TestSpecSearchOrchestrator:
                 current_sha=MagicMock(return_value="abc123"),
                 begin_stage=MagicMock(return_value=MagicMock(pre_stage_sha="abc123")),
             ),
-            openjarvis_home=tmp_path,
+            diapason_home=tmp_path,
             autonomy_mode=AutonomyMode.AUTO,
             scorer=lambda **kw: _make_snapshot(0.65),
             benchmark_version="personal_v1",
@@ -130,7 +130,7 @@ class TestSpecSearchOrchestrator:
             checkpoint_store=MagicMock(
                 current_sha=MagicMock(return_value="abc123"),
             ),
-            openjarvis_home=tmp_path,
+            diapason_home=tmp_path,
             autonomy_mode=AutonomyMode.TIERED,
             scorer=lambda **kw: _make_snapshot(),
             benchmark_version="personal_v1",
@@ -159,7 +159,7 @@ class TestSpecSearchOrchestrator:
                 current_sha=MagicMock(return_value="abc123"),
                 begin_stage=MagicMock(return_value=MagicMock(pre_stage_sha="abc123")),
             ),
-            openjarvis_home=tmp_path,
+            diapason_home=tmp_path,
             autonomy_mode=AutonomyMode.AUTO,
             scorer=lambda **kw: _make_snapshot(0.65),
             benchmark_version="personal_v1",
@@ -199,7 +199,7 @@ class TestFromConfig:
             judge=MagicMock(),
             session_store=MagicMock(),
             checkpoint_store=MagicMock(),
-            openjarvis_home=tmp_path,
+            diapason_home=tmp_path,
         )
 
         # Round-trip the knobs: paper defaults must reach the orchestrator.

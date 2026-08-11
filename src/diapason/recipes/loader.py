@@ -1,6 +1,6 @@
 """Recipe loader — load and resolve TOML recipe files.
 
-Recipes are the universal composition format for OpenJarvis.  Each recipe
+Recipes are the universal composition format for Diapason.  Each recipe
 specifies all five primitives (Intelligence, Engine, Agent, Tools, Learning)
 and carries a ``kind`` that determines its lifecycle:
 
@@ -88,10 +88,10 @@ class Recipe:
     # ------------------------------------------------------------------ #
 
     def to_builder_kwargs(self) -> Dict[str, Any]:
-        """Convert recipe fields to kwargs for SystemBuilder/Jarvis.
+        """Convert recipe fields to kwargs for SystemBuilder/Diapason.
 
         Returns a dict with only the non-None fields, keyed to match
-        the SystemBuilder fluent API or Jarvis constructor parameters.
+        the SystemBuilder fluent API or Diapason constructor parameters.
         """
         kwargs: Dict[str, Any] = {}
         if self.model is not None:

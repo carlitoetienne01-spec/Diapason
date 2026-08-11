@@ -17,11 +17,11 @@
 [hermes]
 path = ""
 pinned_commit = "5d3be898a"
-runner_script = "src/openjarvis/evals/backends/external/_runners/hermes_runner.py"
+runner_script = "src/diapason/evals/backends/external/_runners/hermes_runner.py"
 python_executable = ""
 
 [openclaw]
 path = ""
 pinned_commit = "123ae82fca3009df7144fa8d41e1185cd63e61e1"
-runner_script = "src/openjarvis/evals/backends/external/_runners/openclaw_runner.mjs"
+runner_script = "src/diapason/evals/backends/external/_runners/openclaw_runner.mjs"
 node_executable = ""

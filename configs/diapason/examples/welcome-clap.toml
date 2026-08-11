@@ -1,12 +1,12 @@
 # Welcome Clap — double-clap desktop welcome (ported from jarvis-main)
-# Install: jarvis init --preset welcome-clap
+# Install: diapason init --preset welcome-clap
 #
 # Run welcome on clap:
-#   uv run jarvis clap-listen
+#   uv run diapason clap-listen
 # Immediate test (no mic):
-#   uv run jarvis clap-listen --fire
+#   uv run diapason clap-listen --fire
 # Debug mic levels:
-#   uv run jarvis clap-listen --debug
+#   uv run diapason clap-listen --debug
 #
 # Requires: ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID
 # Optional: sounddevice + numpy for clap-listen

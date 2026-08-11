@@ -19,15 +19,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.local_mode import LocalOnlyError
 from diapason.engine._discovery import _engine_key_is_remote, _make_engine
 
 _REGISTRY_GET = "diapason.core.registry.EngineRegistry.get"
 
 
-def _cfg(*, local: bool, ollama_host: str = "") -> JarvisConfig:
-    config = JarvisConfig()
+def _cfg(*, local: bool, ollama_host: str = "") -> DiapasonConfig:
+    config = DiapasonConfig()
     config.privacy.local_only = local
     if ollama_host:
         config.engine.ollama_host = ollama_host

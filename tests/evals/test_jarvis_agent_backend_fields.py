@@ -1,4 +1,4 @@
-"""Verify JarvisAgentBackend.generate_full returns the spec §6.2 extended fields."""
+"""Verify DiapasonAgentBackend.generate_full returns the spec §6.2 extended fields."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 class TestJarvisAgentExtendedFields:
     def test_generate_full_includes_framework_and_commit(self) -> None:
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
         with patch("diapason.system.SystemBuilder") as MockSB:
             mock_system = MagicMock()
@@ -30,7 +30,7 @@ class TestJarvisAgentExtendedFields:
             # MagicMock that tolerates arbitrary attribute access.
             builder_instance._config = MagicMock()
 
-            backend = JarvisAgentBackend(model="qwen-9b")
+            backend = DiapasonAgentBackend(model="qwen-9b")
             result = backend.generate_full(
                 "task",
                 model="qwen-9b",

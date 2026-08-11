@@ -18,7 +18,7 @@ class TestSkillIndex:
             version = "0.1.0"
             description = "Research a topic"
             author = "diapason"
-            source = "github.com/openjarvis/skills/research"
+            source = "github.com/diapason/skills/research"
             sha256 = "abc123"
             tags = ["research"]
             required_capabilities = ["network:fetch"]
@@ -47,7 +47,7 @@ class TestSkillIndex:
             version = "0.1.0"
             description = "Search the web"
             author = "diapason"
-            source = "github.com/openjarvis/skills/web_research"
+            source = "github.com/diapason/skills/web_research"
             sha256 = "abc"
             tags = ["research"]
             required_capabilities = []
@@ -57,7 +57,7 @@ class TestSkillIndex:
             version = "0.1.0"
             description = "Review code"
             author = "diapason"
-            source = "github.com/openjarvis/skills/code_review"
+            source = "github.com/diapason/skills/code_review"
             sha256 = "def"
             tags = ["coding"]
             required_capabilities = []

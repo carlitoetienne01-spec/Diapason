@@ -1,4 +1,4 @@
-"""Tests for jarvis bench skills CLI command (Plan 2B)."""
+"""Tests for diapason bench skills CLI command (Plan 2B)."""
 
 from __future__ import annotations
 

@@ -112,7 +112,7 @@ class TestConfigDisabled:
         monkeypatch.setenv("OPENJARVIS_CONFIG", str(cfg))
         assert _config_disabled() is True
 
-    def test_openjarvis_config_env_override(self, monkeypatch, tmp_path):
+    def test_diapason_config_env_override(self, monkeypatch, tmp_path):
         """OPENJARVIS_CONFIG should redirect the lookup, matching core.config."""
         cfg = tmp_path / "alt.toml"
         cfg.write_text("[updates]\nauto_update = false\n")

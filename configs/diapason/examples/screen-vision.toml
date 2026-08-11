@@ -1,11 +1,11 @@
 # Screen vision — one-shot screenshot describe
-# jarvis init --preset screen-vision
+# diapason init --preset screen-vision
 #
 # Requires: Screen Recording permission + a local vision model
 #   ollama pull gemma3:4b
 #   # or: llava, moondream, …
 #
-# Then: jarvis ask --screen "qu'est-ce que tu vois ?"
+# Then: diapason ask --screen "qu'est-ce que tu vois ?"
 # Live: « regarde mon écran »
 
 [engine]

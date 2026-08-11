@@ -1,4 +1,4 @@
-"""Tests for the ``jarvis skill`` CLI commands."""
+"""Tests for the ``diapason skill`` CLI commands."""
 
 from __future__ import annotations
 
@@ -137,9 +137,9 @@ class TestSkillSearchCommand:
         assert result.exit_code == 0
 
     def test_search_no_sources_configured(self) -> None:
-        from diapason.core.config import JarvisConfig, SkillsConfig
+        from diapason.core.config import DiapasonConfig, SkillsConfig
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.skills = SkillsConfig(sources=[])
         with patch("diapason.cli.skill_cmd.load_config", return_value=cfg):
             result = CliRunner().invoke(cli, ["skill", "search", "anything"])
@@ -150,7 +150,7 @@ class TestSkillSearchCommand:
         from pathlib import Path as _P
 
         from diapason.core.config import (
-            JarvisConfig,
+            DiapasonConfig,
             SkillsConfig,
             SkillSourceConfig,
         )
@@ -180,7 +180,7 @@ class TestSkillSearchCommand:
                     ),
                 ]
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.skills = SkillsConfig(sources=[SkillSourceConfig(source="hermes")])
         with patch("diapason.cli.skill_cmd.load_config", return_value=cfg):
             with patch(
@@ -220,12 +220,12 @@ class TestSkillSourcesCommand:
         from unittest.mock import patch
 
         from diapason.core.config import (
-            JarvisConfig,
+            DiapasonConfig,
             SkillsConfig,
             SkillSourceConfig,
         )
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.skills = SkillsConfig(
             sources=[
                 SkillSourceConfig(source="hermes"),

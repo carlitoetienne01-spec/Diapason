@@ -81,7 +81,7 @@ class TaskScheduler:
     store:
         The persistence backend.
     system:
-        Optional ``JarvisSystem`` instance for executing prompts.
+        Optional ``DiapasonSystem`` instance for executing prompts.
     poll_interval:
         Seconds between poll cycles (default 60).
     bus:
@@ -112,7 +112,7 @@ class TaskScheduler:
             return
         self._stop_event.clear()
         self._thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name="jarvis-scheduler"
+            target=self._poll_loop, daemon=True, name="diapason-scheduler"
         )
         self._thread.start()
         logger.info("Scheduler started (poll_interval=%ds)", self._poll_interval)
@@ -218,7 +218,7 @@ class TaskScheduler:
 
         try:
             meta = task.metadata or {}
-            kind = str(meta.get("openjarvis_kind") or "").strip()
+            kind = str(meta.get("diapason_kind") or "").strip()
             if kind == "heartbeat":
                 from diapason.heartbeat.runner import run_heartbeat_tick
 

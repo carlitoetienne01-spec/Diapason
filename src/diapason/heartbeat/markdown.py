@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 _TASK_RE = re.compile(r"^(\s*)-\s+\[([ xX])\]\s+(.*)$")
 

@@ -1,9 +1,9 @@
-# Jarvis desktop parity — vision + dictation + heartbeat + wake gate
-# jarvis init --preset jarvis-desktop
+# Diapason desktop parity — vision + dictation + heartbeat + wake gate
+# diapason init --preset diapason-desktop
 #
 # Optional follow-ups:
-#   jarvis routines sync && jarvis scheduler start
-#   jarvis wake-listen
+#   diapason routines sync && diapason scheduler start
+#   diapason wake-listen
 #   ollama pull gemma3:4b   # vision model
 # Grant: Screen Recording, Automation (Mail/Messages), Mic
 

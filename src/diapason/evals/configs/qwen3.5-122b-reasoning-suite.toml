@@ -32,20 +32,20 @@ num_gpus = 4
 
 [[benchmarks]]
 name = "math500"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 200
 
 [[benchmarks]]
 name = "mmlu-pro"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 200
 
 [[benchmarks]]
 name = "supergpqa"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 200
 
 [[benchmarks]]
 name = "simpleqa"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 200

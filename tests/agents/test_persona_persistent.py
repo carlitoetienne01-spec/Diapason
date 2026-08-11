@@ -1,6 +1,6 @@
-"""Persona files reach persistent agents, not just one-shot `jarvis ask` (#376).
+"""Persona files reach persistent agents, not just one-shot `diapason ask` (#376).
 
-SOUL.md / MEMORY.md / USER.md are loaded by `jarvis ask` via SystemPromptBuilder.
+SOUL.md / MEMORY.md / USER.md are loaded by `diapason ask` via SystemPromptBuilder.
 Persistent agents (monitor_operative, operative) assemble their own system
 prompt and previously ignored these files entirely. These tests verify the
 persona is now appended to their prompt without replacing their specialized

@@ -3,7 +3,7 @@ id = "system_monitor"
 name = "System Monitor Operator"
 version = "0.1.0"
 description = "Monitors system health, stores alerts, reports anomalies."
-author = "openjarvis"
+author = "diapason"
 metrics = ["checks_run", "alerts_generated"]
 
 [operator.schedule]

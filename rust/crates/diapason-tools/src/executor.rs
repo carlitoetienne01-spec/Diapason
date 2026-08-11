@@ -2,7 +2,7 @@
 
 use crate::builtin::BuiltinTool;
 use crate::traits::BaseTool;
-use diapason_core::error::{OpenJarvisError, ToolError};
+use diapason_core::error::{DiapasonError, ToolError};
 use diapason_core::{EventBus, EventType, ToolResult};
 use diapason_security::capabilities::CapabilityPolicy;
 use diapason_security::taint::{TaintSet, check_taint};
@@ -54,9 +54,9 @@ impl ToolExecutor {
         params: &Value,
         agent_id: Option<&str>,
         taint: Option<&TaintSet>,
-    ) -> Result<ToolResult, OpenJarvisError> {
+    ) -> Result<ToolResult, DiapasonError> {
         let tool = self.tools.get(tool_name).ok_or_else(|| {
-            OpenJarvisError::Tool(ToolError::NotFound(tool_name.to_string()))
+            DiapasonError::Tool(ToolError::NotFound(tool_name.to_string()))
         })?;
 
         // RBAC check
@@ -64,7 +64,7 @@ impl ToolExecutor {
             let spec = tool.spec();
             for cap in &spec.required_capabilities {
                 if !policy.check(aid, cap, "") {
-                    return Err(OpenJarvisError::Tool(ToolError::CapabilityDenied(
+                    return Err(DiapasonError::Tool(ToolError::CapabilityDenied(
                         aid.to_string(),
                         format!("{cap} (tool: {tool_name})"),
                     )));
@@ -75,7 +75,7 @@ impl ToolExecutor {
         // Taint check
         if let Some(taint_set) = taint {
             if let Some(violation) = check_taint(tool_name, taint_set) {
-                return Err(OpenJarvisError::Tool(ToolError::TaintViolation(
+                return Err(DiapasonError::Tool(ToolError::TaintViolation(
                     tool_name.to_string(),
                     violation,
                 )));
@@ -102,7 +102,7 @@ impl ToolExecutor {
                 data.insert("tool_name".to_string(), Value::String(tool_name.to_string()));
                 bus.publish(EventType::ToolTimeout, data);
             }
-            return Err(OpenJarvisError::Tool(ToolError::Timeout(
+            return Err(DiapasonError::Tool(ToolError::Timeout(
                 timeout.as_secs_f64(),
                 tool_name.to_string(),
             )));
@@ -142,6 +142,6 @@ mod tests {
         let err = exec
             .execute("nonexistent", &serde_json::json!({}), None, None)
             .unwrap_err();
-        assert!(matches!(err, OpenJarvisError::Tool(ToolError::NotFound(_))));
+        assert!(matches!(err, DiapasonError::Tool(ToolError::NotFound(_))));
     }
 }

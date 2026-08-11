@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from diapason.desktop.voice_commands import parse_voice_command, finalize_dictation
+from diapason.desktop.voice_commands import finalize_dictation, parse_voice_command
 from diapason.speech.dictate_polish import polish_dictation
 
 

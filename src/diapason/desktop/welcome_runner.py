@@ -98,7 +98,6 @@ def run_welcome_sequence(
     """Execute welcome actions via registered tools. Returns step results."""
     import diapason.speech  # noqa: F401 — register TTS
     import diapason.tools  # noqa: F401 — register tools
-
     from diapason.tools.desktop_tools import (
         FocusAppTool,
         OpenBrowserOnMonitorTool,

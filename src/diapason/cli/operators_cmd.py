@@ -264,7 +264,7 @@ def _find_manifest(operator_id: str):
 
 
 def _build_system_with_operators():
-    """Build a JarvisSystem with operators wired up."""
+    """Build a DiapasonSystem with operators wired up."""
     from diapason.operators.manager import OperatorManager
     from diapason.system import SystemBuilder
 

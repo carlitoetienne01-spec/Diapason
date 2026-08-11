@@ -61,7 +61,7 @@ class CrashingTracker(ResultTracker):
 
 
 def _make_config(**overrides) -> RunConfig:
-    defaults = dict(benchmark="test", backend="jarvis-direct", model="test-model")
+    defaults = dict(benchmark="test", backend="diapason-direct", model="test-model")
     defaults.update(overrides)
     return RunConfig(**defaults)
 
@@ -70,7 +70,7 @@ def _make_summary(**overrides) -> RunSummary:
     defaults = dict(
         benchmark="test",
         category="chat",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="test-model",
         total_samples=10,
         scored_samples=10,

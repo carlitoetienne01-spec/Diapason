@@ -27,7 +27,10 @@ def heartbeat() -> None:
 def heartbeat_status() -> None:
     """Show pending heartbeat tasks and config."""
     from diapason.core.config import load_config
-    from diapason.heartbeat.markdown import ensure_heartbeat_file, pending_now, read_heartbeat
+    from diapason.heartbeat.markdown import (
+        ensure_heartbeat_file,
+        read_heartbeat,
+    )
 
     console = Console()
     cfg = load_config().heartbeat
@@ -78,11 +81,11 @@ def heartbeat_tick(force: bool, dry_run: bool) -> None:
     system = None
     if not dry_run:
         try:
-            from diapason.sdk import Jarvis
+            from diapason.sdk import Diapason
 
-            # Leave system None — tick will acknowledge without agent unless Jarvis works
+            # Leave system None — tick will acknowledge without agent unless Diapason works
             # Prefer dry acknowledge for CLI simplicity; optional live ask:
-            with Jarvis() as j:
+            with Diapason() as j:
                 result = run_heartbeat_tick(system=j, force=force, workspace=_workspace())
             _print_tick(console, result)
             return

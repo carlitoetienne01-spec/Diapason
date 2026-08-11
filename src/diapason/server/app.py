@@ -1,4 +1,4 @@
-"""FastAPI application factory for the OpenJarvis API server."""
+"""FastAPI application factory for the Diapason API server."""
 
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ from fastapi.staticfiles import StaticFiles
 from diapason.server.analytics_routes import router as analytics_router
 from diapason.server.api_routes import include_all_routes
 from diapason.server.comparison import comparison_router
+from diapason.server.config_routes import create_config_router
 from diapason.server.connectors_router import create_connectors_router
 from diapason.server.dashboard import dashboard_router
-from diapason.server.digest_routes import create_digest_router
-from diapason.server.config_routes import create_config_router
 from diapason.server.dictation_routes import create_dictation_router
-from diapason.server.screen_share_routes import create_screen_share_router
-from diapason.server.trigger_routes import create_trigger_router
+from diapason.server.digest_routes import create_digest_router
 from diapason.server.research_router import router as research_router
 from diapason.server.routes import router
+from diapason.server.screen_share_routes import create_screen_share_router
+from diapason.server.trigger_routes import create_trigger_router
 from diapason.server.upload_router import router as upload_router
 
 logger = logging.getLogger(__name__)
@@ -178,11 +178,11 @@ def create_app(
     channel_bridge:
         Optional channel bridge for multi-platform messaging.
     config:
-        Optional JarvisConfig for other settings.
+        Optional DiapasonConfig for other settings.
     """
     app = FastAPI(
-        title="OpenJarvis API",
-        description="OpenAI-compatible API server for OpenJarvis",
+        title="Diapason API",
+        description="OpenAI-compatible API server for Diapason",
         version="0.1.0",
     )
 

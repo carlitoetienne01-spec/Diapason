@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::pin::Pin;
 use tokio_stream::Stream;
 
-pub type StreamItem = Result<String, diapason_core::OpenJarvisError>;
+pub type StreamItem = Result<String, diapason_core::DiapasonError>;
 pub type TokenStream = Pin<Box<dyn Stream<Item = StreamItem> + Send>>;
 
 /// ABC for all inference engine backends.
@@ -22,7 +22,7 @@ pub trait InferenceEngine: Send + Sync {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, diapason_core::OpenJarvisError>;
+    ) -> Result<GenerateResult, diapason_core::DiapasonError>;
 
     async fn stream(
         &self,
@@ -31,9 +31,9 @@ pub trait InferenceEngine: Send + Sync {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, diapason_core::OpenJarvisError>;
+    ) -> Result<TokenStream, diapason_core::DiapasonError>;
 
-    fn list_models(&self) -> Result<Vec<String>, diapason_core::OpenJarvisError>;
+    fn list_models(&self) -> Result<Vec<String>, diapason_core::DiapasonError>;
 
     fn health(&self) -> bool;
 

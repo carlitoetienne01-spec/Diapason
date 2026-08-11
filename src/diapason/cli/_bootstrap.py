@@ -1,6 +1,6 @@
 """Cloud-key auto-detection and initial-config writing.
 
-Used by both ``install.sh`` (via ``jarvis _bootstrap --write-config``)
+Used by both ``install.sh`` (via ``diapason _bootstrap --write-config``)
 and ``diapason init`` (so there is a single source of truth for the
 TOML rendered at install time).
 """
@@ -110,7 +110,7 @@ def write_initial_config(
 ) -> Path:
     """Render the initial ``config.toml`` and seed memory files.
 
-    Called by both ``install.sh`` (via ``jarvis _bootstrap --write-config``)
+    Called by both ``install.sh`` (via ``diapason _bootstrap --write-config``)
     and ``diapason init`` so the TOML format has one definition.
     """
     _cfg.DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,7 +135,7 @@ def write_initial_config(
     )
 
     base_toml = (
-        f"# OpenJarvis configuration\n"
+        f"# Diapason configuration\n"
         f"{hardware_line}{gpu_comment}\n"
         f"# Full reference config: diapason init --full\n"
         f"\n"
@@ -180,7 +180,7 @@ def _seed_memory_files() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI command — invoked by install.sh, hidden from `jarvis --help`
+# CLI command — invoked by install.sh, hidden from `diapason --help`
 # ---------------------------------------------------------------------------
 
 # Default model picked at install time when a cloud key is detected via

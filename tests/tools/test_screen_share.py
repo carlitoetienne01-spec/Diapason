@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -102,8 +101,10 @@ def test_share_start_disabled():
 
 def test_voice_allowlist_share_tools():
     import diapason.tools.screen_vision_tools  # noqa: F401
-
-    from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
+    from diapason.speech.realtime.tools import (
+        DEFAULT_VOICE_TOOL_IDS,
+        list_voice_tool_ids,
+    )
 
     for tid in (
         "screen_share_start",

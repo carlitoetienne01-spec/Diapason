@@ -97,7 +97,7 @@ class TestChannelSend:
     def test_send_success(self, client_with_bridge, mock_bridge):
         resp = client_with_bridge.post(
             "/v1/channels/send",
-            json={"channel": "slack", "content": "Hello from Jarvis"},
+            json={"channel": "slack", "content": "Hello from Diapason"},
         )
         assert resp.status_code == 200
         data = resp.json()

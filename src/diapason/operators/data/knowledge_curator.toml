@@ -3,7 +3,7 @@ id = "knowledge_curator"
 name = "Knowledge Curator Operator"
 version = "0.1.0"
 description = "Reviews memories, extracts entities/relations, builds knowledge graph."
-author = "openjarvis"
+author = "diapason"
 metrics = ["entities_added", "relations_added", "memories_reviewed"]
 
 [operator.schedule]

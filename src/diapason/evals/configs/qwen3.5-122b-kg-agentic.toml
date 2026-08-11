@@ -1,5 +1,5 @@
 # Experiment 4: LifelongAgent KG with agentic backend (multi-turn reasoning)
-# Compare against jarvis-direct (single call) — agent can reason step-by-step
+# Compare against diapason-direct (single call) — agent can reason step-by-step
 # with think/calculator/code_interpreter tools
 
 [meta]
@@ -33,7 +33,7 @@ num_gpus = 4
 
 [[benchmarks]]
 name = "lifelong-agent"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 subset = "knowledge_graph"

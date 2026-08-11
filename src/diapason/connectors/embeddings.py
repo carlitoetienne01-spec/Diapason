@@ -20,7 +20,7 @@ import requests
 # numpy is imported lazily inside the functions that use it (not at module
 # load). The CLI imports this module eagerly via the deep-research command
 # chain, so a module-level `import numpy` makes a broken/slow numpy on Windows
-# crash every `jarvis` command — including `diapason serve` (#404, #309).
+# crash every `diapason` command — including `diapason serve` (#404, #309).
 if TYPE_CHECKING:
     import numpy as np
 

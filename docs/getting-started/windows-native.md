@@ -18,7 +18,7 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 
 - Windows 10 1809+ or Windows 11.
 - Python 3.10 – 3.13 (Python 3.14 has no numpy Windows wheels yet —
-  see [#432](https://github.com/open-jarvis/OpenJarvis/issues/432)).
+  see [#432](https://github.com/open-diapason/Diapason/issues/432)).
 - `git` on PATH.
 - ~5 GB free disk on `%LOCALAPPDATA%`.
 
@@ -27,7 +27,7 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 In any PowerShell:
 
 ```powershell
-irm https://open-jarvis.github.io/OpenJarvis/install.ps1 | iex
+irm https://open-diapason.github.io/Diapason/install.ps1 | iex
 ```
 
 The installer will:
@@ -37,7 +37,7 @@ The installer will:
 3. Confirm `git`.
 4. Install `uv` if absent (via the official `astral.sh/uv` PowerShell
    installer).
-5. Clone the repo to `%LOCALAPPDATA%\OpenJarvis\src`.
+5. Clone the repo to `%LOCALAPPDATA%\Diapason\src`.
 6. Run `uv sync --extra desktop --group desktop-native`.
 7. Prompt to register the scheduled-task service (skip with
    `-SkipService`).
@@ -45,8 +45,8 @@ The installer will:
 ## Run it
 
 ```powershell
-cd "$env:LOCALAPPDATA\OpenJarvis\src"
-uv run jarvis serve
+cd "$env:LOCALAPPDATA\Diapason\src"
+uv run diapason serve
 ```
 
 Open `http://127.0.0.1:8000/health` to verify.
@@ -57,7 +57,7 @@ If you skipped the prompt during install, register the auto-start task
 manually:
 
 ```powershell
-$srv = "$env:LOCALAPPDATA\OpenJarvis\src\deploy\windows\jarvis-service.ps1"
+$srv = "$env:LOCALAPPDATA\Diapason\src\deploy\windows\diapason-service.ps1"
 powershell -ExecutionPolicy Bypass -File $srv install
 ```
 
@@ -73,7 +73,7 @@ Remove:
 powershell -ExecutionPolicy Bypass -File $srv uninstall
 ```
 
-See [`deploy/windows/README.md`](https://github.com/open-jarvis/OpenJarvis/blob/main/deploy/windows/README.md)
+See [`deploy/windows/README.md`](https://github.com/open-diapason/Diapason/blob/main/deploy/windows/README.md)
 for the LAN-exposed configuration and the parity table against
 systemd / launchd.
 

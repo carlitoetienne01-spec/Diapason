@@ -50,7 +50,7 @@ mkdir -p results/smoke
 CONFIG_DIR="results/smoke/configs"
 mkdir -p "$CONFIG_DIR"
 SMOKE_BENCHES=(toolcall15 pinchbench gaia)
-SMOKE_FRAMEWORKS=(hermes openclaw openjarvis)
+SMOKE_FRAMEWORKS=(hermes openclaw diapason)
 SMOKE_MODEL="qwen-9b"
 
 for fwk in "${SMOKE_FRAMEWORKS[@]}"; do

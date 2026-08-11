@@ -931,7 +931,7 @@ def ask(
         return
 
     # Direct-to-engine mode (no agent)
-    # Privacy guard: a screenshot/image is sensitive, and OpenJarvis is
+    # Privacy guard: a screenshot/image is sensitive, and Diapason is
     # local-first. If the active engine isn't local, warn before the image
     # leaves the machine rather than silently uploading it to a third party.
     _LOCAL_ENGINES = {

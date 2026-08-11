@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from diapason.core.config import JarvisConfig, load_config
+from diapason.core.config import DiapasonConfig, load_config
 from diapason.core.registry import BenchmarkRegistry
 
 
@@ -31,7 +31,7 @@ class TestBenchmarkRegistry:
 
 class TestConfigPhase5:
     def test_jarvis_config_loads(self):
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert cfg.engine is not None
         assert cfg.learning is not None
 
@@ -51,4 +51,4 @@ class TestConfigPhase5:
     def test_load_config_default(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "home"))
         cfg = load_config(tmp_path / "missing-config.toml")
-        assert isinstance(cfg, JarvisConfig)
+        assert isinstance(cfg, DiapasonConfig)

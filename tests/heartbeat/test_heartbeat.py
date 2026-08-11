@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from diapason.heartbeat.kinds import run_routine
 from diapason.heartbeat.markdown import (
     append_task,
     clear_done,
@@ -14,7 +15,6 @@ from diapason.heartbeat.markdown import (
     read_heartbeat,
 )
 from diapason.heartbeat.quiet import in_quiet_hours
-from diapason.heartbeat.runner import run_heartbeat_tick
 from diapason.heartbeat.routines import (
     Routine,
     ensure_routines_file,
@@ -22,9 +22,8 @@ from diapason.heartbeat.routines import (
     load_routines,
     set_routine_enabled,
 )
-from diapason.heartbeat.kinds import run_routine
+from diapason.heartbeat.runner import run_heartbeat_tick
 from diapason.heartbeat.sync import HEARTBEAT_TASK_ID, sync_heartbeat_and_routines
-
 
 SAMPLE = """# HEARTBEAT
 
@@ -133,7 +132,7 @@ def test_run_prompt_silent(tmp_path: Path):
 
 
 def test_sync_creates_tasks(tmp_path: Path):
-    from diapason.core.config import HeartbeatConfig, RoutinesConfig, JarvisConfig
+    from diapason.core.config import DiapasonConfig, HeartbeatConfig, RoutinesConfig
     from diapason.scheduler.scheduler import TaskScheduler
     from diapason.scheduler.store import SchedulerStore
 
@@ -141,7 +140,7 @@ def test_sync_creates_tasks(tmp_path: Path):
     db = tmp_path / "sched.db"
     store = SchedulerStore(db)
     sched = TaskScheduler(store)
-    cfg = JarvisConfig(
+    cfg = DiapasonConfig(
         heartbeat=HeartbeatConfig(enabled=True, interval_seconds=1800, workspace_dir=str(ws)),
         routines=RoutinesConfig(enabled=True),
     )

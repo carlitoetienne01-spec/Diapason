@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# install.sh — OpenJarvis curl-pipe-bash installer.
+# install.sh — Diapason curl-pipe-bash installer.
 #
 # Usage:
-#   curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash
+#   curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
 #
 # Flags (only used in tests / power users):
 #   --no-bg-orchestrator   Skip the detached background orchestrator
@@ -10,8 +10,8 @@
 #   --force                Re-run all steps even if state file says done
 #
 # Environment overrides:
-#   OPENJARVIS_HOME        Install dir (default: $HOME/.openjarvis)
-#   OPENJARVIS_REPO_URL    git repo URL (default: https://github.com/open-jarvis/OpenJarvis.git)
+#   OPENJARVIS_HOME        Install dir (default: $HOME/.diapason)
+#   OPENJARVIS_REPO_URL    git repo URL (default: https://github.com/open-diapason/Diapason.git)
 #   OPENJARVIS_FORCE_WSL   Set 1 to force WSL detection (testing)
 
 set -euo pipefail
@@ -32,7 +32,7 @@ done
 # ---- non-WSL Windows refusal ----
 # Running the installer in Git Bash / MSYS2 / Cygwin on native Windows
 # (i.e. NOT inside WSL2) gets the user into a confusing failure state:
-# uv/git tooling installs to Windows paths the rest of OpenJarvis can't
+# uv/git tooling installs to Windows paths the rest of Diapason can't
 # reach, and Ollama integration silently breaks. The supported Windows
 # path is WSL2. Bail early with a clear next step rather than letting
 # users discover this 3 minutes into a doomed install.
@@ -41,7 +41,7 @@ case "$(uname -s 2>/dev/null)" in
         cat >&2 <<'EOF'
 install.sh: native Windows (Git Bash / MSYS2 / Cygwin) is not supported.
 
-OpenJarvis runs on Windows via WSL2. Two paths:
+Diapason runs on Windows via WSL2. Two paths:
 
   1. WSL2 (recommended for the CLI). One-time setup in an admin PowerShell:
 
@@ -49,13 +49,13 @@ OpenJarvis runs on Windows via WSL2. Two paths:
 
      Open the Ubuntu shell that gets installed, then re-run:
 
-       curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash
+       curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
 
   2. Desktop app — download the .exe from the Releases page:
-     https://github.com/open-jarvis/OpenJarvis/releases
+     https://github.com/open-diapason/Diapason/releases
 
 See the WSL2 install guide for the full walkthrough:
-  https://open-jarvis.github.io/OpenJarvis/getting-started/wsl2/
+  https://open-diapason.github.io/Diapason/getting-started/wsl2/
 EOF
         exit 1
         ;;
@@ -66,7 +66,7 @@ if [[ "$(id -u)" -eq 0 ]]; then
     cat >&2 <<'EOF'
 install.sh: don't run as root.
 
-OpenJarvis installs to $HOME/.openjarvis, not /usr/local. Re-run as your
+Diapason installs to $HOME/.diapason, not /usr/local. Re-run as your
 regular user (without sudo).
 EOF
     exit 1
@@ -148,7 +148,7 @@ Two ways forward:
        Arch:          sudo pacman -S $tool
 
   2. Pre-authenticate sudo before piping (caches credentials for 5 min):
-       sudo -v && curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash
+       sudo -v && curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
 EOF
         exit 1
     fi
@@ -210,16 +210,16 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # ---- env ----
-# OpenJarvis keeps ALL of its state (install tree + runtime data, configs,
+# Diapason keeps ALL of its state (install tree + runtime data, configs,
 # databases, caches, logs) under a single root so it never clutters $HOME
 # beyond one directory. Relocate it by exporting OPENJARVIS_HOME before
 # running the installer, e.g.:
-#     OPENJARVIS_HOME=~/apps/openjarvis curl ... | bash
+#     OPENJARVIS_HOME=~/apps/diapason curl ... | bash
 # The Python runtime honors the same override (and, when OPENJARVIS_HOME is
-# unset, $XDG_DATA_HOME/openjarvis if XDG_DATA_HOME is set). With nothing set
-# the root is ~/.openjarvis, so existing installs are untouched.
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
-OPENJARVIS_REPO_URL="${OPENJARVIS_REPO_URL:-https://github.com/open-jarvis/OpenJarvis.git}"
+# unset, $XDG_DATA_HOME/diapason if XDG_DATA_HOME is set). With nothing set
+# the root is ~/.diapason, so existing installs are untouched.
+OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
+OPENJARVIS_REPO_URL="${OPENJARVIS_REPO_URL:-https://github.com/open-diapason/Diapason.git}"
 SRC_DIR="$OPENJARVIS_HOME/src"
 VENV_DIR="$OPENJARVIS_HOME/.venv"
 STATE_DIR="$OPENJARVIS_HOME/.state"
@@ -239,7 +239,7 @@ fi
 # ---- analytics beacon (anonymized install funnel) ----
 #
 # Posts a small JSON event to PostHog at each install stage so the
-# OpenJarvis team can see where users drop off during install.
+# Diapason team can see where users drop off during install.
 # No content, no IPs (handled by PostHog disable_geoip on server),
 # no hardware identifiers — just OS, arch, elapsed time, and stage name.
 #
@@ -596,19 +596,19 @@ pull_default_model() {
 }
 
 write_config() {
-    "$VENV_DIR/bin/jarvis" _bootstrap --write-config \
+    "$VENV_DIR/bin/diapason" _bootstrap --write-config \
         --engine ollama --model qwen3.5:2b \
         --prefer-cloud-when-available
 }
 
 install_symlinks() {
     mkdir -p "$HOME/.local/bin"
-    ln -sf "$SCRIPTS_DIR/jarvis-wrapper.sh" "$HOME/.local/bin/jarvis"
-    ln -sf "$SCRIPTS_DIR/jarvis-uninstall.sh" "$HOME/.local/bin/jarvis-uninstall"
+    ln -sf "$SCRIPTS_DIR/diapason-wrapper.sh" "$HOME/.local/bin/diapason"
+    ln -sf "$SCRIPTS_DIR/diapason-uninstall.sh" "$HOME/.local/bin/diapason-uninstall"
 }
 
 # Tracks whether the user needs to source ~/.bashrc / ~/.zshrc / open a
-# new terminal before `jarvis` will resolve. Set only when ensure_path
+# new terminal before `diapason` will resolve. Set only when ensure_path
 # actually modified the user's rc file.
 PATH_MODIFIED=0
 
@@ -622,7 +622,7 @@ ensure_path() {
     else
         rc="$HOME/.bashrc"
     fi
-    if grep -q "OpenJarvis" "$rc" 2>/dev/null; then
+    if grep -q "Diapason" "$rc" 2>/dev/null; then
         # rc already has our PATH line from a prior install; just remind.
         PATH_MODIFIED=1
         PATH_MODIFIED_RC="$rc"
@@ -630,7 +630,7 @@ ensure_path() {
     fi
     {
         echo ''
-        echo '# OpenJarvis'
+        echo '# Diapason'
         echo 'export PATH="$HOME/.local/bin:$PATH"'
     } >> "$rc"
     PATH_MODIFIED=1
@@ -665,7 +665,7 @@ PYEOF
 }
 
 # ---- run ----
-echo "OpenJarvis installer"
+echo "Diapason installer"
 echo "  install dir: $OPENJARVIS_HOME"
 echo "  WSL2:        $WSL"
 echo
@@ -673,10 +673,10 @@ echo
 beacon "install_started"
 
 step install_uv         "Install uv"            install_uv
-step clone_repo         "Clone OpenJarvis repo" clone_repo
+step clone_repo         "Clone Diapason repo" clone_repo
 step copy_scripts       "Copy install scripts"  copy_scripts
 step create_venv        "Create venv"           create_venv
-step editable_install   "Install OpenJarvis"    editable_install
+step editable_install   "Install Diapason"    editable_install
 step install_ollama     "Install Ollama"        install_ollama
 step start_ollama       "Start Ollama daemon"   start_ollama
 step pull_default_model "Pull qwen3.5:2b"       pull_default_model
@@ -699,16 +699,16 @@ echo
 # the foreground model pull actually succeeded and (b) whether the PATH
 # update needs a shell refresh. The four combinations:
 #
-#   PATH ok + model ok   -> "type jarvis"
-#   PATH new + model ok  -> "source rc && jarvis  (or open new terminal)"
-#   PATH ok + model bad  -> "model still downloading; jarvis doctor"
-#   PATH new + model bad -> "source rc && jarvis doctor; chat works once download finishes"
+#   PATH ok + model ok   -> "type diapason"
+#   PATH new + model ok  -> "source rc && diapason  (or open new terminal)"
+#   PATH ok + model bad  -> "model still downloading; diapason doctor"
+#   PATH new + model bad -> "source rc && diapason doctor; chat works once download finishes"
 #
-# `jarvis` and `jarvis doctor` need PATH equally, so the source/restart
+# `diapason` and `diapason doctor` need PATH equally, so the source/restart
 # guidance goes first when PATH was modified.
-NEXT_CMD="jarvis"
+NEXT_CMD="diapason"
 if [[ "$MODEL_PULL_OK" -ne 1 ]]; then
-    NEXT_CMD="jarvis doctor"
+    NEXT_CMD="diapason doctor"
 fi
 
 if [[ "$PATH_MODIFIED" -eq 1 ]]; then
@@ -730,7 +730,7 @@ fi
 
 if [[ "$MODEL_PULL_OK" -ne 1 ]]; then
     cat <<EOF
-NOTE: the qwen3.5:2b model didn't finish downloading. 'jarvis doctor'
+NOTE: the qwen3.5:2b model didn't finish downloading. 'diapason doctor'
 shows the retry progress; chat will work once the download completes
 in the background.
 
@@ -741,5 +741,5 @@ cat <<EOF
 Background work continues silently:
   - Rust toolchain + maturin extension build
   - Bigger model downloads
-  Run 'jarvis doctor' to check status anytime.
+  Run 'diapason doctor' to check status anytime.
 EOF

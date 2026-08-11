@@ -15,7 +15,7 @@ from diapason.cli.digest_cmd import digest
 
 
 class TestDigestScheduleCLI:
-    """Tests for the ``jarvis digest --schedule`` flag."""
+    """Tests for the ``diapason digest --schedule`` flag."""
 
     def test_schedule_show_status(self):
         """``--schedule ""`` shows the current schedule from config."""

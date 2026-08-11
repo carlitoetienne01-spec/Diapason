@@ -7,11 +7,11 @@ from pathlib import Path
 from diapason.core.config import (
     AgentConfig,
     ChannelConfig,
+    DiapasonConfig,
     EngineConfig,
     GpuInfo,
     HardwareInfo,
     IntelligenceConfig,
-    JarvisConfig,
     LearningConfig,
     SandboxConfig,
     SchedulerConfig,
@@ -25,7 +25,7 @@ from diapason.core.config import (
 
 class TestDefaults:
     def test_jarvis_config_defaults(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert cfg.engine.default == "ollama"
         assert cfg.memory.default_backend == "sqlite"
         assert cfg.telemetry.enabled is True
@@ -82,7 +82,7 @@ class TestRecommendEngine:
 class TestTomlLoading:
     def test_load_missing_file_uses_defaults(self, tmp_path: Path) -> None:
         cfg = load_config(tmp_path / "nonexistent.toml")
-        assert isinstance(cfg, JarvisConfig)
+        assert isinstance(cfg, DiapasonConfig)
         # engine default is derived from detected hardware — just ensure it's a string
         assert isinstance(cfg.engine.default, str)
 
@@ -153,7 +153,7 @@ class TestSecurityConfig:
         assert sc.enforce_tool_confirmation is True
 
     def test_security_config_on_jarvis_config(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert isinstance(cfg.security, SecurityConfig)
 
     def test_security_config_loads_from_toml(self, tmp_path: Path) -> None:
@@ -175,7 +175,7 @@ class TestChannelConfig:
         assert cc.default_agent == "simple"
 
     def test_channel_config_on_jarvis_config(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert isinstance(cfg.channel, ChannelConfig)
 
     def test_channel_config_loads_from_toml(self, tmp_path: Path) -> None:
@@ -238,7 +238,7 @@ class TestAgentConfigNew:
         )
 
     def test_default_system_prompt_anchors_identity(self) -> None:
-        """#540: the hardened wording must name OpenJarvis and explicitly
+        """#540: the hardened wording must name Diapason and explicitly
         deny the model's training identity so distilled models stop
         claiming to be Claude/ChatGPT/etc."""
         prompt = AgentConfig().default_system_prompt
@@ -444,7 +444,7 @@ class TestSandboxConfig:
         assert sc.runtime == "podman"
 
     def test_on_jarvis_config(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert isinstance(cfg.sandbox, SandboxConfig)
         assert cfg.sandbox.enabled is False
 
@@ -478,7 +478,7 @@ class TestSchedulerConfig:
         assert sc.db_path == "/tmp/sched.db"
 
     def test_on_jarvis_config(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert isinstance(cfg.scheduler, SchedulerConfig)
         assert cfg.scheduler.enabled is False
 
@@ -606,4 +606,4 @@ def test_mining_config_pool_parsed_as_pool_target(tmp_path):
     target.write_text(src.read_text())
     cfg = load_config(target)
     assert isinstance(cfg.mining.submit_target, PoolTarget)
-    assert cfg.mining.submit_target.url == "https://pool.openjarvis.ai/submit"
+    assert cfg.mining.submit_target.url == "https://pool.diapason.ai/submit"

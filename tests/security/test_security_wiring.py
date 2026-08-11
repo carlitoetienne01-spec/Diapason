@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from diapason.agents._stubs import AgentResult, ToolUsingAgent
 from diapason.core.config import (
     CapabilitiesConfig,
-    JarvisConfig,
+    DiapasonConfig,
     SecurityConfig,
 )
 from diapason.core.events import EventBus
@@ -48,7 +48,7 @@ def _has_rust() -> bool:
 
 class TestCapabilityPolicyReachesExecutor:
     def test_no_policy_when_caps_disabled(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.security = SecurityConfig(
             enabled=True,
             capabilities=CapabilitiesConfig(enabled=False),
@@ -66,7 +66,7 @@ class TestCapabilityPolicyReachesExecutor:
         assert agent._executor._capability_policy is None
 
     def test_no_policy_when_security_disabled(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.security = SecurityConfig(enabled=False)
         engine = _make_mock_engine()
         sec = setup_security(cfg, engine)

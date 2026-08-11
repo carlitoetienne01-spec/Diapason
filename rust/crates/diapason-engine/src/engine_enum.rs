@@ -9,7 +9,7 @@ use crate::openai_compat::OpenAICompatEngine;
 use crate::sglang::SGLangEngine;
 use crate::vllm::VLLMEngine;
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::OpenJarvisError;
+use diapason_core::error::DiapasonError;
 use diapason_core::{GenerateResult, Message};
 use serde_json::Value;
 
@@ -71,7 +71,7 @@ impl InferenceEngine for Engine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, OpenJarvisError> {
+    ) -> Result<GenerateResult, DiapasonError> {
         delegate_engine!(self, generate, messages, model, temperature, max_tokens, extra)
     }
 
@@ -82,7 +82,7 @@ impl InferenceEngine for Engine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, OpenJarvisError> {
+    ) -> Result<TokenStream, DiapasonError> {
         match self {
             Engine::Ollama(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
             Engine::VLLM(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
@@ -100,7 +100,7 @@ impl InferenceEngine for Engine {
         }
     }
 
-    fn list_models(&self) -> Result<Vec<String>, OpenJarvisError> {
+    fn list_models(&self) -> Result<Vec<String>, DiapasonError> {
         delegate_engine!(self, list_models)
     }
 

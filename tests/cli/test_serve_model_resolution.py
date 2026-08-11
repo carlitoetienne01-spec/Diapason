@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from diapason.cli.serve import _resolve_server_model
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 
 
 class _FakeEngine:
@@ -15,7 +15,7 @@ class _FakeEngine:
 
 
 def test_server_model_falls_back_to_reachable_ollama_model() -> None:
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.server.model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
     cfg.intelligence.default_model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
     cfg.intelligence.fallback_model = "qwen3.5:9b"
@@ -32,7 +32,7 @@ def test_server_model_falls_back_to_reachable_ollama_model() -> None:
 
 
 def test_server_model_prefers_reachable_configured_model() -> None:
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.server.model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
     cfg.intelligence.default_model = "qwen3.5:9b"
     cfg.intelligence.fallback_model = "qwen3.5:9b"
@@ -49,7 +49,7 @@ def test_server_model_prefers_reachable_configured_model() -> None:
 
 
 def test_server_model_keeps_explicit_cli_model() -> None:
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     cfg.server.model = "configured-model"
     cfg.intelligence.fallback_model = "fallback-model"
 

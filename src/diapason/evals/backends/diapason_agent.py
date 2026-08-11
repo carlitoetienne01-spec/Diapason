@@ -1,4 +1,4 @@
-"""Jarvis Agent backend — agent-level inference with tool calling."""
+"""Diapason Agent backend — agent-level inference with tool calling."""
 
 from __future__ import annotations
 
@@ -6,18 +6,18 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from diapason.evals.backends._commit_util import openjarvis_commit
+from diapason.evals.backends._commit_util import diapason_commit
 from diapason.evals.core.backend import InferenceBackend
 
 
-class JarvisAgentBackend(InferenceBackend):
-    """Agent-level inference via SystemBuilder + JarvisSystem.ask().
+class DiapasonAgentBackend(InferenceBackend):
+    """Agent-level inference via SystemBuilder + DiapasonSystem.ask().
 
     Supports tool calling via the agent harness. Works for both local
     and cloud models.
     """
 
-    backend_id = "jarvis-agent"
+    backend_id = "diapason-agent"
     framework_name = "diapason"
 
     def __init__(
@@ -63,7 +63,7 @@ class JarvisAgentBackend(InferenceBackend):
         # creates a GpuMonitor when building the InstrumentedEngine.
         if gpu_metrics:
             builder._config.telemetry.gpu_metrics = True
-        # Override the agent's per-run turn budget. JarvisConfig.agent.max_turns
+        # Override the agent's per-run turn budget. DiapasonConfig.agent.max_turns
         # defaults to 10, which is too low for thinking/reasoning models on
         # multi-step agentic benchmarks (Trinity-Large hit the cap on 25/50
         # GAIA tasks before this was configurable per-eval).
@@ -78,10 +78,10 @@ class JarvisAgentBackend(InferenceBackend):
 
     @property
     def framework_commit_value(self) -> str:
-        """OpenJarvis repo HEAD commit (for telemetry tagging)."""
-        from diapason.evals.backends._commit_util import openjarvis_commit
+        """Diapason repo HEAD commit (for telemetry tagging)."""
+        from diapason.evals.backends._commit_util import diapason_commit
 
-        return openjarvis_commit()
+        return diapason_commit()
 
     def generate(
         self,
@@ -199,7 +199,7 @@ class JarvisAgentBackend(InferenceBackend):
             "tool_calls": tool_calls_count,
             "turn_count": turn_count,
             "framework": "diapason",
-            "framework_commit": openjarvis_commit(),
+            "framework_commit": diapason_commit(),
             "error": None,
         }
 
@@ -213,4 +213,4 @@ class JarvisAgentBackend(InferenceBackend):
         self._system.close()
 
 
-__all__ = ["JarvisAgentBackend"]
+__all__ = ["DiapasonAgentBackend"]

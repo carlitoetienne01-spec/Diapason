@@ -1,12 +1,12 @@
-"""Tests for LearningConfig and its integration into JarvisConfig."""
+"""Tests for LearningConfig and its integration into DiapasonConfig."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from diapason.core.config import (
+    DiapasonConfig,
     HardwareInfo,
-    JarvisConfig,
     LearningConfig,
     generate_default_toml,
     load_config,
@@ -36,7 +36,7 @@ class TestLearningConfig:
         assert cfg.metrics.efficiency_weight == 0.3
 
     def test_jarvis_config_has_learning(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert hasattr(cfg, "learning")
         assert isinstance(cfg.learning, LearningConfig)
         assert cfg.learning.routing.policy == "heuristic"

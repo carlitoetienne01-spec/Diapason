@@ -74,7 +74,7 @@ def bus():
 @pytest.fixture
 def mock_system():
     system = MagicMock()
-    system.ask.return_value = {"content": "Hello from Jarvis!"}
+    system.ask.return_value = {"content": "Hello from Diapason!"}
     return system
 
 
@@ -153,7 +153,7 @@ class TestChatRouting:
         mock_system.ask.assert_called_once()
         call_kwargs = mock_system.ask.call_args
         assert "2+2" in str(call_kwargs)
-        assert reply == "Hello from Jarvis!"
+        assert reply == "Hello from Diapason!"
 
     def test_stores_conversation_history(self, bridge, store, mock_system):
         bridge.handle_incoming("user1", "hello", "fake")

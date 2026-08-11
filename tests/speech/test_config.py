@@ -1,6 +1,6 @@
 """Tests for speech configuration."""
 
-from diapason.core.config import JarvisConfig, SpeechConfig
+from diapason.core.config import DiapasonConfig, SpeechConfig
 
 
 def test_speech_config_defaults():
@@ -15,14 +15,14 @@ def test_speech_config_defaults():
 
 
 def test_jarvis_config_has_speech():
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     assert hasattr(cfg, "speech")
     assert isinstance(cfg.speech, SpeechConfig)
     assert cfg.speech.backend == "auto"
 
 
 def test_jarvis_system_has_speech_backend():
-    """JarvisSystem has a speech_backend attribute."""
-    from diapason.system import JarvisSystem
+    """DiapasonSystem has a speech_backend attribute."""
+    from diapason.system import DiapasonSystem
 
-    assert "speech_backend" in JarvisSystem.__dataclass_fields__
+    assert "speech_backend" in DiapasonSystem.__dataclass_fields__

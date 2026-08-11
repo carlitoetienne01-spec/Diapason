@@ -47,7 +47,7 @@ def _sample_summary(accuracy: float = 0.8) -> RunSummary:
     return RunSummary(
         benchmark="test",
         category="reasoning",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="test-model",
         total_samples=50,
         scored_samples=50,

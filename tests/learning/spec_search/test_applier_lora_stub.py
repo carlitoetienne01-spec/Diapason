@@ -37,7 +37,7 @@ class TestLoraStubApplier:
         )
 
         applier = LoraStubApplier()
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
         result = applier.validate(_make_lora_edit(), ctx)
         assert not result.ok
         assert "v2" in result.reason.lower() or "deferred" in result.reason.lower()
@@ -48,6 +48,6 @@ class TestLoraStubApplier:
         )
 
         applier = LoraStubApplier()
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
         with pytest.raises(NotImplementedError, match="deferred to v2"):
             applier.apply(_make_lora_edit(), ctx)

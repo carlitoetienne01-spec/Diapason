@@ -1,22 +1,22 @@
-"""Jarvis Direct backend — engine-level inference for local and cloud models."""
+"""Diapason Direct backend — engine-level inference for local and cloud models."""
 
 from __future__ import annotations
 
 import time
 from typing import Any, Dict, Optional
 
-from diapason.evals.backends._commit_util import openjarvis_commit
+from diapason.evals.backends._commit_util import diapason_commit
 from diapason.evals.core.backend import InferenceBackend
 
 
-class JarvisDirectBackend(InferenceBackend):
+class DiapasonDirectBackend(InferenceBackend):
     """Direct engine inference via SystemBuilder.
 
     Works for both local models (Ollama, vLLM, etc.) and cloud models
     (OpenAI, Anthropic, Google) via the CloudEngine.
     """
 
-    backend_id = "jarvis-direct"
+    backend_id = "diapason-direct"
     framework_name = "diapason"
 
     def __init__(
@@ -53,10 +53,10 @@ class JarvisDirectBackend(InferenceBackend):
 
     @property
     def framework_commit_value(self) -> str:
-        """OpenJarvis repo HEAD commit (for telemetry tagging)."""
-        from diapason.evals.backends._commit_util import openjarvis_commit
+        """Diapason repo HEAD commit (for telemetry tagging)."""
+        from diapason.evals.backends._commit_util import diapason_commit
 
-        return openjarvis_commit()
+        return diapason_commit()
 
     def generate(
         self,
@@ -129,7 +129,7 @@ class JarvisDirectBackend(InferenceBackend):
             "tool_calls": 0,
             "turn_count": 1,
             "framework": "diapason",
-            "framework_commit": openjarvis_commit(),
+            "framework_commit": diapason_commit(),
             "error": None,
         }
 
@@ -137,4 +137,4 @@ class JarvisDirectBackend(InferenceBackend):
         self._system.close()
 
 
-__all__ = ["JarvisDirectBackend"]
+__all__ = ["DiapasonDirectBackend"]

@@ -3,7 +3,7 @@ id = "researcher"
 name = "Research Operator"
 version = "0.1.0"
 description = "Monitors topics, gathers information, maintains knowledge base."
-author = "openjarvis"
+author = "diapason"
 metrics = ["articles_found", "summaries_generated"]
 
 [operator.schedule]

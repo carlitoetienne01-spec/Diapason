@@ -76,7 +76,7 @@ def _make_stub_config(tmp_path: Path) -> dict:
     config_path.write_text("[learning]\nenabled = true\n")
     return {
         "config_path": config_path,
-        "openjarvis_home": tmp_path,
+        "diapason_home": tmp_path,
     }
 
 

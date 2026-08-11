@@ -2,7 +2,7 @@
 name = "backup-files"
 description = "Create a timestamped backup archive of specified files or directory"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "shell_exec"

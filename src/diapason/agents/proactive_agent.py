@@ -64,7 +64,7 @@ _PROACTIVE_CRON_PROMPT = (
     "notify pending approvals."
 )
 _PROACTIVE_TASK_KEY = "proactive-daily"
-_PROACTIVE_TASK_KEY_FIELD = "openjarvis_task_key"
+_PROACTIVE_TASK_KEY_FIELD = "diapason_task_key"
 
 _SYSTEM_PROMPT = """You are a proactive personal assistant agent. You have already collected
 data from the user's connected sources (email, messages, calendar). Your job is to:

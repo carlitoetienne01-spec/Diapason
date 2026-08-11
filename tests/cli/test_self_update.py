@@ -1,4 +1,4 @@
-"""Smoke tests for `jarvis self-update`.
+"""Smoke tests for `diapason self-update`.
 
 Focus on the surface that's easy to corrupt (output formatting, exit
 codes, --check short-circuit). We don't actually run pip/uv from a

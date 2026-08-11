@@ -343,13 +343,13 @@ class TestGemmaCppDiscovery:
         assert _HOST_MAP["gemma_cpp"] is None
 
     def test_make_engine_passes_config(self) -> None:
-        from diapason.core.config import GemmaCppEngineConfig, JarvisConfig
+        from diapason.core.config import DiapasonConfig, GemmaCppEngineConfig
         from diapason.core.registry import EngineRegistry
         from diapason.engine._discovery import _make_engine
         from diapason.engine.gemma_cpp import GemmaCppEngine
 
         EngineRegistry.register_value("gemma_cpp", GemmaCppEngine)
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.engine.gemma_cpp = GemmaCppEngineConfig(
             model_path="/cfg/model.sbs",
             tokenizer_path="/cfg/tokenizer.spm",

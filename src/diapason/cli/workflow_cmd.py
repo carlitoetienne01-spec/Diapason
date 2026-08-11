@@ -50,7 +50,7 @@ def run(workflow_name: str, input_text: str | None) -> None:
             console.print(f"[red]Workflow '{workflow_name}' not found.[/red]")
             return
         console.print(f"[green]Workflow '{workflow_name}' started.[/green]")
-        # Full execution would need a JarvisSystem — just report for now
+        # Full execution would need a DiapasonSystem — just report for now
         console.print(
             "[dim]Note: Full workflow execution requires a running system.[/dim]"
         )

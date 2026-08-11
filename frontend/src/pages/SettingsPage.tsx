@@ -40,7 +40,7 @@ import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Deskt
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 
-const CLOUD_KEY_STATUS_CHANGED = 'openjarvis-cloud-key-status-changed';
+const CLOUD_KEY_STATUS_CHANGED = 'diapason-cloud-key-status-changed';
 
 function OllamaModelList() {
   const [models, setModels] = useState<Array<{ name: string; size: number }>>([]);
@@ -289,19 +289,19 @@ export function SettingsPage() {
 
   const [memoryStats, setMemoryStats] = useState<{ entries: number; backend: string } | null>(null);
   const [memoryEnabled, setMemoryEnabled] = useState(() => {
-    try { return localStorage.getItem('openjarvis-memory-enabled') !== 'false'; } catch { return true; }
+    try { return localStorage.getItem('diapason-memory-enabled') !== 'false'; } catch { return true; }
   });
   const [memoryBackend, setMemoryBackend] = useState(() => {
-    try { return localStorage.getItem('openjarvis-memory-backend') || 'sqlite'; } catch { return 'sqlite'; }
+    try { return localStorage.getItem('diapason-memory-backend') || 'sqlite'; } catch { return 'sqlite'; }
   });
   const [memoryTopK, setMemoryTopK] = useState(() => {
-    try { return parseInt(localStorage.getItem('openjarvis-memory-top-k') || '5'); } catch { return 5; }
+    try { return parseInt(localStorage.getItem('diapason-memory-top-k') || '5'); } catch { return 5; }
   });
   const [memoryMinScore, setMemoryMinScore] = useState(() => {
-    try { return parseFloat(localStorage.getItem('openjarvis-memory-min-score') || '0.1'); } catch { return 0.1; }
+    try { return parseFloat(localStorage.getItem('diapason-memory-min-score') || '0.1'); } catch { return 0.1; }
   });
   const [memoryMaxTokens, setMemoryMaxTokens] = useState(() => {
-    try { return parseInt(localStorage.getItem('openjarvis-memory-max-tokens') || '2048'); } catch { return 2048; }
+    try { return parseInt(localStorage.getItem('diapason-memory-max-tokens') || '2048'); } catch { return 2048; }
   });
 
   const [srcKind, setSrcKind] = useState<InferenceSource['kind']>('ollama');
@@ -380,12 +380,12 @@ export function SettingsPage() {
   );
 
   const handleExport = () => {
-    const data = localStorage.getItem('openjarvis-conversations') || '{}';
+    const data = localStorage.getItem('diapason-conversations') || '{}';
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `openjarvis-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `diapason-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -402,7 +402,7 @@ export function SettingsPage() {
         try {
           const data = JSON.parse(ev.target?.result as string);
           if (data.version === 1) {
-            localStorage.setItem('openjarvis-conversations', JSON.stringify(data));
+            localStorage.setItem('diapason-conversations', JSON.stringify(data));
             useAppStore.getState().loadConversations();
             showSaved();
           }
@@ -420,7 +420,7 @@ export function SettingsPage() {
       setTimeout(() => setConfirmClear(false), 3000);
       return;
     }
-    localStorage.removeItem('openjarvis-conversations');
+    localStorage.removeItem('diapason-conversations');
     useAppStore.getState().loadConversations();
     setConfirmClear(false);
     showSaved();
@@ -643,7 +643,7 @@ export function SettingsPage() {
                 onClick={() => {
                   const next = !memoryEnabled;
                   setMemoryEnabled(next);
-                  try { localStorage.setItem('openjarvis-memory-enabled', String(next)); } catch {}
+                  try { localStorage.setItem('diapason-memory-enabled', String(next)); } catch {}
                   showSaved();
                 }}
                 className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
@@ -665,7 +665,7 @@ export function SettingsPage() {
                 value={memoryBackend}
                 onChange={(e) => {
                   setMemoryBackend(e.target.value);
-                  try { localStorage.setItem('openjarvis-memory-backend', e.target.value); } catch {}
+                  try { localStorage.setItem('diapason-memory-backend', e.target.value); } catch {}
                   showSaved();
                 }}
                 className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
@@ -692,7 +692,7 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
                   setMemoryTopK(v);
-                  try { localStorage.setItem('openjarvis-memory-top-k', String(v)); } catch {}
+                  try { localStorage.setItem('diapason-memory-top-k', String(v)); } catch {}
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
@@ -708,7 +708,7 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   setMemoryMinScore(v);
-                  try { localStorage.setItem('openjarvis-memory-min-score', String(v)); } catch {}
+                  try { localStorage.setItem('diapason-memory-min-score', String(v)); } catch {}
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
@@ -724,7 +724,7 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
                   setMemoryMaxTokens(v);
-                  try { localStorage.setItem('openjarvis-memory-max-tokens', String(v)); } catch {}
+                  try { localStorage.setItem('diapason-memory-max-tokens', String(v)); } catch {}
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
@@ -800,7 +800,7 @@ export function SettingsPage() {
                 cover all dictation. */}
             <SettingRow
               label="In-window dictation"
-              description="Counted from the mic button in Chat. Background dictation is not included — see jarvis dictation-history stats"
+              description="Counted from the mic button in Chat. Background dictation is not included — see diapason dictation-history stats"
             >
               <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                 {dictationStats.sessions} sessions · {dictationStats.characters} chars
@@ -812,7 +812,7 @@ export function SettingsPage() {
                 background service now, and it holds a bare Control. */}
             <SettingRow
               label="Dictation hotkey"
-              description="Background service — works with this window closed. Change it with: jarvis config set dictation.hotkey control|option|fn"
+              description="Background service — works with this window closed. Change it with: diapason config set dictation.hotkey control|option|fn"
             >
               <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>
                 Hold Control
@@ -820,10 +820,10 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow
               label="Dictation service"
-              description="Install, check or stop it: jarvis dictate-service install | status | logs | uninstall"
+              description="Install, check or stop it: diapason dictate-service install | status | logs | uninstall"
             >
               <span className="text-xs font-mono" style={{ color: 'var(--color-text-secondary)' }}>
-                jarvis dictate --setup
+                diapason dictate --setup
               </span>
             </SettingRow>
             <SettingRow
@@ -847,12 +847,12 @@ export function SettingsPage() {
             {!speechBackendAvailable && speechBackendAvailable !== null && (
               <div className="text-xs mt-2 px-1" style={{ color: 'var(--color-text-tertiary)' }}>
                 Set up a speech backend to use voice input.
-                See the <a href="https://open-jarvis.github.io/OpenJarvis/user-guide/tools/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)' }}>documentation</a> for details.
+                See the <a href="https://open-diapason.github.io/Diapason/user-guide/tools/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)' }}>documentation</a> for details.
               </div>
             )}
           </Section>
 
-          {/* Desktop server config (writes ~/.openjarvis/config.toml) */}
+          {/* Desktop server config (writes ~/.diapason/config.toml) */}
           <Section title="Desktop (server)">
             {serverCfgError && !serverCfg && (
               <p className="text-xs px-1 mb-2" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -925,7 +925,7 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow
               label="Auto-learn dictionary"
-              description="Learn STT→corrected word pairs into ~/.openjarvis/dictation_dictionary.json"
+              description="Learn STT→corrected word pairs into ~/.diapason/dictation_dictionary.json"
             >
               <button
                 type="button"
@@ -953,7 +953,7 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow
               label="Wake backend"
-              description="ML: uv sync --extra speech-wake then jarvis wake-listen --backend openwakeword"
+              description="ML: uv sync --extra speech-wake then diapason wake-listen --backend openwakeword"
             >
               <select
                 disabled={!serverCfg}
@@ -997,7 +997,7 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow
               label="Heartbeat / routines"
-              description="Ambient queue + cron. Then: jarvis routines sync && jarvis scheduler start"
+              description="Ambient queue + cron. Then: diapason routines sync && diapason scheduler start"
             >
               <div className="flex gap-2">
                 <button
@@ -1121,7 +1121,7 @@ export function SettingsPage() {
               </p>
               <div className="flex gap-3 mt-3 text-xs">
                 <a
-                  href="https://openjarvis.stanford.edu/"
+                  href="https://diapason.stanford.edu/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: 'var(--color-accent)' }}
@@ -1129,7 +1129,7 @@ export function SettingsPage() {
                   Project site
                 </a>
                 <a
-                  href="https://open-jarvis.github.io/OpenJarvis/"
+                  href="https://open-diapason.github.io/Diapason/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: 'var(--color-accent)' }}

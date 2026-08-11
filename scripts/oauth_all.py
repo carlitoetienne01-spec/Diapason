@@ -20,7 +20,7 @@ import httpx
 
 from diapason.core import open_browser
 
-CONFIG_DIR = Path.home() / ".openjarvis" / "connectors"
+CONFIG_DIR = Path.home() / ".diapason" / "connectors"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 CALLBACK_PORT = 8789
@@ -339,7 +339,7 @@ def do_spotify() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run OAuth flows for OpenJarvis connectors"
+        description="Run OAuth flows for Diapason connectors"
     )
     parser.add_argument("--google", action="store_true", help="Only Google")
     parser.add_argument("--strava", action="store_true", help="Only Strava")

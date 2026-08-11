@@ -124,7 +124,7 @@ def test_privacy_section_is_loaded_from_toml(tmp_path):
 
 
 def test_privacy_key_is_settable_from_the_cli():
-    """`jarvis config set privacy.local_only true` must validate."""
+    """`diapason config set privacy.local_only true` must validate."""
     from diapason.core.config import validate_config_key
 
     assert validate_config_key("privacy.local_only") is bool

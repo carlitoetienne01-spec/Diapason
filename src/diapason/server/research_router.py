@@ -38,7 +38,7 @@ from diapason.agents.research_loop import (
 from diapason.connectors.embeddings import OllamaEmbedder
 from diapason.connectors.hybrid_search import HybridSearch
 from diapason.connectors.store import KnowledgeStore
-from diapason.core.config import DEFAULT_CONFIG_DIR, JarvisConfig, load_config
+from diapason.core.config import DEFAULT_CONFIG_DIR, DiapasonConfig, load_config
 from diapason.core.types import TelemetryRecord
 from diapason.engine._base import InferenceEngine
 from diapason.engine._discovery import get_engine
@@ -64,7 +64,7 @@ def _first_nonempty(*values: str) -> str:
 
 
 def _resolve_planner_config(
-    config: JarvisConfig,
+    config: DiapasonConfig,
     *,
     active_engine_key: str = "",
     active_model: str = "",
@@ -97,7 +97,7 @@ def _resolve_planner_config(
 
 
 def _build_planner_engine(
-    config: JarvisConfig,
+    config: DiapasonConfig,
     *,
     active_engine: InferenceEngine | None = None,
     active_engine_key: str = "",

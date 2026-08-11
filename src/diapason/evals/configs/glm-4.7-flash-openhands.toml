@@ -37,7 +37,7 @@ num_gpus = 4                      # TP=4
 # Reasoning (MCQ): SuperGPQA — LLM judge extracts answer letter
 [[benchmarks]]
 name = "supergpqa"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = ["code_interpreter", "calculator", "think"]
 max_samples = 200
@@ -46,7 +46,7 @@ split = "train"
 # Agentic: GAIA — requires file reading, multi-step reasoning
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = ["code_interpreter", "web_search", "file_read", "calculator", "think"]
 max_samples = 50
@@ -54,7 +54,7 @@ max_samples = 50
 # RAG: FRAMES — multi-hop factual retrieval
 [[benchmarks]]
 name = "frames"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = ["code_interpreter", "web_search", "calculator", "think"]
 max_samples = 100
@@ -62,7 +62,7 @@ max_samples = 100
 # Chat: WildChat — conversation quality
 [[benchmarks]]
 name = "wildchat"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_openhands"
 tools = ["code_interpreter", "think"]
 max_samples = 150

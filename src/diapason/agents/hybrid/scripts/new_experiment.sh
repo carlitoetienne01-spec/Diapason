@@ -2,17 +2,17 @@
 # Scaffold a new hybrid paradigm experiment cell.
 #
 # Appends a [cells.<name>] block to
-# src/openjarvis/agents/hybrid/registry/<method>.toml
+# src/diapason/agents/hybrid/registry/<method>.toml
 # (registry is split by method — minions.toml, conductor.toml, etc.).
 #
 # Usage:
-#   src/openjarvis/agents/hybrid/scripts/new_experiment.sh \
+#   src/diapason/agents/hybrid/scripts/new_experiment.sh \
 #       --method minions --bench gaia \
 #       --local qwen3.5-27b --cloud claude-opus-4-7 --n 50 \
 #       [--mode minion|minions] [--max-rounds 3]
 #
 # Then run:
-#   python -m openjarvis.agents.hybrid.runner --cell <printed name>
+#   python -m diapason.agents.hybrid.runner --cell <printed name>
 
 set -euo pipefail
 
@@ -105,4 +105,4 @@ ${cfg_block}
 EOF
 
 echo "Added cell: ${name}  →  $(realpath --relative-to="$(pwd)" "$registry_file")"
-echo "Run with: python -m openjarvis.agents.hybrid.runner --cell ${name}"
+echo "Run with: python -m diapason.agents.hybrid.runner --cell ${name}"

@@ -1,6 +1,6 @@
 //! MemoryBackend trait for all storage backends.
 
-use diapason_core::{OpenJarvisError, RetrievalResult};
+use diapason_core::{DiapasonError, RetrievalResult};
 use serde_json::Value;
 
 pub trait MemoryBackend: Send + Sync {
@@ -10,13 +10,13 @@ pub trait MemoryBackend: Send + Sync {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, OpenJarvisError>;
+    ) -> Result<String, DiapasonError>;
     fn retrieve(
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, OpenJarvisError>;
-    fn delete(&self, doc_id: &str) -> Result<bool, OpenJarvisError>;
-    fn clear(&self) -> Result<(), OpenJarvisError>;
-    fn count(&self) -> Result<usize, OpenJarvisError>;
+    ) -> Result<Vec<RetrievalResult>, DiapasonError>;
+    fn delete(&self, doc_id: &str) -> Result<bool, DiapasonError>;
+    fn clear(&self) -> Result<(), DiapasonError>;
+    fn count(&self) -> Result<usize, DiapasonError>;
 }

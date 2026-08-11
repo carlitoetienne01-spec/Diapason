@@ -3,8 +3,8 @@
 use crate::traits::InferenceEngine;
 use crate::ollama::OllamaEngine;
 use crate::openai_compat::OpenAICompatEngine;
-use diapason_core::config::JarvisConfig;
-use diapason_core::OpenJarvisError;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::DiapasonError;
 
 /// Engine endpoint descriptor discovered at runtime.
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ pub struct EngineInfo {
 }
 
 /// Probe known engine endpoints and return those that respond.
-pub fn discover_engines(config: &JarvisConfig) -> Vec<EngineInfo> {
+pub fn discover_engines(config: &DiapasonConfig) -> Vec<EngineInfo> {
     let mut found = Vec::new();
 
     let ollama_host = &config.engine.ollama.host;
@@ -61,9 +61,9 @@ pub fn discover_engines(config: &JarvisConfig) -> Vec<EngineInfo> {
 
 /// Get a configured engine instance by key (static dispatch via `Engine` enum).
 pub fn get_engine_static(
-    config: &JarvisConfig,
+    config: &DiapasonConfig,
     engine_key: Option<&str>,
-) -> Result<crate::engine_enum::Engine, OpenJarvisError> {
+) -> Result<crate::engine_enum::Engine, DiapasonError> {
     use crate::engine_enum::Engine;
 
     let key = engine_key
@@ -102,7 +102,7 @@ pub fn get_engine_static(
         "apple_fm" => Ok(Engine::AppleFm(OpenAICompatEngine::apple_fm(
             &config.engine.apple_fm.host,
         ))),
-        other => Err(OpenJarvisError::Engine(
+        other => Err(DiapasonError::Engine(
             diapason_core::error::EngineError::ModelNotFound(format!(
                 "Unknown engine: {other}"
             )),
@@ -113,18 +113,18 @@ pub fn get_engine_static(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diapason_core::config::JarvisConfig;
+    use diapason_core::config::DiapasonConfig;
 
     #[test]
     fn test_get_engine_static_ollama() {
-        let config = JarvisConfig::default();
+        let config = DiapasonConfig::default();
         let engine = get_engine_static(&config, Some("ollama")).unwrap();
         assert_eq!(engine.engine_id(), "ollama");
     }
 
     #[test]
     fn test_get_engine_static_unknown() {
-        let config = JarvisConfig::default();
+        let config = DiapasonConfig::default();
         assert!(get_engine_static(&config, Some("nonexistent")).is_err());
     }
 }

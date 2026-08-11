@@ -1,4 +1,4 @@
-"""Native persistent long-term memory for OpenJarvis.
+"""Native persistent long-term memory for Diapason.
 
 This package provides the automatic memory service that extracts durable facts
 from conversations in the background and persists them across sessions. It is

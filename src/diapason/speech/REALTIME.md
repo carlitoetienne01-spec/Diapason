@@ -2,11 +2,11 @@
 
 ## What this is
 
-A low-latency **audio in ↔ audio out** session so OpenJarvis can talk like a
+A low-latency **audio in ↔ audio out** session so Diapason can talk like a
 person (interruptible), similar to commercial "Talk to Diapason" / Gemini Live.
 
 This is **not** the turn-based STT → agent → TTS pipeline used by dictation
-(PTT). For always-on « Hey Diapason », see `WAKEWORD.md` and `jarvis wake-listen`.
+(PTT). For always-on « Hey Diapason », see `WAKEWORD.md` and `diapason wake-listen`.
 and welcome-clap.
 
 ## Config
@@ -81,7 +81,7 @@ Grant **Screen Recording** in System Settings.
 
 ## Limits
 
-- Wake-word: see `WAKEWORD.md` (`jarvis wake-listen`).
+- Wake-word: see `WAKEWORD.md` (`diapason wake-listen`).
 - Browser uses ScriptProcessor for PCM capture (AudioWorklet later).
 - Rebuild the Tauri desktop app to pick up the ⌥Space global shortcut.
 """

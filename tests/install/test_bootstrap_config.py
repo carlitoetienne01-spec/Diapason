@@ -95,9 +95,9 @@ def test_handles_special_chars_in_model_name(tmp_diapason_home: Path) -> None:
 
 def test_jarvis_config_has_install_provenance_fields() -> None:
     """Top-level provenance fields should be addressable as attributes."""
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
 
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     assert hasattr(cfg, "installed_at")
     assert hasattr(cfg, "installer_version")
     assert cfg.installed_at == ""

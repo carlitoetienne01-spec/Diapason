@@ -40,7 +40,7 @@ impl<E: InferenceEngine> AgentHelpers<E> {
         &self,
         messages: &[Message],
         extra: Option<&serde_json::Value>,
-    ) -> Result<GenerateResult, diapason_core::OpenJarvisError> {
+    ) -> Result<GenerateResult, diapason_core::DiapasonError> {
         self.engine.generate(messages, &self.model, self.temperature, self.max_tokens, extra)
     }
 

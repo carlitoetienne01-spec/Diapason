@@ -23,7 +23,7 @@ def store(tmp_path):
             sources_used=["gmail"],
             generated_at=datetime.now(timezone.utc),
             model_used="test",
-            voice_used="jarvis",
+            voice_used="diapason",
         )
     )
     # Write fake audio file
@@ -101,4 +101,4 @@ def test_get_history(store, tmp_path):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
-    assert data[0]["voice_used"] == "jarvis"
+    assert data[0]["voice_used"] == "diapason"

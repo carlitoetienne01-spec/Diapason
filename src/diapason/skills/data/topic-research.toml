@@ -2,7 +2,7 @@
 name = "topic-research"
 description = "Research a topic using web search, check memory for prior knowledge, and synthesize findings"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "memory_search"

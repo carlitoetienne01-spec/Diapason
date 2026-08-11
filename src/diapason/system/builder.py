@@ -1,26 +1,26 @@
-"""Config-driven fluent builder that wires up a JarvisSystem."""
+"""Config-driven fluent builder that wires up a DiapasonSystem."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any, List, Optional
 
-from diapason.core.config import JarvisConfig, load_config
+from diapason.core.config import DiapasonConfig, load_config
 from diapason.core.events import EventBus, get_event_bus
 from diapason.core.paths import get_config_dir
 from diapason.engine._stubs import InferenceEngine
-from diapason.system.core import JarvisSystem
+from diapason.system.core import DiapasonSystem
 from diapason.tools._stubs import BaseTool, ToolExecutor
 
 logger = logging.getLogger(__name__)
 
 
 class SystemBuilder:
-    """Config-driven fluent builder for JarvisSystem."""
+    """Config-driven fluent builder for DiapasonSystem."""
 
     def __init__(
         self,
-        config: Optional[JarvisConfig] = None,
+        config: Optional[DiapasonConfig] = None,
         *,
         config_path: Optional[Any] = None,
     ) -> None:
@@ -111,8 +111,8 @@ class SystemBuilder:
         self._bus = bus
         return self
 
-    def build(self) -> JarvisSystem:
-        """Construct a fully wired JarvisSystem."""
+    def build(self) -> DiapasonSystem:
+        """Construct a fully wired DiapasonSystem."""
         config = self._config
         bus = self._bus or get_event_bus()
 
@@ -283,7 +283,7 @@ class SystemBuilder:
             except Exception as exc:
                 logger.warning("Failed to initialize speech backend: %s", exc)
 
-        system = JarvisSystem(
+        system = DiapasonSystem(
             config=config,
             bus=bus,
             engine=engine,
@@ -326,7 +326,7 @@ class SystemBuilder:
                 logger.debug("heartbeat/routines sync skipped", exc_info=True)
         return system
 
-    def _resolve_engine(self, config: JarvisConfig):
+    def _resolve_engine(self, config: DiapasonConfig):
         # An explicitly injected engine instance always wins and is never
         # silently replaced: when the caller pinned an endpoint (e.g.
         # ``diapason eval --base-url``) and it is down, substituting whatever
@@ -367,7 +367,7 @@ class SystemBuilder:
             )
         return engine, resolved_key
 
-    def _resolve_model(self, config: JarvisConfig, engine: InferenceEngine) -> str:
+    def _resolve_model(self, config: DiapasonConfig, engine: InferenceEngine) -> str:
         if self._model:
             return self._model
         if config.intelligence.default_model:
@@ -589,7 +589,7 @@ class SystemBuilder:
             return None
 
     @staticmethod
-    def _setup_learning_orchestrator(config: JarvisConfig):
+    def _setup_learning_orchestrator(config: DiapasonConfig):
         if not config.learning.training_enabled:
             return None
         try:

@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Register / unregister the OpenJarvis Windows scheduled task.
+    Register / unregister the Diapason Windows scheduled task.
 
 .DESCRIPTION
-    The Windows equivalent of deploy/systemd/openjarvis.service and
-    deploy/launchd/com.openjarvis.plist.
+    The Windows equivalent of deploy/systemd/diapason.service and
+    deploy/launchd/com.diapason.plist.
 
-    Registers a per-user scheduled task named "OpenJarvis" that starts
-    `jarvis serve` at logon and restarts on failure. Loopback default
+    Registers a per-user scheduled task named "Diapason" that starts
+    `diapason serve` at logon and restarts on failure. Loopback default
     (127.0.0.1) so no API key is required — matches launchd parity.
 
     Subcommands:
@@ -16,7 +16,7 @@
       status    — show task state
 
     Arguments (install only):
-      -InstallRoot <path>  default: %LOCALAPPDATA%\OpenJarvis (matches
+      -InstallRoot <path>  default: %LOCALAPPDATA%\Diapason (matches
                            install.ps1's default)
       -ListenHost <addr>   default: 127.0.0.1 (loopback). Set to 0.0.0.0
                            ONLY if you also set $env:OPENJARVIS_API_KEY
@@ -25,9 +25,9 @@
       -ListenPort <int>    default: 8000
 
     Usage:
-      powershell -ExecutionPolicy Bypass -File jarvis-service.ps1 install
-      powershell -ExecutionPolicy Bypass -File jarvis-service.ps1 uninstall
-      powershell -ExecutionPolicy Bypass -File jarvis-service.ps1 status
+      powershell -ExecutionPolicy Bypass -File diapason-service.ps1 install
+      powershell -ExecutionPolicy Bypass -File diapason-service.ps1 uninstall
+      powershell -ExecutionPolicy Bypass -File diapason-service.ps1 status
 #>
 
 [CmdletBinding()]
@@ -42,7 +42,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$TaskName = 'OpenJarvis'
+$TaskName = 'Diapason'
 
 function Write-Info  ($msg) { Write-Host "[info]  $msg" -ForegroundColor Cyan }
 function Write-Ok    ($msg) { Write-Host "[ok]    $msg" -ForegroundColor Green }
@@ -58,7 +58,7 @@ function Get-DefaultInstallRoot {
     # work today, but $script: is the explicit contract).
     if ($script:InstallRoot) { return $script:InstallRoot }
     if ($env:OPENJARVIS_HOME) { return $env:OPENJARVIS_HOME }
-    return (Join-Path $env:LOCALAPPDATA 'OpenJarvis')
+    return (Join-Path $env:LOCALAPPDATA 'Diapason')
 }
 
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ function Install-Task {
     $root = Get-DefaultInstallRoot
     $srcDir = Join-Path $root 'src'
     if (-not (Test-Path $srcDir)) {
-        Write-Fail "OpenJarvis source not found at $srcDir. Run install.ps1 first."
+        Write-Fail "Diapason source not found at $srcDir. Run install.ps1 first."
     }
 
     $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
@@ -85,15 +85,15 @@ function Install-Task {
     }
 
     # Safety: refuse to register a non-loopback bind without an API key.
-    # Mirrors deploy/systemd/openjarvis.service's EnvironmentFile guard.
+    # Mirrors deploy/systemd/diapason.service's EnvironmentFile guard.
     $isLoopback = ($ListenHost -eq '127.0.0.1' -or $ListenHost -eq 'localhost')
     if (-not $isLoopback -and -not $env:OPENJARVIS_API_KEY) {
         Write-Fail @"
 ListenHost is $ListenHost (non-loopback) but `$env:OPENJARVIS_API_KEY is
-not set. An unauthenticated non-loopback bind is refused by jarvis serve
+not set. An unauthenticated non-loopback bind is refused by diapason serve
 and would also create a security hole. Set the env var first:
 
-    `$env:OPENJARVIS_API_KEY = (uv run jarvis auth generate-key)
+    `$env:OPENJARVIS_API_KEY = (uv run diapason auth generate-key)
 
 then re-run with -ListenHost 0.0.0.0.
 "@
@@ -102,7 +102,7 @@ then re-run with -ListenHost 0.0.0.0.
     # CRITICAL: scheduled tasks do NOT inherit the registering session's
     # environment. If we registered the task now and stopped here, the
     # task would launch at logon with a clean env, find no API key, and
-    # `jarvis serve` would refuse to bind 0.0.0.0 — failing silently every
+    # `diapason serve` would refuse to bind 0.0.0.0 — failing silently every
     # logon. Persist the key to the User env scope so the task's logon
     # session picks it up. (Loopback path doesn't need the key, so this
     # only runs for the explicit LAN-exposed case.)
@@ -129,7 +129,7 @@ then re-run with -ListenHost 0.0.0.0.
 
     $action = New-ScheduledTaskAction `
         -Execute $uvPath `
-        -Argument "run jarvis serve --host $ListenHost --port $ListenPort" `
+        -Argument "run diapason serve --host $ListenHost --port $ListenPort" `
         -WorkingDirectory $srcDir
 
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -153,7 +153,7 @@ then re-run with -ListenHost 0.0.0.0.
         -Trigger $trigger `
         -Settings $settings `
         -Principal $principal `
-        -Description 'OpenJarvis API server (loopback default — see deploy/windows/README.md)' | Out-Null
+        -Description 'Diapason API server (loopback default — see deploy/windows/README.md)' | Out-Null
 
     Write-Ok "Task '$TaskName' registered."
     Write-Info "It will start automatically at next logon."

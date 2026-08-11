@@ -1,6 +1,6 @@
 """Shared helper for targeting an explicit OpenAI-compatible endpoint.
 
-Used by the first-party eval backends (jarvis-direct, jarvis-agent) when
+Used by the first-party eval backends (diapason-direct, diapason-agent) when
 ``--base-url`` is given: the eval must use exactly that endpoint, with no
 silent fallback to whatever other engine discovery happens to find.
 """

@@ -1,4 +1,4 @@
-"""Verify JarvisDirectBackend.generate_full returns the spec §6.2 extended fields."""
+"""Verify DiapasonDirectBackend.generate_full returns the spec §6.2 extended fields."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 
 class TestJarvisDirectExtendedFields:
     def test_generate_full_includes_framework_and_commit(self) -> None:
-        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 
         # Build the backend without invoking __init__ (which would spin up an
-        # engine); set required attrs directly. JarvisDirectBackend.generate_full
+        # engine); set required attrs directly. DiapasonDirectBackend.generate_full
         # calls ``self._system.engine.generate(messages, ...)`` so we mock the
         # whole ``_system`` chain.
-        backend = JarvisDirectBackend.__new__(JarvisDirectBackend)
+        backend = DiapasonDirectBackend.__new__(DiapasonDirectBackend)
         backend._telemetry = False
         backend._gpu_metrics = False
         backend._system = MagicMock()

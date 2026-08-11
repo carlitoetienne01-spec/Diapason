@@ -155,7 +155,7 @@ class TestTolerantFieldMapping:
         )
         assert manifest.disable_model_invocation is True
 
-    def test_metadata_openjarvis_namespace_used(self):
+    def test_metadata_diapason_namespace_used(self):
         parser = SkillParser()
         manifest = parser.parse_frontmatter(
             {

@@ -21,7 +21,7 @@ class OperatorManager:
     Parameters
     ----------
     system:
-        A ``JarvisSystem`` instance (used to access scheduler, session_store,
+        A ``DiapasonSystem`` instance (used to access scheduler, session_store,
         memory_backend, and to run operators via ``system.ask()``).
     """
 

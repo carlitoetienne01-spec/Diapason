@@ -1,4 +1,4 @@
-"""Smoke tests for ``jarvis optimize`` and ``jarvis feedback`` CLI commands,
+"""Smoke tests for ``diapason optimize`` and ``diapason feedback`` CLI commands,
 plus unit tests for OptimizeConfig, new event types, and TraceStore.update_feedback.
 """
 
@@ -92,12 +92,12 @@ class TestFeedbackCmd:
 
 
 class TestOptimizeConfig:
-    """Tests for OptimizeConfig in JarvisConfig."""
+    """Tests for OptimizeConfig in DiapasonConfig."""
 
     def test_optimize_config_in_jarvis_config(self):
-        from diapason.core.config import JarvisConfig, OptimizeConfig
+        from diapason.core.config import DiapasonConfig, OptimizeConfig
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert isinstance(cfg.optimize, OptimizeConfig)
         assert cfg.optimize.max_trials == 20
         assert cfg.optimize.early_stop_patience == 5

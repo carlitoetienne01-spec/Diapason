@@ -56,10 +56,10 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        from openjarvis import Jarvis
+        from diapason import Diapason
     except ImportError:
         print(
-            "Error: openjarvis is not installed. "
+            "Error: diapason is not installed. "
             "Install it with:  uv sync --extra dev",
             file=sys.stderr,
         )
@@ -71,10 +71,10 @@ def main() -> None:
     print("-" * 60)
 
     try:
-        j = Jarvis(model=args.model, engine_key=args.engine)
+        j = Diapason(model=args.model, engine_key=args.engine)
     except Exception as exc:
         print(
-            f"Error: could not initialize Jarvis -- {exc}\n\n"
+            f"Error: could not initialize Diapason -- {exc}\n\n"
             "Make sure your engine is running. For Ollama:\n"
             "  ollama serve\n"
             "  ollama pull qwen3:8b\n\n"

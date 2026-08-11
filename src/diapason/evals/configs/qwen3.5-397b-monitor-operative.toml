@@ -38,5 +38,5 @@ num_gpus = 4
 
 [[benchmarks]]
 name = "lifelong-agent"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 50

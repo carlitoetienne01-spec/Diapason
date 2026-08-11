@@ -31,5 +31,5 @@ routing = "heuristic"
 
 [eval]
 benchmarks = ["gaia"]
-backend = "jarvis-agent"
+backend = "diapason-agent"
 max_samples = 100

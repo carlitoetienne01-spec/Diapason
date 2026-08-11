@@ -38,7 +38,7 @@ num_gpus = 2
 
 [[benchmarks]]
 name = "loghub"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = [
@@ -48,7 +48,7 @@ tools = [
 
 [[benchmarks]]
 name = "lifelong-agent"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = [

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest import mock
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.registry import EngineRegistry
 from diapason.engine._base import InferenceEngine
 from diapason.engine._discovery import (
@@ -51,7 +51,7 @@ class TestDiscoverEngines:
         _reg("healthy", "healthy")
         _reg("sick", "sick")
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with mock.patch(
             "diapason.engine._discovery._make_engine",
             side_effect=lambda k, c: _FakeEngine(healthy=(k == "healthy")),
@@ -64,7 +64,7 @@ class TestDiscoverEngines:
         _reg("a", "a")
         _reg("b", "b")
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "b"
         with mock.patch(
             "diapason.engine._discovery._make_engine",
@@ -106,7 +106,7 @@ class TestDiscoverEngines:
                     in_flight -= 1
                 return True
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with mock.patch(
             "diapason.engine._discovery._make_engine",
             side_effect=lambda k, c: _SlowEngine(healthy=True),
@@ -136,7 +136,7 @@ class TestGetEngine:
         _reg("bad", "bad")
         _reg("good", "good")
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "bad"
 
         def _make(k, c):  # noqa: ANN001
@@ -159,7 +159,7 @@ class TestGetEngine:
         _reg("requested", "requested")
         _reg("running", "running")
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "requested"
 
         def _make(k, c):  # noqa: ANN001
@@ -187,7 +187,7 @@ class TestGetEngine:
             def can_serve(self, model: str) -> bool:
                 return model == "servable"
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "picky"
 
         def _make(k, c):  # noqa: ANN001
@@ -223,7 +223,7 @@ class TestGetEngine:
         _reg("ollama", "ollama")
         EngineRegistry.register_value("cloud", CloudEngine)
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "ollama"
 
         def _make(k, c):  # noqa: ANN001
@@ -256,7 +256,7 @@ class TestGetEngine:
         """model=None keeps the legacy behaviour: first healthy engine wins."""
         _reg("primary", "primary")
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.engine.default = "primary"
 
         with mock.patch(
@@ -281,7 +281,7 @@ class TestMiningSidecarEngineHandoff:
 
         monkeypatch.setattr(mining_const, "SIDECAR_PATH", written_sidecar)
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with mock.patch(
             "diapason.engine._discovery._make_engine",
             side_effect=lambda k, c: _FakeEngine(healthy=True),
@@ -299,7 +299,7 @@ class TestMiningSidecarEngineHandoff:
         missing = tmp_path / "no-such-mining.json"
         monkeypatch.setattr(mining_const, "SIDECAR_PATH", missing)
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with mock.patch(
             "diapason.engine._discovery._make_engine",
             side_effect=lambda k, c: _FakeEngine(healthy=True),
@@ -333,7 +333,7 @@ class TestMiningSidecarEngineHandoff:
 
         monkeypatch.setattr(mining_const, "SIDECAR_PATH", sidecar)
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         with mock.patch(
             "diapason.engine._discovery._make_engine",
             side_effect=lambda k, c: _FakeEngine(healthy=True),

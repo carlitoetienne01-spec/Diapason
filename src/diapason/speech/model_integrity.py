@@ -2,7 +2,7 @@
 
 Two gaps this closes:
 
-* OpenJarvis pulls models with ``huggingface-cli download`` / ``ollama pull``
+* Diapason pulls models with ``huggingface-cli download`` / ``ollama pull``
   and never checks what arrived. Diapason's ``fetch-model.js`` pins a sha256
   and deletes the file on mismatch. ``verify_file_sha256`` brings that here.
 

@@ -3,7 +3,7 @@ id = "news_digest"
 name = "News Digest Operator"
 version = "0.1.0"
 description = "Daily news digest with deduplication and summary generation."
-author = "openjarvis"
+author = "diapason"
 metrics = ["articles_processed", "digests_generated"]
 
 [operator.schedule]

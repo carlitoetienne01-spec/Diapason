@@ -1,4 +1,4 @@
-"""Tests for ``jarvis chat`` interactive REPL command."""
+"""Tests for ``diapason chat`` interactive REPL command."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from diapason.agents._stubs import (
     ToolUsingAgent,
 )
 from diapason.cli.chat_cmd import _read_input, chat
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.events import Event, EventBus, EventType
 from diapason.core.registry import AgentRegistry, ToolRegistry
 from diapason.core.types import ToolCall, ToolResult
@@ -101,7 +101,7 @@ class TestChatAgents:
         engine = MagicMock()
         engine.engine_id = "mock"
         engine.generate.return_value = {"content": "engine fallback"}
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.intelligence.default_model = "test-model"
 
         AgentRegistry.register_value("simple_chat_agent", _SimpleChatAgent)
@@ -164,7 +164,7 @@ class TestChatAgents:
         engine = MagicMock()
         engine.engine_id = "mock"
         engine.generate.return_value = {"content": "engine fallback"}
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.intelligence.default_model = "test-model"
 
         AgentRegistry.register_value("simple_chat_agent", _SimpleChatAgent)
@@ -193,7 +193,7 @@ class TestChatAgents:
     def test_tool_agent_uses_legacy_agent_tools_and_prompts_confirmation(self) -> None:
         engine = MagicMock()
         engine.engine_id = "mock"
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.intelligence.default_model = "test-model"
         config.agent.tools = "dangerous_chat"
         config.agent.max_turns = 3

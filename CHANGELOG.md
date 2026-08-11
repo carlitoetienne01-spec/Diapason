@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OpenJarvis are documented in this file.
+All notable changes to Diapason are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-**Vision input for `jarvis ask`** — attach images to a query with
+**Vision input for `diapason ask`** — attach images to a query with
 `-i`/`--image` (repeatable) or capture the current screen with
 `-S`/`--screen`, for vision-capable models such as `gemma3:4b`. Images flow
 through `Message.images` into Ollama's `/api/chat` `images` field; text-only
@@ -25,19 +25,19 @@ stack with `mss`/`Pillow` fallbacks on other platforms. Adds the
 
 A patch release that fixes a packaging bug which broke the v1.0.1
 wheel on PyPI, silences a noisy startup warning, restores a working
-install path while `openjarvis.ai` is down, improves desktop
+install path while `diapason.ai` is down, improves desktop
 first-boot diagnostics on Windows, and ships the RAM-detection fix
 for Windows that missed the v1.0.1 cutoff.
 
 ### Fixed
 
-**`openjarvis/traces/` missing from the v1.0.1 PyPI wheel** (#372).
+**`diapason/traces/` missing from the v1.0.1 PyPI wheel** (#372).
 The `.gitignore` carried an unanchored `traces/` pattern, which
 hatchling honored at wheel-build time and matched the runtime module
-`src/openjarvis/traces/` — silently dropping the whole package. Every
-fresh `pip install openjarvis==1.0.1` then failed at import with
-`ModuleNotFoundError: No module named 'openjarvis.traces'` on the
-first `jarvis ask`, learning, or server call. Anchored the pattern to
+`src/diapason/traces/` — silently dropping the whole package. Every
+fresh `pip install diapason==1.0.1` then failed at import with
+`ModuleNotFoundError: No module named 'diapason.traces'` on the
+first `diapason ask`, learning, or server call. Anchored the pattern to
 `/traces/`. Verified: a clean `uv build` now produces a wheel
 containing all four `traces/` files.
 
@@ -50,7 +50,7 @@ transitively.
 
 **Windows RAM detection returning `0.0 GB`** (#373). The Windows
 branch of `_total_ram_gb()` (via `GlobalMemoryStatusEx`) landed after
-the v1.0.1 cutoff, so v1.0.1 users still saw `0.0 GB` from `jarvis
+the v1.0.1 cutoff, so v1.0.1 users still saw `0.0 GB` from `diapason
 init`. Now shipping in the wheel. A new `windows-latest` CI job runs
 the real `GlobalMemoryStatusEx` path on every PR as a regression
 guard.
@@ -66,11 +66,11 @@ logic is covered by unit tests.
 ### Changed
 
 **Install URL moved to GitHub Pages** (#337, #352). The documented
-`openjarvis.ai/install.sh` URL was failing with `sslv3 alert
+`diapason.ai/install.sh` URL was failing with `sslv3 alert
 handshake failure` (the domain is community-operated and had a broken
 TLS config). The canonical installer is now served from the
 project-controlled GitHub Pages site at
-`https://open-jarvis.github.io/OpenJarvis/install.sh`, generated from
+`https://open-diapason.github.io/Diapason/install.sh`, generated from
 the same `scripts/install/install.sh` at docs-build time. The README
 also documents the WSL2 path for Windows and the `uv` prerequisite
 for the desktop binary, and the installer bails early with a clear
@@ -97,9 +97,9 @@ PyPI and isn't a properly-packaged Python project as of v1.0.1) —
 see `docs/learning/ace.md` for the install path and trace-adapter
 behavior.
 
-**`jarvis self-update`** subcommand. Detects how OpenJarvis was
+**`diapason self-update`** subcommand. Detects how Diapason was
 installed (pip, uv tool, editable git checkout) by inspecting
-`openjarvis.__file__`, then runs the right upgrade command. Supports
+`diapason.__file__`, then runs the right upgrade command. Supports
 `--check` (print the command without running) and `-y` (skip the
 confirmation prompt). The post-command "new version available" hint
 now points users at this command instead of guessing at the right
@@ -148,9 +148,9 @@ compare against.
   short-circuits on env opt-out before checking the config. Callers
   that want the raw "is the config flag set" semantic should read
   `cfg.enabled` directly.
-- **Editable-git users running `jarvis self-update`** get the
+- **Editable-git users running `diapason self-update`** get the
   detected `git pull && uv sync` command pointed at their actual
-  checkout, not `~/OpenJarvis`. If you'd come to rely on the
+  checkout, not `~/Diapason`. If you'd come to rely on the
   hardcoded path, update your muscle memory.
 
 ## [1.0.0] - 2026-05-15
@@ -159,14 +159,14 @@ The five-primitive architecture (Intelligence, Engine, Agents,
 Tools & Memory, Learning) is now stable, with efficiency and
 on-device learning as first-class capabilities alongside accuracy.
 Companion blog post:
-[From Minions to OpenJarvis: A Retrospective on Two Years in Local AI](https://hazyresearch.stanford.edu/blog/2026-05-19-minions-to-openjarvis-retrospective).
+[From Minions to Diapason: A Retrospective on Two Years in Local AI](https://hazyresearch.stanford.edu/blog/2026-05-19-minions-to-diapason-retrospective).
 
 ### Highlights
 
 **Five composable primitives.** Intelligence, Engine, Agents, Tools & Memory,
 and Learning each sit behind a single typed interface — any slot is
 substitutable without touching the rest. The composition layer is
-`JarvisSystem` in `src/openjarvis/system.py`, driven by a TOML config.
+`DiapasonSystem` in `src/diapason/system.py`, driven by a TOML config.
 
 **Built-in agents across three execution modes.** Eight agents spanning a
 single-turn chat baseline, a deep-research agent with inline citations,
@@ -175,7 +175,7 @@ for long-horizon workflows. Execution modes cover on-demand, scheduled,
 and continuous.
 
 **Starter presets.** Eight preset configs installable via
-`jarvis init --preset <name>` bundle an agent with a hardware-appropriate
+`diapason init --preset <name>` bundle an agent with a hardware-appropriate
 engine, connectors, and tools. Variants cover Apple Silicon, Linux GPU
 servers, and CPU-only laptops, plus a quickstart for LLM-guided spec search.
 
@@ -187,20 +187,20 @@ in `engine/_discovery.py` picks a sensible default per host.
 ### Added — hybrid local-cloud capabilities
 
 **Per-query routing via a query-complexity analyzer**
-(`src/openjarvis/learning/routing/complexity.py`). Produces a 0.0–1.0
+(`src/diapason/learning/routing/complexity.py`). Produces a 0.0–1.0
 complexity score with code/math/reasoning signals and a suggested token
 budget, populating `RoutingContext` so easy queries stay local and only
 queries that need frontier capability escalate.
 
-**LLM-guided spec search** (`src/openjarvis/learning/spec_search/`).
+**LLM-guided spec search** (`src/diapason/learning/spec_search/`).
 `SpecSearchOrchestrator` wires diagnose → plan → execute → gate into a
 single learning session: a frontier model reads traces, proposes
 coordinated edits across all five primitives, and a held-out benchmark
 gate (`gate/benchmark_gate.py`, `gate/regression.py`, `gate/cold_start.py`)
 accepts only non-regressing edits. Ships with the `spec-search-quickstart`
-preset and a runnable tutorial at `examples/openjarvis/spec_search_quickstart.py`.
+preset and a runnable tutorial at `examples/diapason/spec_search_quickstart.py`.
 
-**Six hybrid coordination paradigms** in `src/openjarvis/agents/hybrid/`.
+**Six hybrid coordination paradigms** in `src/diapason/agents/hybrid/`.
 Each paradigm pairs a local student with a frontier cloud teacher under
 a different orchestration shape, as `LocalCloudAgent` subclasses:
 
@@ -211,7 +211,7 @@ a different orchestration shape, as `LocalCloudAgent` subclasses:
 - `skillorchestra` — per-query router across local skills
 - `toolorchestra` — RL'd local model with a tool pool
 
-A runner CLI (`python -m openjarvis.agents.hybrid.runner --cell <name>`)
+A runner CLI (`python -m diapason.agents.hybrid.runner --cell <name>`)
 and a 35-cell experiment registry (one TOML per method × benchmark ×
 model triple) let researchers run, score, and compare these on equal
 footing. Includes a Modal-backed SWE-bench-Verified harness scorer
@@ -272,28 +272,28 @@ existing 30+ benchmark suite.
   - `ToolTranslator` for external tool name translation (Bash -> shell_exec, Read -> file_read, etc.)
   - Source resolvers: `HermesResolver`, `OpenClawResolver`, `GitHubResolver`
   - `SkillImporter` with provenance tracking (`.source` metadata files), optional script import
-  - Sourced subdirectory layout (`~/.openjarvis/skills/<source>/<name>/`)
+  - Sourced subdirectory layout (`~/.diapason/skills/<source>/<name>/`)
 
 - **Skills learning loop** — trace tagging, pattern discovery, DSPy/GEPA optimization.
   - Trace metadata tagging: `skill`, `skill_source`, `skill_kind` flow through ToolExecutor -> TraceCollector -> TraceStep
   - `SkillDiscovery` wired into `SkillManager.discover_from_traces()` with kebab name normalization
   - `SkillOptimizer` — per-skill DSPy/GEPA wrapper that buckets traces and writes sidecar overlays
-  - `SkillOverlay` — sidecar storage at `~/.openjarvis/learning/skills/<name>/optimized.toml`
+  - `SkillOverlay` — sidecar storage at `~/.diapason/learning/skills/<name>/optimized.toml`
   - `SkillManager._load_overlays()` applies optimized descriptions + few-shot examples at discovery time
   - `LearningOrchestrator._maybe_optimize_skills()` — opt-in auto-trigger
 
 - **Skills benchmark harness** — 4-condition PinchBench evaluation.
   - I3 fix: `skill_few_shot_examples` wired through SystemBuilder -> `_run_agent` -> `ToolUsingAgent` -> `native_react.REACT_SYSTEM_PROMPT`
   - `SkillBenchmarkRunner` — 4-condition x N-seed x M-task sweep with markdown report
-  - `JarvisAgentBackend` accepts `skills_enabled` and `overlay_dir` kwargs
+  - `DiapasonAgentBackend` accepts `skills_enabled` and `overlay_dir` kwargs
   - Conditions: `no_skills`, `skills_on`, `skills_optimized_dspy`, `skills_optimized_gepa`
 
 - **CLI commands:**
-  - `jarvis skill list` / `info` / `run` / `install` / `sync` / `sources` / `update` / `remove` / `search`
-  - `jarvis skill discover` — mine traces for recurring tool patterns
-  - `jarvis skill show-overlay` — inspect optimization output
-  - `jarvis optimize skills` — run DSPy/GEPA per-skill optimization
-  - `jarvis bench skills` — run the PinchBench skills benchmark
+  - `diapason skill list` / `info` / `run` / `install` / `sync` / `sources` / `update` / `remove` / `search`
+  - `diapason skill discover` — mine traces for recurring tool patterns
+  - `diapason skill show-overlay` — inspect optimization output
+  - `diapason optimize skills` — run DSPy/GEPA per-skill optimization
+  - `diapason bench skills` — run the PinchBench skills benchmark
 
 - **Agent prompt improvement:**
   - `native_react.REACT_SYSTEM_PROMPT` now includes "Using Skills" guidance that teaches agents to distinguish executable vs. instructional skill responses
@@ -314,14 +314,14 @@ existing 30+ benchmark suite.
 
 ### Examples & Tutorials
 
-- `examples/openjarvis/spec_search_quickstart.py` — runnable end-to-end
+- `examples/diapason/spec_search_quickstart.py` — runnable end-to-end
   LLM-guided spec search session.
 - `docs/user-guide/llm-guided-spec-search.md` — paper-aligned user guide.
 - `docs/architecture/learning.md` — Learning primitive deep-dive covering
   routing, spec search, optimizers, and the orchestrator.
 - `docs/tutorials/` — code-companion, deep-research, messaging-hub,
   scheduled-ops, and skills-workflow walkthroughs.
-- `src/openjarvis/agents/hybrid/registry/*.toml` — 35-cell registry of
+- `src/diapason/agents/hybrid/registry/*.toml` — 35-cell registry of
   paradigm × benchmark × model experiments.
 
 ### Migration from 0.x
@@ -329,8 +329,8 @@ existing 30+ benchmark suite.
 - **`learning/distillation/` is now `learning/spec_search/`.** The
   subsystem was renamed to match the LLM-guided spec search semantics
   documented in the companion paper. Update any imports
-  (`from openjarvis.learning.distillation.*` →
-  `from openjarvis.learning.spec_search.*`). The `jarvis distillation`
+  (`from diapason.learning.distillation.*` →
+  `from diapason.learning.spec_search.*`). The `diapason distillation`
   CLI command is removed; use `spec_search`-prefixed config keys instead.
 - **`_third_party.toml` no longer ships default paths.** Set
   `HERMES_AGENT_PATH` and `OPENCLAW_PATH` env vars to point at your
@@ -338,7 +338,7 @@ existing 30+ benchmark suite.
   missing or empty paths now raise `ThirdPartyNotFoundError` with an
   actionable hint.
 - **Engine `generate_full` return shape extended.**
-  `JarvisAgentBackend.generate_full` and `JarvisDirectBackend.generate_full`
+  `DiapasonAgentBackend.generate_full` and `DiapasonDirectBackend.generate_full`
   now return the spec §6.2 extended fields (`energy_joules`,
   `peak_power_w`, `tool_calls`, `turn_count`, `framework`,
   `framework_commit`, `error`). Existing callers that didn't read these
@@ -349,7 +349,7 @@ existing 30+ benchmark suite.
 - **Trace metadata flow** — `ToolResult.metadata` now propagates through `TOOL_CALL_END` event to `TraceStep.metadata` (was silently dropped at the event-bus boundary).
 - **TaintSet JSON serialization** — `ToolExecutor._json_safe_metadata()` filters non-JSON-serializable values (like `TaintSet`) from event payloads before they reach `TraceStore`.
 - **Non-dict YAML frontmatter** — source resolvers handle `yaml.safe_load()` returning a string instead of a dict (discovered on real OpenClaw imports).
-- **OpenClaw category/name queries** — `jarvis skill install openclaw:owner/slug` now correctly splits into category + name match.
+- **OpenClaw category/name queries** — `diapason skill install openclaw:owner/slug` now correctly splits into category + name match.
 - **SkillDiscovery trace compatibility** — `_extract_tool_sequence` reads from `step.input["tool"]` (the actual `TraceStep` format), not the nonexistent `step.tool_name` attribute.
 - **LearningOrchestrator skill trigger** — `_maybe_optimize_skills` runs BEFORE the SFT-data short-circuit (skills are tagged via trace metadata, not mined as SFT pairs).
 - **PinchBenchScorer constructor** — `SkillBenchmarkRunner` constructs `PinchBenchScorer(judge_backend, model)` instead of no-args.

@@ -22,7 +22,7 @@ enabled by default.
 First check whether you have a config file at all:
 
 ```bash
-cat ~/.openjarvis/config.toml
+cat ~/.diapason/config.toml
 ```
 
 If it isn't there, that's your answer. Create it:
@@ -42,12 +42,12 @@ enabled = ["shell_exec", "file_read", "file_write", "think"]
 ```
 
 There's a fuller version at
-`configs/openjarvis/examples/full-system-access.toml`.
+`configs/diapason/examples/full-system-access.toml`.
 
 Then confirm the list actually resolved:
 
 ```bash
-python -c "from openjarvis.core.config import load_config; print(load_config().tools.enabled)"
+python -c "from diapason.core.config import load_config; print(load_config().tools.enabled)"
 ```
 
 ---
@@ -85,9 +85,9 @@ What that translates to depends entirely on how you launched the agent:
 
 | Entry point | Behaviour |
 |-------------|-----------|
-| `jarvis chat` | Prompts before each call. |
-| `jarvis ask` | Auto-approves. |
-| `jarvis agent ask` | Auto-approves. Pass `--no-yes` if you want prompts. |
+| `diapason chat` | Prompts before each call. |
+| `diapason ask` | Auto-approves. |
+| `diapason agent ask` | Auto-approves. Pass `--no-yes` if you want prompts. |
 | HTTP server, desktop app | Auto-approves. Tools you added to an agent's toolkit count as pre-approved. |
 | Embedded via `SystemBuilder` | No callback is wired, so these tools fail closed. |
 
@@ -112,16 +112,16 @@ and Calendar all stay locked, and no config key will change that.
 Grant Full Disk Access to whichever process hosts the backend. Child processes
 inherit it:
 
-| How you run OpenJarvis | Grant access to |
+| How you run Diapason | Grant access to |
 |------------------------|-----------------|
-| CLI (`jarvis ask`, `jarvis chat`) | Your terminal (Terminal, iTerm, Warp) |
-| Desktop app | `OpenJarvis.app`, which spawns `jarvis serve` beneath it |
-| launchd (`deploy/launchd/com.openjarvis.plist`) | The `jarvis` binary, as its own entry |
+| CLI (`diapason ask`, `diapason chat`) | Your terminal (Terminal, iTerm, Warp) |
+| Desktop app | `Diapason.app`, which spawns `diapason serve` beneath it |
+| launchd (`deploy/launchd/com.diapason.plist`) | The `diapason` binary, as its own entry |
 
 System Settings, then Privacy & Security, then Full Disk Access, then **+**.
 
 A launchd daemon gets its own TCC context, so granting access to Terminal does
-nothing for it. Add `/usr/local/bin/jarvis` separately.
+nothing for it. Add `/usr/local/bin/diapason` separately.
 
 To check whether the grant took:
 
@@ -147,7 +147,7 @@ touch it.
 
 ## What you can't do
 
-There's no computer use. OpenJarvis can't see your screen, move the pointer or
+There's no computer use. Diapason can't see your screen, move the pointer or
 send keystrokes. No tool for it is registered and no input automation library
 appears anywhere in the codebase, so granting Accessibility or Screen Recording
 buys you nothing on its own.
@@ -177,7 +177,7 @@ runtime = "docker"
 
 [security.capabilities]
 enabled = true          # RBAC over declared tool capabilities
-policy_path = "~/.openjarvis/policy.yaml"
+policy_path = "~/.diapason/policy.yaml"
 ```
 
 !!! note "Capabilities are open by default even once enabled"
@@ -195,4 +195,4 @@ For anything untrusted, reach for `docker_shell_exec` and
 - [Security](security.md) for scanners, the audit log and guardrails
 - [Tools](tools.md) for the full registry
 - [Code Assistant](code-assistant.md) for a narrower shell-enabled setup
-- [External MCP Servers](mcp-external-servers.md) for capabilities OpenJarvis doesn't ship
+- [External MCP Servers](mcp-external-servers.md) for capabilities Diapason doesn't ship

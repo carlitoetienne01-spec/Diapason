@@ -1,10 +1,10 @@
 # Hybrid local+cloud paradigm agents
 
 Six paradigms ported from the original ``hybrid-local-cloud-compute``
-harness — each is registered as a standard OpenJarvis agent so the rest
+harness — each is registered as a standard Diapason agent so the rest
 of the platform (SDK, CLI, distillation, evals) can use them like any
 other agent. Results live under ``$OPENJARVIS_HYBRID_EXPERIMENTS_DIR``
-(defaults to ``~/.openjarvis/experiments/hybrid/``).
+(defaults to ``~/.diapason/experiments/hybrid/``).
 
 | Agent             | Plan shape      | Trains what?         | Workers                   |
 |-------------------|-----------------|----------------------|---------------------------|
@@ -15,7 +15,7 @@ other agent. Results live under ``$OPENJARVIS_HYBRID_EXPERIMENTS_DIR``
 | `skillorchestra`  | per-query pick  | (paper: profiler)    | 1 local + 1 cloud         |
 | `toolorchestra`   | reactive loop   | (paper: 8B RL)       | local + tools + LLM pool  |
 
-Items in parentheses are what the *paper* trains. These OpenJarvis ports
+Items in parentheses are what the *paper* trains. These Diapason ports
 are **inference-only** — none modify weights. The trained variants (advisor
 RL, Orchestrator-8B, SkillOrchestra learn-phase) stay TODOs; the prompted
 lower-bounds get you 80-90% of the headline accuracy at zero training cost.
@@ -23,7 +23,7 @@ lower-bounds get you 80-90% of the headline accuracy at zero training cost.
 ## What's where
 
 ```
-src/openjarvis/agents/hybrid/
+src/diapason/agents/hybrid/
 ├── _base.py          LocalCloudAgent ABC + SDK helpers
 ├── _prices.py        cloud-model pricing + temp-strip quirks
 ├── _prompts.py       GAIA / SWE-bench answer-format instructions
@@ -40,13 +40,13 @@ src/openjarvis/agents/hybrid/
 ```
 
 The Modal-backed SWE-bench-Verified scorer is in
-`src/openjarvis/evals/scorers/swebench_harness.py` (next to the existing
+`src/diapason/evals/scorers/swebench_harness.py` (next to the existing
 structural scorer).
 
 ## Quickstart
 
 ```bash
-cd OpenJarvis
+cd Diapason
 source .env                                           # API keys
 
 # 1. Start vLLM in another shell (see your local launch recipe)
@@ -57,20 +57,20 @@ source .env                                           # API keys
 .venv/bin/uv pip install -e path/to/minions
 
 # 3. Run a smoke cell
-.venv/bin/python -m openjarvis.agents.hybrid.runner \
+.venv/bin/python -m diapason.agents.hybrid.runner \
     --cell minions-gaia-qwen27b-opus-3
 ```
 
 Outputs land in
 `$OPENJARVIS_HYBRID_EXPERIMENTS_DIR/runs/<cell>/{results.jsonl,summary.json,config.json,logs/}`
-(defaults to `~/.openjarvis-hybrid/experiments/`). The schema matches the
+(defaults to `~/.diapason-hybrid/experiments/`). The schema matches the
 hybrid harness so the existing rescore / dashboard scripts work
 unmodified.
 
 ## Adding a cell
 
 ```bash
-src/openjarvis/agents/hybrid/scripts/new_experiment.sh \
+src/diapason/agents/hybrid/scripts/new_experiment.sh \
     --method conductor --bench gaia \
     --local qwen3.5-27b --cloud claude-opus-4-7 --n 30
 ```
@@ -81,7 +81,7 @@ That appends a `[cells.<name>]` block to
 ## How good is each paradigm?
 
 Numbers from the upstream hybrid harness
-(`~/.openjarvis/experiments/hybrid/docs/results.md`) at full N —
+(`~/.diapason/experiments/hybrid/docs/results.md`) at full N —
 GAIA val n=165, SWE-bench-Verified n=500. Local = Qwen-3.5-27B-FP8, cloud
 = Opus 4.7. Cloud-only baseline: GAIA 0.570 / $1.09, SWE 0.238 / $0.95.
 
@@ -96,6 +96,6 @@ GAIA val n=165, SWE-bench-Verified n=500. Local = Qwen-3.5-27B-FP8, cloud
 
 Cell configs in `registry/` are copies of the hybrid harness's
 `experiments/registry/` — same models, same N, same `method_cfg` — so
-these OpenJarvis cells should reproduce the harness numbers within
+these Diapason cells should reproduce the harness numbers within
 noise. Until that's validated, the harness stays the authoritative
 reference.

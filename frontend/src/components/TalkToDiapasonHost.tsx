@@ -64,11 +64,11 @@ export function TalkToDiapasonHost() {
   useEffect(() => {
     const onOpen = () => openTalk();
     const onToggle = () => toggleTalk();
-    window.addEventListener('openjarvis-talk-open', onOpen);
-    window.addEventListener('openjarvis-talk-toggle', onToggle);
+    window.addEventListener('diapason-talk-open', onOpen);
+    window.addEventListener('diapason-talk-toggle', onToggle);
     return () => {
-      window.removeEventListener('openjarvis-talk-open', onOpen);
-      window.removeEventListener('openjarvis-talk-toggle', onToggle);
+      window.removeEventListener('diapason-talk-open', onOpen);
+      window.removeEventListener('diapason-talk-toggle', onToggle);
     };
   }, [openTalk, toggleTalk]);
 
@@ -146,5 +146,5 @@ export function TalkToDiapasonHost() {
 }
 
 export function openTalkToDiapason(): void {
-  window.dispatchEvent(new CustomEvent('openjarvis-talk-open'));
+  window.dispatchEvent(new CustomEvent('diapason-talk-open'));
 }

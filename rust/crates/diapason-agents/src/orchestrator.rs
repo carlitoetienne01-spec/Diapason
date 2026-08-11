@@ -5,7 +5,7 @@
 use crate::loop_guard::LoopGuard;
 use crate::traits::OjAgent;
 use crate::utils::strip_think_tags;
-use diapason_core::{AgentContext, AgentResult, OpenJarvisError, Role, ToolResult};
+use diapason_core::{AgentContext, AgentResult, DiapasonError, Role, ToolResult};
 use diapason_tools::executor::ToolExecutor;
 use rig::agent::AgentBuilder;
 use rig::completion::request::{Chat, CompletionModel};
@@ -54,7 +54,7 @@ impl<M: CompletionModel + 'static> OjAgent for OrchestratorAgent<M> {
         &self,
         input: &str,
         context: Option<&AgentContext>,
-    ) -> Result<AgentResult, OpenJarvisError> {
+    ) -> Result<AgentResult, DiapasonError> {
         let history: Vec<rig::completion::message::Message> = context
             .map(|ctx| {
                 ctx.conversation
@@ -83,7 +83,7 @@ impl<M: CompletionModel + 'static> OjAgent for OrchestratorAgent<M> {
             .chat(input, history)
             .await
             .map_err(|e| {
-                OpenJarvisError::Agent(diapason_core::error::AgentError::Execution(
+                DiapasonError::Agent(diapason_core::error::AgentError::Execution(
                     e.to_string(),
                 ))
             })?;

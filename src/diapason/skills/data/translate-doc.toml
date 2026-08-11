@@ -2,7 +2,7 @@
 name = "translate-doc"
 description = "Translate a document from one language to another while preserving formatting"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

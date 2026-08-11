@@ -65,6 +65,6 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && 
 
 WORKDIR /app
 
-LABEL openjarvis-sandbox=true
+LABEL diapason-sandbox=true
 
 ENTRYPOINT ["python", "-m", "diapason.sandbox.entrypoint"]

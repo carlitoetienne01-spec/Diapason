@@ -81,7 +81,7 @@ class TestDiagnosisRunner:
             session_id="session-001",
             config={
                 "config_path": tmp_path / "config.toml",
-                "openjarvis_home": tmp_path,
+                "diapason_home": tmp_path,
             },
         )
         # Create minimal config file
@@ -115,7 +115,7 @@ class TestDiagnosisRunner:
             session_id="session-001",
             config={
                 "config_path": tmp_path / "config.toml",
-                "openjarvis_home": tmp_path,
+                "diapason_home": tmp_path,
             },
         )
         (tmp_path / "config.toml").write_text("[learning]\n")
@@ -159,7 +159,7 @@ class TestDiagnosisRunner:
             session_id="session-001",
             config={
                 "config_path": tmp_path / "config.toml",
-                "openjarvis_home": tmp_path,
+                "diapason_home": tmp_path,
             },
         )
         (tmp_path / "config.toml").write_text("[learning]\n")
@@ -194,7 +194,7 @@ class TestDiagnosisRunner:
             session_id="session-001",
             config={
                 "config_path": tmp_path / "config.toml",
-                "openjarvis_home": tmp_path,
+                "diapason_home": tmp_path,
             },
         )
         (tmp_path / "config.toml").write_text("[learning]\n")
@@ -223,7 +223,7 @@ class TestDiagnosisRunner:
             session_id="session-001",
             config={
                 "config_path": tmp_path / "config.toml",
-                "openjarvis_home": tmp_path,
+                "diapason_home": tmp_path,
             },
         )
         (tmp_path / "config.toml").write_text("[learning]\n")

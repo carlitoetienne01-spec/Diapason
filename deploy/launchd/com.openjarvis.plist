@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.openjarvis</string>
+    <string>com.diapason</string>
     <!-- Binds loopback only: the personal-device default, reachable from this
          Mac but not the network, so no API key is required. To expose it on
          your LAN, change the host below to 0.0.0.0 AND uncomment the
@@ -11,7 +11,7 @@
          0.0.0.0 server will refuse to start). -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/jarvis</string>
+        <string>/usr/local/bin/diapason</string>
         <string>serve</string>
         <string>--host</string>
         <string>127.0.0.1</string>
@@ -30,8 +30,8 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/openjarvis.stdout.log</string>
+    <string>/tmp/diapason.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/openjarvis.stderr.log</string>
+    <string>/tmp/diapason.stderr.log</string>
 </dict>
 </plist>

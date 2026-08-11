@@ -28,7 +28,7 @@ def _make_ctx(tmp_path: Path) -> ApplyContext:
         'class = "simple"\n'
         "max_turns = 5\n"
     )
-    return ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+    return ApplyContext(diapason_home=tmp_path, session_id="s1")
 
 
 class TestReplaceSystemPromptApplier:

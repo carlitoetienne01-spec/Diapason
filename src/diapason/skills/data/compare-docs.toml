@@ -2,7 +2,7 @@
 name = "compare-docs"
 description = "Compare two documents and summarize their differences"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

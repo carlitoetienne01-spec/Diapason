@@ -8,8 +8,8 @@ import pytest
 
 from diapason.core.config import (
     DeepResearchConfig,
+    DiapasonConfig,
     HardwareInfo,
-    JarvisConfig,
     generate_default_toml,
     load_config,
     validate_config_key,
@@ -17,7 +17,7 @@ from diapason.core.config import (
 
 
 def test_deep_research_config_defaults_to_chat_selection() -> None:
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
 
     assert isinstance(cfg.deep_research, DeepResearchConfig)
     assert cfg.deep_research.engine == ""

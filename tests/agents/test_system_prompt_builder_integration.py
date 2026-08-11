@@ -7,7 +7,7 @@ from diapason.core.config import MemoryFilesConfig, SystemPromptConfig
 
 def test_base_agent_uses_builder(tmp_path: Path):
     soul = tmp_path / "SOUL.md"
-    soul.write_text("I am Jarvis.")
+    soul.write_text("I am Diapason.")
     memory = tmp_path / "MEMORY.md"
     memory.write_text("- User likes Python")
 
@@ -23,6 +23,6 @@ def test_base_agent_uses_builder(tmp_path: Path):
         system_prompt_config=SystemPromptConfig(),
     )
     prompt = builder.build()
-    assert "Jarvis" in prompt
+    assert "Diapason" in prompt
     assert "Python" in prompt
     assert "helpful assistant" in prompt

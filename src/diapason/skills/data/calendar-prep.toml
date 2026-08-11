@@ -2,7 +2,7 @@
 name = "calendar-prep"
 description = "Prepare briefing materials for upcoming calendar events"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "think"

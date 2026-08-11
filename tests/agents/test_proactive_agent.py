@@ -91,7 +91,7 @@ class TestRegisterCron:
         current = _register(scheduler)
 
         assert current.id != legacy.id
-        assert current.metadata["openjarvis_task_key"] == "proactive-daily"
+        assert current.metadata["diapason_task_key"] == "proactive-daily"
         assert scheduler.list_tasks(status="cancelled")[0].id == legacy.id
 
 

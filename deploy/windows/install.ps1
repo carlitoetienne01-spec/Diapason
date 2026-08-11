@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    OpenJarvis native Windows installer.
+    Diapason native Windows installer.
 
 .DESCRIPTION
     Phase-1 of the native-Windows-support RFC (#298). Mirrors the
@@ -14,18 +14,18 @@
          see #432).
       3. Check git on PATH.
       4. Install uv (https://astral.sh/uv) if absent.
-      5. Clone the OpenJarvis repository to $env:LOCALAPPDATA\OpenJarvis
+      5. Clone the Diapason repository to $env:LOCALAPPDATA\Diapason
          (override with $env:OPENJARVIS_HOME).
       6. Run `uv sync --extra desktop --group desktop-native` so the FastAPI
          server, speech backend, and native extension are importable.
       7. Optionally register the scheduled-task service (see
-         deploy/windows/jarvis-service.ps1).
+         deploy/windows/diapason-service.ps1).
 
     Usage (one-liner):
-      irm https://open-jarvis.github.io/OpenJarvis/install.ps1 | iex
+      irm https://open-diapason.github.io/Diapason/install.ps1 | iex
 
     Usage (file invocation, supports flags):
-      irm https://open-jarvis.github.io/OpenJarvis/install.ps1 -OutFile install.ps1
+      irm https://open-diapason.github.io/Diapason/install.ps1 -OutFile install.ps1
       .\install.ps1 -SkipService
 
     Flags (when running the file directly):
@@ -182,7 +182,7 @@ $pyMajor = [int]$verMatch.Groups[1].Value
 $pyMinor = [int]$verMatch.Groups[2].Value
 if ($pyMajor -ne 3 -or $pyMinor -lt 10 -or $pyMinor -gt 13) {
     Write-Fail @"
-Found Python $pyMajor.$pyMinor at $pythonExe, but OpenJarvis requires
+Found Python $pyMajor.$pyMinor at $pythonExe, but Diapason requires
 3.10 - 3.13. Python 3.14 has no numpy Windows wheels yet (#432, will
 re-open once numpy ships cp314).
 "@
@@ -247,7 +247,7 @@ Write-Ok "uv ($uvExe)"
 $installRoot = if ($env:OPENJARVIS_HOME) {
     $env:OPENJARVIS_HOME
 } else {
-    Join-Path $env:LOCALAPPDATA 'OpenJarvis'
+    Join-Path $env:LOCALAPPDATA 'Diapason'
 }
 $srcDir = Join-Path $installRoot 'src'
 
@@ -260,7 +260,7 @@ if (-not (Test-Path $installRoot)) {
 $repoUrl = if ($env:OPENJARVIS_REPO_URL) {
     $env:OPENJARVIS_REPO_URL
 } else {
-    'https://github.com/open-jarvis/OpenJarvis.git'
+    'https://github.com/open-diapason/Diapason.git'
 }
 
 if (Test-Path (Join-Path $srcDir '.git')) {
@@ -368,7 +368,7 @@ if (-not $ollamaReady) {
 
 $modelPullOk = $false
 if ($ollamaReady) {
-    Write-Info "Pulling qwen3.5:2b (~1.5 GB) so 'jarvis' works on first run..."
+    Write-Info "Pulling qwen3.5:2b (~1.5 GB) so 'diapason' works on first run..."
     & $ollamaExe pull 'qwen3.5:2b'
     if ($LASTEXITCODE -eq 0) {
         $modelPullOk = $true
@@ -381,18 +381,18 @@ if ($ollamaReady) {
 }
 
 # ---------------------------------------------------------------------------
-# 9. jarvis.cmd shim - so bare `jarvis` works in any new PowerShell
+# 9. diapason.cmd shim - so bare `diapason` works in any new PowerShell
 # ---------------------------------------------------------------------------
 
 $binDir = Join-Path $installRoot 'bin'
-$shimPath = Join-Path $binDir 'jarvis.cmd'
+$shimPath = Join-Path $binDir 'diapason.cmd'
 
 if (-not (Test-Path $binDir)) {
     New-Item -ItemType Directory -Path $binDir | Out-Null
 }
 
 # %~dp0 in a .cmd file resolves to the directory containing the script,
-# so the shim is self-locating - moving %LOCALAPPDATA%\OpenJarvis won't
+# so the shim is self-locating - moving %LOCALAPPDATA%\Diapason won't
 # break it as long as the user moves the whole tree. `uv` is resolved
 # from PATH at runtime (astral installer adds it to User PATH); avoids
 # pinning to the install-time uv.exe path which can shift on uv updates.
@@ -400,16 +400,16 @@ $shimContent = @"
 @echo off
 setlocal
 set "SRC=%~dp0..\src"
-uv run --project "%SRC%" jarvis %*
+uv run --project "%SRC%" diapason %*
 "@
 Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
 
-# Add %LOCALAPPDATA%\OpenJarvis\bin to User PATH if it isn't already
+# Add %LOCALAPPDATA%\Diapason\bin to User PATH if it isn't already
 # there. The current process won't see it until restart - handled in the
 # final banner.
 #
 # Compare against the EXPANDED form: a previous install may have written
-# the entry as `%LOCALAPPDATA%\OpenJarvis\bin` (unexpanded) into User
+# the entry as `%LOCALAPPDATA%\Diapason\bin` (unexpanded) into User
 # PATH, and a literal `-ieq` against the expanded `$binDir` would miss
 # it and append a duplicate every re-run.
 $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
@@ -426,13 +426,13 @@ if (-not $pathOnUser) {
     [System.Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
     $pathNeedsRefresh = $true
 }
-Write-Ok "jarvis shim installed at $shimPath"
+Write-Ok "diapason shim installed at $shimPath"
 
 # ---------------------------------------------------------------------------
 # 10. Optional: register the scheduled-task service
 # ---------------------------------------------------------------------------
 
-$serviceScript = Join-Path $srcDir 'deploy\windows\jarvis-service.ps1'
+$serviceScript = Join-Path $srcDir 'deploy\windows\diapason-service.ps1'
 $shouldInstallService = $false
 
 # Pre-check admin if the user wants the service - Register-ScheduledTask
@@ -466,7 +466,7 @@ if ($Service) {
     $isInteractive = [Environment]::UserInteractive `
         -and -not [System.Console]::IsInputRedirected
     if ($isInteractive) {
-        $reply = Read-Host "Register OpenJarvis as a Windows scheduled task (auto-start at logon, loopback only)? [y/N]"
+        $reply = Read-Host "Register Diapason as a Windows scheduled task (auto-start at logon, loopback only)? [y/N]"
         $shouldInstallService = ($reply -match '^[yY]')
     } else {
         Write-Warn2 "Non-interactive install - skipping scheduled-task setup."
@@ -484,7 +484,7 @@ if ($shouldInstallService) {
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Scheduled task setup failed."
     }
-    Write-Ok "Scheduled task 'OpenJarvis' registered (loopback default)."
+    Write-Ok "Scheduled task 'Diapason' registered (loopback default)."
 }
 
 # ---------------------------------------------------------------------------
@@ -493,7 +493,7 @@ if ($shouldInstallService) {
 
 Write-Host ""
 Write-Host "  +----------------------------------+" -ForegroundColor Green
-Write-Host "  |   OpenJarvis install complete    |" -ForegroundColor Green
+Write-Host "  |   Diapason install complete    |" -ForegroundColor Green
 Write-Host "  +----------------------------------+" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Repo:    $srcDir"
@@ -501,12 +501,12 @@ Write-Host "  Repo:    $srcDir"
 # Tell the truth about what the user can run next, given (a) whether the
 # starter model finished pulling and (b) whether the User-PATH update
 # needs a fresh PowerShell to take effect.
-$nextCmd = if ($modelPullOk) { 'jarvis' } else { 'jarvis doctor' }
+$nextCmd = if ($modelPullOk) { 'diapason' } else { 'diapason doctor' }
 
 if ($pathNeedsRefresh) {
     Write-Host ""
     Write-Host "  Run it:  open a NEW PowerShell, then: $nextCmd" -ForegroundColor Yellow
-    Write-Host "           (the jarvis shim was added to your User PATH; the"
+    Write-Host "           (the diapason shim was added to your User PATH; the"
     Write-Host "            current PowerShell won't see it until restart)"
 } else {
     Write-Host "  Run it:  $nextCmd"
@@ -516,14 +516,14 @@ if (-not $modelPullOk) {
     Write-Host ""
     Write-Host "  NOTE: the qwen3.5:2b model didn't finish downloading." -ForegroundColor Yellow
     Write-Host "        Chat will fail until the bg-orchestrator finishes the retry."
-    Write-Host "        'jarvis doctor' shows progress."
+    Write-Host "        'diapason doctor' shows progress."
 }
 
 if ($shouldInstallService) {
     Write-Host ""
-    Write-Host "  Service: schtasks /Query /TN OpenJarvis     (status)"
+    Write-Host "  Service: schtasks /Query /TN Diapason     (status)"
     Write-Host "           powershell -File `"$serviceScript`" uninstall    (remove)"
 }
 Write-Host ""
-Write-Host "  Docs:    https://open-jarvis.github.io/OpenJarvis/"
+Write-Host "  Docs:    https://open-diapason.github.io/Diapason/"
 Write-Host ""

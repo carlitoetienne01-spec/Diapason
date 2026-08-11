@@ -1,19 +1,19 @@
-"""Tests for JarvisAgentBackend skills_enabled / overlay_dir kwargs (Plan 2B)."""
+"""Tests for DiapasonAgentBackend skills_enabled / overlay_dir kwargs (Plan 2B)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 
-class TestJarvisAgentBackendSkillsKwargs:
+class TestDiapasonAgentBackendSkillsKwargs:
     def test_default_skills_enabled_true(self):
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
         # Construction should not raise even if no model/engine is reachable
         # because we don't call generate(). The kwargs themselves should be
         # accepted and applied to the SystemBuilder config.
         try:
-            backend = JarvisAgentBackend(
+            backend = DiapasonAgentBackend(
                 engine_key="ollama",
                 agent_name="native_react",
                 tools=[],
@@ -27,10 +27,10 @@ class TestJarvisAgentBackendSkillsKwargs:
         assert backend._system.config.skills.enabled is True
 
     def test_skills_enabled_false_disables_skills(self):
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
         try:
-            backend = JarvisAgentBackend(
+            backend = DiapasonAgentBackend(
                 engine_key="ollama",
                 agent_name="native_react",
                 tools=[],
@@ -42,11 +42,11 @@ class TestJarvisAgentBackendSkillsKwargs:
         assert backend._system.skill_manager is None
 
     def test_overlay_dir_kwarg_applied_to_config(self, tmp_path: Path):
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
         custom = tmp_path / "custom-overlays"
         try:
-            backend = JarvisAgentBackend(
+            backend = DiapasonAgentBackend(
                 engine_key="ollama",
                 agent_name="native_react",
                 tools=[],
@@ -63,8 +63,8 @@ class TestJarvisAgentBackendSkillsKwargs:
         the new kwargs without raising TypeError."""
         import inspect
 
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
-        sig = inspect.signature(JarvisAgentBackend.__init__)
+        sig = inspect.signature(DiapasonAgentBackend.__init__)
         assert "skills_enabled" in sig.parameters
         assert "overlay_dir" in sig.parameters

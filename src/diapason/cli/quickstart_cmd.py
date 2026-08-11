@@ -70,9 +70,9 @@ def _check_model_available(engine_key: str) -> bool:
 def _test_query(engine_key: str) -> str:
     """Run a quick test query and return the response text."""
     try:
-        from diapason import Jarvis
+        from diapason import Diapason
 
-        j = Jarvis(engine_key=engine_key)
+        j = Diapason(engine_key=engine_key)
         response = j.ask("Say hello in one sentence.")
         j.close()
         return response

@@ -26,6 +26,6 @@ max_tokens = 4096
 
 [[benchmarks]]
 name = "supergpqa"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 100
 split = "train"

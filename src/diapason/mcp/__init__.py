@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) layer for OpenJarvis."""
+"""MCP (Model Context Protocol) layer for Diapason."""
 
 from diapason.mcp.client import MCPClient
 from diapason.mcp.protocol import MCPError, MCPNotification, MCPRequest, MCPResponse

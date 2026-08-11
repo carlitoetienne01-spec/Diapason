@@ -280,9 +280,9 @@ config.add_command(show_group, "show")
 
 @config.command("path")
 def show_path() -> None:
-    """Print the resolved OpenJarvis directories (home, config, cache).
+    """Print the resolved Diapason directories (home, config, cache).
 
-    All OpenJarvis state lives under a single root, resolved in priority
+    All Diapason state lives under a single root, resolved in priority
     order: ``$OPENJARVIS_HOME`` > ``$XDG_DATA_HOME/diapason`` >
     ``~/.diapason``. Use this to confirm where your data is stored after
     setting an override.

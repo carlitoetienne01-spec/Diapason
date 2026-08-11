@@ -2,7 +2,7 @@
 name = "security-scan"
 description = "Scan source code for common security vulnerabilities and report findings"
 version = "0.1.0"
-author = "openjarvis"
+author = "diapason"
 
 [[skill.steps]]
 tool_name = "file_read"

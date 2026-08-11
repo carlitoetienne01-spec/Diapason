@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from diapason.heartbeat.kinds import run_routine
 from diapason.heartbeat.routines import Routine
 from diapason.tools.voice_mac_tools import MailSendTool, MessagesSendTool
@@ -113,11 +111,11 @@ def test_config_set_roundtrip(tmp_path: Path, monkeypatch):
 
 
 def test_screen_share_status_route():
+    from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from diapason.desktop.screen_share import reset_screen_share_for_tests
     from diapason.server.screen_share_routes import create_screen_share_router
-    from fastapi import FastAPI
 
     reset_screen_share_for_tests()
     app = FastAPI()

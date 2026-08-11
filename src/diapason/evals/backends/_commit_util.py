@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 @functools.lru_cache(maxsize=1)
-def openjarvis_commit() -> str:
+def diapason_commit() -> str:
     """Return the diapason repo's HEAD commit (cached, lru-1).
 
     Returns ``"unknown"`` if git is unavailable or the path isn't a repo.
-    Used by JarvisAgentBackend and JarvisDirectBackend to populate the
+    Used by DiapasonAgentBackend and DiapasonDirectBackend to populate the
     ``framework_commit`` field in their extended return dicts.
     """
     try:

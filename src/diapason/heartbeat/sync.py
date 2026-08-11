@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from diapason.heartbeat.markdown import ensure_heartbeat_file
 from diapason.heartbeat.routines import ensure_routines_file, load_routines
@@ -101,7 +101,7 @@ def sync_heartbeat_and_routines(
         prompt=HEARTBEAT_PROMPT,
         schedule_type="interval",
         schedule_value=str(max(60, interval)),
-        metadata={"openjarvis_kind": "heartbeat"},
+        metadata={"diapason_kind": "heartbeat"},
         active=hb_enabled,
     )
 
@@ -116,7 +116,7 @@ def sync_heartbeat_and_routines(
             schedule_type="cron",
             schedule_value=routine.cron,
             metadata={
-                "openjarvis_kind": "routine",
+                "diapason_kind": "routine",
                 "routine_id": routine.id,
                 "kind": routine.kind,
             },

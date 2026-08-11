@@ -8,7 +8,7 @@ The worker swallows every per-job error (including ``BrokenPipeError`` when a
 client disconnects mid-extraction), so a flaky extraction model can never take
 down the host process.
 
-The service is started and stopped as part of the OpenJarvis lifecycle (see
+The service is started and stopped as part of the Diapason lifecycle (see
 ``cli/serve.py`` and ``cli/chat_cmd.py``) and is configured through the
 ``[memory]`` section of ``config.toml``.
 """

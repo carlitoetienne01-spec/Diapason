@@ -1,5 +1,5 @@
 # Use-Case Benchmark Suite v2
-# 5 agent-focused benchmarks aligned to OpenJarvis hero demo apps.
+# 5 agent-focused benchmarks aligned to Diapason hero demo apps.
 
 [meta]
 name = "use-case-v2-suite"
@@ -23,35 +23,35 @@ engine = "ollama"
 
 [[benchmarks]]
 name = "coding_assistant"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_react"
 tools = ["file_read", "code_interpreter", "shell_exec", "think"]
 max_samples = 30
 
 [[benchmarks]]
 name = "security_scanner"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "native_react"
 tools = ["file_read", "shell_exec", "think", "code_interpreter"]
 max_samples = 30
 
 [[benchmarks]]
 name = "daily_digest"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "orchestrator"
 tools = ["web_search", "think"]
 max_samples = 30
 
 [[benchmarks]]
 name = "doc_qa"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "simple"
 tools = ["think"]
 max_samples = 30
 
 [[benchmarks]]
 name = "browser_assistant"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "orchestrator"
 tools = ["web_search", "browser", "think"]
 max_samples = 30

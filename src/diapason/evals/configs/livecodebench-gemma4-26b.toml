@@ -26,5 +26,5 @@ num_gpus = 4
 
 [[benchmarks]]
 name = "livecodebench"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 20

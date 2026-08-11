@@ -881,12 +881,12 @@ pub struct ChannelConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level JarvisConfig
+// Top-level DiapasonConfig
 // ---------------------------------------------------------------------------
 
-/// Top-level configuration for OpenJarvis.
+/// Top-level configuration for Diapason.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct JarvisConfig {
+pub struct DiapasonConfig {
     #[serde(skip)]
     pub hardware: HardwareInfo,
     #[serde(default)]
@@ -928,7 +928,7 @@ pub struct JarvisConfig {
 // ---------------------------------------------------------------------------
 
 /// Detect hardware, build defaults, overlay TOML overrides.
-pub fn load_config(path: Option<&Path>) -> Result<JarvisConfig, ConfigError> {
+pub fn load_config(path: Option<&Path>) -> Result<DiapasonConfig, ConfigError> {
     let hw = detect_hardware();
     let recommended_engine = recommend_engine(&hw);
 
@@ -938,14 +938,14 @@ pub fn load_config(path: Option<&Path>) -> Result<JarvisConfig, ConfigError> {
 
     let mut cfg = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)?;
-        let mut cfg: JarvisConfig = toml::from_str(&content)?;
+        let mut cfg: DiapasonConfig = toml::from_str(&content)?;
         // If the TOML didn't set a default engine, use the recommended one
         if cfg.engine.default == default_engine_name() || cfg.engine.default.is_empty() {
             cfg.engine.default = recommended_engine;
         }
         cfg
     } else {
-        let mut cfg = JarvisConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.engine.default = recommended_engine;
         cfg
     };
@@ -960,7 +960,7 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let cfg = JarvisConfig::default();
+        let cfg = DiapasonConfig::default();
         assert_eq!(cfg.engine.default, "ollama");
         assert_eq!(cfg.intelligence.temperature, 0.7);
         assert_eq!(cfg.intelligence.max_tokens, 1024);
@@ -990,7 +990,7 @@ tools = "calculator,think"
 [security]
 mode = "block"
 "#;
-        let cfg: JarvisConfig = toml::from_str(toml_str).unwrap();
+        let cfg: DiapasonConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.engine.default, "vllm");
         assert_eq!(cfg.engine.ollama.host, "http://custom:11434");
         assert_eq!(cfg.intelligence.temperature, 0.5);
@@ -1006,7 +1006,7 @@ mode = "block"
 [engine]
 default = "mlx"
 "#;
-        let cfg: JarvisConfig = toml::from_str(toml_str).unwrap();
+        let cfg: DiapasonConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.engine.default, "mlx");
         // Everything else should be defaults
         assert_eq!(cfg.intelligence.temperature, 0.7);
@@ -1028,7 +1028,7 @@ policy = "grpo"
 accuracy_weight = 0.8
 latency_weight = 0.1
 "#;
-        let cfg: JarvisConfig = toml::from_str(toml_str).unwrap();
+        let cfg: DiapasonConfig = toml::from_str(toml_str).unwrap();
         assert!(cfg.learning.enabled);
         assert_eq!(cfg.learning.update_interval, 50);
         assert_eq!(cfg.learning.routing.policy, "grpo");
@@ -1045,7 +1045,7 @@ latency_weight = 0.1
 default_backend = "faiss"
 chunk_size = 256
 "#;
-        let cfg: JarvisConfig = toml::from_str(toml_str).unwrap();
+        let cfg: DiapasonConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.tools.storage.default_backend, "faiss");
         assert_eq!(cfg.tools.storage.chunk_size, 256);
         assert_eq!(cfg.tools.storage.chunk_overlap, 64); // default

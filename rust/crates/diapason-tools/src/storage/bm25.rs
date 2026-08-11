@@ -1,7 +1,7 @@
 //! BM25 memory backend — pure Rust BM25 scoring.
 
 use crate::storage::traits::MemoryBackend;
-use diapason_core::{OpenJarvisError, RetrievalResult};
+use diapason_core::{DiapasonError, RetrievalResult};
 use parking_lot::RwLock;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -85,7 +85,7 @@ impl MemoryBackend for BM25Memory {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, OpenJarvisError> {
+    ) -> Result<String, DiapasonError> {
         let doc_id = Uuid::new_v4().to_string();
         let terms = Self::tokenize(content);
         let term_count = terms.values().sum();
@@ -110,7 +110,7 @@ impl MemoryBackend for BM25Memory {
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, OpenJarvisError> {
+    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
         let docs = self.docs.read();
         if docs.is_empty() {
             return Ok(vec![]);
@@ -154,19 +154,19 @@ impl MemoryBackend for BM25Memory {
             .collect())
     }
 
-    fn delete(&self, doc_id: &str) -> Result<bool, OpenJarvisError> {
+    fn delete(&self, doc_id: &str) -> Result<bool, DiapasonError> {
         let mut docs = self.docs.write();
         let len_before = docs.len();
         docs.retain(|d| d.id != doc_id);
         Ok(docs.len() < len_before)
     }
 
-    fn clear(&self) -> Result<(), OpenJarvisError> {
+    fn clear(&self) -> Result<(), DiapasonError> {
         self.docs.write().clear();
         Ok(())
     }
 
-    fn count(&self) -> Result<usize, OpenJarvisError> {
+    fn count(&self) -> Result<usize, DiapasonError> {
         Ok(self.docs.read().len())
     }
 }

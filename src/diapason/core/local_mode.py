@@ -30,7 +30,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def assert_may_leave(
     what: str,
     *,
     destination: str = "",
-    config: Optional["JarvisConfig"] = None,
+    config: Optional["DiapasonConfig"] = None,
 ) -> None:
     """Raise :class:`LocalOnlyError` when ``what`` may not leave this machine.
 
@@ -128,7 +128,7 @@ def assert_may_leave(
     raise LocalOnlyError(f"Refusing to send {what}{where}. {REFUSAL_HINT}")
 
 
-def local_only(config: Optional["JarvisConfig"] = None) -> bool:
+def local_only(config: Optional["DiapasonConfig"] = None) -> bool:
     """Return True when nothing may leave this machine.
 
     ``config`` is optional so call sites deep in a path need not thread it

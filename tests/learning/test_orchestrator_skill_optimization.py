@@ -65,12 +65,12 @@ class TestOrchestratorRunSkillTrigger:
 
     def _make_config(self, *, auto_optimize: bool):
         from diapason.core.config import (
-            JarvisConfig,
+            DiapasonConfig,
             LearningConfig,
             SkillsLearningConfig,
         )
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.learning = LearningConfig()
         cfg.learning.skills = SkillsLearningConfig(
             auto_optimize=auto_optimize,

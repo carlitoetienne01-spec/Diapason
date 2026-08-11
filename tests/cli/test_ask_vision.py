@@ -1,4 +1,4 @@
-"""CLI-level regression tests for ``jarvis ask`` vision input.
+"""CLI-level regression tests for ``diapason ask`` vision input.
 
 The unit tests in ``tests/test_vision.py`` cover the ``Message.images`` ->
 ``messages_to_dicts`` serialization contract in isolation. These tests lock
@@ -18,7 +18,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from diapason.cli import cli
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 from diapason.core.types import Role
 
 # Import the module (not the Click command attribute) so we can monkeypatch
@@ -59,8 +59,8 @@ class _RecordingEngine:
 
 
 def _patch_ask(monkeypatch, tmp_path: Path, *, engine_name: str) -> _RecordingEngine:
-    """Wire ``jarvis ask`` to a recording engine reported under ``engine_name``."""
-    cfg = JarvisConfig()
+    """Wire ``diapason ask`` to a recording engine reported under ``engine_name``."""
+    cfg = DiapasonConfig()
     cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
     # Keep memory context out of the picture so the user message we inspect is
     # the one the CLI built directly from the query + image.

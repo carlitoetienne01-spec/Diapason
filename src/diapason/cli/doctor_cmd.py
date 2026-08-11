@@ -1,4 +1,4 @@
-"""``diapason doctor`` — run diagnostic checks on the OpenJarvis installation."""
+"""``diapason doctor`` — run diagnostic checks on the Diapason installation."""
 
 from __future__ import annotations
 
@@ -74,9 +74,9 @@ def _get_config() -> Any:
     try:
         return load_config()
     except Exception:
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
 
-        return JarvisConfig()
+        return DiapasonConfig()
 
 
 def _check_engines() -> List[CheckResult]:
@@ -446,7 +446,7 @@ def _results_to_dicts(checks: List[CheckResult]) -> List[Dict[str, Any]]:
 @click.command()
 @click.option("--json", "as_json", is_flag=True, help="Output results as JSON.")
 def doctor(as_json: bool) -> None:
-    """Run diagnostic checks on your OpenJarvis installation."""
+    """Run diagnostic checks on your Diapason installation."""
     checks = _run_all_checks()
 
     if as_json:
@@ -455,7 +455,7 @@ def doctor(as_json: bool) -> None:
 
     console = Console()
     console.print()
-    console.print("[bold]OpenJarvis Doctor[/bold]")
+    console.print("[bold]Diapason Doctor[/bold]")
     console.print()
 
     table = Table(show_header=True, header_style="bold")

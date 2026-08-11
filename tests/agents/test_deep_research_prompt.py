@@ -79,8 +79,8 @@ def test_system_prompt_has_no_think_directive() -> None:
 
 
 def test_system_prompt_mentions_jarvis() -> None:
-    """The agent identifies as Jarvis."""
+    """The agent identifies as Diapason."""
     from diapason.agents.deep_research import _build_system_prompt
 
     prompt = _build_system_prompt()
-    assert "Jarvis" in prompt
+    assert "Diapason" in prompt

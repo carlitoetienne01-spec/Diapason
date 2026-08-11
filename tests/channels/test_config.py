@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from diapason.core.config import ChannelConfig, JarvisConfig, load_config
+from diapason.core.config import ChannelConfig, DiapasonConfig, load_config
 
 
 class TestChannelConfigDefaults:
@@ -23,14 +23,14 @@ class TestChannelConfigDefaults:
         assert cfg.default_agent == "orchestrator"
 
 
-class TestChannelConfigInJarvisConfig:
+class TestChannelConfigInDiapasonConfig:
     def test_channel_config_in_jarvis_config(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert hasattr(cfg, "channel")
         assert isinstance(cfg.channel, ChannelConfig)
 
     def test_jarvis_config_channel_defaults(self) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert cfg.channel.enabled is False
         assert cfg.channel.default_channel == ""
 

@@ -108,12 +108,12 @@ def _make_system(
     session_store=None,
     memory_backend=None,
 ):
-    """Build a minimal mock JarvisSystem."""
-    from diapason.core.config import JarvisConfig
+    """Build a minimal mock DiapasonSystem."""
+    from diapason.core.config import DiapasonConfig
     from diapason.core.events import EventBus
 
     system = MagicMock()
-    system.config = JarvisConfig()
+    system.config = DiapasonConfig()
     system.bus = EventBus()
     system.engine = engine or FakeEngine()
     system.engine_key = "test"
@@ -696,7 +696,7 @@ class TestOperativeAgent:
 class TestSystemAskPassthrough:
     def test_system_prompt_forwarded(self):
         """system_prompt kwarg reaches the agent."""
-        from diapason.system import JarvisSystem
+        from diapason.system import DiapasonSystem
 
         engine = FakeEngine([{"content": "OK"}])
         system = _make_system(engine=engine)
@@ -720,7 +720,7 @@ class TestSystemAskPassthrough:
         from diapason.system import QueryOrchestrator
 
         with patch.object(QueryOrchestrator, "_run_agent", patched_run_agent):
-            real_system = JarvisSystem(
+            real_system = DiapasonSystem(
                 config=system.config,
                 bus=system.bus,
                 engine=engine,
@@ -734,7 +734,7 @@ class TestSystemAskPassthrough:
 
     def test_operator_id_forwarded(self):
         """operator_id kwarg reaches the agent."""
-        from diapason.system import JarvisSystem
+        from diapason.system import DiapasonSystem
 
         engine = FakeEngine([{"content": "OK"}])
         system = _make_system(engine=engine)
@@ -757,7 +757,7 @@ class TestSystemAskPassthrough:
         from diapason.system import QueryOrchestrator
 
         with patch.object(QueryOrchestrator, "_run_agent", patched_run_agent):
-            real_system = JarvisSystem(
+            real_system = DiapasonSystem(
                 config=system.config,
                 bus=system.bus,
                 engine=engine,
@@ -828,9 +828,9 @@ class TestOperatorsConfig:
         assert cfg.auto_activate == ""
 
     def test_config_in_jarvis_config(self):
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert hasattr(cfg, "operators")
         assert cfg.operators.enabled is False
 

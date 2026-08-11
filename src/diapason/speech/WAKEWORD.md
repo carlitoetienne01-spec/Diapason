@@ -3,12 +3,12 @@
 ## What ships
 
 1. **Text gate (PTT)** — after STT, if the transcript starts with
-   « Jarvis », « Hey Diapason », « Dis Jarvis », OpenJarvis strips the wake phrase
+   « Diapason », « Hey Diapason », « Dis Diapason », Diapason strips the wake phrase
    and routes the rest as a voice command (or opens Talk if the phrase is alone).
 
-2. **Always-on listener (opt-in)** — ``jarvis wake-listen`` opens the mic locally,
+2. **Always-on listener (opt-in)** — ``diapason wake-listen`` opens the mic locally,
    detects the wake word, then emits ``talk_open`` on
-   ``~/.openjarvis/triggers/local_trigger.jsonl``.
+   ``~/.diapason/triggers/local_trigger.jsonl``.
    The desktop UI polls ``GET /v1/triggers/poll`` and opens the Talk orb.
 
 ### Backends
@@ -28,18 +28,18 @@
 
 ```bash
 # Simulate without mic
-jarvis wake-listen --text "Hey Diapason"
+diapason wake-listen --text "Hey Diapason"
 
 # phrase_gate (Whisper)
-jarvis wake-listen --debug
+diapason wake-listen --debug
 
 # ML wake (hey Diapason)
 uv sync --extra speech-wake
 # in config.toml: backend = "openwakeword"
-jarvis wake-listen --backend openwakeword --debug
+diapason wake-listen --backend openwakeword --debug
 
 # Force open Talk
-jarvis wake-listen --fire
+diapason wake-listen --fire
 ```
 
 Config::
@@ -48,7 +48,7 @@ Config::
 [speech.wakeword]
 enabled = false
 backend = "auto"          # phrase_gate | openwakeword | auto
-phrases = "jarvis, hey jarvis, dis jarvis"
+phrases = "diapason, hey diapason, dis diapason"
 action = "talk"
 cooldown_s = 2.5
 sensitivity = 0.5         # openWakeWord score threshold

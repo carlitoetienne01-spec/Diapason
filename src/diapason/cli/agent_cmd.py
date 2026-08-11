@@ -324,7 +324,7 @@ def templates() -> None:
 
 
 def _get_system():
-    """Build a JarvisSystem for CLI commands that need scheduler/executor."""
+    """Build a DiapasonSystem for CLI commands that need scheduler/executor."""
     from diapason.system import SystemBuilder
 
     try:
@@ -335,7 +335,7 @@ def _get_system():
 
 
 def _get_scheduler_and_executor(system=None):
-    """Get scheduler + executor from a JarvisSystem instance."""
+    """Get scheduler + executor from a DiapasonSystem instance."""
     if system is None:
         system = _get_system()
     return system.agent_scheduler, system.agent_executor, system

@@ -93,7 +93,7 @@ async def test_vllm_pearl_start_pool_target_raises_not_implemented(
     cfg = MiningConfig(
         provider="vllm-pearl",
         wallet_address="prl1qaaa",
-        submit_target=PoolTarget(url="https://pool.openjarvis.ai/submit"),
+        submit_target=PoolTarget(url="https://pool.diapason.ai/submit"),
         extra={"docker_image_tag": "diapason/pearl-miner:main"},
     )
     provider = VllmPearlProvider(docker_client=MagicMock())

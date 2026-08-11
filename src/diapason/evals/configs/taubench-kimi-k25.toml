@@ -35,6 +35,6 @@ num_gpus = 7
 
 [[benchmarks]]
 name = "taubench"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 20
 split = "airline,retail"

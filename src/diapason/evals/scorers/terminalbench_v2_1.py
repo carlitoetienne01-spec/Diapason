@@ -12,8 +12,8 @@ Two modes:
    present). The scorer runs the script in the task container and then the
    tests, same as before.
 
-This means the same scorer supports both ``backend = "jarvis-direct"`` and
-``backend = "jarvis-agent"`` TB v2.1 configs.
+This means the same scorer supports both ``backend = "diapason-direct"`` and
+``backend = "diapason-agent"`` TB v2.1 configs.
 """
 
 from __future__ import annotations

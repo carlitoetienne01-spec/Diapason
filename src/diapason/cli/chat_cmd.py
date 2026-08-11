@@ -162,7 +162,7 @@ def chat(
 
     # Print banner
     console.print(
-        f"[green bold]OpenJarvis Chat[/green bold]\n"
+        f"[green bold]Diapason Chat[/green bold]\n"
         f"  Engine: [cyan]{engine_name}[/cyan]  Model: [cyan]{model}[/cyan]"
         f"  Agent: [cyan]{agent_key or 'direct'}[/cyan]\n"
         f"  Type /help for commands, /quit to exit.\n"

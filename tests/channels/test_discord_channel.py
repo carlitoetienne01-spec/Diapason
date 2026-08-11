@@ -134,22 +134,22 @@ class TestStatus:
 
 class TestWireChannelEndToEnd:
     """Regression for #515/#516 — the full inbound→reply path through
-    JarvisSystem.wire_channel must call the real Discord REST API with the
+    DiapasonSystem.wire_channel must call the real Discord REST API with the
     numeric channel id (not "discord") and a message_reference equal to the
     inbound message id (not the channel id).
     """
 
     def test_reply_hits_real_channel_id_and_message_reference(self, tmp_path):
         from diapason.channels._stubs import ChannelMessage
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
         from diapason.core.events import EventBus
-        from diapason.system import JarvisSystem
+        from diapason.system import DiapasonSystem
 
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.sessions.db_path = str(tmp_path / "sessions.db")
         from unittest.mock import MagicMock as _MM
 
-        system = JarvisSystem(
+        system = DiapasonSystem(
             config=config,
             bus=EventBus(record_history=False),
             engine=_MM(),

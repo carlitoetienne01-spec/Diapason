@@ -118,7 +118,7 @@ class SkillBenchmarkRunner:
     # ------------------------------------------------------------------
 
     def _backend_kwargs_for_condition(self, condition: str) -> Dict[str, Any]:
-        """Return the kwargs to pass to JarvisAgentBackend for *condition*.
+        """Return the kwargs to pass to DiapasonAgentBackend for *condition*.
 
         Pure function — no side effects, no SystemBuilder construction.
         Tested in isolation so we can verify the per-condition switches
@@ -150,15 +150,15 @@ class SkillBenchmarkRunner:
         )
 
     def _build_backend_for_condition(self, condition: str) -> Any:
-        """Construct a JarvisAgentBackend for *condition*.
+        """Construct a DiapasonAgentBackend for *condition*.
 
         Separate from `_backend_kwargs_for_condition` so the kwarg logic
         can be tested without instantiating an engine.
         """
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
         kw = self._backend_kwargs_for_condition(condition)
-        return JarvisAgentBackend(
+        return DiapasonAgentBackend(
             engine_key=self._config.engine,
             agent_name=self._config.agent,
             tools=list(self._config.tools),
@@ -187,7 +187,7 @@ class SkillBenchmarkRunner:
         shim so tests can monkeypatch it without instantiating an
         engine or running real benchmark tasks.
         """
-        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
         from diapason.evals.core.runner import EvalRunner
         from diapason.evals.core.types import RunConfig
         from diapason.evals.datasets.pinchbench import PinchBenchDataset
@@ -206,7 +206,7 @@ class SkillBenchmarkRunner:
         # backend.  We reuse the same engine the agent uses (typically
         # a local Ollama model) so the headline run is fully local.
         try:
-            judge_backend = JarvisDirectBackend(
+            judge_backend = DiapasonDirectBackend(
                 engine_key=self._config.engine,
             )
         except RuntimeError as exc:
@@ -219,7 +219,7 @@ class SkillBenchmarkRunner:
 
         runner_cfg = RunConfig(
             benchmark=self._config.benchmark,
-            backend="jarvis-agent",
+            backend="diapason-agent",
             model=self._config.model,
             max_workers=1,
             episode_mode=False,

@@ -878,7 +878,7 @@ class TestRunnerEpisodeMode:
 
         config = RunConfig(
             benchmark="lifelong-agent",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test",
             episode_mode=True,
         )

@@ -1,4 +1,4 @@
-"""CLI for the OpenJarvis evaluation framework."""
+"""CLI for the Diapason evaluation framework."""
 
 from __future__ import annotations
 
@@ -156,8 +156,8 @@ BENCHMARKS = {
 }
 
 BACKENDS = {
-    "jarvis-direct": "Engine-level inference (local or cloud)",
-    "jarvis-agent": "Agent-level inference with tool calling",
+    "diapason-direct": "Engine-level inference (local or cloud)",
+    "diapason-agent": "Agent-level inference with tool calling",
     "hermes": "Real Hermes Agent (Nous Research) via subprocess",
     "openclaw": "Real OpenClaw via Node subprocess",
 }
@@ -170,6 +170,15 @@ def _setup_logging(verbose: bool) -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+
+
+# The two first-party eval backends were once named after the old project.
+# A saved eval config still spells them that way, and silently building the
+# wrong backend — or none — would be far worse than carrying two extra keys.
+LEGACY_BACKEND_NAMES = {
+    "jarvis-direct": "diapason-direct",
+    "jarvis-agent": "diapason-agent",
+}
 
 
 def _build_backend(
@@ -192,7 +201,7 @@ def _build_backend(
 
     - For "hermes" and "openclaw" they are REQUIRED — these foreign
       frameworks always call out to an external endpoint.
-    - "jarvis-direct" and "jarvis-agent" honor them when
+    - "diapason-direct" and "diapason-agent" honor them when
       ``first_party_endpoint`` is True (the CLI ``--base-url`` path): the
       eval targets exactly that endpoint — no engine-discovery fallback —
       and fails fast if it is unreachable. Suite mode passes
@@ -200,15 +209,17 @@ def _build_backend(
       ``[backend.external]`` section stays scoped to hermes/openclaw
       (extending it to first-party backends is explicitly deferred).
     """
+    backend_name = LEGACY_BACKEND_NAMES.get(backend_name, backend_name)
+
     if not first_party_endpoint:
         fp_base_url = fp_api_key = None
     else:
         fp_base_url, fp_api_key = base_url, api_key
 
-    if backend_name == "jarvis-agent":
-        from diapason.evals.backends.jarvis_agent import JarvisAgentBackend
+    if backend_name == "diapason-agent":
+        from diapason.evals.backends.diapason_agent import DiapasonAgentBackend
 
-        return JarvisAgentBackend(
+        return DiapasonAgentBackend(
             engine_key=engine_key,
             agent_name=agent_name,
             tools=tools,
@@ -219,10 +230,10 @@ def _build_backend(
             base_url=fp_base_url,
             api_key=fp_api_key,
         )
-    elif backend_name == "jarvis-direct":
-        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+    elif backend_name == "diapason-direct":
+        from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 
-        return JarvisDirectBackend(
+        return DiapasonDirectBackend(
             engine_key=engine_key,
             telemetry=telemetry,
             gpu_metrics=gpu_metrics,
@@ -602,10 +613,10 @@ def _build_judge_backend(judge_model: str, engine_key: str = "cloud"):
     LLM-judge scorers will raise a clear error when they actually try
     to use the backend rather than failing at startup.
     """
-    from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+    from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 
     try:
-        return JarvisDirectBackend(engine_key=engine_key)
+        return DiapasonDirectBackend(engine_key=engine_key)
     except RuntimeError as exc:
         LOGGER.warning(
             "Judge backend (%s) unavailable: %s — "
@@ -1181,7 +1192,7 @@ def _run_from_config(
 
 @click.group()
 def main():
-    """OpenJarvis Evaluation Framework."""
+    """Diapason Evaluation Framework."""
 
 
 @main.command()
@@ -1202,7 +1213,7 @@ def main():
 )
 @click.option(
     "--backend",
-    default="jarvis-direct",
+    default="diapason-direct",
     type=click.Choice(list(BACKENDS.keys())),
     help="Inference backend",
 )
@@ -1211,7 +1222,7 @@ def main():
     default=None,
     help=(
         "OpenAI-compatible endpoint for the model under eval. Required for "
-        "hermes/openclaw; for jarvis-direct/jarvis-agent/terminalbench-native "
+        "hermes/openclaw; for diapason-direct/diapason-agent/terminalbench-native "
         "it bypasses engine discovery and targets this URL directly "
         "(env: JARVIS_BACKEND_BASE_URL)."
     ),
@@ -1237,7 +1248,7 @@ def main():
     "--agent",
     "agent_name",
     default="orchestrator",
-    help="Agent name for jarvis-agent backend",
+    help="Agent name for diapason-agent backend",
 )
 @click.option("--tools", default="", help="Comma-separated tool names")
 @click.option(
@@ -1525,7 +1536,7 @@ def run_all(
 
         config = RunConfig(
             benchmark=bench_name,
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model=model,
             max_samples=max_samples,
             max_workers=max_workers,
@@ -1535,7 +1546,7 @@ def run_all(
             seed=seed,
         )
 
-        eval_backend = _build_backend("jarvis-direct", engine_key, "orchestrator", [])
+        eval_backend = _build_backend("diapason-direct", engine_key, "orchestrator", [])
         dataset = _build_dataset(bench_name)
         judge_backend = _build_judge_backend(judge_model, engine_key="cloud")
         scorer = _build_scorer(bench_name, judge_backend, judge_model)

@@ -22,7 +22,7 @@ def test_tts_tool_execute(tmp_path):
     mock_result = TTSResult(
         audio=b"fake-audio-data",
         format="mp3",
-        voice_id="jarvis",
+        voice_id="diapason",
         duration_seconds=2.5,
     )
 
@@ -34,7 +34,7 @@ def test_tts_tool_execute(tmp_path):
 
         result = tool.execute(
             text="Good morning sir.",
-            voice_id="jarvis",
+            voice_id="diapason",
             backend="cartesia",
             output_dir=str(tmp_path),
         )

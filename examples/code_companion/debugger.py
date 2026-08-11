@@ -56,10 +56,10 @@ def main(
     reasons about root causes, and suggests a concrete fix.
     """
     try:
-        from openjarvis import Jarvis
+        from diapason import Diapason
     except ImportError:
         click.echo(
-            "Error: openjarvis is not installed. "
+            "Error: diapason is not installed. "
             "Install it with:  uv sync --extra dev",
             err=True,
         )
@@ -96,10 +96,10 @@ def main(
     click.echo("-" * 60)
 
     try:
-        j = Jarvis(model=model, engine_key=engine_key)
+        j = Diapason(model=model, engine_key=engine_key)
     except Exception as exc:
         click.echo(
-            f"Error: could not initialize Jarvis — {exc}\n\n"
+            f"Error: could not initialize Diapason — {exc}\n\n"
             "Make sure your engine is running. For Ollama:\n"
             "  ollama serve\n"
             "  ollama pull qwen3:8b\n\n"

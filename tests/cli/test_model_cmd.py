@@ -1,4 +1,4 @@
-"""Tests for ``jarvis model`` subcommands."""
+"""Tests for ``diapason model`` subcommands."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest import mock
 from click.testing import CliRunner
 
 from diapason.cli import cli
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 
 # Import the actual module (not the Click group attribute)
 _model_mod = importlib.import_module("diapason.cli.model")
@@ -25,7 +25,7 @@ def _mock_engine():
 
 class TestModelList:
     def test_list_from_mock_engine(self, monkeypatch) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
         fake = _mock_engine()
         monkeypatch.setattr(
@@ -43,7 +43,7 @@ class TestModelList:
         assert "model-a" in result.output
 
     def test_no_engines_message(self, monkeypatch) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
         monkeypatch.setattr(_model_mod, "discover_engines", lambda c: [])
         result = CliRunner().invoke(cli, ["model", "list"])
@@ -53,7 +53,7 @@ class TestModelList:
 
 class TestModelInfo:
     def test_info_known_model(self, monkeypatch) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
         monkeypatch.setattr(_model_mod, "discover_engines", lambda c: [])
         monkeypatch.setattr(_model_mod, "discover_models", lambda e: {})
@@ -62,7 +62,7 @@ class TestModelInfo:
         assert "Qwen3 8B" in result.output
 
     def test_unknown_model_not_found(self, monkeypatch) -> None:
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
         monkeypatch.setattr(_model_mod, "discover_engines", lambda c: [])
         monkeypatch.setattr(_model_mod, "discover_models", lambda e: {})

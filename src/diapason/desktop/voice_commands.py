@@ -171,7 +171,6 @@ def parse_voice_command(text: str) -> VoiceAction:
 
 def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
     import diapason.tools  # noqa: F401
-
     from diapason.tools.desktop_tools import (
         FocusAppTool,
         OpenAnythingTool,

@@ -15,8 +15,8 @@ class TestBuildBackendDispatch:
     def test_backends_dict_includes_external(self) -> None:
         assert "hermes" in BACKENDS
         assert "openclaw" in BACKENDS
-        assert "jarvis-agent" in BACKENDS
-        assert "jarvis-direct" in BACKENDS
+        assert "diapason-agent" in BACKENDS
+        assert "diapason-direct" in BACKENDS
 
     def test_unknown_backend_raises(self) -> None:
         with pytest.raises(click.UsageError, match="unknown backend"):

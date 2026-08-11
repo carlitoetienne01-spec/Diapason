@@ -25,4 +25,4 @@ engine = "cloud"
 
 [[benchmarks]]
 name = "toolcall15"
-backend = "jarvis-direct"
+backend = "diapason-direct"

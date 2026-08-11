@@ -7,7 +7,7 @@ import os
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from diapason.core.config import JarvisConfig
+    from diapason.core.config import DiapasonConfig
     from diapason.speech._stubs import SpeechBackend
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ LOCAL_BACKENDS = frozenset({"faster-whisper", "whisper", "mlx-whisper", "sherpa-
 
 def _create_backend(
     key: str,
-    config: "JarvisConfig",
+    config: "DiapasonConfig",
 ) -> Optional["SpeechBackend"]:
     """Try to instantiate a speech backend by registry key."""
     from diapason.core.registry import SpeechRegistry
@@ -70,7 +70,7 @@ def _create_backend(
         return None
 
 
-def get_speech_backend(config: "JarvisConfig") -> Optional["SpeechBackend"]:
+def get_speech_backend(config: "DiapasonConfig") -> Optional["SpeechBackend"]:
     """Resolve the speech backend from config.
 
     If ``config.speech.backend`` is ``"auto"``, tries backends in

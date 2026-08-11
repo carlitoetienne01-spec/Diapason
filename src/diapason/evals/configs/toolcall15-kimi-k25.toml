@@ -35,4 +35,4 @@ num_gpus = 7
 
 [[benchmarks]]
 name = "toolcall15"
-backend = "jarvis-direct"
+backend = "diapason-direct"

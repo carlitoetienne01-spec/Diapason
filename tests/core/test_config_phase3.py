@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from diapason.core.config import (
     AgentConfig,
+    DiapasonConfig,
     HardwareInfo,
-    JarvisConfig,
     ServerConfig,
     generate_default_toml,
 )
@@ -49,14 +49,14 @@ class TestServerConfig:
         assert cfg.port == 9000
 
 
-class TestJarvisConfig:
+class TestDiapasonConfig:
     def test_has_server(self):
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert hasattr(cfg, "server")
         assert isinstance(cfg.server, ServerConfig)
 
     def test_agent_config_expanded(self):
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         assert hasattr(cfg.agent, "default_tools")  # backward-compat property
         assert hasattr(cfg.agent, "tools")
         assert hasattr(cfg.agent, "objective")

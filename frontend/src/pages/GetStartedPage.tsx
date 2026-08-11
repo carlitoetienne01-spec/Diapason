@@ -20,7 +20,7 @@ import {
 import { isTauri, checkHealth } from '../lib/api';
 
 const GITHUB_BASE =
-  'https://github.com/open-jarvis/OpenJarvis/releases/latest/download';
+  'https://github.com/open-diapason/Diapason/releases/latest/download';
 
 interface Platform {
   id: string;
@@ -35,35 +35,35 @@ const PLATFORMS: Platform[] = [
     id: 'mac-arm',
     label: 'macOS (Apple Silicon)',
     shortLabel: 'macOS (Apple Silicon)',
-    file: 'OpenJarvis_aarch64.dmg',
+    file: 'Diapason_aarch64.dmg',
     icon: Apple,
   },
   {
     id: 'mac-intel',
     label: 'macOS (Intel)',
     shortLabel: 'macOS (Intel)',
-    file: 'OpenJarvis_x64.dmg',
+    file: 'Diapason_x64.dmg',
     icon: Apple,
   },
   {
     id: 'windows',
     label: 'Windows (64-bit)',
     shortLabel: 'Windows (64-bit)',
-    file: 'OpenJarvis_x64-setup.msi',
+    file: 'Diapason_x64-setup.msi',
     icon: Monitor,
   },
   {
     id: 'linux-deb',
     label: 'Linux (DEB)',
     shortLabel: 'Linux (DEB)',
-    file: 'OpenJarvis_amd64.deb',
+    file: 'Diapason_amd64.deb',
     icon: Terminal,
   },
   {
     id: 'linux-rpm',
     label: 'Linux (RPM)',
     shortLabel: 'Linux (RPM)',
-    file: 'OpenJarvis_x86_64.rpm',
+    file: 'Diapason_x86_64.rpm',
     icon: Terminal,
   },
 ];
@@ -323,7 +323,7 @@ function DesktopView() {
         </div>
         <p className="text-xs mb-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {healthy === false
-            ? 'Start it with `jarvis serve`, then this page will update on focus.'
+            ? 'Start it with `diapason serve`, then this page will update on focus.'
             : 'The API server is answering on this machine.'}
         </p>
         <button
@@ -353,7 +353,7 @@ function DesktopView() {
             Dictation runs as a separate background service: hold{' '}
             <kbd className="font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>Control</kbd>{' '}
             anywhere and speak — it works with this window closed. Manage it with{' '}
-            <code>jarvis dictate-service</code>.
+            <code>diapason dictate-service</code>.
           </p>
         </Section>
       </div>
@@ -450,18 +450,18 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Clone and install (Python 3.10+ required):
           </p>
-          <CodeBlock code={"git clone https://github.com/open-jarvis/OpenJarvis.git\ncd OpenJarvis\nuv sync"} />
+          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\nuv sync"} />
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             Then get started:
           </p>
-          <CodeBlock code={"jarvis init\njarvis doctor\njarvis chat"} />
+          <CodeBlock code={"diapason init\njarvis doctor\njarvis chat"} />
         </Section>
 
         <Section icon={Globe} title="Browser App (Self-Hosted)">
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Launch the API server to get the full UI in your browser:
           </p>
-          <CodeBlock code={"git clone https://github.com/open-jarvis/OpenJarvis.git\ncd OpenJarvis\nuv sync --extra desktop\njarvis serve --port 8000"} />
+          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\nuv sync --extra desktop\njarvis serve --port 8000"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             The chat, dashboard, energy profiling, and cost comparison all run
             locally on your machine.
@@ -472,7 +472,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Deploy with Docker Compose for a zero-setup hosted instance:
           </p>
-          <CodeBlock code={"git clone https://github.com/open-jarvis/OpenJarvis.git\ncd OpenJarvis\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
+          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             This starts both the API server and Ollama. The web UI is bundled and
             served automatically at port 8000.

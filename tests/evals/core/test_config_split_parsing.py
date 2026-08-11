@@ -24,7 +24,7 @@ engine = "noop"
 
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 {split_line}
 max_samples = 10
 """

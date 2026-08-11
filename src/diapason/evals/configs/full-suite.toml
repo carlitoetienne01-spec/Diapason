@@ -39,13 +39,13 @@ temperature = 0.1
 
 [[benchmarks]]
 name = "supergpqa"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 200
 split = "train"
 
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "orchestrator"
 tools = ["file_read", "calculator"]
 max_samples = 50
@@ -53,11 +53,11 @@ judge_model = "claude-sonnet-4-20250514"
 
 [[benchmarks]]
 name = "frames"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 100
 
 [[benchmarks]]
 name = "wildchat"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 max_samples = 150
 temperature = 0.7

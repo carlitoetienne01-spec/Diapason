@@ -168,7 +168,7 @@ def _patch_modal_cgroup_v2() -> None:
     _m._hybrid_cgroup_patched = True  # type: ignore[attr-defined]
 
 
-_CGROUP_SOURCE_SENTINEL = "_OPENJARVIS_CGROUP_V2_PATCH_APPLIED"
+_CGROUP_SOURCE_SENTINEL = "_DIAPASON_CGROUP_V2_PATCH_APPLIED"
 
 
 def _patch_modal_sandbox_source() -> None:
@@ -325,7 +325,7 @@ def extract_patch(text: str) -> Optional[str]:
 def _harness_cache_dir() -> Path:
     """Where the swebench subprocess writes its report JSON + logs/ tree.
 
-    Consolidated under the env-aware OpenJarvis cache root
+    Consolidated under the env-aware Diapason cache root
     (``<diapason-home>/cache/swebench``) so it never pollutes the project
     root or scatters across ``$HOME``. Honors ``OPENJARVIS_HOME`` /
     ``XDG_DATA_HOME`` via :func:`diapason.core.paths.get_cache_dir`.

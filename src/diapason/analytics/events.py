@@ -1,6 +1,6 @@
 """Canonical registry of external analytics events.
 
-Single source of truth for every event name and property the OpenJarvis
+Single source of truth for every event name and property the Diapason
 analytics module is allowed to send. Any event not declared here is
 dropped at send time. Any property not declared on a known event is
 also dropped. This is the fail-closed half of the PII guardrail —

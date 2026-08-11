@@ -1,4 +1,4 @@
-"""Tests for ``jarvis scan`` privacy scanner CLI command."""
+"""Tests for ``diapason scan`` privacy scanner CLI command."""
 
 from __future__ import annotations
 

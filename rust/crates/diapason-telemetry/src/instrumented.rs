@@ -1,7 +1,7 @@
 //! InstrumentedEngine — wraps any InferenceEngine with telemetry recording.
 
 use crate::store::TelemetryStore;
-use diapason_core::error::OpenJarvisError;
+use diapason_core::error::DiapasonError;
 use diapason_core::{GenerateResult, Message, TelemetryRecord};
 use diapason_engine::traits::{InferenceEngine, TokenStream};
 use serde_json::Value;
@@ -51,7 +51,7 @@ impl<E: InferenceEngine> InferenceEngine for InstrumentedEngine<E> {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, OpenJarvisError> {
+    ) -> Result<GenerateResult, DiapasonError> {
         let start = Instant::now();
         let result = self
             .inner
@@ -93,13 +93,13 @@ impl<E: InferenceEngine> InferenceEngine for InstrumentedEngine<E> {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, OpenJarvisError> {
+    ) -> Result<TokenStream, DiapasonError> {
         self.inner
             .stream(messages, model, temperature, max_tokens, extra)
             .await
     }
 
-    fn list_models(&self) -> Result<Vec<String>, OpenJarvisError> {
+    fn list_models(&self) -> Result<Vec<String>, DiapasonError> {
         self.inner.list_models()
     }
 

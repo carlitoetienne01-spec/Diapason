@@ -60,7 +60,7 @@ class TestBuildRunConfig:
         recipe = trial.to_recipe()
         cfg = runner._build_run_config(trial, recipe)
 
-        assert cfg.backend == "jarvis-agent"
+        assert cfg.backend == "diapason-agent"
         assert cfg.agent_name == "native_react"
 
     def test_no_agent_maps_to_direct_backend(self) -> None:
@@ -72,7 +72,7 @@ class TestBuildRunConfig:
         recipe = trial.to_recipe()
         cfg = runner._build_run_config(trial, recipe)
 
-        assert cfg.backend == "jarvis-direct"
+        assert cfg.backend == "diapason-direct"
         assert cfg.agent_name is None
 
     def test_tools_mapping(self) -> None:
@@ -163,7 +163,7 @@ class TestRunTrial:
         defaults = dict(
             benchmark="supergpqa",
             category="reasoning",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="qwen3:8b",
             total_samples=50,
             scored_samples=48,

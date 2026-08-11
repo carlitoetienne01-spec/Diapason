@@ -1,4 +1,4 @@
-"""Tests for model resolution fallback chain in jarvis ask."""
+"""Tests for model resolution fallback chain in diapason ask."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ def _mock_engine():
 def _register_agents():
     """Re-register agents after the conftest registry clear.
 
-    The default ``JarvisConfig().agent.default_agent`` is ``"simple"``,
-    so ``jarvis ask "..."`` (without ``--agent``) routes through SimpleAgent.
+    The default ``DiapasonConfig().agent.default_agent`` is ``"simple"``,
+    so ``diapason ask "..."`` (without ``--agent``) routes through SimpleAgent.
     Without this re-registration, that path raises ``Unknown agent: simple``.
     """
     from diapason.agents.simple import SimpleAgent

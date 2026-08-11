@@ -92,7 +92,7 @@ def _resolve_memory_backend(config: Any) -> Any:
 
 class _LightweightSystem:
     """Minimal system facade for the executor — avoids rebuilding the
-    full JarvisSystem (which picks a random model from Ollama)."""
+    full DiapasonSystem (which picks a random model from Ollama)."""
 
     def __init__(self, engine: Any, model: str, config: Any = None):
         self.engine = engine
@@ -2382,7 +2382,7 @@ def create_agent_manager_router(
             payload: Dict[str, str] = {
                 "number": to_number,
                 "content": (
-                    "Hello from your OpenJarvis agent! "
+                    "Hello from your Diapason agent! "
                     "Text this number anytime to search your "
                     "personal data. Reply with any question to try it."
                 ),

@@ -329,7 +329,7 @@ class AgenticRunner:
         event_recorder.clear()
 
         # Bridge EventBus → EventRecorder so tool events are captured.
-        # ToolExecutor publishes to JarvisSystem.bus; we relay those into
+        # ToolExecutor publishes to DiapasonSystem.bus; we relay those into
         # the EventRecorder for transcript building and trace enrichment.
         _bus_unsubs: list[tuple] = []
         agent_bus = getattr(agent, "bus", None)
@@ -395,7 +395,7 @@ class AgenticRunner:
                 else:
                     # Standard one-shot agent execution
                     if hasattr(agent, "ask"):
-                        # SystemBuilder-based agent (JarvisSystem)
+                        # SystemBuilder-based agent (DiapasonSystem)
                         result = agent.ask(record.problem)
                         if isinstance(result, dict):
                             response_text = result.get("content", "")

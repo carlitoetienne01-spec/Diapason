@@ -487,12 +487,12 @@ class TestRewardTelemetryIntegration:
 
 
 class TestSDKImport:
-    """Verify Jarvis class is importable from diapason."""
+    """Verify Diapason class is importable from diapason."""
 
     def test_jarvis_imports(self):
-        from diapason import Jarvis
+        from diapason import Diapason
 
-        assert Jarvis is not None
+        assert Diapason is not None
 
 
 class TestSDKAskFlow:
@@ -501,12 +501,12 @@ class TestSDKAskFlow:
     def test_sdk_ask_e2e(self):
         from unittest.mock import patch
 
-        from diapason.core.config import JarvisConfig
-        from diapason.sdk import Jarvis
+        from diapason.core.config import DiapasonConfig
+        from diapason.sdk import Diapason
 
         engine = _make_engine("SDK response")
         with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
+            j = Diapason(config=DiapasonConfig(), model="test-model")
             result = j.ask("Hello from integration test")
             assert result == "SDK response"
             j.close()
@@ -516,10 +516,10 @@ class TestSDKMemoryHandle:
     """SDK memory handle with SQLite backend."""
 
     def test_index_and_search(self, tmp_path):
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
         from diapason.sdk import MemoryHandle
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         handle = MemoryHandle(cfg)
 
         mock_backend = MagicMock()
@@ -589,9 +589,9 @@ class TestFullPipeline:
         from unittest.mock import patch
 
         from diapason.agents._stubs import AgentResult
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
         from diapason.core.registry import AgentRegistry
-        from diapason.sdk import Jarvis
+        from diapason.sdk import Diapason
 
         engine = _make_engine("Pipeline response")
 
@@ -611,11 +611,11 @@ class TestFullPipeline:
 
         AgentRegistry.register_value("pipeline-test", PipelineAgent)
 
-        cfg = JarvisConfig()
+        cfg = DiapasonConfig()
         cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
 
         with patch("diapason.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=cfg, model="test-model")
+            j = Diapason(config=cfg, model="test-model")
             result = j.ask("Full pipeline test", agent="pipeline-test")
             assert result == "Pipeline response"
             j.close()

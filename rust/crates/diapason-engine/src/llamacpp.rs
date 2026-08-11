@@ -4,7 +4,7 @@
 //! with a different request/response format.
 
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::{EngineError, OpenJarvisError};
+use diapason_core::error::{EngineError, DiapasonError};
 use diapason_core::{GenerateResult, Message, Usage};
 use serde_json::Value;
 
@@ -95,7 +95,7 @@ impl InferenceEngine for LlamaCppEngine {
         temperature: f64,
         max_tokens: i64,
         _extra: Option<&Value>,
-    ) -> Result<GenerateResult, OpenJarvisError> {
+    ) -> Result<GenerateResult, DiapasonError> {
         let prompt = Self::messages_to_prompt(messages);
         let payload = serde_json::json!({
             "prompt": prompt,
@@ -110,7 +110,7 @@ impl InferenceEngine for LlamaCppEngine {
             .json(&payload)
             .send()
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(format!(
+                DiapasonError::Engine(EngineError::Connection(format!(
                     "llama.cpp not reachable at {}: {}",
                     self.host, e
                 )))
@@ -119,13 +119,13 @@ impl InferenceEngine for LlamaCppEngine {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().unwrap_or_default();
-            return Err(OpenJarvisError::Engine(EngineError::Http(format!(
+            return Err(DiapasonError::Engine(EngineError::Http(format!(
                 "llama.cpp returned {status}: {body}"
             ))));
         }
 
         let data: Value = resp.json().map_err(|e| {
-            OpenJarvisError::Engine(EngineError::Deserialization(e.to_string()))
+            DiapasonError::Engine(EngineError::Deserialization(e.to_string()))
         })?;
 
         let content = data["content"]
@@ -167,7 +167,7 @@ impl InferenceEngine for LlamaCppEngine {
         temperature: f64,
         max_tokens: i64,
         _extra: Option<&Value>,
-    ) -> Result<TokenStream, OpenJarvisError> {
+    ) -> Result<TokenStream, DiapasonError> {
         let prompt = Self::messages_to_prompt(messages);
         let payload = serde_json::json!({
             "prompt": prompt,
@@ -180,7 +180,7 @@ impl InferenceEngine for LlamaCppEngine {
             .timeout(self.timeout)
             .build()
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(e.to_string()))
+                DiapasonError::Engine(EngineError::Connection(e.to_string()))
             })?;
 
         let resp = async_client
@@ -189,14 +189,14 @@ impl InferenceEngine for LlamaCppEngine {
             .send()
             .await
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(format!(
+                DiapasonError::Engine(EngineError::Connection(format!(
                     "llama.cpp not reachable at {}: {}",
                     self.host, e
                 )))
             })?;
 
         if !resp.status().is_success() {
-            return Err(OpenJarvisError::Engine(EngineError::Http(format!(
+            return Err(DiapasonError::Engine(EngineError::Http(format!(
                 "llama.cpp returned {}",
                 resp.status()
             ))));
@@ -232,7 +232,7 @@ impl InferenceEngine for LlamaCppEngine {
                     }
                     None
                 }
-                Err(e) => Some(Err(OpenJarvisError::Engine(EngineError::Streaming(
+                Err(e) => Some(Err(DiapasonError::Engine(EngineError::Streaming(
                     e.to_string(),
                 )))),
             }
@@ -241,7 +241,7 @@ impl InferenceEngine for LlamaCppEngine {
         Ok(Box::pin(token_stream))
     }
 
-    fn list_models(&self) -> Result<Vec<String>, OpenJarvisError> {
+    fn list_models(&self) -> Result<Vec<String>, DiapasonError> {
         // llama.cpp server loads a single model; try /v1/models first,
         // then fall back to /props which returns model metadata.
         let resp = self
@@ -272,7 +272,7 @@ impl InferenceEngine for LlamaCppEngine {
             .get(format!("{}/props", self.host))
             .send()
             .map_err(|_| {
-                OpenJarvisError::Engine(EngineError::Connection(
+                DiapasonError::Engine(EngineError::Connection(
                     "llama.cpp not reachable".into(),
                 ))
             })?;

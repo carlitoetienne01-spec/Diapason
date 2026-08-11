@@ -26,9 +26,9 @@
       "usage_count": 1
     },
     {
-      "id": "fr-openjarvis",
-      "word": "OpenJarvis",
-      "replacements": ["open jarvis", "openjarvis", "open jarvice"],
+      "id": "fr-diapason",
+      "word": "Diapason",
+      "replacements": ["open diapason", "diapason", "open jarvice"],
       "locale": "fr",
       "usage_count": 2
     }

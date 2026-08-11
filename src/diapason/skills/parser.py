@@ -40,7 +40,7 @@ SPEC_FIELDS = frozenset(
 
 # Each entry maps a non-spec top-level field name to (target_kind, attr).
 # When target_kind is "field" the value is set directly on the SkillManifest
-# dataclass attribute.  When target_kind is "openjarvis_meta" the value is
+# dataclass attribute.  When target_kind is "diapason_meta" the value is
 # stored under manifest.metadata["diapason"][attr].
 FIELD_MAPPING: Dict[str, tuple[str, str]] = {
     "version": ("field", "version"),
@@ -50,8 +50,8 @@ FIELD_MAPPING: Dict[str, tuple[str, str]] = {
     "required_capabilities": ("field", "required_capabilities"),
     "user_invocable": ("field", "user_invocable"),
     "disable_model_invocation": ("field", "disable_model_invocation"),
-    "platforms": ("openjarvis_meta", "platforms"),
-    "prerequisites": ("openjarvis_meta", "prerequisites"),
+    "platforms": ("diapason_meta", "platforms"),
+    "prerequisites": ("diapason_meta", "prerequisites"),
 }
 
 # Naming pattern: lowercase alnum + hyphens, no leading/trailing/consecutive hyphens
@@ -188,7 +188,7 @@ class SkillParser:
                 target, attr = FIELD_MAPPING[key]
                 if target == "field":
                     setattr(manifest, attr, value)
-                else:  # "openjarvis_meta"
+                else:  # "diapason_meta"
                     oj_meta[attr] = value
             else:
                 unmapped[key] = value
@@ -200,7 +200,7 @@ class SkillParser:
                 )
 
         # Merge metadata.diapason.* into canonical fields (these override
-        # top-level mappings since they are explicit OpenJarvis-namespaced).
+        # top-level mappings since they are explicit Diapason-namespaced).
         for key in (
             "version",
             "author",

@@ -6,7 +6,7 @@ import base64
 
 import pytest
 
-from diapason.core.config import JarvisConfig, SpeechConfig, VoiceRealtimeConfig
+from diapason.core.config import DiapasonConfig, SpeechConfig, VoiceRealtimeConfig
 from diapason.speech.realtime.base import SessionEvent
 from diapason.speech.realtime.bridge import event_to_client_json
 from diapason.speech.realtime.factory import create_realtime_session
@@ -21,7 +21,7 @@ def test_speech_config_has_realtime_defaults():
 
 
 def test_jarvis_config_nested_realtime():
-    cfg = JarvisConfig()
+    cfg = DiapasonConfig()
     assert cfg.speech.realtime.provider == "gemini"
 
 
@@ -63,8 +63,10 @@ def test_default_voice_tools_include_jarvis_parity():
     import diapason.tools.desktop_tools  # noqa: F401
     import diapason.tools.voice_mac_tools  # noqa: F401
     import diapason.tools.web_search  # noqa: F401
-
-    from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS, list_voice_tool_ids
+    from diapason.speech.realtime.tools import (
+        DEFAULT_VOICE_TOOL_IDS,
+        list_voice_tool_ids,
+    )
 
     for tid in (
         "open_anything",

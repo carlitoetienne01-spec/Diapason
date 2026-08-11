@@ -25,7 +25,7 @@ num_gpus = 4
 
 [[benchmarks]]
 name = "gaia"
-backend = "jarvis-agent"
+backend = "diapason-agent"
 agent = "monitor_operative"
 max_samples = 50
 tools = ["think", "calculator", "code_interpreter", "web_search", "file_read"]

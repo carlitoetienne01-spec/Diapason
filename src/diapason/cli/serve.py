@@ -123,7 +123,7 @@ def serve(
         )
         sys.exit(1)
 
-    # Tool credentials saved through the browser UI live in the OpenJarvis
+    # Tool credentials saved through the browser UI live in the Diapason
     # credential store. Restore them before engines and tools are constructed
     # so availability checks and tool instances see the same environment.
     inject_credentials()
@@ -384,7 +384,7 @@ def serve(
 
     # Wire channel messages → agent / engine (per-chat session isolation)
     if channel_bridge is not None:
-        from diapason.system import JarvisSystem
+        from diapason.system import DiapasonSystem
 
         channel_agent = config.channel.default_agent or agent_key or "simple"
 
@@ -449,14 +449,14 @@ def serve(
                                     _existing.add(t.spec.name)
                         # Hold a reference at module / function scope —
                         # the channel agent is constructed inside
-                        # JarvisSystem below; we extend its lifetime by
+                        # DiapasonSystem below; we extend its lifetime by
                         # keeping the list bound here.
                         _channel_mcp_clients = _ch_mcp_clients
             except Exception as exc:
                 logger.warning("Channel tools failed to load: %s", exc)
                 _channel_mcp_clients = []
 
-        _wire_system = JarvisSystem(
+        _wire_system = DiapasonSystem(
             config=config,
             bus=bus,
             engine=engine,
@@ -482,7 +482,7 @@ def serve(
     from diapason.server.app import create_app
 
     # Set up memory backend for context injection. Built before the scheduler
-    # block so the executor's JarvisSystem can reference it (#263).
+    # block so the executor's DiapasonSystem can reference it (#263).
     memory_backend = None
     if config.agent.context_from_memory:
         try:
@@ -561,7 +561,7 @@ def serve(
             # session_store/channel_backend from the system (see
             # AgentExecutor), all of which are wired here.
             from diapason.sessions.session import SessionStore
-            from diapason.system import JarvisSystem
+            from diapason.system import DiapasonSystem
             from diapason.tools._stubs import ToolExecutor
 
             _sched_session_store = None
@@ -583,7 +583,7 @@ def serve(
                 ToolExecutor(resolved_tools, bus) if resolved_tools else None
             )
 
-            system = JarvisSystem(
+            system = DiapasonSystem(
                 config=config,
                 bus=bus,
                 engine=engine,
@@ -701,7 +701,7 @@ def serve(
     )
 
     console.print(
-        f"[green]Starting OpenJarvis API server[/green]\n"
+        f"[green]Starting Diapason API server[/green]\n"
         f"  Engine: [cyan]{engine_name}[/cyan]\n"
         f"  Model:  [cyan]{model_name}[/cyan]\n"
         f"  Agent:  [cyan]{agent_key or 'none'}[/cyan]\n"

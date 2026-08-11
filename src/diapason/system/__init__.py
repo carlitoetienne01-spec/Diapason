@@ -1,4 +1,4 @@
-"""Top-level system composition: JarvisSystem, SystemBuilder, and helpers."""
+"""Top-level system composition: DiapasonSystem, SystemBuilder, and helpers."""
 
 from diapason.system.builder import SystemBuilder
 from diapason.system.bundles import (
@@ -7,13 +7,13 @@ from diapason.system.bundles import (
     Scheduling,
     SecurityContext,
 )
-from diapason.system.core import JarvisSystem
+from diapason.system.core import DiapasonSystem
 from diapason.system.orchestrator import QueryOrchestrator
 from diapason.system.protocols import OrchestratorDeps
 
 __all__ = [
     "AgentRuntime",
-    "JarvisSystem",
+    "DiapasonSystem",
     "Observability",
     "OrchestratorDeps",
     "QueryOrchestrator",

@@ -1,4 +1,4 @@
-//! OpenJarvis Sessions — cross-channel persistent session management.
+//! Diapason Sessions — cross-channel persistent session management.
 //!
 //! Port of `src/diapason/sessions/` from Python.
 //! Provides SQLite-backed session storage with identity consolidation,

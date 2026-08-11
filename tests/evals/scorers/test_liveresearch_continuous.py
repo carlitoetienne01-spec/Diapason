@@ -76,7 +76,7 @@ def test_continuous_score_fields_present_in_summary(tmp_path):
     out = tmp_path / "out.jsonl"
     cfg = RunConfig(
         benchmark="test",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="test-model",
         output_path=str(out),
     )

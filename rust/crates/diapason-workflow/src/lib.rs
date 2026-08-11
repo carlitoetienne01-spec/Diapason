@@ -1,4 +1,4 @@
-//! OpenJarvis Workflow — DAG-based workflow graph, builder, and execution planner.
+//! Diapason Workflow — DAG-based workflow graph, builder, and execution planner.
 //!
 //! Port of `src/diapason/workflow/` from Python.
 //! Provides cycle detection (DFS), topological sort (Kahn's algorithm),

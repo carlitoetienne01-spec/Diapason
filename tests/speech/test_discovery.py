@@ -2,14 +2,14 @@
 
 from unittest.mock import patch
 
-from diapason.core.config import JarvisConfig
+from diapason.core.config import DiapasonConfig
 
 
 def test_get_speech_backend_explicit():
     """Explicit backend selection works."""
     from diapason.speech._discovery import get_speech_backend
 
-    config = JarvisConfig()
+    config = DiapasonConfig()
     config.speech.backend = "faster-whisper"
 
     with patch("diapason.speech._discovery._create_backend") as mock_create:
@@ -32,7 +32,7 @@ def test_get_speech_backend_returns_none_if_nothing_available():
     """Returns None when no backend can be created."""
     from diapason.speech._discovery import get_speech_backend
 
-    config = JarvisConfig()
+    config = DiapasonConfig()
     config.speech.backend = "nonexistent"
 
     result = get_speech_backend(config)
@@ -61,8 +61,8 @@ def test_auto_discovery_priority():
 _CREATE = "diapason.speech._discovery._create_backend"
 
 
-def _local_only_config(backend: str = "auto") -> JarvisConfig:
-    config = JarvisConfig()
+def _local_only_config(backend: str = "auto") -> DiapasonConfig:
+    config = DiapasonConfig()
     config.speech.backend = backend
     config.privacy.local_only = True
     return config
@@ -113,7 +113,7 @@ def test_cloud_fallback_still_works_when_local_only_is_off():
         attempted.append(key)
         return "a-backend" if key == "openai" else None
 
-    config = JarvisConfig()
+    config = DiapasonConfig()
     config.speech.backend = "auto"
     config.privacy.local_only = False
 

@@ -188,8 +188,8 @@ class TestLive:
 
         result = ch.send(
             recipient,
-            "OpenJarvis Gmail channel test message",
-            metadata={"subject": "OpenJarvis Test"},
+            "Diapason Gmail channel test message",
+            metadata={"subject": "Diapason Test"},
         )
         assert result is True
         ch.disconnect()

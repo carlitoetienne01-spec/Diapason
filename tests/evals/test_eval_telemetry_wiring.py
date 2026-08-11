@@ -3,7 +3,7 @@
 Verifies that:
 - FLOPs estimation flows from config metadata through to EvalResult and RunSummary
 - Telemetry fields (energy, power, GPU util) propagate end-to-end
-- JarvisDirectBackend propagates gpu_metrics flag
+- DiapasonDirectBackend propagates gpu_metrics flag
 - TauBench dataset passes telemetry flags to task env
 - Summary JSON includes telemetry_summary section
 """
@@ -54,7 +54,7 @@ class TestRunSummaryTelemetry:
         s = RunSummary(
             benchmark="test",
             category="chat",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             total_samples=1,
             scored_samples=1,
@@ -83,7 +83,7 @@ class TestRunnerFlopsComputation:
 
         config = RunConfig(
             benchmark="test",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             metadata={
                 "param_count_b": 7.0,
@@ -126,7 +126,7 @@ class TestRunnerFlopsComputation:
 
         config = RunConfig(
             benchmark="test",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             metadata={},
         )
@@ -162,7 +162,7 @@ class TestRunnerFlopsComputation:
 
         config = RunConfig(
             benchmark="test",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             metadata={
                 "param_count_b": 122.0,
@@ -212,7 +212,7 @@ class TestSummaryToDict:
         s = RunSummary(
             benchmark="test",
             category="chat",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             total_samples=10,
             scored_samples=10,
@@ -257,7 +257,7 @@ class TestSummaryToDict:
         s = RunSummary(
             benchmark="test",
             category="chat",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             total_samples=1,
             scored_samples=1,
@@ -287,7 +287,7 @@ class TestFlushResult:
 
         config = RunConfig(
             benchmark="test",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
         )
 
@@ -335,17 +335,17 @@ class TestResultToTraceDict:
 
 
 # ---------------------------------------------------------------------------
-# JarvisDirectBackend gpu_metrics propagation
+# DiapasonDirectBackend gpu_metrics propagation
 # ---------------------------------------------------------------------------
 
 
 class TestDirectBackendGpuMetrics:
-    """Verify JarvisDirectBackend sets gpu_metrics on config."""
+    """Verify DiapasonDirectBackend sets gpu_metrics on config."""
 
     @patch("diapason.system.SystemBuilder")
     def test_gpu_metrics_propagated(self, mock_builder_cls):
         """When gpu_metrics=True, the builder config should be updated."""
-        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 
         mock_builder = MagicMock()
         mock_builder_cls.return_value = mock_builder
@@ -361,7 +361,7 @@ class TestDirectBackendGpuMetrics:
         mock_system = MagicMock()
         mock_builder.build.return_value = mock_system
 
-        JarvisDirectBackend(
+        DiapasonDirectBackend(
             engine_key="vllm",
             telemetry=True,
             gpu_metrics=True,
@@ -373,7 +373,7 @@ class TestDirectBackendGpuMetrics:
     @patch("diapason.system.SystemBuilder")
     def test_gpu_metrics_not_set_when_false(self, mock_builder_cls):
         """When gpu_metrics=False, the builder config should not be touched."""
-        from diapason.evals.backends.jarvis_direct import JarvisDirectBackend
+        from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 
         mock_builder = MagicMock()
         mock_builder_cls.return_value = mock_builder
@@ -388,7 +388,7 @@ class TestDirectBackendGpuMetrics:
         mock_system = MagicMock()
         mock_builder.build.return_value = mock_system
 
-        JarvisDirectBackend(
+        DiapasonDirectBackend(
             engine_key="vllm",
             telemetry=False,
             gpu_metrics=False,
@@ -541,7 +541,7 @@ class TestTelemetryEndToEnd:
 
         config = RunConfig(
             benchmark="test",
-            backend="jarvis-direct",
+            backend="diapason-direct",
             model="test-model",
             telemetry=True,
             gpu_metrics=True,

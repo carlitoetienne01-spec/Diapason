@@ -39,7 +39,7 @@ impl AgentEnum {
         &self,
         input: &str,
         context: Option<&diapason_core::AgentContext>,
-    ) -> Result<diapason_core::AgentResult, diapason_core::OpenJarvisError> {
+    ) -> Result<diapason_core::AgentResult, diapason_core::DiapasonError> {
         match self {
             AgentEnum::Simple(a) => a.run(input, context).await,
             AgentEnum::Orchestrator(a) => a.run(input, context).await,
@@ -49,7 +49,7 @@ impl AgentEnum {
 }
 
 fn make_adapter(engine_key: &str, model: &str) -> PyResult<DefaultAdapter> {
-    let config = diapason_core::JarvisConfig::default();
+    let config = diapason_core::DiapasonConfig::default();
     let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
     Ok(RigModelAdapter::new(Arc::new(engine), model.to_string()))
@@ -199,7 +199,7 @@ impl PyNativeOpenHandsAgent {
         max_turns: usize,
         temperature: f64,
     ) -> PyResult<Self> {
-        let config = diapason_core::JarvisConfig::default();
+        let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         let adapter = diapason_engine::rig_adapter::RigModelAdapter::new(
@@ -280,7 +280,7 @@ impl PyMonitorOperativeAgent {
         compression_threshold: usize,
         truncation_limit: usize,
     ) -> PyResult<Self> {
-        let config = diapason_core::JarvisConfig::default();
+        let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         let adapter = diapason_engine::rig_adapter::RigModelAdapter::new(

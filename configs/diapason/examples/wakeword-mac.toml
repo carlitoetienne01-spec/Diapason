@@ -1,6 +1,6 @@
 # Wake-word Mac — local « Hey Diapason » → Talk
-# Install notes: keep [speech.realtime] for Live; run `jarvis wake-listen` in a terminal
-# (or as a login item) while the OpenJarvis UI is open.
+# Install notes: keep [speech.realtime] for Live; run `diapason wake-listen` in a terminal
+# (or as a login item) while the Diapason UI is open.
 #
 # phrase_gate: sounddevice + numpy + faster-whisper
 # openwakeword (ML): uv sync --extra speech-wake  then backend = "openwakeword" or "auto"
@@ -26,7 +26,7 @@ enable_tools = true
 [speech.wakeword]
 enabled = true
 backend = "auto"
-phrases = "jarvis, hey jarvis, dis jarvis"
+phrases = "diapason, hey diapason, dis diapason"
 action = "talk"
 cooldown_s = 2.5
 sensitivity = 0.5

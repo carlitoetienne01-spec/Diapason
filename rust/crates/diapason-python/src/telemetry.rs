@@ -69,7 +69,7 @@ impl PyInstrumentedEngine {
     #[new]
     #[pyo3(signature = (engine_key="ollama", host="http://localhost:11434", store_path=None, agent_name="default"))]
     fn new(engine_key: &str, host: &str, store_path: Option<&str>, agent_name: &str) -> PyResult<Self> {
-        let config = diapason_core::JarvisConfig::default();
+        let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         let store = Arc::new(match store_path {

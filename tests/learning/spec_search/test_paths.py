@@ -21,7 +21,7 @@ class TestResolveSpecSearchRoot:
         result = paths.resolve_spec_search_root()
         assert result == Path.home() / ".diapason" / "learning"
 
-    def test_respects_openjarvis_home_env_var(
+    def test_respects_diapason_home_env_var(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -50,7 +50,7 @@ class TestResolveSpecSearchRoot:
     ) -> None:
         from diapason.learning.spec_search.storage import paths
 
-        # Find the OpenJarvis source root by walking up from the paths module.
+        # Find the Diapason source root by walking up from the paths module.
         source_root = paths._find_source_root()
         assert source_root is not None  # We must be running inside the repo.
 

@@ -76,16 +76,16 @@ WORKDIR /app
 # Run as an unprivileged user (#565). ROCm GPU access is gated by the `video` and
 # `render` groups (see group_add in docker-compose.gpu.rocm.yml), so the user is
 # added to both; root is not required.
-RUN groupadd --system --gid 10001 openjarvis && \
-    useradd --system --uid 10001 --gid openjarvis \
-        --create-home --home-dir /home/openjarvis openjarvis && \
+RUN groupadd --system --gid 10001 diapason && \
+    useradd --system --uid 10001 --gid diapason \
+        --create-home --home-dir /home/diapason diapason && \
     (getent group video  >/dev/null || groupadd --system video) && \
     (getent group render >/dev/null || groupadd --system render) && \
-    usermod -aG video,render openjarvis
-ENV HOME=/home/openjarvis
-USER openjarvis
+    usermod -aG video,render diapason
+ENV HOME=/home/diapason
+USER diapason
 
 EXPOSE 8000
 
-ENTRYPOINT ["jarvis"]
+ENTRYPOINT ["diapason"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

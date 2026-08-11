@@ -140,8 +140,8 @@ def get_client_credentials(
     """Load stored client_id and client_secret for *provider*.
 
     Checks credential files in ``~/.diapason/connectors/`` and falls
-    back to environment variables ``OPENJARVIS_{NAME}_CLIENT_ID`` and
-    ``OPENJARVIS_{NAME}_CLIENT_SECRET``.
+    back to environment variables ``DIAPASON_{NAME}_CLIENT_ID`` and
+    ``DIAPASON_{NAME}_CLIENT_SECRET``.
     """
     # Check credential files
     for filename in provider.credential_files:
@@ -151,7 +151,7 @@ def get_client_credentials(
             return tokens["client_id"], tokens["client_secret"]
 
     # Check environment variables
-    prefix = f"OPENJARVIS_{provider.name.upper()}"
+    prefix = f"DIAPASON_{provider.name.upper()}"
     env_id = os.environ.get(f"{prefix}_CLIENT_ID", "")
     env_secret = os.environ.get(f"{prefix}_CLIENT_SECRET", "")
     if env_id and env_secret:
@@ -445,7 +445,7 @@ def run_oauth_flow(
                 self.end_headers()
                 self.wfile.write(
                     b"<html><body><h2>Authorization successful!</h2>"
-                    b"<p>You can close this tab and return to OpenJarvis.</p>"
+                    b"<p>You can close this tab and return to Diapason.</p>"
                     b"</body></html>"
                 )
             elif "error" in params:
@@ -565,7 +565,7 @@ def _wait_for_callback_code(
                     b"<html><body style='font-family:system-ui;text-align:center;"
                     b"padding:60px'>"
                     b"<h2 style='color:#22c55e'>Connected!</h2>"
-                    b"<p>You can close this tab and return to OpenJarvis.</p>"
+                    b"<p>You can close this tab and return to Diapason.</p>"
                     b"</body></html>"
                 )
             elif "error" in params:

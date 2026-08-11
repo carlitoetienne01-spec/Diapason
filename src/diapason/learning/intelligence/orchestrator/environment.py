@@ -1,6 +1,6 @@
 """RL environment for orchestrator training.
 
-Adapted from IPW's ``environment.py``.  Uses OpenJarvis's
+Adapted from IPW's ``environment.py``.  Uses Diapason's
 :class:`~diapason.tools._stubs.ToolExecutor` for real tool dispatch
 (as opposed to IPW's cached-telemetry approach), making it suitable for
 both training and evaluation.
@@ -21,7 +21,7 @@ from diapason.tools._stubs import BaseTool, ToolExecutor
 
 
 class OrchestratorEnvironment:
-    """RL environment that executes tools via OpenJarvis ``ToolExecutor``.
+    """RL environment that executes tools via Diapason ``ToolExecutor``.
 
     Parameters
     ----------

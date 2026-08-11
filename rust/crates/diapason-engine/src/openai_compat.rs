@@ -1,7 +1,7 @@
 //! OpenAI-compatible inference engine for vLLM, SGLang, LM Studio, etc.
 
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::{EngineError, OpenJarvisError};
+use diapason_core::error::{EngineError, DiapasonError};
 use diapason_core::{GenerateResult, Message, ToolCall, Usage};
 use serde_json::Value;
 
@@ -104,7 +104,7 @@ impl InferenceEngine for OpenAICompatEngine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, OpenJarvisError> {
+    ) -> Result<GenerateResult, DiapasonError> {
         let msg_dicts = crate::traits::messages_to_dicts(messages);
         let mut payload = serde_json::json!({
             "model": model,
@@ -133,7 +133,7 @@ impl InferenceEngine for OpenAICompatEngine {
             .json(&payload)
             .send()
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(format!(
+                DiapasonError::Engine(EngineError::Connection(format!(
                     "{} not reachable at {}: {}",
                     self.engine_name, self.host, e
                 )))
@@ -142,14 +142,14 @@ impl InferenceEngine for OpenAICompatEngine {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().unwrap_or_default();
-            return Err(OpenJarvisError::Engine(EngineError::Http(format!(
+            return Err(DiapasonError::Engine(EngineError::Http(format!(
                 "{} returned {}: {}",
                 self.engine_name, status, body
             ))));
         }
 
         let data: Value = resp.json().map_err(|e| {
-            OpenJarvisError::Engine(EngineError::Deserialization(e.to_string()))
+            DiapasonError::Engine(EngineError::Deserialization(e.to_string()))
         })?;
 
         let choice = &data["choices"][0];
@@ -208,7 +208,7 @@ impl InferenceEngine for OpenAICompatEngine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, OpenJarvisError> {
+    ) -> Result<TokenStream, DiapasonError> {
         let msg_dicts = crate::traits::messages_to_dicts(messages);
         let mut payload = serde_json::json!({
             "model": model,
@@ -228,7 +228,7 @@ impl InferenceEngine for OpenAICompatEngine {
             .timeout(self.timeout)
             .build()
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(e.to_string()))
+                DiapasonError::Engine(EngineError::Connection(e.to_string()))
             })?;
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -250,14 +250,14 @@ impl InferenceEngine for OpenAICompatEngine {
             .send()
             .await
             .map_err(|e| {
-                OpenJarvisError::Engine(EngineError::Connection(format!(
+                DiapasonError::Engine(EngineError::Connection(format!(
                     "{} not reachable: {}",
                     self.engine_name, e
                 )))
             })?;
 
         if !resp.status().is_success() {
-            return Err(OpenJarvisError::Engine(EngineError::Http(format!(
+            return Err(DiapasonError::Engine(EngineError::Http(format!(
                 "{} returned {}",
                 self.engine_name,
                 resp.status()
@@ -289,7 +289,7 @@ impl InferenceEngine for OpenAICompatEngine {
                     }
                     None
                 }
-                Err(e) => Some(Err(OpenJarvisError::Engine(EngineError::Streaming(
+                Err(e) => Some(Err(DiapasonError::Engine(EngineError::Streaming(
                     e.to_string(),
                 )))),
             }
@@ -298,14 +298,14 @@ impl InferenceEngine for OpenAICompatEngine {
         Ok(Box::pin(token_stream))
     }
 
-    fn list_models(&self) -> Result<Vec<String>, OpenJarvisError> {
+    fn list_models(&self) -> Result<Vec<String>, DiapasonError> {
         let resp = self
             .client
             .get(format!("{}/v1/models", self.host))
             .headers(self.build_headers())
             .send()
             .map_err(|_| {
-                OpenJarvisError::Engine(EngineError::Connection(format!(
+                DiapasonError::Engine(EngineError::Connection(format!(
                     "{} not reachable",
                     self.engine_name
                 )))

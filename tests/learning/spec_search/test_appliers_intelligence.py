@@ -22,7 +22,7 @@ def _make_ctx(tmp_path: Path) -> ApplyContext:
         'math = "qwen2.5-coder:3b"\n'
         'code = "qwen2.5-coder:7b"\n'
     )
-    return ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+    return ApplyContext(diapason_home=tmp_path, session_id="s1")
 
 
 def _make_routing_edit(

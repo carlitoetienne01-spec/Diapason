@@ -26,5 +26,5 @@ engine = "cloud"
 [[benchmarks]]
 name = "taubench"
 max_samples = 60
-backend = "jarvis-direct"
+backend = "diapason-direct"
 split = "airline,retail"

@@ -6,7 +6,7 @@
 use crate::loop_guard::LoopGuard;
 use crate::traits::OjAgent;
 use crate::utils::strip_think_tags;
-use diapason_core::{AgentContext, AgentResult, OpenJarvisError, ToolResult};
+use diapason_core::{AgentContext, AgentResult, DiapasonError, ToolResult};
 use diapason_tools::executor::ToolExecutor;
 use regex::Regex;
 use rig::agent::AgentBuilder;
@@ -95,7 +95,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
         &self,
         input: &str,
         context: Option<&AgentContext>,
-    ) -> Result<AgentResult, OpenJarvisError> {
+    ) -> Result<AgentResult, DiapasonError> {
         let mut history: Vec<RigMessage> = context
             .map(|ctx| {
                 ctx.conversation
@@ -124,7 +124,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
                 .chat(&current_input, history.clone())
                 .await
                 .map_err(|e| {
-                    OpenJarvisError::Agent(diapason_core::error::AgentError::Execution(
+                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(
                         e.to_string(),
                     ))
                 })?;

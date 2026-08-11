@@ -4,21 +4,21 @@
 class TestSystemLearningIntegration:
     def test_learning_orchestrator_not_created_when_disabled(self):
         """Default config has training_enabled=False, so no orchestrator."""
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
         from diapason.system import SystemBuilder
 
-        config = JarvisConfig()
+        config = DiapasonConfig()
         assert config.learning.training_enabled is False
         result = SystemBuilder._setup_learning_orchestrator(config)
         assert result is None
 
     def test_learning_orchestrator_created_when_enabled(self):
         """When training_enabled=True, orchestrator is created."""
-        from diapason.core.config import JarvisConfig
+        from diapason.core.config import DiapasonConfig
         from diapason.learning.learning_orchestrator import LearningOrchestrator
         from diapason.system import SystemBuilder
 
-        config = JarvisConfig()
+        config = DiapasonConfig()
         config.learning.training_enabled = True
         result = SystemBuilder._setup_learning_orchestrator(config)
         assert isinstance(result, LearningOrchestrator)

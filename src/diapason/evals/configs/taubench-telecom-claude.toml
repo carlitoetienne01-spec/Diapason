@@ -23,5 +23,5 @@ engine = "cloud"
 
 [[benchmarks]]
 name = "taubench"
-backend = "jarvis-direct"
+backend = "diapason-direct"
 split = "telecom"

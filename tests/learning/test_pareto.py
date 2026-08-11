@@ -53,7 +53,7 @@ def _make_trial_with_summary(
     defaults: Dict[str, Any] = dict(
         benchmark="test",
         category="reasoning",
-        backend="jarvis-direct",
+        backend="diapason-direct",
         model="test-model",
         total_samples=10,
         scored_samples=10,

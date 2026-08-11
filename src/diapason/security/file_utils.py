@@ -1,6 +1,6 @@
 """Secure file and directory creation helpers.
 
-All OpenJarvis data files under ``~/.diapason/`` should be created
+All Diapason data files under ``~/.diapason/`` should be created
 through these helpers to ensure consistent, restrictive permissions.
 """
 

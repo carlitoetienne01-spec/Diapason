@@ -1,11 +1,11 @@
 # Heartbeat + routines — ambient queue + cron catalog
-# Install: jarvis init --preset heartbeat-routines
+# Install: diapason init --preset heartbeat-routines
 #
 # 1) Enable scheduler + heartbeat in this config
-# 2) jarvis routines sync
-# 3) jarvis scheduler start
-# 4) jarvis heartbeat add "Check calendar before lunch"
-# 5) jarvis heartbeat tick --force   # drain one item now
+# 2) diapason routines sync
+# 3) diapason scheduler start
+# 4) diapason heartbeat add "Check calendar before lunch"
+# 5) diapason heartbeat tick --force   # drain one item now
 #
 # Quiet hours default 22:00–07:00 (no speak/notify delivery).
 # Never auto-sends mail/SMS from heartbeat.

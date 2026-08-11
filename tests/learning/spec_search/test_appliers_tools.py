@@ -20,7 +20,7 @@ def _make_ctx(tmp_path: Path) -> ApplyContext:
         '[web_search]\ndescription = "Search the web"\n'
     )
     (tmp_path / "config.toml").write_text('[agent.simple]\ntools = ["web_search"]\n')
-    return ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+    return ApplyContext(diapason_home=tmp_path, session_id="s1")
 
 
 class TestAddToolToAgentApplier:

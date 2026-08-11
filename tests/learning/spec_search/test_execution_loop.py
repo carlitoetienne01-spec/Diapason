@@ -26,7 +26,7 @@ def _make_ctx(tmp_path: Path) -> ApplyContext:
     (tools_dir / "descriptions.toml").write_text(
         '[web_search]\ndescription = "Search"\n'
     )
-    return ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+    return ApplyContext(diapason_home=tmp_path, session_id="s1")
 
 
 def _make_auto_edit(edit_id: str = "edit-001") -> Edit:

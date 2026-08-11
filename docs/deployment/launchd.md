@@ -1,14 +1,14 @@
 # launchd Service (macOS)
 
-OpenJarvis includes a launchd property list (plist) for running the API server as a background service on macOS. This provides automatic startup at login, automatic restart if the process exits, and log capture.
+Diapason includes a launchd property list (plist) for running the API server as a background service on macOS. This provides automatic startup at login, automatic restart if the process exits, and log capture.
 
 ## Prerequisites
 
-Before installing the service, ensure that OpenJarvis is installed and the `jarvis` command is available at `/usr/local/bin/jarvis`. If you installed via `uv` or `pip` with a different prefix, adjust the path in the plist accordingly.
+Before installing the service, ensure that Diapason is installed and the `diapason` command is available at `/usr/local/bin/diapason`. If you installed via `uv` or `pip` with a different prefix, adjust the path in the plist accordingly.
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git && cd OpenJarvis && uv sync --extra server
-which jarvis  # Verify the installation path
+git clone https://github.com/open-diapason/Diapason.git && cd Diapason && uv sync --extra server
+which diapason  # Verify the installation path
 ```
 
 Also ensure that an inference engine (such as Ollama) is running and accessible on the machine.
@@ -18,8 +18,8 @@ Also ensure that an inference engine (such as Ollama) is running and accessible 
 Copy the plist file to `~/Library/LaunchAgents` and load it:
 
 ```bash
-cp deploy/launchd/com.openjarvis.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.openjarvis.plist
+cp deploy/launchd/com.diapason.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.diapason.plist
 ```
 
 The service starts immediately (due to `RunAtLoad`) and will automatically restart at each login.
@@ -29,16 +29,16 @@ The service starts immediately (due to `RunAtLoad`) and will automatically resta
     the right default for a personal device, and no API key is needed. To
     expose it on your LAN, change the host to `0.0.0.0` **and** uncomment the
     `EnvironmentVariables` block to set `OPENJARVIS_API_KEY`
-    (`jarvis auth generate-key`); an unauthenticated `0.0.0.0` server refuses
+    (`diapason auth generate-key`); an unauthenticated `0.0.0.0` server refuses
     to start.
 
 Verify it is running:
 
 ```bash
-launchctl list | grep openjarvis
+launchctl list | grep diapason
 ```
 
-You should see a line with the PID and the label `com.openjarvis`. A `0` in the status column indicates the service is running normally.
+You should see a line with the PID and the label `com.diapason`. A `0` in the status column indicates the service is running normally.
 
 Confirm the server is responding:
 
@@ -48,7 +48,7 @@ curl http://localhost:8000/health
 
 ## Plist Reference
 
-The provided plist file at `deploy/launchd/com.openjarvis.plist`:
+The provided plist file at `deploy/launchd/com.diapason.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -57,10 +57,10 @@ The provided plist file at `deploy/launchd/com.openjarvis.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.openjarvis</string>
+    <string>com.diapason</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/jarvis</string>
+        <string>/usr/local/bin/diapason</string>
         <string>serve</string>
         <string>--host</string>
         <string>127.0.0.1</string>
@@ -79,9 +79,9 @@ The provided plist file at `deploy/launchd/com.openjarvis.plist`:
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/openjarvis.stdout.log</string>
+    <string>/tmp/diapason.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/openjarvis.stderr.log</string>
+    <string>/tmp/diapason.stderr.log</string>
 </dict>
 </plist>
 ```
@@ -90,12 +90,12 @@ The provided plist file at `deploy/launchd/com.openjarvis.plist`:
 
 | Key                  | Value                          | Description                                                                                          |
 |----------------------|--------------------------------|------------------------------------------------------------------------------------------------------|
-| `Label`              | `com.openjarvis`               | Unique identifier for the service. Used with `launchctl` commands to manage the service.             |
-| `ProgramArguments`   | `["/usr/local/bin/jarvis", "serve", "--host", "127.0.0.1", "--port", "8000"]` | The command and arguments to execute. Binds loopback by default; see the note above to expose on the LAN with an API key. |
+| `Label`              | `com.diapason`               | Unique identifier for the service. Used with `launchctl` commands to manage the service.             |
+| `ProgramArguments`   | `["/usr/local/bin/diapason", "serve", "--host", "127.0.0.1", "--port", "8000"]` | The command and arguments to execute. Binds loopback by default; see the note above to expose on the LAN with an API key. |
 | `RunAtLoad`          | `true`                         | Start the service immediately when the plist is loaded (and on each login).                          |
 | `KeepAlive`          | `true`                         | Automatically restart the service if it exits for any reason. launchd monitors the process and relaunches it. |
-| `StandardOutPath`    | `/tmp/openjarvis.stdout.log`   | File where standard output is written. Contains server startup messages and access logs.             |
-| `StandardErrorPath`  | `/tmp/openjarvis.stderr.log`   | File where standard error is written. Contains error messages and stack traces.                      |
+| `StandardOutPath`    | `/tmp/diapason.stdout.log`   | File where standard output is written. Contains server startup messages and access logs.             |
+| `StandardErrorPath`  | `/tmp/diapason.stderr.log`   | File where standard error is written. Contains error messages and stack traces.                      |
 
 ## Viewing Logs
 
@@ -103,13 +103,13 @@ Server output is written to the two log files specified in the plist:
 
 ```bash
 # View standard output (startup messages, access logs)
-cat /tmp/openjarvis.stdout.log
+cat /tmp/diapason.stdout.log
 
 # View standard error (errors, warnings)
-cat /tmp/openjarvis.stderr.log
+cat /tmp/diapason.stderr.log
 
 # Follow logs in real time
-tail -f /tmp/openjarvis.stdout.log /tmp/openjarvis.stderr.log
+tail -f /tmp/diapason.stdout.log /tmp/diapason.stderr.log
 ```
 
 !!! tip "Persistent log location"
@@ -117,9 +117,9 @@ tail -f /tmp/openjarvis.stdout.log /tmp/openjarvis.stderr.log
 
     ```xml
     <key>StandardOutPath</key>
-    <string>/Users/yourname/.openjarvis/openjarvis.stdout.log</string>
+    <string>/Users/yourname/.diapason/diapason.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/yourname/.openjarvis/openjarvis.stderr.log</string>
+    <string>/Users/yourname/.diapason/diapason.stderr.log</string>
     ```
 
     After changing the plist, unload and reload the service for the changes to take effect.
@@ -130,10 +130,10 @@ tail -f /tmp/openjarvis.stdout.log /tmp/openjarvis.stderr.log
 
 ```bash
 # Load the service (starts it due to RunAtLoad)
-launchctl load ~/Library/LaunchAgents/com.openjarvis.plist
+launchctl load ~/Library/LaunchAgents/com.diapason.plist
 
 # Unload the service (stops it and prevents it from starting at login)
-launchctl unload ~/Library/LaunchAgents/com.openjarvis.plist
+launchctl unload ~/Library/LaunchAgents/com.diapason.plist
 ```
 
 ### Starting and Stopping
@@ -142,10 +142,10 @@ If the service is loaded but you want to manually stop or start it without unloa
 
 ```bash
 # Stop the service
-launchctl stop com.openjarvis
+launchctl stop com.diapason
 
 # Start the service
-launchctl start com.openjarvis
+launchctl start com.diapason
 ```
 
 !!! warning
@@ -154,8 +154,8 @@ launchctl start com.openjarvis
 ### Checking Status
 
 ```bash
-# List all loaded services matching "openjarvis"
-launchctl list | grep openjarvis
+# List all loaded services matching "diapason"
+launchctl list | grep diapason
 ```
 
 The output columns are:
@@ -164,7 +164,7 @@ The output columns are:
 |--------|----------------------------------------------------------------|
 | PID    | Process ID (or `-` if not running)                             |
 | Status | Last exit status (`0` = normal)                                |
-| Label  | The service label (`com.openjarvis`)                           |
+| Label  | The service label (`com.diapason`)                           |
 
 ## Configuration Changes
 
@@ -175,7 +175,7 @@ Edit the `ProgramArguments` array in the plist. Each argument must be a separate
 ```xml
 <key>ProgramArguments</key>
 <array>
-    <string>/usr/local/bin/jarvis</string>
+    <string>/usr/local/bin/diapason</string>
     <string>serve</string>
     <string>--host</string>
     <string>127.0.0.1</string>
@@ -191,7 +191,7 @@ Add additional arguments to the array:
 ```xml
 <key>ProgramArguments</key>
 <array>
-    <string>/usr/local/bin/jarvis</string>
+    <string>/usr/local/bin/diapason</string>
     <string>serve</string>
     <string>--host</string>
     <string>0.0.0.0</string>
@@ -218,14 +218,14 @@ Add an `EnvironmentVariables` dictionary to the plist:
 </dict>
 ```
 
-### Using a Different `jarvis` Binary Path
+### Using a Different `diapason` Binary Path
 
-If `jarvis` is installed in a virtual environment or a non-standard location, update the first element of `ProgramArguments`:
+If `diapason` is installed in a virtual environment or a non-standard location, update the first element of `ProgramArguments`:
 
 ```xml
 <key>ProgramArguments</key>
 <array>
-    <string>/Users/yourname/.local/bin/jarvis</string>
+    <string>/Users/yourname/.local/bin/diapason</string>
     <string>serve</string>
     <string>--host</string>
     <string>0.0.0.0</string>
@@ -239,22 +239,22 @@ If `jarvis` is installed in a virtual environment or a non-standard location, up
 After editing the plist file, unload and reload the service:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.openjarvis.plist
-launchctl load ~/Library/LaunchAgents/com.openjarvis.plist
+launchctl unload ~/Library/LaunchAgents/com.diapason.plist
+launchctl load ~/Library/LaunchAgents/com.diapason.plist
 ```
 
 ## System-Wide Installation
 
-The instructions above install the service as a **user agent** (runs only when you are logged in). To run OpenJarvis as a system-wide daemon that starts at boot regardless of user login:
+The instructions above install the service as a **user agent** (runs only when you are logged in). To run Diapason as a system-wide daemon that starts at boot regardless of user login:
 
 1. Copy the plist to `/Library/LaunchDaemons/` (requires `sudo`).
 2. Set the file ownership to `root:wheel`.
 3. Optionally add a `UserName` key to run as a specific user.
 
 ```bash
-sudo cp deploy/launchd/com.openjarvis.plist /Library/LaunchDaemons/
-sudo chown root:wheel /Library/LaunchDaemons/com.openjarvis.plist
-sudo launchctl load /Library/LaunchDaemons/com.openjarvis.plist
+sudo cp deploy/launchd/com.diapason.plist /Library/LaunchDaemons/
+sudo chown root:wheel /Library/LaunchDaemons/com.diapason.plist
+sudo launchctl load /Library/LaunchDaemons/com.diapason.plist
 ```
 
 !!! note
@@ -262,5 +262,5 @@ sudo launchctl load /Library/LaunchDaemons/com.openjarvis.plist
 
     ```xml
     <key>UserName</key>
-    <string>openjarvis</string>
+    <string>diapason</string>
     ```

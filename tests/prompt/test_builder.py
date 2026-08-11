@@ -50,10 +50,10 @@ def test_config_prefix_prepended(memory_dir: Path):
             memory_path=str(memory_dir / "MEMORY.md"),
             user_path=str(memory_dir / "USER.md"),
         ),
-        system_prompt_config=SystemPromptConfig(prefix="ALWAYS ANSWER AS JARVIS."),
+        system_prompt_config=SystemPromptConfig(prefix="ALWAYS ANSWER AS DIAPASON."),
     )
     prompt = builder.build()
-    assert prompt.startswith("ALWAYS ANSWER AS JARVIS.")
+    assert prompt.startswith("ALWAYS ANSWER AS DIAPASON.")
     assert "You are Diapason." in prompt
     # Prefix is visible in the inspection API too (#457), as a frozen section.
     section_names = [s.name for s in builder.sections()]

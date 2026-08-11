@@ -13,26 +13,26 @@ class TestApplyContext:
     def test_constructs(self, tmp_path: Path) -> None:
         from diapason.learning.spec_search.execute.base import ApplyContext
 
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
-        assert ctx.openjarvis_home == tmp_path
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
+        assert ctx.diapason_home == tmp_path
         assert ctx.session_id == "s1"
 
     def test_config_path(self, tmp_path: Path) -> None:
         from diapason.learning.spec_search.execute.base import ApplyContext
 
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
         assert ctx.config_path == tmp_path / "config.toml"
 
     def test_agents_dir(self, tmp_path: Path) -> None:
         from diapason.learning.spec_search.execute.base import ApplyContext
 
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
         assert ctx.agents_dir == tmp_path / "agents"
 
     def test_tools_dir(self, tmp_path: Path) -> None:
         from diapason.learning.spec_search.execute.base import ApplyContext
 
-        ctx = ApplyContext(openjarvis_home=tmp_path, session_id="s1")
+        ctx = ApplyContext(diapason_home=tmp_path, session_id="s1")
         assert ctx.tools_dir == tmp_path / "tools"
 
 

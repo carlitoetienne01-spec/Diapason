@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
+OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
 STATE_DIR="$OPENJARVIS_HOME/.state"
 SCRIPTS_DIR="$OPENJARVIS_HOME/.scripts"
 PID_FILE="$STATE_DIR/bg.pid"
