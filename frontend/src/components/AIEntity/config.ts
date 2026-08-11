@@ -105,6 +105,26 @@ export const AI_ENTITY_CONFIG = {
     peakGain: 1.5,
   },
 
+  /**
+   * The line-drawn ribbon that replaces the particle sheaf on the banner.
+   * The reference is made of hundreds of ultra-thin parallel LINES — dots in
+   * a row never quite read as a stroke, so the banner draws real GL lines
+   * and keeps particles only for what particles are good at: the floating
+   * specks of light around the wave.
+   */
+  lines: {
+    /** Strands per bundle. Two bundles → ~180 visible lines. */
+    strands: 46,
+    /** Segments along each strand; smoothness of the curve. */
+    segments: 150,
+    /** Solitary hair-thin curves crossing at their own rhythm. */
+    hairs: 3,
+    /** Soft luminous sprites hugging the curve — the local glow. */
+    glowPoints: 170,
+    /** Specks of light drifting around the wave. */
+    floaters: 340,
+  },
+
   /** Framing for the dictation banner, which is a different shot entirely:
    * a low bed with room above it for the columns. Kept separate so the Talk
    * panel, which has no columns, is not dragged along with it. */

@@ -2,6 +2,7 @@ import {
   AddEquation,
   BufferAttribute,
   BufferGeometry,
+  LineSegments,
   Color,
   CustomBlending,
   OneFactor,
@@ -14,7 +15,15 @@ import {
 } from 'three';
 
 import { AI_ENTITY_CONFIG as C, GRID, STATE_PROFILES, calmProfile } from './config';
-import { FRAGMENT_SHADER, VERTEX_SHADER } from './shaders';
+import {
+  FRAGMENT_SHADER,
+  RIBBON_FLOATER_VERTEX,
+  RIBBON_GLOW_FRAGMENT,
+  RIBBON_GLOW_VERTEX,
+  RIBBON_LINES_FRAGMENT,
+  RIBBON_LINES_VERTEX,
+  VERTEX_SHADER,
+} from './shaders';
 import { SILENT_BANDS } from './types';
 import type { AIQuality, AIState, AudioBands, StateProfile } from './types';
 
@@ -107,6 +116,74 @@ const STATE_TINTS: Record<AIState, readonly [number, number, number]> = {
 /** Scratch colour, so the render loop allocates nothing per frame. */
 const TEMP_COLOR = new Color();
 
+/**
+ * The strand lines: `position` carries (u along the curve, offset within the
+ * sheaf, bundle id) and the vertex shader does the rest. LineSegments in one
+ * draw call — one Line per strand would be hundreds of calls.
+ */
+function buildRibbonLines(): BufferGeometry {
+  const strands: number = C.lines.strands;
+  const segments: number = C.lines.segments;
+  const hairs: number = C.lines.hairs;
+  const random = makeRandom(0x2f6e2b1d);
+  const positions: number[] = [];
+  const seeds: number[] = [];
+
+  const pushStrand = (offset: number, bundle: number, seed: number) => {
+    for (let i = 0; i < segments; i++) {
+      const u0 = (i / segments) * 2 - 1;
+      const u1 = ((i + 1) / segments) * 2 - 1;
+      positions.push(u0, offset, bundle, u1, offset, bundle);
+      seeds.push(seed, seed);
+    }
+  };
+
+  for (let bundle = 0; bundle < 2; bundle++) {
+    for (let k = 0; k < strands; k++) {
+      const offset = strands === 1 ? 0 : (k / (strands - 1)) * 2 - 1;
+      pushStrand(offset, bundle, random());
+    }
+  }
+  for (let h = 0; h < hairs; h++) pushStrand(0, 2, random());
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('aSeed', new BufferAttribute(new Float32Array(seeds), 1));
+  return geometry;
+}
+
+function buildGlowPoints(): BufferGeometry {
+  const n: number = C.lines.glowPoints;
+  const positions = new Float32Array(n * 3);
+  const seeds = new Float32Array(n);
+  const random = makeRandom(0x7a11bee5);
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = (i / (n - 1)) * 2 - 1;
+    seeds[i] = random();
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('aSeed', new BufferAttribute(seeds, 1));
+  return geometry;
+}
+
+function buildFloaters(): BufferGeometry {
+  const n: number = C.lines.floaters;
+  const positions = new Float32Array(n * 3);
+  const seeds = new Float32Array(n);
+  const random = makeRandom(0x0ddba11);
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = (random() * 2 - 1) * 1.2;
+    positions[i * 3 + 1] = (random() * 2 - 1) * 1.7;
+    positions[i * 3 + 2] = (random() * 2 - 1) * 0.5;
+    seeds[i] = random();
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('aSeed', new BufferAttribute(seeds, 1));
+  return geometry;
+}
+
 function cellSize(quality: AIQuality): number {
   return C.geometry.width / GRID[quality].cols;
 }
@@ -126,6 +203,9 @@ export class AIEntityScene {
   /** Camera height for the current framing; parallax is added on top. */
   private baseY = 0;
   private readonly banner: boolean;
+  /** Banner-only draws; null on the Talk panel. */
+  private ribbonObjects: (Points | LineSegments)[] = [];
+  private ribbonDisposables: { dispose(): void }[] = [];
 
   private quality: AIQuality;
   private reducedMotion: boolean;
@@ -239,6 +319,68 @@ export class AIEntityScene {
     this.points.frustumCulled = false;
     this.scene.add(this.points);
 
+    if (this.banner) {
+      // The banner draws real lines; the particle terrain stays built (it is
+      // the uniform hub and the Talk panel's renderer) but never shown here.
+      this.points.visible = false;
+      this.buildRibbon();
+    }
+
+  }
+
+  private buildRibbon(): void {
+    const blend = {
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: CustomBlending,
+      blendEquation: AddEquation,
+      blendSrc: OneFactor,
+      blendDst: OneFactor,
+      blendSrcAlpha: OneFactor,
+      blendDstAlpha: OneFactor,
+    } as const;
+
+    // Every material shares the SAME uniform objects as the hub material, so
+    // one pushUniforms drives all four draws and they can never disagree
+    // about the time, the spectrum or the tint.
+    const lines = new ShaderMaterial({
+      ...blend,
+      vertexShader: RIBBON_LINES_VERTEX,
+      fragmentShader: RIBBON_LINES_FRAGMENT,
+      uniforms: this.material.uniforms,
+    });
+    const glow = new ShaderMaterial({
+      ...blend,
+      vertexShader: RIBBON_GLOW_VERTEX,
+      fragmentShader: RIBBON_GLOW_FRAGMENT,
+      uniforms: { ...this.material.uniforms, uGlowSize: { value: 46 } },
+    });
+    const floaters = new ShaderMaterial({
+      ...blend,
+      vertexShader: RIBBON_FLOATER_VERTEX,
+      fragmentShader: FRAGMENT_SHADER,
+      uniforms: this.material.uniforms,
+    });
+
+    const linesGeometry = buildRibbonLines();
+    const glowGeometry = buildGlowPoints();
+    const floaterGeometry = buildFloaters();
+
+    // Glow first, then floaters, then strands: additive blending is order-
+    // independent for colour, but keeping the halo behind in the draw list
+    // documents the intent.
+    const glowObject = new Points(glowGeometry, glow);
+    const floaterObject = new Points(floaterGeometry, floaters);
+    const lineObject = new LineSegments(linesGeometry, lines);
+    for (const object of [glowObject, floaterObject, lineObject]) {
+      object.frustumCulled = false;
+      this.scene.add(object);
+    }
+    this.ribbonObjects = [glowObject, floaterObject, lineObject];
+    this.ribbonDisposables = [
+      lines, glow, floaters, linesGeometry, glowGeometry, floaterGeometry,
+    ];
   }
 
   private pixelRatio(): number {
@@ -334,7 +476,9 @@ export class AIEntityScene {
     // Never squeezed: below 1 the wave would bunch up and lose its silhouette.
     const visibleWidth = 2 * distance * Math.tan(halfV) * aspect;
     const wanted = (visibleWidth * C.camera.framedWidth) / C.geometry.width;
-    this.points.scale.x = Math.max(1, Math.min(wanted, C.camera.maxStretch));
+    const stretch = Math.max(1, Math.min(wanted, C.camera.maxStretch));
+    this.points.scale.x = stretch;
+    for (const object of this.ribbonObjects) object.scale.x = stretch;
   }
 
   start(): void {
@@ -467,6 +611,8 @@ export class AIEntityScene {
   dispose(): void {
     this.stop();
     this.scene.remove(this.points);
+    for (const object of this.ribbonObjects) this.scene.remove(object);
+    for (const resource of this.ribbonDisposables) resource.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.renderer.dispose();

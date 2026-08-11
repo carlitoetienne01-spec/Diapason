@@ -370,3 +370,248 @@ void main() {
 }
 `;
 
+
+
+// ── The line-drawn banner ribbon ───────────────────────────────────────────
+//
+// Shared mathematics for the four banner draws (strand lines, hair curves,
+// glow sprites, floating specks). One template so the curve is computed the
+// same way everywhere: a glow sprite that disagreed with its strand about
+// where the crest is would hover beside the wave instead of on it.
+const RIBBON_CORE = /* glsl */ `
+uniform float uTime;
+uniform float uSpeed;
+uniform float uAmplitude;
+uniform float uAudioDrive;
+uniform float uLevel;
+uniform float uMid;
+uniform float uGlow;
+uniform float uIntensity;
+uniform float uPixelRatio;
+uniform float uFocus;
+uniform vec3 uTint;
+uniform float uTintFloor;
+uniform float uBands[16];
+uniform float uBandCount;
+uniform float uEqMix;
+uniform vec3 uStops[6];
+
+varying vec3 vColor;
+varying float vAlpha;
+
+const float TAU = 6.2831853;
+
+float sampleBands(float u) {
+  float count = max(uBandCount, 1.0);
+  float pos = clamp(abs(u) * (count - 1.0), 0.0, count - 1.0);
+  int i = int(floor(pos));
+  float ff = pos - float(i);
+  ff = ff * ff * (3.0 - 2.0 * ff);
+  float a = 0.0;
+  float b = 0.0;
+  for (int k = 0; k < 16; k++) {
+    if (k == i) a = uBands[k];
+    if (k == i + 1) b = uBands[k];
+  }
+  if (i + 1 >= int(count)) b = a;
+  return mix(a, b, ff);
+}
+
+vec3 spectrumAt(float t) {
+  t = clamp(t, 0.0, 1.0) * 5.0;
+  int i = int(floor(t));
+  float ff = t - float(i);
+  ff = ff * ff * (3.0 - 2.0 * ff);
+  vec3 a = uStops[0];
+  vec3 b = uStops[1];
+  for (int k = 0; k < 5; k++) {
+    if (k == i) { a = uStops[k]; b = uStops[k + 1]; }
+  }
+  return mix(a, b, ff);
+}
+
+// Gentle end fade: the wave settles to its axis and dims at the edges
+// instead of being cropped.
+float ribbonEnv(float u) {
+  return exp(-${f(C.ribbon.falloff)} * u * u) * smoothstep(1.0, 0.78, abs(u));
+}
+
+// The centreline of a bundle. 0 = main, 1 = second (phase-shifted weave),
+// 2 = hair curves, each detuned by its seed so the three cross rather than
+// stack. Voice stretches every curve vertically — bounded, because a wave
+// whose top leaves the frame reads as broken rather than loud.
+float ribbonCurve(float u, float bundle, float seed) {
+  float t = uTime * uSpeed;
+  float phase = u * ${f(C.ribbon.cycles)} * TAU - t * 0.55;
+  float bandEnergy = sampleBands(u * 0.55);
+  float centreBias = exp(-1.1 * u * u);
+  float peak = 1.0 + bandEnergy * ${f(C.ribbon.peakGain)} * centreBias * uEqMix;
+  float w;
+  if (bundle < 0.5) {
+    w = (sin(phase) * 0.72 + sin(phase * 0.47 + 1.7) * 0.42
+       + sin(phase * 2.13 - 0.6) * 0.16) * 0.48;
+  } else if (bundle < 1.5) {
+    float p2 = phase + ${f(C.ribbon.second.phase)};
+    w = (sin(p2) * 0.72 + sin(p2 * 0.47 + 1.7) * 0.42) * 0.44;
+  } else {
+    float p3 = phase * 0.62 + seed * TAU;
+    w = (sin(p3) * 0.8 + sin(p3 * 1.7 + 2.1) * 0.3) * 0.55;
+  }
+  float stretch = 1.0 + min((uLevel * 1.5 + uMid * 0.8) * uAudioDrive, 1.35);
+  return w * peak * uAmplitude * stretch * ribbonEnv(u);
+}
+`;
+
+/**
+ * The strand lines themselves. `position` carries (u, strandOffset, bundle);
+ * the real position is computed here, so the geometry never changes — only
+ * the field it is evaluated in.
+ */
+export const RIBBON_LINES_VERTEX = /* glsl */ `
+precision highp float;
+
+attribute float aSeed;
+
+${RIBBON_CORE}
+
+void main() {
+  float u = position.x;
+  float offset = position.y;
+  float bundle = position.z;
+
+  float env = ribbonEnv(u);
+  float curve = ribbonCurve(u, bundle, aSeed);
+
+  // The sheaf: strands fan out around the centreline, wider where the wave
+  // turns. Hairs carry no fan — they are single threads by definition.
+  float fan = 0.62 + 0.38 * (0.5 + 0.5 * cos(u * 1.7 + uTime * 0.19 * uSpeed));
+  float thickness = bundle < 0.5 ? 1.0 : (bundle < 1.5 ? ${f(C.ribbon.second.spread)} : 0.0);
+  float y = curve + offset * ${f(C.ribbon.spread)} * fan * thickness * 0.62;
+  float x = u * ${f(C.geometry.width * 0.5)};
+  float z = offset * 0.35 - bundle * 0.15;
+
+  vec4 mv = modelViewMatrix * vec4(x, y, z, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  float bandEnergy = sampleBands(u * 0.55);
+  vec3 col = spectrumAt(u * 0.68 + 0.5);
+  // The sheaf's luminous core: strands near the centreline run brighter,
+  // edges dim — which is how the reference reads as a lit membrane rather
+  // than a flat band of equal lines.
+  float core = 1.0 - abs(offset);
+  col = mix(col, vec3(1.0), core * core * 0.28);
+
+  // The spectrum IS the ribbon's identity. The state signal keeps its floor
+  // (thinking must still read amber) but the voice no longer bleaches the
+  // gradient toward the tint.
+  float voiceHeat = (bandEnergy * uEqMix + uLevel * 0.6) * 0.22;
+  float heat = clamp(max(uTintFloor, voiceHeat), 0.0, 1.0);
+  col = mix(col, uTint, heat * 0.85);
+
+  float hairDim = bundle > 1.5 ? 0.34 : 1.0;
+  float secondDim = (bundle > 0.5 && bundle < 1.5) ? ${f(C.ribbon.second.glow)} : 1.0;
+
+  vColor = col;
+  vAlpha = env * (0.22 + 0.5 * core) * uGlow * uIntensity * 0.46
+         * hairDim * secondDim;
+}
+`;
+
+export const RIBBON_LINES_FRAGMENT = /* glsl */ `
+precision highp float;
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  gl_FragColor = vec4(vColor * vAlpha, vAlpha);
+}
+`;
+
+/**
+ * The glow: large, very soft sprites strung along the main centreline. Their
+ * brightness follows the spectrum, so the dominant crest of the moment gets
+ * the halo — voice decides where the light is. No backdrop is drawn: glow
+ * without a rectangle is the entire point.
+ */
+export const RIBBON_GLOW_VERTEX = /* glsl */ `
+precision highp float;
+
+attribute float aSeed;
+uniform float uGlowSize;
+
+${RIBBON_CORE}
+
+void main() {
+  float u = position.x;
+  float env = ribbonEnv(u);
+  float curve = ribbonCurve(u, 0.0, 0.0);
+
+  vec4 mv = modelViewMatrix * vec4(u * ${f(C.geometry.width * 0.5)}, curve, -0.6, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  float bandEnergy = sampleBands(u * 0.55);
+  float centreBias = exp(-1.1 * u * u);
+
+  vec3 col = mix(spectrumAt(u * 0.68 + 0.5), vec3(1.0), 0.22);
+  float voiceHeat = (bandEnergy * uEqMix + uLevel * 0.6) * 0.22;
+  float heat = clamp(max(uTintFloor, voiceHeat), 0.0, 1.0);
+  col = mix(col, uTint, heat * 0.85);
+
+  vColor = col;
+  // A quiet baseline so the wave always carries some light, rising over the
+  // loudest band — that rise IS the peak halo. Sized for the SUM: dozens of
+  // these gaussians overlap at every pixel, so the unit alpha must be tiny
+  // or the halo saturates into a white sausage (it did).
+  vAlpha = env * (0.007 + bandEnergy * centreBias * 0.085 * uEqMix
+                + uLevel * 0.005) * uGlow * uIntensity;
+
+  gl_PointSize = uGlowSize * (0.65 + bandEnergy * 0.9) * uPixelRatio
+               * (7.6 / max(-mv.z, 0.1));
+}
+`;
+
+export const RIBBON_GLOW_FRAGMENT = /* glsl */ `
+precision highp float;
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+  // Gaussian, not a rimmed disc: a visible edge on a glow reads as a bubble.
+  float g = exp(-d * d * 4.2);
+  float a = g * vAlpha;
+  gl_FragColor = vec4(vColor * a, a);
+}
+`;
+
+/**
+ * The floating specks around the wave. They drift slowly and twinkle, and
+ * they are particles because that is what they are in the reference too —
+ * the one part of the old system the new ribbon keeps.
+ */
+export const RIBBON_FLOATER_VERTEX = /* glsl */ `
+precision highp float;
+
+attribute float aSeed;
+
+${RIBBON_CORE}
+
+void main() {
+  float u = position.x;
+  float baseY = position.y;
+  // A slow personal orbit per speck; nothing here ever repeats visibly.
+  float drift = sin(uTime * (0.12 + aSeed * 0.2) + aSeed * 41.0) * 0.35;
+  float y = baseY + drift;
+
+  vec4 mv = modelViewMatrix * vec4(u * ${f(C.geometry.width * 0.5)}, y, position.z, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  float twinkle = 0.5 + 0.5 * sin(uTime * (0.9 + aSeed * 1.8) + aSeed * 73.0);
+  vec3 col = mix(spectrumAt(u * 0.68 + 0.5), vec3(1.0), 0.55);
+
+  vColor = col;
+  vAlpha = (0.05 + 0.3 * twinkle * twinkle) * uIntensity
+         * smoothstep(1.25, 0.9, abs(u));
+
+  gl_PointSize = (1.4 + aSeed * 2.2) * uPixelRatio;
+}
+`;
