@@ -92,9 +92,9 @@ uniform vec3 uTint;
 // Minimum tint for the current state. Gating the colour purely on loudness
 // left "transcribing" grey, because by then nobody is speaking.
 uniform float uTintFloor;
-// Pushes the whole field down once the columns appear, so the frame's height
-// belongs to them rather than to the bed they grow from.
-uniform float uBaseY;
+// 1 lays the rows out as a vertical ribbon of strands instead of a terrain
+// spread in depth. Banner only.
+uniform float uRibbon;
 
 uniform vec3 uDeep;
 uniform vec3 uMidColor;
@@ -204,10 +204,11 @@ float fieldHeight(float u, float v, float env, float seed) {
   float voice = (uMid * 0.95 + uLevel * 0.55) * uAudioDrive;
   height += voice * env * 1.15;
   float spectrum = sampleBands(u);
-  // Once the columns exist the body becomes their bed: it keeps breathing
-  // but stops competing for height, or there is nothing left above it for
-  // a branch to grow into.
-  height = mix(height, height * (0.42 + spectrum * 0.45), uEqMix);
+  // With the columns gone the spectrum amplifies again instead of damping.
+  // The 0.42 factor was there to keep the body low enough for branches to
+  // grow out of it; left in place it would quietly SHRINK the ribbon exactly
+  // when the user speaks — the opposite of what the motion is for.
+  height = mix(height, height * (0.92 + spectrum * 0.45), uEqMix);
   return height * env;
 }
 
@@ -234,7 +235,22 @@ void main() {
   x += swirl * 0.085 * env;
   z += swirl * 0.055 * env;
 
-  vec4 mv = modelViewMatrix * vec4(x, height + uBaseY, z, 1.0);
+  // Ribbon mode. The rows stop being depth and become strands stacked in Y,
+  // each following the same curve — which is exactly what the reference's
+  // ribbons are: one wave drawn many times, slightly apart. The fan narrows
+  // and widens along the length so the bundle breathes instead of running as
+  // a constant-width band.
+  float fan = 0.45 + 0.55 * (0.5 + 0.5 * cos(u * 2.1 + uTime * 0.21 * uSpeed));
+  float ribbonY = v * ${f(C.ribbon.spread)} * fan;
+  // Voice stretches the whole bundle vertically. This is the motion asked
+  // for: not a surface swelling, a wave reaching further up and further down.
+  // Bounded: past this the ribbon simply leaves the panel, and a wave you
+  // cannot see the top of reads as broken rather than loud.
+  float stretch = 1.0 + min((uLevel * 1.5 + uMid * 0.8) * uAudioDrive, 1.35);
+  float y = mix(height, height * stretch + ribbonY, uRibbon);
+  float zPos = mix(z, v * ${f(C.ribbon.depth)}, uRibbon);
+
+  vec4 mv = modelViewMatrix * vec4(x, y, zPos, 1.0);
   gl_Position = projectionMatrix * mv;
 
   float hn = clamp(height / max(uAmplitude, 0.001) * 0.62 + 0.5, 0.0, 1.0);
@@ -316,194 +332,3 @@ void main() {
 }
 `;
 
-/**
- * The columns — "branches" growing out of the body.
- *
- * A separate draw rather than more rows in the surface lattice: these points
- * stack vertically, are gated by a per-column height, and fade upward. Trying
- * to make one lattice do both would mean a mode flag in every line of the
- * surface shader, for two things that share only their base position.
- *
- * The base is `fieldHeight` at the column's x, so a column always starts
- * exactly on the surface however the wave moves under it.
- */
-export const BARS_VERTEX_SHADER = /* glsl */ `
-precision highp float;
-
-// x: column centre in world units. y: 0..1 up the column. z: small depth
-// offset, so a column is a slab of points rather than a single file.
-attribute float aSeed;
-
-uniform float uTime;
-uniform float uAmplitude;
-uniform float uSpeed;
-uniform float uTurbulence;
-uniform float uFocus;
-uniform float uGlow;
-uniform float uShimmer;
-uniform float uBreath;
-uniform float uAudioDrive;
-uniform float uLevel;
-uniform float uMid;
-uniform float uIntensity;
-uniform float uPixelRatio;
-uniform float uSize;
-uniform float uMaxSize;
-uniform float uBarHeight;
-uniform float uBarSpan;
-uniform float uBaseY;
-
-uniform float uBands[16];
-uniform float uBandCount;
-uniform float uEqMix;
-uniform vec3 uTint;
-uniform float uTintFloor;
-uniform vec3 uDeep;
-uniform vec3 uMidColor;
-uniform vec3 uBright;
-uniform vec3 uPeak;
-uniform vec3 uStops[6];
-// 0 keeps the cyan identity (Talk panel); 1 lays the spectrum across the
-// width (dictation banner).
-uniform float uSpectrumMix;
-uniform float uSparkleChance;
-uniform float uSparkleGain;
-
-varying vec3 vColor;
-varying float vAlpha;
-
-${NOISE}
-
-const float PI = 3.141592653589793;
-
-float sampleBands(float u) {
-  float count = max(uBandCount, 1.0);
-  float pos = clamp(abs(u) * (count - 1.0), 0.0, count - 1.0);
-  int i = int(floor(pos));
-  float f = pos - float(i);
-  f = f * f * (3.0 - 2.0 * f);
-  float a = 0.0;
-  float b = 0.0;
-  for (int k = 0; k < 16; k++) {
-    if (k == i) a = uBands[k];
-    if (k == i + 1) b = uBands[k];
-  }
-  if (i + 1 >= int(count)) b = a;
-  return mix(a, b, f);
-}
-
-
-/**
- * The banner's spectrum, laid across the width.
- *
- * Six stops interpolated in linear RGB. A hue rotation would be shorter, but
- * it walks through yellows and oranges the reference never contains — the
- * stops are the picture's actual colours, so mixing between them cannot
- * invent one that does not belong.
- */
-vec3 spectrumAt(float t) {
-  t = clamp(t, 0.0, 1.0) * 5.0;
-  int i = int(floor(t));
-  float f = t - float(i);
-  f = f * f * (3.0 - 2.0 * f);
-  vec3 a = uStops[0];
-  vec3 b = uStops[1];
-  for (int k = 0; k < 5; k++) {
-    if (k == i) { a = uStops[k]; b = uStops[k + 1]; }
-  }
-  return mix(a, b, f);
-}
-
-float fieldEnvelope(float u, float v) {
-  float envX = exp(-${f(C.geometry.envelopeX)} * u * u * uFocus);
-  float envZ = exp(-${f(C.geometry.envelopeZ)} * v * v);
-  envX *= smoothstep(1.0, 0.68, abs(u));
-  envZ *= smoothstep(1.0, 0.74, abs(v));
-  return envX * envZ;
-}
-
-float fieldHeight(float u, float v, float env, float seed) {
-  float t = uTime * uSpeed;
-  float wave =
-      sin(u * ${f(C.waves.slow.freq)} * PI - t * ${f(C.waves.slow.speed)} * 6.2831853) * ${f(C.waves.slow.amp)}
-    + sin(u * ${f(C.waves.medium.freq)} * PI + v * 1.74 + t * ${f(C.waves.medium.speed)} * 6.2831853) * ${f(C.waves.medium.amp)}
-    + sin(u * ${f(C.waves.micro.freq)} * PI - v * 2.61 + t * ${f(C.waves.micro.speed)} * 6.2831853) * ${f(C.waves.micro.amp)};
-  float ridge = fbm(vec3(
-    u * ${f(C.waves.noiseFreq)} * 2.35,
-    v * ${f(C.waves.noiseFreq)} * 1.62,
-    uTime * ${f(C.waves.noiseSpeed)} * uSpeed
-  ));
-  float breath = 0.86 + 0.14 * sin(uTime * uBreath * 1.15 + seed * 0.4);
-  float height = (wave + ridge * uTurbulence * 1.3) * uAmplitude * breath;
-  float voice = (uMid * 0.95 + uLevel * 0.55) * uAudioDrive;
-  height += voice * env * 1.15;
-  float spectrum = sampleBands(u);
-  height = mix(height, height * (0.5 + spectrum * 2.2), uEqMix);
-  return height * env;
-}
-
-void main() {
-  float x = position.x * uBarSpan;
-  float climb = position.y;
-  float z = position.z;
-
-  float u = x / ${f(C.geometry.width * 0.5)};
-  float v = z / ${f(C.geometry.depth * 0.5)};
-  float env = fieldEnvelope(u, v);
-
-  // How tall this column wants to be. Squared so a quiet room gives short
-  // stubs and speech gives real reach, rather than everything hovering at a
-  // uniform mid-height.
-  float energy = sampleBands(u);
-  float reach = energy * energy * uEqMix * env;
-
-  // A point above its column's current reach is simply not drawn. Scaling the
-  // whole column instead would slide its dots, which reads as a smear; gating
-  // keeps the dot spacing fixed and lets the column grow one dot at a time,
-  // exactly like the reference.
-  float visible = step(climb, reach);
-
-  // The columns follow the body only partly, and their launch point is
-  // capped. Riding its peak exactly, a tall column starting from a high crest
-  // leaves the frame — and the reference this is modelled on has a steady
-  // baseline anyway. Partial following is what keeps them attached to the
-  // body without inheriting its swings.
-  float base = min(fieldHeight(u, v, env, aSeed) * 0.45, 0.5);
-  float y = base + uBaseY + climb * uBarHeight;
-
-  vec4 mv = modelViewMatrix * vec4(x, y, z, 1.0);
-  gl_Position = projectionMatrix * mv;
-
-  // Vertical gradient: hot at the base, cooling upward. It is what makes the
-  // height of a column readable at a glance.
-  float up = clamp(climb / max(reach, 0.001), 0.0, 1.0);
-  vec3 col = mix(uPeak, uBright, smoothstep(0.0, 0.3, up));
-  col = mix(col, uMidColor, smoothstep(0.25, 0.7, up));
-  col = mix(col, uDeep, smoothstep(0.65, 1.0, up));
-
-  float heat = clamp(max(uTintFloor, energy * uEqMix + uLevel * 0.6), 0.0, 1.0);
-  col = mix(col, uTint, heat * 0.7);
-
-  // Columns take the colour of where they stand, so a branch belongs to its
-  // part of the spectrum rather than floating above it in another hue.
-  vec3 band = spectrumAt(u * 0.68 + 0.5);
-  band = mix(band, vec3(1.0), (1.0 - up) * 0.3);
-  col = mix(col, band, uSpectrumMix);
-
-  float twinkle = 0.5 + 0.5 * sin(uTime * (1.3 + aSeed * 2.1) + aSeed * 37.0);
-  float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);
-
-  vColor = col;
-  vAlpha = visible * env * uGlow * uIntensity * depthFade * 2.2
-         * (1.0 - 0.45 * up * up)
-         * (0.82 + 0.18 * twinkle * uShimmer);
-
-  gl_PointSize = clamp(
-    uSize * (0.85 - 0.3 * up) * uPixelRatio * (7.6 / max(-mv.z, 0.1)),
-    1.0,
-    uMaxSize * uPixelRatio
-  );
-}
-`;
-
-export const BARS_FRAGMENT_SHADER = FRAGMENT_SHADER;

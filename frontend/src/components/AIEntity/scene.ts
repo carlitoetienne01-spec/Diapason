@@ -14,12 +14,7 @@ import {
 } from 'three';
 
 import { AI_ENTITY_CONFIG as C, GRID, STATE_PROFILES, calmProfile } from './config';
-import {
-  BARS_FRAGMENT_SHADER,
-  BARS_VERTEX_SHADER,
-  FRAGMENT_SHADER,
-  VERTEX_SHADER,
-} from './shaders';
+import { FRAGMENT_SHADER, VERTEX_SHADER } from './shaders';
 import { SILENT_BANDS } from './types';
 import type { AIQuality, AIState, AudioBands, StateProfile } from './types';
 
@@ -112,48 +107,6 @@ const STATE_TINTS: Record<AIState, readonly [number, number, number]> = {
 /** Scratch colour, so the render loop allocates nothing per frame. */
 const TEMP_COLOR = new Color();
 
-/**
- * The column lattice: one slab of dots per column, stacked upward.
- *
- * x is the column centre in field units (-1..1, scaled by uBarSpan in the
- * shader), y is 0..1 up the column, z spreads the slab in depth. The shader
- * gates each dot on the column's current energy, so the geometry itself never
- * changes — only which of its points are lit.
- */
-function buildBars(): BufferGeometry {
-  const columns: number = C.bars.columns;
-  const dots: number = C.bars.dots;
-  const layers: number = C.bars.layers;
-  const depth: number = C.bars.depth;
-  const count = columns * dots * layers;
-  const positions = new Float32Array(count * 3);
-  const seeds = new Float32Array(count);
-  const random = makeRandom(0x51ed270b);
-
-  let i = 0;
-  for (let c = 0; c < columns; c++) {
-    const u = columns === 1 ? 0 : (c / (columns - 1)) * 2 - 1;
-    for (let d = 0; d < dots; d++) {
-      // Cell centres, so the lowest dot sits just above the surface rather
-      // than buried in it.
-      const climb = (d + 0.5) / dots;
-      for (let l = 0; l < layers; l++) {
-        const z = layers === 1 ? 0 : ((l / (layers - 1)) * 2 - 1) * depth;
-        positions[i * 3] = u;
-        positions[i * 3 + 1] = climb;
-        positions[i * 3 + 2] = z;
-        seeds[i] = random();
-        i++;
-      }
-    }
-  }
-
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(positions, 3));
-  geometry.setAttribute('aSeed', new BufferAttribute(seeds, 1));
-  return geometry;
-}
-
 function cellSize(quality: AIQuality): number {
   return C.geometry.width / GRID[quality].cols;
 }
@@ -169,9 +122,6 @@ export class AIEntityScene {
   private readonly material: ShaderMaterial;
   private geometry: BufferGeometry;
   private points: Points;
-  private readonly barsGeometry: BufferGeometry;
-  private readonly barsMaterial: ShaderMaterial;
-  private readonly bars: Points;
 
   /** Camera height for the current framing; parallax is added on top. */
   private baseY = 0;
@@ -275,7 +225,7 @@ export class AIEntityScene {
         uSpectrumMix: { value: 0 },
         uSparkleChance: { value: C.spectrum.sparkleChance },
         uSparkleGain: { value: C.spectrum.sparkleGain },
-        uBaseY: { value: 0 },
+        uRibbon: { value: 0 },
         uDeep: { value: new Color(...C.colors.deep) },
         uMidColor: { value: new Color(...C.colors.mid) },
         uBright: { value: new Color(...C.colors.bright) },
@@ -289,31 +239,6 @@ export class AIEntityScene {
     this.points.frustumCulled = false;
     this.scene.add(this.points);
 
-    // The columns share every uniform object with the surface — the same
-    // instances, not copies — so a value pushed once drives both and the two
-    // can never disagree about the time, the spectrum or the tint.
-    this.barsGeometry = buildBars();
-    this.barsMaterial = new ShaderMaterial({
-      vertexShader: BARS_VERTEX_SHADER,
-      fragmentShader: BARS_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: CustomBlending,
-      blendEquation: AddEquation,
-      blendSrc: OneFactor,
-      blendDst: OneFactor,
-      blendSrcAlpha: OneFactor,
-      blendDstAlpha: OneFactor,
-      uniforms: {
-        ...this.material.uniforms,
-        uBarHeight: { value: C.bars.height },
-        uBarSpan: { value: C.geometry.width * 0.5 * C.bars.span },
-      },
-    });
-    this.bars = new Points(this.barsGeometry, this.barsMaterial);
-    this.bars.frustumCulled = false;
-    this.scene.add(this.bars);
   }
 
   private pixelRatio(): number {
@@ -409,9 +334,7 @@ export class AIEntityScene {
     // Never squeezed: below 1 the wave would bunch up and lose its silhouette.
     const visibleWidth = 2 * distance * Math.tan(halfV) * aspect;
     const wanted = (visibleWidth * C.camera.framedWidth) / C.geometry.width;
-    const stretch = Math.max(1, Math.min(wanted, C.camera.maxStretch));
-    this.points.scale.x = stretch;
-    this.bars.scale.x = stretch;
+    this.points.scale.x = Math.max(1, Math.min(wanted, C.camera.maxStretch));
   }
 
   start(): void {
@@ -512,12 +435,10 @@ export class AIEntityScene {
     const floor = STATE_TINT_FLOOR[this.stateName] ?? 0;
     u.uTintFloor.value += (floor - u.uTintFloor.value) * 0.06;
     // Eased with the equaliser itself, so the bed sinks as the columns rise
-    // rather than the ground dropping out from under them.
-    // The spectrum palette belongs to the banner alone; the Talk panel keeps
-    // its cyan identity and never reads these stops.
+    // The spectrum palette and the ribbon layout belong to the banner alone;
+    // the Talk panel keeps its cyan identity and its terrain.
     u.uSpectrumMix.value = this.banner ? 1 : 0;
-    const sink = this.spectrum.length ? C.bars.baseDrop : 0;
-    u.uBaseY.value += (sink - u.uBaseY.value) * 0.05;
+    u.uRibbon.value = this.banner ? 1 : 0;
   }
 
   /** Watch the rolling frame time and step quality down (or back up) rather
@@ -546,9 +467,6 @@ export class AIEntityScene {
   dispose(): void {
     this.stop();
     this.scene.remove(this.points);
-    this.scene.remove(this.bars);
-    this.barsGeometry.dispose();
-    this.barsMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.renderer.dispose();
