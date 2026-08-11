@@ -99,7 +99,7 @@ export const AI_ENTITY_CONFIG = {
     falloff: 0.55,
     /** The second, thinner ribbon: its phase offset, its share of the
      * thickness and of the light. */
-    second: { phase: 2.35, spread: 0.62, glow: 0.6 },
+    second: { phase: 1.15, spread: 0.72, glow: 0.75 },
     /** How far a loud band lifts the peak sitting over it. This is what makes
      * one crest dominate, and makes which one depend on what was said. */
     peakGain: 1.5,

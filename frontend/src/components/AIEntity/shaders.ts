@@ -261,21 +261,24 @@ void main() {
   // ribbons are: one wave drawn many times, slightly apart. The fan narrows
   // and widens along the length so the bundle breathes instead of running as
   // a constant-width band.
-  // Two bundles. The upper strands carry a phase-shifted, thinner copy that
-  // crosses the main one — the interlacing that gives the reference its depth.
+  // Two bundles. The upper half of the rows carries a phase-shifted copy
+  // that weaves through the main one — the interlacing of the reference.
   float isSecond = step(0.0, v);
-  float bundlePhase = isSecond * ${f(C.ribbon.second.phase)};
-  float bundleWave = ribbonWave;
-  if (isSecond > 0.5) {
-    float p2 = phase + bundlePhase;
-    bundleWave = (sin(p2) * 0.72 + sin(p2 * 0.47 + 1.7) * 0.42) * peak
-               * uAmplitude * 0.4;
-  }
+  // Each bundle gets a FULL sheaf, symmetric about its own curve. The first
+  // cut fed the raw row coordinate straight in, which put every strand of a
+  // bundle on one side of its curve only — two half-sheaves whose facing
+  // edges pulled apart wherever the curves diverged. Those were the black
+  // lens-shaped holes: not a spacing problem, a one-sidedness problem.
+  float vLocal = mix(v * 2.0 + 1.0, v * 2.0 - 1.0, isSecond);
+  float p2 = phase + ${f(C.ribbon.second.phase)};
+  float secondWave = (sin(p2) * 0.72 + sin(p2 * 0.47 + 1.7) * 0.42) * peak
+                   * uAmplitude * 0.44;
+  float bundleWave = mix(ribbonWave, secondWave, isSecond);
   // Opens far wider than before: the reference's sheaves flare where the
   // wave turns, and stay full rather than tapering to a thread.
   float fan = 0.62 + 0.38 * (0.5 + 0.5 * cos(u * 1.7 + uTime * 0.19 * uSpeed));
   float thickness = mix(1.0, ${f(C.ribbon.second.spread)}, isSecond);
-  float ribbonY = v * ${f(C.ribbon.spread)} * fan * thickness;
+  float ribbonY = vLocal * ${f(C.ribbon.spread)} * fan * thickness * 0.62;
   // Voice stretches the whole bundle vertically. This is the motion asked
   // for: not a surface swelling, a wave reaching further up and further down.
   // Bounded: past this the ribbon simply leaves the panel, and a wave you
