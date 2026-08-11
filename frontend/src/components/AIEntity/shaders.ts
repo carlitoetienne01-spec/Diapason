@@ -159,16 +159,18 @@ float sampleBands(float u) {
  * invent one that does not belong.
  */
 vec3 spectrumAt(float t) {
-  t = clamp(t, 0.0, 1.0) * 5.0;
-  int i = int(floor(t));
-  float f = t - float(i);
-  f = f * f * (3.0 - 2.0 * f);
+  // Same fix as the ribbon copy: at t = 1.0 the floor lands on 5, no loop
+  // iteration matches, and the right edge wears the first stop's green.
+  float tt = clamp(t, 0.0, 1.0) * 5.0;
+  int i = int(min(floor(tt), 4.0));
+  float sf = tt - float(i);
+  sf = sf * sf * (3.0 - 2.0 * sf);
   vec3 a = uStops[0];
   vec3 b = uStops[1];
   for (int k = 0; k < 5; k++) {
     if (k == i) { a = uStops[k]; b = uStops[k + 1]; }
   }
-  return mix(a, b, f);
+  return mix(a, b, sf);
 }
 
 float fieldEnvelope(float u, float v) {
@@ -418,9 +420,13 @@ float sampleBands(float u) {
 }
 
 vec3 spectrumAt(float t) {
-  t = clamp(t, 0.0, 1.0) * 5.0;
-  int i = int(floor(t));
-  float ff = t - float(i);
+  // min() on the index, not just clamp() on t: at t = 1.0 exactly the floor
+  // lands on 5, no loop iteration matches, and a/b keep their DEFAULTS — the
+  // first stop. The right edge then wears the left edge's green, as a hard
+  // band after the magenta. Seen on screen, at the ribbon's right end.
+  float tt = clamp(t, 0.0, 1.0) * 5.0;
+  int i = int(min(floor(tt), 4.0));
+  float ff = tt - float(i);
   ff = ff * ff * (3.0 - 2.0 * ff);
   vec3 a = uStops[0];
   vec3 b = uStops[1];
@@ -499,7 +505,7 @@ void main() {
   // edges dim — which is how the reference reads as a lit membrane rather
   // than a flat band of equal lines.
   float core = 1.0 - abs(offset);
-  col = mix(col, vec3(1.0), core * core * 0.28);
+  col = mix(col, vec3(1.0), core * core * 0.38);
 
   // The spectrum IS the ribbon's identity. The state signal keeps its floor
   // (thinking must still read amber) but the voice no longer bleaches the
@@ -512,7 +518,7 @@ void main() {
   float secondDim = (bundle > 0.5 && bundle < 1.5) ? ${f(C.ribbon.second.glow)} : 1.0;
 
   vColor = col;
-  vAlpha = env * (0.22 + 0.5 * core) * uGlow * uIntensity * 0.46
+  vAlpha = env * (0.22 + 0.5 * core) * uGlow * uIntensity * 0.72
          * hairDim * secondDim;
 }
 `;
@@ -561,8 +567,8 @@ void main() {
   // loudest band — that rise IS the peak halo. Sized for the SUM: dozens of
   // these gaussians overlap at every pixel, so the unit alpha must be tiny
   // or the halo saturates into a white sausage (it did).
-  vAlpha = env * (0.007 + bandEnergy * centreBias * 0.085 * uEqMix
-                + uLevel * 0.005) * uGlow * uIntensity;
+  vAlpha = env * (0.011 + bandEnergy * centreBias * 0.11 * uEqMix
+                + uLevel * 0.007) * uGlow * uIntensity;
 
   gl_PointSize = uGlowSize * (0.65 + bandEnergy * 0.9) * uPixelRatio
                * (7.6 / max(-mv.z, 0.1));
