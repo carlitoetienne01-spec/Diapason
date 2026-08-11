@@ -51,6 +51,33 @@ export const AI_ENTITY_CONFIG = {
     drift: 0.075,
   },
 
+  /** Framing for the dictation banner, which is a different shot entirely:
+   * a low bed with room above it for the columns. Kept separate so the Talk
+   * panel, which has no columns, is not dragged along with it. */
+  banner: {
+    elevationDeg: 11.0,
+    lookAtY: 0.35,
+  },
+
+  /** The columns that grow out of the body when the voice arrives. */
+  bars: {
+    /** Thin and numerous reads as a data field; a dozen wide ones read as a
+     * cheap meter. */
+    columns: 41,
+    /** Dots stacked per column, and slabs of them in depth so a column has
+     * body rather than being a single file of points. */
+    dots: 48,
+    layers: 4,
+    /** Fraction of the field's width the columns occupy. Slightly inside the
+     * body, so they rise out of it rather than off its edges. */
+    span: 0.86,
+    /** World height of a full-scale column. */
+    height: 3.05,
+    /** How far the body sinks once the columns are live. */
+    baseDrop: -1.35,
+    depth: 0.55,
+  },
+
   points: {
     /** Multiplied by the perspective term; the real pixel size also depends on
      * the envelope and on the device pixel ratio. */

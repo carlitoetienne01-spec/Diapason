@@ -57,8 +57,12 @@ FPS = 30.0
 # The entity is a wide field: shown in a 132-point capsule one would see a
 # sliver of it and nothing of the wave. As a banner it gets the silhouette it
 # was designed around.
-BANNER_HEIGHT = 190.0
+BANNER_HEIGHT = 210.0
 BANNER_MARGIN = 78.0
+# Half the screen, centred. Full width read as taking over the bottom of the
+# display, and columns need height relative to their width to look like an
+# equaliser rather than a stripe.
+BANNER_WIDTH_FRACTION = 0.5
 # Bridge calls are cheaper than a frame but not free, and the page smooths and
 # redraws on its own clock — so the level is pushed at a third of the frame
 # rate rather than on every tick.
@@ -311,7 +315,7 @@ class DictationOverlay:
         screen = NSScreen.mainScreen()
         frame = screen.frame()
         if self._web:
-            width = frame.size.width
+            width = frame.size.width * BANNER_WIDTH_FRACTION
         x = frame.origin.x + (frame.size.width - width) / 2.0
         y = frame.origin.y + margin
 

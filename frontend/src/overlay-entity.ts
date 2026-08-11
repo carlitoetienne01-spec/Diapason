@@ -44,7 +44,12 @@ const reducedMotion =
 
 // The panel is a wide, short banner, so the point budget buys detail across
 // the width rather than depth the geometry cannot show at this height.
-const scene = new AIEntityScene({ canvas, quality: 'high', reducedMotion });
+const scene = new AIEntityScene({
+  canvas,
+  quality: 'high',
+  reducedMotion,
+  framing: 'banner',
+});
 
 const resize = () => scene.resize(window.innerWidth, window.innerHeight);
 window.addEventListener('resize', resize);

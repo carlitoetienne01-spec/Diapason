@@ -92,6 +92,9 @@ uniform vec3 uTint;
 // Minimum tint for the current state. Gating the colour purely on loudness
 // left "transcribing" grey, because by then nobody is speaking.
 uniform float uTintFloor;
+// Pushes the whole field down once the columns appear, so the frame's height
+// belongs to them rather than to the bed they grow from.
+uniform float uBaseY;
 
 uniform vec3 uDeep;
 uniform vec3 uMidColor;
@@ -132,64 +135,66 @@ float sampleBands(float u) {
   return mix(a, b, f);
 }
 
-void main() {
-  float u = position.x / ${f(C.geometry.width * 0.5)};
-  float v = position.z / ${f(C.geometry.depth * 0.5)};
-
-  // Gaussian envelope: dense and tall at the centre, thinning to nothing at
-  // the ends. This is what dissolves the edges instead of cropping them, and
-  // uFocus is how "listening" pulls the field in on itself.
+/**
+ * Gaussian envelope, forced to zero at the lattice boundary.
+ *
+ * A Gaussian never actually reaches zero, so however the frame is cropped the
+ * last column still carries visible points and the field ends on a hard
+ * vertical edge. The smoothsteps are what make the ends dissolve rather than
+ * stop. uFocus is how "listening" pulls the field in on itself.
+ */
+float fieldEnvelope(float u, float v) {
   float envX = exp(-${f(C.geometry.envelopeX)} * u * u * uFocus);
   float envZ = exp(-${f(C.geometry.envelopeZ)} * v * v);
-  // A Gaussian never actually reaches zero, so however the frame is cropped
-  // the last column still carries visible points and the field ends on a hard
-  // vertical edge. These force it to nothing at the lattice boundary, which is
-  // what makes the ends dissolve rather than stop.
   envX *= smoothstep(1.0, 0.68, abs(u));
   envZ *= smoothstep(1.0, 0.74, abs(v));
-  float env = envX * envZ;
+  return envX * envZ;
+}
 
+/**
+ * Height of the surface at a point, before the spectrum touches it.
+ *
+ * Shared rather than duplicated because the columns must start exactly on the
+ * surface: computed twice, the two would drift apart the moment either is
+ * tuned, and the bars would float above the body or sink into it.
+ */
+float fieldHeight(float u, float v, float env, float seed) {
   float t = uTime * uSpeed;
-
-  // Three superposed travelling waves. One alone reads as a machine sweeping
-  // a sine; three at unrelated periods never visibly repeat.
   float wave =
       sin(u * ${f(C.waves.slow.freq)} * PI - t * ${f(C.waves.slow.speed)} * 6.2831853) * ${f(C.waves.slow.amp)}
     + sin(u * ${f(C.waves.medium.freq)} * PI + v * 1.74 + t * ${f(C.waves.medium.speed)} * 6.2831853) * ${f(C.waves.medium.amp)}
     + sin(u * ${f(C.waves.micro.freq)} * PI - v * 2.61 + t * ${f(C.waves.micro.speed)} * 6.2831853) * ${f(C.waves.micro.amp)};
 
-  // Ridges and valleys. Time is the third noise axis, so the terrain is not
-  // scrolled past the camera — it evolves in place, which is what sells a
-  // 3D slice of something with more dimensions than we can draw.
   float ridge = fbm(vec3(
     u * ${f(C.waves.noiseFreq)} * 2.35,
     v * ${f(C.waves.noiseFreq)} * 1.62,
     uTime * ${f(C.waves.noiseSpeed)} * uSpeed
   ));
 
-  // Slow global breathing so the field is never metronomic.
-  float breath = 0.86 + 0.14 * sin(uTime * uBreath * 1.15 + aSeed * 0.4);
-
+  float breath = 0.86 + 0.14 * sin(uTime * uBreath * 1.15 + seed * 0.4);
   float height = (wave + ridge * uTurbulence * 1.3) * uAmplitude * breath;
-
-  // Voice drives the topography rather than a bar chart: mids swell the
-  // main wave, overall level lifts the whole field, bass deepens it.
   float voice = (uMid * 0.95 + uLevel * 0.55) * uAudioDrive;
   height += voice * env * 1.15;
-
-  // The spectrum MODULATES the field instead of replacing it. Driving the
-  // silhouette directly makes the shape follow wherever speech energy happens
-  // to sit — a lopsided lump, or a W when it straddles the centre. Multiplying
-  // keeps the wide, centred form and lets the voice make it swell and ripple,
-  // which is both calmer and easier to read.
   float spectrum = sampleBands(u);
-  height = mix(height, height * (0.5 + spectrum * 2.2), uEqMix);
-  height *= env;
+  // Once the columns exist the body becomes their bed: it keeps breathing
+  // but stops competing for height, or there is nothing left above it for
+  // a branch to grow into.
+  height = mix(height, height * (0.42 + spectrum * 0.45), uEqMix);
+  return height * env;
+}
+
+void main() {
+  float u = position.x / ${f(C.geometry.width * 0.5)};
+  float v = position.z / ${f(C.geometry.depth * 0.5)};
+
+  float env = fieldEnvelope(u, v);
+  float height = fieldHeight(u, v, env, aSeed);
+  float spectrum = sampleBands(u);
 
   float x = u * ${f(C.geometry.width * 0.5)};
   float z = v * ${f(C.geometry.depth * 0.5)} * (1.0 + uBass * 0.42 * uAudioDrive);
 
-  // Sub-cell jitter: enough to kill the moiré a perfect lattice produces at
+  // Sub-cell jitter: enough to kill the moire a perfect lattice produces at
   // this density, small enough that the mesh structure still reads.
   float j1 = hash33(vec3(aSeed * 71.3, 11.7, 3.1)).x;
   float j2 = hash33(vec3(aSeed * 43.9, 27.3, 9.4)).y;
@@ -201,13 +206,10 @@ void main() {
   x += swirl * 0.085 * env;
   z += swirl * 0.055 * env;
 
-  vec4 mv = modelViewMatrix * vec4(x, height, z, 1.0);
+  vec4 mv = modelViewMatrix * vec4(x, height + uBaseY, z, 1.0);
   gl_Position = projectionMatrix * mv;
 
-  // Normalised height, for colour and brightness.
   float hn = clamp(height / max(uAmplitude, 0.001) * 0.62 + 0.5, 0.0, 1.0);
-
-  // Deterministic twinkle: a slow per-point phase, lit further by treble.
   float twinkle = 0.5 + 0.5 * sin(uTime * (1.1 + aSeed * 2.3) + aSeed * 43.0);
   float spark = twinkle * uShimmer * (0.32 + uHigh * 0.68);
 
@@ -220,14 +222,13 @@ void main() {
   float heat = clamp(max(uTintFloor, spectrum * uEqMix + uLevel * 0.6), 0.0, 1.0);
   col = mix(col, uTint, heat * 0.85);
 
-  // Depth cue: points further from the camera recede, both in size and light.
+  // Depth cue: points further from the camera recede, in size and in light.
   float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);
 
   vColor = col;
   // Only a gentle bias toward the crests. The bright ridge lines are not
   // painted on: where the sheet folds toward the camera many points land on
-  // the same pixels and additive blending accumulates them. Forcing contrast
-  // here as well only drowns the troughs and flattens the whole field.
+  // the same pixels and additive blending accumulates them.
   vAlpha = env * (0.3 + 0.7 * hn) * uGlow * uIntensity * depthFade
          * (0.72 + 0.28 * twinkle);
 
@@ -268,3 +269,161 @@ void main() {
   gl_FragColor = vec4(vColor * alpha, alpha);
 }
 `;
+
+/**
+ * The columns — "branches" growing out of the body.
+ *
+ * A separate draw rather than more rows in the surface lattice: these points
+ * stack vertically, are gated by a per-column height, and fade upward. Trying
+ * to make one lattice do both would mean a mode flag in every line of the
+ * surface shader, for two things that share only their base position.
+ *
+ * The base is `fieldHeight` at the column's x, so a column always starts
+ * exactly on the surface however the wave moves under it.
+ */
+export const BARS_VERTEX_SHADER = /* glsl */ `
+precision highp float;
+
+// x: column centre in world units. y: 0..1 up the column. z: small depth
+// offset, so a column is a slab of points rather than a single file.
+attribute float aSeed;
+
+uniform float uTime;
+uniform float uAmplitude;
+uniform float uSpeed;
+uniform float uTurbulence;
+uniform float uFocus;
+uniform float uGlow;
+uniform float uShimmer;
+uniform float uBreath;
+uniform float uAudioDrive;
+uniform float uLevel;
+uniform float uMid;
+uniform float uIntensity;
+uniform float uPixelRatio;
+uniform float uSize;
+uniform float uMaxSize;
+uniform float uBarHeight;
+uniform float uBarSpan;
+uniform float uBaseY;
+
+uniform float uBands[16];
+uniform float uBandCount;
+uniform float uEqMix;
+uniform vec3 uTint;
+uniform float uTintFloor;
+uniform vec3 uDeep;
+uniform vec3 uMidColor;
+uniform vec3 uBright;
+uniform vec3 uPeak;
+
+varying vec3 vColor;
+varying float vAlpha;
+
+${NOISE}
+
+const float PI = 3.141592653589793;
+
+float sampleBands(float u) {
+  float count = max(uBandCount, 1.0);
+  float pos = clamp(abs(u) * (count - 1.0), 0.0, count - 1.0);
+  int i = int(floor(pos));
+  float f = pos - float(i);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = 0.0;
+  float b = 0.0;
+  for (int k = 0; k < 16; k++) {
+    if (k == i) a = uBands[k];
+    if (k == i + 1) b = uBands[k];
+  }
+  if (i + 1 >= int(count)) b = a;
+  return mix(a, b, f);
+}
+
+float fieldEnvelope(float u, float v) {
+  float envX = exp(-${f(C.geometry.envelopeX)} * u * u * uFocus);
+  float envZ = exp(-${f(C.geometry.envelopeZ)} * v * v);
+  envX *= smoothstep(1.0, 0.68, abs(u));
+  envZ *= smoothstep(1.0, 0.74, abs(v));
+  return envX * envZ;
+}
+
+float fieldHeight(float u, float v, float env, float seed) {
+  float t = uTime * uSpeed;
+  float wave =
+      sin(u * ${f(C.waves.slow.freq)} * PI - t * ${f(C.waves.slow.speed)} * 6.2831853) * ${f(C.waves.slow.amp)}
+    + sin(u * ${f(C.waves.medium.freq)} * PI + v * 1.74 + t * ${f(C.waves.medium.speed)} * 6.2831853) * ${f(C.waves.medium.amp)}
+    + sin(u * ${f(C.waves.micro.freq)} * PI - v * 2.61 + t * ${f(C.waves.micro.speed)} * 6.2831853) * ${f(C.waves.micro.amp)};
+  float ridge = fbm(vec3(
+    u * ${f(C.waves.noiseFreq)} * 2.35,
+    v * ${f(C.waves.noiseFreq)} * 1.62,
+    uTime * ${f(C.waves.noiseSpeed)} * uSpeed
+  ));
+  float breath = 0.86 + 0.14 * sin(uTime * uBreath * 1.15 + seed * 0.4);
+  float height = (wave + ridge * uTurbulence * 1.3) * uAmplitude * breath;
+  float voice = (uMid * 0.95 + uLevel * 0.55) * uAudioDrive;
+  height += voice * env * 1.15;
+  float spectrum = sampleBands(u);
+  height = mix(height, height * (0.5 + spectrum * 2.2), uEqMix);
+  return height * env;
+}
+
+void main() {
+  float x = position.x * uBarSpan;
+  float climb = position.y;
+  float z = position.z;
+
+  float u = x / ${f(C.geometry.width * 0.5)};
+  float v = z / ${f(C.geometry.depth * 0.5)};
+  float env = fieldEnvelope(u, v);
+
+  // How tall this column wants to be. Squared so a quiet room gives short
+  // stubs and speech gives real reach, rather than everything hovering at a
+  // uniform mid-height.
+  float energy = sampleBands(u);
+  float reach = energy * energy * uEqMix * env;
+
+  // A point above its column's current reach is simply not drawn. Scaling the
+  // whole column instead would slide its dots, which reads as a smear; gating
+  // keeps the dot spacing fixed and lets the column grow one dot at a time,
+  // exactly like the reference.
+  float visible = step(climb, reach);
+
+  // The columns follow the body only partly, and their launch point is
+  // capped. Riding its peak exactly, a tall column starting from a high crest
+  // leaves the frame — and the reference this is modelled on has a steady
+  // baseline anyway. Partial following is what keeps them attached to the
+  // body without inheriting its swings.
+  float base = min(fieldHeight(u, v, env, aSeed) * 0.45, 0.5);
+  float y = base + uBaseY + climb * uBarHeight;
+
+  vec4 mv = modelViewMatrix * vec4(x, y, z, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  // Vertical gradient: hot at the base, cooling upward. It is what makes the
+  // height of a column readable at a glance.
+  float up = clamp(climb / max(reach, 0.001), 0.0, 1.0);
+  vec3 col = mix(uPeak, uBright, smoothstep(0.0, 0.3, up));
+  col = mix(col, uMidColor, smoothstep(0.25, 0.7, up));
+  col = mix(col, uDeep, smoothstep(0.65, 1.0, up));
+
+  float heat = clamp(max(uTintFloor, energy * uEqMix + uLevel * 0.6), 0.0, 1.0);
+  col = mix(col, uTint, heat * 0.7);
+
+  float twinkle = 0.5 + 0.5 * sin(uTime * (1.3 + aSeed * 2.1) + aSeed * 37.0);
+  float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);
+
+  vColor = col;
+  vAlpha = visible * env * uGlow * uIntensity * depthFade * 2.2
+         * (1.0 - 0.45 * up * up)
+         * (0.82 + 0.18 * twinkle * uShimmer);
+
+  gl_PointSize = clamp(
+    uSize * (0.85 - 0.3 * up) * uPixelRatio * (7.6 / max(-mv.z, 0.1)),
+    1.0,
+    uMaxSize * uPixelRatio
+  );
+}
+`;
+
+export const BARS_FRAGMENT_SHADER = FRAGMENT_SHADER;
