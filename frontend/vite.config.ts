@@ -58,6 +58,9 @@ export default defineConfig({
           markdown: ['react-markdown', 'rehype-highlight', 'remark-gfm'],
           charts: ['recharts'],
           router: ['react-router'],
+          // Three is only ever needed once the voice panel opens; keeping it
+          // out of the entry chunk means the app still starts on one request.
+          three: ['three'],
         },
       },
     },

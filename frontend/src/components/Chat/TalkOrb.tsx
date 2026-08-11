@@ -1,5 +1,32 @@
-import { AudioLines, X } from 'lucide-react';
+import { Suspense, lazy } from 'react';
+import { X } from 'lucide-react';
+import type { AIState } from '../AIEntity/types';
+
+// Three.js is half a megabyte and is needed only once this panel opens, so it
+// is fetched then rather than on every cold start of the app.
+const AIEntity = lazy(() =>
+  import('../AIEntity/AIEntity').then((m) => ({ default: m.AIEntity })),
+);
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
+
+/**
+ * The session has five states; the entity has four. `connecting` is the one
+ * moment the assistant is working without hearing or answering, which is
+ * exactly what "thinking" depicts, and an error should stop the field acting
+ * as though a conversation were still running.
+ */
+function entityState(state: VoiceLiveState): AIState {
+  switch (state) {
+    case 'listening':
+      return 'listening';
+    case 'speaking':
+      return 'speaking';
+    case 'connecting':
+      return 'thinking';
+    default:
+      return 'idle';
+  }
+}
 
 interface TalkOrbProps {
   open: boolean;
@@ -10,6 +37,9 @@ interface TalkOrbProps {
   transcripts: TranscriptLine[];
   toolEvents?: ToolEventLine[];
   screenSharing?: boolean;
+  /** The assistant's own voice, so SPEAKING is driven by what is actually
+   * heard rather than by a timer. Optional: the entity is fully alive without it. */
+  audioSource?: AudioNode | null;
   onProviderChange: (p: VoiceLiveProvider) => void;
   onStart: () => void;
   onStop: () => void;
@@ -26,6 +56,7 @@ export function TalkOrb({
   transcripts,
   toolEvents = [],
   screenSharing = false,
+  audioSource = null,
   onProviderChange,
   onStart,
   onStop,
@@ -35,13 +66,6 @@ export function TalkOrb({
   if (!open) return null;
 
   const active = state === 'listening' || state === 'speaking' || state === 'connecting';
-  const pulse =
-    state === 'speaking'
-      ? 'scale-110 opacity-100'
-      : state === 'listening'
-        ? 'scale-100 opacity-90'
-        : 'scale-95 opacity-70';
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -94,17 +118,26 @@ export function TalkOrb({
               if (active) onInterrupt();
               else void onStart();
             }}
-            className={`relative h-44 w-44 rounded-full transition-transform duration-300 cursor-pointer ${pulse}`}
+            className="relative w-full cursor-pointer"
             style={{
-              background:
-                'radial-gradient(circle at 35% 30%, #e8eaf2 0%, #8b92a8 45%, #3a3f52 100%)',
-              boxShadow: state === 'speaking' ? '0 0 48px rgba(180,190,220,0.35)' : 'none',
+              height: 200,
+              background: 'none',
+              border: 'none',
+              padding: 0,
             }}
             title={active ? 'Click or Space to interrupt' : 'Start talking'}
           >
-            <span className="absolute inset-0 flex items-center justify-center">
-              <AudioLines size={36} style={{ color: '#1a1c24', opacity: 0.55 }} />
-            </span>
+            {/* No fallback: an empty box for a few hundred milliseconds reads
+                as loading, a placeholder shape reads as a glitch. */}
+            <Suspense fallback={null}>
+              <AIEntity
+                state={entityState(state)}
+                // Dimmer when there is nothing to say: present, not performing.
+                intensity={active ? 1 : 0.62}
+                audioSource={audioSource}
+                style={{ position: 'absolute', inset: 0 }}
+              />
+            </Suspense>
           </button>
 
           <p className="mt-5 text-lg font-medium" style={{ color: 'var(--color-text)' }}>

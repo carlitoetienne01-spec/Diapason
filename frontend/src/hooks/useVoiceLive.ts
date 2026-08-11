@@ -62,6 +62,9 @@ export function useVoiceLive() {
   const wsRef = useRef<WebSocket | null>(null);
   const captureCtxRef = useRef<AudioContext | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
+  // The assistant's own voice, exposed so the UI can visualise it.
+  const outputNodeRef = useRef<GainNode | null>(null);
+  const [outputNode, setOutputNode] = useState<GainNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef(0);
@@ -81,6 +84,8 @@ export function useVoiceLive() {
   const stopPlayback = useCallback(() => {
     speakingRef.current = false;
     nextPlayTimeRef.current = 0;
+    outputNodeRef.current = null;
+    setOutputNode(null);
     const ctx = playbackCtxRef.current;
     if (ctx) {
       playbackCtxRef.current = null;
@@ -97,6 +102,13 @@ export function useVoiceLive() {
       ctx = new AudioContext({ sampleRate });
       playbackCtxRef.current = ctx;
       nextPlayTimeRef.current = ctx.currentTime;
+      // Everything is played through one node so the visualiser has a single
+      // place to listen. Tapping each buffer source instead would miss the
+      // gaps between them, and the field would stutter between syllables.
+      const output = ctx.createGain();
+      output.connect(ctx.destination);
+      outputNodeRef.current = output;
+      setOutputNode(output);
     }
 
     const float = new Float32Array(samples.length);
@@ -107,7 +119,7 @@ export function useVoiceLive() {
     buffer.copyToChannel(float, 0);
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(ctx.destination);
+    src.connect(outputNodeRef.current ?? ctx.destination);
     const startAt = Math.max(ctx.currentTime, nextPlayTimeRef.current);
     src.start(startAt);
     nextPlayTimeRef.current = startAt + buffer.duration;
@@ -312,6 +324,7 @@ export function useVoiceLive() {
     transcripts,
     toolEvents,
     statusLabel,
+    outputNode,
     start,
     stop,
     interrupt,
