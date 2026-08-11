@@ -68,9 +68,16 @@ class DictationService:
         history: bool = True,
         model_name: str = "",
         on_transcript: Callable[[str], None] | None = None,
+        on_action: Callable[[Action], None] | None = None,
     ) -> None:
         # Observer for anything that wants the delivered text (menu bar, UI).
         self._on_transcript = on_transcript
+        # Fires the instant an action is dispatched, BEFORE any device work.
+        # Opening the input stream costs tens of milliseconds, so feedback
+        # driven by on_status (which reports after the fact) would lag the
+        # keypress by exactly the interval the user is trying to confirm.
+        # Anything hooked here must return immediately.
+        self._on_action = on_action
         self._history = history
         self._model_name = model_name
         self._transcribe = transcribe
@@ -112,6 +119,11 @@ class DictationService:
         callback thread, where an uncaught exception would only reach a
         logger nobody is watching.
         """
+        if self._on_action is not None:
+            try:
+                self._on_action(action)
+            except Exception:  # noqa: BLE001 - feedback must not break audio
+                logger.debug("action observer raised", exc_info=True)
         try:
             if action in (Action.START, Action.START_HANDS_FREE):
                 self._capture = self._capture_factory()

@@ -20,6 +20,15 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _isolate_cue_cache(tmp_path, monkeypatch):
+    """Same rule for the generated cue WAVs: nothing lands under ~/.diapason."""
+    from diapason.desktop import audio_cues
+
+    monkeypatch.setattr(audio_cues, "cache_dir", lambda: tmp_path / "cues")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_dictation_history(tmp_path, monkeypatch):
     from diapason.desktop import dictation_history
 

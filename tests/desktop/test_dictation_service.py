@@ -294,3 +294,71 @@ def test_history_can_be_turned_off(tmp_path, monkeypatch):
 
     assert pasted == ["bonjour le monde"]
     assert dictation_history.load_history(hist) == []
+
+
+# ── immediate feedback hook ──────────────────────────────────────────────────
+
+
+def test_on_action_fires_before_the_microphone_is_opened():
+    """The whole point of the hook.
+
+    Feedback driven by on_status would report *after* the input stream is
+    open — tens of milliseconds late, on precisely the event the user is
+    trying to confirm. The blip has to lead the device work, not trail it.
+    """
+    order = []
+
+    class _SlowCapture(_FakeCapture):
+        def start(self, **kw):
+            order.append("capture.start")
+            super().start(**kw)
+
+    svc = DictationService(
+        transcribe=lambda _wav: "x",
+        paste=lambda _t: None,
+        capture_factory=lambda: _SlowCapture(np.ones(16_000, dtype="float32")),
+        clock=lambda: 0.0,
+        on_action=lambda action: order.append(f"action:{action.value}"),
+        on_status=lambda msg: order.append("status"),
+        history=False,
+    )
+    svc.on_down()
+
+    assert order[0].startswith("action:"), order
+    assert order.index("capture.start") > 0
+
+
+def test_on_action_sees_every_action_including_cancel():
+    from diapason.desktop.ptt import Action
+
+    seen = []
+    svc = DictationService(
+        transcribe=lambda _wav: "x",
+        paste=lambda _t: None,
+        capture_factory=lambda: _FakeCapture(np.ones(16_000, dtype="float32")),
+        clock=lambda: 0.0,
+        on_action=seen.append,
+        history=False,
+    )
+    svc.on_down()
+    svc.cancel()
+
+    assert Action.START in seen
+    assert Action.CANCEL in seen
+
+
+def test_a_raising_feedback_hook_never_breaks_dictation():
+    """It runs on the key-tap thread: an exception there is a dead hotkey."""
+    pasted = []
+    svc = DictationService(
+        transcribe=lambda _wav: "bonjour",
+        paste=pasted.append,
+        capture_factory=lambda: _FakeCapture(np.ones(16_000, dtype="float32")),
+        clock=lambda: 0.0,
+        on_action=lambda _a: (_ for _ in ()).throw(RuntimeError("no sound card")),
+        history=False,
+    )
+    svc.on_down()
+    svc.on_up()
+
+    assert pasted == ["bonjour"]

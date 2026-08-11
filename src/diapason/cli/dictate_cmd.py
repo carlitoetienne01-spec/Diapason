@@ -59,8 +59,26 @@ def _quiet_library_noise() -> None:
     show_default=True,
     help="Show a status icon in the menu bar (needs a GUI session).",
 )
+@click.option(
+    "--sound/--no-sound",
+    default=True,
+    show_default=True,
+    help="Play a short blip when recording starts and stops.",
+)
+@click.option(
+    "--overlay/--no-overlay",
+    default=True,
+    show_default=True,
+    help="Show the floating level indicator while dictating.",
+)
 def dictate(
-    hotkey: str, check: bool, mic_test: bool, setup: bool, menu_bar: bool
+    hotkey: str,
+    check: bool,
+    mic_test: bool,
+    setup: bool,
+    menu_bar: bool,
+    sound: bool,
+    overlay: bool,
 ) -> None:
     """Start global push-to-talk dictation."""
     from diapason.core.config import load_config
@@ -126,8 +144,49 @@ def dictate(
 
         bar = DictationMenuBar(hotkey=key)
 
+    # Immediate feedback: a blip the moment the key is seen, and a floating
+    # level meter while the mic is open. Both are best-effort — a machine with
+    # no sound card or no window server still dictates.
+    from diapason.desktop.audio_cues import CuePlayer
+    from diapason.desktop.overlay import DictationOverlay
+    from diapason.desktop.ptt import Action
+
+    cues = CuePlayer(enabled=sound)
+    cues.prime()
+    indicator = DictationOverlay() if overlay else None
+
+    _CUE = {
+        Action.START: "start",
+        Action.START_HANDS_FREE: "start",
+        Action.STOP_AND_TRANSCRIBE: "stop",
+        Action.STOP_HANDS_FREE_AND_TRANSCRIBE: "stop",
+        Action.CANCEL: "cancel",
+    }
+
+    def _on_action(action: Action) -> None:
+        name = _CUE.get(action)
+        if name is not None:
+            cues.play(name)
+        if indicator is not None:
+            if action in (Action.START, Action.START_HANDS_FREE):
+                indicator.set_state("recording")
+            elif action is Action.CANCEL:
+                indicator.set_state("idle")
+
+    def _capture_factory():
+        from diapason.desktop.mic_capture import MicCapture
+
+        if indicator is None:
+            return MicCapture()
+        # The meter is fed straight from the audio callback, so the bars move
+        # with the real signal: a flat indicator means a silent microphone,
+        # which is the diagnosis the user actually needs.
+        return MicCapture(level_cb=indicator.set_level)
+
     def _status(msg: str) -> None:
         click.echo(f"  [{msg}]")
+        if indicator is not None:
+            indicator.on_status(msg)
         if bar is not None:
             # Map the human status line onto the icon's coarse states.
             state = (
@@ -148,6 +207,8 @@ def dictate(
         # Every stage reports to the terminal. Without this, a muted mic, a
         # silent buffer and a failed paste all look the same: "nothing".
         on_status=_status,
+        on_action=_on_action,
+        capture_factory=_capture_factory,
         model_name=str(getattr(config.speech, "model", "") or ""),
         on_transcript=(bar.set_last_text if bar is not None else None),
     )
@@ -163,6 +224,20 @@ def dictate(
         "release. Double-tap for hands-free. Ctrl-C to quit."
     )
 
+    # The overlay draws from the main thread's run loop, so it has to be built
+    # before whichever loop below takes that thread over. If there is no
+    # window server (ssh, CI) start() returns False and dictation carries on
+    # blind but working.
+    showing_overlay = indicator is not None and indicator.start()
+    if indicator is not None and not showing_overlay:
+        # Worth saying out loud: under the LaunchAgent this line is the only
+        # way to tell "the indicator is off" from "the indicator is broken".
+        click.echo(
+            "No window server available; running without the visual "
+            "indicator (dictation itself is unaffected).",
+            err=True,
+        )
+
     if bar is not None:
         # rumps owns the main thread once started, so the blocking wait below
         # is replaced by its run loop. Quitting the menu stops the service.
@@ -175,6 +250,13 @@ def dictate(
             click.echo("Dictation stopped.")
             return
 
+    if showing_overlay and _run_appkit_loop():
+        service.stop()
+        if indicator is not None:
+            indicator.stop()
+        click.echo("Dictation stopped.")
+        return
+
     # Block the main thread until interrupted; the tap runs on its own run
     # loop thread. threading.Event().wait() is interruptible by Ctrl-C.
     import threading
@@ -186,6 +268,76 @@ def dictate(
     finally:
         service.stop()
         click.echo("Dictation stopped.")
+
+
+def _run_appkit_loop() -> bool:
+    """Service the main-thread event loop so the overlay can draw.
+
+    Returns False when AppKit is unavailable, leaving the caller to fall back
+    to a plain blocking wait.
+
+    Ctrl-C takes two tricks, both learned the hard way — without them the
+    documented "Ctrl-C to quit" simply does nothing:
+
+    1. SIGINT arrives while the main thread is inside Objective-C, and Python
+       defers the handler until it next executes bytecode. So a polling timer
+       runs on this loop; its callback is the bytecode that lets the deferred
+       handler fire.
+    2. ``NSApplication.stop_`` is only honoured while an *NSEvent* is being
+       dispatched, and a timer is not an event — calling it alone leaves the
+       loop spinning until the user happens to move the mouse. Posting a
+       no-op event makes it unwind immediately.
+    """
+    import signal
+
+    try:
+        from AppKit import (  # type: ignore
+            NSApplication,
+            NSApplicationActivationPolicyAccessory,
+            NSEvent,
+        )
+        from Foundation import NSTimer  # type: ignore
+    except Exception:  # noqa: BLE001 - headless: caller waits instead
+        return False
+
+    try:
+        from AppKit import NSEventTypeApplicationDefined as _APP_EVENT  # type: ignore
+    except ImportError:  # pragma: no cover - pre-10.12 spelling
+        _APP_EVENT = 15
+
+    app = NSApplication.sharedApplication()
+    # Accessory, not Regular: this is a background service, so it may own
+    # windows but must not take a Dock tile or a menu bar of its own.
+    app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+    interrupted = {"now": False}
+
+    def _poll(_timer) -> None:
+        if not interrupted["now"]:
+            return
+        app.stop_(None)
+        # The PyObjC selector name is too long to spell inline within the
+        # line budget; getattr keeps it one readable identifier.
+        make_event = getattr(
+            NSEvent,
+            "otherEventWithType_location_modifierFlags_timestamp_"
+            "windowNumber_context_subtype_data1_data2_",
+        )
+        app.postEvent_atStart_(
+            make_event(_APP_EVENT, (0.0, 0.0), 0, 0, 0, None, 0, 0, 0), True
+        )
+
+    def _interrupt(_sig, _frame) -> None:
+        interrupted["now"] = True
+
+    timer = NSTimer.scheduledTimerWithTimeInterval_repeats_block_(0.2, True, _poll)
+    previous = signal.signal(signal.SIGINT, _interrupt)
+    try:
+        app.run()
+    finally:
+        timer.invalidate()
+        signal.signal(signal.SIGINT, previous)
+    return True
 
 
 def _ensure_permissions() -> bool:
