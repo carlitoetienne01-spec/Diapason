@@ -190,6 +190,10 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
     # describes reports "unconfigured" for keys that would in fact work.
     gemini = bool(get_cloud_key("GEMINI_API_KEY", "GOOGLE_API_KEY"))
     openai = bool(get_cloud_key("OPENAI_API_KEY"))
+    from diapason.speech.realtime.local_voice import ollama_reachable
+
+    # The local provider needs no key — only a running model server.
+    local = ollama_reachable()
     tool_ids: list[str] = []
     if defaults.get("enable_tools"):
         try:
@@ -199,7 +203,8 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
         except Exception:
             tool_ids = []
     return {
-        "available": defaults.get("enabled", True) and (gemini or openai),
+        "available": defaults.get("enabled", True)
+        and (gemini or openai or local),
         "enabled": defaults.get("enabled", True),
         "default_provider": defaults.get("provider", "gemini"),
         "enable_tools": defaults.get("enable_tools", True),
@@ -209,6 +214,7 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
         "providers": {
             "gemini": {"configured": gemini},
             "openai": {"configured": openai},
+            "local": {"configured": local},
         },
     }
 

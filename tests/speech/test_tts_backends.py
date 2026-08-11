@@ -71,11 +71,26 @@ def test_kokoro_registered():
     assert TTSRegistry.contains("kokoro")
 
 
-def test_kokoro_health_false_without_package():
+def test_kokoro_health_false_without_package(monkeypatch):
+    """Health must be False when the package is missing.
+
+    The absence is SIMULATED rather than assumed: the original test relied on
+    kokoro not being installed, and started failing the day local voice
+    installed it. An environment fact is not a test fixture.
+    """
+    import builtins
+
     from diapason.speech.kokoro_tts import KokoroTTSBackend
 
+    real_import = builtins.__import__
+
+    def no_kokoro(name, *args, **kwargs):
+        if name == "kokoro" or name.startswith("kokoro."):
+            raise ImportError("simulated absence")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_kokoro)
     backend = KokoroTTSBackend()
-    # Without kokoro installed, health returns False
     assert backend.health() is False
 
 

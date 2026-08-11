@@ -153,6 +153,13 @@ speech-wake = [
     "onnxruntime>=1.16",
 ]
 speech-deepgram = ["deepgram-sdk>=3.0"]
+# Fully local realtime voice: Whisper hears, Ollama thinks, Kokoro speaks.
+# Kokoro's French G2P additionally needs espeak-ng (brew install espeak-ng).
+voice-local = [
+    "faster-whisper>=1.0",
+    "kokoro>=0.9",
+    "soundfile>=0.12",
+]
 eval-wandb = ["wandb>=0.17"]
 eval-sheets = ["gspread>=6.0", "google-auth>=2.0"]
 mining-pearl-cpu = [

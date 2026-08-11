@@ -24,7 +24,7 @@ def create_realtime_session(
     Raises :class:`LocalOnlyError` under ``[privacy] local_only``: every
     realtime provider is remote, so there is no honest degradation here.
     """
-    # The gravest path in the codebase: a realtime session streams RAW
+    # The gravest path in the codebase: a REMOTE realtime session streams RAW
     # MICROPHONE PCM to Gemini or OpenAI continuously — not a finished
     # sentence, everything the microphone hears for as long as the socket is
     # open. And the provider is chosen by the CLIENT (a query parameter or the
@@ -34,15 +34,20 @@ def create_realtime_session(
     # The guard therefore sits on the factory, which no provider can avoid,
     # and fires before the session object exists — hence before any API key is
     # read from the environment by a provider constructor.
+    #
+    # The LOCAL provider passes: Whisper, Ollama and Kokoro all run on this
+    # machine, and letting it through is precisely the honest degradation the
+    # guard used to say did not exist.
+    name = (provider or "").strip().lower()
+
     from diapason.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
 
-    if local_only():
+    if local_only() and name not in ("local", "local_voice"):
         raise LocalOnlyError(
-            "Realtime voice needs a remote provider and there is no local one, "
-            f"so the microphone stream was refused. {REFUSAL_HINT}"
+            "Realtime voice with a remote provider streams the microphone off "
+            "this machine, so it was refused. Use the 'local' provider "
+            f"instead. {REFUSAL_HINT}"
         )
-
-    name = (provider or "").strip().lower()
     common = dict(
         api_key=api_key,
         instructions=instructions,
@@ -67,9 +72,13 @@ def create_realtime_session(
             voice=voice or "alloy",
             **common,
         )
+    if name in ("local", "local_voice"):
+        from diapason.speech.realtime.local_voice import LocalVoiceSession
+
+        return LocalVoiceSession(model=model, voice=voice, **common)
     raise ValueError(
         f"Unknown realtime voice provider: {provider!r} "
-        "(expected 'gemini' or 'openai')"
+        "(expected 'gemini', 'openai' or 'local')"
     )
 
 

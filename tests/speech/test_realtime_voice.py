@@ -192,3 +192,42 @@ def test_openai_parse_audio_delta():
     assert len(events) == 1
     assert events[0].kind == "audio"
     assert events[0].audio_b64 == "qq=="
+
+
+class TestLocalProviderGuard:
+    """local_only must let the local provider through and still block remote.
+
+    The guard's original message said realtime voice had "no local one" —
+    that is no longer true, and the guard must encode the new reality: the
+    danger was never realtime voice, it was the microphone leaving the
+    machine.
+    """
+
+    def test_local_passes_under_local_only(self, monkeypatch):
+        import diapason.core.local_mode as local_mode
+
+        monkeypatch.setattr(local_mode, "local_only", lambda: True)
+        from diapason.speech.realtime.factory import create_realtime_session
+
+        session = create_realtime_session("local")
+        assert session.provider_id == "local"
+
+    def test_remote_still_refused_under_local_only(self, monkeypatch):
+        import diapason.core.local_mode as local_mode
+
+        monkeypatch.setattr(local_mode, "local_only", lambda: True)
+        import pytest as _pytest
+
+        from diapason.core.local_mode import LocalOnlyError
+        from diapason.speech.realtime.factory import create_realtime_session
+
+        with _pytest.raises(LocalOnlyError):
+            create_realtime_session("gemini")
+
+    def test_local_session_needs_no_api_key(self):
+        from diapason.speech.realtime.local_voice import LocalVoiceSession
+
+        session = LocalVoiceSession(
+            stt=lambda _a: "", llm=lambda _m: None, tts=lambda _t: b""
+        )
+        assert session.provider_id == "local"

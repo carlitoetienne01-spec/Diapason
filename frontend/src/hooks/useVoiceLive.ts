@@ -8,7 +8,7 @@ export type VoiceLiveState =
   | 'speaking'
   | 'error';
 
-export type VoiceLiveProvider = 'gemini' | 'openai';
+export type VoiceLiveProvider = 'gemini' | 'openai' | 'local';
 
 export interface TranscriptLine {
   role: 'user' | 'assistant';
@@ -180,7 +180,13 @@ export function useVoiceLive() {
         if (configured === false) {
           setState('idle');
           setStatusLabel('Idle');
-          setError(chosen === 'gemini' ? 'missing-key-gemini' : 'missing-key-openai');
+          setError(
+            chosen === 'gemini'
+              ? 'missing-key-gemini'
+              : chosen === 'openai'
+                ? 'missing-key-openai'
+                : 'local-not-ready',
+          );
           return;
         }
       } catch {

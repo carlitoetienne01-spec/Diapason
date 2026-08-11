@@ -163,6 +163,7 @@ export function TalkOrb({
                 border: '1px solid var(--color-border)',
               }}
             >
+              <option value="local">{t('talk.providerLocal')}</option>
               <option value="gemini">Gemini Live</option>
               <option value="openai">OpenAI Realtime</option>
             </select>
@@ -193,7 +194,9 @@ export function TalkOrb({
                 ? t('talk.missingKeyGemini')
                 : error === 'missing-key-openai'
                   ? t('talk.missingKeyOpenai')
-                  : error}
+                  : error === 'local-not-ready'
+                    ? t('talk.localNotReady')
+                    : error}
             </p>
           )}
         </div>

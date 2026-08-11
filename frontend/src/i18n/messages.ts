@@ -74,6 +74,11 @@ export const MESSAGES = {
     'setup.step.apiServer': 'API Server',
     'setup.step.endpoint': 'Endpoint',
     'setup.step.inferenceEngine': 'Inference Engine',
+    'talk.providerLocal': 'Local (private)',
+    'talk.localNotReady':
+      'Local voice needs Ollama running — open the Ollama app, then try again.',
+    'talk.footerLocal':
+      'Local voice · nothing leaves this Mac · ⌥Space',
     'talk.missingKeyGemini':
       'Gemini API key missing — paste yours in Settings › API keys, then try again.',
     'talk.missingKeyOpenai':
@@ -1120,6 +1125,11 @@ export const MESSAGES = {
     'setup.step.apiServer': 'Serveur API',
     'setup.step.endpoint': 'Point de terminaison',
     'setup.step.inferenceEngine': "Moteur d'inférence",
+    'talk.providerLocal': 'Local (privé)',
+    'talk.localNotReady':
+      "La voix locale nécessite Ollama — lancez l'application Ollama, puis réessayez.",
+    'talk.footerLocal':
+      'Voix locale · rien ne quitte ce Mac · ⌥Espace',
     'talk.missingKeyGemini':
       'Clé API Gemini manquante — collez la vôtre dans Réglages › Clés API, puis réessayez.',
     'talk.missingKeyOpenai':
