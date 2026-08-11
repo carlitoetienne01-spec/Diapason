@@ -269,6 +269,12 @@ export class AIEntityScene {
         uEqMix: { value: 0 },
         uTint: { value: new Color(...C.colors.bright) },
         uTintFloor: { value: 0 },
+        uStops: {
+          value: C.spectrum.stops.map(([r, g, b]) => new Color(r, g, b)),
+        },
+        uSpectrumMix: { value: 0 },
+        uSparkleChance: { value: C.spectrum.sparkleChance },
+        uSparkleGain: { value: C.spectrum.sparkleGain },
         uBaseY: { value: 0 },
         uDeep: { value: new Color(...C.colors.deep) },
         uMidColor: { value: new Color(...C.colors.mid) },
@@ -507,6 +513,9 @@ export class AIEntityScene {
     u.uTintFloor.value += (floor - u.uTintFloor.value) * 0.06;
     // Eased with the equaliser itself, so the bed sinks as the columns rise
     // rather than the ground dropping out from under them.
+    // The spectrum palette belongs to the banner alone; the Talk panel keeps
+    // its cyan identity and never reads these stops.
+    u.uSpectrumMix.value = this.banner ? 1 : 0;
     const sink = this.spectrum.length ? C.bars.baseDrop : 0;
     u.uBaseY.value += (sink - u.uBaseY.value) * 0.05;
   }

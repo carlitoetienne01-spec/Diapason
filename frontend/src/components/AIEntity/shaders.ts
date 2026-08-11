@@ -100,6 +100,12 @@ uniform vec3 uDeep;
 uniform vec3 uMidColor;
 uniform vec3 uBright;
 uniform vec3 uPeak;
+uniform vec3 uStops[6];
+// 0 keeps the cyan identity (Talk panel); 1 lays the spectrum across the
+// width (dictation banner).
+uniform float uSpectrumMix;
+uniform float uSparkleChance;
+uniform float uSparkleGain;
 
 varying vec3 vColor;
 varying float vAlpha;
@@ -143,6 +149,28 @@ float sampleBands(float u) {
  * vertical edge. The smoothsteps are what make the ends dissolve rather than
  * stop. uFocus is how "listening" pulls the field in on itself.
  */
+
+/**
+ * The banner's spectrum, laid across the width.
+ *
+ * Six stops interpolated in linear RGB. A hue rotation would be shorter, but
+ * it walks through yellows and oranges the reference never contains — the
+ * stops are the picture's actual colours, so mixing between them cannot
+ * invent one that does not belong.
+ */
+vec3 spectrumAt(float t) {
+  t = clamp(t, 0.0, 1.0) * 5.0;
+  int i = int(floor(t));
+  float f = t - float(i);
+  f = f * f * (3.0 - 2.0 * f);
+  vec3 a = uStops[0];
+  vec3 b = uStops[1];
+  for (int k = 0; k < 5; k++) {
+    if (k == i) { a = uStops[k]; b = uStops[k + 1]; }
+  }
+  return mix(a, b, f);
+}
+
 float fieldEnvelope(float u, float v) {
   float envX = exp(-${f(C.geometry.envelopeX)} * u * u * uFocus);
   float envZ = exp(-${f(C.geometry.envelopeZ)} * v * v);
@@ -222,6 +250,12 @@ void main() {
   float heat = clamp(max(uTintFloor, spectrum * uEqMix + uLevel * 0.6), 0.0, 1.0);
   col = mix(col, uTint, heat * 0.85);
 
+  // The banner's spectrum. Brightened toward white at the crests so the peaks
+  // glow rather than simply being a lighter shade of their own hue.
+  vec3 band = spectrumAt(u * 0.68 + 0.5);
+  band = mix(band, vec3(1.0), smoothstep(0.82, 1.0, hn) * 0.22);
+  col = mix(col, band, uSpectrumMix);
+
   // Depth cue: points further from the camera recede, in size and in light.
   float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);
 
@@ -229,8 +263,20 @@ void main() {
   // Only a gentle bias toward the crests. The bright ridge lines are not
   // painted on: where the sheet folds toward the camera many points land on
   // the same pixels and additive blending accumulates them.
+  // Strands: every few rows runs brighter, which is what gives the reference
+  // its ribbon texture instead of a uniform dusting.
+  float row = floor((v * 0.5 + 0.5) * ${f(C.spectrum.strandEvery)} * 12.0);
+  float strand = 1.0 + ${f(C.spectrum.strandGain - 1.0)}
+    * uSpectrumMix * step(0.5, fract(row / 2.0));
+
+  // Sparkles: a deterministic few burn far brighter. Scattered by seed, so
+  // they sit still in the field rather than crawling across it.
+  float sparkle = step(1.0 - uSparkleChance, fract(aSeed * 91.7));
+  float burn = 1.0 + sparkle * uSparkleGain * uSpectrumMix * (0.4 + 0.6 * twinkle);
+
   vAlpha = env * (0.3 + 0.7 * hn) * uGlow * uIntensity * depthFade
-         * (0.72 + 0.28 * twinkle);
+         * (0.72 + 0.28 * twinkle) * strand * burn
+         * (1.0 - 0.42 * uSpectrumMix);
 
   float size = uSize * (0.5 + 0.5 * env) * (1.0 + spark * 0.55);
   gl_PointSize = clamp(
@@ -316,6 +362,12 @@ uniform vec3 uDeep;
 uniform vec3 uMidColor;
 uniform vec3 uBright;
 uniform vec3 uPeak;
+uniform vec3 uStops[6];
+// 0 keeps the cyan identity (Talk panel); 1 lays the spectrum across the
+// width (dictation banner).
+uniform float uSpectrumMix;
+uniform float uSparkleChance;
+uniform float uSparkleGain;
 
 varying vec3 vColor;
 varying float vAlpha;
@@ -337,6 +389,28 @@ float sampleBands(float u) {
     if (k == i + 1) b = uBands[k];
   }
   if (i + 1 >= int(count)) b = a;
+  return mix(a, b, f);
+}
+
+
+/**
+ * The banner's spectrum, laid across the width.
+ *
+ * Six stops interpolated in linear RGB. A hue rotation would be shorter, but
+ * it walks through yellows and oranges the reference never contains — the
+ * stops are the picture's actual colours, so mixing between them cannot
+ * invent one that does not belong.
+ */
+vec3 spectrumAt(float t) {
+  t = clamp(t, 0.0, 1.0) * 5.0;
+  int i = int(floor(t));
+  float f = t - float(i);
+  f = f * f * (3.0 - 2.0 * f);
+  vec3 a = uStops[0];
+  vec3 b = uStops[1];
+  for (int k = 0; k < 5; k++) {
+    if (k == i) { a = uStops[k]; b = uStops[k + 1]; }
+  }
   return mix(a, b, f);
 }
 
@@ -409,6 +483,12 @@ void main() {
 
   float heat = clamp(max(uTintFloor, energy * uEqMix + uLevel * 0.6), 0.0, 1.0);
   col = mix(col, uTint, heat * 0.7);
+
+  // Columns take the colour of where they stand, so a branch belongs to its
+  // part of the spectrum rather than floating above it in another hue.
+  vec3 band = spectrumAt(u * 0.68 + 0.5);
+  band = mix(band, vec3(1.0), (1.0 - up) * 0.3);
+  col = mix(col, band, uSpectrumMix);
 
   float twinkle = 0.5 + 0.5 * sin(uTime * (1.3 + aSeed * 2.1) + aSeed * 37.0);
   float depthFade = clamp(1.0 - (-mv.z - 4.0) * 0.085, 0.35, 1.0);

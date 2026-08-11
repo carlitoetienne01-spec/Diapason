@@ -51,6 +51,34 @@ export const AI_ENTITY_CONFIG = {
     drift: 0.075,
   },
 
+  /**
+   * The dictation banner's own palette: a spectrum laid across the width
+   * rather than a single hue. Six stops, left to right, taken from the
+   * reference — green through cyan and blue into violet, magenta and red.
+   *
+   * Kept apart from `colors` on purpose. The Talk panel keeps its strict cyan
+   * identity; the dictation overlay is a different object with a different
+   * job, and it will not inherit this by accident.
+   */
+  spectrum: {
+    stops: [
+      [0.0, 0.9, 0.52],   // #00E685 vert
+      [0.0, 0.83, 0.92],  // #00D4EB cyan
+      [0.13, 0.44, 1.0],  // #2170FF bleu
+      [0.49, 0.24, 1.0],  // #7D3DFF violet
+      [0.91, 0.22, 0.78], // #E838C7 magenta
+      [1.0, 0.19, 0.42],  // #FF306B rouge
+    ] as const,
+    /** A handful of points burn far brighter than the rest — the specks that
+     * make the reference feel lit rather than drawn. */
+    sparkleChance: 0.012,
+    sparkleGain: 5.5,
+    /** Rows that read as bright strands running through the field, which is
+     * what gives the reference its ribbon texture. */
+    strandEvery: 7.0,
+    strandGain: 1.9,
+  },
+
   /** Framing for the dictation banner, which is a different shot entirely:
    * a low bed with room above it for the columns. Kept separate so the Talk
    * panel, which has no columns, is not dragged along with it. */
@@ -157,7 +185,7 @@ export const STATE_PROFILES: Record<AIState, StateProfile> = {
     speed: 0.72,
     turbulence: 0.42,
     focus: 1.16,
-    glow: 1.55,
+    glow: 2.35,
     shimmer: 0.52,
     breath: 0.62,
     audioDrive: 0.62,
@@ -169,7 +197,7 @@ export const STATE_PROFILES: Record<AIState, StateProfile> = {
     speed: 1.35,
     turbulence: 1.0,
     focus: 1.05,
-    glow: 1.5,
+    glow: 2.25,
     shimmer: 0.72,
     breath: 1.0,
     audioDrive: 0.2,
