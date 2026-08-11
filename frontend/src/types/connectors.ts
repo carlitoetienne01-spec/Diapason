@@ -270,7 +270,7 @@ export const SOURCE_CATALOG: ConnectorMeta[] = [
         urlLabel: 'Enable Drive API',
       },
       {
-        label: 'Create OAuth credentials: go to Credentials (link below) → click "+ Create Credentials" → choose "OAuth client ID" → Application type: "Web application". Under "Authorized redirect URIs" add this server\'s callback (e.g. http://localhost:1313/v1/connectors/gdrive/oauth/callback — match the host/port your OpenJarvis server is bound to) → click "Create".',
+        label: 'Create OAuth credentials: go to Credentials (link below) → click "+ Create Credentials" → choose "OAuth client ID" → Application type: "Web application". Under "Authorized redirect URIs" add this server\'s callback (e.g. http://localhost:1313/v1/connectors/gdrive/oauth/callback — match the host/port your Diapason server is bound to) → click "Create".',
         url: 'https://console.cloud.google.com/apis/credentials',
         urlLabel: 'Open Credentials',
       },
