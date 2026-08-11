@@ -1,0 +1,32 @@
+[package]
+name = "diapason-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "diapason_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+diapason-core = { path = "../diapason-core" }
+diapason-engine = { path = "../diapason-engine" }
+diapason-security = { path = "../diapason-security" }
+diapason-tools = { path = "../diapason-tools" }
+diapason-agents = { path = "../diapason-agents" }
+diapason-traces = { path = "../diapason-traces" }
+diapason-telemetry = { path = "../diapason-telemetry" }
+diapason-learning = { path = "../diapason-learning" }
+diapason-mcp = { path = "../diapason-mcp" }
+diapason-sessions = { path = "../diapason-sessions" }
+diapason-workflow = { path = "../diapason-workflow" }
+diapason-skills = { path = "../diapason-skills" }
+diapason-recipes = { path = "../diapason-recipes" }
+diapason-templates = { path = "../diapason-templates" }
+diapason-a2a = { path = "../diapason-a2a" }
+diapason-scheduler = { path = "../diapason-scheduler" }
+pyo3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }

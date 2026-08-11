@@ -54,13 +54,13 @@ COPY --from=frontend /src/diapason/server/static src/diapason/server/static/
 
 RUN uv pip install --system --no-deps . && \
     maturin build --release \
-        --manifest-path rust/crates/openjarvis-python/Cargo.toml \
+        --manifest-path rust/crates/diapason-python/Cargo.toml \
         --interpreter python3 \
-        --out /tmp/openjarvis-rust-wheel && \
-    uv pip install --system --no-deps /tmp/openjarvis-rust-wheel/*.whl && \
-    python3 -c "import openjarvis_rust; print('openjarvis_rust ok')" && \
+        --out /tmp/diapason-rust-wheel && \
+    uv pip install --system --no-deps /tmp/diapason-rust-wheel/*.whl && \
+    python3 -c "import diapason_rust; print('diapason_rust ok')" && \
     python3 -m pip uninstall -y maturin && \
-    rm -rf /tmp/openjarvis-rust-wheel rust
+    rm -rf /tmp/diapason-rust-wheel rust
 
 # Stage 3: Runtime
 FROM rocm/dev-ubuntu-22.04:7.2@sha256:05af5f04a06b04676d4c7438997d0deadaeb7478961ad621376e199bf3aeb644

@@ -135,7 +135,7 @@ class TestDockerFiles:
             "maturin build --release",
             "rust/crates/diapason-python/Cargo.toml",
             "/tmp/diapason-rust-wheel/*.whl",
-            "import openjarvis_rust",
+            "import diapason_rust",
         ]
 
         for name in build_dockerfiles:

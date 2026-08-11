@@ -208,7 +208,7 @@ git_describe_command = [
 fallback_version = "0.0.0+unknown"
 
 [tool.uv.sources]
-openjarvis-rust = { path = "rust/crates/openjarvis-python" }
+diapason-rust = { path = "rust/crates/diapason-python" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/diapason"]
@@ -259,12 +259,12 @@ select = ["E", "F", "I", "W"]
 dev = [
     "maturin>=1.12.6",
 ]
-# openjarvis_rust is the native PyO3 extension, built from the local Rust
+# diapason_rust is the native PyO3 extension, built from the local Rust
 # workspace. It lives in a uv dependency group (PEP 735) — not the published
 # `desktop` extra — so `uv sync --group desktop-native` builds it from source
 # for the desktop app, while `pip install openjarvis[desktop]` from PyPI does
-# NOT try to resolve openjarvis-rust from PyPI, where it isn't published
+# NOT try to resolve diapason-rust from PyPI, where it isn't published
 # (dependency groups are excluded from wheel metadata). See #584 / #615.
 desktop-native = [
-    "openjarvis-rust",
+    "diapason-rust",
 ]

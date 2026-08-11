@@ -154,8 +154,8 @@ ok "Python dependencies installed"
 
 # ── 7b. Build Rust extension ──────────────────────────────────────
 info "Building Rust extension..."
-uv run maturin develop -m rust/crates/openjarvis-python/Cargo.toml --quiet 2>/dev/null \
-  || uv run maturin develop -m rust/crates/openjarvis-python/Cargo.toml
+uv run maturin develop -m rust/crates/diapason-python/Cargo.toml --quiet 2>/dev/null \
+  || uv run maturin develop -m rust/crates/diapason-python/Cargo.toml
 ok "Rust extension built"
 
 # ── 8. Install frontend dependencies ────────────────────────────────

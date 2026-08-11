@@ -39,7 +39,7 @@ def _make_mock_engine() -> MagicMock:
 
 def _has_rust() -> bool:
     try:
-        import openjarvis_rust  # noqa: F401
+        import diapason_rust  # noqa: F401
 
         return True
     except ImportError:

@@ -1,7 +1,7 @@
 """Tests for the git tools (status, diff, commit, log).
 
 Tests mock the Rust backend (``get_rust_module``) so that the compiled
-``openjarvis_rust`` extension is not required.  The mock simulates Rust
+``diapason_rust`` extension is not required.  The mock simulates Rust
 behaviour: git commands run via ``subprocess`` with the same flags that the
 Rust ``git_tools.rs`` implementation uses.
 """
@@ -42,7 +42,7 @@ def _run_git_like_rust(args: list[str], cwd: str | None = None) -> str:
 
 
 def _make_mock_rust(tmp_path=None):
-    """Return a mock module mimicking ``openjarvis_rust`` git tools.
+    """Return a mock module mimicking ``diapason_rust`` git tools.
 
     The mock's ``GitStatusTool``, ``GitDiffTool``, and ``GitLogTool``
     classes each have an ``execute`` method that shells out to git using
@@ -552,7 +552,7 @@ class TestCliFallbackWhenRustMissing:
     def _patch_no_rust(self):
         return patch(
             "diapason.tools.git_tool.get_rust_module",
-            side_effect=ImportError("No module named 'openjarvis_rust'"),
+            side_effect=ImportError("No module named 'diapason_rust'"),
         )
 
     def test_git_status_falls_back_to_cli(self, tmp_path):

@@ -54,13 +54,13 @@ COPY --from=frontend /src/diapason/server/static src/diapason/server/static/
 # Install the project itself without re-resolving dependencies.
 RUN uv pip install --system --no-deps . && \
     maturin build --release \
-        --manifest-path rust/crates/openjarvis-python/Cargo.toml \
+        --manifest-path rust/crates/diapason-python/Cargo.toml \
         --interpreter python3 \
-        --out /tmp/openjarvis-rust-wheel && \
-    uv pip install --system --no-deps /tmp/openjarvis-rust-wheel/*.whl && \
-    python3 -c "import openjarvis_rust; print('openjarvis_rust ok')" && \
+        --out /tmp/diapason-rust-wheel && \
+    uv pip install --system --no-deps /tmp/diapason-rust-wheel/*.whl && \
+    python3 -c "import diapason_rust; print('diapason_rust ok')" && \
     python3 -m pip uninstall -y maturin && \
-    rm -rf /tmp/openjarvis-rust-wheel rust
+    rm -rf /tmp/diapason-rust-wheel rust
 
 # Stage 3: Runtime
 FROM python:3.12.13-slim-bookworm@sha256:76d4b7b6305788c6b4c6a19d6a22a3921bf802e9af4d5e1e5bd771208dba74bf

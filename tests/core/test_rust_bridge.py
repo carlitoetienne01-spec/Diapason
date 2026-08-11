@@ -11,14 +11,14 @@ class TestGetRustModule:
     """Test get_rust_module() returns the Rust extension module."""
 
     def test_returns_rust_module(self):
-        """get_rust_module() returns the openjarvis_rust module."""
+        """get_rust_module() returns the diapason_rust module."""
         from diapason._rust_bridge import get_rust_module
 
         get_rust_module.cache_clear()
         result = get_rust_module()
         assert result is not None
         assert hasattr(result, "__name__")
-        assert result.__name__ == "openjarvis_rust"
+        assert result.__name__ == "diapason_rust"
 
 
 class TestScanResultFromJson:

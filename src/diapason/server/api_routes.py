@@ -157,7 +157,7 @@ def _get_memory_backend(request: Request):
     """Return the app-level memory backend, falling back to a fresh SQLiteMemory.
 
     Raises ``HTTPException(503)`` with an actionable message when the backend
-    cannot be built because the mandatory ``openjarvis_rust`` extension is not
+    cannot be built because the mandatory ``diapason_rust`` extension is not
     installed in the serving venv. This is deliberately distinct from a benign
     "memory not configured" case (which returns ``None``): a missing native
     extension must fail loudly, never silently degrade (#502).
@@ -238,7 +238,7 @@ async def memory_config(request: Request):
     """Return current memory configuration.
 
     Reports memory as *unavailable* (rather than falsely claiming
-    ``backend_type: sqlite``) when the native ``openjarvis_rust`` extension is
+    ``backend_type: sqlite``) when the native ``diapason_rust`` extension is
     missing, so the UI can show the real cause instead of a healthy-looking
     config that backs a silent no-op (#502).
     """
