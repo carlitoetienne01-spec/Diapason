@@ -25,6 +25,7 @@ from typing import (
     get_type_hints,
 )
 
+from diapason.core.env import get as _env_get
 from diapason.core.paths import (
     ConfigurationError,
     get_cache_dir,
@@ -2004,8 +2005,8 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
 
     if path is not None:
         config_path = Path(path)
-    elif os.environ.get("OPENJARVIS_CONFIG"):
-        config_path = Path(os.environ["OPENJARVIS_CONFIG"]).expanduser().resolve()
+    elif _env_get("CONFIG"):
+        config_path = Path(_env_get("CONFIG")).expanduser().resolve()
     else:
         config_path = get_config_path()
     if config_path.exists():

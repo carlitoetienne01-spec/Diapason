@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from diapason.core.env import get as _env_get
 
 
 class ConfigSetRequest(BaseModel):
@@ -18,7 +19,7 @@ class ConfigSetRequest(BaseModel):
 def _config_path() -> Path:
     from diapason.core.config import DEFAULT_CONFIG_DIR, get_config_path
 
-    env = os.environ.get("OPENJARVIS_CONFIG")
+    env = _env_get("CONFIG")
     if env:
         return Path(env).expanduser()
     try:

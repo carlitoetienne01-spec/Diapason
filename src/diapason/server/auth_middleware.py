@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from diapason.core.env import get as _env_get
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, api_key: str = "") -> None:  # noqa: ANN001
         super().__init__(app)
-        self._api_key = api_key or os.environ.get("OPENJARVIS_API_KEY", "")
+        self._api_key = api_key or (_env_get("API_KEY") or "")
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
         if self._api_key and self._requires_auth(request.url.path):

@@ -14,6 +14,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
+from diapason.core.env import get as _env_get
+
 
 @click.group()
 def config() -> None:
@@ -26,7 +28,7 @@ def _get_config_path(path: str | None) -> Path:
 
     if path:
         return Path(path)
-    return Path(os.environ.get("OPENJARVIS_CONFIG", DEFAULT_CONFIG_PATH))
+    return Path(_env_get("CONFIG") or DEFAULT_CONFIG_PATH)
 
 
 def _show_hardware_info(console: Console, show_recommendations: bool = True) -> None:
@@ -372,7 +374,7 @@ def set_config(key: str, value: str) -> None:
 
     # Load or create TOML document
     config_path = Path(
-        os.environ.get("OPENJARVIS_CONFIG", DEFAULT_CONFIG_DIR / "config.toml")
+        _env_get("CONFIG") or (DEFAULT_CONFIG_DIR / "config.toml")
     )
     if config_path.exists():
         doc = tomlkit.parse(config_path.read_text())

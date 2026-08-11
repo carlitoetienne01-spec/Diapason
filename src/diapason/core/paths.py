@@ -5,7 +5,7 @@ credentials, skills, recipes, …) under a single root so it never clutters the
 user's home directory beyond one directory. That root is resolved here, with
 the following precedence (highest first):
 
-1. ``$OPENJARVIS_HOME`` — explicit override (also honored by the shell
+1. ``$DIAPASON_HOME`` (legacy: ``$OPENJARVIS_HOME``/``$JARVIS_HOME``) — explicit override (also honored by the shell
    installer, see ``scripts/install/install.sh``).
 2. ``$XDG_DATA_HOME/diapason`` — when ``$XDG_DATA_HOME`` is set, follow the
    XDG Base Directory spec by nesting a single ``diapason`` directory under
@@ -86,7 +86,12 @@ def get_config_dir() -> Path:
     ``~/.diapason``. The result is always absolute and is rejected if it
     falls inside the OpenJarvis source tree.
     """
-    env_home = os.environ.get("DIAPASON_HOME") or os.environ.get("OPENJARVIS_HOME")
+    # Read through the env helper: DIAPASON_HOME wins, the historical
+    # OPENJARVIS_HOME / JARVIS_HOME keep working so existing shell profiles,
+    # CI jobs and units do not break silently.
+    from diapason.core.env import get as _env_get
+
+    env_home = _env_get("HOME")
     if env_home:
         resolved = Path(env_home).expanduser().resolve()
         return _reject_source_tree(resolved)

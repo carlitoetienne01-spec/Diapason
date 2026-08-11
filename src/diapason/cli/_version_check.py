@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 
+from diapason.core.env import get as _env_get
 from diapason.core.paths import get_config_dir
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ _PYPI_API = "https://pypi.org/pypi/openjarvis/json"
 
 def _config_path() -> Path:
     """Resolve the config path, honoring ``OPENJARVIS_CONFIG`` like core.config."""
-    override = os.environ.get("OPENJARVIS_CONFIG")
+    override = _env_get("CONFIG")
     if override:
         return Path(override).expanduser()
     return get_config_dir() / "config.toml"

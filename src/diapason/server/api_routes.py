@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from diapason.core.env import get as _env_get
+
 logger = logging.getLogger(__name__)
 
 # ---- Request/Response models ----
@@ -299,7 +301,7 @@ async def memory_index(req: MemoryIndexRequest, request: Request):
         # Sandbox: when workspace roots are configured via OPENJARVIS_WORKSPACE
         # (os.pathsep-separated), only allow indexing inside them. This endpoint
         # must not become an arbitrary-filesystem read primitive over the API.
-        workspace = os.environ.get("OPENJARVIS_WORKSPACE", "").strip()
+        workspace = (_env_get("WORKSPACE") or "").strip()
         if workspace:
             roots = [
                 Path(d).expanduser().resolve()

@@ -733,7 +733,7 @@ class TestIdentityPromptInjection:
         assert captured, "engine.stream was never called"
         msgs = captured[-1]
         assert msgs[0].role.value == "system"
-        assert "OpenJarvis" in msgs[0].content
+        assert "Diapason" in msgs[0].content
 
     def test_stream_no_double_injection_when_client_supplies_system(self):
         captured: list = []
@@ -775,7 +775,7 @@ class TestIdentityPromptInjection:
         assert engine.generate.called
         msgs = engine.generate.call_args.args[0]
         assert msgs[0].role.value == "system"
-        assert "OpenJarvis" in msgs[0].content
+        assert "Diapason" in msgs[0].content
 
     def test_direct_no_double_injection_when_client_supplies_system(self):
         captured: list = []
@@ -829,7 +829,7 @@ class TestIdentityPromptInjection:
         assert resp.status_code == 200
         msgs = engine.generate.call_args.args[0]
         assert msgs[0].role.value == "system"
-        assert "OpenJarvis" in msgs[0].content  # identity blurb still present
+        assert "Diapason" in msgs[0].content  # identity blurb still present
         assert "extreme sarcasm" in msgs[0].content  # persona now injected too
 
     def test_stream_tools_injects_identity_when_absent(self):
@@ -851,7 +851,7 @@ class TestIdentityPromptInjection:
         assert captured, "engine.stream_full was never called"
         msgs = captured[-1]
         assert msgs[0].role.value == "system"
-        assert "OpenJarvis" in msgs[0].content
+        assert "Diapason" in msgs[0].content
 
 
 # ---------------------------------------------------------------------------
