@@ -128,44 +128,54 @@ def _default_tts(voice: str) -> Callable[[str], bytes]:
 
 
 def _default_llm(
-    model: str, system: str
-) -> Callable[[List[dict]], "asyncio.Queue[Optional[str]]"]:
-    """Streamed chat against Ollama, tokens delivered through a queue.
+    model: str, system: str, tools_schema: Optional[List[dict]] = None
+) -> Callable[[List[dict]], "asyncio.Queue[Any]"]:
+    """Streamed chat against Ollama; the queue carries tokens and tool calls.
+
+    Queue items: ``str`` tokens, ``("tools", [...])`` when the model asks to
+    act, the ``\x00ERROR\x00`` sentinel, and ``None`` at end of stream.
 
     ``think`` is disabled explicitly: qwen3.5 reasons silently first, and in
     a voice conversation that silence IS the latency — measured, it swallowed
     the entire token budget before a single audible word.
     """
 
-    def start(messages: List[dict]) -> "asyncio.Queue[Optional[str]]":
-        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    def start(messages: List[dict]) -> "asyncio.Queue[Any]":
+        queue: asyncio.Queue[Any] = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
         def worker() -> None:
             try:
-                body = json.dumps(
-                    {
-                        "model": model,
-                        "messages": [{"role": "system", "content": system}]
-                        + messages,
-                        "stream": True,
-                        "think": False,
-                        "options": {"num_predict": 320},
-                    }
-                ).encode()
+                payload: dict[str, Any] = {
+                    "model": model,
+                    "messages": [{"role": "system", "content": system}]
+                    + messages,
+                    "stream": True,
+                    "think": False,
+                    "options": {"num_predict": 320},
+                }
+                if tools_schema:
+                    payload["tools"] = tools_schema
                 request = urllib.request.Request(
                     f"{_ollama_base()}/api/chat",
-                    body,
+                    json.dumps(payload).encode(),
                     {"Content-Type": "application/json"},
                 )
+                calls: List[dict] = []
                 with urllib.request.urlopen(request, timeout=120) as response:
                     for line in response:
                         data = json.loads(line)
-                        token = (data.get("message") or {}).get("content", "")
+                        message = data.get("message") or {}
+                        token = message.get("content", "")
                         if token:
                             loop.call_soon_threadsafe(queue.put_nowait, token)
+                        calls.extend(message.get("tool_calls") or [])
                         if data.get("done"):
                             break
+                if calls:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait, ("tools", calls)
+                    )
             except Exception as exc:  # noqa: BLE001 - surfaced as an event
                 logger.debug("local LLM stream failed", exc_info=True)
                 loop.call_soon_threadsafe(
@@ -195,12 +205,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
         instructions: str = "",
         language: str = "",
         api_key: Optional[str] = None,  # accepted, unused: nothing to unlock
-        enable_tools: bool = True,  # v1 speaks; tools are the next step
+        enable_tools: bool = True,  # same allow-listed tools as Gemini
         max_tool_steps: int = 12,
         allowed_tools: Optional[Sequence[str]] = None,
         stt: Optional[Callable[[bytes], str]] = None,
         llm: Optional[Callable[[List[dict]], Any]] = None,
         tts: Optional[Callable[[str], bytes]] = None,
+        tool_executor: Optional[Callable[[str, dict], dict]] = None,
     ) -> None:
         self._model = model or DEFAULT_MODEL
         self._voice = voice or DEFAULT_VOICE
@@ -209,6 +220,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._stt = stt
         self._llm = llm
         self._tts = tts
+        self._enable_tools = bool(enable_tools)
+        self._allowed_tools = list(allowed_tools) if allowed_tools else None
+        from diapason.speech.realtime.tools import VoiceToolBudget
+
+        self._budget = VoiceToolBudget(max_tool_steps)
+        self._tool_executor = tool_executor
         self._queue: asyncio.Queue[Optional[SessionEvent]] = asyncio.Queue()
         self._buffer = bytearray()
         self._speech_samples = 0
@@ -243,7 +260,30 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         _default_tts, self._voice
                     )
                 if self._llm is None:
-                    self._llm = _default_llm(self._model, self._system_prompt())
+                    schema: List[dict] = []
+                    if self._enable_tools:
+                        from diapason.speech.realtime.tools import (
+                            openai_tools_schema,
+                        )
+
+                        # Ollama speaks the OpenAI function format, so the
+                        # schema built for OpenAI Realtime serves unchanged.
+                        schema = await asyncio.to_thread(
+                            openai_tools_schema, self._allowed_tools
+                        )
+                    self._llm = _default_llm(
+                        self._model, self._system_prompt(), schema
+                    )
+                if self._tool_executor is None and self._enable_tools:
+                    from diapason.speech.realtime.tools import (
+                        execute_voice_tool,
+                    )
+
+                    self._tool_executor = (
+                        lambda name, args: execute_voice_tool(
+                            name, args, self._allowed_tools
+                        )
+                    )
             except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
                 logger.exception("local voice warm-up failed")
                 await self._queue.put(
@@ -254,9 +294,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if self._instructions:
             return self._instructions
         try:
-            from diapason.speech.realtime.oral_prompt import ORAL_VOICE_RULES
+            from diapason.speech.realtime.oral_prompt import (
+                build_live_agent_template,
+            )
 
-            base = str(ORAL_VOICE_RULES)
+            base = build_live_agent_template(enable_tools=self._enable_tools)
         except Exception:  # noqa: BLE001 - a persona is not worth failing over
             base = "You are Diapason, a helpful voice assistant."
         language = self._language or "the language the user speaks"
@@ -356,20 +398,44 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # first-token latency past conversational.
             del self._history[:-16]
 
-            tokens = self._llm(list(self._history))
+            # The per-turn transcript: history plus whatever tool exchanges
+            # this turn produces. Tool messages stay HERE and never enter the
+            # long-term history — a session that opened three apps would
+            # otherwise drag those payloads through every later turn.
+            messages = list(self._history)
             spoken: List[str] = []
-            pending = ""
-            while True:
-                token = await tokens.get()
-                if token is None:
+            # Bounded by the budget plus the final text-only round, so a model
+            # that asks for tools forever cannot loop us forever.
+            for _round in range(self._budget.max_steps + 1):
+                tokens = self._llm(list(messages))
+                pending = ""
+                tool_calls: List[dict] = []
+                while True:
+                    item = await tokens.get()
+                    if item is None:
+                        break
+                    if isinstance(item, tuple) and item[0] == "tools":
+                        tool_calls.extend(item[1])
+                        continue
+                    if item.startswith("\x00ERROR\x00"):
+                        raise RuntimeError(item.split("\x00", 2)[2])
+                    pending += item
+                    pending = await self._speak_complete_sentences(
+                        pending, spoken
+                    )
+                if pending.strip():
+                    await self._speak_sentence(pending.strip(), spoken)
+                if not tool_calls or not self._enable_tools:
                     break
-                if token.startswith("\x00ERROR\x00"):
-                    raise RuntimeError(token.split("\x00", 2)[2])
-                pending += token
-                pending = await self._speak_complete_sentences(pending, spoken)
-
-            if pending.strip():
-                await self._speak_sentence(pending.strip(), spoken)
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": tool_calls,
+                    }
+                )
+                for call in tool_calls:
+                    messages.append(await self._run_tool(call))
 
             answer = " ".join(spoken).strip()
             if answer:
@@ -390,6 +456,48 @@ class LocalVoiceSession(RealtimeVoiceSession):
         except Exception as exc:  # noqa: BLE001
             logger.exception("local voice response failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
+
+    async def _run_tool(self, call: dict) -> dict:
+        """Execute one tool call and shape the result for the transcript.
+
+        The result goes two ways at once: a "tool" event so the panel shows
+        what just happened, and a role="tool" message so the model can build
+        its answer on what the tool actually returned.
+        """
+        function = call.get("function") or {}
+        name = str(function.get("name") or "")
+        raw_args = function.get("arguments") or {}
+        args = raw_args if isinstance(raw_args, dict) else {}
+        if isinstance(raw_args, str):
+            try:
+                args = json.loads(raw_args)
+            except ValueError:
+                args = {}
+
+        if not self._budget.allow():
+            result = {
+                "ok": False,
+                "error": f"Voice tool budget exceeded ({self._budget.max_steps})",
+            }
+        elif self._tool_executor is None:
+            result = {"ok": False, "error": "tools unavailable"}
+        else:
+            self._budget.consume()
+            result = await asyncio.to_thread(self._tool_executor, name, args)
+
+        await self._queue.put(
+            SessionEvent(
+                kind="tool",
+                tool_name=name,
+                tool_ok=bool(result.get("ok")),
+                detail=str(result.get("error") or "")[:200],
+            )
+        )
+        return {
+            "role": "tool",
+            "tool_name": name,
+            "content": json.dumps(result, ensure_ascii=False, default=str),
+        }
 
     async def _speak_complete_sentences(
         self, pending: str, spoken: List[str]

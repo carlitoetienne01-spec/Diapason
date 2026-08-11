@@ -237,3 +237,138 @@ async def _collect(session) -> "asyncio.AsyncIterator":
         event = session._queue.get_nowait()
         if event is not None:
             yield event
+
+
+class ToolHarness:
+    """A session whose LLM asks for a tool once, then answers with text."""
+
+    def __init__(
+        self,
+        *,
+        rounds_of_tools: int = 1,
+        enable_tools: bool = True,
+        max_tool_steps: int = 12,
+    ) -> None:
+        self.executed: list[tuple[str, dict]] = []
+        self.llm_rounds: list[list[dict]] = []
+        self.spoken: list[str] = []
+        rounds = {"left": rounds_of_tools}
+
+        def llm(messages):
+            self.llm_rounds.append(messages)
+            queue: asyncio.Queue = asyncio.Queue()
+            if rounds["left"] > 0:
+                rounds["left"] -= 1
+                queue.put_nowait(
+                    (
+                        "tools",
+                        [
+                            {
+                                "function": {
+                                    "name": "open_uri",
+                                    "arguments": {"uri": "https://example.com"},
+                                }
+                            }
+                        ],
+                    )
+                )
+            else:
+                queue.put_nowait("C'est fait.")
+            queue.put_nowait(None)
+            return queue
+
+        def executor(name: str, args: dict) -> dict:
+            self.executed.append((name, args))
+            return {"ok": True, "content": "ouvert"}
+
+        def tts(text: str) -> bytes:
+            self.spoken.append(text)
+            return b"\x01" * 64
+
+        self.session = LocalVoiceSession(
+            stt=lambda _a: "ouvre example point com",
+            llm=llm,
+            tts=tts,
+            tool_executor=executor,
+            enable_tools=enable_tools,
+            max_tool_steps=max_tool_steps,
+        )
+
+
+class TestVoiceTools:
+    @pytest.mark.asyncio
+    async def test_a_tool_call_runs_then_the_answer_is_spoken(self):
+        harness = ToolHarness()
+        await harness.session.send_text("ouvre example")
+        await harness.session._respond_task
+
+        assert harness.executed == [("open_uri", {"uri": "https://example.com"})]
+        # Round two must carry the tool result so the model can build on it.
+        assert len(harness.llm_rounds) == 2
+        roles = [m["role"] for m in harness.llm_rounds[1]]
+        assert "tool" in roles
+        assert harness.spoken == ["C'est fait."]
+
+    @pytest.mark.asyncio
+    async def test_the_panel_hears_about_the_tool(self):
+        harness = ToolHarness()
+        await harness.session.send_text("va")
+        await harness.session._respond_task
+        events = [e async for e in _collect(harness.session)]
+        tools = [e for e in events if e.kind == "tool"]
+        assert tools and tools[0].tool_name == "open_uri" and tools[0].tool_ok
+
+    @pytest.mark.asyncio
+    async def test_an_endless_tool_asker_is_bounded_by_the_budget(self):
+        harness = ToolHarness(rounds_of_tools=99, max_tool_steps=3)
+        await harness.session.send_text("boucle")
+        await harness.session._respond_task
+        # Three executions, then budget refusals, and the loop terminates —
+        # a model that asks for tools forever must not be able to loop us
+        # forever.
+        assert len(harness.executed) == 3
+
+    @pytest.mark.asyncio
+    async def test_tools_disabled_ignores_the_calls(self):
+        harness = ToolHarness(enable_tools=False)
+        await harness.session.send_text("ouvre example")
+        await harness.session._respond_task
+        assert harness.executed == []
+        assert len(harness.llm_rounds) == 1
+
+    @pytest.mark.asyncio
+    async def test_string_arguments_are_parsed(self):
+        executed = []
+
+        def llm(messages):
+            queue: asyncio.Queue = asyncio.Queue()
+            if not executed:
+                queue.put_nowait(
+                    (
+                        "tools",
+                        [
+                            {
+                                "function": {
+                                    "name": "focus_app",
+                                    "arguments": '{"name": "Safari"}',
+                                }
+                            }
+                        ],
+                    )
+                )
+            else:
+                queue.put_nowait("Voilà.")
+            queue.put_nowait(None)
+            return queue
+
+        session = LocalVoiceSession(
+            stt=lambda _a: "",
+            llm=llm,
+            tts=lambda _t: b"",
+            tool_executor=lambda n, a: (executed.append((n, a)), {"ok": True})[1],
+        )
+        await session.send_text("mets Safari devant")
+        await session._respond_task
+        # Gemini and Ollama send arguments as a dict; OpenAI as a JSON string.
+        # Both must land as the same dict.
+        assert executed == [("focus_app", {"name": "Safari"})]
