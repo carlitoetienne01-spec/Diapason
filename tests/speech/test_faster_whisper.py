@@ -225,7 +225,7 @@ class TestEffectiveLanguage:
         mock_info = MagicMock()
         mock_info.language = "fr"
         mock_info.language_probability = 0.99
-        mock_info.duration = 1.0
+        mock_info.duration = 4.0
         mock_model = MagicMock()
         mock_model.transcribe.return_value = (iter(()), mock_info)
 
@@ -243,7 +243,7 @@ class TestEffectiveLanguage:
         mock_info = MagicMock()
         mock_info.language = "en"
         mock_info.language_probability = 0.99
-        mock_info.duration = 1.0
+        mock_info.duration = 4.0
         mock_model = MagicMock()
         mock_model.transcribe.return_value = (iter(()), mock_info)
 
@@ -345,3 +345,58 @@ class TestDecodePcmWav:
         passed = mock_model.transcribe.call_args.args[0]
         assert not isinstance(passed, str), "a path means it went via a temp file"
         assert len(passed) == 1600
+
+
+class TestLanguageLatchGuards:
+    """A cached language must be earned, not assumed.
+
+    Regression: one uncertain detection on a short first clip latched a
+    session to English, and every French sentence afterwards came back
+    translated. Whisper does not refuse a wrong language — it renders the
+    speech *as* that language. Re-detecting costs a few hundred milliseconds;
+    a wrong latch costs every utterance until restart.
+    """
+
+    @staticmethod
+    def _backend_with(language: str, probability: float, duration: float):
+        info = MagicMock()
+        info.language = language
+        info.language_probability = probability
+        info.duration = duration
+        model = MagicMock()
+        model.transcribe.return_value = (iter(()), info)
+        with patch(
+            "diapason.speech.faster_whisper.WhisperModel", return_value=model
+        ):
+            backend = FasterWhisperBackend(model_size="base")
+            backend.transcribe(b"not a wav")
+        return backend
+
+    def test_an_unsure_detection_does_not_latch(self):
+        backend = self._backend_with("en", 0.55, 6.0)
+        assert backend._detected is None
+
+    def test_a_short_clip_does_not_latch(self):
+        # Detection reads only the first window, so a two-word utterance is
+        # exactly where it is least trustworthy.
+        backend = self._backend_with("en", 0.99, 0.8)
+        assert backend._detected is None
+
+    def test_a_confident_long_detection_does_latch(self):
+        backend = self._backend_with("fr", 0.97, 5.0)
+        assert backend._detected == "fr"
+
+    def test_thresholds_are_strict_enough_to_matter(self):
+        from diapason.speech.faster_whisper import (
+            LANGUAGE_LATCH_CONFIDENCE,
+            LANGUAGE_LATCH_SECONDS,
+        )
+
+        assert LANGUAGE_LATCH_CONFIDENCE >= 0.8
+        assert LANGUAGE_LATCH_SECONDS >= 1.5
+
+    def test_a_configured_language_skips_the_guards_entirely(self):
+        # Someone who states their language should never pay for detection,
+        # nor be at its mercy.
+        backend = FasterWhisperBackend(model_size="base", language="fr")
+        assert backend._effective_language(None) == "fr"

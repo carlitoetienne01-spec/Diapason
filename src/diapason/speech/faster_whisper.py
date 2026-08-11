@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 # handing it audio at any other rate would silently transpose the speech.
 WHISPER_RATE = 16_000
 
+# How sure Whisper must be before a detected language is reused for the rest
+# of the session, and how much audio that verdict must be based on. Language
+# detection reads only the first window, so a two-second "oui, voilà" is
+# exactly the case it gets wrong.
+LANGUAGE_LATCH_CONFIDENCE = 0.85
+LANGUAGE_LATCH_SECONDS = 2.0
+
 
 def _decode_pcm_wav(audio: bytes):
     """Decode 16 kHz mono 16-bit PCM WAV to a float32 array, or None.
@@ -294,9 +301,21 @@ class FasterWhisperBackend(SpeechBackend):
             raise
 
         # Remember a detected language so the next utterance can skip the
-        # detection pass entirely.
+        # detection pass — but only on evidence strong enough to bet a whole
+        # session on.
+        #
+        # The two guards below exist because of a real failure: one uncertain
+        # detection on a first short clip latched the session to English, and
+        # every French sentence afterwards came back translated. Forcing the
+        # wrong language is not a small error — Whisper does not refuse, it
+        # renders the speech *as* that language. Re-detecting merely costs a
+        # few hundred milliseconds, so the asymmetry decides the design.
         if not self._language and self._detected is None:
-            self._detected = getattr(info, "language", None)
+            probability = getattr(info, "language_probability", 0.0) or 0.0
+            seconds = getattr(info, "duration", 0.0) or 0.0
+            confident = probability >= LANGUAGE_LATCH_CONFIDENCE
+            if confident and seconds >= LANGUAGE_LATCH_SECONDS:
+                self._detected = getattr(info, "language", None)
 
         # Build result
         text = "".join(seg.text for seg in segments_list).strip()
