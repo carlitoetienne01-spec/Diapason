@@ -172,7 +172,11 @@ vec3 spectrumAt(float t) {
 }
 
 float fieldEnvelope(float u, float v) {
-  float envX = exp(-${f(C.geometry.envelopeX)} * u * u * uFocus);
+  // The terrain's envelope concentrates everything centrally, which leaves
+  // exactly one hump. The ribbon needs peaks all along its length, so its
+  // falloff is far gentler — it still dissolves at the ends, just later.
+  float sharpness = mix(${f(C.geometry.envelopeX)}, ${f(C.ribbon.falloff)}, uRibbon);
+  float envX = exp(-sharpness * u * u * uFocus);
   float envZ = exp(-${f(C.geometry.envelopeZ)} * v * v);
   envX *= smoothstep(1.0, 0.68, abs(u));
   envZ *= smoothstep(1.0, 0.74, abs(v));
@@ -235,19 +239,47 @@ void main() {
   x += swirl * 0.085 * env;
   z += swirl * 0.055 * env;
 
+  // The ribbon's own waveform. The terrain's three superposed waves make a
+  // slow swell; this is a proper trace — several alternations across the
+  // width, with the crest sitting over the loudest band lifted above its
+  // neighbours. That is what makes one peak dominate, and makes *which* peak
+  // depend on what was just said.
+  float phase = u * ${f(C.ribbon.cycles)} * 6.2831853 - uTime * 0.55 * uSpeed;
+  float trace = sin(phase) * 0.72
+              + sin(phase * 0.47 + 1.7) * 0.42
+              + sin(phase * 2.13 - 0.6) * 0.16;
+  // Non-mirrored, so the peaks differ from one side to the other rather than
+  // coming in symmetric pairs, and weighted toward the centre so the dominant
+  // crest tends to land where the eye already is.
+  float bandEnergy = sampleBands(u * 0.55);
+  float centreBias = exp(-1.1 * u * u);
+  float peak = 1.0 + bandEnergy * ${f(C.ribbon.peakGain)} * centreBias * uEqMix;
+  float ribbonWave = trace * peak * uAmplitude * 0.62;
+
   // Ribbon mode. The rows stop being depth and become strands stacked in Y,
   // each following the same curve — which is exactly what the reference's
   // ribbons are: one wave drawn many times, slightly apart. The fan narrows
   // and widens along the length so the bundle breathes instead of running as
   // a constant-width band.
+  // Two bundles. The upper strands carry a phase-shifted, thinner copy that
+  // crosses the main one — the interlacing that gives the reference its depth.
+  float isSecond = step(0.0, v);
+  float bundlePhase = isSecond * ${f(C.ribbon.second.phase)};
+  float bundleWave = ribbonWave;
+  if (isSecond > 0.5) {
+    float p2 = phase + bundlePhase;
+    bundleWave = (sin(p2) * 0.72 + sin(p2 * 0.47 + 1.7) * 0.42) * peak
+               * uAmplitude * 0.5;
+  }
   float fan = 0.45 + 0.55 * (0.5 + 0.5 * cos(u * 2.1 + uTime * 0.21 * uSpeed));
-  float ribbonY = v * ${f(C.ribbon.spread)} * fan;
+  float thickness = mix(1.0, ${f(C.ribbon.second.spread)}, isSecond);
+  float ribbonY = v * ${f(C.ribbon.spread)} * fan * thickness;
   // Voice stretches the whole bundle vertically. This is the motion asked
   // for: not a surface swelling, a wave reaching further up and further down.
   // Bounded: past this the ribbon simply leaves the panel, and a wave you
   // cannot see the top of reads as broken rather than loud.
   float stretch = 1.0 + min((uLevel * 1.5 + uMid * 0.8) * uAudioDrive, 1.35);
-  float y = mix(height, height * stretch + ribbonY, uRibbon);
+  float y = mix(height, bundleWave * stretch + ribbonY, uRibbon);
   float zPos = mix(z, v * ${f(C.ribbon.depth)}, uRibbon);
 
   vec4 mv = modelViewMatrix * vec4(x, y, zPos, 1.0);
@@ -292,7 +324,8 @@ void main() {
 
   vAlpha = env * (0.3 + 0.7 * hn) * uGlow * uIntensity * depthFade
          * (0.72 + 0.28 * twinkle) * strand * burn
-         * (1.0 - 0.42 * uSpectrumMix);
+         * (1.0 - 0.42 * uSpectrumMix)
+         * mix(1.0, mix(1.0, ${f(C.ribbon.second.glow)}, isSecond), uRibbon);
 
   float size = uSize * (0.5 + 0.5 * env) * (1.0 + spark * 0.55);
   gl_PointSize = clamp(

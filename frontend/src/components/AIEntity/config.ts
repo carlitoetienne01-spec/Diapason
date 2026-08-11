@@ -85,6 +85,21 @@ export const AI_ENTITY_CONFIG = {
     spread: 1.15,
     /** What little depth the strands keep, so the bundle still has body. */
     depth: 0.4,
+    /** Alternations across the width. Four to five reads as a waveform; one
+     * is a hump, and past eight the trace goes busy at banner height.
+     * u spans -1..1, so sin(u·cycles·2π) covers 2·cycles cycles — four
+     * alternations per unit. 1.15 therefore gives the four to five wanted. */
+    cycles: 1.15,
+    /** How gently the ribbon fades toward the ends. Far flatter than the
+     * terrain's envelope, which concentrates everything centrally and leaves
+     * exactly one peak. */
+    falloff: 0.55,
+    /** The second, thinner ribbon: its phase offset, its share of the
+     * thickness and of the light. */
+    second: { phase: 2.35, spread: 0.5, glow: 0.55 },
+    /** How far a loud band lifts the peak sitting over it. This is what makes
+     * one crest dominate, and makes which one depend on what was said. */
+    peakGain: 1.5,
   },
 
   /** Framing for the dictation banner, which is a different shot entirely:
