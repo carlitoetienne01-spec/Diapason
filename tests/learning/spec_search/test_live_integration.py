@@ -6,7 +6,7 @@ with ``pytest -m "not cloud"``.
 
 Requires:
 - ANTHROPIC_API_KEY environment variable set
-- TraceStore at ~/.openjarvis/traces.db with some traces
+- TraceStore at ~/.diapason/traces.db with some traces
 """
 
 from __future__ import annotations
@@ -39,9 +39,9 @@ def cloud_engine(anthropic_key):
 def real_trace_store():
     from diapason.traces.store import TraceStore
 
-    db_path = Path.home() / ".openjarvis" / "traces.db"
+    db_path = Path.home() / ".diapason" / "traces.db"
     if not db_path.exists():
-        pytest.skip("No traces.db found at ~/.openjarvis/")
+        pytest.skip("No traces.db found at ~/.diapason/")
     store = TraceStore(db_path)
     if store.count() < 5:
         pytest.skip("Need at least 5 traces for live test")

@@ -16,7 +16,7 @@ _NO_DL = "--no-download"
 class TestInitHost:
     def test_init_host_writes_to_config(self, tmp_path: Path) -> None:
         """jarvis init --host writes the host into config.toml."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -40,7 +40,7 @@ class TestInitHost:
 
     def test_init_host_with_vllm(self, tmp_path: Path) -> None:
         """jarvis init --host applies to the selected engine."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -57,7 +57,7 @@ class TestInitHost:
 
     def test_init_host_probes_and_reports(self, tmp_path: Path) -> None:
         """jarvis init --host shows reachability status."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -76,7 +76,7 @@ class TestInitHost:
 
     def test_init_without_host_still_works(self, tmp_path: Path) -> None:
         """jarvis init without --host still produces valid config."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),

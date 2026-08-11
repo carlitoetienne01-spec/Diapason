@@ -21,7 +21,7 @@ def _clear_keys(monkeypatch) -> None:
 
 
 def test_init_accepts_from_bare_jarvis_flag(
-    tmp_openjarvis_home: Path, monkeypatch
+    tmp_diapason_home: Path, monkeypatch
 ) -> None:
     """The --from-bare-jarvis flag exists and suppresses the launch-chat prompt."""
     _clear_keys(monkeypatch)
@@ -39,7 +39,7 @@ def test_init_accepts_from_bare_jarvis_flag(
 
 
 def test_init_proposes_cloud_when_key_in_env(
-    tmp_openjarvis_home: Path, monkeypatch
+    tmp_diapason_home: Path, monkeypatch
 ) -> None:
     """When ANTHROPIC_API_KEY is set, init mentions cloud / anthropic."""
     _clear_keys(monkeypatch)
@@ -55,7 +55,7 @@ def test_init_proposes_cloud_when_key_in_env(
 
 
 def test_init_from_bare_jarvis_skips_engine_prompt(
-    tmp_openjarvis_home: Path, monkeypatch
+    tmp_diapason_home: Path, monkeypatch
 ) -> None:
     """--from-bare-jarvis must not hang on the engine-selection prompt
     even when --engine is not provided."""

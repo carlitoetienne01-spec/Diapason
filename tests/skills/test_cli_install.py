@@ -53,7 +53,7 @@ class TestCliInstallE2E:
             with patch.object(HermesResolver, "sync", lambda self: None):
                 # Patch the SkillImporter constructor used inside the install
                 # command so it writes to our test target instead of
-                # ~/.openjarvis/skills/.
+                # ~/.diapason/skills/.
                 from diapason.skills.importer import SkillImporter as _SI
 
                 original_init = _SI.__init__

@@ -97,7 +97,7 @@ class TestEnsureRunner:
             patch("subprocess.run") as mock_run,
         ):
             mock_run.return_value = _mock_proc()
-            dest = home_dir / ".openjarvis" / "claude_code_runner"
+            dest = home_dir / ".diapason" / "claude_code_runner"
             result = agent._ensure_runner()
             assert result == dest
             mock_run.assert_called_once()
@@ -110,7 +110,7 @@ class TestEnsureRunner:
         agent = ClaudeCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
-        dest = home_dir / ".openjarvis" / "claude_code_runner"
+        dest = home_dir / ".diapason" / "claude_code_runner"
         dest.mkdir(parents=True)
         (dest / "node_modules").mkdir()
 

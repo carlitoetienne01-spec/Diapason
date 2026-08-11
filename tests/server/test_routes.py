@@ -939,7 +939,7 @@ def _traces_enabled_config(tmp_path):
 
     ``create_app`` only builds a trace store when ``config.traces.enabled`` is
     true (server/app.py). Relying on the ambient ``load_config()`` made these
-    tests fail on any machine whose ``~/.openjarvis/config.toml`` disables
+    tests fail on any machine whose ``~/.diapason/config.toml`` disables
     traces; pinning an explicit config + tmp db keeps them hermetic and
     parallel-safe under ``pytest -n auto``.
     """

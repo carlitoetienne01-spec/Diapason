@@ -1,7 +1,7 @@
 """Smoke test: every shipped preset config must load cleanly.
 
 Presets are installed via `jarvis init --preset <name>`, which copies
-`configs/openjarvis/examples/<name>.toml` to `~/.openjarvis/config.toml`.
+`configs/openjarvis/examples/<name>.toml` to `~/.diapason/config.toml`.
 A preset that fails to parse via `load_config()` would break first-time
 setup, so we validate the whole set on every commit.
 """

@@ -44,7 +44,7 @@ class TestSkillSystemIntegration:
         mgr = SkillManager(bus=bus)
         from pathlib import Path
 
-        mgr.discover(paths=[Path("~/.openjarvis/skills/").expanduser()])
+        mgr.discover(paths=[Path("~/.diapason/skills/").expanduser()])
 
         catalog = mgr.get_catalog_xml()
         assert "<available_skills>" in catalog
@@ -59,7 +59,7 @@ class TestSkillSystemIntegration:
         mgr = SkillManager(bus=bus)
         from pathlib import Path
 
-        mgr.discover(paths=[Path("~/.openjarvis/skills/").expanduser()])
+        mgr.discover(paths=[Path("~/.diapason/skills/").expanduser()])
 
         # Test instruction-only skill
         tools = mgr.get_skill_tools()

@@ -1,7 +1,7 @@
 """Shared fixtures for server route tests.
 
 Server tests build apps via ``create_app``, which (with traces enabled by
-default) wires a ``TraceStore`` at the real ``~/.openjarvis/traces.db``. Now
+default) wires a ``TraceStore`` at the real ``~/.diapason/traces.db``. Now
 that the chat endpoints actually *write* traces, an unguarded run would
 pollute the developer's real trace DB and make tests non-hermetic. This
 autouse fixture redirects the traces DB to a per-test temp path.

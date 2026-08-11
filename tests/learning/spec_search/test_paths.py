@@ -17,9 +17,9 @@ class TestResolveSpecSearchRoot:
     def test_default_is_under_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from diapason.learning.spec_search.storage import paths
 
-        monkeypatch.delenv("OPENJARVIS_HOME", raising=False)
+        monkeypatch.delenv("DIAPASON_HOME", raising=False)
         result = paths.resolve_spec_search_root()
-        assert result == Path.home() / ".openjarvis" / "learning"
+        assert result == Path.home() / ".diapason" / "learning"
 
     def test_respects_openjarvis_home_env_var(
         self,
@@ -29,7 +29,7 @@ class TestResolveSpecSearchRoot:
         from diapason.learning.spec_search.storage import paths
 
         custom = tmp_path / "custom_oj"
-        monkeypatch.setenv("OPENJARVIS_HOME", str(custom))
+        monkeypatch.setenv("DIAPASON_HOME", str(custom))
         result = paths.resolve_spec_search_root()
         assert result == custom / "learning"
 
@@ -40,7 +40,7 @@ class TestResolveSpecSearchRoot:
     ) -> None:
         from diapason.learning.spec_search.storage import paths
 
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "rel"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "rel"))
         result = paths.resolve_spec_search_root()
         assert result.is_absolute()
 
@@ -54,8 +54,8 @@ class TestResolveSpecSearchRoot:
         source_root = paths._find_source_root()
         assert source_root is not None  # We must be running inside the repo.
 
-        # Force OPENJARVIS_HOME to point inside the source tree.
-        monkeypatch.setenv("OPENJARVIS_HOME", str(source_root / "junk_dir"))
+        # Force DIAPASON_HOME to point inside the source tree.
+        monkeypatch.setenv("DIAPASON_HOME", str(source_root / "junk_dir"))
 
         with pytest.raises(paths.ConfigurationError, match="inside the source tree"):
             paths.resolve_spec_search_root()
@@ -83,7 +83,7 @@ class TestEnsureSpecSearchDirs:
     ) -> None:
         from diapason.learning.spec_search.storage import paths
 
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         root = paths.ensure_spec_search_dirs()
 
         assert root.exists()
@@ -99,7 +99,7 @@ class TestEnsureSpecSearchDirs:
     ) -> None:
         from diapason.learning.spec_search.storage import paths
 
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         first = paths.ensure_spec_search_dirs()
         second = paths.ensure_spec_search_dirs()
 

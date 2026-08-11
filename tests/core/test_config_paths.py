@@ -1,6 +1,6 @@
 """Tests for the env-aware OpenJarvis home-directory resolver (issue #462).
 
-Covers the single-root consolidation: ``$OPENJARVIS_HOME`` >
+Covers the single-root consolidation: ``$DIAPASON_HOME`` >
 ``$XDG_DATA_HOME/diapason`` > ``~/.diapason``, backward compatibility
 (no env => exactly ``~/.diapason``), and the source-tree rejection guard.
 """
@@ -17,7 +17,7 @@ from diapason.core import paths
 def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Remove every env var that influences home resolution."""
     for var in (
-        "OPENJARVIS_HOME",
+        "DIAPASON_HOME",
         "XDG_DATA_HOME",
         "XDG_CONFIG_HOME",
         "XDG_CACHE_HOME",
@@ -41,7 +41,7 @@ class TestGetConfigDir:
     ) -> None:
         _clear_env(monkeypatch)
         custom = tmp_path / "oj"
-        monkeypatch.setenv("OPENJARVIS_HOME", str(custom))
+        monkeypatch.setenv("DIAPASON_HOME", str(custom))
         assert paths.get_config_dir() == custom.resolve()
 
     def test_respects_xdg_data_home(
@@ -57,7 +57,7 @@ class TestGetConfigDir:
     ) -> None:
         _clear_env(monkeypatch)
         oj = tmp_path / "oj_wins"
-        monkeypatch.setenv("OPENJARVIS_HOME", str(oj))
+        monkeypatch.setenv("DIAPASON_HOME", str(oj))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg_loses"))
         assert paths.get_config_dir() == oj.resolve()
 
@@ -65,14 +65,14 @@ class TestGetConfigDir:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("OPENJARVIS_HOME", "~/relocated-oj")
+        monkeypatch.setenv("DIAPASON_HOME", "~/relocated-oj")
         assert paths.get_config_dir() == (Path.home() / "relocated-oj").resolve()
 
     def test_returns_absolute_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "rel"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "rel"))
         assert paths.get_config_dir().is_absolute()
 
 
@@ -81,21 +81,21 @@ class TestDerivedDirs:
 
     def test_config_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         assert paths.get_config_path() == (tmp_path / "oj" / "config.toml").resolve()
 
     def test_data_dir_equals_config_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         assert paths.get_data_dir() == paths.get_config_dir()
 
     def test_cache_dir_is_nested_cache(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_env(monkeypatch)
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         assert paths.get_cache_dir() == (tmp_path / "oj" / "cache").resolve()
 
     def test_cache_dir_under_xdg(
@@ -115,7 +115,7 @@ class TestSourceTreeRejection:
         _clear_env(monkeypatch)
         source_root = paths._find_source_root()
         assert source_root is not None  # We must be running inside the repo.
-        monkeypatch.setenv("OPENJARVIS_HOME", str(source_root / "junk_dir"))
+        monkeypatch.setenv("DIAPASON_HOME", str(source_root / "junk_dir"))
         with pytest.raises(paths.ConfigurationError, match="inside the source tree"):
             paths.get_config_dir()
 
@@ -124,7 +124,7 @@ class TestLegacyConstantsHonorEnv:
     """The legacy DEFAULT_CONFIG_* names route through the env-aware resolver.
 
     This is the exact split-brain bug from #462: the constant used to ignore
-    OPENJARVIS_HOME entirely. The constant is resolved once at import (the
+    DIAPASON_HOME entirely. The constant is resolved once at import (the
     install-script model, where the env is set before the process starts), and
     every instance-level default goes through ``get_config_dir()`` so it honors
     the override. ``DEFAULT_CONFIG_DIR`` stays a real attribute so existing
@@ -156,7 +156,7 @@ class TestLegacyConstantsHonorEnv:
         _clear_env(monkeypatch)
         from diapason.core.config import SessionConfig, StorageConfig
 
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         root = (tmp_path / "oj").resolve()
         assert StorageConfig().db_path == str(root / "memory.db")
         assert SessionConfig().db_path == str(root / "sessions.db")
@@ -169,7 +169,7 @@ class TestLegacyConstantsHonorEnv:
         _clear_env(monkeypatch)
         from diapason.core import credentials
 
-        monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "oj"))
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "oj"))
         assert (
             credentials._default_path()
             == (tmp_path / "oj" / "credentials.toml").resolve()

@@ -20,7 +20,7 @@ Sources, and assert the fixed behaviour:
 All tests are hermetic: the connectors directory, the shared Google
 credentials path, and every Google connector's default credentials path are
 redirected to ``tmp_path`` so the suite neither depends on nor pollutes
-``~/.openjarvis/connectors`` (a real source of spurious failures — see the
+``~/.diapason/connectors`` (a real source of spurious failures — see the
 verifier note on ``resolve_google_credentials`` silently substituting the
 shared file when the caller-supplied path does not yet exist on disk).
 """

@@ -68,7 +68,7 @@ def test_tool_credentials_browser_lifecycle(tmp_path, monkeypatch):
 
     from diapason.server.agent_manager_routes import create_agent_manager_router
 
-    monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path / "diapason-home"))
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "diapason-home"))
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     app = FastAPI()
     tools_router = create_agent_manager_router(MagicMock())[3]

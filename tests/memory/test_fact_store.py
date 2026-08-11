@@ -134,7 +134,7 @@ def test_create_fact_store_uses_fact_store_registry(tmp_path):
 
 
 def test_create_fact_store_default_path_uses_openjarvis_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("OPENJARVIS_HOME", str(tmp_path))
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
 
     store = create_fact_store("local")
 

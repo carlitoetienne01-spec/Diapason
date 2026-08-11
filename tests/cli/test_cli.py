@@ -123,7 +123,7 @@ class TestCLI:
         assert "list" in result.output
 
     def test_init_creates_config(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),

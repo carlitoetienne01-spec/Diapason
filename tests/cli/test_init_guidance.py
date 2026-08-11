@@ -16,7 +16,7 @@ _NO_DL = "--no-download"
 class TestInitShowsNextSteps:
     def test_init_shows_next_steps(self, tmp_path: Path) -> None:
         """Init command prints next-steps panel after writing config."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -31,7 +31,7 @@ class TestInitShowsNextSteps:
 
     def test_init_output_shows_toml_sections_literally(self, tmp_path: Path) -> None:
         """Init output should render TOML section headers like [engine] literally."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -91,7 +91,7 @@ class TestNextStepsMlx:
 class TestMinimalConfig:
     def test_init_generates_minimal_by_default(self, tmp_path: Path) -> None:
         """Default jarvis init produces a short config."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -109,7 +109,7 @@ class TestMinimalConfig:
 
     def test_init_full_generates_verbose_config(self, tmp_path: Path) -> None:
         """jarvis init --full produces the full reference config."""
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -130,7 +130,7 @@ class TestMinimalConfig:
 
 class TestInitDownloadPrompt:
     def test_init_shows_download_prompt(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -145,7 +145,7 @@ class TestInitDownloadPrompt:
         assert "now?" in result.output
 
     def test_init_no_download_flag_skips_prompt(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -159,7 +159,7 @@ class TestInitDownloadPrompt:
 
 class TestInitEmptyModelFallback:
     def test_init_no_model_shows_warning(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -190,7 +190,7 @@ class TestNextStepsExoNexa:
 
 class TestInitDownloadDispatch:
     def test_init_ollama_download_calls_ollama_pull(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -208,7 +208,7 @@ class TestInitDownloadDispatch:
         mock_pull.assert_called_once()
 
     def test_init_vllm_shows_auto_download_message(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
@@ -222,7 +222,7 @@ class TestInitDownloadDispatch:
 
 class TestInitPrivacyHook:
     def test_init_shows_privacy_summary(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".openjarvis"
+        config_dir = tmp_path / ".diapason"
         config_path = config_dir / "config.toml"
         with (
             mock.patch("diapason.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir),
