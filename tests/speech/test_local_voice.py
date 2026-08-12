@@ -475,3 +475,104 @@ class TestSpeculativeSTT:
         assert session._speculative is not None
         await session.send_audio(pcm(0.4))  # reprise : la phrase continue
         assert session._speculative is None, "stale speculation must die"
+
+
+class TestPlaybackInterruption:
+    """The reported bug: « je demande d'arrêter de parler, il n'arrête pas ».
+
+    Synthesis outruns playback, so the respond task is usually finished while
+    the user is still HEARING the answer — there was nothing left to cancel,
+    and the barge-in silently did nothing. The fix interrupts the playback
+    clock, not just the task.
+    """
+
+    @pytest.mark.asyncio
+    async def test_speech_over_finished_task_still_interrupts(self):
+        import time
+
+        harness = Harness()
+        session = harness.session
+        # The respond task is DONE, but 5 s of audio are still playing
+        # client-side.
+        session._speaking_until = time.monotonic() + 5.0
+        await session.send_audio(pcm(0.1, amplitude=0.08))  # voix franche
+        kinds = [e.kind async for e in _collect(session)]
+        assert "interrupted" in kinds
+        assert session._speaking_until == 0.0
+
+    @pytest.mark.asyncio
+    async def test_speaker_echo_does_not_self_interrupt(self):
+        import time
+
+        harness = Harness()
+        session = harness.session
+        session._speaking_until = time.monotonic() + 5.0
+        # Between the speech and barge thresholds: what the microphone hears
+        # of the speakers, not a voice over the top.
+        await session.send_audio(pcm(0.3, amplitude=0.015))
+        kinds = [e.kind async for e in _collect(session)]
+        assert "interrupted" not in kinds
+        assert len(session._buffer) == 0, "echo must not be transcribed later"
+
+    @pytest.mark.asyncio
+    async def test_speaking_clock_advances_with_synthesised_audio(self):
+        import time
+
+        harness = Harness(answer="Une phrase assez longue pour durer.")
+        session = harness.session
+        before = time.monotonic()
+        await session.send_text("parle")
+        await session._respond_task
+        assert session._speaking_until > before
+
+    @pytest.mark.asyncio
+    async def test_normal_threshold_returns_after_playback(self):
+        harness = Harness()
+        session = harness.session
+        session._speaking_until = 0.0  # plus rien ne joue
+        await session.send_audio(pcm(0.4, amplitude=0.015))  # voix douce
+        assert session._in_speech, "soft speech must count again"
+
+
+class TestStopPhrases:
+    def test_the_phrases_that_mean_silence(self):
+        from diapason.speech.realtime.local_voice import is_stop_phrase
+
+        for phrase in (
+            "Arrête",
+            "arrête de parler",
+            "Diapason, arrête !",
+            "stop",
+            "Tais-toi",
+            "chut",
+            "ça suffit",
+            "c'est bon merci",
+            "arrête-toi s'il te plaît",
+        ):
+            assert is_stop_phrase(phrase), phrase
+
+    def test_ordinary_sentences_are_not_stops(self):
+        from diapason.speech.realtime.local_voice import is_stop_phrase
+
+        for phrase in (
+            "arrête-moi si je me trompe, mais continue",
+            "peux-tu arrêter le minuteur ?",
+            "le stop du bus est loin",
+            "c'est bon pour la santé ?",
+        ):
+            assert not is_stop_phrase(phrase), phrase
+
+    @pytest.mark.asyncio
+    async def test_a_stop_phrase_gets_silence_not_an_answer(self):
+        harness = Harness()
+        harness.session._stt = lambda _a: "arrête de parler"
+        session = harness.session
+        await session.send_audio(pcm(0.6))
+        await session.send_audio(pcm(END_OF_TURN_S + 0.1, amplitude=0.0))
+        await session._respond_task
+        # The user transcript appears; no LLM round, nothing spoken.
+        assert harness.llm_calls == []
+        assert harness.spoken == []
+        events = [e async for e in _collect(session)]
+        users = [e for e in events if e.kind == "transcript" and e.role == "user"]
+        assert users and users[0].text == "arrête de parler"

@@ -47,6 +47,26 @@ END_OF_TURN_S = 0.6
 SPECULATE_AFTER_S = 0.25
 # Ignore blips shorter than this — a cough is not a turn.
 MIN_SPEECH_S = 0.35
+# While the assistant's audio is still playing on the client, the microphone
+# hears the speakers. Interrupting on the ordinary speech threshold would let
+# the assistant cut ITSELF off; requiring a markedly stronger signal means
+# only a real voice over the top does it.
+BARGE_RMS = SPEECH_RMS * 3
+
+# Utterances that mean "stop talking" and deserve silence, not a reply.
+# With barge-in the playback already stopped the moment the user spoke;
+# answering "ok, j'arrête" would be exactly the noise they asked to end.
+_STOP_PHRASES = re.compile(
+    r"^(?:diapason[,\s]*)?"
+    r"(?:arr[êe]te(?:[- ]toi)?(?:\s+de\s+parler)?|stop|tais[- ]toi|chut+"
+    r"|silence|[çc]a suffit|c'?est bon)"
+    r"(?:[,\s]+(?:s'?il\s+te\s+pla[îi]t|merci))?[\s.!…]*$",
+    re.IGNORECASE,
+)
+
+
+def is_stop_phrase(text: str) -> bool:
+    return bool(_STOP_PHRASES.match((text or "").strip()))
 
 # Sentence boundary for incremental speech: synthesise as soon as a sentence
 # is complete instead of waiting for the whole answer — this is what turns
@@ -281,6 +301,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # (buffered byte count, transcription task) — valid only while the
         # buffer has not grown past the snapshot it was taken from.
         self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
+        # When, on OUR clock, the audio already shipped to the client will
+        # finish playing. Synthesis outruns playback, so the respond task is
+        # usually long done while the user is still hearing the answer — this
+        # clock is what lets speech interrupt a playback with no task left to
+        # cancel. That gap was exactly the reported "il ne s'arrête pas".
+        self._speaking_until = 0.0
         self._history: List[dict] = []
         self._closed = False
 
@@ -364,14 +390,33 @@ class LocalVoiceSession(RealtimeVoiceSession):
     async def send_audio(self, pcm16: bytes) -> None:
         if self._closed or not pcm16:
             return
+        import time as _time
+
         rms = _rms(pcm16)
-        speaking_now = rms >= SPEECH_RMS
+        playback_live = _time.monotonic() < self._speaking_until
+        # Over live playback the microphone hears the speakers, so only a
+        # markedly stronger signal counts as the user. Below that, the frame
+        # is neither speech nor silence: it is the assistant's own echo, and
+        # buffering it would transcribe the assistant back at itself.
+        threshold = BARGE_RMS if playback_live else SPEECH_RMS
+        speaking_now = rms >= threshold
+        if playback_live and not speaking_now:
+            return
 
         if speaking_now:
-            # Barge-in: the user talking over the assistant cancels the
-            # answer. That single cancellation is the whole feature.
+            # Barge-in, both halves. Cancelling the respond task stops what
+            # is still being generated; the "interrupted" event makes the
+            # client flush what was ALREADY delivered to its playback queue.
+            # Synthesis outruns playback, so most of the time only the second
+            # half has anything left to stop.
+            interrupted = False
             if self._respond_task is not None and not self._respond_task.done():
                 self._respond_task.cancel()
+                interrupted = True
+            if playback_live:
+                self._speaking_until = 0.0
+                interrupted = True
+            if interrupted:
                 await self._queue.put(SessionEvent(kind="interrupted"))
             # Any speculative transcription was of an utterance that turned
             # out not to be finished; it no longer describes the buffer.
@@ -460,6 +505,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
             await self._queue.put(
                 SessionEvent(kind="transcript", role="user", text=text, final=True)
             )
+            if is_stop_phrase(text):
+                # They asked for quiet. The barge-in already silenced the
+                # playback the moment they spoke; generating "d'accord,
+                # j'arrête" would be one more sentence of exactly the noise
+                # they asked to end.
+                return
             await self._respond_to_text(text, already_queued=True)
         except asyncio.CancelledError:
             raise
@@ -614,6 +665,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
         pcm = await asyncio.to_thread(self._tts, sentence)
         spoken.append(sentence)
         if pcm:
+            import time as _time
+
+            duration = len(pcm) / 2 / OUTPUT_RATE
+            now = _time.monotonic()
+            # Chunks queue up on the client, so each one starts when the
+            # previous ends — never before now.
+            self._speaking_until = max(now, self._speaking_until) + duration
             await self._queue.put(
                 SessionEvent(
                     kind="audio",
