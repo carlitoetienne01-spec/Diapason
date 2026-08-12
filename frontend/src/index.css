@@ -379,6 +379,27 @@
     margin: 1em 0;
   }
 
+  /* Welcome logo — a slow coin-spin about its own vertical axis.
+     CSS-only: zero-cost continuous motion, like the HUD animations. */
+  @keyframes logo-coin-spin {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(360deg); }
+  }
+  .logo-spin {
+    animation: logo-coin-spin 7s linear infinite;
+    transform-style: preserve-3d;
+    will-change: transform;
+    /* The artwork is silver-on-transparent: perfect on dark, a ghost on
+       light. Inverting in light theme turns it charcoal — same identity. */
+    filter: invert(0.82);
+  }
+  .dark .logo-spin {
+    filter: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .logo-spin { animation: none; }
+  }
+
   /* System Pulse animations */
   @keyframes pulse-glow {
     0%, 100% { opacity: 0.7; }
