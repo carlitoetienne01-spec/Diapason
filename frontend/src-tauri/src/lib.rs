@@ -2847,7 +2847,11 @@ pub fn run() {
             }
 
             let _tray = TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
+                // A TEMPLATE icon, not the app tile: menu bar icons are
+                // monochrome silhouettes that macOS recolors per theme —
+                // the colored tile showed up as a black square blob.
+                .icon(tauri::include_image!("icons/tray-icon.png"))
+                .icon_as_template(true)
                 .tooltip("Diapason")
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
