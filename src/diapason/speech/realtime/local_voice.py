@@ -309,6 +309,40 @@ def _default_llm(
     return start
 
 
+def _tool_note(call: dict, reply: dict) -> str:
+    """One line of what a tool did, for the cross-turn history trace.
+
+    Deliberately lossy: the point is that « joue-la » next turn can find
+    "open_anything(joue papaoutai sur youtube) -> ok: Playing top YouTube
+    result…", not to replay the full JSON payload through every prompt.
+    """
+    function = call.get("function") or {}
+    name = str(function.get("name") or "?")
+    raw_args = function.get("arguments") or {}
+    if isinstance(raw_args, str):
+        try:
+            raw_args = json.loads(raw_args)
+        except ValueError:
+            raw_args = {}
+    args = raw_args if isinstance(raw_args, dict) else {}
+    arg = str(args.get("target") or args.get("query") or args.get("uri") or "")
+    outcome = ""
+    try:
+        payload = json.loads(reply.get("content") or "{}")
+        # json.loads happily returns a str or list; .get on those is an
+        # AttributeError, which — raised here — would abort the whole
+        # spoken turn over a logging nicety.
+        if not isinstance(payload, dict):
+            payload = {}
+        ok = "ok" if payload.get("ok") else "failed"
+        outcome = str(payload.get("content") or payload.get("error") or "")
+    except (ValueError, TypeError):
+        ok = "?"
+    detail = f"({arg[:80]})" if arg else ""
+    tail = f": {outcome[:160]}" if outcome else ""
+    return f"{name}{detail} -> {ok}{tail}"
+
+
 class LocalVoiceSession(RealtimeVoiceSession):
     """Turn-based local voice with barge-in, behind the realtime contract."""
 
@@ -603,6 +637,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # otherwise drag those payloads through every later turn.
             messages = list(self._history)
             spoken: List[str] = []
+            tool_notes: List[str] = []
+            self._budget.reset()
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
             for _round in range(self._budget.max_steps + 1):
@@ -634,9 +670,23 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     }
                 )
                 for call in tool_calls:
-                    messages.append(await self._run_tool(call))
+                    reply = await self._run_tool(call)
+                    messages.append(reply)
+                    tool_notes.append(_tool_note(call, reply))
 
             answer = " ".join(spoken).strip()
+            if tool_notes:
+                # The raw tool payloads stay per-turn (see above), but a
+                # compact trace must survive: without it, « joue-la » at the
+                # next turn has nothing to resolve against — the model only
+                # ever saw "C'est ouvert." in its own history.
+                self._history.append(
+                    {
+                        "role": "system",
+                        "content": "Actions just performed: "
+                        + " ; ".join(tool_notes),
+                    }
+                )
             if answer:
                 self._history.append({"role": "assistant", "content": answer})
                 # Cap again here: trimming only before the user turn leaves

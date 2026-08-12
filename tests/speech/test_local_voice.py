@@ -698,3 +698,100 @@ class TestFrenchClock:
 
         moment = datetime.datetime(2026, 1, 1, 9, 7)
         assert french_now(moment).endswith("9 h 07")
+
+
+class TestCrossTurnToolMemory:
+    """« joue-la » next turn needs a trace; the budget must not starve turns."""
+
+    @pytest.mark.asyncio
+    async def test_budget_resets_each_turn(self):
+        # Per-session, never reset, the cap starved every turn after the
+        # first: twelve tool calls into a session, all later « joue X »
+        # failed with "budget exceeded" until reconnect.
+        harness = ToolHarness(rounds_of_tools=99, max_tool_steps=3)
+        await harness.session.send_text("boucle")
+        await harness.session._respond_task
+        await harness.session.send_text("encore")
+        await harness.session._respond_task
+        assert len(harness.executed) == 6
+
+    @pytest.mark.asyncio
+    async def test_tool_actions_leave_a_compact_trace_in_history(self):
+        harness = ToolHarness()
+        await harness.session.send_text("ouvre example")
+        await harness.session._respond_task
+        notes = [m for m in harness.session._history if m["role"] == "system"]
+        assert len(notes) == 1
+        note = notes[0]["content"]
+        assert "open_uri" in note
+        assert "https://example.com" in note
+        assert "ok" in note
+
+    @pytest.mark.asyncio
+    async def test_the_next_turn_sees_the_trace(self):
+        harness = ToolHarness()
+        await harness.session.send_text("ouvre example")
+        await harness.session._respond_task
+        await harness.session.send_text("joue-la")
+        await harness.session._respond_task
+        # Turn 2's prompt must carry turn 1's actions — that is the whole
+        # point: the raw tool payloads stay per-turn, the trace crosses.
+        turn2_messages = harness.llm_rounds[-1]
+        assert any(
+            m["role"] == "system" and "open_uri" in m.get("content", "")
+            for m in turn2_messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_tools_no_trace(self):
+        harness = ToolHarness(rounds_of_tools=0)
+        await harness.session.send_text("bonjour")
+        await harness.session._respond_task
+        assert not [m for m in harness.session._history if m["role"] == "system"]
+
+
+class TestToolNote:
+    def test_note_compacts_call_and_result(self):
+        import json as _json
+
+        from diapason.speech.realtime.local_voice import _tool_note
+
+        call = {
+            "function": {
+                "name": "open_anything",
+                "arguments": {"target": "joue papaoutai sur youtube"},
+            }
+        }
+        reply = {
+            "role": "tool",
+            "content": _json.dumps(
+                {
+                    "ok": True,
+                    "content": (
+                        "Playing top YouTube result for 'papaoutai': "
+                        "https://www.youtube.com/watch?v=abc12345678"
+                    ),
+                }
+            ),
+        }
+        note = _tool_note(call, reply)
+        assert "open_anything" in note
+        assert "joue papaoutai sur youtube" in note
+        assert "-> ok" in note
+        assert "watch?v=abc12345678" in note
+
+    def test_note_survives_garbage(self):
+        from diapason.speech.realtime.local_voice import _tool_note
+
+        note = _tool_note({}, {"content": "not json"})
+        assert "?" in note  # unknown name and unknown outcome, but no crash
+
+
+    def test_note_survives_a_non_dict_json_payload(self):
+        # json.loads('"..."') is a str: .get on it is an AttributeError,
+        # which — uncaught — aborted the whole spoken turn.
+        from diapason.speech.realtime.local_voice import _tool_note
+
+        call = {"function": {"name": "open_uri", "arguments": {}}}
+        note = _tool_note(call, {"content": '"just a string"'})
+        assert "open_uri" in note  # no crash is the test

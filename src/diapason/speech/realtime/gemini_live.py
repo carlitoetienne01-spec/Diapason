@@ -116,6 +116,8 @@ class GeminiLiveSession(RealtimeVoiceSession):
         await self._ws.send(json.dumps(msg))
 
     async def send_text(self, text: str) -> None:
+        self._budget.reset()  # a typed turn is a turn too
+
         if self._closed or self._ws is None or not text.strip():
             return
         msg = {
@@ -269,6 +271,14 @@ class GeminiLiveSession(RealtimeVoiceSession):
                         raw=data,
                     )
                 )
+
+        # The tool budget is a per-turn chain bound, not a session-lifetime
+        # ration. turnComplete is the one boundary a real session actually
+        # delivers (inputTranscription is opt-in and the setup never asks
+        # for it); it also cannot re-arm an in-flight tool loop, because a
+        # turn that keeps calling tools never completes.
+        if sc.get("turnComplete"):
+            self._budget.reset()
 
         input_tx = sc.get("inputTranscription") or {}
         if input_tx.get("text"):

@@ -19,6 +19,10 @@ class SmartIntent:
     """Resolved open/search/play intent."""
 
     kind: str  # see KIND_* constants
+    # "play" when the user asked to PLAY something (vs merely search): the
+    # executor turns a YouTube play into the top result's watch URL so the
+    # video actually starts, instead of stranding the user on a results page.
+    action: str = ""
     query: str = ""
     url: str = ""
     app: str = ""
@@ -88,11 +92,100 @@ _NATIVE_APPS: dict[str, str] = {
 }
 
 
+# Playback-control vocabulary: a "play" whose whole query is one of these
+# is a control command, not a request to play content by that name.
+_CONTROL_WORDS = frozenset(
+    {"pause", "en pause", "stop", "play", "la vidéo en pause", "vidéo en pause"}
+)
+
+
+# Words that never carry meaning at the head of a media query.
+_FILLER_WORDS = frozenset(
+    {"vidéo", "video", "clip", "chanson", "musique", "music", "song", "for"}
+)
+_ARTICLE_WORDS = frozenset(
+    {"le", "la", "les", "des", "un", "une", "de", "d", "du", "the"}
+)
+
+
 def _clean_query(text: str, *strip_words: str) -> str:
-    q = text
-    for w in strip_words:
-        q = re.sub(rf"\b{re.escape(w)}\b", " ", q, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", q).strip(" .,!?;:")
+    """Strip leading filler from a captured media query, carefully.
+
+    Three generations of this function got it wrong in three ways:
+    stripping everywhere mutilated titles (« La Vie en Rose » → "Vie en
+    Rose"); a blind head-cascade decapitated titles that START with such a
+    word (« La La Land » → "land", « Video Club » → "club"). The rule that
+    survives both: filler nouns ("vidéo", "chanson"…) are dropped from the
+    head; a run of leading ARTICLES is dropped only when it leads to a
+    filler noun ("la vidéo X", "de la musique kompa") — an article leading
+    anything else is part of the title.
+    """
+    fillers = {w for w in strip_words if w in _FILLER_WORDS}
+    articles = {w for w in strip_words if w in _ARTICLE_WORDS}
+
+    def norm(tok: str) -> str:
+        return tok.strip(" .,!?;:'’").lower()
+
+    tokens = text.split()
+    i = 0
+    while i < len(tokens):
+        t = norm(tokens[i])
+        if t in fillers:
+            i += 1
+            continue
+        if t in articles:
+            j = i
+            while j < len(tokens) and norm(tokens[j]) in articles:
+                j += 1
+            if j < len(tokens) and norm(tokens[j]) in fillers:
+                i = j
+                continue
+        break
+    return re.sub(r"\s+", " ", " ".join(tokens[i:])).strip(" .,!?;:")
+
+
+# The results page embeds its initial data as JSON; the first videoRenderer
+# in document order is the top organic result (ads use promotedVideoRenderer
+# or adSlotRenderer and never match this pattern).
+_YT_TOP_RESULT = re.compile(
+    r'"videoRenderer"\s*:\s*\{\s*"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"'
+)
+
+
+def resolve_youtube_watch_url(
+    query: str,
+    *,
+    timeout: float = 4.0,
+    fetch=None,
+) -> str:
+    """Top YouTube search hit as a watch URL, or "" when resolution fails.
+
+    No API key: one GET on the public results page. Failure is a normal
+    state (offline, layout change, consent wall) — the caller falls back to
+    opening the results page, which is what happened before this existed.
+    """
+    url = "https://www.youtube.com/results?search_query=" + quote_plus(query)
+    try:
+        if fetch is None:
+            def fetch(u: str) -> str:
+                import urllib.request
+
+                req = urllib.request.Request(
+                    u,
+                    headers={
+                        "User-Agent": "Mozilla/5.0",
+                        "Accept-Language": "fr,en;q=0.8",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return r.read(2_000_000).decode("utf-8", "replace")
+
+        m = _YT_TOP_RESULT.search(fetch(url))
+        if m:
+            return "https://www.youtube.com/watch?v=" + m.group(1)
+    except Exception:  # noqa: BLE001 - resolution is best-effort by design
+        pass
+    return ""
 
 
 def parse_smart_intent(command: str) -> SmartIntent:
@@ -103,6 +196,18 @@ def parse_smart_intent(command: str) -> SmartIntent:
 
     low = raw.lower().strip()
 
+    # A target that already IS a URL must pass through untouched. Before
+    # this check, an LLM-built https://www.youtube.com/results?search_query=…
+    # entered the YouTube block ("youtube" in low), matched none of the
+    # phrase regexes, and was silently replaced by the YouTube home page.
+    if re.match(r"^(?:https?://|www\.)\S+$", raw, re.IGNORECASE):
+        return SmartIntent(
+            kind=KIND_URL,
+            url=raw if raw.lower().startswith("http") else f"https://{raw}",
+            confidence=0.98,
+            reasoning="Direct URL",
+        )
+
     # --- YouTube ---
     if "youtube" in low:
         for pat, action in (
@@ -112,16 +217,28 @@ def parse_smart_intent(command: str) -> SmartIntent:
             ),
             (r"youtube\s+(?:cherche|search(?:\s+for)?)\s+(.+)", "search"),
             (r"(?:cherche|search(?:\s+for)?)\s+(.+?)\s+(?:sur|on)\s+youtube", "search"),
-            (r"(?:joue|play|regarde|watch)\s+(.+?)\s+(?:sur|on)\s+youtube", "play"),
+            (
+                r"(?:joue|play|regarde|watch|écoute|ecoute|mets|lance)"
+                r"\s+(.+?)\s+(?:sur|on)\s+youtube",
+                "play",
+            ),
             (r"youtube\s+(.+)", "search"),
         ):
             m = re.search(pat, low, re.IGNORECASE)
             if m:
                 q = m.group(1).strip()
-                q = _clean_query(q, "for", "the", "le", "la", "les", "des")
-                if q:
+                q = _clean_query(
+                    q,
+                    "for", "the", "le", "la", "les", "des", "un", "une",
+                    "de", "d", "vidéo", "video", "clip", "chanson",
+                    "musique", "music", "song",
+                )
+                # « mets la vidéo en pause sur youtube » must not PLAY a
+                # video titled "pause" — control words are not queries.
+                if q and (action != "play" or q not in _CONTROL_WORDS):
                     return SmartIntent(
                         kind=KIND_YOUTUBE,
+                        action=action,
                         query=q,
                         url=(
                             "https://www.youtube.com/results?search_query="
@@ -142,12 +259,28 @@ def parse_smart_intent(command: str) -> SmartIntent:
         r"\b(?:écoute|ecoute|listen(?:\s+to)?|joue|play)\b.+\b(?:musique|music|song|chanson)\b",
         low,
     ):
-        for pat in (
-            r"(?:ouvre|open)\s+spotify\s+(?:et|and)\s+(?:cherche|search(?:\s+for)?|joue|play)\s+(.+)",
-            r"(?:joue|play|écoute|ecoute|listen(?:\s+to)?)\s+(.+?)\s+(?:sur|on)\s+spotify",
-            r"spotify\s+(?:cherche|search(?:\s+for)?|joue|play)\s+(.+)",
-            r"spotify\s+(.+)",
-            r"(?:joue|play|écoute|ecoute)\s+(.+)",
+        # Search patterns come FIRST and each pattern carries its own
+        # action: sniffing play-verbs anywhere in the phrase turned
+        # « cherche listen de beyoncé sur spotify » into an autoplay.
+        for pat, action in (
+            (
+                r"(?:ouvre|open)\s+spotify\s+(?:et|and)\s+"
+                r"(?:cherche|search(?:\s+for)?)\s+(.+)",
+                "search",
+            ),
+            (r"(?:cherche|search(?:\s+for)?)\s+(.+?)\s+(?:sur|on)\s+spotify", "search"),
+            (r"spotify\s+(?:cherche|search(?:\s+for)?)\s+(.+)", "search"),
+            (
+                r"(?:ouvre|open)\s+spotify\s+(?:et|and)\s+(?:joue|play)\s+(.+)",
+                "play",
+            ),
+            (
+                r"(?:joue|play|écoute|ecoute|listen(?:\s+to)?)\s+(.+?)\s+(?:sur|on)\s+spotify",
+                "play",
+            ),
+            (r"spotify\s+(?:joue|play)\s+(.+)", "play"),
+            (r"spotify\s+(.+)", "search"),
+            (r"(?:joue|play|écoute|ecoute)\s+(.+)", "play"),
         ):
             m = re.search(pat, low, re.IGNORECASE)
             if m:
@@ -167,6 +300,7 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 if q and q not in {"spotify", "app"}:
                     return SmartIntent(
                         kind=KIND_SPOTIFY,
+                        action=action,
                         query=q,
                         url=f"spotify:search:{quote(q)}",
                         confidence=0.9,
@@ -415,11 +549,61 @@ def execute_smart_intent(intent: SmartIntent, *, browser: str = "") -> Optional[
             body=intent.body,
         )
 
+    if intent.kind == KIND_YOUTUBE and intent.action == "play" and intent.query:
+        watch = resolve_youtube_watch_url(intent.query)
+        if watch:
+            res = open_in_browser(watch, browser=browser)
+            if res.success:
+                return ToolResult(
+                    tool_name=res.tool_name,
+                    content=(
+                        f"Playing top YouTube result for '{intent.query}': {watch}"
+                    ),
+                    success=True,
+                    metadata={"watch_url": watch, "query": intent.query},
+                )
+        res = open_in_browser(intent.url, browser=browser)
+        return ToolResult(
+            tool_name=res.tool_name,
+            content=(
+                f"Opened YouTube SEARCH RESULTS for '{intent.query}' (could not "
+                "resolve the top video; the user must click one to play)."
+            ),
+            success=res.success,
+            metadata={"query": intent.query},
+        )
+
     if intent.kind == KIND_SPOTIFY and intent.query:
         # Prefer native Spotify URI (app), fall back to web search URL
         from diapason.tools.voice_mac_tools import SpotifyPlayTool
 
-        return SpotifyPlayTool().execute(query=intent.query, action="search")
+        result = SpotifyPlayTool().execute(
+            query=intent.query, action=intent.action or "search"
+        )
+        if result.success or not (getattr(result, "metadata", None) or {}).get(
+            "spotify_missing"
+        ):
+            return result
+        # Spotify is not installed on this machine: the user still asked to
+        # HEAR something, so play the top YouTube result instead of reading
+        # an installation error out loud. Only for a PLAY intent — a mere
+        # search must never turn into an unexpected autoplay.
+        if intent.action != "play":
+            return result
+        watch = resolve_youtube_watch_url(intent.query)
+        if watch:
+            res = open_in_browser(watch, browser=browser)
+            if res.success:
+                return ToolResult(
+                    tool_name="spotify_play",
+                    content=(
+                        "Spotify is not installed; playing the top YouTube "
+                        f"result for '{intent.query}' instead: {watch}"
+                    ),
+                    success=True,
+                    metadata={"fallback": "youtube", "watch_url": watch},
+                )
+        return result
 
     if intent.kind == KIND_APP and intent.app:
         return open_application(intent.app)
@@ -467,6 +651,7 @@ def try_execute_smart_command(command: str, *, browser: str = "") -> Optional[To
 __all__ = [
     "SmartIntent",
     "parse_smart_intent",
+    "resolve_youtube_watch_url",
     "execute_smart_intent",
     "try_execute_smart_command",
     "KIND_YOUTUBE",

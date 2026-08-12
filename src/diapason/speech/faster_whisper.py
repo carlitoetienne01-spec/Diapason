@@ -109,8 +109,17 @@ class FasterWhisperBackend(SpeechBackend):
         # recover a name the recogniser never proposed.
         self._use_dictionary_hints = use_dictionary_hints
 
+    # Brand names the intent layer keys on. "youtube" absent from the
+    # transcript means no YouTube intent ever fires — a garble like
+    # "yutihub" silently downgrades « joue X sur YouTube » to a Google
+    # search. Small and fixed on purpose: hotwords bias decoding, and a
+    # long list would bend ordinary dictation toward it.
+    _BASE_HOTWORDS = (
+        "YouTube Spotify Netflix Amazon Gmail WhatsApp Google Chrome Safari"
+    )
+
     def _hotwords(self) -> Optional[str]:
-        """Space-joined vocabulary from the personal dictionary, or None.
+        """Brand vocabulary plus the personal dictionary, or None.
 
         Cached against the dictionary file's mtime: this used to re-read and
         JSON-parse the file inside every transcription, on the one code path
@@ -134,13 +143,15 @@ class FasterWhisperBackend(SpeechBackend):
                 return self._hotwords_cache[0]
 
             words = transcription_hints()
-            value = " ".join(words) if words else None
+            value = " ".join([self._BASE_HOTWORDS, *words])
             self._hotwords_cache = (value,)
             self._hotwords_stamp = stamp
             return value
         except Exception:  # noqa: BLE001 - hints are an optimisation, never required
             logger.debug("could not build transcription hints", exc_info=True)
-            return None
+            # A broken dictionary must not take the brand vocabulary down
+            # with it — intent detection depends on it.
+            return self._BASE_HOTWORDS
 
     def preload(self) -> bool:
         """Build the model now rather than on the user's first keypress.

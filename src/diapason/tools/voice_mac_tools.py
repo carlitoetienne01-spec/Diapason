@@ -209,6 +209,23 @@ class SpotifyPlayTool(BaseTool):
                 uri = f"spotify:search:{quote(query)}"
 
             if sys.platform == "darwin":
+                # `open -Ra` only ASKS whether the app exists. Without this,
+                # a missing Spotify surfaced as an opaque Launch Services
+                # error, and the voice model had nothing to chain on. The
+                # message below is written FOR the model: it names the exact
+                # follow-up call that still gets music playing.
+                if _run(["open", "-Ra", "Spotify"]).returncode != 0:
+                    return ToolResult(
+                        tool_name="spotify_play",
+                        content=(
+                            "Spotify is not installed on this Mac. To play "
+                            "music anyway, call open_anything with target="
+                            f"'joue {query} sur youtube' (starts the top "
+                            "YouTube result)."
+                        ),
+                        success=False,
+                        metadata={"spotify_missing": True},
+                    )
                 r = _run(["open", "-a", "Spotify", uri])
                 if r.returncode != 0:
                     r = _run(["open", uri])
@@ -225,7 +242,15 @@ class SpotifyPlayTool(BaseTool):
                 )
             return ToolResult(
                 tool_name="spotify_play",
-                content=f"Opened Spotify for: {query}",
+                # Honest on purpose: a spotify:search: URI shows results,
+                # it does NOT start playback. The old "Opened Spotify for:"
+                # read as success-at-playing, so the model told the user the
+                # music was on while nothing played.
+                content=(
+                    f"Opened Spotify search results for: {query}. Playback "
+                    "does not start automatically — the user must pick a "
+                    "result. Say so honestly."
+                ),
                 success=True,
                 metadata={"uri": uri, "action": action},
             )

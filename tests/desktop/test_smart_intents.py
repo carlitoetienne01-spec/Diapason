@@ -164,3 +164,226 @@ def test_voice_command_mail_compose():
     a = parse_voice_command("compose email to ada@example.com about Hello")
     assert a.kind == "mail_compose"
     assert a.target == "ada@example.com"
+
+
+# ---------------------------------------------------------------------------
+# « joue X » must PLAY, not strand the user on a results page
+# ---------------------------------------------------------------------------
+
+
+def test_youtube_play_carries_the_action():
+    intent = parse_smart_intent("joue la vidéo Papaoutai de Stromae sur youtube")
+    assert intent.kind == KIND_YOUTUBE
+    assert intent.action == "play"
+    # Leading filler goes ("la vidéo"), the title's own words stay.
+    assert intent.query == "papaoutai de stromae"
+
+
+def test_titles_keep_their_inner_articles():
+    # The old cleaner stripped articles EVERYWHERE: this searched
+    # for "vie en rose" already, but "sous le vent" lost its "le".
+    intent = parse_smart_intent("joue la chanson Sous le vent sur youtube")
+    assert intent.query == "sous le vent"
+
+
+def test_search_still_searches():
+    intent = parse_smart_intent("cherche jazz sur youtube")
+    assert intent.kind == KIND_YOUTUBE
+    assert intent.action == "search"
+
+
+def test_a_full_url_is_never_hijacked_to_the_home_page():
+    # An LLM-built search URL used to fall through every phrase regex and
+    # come back as https://www.youtube.com — the model's work silently lost.
+    url = "https://www.youtube.com/results?search_query=papaoutai"
+    intent = parse_smart_intent(url)
+    assert intent.kind == KIND_URL
+    assert intent.url == url
+
+
+def test_www_urls_gain_a_scheme():
+    intent = parse_smart_intent("www.youtube.com/watch?v=abc123def45")
+    assert intent.kind == KIND_URL
+    assert intent.url == "https://www.youtube.com/watch?v=abc123def45"
+
+
+# ---------------------------------------------------------------------------
+# Top-result resolution (network mocked out)
+# ---------------------------------------------------------------------------
+
+
+def test_resolver_returns_the_first_organic_video():
+    from diapason.desktop.smart_intents import resolve_youtube_watch_url
+
+    seen = {}
+
+    def fetch(url):
+        seen["url"] = url
+        # Ads use other renderers; the first videoRenderer is the top hit.
+        return (
+            '"adSlotRenderer":{"x":1},'
+            '"videoRenderer":{"videoId":"dQw4w9WgXcQ","title":1},'
+            '"videoRenderer":{"videoId":"AAAAAAAAAAA"}'
+        )
+
+    got = resolve_youtube_watch_url("papaoutai stromae", fetch=fetch)
+    assert got == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert "search_query=papaoutai+stromae" in seen["url"]
+
+
+def test_resolver_failure_degrades_to_empty():
+    from diapason.desktop.smart_intents import resolve_youtube_watch_url
+
+    def boom(url):
+        raise OSError("offline")
+
+    assert resolve_youtube_watch_url("x", fetch=boom) == ""
+    assert resolve_youtube_watch_url("x", fetch=lambda u: "no json here") == ""
+
+
+def test_execute_play_opens_the_watch_url():
+    import diapason.desktop.smart_intents as si
+
+    intent = parse_smart_intent("joue papaoutai sur youtube")
+    opened = []
+
+    def fake_open(url, browser=""):
+        opened.append(url)
+        from diapason.core.types import ToolResult
+
+        return ToolResult(tool_name="open_uri", content=f"Opened {url}", success=True)
+
+    with patch.object(
+        si, "resolve_youtube_watch_url", return_value="https://www.youtube.com/watch?v=abc12345678"
+    ):
+        with patch("diapason.tools.desktop_tools.open_in_browser", fake_open):
+            result = si.execute_smart_intent(intent)
+
+    assert opened == ["https://www.youtube.com/watch?v=abc12345678"]
+    assert result.success
+    assert "Playing top YouTube result" in result.content
+
+
+def test_execute_play_falls_back_to_results_page():
+    import diapason.desktop.smart_intents as si
+
+    intent = parse_smart_intent("joue papaoutai sur youtube")
+    opened = []
+
+    def fake_open(url, browser=""):
+        opened.append(url)
+        from diapason.core.types import ToolResult
+
+        return ToolResult(tool_name="open_uri", content=f"Opened {url}", success=True)
+
+    with patch.object(si, "resolve_youtube_watch_url", return_value=""):
+        with patch("diapason.tools.desktop_tools.open_in_browser", fake_open):
+            result = si.execute_smart_intent(intent)
+
+    assert opened and "results?search_query=" in opened[0]
+    # Honest: the model must not announce playback that did not start.
+    assert "SEARCH RESULTS" in result.content
+
+
+def test_spotify_missing_falls_back_to_youtube_playback():
+    import diapason.desktop.smart_intents as si
+    from diapason.core.types import ToolResult
+
+    intent = parse_smart_intent("joue du stromae sur spotify")
+    assert intent.kind == KIND_SPOTIFY
+
+    opened = []
+
+    def fake_open(url, browser=""):
+        opened.append(url)
+        return ToolResult(tool_name="open_uri", content=f"Opened {url}", success=True)
+
+    missing = ToolResult(
+        tool_name="spotify_play",
+        content="Spotify is not installed on this Mac.",
+        success=False,
+        metadata={"spotify_missing": True},
+    )
+    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing):
+        with patch.object(
+            si, "resolve_youtube_watch_url", return_value="https://www.youtube.com/watch?v=xyz98765432"
+        ):
+            with patch("diapason.tools.desktop_tools.open_in_browser", fake_open):
+                result = si.execute_smart_intent(intent)
+
+    assert opened == ["https://www.youtube.com/watch?v=xyz98765432"]
+    assert result.success
+    assert "YouTube" in result.content
+
+
+def test_spotify_other_failures_do_not_fall_back():
+    import diapason.desktop.smart_intents as si
+    from diapason.core.types import ToolResult
+
+    intent = parse_smart_intent("joue du stromae sur spotify")
+    broken = ToolResult(tool_name="spotify_play", content="osascript died", success=False)
+    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=broken):
+        result = si.execute_smart_intent(intent)
+    assert result is broken
+
+
+def test_ecoute_and_mets_also_play():
+    # « écoute X sur youtube » fell through every phrase regex and landed
+    # on the home page — the query silently lost.
+    for verb in ("écoute", "mets", "lance"):
+        intent = parse_smart_intent(f"{verb} papaoutai sur youtube")
+        assert intent.kind == KIND_YOUTUBE, verb
+        assert intent.action == "play", verb
+        assert intent.query == "papaoutai", verb
+
+
+def test_spotify_missing_search_never_autoplays():
+    # A mere SEARCH must not turn into an unexpected YouTube autoplay.
+    import diapason.desktop.smart_intents as si
+    from diapason.core.types import ToolResult
+
+    intent = parse_smart_intent("cherche du stromae sur spotify")
+    assert intent.kind == KIND_SPOTIFY
+    assert intent.action != "play"
+
+    missing = ToolResult(
+        tool_name="spotify_play",
+        content="Spotify is not installed on this Mac.",
+        success=False,
+        metadata={"spotify_missing": True},
+    )
+    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing):
+        result = si.execute_smart_intent(intent)
+    assert result is missing  # reported honestly, nothing auto-opened
+
+
+def test_titles_made_of_articles_survive():
+    # The blind head-cascade turned « La La Land » into a search for "land".
+    intent = parse_smart_intent("joue La La Land sur youtube")
+    assert intent.query == "la la land"
+
+
+def test_leading_article_before_a_real_title_survives():
+    intent = parse_smart_intent("joue The Weeknd sur youtube")
+    assert intent.query == "the weeknd"
+
+
+def test_article_runs_leading_to_filler_still_stripped():
+    intent = parse_smart_intent("joue de la musique kompa sur youtube")
+    assert intent.query == "kompa"
+
+
+def test_mets_pause_is_not_a_play_request():
+    # « mets la vidéo en pause sur youtube » must not PLAY a video
+    # literally titled "pause".
+    intent = parse_smart_intent("mets la vidéo en pause sur youtube")
+    assert intent.action != "play" or intent.kind != KIND_YOUTUBE
+
+
+def test_search_with_play_words_inside_stays_a_search():
+    # asked_to_play used to sniff the whole phrase: « cherche listen de
+    # beyoncé sur spotify » became an autoplay.
+    intent = parse_smart_intent("cherche listen de beyoncé sur spotify")
+    assert intent.kind == KIND_SPOTIFY
+    assert intent.action == "search"
+    assert "listen" in intent.query

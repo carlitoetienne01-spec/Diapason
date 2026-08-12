@@ -173,7 +173,13 @@ def execute_voice_tool(
 
 
 class VoiceToolBudget:
-    """Limit chained tool calls inside one live session."""
+    """Limit chained tool calls inside one TURN.
+
+    The cap used to be per-session and never reset: after twelve tool calls
+    spread over a long conversation, every later "joue X" silently failed
+    with "budget exceeded" for the rest of the session. The loop bound it
+    exists for (a model asking for tools forever) is a per-turn problem.
+    """
 
     def __init__(self, max_steps: int = 12) -> None:
         self.max_steps = max(0, int(max_steps))
@@ -184,6 +190,9 @@ class VoiceToolBudget:
 
     def consume(self) -> None:
         self.used += 1
+
+    def reset(self) -> None:
+        self.used = 0
 
 
 __all__ = [

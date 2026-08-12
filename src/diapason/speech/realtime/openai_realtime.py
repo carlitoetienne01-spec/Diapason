@@ -111,6 +111,7 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
     async def send_text(self, text: str) -> None:
         if self._closed or self._ws is None or not text.strip():
             return
+        self._budget.reset()  # a typed turn is a turn too
         await self._ws.send(
             json.dumps(
                 {
@@ -306,6 +307,9 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
                     )
                 )
         elif etype in ("response.cancelled", "input_audio_buffer.speech_started"):
+            if etype == "input_audio_buffer.speech_started":
+                # New user speech = new turn: re-arm the per-turn tool budget.
+                self._budget.reset()
             events.append(SessionEvent(kind="interrupted", raw=data))
         return events
 

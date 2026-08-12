@@ -115,3 +115,31 @@ def test_messages_compose_opens_sms_uri():
 def test_messages_compose_requires_recipient():
     tool = MessagesComposeTool()
     assert tool.execute(recipient="").success is False
+
+
+def test_spotify_missing_app_guides_the_model_to_youtube():
+    """The error is written FOR the voice model: it names the follow-up call."""
+    tool = SpotifyPlayTool()
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
+            run.return_value.returncode = 1  # open -Ra Spotify: not installed
+            run.return_value.stderr = "Unable to find application"
+            run.return_value.stdout = ""
+            result = tool.execute(query="Stromae", action="play")
+    assert result.success is False
+    assert result.metadata.get("spotify_missing") is True
+    assert "open_anything" in result.content
+    assert "joue Stromae sur youtube" in result.content
+
+
+def test_spotify_success_admits_playback_did_not_start():
+    """spotify:search: shows results; claiming more made the model lie."""
+    tool = SpotifyPlayTool()
+    with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+        with patch("diapason.tools.voice_mac_tools._run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stderr = ""
+            run.return_value.stdout = ""
+            result = tool.execute(query="Daft Punk", action="play")
+    assert result.success
+    assert "does not start automatically" in result.content
