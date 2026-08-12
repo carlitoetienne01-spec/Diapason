@@ -49,14 +49,22 @@ export function Sidebar() {
         ? t('settings.theme.dark')
         : t('settings.theme.system');
 
-  const messages = useAppStore((s) => s.messages);
+  const conversations = useAppStore((s) => s.conversations);
+  const selectConversation = useAppStore((s) => s.selectConversation);
   const handleNewChat = () => {
-    // Don't create a new chat if the current one is empty
-    if (messages.length === 0) {
-      navigate('/');
-      return;
+    // The button always lands on a fresh chat. Reusing an existing empty
+    // conversation (instead of silently doing nothing, the old behavior)
+    // keeps the list free of stacked blanks while never ignoring a click.
+    // Only a TRULY blank one though: an empty conversation the user has
+    // renamed or pinned is prepared work, not a blank to hijack.
+    const blank = conversations.find(
+      (c) => c.messages.length === 0 && !c.title && !c.pinned,
+    );
+    if (blank) {
+      selectConversation(blank.id);
+    } else {
+      createConversation(selectedModel);
     }
-    createConversation(selectedModel);
     navigate('/');
   };
 
@@ -128,19 +136,22 @@ export function Sidebar() {
               >
                 <ThemeIcon size={16} />
               </button>
-              <button
-                onClick={handleNewChat}
-                className="p-2 rounded-lg transition-colors cursor-pointer"
-                style={{ color: 'var(--color-text-secondary)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={t('sidebar.newChat')}
-                aria-label={t('sidebar.newChat')}
-              >
-                <Plus size={18} />
-              </button>
             </div>
           </div>
+
+          {/* New conversation — a real, labeled button. The old tiny "+" was
+              easy to miss and silently did nothing on an empty chat, which
+              read as "I cannot create conversations". */}
+          <button
+            onClick={handleNewChat}
+            className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
+            style={{ background: 'var(--color-accent)', color: '#fff' }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            <Plus size={16} />
+            {t('sidebar.newChat')}
+          </button>
 
           {/* Model badge */}
           <button

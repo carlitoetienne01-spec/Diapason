@@ -157,6 +157,10 @@ interface AppState {
   createConversation: (model?: string) => string;
   selectConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
+  renameConversation: (id: string, title: string) => void;
+  togglePinConversation: (id: string) => void;
+  /** Copy id's history into a fresh conversation named newTitle; returns its id. */
+  duplicateConversation: (id: string, newTitle: string) => string | null;
   loadMessages: (conversationId: string | null) => void;
   addMessage: (conversationId: string, message: ChatMessage) => void;
   updateLastAssistant: (
@@ -320,7 +324,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const store = loadConversations();
       const conv: Conversation = {
         id: generateId(),
-        title: 'New chat',
+        title: '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         model: model || get().selectedModel || 'default',
@@ -371,6 +375,61 @@ export const useAppStore = create<AppState>((set, get) => {
       });
     },
 
+    renameConversation: (id: string, title: string) => {
+      const store = loadConversations();
+      const conv = store.conversations[id];
+      const trimmed = title.trim();
+      if (!conv || !trimmed) return;
+      conv.title = trimmed;
+      saveConversations(store);
+      set({
+        conversations: Object.values(store.conversations).sort(
+          (a, b) => b.updatedAt - a.updatedAt,
+        ),
+      });
+    },
+
+    togglePinConversation: (id: string) => {
+      const store = loadConversations();
+      const conv = store.conversations[id];
+      if (!conv) return;
+      conv.pinned = !conv.pinned;
+      saveConversations(store);
+      set({
+        conversations: Object.values(store.conversations).sort(
+          (a, b) => b.updatedAt - a.updatedAt,
+        ),
+      });
+    },
+
+    duplicateConversation: (id: string, newTitle: string) => {
+      const store = loadConversations();
+      const orig = store.conversations[id];
+      if (!orig) return null;
+      const copy: Conversation = {
+        ...orig,
+        id: generateId(),
+        title: newTitle,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        pinned: false,
+        // Deep copy: edits to the duplicate must never leak into the
+        // original's message objects.
+        messages: JSON.parse(JSON.stringify(orig.messages)),
+      };
+      store.conversations[copy.id] = copy;
+      store.activeId = copy.id;
+      saveConversations(store);
+      set({
+        conversations: Object.values(store.conversations).sort(
+          (a, b) => b.updatedAt - a.updatedAt,
+        ),
+        activeId: copy.id,
+        messages: [...copy.messages],
+      });
+      return copy.id;
+    },
+
     loadMessages: (conversationId: string | null) => {
       if (!conversationId) {
         set({ messages: [] });
@@ -387,7 +446,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!conv) return;
       conv.messages.push(message);
       conv.updatedAt = Date.now();
-      if (message.role === 'user' && conv.title === 'New chat') {
+      if (message.role === 'user' && (!conv.title || conv.title === 'New chat')) {
         conv.title =
           message.content.slice(0, 50) +
           (message.content.length > 50 ? '...' : '');

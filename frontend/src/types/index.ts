@@ -131,10 +131,14 @@ export interface ChatMessage {
 
 export interface Conversation {
   id: string;
+  // Empty until the first user message names it (or the user renames it):
+  // a hardcoded "New chat" cannot be translated after the fact.
   title: string;
   createdAt: number;
   updatedAt: number;
   model: string;
+  /** Pinned conversations surface in their own section, above the dated ones. */
+  pinned?: boolean;
   messages: ChatMessage[];
 }
 
