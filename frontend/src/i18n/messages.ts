@@ -13,6 +13,20 @@
 
 export const MESSAGES = {
   en: {
+    'composer.contextApprox': 'Approximate — history, reply and draft included.',
+    'composer.contextTokens': '{used} / {max} tokens ({pct}%)',
+    'composer.contextWindow': 'Context window',
+    'composer.manageModels': 'Manage models…',
+    'composer.model': 'Model',
+    'composer.modeAsk': 'Ask',
+    'composer.modeAskDesc': 'Sensitive actions wait for your approval in the bell',
+    'composer.modeAuto': 'Auto',
+    'composer.modeAutoDesc': 'Tools run without asking',
+    'composer.modeTitle': 'Tool permissions',
+    'composer.modeWriteFailed': 'Not saved',
+    'composer.session': 'This session',
+    'composer.sessionRequests': 'Requests',
+    'composer.sessionTokens': 'Tokens generated',
     // ── navigation ──────────────────────────────────────────────────────
     'nav.chat': 'Chat',
     'nav.dashboard': 'Dashboard',
@@ -1082,6 +1096,20 @@ export const MESSAGES = {
   },
 
   fr: {
+    'composer.contextApprox': 'Approximatif — historique, réponse et brouillon compris.',
+    'composer.contextTokens': '{used} / {max} jetons ({pct} %)',
+    'composer.contextWindow': 'Fenêtre de contexte',
+    'composer.manageModels': 'Gérer les modèles…',
+    'composer.model': 'Modèle',
+    'composer.modeAsk': 'Demander',
+    'composer.modeAskDesc': 'Les actions sensibles attendent votre accord dans la cloche',
+    'composer.modeAuto': 'Auto',
+    'composer.modeAutoDesc': 'Les outils s’exécutent sans demander',
+    'composer.modeTitle': 'Autorisations des outils',
+    'composer.modeWriteFailed': 'Non enregistré',
+    'composer.session': 'Cette session',
+    'composer.sessionRequests': 'Requêtes',
+    'composer.sessionTokens': 'Jetons générés',
     'nav.chat': 'Discussion',
     'nav.dashboard': 'Tableau de bord',
     'nav.dataSources': 'Sources de données',

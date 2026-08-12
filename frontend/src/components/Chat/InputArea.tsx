@@ -9,6 +9,8 @@ import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useTranslation } from '../../i18n/useTranslation';
+import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
+import { isCloudModel } from '../../lib/cloud-models';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -593,8 +595,7 @@ export function InputArea() {
         accumulatedContent = t('chat.input.noResponse');
       }
       const totalMs = Date.now() - startTime;
-      const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'openrouter/', 'MiniMax-', 'chatgpt-'];
-      const engineLabel = _CLOUD_PREFIXES.some(p => selectedModel.startsWith(p)) ? 'cloud' : 'ollama';
+      const engineLabel = isCloudModel(selectedModel) ? 'cloud' : 'ollama';
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
         model_id: selectedModel,
@@ -677,46 +678,27 @@ export function InputArea() {
 
   return (
     <div className="px-4 pb-4 pt-2" style={{ maxWidth: 'var(--chat-max-width)', margin: '0 auto', width: '100%' }}>
-      <div className="mb-2 flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setDeepResearch(!deepResearch)}
-            disabled={streamState.isStreaming}
-            aria-pressed={deepResearch}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
-            style={{
-              background: deepResearch ? 'var(--color-accent-subtle)' : 'transparent',
-              border: `1px solid ${deepResearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              color: deepResearch ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
-            }}
-            title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
-          >
-            <Search size={12} />
-            {t('common.deepResearch')}
-          </button>
-        </div>
-        {deepResearch && corpusSync.syncing && corpusSync.itemsSynced > 0 && (
-          <div
-            className="text-[11px] leading-snug"
-            style={{ color: 'var(--color-text-tertiary)' }}
-          >
+      {deepResearch && corpusSync.syncing && corpusSync.itemsSynced > 0 && (
+        <div
+          className="mb-2 text-[11px] leading-snug"
+          style={{ color: 'var(--color-text-tertiary)' }}
+        >
             {t('chat.input.searchingOver')}{' '}
             <span key={corpusSync.itemsSynced} className="sync-bump" style={{ color: 'var(--color-text-secondary)' }}>
               {corpusSync.itemsSynced.toLocaleString()}
             </span>{' '}
-            {t('chat.input.searchingOverSuffix', { count: corpusSync.itemsSynced })}
-          </div>
-        )}
-      </div>
+          {t('chat.input.searchingOverSuffix', { count: corpusSync.itemsSynced })}
+        </div>
+      )}
       <div
-        className="flex items-center gap-2 rounded-2xl px-4 py-3 transition-shadow"
+        className="flex flex-col rounded-2xl px-4 py-3 transition-shadow"
         style={{
           background: 'var(--color-input-bg)',
           border: '1px solid var(--color-input-border)',
           boxShadow: 'var(--shadow-sm)',
         }}
       >
+        <div className="flex items-center gap-2">
         <textarea
           ref={textareaRef}
           value={input}
@@ -765,6 +747,33 @@ export function InputArea() {
             </button>
           </div>
         )}
+        </div>
+
+        {/* Toolbar — permission mode and deep research on the left; the
+            context ring and active model on the right. Claude-Code grammar,
+            Diapason wiring. */}
+        <div className="flex items-center gap-1.5 mt-2">
+          <ModeChip disabled={streamState.isStreaming} />
+          <button
+            type="button"
+            onClick={() => setDeepResearch(!deepResearch)}
+            disabled={streamState.isStreaming}
+            aria-pressed={deepResearch}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+            style={{
+              background: deepResearch ? 'var(--color-accent-subtle)' : 'transparent',
+              border: `1px solid ${deepResearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              color: deepResearch ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
+            }}
+            title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
+          >
+            <Search size={12} />
+            {t('common.deepResearch')}
+          </button>
+          <div className="flex-1" />
+          <ContextRing draftLength={input.length} />
+          <ModelChip disabled={streamState.isStreaming} />
+        </div>
       </div>
       <div className="flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>

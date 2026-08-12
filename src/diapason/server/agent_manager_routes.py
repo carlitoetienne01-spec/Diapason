@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re as _re
 from typing import Any, Dict, List, Optional, Tuple
 
 from diapason.agents.manager import AgentManager
+from diapason.server.approval_bridge import tool_confirm_callback
 
 try:
     from fastapi import APIRouter, HTTPException, Request
@@ -925,7 +927,7 @@ async def _stream_managed_agent(
                     max_turns=int(config.get("max_turns", 8)),
                     temperature=float(config.get("temperature", 0.3)),
                     interactive=True,
-                    confirm_callback=lambda _prompt: True,
+                    confirm_callback=tool_confirm_callback(),
                 )
 
                 # Wrap the executor to capture tool calls
@@ -1413,9 +1415,15 @@ async def _stream_managed_agent(
                                     tools=[tool_instance],
                                     bus=bus,
                                     interactive=True,
-                                    confirm_callback=lambda _prompt: True,
+                                    confirm_callback=tool_confirm_callback(),
                                 )
-                                result = executor.execute(
+                                # Off the event loop: in "ask" mode the
+                                # confirm callback parks up to two minutes
+                                # waiting for the bell — executed inline it
+                                # would freeze the very endpoints
+                                # (/v1/approvals/*) that resolve the wait.
+                                result = await asyncio.to_thread(
+                                    executor.execute,
                                     StubToolCall(
                                         id=tc["id"],
                                         name=tool_name,
@@ -1768,7 +1776,7 @@ def create_agent_manager_router(
                                     model=getattr(engine, "_model", ""),
                                     tools=tools,
                                     interactive=True,
-                                    confirm_callback=lambda _prompt: True,
+                                    confirm_callback=tool_confirm_callback(),
                                 )
 
                                 def handler(text: str) -> str:
@@ -1845,7 +1853,7 @@ def create_agent_manager_router(
                                     model=model_name,
                                     tools=tools,
                                     interactive=True,
-                                    confirm_callback=lambda _prompt: True,
+                                    confirm_callback=tool_confirm_callback(),
                                 )
                         bus = getattr(request.app.state, "bus", None)
                         if bus is None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -840,6 +840,50 @@ async def _handle_stream(
     )
 
 
+# model_id -> context window; None is cached too (an unknown model stays
+# unknown for the process lifetime rather than re-asking Ollama every call).
+_CTX_CACHE: dict[str, Optional[int]] = {}
+
+
+async def _context_length_of(model_id: str) -> Optional[int]:
+    """Max context window: builtin catalog first, then Ollama /api/show."""
+    if model_id in _CTX_CACHE:
+        return _CTX_CACHE[model_id]
+    try:
+        from diapason.intelligence.model_catalog import BUILTIN_MODELS
+
+        for spec in BUILTIN_MODELS:
+            if spec.model_id == model_id:
+                value = int(spec.context_length)
+                _CTX_CACHE[model_id] = value
+                return value
+    except Exception:  # noqa: BLE001 - a broken catalog still has Ollama
+        pass
+    try:
+        import httpx
+
+        from diapason.server.cloud_router import _ollama_host
+
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(
+                f"{_ollama_host()}/api/show", json={"model": model_id}
+            )
+            resp.raise_for_status()
+            info = resp.json().get("model_info") or {}
+            for key, val in info.items():
+                if key.endswith(".context_length"):
+                    value = int(val)
+                    _CTX_CACHE[model_id] = value
+                    return value
+        # Definitive answer without the field: this model just does not
+        # advertise a window — THAT is worth remembering.
+        _CTX_CACHE[model_id] = None
+    except Exception:  # noqa: BLE001 - Ollama down/slow is TRANSIENT:
+        # do not memorize the outage, ask again on the next /v1/models.
+        pass
+    return None
+
+
 @router.get("/v1/models")
 async def list_models(request: Request) -> ModelListResponse:
     """List locally installed models (Ollama).
@@ -858,8 +902,14 @@ async def list_models(request: Request) -> ModelListResponse:
     if not model_ids:
         model_ids = await list_local_models()
 
+    lengths = await asyncio.gather(
+        *(_context_length_of(mid) for mid in model_ids)
+    )
     return ModelListResponse(
-        data=[ModelObject(id=mid) for mid in model_ids],
+        data=[
+            ModelObject(id=mid, context_length=length)
+            for mid, length in zip(model_ids, lengths)
+        ],
     )
 
 
@@ -1094,10 +1144,16 @@ async def server_info(request: Request):
     # Fall back to configured agent name if agent didn't instantiate
     if agent_id is None:
         agent_id = getattr(request.app.state, "agent_name", None)
+    from diapason.engine.ollama import _default_num_ctx
+
     return {
         "model": getattr(request.app.state, "model", ""),
         "agent": agent_id,
         "engine": getattr(request.app.state, "engine_name", ""),
+        # Effective context window for LOCAL models: the engine sends this
+        # num_ctx on every Ollama call, so a model's theoretical maximum is
+        # capped by it in practice.
+        "num_ctx": _default_num_ctx(),
     }
 
 

@@ -120,6 +120,7 @@ def get_config_snippet() -> Dict[str, Any]:
             "interval_seconds": cfg.heartbeat.interval_seconds,
         },
         "routines": {"enabled": cfg.routines.enabled},
+        "agent": {"tool_approval": cfg.agent.tool_approval},
     }
 
 
@@ -140,9 +141,15 @@ def create_config_router() -> APIRouter:
             "heartbeat.",
             "routines.",
         )
+        # Exact keys, not prefixes: "agent." would open max_turns, tools…
+        allowed_keys = ("agent.tool_approval",)
         key = (body.key or "").strip()
-        if not any(key.startswith(p) for p in allowed_prefixes):
+        if key not in allowed_keys and not any(
+            key.startswith(p) for p in allowed_prefixes
+        ):
             raise HTTPException(400, f"Key not writable via API: {key}")
+        if key == "agent.tool_approval" and body.value not in ("auto", "ask"):
+            raise HTTPException(400, "agent.tool_approval must be 'auto' or 'ask'")
         try:
             typed = set_config_value(key, body.value)
         except ValueError as exc:

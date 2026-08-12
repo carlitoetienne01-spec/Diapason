@@ -165,6 +165,8 @@ export interface ModelInfo {
   object: string;
   created: number;
   owned_by: string;
+  /** Max context window when known (catalog or Ollama /api/show). */
+  context_length?: number | null;
 }
 
 export interface ProviderSavings {
@@ -192,6 +194,8 @@ export interface ServerInfo {
   model: string;
   agent: string | null;
   engine: string;
+  /** Effective Ollama context window sent on every local call. */
+  num_ctx?: number;
 }
 
 // --- Log Types ---

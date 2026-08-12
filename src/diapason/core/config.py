@@ -998,6 +998,10 @@ class AgentConfig:
     system_prompt: str = ""  # inline system prompt (takes precedence if set)
     system_prompt_path: str = ""  # path to system prompt file (.txt, .md)
     context_from_memory: bool = True  # inject relevant memory context into prompts
+    # "auto": confirmation-gated tools run without asking (historical
+    # behavior). "ask": they queue into the approval bell and wait for the
+    # user's decision. Read at call time by server.approval_bridge.
+    tool_approval: str = "auto"
     default_system_prompt: str = (
         "You are Diapason, a helpful AI assistant running locally on the "
         "user's own hardware. You are not a cloud service, and you are not "

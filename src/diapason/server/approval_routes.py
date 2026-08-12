@@ -60,6 +60,10 @@ async def approve_action(action_id: str) -> Dict[str, Any]:
     action = store.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail="Action not found")
+    if action.status != "pending":
+        # A stale bell (10 s poll) must not resurrect a timed-out or
+        # already-decided action into a phantom "approved".
+        raise HTTPException(409, f"Action already {action.status}")
     store.update_status(action_id, STATUS_APPROVED)
     logger.info("Action %s approved via UI", action_id)
     return {"status": "approved", "id": action_id}
@@ -71,6 +75,8 @@ async def deny_action(action_id: str) -> Dict[str, Any]:
     action = store.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail="Action not found")
+    if action.status != "pending":
+        raise HTTPException(409, f"Action already {action.status}")
     store.update_status(action_id, STATUS_DENIED)
     logger.info("Action %s denied via UI", action_id)
     return {"status": "denied", "id": action_id}

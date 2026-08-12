@@ -111,6 +111,9 @@ class ModelObject(BaseModel):
     object: str = "model"
     created: int = Field(default_factory=lambda: int(time.time()))
     owned_by: str = "diapason"
+    # Maximum context window of the model, when known (catalog or Ollama
+    # /api/show). The composer's context ring needs a denominator.
+    context_length: Optional[int] = None
 
 
 class ModelListResponse(BaseModel):

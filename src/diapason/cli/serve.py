@@ -365,6 +365,16 @@ def serve(
                     )
                 except (TypeError, ValueError):
                     accepted = set()
+                if "confirm_callback" in accepted:
+                    from diapason.server.approval_bridge import (
+                        tool_confirm_callback,
+                    )
+
+                    # Without this, requires_confirmation tools failed with
+                    # "no confirmation callback is available" on the server
+                    # chat path — neither auto nor ask, just broken.
+                    agent_kwargs["interactive"] = True
+                    agent_kwargs["confirm_callback"] = tool_confirm_callback()
                 if "prompt_builder" in accepted:
                     from diapason.prompt.builder import SystemPromptBuilder
 

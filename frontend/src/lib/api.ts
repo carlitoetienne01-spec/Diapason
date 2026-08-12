@@ -1,4 +1,5 @@
 import type { ModelInfo, SavingsData, ServerInfo } from '../types';
+import { isCloudModel } from './cloud-models';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabase';
 
 // ---------------------------------------------------------------------------
@@ -216,11 +217,11 @@ export async function deleteModel(modelName: string): Promise<void> {
   }
 }
 
-const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'openrouter/'];
+
 
 export async function preloadModel(modelName: string): Promise<void> {
   // Cloud models don't need Ollama preloading
-  if (_CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
+  if (isCloudModel(modelName)) {
     return;
   }
   // Trigger Ollama to load the model into memory (empty prompt, no generation).
@@ -465,6 +466,7 @@ export type ServerConfigSnippet = {
   };
   heartbeat: { enabled: boolean; interval_seconds: number };
   routines: { enabled: boolean };
+  agent?: { tool_approval: 'auto' | 'ask' };
 };
 
 export async function fetchServerConfig(): Promise<ServerConfigSnippet> {
