@@ -158,10 +158,17 @@ class BaseAgent(ABC):
             and any(m.role == Role.SYSTEM for m in context.conversation.messages)
         )
 
-        if self._prompt_builder is not None:
-            effective_system_prompt = self._prompt_builder.build()
-        elif system_prompt:
+        # An EXPLICIT system prompt wins over the wired builder: an agent
+        # that passes one has composed it deliberately (tool instructions,
+        # persona appended via _apply_persona). The builder replacing it here
+        # would clobber the tool prompt of any specialized agent that gains a
+        # prompt_builder — which is exactly how wiring persona into the
+        # orchestrator would have broken its tool calling. Builder-only
+        # agents (SimpleAgent) pass no explicit prompt and are unaffected.
+        if system_prompt:
             effective_system_prompt = system_prompt
+        elif self._prompt_builder is not None:
+            effective_system_prompt = self._prompt_builder.build()
         elif _context_has_system:
             effective_system_prompt = None
         else:

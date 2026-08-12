@@ -60,6 +60,7 @@ class OrchestratorAgent(ToolUsingAgent):
         parallel_tools: bool = True,
         interactive: bool = False,
         confirm_callback=None,
+        prompt_builder=None,
     ) -> None:
         super().__init__(
             engine,
@@ -71,6 +72,7 @@ class OrchestratorAgent(ToolUsingAgent):
             max_tokens=max_tokens,
             interactive=interactive,
             confirm_callback=confirm_callback,
+            prompt_builder=prompt_builder,
         )
         self._mode = mode
         self._system_prompt = system_prompt
@@ -107,6 +109,13 @@ class OrchestratorAgent(ToolUsingAgent):
             )
 
             sys_prompt = build_system_prompt(tools=self._tools)
+
+        # Persona files (SOUL/MEMORY/USER) are APPENDED to the tool-aware
+        # prompt, never substituted for it. This is why the same question
+        # knew the user's name over the streaming path and denied it here:
+        # serve's default agent is this orchestrator, and it carried no
+        # persona at all (#376 covered persistent agents only).
+        sys_prompt = self._apply_persona(sys_prompt)
 
         messages = self._build_messages(input, context, system_prompt=sys_prompt)
 
@@ -213,8 +222,17 @@ class OrchestratorAgent(ToolUsingAgent):
     ) -> AgentResult:
         self._emit_turn_start(input)
 
-        # Build initial messages
-        messages = self._build_messages(input, context)
+        # Build initial messages. An explicit system prompt was historically
+        # ignored on this path (it only fed structured mode); honour it, with
+        # persona files appended. Without one, _build_messages falls through
+        # to the wired prompt_builder (identity template + persona) or the
+        # config default — tools travel out-of-band via the native tools=
+        # parameter here, so no tool instructions can be clobbered.
+        if self._system_prompt:
+            sys_prompt = self._apply_persona(self._system_prompt)
+            messages = self._build_messages(input, context, system_prompt=sys_prompt)
+        else:
+            messages = self._build_messages(input, context)
 
         # Get OpenAI-format tool definitions
         openai_tools = self._executor.get_openai_tools() if self._tools else []

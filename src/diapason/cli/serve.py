@@ -352,6 +352,28 @@ def serve(
                 if getattr(agent_cls, "accepts_tools", False):
                     agent_kwargs["max_turns"] = config.agent.max_turns
 
+                # SOUL.md / MEMORY.md / USER.md ground this agent too. The
+                # persistent-agent path gained this in #376, but the server's
+                # default agent kept a memory-less prompt — the same question
+                # then knew the user's name over the streaming path and denied
+                # it over the agent path, from the same process.
+                import inspect
+
+                try:
+                    accepted = set(
+                        inspect.signature(agent_cls.__init__).parameters
+                    )
+                except (TypeError, ValueError):
+                    accepted = set()
+                if "prompt_builder" in accepted:
+                    from diapason.prompt.builder import SystemPromptBuilder
+
+                    agent_kwargs["prompt_builder"] = SystemPromptBuilder(
+                        agent_template=config.agent.default_system_prompt or "",
+                        memory_files_config=config.memory_files,
+                        system_prompt_config=config.system_prompt,
+                    )
+
                 agent = agent_cls(engine, model_name, **agent_kwargs)
                 # Pin MCP transports to the agent's lifetime so HTTP
                 # connections don't close mid-request (#461).
