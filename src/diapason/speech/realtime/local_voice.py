@@ -120,6 +120,31 @@ _SHARED: dict[str, Any] = {}
 _SHARED_LOCK = asyncio.Lock()
 
 
+_FRENCH_DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_FRENCH_MONTHS = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def french_now(now=None) -> str:
+    """The machine's local date and time, spelled out in French.
+
+    Hand-rolled rather than strftime with a locale: setlocale is process-wide
+    state and this runs inside a server thread pool. Injected into the system
+    prompt at every turn — a model has no clock, and "quelle heure est-il"
+    answered with "je ne peux pas lire l'heure" was a reported failure, on a
+    machine that obviously knows.
+    """
+    import datetime
+
+    if now is None:
+        now = datetime.datetime.now()
+    day = _FRENCH_DAYS[now.weekday()]
+    month = _FRENCH_MONTHS[now.month - 1]
+    return f"{day} {now.day} {month} {now.year}, {now.hour} h {now.minute:02d}"
+
+
 def _ollama_base() -> str:
     from diapason.core.env import get as env_get
 
@@ -208,9 +233,15 @@ def _default_llm(
 
         def worker() -> None:
             def stream_once(with_tools: bool) -> None:
+                # The clock is appended per CALL, not baked at warm-up: a
+                # session lives for hours, and yesterday's timestamp is worse
+                # than none.
+                dated = (
+                    f"{system}\n\nDate et heure actuelles : {french_now()}."
+                )
                 payload: dict[str, Any] = {
                     "model": model,
-                    "messages": [{"role": "system", "content": system}]
+                    "messages": [{"role": "system", "content": dated}]
                     + messages,
                     "stream": True,
                     "think": False,

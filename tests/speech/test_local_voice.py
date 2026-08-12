@@ -680,3 +680,21 @@ class TestToolsRefusalFallback:
         queue = llm([])
         first = await asyncio.wait_for(queue.get(), timeout=5)
         assert isinstance(first, str) and first.startswith("\x00ERROR\x00")
+
+
+class TestFrenchClock:
+    def test_spells_the_date_in_french(self):
+        import datetime
+
+        from diapason.speech.realtime.local_voice import french_now
+
+        moment = datetime.datetime(2026, 8, 12, 14, 5)
+        assert french_now(moment) == "mercredi 12 août 2026, 14 h 05"
+
+    def test_minutes_are_zero_padded(self):
+        import datetime
+
+        from diapason.speech.realtime.local_voice import french_now
+
+        moment = datetime.datetime(2026, 1, 1, 9, 7)
+        assert french_now(moment).endswith("9 h 07")

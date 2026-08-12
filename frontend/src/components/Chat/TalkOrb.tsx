@@ -230,9 +230,11 @@ export function TalkOrb({
           className="px-4 py-2 text-[11px] text-center"
           style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
         >
-          {t('chat.talk.footer', {
-            provider: provider === 'gemini' ? 'Gemini Live' : 'gpt-realtime',
-          })}
+          {provider === 'local'
+            ? t('talk.footerLocal')
+            : t('chat.talk.footer', {
+                provider: provider === 'gemini' ? 'Gemini Live' : 'gpt-realtime',
+              })}
         </div>
       </div>
     </div>
