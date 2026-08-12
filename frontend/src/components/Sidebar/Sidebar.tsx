@@ -27,6 +27,8 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  // ChatGPT-style: a magnifier in the header, the input appears on demand.
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
@@ -109,19 +111,45 @@ export function Sidebar() {
         }}
       >
         <div className="flex flex-col h-full w-[260px]">
-          {/* Header */}
+          {/* Header — collapse and search side by side, theme on the right */}
           <div className="flex items-center justify-between px-3 pt-3 pb-2">
-            <button
-              onClick={toggleSidebar}
-              className="p-2 rounded-lg transition-colors cursor-pointer"
-              style={{ color: 'var(--color-text-secondary)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              title={t('sidebar.collapse')}
-              aria-label={t('sidebar.collapse')}
-            >
-              <PanelLeftClose size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleSidebar}
+                className="p-2 rounded-lg transition-colors cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                title={t('sidebar.collapse')}
+                aria-label={t('sidebar.collapse')}
+              >
+                <PanelLeftClose size={18} />
+              </button>
+              <button
+                onClick={() => {
+                  setSearchOpen((open) => {
+                    if (open) setSearchQuery('');
+                    return !open;
+                  });
+                }}
+                className="p-2 rounded-lg transition-colors cursor-pointer"
+                style={{
+                  color: searchOpen ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  background: searchOpen ? 'var(--color-accent-subtle)' : 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!searchOpen) e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!searchOpen) e.currentTarget.style.background = 'transparent';
+                }}
+                title={t('sidebar.searchPlaceholder')}
+                aria-label={t('sidebar.searchPlaceholder')}
+                aria-expanded={searchOpen}
+              >
+                <Search size={16} />
+              </button>
+            </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => updateSettings({ theme: nextTheme })}
@@ -139,19 +167,32 @@ export function Sidebar() {
             </div>
           </div>
 
-          {/* New conversation — a real, labeled button. The old tiny "+" was
-              easy to miss and silently did nothing on an empty chat, which
-              read as "I cannot create conversations". */}
-          <button
-            onClick={handleNewChat}
-            className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
-            style={{ background: 'var(--color-accent)', color: '#fff' }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={16} />
-            {t('sidebar.newChat')}
-          </button>
+          {/* Search input, on demand from the header magnifier */}
+          {searchOpen && (
+            <div className="px-3 mb-2">
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+              >
+                <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder={t('sidebar.searchPlaceholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearchQuery('');
+                      setSearchOpen(false);
+                    }
+                  }}
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  style={{ color: 'var(--color-text)' }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Model badge */}
           <button
@@ -195,31 +236,22 @@ export function Sidebar() {
             )}
           </button>
 
-          {/* Search */}
-          <div className="px-3 mb-2">
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
-              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-            >
-              <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
-              <input
-                type="text"
-                placeholder={t('sidebar.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-sm"
-                style={{ color: 'var(--color-text)' }}
-              />
-            </div>
-          </div>
+          {/* New conversation — a real, labeled button. The old tiny "+" was
+              easy to miss and silently did nothing on an empty chat, which
+              read as "I cannot create conversations". */}
+          <button
+            onClick={handleNewChat}
+            className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
+            style={{ background: 'var(--color-accent)', color: '#fff' }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            <Plus size={16} />
+            {t('sidebar.newChat')}
+          </button>
 
-          {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto px-2">
-            <ConversationList searchQuery={searchQuery} />
-          </div>
-
-          {/* Bottom nav */}
-          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {/* Primary navigation — at the top, ChatGPT-style */}
+          <nav className="px-2 pb-2 flex flex-col gap-0.5">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
@@ -255,6 +287,14 @@ export function Sidebar() {
               );
             })}
           </nav>
+          {/* Conversation list — everything below the fold scrolls */}
+          <div
+            className="flex-1 overflow-y-auto px-2 pt-1"
+            style={{ borderTop: '1px solid var(--color-border)' }}
+          >
+            <ConversationList searchQuery={searchQuery} />
+          </div>
+
         </div>
       </aside>
     </>
