@@ -365,16 +365,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 )
 
     def _system_prompt(self) -> str:
+        # Memory-laden instructions from the server COMPOSE with the voice
+        # rules instead of replacing them. The first cut returned the
+        # instructions alone, and since memory injection is on by default,
+        # the no-emoji rule and the language pin silently vanished in real
+        # sessions — only the text sanitiser was left standing.
         if self._instructions:
-            return self._instructions
-        try:
-            from diapason.speech.realtime.oral_prompt import (
-                build_live_agent_template,
-            )
+            base = self._instructions
+        else:
+            try:
+                from diapason.speech.realtime.oral_prompt import (
+                    build_live_agent_template,
+                )
 
-            base = build_live_agent_template(enable_tools=self._enable_tools)
-        except Exception:  # noqa: BLE001 - a persona is not worth failing over
-            base = "You are Diapason, a helpful voice assistant."
+                base = build_live_agent_template(
+                    enable_tools=self._enable_tools
+                )
+            except Exception:  # noqa: BLE001 - a persona is never fatal
+                base = "You are Diapason, a helpful voice assistant."
         language = self._language or "the language the user speaks"
         return (
             f"{base}\n\nAnswer in {language}. Keep answers short and spoken: "

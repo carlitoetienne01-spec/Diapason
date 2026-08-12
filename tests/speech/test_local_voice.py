@@ -576,3 +576,27 @@ class TestStopPhrases:
         events = [e async for e in _collect(session)]
         users = [e for e in events if e.kind == "transcript" and e.role == "user"]
         assert users and users[0].text == "arrête de parler"
+
+
+class TestPromptComposition:
+    def test_memory_instructions_compose_with_voice_rules(self):
+        session = LocalVoiceSession(
+            instructions="Tu connais Carlito et ses projets.",
+            language="français",
+            stt=lambda _a: "",
+            llm=lambda _m: None,
+            tts=lambda _t: b"",
+        )
+        prompt = session._system_prompt()
+        # Both halves, or the default-on memory path silently drops the
+        # anti-emoji rule and the language pin — which is how emojis came
+        # back in real sessions despite the prompt saying never.
+        assert "Carlito" in prompt
+        assert "READ ALOUD" in prompt
+        assert "français" in prompt
+
+    def test_without_instructions_the_oral_template_still_carries_rules(self):
+        session = LocalVoiceSession(
+            stt=lambda _a: "", llm=lambda _m: None, tts=lambda _t: b""
+        )
+        assert "READ ALOUD" in session._system_prompt()
