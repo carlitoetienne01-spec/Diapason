@@ -193,6 +193,15 @@ export function CommandPalette() {
     } catch {}
   };
 
+  // The store's model list is fetched once at app start, so a model pulled
+  // OUTSIDE the app — ollama CLI, the API, an assistant — never appeared
+  // here until the app was relaunched. The palette mounts when it opens, so
+  // refreshing on mount means the list is true every time it is looked at.
+  useEffect(() => {
+    void refreshModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handlePull = async (modelId: string) => {
     setPulling(modelId);
     setPullError(null);
