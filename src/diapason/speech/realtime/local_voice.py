@@ -39,7 +39,12 @@ SPEECH_RMS = 0.008
 # How long a pause ends the turn. Shorter clips sentences mid-breath; longer
 # makes every exchange feel laggy. 700 ms is where read-aloud French pauses
 # land between sentences but not between words.
-END_OF_TURN_S = 0.7
+END_OF_TURN_S = 0.6
+# After this much silence the utterance is PROBABLY over, so transcription
+# starts speculatively while the remaining silence confirms it. If the user
+# resumes speaking the result is discarded — wasted work, never a wrong turn.
+# This overlaps most of Whisper's latency with a wait that existed anyway.
+SPECULATE_AFTER_S = 0.25
 # Ignore blips shorter than this — a cough is not a turn.
 MIN_SPEECH_S = 0.35
 
@@ -47,6 +52,42 @@ MIN_SPEECH_S = 0.35
 # is complete instead of waiting for the whole answer — this is what turns
 # "LLM total time" into "LLM time to first sentence" in perceived latency.
 _SENTENCE_END = re.compile(r"([.!?…:;]+[\s»”)]*\s+|\n+)")
+
+# For the very first audible chunk only, a comma is also a boundary: "Oui,"
+# reaching the speakers half a second before the rest of the sentence is what
+# makes the exchange feel answered rather than processed.
+_FIRST_CHUNK = re.compile(r"([,;]\s+)")
+_FIRST_CHUNK_MIN_CHARS = 16
+
+# Everything a voice cannot say. Emojis fed to the vocoder get read out loud
+# ("visage souriant…"), which is exactly as useless as it sounds; markdown
+# marks become audible asterisks. The transcript shown on screen is built
+# from the SANITISED text too, so what you read is what was said.
+_UNSPEAKABLE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"  # emoji blocks, symbols, pictographs
+    "\U00002600-\U000027BF"  # misc symbols, dingbats
+    "\U0001F1E6-\U0001F1FF"  # regional indicator flags
+    "\u2b00-\u2bff"          # arrows/stars block used by some emoji
+    "\ufe0e\ufe0f\u200d"    # variation selectors, ZWJ
+    "*_`#~|<>"                 # markdown furniture
+    "]+"
+)
+
+
+def speakable(text: str) -> str:
+    """Strip what a voice cannot say; collapse the leftover whitespace.
+
+    Returns "" when nothing pronounceable is left — an emoji-only chunk
+    leaves its punctuation behind ("👍👍." → "."), and a vocoder handed a
+    bare period says "point" out loud.
+    """
+    cleaned = _UNSPEAKABLE.sub("", text or "")
+    cleaned = re.sub(r"^[\s\-•]+", "", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+    if not re.search(r"[\w]", cleaned, re.UNICODE):
+        return ""
+    return cleaned
 
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_VOICE = "ff_siwis"
@@ -153,6 +194,10 @@ def _default_llm(
                     "stream": True,
                     "think": False,
                     "options": {"num_predict": 320},
+                    # Without this Ollama unloads the model after five idle
+                    # minutes, and the next turn silently pays a 6–9 s reload
+                    # — the single worst "why is it slow now" in a session.
+                    "keep_alive": "30m",
                 }
                 if tools_schema:
                     payload["tools"] = tools_schema
@@ -233,6 +278,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._in_speech = False
         self._respond_task: Optional[asyncio.Task[None]] = None
         self._warm_task: Optional[asyncio.Task[None]] = None
+        # (buffered byte count, transcription task) — valid only while the
+        # buffer has not grown past the snapshot it was taken from.
+        self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
         self._history: List[dict] = []
         self._closed = False
 
@@ -304,7 +352,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
         language = self._language or "the language the user speaks"
         return (
             f"{base}\n\nAnswer in {language}. Keep answers short and spoken: "
-            "one to three sentences unless asked for more. Everything runs "
+            "one to three sentences unless asked for more. Your words are "
+            "READ ALOUD by a voice synthesizer: never use emojis, emoticons, "
+            "markdown, bullet points or any visual formatting — they come "
+            "out as spoken garbage. Plain sentences only. Everything runs "
             "locally on the user's machine."
         )
 
@@ -322,6 +373,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if self._respond_task is not None and not self._respond_task.done():
                 self._respond_task.cancel()
                 await self._queue.put(SessionEvent(kind="interrupted"))
+            # Any speculative transcription was of an utterance that turned
+            # out not to be finished; it no longer describes the buffer.
+            self._speculative = None
             self._in_speech = True
             self._silence_samples = 0
             self._speech_samples += len(pcm16) // 2
@@ -335,16 +389,38 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
         self._buffer.extend(pcm16)
         self._silence_samples += len(pcm16) // 2
+
+        long_enough = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
+        if (
+            self._speculative is None
+            and long_enough
+            and self._stt is not None
+            and self._silence_samples >= int(SPECULATE_AFTER_S * INPUT_RATE)
+        ):
+            snapshot = bytes(self._buffer)
+            self._speculative = (
+                len(self._buffer),
+                asyncio.get_running_loop().create_task(
+                    asyncio.to_thread(self._stt, snapshot)
+                ),
+            )
+
         if self._silence_samples >= int(END_OF_TURN_S * INPUT_RATE):
             utterance = bytes(self._buffer)
             had_speech = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
+            # Hand over the speculative result only if it covers everything
+            # heard: trailing silence grows the buffer, so equality is on the
+            # snapshot boundary having remained the end of speech.
+            speculative = self._speculative
+            self._speculative = None
             self._buffer.clear()
             self._speech_samples = 0
             self._silence_samples = 0
             self._in_speech = False
             if had_speech:
+                early = speculative[1] if speculative is not None else None
                 self._respond_task = asyncio.get_running_loop().create_task(
-                    self._respond(utterance)
+                    self._respond(utterance, early_stt=early)
                 )
 
     async def send_text(self, text: str) -> None:
@@ -364,11 +440,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     # -- the response pipeline ----------------------------------------------
 
-    async def _respond(self, utterance: bytes) -> None:
+    async def _respond(
+        self,
+        utterance: bytes,
+        early_stt: Optional["asyncio.Task[str]"] = None,
+    ) -> None:
         try:
             await self._wait_warm()
             assert self._stt is not None
-            text = await asyncio.to_thread(self._stt, utterance)
+            if early_stt is not None:
+                # Transcription began during the end-of-turn silence; by now
+                # it is usually already done, and the wait it overlapped was
+                # dead time either way.
+                text = await early_stt
+            else:
+                text = await asyncio.to_thread(self._stt, utterance)
             if not text:
                 return
             await self._queue.put(
@@ -504,6 +590,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
     ) -> str:
         while True:
             match = _SENTENCE_END.search(pending)
+            if match is None and not spoken:
+                # Nothing audible yet: a comma will do. The half-second this
+                # buys on the opening syllables is worth more than anywhere
+                # else in the pipeline, because it is the half-second the
+                # user experiences as "it heard me".
+                candidate = _FIRST_CHUNK.search(pending)
+                if candidate is not None and candidate.end() >= _FIRST_CHUNK_MIN_CHARS:
+                    match = candidate
             if match is None:
                 return pending
             sentence = pending[: match.end()].strip()
@@ -513,6 +607,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     async def _speak_sentence(self, sentence: str, spoken: List[str]) -> None:
         assert self._tts is not None
+        sentence = speakable(sentence)
+        if not sentence:
+            # A chunk that was all emoji: nothing to say, nothing to record.
+            return
         pcm = await asyncio.to_thread(self._tts, sentence)
         spoken.append(sentence)
         if pcm:

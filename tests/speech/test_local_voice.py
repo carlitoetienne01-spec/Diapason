@@ -372,3 +372,106 @@ class TestVoiceTools:
         # Gemini and Ollama send arguments as a dict; OpenAI as a JSON string.
         # Both must land as the same dict.
         assert executed == [("focus_app", {"name": "Safari"})]
+
+
+class TestSpeakable:
+    def test_emojis_never_reach_the_vocoder(self):
+        from diapason.speech.realtime.local_voice import speakable
+
+        assert speakable("Bonjour ! 😊🎉") == "Bonjour !"
+        assert speakable("C'est fait ✅") == "C'est fait"
+        assert speakable("🇫🇷 On y va") == "On y va"
+
+    def test_markdown_is_silenced(self):
+        from diapason.speech.realtime.local_voice import speakable
+
+        assert speakable("**Important** : `code` et *italique*") == (
+            "Important : code et italique"
+        )
+        assert speakable("- premier point") == "premier point"
+
+    def test_ordinary_french_is_untouched(self):
+        from diapason.speech.realtime.local_voice import speakable
+
+        text = "L'été, à 15 h 30, ça coûte 3,50 € — d'accord ?"
+        assert speakable(text) == text
+
+    @pytest.mark.asyncio
+    async def test_an_all_emoji_chunk_is_skipped_not_crashed(self):
+        harness = Harness(answer="👍👍👍. Vraiment super.")
+        await harness.session.send_text("merci")
+        await harness.session._respond_task
+        # The emoji-only sentence must neither reach the vocoder nor leave
+        # a hole in the transcript.
+        assert harness.spoken == ["Vraiment super."]
+
+    @pytest.mark.asyncio
+    async def test_the_transcript_matches_what_was_actually_said(self):
+        harness = Harness(answer="Bonne idée 🎉 ! Allons-y.")
+        await harness.session.send_text("on y va ?")
+        await harness.session._respond_task
+        events = [e async for e in _collect(harness.session)]
+        finals = [e for e in events if e.kind == "transcript" and e.role == "assistant"]
+        assert "🎉" not in finals[-1].text
+
+
+class TestFirstChunkLatency:
+    @pytest.mark.asyncio
+    async def test_the_first_comma_is_a_boundary(self):
+        harness = Harness(
+            answer="Oui bien sûr Carlito, je peux le faire tout de suite."
+        )
+        await harness.session.send_text("tu peux ?")
+        await harness.session._respond_task
+        # "Oui bien sûr Carlito," must be audible before the sentence ends —
+        # that half-second is the one the user experiences as "it heard me".
+        assert harness.spoken[0] == "Oui bien sûr Carlito,"
+
+    @pytest.mark.asyncio
+    async def test_later_commas_do_not_fragment_the_speech(self):
+        harness = Harness(
+            answer="D'accord, je commence. Ensuite, on verra, si tu veux."
+        )
+        await harness.session.send_text("va")
+        await harness.session._respond_task
+        # "D'accord, " is under the minimum-length guard, so no early cut
+        # happens at all here: two whole sentences, none of the later commas
+        # honoured. Cutting at every comma would turn the voice into a
+        # telegram — the guard exists precisely for this case, and this test
+        # originally expected the wrong thing.
+        assert harness.spoken == [
+            "D'accord, je commence.",
+            "Ensuite, on verra, si tu veux.",
+        ]
+
+
+class TestSpeculativeSTT:
+    @pytest.mark.asyncio
+    async def test_transcription_starts_during_the_silence_window(self):
+        harness = Harness()
+        session = harness.session
+        await session.send_audio(pcm(0.6))
+        # 0.3 s of silence: past the speculation threshold, before end of turn.
+        await session.send_audio(pcm(0.3, amplitude=0.0))
+        assert session._speculative is not None
+        assert session._respond_task is None, "the turn must not be over yet"
+
+    @pytest.mark.asyncio
+    async def test_the_speculative_result_is_used_once(self):
+        harness = Harness()
+        session = harness.session
+        await session.send_audio(pcm(0.6))
+        await session.send_audio(pcm(0.8, amplitude=0.0))
+        await session._respond_task
+        # One transcription total: the speculative one, not a second full run.
+        assert len(harness.transcribed) == 1
+
+    @pytest.mark.asyncio
+    async def test_resumed_speech_discards_the_speculation(self):
+        harness = Harness()
+        session = harness.session
+        await session.send_audio(pcm(0.6))
+        await session.send_audio(pcm(0.3, amplitude=0.0))
+        assert session._speculative is not None
+        await session.send_audio(pcm(0.4))  # reprise : la phrase continue
+        assert session._speculative is None, "stale speculation must die"
