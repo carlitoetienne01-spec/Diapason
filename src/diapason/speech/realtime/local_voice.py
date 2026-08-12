@@ -23,6 +23,7 @@ import base64
 import json
 import logging
 import re
+import urllib.error
 import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
 
@@ -206,7 +207,7 @@ def _default_llm(
         loop = asyncio.get_running_loop()
 
         def worker() -> None:
-            try:
+            def stream_once(with_tools: bool) -> None:
                 payload: dict[str, Any] = {
                     "model": model,
                     "messages": [{"role": "system", "content": system}]
@@ -219,7 +220,7 @@ def _default_llm(
                     # — the single worst "why is it slow now" in a session.
                     "keep_alive": "30m",
                 }
-                if tools_schema:
+                if with_tools and tools_schema:
                     payload["tools"] = tools_schema
                 request = urllib.request.Request(
                     f"{_ollama_base()}/api/chat",
@@ -241,6 +242,28 @@ def _default_llm(
                     loop.call_soon_threadsafe(
                         queue.put_nowait, ("tools", calls)
                     )
+
+            try:
+                try:
+                    stream_once(with_tools=True)
+                except urllib.error.HTTPError as exc:
+                    detail = ""
+                    try:
+                        detail = exc.read().decode("utf-8", "replace")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    if "does not support tools" not in detail:
+                        raise
+                    # Some models (gemma3 among them) refuse the tools field
+                    # outright — Ollama 400s the whole request. A voice that
+                    # cannot act is degraded; one that errors on every single
+                    # turn is broken. Retry once without tools and say so.
+                    logger.warning(
+                        "%s does not support tools; local voice continues "
+                        "without them",
+                        model,
+                    )
+                    stream_once(with_tools=False)
             except Exception as exc:  # noqa: BLE001 - surfaced as an event
                 logger.debug("local LLM stream failed", exc_info=True)
                 loop.call_soon_threadsafe(

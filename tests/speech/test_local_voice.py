@@ -600,3 +600,83 @@ class TestPromptComposition:
             stt=lambda _a: "", llm=lambda _m: None, tts=lambda _t: b""
         )
         assert "READ ALOUD" in session._system_prompt()
+
+
+class TestToolsRefusalFallback:
+    @pytest.mark.asyncio
+    async def test_a_model_without_tools_degrades_instead_of_breaking(
+        self, monkeypatch
+    ):
+        """gemma3-style refusal: Ollama 400s the whole request when a model
+        does not support the tools field. A voice that cannot act is
+        degraded; one that errors on EVERY turn is broken — the retry strips
+        the tools and streams normally."""
+        import io
+        import json as _json
+        import urllib.error
+
+        from diapason.speech.realtime import local_voice
+
+        bodies: list[dict] = []
+
+        class FakeResponse:
+            def __init__(self, lines):
+                self._lines = lines
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def __iter__(self):
+                return iter(self._lines)
+
+        def fake_urlopen(request, timeout=0):
+            body = _json.loads(request.data)
+            bodies.append(body)
+            if "tools" in body:
+                raise urllib.error.HTTPError(
+                    "http://x",
+                    400,
+                    "Bad Request",
+                    {},
+                    io.BytesIO(b'{"error":"gemma3 does not support tools"}'),
+                )
+            return FakeResponse(
+                [
+                    _json.dumps({"message": {"content": "Bonjour."}}).encode(),
+                    _json.dumps({"done": True}).encode(),
+                ]
+            )
+
+        monkeypatch.setattr(local_voice.urllib.request, "urlopen", fake_urlopen)
+        llm = local_voice._default_llm("gemma3:12b", "système", [{"type": "function"}])
+        queue = llm([{"role": "user", "content": "salut"}])
+        items = []
+        while True:
+            item = await asyncio.wait_for(queue.get(), timeout=5)
+            if item is None:
+                break
+            items.append(item)
+
+        assert items == ["Bonjour."], "the retry must stream normally"
+        assert "tools" in bodies[0] and "tools" not in bodies[1]
+
+    @pytest.mark.asyncio
+    async def test_other_http_errors_still_surface(self, monkeypatch):
+        import io
+        import urllib.error
+
+        from diapason.speech.realtime import local_voice
+
+        def fake_urlopen(request, timeout=0):
+            raise urllib.error.HTTPError(
+                "http://x", 500, "boom", {}, io.BytesIO(b'{"error":"down"}')
+            )
+
+        monkeypatch.setattr(local_voice.urllib.request, "urlopen", fake_urlopen)
+        llm = local_voice._default_llm("m", "s", None)
+        queue = llm([])
+        first = await asyncio.wait_for(queue.get(), timeout=5)
+        assert isinstance(first, str) and first.startswith("\x00ERROR\x00")
