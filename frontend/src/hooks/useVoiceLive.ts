@@ -76,6 +76,9 @@ export function useVoiceLive() {
   // The assistant's own voice, exposed so the UI can visualise it.
   const outputNodeRef = useRef<GainNode | null>(null);
   const [outputNode, setOutputNode] = useState<GainNode | null>(null);
+  // The microphone, teed for the orb's visual analyser — silent, never
+  // routed to the speakers.
+  const [micNode, setMicNode] = useState<AudioNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef(0);
@@ -127,6 +130,7 @@ export function useVoiceLive() {
     speakingRef.current = false;
     nextPlayTimeRef.current = 0;
     outputNodeRef.current = null;
+    setMicNode(null);
     setOutputNode(null);
     const ctx = playbackCtxRef.current;
     if (ctx) {
@@ -263,6 +267,10 @@ export function useVoiceLive() {
           const ctx = new AudioContext({ sampleRate: 16000 });
           captureCtxRef.current = ctx;
           const source = ctx.createMediaStreamSource(stream);
+          const micTap = ctx.createGain();
+          micTap.gain.value = 1;
+          source.connect(micTap);
+          setMicNode(micTap);
           const processor = ctx.createScriptProcessor(4096, 1, 1);
           processorRef.current = processor;
           processor.onaudioprocess = (ev) => {
@@ -448,6 +456,7 @@ export function useVoiceLive() {
     toolEvents,
     statusLabel,
     outputNode,
+    micNode,
     refreshAvailability: () => checkService(true),
     start,
     stop,

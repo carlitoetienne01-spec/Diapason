@@ -5,8 +5,8 @@ import type { AIState } from '../AIEntity/types';
 
 // Three.js is half a megabyte and is needed only once this panel opens, so it
 // is fetched then rather than on every cold start of the app.
-const AIEntity = lazy(() =>
-  import('../AIEntity/AIEntity').then((m) => ({ default: m.AIEntity })),
+const DiapasonOrb = lazy(() =>
+  import('../DiapasonOrb/DiapasonOrb').then((m) => ({ default: m.DiapasonOrb })),
 );
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
 
@@ -43,6 +43,8 @@ interface TalkOrbProps {
   /** The assistant's own voice, so SPEAKING is driven by what is actually
    * heard rather than by a timer. Optional: the entity is fully alive without it. */
   audioSource?: AudioNode | null;
+  /** The user's microphone: LISTENING vibrates with their voice. */
+  micSource?: AudioNode | null;
   onProviderChange: (p: VoiceLiveProvider) => void;
   onStart: () => void;
   onStop: () => void;
@@ -62,6 +64,7 @@ export function TalkOrb({
   toolEvents = [],
   screenSharing = false,
   audioSource = null,
+  micSource = null,
   onProviderChange,
   onStart,
   onStop,
@@ -138,11 +141,12 @@ export function TalkOrb({
             {/* No fallback: an empty box for a few hundred milliseconds reads
                 as loading, a placeholder shape reads as a glitch. */}
             <Suspense fallback={null}>
-              <AIEntity
+              <DiapasonOrb
                 state={entityState(state)}
                 // Dimmer when there is nothing to say: present, not performing.
                 intensity={active ? 1 : 0.62}
                 audioSource={audioSource}
+                micSource={micSource}
                 style={{ position: 'absolute', inset: 0 }}
               />
             </Suspense>

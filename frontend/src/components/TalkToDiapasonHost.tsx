@@ -138,6 +138,7 @@ export function TalkToDiapasonHost() {
       toolEvents={voice.toolEvents}
       screenSharing={screenSharing}
       audioSource={voice.outputNode}
+      micSource={voice.micNode}
       onProviderChange={voice.setProvider}
       onStart={() => void voice.start()}
       onStop={voice.stop}
