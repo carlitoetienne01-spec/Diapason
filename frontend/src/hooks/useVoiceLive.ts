@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchVoiceLiveHealth, voiceLiveWsUrl } from '../lib/voiceLive';
+import {
+  canStartVoiceSession,
+  fetchVoiceLiveHealth,
+  VoiceLiveHealthError,
+  voiceLiveDiagnosticUrl,
+  voiceLiveProtocols,
+  voiceLiveWsUrl,
+  type VoiceLiveHealth,
+} from '../lib/voiceLive';
+import { refreshLocalApiKey } from '../lib/api';
 
 export type VoiceLiveState =
   | 'idle'
@@ -53,7 +62,9 @@ function base64ToInt16(b64: string): Int16Array {
 export function useVoiceLive() {
   const [state, setState] = useState<VoiceLiveState>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [available, setAvailable] = useState(false);
+  const [health, setHealth] = useState<VoiceLiveHealth | null>(null);
+  const [checkingService, setCheckingService] = useState(true);
+  const [serviceError, setServiceError] = useState<string | null>(null);
   const [provider, setProvider] = useState<VoiceLiveProvider>('gemini');
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolEventLine[]>([]);
@@ -69,17 +80,48 @@ export function useVoiceLive() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef(0);
   const speakingRef = useRef(false);
+  const serviceErrorRef = useRef<string | null>(null);
+
+  const checkService = useCallback(async (showLoading = false) => {
+    if (showLoading) setCheckingService(true);
+    try {
+      const current = await fetchVoiceLiveHealth();
+      setHealth(current);
+      serviceErrorRef.current = null;
+      setServiceError(null);
+      return current;
+    } catch (err) {
+      const code = err instanceof VoiceLiveHealthError && err.status === 401
+        ? 'voice-auth-unavailable'
+        : 'voice-service-unavailable';
+      console.error('[voice-live] health check failed', err);
+      setHealth(null);
+      serviceErrorRef.current = code;
+      setServiceError(code);
+      return null;
+    } finally {
+      setCheckingService(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchVoiceLiveHealth()
-      .then((h) => {
-        setAvailable(h.available);
-        if (h.default_provider === 'openai' || h.default_provider === 'gemini') {
-          setProvider(h.default_provider);
-        }
-      })
-      .catch(() => setAvailable(false));
-  }, []);
+    let cancelled = false;
+    void checkService(true).then((current) => {
+      if (cancelled || !current) return;
+      if (
+        current.default_provider === 'openai'
+        || current.default_provider === 'gemini'
+        || current.default_provider === 'local'
+      ) {
+        setProvider(current.default_provider);
+      }
+    });
+    const timer = window.setInterval(() => void checkService(false), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [checkService]);
 
   const stopPlayback = useCallback(() => {
     speakingRef.current = false;
@@ -165,35 +207,38 @@ export function useVoiceLive() {
       setError(null);
       setTranscripts([]);
       setToolEvents([]);
-      setState('connecting');
-      setStatusLabel('Connecting…');
 
       const chosen = opts?.provider || provider;
 
-      // Fail with the real reason before opening a socket. Without this, a
-      // missing API key surfaces as a bare "WebSocket error" — the server
-      // accepts the connection and immediately drops it, which tells the
-      // user nothing about what to fix.
-      try {
-        const health = await fetchVoiceLiveHealth();
-        const configured = (health as any)?.providers?.[chosen]?.configured;
-        if (configured === false) {
-          setState('idle');
-          setStatusLabel('Idle');
-          setError(
-            chosen === 'gemini'
+      // Revalidate immediately before the handshake. Besides preventing a
+      // startup race, apiFetch refreshes the desktop key after a 401 so the
+      // synchronous URL builder below sees the current credential.
+      const current = await checkService(true);
+      if (!canStartVoiceSession(current, chosen)) {
+        setState('idle');
+        setStatusLabel('Idle');
+        setError(
+          current
+            ? chosen === 'gemini'
               ? 'missing-key-gemini'
               : chosen === 'openai'
                 ? 'missing-key-openai'
-                : 'local-not-ready',
-          );
-          return;
-        }
-      } catch {
-        // Health unreachable: let the socket attempt report connectivity.
+                : 'local-not-ready'
+            : serviceErrorRef.current || 'voice-service-unavailable',
+        );
+        return;
       }
 
-      const ws = new WebSocket(voiceLiveWsUrl({ provider: chosen }));
+      setState('connecting');
+      setStatusLabel('Connecting…');
+      await refreshLocalApiKey();
+      const socketUrl = voiceLiveWsUrl({ provider: chosen });
+      console.info('[voice-live] opening WebSocket', {
+        provider: chosen,
+        url: voiceLiveDiagnosticUrl(socketUrl),
+      });
+      const ws = new WebSocket(socketUrl, voiceLiveProtocols());
+      let socketFailed = false;
       wsRef.current = ws;
 
       ws.onopen = async () => {
@@ -239,8 +284,11 @@ export function useVoiceLive() {
           processor.connect(mute);
           mute.connect(ctx.destination);
         } catch (err) {
-          setError('Microphone access denied');
+          console.error('[voice-live] microphone initialization failed', err);
+          socketFailed = true;
+          setError('microphone-denied');
           setState('error');
+          setStatusLabel('Error');
           ws.close();
         }
       };
@@ -292,7 +340,16 @@ export function useVoiceLive() {
               setStatusLabel(`Tool · ${msg.name || '…'}`);
               break;
             case 'error':
-              setError(msg.detail || 'Voice session error');
+              console.error('[voice-live] server session error', {
+                provider: chosen,
+                detail: msg.detail || 'unknown error',
+              });
+              socketFailed = true;
+              setError(
+                chosen === 'local' && /ollama/i.test(String(msg.detail || ''))
+                  ? 'local-not-ready'
+                  : 'voice-session-failed',
+              );
               setState('error');
               setStatusLabel('Error');
               break;
@@ -302,24 +359,51 @@ export function useVoiceLive() {
             default:
               break;
           }
-        } catch {}
+        } catch (err) {
+          console.warn('[voice-live] ignored malformed server message', err);
+        }
       };
 
-      ws.onerror = () => {
-        setError('WebSocket error');
+      ws.onerror = (event) => {
+        socketFailed = true;
+        console.error('[voice-live] WebSocket connection failed', {
+          provider: chosen,
+          url: voiceLiveDiagnosticUrl(socketUrl),
+          readyState: ws.readyState,
+          event,
+        });
+        setError('voice-connection-failed');
         setState('error');
+        setStatusLabel('Error');
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.info('[voice-live] WebSocket closed', {
+          provider: chosen,
+          code: event.code,
+          reason: event.reason || '(none)',
+          clean: event.wasClean,
+        });
         cleanupCapture();
         stopPlayback();
         if (wsRef.current === ws) wsRef.current = null;
-        setState((s) => (s === 'error' ? s : 'idle'));
-        setStatusLabel('Idle');
+        if (socketFailed) {
+          setState('error');
+          setStatusLabel('Error');
+        } else {
+          setState('idle');
+          setStatusLabel('Idle');
+        }
       };
     },
-    [cleanupCapture, enqueuePcm, provider, stop, stopPlayback],
+    [checkService, cleanupCapture, enqueuePcm, provider, stop, stopPlayback],
   );
+
+  const chooseProvider = useCallback((next: VoiceLiveProvider) => {
+    setProvider(next);
+    setError(null);
+    void checkService(true);
+  }, [checkService]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -339,16 +423,32 @@ export function useVoiceLive() {
 
   useEffect(() => () => stop(), [stop]);
 
+  const readinessError = !checkingService
+    && health
+    && !canStartVoiceSession(health, provider)
+      ? provider === 'gemini'
+        ? 'missing-key-gemini'
+        : provider === 'openai'
+          ? 'missing-key-openai'
+          : health.providers?.local?.reason === 'missing-dependencies'
+            || health.providers?.local?.reason === 'missing-phonemizer'
+            ? 'local-components-missing'
+            : 'local-not-ready'
+      : null;
+
   return {
     state,
-    error,
-    available,
+    error: error || serviceError || readinessError,
+    available: !!health?.available,
+    serviceReady: canStartVoiceSession(health, provider),
+    checkingService,
     provider,
-    setProvider,
+    setProvider: chooseProvider,
     transcripts,
     toolEvents,
     statusLabel,
     outputNode,
+    refreshAvailability: () => checkService(true),
     start,
     stop,
     interrupt,

@@ -110,7 +110,9 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
         if (alive) setMode(c.agent?.tool_approval === 'ask' ? 'ask' : 'auto');
       })
       .catch(() => {
-        if (alive) setMode('auto');
+        // Fail closed, like the backend: when the mode is unreadable the
+        // server treats it as "ask" — the chip must not claim "auto".
+        if (alive) setMode('ask');
       });
     return () => {
       alive = false;

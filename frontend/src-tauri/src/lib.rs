@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 const OLLAMA_PORT: u16 = 11434;
 const DIAPASON_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --extra desktop --extra voice-local --extra inference-cloud --extra inference-google --group desktop-native";
 
 /// Small, fast model used when startup needs a default Ollama tag.
 const STARTUP_MODEL: &str = "qwen3.5:4b";
@@ -1376,6 +1376,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             "--extra",
             "desktop",
             "--extra",
+            "voice-local",
+            "--extra",
             "inference-cloud",
             "--extra",
             "inference-google",
@@ -1670,12 +1672,18 @@ async fn get_setup_status(state: tauri::State<'_, SharedStatus>) -> Result<Setup
 
 #[tauri::command]
 fn get_api_base() -> String {
+    eprintln!("[desktop-api] API base requested");
     api_base()
 }
 
 #[tauri::command]
 fn get_local_api_key() -> String {
-    local_api_key()
+    let key = local_api_key();
+    eprintln!(
+        "[desktop-api] local API credential requested: available={}",
+        !key.is_empty()
+    );
+    key
 }
 
 #[tauri::command]
@@ -1711,6 +1719,32 @@ async fn check_health(api_url: String) -> Result<serde_json::Value, String> {
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
+}
+
+/// Fetch voice readiness through the native authenticated client.
+///
+/// WebSocket handshakes still happen in the WebView, but their readiness gate
+/// should not depend on WebKit completing a CORS preflight during app startup.
+#[tauri::command]
+async fn get_voice_live_health() -> Result<serde_json::Value, String> {
+    let url = format!("{}/v1/voice/live/health", api_base());
+    let response = authenticated(
+        reqwest::Client::new()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(5)),
+    )
+    .send()
+    .await
+    .map_err(|err| format!("Voice service connection failed: {err}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|err| format!("Voice service response failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("Voice service health returned HTTP {status}"));
+    }
+    serde_json::from_str(&body).map_err(|err| format!("Voice service returned invalid JSON: {err}"))
 }
 
 #[tauri::command]
@@ -3069,6 +3103,7 @@ pub fn run() {
             start_backend,
             stop_backend,
             check_health,
+            get_voice_live_health,
             fetch_energy,
             fetch_telemetry,
             fetch_traces,

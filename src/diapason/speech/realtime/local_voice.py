@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import json
 import logging
 import re
+import shutil
 import urllib.error
 import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
@@ -175,6 +177,30 @@ def ollama_reachable(timeout_s: float = 1.5) -> bool:
             return response.status == 200
     except Exception:  # noqa: BLE001 - unreachable is a normal state
         return False
+
+
+def local_voice_readiness(timeout_s: float = 1.5) -> tuple[bool, str]:
+    """Return whether every local voice runtime component is available.
+
+    Keep this check cheap: model construction belongs to ``connect()``, but a
+    missing optional extra or system phonemizer must disable Start instead of
+    letting the WebSocket claim readiness and fail a few seconds later.
+    """
+    required_modules = ("faster_whisper", "kokoro", "soundfile")
+    if any(importlib.util.find_spec(name) is None for name in required_modules):
+        return False, "missing-dependencies"
+    # The voice-local extra installs espeakng-loader, which supplies a bundled
+    # phonemizer even when launchd's minimal PATH cannot see Homebrew's binary.
+    has_phonemizer = (
+        shutil.which("espeak-ng") is not None
+        or shutil.which("espeak") is not None
+        or importlib.util.find_spec("espeakng_loader") is not None
+    )
+    if not has_phonemizer:
+        return False, "missing-phonemizer"
+    if not ollama_reachable(timeout_s=timeout_s):
+        return False, "ollama-unavailable"
+    return True, "ready"
 
 
 def _default_stt() -> Callable[[bytes], str]:
@@ -418,13 +444,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 "Local voice needs Ollama running (start the Ollama app, "
                 "or `ollama serve`)."
             )
-        # Ready goes out immediately; the heavy models load under the shared
-        # lock in the background. The first reply of the first session may
-        # wait for them — every later one finds them warm.
-        await self._queue.put(SessionEvent(kind="ready"))
+        # A ready frame is a contract: microphone audio can be processed. The
+        # old lifecycle sent it before Kokoro/Whisper loaded, so a missing
+        # optional dependency looked like a successful session and then died.
+        # Warm under the shared lock first; later sessions reuse the models.
         self._warm_task = asyncio.get_running_loop().create_task(self._warm())
+        if await self._warm_task:
+            await self._queue.put(SessionEvent(kind="ready"))
 
-    async def _warm(self) -> None:
+    async def _warm(self) -> bool:
         async with _SHARED_LOCK:
             try:
                 if self._stt is None:
@@ -452,11 +480,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     self._tool_executor = lambda name, args: execute_voice_tool(
                         name, args, self._allowed_tools
                     )
+                return True
             except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
                 logger.exception("local voice warm-up failed")
                 await self._queue.put(
                     SessionEvent(kind="error", detail=f"local setup: {exc}")
                 )
+                return False
 
     def _system_prompt(self) -> str:
         # Memory-laden instructions from the server COMPOSE with the voice

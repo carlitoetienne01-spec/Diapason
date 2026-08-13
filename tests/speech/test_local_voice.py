@@ -9,11 +9,13 @@ import struct
 
 import pytest
 
+from diapason.speech.realtime.base import SessionEvent
 from diapason.speech.realtime.local_voice import (
     _SENTENCE_END,
     END_OF_TURN_S,
     INPUT_RATE,
     LocalVoiceSession,
+    local_voice_readiness,
 )
 
 
@@ -71,6 +73,56 @@ class Harness:
 async def _drain_ready(harness: Harness) -> None:
     event = await asyncio.wait_for(harness.session._queue.get(), timeout=2)
     assert event.kind == "ready"
+
+
+def test_readiness_rejects_a_missing_local_voice_extra(monkeypatch):
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.importlib.util.find_spec",
+        lambda name: None if name == "kokoro" else object(),
+    )
+
+    assert local_voice_readiness() == (False, "missing-dependencies")
+
+
+@pytest.mark.asyncio
+async def test_connect_emits_ready_only_after_successful_warmup(monkeypatch):
+    session = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.ollama_reachable", lambda: True
+    )
+    warmed = False
+
+    async def warm() -> bool:
+        nonlocal warmed
+        await asyncio.sleep(0)
+        warmed = True
+        return True
+
+    monkeypatch.setattr(session, "_warm", warm)
+    await session.connect()
+
+    event = await asyncio.wait_for(session._queue.get(), timeout=1)
+    assert warmed is True
+    assert event.kind == "ready"
+
+
+@pytest.mark.asyncio
+async def test_connect_does_not_emit_ready_after_failed_warmup(monkeypatch):
+    session = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.ollama_reachable", lambda: True
+    )
+
+    async def warm() -> bool:
+        await session._queue.put(SessionEvent(kind="error", detail="missing Kokoro"))
+        return False
+
+    monkeypatch.setattr(session, "_warm", warm)
+    await session.connect()
+
+    event = await asyncio.wait_for(session._queue.get(), timeout=1)
+    assert event.kind == "error"
+    assert session._queue.empty()
 
 
 class TestTurnDetection:

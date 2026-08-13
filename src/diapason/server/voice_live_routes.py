@@ -90,7 +90,10 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         {"type": "error", "detail": "..."}
         {"type": "closed"}
     """
-    from diapason.server.auth_middleware import websocket_authorized
+    from diapason.server.auth_middleware import (
+        websocket_authorized,
+        websocket_response_subprotocol,
+    )
     from diapason.speech.realtime.bridge import VoiceLiveBridge
     from diapason.speech.realtime.factory import create_realtime_session
 
@@ -99,7 +102,7 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         await websocket.close(code=1008)
         return
 
-    await websocket.accept()
+    await websocket.accept(subprotocol=websocket_response_subprotocol(websocket))
     defaults = _realtime_defaults(websocket.app.state)
     if not defaults.get("enabled", True):
         await websocket.send_json(
@@ -190,10 +193,12 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
     # describes reports "unconfigured" for keys that would in fact work.
     gemini = bool(get_cloud_key("GEMINI_API_KEY", "GOOGLE_API_KEY"))
     openai = bool(get_cloud_key("OPENAI_API_KEY"))
-    from diapason.speech.realtime.local_voice import ollama_reachable
+    from diapason.speech.realtime.local_voice import local_voice_readiness
 
-    # The local provider needs no key — only a running model server.
-    local = ollama_reachable()
+    # Local has no API key, but its optional STT/TTS stack and phonemizer must
+    # exist too. Reporting only Ollama made the UI enable Start for a session
+    # that was guaranteed to fail during Kokoro warm-up.
+    local, local_reason = local_voice_readiness()
     tool_ids: list[str] = []
     if defaults.get("enable_tools"):
         try:
@@ -215,7 +220,7 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
         "providers": {
             "gemini": {"configured": gemini},
             "openai": {"configured": openai},
-            "local": {"configured": local},
+            "local": {"configured": local, "reason": local_reason},
         },
     }
 

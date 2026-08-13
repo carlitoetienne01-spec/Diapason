@@ -31,9 +31,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._api_key = api_key or (_env_get("API_KEY") or "")
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
+        # An authenticated cross-origin request first sends an OPTIONS
+        # preflight without credentials. CORS middleware must answer that
+        # preflight before the browser is allowed to send the real Bearer
+        # request. Authenticating OPTIONS made every Tauri/WebView fetch fail
+        # at the browser boundary even when the desktop held the correct key.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         if self._api_key and self._requires_auth(request.url.path):
             auth = request.headers.get("Authorization", "")
             if not auth:
+                # A starting WebView can briefly poll before the native key
+                # bridge resolves. Keep this evidence at diagnostic level so
+                # it does not flood the normal service log every second.
+                logger.debug(
+                    "Rejected unauthenticated local API request: path=%s origin=%s",
+                    request.url.path,
+                    request.headers.get("origin", "(none)"),
+                )
                 return JSONResponse(
                     {"detail": "Missing Authorization header"},
                     status_code=401,
@@ -43,6 +59,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if scheme.lower() != "bearer" or not secrets.compare_digest(
                 token, self._api_key
             ):
+                logger.warning(
+                    "Rejected invalid local API credential: path=%s origin=%s",
+                    request.url.path,
+                    request.headers.get("origin", "(none)"),
+                )
                 return JSONResponse(
                     {"detail": "Invalid API key"},
                     status_code=401,
@@ -86,7 +107,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
-        if AuthMiddleware._requires_auth(request.url.path):
+        # Preflight requests are browser permission checks, not data-plane API
+        # calls. Let CORSMiddleware answer them and rate-limit the authenticated
+        # request that follows.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # This small, read-only readiness response is polled while the voice
+        # panel is open. It remains authenticated, but unrelated dashboard
+        # traffic must not exhaust its rate-limit bucket and disable Start.
+        if (
+            AuthMiddleware._requires_auth(request.url.path)
+            and request.url.path != "/v1/voice/live/health"
+        ):
             auth = request.headers.get("Authorization", "")
             # Never retain the bearer token itself in limiter state or logs.
             credential = "unauthenticated"
@@ -239,8 +272,10 @@ def websocket_authorized(websocket, expected_key: str) -> bool:  # noqa: ANN001
     When *expected_key* is empty, authentication is disabled (the loopback /
     local-only default, matching :class:`AuthMiddleware`) and all connections
     are allowed. The token may be supplied either as a ``?token=`` query
-    parameter — browsers cannot set headers on a WebSocket handshake — or via
-    an ``Authorization: Bearer <key>`` header for programmatic clients.
+    parameter for backwards compatibility, via an ``Authorization: Bearer``
+    header for programmatic clients, or as a ``diapason-auth.<key>`` offered
+    subprotocol. The desktop uses the last form so access logs never contain
+    its credential in the request URL.
     """
     if not expected_key:
         return True
@@ -251,5 +286,18 @@ def websocket_authorized(websocket, expected_key: str) -> bool:  # noqa: ANN001
         if scheme.lower() == "bearer":
             token = value
     if not token:
+        offered = websocket.headers.get("sec-websocket-protocol", "")
+        for protocol in (item.strip() for item in offered.split(",")):
+            if protocol.startswith("diapason-auth."):
+                token = protocol.removeprefix("diapason-auth.")
+                break
+    if not token:
         return False
     return secrets.compare_digest(token, expected_key)
+
+
+def websocket_response_subprotocol(websocket) -> str | None:  # noqa: ANN001
+    """Select the non-secret Diapason protocol when a browser offers it."""
+    offered = websocket.headers.get("sec-websocket-protocol", "")
+    protocols = {item.strip() for item in offered.split(",")}
+    return "diapason" if "diapason" in protocols else None

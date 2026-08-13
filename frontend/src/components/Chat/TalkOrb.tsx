@@ -34,6 +34,8 @@ interface TalkOrbProps {
   state: VoiceLiveState;
   statusLabel: string;
   error: string | null;
+  serviceReady: boolean;
+  checkingService: boolean;
   provider: VoiceLiveProvider;
   transcripts: TranscriptLine[];
   toolEvents?: ToolEventLine[];
@@ -53,6 +55,8 @@ export function TalkOrb({
   state,
   statusLabel,
   error,
+  serviceReady,
+  checkingService,
   provider,
   transcripts,
   toolEvents = [],
@@ -180,10 +184,11 @@ export function TalkOrb({
               <button
                 type="button"
                 onClick={() => void onStart()}
-                className="text-xs px-3 py-1.5 rounded-md cursor-pointer"
+                disabled={!serviceReady || checkingService}
+                className="text-xs px-3 py-1.5 rounded-md disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 style={{ background: 'var(--color-accent)', color: '#fff' }}
               >
-                {t('chat.talk.start')}
+                {checkingService ? t('talk.checkingService') : t('chat.talk.start')}
               </button>
             )}
           </div>
@@ -196,7 +201,19 @@ export function TalkOrb({
                   ? t('talk.missingKeyOpenai')
                   : error === 'local-not-ready'
                     ? t('talk.localNotReady')
-                    : error}
+                    : error === 'local-components-missing'
+                      ? t('talk.localComponentsMissing')
+                    : error === 'voice-auth-unavailable'
+                      ? t('talk.authUnavailable')
+                      : error === 'voice-service-unavailable'
+                        ? t('talk.serviceUnavailable')
+                        : error === 'voice-connection-failed'
+                          ? t('talk.connectionFailed')
+                          : error === 'microphone-denied'
+                            ? t('talk.microphoneDenied')
+                            : error === 'voice-session-failed'
+                              ? t('talk.sessionFailed')
+                              : error}
             </p>
           )}
         </div>

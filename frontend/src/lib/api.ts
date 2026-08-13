@@ -111,6 +111,19 @@ export const getApiKey = (): string => {
   return '';
 };
 
+/** Refresh the desktop-generated local credential immediately before an
+ * operation that cannot retry after it starts (notably a WebSocket handshake). */
+export async function refreshLocalApiKey(): Promise<string> {
+  if (!isTauri()) return getApiKey();
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    _tauriApiKey = await invoke<string>('get_local_api_key');
+  } catch (err) {
+    console.error('[desktop-api] could not refresh local credential', err);
+  }
+  return getApiKey();
+}
+
 // Build request headers with the Bearer Authorization token when a local key
 // is configured, merging any caller-supplied headers. Adds no Authorization
 // header when no key is set, so keyless local dev is byte-for-byte unchanged.

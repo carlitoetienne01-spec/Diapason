@@ -89,8 +89,21 @@ export const MESSAGES = {
     'setup.step.endpoint': 'Endpoint',
     'setup.step.inferenceEngine': 'Inference Engine',
     'talk.providerLocal': 'Local (private)',
+    'talk.checkingService': 'Checking…',
+    'talk.authUnavailable':
+      'Diapason could not authenticate with its local voice service. Restart the app, then try again.',
+    'talk.serviceUnavailable':
+      'The local voice service is still starting or unavailable. Wait a moment, then try again.',
+    'talk.connectionFailed':
+      'Diapason could not connect to the local voice service. Restart the app if the problem continues.',
+    'talk.microphoneDenied':
+      'Microphone access is blocked. Allow Diapason in System Settings › Privacy & Security › Microphone.',
+    'talk.sessionFailed':
+      'The voice session could not start. Try again; technical details are available in the logs.',
     'talk.localNotReady':
       'Local voice needs Ollama running — open the Ollama app, then try again.',
+    'talk.localComponentsMissing':
+      'Local voice components are missing. Restart Diapason to install them, then try again.',
     'talk.footerLocal':
       'Local voice · nothing leaves this Mac · ⌥Space',
     'talk.missingKeyGemini':
@@ -1168,8 +1181,21 @@ export const MESSAGES = {
     'setup.step.endpoint': 'Point de terminaison',
     'setup.step.inferenceEngine': "Moteur d'inférence",
     'talk.providerLocal': 'Local (privé)',
+    'talk.checkingService': 'Vérification…',
+    'talk.authUnavailable':
+      "Diapason n’a pas pu s’authentifier auprès de son service vocal local. Redémarrez l’application, puis réessayez.",
+    'talk.serviceUnavailable':
+      'Le service vocal local démarre encore ou ne répond pas. Patientez un instant, puis réessayez.',
+    'talk.connectionFailed':
+      "Diapason n’a pas pu se connecter au service vocal local. Redémarrez l’application si le problème persiste.",
+    'talk.microphoneDenied':
+      'L’accès au microphone est bloqué. Autorisez Diapason dans Réglages Système › Confidentialité et sécurité › Microphone.',
+    'talk.sessionFailed':
+      'La séance vocale n’a pas pu démarrer. Réessayez ; les détails techniques restent disponibles dans les journaux.',
     'talk.localNotReady':
       "La voix locale nécessite Ollama — lancez l'application Ollama, puis réessayez.",
+    'talk.localComponentsMissing':
+      'Des composants de la voix locale manquent. Redémarrez Diapason pour les installer, puis réessayez.',
     'talk.footerLocal':
       'Voix locale · rien ne quitte ce Mac · ⌥Espace',
     'talk.missingKeyGemini':

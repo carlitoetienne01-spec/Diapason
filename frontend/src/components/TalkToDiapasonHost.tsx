@@ -12,7 +12,7 @@ export function TalkToDiapasonHost() {
 
   const openTalk = useCallback(() => {
     setOpen(true);
-    if (!voice.isActive) void voice.start();
+    void voice.refreshAvailability();
   }, [voice]);
 
   const closeTalk = useCallback(() => {
@@ -131,6 +131,8 @@ export function TalkToDiapasonHost() {
       state={voice.state}
       statusLabel={voice.statusLabel}
       error={voice.error}
+      serviceReady={voice.serviceReady}
+      checkingService={voice.checkingService}
       provider={voice.provider}
       transcripts={voice.transcripts}
       toolEvents={voice.toolEvents}
