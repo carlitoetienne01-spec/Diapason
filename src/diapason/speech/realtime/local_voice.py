@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import shutil
+import time
 import urllib.error
 import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
@@ -39,10 +40,17 @@ OUTPUT_RATE = 24_000
 # End-of-turn detection on raw RMS of int16/32768 samples. Ordinary speech
 # sits near 0.01–0.05 on this scale; an untouched microphone well below.
 SPEECH_RMS = 0.008
+
+# Word onsets (soft vowels, fricatives) sit BELOW the speech threshold: a
+# gate that only starts buffering once RMS crosses it amputates the first
+# syllable of every utterance — "App Store" reached Whisper as "…Store".
+# Keep a rolling window of the most recent sub-threshold audio and prepend
+# it when speech starts, exactly like hardware VADs do.
+PRE_ROLL_S = 0.4
 # How long a pause ends the turn. Shorter clips sentences mid-breath; longer
 # makes every exchange feel laggy. 700 ms is where read-aloud French pauses
 # land between sentences but not between words.
-END_OF_TURN_S = 0.6
+END_OF_TURN_S = 0.8
 # After this much silence the utterance is PROBABLY over, so transcription
 # starts speculatively while the remaining silence confirms it. If the user
 # resumes speaking the result is discarded — wasted work, never a wrong turn.
@@ -203,6 +211,26 @@ def local_voice_readiness(timeout_s: float = 1.5) -> tuple[bool, str]:
     return True, "ready"
 
 
+def polish_transcript(text: str) -> str:
+    """Apply the user's dictation dictionary to a voice transcript.
+
+    The dictation path earns its accuracy partly AFTER Whisper: the personal
+    dictionary fixes the words the recognizer keeps getting wrong ("App
+    Store", proper nouns). Voice transcripts deserve the same corrections —
+    same user, same vocabulary, same mistakes. bump_usage=False: voice hits
+    must not skew the dictation dictionary's learning statistics.
+    """
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return cleaned
+    try:
+        from diapason.speech.dictation_dictionary import apply_dictionary
+
+        return apply_dictionary(cleaned, bump_usage=False)
+    except Exception:  # noqa: BLE001 - the dictionary is a bonus, never a gate
+        return cleaned
+
+
 def _default_stt() -> Callable[[bytes], str]:
     """Whisper, shared across sessions, French pinned via the user's config."""
     from diapason.core.config import load_config
@@ -214,6 +242,12 @@ def _default_stt() -> Callable[[bytes], str]:
         backend = FasterWhisperBackend(
             model_size=str(getattr(config.speech, "model", "") or "small"),
             language=str(getattr(config.speech, "language", "") or ""),
+            # Realtime audio must not inherit the dictation hotword list:
+            # on pure background noise it reproducibly hallucinated the first
+            # brand in that list, "Google Chrome". Silero VAD plus a greedy,
+            # independent decode is both safer and substantially faster.
+            use_dictionary_hints=False,
+            realtime=True,
         )
         backend.preload()
         _SHARED["stt"] = backend
@@ -229,7 +263,7 @@ def _default_stt() -> Callable[[bytes], str]:
             wav.setframerate(INPUT_RATE)
             wav.writeframes(pcm16)
         result = backend.transcribe(buf.getvalue(), format="wav")
-        return (getattr(result, "text", "") or "").strip()
+        return polish_transcript(getattr(result, "text", "") or "")
 
     return transcribe
 
@@ -255,6 +289,22 @@ def _default_tts(voice: str) -> Callable[[str], bytes]:
     return speak
 
 
+_TOOL_TURN_RE = re.compile(
+    r"\b(?:agenda|calendrier|calendar|spotify|youtube|mail|courriel|email|"
+    r"message|sms|fichier|document|écran|screen|partage|cherche|recherche|"
+    r"search|google|joue|play|envoie|compose|ouvre|open|lance|affiche|montre)\b",
+    re.IGNORECASE,
+)
+
+
+def _turn_needs_tools(messages: Sequence[dict]) -> bool:
+    """Avoid sending a 9 KB tool schema for an ordinary spoken reply."""
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return bool(_TOOL_TURN_RE.search(str(message.get("content") or "")))
+    return False
+
+
 def _default_llm(
     model: str, system: str, tools_schema: Optional[List[dict]] = None
 ) -> Callable[[List[dict]], "asyncio.Queue[Any]"]:
@@ -271,6 +321,7 @@ def _default_llm(
     def start(messages: List[dict]) -> "asyncio.Queue[Any]":
         queue: asyncio.Queue[Any] = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        needs_tools = bool(tools_schema) and _turn_needs_tools(messages)
 
         def worker() -> None:
             def stream_once(with_tools: bool) -> None:
@@ -317,7 +368,10 @@ def _default_llm(
 
             try:
                 try:
-                    stream_once(with_tools=True)
+                    # The full schema is ~9 KB / ~2,600 prompt tokens. On the
+                    # measured 14B local model, a cold ordinary turn spent
+                    # almost eight seconds parsing tools it could not need.
+                    stream_once(with_tools=needs_tools)
                 except urllib.error.HTTPError as exc:
                     detail = ""
                     try:
@@ -419,6 +473,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._tool_executor = tool_executor
         self._queue: asyncio.Queue[Optional[SessionEvent]] = asyncio.Queue()
         self._buffer = bytearray()
+        self._preroll = bytearray()
         self._speech_samples = 0
         self._silence_samples = 0
         self._in_speech = False
@@ -459,6 +514,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     self._stt = await asyncio.to_thread(_default_stt)
                 if self._tts is None:
                     self._tts = await asyncio.to_thread(_default_tts, self._voice)
+                    if not _SHARED.get("tts_warmed"):
+                        # Kokoro loads the selected voice weights lazily on
+                        # its first synthesis. Pay that one-off cost before
+                        # the ready event, while the UI already says it is
+                        # preparing, instead of after the user's first words.
+                        await asyncio.to_thread(self._tts, "Prêt.")
+                        _SHARED["tts_warmed"] = True
                 if self._llm is None:
                     schema: List[dict] = []
                     if self._enable_tools:
@@ -517,6 +579,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     # -- audio ingestion and turn detection ----------------------------------
 
+    def _feed_preroll(self, pcm16: bytes) -> None:
+        """Roll the pre-speech window forward, bounded to PRE_ROLL_S."""
+        self._preroll.extend(pcm16)
+        budget = int(PRE_ROLL_S * INPUT_RATE) * 2
+        excess = len(self._preroll) - budget
+        if excess > 0:
+            del self._preroll[:excess]
+
     async def send_audio(self, pcm16: bytes) -> None:
         if self._closed or not pcm16:
             return
@@ -531,6 +601,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         threshold = BARGE_RMS if playback_live else SPEECH_RMS
         speaking_now = rms >= threshold
         if playback_live and not speaking_now:
+            # Echo of our own playback — but a user starting to talk over
+            # the assistant ALSO lands here until they cross the barge
+            # threshold. Feed the pre-roll ring so the onset of a barge-in
+            # is recovered instead of lost.
+            self._feed_preroll(pcm16)
             return
 
         if speaking_now:
@@ -551,6 +626,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # Any speculative transcription was of an utterance that turned
             # out not to be finished; it no longer describes the buffer.
             self._speculative = None
+            if not self._in_speech and self._preroll:
+                # The turn's first loud frame: everything quieter that came
+                # just before it is the word's real beginning.
+                self._buffer.extend(self._preroll)
+                self._preroll.clear()
             self._in_speech = True
             self._silence_samples = 0
             self._speech_samples += len(pcm16) // 2
@@ -558,8 +638,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
             return
 
         if not self._in_speech:
-            # Leading silence carries no information; buffering it would only
-            # lengthen the clip Whisper has to chew through.
+            # Leading silence is not buffered wholesale — but its tail end is
+            # where the next word's onset lives, so it feeds the ring.
+            self._feed_preroll(pcm16)
             return
 
         self._buffer.extend(pcm16)
@@ -605,7 +686,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if self._respond_task is not None and not self._respond_task.done():
             self._respond_task.cancel()
         self._respond_task = asyncio.get_running_loop().create_task(
-            self._respond_to_text(text)
+            self._dispatch_text(text, turn_started=time.monotonic())
         )
 
     async def interrupt(self) -> None:
@@ -620,6 +701,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         utterance: bytes,
         early_stt: Optional["asyncio.Task[str]"] = None,
     ) -> None:
+        turn_started = time.monotonic()
         try:
             await self._wait_warm()
             assert self._stt is not None
@@ -630,27 +712,108 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 text = await early_stt
             else:
                 text = await asyncio.to_thread(self._stt, utterance)
-            if not text:
-                return
-            await self._queue.put(
-                SessionEvent(kind="transcript", role="user", text=text, final=True)
+            stt_ms = (time.monotonic() - turn_started) * 1000
+            logger.info(
+                "local voice timing: stage=stt ms=%.0f audio_ms=%.0f chars=%d",
+                stt_ms,
+                len(utterance) / 2 / INPUT_RATE * 1000,
+                len(text),
             )
-            if is_stop_phrase(text):
-                # They asked for quiet. The barge-in already silenced the
-                # playback the moment they spoke; generating "d'accord,
-                # j'arrête" would be one more sentence of exactly the noise
-                # they asked to end.
+            if not text:
+                logger.info("local voice rejected non-speech turn")
                 return
-            await self._respond_to_text(text, already_queued=True)
+            await self._dispatch_text(text, turn_started=turn_started)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - the UI must hear about it
             logger.exception("local voice turn failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
 
+    async def _dispatch_text(self, text: str, *, turn_started: float) -> None:
+        await self._queue.put(
+            SessionEvent(kind="transcript", role="user", text=text, final=True)
+        )
+        if is_stop_phrase(text):
+            # They asked for quiet. The barge-in already silenced playback;
+            # answering would be one more sentence of exactly what they asked
+            # to stop.
+            return
+        if await self._try_fast_voice_action(text, turn_started=turn_started):
+            return
+        await self._respond_to_text(text, already_queued=True)
+
+    async def _try_fast_voice_action(
+        self, text: str, *, turn_started: float
+    ) -> bool:
+        """Execute an explicit open/search command without two LLM rounds.
+
+        A bare app name is deliberately excluded: Whisper hallucinated
+        "Google Chrome" from silence, and a false transcript must never turn
+        into an OS action. Only a spoken imperative reaches this path.
+        """
+        if not self._enable_tools:
+            return False
+        from diapason.desktop.voice_commands import (
+            execute_voice_action,
+            is_explicit_voice_command,
+            parse_voice_command,
+        )
+
+        if not is_explicit_voice_command(text):
+            return False
+        action = parse_voice_command(text)
+        # ``open_anything`` is intentionally left to the regular tool path:
+        # its target may be an app, file, folder or web page and a failed
+        # deterministic guess must not swallow the model's richer resolver.
+        if action.kind not in {"focus_app", "open_uri", "search"}:
+            return False
+
+        action_started = time.monotonic()
+        result = await asyncio.to_thread(execute_voice_action, action)
+        if not result.get("handled"):
+            return False
+        success = bool(result.get("success"))
+        target = str(result.get("target") or action.target or "l’application")
+        await self._queue.put(
+            SessionEvent(
+                kind="tool",
+                tool_name="open_anything",
+                tool_ok=success,
+                detail="" if success else str(result.get("detail") or "")[:200],
+            )
+        )
+        self._history.append({"role": "user", "content": text})
+        spoken: List[str] = []
+        response = (
+            f"J’ouvre {target}."
+            if success
+            else f"Je n’ai pas pu ouvrir {target}."
+        )
+        await self._speak_sentence(response, spoken)
+        self._history.append({"role": "assistant", "content": response})
+        del self._history[:-16]
+        await self._queue.put(
+            SessionEvent(
+                kind="transcript",
+                role="assistant",
+                text=response,
+                final=True,
+            )
+        )
+        logger.info(
+            "local voice timing: stage=direct_action action=%s "
+            "action_ms=%.0f total_ms=%.0f ok=%s",
+            action.kind,
+            (time.monotonic() - action_started) * 1000,
+            (time.monotonic() - turn_started) * 1000,
+            success,
+        )
+        return True
+
     async def _respond_to_text(
         self, text: str, *, already_queued: bool = False
     ) -> None:
+        response_started = time.monotonic()
         try:
             await self._wait_warm()
             assert self._llm is not None and self._tts is not None
@@ -729,6 +892,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         final=True,
                     )
                 )
+            logger.info(
+                "local voice timing: stage=response total_ms=%.0f "
+                "chars=%d tool_steps=%d",
+                (time.monotonic() - response_started) * 1000,
+                len(answer),
+                self._budget.used,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

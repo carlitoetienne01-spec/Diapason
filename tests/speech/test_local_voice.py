@@ -15,6 +15,7 @@ from diapason.speech.realtime.local_voice import (
     END_OF_TURN_S,
     INPUT_RATE,
     LocalVoiceSession,
+    _turn_needs_tools,
     local_voice_readiness,
 )
 
@@ -171,6 +172,59 @@ class TestTurnDetection:
         await session.send_audio(pcm(0.3, amplitude=0.0))  # breath, not end
         await session.send_audio(pcm(0.5))
         assert session._respond_task is None, "the turn must still be open"
+
+
+class TestRealtimeIntentLatency:
+    def test_ordinary_conversation_does_not_carry_the_full_tool_schema(self):
+        assert not _turn_needs_tools(
+            [{"role": "user", "content": "Comment vas-tu aujourd’hui ?"}]
+        )
+        assert _turn_needs_tools(
+            [{"role": "user", "content": "Que contient mon calendrier ?"}]
+        )
+
+    @pytest.mark.asyncio
+    async def test_explicit_open_notes_bypasses_the_llm(self, monkeypatch):
+        harness = Harness()
+        harness.session._stt = lambda _audio: "Ouvres-moi l'application note"
+        monkeypatch.setattr(
+            "diapason.desktop.voice_commands.execute_voice_action",
+            lambda action: {
+                "handled": True,
+                "kind": action.kind,
+                "target": action.target,
+                "success": True,
+                "detail": "Opened app Notes",
+            },
+        )
+
+        await harness.session.send_audio(pcm(0.6))
+        await harness.session.send_audio(pcm(END_OF_TURN_S + 0.1, amplitude=0.0))
+        await harness.session._respond_task
+
+        assert harness.llm_calls == []
+        assert harness.spoken == ["J’ouvre Notes."]
+        events = [event async for event in _collect(harness.session)]
+        tool_events = [event for event in events if event.kind == "tool"]
+        assert tool_events and tool_events[0].tool_ok is True
+
+    @pytest.mark.asyncio
+    async def test_bare_hallucinated_app_name_never_becomes_a_fast_action(
+        self, monkeypatch
+    ):
+        harness = Harness(answer="Je t’écoute.")
+        harness.session._stt = lambda _audio: "Google Chrome"
+        execute = monkeypatch.setattr(
+            "diapason.desktop.voice_commands.execute_voice_action",
+            lambda _action: pytest.fail("a bare app name must not execute"),
+        )
+
+        await harness.session.send_audio(pcm(0.6))
+        await harness.session.send_audio(pcm(END_OF_TURN_S + 0.1, amplitude=0.0))
+        await harness.session._respond_task
+
+        assert execute is None
+        assert harness.llm_calls, "non-explicit text may converse, but must not act"
 
 
 class TestBargeIn:
@@ -704,7 +758,7 @@ class TestToolsRefusalFallback:
 
         monkeypatch.setattr(local_voice.urllib.request, "urlopen", fake_urlopen)
         llm = local_voice._default_llm("gemma3:12b", "système", [{"type": "function"}])
-        queue = llm([{"role": "user", "content": "salut"}])
+        queue = llm([{"role": "user", "content": "ouvre Notes"}])
         items = []
         while True:
             item = await asyncio.wait_for(queue.get(), timeout=5)
@@ -846,3 +900,94 @@ class TestToolNote:
         call = {"function": {"name": "open_uri", "arguments": {}}}
         note = _tool_note(call, {"content": '"just a string"'})
         assert "open_uri" in note  # no crash is the test
+
+
+class TestPreRoll:
+    """Word onsets live BELOW the speech threshold; the ring saves them.
+
+    Without it, « App Store » reached Whisper as « …Store » — the gate only
+    started buffering once RMS crossed SPEECH_RMS, a syllable too late.
+    """
+
+    @pytest.mark.asyncio
+    async def test_quiet_onset_is_prepended_to_the_utterance(self):
+        harness = Harness()
+        session = harness.session
+        await session.connect()
+        quiet = pcm(0.3, 0.002)  # sous le seuil : l'attaque du mot
+        speech = pcm(0.5, 0.05)
+        await session.send_audio(quiet)
+        await session.send_audio(speech)
+        await session.send_audio(pcm(END_OF_TURN_S + 0.2, 0.0))
+        await session._respond_task
+        assert len(harness.transcribed) == 1
+        got = len(harness.transcribed[0])
+        # L'énoncé doit contenir la parole ET (une partie de) l'attaque
+        # silencieuse — pas seulement ce qui dépasse le seuil.
+        assert got > len(speech)
+        assert got >= len(speech) + min(len(quiet), int(0.4 * INPUT_RATE) * 2)
+
+    @pytest.mark.asyncio
+    async def test_the_ring_is_bounded(self):
+        harness = Harness()
+        session = harness.session
+        await session.connect()
+        # Trois secondes de silence ne doivent pas gonfler l'énoncé : seule
+        # la fenêtre de pré-roll survit.
+        await session.send_audio(pcm(3.0, 0.002))
+        assert len(session._preroll) <= int(0.4 * INPUT_RATE) * 2
+        await session.send_audio(pcm(0.5, 0.05))
+        await session.send_audio(pcm(END_OF_TURN_S + 0.2, 0.0))
+        await session._respond_task
+        got = len(harness.transcribed[0])
+        cap = len(pcm(0.5, 0.05)) + int(0.4 * INPUT_RATE) * 2 + len(
+            pcm(END_OF_TURN_S + 0.2, 0.0)
+        )
+        assert got <= cap
+
+    @pytest.mark.asyncio
+    async def test_barge_in_onset_survives_playback(self):
+        harness = Harness()
+        session = harness.session
+        await session.connect()
+        import time as _time
+
+        session._speaking_until = _time.monotonic() + 30
+        # Pendant la lecture : une amorce sous le seuil de barge-in (perdue
+        # avant ce correctif), puis la voix qui monte au-dessus.
+        soft_start = pcm(0.2, 0.012)  # > SPEECH_RMS mais < BARGE_RMS
+        await session.send_audio(soft_start)
+        await session.send_audio(pcm(0.5, 0.09))  # barge-in franc
+        await session.send_audio(pcm(END_OF_TURN_S + 0.2, 0.0))
+        await session._respond_task
+        got = len(harness.transcribed[0])
+        assert got >= len(pcm(0.5, 0.09)) + min(
+            len(soft_start), int(0.4 * INPUT_RATE) * 2
+        )
+
+
+class TestVoiceTranscriptPolish:
+    def test_dictionary_corrections_reach_voice_transcripts(self, monkeypatch):
+        import diapason.speech.dictation_dictionary as dd
+        from diapason.speech.realtime.local_voice import polish_transcript
+
+        seen = {}
+
+        def fake_apply(text, entries=None, *, path=None, bump_usage=True):
+            seen["bump"] = bump_usage
+            return text.replace("app store", "App Store")
+
+        monkeypatch.setattr(dd, "apply_dictionary", fake_apply)
+        assert polish_transcript("ouvre l'app store") == "ouvre l'App Store"
+        # La voix ne doit pas fausser les statistiques du dictionnaire.
+        assert seen["bump"] is False
+
+    def test_a_broken_dictionary_never_blocks_the_voice(self, monkeypatch):
+        import diapason.speech.dictation_dictionary as dd
+        from diapason.speech.realtime.local_voice import polish_transcript
+
+        def boom(*a, **k):
+            raise RuntimeError("dictionnaire corrompu")
+
+        monkeypatch.setattr(dd, "apply_dictionary", boom)
+        assert polish_transcript("bonjour") == "bonjour"

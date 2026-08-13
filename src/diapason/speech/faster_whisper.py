@@ -75,6 +75,7 @@ class FasterWhisperBackend(SpeechBackend):
         compute_type: str = "float16",
         use_dictionary_hints: bool = True,
         language: str = "",
+        realtime: bool = False,
     ) -> None:
         self._model_size = model_size
         self._device = device
@@ -104,6 +105,11 @@ class FasterWhisperBackend(SpeechBackend):
         # "Karli 2-1" in the first place — a post-hoc replacement cannot
         # recover a name the recogniser never proposed.
         self._use_dictionary_hints = use_dictionary_hints
+        # Realtime turns are short and already segmented by the microphone
+        # gate. Greedy decoding is much faster here, while Silero VAD rejects
+        # the low-level noise that Whisper otherwise turns into stock phrases
+        # or hotwords (the observed silent turn became "Google Chrome").
+        self._realtime = bool(realtime)
 
     # Brand names the intent layer keys on. "youtube" absent from the
     # transcript means no YouTube intent ever fires — a garble like
@@ -111,7 +117,8 @@ class FasterWhisperBackend(SpeechBackend):
     # search. Small and fixed on purpose: hotwords bias decoding, and a
     # long list would bend ordinary dictation toward it.
     _BASE_HOTWORDS = (
-        "YouTube Spotify Netflix Amazon Gmail WhatsApp Google Chrome Safari"
+        "YouTube Spotify Netflix Amazon Gmail WhatsApp Google Chrome Safari "
+        "App Store Diapason"
     )
 
     def _hotwords(self) -> Optional[str]:
@@ -292,6 +299,21 @@ class FasterWhisperBackend(SpeechBackend):
             hotwords = self._hotwords()
             if hotwords:
                 kwargs["hotwords"] = hotwords
+            if self._realtime:
+                kwargs.update(
+                    {
+                        "beam_size": 1,
+                        "best_of": 1,
+                        "condition_on_previous_text": False,
+                        "vad_filter": True,
+                        "vad_parameters": {
+                            "threshold": 0.5,
+                            "min_speech_duration_ms": 250,
+                            "min_silence_duration_ms": 160,
+                            "speech_pad_ms": 80,
+                        },
+                    }
+                )
 
             samples = _decode_pcm_wav(audio) if format.lstrip(".") == "wav" else None
             if samples is not None:
