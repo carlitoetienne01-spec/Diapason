@@ -773,7 +773,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not result.get("handled"):
             return False
         success = bool(result.get("success"))
-        target = str(result.get("target") or action.target or "l’application")
+        extra = action.extra or {}
+        # A URL read aloud is noise; the human label travels in extra.
+        target = str(
+            extra.get("spoken")
+            or result.get("target")
+            or action.target
+            or "l’application"
+        )
         await self._queue.put(
             SessionEvent(
                 kind="tool",
@@ -784,8 +791,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         )
         self._history.append({"role": "user", "content": text})
         spoken: List[str] = []
+        verb = "Je lance" if extra.get("play") else "J’ouvre"
         response = (
-            f"J’ouvre {target}."
+            f"{verb} {target}."
             if success
             else f"Je n’ai pas pu ouvrir {target}."
         )
@@ -905,6 +913,37 @@ class LocalVoiceSession(RealtimeVoiceSession):
             logger.exception("local voice response failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
 
+    def _restore_spoken_target(self, name: str, args: dict) -> dict:
+        """The spoken phrase is the source of truth, not the model's URL.
+
+        Despite explicit prompt examples, the model sometimes paraphrases a
+        « joue X sur youtube » into a self-built results URL — which only
+        shows a list, never plays. When the tool target is such a URL and
+        the user's utterance carried a play verb aimed at YouTube, hand the
+        tool the utterance itself: open_anything's intent parser knows how
+        to turn it into actual playback.
+        """
+        if name != "open_anything":
+            return args
+        target = str(args.get("target") or "")
+        if not re.match(r"^https?://(?:www\.)?youtube\.com/results", target):
+            return args
+        last_user = next(
+            (
+                m.get("content", "")
+                for m in reversed(self._history)
+                if m.get("role") == "user"
+            ),
+            "",
+        )
+        low = last_user.lower()
+        if "youtube" in low and re.search(
+            r"\b(?:joue|play|mets|lance|écoute|ecoute|regarde|watch)\b", low
+        ):
+            logger.info("voice tool: model built a results URL; restoring phrase")
+            return {**args, "target": last_user}
+        return args
+
     async def _run_tool(self, call: dict) -> dict:
         """Execute one tool call and shape the result for the transcript.
 
@@ -921,6 +960,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 args = json.loads(raw_args)
             except ValueError:
                 args = {}
+
+        args = self._restore_spoken_target(name, args)
+        # Successful voice tool calls used to leave zero trace server-side —
+        # every misfire diagnosis started blind. One compact line fixes that.
+        logger.warning(
+            "voice tool %s args=%s", name, json.dumps(args, ensure_ascii=False)[:200]
+        )
 
         if not self._budget.allow():
             result = {

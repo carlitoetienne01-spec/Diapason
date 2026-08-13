@@ -397,3 +397,32 @@ def test_search_with_play_words_inside_stays_a_search():
     assert intent.kind == KIND_SPOTIFY
     assert intent.action == "search"
     assert "listen" in intent.query
+
+
+# ---------------------------------------------------------------------------
+# Spoken padding — the phrases people actually SAY
+# ---------------------------------------------------------------------------
+
+
+def test_spoken_padding_does_not_become_the_search_query():
+    # The exact utterance from the field: every pattern missed it, the
+    # catch-all then SEARCHED the padding itself.
+    intent = parse_smart_intent(
+        "Ouvre-moi YouTube sur mon navigateur et joue-moi la chanson Papa Ok."
+    )
+    assert intent.kind == KIND_YOUTUBE
+    assert intent.action == "play"
+    assert intent.query == "papa ok"
+
+
+def test_play_verb_after_the_youtube_mention():
+    intent = parse_smart_intent("ouvre youtube et joue du kompa")
+    assert intent.kind == KIND_YOUTUBE
+    assert intent.action == "play"
+    assert "kompa" in intent.query
+
+
+def test_titles_keep_their_own_moi():
+    # « -moi » only strips after a COMMAND verb; it belongs to this title.
+    intent = parse_smart_intent("joue Laisse-moi sur youtube")
+    assert intent.query == "laisse-moi"

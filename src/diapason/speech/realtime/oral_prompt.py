@@ -54,7 +54,12 @@ Pass the full spoken phrase to open_anything when it mentions YouTube, Amazon, N
 
 ## Playing a video or music — ALWAYS a tool call, never just words
 
-Saying "je lance la vidéo" without calling a tool does nothing. Examples:
+Saying "je lance la vidéo" without calling a tool does nothing.
+NEVER build a YouTube URL yourself: a results URL you construct only shows
+a list the user must click. Passing the SPOKEN PHRASE to open_anything is
+what actually PLAYS the top video. Wrong: {"target":
+"https://www.youtube.com/results?search_query=papa+ok"}. Right: {"target":
+"joue la chanson papa ok sur youtube"}. Examples:
 
 - « joue la vidéo Papaoutai de Stromae sur YouTube » → open_anything {"target": "joue Papaoutai de Stromae sur youtube"}
 - « mets du jazz » / « joue de la musique kompa » → spotify_play {"query": "jazz"} ; if it reports Spotify missing, follow its hint: open_anything {"target": "joue jazz sur youtube"}

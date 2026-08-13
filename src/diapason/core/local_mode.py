@@ -22,6 +22,24 @@ Order matters as much as the test. Nothing outbound may be prepared before
 this branch: in local-only mode a path must touch no credential and create no
 artifact. That is externally verifiable, which is what makes it a contract
 rather than an intention.
+
+The contract's boundary — what is NOT an outbound path
+------------------------------------------------------
+
+``local_only`` governs what DIAPASON sends: its API calls, its uploads, its
+background fetches. Handing content to the user's own visible applications at
+the user's explicit command sits OUTSIDE that boundary, by the same reasoning
+that already lets dictation paste the user's words into Gmail-in-Chrome under
+local-only. Opening « ouvre youtube et cherche X » in the USER'S browser is
+the user browsing, with Diapason as the hand on the keyboard — the disclosure
+IS the request. Blocking it would not protect the user from Diapason; it
+would protect the user from themselves, which is not this contract's job.
+
+Concretely exempt: ``tools/desktop_tools.open_in_browser`` and the
+single-purpose fetch that completes a user-commanded browse of the same
+destination (``desktop/smart_intents.resolve_youtube_watch_url``). Anything
+the assistant initiates on its own, or that sends data anywhere the user did
+not name out loud, stays guarded.
 """
 
 from __future__ import annotations

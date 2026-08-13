@@ -10,9 +10,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _OPEN_RE = re.compile(
-    r"^\s*(?:please\s+)?(?:ouvre|ouvrir|open|lance|lancer|launch|start|démarre|"
+    r"^\s*(?:please\s+)?(?:ouvre(?:s)?(?:[- ]moi)?|ouvrez(?:[- ]moi)?|ouvrir|"
+    r"open|lance(?:z)?(?:[- ]moi)?|lancer|launch|start|démarre|"
     r"show|montre|affiche)\s+"
-    r"(?:l['’]|le |la |les |the |app |application |site |page )?(?P<target>.+?)\s*$",
+    r"(?P<target>.+?)\s*$",
     re.IGNORECASE,
 )
 _URL_RE = re.compile(r"(https?://\S+|www\.\S+)", re.IGNORECASE)
@@ -36,6 +37,7 @@ _APP_ALIASES = {
     "arc": "Arc",
     "spotify": "Spotify",
     "notes": "Notes",
+    "note": "Notes",
     "terminal": "Terminal",
     "iterm": "iTerm",
     "finder": "Finder",
@@ -124,6 +126,23 @@ def parse_voice_command(text: str) -> VoiceAction:
                     raw=raw,
                     extra={"recipient": intent.to, "body": intent.body},
                 )
+            if intent.kind == "youtube" and intent.action == "play" and intent.query:
+                # « joue X sur youtube » must PLAY, not strand the user on a
+                # results page. This fast path used to discard the play
+                # intent and open intent.url raw — the LLM was never even
+                # consulted, so no prompt could fix it.
+                from diapason.desktop.smart_intents import resolve_youtube_watch_url
+
+                watch = resolve_youtube_watch_url(intent.query)
+                return VoiceAction(
+                    kind="open_uri",
+                    target=watch or intent.url,
+                    raw=raw,
+                    extra={
+                        "play": bool(watch),
+                        "spoken": f"{intent.query} sur YouTube",
+                    },
+                )
             if intent.url:
                 return VoiceAction(kind="open_uri", target=intent.url, raw=raw)
             # Fallback: let open_anything re-parse
@@ -149,6 +168,22 @@ def parse_voice_command(text: str) -> VoiceAction:
         if not m:
             continue
         target = m.group("target").strip().strip(".!?,")
+        # Whisper commonly renders « ouvre-moi l'application Notes » as
+        # « ouvres-moi l'application note ». Strip the spoken wrapper before
+        # alias/app-index resolution; passing "application note" to Launch
+        # Services guarantees a false "app not found" response.
+        target = re.sub(
+            r"^(?:l['’]\s*)?(?:application|app)\s+",
+            "",
+            target,
+            flags=re.IGNORECASE,
+        )
+        target = re.sub(
+            r"^(?:le|la|les|the|site|page)\s+",
+            "",
+            target,
+            flags=re.IGNORECASE,
+        )
         key = target.lower()
         mapped = _APP_ALIASES.get(key)
         if mapped and mapped.startswith("http"):
@@ -170,6 +205,19 @@ def parse_voice_command(text: str) -> VoiceAction:
         return VoiceAction(kind="focus_app", target=mapped, raw=raw)
 
     return VoiceAction(kind="none", raw=raw)
+
+
+def is_explicit_voice_command(text: str) -> bool:
+    """True only when the user actually uttered an action verb.
+
+    A bare app name may be a valid follow-up, but it may also be Whisper's
+    favourite silence hallucination. The realtime fast path therefore acts
+    only on explicit imperatives such as « ouvre Notes ».
+    """
+    raw = (text or "").strip()
+    if raw.lower().strip(".!?") in _APP_ALIASES:
+        return False
+    return bool(_OPEN_RE.match(raw) or _BROWSE_RE.match(raw) or _SEARCH_RE.match(raw))
 
 
 def execute_voice_action(action: VoiceAction) -> dict[str, Any]:

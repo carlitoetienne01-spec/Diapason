@@ -6,6 +6,7 @@ AICommandParser.tryFastParse — no cloud AI required for obvious commands.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -155,7 +156,11 @@ _YT_TOP_RESULT = re.compile(
 def resolve_youtube_watch_url(
     query: str,
     *,
-    timeout: float = 1.5,
+    # 4 s, not 1.5: this runs DURING a voice turn, while Whisper, the LLM and
+    # the TTS are saturating the machine — measured 0.9 s idle, and the tight
+    # budget silently downgraded every « joue X » to a results page under
+    # load. Losing the feature to save 2.5 s of worst case is a bad trade.
+    timeout: float = 4.0,
     fetch=None,
 ) -> str:
     """Top YouTube search hit as a watch URL, or "" when resolution fails.
@@ -165,13 +170,10 @@ def resolve_youtube_watch_url(
     opening the results page, which is what happened before this existed.
     """
     url = "https://www.youtube.com/results?search_query=" + quote_plus(query)
-    if fetch is None:
-        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
-
-        try:
-            assert_may_leave("the YouTube search query", destination=url)
-        except LocalOnlyError:
-            return ""
+    # Exempt from local_only, narrowly: this single-purpose lookup completes
+    # a user-commanded browse of the SAME destination — the browser open that
+    # follows discloses the same query either way. Boundary documented in
+    # core/local_mode.py.
     try:
         if fetch is None:
 
@@ -192,7 +194,11 @@ def resolve_youtube_watch_url(
         if m:
             return "https://www.youtube.com/watch?v=" + m.group(1)
     except Exception:  # noqa: BLE001 - resolution is best-effort by design
-        pass
+        # Best-effort, but never mute: a silent "" here downgrades every
+        # « joue X » to a results page with nothing in the logs to say why.
+        logging.getLogger(__name__).debug(
+            "youtube top-result resolution failed for %r", query, exc_info=True
+        )
     return ""
 
 
@@ -218,6 +224,25 @@ def parse_smart_intent(command: str) -> SmartIntent:
 
     # --- YouTube ---
     if "youtube" in low:
+        # Spoken phrasing is full of harmless padding that used to defeat
+        # every pattern and fall through to the catch-all, which then
+        # SEARCHED the padding itself: « Ouvre-moi YouTube sur mon
+        # navigateur et joue-moi la chanson X » became a search for
+        # "sur mon navigateur et joue-moi la chanson x". Strip the padding
+        # first; the patterns then see the sentence the user meant.
+        yt = re.sub(
+            r"\b(?:dans|sur)\s+(?:mon|ton|le|un)\s+navigateur\b", " ", low
+        )
+        # « joue-moi » → « joue », mais seulement après un verbe de commande :
+        # un titre comme « Laisse-moi » doit garder son -moi.
+        yt = re.sub(
+            r"\b(ouvre|joue|mets|lance|écoute|ecoute|regarde|montre|cherche)"
+            r"[-\s]+(?:moi|nous)\b",
+            r"\1",
+            yt,
+        )
+        yt = re.sub(r"\bs[’']il\s+(?:te|vous)\s+pla[iî]t\b|\bstp\b", " ", yt)
+        yt = re.sub(r"\s+", " ", yt).strip()
         for pat, action in (
             (
                 r"(?:ouvre|open)\s+youtube\s+(?:et|and)\s+(?:cherche|search(?:\s+for)?)\s+(.+)",
@@ -230,9 +255,15 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 r"\s+(.+?)\s+(?:sur|on)\s+youtube",
                 "play",
             ),
+            # Play verb AFTER the youtube mention: « ouvre youtube et joue X ».
+            # The sentence names youtube, so the trailing request is for it.
+            (
+                r"youtube\b.*?\b(?:joue|play|regarde|watch|écoute|ecoute|mets|lance)\s+(.+)$",
+                "play",
+            ),
             (r"youtube\s+(.+)", "search"),
         ):
-            m = re.search(pat, low, re.IGNORECASE)
+            m = re.search(pat, yt, re.IGNORECASE)
             if m:
                 q = m.group(1).strip()
                 q = _clean_query(

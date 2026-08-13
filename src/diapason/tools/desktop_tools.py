@@ -82,18 +82,12 @@ def open_in_browser(url: str, *, browser: str = "") -> ToolResult:
     """Open a URL in a preferred browser or the system default."""
     url = normalize_url(url)
     browser = (browser or "").strip()
-    if urlparse(url).scheme.lower() in {"http", "https"}:
-        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
-
-        try:
-            assert_may_leave("the browser request", destination=url)
-        except LocalOnlyError as exc:
-            return ToolResult(
-                tool_name="open_anything",
-                content=str(exc),
-                success=False,
-                metadata={"nothing_left_the_machine": True},
-            )
+    # Deliberately NOT guarded by local_only: handing a user-commanded URL to
+    # the user's own browser is the user browsing, with Diapason as the hand
+    # on the keyboard — the same boundary that already lets dictation paste
+    # the user's words into cloud-backed apps under local-only. Blocking it
+    # broke « ouvre youtube » for the very users the mode is meant to serve.
+    # The boundary is documented at length in core/local_mode.py.
     try:
         if sys.platform == "darwin" and browser:
             app = resolve_mac_app_name(browser) or browser

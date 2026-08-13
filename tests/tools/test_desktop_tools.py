@@ -95,3 +95,44 @@ def test_open_anything_app(monkeypatch):
                 result = tool.execute(target="Safari", kind="app")
     assert result.success
     assert run.called
+
+
+class TestUserBrowsingBoundary:
+    """User-commanded browsing is NOT assistant egress (core/local_mode.py).
+
+    The guard used to block « ouvre youtube » for the very users local-only
+    is meant to serve. Handing a URL to the user's own browser is the same
+    gesture as dictation pasting their words into a cloud-backed app.
+    """
+
+    def test_open_in_browser_works_under_local_only(self, monkeypatch):
+        import diapason.core.config as config_mod
+        from diapason.tools import desktop_tools
+
+        class _Privacy:
+            local_only = True
+
+        class _Cfg:
+            privacy = _Privacy()
+
+        monkeypatch.setattr(config_mod, "load_config", lambda: _Cfg())
+
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+
+            class R:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return R()
+
+        monkeypatch.setattr(desktop_tools, "_run", fake_run)
+        monkeypatch.setattr(desktop_tools.sys, "platform", "darwin")
+        result = desktop_tools.open_in_browser(
+            "https://www.youtube.com/results?search_query=kompa"
+        )
+        assert result.success, result.content
+        assert any("youtube.com" in str(c) for c in calls)
