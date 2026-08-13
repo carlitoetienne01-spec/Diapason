@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 const OLLAMA_PORT: u16 = 11434;
 const DIAPASON_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --extra desktop --extra voice-local --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --extra desktop --extra dictation --extra voice-local --extra inference-cloud --extra inference-google --group desktop-native";
 
 /// Small, fast model used when startup needs a default Ollama tag.
 const STARTUP_MODEL: &str = "qwen3.5:4b";
