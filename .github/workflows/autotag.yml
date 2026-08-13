@@ -31,8 +31,9 @@ jobs:
           LATEST_RELEASE=$(git tag --list 'v[0-9]*' --merged HEAD \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           if [[ -z "$LATEST_RELEASE" ]]; then
-            echo "::error::No release tag (vX.Y.Z) reachable from HEAD"
-            exit 1
+            echo "::notice::No baseline release tag (vX.Y.Z) is reachable from HEAD; skipping automatic development tagging until the first release is published."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           BASE="${LATEST_RELEASE#v}"
           MAJOR=$(echo "$BASE" | cut -d. -f1)
@@ -44,10 +45,12 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "Computed ${TAG} (base=${BASE})"
 
       - name: Create and push tag
         id: tag
+        if: steps.version.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
