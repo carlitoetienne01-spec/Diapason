@@ -30,9 +30,34 @@ class QueryOrchestrator:
         system_prompt: Optional[str] = None,
         operator_id: Optional[str] = None,
         prior_messages: Optional[List[Message]] = None,
+        action_mode: str = "off",
     ) -> Dict[str, Any]:
         """Execute a query through the system and return a result dict."""
         s = self._system
+        # CLI/SDK counterpart of the desktop chat fast path.  A caller that
+        # explicitly chooses an agent, tools, a custom prompt or prior turns
+        # retains the exact orchestration semantics they requested.
+        if (
+            action_mode == "auto"
+            and not agent
+            and not tools
+            and system_prompt is None
+            and not prior_messages
+        ):
+            try:
+                from diapason.actions import LightningActionService
+
+                action = LightningActionService(s.config).handle(query)
+                if action.handled:
+                    return {
+                        "content": action.message,
+                        "usage": {},
+                        "model": s.model,
+                        "engine": "lightning",
+                        "lightning": action.public_metadata(),
+                    }
+            except Exception:
+                logger.exception("Lightning action routing failed")
         if temperature is None:
             temperature = s.config.intelligence.temperature
         if max_tokens is None:

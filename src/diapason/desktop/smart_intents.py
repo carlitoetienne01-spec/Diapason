@@ -155,7 +155,7 @@ _YT_TOP_RESULT = re.compile(
 def resolve_youtube_watch_url(
     query: str,
     *,
-    timeout: float = 4.0,
+    timeout: float = 1.5,
     fetch=None,
 ) -> str:
     """Top YouTube search hit as a watch URL, or "" when resolution fails.

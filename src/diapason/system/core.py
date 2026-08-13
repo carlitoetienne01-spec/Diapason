@@ -144,6 +144,7 @@ class DiapasonSystem:
         system_prompt: Optional[str] = None,
         operator_id: Optional[str] = None,
         prior_messages: Optional[List[Message]] = None,
+        action_mode: str = "off",
     ) -> Dict[str, Any]:
         return self._get_orchestrator().ask(
             query,
@@ -155,7 +156,17 @@ class DiapasonSystem:
             system_prompt=system_prompt,
             operator_id=operator_id,
             prior_messages=prior_messages,
+            action_mode=action_mode,
         )
+
+    def act(self, command: str) -> Dict[str, Any]:
+        """Execute an explicit low-risk desktop command without inference.
+
+        Unlike ``ask()``, this method deliberately authorizes the deterministic
+        action path. Ambiguous or disallowed commands still fall back to the
+        normal configured assistant.
+        """
+        return self.ask(command, context=False, action_mode="auto")
 
     def _detect_agent_intent(self, query: str) -> Optional[str]:
         return self._get_orchestrator()._detect_agent_intent(query)

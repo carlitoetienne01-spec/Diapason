@@ -101,7 +101,8 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         self,
         host: str | None = None,
         *,
-        timeout: float = 1800.0,
+        timeout: float = 300.0,
+        keep_alive: str = "30m",
     ) -> None:
         # Priority: explicit host (from config.toml) > OLLAMA_HOST env var > default
         if host is None:
@@ -112,6 +113,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         # wedged token read is bounded by ``timeout`` instead of hanging the
         # single event loop for the httpx default.
         self._timeout = timeout
+        self._keep_alive = (keep_alive or "30m").strip()
         # Injection seam for tests: an ``httpx.MockTransport`` swapped in here drives
         # the async stream path with no real Ollama server. ``None`` in production so
         # httpx uses its default networking.
@@ -119,6 +121,26 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
         # Last stream usage — captured from Ollama's final chunk
         self._last_stream_usage: Dict[str, int] = {}
+
+    def prewarm(self, model: str) -> bool:
+        """Load *model* into Ollama's resident cache without generating text."""
+        if not model:
+            return False
+        try:
+            response = self._client.post(
+                "/api/generate",
+                json={
+                    "model": model,
+                    "prompt": "",
+                    "stream": False,
+                    "keep_alive": self._keep_alive,
+                },
+            )
+            response.raise_for_status()
+            return True
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
+            logger.debug("Ollama prewarm failed for %s", model, exc_info=True)
+            return False
 
     def generate(
         self,
@@ -144,6 +166,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "model": model,
             "messages": msg_dicts,
             "stream": False,
+            "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
@@ -266,6 +289,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "model": model,
             "messages": messages_to_dicts(messages),
             "stream": True,
+            "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
@@ -365,6 +389,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "model": model,
             "messages": msg_dicts,
             "stream": True,
+            "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,

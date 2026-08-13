@@ -89,6 +89,16 @@ def _make_engine(key: str, config: DiapasonConfig) -> InferenceEngine:
             num_threads=cfg.num_threads,
         )
 
+    if key == "ollama":
+        cfg = config.engine.ollama
+        kwargs: dict[str, Any] = {
+            "timeout": max(1.0, float(cfg.timeout_s)),
+            "keep_alive": cfg.keep_alive or "30m",
+        }
+        if cfg.host:
+            kwargs["host"] = cfg.host
+        return cls(**kwargs)
+
     host_attr = _HOST_MAP.get(key)
     if host_attr is not None:
         host = getattr(config.engine, host_attr, None)

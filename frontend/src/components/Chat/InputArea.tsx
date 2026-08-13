@@ -347,6 +347,7 @@ export function InputArea() {
     let accumulatedContent = '';
     let usage: TokenUsage | undefined;
     let complexity: { score: number; tier: string; suggested_max_tokens: number } | undefined;
+    let lightningMeta: { action?: string; total_ms?: number; verified?: boolean } | undefined;
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -498,7 +499,16 @@ export function InputArea() {
         }
       } else {
       for await (const sseEvent of streamChat(
-        { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
+        {
+          model: selectedModel,
+          messages: apiMessages,
+          stream: true,
+          temperature,
+          max_tokens: maxTokens,
+          // Explicit trusted-client opt-in. OpenAI-compatible API callers
+          // remain action-free unless they make the same deliberate choice.
+          action_mode: 'auto',
+        },
         controller.signal,
       )) {
         const eventName = sseEvent.event;
@@ -514,6 +524,9 @@ export function InputArea() {
         } else if (eventName === 'tool_call_start') {
           try {
             const data = JSON.parse(sseEvent.data);
+            // Wake the approval bell now instead of waiting for its safety
+            // poll. Harmless for tools that do not require confirmation.
+            window.dispatchEvent(new CustomEvent('diapason-approval-possible'));
             const tc: ToolCallInfo = {
               id: generateId(),
               tool: data.tool,
@@ -554,6 +567,7 @@ export function InputArea() {
             const delta = data.choices?.[0]?.delta;
             if (data.usage) usage = data.usage;
             if (data.complexity) complexity = data.complexity;
+            if (data.lightning) lightningMeta = data.lightning;
             if (delta?.content) {
               if (!ttftMs) ttftMs = Date.now() - startTime;
               accumulatedContent += delta.content;
@@ -595,7 +609,11 @@ export function InputArea() {
         accumulatedContent = t('chat.input.noResponse');
       }
       const totalMs = Date.now() - startTime;
-      const engineLabel = isCloudModel(selectedModel) ? 'cloud' : 'ollama';
+      const engineLabel = lightningMeta
+        ? 'lightning'
+        : isCloudModel(selectedModel)
+          ? 'cloud'
+          : 'ollama';
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
         model_id: selectedModel,

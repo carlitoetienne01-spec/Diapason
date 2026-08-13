@@ -364,7 +364,7 @@ async function send(){
   try{
     const r=await fetch('/v1/chat/completions',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model,messages,stream:true}),
+      body:JSON.stringify({model,messages,stream:true,action_mode:'auto'}),
       signal:abort.signal
     });
     if(!r.ok)throw new Error(r.status);

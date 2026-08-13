@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from unittest.mock import MagicMock
 
 import pytest
 
+from diapason.actions.models import ActionOutcome
 from diapason.core.config import DiapasonConfig
 from diapason.core.events import EventBus
 from diapason.system import QueryOrchestrator
@@ -86,6 +88,49 @@ class TestAskDirectEngineMode:
 
         assert engine.calls[0]["temperature"] == 0.42
         assert engine.calls[0]["max_tokens"] == 77
+
+    def test_actions_are_off_by_default(self, monkeypatch):
+        engine = _FakeEngine({"content": "normal reply"})
+        system = _FakeSystem(engine=engine)
+        handle = MagicMock(
+            return_value=ActionOutcome(
+                handled=True,
+                success=True,
+                message="opened",
+            )
+        )
+        monkeypatch.setattr(
+            "diapason.actions.LightningActionService.handle",
+            handle,
+        )
+
+        result = QueryOrchestrator(system).ask("ouvre Notes", context=False)
+
+        assert result["content"] == "normal reply"
+        handle.assert_not_called()
+
+    def test_explicit_action_mode_bypasses_engine(self, monkeypatch):
+        engine = _FakeEngine({"content": "normal reply"})
+        system = _FakeSystem(engine=engine)
+        monkeypatch.setattr(
+            "diapason.actions.LightningActionService.handle",
+            lambda *_: ActionOutcome(
+                handled=True,
+                success=True,
+                message="⚡ Notes ouvert.",
+                action="voice.focus_app",
+            ),
+        )
+
+        result = QueryOrchestrator(system).ask(
+            "ouvre Notes",
+            context=False,
+            action_mode="auto",
+        )
+
+        assert result["content"].startswith("⚡")
+        assert result["engine"] == "lightning"
+        assert engine.calls == []
 
 
 class TestAskAgentRouting:

@@ -36,44 +36,9 @@ def _run(cmd: list[str], *, timeout: float = 30.0) -> subprocess.CompletedProces
 
 def resolve_mac_app_name(name: str) -> str | None:
     """Resolve a spoken/typed app name to an ``.app`` bundle name on macOS."""
-    raw = (name or "").strip().strip(".app")
-    if not raw:
-        return None
+    from diapason.desktop.app_index import APP_INDEX
 
-    # Prefer exact / fuzzy match under /Applications and ~/Applications.
-    needles = [raw.lower(), raw.lower().replace(" ", "")]
-    roots = [
-        Path("/Applications"),
-        Path("/System/Applications"),
-        Path.home() / "Applications",
-    ]
-    exact: list[str] = []
-    partial: list[str] = []
-    for root in roots:
-        if not root.is_dir():
-            continue
-        try:
-            for child in root.iterdir():
-                if not child.name.endswith(".app"):
-                    continue
-                stem = child.stem
-                low = stem.lower()
-                compact = low.replace(" ", "")
-                if low == needles[0] or compact == needles[1]:
-                    exact.append(stem)
-                elif needles[0] in low or needles[1] in compact:
-                    partial.append(stem)
-        except OSError:
-            continue
-    if exact:
-        return exact[0]
-    if partial:
-        # Prefer shortest name (Chrome over Google Chrome Helper-like noise)
-        partial.sort(key=len)
-        return partial[0]
-
-    # Last resort: ask Launch Services via `open -a` (caller will try).
-    return raw
+    return APP_INDEX.resolve(name)
 
 
 def looks_like_url(target: str) -> bool:
@@ -132,11 +97,11 @@ def open_in_browser(url: str, *, browser: str = "") -> ToolResult:
     try:
         if sys.platform == "darwin" and browser:
             app = resolve_mac_app_name(browser) or browser
-            r = _run(["open", "-a", app, url])
+            r = _run(["open", "-a", app, url], timeout=8.0)
             if r.returncode != 0:
-                r = _run(["open", url])
+                r = _run(["open", url], timeout=8.0)
         elif sys.platform == "darwin":
-            r = _run(["open", url])
+            r = _run(["open", url], timeout=8.0)
         elif sys.platform == "win32":
             if browser:
                 _run(["cmd", "/c", "start", "", browser, url])
@@ -176,11 +141,12 @@ def open_application(app_name: str) -> ToolResult:
     try:
         if sys.platform == "darwin":
             resolved = resolve_mac_app_name(name) or name
-            r = _run(["open", "-a", resolved])
+            r = _run(["open", "-a", resolved], timeout=8.0)
             if r.returncode != 0:
                 # Activate via AppleScript as fallback
                 r2 = _run(
-                    ["osascript", "-e", f'tell application "{resolved}" to activate']
+                    ["osascript", "-e", f'tell application "{resolved}" to activate'],
+                    timeout=8.0,
                 )
                 if r2.returncode != 0:
                     return ToolResult(
@@ -713,8 +679,9 @@ class PasteToFrontmostTool(BaseTool):
             name="paste_to_frontmost",
             description=(
                 "Put text on the clipboard and paste it into the frontmost "
-                "app (macOS: pbcopy + Cmd+V via System Events; requires "
-                "Accessibility permission)."
+                "app without pressing Enter (macOS Accessibility with a "
+                "clipboard-preserving fallback). Agent-originated calls "
+                "require confirmation."
             ),
             parameters={
                 "type": "object",
@@ -728,7 +695,7 @@ class PasteToFrontmostTool(BaseTool):
             },
             category="system",
             timeout_seconds=15.0,
-            requires_confirmation=False,
+            requires_confirmation=True,
         )
 
     def execute(self, **params: Any) -> ToolResult:

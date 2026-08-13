@@ -377,6 +377,8 @@ class OllamaEngineConfig:
     """Per-engine config for Ollama."""
 
     host: str = ""
+    keep_alive: str = "30m"
+    timeout_s: float = 300.0
 
 
 @dataclass(slots=True)
@@ -1539,9 +1541,26 @@ class DesktopVisionConfig:
 
 
 @dataclass(slots=True)
+class DesktopLightningConfig:
+    """Fast deterministic desktop execution before any model call."""
+
+    enabled: bool = True
+    min_confidence: float = 0.90
+    allow_open: bool = True
+    allow_type: bool = True
+    allow_external_drafts: bool = True
+    allow_remote: bool = False
+    focus_timeout_s: float = 2.0
+    app_cache_ttl_s: float = 300.0
+    verify_actions: bool = True
+    preload_model: bool = True
+
+
+@dataclass(slots=True)
 class DesktopConfig:
     """Desktop automation / vision settings."""
 
+    lightning: DesktopLightningConfig = field(default_factory=DesktopLightningConfig)
     vision: DesktopVisionConfig = field(default_factory=DesktopVisionConfig)
 
 
@@ -2161,6 +2180,8 @@ default = "{engine}"
 
 [engine.ollama]
 host = "http://localhost:11434"
+keep_alive = "30m"            # keep the model resident between commands
+timeout_s = 300.0              # bound wedged model reads
 
 [engine.vllm]
 host = "http://localhost:8000"
@@ -2218,6 +2239,18 @@ max_turns = 10
 # system_prompt = ""           # Inline system prompt
 # system_prompt_path = ""      # Path to system prompt file
 context_from_memory = true
+
+[desktop.lightning]
+enabled = true                 # explicit low-risk commands bypass the LLM
+min_confidence = 0.90
+allow_open = true
+allow_type = true
+allow_external_drafts = true  # compose only; never send automatically
+allow_remote = false           # remote API clients cannot control this host
+focus_timeout_s = 2.0
+app_cache_ttl_s = 300.0
+verify_actions = true
+preload_model = true
 
 [tools.storage]
 default_backend = "sqlite"
@@ -2380,6 +2413,7 @@ __all__ = [
     "DEFAULT_CONFIG_DIR",
     "DEFAULT_CONFIG_PATH",
     "DesktopConfig",
+    "DesktopLightningConfig",
     "DesktopVisionConfig",
     "DictationConfig",
     "DiscordChannelConfig",

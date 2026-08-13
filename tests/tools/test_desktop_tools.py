@@ -30,6 +30,10 @@ def test_paste_to_frontmost_empty():
     assert tool.execute(text="").success is False
 
 
+def test_agent_paste_requires_confirmation():
+    assert PasteToFrontmostTool().spec.requires_confirmation is True
+
+
 def test_looks_like_url_and_normalize():
     from diapason.tools.desktop_tools import (
         looks_like_url,

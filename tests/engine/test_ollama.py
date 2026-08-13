@@ -69,6 +69,35 @@ class TestOllamaGenerate:
 
 
 @requires_respx
+class TestOllamaPrewarm:
+    def test_prewarm_uses_resident_cache_without_generation(self) -> None:
+        engine = OllamaEngine(
+            host="http://testhost:11434",
+            keep_alive="45m",
+        )
+        with respx.mock:
+            route = respx.post("http://testhost:11434/api/generate").mock(
+                return_value=httpx.Response(200, json={"done": True})
+            )
+            assert engine.prewarm("qwen3:8b") is True
+        payload = json.loads(route.calls.last.request.content)
+        assert payload == {
+            "model": "qwen3:8b",
+            "prompt": "",
+            "stream": False,
+            "keep_alive": "45m",
+        }
+
+    def test_prewarm_failure_is_non_fatal(self) -> None:
+        engine = OllamaEngine(host="http://testhost:11434")
+        with respx.mock:
+            respx.post("http://testhost:11434/api/generate").mock(
+                side_effect=httpx.ConnectError("refused")
+            )
+            assert engine.prewarm("qwen3:8b") is False
+
+
+@requires_respx
 class TestOllamaListModels:
     def test_list_models(self, engine: OllamaEngine) -> None:
         with respx.mock:

@@ -199,6 +199,7 @@ nav:
       - Evaluations: user-guide/evaluations.md
       - Benchmarks: user-guide/benchmarks.md
       - System Access: user-guide/system-access.md
+      - Lightning Actions: user-guide/lightning-actions.md
       - Security: user-guide/security.md
       - LLM-guided spec search: user-guide/llm-guided-spec-search.md
   - Leaderboard: leaderboard.md

@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Deterministic "lightning" desktop actions execute explicit app, URL, search,
+  draft, and text-entry commands before memory or model inference. Generative
+  requests can create content with the selected model and insert it into a
+  named application.
+- Native macOS Accessibility text insertion with a clipboard-preserving
+  fallback, cached application discovery, result verification, privacy-safe
+  latency metrics, and a reproducible router benchmark.
+- Audited Ollama model prewarming with configurable 30-minute residency and a
+  local-only `/v1/models/prewarm` endpoint.
+
+### Changed
+
+- Faster-Whisper and CTranslate2 now load on first speech use instead of CLI
+  import, keeping server startup free of the AV/Numpy initialization chain.
+- Approval notifications wake immediately on tool-call events and poll quickly
+  only while an action is pending.
+
+### Security
+
+- Host actions are off by default for OpenAI-compatible clients, restricted to
+  loopback even after opt-in, and never fast-route send, delete, payment,
+  install, administration, shell-like, or sensitive-app text operations.
+- Agent-originated frontmost-app paste now requires confirmation; explicit
+  policy-checked desktop actions retain their low-latency direct path.
+
 ## [1.0.0] - 2026-08-12 — Diapason product line
 
 First unified Diapason release. This release completes the active-code and

@@ -251,13 +251,13 @@ export async function preloadModel(modelName: string): Promise<void> {
   if (isCloudModel(modelName)) {
     return;
   }
-  // Trigger Ollama to load the model into memory (empty prompt, no generation).
-  const ollamaUrl = 'http://127.0.0.1:11434';
+  // Ask Diapason's audited engine adapter to load the model. This respects a
+  // custom Ollama host, API authentication and the configured 30m residency.
   try {
-    const res = await fetch(`${ollamaUrl}/api/generate`, {
+    const res = await apiFetch('/v1/models/prewarm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName, prompt: '', keep_alive: '5m' }),
+      body: JSON.stringify({ model: modelName }),
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) throw new Error(`Preload failed: ${res.status}`);

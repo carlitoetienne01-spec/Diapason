@@ -175,9 +175,9 @@ def parse_voice_command(text: str) -> VoiceAction:
 def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
     import diapason.tools  # noqa: F401
     from diapason.tools.desktop_tools import (
-        FocusAppTool,
         OpenAnythingTool,
         OpenUriTool,
+        open_application,
         open_in_browser,
         web_search_url,
     )
@@ -192,7 +192,10 @@ def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
             "detail": result.content,
         }
     if action.kind == "focus_app":
-        result = FocusAppTool().execute(app_name=action.target, fullscreen=False)
+        # Launch Services already activates the app. Avoid the historical
+        # second osascript process, which added noticeable latency to the most
+        # common command ("ouvre Notes").
+        result = open_application(action.target)
         return {
             "handled": True,
             "kind": action.kind,

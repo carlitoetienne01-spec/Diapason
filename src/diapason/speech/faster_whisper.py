@@ -5,20 +5,16 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from diapason.core.registry import SpeechRegistry
 from diapason.speech._stubs import Segment, SpeechBackend, TranscriptionResult
 
-try:
-    from faster_whisper import WhisperModel
-except ImportError:
-    WhisperModel = None  # type: ignore[assignment, misc]
-
-try:
-    import ctranslate2
-except ImportError:
-    ctranslate2 = None  # type: ignore[assignment]
+# Keep CLI/server startup free of the heavy AV/numpy/CTranslate2 chain. These
+# names remain module globals so tests and embedders can inject implementations.
+_UNLOADED = object()
+WhisperModel: Any = _UNLOADED
+ctranslate2: Any = _UNLOADED
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +79,7 @@ class FasterWhisperBackend(SpeechBackend):
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
-        self._model: Optional[WhisperModel] = None
+        self._model: Optional[Any] = None
         self._last_error: Optional[str] = None
         # Configured language, or "auto" / "" to detect.
         self._language = (language or "").strip()
@@ -186,6 +182,15 @@ class FasterWhisperBackend(SpeechBackend):
 
     def _resolve_compute_type(self) -> str:
         """Pick a CTranslate2 compute type supported by the configured device."""
+        global ctranslate2
+
+        if ctranslate2 is _UNLOADED:
+            try:
+                import ctranslate2 as _ctranslate2
+
+                ctranslate2 = _ctranslate2
+            except ImportError:
+                ctranslate2 = None
         if ctranslate2 is None:
             return self._compute_type
 
@@ -224,9 +229,11 @@ class FasterWhisperBackend(SpeechBackend):
         )
         return fallback
 
-    def _ensure_model(self) -> WhisperModel:
+    def _ensure_model(self) -> Any:
         """Lazy-load the Whisper model on first use."""
         if self._model is None:
+            global WhisperModel
+
             # Local-only refuses a SILENT first-use download. Constructing
             # WhisperModel fetches the weights over the network if they are not
             # cached; under [privacy] local_only that background fetch is the
@@ -244,6 +251,13 @@ class FasterWhisperBackend(SpeechBackend):
                 already_cached=faster_whisper_cached(self._model_size),
             )
 
+            if WhisperModel is _UNLOADED:
+                try:
+                    from faster_whisper import WhisperModel as _WhisperModel
+
+                    WhisperModel = _WhisperModel
+                except ImportError:
+                    WhisperModel = None
             if WhisperModel is None:
                 self._last_error = (
                     "faster-whisper is not installed. "

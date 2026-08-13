@@ -36,6 +36,18 @@ email_mode = "auto"
 auto_learn = true
 paste_to_frontmost = true
 
+[desktop.lightning]
+enabled = true
+min_confidence = 0.90
+allow_open = true
+allow_type = true
+allow_external_drafts = true
+allow_remote = false
+focus_timeout_s = 2.0
+app_cache_ttl_s = 300.0
+verify_actions = true
+preload_model = true
+
 [desktop.vision]
 enabled = true
 monitor = 1

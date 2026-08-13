@@ -28,6 +28,10 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = 1024
     stream: bool = False
     tools: Optional[List[Dict[str, Any]]] = None
+    # Off by default for OpenAI API compatibility.  The trusted Diapason
+    # desktop client opts in explicitly so external callers never launch apps
+    # merely by posting conversational text.
+    action_mode: str = "off"
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +76,7 @@ class ChatCompletionResponse(BaseModel):
     choices: List[Choice] = Field(default_factory=list)
     usage: UsageInfo = Field(default_factory=UsageInfo)
     complexity: Optional[ComplexityInfo] = None
+    lightning: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------

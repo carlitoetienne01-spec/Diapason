@@ -19,7 +19,7 @@ from diapason.tools._stubs import BaseTool, ToolSpec
 logger = logging.getLogger(__name__)
 
 
-def _run(cmd: list[str], *, timeout: float = 45.0) -> subprocess.CompletedProcess[str]:
+def _run(cmd: list[str], *, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -516,7 +516,7 @@ class MailComposeTool(BaseTool):
 
         script = _mail_compose_script(to=to, subject=subject, body=body, cc=cc)
         try:
-            r = _run(["osascript", "-e", script], timeout=20.0)
+            r = _run(["osascript", "-e", script], timeout=8.0)
             if r.returncode == 0:
                 who = to or "(no recipient yet)"
                 return ToolResult(
@@ -530,7 +530,7 @@ class MailComposeTool(BaseTool):
                 )
             # Fallback: mailto: (still compose-only)
             uri = _mailto_uri(to=to, subject=subject, body=body, cc=cc)
-            r2 = _run(["open", uri], timeout=10.0)
+            r2 = _run(["open", uri], timeout=5.0)
             if r2.returncode != 0:
                 err = (r.stderr or r2.stderr or "Mail compose failed").strip()
                 return ToolResult(
@@ -610,10 +610,10 @@ class MessagesComposeTool(BaseTool):
         # Prefer URL scheme — opens draft, does not send (unlike send_imessage).
         uri = _messages_compose_uri(recipient=recipient, body=body)
         try:
-            r = _run(["open", uri], timeout=15.0)
+            r = _run(["open", uri], timeout=5.0)
             if r.returncode != 0:
                 # Soft fallback: just activate Messages
-                _run(["open", "-a", "Messages"], timeout=10.0)
+                _run(["open", "-a", "Messages"], timeout=5.0)
                 return ToolResult(
                     tool_name="messages_compose",
                     content=(

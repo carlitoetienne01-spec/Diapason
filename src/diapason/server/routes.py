@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import uuid
 from typing import Any, Optional
@@ -27,6 +28,21 @@ from diapason.server.models import (
 )
 
 router = APIRouter()
+
+
+def _host_actions_allowed(request: Request, config) -> bool:
+    """Allow desktop control from loopback unless remote access is explicit."""
+    lightning = getattr(getattr(config, "desktop", None), "lightning", None)
+    if bool(getattr(lightning, "allow_remote", False)):
+        return True
+    client = getattr(request, "client", None)
+    host = str(getattr(client, "host", "") or "").strip()
+    if host.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _to_messages(chat_messages) -> list[Message]:
@@ -107,9 +123,72 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
+    config = getattr(request.app.state, "config", None)
+
+    # Trusted desktop fast path.  It runs BEFORE memory retrieval, complexity
+    # scoring and inference, turning explicit low-risk commands into one local
+    # OS call.  action_mode defaults to off and tools disable the path, so the
+    # OpenAI-compatible API cannot unexpectedly control the host.
+    query_text_for_action = ""
+    for _message in reversed(request_body.messages):
+        if _message.role == "user" and _message.content:
+            query_text_for_action = _message.content
+            break
+    if (
+        request_body.action_mode == "auto"
+        and not request_body.tools
+        and query_text_for_action
+        and _host_actions_allowed(request, config)
+    ):
+        service = getattr(request.app.state, "lightning_actions", None)
+        if service is not None:
+
+            def generate_action_text(instruction: str) -> str:
+                messages = _to_messages(request_body.messages)
+                messages.insert(
+                    0,
+                    Message(
+                        role=Role.SYSTEM,
+                        content=(
+                            "Create only the polished content that should be "
+                            "inserted into the requested application. Follow the "
+                            "user's language and instruction. Do not add commentary, "
+                            "quotes, or a preface."
+                        ),
+                    ),
+                )
+                result = engine.generate(
+                    messages,
+                    model=model,
+                    temperature=min(request_body.temperature, 0.7),
+                    max_tokens=min(max(request_body.max_tokens, 128), 2048),
+                )
+                return str(result.get("content") or "")
+
+            outcome = await asyncio.to_thread(
+                service.handle,
+                query_text_for_action,
+                text_generator=generate_action_text,
+            )
+            if outcome.handled:
+                if request_body.stream:
+                    return _handle_lightning_stream(model, outcome)
+                return ChatCompletionResponse(
+                    model=model,
+                    choices=[
+                        Choice(
+                            message=ChoiceMessage(
+                                role="assistant",
+                                content=outcome.message,
+                            ),
+                            finish_reason="stop",
+                        )
+                    ],
+                    usage=UsageInfo(),
+                    lightning=outcome.public_metadata(),
+                )
 
     # Inject memory context into messages before dispatching
-    config = getattr(request.app.state, "config", None)
     memory_backend = getattr(request.app.state, "memory_backend", None)
     if (
         config is not None
@@ -277,6 +356,57 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         source="server.chat",
     )
     return response
+
+
+def _handle_lightning_stream(model: str, outcome) -> StreamingResponse:
+    """Emit a completed action using the normal OpenAI SSE shape."""
+    import json
+
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+
+    async def generate():
+        role = ChatCompletionChunk(
+            id=chunk_id,
+            model=model,
+            choices=[StreamChoice(delta=DeltaMessage(role="assistant"))],
+        )
+        yield f"data: {role.model_dump_json()}\n\n"
+        content = ChatCompletionChunk(
+            id=chunk_id,
+            model=model,
+            choices=[StreamChoice(delta=DeltaMessage(content=outcome.message))],
+        )
+        yield f"data: {content.model_dump_json()}\n\n"
+        finish = ChatCompletionChunk(
+            id=chunk_id,
+            model=model,
+            choices=[StreamChoice(delta=DeltaMessage(), finish_reason="stop")],
+        )
+        payload = json.loads(finish.model_dump_json())
+        payload["lightning"] = outcome.public_metadata()
+        payload["usage"] = UsageInfo().model_dump()
+        yield f"data: {json.dumps(payload)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/v1/actions/metrics")
+async def action_metrics(request: Request):
+    """Privacy-safe latency distribution for deterministic actions."""
+    from diapason.actions.metrics import METRICS
+
+    return METRICS.snapshot()
+
+
+@router.get("/v1/actions/capabilities")
+async def action_capabilities(request: Request):
+    service = getattr(request.app.state, "lightning_actions", None)
+    return service.capabilities() if service is not None else {"enabled": False}
 
 
 def _response_content(response) -> str:
@@ -911,6 +1041,53 @@ async def list_models(request: Request) -> ModelListResponse:
             for mid, length in zip(model_ids, lengths)
         ],
     )
+
+
+@router.post("/v1/models/prewarm")
+async def prewarm_model(request: Request):
+    """Keep a local Ollama model resident without generating any content."""
+    body = await request.json()
+    model_name = str(body.get("model") or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="model is required")
+
+    engine = request.app.state.engine
+    for _ in range(5):
+        candidate = getattr(engine, "__dict__", {}).get("_inner")
+        if candidate is None:
+            break
+        engine = candidate
+    # MultiEngine can identify the concrete backend for this exact model.
+    from diapason.engine.multi import MultiEngine
+
+    if isinstance(engine, MultiEngine):
+        selected = engine._engine_for(model_name)
+        if selected is not None:
+            engine = selected
+
+    from diapason.core.local_mode import host_is_local
+
+    if str(getattr(engine, "engine_id", "")).lower() != "ollama" or not host_is_local(
+        str(getattr(engine, "_host", ""))
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Model prewarm is available only for local Ollama models.",
+        )
+    prewarm = getattr(engine, "prewarm", None)
+    if not callable(prewarm):
+        raise HTTPException(status_code=501, detail="Engine cannot prewarm models.")
+    loaded = await asyncio.to_thread(prewarm, model_name)
+    if not loaded:
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama could not preload the model.",
+        )
+    return {
+        "status": "ready",
+        "model": model_name,
+        "keep_alive": str(getattr(engine, "_keep_alive", "30m")),
+    }
 
 
 @router.post("/v1/models/pull")

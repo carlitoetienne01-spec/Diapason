@@ -92,6 +92,11 @@ desktop = [
     "pydantic>=2.0",
     "python-multipart>=0.0.9",
     "faster-whisper>=1.0",
+    # Native frontmost-app lookup, AX text insertion and clipboard-preserving
+    # paste used by the deterministic lightning path on macOS.
+    "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
 ]
 # Push-to-talk dictation stack (macOS). The whole chain — global hotkey
 # (CGEventTap), mic capture, clipboard paste, menu bar — is pure Python via

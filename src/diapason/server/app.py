@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import pathlib
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -26,6 +27,46 @@ from diapason.server.trigger_routes import create_trigger_router
 from diapason.server.upload_router import router as upload_router
 
 logger = logging.getLogger(__name__)
+
+
+async def _prewarm_local_model(app: FastAPI) -> None:
+    """Load Ollama's model in the background without delaying API startup."""
+    config = getattr(app.state, "config", None)
+    lightning = getattr(getattr(config, "desktop", None), "lightning", None)
+    if lightning is not None and not lightning.preload_model:
+        return
+    engine = getattr(app.state, "engine", None)
+    inner = engine
+    # Telemetry and routing wrappers are transparent; locate the concrete
+    # engine so warmup uses its real host/keep-alive settings.
+    for _ in range(4):
+        candidate = getattr(inner, "__dict__", {}).get("_inner")
+        if candidate is None:
+            break
+        inner = candidate
+    engine_id = str(getattr(inner, "engine_id", "") or "").lower()
+    if engine_id != "ollama" or not app.state.model:
+        return
+    from diapason.core.local_mode import host_is_local
+
+    if not host_is_local(str(getattr(inner, "_host", ""))):
+        return
+    keep_alive = str(getattr(inner, "_keep_alive", "30m") or "30m")
+    try:
+        prewarm = getattr(inner, "prewarm", None)
+        if prewarm is None:
+            return
+        loaded = await asyncio.to_thread(prewarm, app.state.model)
+        if loaded:
+            logger.info(
+                "Prewarmed local model %s (keep_alive=%s)",
+                app.state.model,
+                keep_alive,
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - warmup is an optimization only
+        logger.debug("Local model prewarm skipped: %s", exc)
 
 
 def _restore_sendblue_bindings(app: FastAPI) -> None:
@@ -184,9 +225,14 @@ def create_app(
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI):
+        prewarm_task = asyncio.create_task(_prewarm_local_model(application))
         try:
             yield
         finally:
+            if not prewarm_task.done():
+                prewarm_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await prewarm_task
             bridge = getattr(application.state, "analytics_bridge", None)
             if bridge is not None:
                 try:
@@ -257,6 +303,9 @@ def create_app(
     app.state.speech_backend = speech_backend
     app.state.agent_manager = agent_manager
     app.state.agent_scheduler = agent_scheduler
+    from diapason.actions import LightningActionService
+
+    app.state.lightning_actions = LightningActionService(config)
     app.state.session_start = time.time()
     # Exposed so WebSocket handlers can authenticate the handshake (the HTTP
     # AuthMiddleware never sees WS upgrade requests). Empty = auth disabled.

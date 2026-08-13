@@ -44,9 +44,16 @@ export function ApprovalBell() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 10000);
-    return () => clearInterval(id);
-  }, [load]);
+    // InputArea emits this as soon as a tool call starts, so the approval is
+    // normally visible immediately. Poll fast only while a decision is
+    // pending; use a light safety poll otherwise.
+    window.addEventListener('diapason-approval-possible', load);
+    const id = setInterval(load, approvals.length > 0 ? 1000 : 5000);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('diapason-approval-possible', load);
+    };
+  }, [load, approvals.length]);
 
   useEffect(() => {
     if (!open) return;
