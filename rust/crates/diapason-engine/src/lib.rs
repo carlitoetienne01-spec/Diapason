@@ -19,5 +19,5 @@ pub use llamacpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
 pub use openai_compat::OpenAICompatEngine;
 pub use sglang::SGLangEngine;
-pub use traits::{InferenceEngine, messages_to_dicts};
+pub use traits::{messages_to_dicts, InferenceEngine};
 pub use vllm::VLLMEngine;

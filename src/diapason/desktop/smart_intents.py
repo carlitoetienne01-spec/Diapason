@@ -165,8 +165,16 @@ def resolve_youtube_watch_url(
     opening the results page, which is what happened before this existed.
     """
     url = "https://www.youtube.com/results?search_query=" + quote_plus(query)
+    if fetch is None:
+        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
+
+        try:
+            assert_may_leave("the YouTube search query", destination=url)
+        except LocalOnlyError:
+            return ""
     try:
         if fetch is None:
+
             def fetch(u: str) -> str:
                 import urllib.request
 
@@ -229,9 +237,23 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 q = m.group(1).strip()
                 q = _clean_query(
                     q,
-                    "for", "the", "le", "la", "les", "des", "un", "une",
-                    "de", "d", "vidéo", "video", "clip", "chanson",
-                    "musique", "music", "song",
+                    "for",
+                    "the",
+                    "le",
+                    "la",
+                    "les",
+                    "des",
+                    "un",
+                    "une",
+                    "de",
+                    "d",
+                    "vidéo",
+                    "video",
+                    "clip",
+                    "chanson",
+                    "musique",
+                    "music",
+                    "song",
                 )
                 # « mets la vidéo en pause sur youtube » must not PLAY a
                 # video titled "pause" — control words are not queries.
@@ -435,7 +457,9 @@ def parse_smart_intent(command: str) -> SmartIntent:
             )
 
     # --- WhatsApp Web ---
-    if "whatsapp" in low and any(w in low for w in ("web", "chrome", "browser", "navigateur")):
+    if "whatsapp" in low and any(
+        w in low for w in ("web", "chrome", "browser", "navigateur")
+    ):
         return SmartIntent(
             kind=KIND_URL,
             url="https://web.whatsapp.com",
@@ -464,7 +488,9 @@ def parse_smart_intent(command: str) -> SmartIntent:
 
     # --- Explicit website map / open X.com ---
     m = re.search(
-        r"(?:ouvre|open|go to|va sur)\s+(?:le site |the (?:site|page) )?(?P<site>[\w.-]+\.(?:com|org|net|io|ai|co|fr|dev))\b",
+        r"(?:ouvre|open|go to|va sur)\s+"
+        r"(?:le site |the (?:site|page) )?"
+        r"(?P<site>[\w.-]+\.(?:com|org|net|io|ai|co|fr|dev))\b",
         low,
     )
     if m:
@@ -479,7 +505,9 @@ def parse_smart_intent(command: str) -> SmartIntent:
     # --- Open native app / known website alias ---
     m = re.search(
         r"^\s*(?:please\s+)?(?:ouvre|ouvrir|open|lance|lancer|launch|start|démarre|"
-        r"show|montre)\s+(?:l['’]|le |la |les |the |app |application )?(?P<target>.+?)\s*$",
+        r"show|montre)\s+"
+        r"(?:l['’]|le |la |les |the |app |application )?"
+        r"(?P<target>.+?)\s*$",
         low,
         re.IGNORECASE,
     )
@@ -522,7 +550,9 @@ def parse_smart_intent(command: str) -> SmartIntent:
     return SmartIntent(kind=KIND_NONE, reasoning="No smart match")
 
 
-def execute_smart_intent(intent: SmartIntent, *, browser: str = "") -> Optional[ToolResult]:
+def execute_smart_intent(
+    intent: SmartIntent, *, browser: str = ""
+) -> Optional[ToolResult]:
     """Execute a SmartIntent via desktop helpers. Returns None if KIND_NONE."""
     if intent.kind == KIND_NONE:
         return None
@@ -623,7 +653,9 @@ def execute_smart_intent(intent: SmartIntent, *, browser: str = "") -> Optional[
     )
 
 
-def try_execute_smart_command(command: str, *, browser: str = "") -> Optional[ToolResult]:
+def try_execute_smart_command(
+    command: str, *, browser: str = ""
+) -> Optional[ToolResult]:
     """Parse + execute in one shot. None if no rich intent matched."""
     intent = parse_smart_intent(command)
     if intent.kind == KIND_NONE:

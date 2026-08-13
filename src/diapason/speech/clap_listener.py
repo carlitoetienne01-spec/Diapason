@@ -42,9 +42,10 @@ class ClapDetector:
         cfg = self.cfg
         quiet_gate = self.noise_floor * cfg.quiet_gate_mult
         if level < quiet_gate:
-            self.noise_floor = cfg.noise_floor_alpha * self.noise_floor + (
-                1.0 - cfg.noise_floor_alpha
-            ) * level
+            self.noise_floor = (
+                cfg.noise_floor_alpha * self.noise_floor
+                + (1.0 - cfg.noise_floor_alpha) * level
+            )
             self.noise_floor = max(self.noise_floor, 1e-7)
 
         threshold = max(self.noise_floor * cfg.spike_ratio, cfg.min_rms)
@@ -188,9 +189,7 @@ def choose_input_device(
             probe_s=probe_s,
         )
         if peak is not None and peak >= silent_rms:
-            logger.info(
-                "Using default mic [%d] (probe rms=%.5f)", default, peak
-            )
+            logger.info("Using default mic [%d] (probe rms=%.5f)", default, peak)
             return int(default)
         logger.warning(
             "Default mic [%d] silent/unusable (rms=%s); scanning…",
@@ -215,9 +214,7 @@ def choose_input_device(
             best_idx = idx
 
     if best_idx is not None and best_peak >= silent_rms:
-        logger.info(
-            "Auto-selected mic [%d] (probe rms=%.5f)", best_idx, best_peak
-        )
+        logger.info("Auto-selected mic [%d] (probe rms=%.5f)", best_idx, best_peak)
         return best_idx
 
     if default is not None and default >= 0:
@@ -255,7 +252,9 @@ class ClapListener:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="clap-listener", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="clap-listener", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -268,14 +267,19 @@ class ClapListener:
             import sounddevice as sd
         except ImportError:
             logger.error(
-                "sounddevice is required for clap listening: pip install sounddevice numpy"
+                "sounddevice is required for clap listening: "
+                "pip install sounddevice numpy"
             )
             return
 
-        blocksize = max(1, int(self._cfg.sample_rate * self._cfg.block_ms / 1000))
+        blocksize = max(
+            1,
+            int(self._cfg.sample_rate * self._cfg.block_ms / 1000),
+        )
         detector = ClapDetector(cfg=self._cfg)
         logger.info(
-            "Clap listener started (spike_ratio=%.1f, gap=%.2f–%.2fs, once=%s, debug=%s)",
+            "Clap listener started "
+            "(spike_ratio=%.1f, gap=%.2f–%.2fs, once=%s, debug=%s)",
             self._cfg.spike_ratio,
             self._cfg.min_double_gap_s,
             self._cfg.max_double_gap_s,
@@ -324,8 +328,9 @@ class ClapListener:
                             detector.threshold,
                             self._cfg.max_double_gap_s,
                         )
-                    if detector.last_miss_reason and detector.last_miss_reason.startswith(
-                        "gap_too_large"
+                    if (
+                        detector.last_miss_reason
+                        and detector.last_miss_reason.startswith("gap_too_large")
                     ):
                         logger.info(
                             "Second clap too late (%s)", detector.last_miss_reason

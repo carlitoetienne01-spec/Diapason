@@ -50,7 +50,9 @@ fn run_cmd(args: &[&str]) -> String {
         .ok()
         .and_then(|out| {
             if out.status.success() {
-                String::from_utf8(out.stdout).ok().map(|s| s.trim().to_string())
+                String::from_utf8(out.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
             } else {
                 None
             }
@@ -150,7 +152,11 @@ fn detect_apple_gpu() -> Option<GpuInfo> {
     for line in raw.lines() {
         let trimmed = line.trim();
         if trimmed.contains("Chipset Model") {
-            let name = trimmed.split(':').next_back().unwrap_or("Apple Silicon").trim();
+            let name = trimmed
+                .split(':')
+                .next_back()
+                .unwrap_or("Apple Silicon")
+                .trim();
             let ram_gb = run_cmd(&["sysctl", "-n", "hw.memsize"])
                 .trim()
                 .parse::<u64>()

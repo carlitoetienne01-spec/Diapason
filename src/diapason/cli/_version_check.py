@@ -20,7 +20,7 @@ _PYPI_API = "https://pypi.org/pypi/diapason/json"
 
 
 def _config_path() -> Path:
-    """Resolve the config path, honoring ``OPENJARVIS_CONFIG`` like core.config."""
+    """Resolve the config path, honoring ``DIAPASON_CONFIG`` and aliases."""
     override = _env_get("CONFIG")
     if override:
         return Path(override).expanduser()
@@ -51,19 +51,19 @@ _CHECK_COMMANDS = {
 }
 
 # Environment opt-outs (any truthy value disables the check):
-# - ``OPENJARVIS_NO_UPDATE_CHECK=1`` — project-specific
+# - ``DIAPASON_NO_UPDATE_CHECK=1`` — project-specific
 # - ``CI=true`` — set by every major CI provider, suppresses by default
-_OPT_OUT_ENV_VARS = ("OPENJARVIS_NO_UPDATE_CHECK",)
+_OPT_OUT_ENV_VARS = ("NO_UPDATE_CHECK",)
 
 
 def _check_disabled() -> bool:
     """Return True when the user has opted out of update checks."""
     for name in _OPT_OUT_ENV_VARS:
-        raw = os.environ.get(name, "")
+        raw = _env_get(name, "") or ""
         if raw and raw.strip().lower() not in ("", "0", "false", "no", "off"):
             return True
     # CI defaults to skipping. Users in CI can override with
-    # ``OPENJARVIS_NO_UPDATE_CHECK=0`` if they want the nudge anyway.
+    # ``DIAPASON_NO_UPDATE_CHECK=0`` if they want the nudge anyway.
     if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes", "on"):
         return True
     return _config_disabled()
@@ -102,7 +102,7 @@ def _config_disabled() -> bool:
 def check_for_updates(command_name: str) -> None:
     """Print a message if a newer version is available. Best-effort, never raises.
 
-    Honors ``OPENJARVIS_NO_UPDATE_CHECK=1`` and ``CI=true`` — any
+    Honors ``DIAPASON_NO_UPDATE_CHECK=1`` and ``CI=true`` — any
     truthy value (``1``, ``true``, ``yes``, ``on``) disables both the
     PyPI poll and the banner. See ``_check_disabled`` for the full list.
     """

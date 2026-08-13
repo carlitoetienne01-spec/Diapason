@@ -11,11 +11,7 @@ pub trait MemoryBackend: Send + Sync {
         source: &str,
         metadata: Option<&Value>,
     ) -> Result<String, DiapasonError>;
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError>;
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError>;
     fn delete(&self, doc_id: &str) -> Result<bool, DiapasonError>;
     fn clear(&self) -> Result<(), DiapasonError>;
     fn count(&self) -> Result<usize, DiapasonError>;

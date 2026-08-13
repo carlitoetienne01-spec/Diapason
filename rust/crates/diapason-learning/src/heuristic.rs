@@ -58,12 +58,7 @@ mod tests {
 
     #[test]
     fn test_heuristic_code() {
-        let router = HeuristicRouter::new(
-            "default".into(),
-            Some("code_model".into()),
-            None,
-            None,
-        );
+        let router = HeuristicRouter::new("default".into(), Some("code_model".into()), None, None);
         let ctx = RoutingContext {
             has_code: true,
             ..Default::default()

@@ -90,10 +90,7 @@ mod tests {
 
     #[test]
     fn test_messages_to_dicts_basic() {
-        let msgs = vec![
-            Message::system("You are helpful"),
-            Message::user("Hello"),
-        ];
+        let msgs = vec![Message::system("You are helpful"), Message::user("Hello")];
         let dicts = messages_to_dicts(&msgs);
         assert_eq!(dicts.len(), 2);
         assert_eq!(dicts[0]["role"], "system");

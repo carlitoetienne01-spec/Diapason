@@ -127,9 +127,12 @@ def maybe_downgrade_to_replace(
         A callable that takes a target string (e.g. "agents.simple.system_prompt")
         and returns the current prompt content.
 
-    Returns the edit unchanged if it's not a PATCH op, or if the diff is
-    small enough. Returns a new REPLACE edit if the diff changes > 50% of
-    lines or if the diff cannot be applied.
+    Returns
+    -------
+    Edit
+        The edit unchanged when it is not a PATCH operation or the diff is
+        small enough; otherwise, a new REPLACE edit when the diff changes
+        more than 50% of the lines or cannot be applied.
     """
     if edit.op != EditOp.PATCH_SYSTEM_PROMPT:
         return edit

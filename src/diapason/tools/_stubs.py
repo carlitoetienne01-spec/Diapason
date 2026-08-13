@@ -7,10 +7,10 @@ Each tool is registered via ``@ToolRegistry.register("name")`` and implements
 
 from __future__ import annotations
 
-import concurrent.futures
 import functools
 import json
 import logging
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -20,6 +20,19 @@ from diapason.core.events import EventBus, EventType
 from diapason.core.types import ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
+
+_CONFIRMATION_CAPABILITIES = frozenset(
+    {
+        "file:write",
+        "code:execute",
+        "channel:send",
+        "schedule:create",
+        "system:admin",
+    }
+)
+_MUTATING_NETWORK_TOOLS = frozenset(
+    {"browser_click", "browser_type", "mail_send", "messages_send"}
+)
 
 # ---------------------------------------------------------------------------
 # ToolSpec — metadata describing a tool's interface
@@ -156,6 +169,8 @@ class ToolExecutor:
         capability_policy: Optional[Any] = None,
         agent_id: str = "",
         boundary_guard: Optional[Any] = None,
+        rate_limiter: Optional[Any] = None,
+        autoload_capability_policy: bool = True,
     ) -> None:
         self._tools: Dict[str, BaseTool] = {t.spec.name: t for t in tools}
         self._bus = bus
@@ -165,6 +180,110 @@ class ToolExecutor:
         self._capability_policy = capability_policy
         self._agent_id = agent_id
         self._boundary_guard = boundary_guard
+        self._rate_limiter = rate_limiter
+        self._autoload_capability_policy = autoload_capability_policy
+        self._load_default_security_controls()
+        self._grant_selected_tools_when_unmanaged()
+
+    def _load_default_security_controls(self) -> None:
+        """Enforce configured controls even at legacy construction sites.
+
+        Several subsystems historically instantiated ``ToolExecutor``
+        directly.  Loading missing controls here makes security structural:
+        forgetting to use a higher-level factory cannot silently disable it.
+        Explicitly supplied controls are always preserved.
+        """
+        try:
+            from diapason.core.config import load_config
+
+            config = load_config()
+            if not config.security.enabled:
+                return
+            if self._boundary_guard is None:
+                from diapason.security.boundary import BoundaryGuard
+
+                self._boundary_guard = BoundaryGuard(
+                    mode=config.security.mode,
+                    bus=self._bus,
+                )
+            if (
+                self._capability_policy is None
+                and self._autoload_capability_policy
+                and config.security.capabilities.enabled
+            ):
+                from diapason.security.capabilities import CapabilityPolicy
+
+                self._capability_policy = CapabilityPolicy(
+                    policy_path=config.security.capabilities.policy_path or None,
+                    default_deny=config.security.capabilities.default_deny,
+                )
+            if self._rate_limiter is None:
+                from diapason.security.rate_limiter import RateLimitConfig, RateLimiter
+
+                self._rate_limiter = RateLimiter(
+                    RateLimitConfig(
+                        requests_per_minute=config.security.rate_limit_rpm,
+                        burst_size=config.security.rate_limit_burst,
+                        enabled=config.security.rate_limit_enabled,
+                    )
+                )
+        except Exception as exc:
+            raise RuntimeError(
+                "Could not initialize mandatory tool security controls"
+            ) from exc
+
+    @staticmethod
+    def _required_capabilities(tool: BaseTool) -> list[str]:
+        """Resolve both declared and conservative built-in capabilities."""
+        from diapason.security.capabilities import DEFAULT_TOOL_CAPABILITIES
+
+        capabilities = list(tool.spec.required_capabilities)
+        for capability in DEFAULT_TOOL_CAPABILITIES.get(tool.spec.name, []):
+            value = getattr(capability, "value", capability)
+            if value not in capabilities:
+                capabilities.append(value)
+        # Any tool that can make data leave the device must at minimum be
+        # authorized for network access, even if its metadata is incomplete.
+        if not getattr(tool, "is_local", True) and "network:fetch" not in capabilities:
+            capabilities.append("network:fetch")
+        return capabilities
+
+    @staticmethod
+    def _requires_confirmation(
+        tool: BaseTool,
+        params: Dict[str, Any],
+        capabilities: list[str],
+    ) -> bool:
+        """Return whether a call can mutate local or external state."""
+        if tool.spec.requires_confirmation:
+            return True
+        if _CONFIRMATION_CAPABILITIES.intersection(capabilities):
+            return True
+        if tool.spec.name in _MUTATING_NETWORK_TOOLS:
+            return True
+        if tool.spec.name == "http_request":
+            return str(params.get("method", "GET")).upper() not in {"GET", "HEAD"}
+        return False
+
+    def _grant_selected_tools_when_unmanaged(self) -> None:
+        """Create a least-privilege policy for an explicitly selected tool set.
+
+        A deny-by-default policy without a policy file must remain usable on a
+        fresh installation.  The executor therefore grants only the declared
+        capabilities of tools that the caller already selected, scoped to
+        each exact tool name.  An administrator-provided policy is never
+        modified.
+        """
+        policy = self._capability_policy
+        if (
+            policy is None
+            or not getattr(policy, "default_deny", False)
+            or getattr(policy, "has_explicit_policy", False)
+        ):
+            return
+        for tool in self._tools.values():
+            for capability in self._required_capabilities(tool):
+                policy.grant(self._agent_id, capability, tool.spec.name)
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """Parse arguments, dispatch to tool, measure latency, emit events."""
@@ -175,6 +294,30 @@ class ToolExecutor:
                 content=f"Unknown tool: {tool_call.name}",
                 success=False,
             )
+
+        if self._rate_limiter is not None:
+            key = f"{self._agent_id or 'anonymous'}:{tool_call.name}"
+            allowed, wait_seconds = self._rate_limiter.check(key)
+            if not allowed:
+                if self._bus:
+                    self._bus.publish(
+                        EventType.SECURITY_BLOCK,
+                        {
+                            "source": "tool_rate_limiter",
+                            "tool": tool_call.name,
+                            "agent_id": self._agent_id,
+                            "retry_after": wait_seconds,
+                        },
+                    )
+                return ToolResult(
+                    tool_name=tool_call.name,
+                    content=(
+                        f"Rate limit exceeded for tool '{tool_call.name}'. "
+                        f"Retry after {wait_seconds:.1f}s."
+                    ),
+                    success=False,
+                    metadata={"retry_after": wait_seconds},
+                )
 
         # Parse arguments
         try:
@@ -199,9 +342,17 @@ class ToolExecutor:
                     success=False,
                 )
 
-        # RBAC capability check
-        if self._capability_policy and tool.spec.required_capabilities:
-            for cap in tool.spec.required_capabilities:
+        # RBAC capability check. Built-ins receive conservative fallback
+        # capabilities so incomplete metadata cannot bypass authorization.
+        required_capabilities = self._required_capabilities(tool)
+        if required_capabilities and self._capability_policy is None:
+            return ToolResult(
+                tool_name=tool_call.name,
+                content="Security block: capability policy is unavailable.",
+                success=False,
+            )
+        if self._capability_policy and required_capabilities:
+            for cap in required_capabilities:
                 if not self._capability_policy.check(
                     self._agent_id,
                     cap,
@@ -255,7 +406,7 @@ class ToolExecutor:
                 params.pop("_taint", None)
 
         # Confirmation check for sensitive tools
-        if tool.spec.requires_confirmation:
+        if self._requires_confirmation(tool, params, required_capabilities):
             if not self._interactive or self._confirm_callback is None:
                 return ToolResult(
                     tool_name=tool_call.name,
@@ -266,7 +417,12 @@ class ToolExecutor:
                     ),
                     success=False,
                 )
-            prompt = f"Allow execution of tool '{tool_call.name}' with args {params}?"
+            prompt_args = json.dumps(params, default=str)
+            if self._boundary_guard is not None:
+                prompt_args = self._boundary_guard.redact_for_storage(prompt_args)
+            prompt = (
+                f"Allow execution of tool '{tool_call.name}' with args {prompt_args}?"
+            )
             if not self._confirm_callback(prompt):
                 return ToolResult(
                     tool_name=tool_call.name,
@@ -279,11 +435,19 @@ class ToolExecutor:
         # actually match this event — without it, every tool call is silently
         # dropped from traces.
         if self._bus:
+            event_arguments: Any = params
+            if self._boundary_guard is not None:
+                serialized = json.dumps(params, default=str)
+                sanitized = self._boundary_guard.redact_for_storage(serialized)
+                try:
+                    event_arguments = json.loads(sanitized)
+                except json.JSONDecodeError:
+                    event_arguments = {"redacted": True}
             self._bus.publish(
                 EventType.TOOL_CALL_START,
                 {
                     "tool": tool_call.name,
-                    "arguments": params,
+                    "arguments": event_arguments,
                     "agent": self._agent_id,
                 },
             )
@@ -291,11 +455,24 @@ class ToolExecutor:
         # Execute with timeout
         timeout = tool.spec.timeout_seconds or self._default_timeout
         t0 = time.time()
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(tool.execute, **params)
-                result = future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
+        finished = threading.Event()
+        outcome: dict[str, Any] = {}
+
+        def _invoke() -> None:
+            try:
+                outcome["result"] = tool.execute(**params)
+            except BaseException as exc:  # contained and handled on caller thread
+                outcome["error"] = exc
+            finally:
+                finished.set()
+
+        worker = threading.Thread(
+            target=_invoke,
+            name=f"diapason-tool-{tool_call.name}",
+            daemon=True,
+        )
+        worker.start()
+        if not finished.wait(timeout=timeout):
             if self._bus:
                 self._bus.publish(
                     EventType.TOOL_TIMEOUT,
@@ -306,15 +483,26 @@ class ToolExecutor:
                 content=(f"Tool '{tool_call.name}' timed out after {timeout:.0f}s."),
                 success=False,
             )
-        except Exception as exc:
+        elif "error" in outcome:
+            exc = outcome["error"]
             result = ToolResult(
                 tool_name=tool_call.name,
                 content=f"Tool execution error: {exc}",
                 success=False,
             )
+        else:
+            result = outcome["result"]
         latency = time.time() - t0
         result.latency_seconds = latency
-        result.metadata["arguments"] = params
+        # Never attach raw arguments to a result: results are commonly stored
+        # in traces and may otherwise turn telemetry into a secret store.
+        if self._boundary_guard is not None:
+            serialized = json.dumps(params, default=str)
+            sanitized = self._boundary_guard.redact_for_storage(serialized)
+            try:
+                result.metadata["arguments"] = json.loads(sanitized)
+            except json.JSONDecodeError:
+                result.metadata["arguments"] = {"redacted": True}
 
         # Auto-detect taints in results
         if result.success:
@@ -330,6 +518,8 @@ class ToolExecutor:
         # Emit end event
         if self._bus:
             result_text = str(result.content)[:10240] if result.content else ""
+            if self._boundary_guard is not None:
+                result_text = self._boundary_guard.redact_for_storage(result_text)
             # Pass through ToolResult.metadata so downstream consumers
             # (TraceCollector → TraceStep.metadata → SkillOptimizer) can
             # see skill-tagged invocations.  Filter to JSON-serializable
@@ -337,6 +527,7 @@ class ToolExecutor:
             # taint auto-detect above) must not leak to event subscribers
             # since the trace store will JSON-serialize them later.
             event_metadata = self._json_safe_metadata(result.metadata)
+            event_metadata.pop("arguments", None)
             self._bus.publish(
                 EventType.TOOL_CALL_END,
                 {

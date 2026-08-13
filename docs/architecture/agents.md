@@ -387,7 +387,7 @@ How it works:
 1. On first call, copies the bundled `claude_code_runner/` to `~/.diapason/claude_code_runner/` and runs `npm install --production` if `node_modules` is absent
 2. Builds a JSON request with `prompt`, `api_key`, `workspace`, `allowed_tools`, `system_prompt`, and `session_id`
 3. Spawns `node dist/index.js` and writes the request to stdin
-4. Reads stdout and extracts the JSON payload between `---OPENJARVIS_OUTPUT_START---` and `---OPENJARVIS_OUTPUT_END---` sentinels
+4. Reads stdout and extracts the JSON payload between `---DIAPASON_OUTPUT_START---` and `---DIAPASON_OUTPUT_END---` sentinels
 5. Falls back to treating all stdout as plain text content if sentinels are absent
 
 !!! warning "Requires Node.js 22+"

@@ -49,7 +49,7 @@ const KNOWN_EVENTS = new Set<string>([
 
 // Hardcoded app version — should match the backend.
 // TODO: wire to Vite define() so this comes from package.json at build time.
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '1.0.0';
 
 interface AnalyticsIdentity {
   enabled: boolean;

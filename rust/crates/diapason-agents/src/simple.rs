@@ -57,15 +57,9 @@ impl<M: CompletionModel + 'static> OjAgent for SimpleAgent<M> {
             })
             .unwrap_or_default();
 
-        let response = self
-            .agent
-            .chat(input, history)
-            .await
-            .map_err(|e| {
-                DiapasonError::Agent(diapason_core::error::AgentError::Execution(
-                    e.to_string(),
-                ))
-            })?;
+        let response = self.agent.chat(input, history).await.map_err(|e| {
+            DiapasonError::Agent(diapason_core::error::AgentError::Execution(e.to_string()))
+        })?;
 
         let content = strip_think_tags(&response);
 

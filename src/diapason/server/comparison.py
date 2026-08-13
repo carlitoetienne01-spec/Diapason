@@ -281,7 +281,7 @@ COMPARISON_HTML = """\
     <div class="cta-sub">Install Diapason and run AI locally
       with zero API costs.</div>
     <div class="code-block">
-      <code>git clone https://github.com/open-jarvis/OpenJarvis.git
+      <code>git clone https://github.com/open-diapason/Diapason.git
 && cd Diapason && uv sync</code>
       <button class="copy-btn" id="copy-btn">Copy</button>
     </div>
@@ -424,7 +424,7 @@ tpcSlider.addEventListener('input', updateCalc);
 
 // -- Copy button --
 document.getElementById('copy-btn').addEventListener('click', () => {
-  const cmd = 'git clone https://github.com/open-jarvis/'
+  const cmd = 'git clone https://github.com/open-diapason/'
     + 'Diapason.git && cd Diapason && uv sync';
   navigator.clipboard.writeText(cmd).then(() => {
     const btn = document.getElementById('copy-btn');

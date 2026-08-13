@@ -126,7 +126,8 @@ def resolve_backend(requested: str) -> str:
         if not openwakeword_available():
             raise ImportError(
                 "openWakeWord not installed. "
-                "Run: uv sync --extra speech-wake   # or pip install openwakeword onnxruntime"
+                "Run: uv sync --extra speech-wake "
+                "# or pip install openwakeword onnxruntime"
             )
         return "openwakeword"
     return "phrase_gate"
@@ -243,9 +244,7 @@ class WakeWordListener:
             import numpy as np
             import sounddevice as sd
         except ImportError:
-            logger.error(
-                "sounddevice + numpy required: pip install sounddevice numpy"
-            )
+            logger.error("sounddevice + numpy required: pip install sounddevice numpy")
             return
 
         try:

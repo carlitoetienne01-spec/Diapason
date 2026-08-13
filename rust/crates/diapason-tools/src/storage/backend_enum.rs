@@ -47,11 +47,7 @@ impl MemoryBackend for MemoryBackendEnum {
         delegate_memory!(self, store, content, source, metadata)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         delegate_memory!(self, retrieve, query, top_k)
     }
 

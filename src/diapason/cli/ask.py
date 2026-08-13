@@ -326,6 +326,8 @@ def _run_agent(
     temperature: float,
     max_tokens: int,
     capability_policy=None,
+    boundary_guard=None,
+    rate_limiter=None,
     memory_files_config=None,
 ):
     """Instantiate and run an agent, returning the AgentResult."""
@@ -381,9 +383,18 @@ def _run_agent(
         agent_kwargs["tools"] = tools
         agent_kwargs["max_turns"] = config.agent.max_turns
         agent_kwargs["interactive"] = True
-        agent_kwargs["confirm_callback"] = lambda prompt: True
+        if config.agent.tool_approval == "auto":
+            agent_kwargs["confirm_callback"] = lambda _prompt: True
+        else:
+            agent_kwargs["confirm_callback"] = lambda prompt: click.confirm(
+                f"\n{prompt}", default=False
+            )
     if capability_policy is not None:
         agent_kwargs["capability_policy"] = capability_policy
+    if boundary_guard is not None:
+        agent_kwargs["boundary_guard"] = boundary_guard
+    if rate_limiter is not None:
+        agent_kwargs["rate_limiter"] = rate_limiter
 
     # Wire the SystemPromptBuilder so SOUL.md / MEMORY.md / USER.md persona
     # files actually reach the model. Only passed to agents whose __init__
@@ -400,6 +411,16 @@ def _run_agent(
             memory_files_config=memory_files_config or config.memory_files,
             system_prompt_config=config.system_prompt,
         )
+
+    _signature = _inspect.signature(agent_cls.__init__)
+    _accepts_kwargs = any(
+        p.kind is _inspect.Parameter.VAR_KEYWORD for p in _signature.parameters.values()
+    )
+    if not _accepts_kwargs:
+        _accepted = set(_signature.parameters)
+        agent_kwargs = {
+            key: value for key, value in agent_kwargs.items() if key in _accepted
+        }
 
     agent = agent_cls(engine, model_name, **agent_kwargs)
     # Hold MCP transports alive for the agent's lifetime — without this
@@ -880,6 +901,8 @@ def ask(
                 temperature,
                 max_tokens,
                 capability_policy=sec.capability_policy,
+                boundary_guard=sec.boundary_guard,
+                rate_limiter=sec.rate_limiter,
                 memory_files_config=effective_mf,
             )
         except EngineContextLengthError as exc:

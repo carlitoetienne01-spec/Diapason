@@ -9,8 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, Result as SqlResult};
 
 use super::types::{
-    BenchmarkScore, OptimizationRun, RunStatus, SampleScore, SearchSpace,
-    TrialConfig, TrialFeedback, TrialResult,
+    BenchmarkScore, OptimizationRun, RunStatus, SampleScore, SearchSpace, TrialConfig,
+    TrialFeedback, TrialResult,
 };
 
 // ---------------------------------------------------------------------------
@@ -95,8 +95,8 @@ impl OptimizationStore {
 
     /// Create an in-memory store (useful for testing).
     pub fn in_memory() -> Result<Self, OptimizeStoreError> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| OptimizeStoreError::Sqlite(e.to_string()))?;
+        let conn =
+            Connection::open_in_memory().map_err(|e| OptimizeStoreError::Sqlite(e.to_string()))?;
         conn.execute_batch("PRAGMA journal_mode=WAL;")
             .map_err(|e| OptimizeStoreError::Sqlite(e.to_string()))?;
         conn.execute_batch(CREATE_RUNS)
@@ -190,10 +190,7 @@ impl OptimizationStore {
     }
 
     /// Return summary dicts of recent optimization runs.
-    pub fn list_runs(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<RunSummary>, OptimizeStoreError> {
+    pub fn list_runs(&self, limit: usize) -> Result<Vec<RunSummary>, OptimizeStoreError> {
         let mut stmt = self
             .conn
             .prepare(
@@ -230,25 +227,21 @@ impl OptimizationStore {
     // ------------------------------------------------------------------
 
     /// Persist a single trial result.
-    pub fn save_trial(
-        &self,
-        run_id: &str,
-        trial: &TrialResult,
-    ) -> Result<(), OptimizeStoreError> {
+    pub fn save_trial(&self, run_id: &str, trial: &TrialResult) -> Result<(), OptimizeStoreError> {
         let now = now_epoch();
 
-        let config_json = serde_json::to_string(&trial.config.params)
-            .unwrap_or_else(|_| "{}".into());
-        let failure_modes_json = serde_json::to_string(&trial.failure_modes)
-            .unwrap_or_else(|_| "[]".into());
-        let sample_scores_json = serde_json::to_string(&trial.sample_scores)
-            .unwrap_or_else(|_| "[]".into());
+        let config_json =
+            serde_json::to_string(&trial.config.params).unwrap_or_else(|_| "{}".into());
+        let failure_modes_json =
+            serde_json::to_string(&trial.failure_modes).unwrap_or_else(|_| "[]".into());
+        let sample_scores_json =
+            serde_json::to_string(&trial.sample_scores).unwrap_or_else(|_| "[]".into());
         let feedback_json = match &trial.structured_feedback {
             Some(fb) => serde_json::to_string(fb).unwrap_or_else(|_| "{}".into()),
             None => "{}".into(),
         };
-        let per_benchmark_json = serde_json::to_string(&trial.per_benchmark)
-            .unwrap_or_else(|_| "[]".into());
+        let per_benchmark_json =
+            serde_json::to_string(&trial.per_benchmark).unwrap_or_else(|_| "[]".into());
 
         self.conn
             .execute(
@@ -318,9 +311,9 @@ impl OptimizationStore {
         let trials = self.get_trials(&data.run_id)?;
 
         // Find best trial
-        let best_trial = data.best_trial_id.and_then(|btid| {
-            trials.iter().find(|t| t.trial_id == btid).cloned()
-        });
+        let best_trial = data
+            .best_trial_id
+            .and_then(|btid| trials.iter().find(|t| t.trial_id == btid).cloned());
 
         // Parse benchmarks
         let benchmarks: Vec<String> =
@@ -390,8 +383,7 @@ fn row_to_trial(row: &rusqlite::Row<'_>) -> SqlResult<TrialResult> {
 
     let params: HashMap<String, serde_json::Value> =
         serde_json::from_str(&config_raw).unwrap_or_default();
-    let failure_modes: Vec<String> =
-        serde_json::from_str(&failure_modes_raw).unwrap_or_default();
+    let failure_modes: Vec<String> = serde_json::from_str(&failure_modes_raw).unwrap_or_default();
     let sample_scores: Vec<SampleScore> =
         serde_json::from_str(&sample_scores_raw).unwrap_or_default();
     let per_benchmark: Vec<BenchmarkScore> =

@@ -38,9 +38,15 @@ def heartbeat_status() -> None:
     path = ensure_heartbeat_file(ws)
     now, watching = read_heartbeat(ws)
     pending = [t for t in now if not t.done]
-    console.print(f"[bold]Heartbeat[/bold] enabled={cfg.enabled} interval={cfg.interval_seconds}s")
+    console.print(
+        f"[bold]Heartbeat[/bold] enabled={cfg.enabled} interval={cfg.interval_seconds}s"
+    )
     console.print(f"  file: {path}")
-    console.print(f"  pending: {len(pending)}  done: {sum(1 for t in now if t.done)}  watching: {len(watching)}")
+    console.print(
+        f"  pending: {len(pending)}  "
+        f"done: {sum(1 for t in now if t.done)}  "
+        f"watching: {len(watching)}"
+    )
     for t in pending[:10]:
         console.print(f"  - [ ] {t.text}")
 
@@ -71,8 +77,12 @@ def heartbeat_add(text: str) -> None:
 
 
 @heartbeat.command("tick")
-@click.option("--force", is_flag=True, help="Run even if heartbeat disabled / quiet hours.")
-@click.option("--dry-run", is_flag=True, help="Do not call the agent (acknowledge only).")
+@click.option(
+    "--force", is_flag=True, help="Run even if heartbeat disabled / quiet hours."
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Do not call the agent (acknowledge only)."
+)
 def heartbeat_tick(force: bool, dry_run: bool) -> None:
     """Drain the first pending heartbeat task now."""
     from diapason.heartbeat.runner import run_heartbeat_tick
@@ -83,10 +93,12 @@ def heartbeat_tick(force: bool, dry_run: bool) -> None:
         try:
             from diapason.sdk import Diapason
 
-            # Leave system None — tick will acknowledge without agent unless Diapason works
+            # Acknowledge without an agent if Diapason cannot be initialized.
             # Prefer dry acknowledge for CLI simplicity; optional live ask:
             with Diapason() as j:
-                result = run_heartbeat_tick(system=j, force=force, workspace=_workspace())
+                result = run_heartbeat_tick(
+                    system=j, force=force, workspace=_workspace()
+                )
             _print_tick(console, result)
             return
         except Exception:
@@ -104,7 +116,9 @@ def _print_tick(console: Console, result: dict) -> None:
         if result.get("content"):
             console.print(result["content"][:500])
     else:
-        console.print(f"[red]Failed[/red] {result.get('error') or result.get('content')}")
+        console.print(
+            f"[red]Failed[/red] {result.get('error') or result.get('content')}"
+        )
 
 
 @heartbeat.command("clear-done")

@@ -127,9 +127,8 @@ impl PyOptimizationStore {
 
     /// Save a trial result (JSON string) for a given run_id.
     fn save_trial(&self, run_id: &str, trial_json: &str) -> PyResult<()> {
-        let trial: diapason_learning::optimize::TrialResult =
-            serde_json::from_str(trial_json)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let trial: diapason_learning::optimize::TrialResult = serde_json::from_str(trial_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         self.inner
             .lock()
             .save_trial(run_id, &trial)
@@ -251,9 +250,8 @@ impl PySFTRouterPolicy {
     }
 
     fn update_from_data(&self, traces_json: &str) -> PyResult<String> {
-        let traces: Vec<(String, String, String, Option<f64>)> =
-            serde_json::from_str(traces_json)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let traces: Vec<(String, String, String, Option<f64>)> = serde_json::from_str(traces_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         let result = self.inner.update_from_data(&traces);
         Ok(serde_json::to_string(&result).unwrap_or_default())
     }
@@ -495,9 +493,8 @@ impl PyAgentConfigEvolver {
     }
 
     fn analyze(&self, traces_json: &str) -> PyResult<String> {
-        let traces: Vec<diapason_learning::EvolutionTraceData> =
-            serde_json::from_str(traces_json)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let traces: Vec<diapason_learning::EvolutionTraceData> = serde_json::from_str(traces_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         let recs = self.inner.analyze(&traces);
         Ok(serde_json::to_string(&recs).unwrap_or_default())
     }

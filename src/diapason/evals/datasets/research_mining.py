@@ -208,7 +208,7 @@ _QUESTIONS = [
         "question": "How can desktop AI applications provide a seamless user experience while managing local compute resources?",
         "domain": "Desktop Applications",
         "scope": "UX/Architecture analysis",
-        "key_facts": "Tauri/Electron frameworks, background service management, resource monitoring, model switching, system tray integration, auto-start, update mechanisms",
+        "key_facts": "Tauri/Electron frameworks, background service management, resource monitoring, model switching, system tray integration, auto-start, update mechanisms",  # gitleaks:allow
     },
 ]
 

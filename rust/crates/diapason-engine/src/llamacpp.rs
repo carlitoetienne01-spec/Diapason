@@ -4,7 +4,7 @@
 //! with a different request/response format.
 
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::{EngineError, DiapasonError};
+use diapason_core::error::{DiapasonError, EngineError};
 use diapason_core::{GenerateResult, Message, Usage};
 use serde_json::Value;
 
@@ -22,7 +22,8 @@ impl LlamaCppEngine {
     pub fn new(host: &str, port: u16, timeout_secs: f64) -> Self {
         let host = format!(
             "{}:{}",
-            host.trim_end_matches('/').trim_end_matches(|c: char| c == ':' || c.is_ascii_digit()),
+            host.trim_end_matches('/')
+                .trim_end_matches(|c: char| c == ':' || c.is_ascii_digit()),
             port
         );
         let host = if host.starts_with("http") {
@@ -124,20 +125,15 @@ impl InferenceEngine for LlamaCppEngine {
             ))));
         }
 
-        let data: Value = resp.json().map_err(|e| {
-            DiapasonError::Engine(EngineError::Deserialization(e.to_string()))
-        })?;
+        let data: Value = resp
+            .json()
+            .map_err(|e| DiapasonError::Engine(EngineError::Deserialization(e.to_string())))?;
 
-        let content = data["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let content = data["content"].as_str().unwrap_or("").to_string();
         let tokens_evaluated = data["tokens_evaluated"].as_i64().unwrap_or(0);
         let tokens_predicted = data["tokens_predicted"].as_i64().unwrap_or(0);
 
-        let stop_type = data["stop_type"]
-            .as_str()
-            .unwrap_or("stop");
+        let stop_type = data["stop_type"].as_str().unwrap_or("stop");
         let finish_reason = if stop_type == "limit" {
             "length".to_string()
         } else {
@@ -179,9 +175,7 @@ impl InferenceEngine for LlamaCppEngine {
         let async_client = reqwest::Client::builder()
             .timeout(self.timeout)
             .build()
-            .map_err(|e| {
-                DiapasonError::Engine(EngineError::Connection(e.to_string()))
-            })?;
+            .map_err(|e| DiapasonError::Engine(EngineError::Connection(e.to_string())))?;
 
         let resp = async_client
             .post(format!("{}/completion", self.host))
@@ -221,10 +215,7 @@ impl InferenceEngine for LlamaCppEngine {
                             if chunk["stop"].as_bool().unwrap_or(false) {
                                 return None;
                             }
-                            let content = chunk["content"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
+                            let content = chunk["content"].as_str().unwrap_or("").to_string();
                             if !content.is_empty() {
                                 return Some(Ok(content));
                             }
@@ -244,10 +235,7 @@ impl InferenceEngine for LlamaCppEngine {
     fn list_models(&self) -> Result<Vec<String>, DiapasonError> {
         // llama.cpp server loads a single model; try /v1/models first,
         // then fall back to /props which returns model metadata.
-        let resp = self
-            .client
-            .get(format!("{}/v1/models", self.host))
-            .send();
+        let resp = self.client.get(format!("{}/v1/models", self.host)).send();
 
         if let Ok(resp) = resp {
             if resp.status().is_success() {
@@ -272,9 +260,7 @@ impl InferenceEngine for LlamaCppEngine {
             .get(format!("{}/props", self.host))
             .send()
             .map_err(|_| {
-                DiapasonError::Engine(EngineError::Connection(
-                    "llama.cpp not reachable".into(),
-                ))
+                DiapasonError::Engine(EngineError::Connection("llama.cpp not reachable".into()))
             })?;
 
         if !resp.status().is_success() {
@@ -323,10 +309,7 @@ mod tests {
 
     #[test]
     fn test_messages_to_prompt() {
-        let messages = vec![
-            Message::system("You are helpful"),
-            Message::user("Hello"),
-        ];
+        let messages = vec![Message::system("You are helpful"), Message::user("Hello")];
         let prompt = LlamaCppEngine::messages_to_prompt(&messages);
         assert!(prompt.contains("<|system|>"));
         assert!(prompt.contains("You are helpful"));

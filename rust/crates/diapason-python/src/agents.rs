@@ -73,7 +73,9 @@ impl PySimpleAgent {
     ) -> PyResult<Self> {
         let adapter = make_adapter(engine_key, model)?;
         let agent = diapason_agents::SimpleAgent::new(adapter, system_prompt, temperature);
-        Ok(Self { inner: AgentEnum::Simple(agent) })
+        Ok(Self {
+            inner: AgentEnum::Simple(agent),
+        })
     }
 
     fn agent_id(&self) -> &str {
@@ -115,9 +117,15 @@ impl PyOrchestratorAgent {
         let adapter = make_adapter(engine_key, model)?;
         let executor = Arc::new(diapason_tools::ToolExecutor::new(None, None));
         let agent = diapason_agents::OrchestratorAgent::new(
-            adapter, system_prompt, executor, max_turns, temperature,
+            adapter,
+            system_prompt,
+            executor,
+            max_turns,
+            temperature,
         );
-        Ok(Self { inner: AgentEnum::Orchestrator(agent) })
+        Ok(Self {
+            inner: AgentEnum::Orchestrator(agent),
+        })
     }
 
     fn agent_id(&self) -> &str {
@@ -157,10 +165,11 @@ impl PyNativeReActAgent {
     ) -> PyResult<Self> {
         let adapter = make_adapter(engine_key, model)?;
         let executor = Arc::new(diapason_tools::ToolExecutor::new(None, None));
-        let agent = diapason_agents::NativeReActAgent::new(
-            adapter, executor, max_turns, temperature,
-        );
-        Ok(Self { inner: AgentEnum::NativeReAct(agent) })
+        let agent =
+            diapason_agents::NativeReActAgent::new(adapter, executor, max_turns, temperature);
+        Ok(Self {
+            inner: AgentEnum::NativeReAct(agent),
+        })
     }
 
     fn agent_id(&self) -> &str {
@@ -202,17 +211,11 @@ impl PyNativeOpenHandsAgent {
         let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        let adapter = diapason_engine::rig_adapter::RigModelAdapter::new(
-            Arc::new(engine),
-            model.to_string(),
-        );
+        let adapter =
+            diapason_engine::rig_adapter::RigModelAdapter::new(Arc::new(engine), model.to_string());
         let executor = Arc::new(diapason_tools::ToolExecutor::new(None, None));
-        let agent = diapason_agents::NativeOpenHandsAgent::new(
-            adapter,
-            executor,
-            max_turns,
-            temperature,
-        );
+        let agent =
+            diapason_agents::NativeOpenHandsAgent::new(adapter, executor, max_turns, temperature);
         Ok(Self {
             inner: Box::new(agent),
         })
@@ -283,10 +286,8 @@ impl PyMonitorOperativeAgent {
         let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        let adapter = diapason_engine::rig_adapter::RigModelAdapter::new(
-            Arc::new(engine),
-            model.to_string(),
-        );
+        let adapter =
+            diapason_engine::rig_adapter::RigModelAdapter::new(Arc::new(engine), model.to_string());
         let executor = Arc::new(diapason_tools::ToolExecutor::new(None, None));
 
         let mem_ext = match memory_extraction {

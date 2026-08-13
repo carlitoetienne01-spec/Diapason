@@ -27,7 +27,7 @@ declares `EnvironmentFile=/etc/diapason/env` (no `-` prefix), so it will
 
 ```bash
 sudo mkdir -p /etc/diapason
-echo "OPENJARVIS_API_KEY=$(diapason auth generate-key)" | sudo tee /etc/diapason/env
+echo "DIAPASON_API_KEY=$(diapason auth generate-key)" | sudo tee /etc/diapason/env
 sudo chmod 600 /etc/diapason/env
 ```
 
@@ -125,8 +125,8 @@ Add multiple `Environment` directives or use `EnvironmentFile` for complex confi
 ```ini
 [Service]
 Environment=HOME=/opt/diapason
-Environment=OPENJARVIS_ENGINE_DEFAULT=vllm
-Environment=OPENJARVIS_OLLAMA_HOST=http://localhost:11434
+Environment=DIAPASON_ENGINE_DEFAULT=vllm
+Environment=DIAPASON_OLLAMA_HOST=http://localhost:11434
 ```
 
 Or load from a file:

@@ -14,21 +14,21 @@ from typing import Optional
 # distinction only in the flag bits, which we do not need — holding either
 # Control triggers dictation.
 KEYCODES = {
-    "control": {59, 62},   # kVK_Control, kVK_RightControl
-    "option": {58, 61},    # kVK_Option, kVK_RightOption
-    "command": {55, 54},   # kVK_Command, kVK_RightCommand
-    "shift": {56, 60},     # kVK_Shift, kVK_RightShift
-    "fn": {63},            # kVK_Function
+    "control": {59, 62},  # kVK_Control, kVK_RightControl
+    "option": {58, 61},  # kVK_Option, kVK_RightOption
+    "command": {55, 54},  # kVK_Command, kVK_RightCommand
+    "shift": {56, 60},  # kVK_Shift, kVK_RightShift
+    "fn": {63},  # kVK_Function
 }
 
 # CGEventFlags mask bits, so the tap can tell a *bare* modifier press (the key
 # we bound, and nothing else) from a chord like Cmd+Control.
 FLAG_MASKS = {
-    "control": 1 << 18,   # kCGEventFlagMaskControl
-    "option": 1 << 19,    # kCGEventFlagMaskAlternate
-    "command": 1 << 20,   # kCGEventFlagMaskCommand
-    "shift": 1 << 17,     # kCGEventFlagMaskShift
-    "fn": 1 << 23,        # kCGEventFlagMaskSecondaryFn
+    "control": 1 << 18,  # kCGEventFlagMaskControl
+    "option": 1 << 19,  # kCGEventFlagMaskAlternate
+    "command": 1 << 20,  # kCGEventFlagMaskCommand
+    "shift": 1 << 17,  # kCGEventFlagMaskShift
+    "fn": 1 << 23,  # kCGEventFlagMaskSecondaryFn
 }
 
 # Control is the default. Fn is avoided as a default because macOS itself
@@ -73,9 +73,7 @@ def is_bare_press(hotkey: str, flags: int) -> bool:
     return not (flags & others)
 
 
-def classify_flags_change(
-    hotkey: str, keycode: int, flags: int
-) -> Optional[str]:
+def classify_flags_change(hotkey: str, keycode: int, flags: int) -> Optional[str]:
     """Interpret a flagsChanged event as ``"down"``, ``"up"`` or ``None``.
 
     macOS reports modifier presses as ``flagsChanged`` events carrying the new

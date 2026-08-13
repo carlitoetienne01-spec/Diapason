@@ -138,7 +138,7 @@ diapason ask -m deepseek-r1:14b "Hello"
 **Use an environment variable:**
 
 ```bash
-OPENJARVIS_MODEL=qwen3.5:9b diapason ask "Hello"
+DIAPASON_MODEL=qwen3.5:9b diapason ask "Hello"
 ```
 
 ## Troubleshooting

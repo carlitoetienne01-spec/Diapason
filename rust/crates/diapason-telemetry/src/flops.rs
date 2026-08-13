@@ -164,7 +164,10 @@ mod tests {
         let mfu = compute_mfu(1e12, 1.0, "H100", 1);
         // MFU = 1e12 / (989e12) ~= 0.001011
         let expected = 1e12 / (989.0 * 1e12);
-        assert!((mfu - expected).abs() < 1e-9, "mfu = {mfu}, expected = {expected}");
+        assert!(
+            (mfu - expected).abs() < 1e-9,
+            "mfu = {mfu}, expected = {expected}"
+        );
     }
 
     #[test]

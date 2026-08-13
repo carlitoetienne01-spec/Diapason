@@ -51,7 +51,8 @@ impl PySessionStore {
     }
 
     fn link_channel(&self, session_id: &str, channel: &str, channel_user_id: &str) {
-        self.inner.link_channel(session_id, channel, channel_user_id);
+        self.inner
+            .link_channel(session_id, channel, channel_user_id);
     }
 
     fn list_sessions(&self, active_only: bool, limit: usize) -> String {

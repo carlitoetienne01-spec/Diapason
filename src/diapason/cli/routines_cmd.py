@@ -104,7 +104,9 @@ def _print_run(console: Console, rid: str, out: dict) -> None:
         if content:
             console.print(content[:800])
     else:
-        console.print(f"[red]{rid} failed[/red] {out.get('error') or out.get('content')}")
+        console.print(
+            f"[red]{rid} failed[/red] {out.get('error') or out.get('content')}"
+        )
 
 
 @routines.command("enable")

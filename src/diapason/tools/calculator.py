@@ -95,20 +95,27 @@ def safe_eval(expression: str) -> float:
         from diapason._rust_bridge import get_rust_module
 
         _rust = get_rust_module()
-        return float(_rust.CalculatorTool().execute(expression))
-    except ImportError:
-        import ast as _ast
+        native_result = _rust.CalculatorTool().execute(expression)
+        try:
+            return float(native_result)
+        except (TypeError, ValueError):
+            # The native result includes a human-readable failure string.
+            # Re-evaluate with the canonical AST path to preserve the public
+            # Python exceptions and exact supported-function contract.
+            pass
+    except (AttributeError, ImportError, RuntimeError):
+        pass
 
-        # Support ^ as the power operator (common math/calculator notation).
-        expression = expression.replace("^", "**")
-        try:
-            tree = _ast.parse(expression, mode="eval")
-        except SyntaxError as exc:
-            raise ValueError(f"Syntax error in expression: {exc}") from exc
-        try:
-            return float(_safe_eval_node(tree.body))
-        except ZeroDivisionError:
-            return math.inf
+    # Support ^ as the power operator (common math/calculator notation).
+    expression = expression.replace("^", "**")
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"Syntax error in expression: {exc}") from exc
+    try:
+        return float(_safe_eval_node(tree.body))
+    except ZeroDivisionError:
+        return math.inf
 
 
 @ToolRegistry.register("calculator")

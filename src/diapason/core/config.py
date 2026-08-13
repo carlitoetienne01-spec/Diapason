@@ -53,7 +53,7 @@ except ModuleNotFoundError:
 
 # Legacy names, kept for the ~45 modules that import them. They are resolved
 # once at import via the env-aware resolver in ``diapason.core.paths`` (the
-# install-script model: ``OPENJARVIS_HOME`` / ``XDG_DATA_HOME`` are set before
+# install-script model: ``DIAPASON_HOME`` / ``XDG_DATA_HOME`` are set before
 # the process starts). They are real module attributes — not computed lazily —
 # so existing tests can ``monkeypatch.setattr`` them and so dataclass-instance
 # defaults stay consistent. Code that must react to a mid-process env change
@@ -214,7 +214,13 @@ def _total_ram_gb() -> float:
     try:
         if platform.system() == "Darwin":
             raw = _run_cmd(["sysctl", "-n", "hw.memsize"])
-            return round(int(raw) / (1024**3), 1) if raw else 0.0
+            if raw:
+                return round(int(raw) / (1024**3), 1)
+            # Sandboxed macOS processes may be denied `sysctl` while POSIX
+            # sysconf remains available.
+            pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            return round((pages * page_size) / (1024**3), 1)
         if platform.system() == "Windows":
             import ctypes
 
@@ -998,10 +1004,10 @@ class AgentConfig:
     system_prompt: str = ""  # inline system prompt (takes precedence if set)
     system_prompt_path: str = ""  # path to system prompt file (.txt, .md)
     context_from_memory: bool = True  # inject relevant memory context into prompts
-    # "auto": confirmation-gated tools run without asking (historical
-    # behavior). "ask": they queue into the approval bell and wait for the
-    # user's decision. Read at call time by server.approval_bridge.
-    tool_approval: str = "auto"
+    # Confirmation-gated tools fail closed until the user explicitly agrees.
+    # Existing configs may still opt into "auto", but it is no longer safe by
+    # default for an assistant capable of shell and filesystem operations.
+    tool_approval: str = "ask"
     default_system_prompt: str = (
         "You are Diapason, a helpful AI assistant running locally on the "
         "user's own hardware. You are not a cloud service, and you are not "
@@ -1077,7 +1083,7 @@ class AnalyticsConfig:
     or hardware identifiers are ever sent. See ``docs/telemetry.md``.
     """
 
-    enabled: bool = True
+    enabled: bool = False
     host: str = "https://34.231.106.201.sslip.io"
     key: str = "phc_ysKu72QaxzYNmDpHFcesD2ZZAe68zkdWJEKoYYkc5e3n"
     anon_id_path: str = field(default_factory=lambda: str(get_config_dir() / "anon_id"))
@@ -1278,8 +1284,9 @@ class ChannelConfig:
 class CapabilitiesConfig:
     """RBAC capability system settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     policy_path: str = ""
+    default_deny: bool = True
 
 
 @dataclass(slots=True)
@@ -1304,7 +1311,7 @@ class SecurityConfig:
     rate_limit_burst: int = 10
     local_engine_bypass: bool = False
     local_tool_bypass: bool = False
-    profile: str = ""
+    profile: str = "personal"
     vault_key_path: str = field(
         default_factory=lambda: str(get_config_dir() / ".vault_key")
     )
@@ -1322,6 +1329,8 @@ _SECURITY_PROFILES: Dict[str, Dict[str, Dict[str, Any]]] = {
             "rate_limit_enabled": True,
             "local_engine_bypass": False,
             "local_tool_bypass": False,
+            "rate_limit_rpm": 60,
+            "rate_limit_burst": 10,
         },
         "server": {
             "host": "127.0.0.1",
@@ -1713,13 +1722,11 @@ class PrivacyConfig:
     per-domain switches may only ever be *more* restrictive than it — never
     less. Turning ``local_only`` on cannot be overridden by any of them.
 
-    The default stays ``False`` so that existing cloud setups keep working:
-    flipping a privacy default silently would break users without telling
-    them. Set ``local_only = true`` under ``[privacy]`` for a machine where
-    nothing may leave.
+    New installations default to ``True``. Existing cloud setups can opt in
+    explicitly by setting ``local_only = false`` under ``[privacy]``.
     """
 
-    local_only: bool = False
+    local_only: bool = True
 
 
 @dataclass
@@ -1999,7 +2006,7 @@ def load_config(path: Optional[Path] = None) -> DiapasonConfig:
     Parameters
     ----------
     path:
-        Explicit config file. If not set, uses ``OPENJARVIS_CONFIG`` when set,
+        Explicit config file. If not set, uses ``DIAPASON_CONFIG`` when set,
         otherwise ``~/.diapason/config.toml``.
     """
     _ensure_config_dir()

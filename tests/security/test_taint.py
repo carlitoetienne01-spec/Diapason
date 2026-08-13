@@ -108,7 +108,7 @@ class TestAutoDetect:
         assert ts.has(TaintLabel.PII)
 
     def test_detect_api_key(self):
-        ts = auto_detect_taint("Key: sk-abc123def456ghi789jkl012mno")
+        ts = auto_detect_taint("Key: sk-abc123def456ghi789jkl012mno")  # gitleaks:allow
         assert ts.has(TaintLabel.SECRET)
 
     def test_detect_github_token(self):
@@ -137,6 +137,9 @@ class TestPropagate:
 
     def test_propagate_merges(self):
         input_taint = TaintSet.from_labels(TaintLabel.EXTERNAL)
-        result = propagate_taint(input_taint, "Key: sk-abc123def456ghi789jkl012mno")
+        result = propagate_taint(
+            input_taint,
+            "Key: sk-abc123def456ghi789jkl012mno",  # gitleaks:allow
+        )
         assert result.has(TaintLabel.EXTERNAL)
         assert result.has(TaintLabel.SECRET)

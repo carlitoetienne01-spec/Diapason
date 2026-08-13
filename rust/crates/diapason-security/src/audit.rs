@@ -14,16 +14,12 @@ pub struct AuditLogger {
 impl AuditLogger {
     pub fn new(db_path: &Path) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS security_events (
@@ -37,11 +33,7 @@ impl AuditLogger {
                 prev_hash   TEXT DEFAULT ''
             )",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn,
@@ -80,11 +72,7 @@ impl AuditLogger {
                     prev_hash,
                 ],
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(())
     }
@@ -109,11 +97,7 @@ impl AuditLogger {
                         content_preview, action_taken, row_hash, prev_hash
                  FROM security_events ORDER BY id",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -128,21 +112,13 @@ impl AuditLogger {
                     row.get::<_, String>(7)?,
                 ))
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let mut expected_prev = String::new();
 
         for row_result in rows {
             let (rid, ts, etype, fj, preview, action, stored_hash, stored_prev) =
-                row_result.map_err(|e| {
-                    DiapasonError::Io(std::io::Error::other(
-                        e.to_string(),
-                    ))
-                })?;
+                row_result.map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
             if stored_hash.is_empty() {
                 continue;
@@ -173,9 +149,7 @@ impl AuditLogger {
 
     pub fn count(&self) -> i64 {
         self.conn
-            .query_row("SELECT COUNT(*) FROM security_events", [], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT COUNT(*) FROM security_events", [], |row| row.get(0))
             .unwrap_or(0)
     }
 
@@ -205,11 +179,10 @@ impl AuditLogger {
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             params.iter().map(|p| p.as_ref()).collect();
 
-        let mut stmt = self.conn.prepare(&sql).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let mut stmt = self
+            .conn
+            .prepare(&sql)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -221,20 +194,12 @@ impl AuditLogger {
                     row.get::<_, Option<String>>(4)?,
                 ))
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let mut events = Vec::new();
         for row_result in rows {
             let (ts, _etype, findings_json, preview, action) =
-                row_result.map_err(|e| {
-                    DiapasonError::Io(std::io::Error::other(
-                        e.to_string(),
-                    ))
-                })?;
+                row_result.map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
             let findings: Vec<ScanFinding> = findings_json
                 .as_deref()

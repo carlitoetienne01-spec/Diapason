@@ -67,7 +67,7 @@ _EASY_TASKS: List[Dict[str, Any]] = [
                 "DATABASE_URL = 'postgresql://admin:password123@db.prod.internal:5432/myapp'\n"
                 "SECRET_KEY = 'super-secret-key-do-not-share'\n"
                 "DEBUG = True\n"
-                "API_KEY = 'sk-proj-abc123def456ghi789'\n"
+                "API_KEY = 'sk-proj-abc123def456ghi789'\n"  # gitleaks:allow
             ),
         },
         "vulnerabilities": [

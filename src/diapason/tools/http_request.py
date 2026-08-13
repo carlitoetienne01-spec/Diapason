@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import time
 import urllib.parse
@@ -14,8 +13,6 @@ from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.security.ssrf import check_ssrf
 from diapason.tools._stubs import BaseTool, ToolSpec
-
-logger = logging.getLogger(__name__)
 
 # Maximum response body size: 1 MB
 _MAX_RESPONSE_BYTES = 1_048_576
@@ -115,32 +112,6 @@ class HttpRequestTool(BaseTool):
         }
         body = params.get("body")
         timeout = params.get("timeout", 30)
-
-        _rust = None
-        try:
-            from diapason._rust_bridge import get_rust_module
-
-            _rust = get_rust_module()
-        except ImportError:
-            pass
-        if _rust is not None and not headers:
-            try:
-                content = _rust.HttpRequestTool().execute(url, method, body)
-                return ToolResult(
-                    tool_name="http_request",
-                    content=(
-                        content[:_MAX_RESPONSE_BYTES]
-                        if len(content) > _MAX_RESPONSE_BYTES
-                        else content
-                    ),
-                    success=True,
-                    metadata={
-                        "status_code": 200,
-                        "truncated": len(content) > _MAX_RESPONSE_BYTES,
-                    },
-                )
-            except Exception as exc:
-                logger.debug("Rust HTTP request fallback to httpx: %s", exc)
 
         try:
             t0 = time.time()

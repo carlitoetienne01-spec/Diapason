@@ -33,7 +33,7 @@ def capture_screen_to_temp() -> str:
     Raises ``RuntimeError`` with actionable guidance if capture fails or the
     platform has no available backend.
     """
-    fd, path = tempfile.mkstemp(prefix="jarvis_screen_", suffix=".png")
+    fd, path = tempfile.mkstemp(prefix="diapason_screen_", suffix=".png")
     os.close(fd)
 
     if sys.platform.startswith("win"):
@@ -73,8 +73,11 @@ def capture_screen_to_temp() -> str:
                 pass
             raise RuntimeError(
                 "screencapture failed: "
-                + (proc.stderr.strip() or "empty image. "
-                   "Grant Screen Recording in System Settings → Privacy.")
+                + (
+                    proc.stderr.strip()
+                    or "empty image. "
+                    "Grant Screen Recording in System Settings → Privacy."
+                )
             )
         return path
 

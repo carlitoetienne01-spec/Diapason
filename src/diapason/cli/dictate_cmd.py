@@ -393,8 +393,7 @@ def _ensure_permissions() -> bool:
         return True
 
     click.echo(
-        "Dictation needs these macOS permissions, still missing: "
-        + ", ".join(missing),
+        "Dictation needs these macOS permissions, still missing: " + ", ".join(missing),
         err=True,
     )
     click.echo(
@@ -521,10 +520,7 @@ def _run_setup(config) -> None:
     click.echo("Dictation setup\n")
     for c in checks:
         colour = "green" if c.ok else ("red" if c.blocking else "yellow")
-        click.echo(
-            f"  {click.style(c.symbol, fg=colour)} "
-            f"{c.name:<20} {c.detail}"
-        )
+        click.echo(f"  {click.style(c.symbol, fg=colour)} {c.name:<20} {c.detail}")
         if c.fix:
             click.echo(f"      → {c.fix}")
 

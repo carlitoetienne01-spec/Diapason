@@ -18,6 +18,13 @@ class RateLimitConfig:
     burst_size: int = 10  # max tokens in bucket
     enabled: bool = True
 
+    def __post_init__(self) -> None:
+        """Reject configurations that would disable or break enforcement."""
+        if self.requests_per_minute <= 0:
+            raise ValueError("requests_per_minute must be greater than zero")
+        if self.burst_size <= 0:
+            raise ValueError("burst_size must be greater than zero")
+
 
 class TokenBucket:
     """Thread-safe token bucket for rate limiting."""
@@ -67,19 +74,27 @@ class RateLimiter:
         self._buckets: Dict[str, TokenBucket] = {}
         self._lock = threading.Lock()
 
-        from diapason._rust_bridge import get_rust_module
+        self._rust_impl = None
+        try:
+            from diapason._rust_bridge import get_rust_module
 
-        _rust = get_rust_module()
-        self._rust_impl = _rust.RateLimiter(
-            requests_per_minute=self._config.requests_per_minute,
-            burst_size=self._config.burst_size,
-        )
+            _rust = get_rust_module()
+            self._rust_impl = _rust.RateLimiter(
+                requests_per_minute=self._config.requests_per_minute,
+                burst_size=self._config.burst_size,
+            )
+        except (ImportError, AttributeError, RuntimeError):
+            # Rate limiting is a security boundary, not an optional native
+            # feature. Fall back to the thread-safe Python token bucket.
+            self._rust_impl = None
 
     def check(self, key: str) -> Tuple[bool, float]:
         """Check if request is allowed for key — always via Rust backend."""
         if not self._config.enabled:
             return True, 0.0
-        return self._rust_impl.check(key)
+        if self._rust_impl is not None:
+            return self._rust_impl.check(key)
+        return self._get_bucket(key).consume()
 
     def _get_bucket(self, key: str) -> TokenBucket:
         """Get or create a bucket for the given key."""
@@ -94,8 +109,9 @@ class RateLimiter:
 
     def reset(self, key: Optional[str] = None) -> None:
         """Reset rate limit state for a key or all keys — always via Rust backend."""
-        self._rust_impl.reset(key)
-        return
+        if self._rust_impl is not None:
+            self._rust_impl.reset(key)
+            return
         with self._lock:
             if key:
                 self._buckets.pop(key, None)

@@ -34,7 +34,10 @@ impl BM25Memory {
     fn tokenize(text: &str) -> HashMap<String, usize> {
         let mut counts = HashMap::new();
         for word in text.split_whitespace() {
-            let normalized = word.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+            let normalized = word
+                .to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string();
             if !normalized.is_empty() {
                 *counts.entry(normalized).or_insert(0) += 1;
             }
@@ -61,8 +64,8 @@ impl BM25Memory {
             }
 
             let idf = ((n - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0).ln();
-            let tf_norm = (tf * (self.k1 + 1.0))
-                / (tf + self.k1 * (1.0 - self.b + self.b * dl / avg_dl));
+            let tf_norm =
+                (tf * (self.k1 + 1.0)) / (tf + self.k1 * (1.0 - self.b + self.b * dl / avg_dl));
             score += idf * tf_norm;
         }
         score
@@ -106,11 +109,7 @@ impl MemoryBackend for BM25Memory {
         Ok(doc_id)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         let docs = self.docs.read();
         if docs.is_empty() {
             return Ok(vec![]);
@@ -180,7 +179,8 @@ mod tests {
         let mem = BM25Memory::default();
         mem.store("Rust is fast and safe", "doc1", None).unwrap();
         mem.store("Python is easy to learn", "doc2", None).unwrap();
-        mem.store("Rust and Python are both great", "doc3", None).unwrap();
+        mem.store("Rust and Python are both great", "doc3", None)
+            .unwrap();
 
         let results = mem.retrieve("Rust programming", 2).unwrap();
         assert!(!results.is_empty());

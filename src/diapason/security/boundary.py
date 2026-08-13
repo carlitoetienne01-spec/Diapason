@@ -7,6 +7,7 @@ or external tool calls.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional
@@ -51,25 +52,15 @@ class BoundaryGuard:
         self._mode = mode
         self._enabled = enabled
         self._bus = bus
-        if scanners is not None:
-            self._scanners = scanners
-        else:
-            self._scanners = self._default_scanners()
+        self._scanners = scanners if scanners is not None else self._default_scanners()
+        if self._enabled and not self._scanners:
+            raise RuntimeError("BoundaryGuard requires at least one working scanner")
 
     @staticmethod
     def _default_scanners() -> List["BaseScanner"]:
-        try:
-            from diapason.security.scanner import PIIScanner, SecretScanner
+        from diapason.security.scanner import PIIScanner, SecretScanner
 
-            return [SecretScanner(), PIIScanner()]
-        except (ImportError, Exception) as exc:
-            logger.warning(
-                "Rust-backed scanners unavailable (%s); "
-                "BoundaryGuard running without scanners. "
-                "Build the Rust extension: uv run maturin develop",
-                exc,
-            )
-            return []
+        return [SecretScanner(), PIIScanner()]
 
     def scan_outbound(self, content: str, destination: str) -> str:
         """Scan text before it leaves the device.
@@ -120,6 +111,15 @@ class BoundaryGuard:
             return replace(tool_call, arguments=redacted_args)
         return tool_call
 
+    def redact_for_storage(self, content: str) -> str:
+        """Always redact secrets and PII before telemetry or trace storage."""
+        if not self._enabled or not content:
+            return content
+        redacted = content
+        for scanner in self._scanners:
+            redacted = scanner.redact(redacted)
+        return redacted
+
     def _emit_alert(self, destination: str, content: str) -> None:
         if self._bus is None:
             return
@@ -132,7 +132,11 @@ class BoundaryGuard:
                     "source": "boundary_guard",
                     "destination": destination,
                     "mode": self._mode,
-                    "content_preview": content[:80],
+                    # Never persist the sensitive value that triggered the
+                    # boundary. A short hash supports correlation without
+                    # turning the audit log into another secret store.
+                    "content_sha256": hashlib.sha256(content.encode()).hexdigest(),
+                    "content_length": len(content),
                 },
             )
         except Exception:

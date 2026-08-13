@@ -246,16 +246,12 @@ mod tests {
     #[test]
     fn test_error_display() {
         let e = RegistryError::NotFound("ollama".into(), "EngineRegistry");
-        assert_eq!(
-            e.to_string(),
-            "Key 'ollama' not found in EngineRegistry"
-        );
+        assert_eq!(e.to_string(), "Key 'ollama' not found in EngineRegistry");
     }
 
     #[test]
     fn test_error_from_registry() {
-        let e: DiapasonError =
-            RegistryError::DuplicateKey("foo".into(), "ToolRegistry").into();
+        let e: DiapasonError = RegistryError::DuplicateKey("foo".into(), "ToolRegistry").into();
         assert!(matches!(e, DiapasonError::Registry(_)));
     }
 

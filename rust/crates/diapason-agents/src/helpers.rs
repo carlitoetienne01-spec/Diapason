@@ -23,7 +23,13 @@ impl<E: InferenceEngine> AgentHelpers<E> {
         temperature: f64,
         max_tokens: i64,
     ) -> Self {
-        Self { engine, model, system_prompt, temperature, max_tokens }
+        Self {
+            engine,
+            model,
+            system_prompt,
+            temperature,
+            max_tokens,
+        }
     }
 
     pub fn build_messages(&self, input: &str, history: &[Message]) -> Vec<Message> {
@@ -41,7 +47,13 @@ impl<E: InferenceEngine> AgentHelpers<E> {
         messages: &[Message],
         extra: Option<&serde_json::Value>,
     ) -> Result<GenerateResult, diapason_core::DiapasonError> {
-        self.engine.generate(messages, &self.model, self.temperature, self.max_tokens, extra)
+        self.engine.generate(
+            messages,
+            &self.model,
+            self.temperature,
+            self.max_tokens,
+            extra,
+        )
     }
 
     pub fn engine(&self) -> &E {
@@ -69,12 +81,18 @@ mod tests {
     #[test]
     fn test_strip_think_tags() {
         let input = "Hello <think>internal reasoning</think> world";
-        assert_eq!(AgentHelpers::<Engine>::strip_think_tags(input), "Hello  world");
+        assert_eq!(
+            AgentHelpers::<Engine>::strip_think_tags(input),
+            "Hello  world"
+        );
     }
 
     #[test]
     fn test_strip_think_tags_multiline() {
         let input = "<think>\nstep 1\nstep 2\n</think>\nAnswer: 42";
-        assert_eq!(AgentHelpers::<Engine>::strip_think_tags(input), "Answer: 42");
+        assert_eq!(
+            AgentHelpers::<Engine>::strip_think_tags(input),
+            "Answer: 42"
+        );
     }
 }

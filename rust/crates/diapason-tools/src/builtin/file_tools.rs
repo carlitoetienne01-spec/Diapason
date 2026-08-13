@@ -129,9 +129,7 @@ mod tests {
     #[test]
     fn test_file_read_sensitive_blocked() {
         let tool = FileReadTool;
-        let result = tool
-            .execute(&serde_json::json!({"path": ".env"}))
-            .unwrap();
+        let result = tool.execute(&serde_json::json!({"path": ".env"})).unwrap();
         assert!(!result.success);
         assert!(result.content.contains("sensitive"));
     }

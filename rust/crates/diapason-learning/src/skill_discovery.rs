@@ -153,11 +153,7 @@ mod tests {
                 "research topic C".into(),
             ),
             (
-                vec![
-                    "file_read".into(),
-                    "calculator".into(),
-                    "file_write".into(),
-                ],
+                vec!["file_read".into(), "calculator".into(), "file_write".into()],
                 0.85,
                 "compute stats".into(),
             ),

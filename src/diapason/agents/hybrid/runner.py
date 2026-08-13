@@ -5,7 +5,7 @@
     python -m diapason.agents.hybrid.runner --cell minions-gaia-qwen27b-opus-3
 
 Reads a cell definition from ``registry/<method>.toml`` (bundled with this
-package or pointed at by ``OPENJARVIS_HYBRID_REGISTRY_DIR``), constructs
+package or pointed at by ``DIAPASON_HYBRID_REGISTRY_DIR``), constructs
 the registered agent, loads bench tasks via Diapason's existing dataset
 providers, runs every task, scores it, and writes
 ``<EXPERIMENTS_DIR>/runs/<cell>/results.jsonl`` + ``summary.json``.
@@ -38,15 +38,17 @@ except ModuleNotFoundError:
 from diapason.agents._stubs import AgentContext, AgentResult
 from diapason.agents.hybrid._energy import EnergyCollector
 from diapason.agents.hybrid._prompts import format_prompt as _format_prompt
+from diapason.core.env import get as _env_get
 from diapason.core.paths import get_config_dir
 
 PACKAGE_DIR = Path(__file__).parent
 DEFAULT_REGISTRY_DIR = PACKAGE_DIR / "registry"
 DEFAULT_EXPERIMENTS_DIR = Path(
-    os.environ.get(
-        "OPENJARVIS_HYBRID_EXPERIMENTS_DIR",
-        get_config_dir() / "experiments" / "hybrid",
+    _env_get(
+        "HYBRID_EXPERIMENTS_DIR",
+        str(get_config_dir() / "experiments" / "hybrid"),
     )
+    or str(get_config_dir() / "experiments" / "hybrid")
 )
 DEFAULT_SUBSETS_DIR = DEFAULT_EXPERIMENTS_DIR / "subsets"
 DEFAULT_RUNS_DIR = DEFAULT_EXPERIMENTS_DIR / "runs"
@@ -61,10 +63,8 @@ DEFAULT_RUNS_DIR = DEFAULT_EXPERIMENTS_DIR / "runs"
 # never to abort a healthy task, short enough that a frozen one is
 # abandoned and recorded as an error row (which the resume logic re-runs)
 # instead of silently killing the process. Override with
-# ``OPENJARVIS_HYBRID_TASK_TIMEOUT_S`` (0 / negative disables).
-DEFAULT_TASK_TIMEOUT_S = float(
-    os.environ.get("OPENJARVIS_HYBRID_TASK_TIMEOUT_S", "1800") or 1800
-)
+# ``DIAPASON_HYBRID_TASK_TIMEOUT_S`` (0 / negative disables).
+DEFAULT_TASK_TIMEOUT_S = float(_env_get("HYBRID_TASK_TIMEOUT_S", "1800") or 1800)
 
 
 # ---------- Registry ----------
@@ -103,7 +103,7 @@ def _validate_cells(cells: Dict[str, Dict[str, Any]]) -> None:
 def load_registry(registry_dir: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     """Merge every ``<registry_dir>/*.toml``. Cell names must be unique."""
     base = registry_dir or DEFAULT_REGISTRY_DIR
-    env_override = os.environ.get("OPENJARVIS_HYBRID_REGISTRY_DIR")
+    env_override = _env_get("HYBRID_REGISTRY_DIR")
     if env_override:
         base = Path(env_override)
     if not base.is_dir():
@@ -263,8 +263,8 @@ def _get_gaia_scorer():
     """Lazily build the shared GAIA scorer (normalized exact-match + LLM judge).
 
     Judge model defaults to ``gpt-5-mini-2025-08-07`` (override via
-    ``OPENJARVIS_GAIA_JUDGE_MODEL``); the judge backend is the ``cloud``
-    engine, so ``OPENJARVIS_CONFIG`` needs a ``[engine.cloud]`` section.
+    ``DIAPASON_GAIA_JUDGE_MODEL``); the judge backend is the ``cloud``
+    engine, so ``DIAPASON_CONFIG`` needs a ``[engine.cloud]`` section.
     """
     global _GAIA_SCORER
     if _GAIA_SCORER is None:
@@ -275,9 +275,7 @@ def _get_gaia_scorer():
                 )
                 from diapason.evals.scorers.gaia_exact import GAIAScorer
 
-                judge_model = os.environ.get(
-                    "OPENJARVIS_GAIA_JUDGE_MODEL", "gpt-5-mini-2025-08-07"
-                )
+                judge_model = _env_get("GAIA_JUDGE_MODEL", "gpt-5-mini-2025-08-07")
                 try:
                     backend = DiapasonDirectBackend(engine_key="cloud")
                 except Exception:  # noqa: BLE001
@@ -744,7 +742,7 @@ def _run_cell_locked(
 
     # Hard per-task wall-clock cap. A cell may override it via the registry
     # (``method_cfg.task_timeout_s``); otherwise the process-wide default
-    # (env ``OPENJARVIS_HYBRID_TASK_TIMEOUT_S``, 1800s) applies. 0 disables.
+    # (env ``DIAPASON_HYBRID_TASK_TIMEOUT_S``, 1800s) applies. 0 disables.
     mcfg = cell.get("method_cfg") or {}
     task_timeout_s = float(mcfg.get("task_timeout_s", DEFAULT_TASK_TIMEOUT_S))
     if task_timeout_s > 0:

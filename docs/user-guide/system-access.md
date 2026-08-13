@@ -168,22 +168,23 @@ works out where to click.
 Access widens and narrows through `tools.enabled`. Drop entries to take
 capabilities away. That list is the whole grant.
 
-Two stronger isolation options exist. Both are off by default:
+Two additional isolation controls are available. Capabilities are enabled and
+deny-by-default; container isolation remains an explicit deployment choice:
 
 ```toml
 [sandbox]
-enabled = true          # run tools inside a container
+enabled = true          # run tools inside a container (opt-in)
 runtime = "docker"
 
 [security.capabilities]
-enabled = true          # RBAC over declared tool capabilities
-policy_path = "~/.diapason/policy.yaml"
+enabled = true          # RBAC over declared tool capabilities (default)
+default_deny = true     # unmatched capabilities are refused (default)
+policy_path = "~/.diapason/policy.json"
 ```
 
-!!! note "Capabilities are open by default even once enabled"
-    `CapabilityPolicy` is built with `default_deny=False` and no config key
-    exposes that flag, so an agent with no explicit policy entry gets every
-    capability. Write entries for every agent you mean to restrict.
+When no administrator policy file is supplied, Diapason grants only the
+capabilities declared by the tools explicitly selected for that agent. An
+administrator-provided policy is never widened automatically.
 
 For anything untrusted, reach for `docker_shell_exec` and
 `code_interpreter_docker` rather than the host-side versions.

@@ -10,6 +10,7 @@ class TestFileWriteTool:
         tool = FileWriteTool()
         assert tool.spec.name == "file_write"
         assert tool.spec.category == "filesystem"
+        assert tool.spec.requires_confirmation is True
         assert "file:write" in tool.spec.required_capabilities
 
     def test_no_path(self):
@@ -133,3 +134,13 @@ class TestFileWriteTool:
         )
         assert result.success is False
         assert "Invalid mode" in result.content
+
+    def test_refuses_symlink_target(self, tmp_path):
+        target = tmp_path / "target.txt"
+        target.write_text("original", encoding="utf-8")
+        link = tmp_path / "link.txt"
+        link.symlink_to(target)
+        tool = FileWriteTool(allowed_dirs=[str(tmp_path)])
+        result = tool.execute(path=str(link), content="replacement")
+        assert result.success is False
+        assert target.read_text(encoding="utf-8") == "original"

@@ -150,10 +150,7 @@ impl<R: TrialRunner> OptimizationEngine<R> {
     ///    d. Check early stopping
     ///    e. Propose next config
     /// 4. Return the completed `OptimizationRun`.
-    pub fn run(
-        &mut self,
-        progress_callback: Option<&dyn Fn(usize, usize)>,
-    ) -> OptimizationRun {
+    pub fn run(&mut self, progress_callback: Option<&dyn Fn(usize, usize)>) -> OptimizationRun {
         let run_id = uuid::Uuid::new_v4().simple().to_string()[..16].to_string();
 
         let benchmark_name = self.trial_runner.benchmark().to_string();
@@ -280,7 +277,9 @@ mod tests {
 
     impl TrialRunner for MockTrialRunner {
         fn run_trial(&self, config: &TrialConfig) -> TrialResult {
-            let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let idx = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let accuracy = if idx < self.results.len() {
                 self.results[idx]
             } else {
@@ -359,9 +358,9 @@ mod tests {
         };
 
         let trials = vec![
-            make("t1", 0.9, 1.0, 0.1),   // best accuracy, worst latency/cost
-            make("t2", 0.7, 0.5, 0.05),   // lower accuracy, better latency/cost
-            make("t3", 0.6, 0.8, 0.08),   // dominated by t2 (worse on all)
+            make("t1", 0.9, 1.0, 0.1),  // best accuracy, worst latency/cost
+            make("t2", 0.7, 0.5, 0.05), // lower accuracy, better latency/cost
+            make("t3", 0.6, 0.8, 0.08), // dominated by t2 (worse on all)
         ];
 
         let objs = default_objectives();
@@ -430,26 +429,14 @@ mod tests {
         let runner = MockTrialRunner::new(vec![0.5, 0.7]);
         let store = OptimizationStore::in_memory().unwrap();
 
-        let mut engine = OptimizationEngine::new(
-            search_space,
-            llm_opt,
-            runner,
-            Some(store),
-            2,
-            10,
-        );
+        let mut engine = OptimizationEngine::new(search_space, llm_opt, runner, Some(store), 2, 10);
 
         let run = engine.run(None);
         assert_eq!(run.status, RunStatus::Completed);
         assert_eq!(run.trials.len(), 2);
 
         // Verify the store has the data
-        let stored_run = engine
-            .store
-            .as_ref()
-            .unwrap()
-            .get_run(&run.run_id)
-            .unwrap();
+        let stored_run = engine.store.as_ref().unwrap().get_run(&run.run_id).unwrap();
         assert!(stored_run.is_some());
     }
 
@@ -459,14 +446,7 @@ mod tests {
         let llm_opt = LLMOptimizer::new(search_space.clone(), "test-model".into());
         let runner = MockTrialRunner::new(vec![0.5, 0.6]);
 
-        let mut engine = OptimizationEngine::new(
-            search_space,
-            llm_opt,
-            runner,
-            None,
-            2,
-            10,
-        );
+        let mut engine = OptimizationEngine::new(search_space, llm_opt, runner, None, 2, 10);
 
         let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let progress_clone = progress.clone();

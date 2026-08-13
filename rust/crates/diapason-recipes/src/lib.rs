@@ -157,7 +157,10 @@ routing_policy = "heuristic"
     fn test_to_builder_kwargs() {
         let recipe = load_recipe(RECIPE_TOML).unwrap();
         let kwargs = recipe.to_builder_kwargs();
-        assert_eq!(kwargs["name"], serde_json::Value::String("coding_assistant".into()));
+        assert_eq!(
+            kwargs["name"],
+            serde_json::Value::String("coding_assistant".into())
+        );
         assert_eq!(kwargs["temperature"], serde_json::json!(0.7));
         assert!(kwargs.contains_key("tools"));
         assert!(!kwargs.contains_key("schedule_type"));
@@ -181,6 +184,9 @@ name = "extended"
 custom_field = "hello"
 "#;
         let recipe = load_recipe(toml_str).unwrap();
-        assert_eq!(recipe.raw.get("custom_field").unwrap(), &serde_json::json!("hello"));
+        assert_eq!(
+            recipe.raw.get("custom_field").unwrap(),
+            &serde_json::json!("hello")
+        );
     }
 }

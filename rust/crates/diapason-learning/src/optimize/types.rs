@@ -207,20 +207,76 @@ pub fn default_objectives() -> Vec<ObjectiveSpec> {
 /// All supported objectives.
 pub fn all_objectives() -> Vec<ObjectiveSpec> {
     vec![
-        ObjectiveSpec { metric: "accuracy".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "mean_latency_seconds".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "total_cost_usd".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "total_energy_joules".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "avg_power_watts".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "throughput_tok_per_sec".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "mfu_pct".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "mbu_pct".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "ipw".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "ipj".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "energy_per_output_token".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "throughput_per_watt".into(), direction: Direction::Maximize, weight: 1.0 },
-        ObjectiveSpec { metric: "ttft".into(), direction: Direction::Minimize, weight: 1.0 },
-        ObjectiveSpec { metric: "mean_itl_ms".into(), direction: Direction::Minimize, weight: 1.0 },
+        ObjectiveSpec {
+            metric: "accuracy".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "mean_latency_seconds".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "total_cost_usd".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "total_energy_joules".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "avg_power_watts".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "throughput_tok_per_sec".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "mfu_pct".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "mbu_pct".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "ipw".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "ipj".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "energy_per_output_token".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "throughput_per_watt".into(),
+            direction: Direction::Maximize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "ttft".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
+        ObjectiveSpec {
+            metric: "mean_itl_ms".into(),
+            direction: Direction::Minimize,
+            weight: 1.0,
+        },
     ]
 }
 
@@ -497,9 +553,7 @@ mod tests {
                 m.insert("engine".into(), serde_json::json!("ollama"));
                 m
             },
-            constraints: vec![
-                "SimpleAgent should only have max_turns = 1".into(),
-            ],
+            constraints: vec!["SimpleAgent should only have max_turns = 1".into()],
         };
 
         let desc = space.to_prompt_description();
@@ -579,14 +633,8 @@ mod tests {
 
     #[test]
     fn test_param_to_recipe_field() {
-        assert_eq!(
-            param_to_recipe_field("intelligence.model"),
-            Some("model")
-        );
-        assert_eq!(
-            param_to_recipe_field("agent.type"),
-            Some("agent_type")
-        );
+        assert_eq!(param_to_recipe_field("intelligence.model"), Some("model"));
+        assert_eq!(param_to_recipe_field("agent.type"), Some("agent_type"));
         assert_eq!(param_to_recipe_field("unknown.param"), None);
     }
 

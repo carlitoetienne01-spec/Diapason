@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import List
 
+from diapason.core.env import get as _env_get
 from diapason.evals.core.types import (
     BenchmarkConfig,
     DefaultsConfig,
@@ -239,12 +239,10 @@ def load_eval_config(path: str | Path) -> EvalSuiteConfig:
     # Env vars override TOML values; either source may be empty.
     external_raw = raw.get("backend", {}).get("external", {})
     backend_external_base_url = (
-        os.environ.get("JARVIS_BACKEND_BASE_URL")
-        or external_raw.get("base_url")
-        or None
+        _env_get("BACKEND_BASE_URL") or external_raw.get("base_url") or None
     )
     backend_external_api_key = (
-        os.environ.get("JARVIS_BACKEND_API_KEY") or external_raw.get("api_key") or None
+        _env_get("BACKEND_API_KEY") or external_raw.get("api_key") or None
     )
 
     return EvalSuiteConfig(

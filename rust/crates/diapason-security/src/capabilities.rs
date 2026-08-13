@@ -58,8 +58,8 @@ struct AgentPolicy {
 
 /// RBAC capability policy for tool dispatch.
 ///
-/// Default policy: if no explicit policy exists for an agent, all
-/// capabilities are granted. Set `default_deny` to flip.
+/// Default policy: unmatched capabilities are denied unless the caller
+/// explicitly constructs a permissive policy.
 pub struct CapabilityPolicy {
     policies: HashMap<String, AgentPolicy>,
     default_deny: bool,
@@ -74,12 +74,13 @@ impl CapabilityPolicy {
     }
 
     pub fn grant(&mut self, agent_id: &str, capability: &str, pattern: &str) {
-        let policy = self.policies.entry(agent_id.to_string()).or_insert_with(|| {
-            AgentPolicy {
+        let policy = self
+            .policies
+            .entry(agent_id.to_string())
+            .or_insert_with(|| AgentPolicy {
                 grants: Vec::new(),
                 deny: Vec::new(),
-            }
-        });
+            });
         policy.grants.push(CapabilityGrant {
             capability: capability.to_string(),
             pattern: pattern.to_string(),
@@ -87,12 +88,13 @@ impl CapabilityPolicy {
     }
 
     pub fn deny(&mut self, agent_id: &str, capability: &str) {
-        let policy = self.policies.entry(agent_id.to_string()).or_insert_with(|| {
-            AgentPolicy {
+        let policy = self
+            .policies
+            .entry(agent_id.to_string())
+            .or_insert_with(|| AgentPolicy {
                 grants: Vec::new(),
                 deny: Vec::new(),
-            }
-        });
+            });
         policy.deny.push(capability.to_string());
     }
 
@@ -157,7 +159,7 @@ impl CapabilityPolicy {
 
 impl Default for CapabilityPolicy {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(true)
     }
 }
 
@@ -208,6 +210,12 @@ mod tests {
     #[test]
     fn test_default_deny() {
         let policy = CapabilityPolicy::new(true);
+        assert!(!policy.check("agent1", "file:read", ""));
+    }
+
+    #[test]
+    fn test_default_constructor_denies() {
+        let policy = CapabilityPolicy::default();
         assert!(!policy.check("agent1", "file:read", ""));
     }
 

@@ -18,6 +18,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from diapason.core.env import get as _env_get
 from diapason.evals.core.display import (
     print_banner,
     print_completion,
@@ -694,7 +695,7 @@ def _run_terminalbench_native(
 ) -> object:
     """Run TerminalBench V2.1 natively via terminal-bench Harness.
 
-    ``base_url`` (from ``--base-url`` / JARVIS_BACKEND_BASE_URL) targets an
+    ``base_url`` (from ``--base-url`` / DIAPASON_BACKEND_BASE_URL) targets an
     already-running OpenAI-compatible endpoint; when unset, the legacy local
     vLLM default (http://localhost:8000/v1) is used.
     """
@@ -800,12 +801,12 @@ def _run_single(
     base_url = (
         getattr(config, "base_url", None)
         or _metadata.get("base_url")
-        or os.environ.get("JARVIS_BACKEND_BASE_URL")
+        or _env_get("BACKEND_BASE_URL")
     )
     api_key = (
         getattr(config, "api_key", None)
         or _metadata.get("api_key")
-        or os.environ.get("JARVIS_BACKEND_API_KEY")
+        or _env_get("BACKEND_API_KEY")
     )
 
     # TerminalBench V2.1 native: use terminal-bench Harness directly
@@ -1224,7 +1225,7 @@ def main():
         "OpenAI-compatible endpoint for the model under eval. Required for "
         "hermes/openclaw; for diapason-direct/diapason-agent/terminalbench-native "
         "it bypasses engine discovery and targets this URL directly "
-        "(env: JARVIS_BACKEND_BASE_URL)."
+        "(env: DIAPASON_BACKEND_BASE_URL)."
     ),
 )
 @click.option(
@@ -1233,7 +1234,7 @@ def main():
     help=(
         "API key for the --base-url endpoint, sent as a Bearer token. "
         "Required for hermes/openclaw; optional for first-party backends "
-        "(env: JARVIS_BACKEND_API_KEY)."
+        "(env: DIAPASON_BACKEND_API_KEY)."
     ),
 )
 @click.option("-m", "--model", default=None, help="Model identifier")
@@ -1439,11 +1440,11 @@ def run(
         sheets_worksheet=sheets_worksheet,
         sheets_credentials_path=sheets_credentials_path,
         episode_mode=episode_mode,
-        base_url=base_url or os.environ.get("JARVIS_BACKEND_BASE_URL"),
-        api_key=api_key or os.environ.get("JARVIS_BACKEND_API_KEY"),
+        base_url=base_url or _env_get("BACKEND_BASE_URL"),
+        api_key=api_key or _env_get("BACKEND_API_KEY"),
         metadata={
-            "base_url": base_url or os.environ.get("JARVIS_BACKEND_BASE_URL"),
-            "api_key": api_key or os.environ.get("JARVIS_BACKEND_API_KEY"),
+            "base_url": base_url or _env_get("BACKEND_BASE_URL"),
+            "api_key": api_key or _env_get("BACKEND_API_KEY"),
         },
     )
 

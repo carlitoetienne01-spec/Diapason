@@ -1,9 +1,9 @@
 site_name: Diapason
-site_url: https://open-jarvis.github.io/OpenJarvis/
+site_url: https://open-diapason.github.io/Diapason/
 site_description: Personal AI, On Personal Devices
 site_author: Diapason Contributors
-repo_url: https://github.com/open-jarvis/OpenJarvis
-repo_name: open-jarvis/OpenJarvis
+repo_url: https://github.com/open-diapason/Diapason
+repo_name: open-diapason/Diapason
 edit_uri: edit/main/docs/
 
 copyright: Copyright &copy; 2026 Diapason Contributors
@@ -141,7 +141,7 @@ extra:
     index_name: ""   # e.g. "diapason"
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/open-jarvis/OpenJarvis
+      link: https://github.com/open-diapason/Diapason
 
 nav:
   - Home: index.md
@@ -151,6 +151,7 @@ nav:
       - Quick Start: getting-started/quickstart.md
       - Code Snippets: getting-started/snippets.md
       - Configuration: getting-started/configuration.md
+      - Migration to Diapason: getting-started/migration-to-diapason.md
   - Showcase:
       - Overview: showcase/index.md
       - Morning Brief: showcase/morning-brief.md
@@ -174,6 +175,7 @@ nav:
       - Learning: architecture/learning.md
       - Query Flow: architecture/query-flow.md
       - Security: architecture/security.md
+      - Threat Model: security/threat-model.md
       - Design Principles: architecture/design-principles.md
   - API Reference: api-reference/
   - User Guide:

@@ -21,7 +21,7 @@
     <!--
     <key>EnvironmentVariables</key>
     <dict>
-        <key>OPENJARVIS_API_KEY</key>
+        <key>DIAPASON_API_KEY</key>
         <string>REPLACE_WITH_A_REAL_KEY</string>
     </dict>
     -->

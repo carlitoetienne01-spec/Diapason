@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Dict, Tuple
 
 from diapason._rust_bridge import get_rust_module, scan_result_from_json
@@ -19,8 +20,14 @@ class SecretScanner(BaseScanner):
     scanner_id = "secrets"
 
     def __init__(self) -> None:
-        _rust = get_rust_module()
-        self._rust_impl = _rust.SecretScanner()
+        try:
+            _rust = get_rust_module()
+            self._rust_impl = _rust.SecretScanner()
+        except (ImportError, AttributeError, RuntimeError):
+            # Security must not disappear merely because the optional native
+            # accelerator is unavailable.  The Python implementation below is
+            # intentionally feature-equivalent, just slower.
+            self._rust_impl = None
 
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "openai_key": (
@@ -76,12 +83,16 @@ class SecretScanner(BaseScanner):
     }
 
     def scan(self, text: str) -> ScanResult:
-        """Scan *text* for secret patterns — always via Rust backend."""
-        return scan_result_from_json(self._rust_impl.scan(text))
+        """Scan *text* for secret patterns using Rust or the safe fallback."""
+        if self._rust_impl is not None:
+            return scan_result_from_json(self._rust_impl.scan(text))
+        return _scan_python(text, self.PATTERNS)
 
     def redact(self, text: str) -> str:
         """Replace secret matches with ``[REDACTED:{pattern_name}]``."""
-        return self._rust_impl.redact(text)
+        if self._rust_impl is not None:
+            return self._rust_impl.redact(text)
+        return _redact_python(text, self.PATTERNS)
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +106,11 @@ class PIIScanner(BaseScanner):
     scanner_id = "pii"
 
     def __init__(self) -> None:
-        _rust = get_rust_module()
-        self._rust_impl = _rust.PIIScanner()
+        try:
+            _rust = get_rust_module()
+            self._rust_impl = _rust.PIIScanner()
+        except (ImportError, AttributeError, RuntimeError):
+            self._rust_impl = None
 
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "email": (
@@ -137,12 +151,54 @@ class PIIScanner(BaseScanner):
     }
 
     def scan(self, text: str) -> ScanResult:
-        """Scan *text* for PII patterns — always via Rust backend."""
-        return scan_result_from_json(self._rust_impl.scan(text))
+        """Scan *text* for PII patterns using Rust or the safe fallback."""
+        if self._rust_impl is not None:
+            return scan_result_from_json(self._rust_impl.scan(text))
+        return _scan_python(text, self.PATTERNS)
 
     def redact(self, text: str) -> str:
         """Replace PII matches with ``[REDACTED:{pattern_name}]``."""
-        return self._rust_impl.redact(text)
+        if self._rust_impl is not None:
+            return self._rust_impl.redact(text)
+        return _redact_python(text, self.PATTERNS)
+
+
+def _scan_python(
+    text: str,
+    patterns: Dict[str, Tuple[str, ThreatLevel, str]],
+) -> ScanResult:
+    """Pure-Python scanner used when the Rust accelerator is unavailable."""
+    from diapason.security.types import ScanFinding
+
+    result = ScanResult()
+    for name, (pattern, level, description) in patterns.items():
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            result.findings.append(
+                ScanFinding(
+                    pattern_name=name,
+                    matched_text=match.group(0),
+                    threat_level=level,
+                    start=match.start(),
+                    end=match.end(),
+                    description=description,
+                )
+            )
+    return result
+
+
+def _redact_python(
+    text: str,
+    patterns: Dict[str, Tuple[str, ThreatLevel, str]],
+) -> str:
+    result = text
+    for name, (pattern, _level, _description) in patterns.items():
+        result = re.sub(
+            pattern,
+            f"[REDACTED:{name}]",
+            result,
+            flags=re.IGNORECASE,
+        )
+    return result
 
 
 __all__ = ["PIIScanner", "SecretScanner"]

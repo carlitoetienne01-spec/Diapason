@@ -275,9 +275,7 @@ class TestDecodePcmWav:
             w.setnchannels(channels)
             w.setsampwidth(width)
             w.setframerate(rate)
-            w.writeframes(
-                b"".join(struct.pack("<h", int(s * 32767)) for s in samples)
-            )
+            w.writeframes(b"".join(struct.pack("<h", int(s * 32767)) for s in samples))
         return buf.getvalue()
 
     def test_round_trips_the_dictation_format(self):
@@ -365,9 +363,7 @@ class TestLanguageLatchGuards:
         info.duration = duration
         model = MagicMock()
         model.transcribe.return_value = (iter(()), info)
-        with patch(
-            "diapason.speech.faster_whisper.WhisperModel", return_value=model
-        ):
+        with patch("diapason.speech.faster_whisper.WhisperModel", return_value=model):
             backend = FasterWhisperBackend(model_size="base")
             backend.transcribe(b"not a wav")
         return backend

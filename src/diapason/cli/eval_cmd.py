@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -11,6 +10,8 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.table import Table
+
+from diapason.core.env import get as _env_get
 
 # Known benchmarks and backends — mirrored from the evals framework so the
 # CLI can display them even when the (optional) evals package is not installed.
@@ -140,11 +141,17 @@ def eval_list() -> None:
     "backend",
     default="diapason-direct",
     type=click.Choice(
-        ["diapason-direct", "diapason-agent", "hermes", "openclaw", "terminalbench-native"]
+        [
+            "diapason-direct",
+            "diapason-agent",
+            "hermes",
+            "openclaw",
+            "terminalbench-native",
+        ]
     ),
     help=(
         "Inference backend. For hermes/openclaw, also pass --base-url and "
-        "--api-key (or set JARVIS_BACKEND_BASE_URL/JARVIS_BACKEND_API_KEY)."
+        "--api-key (or set DIAPASON_BACKEND_BASE_URL/DIAPASON_BACKEND_API_KEY)."
     ),
 )
 @click.option(
@@ -155,7 +162,7 @@ def eval_list() -> None:
         "OpenAI-compatible endpoint for the model under eval. Required for "
         "hermes/openclaw; for diapason-direct/diapason-agent/terminalbench-native "
         "it bypasses engine discovery and targets this URL directly "
-        "(env: JARVIS_BACKEND_BASE_URL)."
+        "(env: DIAPASON_BACKEND_BASE_URL)."
     ),
 )
 @click.option(
@@ -165,7 +172,7 @@ def eval_list() -> None:
     help=(
         "API key for the --base-url endpoint, sent as a Bearer token. "
         "Required for hermes/openclaw; optional for first-party backends "
-        "(env: JARVIS_BACKEND_API_KEY)."
+        "(env: DIAPASON_BACKEND_API_KEY)."
     ),
 )
 @click.option(
@@ -414,9 +421,9 @@ def eval_run(
         # OpenAI-compatible endpoint for the model under eval. Required for
         # hermes/openclaw (Spec §6.2); honored by first-party backends too on
         # this CLI path. Falls back to env vars so users can also set
-        # JARVIS_BACKEND_BASE_URL/JARVIS_BACKEND_API_KEY.
-        base_url=base_url or os.environ.get("JARVIS_BACKEND_BASE_URL"),
-        api_key=api_key or os.environ.get("JARVIS_BACKEND_API_KEY"),
+        # DIAPASON_BACKEND_BASE_URL/DIAPASON_BACKEND_API_KEY.
+        base_url=base_url or _env_get("BACKEND_BASE_URL"),
+        api_key=api_key or _env_get("BACKEND_API_KEY"),
     )
 
     try:

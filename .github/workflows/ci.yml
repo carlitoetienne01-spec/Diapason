@@ -35,6 +35,24 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
 
+      - name: Verify Diapason identity and version alignment
+        run: uv run python scripts/check_project_identity.py
+
+      - name: Audit complete Python dependency lock
+        run: |
+          uv audit --locked \
+            --ignore-until-fixed GHSA-w8v5-vhqr-4h9v \
+            --ignore GHSA-h35f-9h28-mq5c
+
+      - name: Scan repository for committed secrets
+        # v3 uses GitHub's Node 24 runtime. Pin the scanner itself to the last
+        # known-good release because Gitleaks 8.30.1 has a confirmed default
+        # rules regression that can silently report false negatives.
+        uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.30.0"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -179,3 +197,11 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      - name: Install RustSec audit tool
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust lockfiles
+        run: |
+          cargo audit
+          cargo audit --file ../frontend/src-tauri/Cargo.lock

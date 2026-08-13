@@ -10,7 +10,7 @@ refuses to start on a non-loopback address without one. Set it first:
 ```bash
 cd deploy/docker
 cp .env.example .env
-echo "OPENJARVIS_API_KEY=$(diapason auth generate-key)" > .env   # or paste your own
+echo "DIAPASON_API_KEY=$(diapason auth generate-key)" > .env   # or paste your own
 ```
 
 Then start both the API server and an Ollama backend with Docker Compose:
@@ -19,7 +19,7 @@ Then start both the API server and an Ollama backend with Docker Compose:
 docker compose up -d
 ```
 
-`docker compose` reads `OPENJARVIS_API_KEY` from `.env` (or your shell
+`docker compose` reads `DIAPASON_API_KEY` from `.env` (or your shell
 environment) and fails fast if it is unset. Clients must then send
 `Authorization: Bearer <key>` on `/v1/*` and `/api/*` requests.
 
@@ -151,8 +151,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OPENJARVIS_ENGINE_DEFAULT=ollama
-      - OPENJARVIS_OLLAMA_HOST=http://ollama:11434
+      - DIAPASON_ENGINE_DEFAULT=ollama
+      - DIAPASON_OLLAMA_HOST=http://ollama:11434
     depends_on:
       - ollama
     restart: unless-stopped
@@ -175,8 +175,8 @@ The `diapason` service is configured through environment variables:
 
 | Variable                      | Description                                             | Default                    |
 |-------------------------------|---------------------------------------------------------|----------------------------|
-| `OPENJARVIS_ENGINE_DEFAULT`   | Inference engine backend to use                         | `ollama`                   |
-| `OPENJARVIS_OLLAMA_HOST`      | URL of the Ollama server (uses Docker service name)     | `http://ollama:11434`      |
+| `DIAPASON_ENGINE_DEFAULT`   | Inference engine backend to use                         | `ollama`                   |
+| `DIAPASON_OLLAMA_HOST`      | URL of the Ollama server (uses Docker service name)     | `http://ollama:11434`      |
 
 ### Volumes
 
@@ -203,8 +203,8 @@ services:
     volumes:
       - ./my-config.toml:/root/.diapason/config.toml:ro
     environment:
-      - OPENJARVIS_ENGINE_DEFAULT=ollama
-      - OPENJARVIS_OLLAMA_HOST=http://ollama:11434
+      - DIAPASON_ENGINE_DEFAULT=ollama
+      - DIAPASON_OLLAMA_HOST=http://ollama:11434
     depends_on:
       - ollama
     restart: unless-stopped
@@ -253,8 +253,8 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      - OPENJARVIS_ENGINE_DEFAULT=ollama
-      - OPENJARVIS_OLLAMA_HOST=http://ollama:11434
+      - DIAPASON_ENGINE_DEFAULT=ollama
+      - DIAPASON_OLLAMA_HOST=http://ollama:11434
     depends_on:
       - ollama
     restart: unless-stopped

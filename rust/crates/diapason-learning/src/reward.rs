@@ -115,8 +115,11 @@ impl MultiObjectiveReward {
         let latency_component = -self.weights.gamma_latency * latency_penalty;
         let power_component = -self.weights.gamma_power * power_penalty;
 
-        let total_reward =
-            accuracy_component + cost_component + energy_component + latency_component + power_component;
+        let total_reward = accuracy_component
+            + cost_component
+            + energy_component
+            + latency_component
+            + power_component;
         let ipj = episode.compute_ipj();
 
         let mut breakdown = HashMap::new();
@@ -134,7 +137,10 @@ impl MultiObjectiveReward {
         breakdown.insert("ipj".into(), ipj);
         breakdown.insert("total_energy_joules".into(), episode.total_energy_joules);
         breakdown.insert("total_cost_usd".into(), episode.total_cost_usd);
-        breakdown.insert("total_latency_seconds".into(), episode.total_latency_seconds);
+        breakdown.insert(
+            "total_latency_seconds".into(),
+            episode.total_latency_seconds,
+        );
         breakdown
     }
 
@@ -320,7 +326,10 @@ mod tests {
         let adaptive = AdaptiveRewardWeights::default();
         let w = adaptive.get_weights(10_000);
         assert!((w.total() - 1.0).abs() < 0.01);
-        assert!(w.alpha < 0.35, "late training should reduce accuracy emphasis");
+        assert!(
+            w.alpha < 0.35,
+            "late training should reduce accuracy emphasis"
+        );
     }
 
     #[test]

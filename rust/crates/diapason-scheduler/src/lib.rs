@@ -223,7 +223,14 @@ impl SchedulerStore {
                 "INSERT INTO scheduled_tasks
                     (id, name, schedule_type, schedule_value, status, next_run, created_at)
                  VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6)",
-                params![id, name, schedule_type.as_str(), schedule_value, next_run, now],
+                params![
+                    id,
+                    name,
+                    schedule_type.as_str(),
+                    schedule_value,
+                    next_run,
+                    now
+                ],
             )
             .expect("Failed to insert task");
 
@@ -363,15 +370,10 @@ mod tests {
         let task = store.create_task("check", ScheduleType::Once, "1700000000");
 
         assert!(store.update_status(&task.id, TaskStatus::Paused));
-        assert_eq!(
-            store.get_task(&task.id).unwrap().status,
-            TaskStatus::Paused
-        );
+        assert_eq!(store.get_task(&task.id).unwrap().status, TaskStatus::Paused);
 
         assert!(store.record_run(&task.id, 1700000100.0));
-        assert!(
-            (store.get_task(&task.id).unwrap().last_run.unwrap() - 1700000100.0).abs() < 1e-3
-        );
+        assert!((store.get_task(&task.id).unwrap().last_run.unwrap() - 1700000100.0).abs() < 1e-3);
 
         assert!(!store.update_status("nonexistent", TaskStatus::Cancelled));
         assert!(!store.record_run("nonexistent", 0.0));
@@ -407,7 +409,11 @@ mod tests {
 
     #[test]
     fn test_schedule_type_roundtrip() {
-        for st in [ScheduleType::Cron, ScheduleType::Interval, ScheduleType::Once] {
+        for st in [
+            ScheduleType::Cron,
+            ScheduleType::Interval,
+            ScheduleType::Once,
+        ] {
             let json = serde_json::to_string(&st).unwrap();
             let parsed: ScheduleType = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, st);

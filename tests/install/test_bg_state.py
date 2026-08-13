@@ -28,9 +28,7 @@ def test_get_status_rust_failed(tmp_diapason_home: Path) -> None:
 
 
 def test_get_status_model_downloading(tmp_diapason_home: Path) -> None:
-    (tmp_diapason_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text(
-        ""
-    )
+    (tmp_diapason_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text("")
     s = _bg_state.get_status()
     assert s.models == {"qwen3.5:9b": "downloading"}
 
@@ -67,9 +65,7 @@ def test_all_ready_true_when_all_ready(tmp_diapason_home: Path) -> None:
 
 def test_all_ready_false_when_anything_pending(tmp_diapason_home: Path) -> None:
     (tmp_diapason_home / ".state" / "extension-built").write_text("")
-    (tmp_diapason_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text(
-        ""
-    )
+    (tmp_diapason_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text("")
     s = _bg_state.get_status()
     assert s.all_ready() is False
 

@@ -54,15 +54,11 @@ def test_implicit_download_refused_under_local_only():
 
 
 def test_explicit_pull_allowed_even_under_local_only():
-    assert should_allow_download(
-        local_only=True, explicit=True, already_cached=False
-    )
+    assert should_allow_download(local_only=True, explicit=True, already_cached=False)
 
 
 def test_anything_allowed_when_local_only_is_off():
-    assert should_allow_download(
-        local_only=False, explicit=False, already_cached=False
-    )
+    assert should_allow_download(local_only=False, explicit=False, already_cached=False)
 
 
 def test_guard_raises_only_on_the_refused_case():

@@ -76,9 +76,34 @@ class TestSecurityHeaders:
         assert resp.status_code == 200
 
         for header_name, header_value in SECURITY_HEADERS.items():
+            if header_name == "Strict-Transport-Security":
+                continue
             assert resp.headers.get(header_name) == header_value, (
                 f"Missing or wrong header: {header_name}"
             )
+        # HSTS is meaningful only over HTTPS and can poison local HTTP dev.
+        assert "Strict-Transport-Security" not in resp.headers
+
+    def test_middleware_adds_hsts_over_https(self) -> None:
+        import pytest
+
+        fastapi = pytest.importorskip("fastapi")
+        from fastapi.testclient import TestClient
+
+        app = fastapi.FastAPI()
+        middleware_cls = create_security_middleware()
+        assert middleware_cls is not None
+        app.add_middleware(middleware_cls)
+
+        @app.get("/test")
+        def test_endpoint() -> dict:
+            return {"ok": True}
+
+        response = TestClient(app, base_url="https://testserver").get("/test")
+        assert (
+            response.headers["Strict-Transport-Security"]
+            == SECURITY_HEADERS["Strict-Transport-Security"]
+        )
 
     def test_middleware_skips_options(self) -> None:
         """OPTIONS requests pass through without security headers."""

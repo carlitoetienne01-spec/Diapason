@@ -162,6 +162,10 @@ class QueryOrchestrator:
             agent_kwargs["system_prompt"] = system_prompt
         if s.capability_policy is not None:
             agent_kwargs["capability_policy"] = s.capability_policy
+        if getattr(s, "boundary_guard", None) is not None:
+            agent_kwargs["boundary_guard"] = s.boundary_guard
+        if getattr(s, "rate_limiter", None) is not None:
+            agent_kwargs["rate_limiter"] = s.rate_limiter
         if operator_id is not None:
             agent_kwargs["operator_id"] = operator_id
             agent_kwargs["session_store"] = s.session_store
@@ -192,6 +196,25 @@ class QueryOrchestrator:
             digest_tools = [DigestCollectTool(), TextToSpeechTool()]
             existing = agent_kwargs.get("tools", [])
             agent_kwargs["tools"] = digest_tools + list(existing)
+
+        # Custom agents do not necessarily inherit ToolUsingAgent.  Pass only
+        # controls their constructor accepts instead of retrying after a
+        # TypeError with every useful argument silently discarded.
+        try:
+            import inspect
+
+            signature = inspect.signature(agent_cls.__init__)
+            accepts_kwargs = any(
+                p.kind is inspect.Parameter.VAR_KEYWORD
+                for p in signature.parameters.values()
+            )
+            if not accepts_kwargs:
+                accepted = set(signature.parameters)
+                agent_kwargs = {
+                    key: value for key, value in agent_kwargs.items() if key in accepted
+                }
+        except (TypeError, ValueError):
+            pass
 
         try:
             ag = agent_cls(s.engine, s.model, **agent_kwargs)

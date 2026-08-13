@@ -20,7 +20,10 @@ def test_screencapture_darwin_argv(tmp_path: Path):
     out.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
 
     with patch("diapason.desktop.screen_capture.sys.platform", "darwin"):
-        with patch("diapason.desktop.screen_capture.shutil.which", return_value="/usr/sbin/screencapture"):
+        with patch(
+            "diapason.desktop.screen_capture.shutil.which",
+            return_value="/usr/sbin/screencapture",
+        ):
             with patch("diapason.desktop.screen_capture.tempfile.mkstemp") as mk:
                 mk.return_value = (3, str(out))
                 with patch("diapason.desktop.screen_capture.os.close"):
@@ -74,7 +77,10 @@ def test_screen_describe_local_ok():
     with patch("diapason.tools.screen_vision_tools._vision_config", return_value=cfg):
         with patch(
             "diapason.tools.screen_vision_tools.capture_screen_b64",
-            return_value=(base64.b64encode(b"png").decode(), {"bytes": 3, "monitor": 1}),
+            return_value=(
+                base64.b64encode(b"png").decode(),
+                {"bytes": 3, "monitor": 1},
+            ),
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(

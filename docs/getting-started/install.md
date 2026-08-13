@@ -83,8 +83,8 @@ Local-first remains the default when no key is in env. Precedence is OpenRouter 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENJARVIS_HOME` | `$HOME/.diapason` | Install location. |
-| `OPENJARVIS_REPO_URL` | `https://github.com/open-diapason/Diapason.git` | Source repo for the clone step. |
+| `DIAPASON_HOME` | `$HOME/.diapason` | Install location. |
+| `DIAPASON_REPO_URL` | `https://github.com/open-diapason/Diapason.git` | Source repo for the clone step. |
 
 ## Uninstall
 

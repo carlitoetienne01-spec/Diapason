@@ -192,13 +192,11 @@ impl PyRateLimiter {
     #[pyo3(signature = (requests_per_minute=60, burst_size=10))]
     fn new(requests_per_minute: u32, burst_size: u32) -> Self {
         Self {
-            inner: diapason_security::RateLimiter::new(
-                diapason_security::RateLimitConfig {
-                    requests_per_minute,
-                    burst_size,
-                    enabled: true,
-                },
-            ),
+            inner: diapason_security::RateLimiter::new(diapason_security::RateLimitConfig {
+                requests_per_minute,
+                burst_size,
+                enabled: true,
+            }),
         }
     }
 
@@ -236,9 +234,9 @@ impl PyTaintSet {
             _ => diapason_security::TaintLabel::External,
         };
         // TaintSet is immutable-style; union with a single-label set.
-        self.inner = self.inner.union(
-            &diapason_security::TaintSet::from_labels(&[taint_label]),
-        );
+        self.inner = self
+            .inner
+            .union(&diapason_security::TaintSet::from_labels(&[taint_label]));
     }
 
     fn has(&self, label: &str) -> bool {

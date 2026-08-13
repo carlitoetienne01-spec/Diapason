@@ -84,7 +84,8 @@ _APP_ALIASES = {
 
 @dataclass
 class VoiceAction:
-    kind: str  # focus_app | open_uri | search | open_anything | spotify | mail_compose | messages_compose | none
+    # focus_app | open_uri | search | open_anything | spotify | mail/messages
+    kind: str
     target: str = ""
     raw: str = ""
     extra: dict[str, Any] | None = None
@@ -139,7 +140,9 @@ def parse_voice_command(text: str) -> VoiceAction:
 
     search_m = _SEARCH_RE.match(raw)
     if search_m:
-        return VoiceAction(kind="search", target=search_m.group("query").strip(), raw=raw)
+        return VoiceAction(
+            kind="search", target=search_m.group("query").strip(), raw=raw
+        )
 
     for pattern in (_OPEN_RE, _BROWSE_RE):
         m = pattern.match(raw)
@@ -254,7 +257,13 @@ def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
             "success": result.success,
             "detail": result.content,
         }
-    return {"handled": False, "kind": "none", "target": "", "success": False, "detail": ""}
+    return {
+        "handled": False,
+        "kind": "none",
+        "target": "",
+        "success": False,
+        "detail": "",
+    }
 
 
 def finalize_dictation(
@@ -285,7 +294,9 @@ def finalize_dictation(
         d = load_config().dictation
         # Request polish=False always wins; polish=True also needs config on
         do_polish = bool(polish) and bool(d.polish)
-        cfg_dict = bool(d.dictionary) if use_dictionary is None else bool(use_dictionary)
+        cfg_dict = (
+            bool(d.dictionary) if use_dictionary is None else bool(use_dictionary)
+        )
         cfg_llm = bool(d.llm_polish) if llm_polish is None else bool(llm_polish)
         mode = (d.email_mode or "off").strip().lower()
         if email_mode is None:
@@ -383,9 +394,7 @@ def finalize_dictation(
         try:
             from diapason.speech.dictation_dictionary import learn_from_correction
 
-            entries = learn_from_correction(
-                paste_source, text, path=dict_path or None
-            )
+            entries = learn_from_correction(paste_source, text, path=dict_path or None)
             learned = len(entries)
         except Exception:
             learned = 0

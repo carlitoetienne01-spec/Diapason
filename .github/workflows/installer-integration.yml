@@ -50,7 +50,7 @@ jobs:
         run: |
           chown -R testuser:testuser /home/testuser "$GITHUB_WORKSPACE/diapason-src"
           su testuser -c '
-            export OPENJARVIS_REPO_URL=file://'"$GITHUB_WORKSPACE"'/diapason-src
+            export DIAPASON_REPO_URL=file://'"$GITHUB_WORKSPACE"'/diapason-src
             cd '"$GITHUB_WORKSPACE"'/diapason-src
             bash scripts/install/install.sh --no-bg-orchestrator
           '
@@ -95,7 +95,7 @@ jobs:
 
       - name: Run installer
         run: |
-          export OPENJARVIS_REPO_URL=file://$(pwd)
+          export DIAPASON_REPO_URL=file://$(pwd)
           bash scripts/install/install.sh --no-bg-orchestrator
 
       - name: Verify install state

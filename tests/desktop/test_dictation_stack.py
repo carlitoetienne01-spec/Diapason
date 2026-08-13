@@ -57,8 +57,8 @@ def test_hold_and_release_transcribes():
 
 def test_double_tap_enters_hands_free_and_cancels_the_tiny_first_clip():
     ptt = PushToTalk()
-    ptt.down(0.0)          # first tap down
-    ptt.up(0.05)           # first tap up (tiny)
+    ptt.down(0.0)  # first tap down
+    ptt.up(0.05)  # first tap up (tiny)
     actions = ptt.down(0.2)  # second tap within the window
     assert actions == [Action.CANCEL, Action.START_HANDS_FREE]
     assert ptt.state is State.HANDS_FREE
@@ -68,8 +68,8 @@ def test_release_does_not_stop_hands_free():
     ptt = PushToTalk()
     ptt.down(0.0)
     ptt.up(0.05)
-    ptt.down(0.2)          # -> hands free
-    assert ptt.up(0.25) == []      # releasing keeps it running
+    ptt.down(0.2)  # -> hands free
+    assert ptt.up(0.25) == []  # releasing keeps it running
     assert ptt.state is State.HANDS_FREE
 
 
@@ -77,7 +77,7 @@ def test_tap_stops_hands_free_and_transcribes():
     ptt = PushToTalk()
     ptt.down(0.0)
     ptt.up(0.05)
-    ptt.down(0.2)          # -> hands free
+    ptt.down(0.2)  # -> hands free
     assert ptt.down(3.0) == [Action.STOP_HANDS_FREE_AND_TRANSCRIBE]
     assert ptt.state is State.IDLE
 

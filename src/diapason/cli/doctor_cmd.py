@@ -338,7 +338,9 @@ def _check_desktop_vision() -> CheckResult:
                 "Desktop vision",
                 "ok",
                 "Disabled (opt-in)",
-                details="Enable with [desktop.vision] enabled=true or preset screen-vision",
+                details=(
+                    "Enable with [desktop.vision] enabled=true or preset screen-vision"
+                ),
             )
         model = (v.model or "").strip() or "(default model)"
         cloud = "cloud allowed" if v.allow_cloud else "local-only"

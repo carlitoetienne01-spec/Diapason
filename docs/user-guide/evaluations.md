@@ -184,7 +184,7 @@ Every evaluation run routes model calls through one of four backends:
 
 Use `diapason-direct` for most evaluations. Use `diapason-agent` when the benchmark requires tool use — for example, GAIA tasks that reference files that must be read with `file_read`, or arithmetic tasks that benefit from `calculator`.
 
-The `hermes` and `openclaw` backends shell out to external agent frameworks and need an OpenAI-compatible endpoint for their model calls: pass `--base-url`/`--api-key`, set the `JARVIS_BACKEND_BASE_URL`/`JARVIS_BACKEND_API_KEY` environment variables, or add a `[backend.external]` section to your config (see [Config Reference](#backendexternal)).
+The `hermes` and `openclaw` backends shell out to external agent frameworks and need an OpenAI-compatible endpoint for their model calls: pass `--base-url`/`--api-key`, set the `DIAPASON_BACKEND_BASE_URL`/`DIAPASON_BACKEND_API_KEY` environment variables, or add a `[backend.external]` section to your config (see [Config Reference](#backendexternal)).
 
 !!! note "TerminalBench Native"
     `diapason eval run --backend` additionally accepts `terminalbench-native`, a Docker-based execution backend used by the TerminalBench Native benchmark.
@@ -250,8 +250,8 @@ uv run diapason eval run -b wildchat -m qwen3:8b --temperature 0.7 -n 100
 | `--model` | `-m` | str | required* | Model identifier (e.g., `qwen3:8b`, `gpt-5-mini`) |
 | `--max-samples` | `-n` | int | all | Limit the number of samples evaluated |
 | `--backend` | | choice | `diapason-direct` | `diapason-direct`, `diapason-agent`, `hermes`, `openclaw`, or `terminalbench-native` |
-| `--base-url` | | str | — | OpenAI-compatible endpoint URL (env: `JARVIS_BACKEND_BASE_URL`) |
-| `--api-key` | | str | — | API key for the endpoint (env: `JARVIS_BACKEND_API_KEY`) |
+| `--base-url` | | str | — | OpenAI-compatible endpoint URL (env: `DIAPASON_BACKEND_BASE_URL`) |
+| `--api-key` | | str | — | API key for the endpoint (env: `DIAPASON_BACKEND_API_KEY`) |
 | `--agent` | | str | — | Agent name for `diapason-agent` backend (e.g., `orchestrator`) |
 | `--engine` | `-e` | str | auto | Engine key (`ollama`, `vllm`, `cloud`, ...) |
 | `--tools` | | str | `""` | Comma-separated tool names (e.g., `calculator,file_read`) |
@@ -350,11 +350,11 @@ uv run diapason eval run -b supergpqa -m Qwen/Qwen3-8B \
     -n 50
 ```
 
-The `-m` value must match a model id the server reports at `GET /v1/models`. Both flags fall back to the `JARVIS_BACKEND_BASE_URL` and `JARVIS_BACKEND_API_KEY` environment variables, so CI jobs can set them once:
+The `-m` value must match a model id the server reports at `GET /v1/models`. Both flags fall back to the `DIAPASON_BACKEND_BASE_URL` and `DIAPASON_BACKEND_API_KEY` environment variables, so CI jobs can set them once:
 
 ```bash
-export JARVIS_BACKEND_BASE_URL=http://gpu-node:8000/v1
-export JARVIS_BACKEND_API_KEY=local-key
+export DIAPASON_BACKEND_BASE_URL=http://gpu-node:8000/v1
+export DIAPASON_BACKEND_API_KEY=local-key
 uv run diapason eval run -b gaia -m Qwen/Qwen3-8B --backend diapason-agent -n 25
 ```
 
@@ -576,8 +576,8 @@ Endpoint settings for the `hermes` and `openclaw` backends. Environment variable
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `base_url` | str | `None` | OpenAI-compatible endpoint URL (env: `JARVIS_BACKEND_BASE_URL`) |
-| `api_key` | str | `None` | API key for the endpoint (env: `JARVIS_BACKEND_API_KEY`) |
+| `base_url` | str | `None` | OpenAI-compatible endpoint URL (env: `DIAPASON_BACKEND_BASE_URL`) |
+| `api_key` | str | `None` | API key for the endpoint (env: `DIAPASON_BACKEND_API_KEY`) |
 
 ### `[[models]]`
 

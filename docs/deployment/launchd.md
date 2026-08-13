@@ -28,7 +28,7 @@ The service starts immediately (due to `RunAtLoad`) and will automatically resta
     The plist binds `127.0.0.1` — reachable from this Mac but not the network,
     the right default for a personal device, and no API key is needed. To
     expose it on your LAN, change the host to `0.0.0.0` **and** uncomment the
-    `EnvironmentVariables` block to set `OPENJARVIS_API_KEY`
+    `EnvironmentVariables` block to set `DIAPASON_API_KEY`
     (`diapason auth generate-key`); an unauthenticated `0.0.0.0` server refuses
     to start.
 
@@ -70,7 +70,7 @@ The provided plist file at `deploy/launchd/com.diapason.plist`:
     <!-- To expose on the LAN: set host to 0.0.0.0 and uncomment this block.
     <key>EnvironmentVariables</key>
     <dict>
-        <key>OPENJARVIS_API_KEY</key>
+        <key>DIAPASON_API_KEY</key>
         <string>REPLACE_WITH_A_REAL_KEY</string>
     </dict>
     -->
@@ -211,9 +211,9 @@ Add an `EnvironmentVariables` dictionary to the plist:
 ```xml
 <key>EnvironmentVariables</key>
 <dict>
-    <key>OPENJARVIS_ENGINE_DEFAULT</key>
+    <key>DIAPASON_ENGINE_DEFAULT</key>
     <string>ollama</string>
-    <key>OPENJARVIS_OLLAMA_HOST</key>
+    <key>DIAPASON_OLLAMA_HOST</key>
     <string>http://localhost:11434</string>
 </dict>
 ```

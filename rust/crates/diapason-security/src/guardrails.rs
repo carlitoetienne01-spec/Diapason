@@ -92,10 +92,7 @@ impl<E: InferenceEngine> GuardrailsEngine<E> {
                         Value::String(direction.to_string()),
                     );
                     data.insert("findings".to_string(), Value::Array(finding_dicts));
-                    data.insert(
-                        "mode".to_string(),
-                        Value::String("redact".to_string()),
-                    );
+                    data.insert("mode".to_string(), Value::String("redact".to_string()));
                     bus.publish(EventType::SecurityAlert, data);
                 }
                 Ok(self.redact_text(text))
@@ -108,10 +105,7 @@ impl<E: InferenceEngine> GuardrailsEngine<E> {
                         Value::String(direction.to_string()),
                     );
                     data.insert("findings".to_string(), Value::Array(finding_dicts));
-                    data.insert(
-                        "mode".to_string(),
-                        Value::String("block".to_string()),
-                    );
+                    data.insert("mode".to_string(), Value::String("block".to_string()));
                     bus.publish(EventType::SecurityBlock, data);
                 }
                 Err(DiapasonError::Security(
@@ -158,8 +152,7 @@ impl<E: InferenceEngine> InferenceEngine for GuardrailsEngine<E> {
         if self.scan_output && !response.content.is_empty() {
             let result = self.scan_text(&response.content);
             if !result.clean() {
-                response.content =
-                    self.handle_findings(&response.content, &result, "output")?;
+                response.content = self.handle_findings(&response.content, &result, "output")?;
             }
         }
 
@@ -234,8 +227,7 @@ mod tests {
     #[test]
     fn test_guardrails_warn_mode() {
         let engine = MockEngine;
-        let guardrails =
-            GuardrailsEngine::new(engine, RedactionMode::Warn, false, true, None);
+        let guardrails = GuardrailsEngine::new(engine, RedactionMode::Warn, false, true, None);
         let result = guardrails
             .generate(&[Message::user("Hi")], "mock", 0.7, 100, None)
             .unwrap();
@@ -245,8 +237,7 @@ mod tests {
     #[test]
     fn test_guardrails_redact_mode() {
         let engine = MockEngine;
-        let guardrails =
-            GuardrailsEngine::new(engine, RedactionMode::Redact, false, true, None);
+        let guardrails = GuardrailsEngine::new(engine, RedactionMode::Redact, false, true, None);
         let result = guardrails
             .generate(&[Message::user("Hi")], "mock", 0.7, 100, None)
             .unwrap();
@@ -257,8 +248,7 @@ mod tests {
     #[test]
     fn test_guardrails_block_mode() {
         let engine = MockEngine;
-        let guardrails =
-            GuardrailsEngine::new(engine, RedactionMode::Block, false, true, None);
+        let guardrails = GuardrailsEngine::new(engine, RedactionMode::Block, false, true, None);
         let err = guardrails
             .generate(&[Message::user("Hi")], "mock", 0.7, 100, None)
             .unwrap_err();

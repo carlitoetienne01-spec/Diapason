@@ -122,7 +122,9 @@ def wake_listen(
         try:
             from diapason.core.config import load_config
 
-            device_override = (load_config().speech.wakeword.device or "").strip() or None
+            device_override = (
+                load_config().speech.wakeword.device or ""
+            ).strip() or None
         except Exception:
             device_override = None
     try:

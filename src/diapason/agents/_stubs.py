@@ -18,6 +18,8 @@ from diapason.core.events import EventBus, EventType
 from diapason.core.types import Conversation, Message, Role, ToolResult
 from diapason.engine._stubs import InferenceEngine
 
+_SECURITY_CONTROL_UNSET = object()
+
 
 @dataclass(slots=True)
 class AgentContext:
@@ -326,7 +328,9 @@ class ToolUsingAgent(BaseAgent):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         loop_guard_config: Optional[Any] = None,
-        capability_policy: Optional[Any] = None,
+        capability_policy: Any = _SECURITY_CONTROL_UNSET,
+        boundary_guard: Optional[Any] = None,
+        rate_limiter: Optional[Any] = None,
         agent_id: Optional[str] = None,
         interactive: bool = False,
         confirm_callback: Optional[Any] = None,
@@ -348,13 +352,24 @@ class ToolUsingAgent(BaseAgent):
         # into their own system prompt templates as appropriate.
         self._skill_few_shot_examples = list(skill_few_shot_examples or [])
         _aid = agent_id or getattr(self, "agent_id", "")
+        autoload_capability_policy = capability_policy is _SECURITY_CONTROL_UNSET
+        resolved_capability_policy = (
+            None if autoload_capability_policy else capability_policy
+        )
         self._executor = ToolExecutor(
             self._tools,
             bus=bus,
-            capability_policy=capability_policy,
+            capability_policy=resolved_capability_policy,
+            boundary_guard=boundary_guard,
+            rate_limiter=rate_limiter,
             agent_id=_aid,
             interactive=interactive,
             confirm_callback=confirm_callback,
+            # Omission means "load the configured policy". An explicit None
+            # from a higher-level builder means security was deliberately
+            # resolved as disabled and must remain fail-closed for tools that
+            # carry capabilities.
+            autoload_capability_policy=autoload_capability_policy,
         )
         # Resolve max_turns: explicit arg > config > class default > 10
         if max_turns is not None:

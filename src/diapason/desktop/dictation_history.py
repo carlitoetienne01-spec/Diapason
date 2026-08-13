@@ -42,8 +42,8 @@ class DictationEntry:
     text: str
     timestamp: float
     duration_s: float = 0.0
-    app: str = ""          # frontmost app at paste time, when known
-    model: str = ""        # which recogniser produced it
+    app: str = ""  # frontmost app at paste time, when known
+    model: str = ""  # which recogniser produced it
     chars: int = field(default=0)
 
     def __post_init__(self) -> None:

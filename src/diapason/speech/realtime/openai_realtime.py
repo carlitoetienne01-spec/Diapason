@@ -172,9 +172,9 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
                 etype = data.get("type", "")
                 if etype == "response.function_call_arguments.delta":
                     call_id = data.get("call_id") or data.get("item_id") or ""
-                    self._pending_args[call_id] = (
-                        self._pending_args.get(call_id, "") + (data.get("delta") or "")
-                    )
+                    self._pending_args[call_id] = self._pending_args.get(
+                        call_id, ""
+                    ) + (data.get("delta") or "")
                     continue
                 if etype == "response.function_call_arguments.done":
                     await self._handle_function_done(data)
@@ -185,9 +185,7 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
             raise
         except Exception as exc:
             if not self._closed:
-                await self._queue.put(
-                    SessionEvent(kind="error", detail=str(exc))
-                )
+                await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
         finally:
             await self._queue.put(SessionEvent(kind="closed"))
             await self._queue.put(None)
@@ -198,7 +196,9 @@ class OpenAIRealtimeSession(RealtimeVoiceSession):
         name = data.get("name") or ""
         args_raw = data.get("arguments") or self._pending_args.pop(call_id, "{}")
         try:
-            args = json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
+            args = (
+                json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
+            )
         except json.JSONDecodeError:
             args = {}
 

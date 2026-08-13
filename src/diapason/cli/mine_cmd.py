@@ -470,8 +470,11 @@ def init(
         )
 
     from diapason.core.config import DEFAULT_CONFIG_PATH
+    from diapason.core.env import get as _env_get
 
-    config_path = Path(os.environ.get("OPENJARVIS_CONFIG", DEFAULT_CONFIG_PATH))
+    config_path = Path(
+        _env_get("CONFIG", str(DEFAULT_CONFIG_PATH)) or DEFAULT_CONFIG_PATH
+    )
     config_path.parent.mkdir(parents=True, exist_ok=True)
     section = f"""
 [mining]

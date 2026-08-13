@@ -3,7 +3,7 @@
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
-#[pyclass(name = "Message")]
+#[pyclass(name = "Message", from_py_object)]
 #[derive(Clone)]
 pub struct PyMessage {
     #[pyo3(get, set)]
@@ -29,7 +29,11 @@ impl PyMessage {
     }
 
     fn __repr__(&self) -> String {
-        format!("Message(role='{}', content='{}')", self.role, &self.content[..self.content.len().min(50)])
+        format!(
+            "Message(role='{}', content='{}')",
+            self.role,
+            &self.content[..self.content.len().min(50)]
+        )
     }
 }
 
@@ -52,7 +56,7 @@ impl PyMessage {
     }
 }
 
-#[pyclass(name = "ToolResult")]
+#[pyclass(name = "ToolResult", from_py_object)]
 #[derive(Clone)]
 pub struct PyToolResult {
     #[pyo3(get)]
@@ -67,15 +71,22 @@ pub struct PyToolResult {
 impl PyToolResult {
     #[new]
     fn new(tool_name: String, content: String, success: bool) -> Self {
-        Self { tool_name, content, success }
+        Self {
+            tool_name,
+            content,
+            success,
+        }
     }
 
     fn __repr__(&self) -> String {
-        format!("ToolResult(tool='{}', success={})", self.tool_name, self.success)
+        format!(
+            "ToolResult(tool='{}', success={})",
+            self.tool_name, self.success
+        )
     }
 }
 
-#[pyclass(name = "ToolCall")]
+#[pyclass(name = "ToolCall", from_py_object)]
 #[derive(Clone)]
 pub struct PyToolCall {
     #[pyo3(get, set)]
@@ -90,7 +101,11 @@ pub struct PyToolCall {
 impl PyToolCall {
     #[new]
     fn new(id: String, name: String, arguments: String) -> Self {
-        Self { id, name, arguments }
+        Self {
+            id,
+            name,
+            arguments,
+        }
     }
 }
 
@@ -145,7 +160,7 @@ impl PyEventBus {
     }
 }
 
-#[pyclass(name = "ModelSpec")]
+#[pyclass(name = "ModelSpec", from_py_object)]
 #[derive(Clone)]
 pub struct PyModelSpec {
     #[pyo3(get, set)]
@@ -160,11 +175,15 @@ pub struct PyModelSpec {
 impl PyModelSpec {
     #[new]
     fn new(name: String, params_b: f64, context_length: usize) -> Self {
-        Self { name, params_b, context_length }
+        Self {
+            name,
+            params_b,
+            context_length,
+        }
     }
 }
 
-#[pyclass(name = "RoutingContext")]
+#[pyclass(name = "RoutingContext", from_py_object)]
 #[derive(Clone)]
 pub struct PyRoutingContext {
     #[pyo3(get, set)]
@@ -177,7 +196,10 @@ pub struct PyRoutingContext {
 impl PyRoutingContext {
     #[new]
     fn new(query: String) -> Self {
-        Self { query, query_class: "general".into() }
+        Self {
+            query,
+            query_class: "general".into(),
+        }
     }
 }
 
@@ -195,7 +217,7 @@ impl PyAgentContext {
     }
 }
 
-#[pyclass(name = "AgentResult")]
+#[pyclass(name = "AgentResult", from_py_object)]
 #[derive(Clone)]
 pub struct PyAgentResult {
     #[pyo3(get)]
@@ -207,6 +229,10 @@ pub struct PyAgentResult {
 #[pymethods]
 impl PyAgentResult {
     fn __repr__(&self) -> String {
-        format!("AgentResult(turns={}, content='{}')", self.turns, &self.content[..self.content.len().min(50)])
+        format!(
+            "AgentResult(turns={}, content='{}')",
+            self.turns,
+            &self.content[..self.content.len().min(50)]
+        )
     }
 }

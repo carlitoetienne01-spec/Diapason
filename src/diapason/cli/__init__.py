@@ -31,6 +31,7 @@ from diapason.cli.heartbeat_cmd import heartbeat
 from diapason.cli.host_cmd import host
 from diapason.cli.init_cmd import init
 from diapason.cli.memory_cmd import memory
+from diapason.cli.migrate_cmd import migrate
 from diapason.cli.mine_cmd import mine
 from diapason.cli.model import model
 from diapason.cli.operators_cmd import operators
@@ -106,6 +107,7 @@ cli.add_command(chat, "chat")
 cli.add_command(serve, "serve")
 cli.add_command(model, "model")
 cli.add_command(memory, "memory")
+cli.add_command(migrate, "migrate")
 cli.add_command(mine, "mine")
 cli.add_command(pearl, "pearl")
 cli.add_command(telemetry, "telemetry")

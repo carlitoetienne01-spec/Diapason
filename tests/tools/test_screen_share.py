@@ -76,7 +76,11 @@ def test_share_tools_with_config(monkeypatch):
         ):
             start = ScreenShareStartTool().execute()
             assert start.success
-            assert "share" in start.content.lower() or "écran" in start.content.lower() or "screen" in start.content.lower()
+            assert (
+                "share" in start.content.lower()
+                or "écran" in start.content.lower()
+                or "screen" in start.content.lower()
+            )
 
             status = ScreenShareStatusTool().execute()
             assert status.success

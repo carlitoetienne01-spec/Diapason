@@ -69,7 +69,7 @@ class TestPrintBanner:
         console, buf = _make_console()
         print_banner(console)
         output = buf.getvalue()
-        assert "v1.8" in output
+        assert "v1.0.0" in output
 
 
 class TestPrintSection:

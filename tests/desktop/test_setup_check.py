@@ -94,9 +94,7 @@ def test_hotkey_check_passes_on_a_bare_modifier():
 
 
 def test_model_check_reports_a_missing_backend_with_a_fix():
-    with patch(
-        "diapason.speech._discovery.get_speech_backend", return_value=None
-    ):
+    with patch("diapason.speech._discovery.get_speech_backend", return_value=None):
         c = setup_check.check_model()
     assert c.ok is False
     assert "model pull" in c.fix

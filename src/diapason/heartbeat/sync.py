@@ -122,7 +122,9 @@ def sync_heartbeat_and_routines(
             },
             active=active,
         )
-        summary["routines"].append({"id": routine.id, "active": active, "task_id": task_id})
+        summary["routines"].append(
+            {"id": routine.id, "active": active, "task_id": task_id}
+        )
 
     logger.info(
         "Synced heartbeat=%s routines=%d",

@@ -2,8 +2,8 @@
 # diapason-wrapper.sh — symlinked to ~/.local/bin/diapason.
 # Activates the managed venv and execs the real diapason CLI.
 
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
-VENV="$OPENJARVIS_HOME/.venv"
+DIAPASON_HOME="${DIAPASON_HOME:-${OPENJARVIS_HOME:-${JARVIS_HOME:-$HOME/.diapason}}}"
+VENV="$DIAPASON_HOME/.venv"
 
 if [[ ! -d "$VENV" ]]; then
     echo "diapason: venv not found at $VENV" >&2

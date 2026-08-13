@@ -7,6 +7,8 @@ import stat
 import tempfile
 from pathlib import Path
 
+import pytest
+
 
 class TestSecureMkdir:
     """secure_mkdir should create directories with 0o700."""
@@ -72,3 +74,30 @@ class TestSecureCreate:
             secure_create(target)
             parent_mode = stat.S_IMODE(os.stat(target.parent).st_mode)
             assert parent_mode == 0o700
+
+    def test_refuses_symlink_target(self) -> None:
+        from diapason.security.file_utils import secure_create
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real = root / "real.db"
+            real.write_text("do not touch")
+            link = root / "linked.db"
+            try:
+                link.symlink_to(real)
+            except OSError:
+                pytest.skip("symlink creation is not permitted on this platform")
+
+            with pytest.raises(RuntimeError, match="unsafe file path"):
+                secure_create(link)
+
+    def test_does_not_chmod_an_existing_parent(self) -> None:
+        from diapason.security.file_utils import secure_create
+
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "shared"
+            parent.mkdir(mode=0o755)
+            os.chmod(parent, 0o755)
+            secure_create(parent / "private.db")
+
+            assert stat.S_IMODE(parent.stat().st_mode) == 0o755

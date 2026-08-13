@@ -6,8 +6,6 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-import pytest
-
 from diapason.evals.core.agentic_runner import AgenticRunner, _extract_patch
 from diapason.evals.core.environment import TaskEnvironmentError
 
@@ -118,14 +116,7 @@ class EnvDataset(MockDataset):
 
 class TestAgenticRunner:
     def _run_async(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
-
-    @pytest.fixture(autouse=True)
-    def _setup_loop(self):
-        try:
-            asyncio.get_event_loop()
-        except RuntimeError:
-            asyncio.set_event_loop(asyncio.new_event_loop())
+        return asyncio.run(coro)
 
     def test_basic_run(self):
         records = [

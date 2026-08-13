@@ -31,7 +31,9 @@ from diapason.core.registry import (
 
 
 @pytest.fixture(autouse=True)
-def _no_update_check(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_update_check(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """Never let the CLI's PyPI update-check nag run during tests.
 
     ``check_for_updates`` writes its banner to stderr, which ``CliRunner``
@@ -40,7 +42,37 @@ def _no_update_check(monkeypatch: pytest.MonkeyPatch) -> None:
     set, but that only helps in CI; locally (e.g. a dev with a stale
     version-check cache and network access) it fires for real.
     """
-    monkeypatch.setenv("OPENJARVIS_NO_UPDATE_CHECK", "1")
+    if request.path.name != "test_version_check.py":
+        monkeypatch.setenv("DIAPASON_NO_UPDATE_CHECK", "1")
+
+
+@pytest.fixture(autouse=True)
+def _allow_mocked_outbound_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Let unit-test doubles exercise outbound code paths without real egress.
+
+    Production defaults remain local-only. Tests that verify that contract
+    explicitly override this patch with their own local-mode verdict.
+    """
+    local_only_contract_tests = {
+        "tests/channels/test_channel_contract.py",
+        "tests/core/test_local_mode.py",
+        "tests/engine/test_discovery_local_only.py",
+        "tests/privacy/test_local_only_chokepoints.py",
+        "tests/speech/test_discovery.py",
+        "tests/speech/test_llm_polish_local_mode.py",
+        "tests/speech/test_model_integrity.py",
+        "tests/tools/test_screen_vision_tools.py",
+    }
+    relative_path = request.path.relative_to(Path(__file__).parent.parent).as_posix()
+    if relative_path in local_only_contract_tests:
+        return
+
+    from diapason.core import local_mode
+
+    monkeypatch.setattr(local_mode, "local_only", lambda config=None: False)
 
 
 @pytest.fixture(autouse=True)

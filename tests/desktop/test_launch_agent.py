@@ -69,8 +69,16 @@ def test_serve_agent_has_its_own_label_and_arguments():
             out_log="/l/serve.out.log",
             err_log="/l/serve.err.log",
             label=launch_agent.SERVE_LABEL,
-            args=["/venv/bin/python", "-m", "diapason.cli", "serve",
-                  "--host", "127.0.0.1", "--port", "8000"],
+            args=[
+                "/venv/bin/python",
+                "-m",
+                "diapason.cli",
+                "serve",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
+            ],
         ).encode()
     )
     assert d["Label"] == "com.diapason.serve"

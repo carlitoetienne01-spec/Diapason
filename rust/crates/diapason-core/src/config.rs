@@ -45,7 +45,9 @@ fn default_ollama_host() -> String {
 
 impl Default for OllamaEngineConfig {
     fn default() -> Self {
-        Self { host: default_ollama_host() }
+        Self {
+            host: default_ollama_host(),
+        }
     }
 }
 
@@ -61,7 +63,9 @@ fn default_vllm_host() -> String {
 
 impl Default for VLLMEngineConfig {
     fn default() -> Self {
-        Self { host: default_vllm_host() }
+        Self {
+            host: default_vllm_host(),
+        }
     }
 }
 
@@ -77,7 +81,9 @@ fn default_sglang_host() -> String {
 
 impl Default for SGLangEngineConfig {
     fn default() -> Self {
-        Self { host: default_sglang_host() }
+        Self {
+            host: default_sglang_host(),
+        }
     }
 }
 
@@ -114,7 +120,9 @@ fn default_mlx_host() -> String {
 
 impl Default for MLXEngineConfig {
     fn default() -> Self {
-        Self { host: default_mlx_host() }
+        Self {
+            host: default_mlx_host(),
+        }
     }
 }
 
@@ -130,7 +138,9 @@ fn default_lmstudio_host() -> String {
 
 impl Default for LMStudioEngineConfig {
     fn default() -> Self {
-        Self { host: default_lmstudio_host() }
+        Self {
+            host: default_lmstudio_host(),
+        }
     }
 }
 
@@ -146,7 +156,9 @@ fn default_exo_host() -> String {
 
 impl Default for ExoEngineConfig {
     fn default() -> Self {
-        Self { host: default_exo_host() }
+        Self {
+            host: default_exo_host(),
+        }
     }
 }
 
@@ -183,7 +195,9 @@ fn default_uzu_host() -> String {
 
 impl Default for UzuEngineConfig {
     fn default() -> Self {
-        Self { host: default_uzu_host() }
+        Self {
+            host: default_uzu_host(),
+        }
     }
 }
 
@@ -199,7 +213,9 @@ fn default_apple_fm_host() -> String {
 
 impl Default for AppleFmEngineConfig {
     fn default() -> Self {
-        Self { host: default_apple_fm_host() }
+        Self {
+            host: default_apple_fm_host(),
+        }
     }
 }
 
@@ -289,12 +305,24 @@ pub struct IntelligenceConfig {
     pub stop_sequences: String,
 }
 
-fn default_quantization_str() -> String { "none".into() }
-fn default_temperature() -> f64 { 0.7 }
-fn default_max_tokens() -> i64 { 1024 }
-fn default_top_p() -> f64 { 0.9 }
-fn default_top_k() -> i64 { 40 }
-fn default_repetition_penalty() -> f64 { 1.0 }
+fn default_quantization_str() -> String {
+    "none".into()
+}
+fn default_temperature() -> f64 {
+    0.7
+}
+fn default_max_tokens() -> i64 {
+    1024
+}
+fn default_top_p() -> f64 {
+    0.9
+}
+fn default_top_k() -> i64 {
+    40
+}
+fn default_repetition_penalty() -> f64 {
+    1.0
+}
 
 impl Default for IntelligenceConfig {
     fn default() -> Self {
@@ -328,12 +356,19 @@ pub struct RoutingLearningConfig {
     pub min_samples: i64,
 }
 
-fn default_heuristic() -> String { "heuristic".into() }
-fn default_min_samples() -> i64 { 5 }
+fn default_heuristic() -> String {
+    "heuristic".into()
+}
+fn default_min_samples() -> i64 {
+    5
+}
 
 impl Default for RoutingLearningConfig {
     fn default() -> Self {
-        Self { policy: default_heuristic(), min_samples: default_min_samples() }
+        Self {
+            policy: default_heuristic(),
+            min_samples: default_min_samples(),
+        }
     }
 }
 
@@ -343,7 +378,9 @@ pub struct IntelligenceLearningConfig {
     pub policy: String,
 }
 
-fn default_none_str() -> String { "none".into() }
+fn default_none_str() -> String {
+    "none".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentLearningConfig {
@@ -355,8 +392,12 @@ pub struct AgentLearningConfig {
     pub advisor_confidence_threshold: f64,
 }
 
-fn default_max_icl() -> i64 { 20 }
-fn default_advisor_threshold() -> f64 { 0.7 }
+fn default_max_icl() -> i64 {
+    20
+}
+fn default_advisor_threshold() -> f64 {
+    0.7
+}
 
 impl Default for AgentLearningConfig {
     fn default() -> Self {
@@ -380,10 +421,18 @@ pub struct MetricsConfig {
     pub efficiency_weight: f64,
 }
 
-fn default_accuracy_weight() -> f64 { 0.6 }
-fn default_latency_weight() -> f64 { 0.2 }
-fn default_cost_weight() -> f64 { 0.1 }
-fn default_efficiency_weight() -> f64 { 0.1 }
+fn default_accuracy_weight() -> f64 {
+    0.6
+}
+fn default_latency_weight() -> f64 {
+    0.2
+}
+fn default_cost_weight() -> f64 {
+    0.1
+}
+fn default_efficiency_weight() -> f64 {
+    0.1
+}
 
 impl Default for MetricsConfig {
     fn default() -> Self {
@@ -426,11 +475,21 @@ pub struct LearningConfig {
     pub min_improvement: f64,
 }
 
-fn default_update_interval() -> i64 { 100 }
-fn default_lora_rank() -> i64 { 16 }
-fn default_lora_alpha() -> i64 { 32 }
-fn default_min_sft_pairs() -> i64 { 50 }
-fn default_min_improvement() -> f64 { 0.02 }
+fn default_update_interval() -> i64 {
+    100
+}
+fn default_lora_rank() -> i64 {
+    16
+}
+fn default_lora_alpha() -> i64 {
+    32
+}
+fn default_min_sft_pairs() -> i64 {
+    50
+}
+fn default_min_improvement() -> f64 {
+    0.02
+}
 
 impl Default for LearningConfig {
     fn default() -> Self {
@@ -474,13 +533,27 @@ pub struct StorageConfig {
     pub chunk_overlap: i64,
 }
 
-fn default_sqlite() -> String { "sqlite".into() }
-fn default_memory_db_path() -> String { format!("{}/memory.db", default_config_dir_str()) }
-fn default_context_top_k() -> i64 { 5 }
-fn default_context_min_score() -> f64 { 0.1 }
-fn default_context_max_tokens() -> i64 { 2048 }
-fn default_chunk_size() -> i64 { 512 }
-fn default_chunk_overlap() -> i64 { 64 }
+fn default_sqlite() -> String {
+    "sqlite".into()
+}
+fn default_memory_db_path() -> String {
+    format!("{}/memory.db", default_config_dir_str())
+}
+fn default_context_top_k() -> i64 {
+    5
+}
+fn default_context_min_score() -> f64 {
+    0.1
+}
+fn default_context_max_tokens() -> i64 {
+    2048
+}
+fn default_chunk_size() -> i64 {
+    512
+}
+fn default_chunk_overlap() -> i64 {
+    64
+}
 
 impl Default for StorageConfig {
     fn default() -> Self {
@@ -507,11 +580,16 @@ pub struct MCPConfig {
     pub servers: String,
 }
 
-fn default_true_val() -> bool { true }
+fn default_true_val() -> bool {
+    true
+}
 
 impl Default for MCPConfig {
     fn default() -> Self {
-        Self { enabled: true, servers: String::new() }
+        Self {
+            enabled: true,
+            servers: String::new(),
+        }
     }
 }
 
@@ -527,9 +605,15 @@ pub struct BrowserConfig {
     pub viewport_height: i64,
 }
 
-fn default_browser_timeout() -> i64 { 30000 }
-fn default_viewport_width() -> i64 { 1280 }
-fn default_viewport_height() -> i64 { 720 }
+fn default_browser_timeout() -> i64 {
+    30000
+}
+fn default_viewport_width() -> i64 {
+    1280
+}
+fn default_viewport_height() -> i64 {
+    720
+}
 
 impl Default for BrowserConfig {
     fn default() -> Self {
@@ -576,8 +660,12 @@ pub struct AgentConfig {
     pub context_from_memory: bool,
 }
 
-fn default_simple() -> String { "simple".into() }
-fn default_max_turns() -> i64 { 10 }
+fn default_simple() -> String {
+    "simple".into()
+}
+fn default_max_turns() -> i64 {
+    10
+}
 
 impl Default for AgentConfig {
     fn default() -> Self {
@@ -611,10 +699,18 @@ pub struct ServerConfig {
     pub workers: i64,
 }
 
-fn default_server_host() -> String { "0.0.0.0".into() }
-fn default_server_port() -> i64 { 8000 }
-fn default_orchestrator() -> String { "orchestrator".into() }
-fn default_one() -> i64 { 1 }
+fn default_server_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_server_port() -> i64 {
+    8000
+}
+fn default_orchestrator() -> String {
+    "orchestrator".into()
+}
+fn default_one() -> i64 {
+    1
+}
 
 impl Default for ServerConfig {
     fn default() -> Self {
@@ -648,10 +744,18 @@ pub struct TelemetryConfig {
     pub steady_state_threshold: f64,
 }
 
-fn default_telemetry_db() -> String { format!("{}/telemetry.db", default_config_dir_str()) }
-fn default_gpu_poll() -> i64 { 50 }
-fn default_ss_window() -> i64 { 5 }
-fn default_ss_threshold() -> f64 { 0.05 }
+fn default_telemetry_db() -> String {
+    format!("{}/telemetry.db", default_config_dir_str())
+}
+fn default_gpu_poll() -> i64 {
+    50
+}
+fn default_ss_window() -> i64 {
+    5
+}
+fn default_ss_threshold() -> f64 {
+    0.05
+}
 
 impl Default for TelemetryConfig {
     fn default() -> Self {
@@ -676,11 +780,16 @@ pub struct TracesConfig {
     pub db_path: String,
 }
 
-fn default_traces_db() -> String { format!("{}/traces.db", default_config_dir_str()) }
+fn default_traces_db() -> String {
+    format!("{}/traces.db", default_config_dir_str())
+}
 
 impl Default for TracesConfig {
     fn default() -> Self {
-        Self { enabled: false, db_path: default_traces_db() }
+        Self {
+            enabled: false,
+            db_path: default_traces_db(),
+        }
     }
 }
 
@@ -726,10 +835,18 @@ pub struct SecurityConfig {
     pub capabilities: CapabilitiesConfig,
 }
 
-fn default_warn() -> String { "warn".into() }
-fn default_audit_log() -> String { format!("{}/audit.db", default_config_dir_str()) }
-fn default_rpm() -> i64 { 60 }
-fn default_burst() -> i64 { 10 }
+fn default_warn() -> String {
+    "warn".into()
+}
+fn default_audit_log() -> String {
+    format!("{}/audit.db", default_config_dir_str())
+}
+fn default_rpm() -> i64 {
+    60
+}
+fn default_burst() -> i64 {
+    10
+}
 
 impl Default for SecurityConfig {
     fn default() -> Self {
@@ -775,12 +892,24 @@ pub struct SandboxConfig {
     pub wasm_memory_limit_mb: i64,
 }
 
-fn default_sandbox_image() -> String { "diapason-sandbox:latest".into() }
-fn default_sandbox_timeout() -> i64 { 300 }
-fn default_max_concurrent() -> i64 { 5 }
-fn default_docker() -> String { "docker".into() }
-fn default_wasm_fuel() -> i64 { 1_000_000 }
-fn default_wasm_mem() -> i64 { 256 }
+fn default_sandbox_image() -> String {
+    "diapason-sandbox:latest".into()
+}
+fn default_sandbox_timeout() -> i64 {
+    300
+}
+fn default_max_concurrent() -> i64 {
+    5
+}
+fn default_docker() -> String {
+    "docker".into()
+}
+fn default_wasm_fuel() -> i64 {
+    1_000_000
+}
+fn default_wasm_mem() -> i64 {
+    256
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SchedulerConfig {
@@ -792,7 +921,9 @@ pub struct SchedulerConfig {
     pub db_path: String,
 }
 
-fn default_poll_interval() -> i64 { 60 }
+fn default_poll_interval() -> i64 {
+    60
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
@@ -804,8 +935,12 @@ pub struct WorkflowConfig {
     pub default_node_timeout: i64,
 }
 
-fn default_max_parallel() -> i64 { 4 }
-fn default_node_timeout() -> i64 { 300 }
+fn default_max_parallel() -> i64 {
+    4
+}
+fn default_node_timeout() -> i64 {
+    300
+}
 
 impl Default for WorkflowConfig {
     fn default() -> Self {
@@ -829,9 +964,15 @@ pub struct SessionConfig {
     pub db_path: String,
 }
 
-fn default_max_age() -> f64 { 24.0 }
-fn default_consolidation() -> i64 { 100 }
-fn default_sessions_db() -> String { format!("{}/sessions.db", default_config_dir_str()) }
+fn default_max_age() -> f64 {
+    24.0
+}
+fn default_consolidation() -> i64 {
+    100
+}
+fn default_sessions_db() -> String {
+    format!("{}/sessions.db", default_config_dir_str())
+}
 
 impl Default for SessionConfig {
     fn default() -> Self {
@@ -860,7 +1001,9 @@ pub struct OperatorsConfig {
     pub auto_activate: String,
 }
 
-fn default_operators_dir() -> String { "~/.diapason/operators".into() }
+fn default_operators_dir() -> String {
+    "~/.diapason/operators".into()
+}
 
 // ---------------------------------------------------------------------------
 // Channel configs (kept minimal — channels stay in Python)
@@ -932,9 +1075,7 @@ pub fn load_config(path: Option<&Path>) -> Result<DiapasonConfig, ConfigError> {
     let hw = detect_hardware();
     let recommended_engine = recommend_engine(&hw);
 
-    let config_path = path
-        .map(PathBuf::from)
-        .unwrap_or_else(default_config_path);
+    let config_path = path.map(PathBuf::from).unwrap_or_else(default_config_path);
 
     let mut cfg = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)?;

@@ -109,7 +109,9 @@ def test_paste_path_polishes():
 
 def test_polish_false_returns_rawish():
     raw = "um keep fillers please here"
-    paste = finalize_dictation(raw, polish=False, llm_polish=False, use_dictionary=False)
+    paste = finalize_dictation(
+        raw, polish=False, llm_polish=False, use_dictionary=False
+    )
     assert paste["mode"] == "paste"
     assert paste["text"] == raw.strip()
 

@@ -36,7 +36,7 @@ class TestInitialize:
         assert req.params["protocolVersion"] == "2025-03-26"
         assert req.params["capabilities"] == {}
         assert req.params["clientInfo"]["name"] == "diapason"
-        assert req.params["clientInfo"]["version"] == "0.1.0"
+        assert req.params["clientInfo"]["version"] == "1.0.0"
 
     def test_sends_initialized_notification(self, mock_transport):
         """After initialize, notifications/initialized must be sent via

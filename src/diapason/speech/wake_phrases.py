@@ -49,15 +49,17 @@ def build_wake_pattern(
     vars_ = tuple(variants) if variants else DEFAULT_WAKE_VARIANTS
     prefs = tuple(prefixes) if prefixes else DEFAULT_WAKE_PREFIXES
     # Sort longer first
-    vars_sorted = sorted({v.strip().lower() for v in vars_ if v.strip()}, key=len, reverse=True)
-    prefs_sorted = sorted({p.strip().lower() for p in prefs if p.strip()}, key=len, reverse=True)
+    vars_sorted = sorted(
+        {v.strip().lower() for v in vars_ if v.strip()}, key=len, reverse=True
+    )
+    prefs_sorted = sorted(
+        {p.strip().lower() for p in prefs if p.strip()}, key=len, reverse=True
+    )
     variant_group = "|".join(_escape(v) for v in vars_sorted)
     prefix_group = "|".join(_escape(p) for p in prefs_sorted)
     # Name alone OR prefix + name; require separator or end after name.
     # If variant already includes prefix (hey diapason), still OK.
-    pattern = (
-        rf"^(?:(?:{prefix_group}){_SEP}*)?(?:{variant_group})(?:{_SEP}+|$)"
-    )
+    pattern = rf"^(?:(?:{prefix_group}){_SEP}*)?(?:{variant_group})(?:{_SEP}+|$)"
     return re.compile(pattern, re.IGNORECASE)
 
 

@@ -103,10 +103,7 @@ static SECRET_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 /// Returns a violation description, or None if clean.
 pub fn check_taint(tool_name: &str, taint: &TaintSet) -> Option<String> {
     let forbidden = SINK_POLICY.get(tool_name)?;
-    let violations: Vec<_> = taint
-        .labels
-        .intersection(forbidden)
-        .collect();
+    let violations: Vec<_> = taint.labels.intersection(forbidden).collect();
     if violations.is_empty() {
         return None;
     }

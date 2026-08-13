@@ -81,11 +81,7 @@ mod tests {
 
     #[test]
     fn test_request_serde() {
-        let req = McpRequest::new(
-            "tools/list",
-            serde_json::json!({}),
-            serde_json::json!(1),
-        );
+        let req = McpRequest::new("tools/list", serde_json::json!({}), serde_json::json!(1));
         let json = serde_json::to_string(&req).unwrap();
         let parsed: McpRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.method, "tools/list");
@@ -93,10 +89,7 @@ mod tests {
 
     #[test]
     fn test_response_success() {
-        let resp = McpResponse::success(
-            serde_json::json!(1),
-            serde_json::json!({"tools": []}),
-        );
+        let resp = McpResponse::success(serde_json::json!(1), serde_json::json!({"tools": []}));
         assert!(resp.result.is_some());
         assert!(resp.error.is_none());
     }

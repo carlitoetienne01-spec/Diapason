@@ -19,5 +19,5 @@ pub use injection::InjectionScanner;
 pub use rate_limiter::{RateLimitConfig, RateLimiter};
 pub use scanner::{PIIScanner, SecretScanner};
 pub use ssrf::check_ssrf;
-pub use taint::{TaintLabel, TaintSet, check_taint};
+pub use taint::{check_taint, TaintLabel, TaintSet};
 pub use types::{RedactionMode, ScanFinding, ScanResult, ThreatLevel};

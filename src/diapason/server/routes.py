@@ -864,10 +864,12 @@ async def _context_length_of(model_id: str) -> Optional[int]:
 
         from diapason.server.cloud_router import _ollama_host
 
+        host = _ollama_host()
+        from diapason.core.local_mode import assert_may_leave
+
+        assert_may_leave("the model metadata request", destination=host)
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.post(
-                f"{_ollama_host()}/api/show", json={"model": model_id}
-            )
+            resp = await client.post(f"{host}/api/show", json={"model": model_id})
             resp.raise_for_status()
             info = resp.json().get("model_info") or {}
             for key, val in info.items():
@@ -902,9 +904,7 @@ async def list_models(request: Request) -> ModelListResponse:
     if not model_ids:
         model_ids = await list_local_models()
 
-    lengths = await asyncio.gather(
-        *(_context_length_of(mid) for mid in model_ids)
-    )
+    lengths = await asyncio.gather(*(_context_length_of(mid) for mid in model_ids))
     return ModelListResponse(
         data=[
             ModelObject(id=mid, context_length=length)
@@ -934,12 +934,17 @@ async def pull_model(request: Request):
 
     host = getattr(engine, "_host", "http://localhost:11434")
     try:
+        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
+
+        assert_may_leave("the model pull request", destination=host)
         async with _httpx.AsyncClient(base_url=host, timeout=600.0) as client:
             resp = await client.post(
                 "/api/pull",
                 json={"name": model_name, "stream": False},
             )
         resp.raise_for_status()
+    except LocalOnlyError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
         raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
     except _httpx.HTTPStatusError as exc:
@@ -963,6 +968,9 @@ async def delete_model(model_name: str, request: Request):
 
     host = getattr(engine, "_host", "http://localhost:11434")
     try:
+        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
+
+        assert_may_leave("the model deletion request", destination=host)
         async with _httpx.AsyncClient(base_url=host, timeout=30.0) as client:
             resp = await client.request(
                 "DELETE",
@@ -970,6 +978,8 @@ async def delete_model(model_name: str, request: Request):
                 json={"name": model_name},
             )
         resp.raise_for_status()
+    except LocalOnlyError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
         raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
     except _httpx.HTTPStatusError as exc:

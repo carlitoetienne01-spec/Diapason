@@ -17,7 +17,12 @@ impl PySchedulerStore {
         }
     }
 
-    fn create_task(&self, name: &str, schedule_type: &str, schedule_value: &str) -> PyResult<String> {
+    fn create_task(
+        &self,
+        name: &str,
+        schedule_type: &str,
+        schedule_value: &str,
+    ) -> PyResult<String> {
         let st = diapason_scheduler::ScheduleType::parse(schedule_type).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "invalid schedule_type '{schedule_type}', expected cron/interval/once"

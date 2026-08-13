@@ -19,7 +19,7 @@
       -InstallRoot <path>  default: %LOCALAPPDATA%\Diapason (matches
                            install.ps1's default)
       -ListenHost <addr>   default: 127.0.0.1 (loopback). Set to 0.0.0.0
-                           ONLY if you also set $env:OPENJARVIS_API_KEY
+                           ONLY if you also set $env:DIAPASON_API_KEY
                            — the server refuses to start unauthenticated
                            on a non-loopback bind.
       -ListenPort <int>    default: 8000
@@ -44,6 +44,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $TaskName = 'Diapason'
 
+# Compatibility aliases retained through Diapason 1.x. New names win.
+if (-not $env:DIAPASON_HOME -and $env:OPENJARVIS_HOME) { $env:DIAPASON_HOME = $env:OPENJARVIS_HOME }
+if (-not $env:DIAPASON_API_KEY -and $env:OPENJARVIS_API_KEY) { $env:DIAPASON_API_KEY = $env:OPENJARVIS_API_KEY }
+
 function Write-Info  ($msg) { Write-Host "[info]  $msg" -ForegroundColor Cyan }
 function Write-Ok    ($msg) { Write-Host "[ok]    $msg" -ForegroundColor Green }
 function Write-Warn2 ($msg) { Write-Host "[warn]  $msg" -ForegroundColor Yellow }
@@ -57,7 +61,7 @@ function Get-DefaultInstallRoot {
     # function scope (PowerShell's default dynamic lookup would also
     # work today, but $script: is the explicit contract).
     if ($script:InstallRoot) { return $script:InstallRoot }
-    if ($env:OPENJARVIS_HOME) { return $env:OPENJARVIS_HOME }
+    if ($env:DIAPASON_HOME) { return $env:DIAPASON_HOME }
     return (Join-Path $env:LOCALAPPDATA 'Diapason')
 }
 
@@ -87,13 +91,13 @@ function Install-Task {
     # Safety: refuse to register a non-loopback bind without an API key.
     # Mirrors deploy/systemd/diapason.service's EnvironmentFile guard.
     $isLoopback = ($ListenHost -eq '127.0.0.1' -or $ListenHost -eq 'localhost')
-    if (-not $isLoopback -and -not $env:OPENJARVIS_API_KEY) {
+    if (-not $isLoopback -and -not $env:DIAPASON_API_KEY) {
         Write-Fail @"
-ListenHost is $ListenHost (non-loopback) but `$env:OPENJARVIS_API_KEY is
+ListenHost is $ListenHost (non-loopback) but `$env:DIAPASON_API_KEY is
 not set. An unauthenticated non-loopback bind is refused by diapason serve
 and would also create a security hole. Set the env var first:
 
-    `$env:OPENJARVIS_API_KEY = (uv run diapason auth generate-key)
+    `$env:DIAPASON_API_KEY = (uv run diapason auth generate-key)
 
 then re-run with -ListenHost 0.0.0.0.
 "@
@@ -107,10 +111,10 @@ then re-run with -ListenHost 0.0.0.0.
     # session picks it up. (Loopback path doesn't need the key, so this
     # only runs for the explicit LAN-exposed case.)
     if (-not $isLoopback) {
-        Write-Info "Persisting OPENJARVIS_API_KEY to User environment so the scheduled task can read it at logon."
+        Write-Info "Persisting DIAPASON_API_KEY to User environment so the scheduled task can read it at logon."
         [System.Environment]::SetEnvironmentVariable(
-            'OPENJARVIS_API_KEY',
-            $env:OPENJARVIS_API_KEY,
+            'DIAPASON_API_KEY',
+            $env:DIAPASON_API_KEY,
             'User'
         )
     }

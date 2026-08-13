@@ -19,8 +19,8 @@ from typing import Any, List, Optional, Protocol
 
 logger = logging.getLogger(__name__)
 
-_CMD_V_KEYCODE = 9          # kVK_ANSI_V
-_CMD_FLAG = 1 << 20          # kCGEventFlagMaskCommand
+_CMD_V_KEYCODE = 9  # kVK_ANSI_V
+_CMD_FLAG = 1 << 20  # kCGEventFlagMaskCommand
 
 
 class PasteboardLike(Protocol):

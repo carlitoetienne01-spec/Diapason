@@ -146,8 +146,7 @@ pub fn default_search_space() -> SearchSpace {
                 values: vec![],
                 low: Some(0.0),
                 high: Some(1.0),
-                description: "Generation temperature (0 = deterministic, 1 = creative)"
-                    .into(),
+                description: "Generation temperature (0 = deterministic, 1 = creative)".into(),
                 primitive: "intelligence".into(),
             },
             SearchDimension {

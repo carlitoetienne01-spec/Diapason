@@ -16,15 +16,10 @@ static SENSITIVE_PATTERNS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     ])
 });
 
-static SENSITIVE_EXTENSIONS: Lazy<Vec<&'static str>> = Lazy::new(|| {
-    vec![
-        ".pem", ".key", ".p12", ".pfx", ".jks", ".secrets",
-    ]
-});
+static SENSITIVE_EXTENSIONS: Lazy<Vec<&'static str>> =
+    Lazy::new(|| vec![".pem", ".key", ".p12", ".pfx", ".jks", ".secrets"]);
 
-static SENSITIVE_PREFIXES: Lazy<Vec<&'static str>> = Lazy::new(|| {
-    vec![".env.", "credentials."]
-});
+static SENSITIVE_PREFIXES: Lazy<Vec<&'static str>> = Lazy::new(|| vec![".env.", "credentials."]);
 
 /// Return `true` if path matches a sensitive file pattern.
 pub fn is_sensitive_file(path: &Path) -> bool {

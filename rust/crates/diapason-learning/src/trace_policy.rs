@@ -5,9 +5,8 @@ use parking_lot::RwLock;
 use regex::Regex;
 use std::collections::HashMap;
 
-static CODE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)```|`[^`]+`|\bdef\s|\bclass\s|\bimport\s|\bfunction\s").unwrap()
-});
+static CODE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)```|`[^`]+`|\bdef\s|\bclass\s|\bimport\s|\bfunction\s").unwrap());
 static MATH_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\bsolve\b|\bintegral\b|\bequation\b|\bcalculate\b|\bcompute\b").unwrap()
 });
@@ -174,13 +173,11 @@ impl TraceDrivenPolicy {
         let mut changes: HashMap<String, HashMap<String, String>> = HashMap::new();
 
         for (qclass, model_scores) in &groups {
-            let best = model_scores
-                .iter()
-                .max_by(|a, b| {
-                    a.1.composite_score()
-                        .partial_cmp(&b.1.composite_score())
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
+            let best = model_scores.iter().max_by(|a, b| {
+                a.1.composite_score()
+                    .partial_cmp(&b.1.composite_score())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             if let Some((best_model, _)) = best {
                 map.insert(qclass.clone(), best_model.clone());
@@ -217,13 +214,7 @@ impl TraceDrivenPolicy {
     }
 
     /// Record a single observation for online (incremental) updates.
-    pub fn observe(
-        &self,
-        query: &str,
-        model: &str,
-        outcome: Option<&str>,
-        feedback: Option<f64>,
-    ) {
+    pub fn observe(&self, query: &str, model: &str, outcome: Option<&str>, feedback: Option<f64>) {
         let qclass = classify_query(query);
         let mut map = self.policy_map.write();
         let mut conf = self.confidence.write();
@@ -283,11 +274,8 @@ mod tests {
 
     #[test]
     fn test_select_model_fallback() {
-        let policy = TraceDrivenPolicy::new(
-            vec!["m1".into(), "m2".into()],
-            "m1".into(),
-            "m2".into(),
-        );
+        let policy =
+            TraceDrivenPolicy::new(vec!["m1".into(), "m2".into()], "m1".into(), "m2".into());
         assert_eq!(policy.select_model("hello"), "m1");
     }
 

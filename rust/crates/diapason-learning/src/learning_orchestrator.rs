@@ -103,20 +103,18 @@ impl LearningOrchestrator {
                     accepted,
                 }
             }
-            _ => {
-                LearningCycleResult {
-                    timestamp,
-                    status: "completed".into(),
-                    reason: String::new(),
-                    sft_pairs: sft_pairs_count,
-                    routing_classes: routing_count,
-                    agent_classes: agent_count,
-                    baseline_score,
-                    post_score,
-                    improvement: None,
-                    accepted: true,
-                }
-            }
+            _ => LearningCycleResult {
+                timestamp,
+                status: "completed".into(),
+                reason: String::new(),
+                sft_pairs: sft_pairs_count,
+                routing_classes: routing_count,
+                agent_classes: agent_count,
+                baseline_score,
+                post_score,
+                improvement: None,
+                accepted: true,
+            },
         }
     }
 }

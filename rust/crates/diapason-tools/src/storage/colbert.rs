@@ -29,16 +29,12 @@ pub struct ColBERTMemory {
 impl ColBERTMemory {
     pub fn new(db_path: &Path, token_dim: usize) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS colbert_documents (
@@ -51,11 +47,7 @@ impl ColBERTMemory {
                 created_at REAL DEFAULT (julianday('now'))
             );",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -141,11 +133,7 @@ impl ColBERTMemory {
                 "SELECT id, content, source, metadata, num_tokens, token_embeddings
                  FROM colbert_documents",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let rows: Vec<(String, String, String, usize, Vec<u8>)> = stmt
             .query_map([], |row| {
@@ -156,11 +144,7 @@ impl ColBERTMemory {
                 let emb_bytes: Vec<u8> = row.get(5)?;
                 Ok((content, source, meta_str, num_tokens as usize, emb_bytes))
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -206,11 +190,7 @@ impl MemoryBackend for ColBERTMemory {
         self.store_with_token_embeddings(content, source, metadata, &token_embeddings)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         let query_token_embeddings = self.embed_tokens(query);
         if query_token_embeddings.is_empty() {
             return Ok(vec![]);
@@ -225,22 +205,14 @@ impl MemoryBackend for ColBERTMemory {
                 "DELETE FROM colbert_documents WHERE id = ?1",
                 rusqlite::params![doc_id],
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(changes > 0)
     }
 
     fn clear(&self) -> Result<(), DiapasonError> {
         let conn = self.conn.lock();
         conn.execute_batch("DELETE FROM colbert_documents")
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 
@@ -250,11 +222,7 @@ impl MemoryBackend for ColBERTMemory {
             .query_row("SELECT COUNT(*) FROM colbert_documents", [], |row| {
                 row.get(0)
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(count as usize)
     }
 }
@@ -404,10 +372,7 @@ mod tests {
 
     #[test]
     fn test_token_embeddings_roundtrip() {
-        let embeddings = vec![
-            vec![1.0, 2.0, 3.0],
-            vec![4.0, 5.0, 6.0],
-        ];
+        let embeddings = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let bytes = token_embeddings_to_bytes(&embeddings);
         let recovered = bytes_to_token_embeddings(&bytes, 2, 3);
         assert_eq!(embeddings, recovered);

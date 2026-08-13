@@ -14,9 +14,7 @@ import pytest
 
 from diapason.core.config import DiapasonConfig, load_config
 
-PRESETS_DIR = (
-    Path(__file__).resolve().parents[2] / "configs" / "diapason" / "examples"
-)
+PRESETS_DIR = Path(__file__).resolve().parents[2] / "configs" / "diapason" / "examples"
 
 
 def _preset_paths() -> list[Path]:

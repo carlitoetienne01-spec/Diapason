@@ -151,7 +151,7 @@ before restarting so it inherits the updated environment.
 To stop all services, press ++ctrl+c++ in the terminal.
 
 !!! tip "Environment variable"
-    Set `OPENJARVIS_MODEL` to change the default model: `OPENJARVIS_MODEL=deepseek-r1:14b ./scripts/quickstart.sh`
+    Set `DIAPASON_MODEL` to change the default model: `DIAPASON_MODEL=deepseek-r1:14b ./scripts/quickstart.sh`
 
 ## Initialize Configuration
 

@@ -176,13 +176,17 @@ def engine_is_local(engine: Any, *, local_ids: Optional[set[str]] = None) -> boo
     engine_id = str(getattr(engine, "engine_id", "") or "").strip().lower()
     if not engine_id:
         return False
-    known_local = local_ids if local_ids is not None else {
-        "ollama",
-        "mlx",
-        "vllm",
-        "llama-cpp",
-        "gemma-cpp",
-        "apple-fm",
-        "nexa",
-    }
+    known_local = (
+        local_ids
+        if local_ids is not None
+        else {
+            "ollama",
+            "mlx",
+            "vllm",
+            "llama-cpp",
+            "gemma-cpp",
+            "apple-fm",
+            "nexa",
+        }
+    )
     return engine_id in known_local

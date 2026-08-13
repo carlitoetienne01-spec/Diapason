@@ -85,9 +85,9 @@ def _repopulate_registries() -> None:
 
     if not MemoryRegistry.keys():
         for mod_name in list(sys.modules):
-            if mod_name.startswith(
-                "diapason.tools.storage."
-            ) and not mod_name.endswith("_stubs"):
+            if mod_name.startswith("diapason.tools.storage.") and not mod_name.endswith(
+                "_stubs"
+            ):
                 try:
                     importlib.reload(sys.modules[mod_name])
                 except Exception:

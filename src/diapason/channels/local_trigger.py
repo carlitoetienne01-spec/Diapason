@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from pathlib import Path
@@ -17,14 +16,14 @@ from diapason.channels._stubs import (
     ChannelStatus,
 )
 from diapason.core.events import EventBus, EventType
+from diapason.core.paths import get_config_dir
 from diapason.core.registry import ChannelRegistry
 
 logger = logging.getLogger(__name__)
 
 
 def default_trigger_path() -> Path:
-    home = Path(os.environ.get("OPENJARVIS_HOME", Path.home() / ".diapason"))
-    return home / "triggers" / "local_trigger.jsonl"
+    return get_config_dir() / "triggers" / "local_trigger.jsonl"
 
 
 @ChannelRegistry.register("local_trigger")
@@ -87,7 +86,9 @@ class LocalTriggerChannel(BaseChannel):
         metadata: Dict[str, Any] | None = None,
     ) -> bool:
         # Outbound: append an event others can observe
-        self.emit(content, event=metadata.get("event", "outbound") if metadata else "outbound")
+        self.emit(
+            content, event=metadata.get("event", "outbound") if metadata else "outbound"
+        )
         return True
 
     def status(self) -> ChannelStatus:

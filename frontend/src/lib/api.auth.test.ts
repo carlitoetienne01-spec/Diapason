@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const SETTINGS_KEY = 'diapason-settings';
 const fetchMock = vi.fn<typeof fetch>();
 
-// Minimal in-memory localStorage stub so the helpers can run under node
+// Minimal in-memory Web Storage stubs so the helpers can run under node
 // (no jsdom dependency).
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -33,16 +33,20 @@ beforeEach(() => {
   globalThis.fetch = fetchMock;
   (globalThis as unknown as { localStorage: MemoryStorage }).localStorage =
     new MemoryStorage();
+  (globalThis as unknown as { sessionStorage: MemoryStorage }).sessionStorage =
+    new MemoryStorage();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
   (globalThis as unknown as { localStorage?: MemoryStorage }).localStorage =
     undefined;
+  (globalThis as unknown as { sessionStorage?: MemoryStorage }).sessionStorage =
+    undefined;
 });
 
 async function freshApi() {
-  // Re-import to pick up the current localStorage stub.
+  // Re-import to pick up the current Web Storage stubs.
   return await import('./api');
 }
 
@@ -52,17 +56,14 @@ describe('getApiKey', () => {
     expect(getApiKey()).toBe('');
   });
 
-  it('reads apiKey from the diapason-settings localStorage blob', async () => {
-    localStorage.setItem(
-      SETTINGS_KEY,
-      JSON.stringify({ apiUrl: 'http://x', apiKey: 'sk-local-123' }),
-    );
+  it('reads apiKey from sessionStorage', async () => {
+    sessionStorage.setItem('diapason-api-key', 'sk-local-123');
     const { getApiKey } = await freshApi();
     expect(getApiKey()).toBe('sk-local-123');
   });
 
-  it('returns empty string when the blob has no apiKey field', async () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ apiUrl: 'http://x' }));
+  it('does not read a legacy key directly from localStorage', async () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ apiKey: 'sk-persisted' }));
     const { getApiKey } = await freshApi();
     expect(getApiKey()).toBe('');
   });
@@ -75,13 +76,13 @@ describe('authHeaders', () => {
   });
 
   it('adds a Bearer Authorization header when a key is set', async () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ apiKey: 'sk-local-123' }));
+    sessionStorage.setItem('diapason-api-key', 'sk-local-123');
     const { authHeaders } = await freshApi();
     expect(authHeaders()).toEqual({ Authorization: 'Bearer sk-local-123' });
   });
 
   it('merges extra headers alongside Authorization', async () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ apiKey: 'sk-local-123' }));
+    sessionStorage.setItem('diapason-api-key', 'sk-local-123');
     const { authHeaders } = await freshApi();
     expect(authHeaders({ 'Content-Type': 'application/json' })).toEqual({
       'Content-Type': 'application/json',

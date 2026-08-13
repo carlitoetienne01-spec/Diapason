@@ -7,7 +7,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 
 const OLLAMA_PORT: u16 = 11434;
-const JARVIS_PORT: u16 = 8000;
+const DIAPASON_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
     "uv sync --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
 
@@ -386,7 +386,7 @@ const STDERR_TAIL_LIMIT: usize = 16 * 1024;
 struct BackendManager {
     ollama: Option<ChildHandle>,
     diapason: Option<ChildHandle>,
-    jarvis_stderr_tail: StderrTail,
+    diapason_stderr_tail: StderrTail,
 }
 
 impl Default for BackendManager {
@@ -394,7 +394,7 @@ impl Default for BackendManager {
         Self {
             ollama: None,
             diapason: None,
-            jarvis_stderr_tail: Arc::new(Mutex::new(Vec::new())),
+            diapason_stderr_tail: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -521,7 +521,7 @@ enum DiapasonStartResult {
 ///
 /// Returns immediately after spawning the task; the task ends naturally
 /// when the child closes stderr (i.e. exits).
-fn spawn_jarvis_stderr_drainer(mut stderr: tokio::process::ChildStderr, tail: StderrTail) {
+fn spawn_diapason_stderr_drainer(mut stderr: tokio::process::ChildStderr, tail: StderrTail) {
     use tokio::io::AsyncReadExt;
     tokio::spawn(async move {
         let mut buf = vec![0u8; 4096];
@@ -546,15 +546,15 @@ fn spawn_jarvis_stderr_drainer(mut stderr: tokio::process::ChildStderr, tail: St
 ///
 /// Safe to call at any time; returns an empty string before the
 /// drainer has seen any bytes. Trimmed.
-async fn read_jarvis_stderr_tail(backend: &SharedBackend) -> String {
-    let tail = backend.lock().await.jarvis_stderr_tail.clone();
+async fn read_diapason_stderr_tail(backend: &SharedBackend) -> String {
+    let tail = backend.lock().await.diapason_stderr_tail.clone();
     let bytes = tail.lock().await.clone();
     String::from_utf8_lossy(&bytes).trim().to_string()
 }
 
 /// Poll `diapason serve` health, watching the child process state so we
 /// never wait 10 minutes for a process that crashed in the first second.
-async fn wait_for_jarvis_health(
+async fn wait_for_diapason_health(
     url: &str,
     timeout: Duration,
     backend: &SharedBackend,
@@ -580,7 +580,7 @@ async fn wait_for_jarvis_health(
             }
         };
         if let Some(status) = exit_status {
-            let stderr = read_jarvis_stderr_tail(backend).await;
+            let stderr = read_diapason_stderr_tail(backend).await;
             return DiapasonStartResult::EarlyExit {
                 code: status.code(),
                 stderr,
@@ -655,9 +655,18 @@ fn matching_installed_model(models: &[String], requested: &str) -> Option<String
 
 fn model_name_looks_embedding_only(model: &str) -> bool {
     let name = model.to_ascii_lowercase();
-    ["embed", "embedding", "rerank", "minilm", "bge-", "bge_", "e5-", "e5_"]
-        .iter()
-        .any(|marker| name.contains(marker))
+    [
+        "embed",
+        "embedding",
+        "rerank",
+        "minilm",
+        "bge-",
+        "bge_",
+        "e5-",
+        "e5_",
+    ]
+    .iter()
+    .any(|marker| name.contains(marker))
 }
 
 fn preferred_installed_model(models: &[String]) -> Option<String> {
@@ -726,18 +735,19 @@ async fn pull_model(model: &str) -> Result<(), String> {
 fn uv_sync_stderr_tail(stderr: &str, max_chars: usize) -> String {
     let total = stderr.chars().count();
     let skip = total.saturating_sub(max_chars);
-    stderr.chars().skip(skip).collect::<String>().trim().to_string()
+    stderr
+        .chars()
+        .skip(skip)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 /// Error message shown when `uv sync` runs but exits non-zero (#331).
 ///
 /// `exit_code` is `None` when the process was terminated by a signal with
 /// no exit code (rendered as "unknown" rather than a misleading -1).
-fn format_uv_sync_failure(
-    root: &std::path::Path,
-    exit_code: Option<i32>,
-    stderr: &str,
-) -> String {
+fn format_uv_sync_failure(root: &std::path::Path, exit_code: Option<i32>, stderr: &str) -> String {
     let code = exit_code
         .map(|c| c.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -894,9 +904,9 @@ async fn verify_diapason_rust_extension(
 
 fn port_owner_hint() -> String {
     if cfg!(target_os = "windows") {
-        format!("netstat -ano | findstr :{}", JARVIS_PORT)
+        format!("netstat -ano | findstr :{}", DIAPASON_PORT)
     } else {
-        format!("lsof -i :{}", JARVIS_PORT)
+        format!("lsof -i :{}", DIAPASON_PORT)
     }
 }
 
@@ -911,12 +921,12 @@ fn format_port_unavailable(port: u16, reason: &str) -> String {
 }
 
 fn check_jarvis_port_available() -> Result<(), String> {
-    match std::net::TcpListener::bind(("127.0.0.1", JARVIS_PORT)) {
+    match std::net::TcpListener::bind(("127.0.0.1", DIAPASON_PORT)) {
         Ok(listener) => {
             drop(listener);
             Ok(())
         }
-        Err(err) => Err(format_port_unavailable(JARVIS_PORT, &err.to_string())),
+        Err(err) => Err(format_port_unavailable(DIAPASON_PORT, &err.to_string())),
     }
 }
 
@@ -961,10 +971,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 .stderr(std::process::Stdio::null());
             // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
             prepare_subprocess_for_appimage(&mut sidecar_cmd);
-            match sidecar_cmd.spawn() {
-                Ok(child) => Some(child),
-                Err(_) => None,
-            }
+            sidecar_cmd.spawn().ok()
         };
 
         if let Some(child) = ollama_child {
@@ -997,7 +1004,9 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         }
 
         let installed_models = ollama_model_names().await;
-        let resolved_model = if let Some(installed) = startup_installed_model(&model, &installed_models) {
+        let resolved_model = if let Some(installed) =
+            startup_installed_model(&model, &installed_models)
+        {
             installed
         } else {
             {
@@ -1011,7 +1020,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
 
                     // If a local model appeared while pulling, use it instead of
                     // making startup depend on another network pull.
-                    if let Some(installed) = preferred_installed_model(&ollama_model_names().await) {
+                    if let Some(installed) = preferred_installed_model(&ollama_model_names().await)
+                    {
                         installed
                     } else if ollama_has_model(FALLBACK_MODEL).await {
                         FALLBACK_MODEL.to_string()
@@ -1076,7 +1086,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.error = Some(format!(
                 "Could not reach your custom inference server at {}. \
                  Start the server (e.g. LM Studio) and check the URL in Settings, then relaunch.",
-                if host.is_empty() { "(no URL set)" } else { host.as_str() }
+                if host.is_empty() {
+                    "(no URL set)"
+                } else {
+                    host.as_str()
+                }
             ));
             return;
         }
@@ -1178,7 +1192,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 "clone",
                 "--depth",
                 "1",
-                "https://github.com/open-jarvis/OpenJarvis.git",
+                "https://github.com/open-diapason/Diapason.git",
                 &clone_target,
             ])
             .stdout(std::process::Stdio::null())
@@ -1195,7 +1209,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
+                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
                         stderr.trim(),
                         clone_target,
                     ));
@@ -1205,7 +1219,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
+                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
                         e, clone_target,
                     ));
                     return;
@@ -1237,7 +1251,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     //                          uv-sync + spawn dance entirely. Done.
     //   * 503                — server is up but engine isn't ready. Surface
     //                          an actionable message; don't kill (matches
-    //                          our wait_for_jarvis_health 503 contract).
+    //                          our wait_for_diapason_health 503 contract).
     //   * any other status   — something else is listening on the port. Tell
     //                          the user via the error banner instead of
     //                          force-killing a foreign service.
@@ -1245,14 +1259,14 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     //
     // TODO(#455 follow-up): validate /health response body before attaching
     // so a multi-user host can't trivially spoof us. Also accept a port
-    // override from config instead of hard-coding JARVIS_PORT.
+    // override from config instead of hard-coding DIAPASON_PORT.
     {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
         match client
-            .get(format!("http://127.0.0.1:{}/health", JARVIS_PORT))
+            .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
             .send()
             .await
         {
@@ -1263,7 +1277,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 // snapshot. Small sleep between to give the server room.
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 let confirm = client
-                    .get(format!("http://127.0.0.1:{}/health", JARVIS_PORT))
+                    .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
                     .send()
                     .await
                     .map(|r| r.status().is_success())
@@ -1282,7 +1296,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     s.phase = "ready".into();
                     s.detail = format!(
                         "Connected to existing API server on port {}.",
-                        JARVIS_PORT,
+                        DIAPASON_PORT,
                     );
                     s.server_ready = true;
                     s.model_ready = true;
@@ -1297,7 +1311,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                      inference engine isn't ready (HTTP 503). If this is your \
                      `diapason serve`, wait for it to finish loading and relaunch. \
                      Otherwise, stop that service or change the port.",
-                    JARVIS_PORT,
+                    DIAPASON_PORT,
                 ));
                 return;
             }
@@ -1310,7 +1324,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     "Port {} is already in use by another service (it answered \
                      /health with HTTP {}). Stop that service or change the \
                      Diapason port, then relaunch.\n\nTo identify it:\n  {}",
-                    JARVIS_PORT,
+                    DIAPASON_PORT,
                     resp.status(),
                     port_owner_hint(),
                 ));
@@ -1359,12 +1373,16 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     sync_cmd
         .args([
             "sync",
-            "--extra", "desktop",
-            "--extra", "inference-cloud",
-            "--extra", "inference-google",
+            "--extra",
+            "desktop",
+            "--extra",
+            "inference-cloud",
+            "--extra",
+            "inference-google",
             // diapason_rust lives in a uv dependency group (not the published
             // `desktop` extra) so pip installs from PyPI don't require it (#584).
-            "--group", "desktop-native",
+            "--group",
+            "desktop-native",
         ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -1409,7 +1427,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         "diapason".into(),
         "serve".into(),
         "--port".into(),
-        JARVIS_PORT.to_string(),
+        DIAPASON_PORT.to_string(),
     ];
     serve_argv.extend(plan.serve_args.iter().cloned());
     // If the Ollama pull fell back to a different tag than planned, serve the
@@ -1448,11 +1466,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             // it can bind its HTTP port — exactly the symptom in #309.
             let stderr_handle = child.stderr.take();
             let mut mgr = backend.lock().await;
-            let tail = mgr.jarvis_stderr_tail.clone();
+            let tail = mgr.diapason_stderr_tail.clone();
             mgr.diapason = Some(ChildHandle { child });
             drop(mgr);
             if let Some(stderr) = stderr_handle {
-                spawn_jarvis_stderr_drainer(stderr, tail);
+                spawn_diapason_stderr_drainer(stderr, tail);
             }
         }
         Err(e) => {
@@ -1467,8 +1485,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         }
     }
 
-    let server_url = format!("http://127.0.0.1:{}/health", JARVIS_PORT);
-    match wait_for_jarvis_health(&server_url, Duration::from_secs(600), &backend).await {
+    let server_url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
+    match wait_for_diapason_health(&server_url, Duration::from_secs(600), &backend).await {
         DiapasonStartResult::Ready => {}
         DiapasonStartResult::ServiceUnavailable(body) => {
             let mut s = status.lock().await;
@@ -1478,7 +1496,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                  Check the server logs, or run 'uv run diapason serve --port {}{}' \
                  from {} to see the engine error.\n\n\
                  Server response:\n{}",
-                JARVIS_PORT,
+                DIAPASON_PORT,
                 // Show the args actually passed (after `serve --port <port>`),
                 // including any post-fallback `--model` override.
                 match serve_argv.get(5..) {
@@ -1519,7 +1537,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             return;
         }
         DiapasonStartResult::Timeout => {
-            let stderr = read_jarvis_stderr_tail(&backend).await;
+            let stderr = read_diapason_stderr_tail(&backend).await;
             let mut s = status.lock().await;
             s.error = Some(if stderr.is_empty() {
                 format!(
@@ -1562,7 +1580,87 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
 // ---------------------------------------------------------------------------
 
 fn api_base() -> String {
-    format!("http://127.0.0.1:{}", JARVIS_PORT)
+    format!("http://127.0.0.1:{}", DIAPASON_PORT)
+}
+
+fn local_api_key_path() -> std::path::PathBuf {
+    for name in ["DIAPASON_HOME", "OPENJARVIS_HOME", "JARVIS_HOME"] {
+        if let Ok(root) = std::env::var(name) {
+            if !root.trim().is_empty() {
+                return std::path::PathBuf::from(root)
+                    .join("auth")
+                    .join("local_api_key");
+            }
+        }
+    }
+    if let Ok(root) = std::env::var("XDG_DATA_HOME") {
+        if !root.trim().is_empty() {
+            return std::path::PathBuf::from(root)
+                .join("diapason")
+                .join("auth")
+                .join("local_api_key");
+        }
+    }
+    std::path::PathBuf::from(home_dir())
+        .join(".diapason")
+        .join("auth")
+        .join("local_api_key")
+}
+
+fn local_api_key() -> String {
+    for name in ["DIAPASON_API_KEY", "OPENJARVIS_API_KEY", "JARVIS_API_KEY"] {
+        if let Ok(value) = std::env::var(name) {
+            if !value.trim().is_empty() {
+                return value.trim().to_string();
+            }
+        }
+    }
+    let path = local_api_key_path();
+    let generated = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if !generated.is_empty() {
+        return generated;
+    }
+    let config_path = path
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(|root| root.join("config.toml"));
+    config_path
+        .and_then(|config| std::fs::read_to_string(config).ok())
+        .and_then(|text| text.parse::<toml_edit::DocumentMut>().ok())
+        .and_then(|doc| {
+            doc.get("server")?
+                .get("auth")?
+                .get("api_key")?
+                .as_str()
+                .map(str::to_owned)
+        })
+        .unwrap_or_default()
+}
+
+fn authenticated(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    let is_loopback = request
+        .try_clone()
+        .and_then(|clone| clone.build().ok())
+        .and_then(|request| request.url().host_str().map(str::to_owned))
+        .map(|host| {
+            host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        })
+        .unwrap_or(false);
+    if !is_loopback {
+        return request;
+    }
+    let key = local_api_key();
+    if key.is_empty() {
+        request
+    } else {
+        request.bearer_auth(key)
+    }
 }
 
 #[tauri::command]
@@ -1573,6 +1671,11 @@ async fn get_setup_status(state: tauri::State<'_, SharedStatus>) -> Result<Setup
 #[tauri::command]
 fn get_api_base() -> String {
     api_base()
+}
+
+#[tauri::command]
+fn get_local_api_key() -> String {
+    local_api_key()
 }
 
 #[tauri::command]
@@ -1617,7 +1720,8 @@ async fn fetch_energy(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/telemetry/energy", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/telemetry/energy", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1632,7 +1736,8 @@ async fn fetch_telemetry(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/telemetry/stats", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/telemetry/stats", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1647,9 +1752,11 @@ async fn fetch_traces(api_url: String, limit: u32) -> Result<serde_json::Value, 
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/traces?limit={}", base, limit))
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    let resp =
+        authenticated(reqwest::Client::new().get(format!("{}/v1/traces?limit={}", base, limit)))
+            .send()
+            .await
+            .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
@@ -1662,9 +1769,11 @@ async fn fetch_trace(api_url: String, trace_id: String) -> Result<serde_json::Va
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/traces/{}", base, trace_id))
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    let resp =
+        authenticated(reqwest::Client::new().get(format!("{}/v1/traces/{}", base, trace_id)))
+            .send()
+            .await
+            .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
@@ -1677,7 +1786,8 @@ async fn fetch_learning_stats(api_url: String) -> Result<serde_json::Value, Stri
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/learning/stats", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/learning/stats", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1692,7 +1802,8 @@ async fn fetch_learning_policy(api_url: String) -> Result<serde_json::Value, Str
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/learning/policy", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/learning/policy", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1707,7 +1818,8 @@ async fn fetch_memory_stats(api_url: String) -> Result<serde_json::Value, String
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/memory/stats", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/memory/stats", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1727,8 +1839,7 @@ async fn search_memory(
         api_url
     };
     let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{}/v1/memory/search", base))
+    let resp = authenticated(client.post(format!("{}/v1/memory/search", base)))
         .json(&serde_json::json!({"query": query, "top_k": top_k}))
         .send()
         .await
@@ -1745,7 +1856,8 @@ async fn fetch_agents(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/agents", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/agents", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1760,7 +1872,8 @@ async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/models", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/models", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1769,7 +1882,7 @@ async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn run_jarvis_command(args: Vec<String>) -> Result<String, String> {
+async fn run_diapason_command(args: Vec<String>) -> Result<String, String> {
     let uv_bin = resolve_bin("uv");
 
     let mut cmd_args = vec!["run".to_string(), "diapason".to_string()];
@@ -1815,14 +1928,14 @@ async fn run_jarvis_command(args: Vec<String>) -> Result<String, String> {
 
     let tail: StderrTail = Arc::new(Mutex::new(Vec::new()));
     if let Some(stderr) = child.stderr.take() {
-        spawn_jarvis_stderr_drainer(stderr, tail.clone());
+        spawn_diapason_stderr_drainer(stderr, tail.clone());
     }
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-    let url = format!("http://127.0.0.1:{}/health", JARVIS_PORT);
+    let url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
 
     loop {
@@ -1842,14 +1955,14 @@ async fn run_jarvis_command(args: Vec<String>) -> Result<String, String> {
                 // kill_on_drop defaults to false); `stop` tears it down.
                 return Ok(format!(
                     "diapason serve is ready on http://127.0.0.1:{}",
-                    JARVIS_PORT
+                    DIAPASON_PORT
                 ));
             }
         }
         if tokio::time::Instant::now() >= deadline {
             return Err(format!(
                 "diapason serve did not become healthy on port {} within 120s.",
-                JARVIS_PORT
+                DIAPASON_PORT
             ));
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1863,7 +1976,8 @@ async fn fetch_savings(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = reqwest::get(format!("{}/v1/savings", base))
+    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/savings", base)))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -1888,8 +2002,7 @@ async fn transcribe_audio(
 
     let form = reqwest::multipart::Form::new().part("file", part);
 
-    let resp = client
-        .post(&url)
+    let resp = authenticated(client.post(&url))
         .multipart(form)
         .send()
         .await
@@ -1955,7 +2068,7 @@ fn paste_to_frontmost(text: String) -> Result<String, String> {
                 "Paste failed (grant Accessibility to Diapason): {err}"
             ));
         }
-        return Ok(format!("Pasted {} chars", text.chars().count()));
+        Ok(format!("Pasted {} chars", text.chars().count()))
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -2055,7 +2168,9 @@ fn managed_cloud_key_names() -> Vec<String> {
 
     let cfg = read_inference_config();
     if matches!(&cfg.kind, SourceKind::Custom) {
-        let engine = cfg.engine.unwrap_or_else(|| CUSTOM_FALLBACK_ENGINE.to_string());
+        let engine = cfg
+            .engine
+            .unwrap_or_else(|| CUSTOM_FALLBACK_ENGINE.to_string());
         let key_name = engine_api_key_name(&engine);
         if validate_cloud_key_name(&key_name).is_ok() {
             names.push(key_name);
@@ -2069,19 +2184,30 @@ fn managed_cloud_key_names() -> Vec<String> {
 
 fn secure_store_get(key_name: &str) -> Result<Option<String>, String> {
     validate_cloud_key_name(key_name)?;
-    let entry = keyring::Entry::new(SECURE_KEY_SERVICE, key_name)
-        .map_err(|err| format!("Failed to open secure key storage for {}: {}", key_name, err))?;
+    let entry = keyring::Entry::new(SECURE_KEY_SERVICE, key_name).map_err(|err| {
+        format!(
+            "Failed to open secure key storage for {}: {}",
+            key_name, err
+        )
+    })?;
     match entry.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(format!("Failed to read {} from secure key storage: {}", key_name, err)),
+        Err(err) => Err(format!(
+            "Failed to read {} from secure key storage: {}",
+            key_name, err
+        )),
     }
 }
 
 fn secure_store_set(key_name: &str, key_value: &str) -> Result<(), String> {
     validate_cloud_key_name(key_name)?;
-    let entry = keyring::Entry::new(SECURE_KEY_SERVICE, key_name)
-        .map_err(|err| format!("Failed to open secure key storage for {}: {}", key_name, err))?;
+    let entry = keyring::Entry::new(SECURE_KEY_SERVICE, key_name).map_err(|err| {
+        format!(
+            "Failed to open secure key storage for {}: {}",
+            key_name, err
+        )
+    })?;
     if key_value.is_empty() {
         return match entry.delete_credential() {
             Ok(()) => Ok(()),
@@ -2154,13 +2280,12 @@ fn read_cloud_keys() -> Vec<(String, String)> {
 }
 
 async fn reload_cloud_keys(keys: Vec<(String, String)>) {
-    let reload_url = format!("http://127.0.0.1:{}/v1/cloud/reload", JARVIS_PORT);
+    let reload_url = format!("http://127.0.0.1:{}/v1/cloud/reload", DIAPASON_PORT);
     let key_map: serde_json::Map<String, serde_json::Value> = keys
         .into_iter()
         .map(|(key, value)| (key, serde_json::Value::String(value)))
         .collect();
-    let _ = reqwest::Client::new()
-        .post(&reload_url)
+    let _ = authenticated(reqwest::Client::new().post(&reload_url))
         .json(&serde_json::json!({ "keys": key_map }))
         .timeout(std::time::Duration::from_secs(10))
         .send()
@@ -2279,17 +2404,12 @@ async fn delete_ollama_model(model_name: String) -> Result<serde_json::Value, St
 // Inference-source selection (~/.diapason/inference.json)
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum SourceKind {
+    #[default]
     Ollama,
     Custom,
-}
-
-impl Default for SourceKind {
-    fn default() -> Self {
-        SourceKind::Ollama
-    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
@@ -2334,7 +2454,8 @@ fn write_inference_config(cfg: &InferenceConfig) -> Result<(), String> {
         let _ = std::fs::create_dir_all(parent);
     }
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json + "\n").map_err(|e| format!("Failed to save inference config: {}", e))
+    std::fs::write(&path, json + "\n")
+        .map_err(|e| format!("Failed to save inference config: {}", e))
 }
 
 /// Upsert `[engine.<engine>] host = "<host>"` into an existing config.toml
@@ -2376,7 +2497,8 @@ fn normalize_host(raw: &str) -> String {
 #[tauri::command]
 async fn speech_health(api_url: String) -> Result<serde_json::Value, String> {
     let url = format!("{}/v1/speech/health", api_url);
-    let resp = reqwest::get(&url)
+    let resp = authenticated(reqwest::Client::new().get(&url))
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     let body: serde_json::Value = resp
@@ -2492,7 +2614,7 @@ mod native_overlay {
         // Also inject CSS to nuke any remaining background
         let js = nsstring(
             "document.documentElement.style.background='transparent';\
-             document.body.style.background='transparent';"
+             document.body.style.background='transparent';",
         );
         let nil: *mut Object = std::ptr::null_mut();
         let _: () = msg_send![wv, evaluateJavaScript: js completionHandler: nil];
@@ -2523,7 +2645,9 @@ mod native_overlay {
             let sup = Class::get("NSObject").unwrap();
             let mut decl = ClassDecl::new("JarvisOverlayNavDelegate", sup).unwrap();
             extern "C" fn did_finish(_: &Object, _: Sel, wv: *mut Object, _nav: *mut Object) {
-                unsafe { force_transparent(wv); }
+                unsafe {
+                    force_transparent(wv);
+                }
             }
             decl.add_method(
                 sel!(webView:didFinishNavigation:),
@@ -2753,7 +2877,7 @@ fn on_main_thread(f: impl FnOnce() + Send + 'static) {
 async fn get_overlay_conversation() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        return Ok(native_overlay::load_conversation());
+        Ok(native_overlay::load_conversation())
     }
     #[cfg(not(target_os = "macos"))]
     Ok("[]".into())
@@ -2789,7 +2913,6 @@ pub fn run() {
         .manage(backend.clone())
         .manage(status.clone())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -2875,7 +2998,7 @@ pub fn run() {
             // Create native macOS overlay panel
             #[cfg(target_os = "macos")]
             unsafe {
-                native_overlay::create(include_str!("overlay.html"), JARVIS_PORT);
+                native_overlay::create(include_str!("overlay.html"), DIAPASON_PORT);
             }
 
             // Register Cmd+Shift+Space to toggle the overlay
@@ -2916,17 +3039,20 @@ pub fn run() {
                 // Talk to Diapason (realtime orb): Option/Alt+Space toggle
                 let talk = Shortcut::new(Some(Modifiers::ALT), Code::Space);
                 let talk_handle = app.handle().clone();
-                if let Err(e) = app.global_shortcut().on_shortcut(talk, move |app, _sc, ev| {
-                    if ev.state != ShortcutState::Pressed {
-                        return;
-                    }
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        let _ = window.unminimize();
-                    }
-                    let _ = talk_handle.emit("talk-toggle", ());
-                }) {
+                if let Err(e) = app
+                    .global_shortcut()
+                    .on_shortcut(talk, move |app, _sc, ev| {
+                        if ev.state != ShortcutState::Pressed {
+                            return;
+                        }
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.unminimize();
+                        }
+                        let _ = talk_handle.emit("talk-toggle", ());
+                    })
+                {
                     eprintln!("Warning: could not register Alt+Space Talk: {e}");
                 }
             }
@@ -2939,6 +3065,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_setup_status,
             get_api_base,
+            get_local_api_key,
             start_backend,
             stop_backend,
             check_health,
@@ -2952,7 +3079,7 @@ pub fn run() {
             search_memory,
             fetch_agents,
             fetch_models,
-            run_jarvis_command,
+            run_diapason_command,
             fetch_savings,
             submit_savings,
             transcribe_audio,
@@ -3105,10 +3232,10 @@ mod tests {
     #[test]
     fn default_local_model_picks_second_largest_that_fits() {
         // QWEN35_MODELS min_ram ladder: 4,6,8,12,24,32,96 GB
-        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b");  // only one fits
-        assert_eq!(default_local_model(8.0), "qwen3.5:2b");    // fits 0.8/2/4 → 2nd-largest
-        assert_eq!(default_local_model(16.0), "qwen3.5:4b");   // fits ..9b → 2nd-largest
-        assert_eq!(default_local_model(32.0), "qwen3.5:27b");  // fits 0.8/2/4/9/27/35b → 2nd-largest is 27b
+        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b"); // only one fits
+        assert_eq!(default_local_model(8.0), "qwen3.5:2b"); // fits 0.8/2/4 → 2nd-largest
+        assert_eq!(default_local_model(16.0), "qwen3.5:4b"); // fits ..9b → 2nd-largest
+        assert_eq!(default_local_model(32.0), "qwen3.5:27b"); // fits 0.8/2/4/9/27/35b → 2nd-largest is 27b
         assert_eq!(default_local_model(128.0), "qwen3.5:35b"); // fits all → 2nd-largest
     }
 
@@ -3190,7 +3317,10 @@ mod tests {
 
     #[test]
     fn resolved_model_is_only_persisted_when_no_model_was_configured() {
-        let default_cfg = InferenceConfig { kind: SourceKind::Ollama, ..Default::default() };
+        let default_cfg = InferenceConfig {
+            kind: SourceKind::Ollama,
+            ..Default::default()
+        };
         assert!(should_persist_resolved_model(&default_cfg));
 
         let empty_cfg = InferenceConfig {
@@ -3210,8 +3340,14 @@ mod tests {
 
     #[test]
     fn parse_defaults_to_ollama_when_file_missing_or_garbage() {
-        assert!(matches!(parse_inference_config("").kind, SourceKind::Ollama));
-        assert!(matches!(parse_inference_config("not json").kind, SourceKind::Ollama));
+        assert!(matches!(
+            parse_inference_config("").kind,
+            SourceKind::Ollama
+        ));
+        assert!(matches!(
+            parse_inference_config("not json").kind,
+            SourceKind::Ollama
+        ));
     }
 
     #[test]
@@ -3227,21 +3363,39 @@ mod tests {
 
     #[test]
     fn normalize_host_strips_trailing_slash_and_v1() {
-        assert_eq!(normalize_host("http://localhost:1234/v1"), "http://localhost:1234");
-        assert_eq!(normalize_host("http://localhost:1234/v1/"), "http://localhost:1234");
-        assert_eq!(normalize_host("http://localhost:1234/"), "http://localhost:1234");
+        assert_eq!(
+            normalize_host("http://localhost:1234/v1"),
+            "http://localhost:1234"
+        );
+        assert_eq!(
+            normalize_host("http://localhost:1234/v1/"),
+            "http://localhost:1234"
+        );
+        assert_eq!(
+            normalize_host("http://localhost:1234/"),
+            "http://localhost:1234"
+        );
         assert_eq!(normalize_host("http://host:8000"), "http://host:8000");
     }
 
     #[test]
     fn boot_plan_ollama_launches_and_pulls_one_model() {
-        let cfg = InferenceConfig { kind: SourceKind::Ollama, ..Default::default() };
+        let cfg = InferenceConfig {
+            kind: SourceKind::Ollama,
+            ..Default::default()
+        };
         let plan = boot_plan(&cfg, 16.0);
         assert!(plan.launch_ollama);
         assert_eq!(plan.model_to_pull.as_deref(), Some("qwen3.5:4b"));
         assert!(plan.engine_host.is_none());
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "ollama"]));
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--model", "qwen3.5:4b"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "ollama"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--model", "qwen3.5:4b"]));
     }
 
     #[test]
@@ -3270,8 +3424,14 @@ mod tests {
             plan.engine_host,
             Some(("lmstudio".to_string(), "http://localhost:1234".to_string()))
         );
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "lmstudio"]));
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--model", "qwen2.5-7b"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "lmstudio"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--model", "qwen2.5-7b"]));
     }
 
     #[test]
@@ -3284,7 +3444,10 @@ mod tests {
         };
         let plan = boot_plan(&cfg, 16.0);
         assert_eq!(plan.engine_host.as_ref().unwrap().0, "lmstudio");
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "lmstudio"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "lmstudio"]));
     }
 
     #[test]
@@ -3303,7 +3466,10 @@ mod tests {
     #[test]
     fn boot_plan_ollama_uses_fallback_model_on_low_ram() {
         // Below the smallest model's min_ram → default_local_model → FALLBACK_MODEL.
-        let cfg = InferenceConfig { kind: SourceKind::Ollama, ..Default::default() };
+        let cfg = InferenceConfig {
+            kind: SourceKind::Ollama,
+            ..Default::default()
+        };
         let plan = boot_plan(&cfg, 1.0);
         assert_eq!(plan.model_to_pull.as_deref(), Some(super::FALLBACK_MODEL));
     }
@@ -3323,8 +3489,14 @@ mod tests {
         let existing = "[intelligence]\ndefault_model = \"keep-me\"\n";
         let out = upsert_engine_host(existing, "vllm", "http://host:8000").unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
-        assert_eq!(doc["intelligence"]["default_model"].as_str(), Some("keep-me"));
-        assert_eq!(doc["engine"]["vllm"]["host"].as_str(), Some("http://host:8000"));
+        assert_eq!(
+            doc["intelligence"]["default_model"].as_str(),
+            Some("keep-me")
+        );
+        assert_eq!(
+            doc["engine"]["vllm"]["host"].as_str(),
+            Some("http://host:8000")
+        );
     }
 
     #[test]
@@ -3332,7 +3504,10 @@ mod tests {
         let existing = "[engine.lmstudio]\nhost = \"http://old:1\"\n";
         let out = upsert_engine_host(existing, "lmstudio", "http://new:2").unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
-        assert_eq!(doc["engine"]["lmstudio"]["host"].as_str(), Some("http://new:2"));
+        assert_eq!(
+            doc["engine"]["lmstudio"]["host"].as_str(),
+            Some("http://new:2")
+        );
     }
 
     // -----------------------------------------------------------------

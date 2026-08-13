@@ -13,14 +13,12 @@ pub struct TraceStore {
 impl TraceStore {
     pub fn new(db_path: &Path) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS traces (
@@ -40,9 +38,7 @@ impl TraceStore {
                 metadata_json TEXT DEFAULT '{}'
             )",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -82,9 +78,7 @@ impl TraceStore {
                 metadata_json,
             ],
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(e.to_string()))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(())
     }
@@ -98,11 +92,7 @@ impl TraceStore {
                         steps_json, metadata_json
                  FROM traces WHERE trace_id = ?1",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let result = stmt
             .query_row(rusqlite::params![trace_id], |row| {
@@ -136,11 +126,7 @@ impl TraceStore {
         Ok(result)
     }
 
-    pub fn list_traces(
-        &self,
-        limit: usize,
-        offset: usize,
-    ) -> Result<Vec<Trace>, DiapasonError> {
+    pub fn list_traces(&self, limit: usize, offset: usize) -> Result<Vec<Trace>, DiapasonError> {
         let conn = self.conn.lock();
         let mut stmt = conn
             .prepare(
@@ -149,11 +135,7 @@ impl TraceStore {
                         steps_json, metadata_json
                  FROM traces ORDER BY started_at DESC LIMIT ?1 OFFSET ?2",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let traces = stmt
             .query_map(rusqlite::params![limit as i64, offset as i64], |row| {
@@ -182,11 +164,7 @@ impl TraceStore {
                         .unwrap_or_default(),
                 })
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -197,11 +175,7 @@ impl TraceStore {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM traces", [], |row| row.get(0))
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(count as usize)
     }
 }

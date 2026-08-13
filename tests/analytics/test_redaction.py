@@ -65,7 +65,10 @@ from diapason.analytics.redaction import (
         "AIzaSyD-1234567890abcdefghij1234567890",
         "ya29.a0AfH6SMBabc123def456ghi789jkl",
         # JWT
-        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+        (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0."  # gitleaks:allow
+            "dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        ),
         # Bearer tokens
         "Bearer abc123def456",
         "bearer xyz789",
@@ -134,7 +137,7 @@ def test_redact_drops_pii_strings() -> None:
             "ok": "chat",
             "leak_email": "user@example.com",
             "leak_path": "/Users/alice/file.txt",
-            "leak_key": "sk-1234567890abcdef",
+            "leak_key": "sk-1234567890abcdef",  # gitleaks:allow
             "leak_jwt": _jwt,
             "leak_bearer": "Bearer abc123",
         }

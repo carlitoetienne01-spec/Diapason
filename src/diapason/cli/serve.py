@@ -289,6 +289,8 @@ def serve(
                 agent_kwargs = {"bus": bus}
                 if sec.capability_policy is not None:
                     agent_kwargs["capability_policy"] = sec.capability_policy
+                agent_kwargs["boundary_guard"] = sec.boundary_guard
+                agent_kwargs["rate_limiter"] = sec.rate_limiter
 
                 # MCP transports persisted on the agent at the bottom of
                 # this block — initialise here so the reference is valid
@@ -360,9 +362,7 @@ def serve(
                 import inspect
 
                 try:
-                    accepted = set(
-                        inspect.signature(agent_cls.__init__).parameters
-                    )
+                    accepted = set(inspect.signature(agent_cls.__init__).parameters)
                 except (TypeError, ValueError):
                     accepted = set()
                 if "confirm_callback" in accepted:
@@ -383,6 +383,17 @@ def serve(
                         memory_files_config=config.memory_files,
                         system_prompt_config=config.system_prompt,
                     )
+
+                _accepts_kwargs = any(
+                    p.kind is inspect.Parameter.VAR_KEYWORD
+                    for p in inspect.signature(agent_cls.__init__).parameters.values()
+                )
+                if accepted and not _accepts_kwargs:
+                    agent_kwargs = {
+                        key: value
+                        for key, value in agent_kwargs.items()
+                        if key in accepted
+                    }
 
                 agent = agent_cls(engine, model_name, **agent_kwargs)
                 # Pin MCP transports to the agent's lifetime so HTTP
@@ -496,6 +507,9 @@ def serve(
             model=model_name,
             agent_name=channel_agent,
             tools=_channel_tools,
+            capability_policy=sec.capability_policy,
+            boundary_guard=sec.boundary_guard,
+            rate_limiter=sec.rate_limiter,
         )
         _wire_system.wire_channel(channel_bridge)
 
@@ -612,7 +626,15 @@ def serve(
                     logger.debug("Scheduler session store init failed: %s", exc)
 
             _sched_tool_executor = (
-                ToolExecutor(resolved_tools, bus) if resolved_tools else None
+                ToolExecutor(
+                    resolved_tools,
+                    bus,
+                    capability_policy=sec.capability_policy,
+                    boundary_guard=sec.boundary_guard,
+                    rate_limiter=sec.rate_limiter,
+                )
+                if resolved_tools
+                else None
             )
 
             system = DiapasonSystem(
@@ -630,6 +652,8 @@ def serve(
                 trace_store=_trace_store,
                 session_store=_sched_session_store,
                 capability_policy=sec.capability_policy,
+                boundary_guard=sec.boundary_guard,
+                rate_limiter=sec.rate_limiter,
                 agent_manager=agent_manager,
                 agent_executor=executor,
             )
@@ -655,7 +679,9 @@ def serve(
     # --- Channel Gateway: API key, sessions, ChannelBridge ---
     import os as _os
 
-    api_key = _os.environ.get("OPENJARVIS_API_KEY", "")
+    from diapason.core.env import get as _env_get
+
+    api_key = _env_get("API_KEY") or ""
     if not api_key:
         try:
             import tomllib
@@ -667,9 +693,16 @@ def serve(
         except (FileNotFoundError, ImportError):
             pass
 
-    from diapason.server.auth_middleware import check_bind_safety
+    from diapason.server.auth_middleware import ensure_local_api_key
+
+    api_key, generated_key_path = ensure_local_api_key(api_key)
+    if generated_key_path is not None:
+        logger.info("Local API authentication enabled using %s", generated_key_path)
+
+    from diapason.server.auth_middleware import check_bind_safety, check_cors_safety
 
     check_bind_safety(bind_host, api_key=api_key)
+    check_cors_safety(bind_host, config.server.cors_origins)
 
     # Log credential status at startup
     from diapason.core.credentials import TOOL_CREDENTIALS, get_credential_status
@@ -739,21 +772,6 @@ def serve(
         f"  Agent:  [cyan]{agent_key or 'none'}[/cyan]\n"
         f"  URL:    [cyan]http://{bind_host}:{bind_port}[/cyan]"
     )
-
-    # Warn about wildcard CORS on non-loopback
-    import ipaddress as _ipa
-
-    try:
-        _is_loop = _ipa.ip_address(bind_host).is_loopback
-    except ValueError:
-        _is_loop = bind_host in ("localhost", "")
-
-    if not _is_loop and "*" in config.server.cors_origins:
-        console.print(
-            "[yellow bold]WARNING:[/yellow bold] Wildcard CORS with credentials "
-            "enabled on non-loopback interface. This allows any website to make "
-            "authenticated requests to your instance."
-        )
 
     import uvicorn
 

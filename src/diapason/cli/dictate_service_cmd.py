@@ -30,9 +30,7 @@ def install() -> None:
     bundle = app_bundle.build()
     click.echo(f"Built app bundle → {bundle}")
 
-    path = launch_agent.install(
-        executable=str(app_bundle.executable_path(bundle))
-    )
+    path = launch_agent.install(executable=str(app_bundle.executable_path(bundle)))
     click.echo(f"Installed LaunchAgent → {path}")
     if launch_agent.is_loaded():
         click.echo("It will start at every login and restart itself if it crashes.")

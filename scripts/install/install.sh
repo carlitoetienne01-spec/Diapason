@@ -10,9 +10,9 @@
 #   --force                Re-run all steps even if state file says done
 #
 # Environment overrides:
-#   OPENJARVIS_HOME        Install dir (default: $HOME/.diapason)
-#   OPENJARVIS_REPO_URL    git repo URL (default: https://github.com/open-diapason/Diapason.git)
-#   OPENJARVIS_FORCE_WSL   Set 1 to force WSL detection (testing)
+#   DIAPASON_HOME        Install dir (default: $HOME/.diapason)
+#   DIAPASON_REPO_URL    git repo URL (default: https://github.com/open-diapason/Diapason.git)
+#   DIAPASON_FORCE_WSL   Set 1 to force WSL detection (testing)
 
 set -euo pipefail
 
@@ -212,25 +212,25 @@ fi
 # ---- env ----
 # Diapason keeps ALL of its state (install tree + runtime data, configs,
 # databases, caches, logs) under a single root so it never clutters $HOME
-# beyond one directory. Relocate it by exporting OPENJARVIS_HOME before
+# beyond one directory. Relocate it by exporting DIAPASON_HOME before
 # running the installer, e.g.:
-#     OPENJARVIS_HOME=~/apps/diapason curl ... | bash
-# The Python runtime honors the same override (and, when OPENJARVIS_HOME is
+#     DIAPASON_HOME=~/apps/diapason curl ... | bash
+# The Python runtime honors the same override (and, when DIAPASON_HOME is
 # unset, $XDG_DATA_HOME/diapason if XDG_DATA_HOME is set). With nothing set
 # the root is ~/.diapason, so existing installs are untouched.
-OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.diapason}"
-OPENJARVIS_REPO_URL="${OPENJARVIS_REPO_URL:-https://github.com/open-diapason/Diapason.git}"
-SRC_DIR="$OPENJARVIS_HOME/src"
-VENV_DIR="$OPENJARVIS_HOME/.venv"
-STATE_DIR="$OPENJARVIS_HOME/.state"
-SCRIPTS_DIR="$OPENJARVIS_HOME/.scripts"
+DIAPASON_HOME="${DIAPASON_HOME:-${OPENJARVIS_HOME:-${JARVIS_HOME:-$HOME/.diapason}}}"
+DIAPASON_REPO_URL="${DIAPASON_REPO_URL:-${OPENJARVIS_REPO_URL:-https://github.com/open-diapason/Diapason.git}}"
+SRC_DIR="$DIAPASON_HOME/src"
+VENV_DIR="$DIAPASON_HOME/.venv"
+STATE_DIR="$DIAPASON_HOME/.state"
+SCRIPTS_DIR="$DIAPASON_HOME/.scripts"
 STATE_FILE="$STATE_DIR/install-state.json"
 
-mkdir -p "$OPENJARVIS_HOME" "$STATE_DIR" "$SCRIPTS_DIR"
+mkdir -p "$DIAPASON_HOME" "$STATE_DIR" "$SCRIPTS_DIR"
 
 # ---- WSL detection ----
 WSL=0
-if [[ "${OPENJARVIS_FORCE_WSL:-0}" == "1" ]]; then
+if [[ "${DIAPASON_FORCE_WSL:-${OPENJARVIS_FORCE_WSL:-0}}" == "1" ]]; then
     WSL=1
 elif [[ -f /proc/sys/kernel/osrelease ]] && grep -qi "microsoft" /proc/sys/kernel/osrelease 2>/dev/null; then
     WSL=1
@@ -238,19 +238,22 @@ fi
 
 # ---- analytics beacon (anonymized install funnel) ----
 #
-# Posts a small JSON event to PostHog at each install stage so the
-# Diapason team can see where users drop off during install.
+# Opt-in only: set DIAPASON_INSTALL_ANALYTICS=1 to post a small JSON event to
+# PostHog at each install stage.
 # No content, no IPs (handled by PostHog disable_geoip on server),
 # no hardware identifiers — just OS, arch, elapsed time, and stage name.
 #
-ANALYTICS_HOST="${OPENJARVIS_ANALYTICS_HOST:-https://34.231.106.201.sslip.io}"
-ANALYTICS_KEY="${OPENJARVIS_ANALYTICS_KEY:-phc_ysKu72QaxzYNmDpHFcesD2ZZAe68zkdWJEKoYYkc5e3n}"
-ANON_ID_FILE="$OPENJARVIS_HOME/anon_id"
+ANALYTICS_HOST="${DIAPASON_ANALYTICS_HOST:-https://34.231.106.201.sslip.io}"
+ANALYTICS_KEY="${DIAPASON_ANALYTICS_KEY:-phc_ysKu72QaxzYNmDpHFcesD2ZZAe68zkdWJEKoYYkc5e3n}"
+ANON_ID_FILE="$DIAPASON_HOME/anon_id"
 INSTALL_START_EPOCH="$(date +%s)"
 CURRENT_STAGE=""
 
 analytics_enabled() {
-    return 0
+    case "${DIAPASON_INSTALL_ANALYTICS:-${OPENJARVIS_INSTALL_ANALYTICS:-0}}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 detect_os() {
@@ -328,7 +331,7 @@ beacon() {
     arch="$(detect_arch)"
 
     local props
-    props='"os":"'"$os"'","arch":"'"$arch"'","installer_version":"0.1.1"'
+    props='"os":"'"$os"'","arch":"'"$arch"'","installer_version":"1.0.0"'
     if [[ -n "$stage" ]]; then
         props="${props},\"stage\":\"$stage\""
     fi
@@ -448,7 +451,7 @@ clone_repo() {
         echo "    repo already at $SRC_DIR"
         return 0
     fi
-    git clone --depth 1 "$OPENJARVIS_REPO_URL" "$SRC_DIR"
+    git clone --depth 1 "$DIAPASON_REPO_URL" "$SRC_DIR"
 }
 
 copy_scripts() {
@@ -666,7 +669,7 @@ PYEOF
 
 # ---- run ----
 echo "Diapason installer"
-echo "  install dir: $OPENJARVIS_HOME"
+echo "  install dir: $DIAPASON_HOME"
 echo "  WSL2:        $WSL"
 echo
 

@@ -68,15 +68,22 @@ pub struct PyInstrumentedEngine {
 impl PyInstrumentedEngine {
     #[new]
     #[pyo3(signature = (engine_key="ollama", host="http://localhost:11434", store_path=None, agent_name="default"))]
-    fn new(engine_key: &str, host: &str, store_path: Option<&str>, agent_name: &str) -> PyResult<Self> {
+    fn new(
+        engine_key: &str,
+        host: &str,
+        store_path: Option<&str>,
+        agent_name: &str,
+    ) -> PyResult<Self> {
         let config = diapason_core::DiapasonConfig::default();
         let engine = diapason_engine::get_engine_static(&config, Some(engine_key))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        let store = Arc::new(match store_path {
-            Some(p) => diapason_telemetry::TelemetryStore::new(std::path::Path::new(p)),
-            None => diapason_telemetry::TelemetryStore::in_memory(),
-        }
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?);
+        let store = Arc::new(
+            match store_path {
+                Some(p) => diapason_telemetry::TelemetryStore::new(std::path::Path::new(p)),
+                None => diapason_telemetry::TelemetryStore::in_memory(),
+            }
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+        );
         Ok(Self {
             inner: diapason_telemetry::InstrumentedEngine::new(
                 engine,
@@ -95,7 +102,7 @@ impl PyInstrumentedEngine {
 // --- New telemetry session classes ---
 
 /// Python wrapper for TelemetrySample.
-#[pyclass(name = "TelemetrySample")]
+#[pyclass(name = "TelemetrySample", from_py_object)]
 #[derive(Clone)]
 pub struct PyTelemetrySample {
     pub timestamp_ns: u64,
@@ -250,7 +257,7 @@ impl PyItlStats {
     #[staticmethod]
     fn compute(token_timestamps_ms: Vec<f64>) -> PyResult<pyo3::Py<pyo3::types::PyDict>> {
         let stats = diapason_telemetry::itl::compute_itl_stats(&token_timestamps_ms);
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let dict = pyo3::types::PyDict::new(py);
             dict.set_item("p50_ms", stats.p50_ms)?;
             dict.set_item("p90_ms", stats.p90_ms)?;
@@ -318,9 +325,13 @@ impl PyPhaseMetrics {
                 gpu_mem_gb: s.gpu_mem_gb,
             })
             .collect();
-        let metrics =
-            diapason_telemetry::phase::compute_phase_metrics(&rust_samples, start_ns, end_ns, tokens);
-        pyo3::Python::with_gil(|py| {
+        let metrics = diapason_telemetry::phase::compute_phase_metrics(
+            &rust_samples,
+            start_ns,
+            end_ns,
+            tokens,
+        );
+        pyo3::Python::attach(|py| {
             let dict = pyo3::types::PyDict::new(py);
             dict.set_item("energy_j", metrics.energy_j)?;
             dict.set_item("mean_power_w", metrics.mean_power_w)?;
@@ -361,7 +372,7 @@ impl PyPhaseMetrics {
             input_tokens,
             output_tokens,
         );
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let prefill_dict = pyo3::types::PyDict::new(py);
             prefill_dict.set_item("energy_j", prefill.energy_j)?;
             prefill_dict.set_item("mean_power_w", prefill.mean_power_w)?;

@@ -5,7 +5,7 @@ must NEVER be inside the Diapason source tree. ``resolve_spec_search_root``
 walks up from this module's ``__file__`` looking for a ``pyproject.toml`` that
 identifies the Diapason source root, then refuses to operate if the resolved
 root is inside it. Defense in depth — if a user accidentally points
-``OPENJARVIS_HOME`` at the repo, the system fails loudly instead of silently
+``DIAPASON_HOME`` at the repo, the system fails loudly instead of silently
 writing artifacts into the working tree.
 """
 
@@ -52,7 +52,7 @@ def _resolve_diapason_home() -> Path:
     """Resolve the Diapason home directory via the unified core resolver.
 
     Delegates to ``get_config_dir`` so spec-search honors the same env-aware
-    resolution (OPENJARVIS_HOME and XDG) as the rest of the framework.
+    resolution (DIAPASON_HOME and XDG) as the rest of the framework.
     """
     return get_config_dir()
 
@@ -60,7 +60,7 @@ def _resolve_diapason_home() -> Path:
 def resolve_spec_search_root() -> Path:
     """Return the absolute path of the spec-search root directory.
 
-    The root is ``$OPENJARVIS_HOME/learning`` (or ``~/.diapason/learning``
+    The root is ``$DIAPASON_HOME/learning`` (or ``~/.diapason/learning``
     by default). Raises ``ConfigurationError`` if the resolved path lies
     inside the Diapason source tree, to prevent dev artifacts from leaking
     into the repo.
@@ -74,9 +74,9 @@ def resolve_spec_search_root() -> Path:
             pass  # Good — not inside the source tree.
         else:
             raise ConfigurationError(
-                f"OPENJARVIS_HOME ({home}) is inside the source tree "
+                f"DIAPASON_HOME ({home}) is inside the source tree "
                 f"({source_root}). Spec search refuses to write runtime "
-                "artifacts inside the Diapason repo. Set OPENJARVIS_HOME "
+                "artifacts inside the Diapason repo. Set DIAPASON_HOME "
                 "to a directory outside the repo (default: ~/.diapason)."
             )
     return home / "learning"

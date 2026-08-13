@@ -6,10 +6,10 @@ The security module is a cross-cutting concern that wraps the inference pipeline
 
 ## Design Principles
 
-- **Composable, not mandatory.** Security scanning is opt-in and composable. You wrap an engine with `GuardrailsEngine`; you do not configure a global interceptor.
+- **Enabled and structural.** Runtime builders install guardrails, boundary scanning, capabilities, rate limits, and audit logging by default. Direct library users may still compose the same controls explicitly.
 - **Scanner-agnostic.** The `BaseScanner` ABC defines a two-method interface (`scan`, `redact`). Any scanner can be plugged in, including user-defined ones.
 - **Fail-safe modes.** The three redaction modes (WARN, REDACT, BLOCK) cover a spectrum from visibility to enforcement, allowing gradual tightening without code changes.
-- **Audit by default.** The `AuditLogger` records security events to SQLite so that findings are traceable after the fact.
+- **Audit without secret retention.** The `AuditLogger` records hashes, lengths, actions, and pattern metadata in a chained SQLite log; matched values are not persisted.
 
 ---
 
@@ -99,7 +99,10 @@ sequenceDiagram
 
 ### stream() Behavior
 
-For streaming, the engine yields tokens to the caller in real time. The security layer accumulates the full output and scans it after the stream ends. Because the scan is post-hoc, BLOCK mode cannot prevent delivery of streamed tokens — it only applies to the input side.
+For streaming with output scanning enabled, the security layer buffers the
+completion and scans it before release. Clean output keeps its original chunk
+shape; sensitive output is redacted or blocked before any content chunk reaches
+the caller.
 
 ```mermaid
 sequenceDiagram
@@ -112,10 +115,9 @@ sequenceDiagram
     G->>S: scan inputs (before streaming)
     G->>E: stream(messages, model)
     loop each token
-        E-->>G: token
-        G-->>C: yield token
+        E-->>G: token buffered
     end
-    G->>S: scan(accumulated output)
+    G->>S: scan(accumulated output before release)
     alt findings detected
         G->>G: publish SECURITY_ALERT (stream_post_hoc)
     end
@@ -182,8 +184,8 @@ The file policy does not publish events or use the event bus. It is a pure funct
 | `id` | `INTEGER PRIMARY KEY` | Auto-increment row ID |
 | `timestamp` | `REAL` | Unix timestamp of the event |
 | `event_type` | `TEXT` | `SecurityEventType` value string |
-| `findings_json` | `TEXT` | JSON-encoded list of `ScanFinding` dicts |
-| `content_preview` | `TEXT` | Short preview of the scanned content |
+| `findings_json` | `TEXT` | Pattern metadata and hashes; matched text is blank |
+| `content_preview` | `TEXT` | SHA-256 marker and original length, never raw content |
 | `action_taken` | `TEXT` | Mode string (`warn`, `redact`, `block`) |
 
 The database is written in append-only mode. There is no built-in rotation or truncation — manage retention externally by deleting old entries with SQLite tooling or by using a path-per-session audit log.

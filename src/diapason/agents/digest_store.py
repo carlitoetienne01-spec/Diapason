@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from diapason.core.paths import get_config_dir
+from diapason.security.file_utils import secure_create
 
 
 @dataclass
@@ -34,6 +35,8 @@ class DigestStore:
         if not db_path:
             db_path = str(get_config_dir() / "digest.db")
         self._db_path = db_path
+        if db_path != ":memory:":
+            secure_create(Path(db_path).expanduser())
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(

@@ -72,10 +72,7 @@ impl TrainingDataMiner {
     fn quality_traces<'a>(&self, traces: &'a [MinerTraceData]) -> Vec<&'a MinerTraceData> {
         traces
             .iter()
-            .filter(|t| {
-                t.outcome == "success"
-                    && t.feedback.is_some_and(|f| f >= self.min_quality)
-            })
+            .filter(|t| t.outcome == "success" && t.feedback.is_some_and(|f| f >= self.min_quality))
             .collect()
     }
 
@@ -142,7 +139,10 @@ impl TrainingDataMiner {
                 }
             }
 
-            let all_scores: Vec<f64> = model_scores.values().flat_map(|v| v.iter().copied()).collect();
+            let all_scores: Vec<f64> = model_scores
+                .values()
+                .flat_map(|v| v.iter().copied())
+                .collect();
             let overall_avg = if all_scores.is_empty() {
                 0.0
             } else {
@@ -165,7 +165,8 @@ impl TrainingDataMiner {
         let quality = self.quality_traces(traces);
 
         let mut class_agent_scores: HashMap<String, HashMap<String, Vec<f64>>> = HashMap::new();
-        let mut class_agent_tools: HashMap<String, HashMap<String, Vec<Vec<String>>>> = HashMap::new();
+        let mut class_agent_tools: HashMap<String, HashMap<String, Vec<Vec<String>>>> =
+            HashMap::new();
 
         for t in &quality {
             let qc = classify_query(&t.query).to_string();
@@ -222,7 +223,10 @@ impl TrainingDataMiner {
             ranked.sort_by_key(|r| std::cmp::Reverse(r.1));
             let best_tools: Vec<String> = ranked.into_iter().map(|(name, _)| name).collect();
 
-            let all_scores: Vec<f64> = agent_scores.values().flat_map(|v| v.iter().copied()).collect();
+            let all_scores: Vec<f64> = agent_scores
+                .values()
+                .flat_map(|v| v.iter().copied())
+                .collect();
             let overall_avg = if all_scores.is_empty() {
                 0.0
             } else {
@@ -320,8 +324,24 @@ mod tests {
     fn test_agent_config_pairs() {
         let miner = TrainingDataMiner::new(0.7, 1);
         let traces = vec![
-            make_trace("Hello", "r1", "m1", "simple", "success", Some(0.9), &["calc"]),
-            make_trace("Hi", "r2", "m1", "simple", "success", Some(0.8), &["calc", "think"]),
+            make_trace(
+                "Hello",
+                "r1",
+                "m1",
+                "simple",
+                "success",
+                Some(0.9),
+                &["calc"],
+            ),
+            make_trace(
+                "Hi",
+                "r2",
+                "m1",
+                "simple",
+                "success",
+                Some(0.8),
+                &["calc", "think"],
+            ),
             make_trace("Hey", "r3", "m1", "orch", "success", Some(0.7), &["think"]),
         ];
         let pairs = miner.extract_agent_config_pairs(&traces);

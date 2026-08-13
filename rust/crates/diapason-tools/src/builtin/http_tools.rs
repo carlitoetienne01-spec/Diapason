@@ -6,6 +6,9 @@ use diapason_security::ssrf::check_ssrf;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::Read;
+
+const MAX_RESPONSE_BYTES: u64 = 1_048_576;
 
 static SPEC: Lazy<ToolSpec> = Lazy::new(|| ToolSpec {
     name: "http_request".into(),
@@ -48,10 +51,11 @@ impl BaseTool for HttpRequestTool {
 
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            // Redirects must be checked hop-by-hop for SSRF. Until the native
+            // client has a guarded resolver, refuse automatic redirects.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e.to_string()))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let mut request = match method.as_str() {
             "POST" => client.post(url),
@@ -77,13 +81,20 @@ impl BaseTool for HttpRequestTool {
         match request.send() {
             Ok(resp) => {
                 let status = resp.status().as_u16();
-                let body = resp.text().unwrap_or_default();
-                let truncated = if body.len() > 10000 {
-                    format!("{}...(truncated)", &body[..10000])
-                } else {
-                    body
-                };
-                let content = format!("Status: {status}\n{truncated}");
+                let mut bytes = Vec::new();
+                if let Err(error) = resp.take(MAX_RESPONSE_BYTES + 1).read_to_end(&mut bytes) {
+                    return Ok(ToolResult::failure(
+                        "http_request",
+                        format!("Failed to read response: {error}"),
+                    ));
+                }
+                let was_truncated = bytes.len() as u64 > MAX_RESPONSE_BYTES;
+                bytes.truncate(MAX_RESPONSE_BYTES as usize);
+                let mut body = String::from_utf8_lossy(&bytes).into_owned();
+                if was_truncated {
+                    body.push_str("\n\n[Response truncated at 1 MB]");
+                }
+                let content = format!("Status: {status}\n{body}");
                 if status < 400 {
                     Ok(ToolResult::success("http_request", content))
                 } else {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -40,6 +41,7 @@ class AuditLogger:
 
         secure_create(self._db_path)
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._lock = threading.RLock()
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS security_events (
@@ -88,7 +90,13 @@ class AuditLogger:
             [
                 {
                     "pattern_name": f.pattern_name,
-                    "matched_text": f.matched_text,
+                    # Audit metadata must never become a second secret store.
+                    "matched_text": "",
+                    "matched_sha256": hashlib.sha256(
+                        f.matched_text.encode()
+                    ).hexdigest()
+                    if f.matched_text
+                    else "",
                     "threat_level": f.threat_level.value,
                     "start": f.start,
                     "end": f.end,
@@ -97,33 +105,41 @@ class AuditLogger:
                 for f in event.findings
             ]
         )
+        content_marker = ""
+        if event.content_preview:
+            content_marker = (
+                "sha256:"
+                f"{hashlib.sha256(event.content_preview.encode()).hexdigest()}"
+                f";len:{len(event.content_preview)}"
+            )
 
-        # Compute hash chain
-        prev_hash = self.tail_hash()
-        hash_input = (
-            f"{prev_hash}|{event.timestamp}|{event.event_type.value}"
-            f"|{findings_json}|{event.content_preview}|{event.action_taken}"
-        )
-        row_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+        with self._lock:
+            # Compute and insert the next link atomically across worker threads.
+            prev_hash = self.tail_hash()
+            hash_input = (
+                f"{prev_hash}|{event.timestamp}|{event.event_type.value}"
+                f"|{findings_json}|{content_marker}|{event.action_taken}"
+            )
+            row_hash = hashlib.sha256(hash_input.encode()).hexdigest()
 
-        self._conn.execute(
-            """
-            INSERT INTO security_events
-                (timestamp, event_type, findings_json, content_preview,
-                 action_taken, row_hash, prev_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event.timestamp,
-                event.event_type.value,
-                findings_json,
-                event.content_preview,
-                event.action_taken,
-                row_hash,
-                prev_hash,
-            ),
-        )
-        self._conn.commit()
+            self._conn.execute(
+                """
+                INSERT INTO security_events
+                    (timestamp, event_type, findings_json, content_preview,
+                     action_taken, row_hash, prev_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.timestamp,
+                    event.event_type.value,
+                    findings_json,
+                    content_marker,
+                    event.action_taken,
+                    row_hash,
+                    prev_hash,
+                ),
+            )
+            self._conn.commit()
 
     def query(
         self,
@@ -150,7 +166,8 @@ class AuditLogger:
         sql += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
 
-        rows = self._conn.execute(sql, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
         events: List[SecurityEvent] = []
         for row in rows:
             ts, etype, findings_json, preview, action = row
@@ -179,9 +196,10 @@ class AuditLogger:
 
     def tail_hash(self) -> str:
         """Return the hash of the last row in the chain, or empty string."""
-        row = self._conn.execute(
-            "SELECT row_hash FROM security_events ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT row_hash FROM security_events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
         return row[0] if row and row[0] else ""
 
     def verify_chain(self) -> Tuple[bool, Optional[int]]:
@@ -193,11 +211,12 @@ class AuditLogger:
             ``(True, None)`` if the chain is valid, or
             ``(False, row_id)`` where *row_id* is the first broken link.
         """
-        rows = self._conn.execute(
-            "SELECT id, timestamp, event_type, findings_json,"
-            " content_preview, action_taken, row_hash, prev_hash"
-            " FROM security_events ORDER BY id"
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, timestamp, event_type, findings_json,"
+                " content_preview, action_taken, row_hash, prev_hash"
+                " FROM security_events ORDER BY id"
+            ).fetchall()
 
         expected_prev = ""
         for row in rows:
@@ -219,12 +238,14 @@ class AuditLogger:
 
     def count(self) -> int:
         """Return the total number of logged security events."""
-        row = self._conn.execute("SELECT COUNT(*) FROM security_events").fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM security_events").fetchone()
         return row[0] if row else 0
 
     def close(self) -> None:
         """Close the SQLite connection."""
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     # -- EventBus handler ----------------------------------------------------
 

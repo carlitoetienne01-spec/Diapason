@@ -78,6 +78,7 @@ class DiapasonSystem:
     capability_policy: Optional[CapabilityPolicy] = None
     audit_logger: Optional[AuditLogger] = None
     boundary_guard: Optional[BoundaryGuard] = None
+    rate_limiter: Any = None
     operator_manager: Optional[OperatorManager] = None
     agent_manager: Optional[AgentManager] = None
     agent_scheduler: Optional[AgentScheduler] = None
@@ -93,6 +94,7 @@ class DiapasonSystem:
             capability_policy=self.capability_policy,
             audit_logger=self.audit_logger,
             boundary_guard=self.boundary_guard,
+            rate_limiter=self.rate_limiter,
         )
 
     @property

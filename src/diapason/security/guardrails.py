@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence
 
 from diapason.core.events import EventBus, EventType
@@ -44,7 +45,7 @@ class GuardrailsEngine(InferenceEngine):
         engine: InferenceEngine,
         *,
         scanners: Optional[List[BaseScanner]] = None,
-        mode: RedactionMode = RedactionMode.WARN,
+        mode: RedactionMode = RedactionMode.REDACT,
         scan_input: bool = True,
         scan_output: bool = True,
         bus: Optional[EventBus] = None,
@@ -162,6 +163,28 @@ class GuardrailsEngine(InferenceEngine):
             f"{len(result.findings)} finding(s) detected"
         )
 
+    def _process_input_messages(self, messages: Sequence[Message]) -> Sequence[Message]:
+        """Scan and, if configured, sanitize inference inputs."""
+        if not self._scan_input:
+            return messages
+        processed = list(messages)
+        for i, msg in enumerate(processed):
+            if not msg.content:
+                continue
+            result = self._scan_text(msg.content)
+            if result.clean:
+                continue
+            processed[i] = Message(
+                role=msg.role,
+                content=self._handle_findings(msg.content, result, "input"),
+                name=msg.name,
+                tool_calls=msg.tool_calls,
+                tool_call_id=msg.tool_call_id,
+                metadata=msg.metadata,
+                images=msg.images,
+            )
+        return processed
+
     # -- InferenceEngine interface -------------------------------------------
 
     def generate(
@@ -174,27 +197,7 @@ class GuardrailsEngine(InferenceEngine):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Scan input, call wrapped engine, scan output."""
-        # Scan input messages
-        if self._scan_input:
-            processed = list(messages)
-            for i, msg in enumerate(processed):
-                if msg.content:
-                    result = self._scan_text(msg.content)
-                    if not result.clean:
-                        processed[i] = Message(
-                            role=msg.role,
-                            content=self._handle_findings(
-                                msg.content,
-                                result,
-                                "input",
-                            ),
-                            name=msg.name,
-                            tool_calls=msg.tool_calls,
-                            tool_call_id=msg.tool_call_id,
-                            metadata=msg.metadata,
-                            images=msg.images,
-                        )
-            messages = processed
+        messages = self._process_input_messages(messages)
 
         # Call wrapped engine
         response = self._engine.generate(
@@ -226,8 +229,9 @@ class GuardrailsEngine(InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Yield tokens in real-time, scan accumulated output post-hoc."""
-        accumulated = []
+        """Buffer, scan, then release output so sensitive tokens never leak."""
+        messages = self._process_input_messages(messages)
+        accumulated: list[str] = []
         async for token in self._engine.stream(
             messages,
             model=model,
@@ -236,30 +240,20 @@ class GuardrailsEngine(InferenceEngine):
             **kwargs,
         ):
             accumulated.append(token)
-            yield token
+            if not self._scan_output:
+                yield token
 
-        # Post-hoc scan of accumulated output for logging only
-        if self._scan_output:
-            full_output = "".join(accumulated)
-            if full_output:
-                result = self._scan_text(full_output)
-                if not result.clean and self._bus:
-                    finding_dicts = [
-                        {
-                            "pattern": f.pattern_name,
-                            "threat": f.threat_level.value,
-                            "description": f.description,
-                        }
-                        for f in result.findings
-                    ]
-                    self._bus.publish(
-                        EventType.SECURITY_ALERT,
-                        {
-                            "direction": "output",
-                            "findings": finding_dicts,
-                            "mode": "stream_post_hoc",
-                        },
-                    )
+        if not self._scan_output:
+            return
+        full_output = "".join(accumulated)
+        if not full_output:
+            return
+        result = self._scan_text(full_output)
+        if result.clean:
+            for token in accumulated:
+                yield token
+            return
+        yield self._handle_findings(full_output, result, "output")
 
     async def stream_full(
         self,
@@ -270,7 +264,9 @@ class GuardrailsEngine(InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator["StreamChunk"]:
-        """Delegate to wrapped engine, scan accumulated output post-hoc."""
+        """Buffer rich chunks and scan all textual output before release."""
+        messages = self._process_input_messages(messages)
+        buffered: list[StreamChunk] = []
         accumulated: list[str] = []
         async for chunk in self._engine.stream_full(
             messages,
@@ -279,32 +275,30 @@ class GuardrailsEngine(InferenceEngine):
             max_tokens=max_tokens,
             **kwargs,
         ):
+            buffered.append(chunk)
             if chunk.content:
                 accumulated.append(chunk.content)
-            yield chunk
 
-        # Post-hoc scan of accumulated output
-        if self._scan_output:
-            full_output = "".join(accumulated)
-            if full_output:
-                result = self._scan_text(full_output)
-                if not result.clean and self._bus:
-                    finding_dicts = [
-                        {
-                            "pattern": f.pattern_name,
-                            "threat": f.threat_level.value,
-                            "description": f.description,
-                        }
-                        for f in result.findings
-                    ]
-                    self._bus.publish(
-                        EventType.SECURITY_ALERT,
-                        {
-                            "direction": "output",
-                            "findings": finding_dicts,
-                            "mode": "stream_full_post_hoc",
-                        },
-                    )
+        if not self._scan_output:
+            for chunk in buffered:
+                yield chunk
+            return
+
+        full_output = "".join(accumulated)
+        result = self._scan_text(full_output) if full_output else ScanResult()
+        if result.clean:
+            for chunk in buffered:
+                yield chunk
+            return
+
+        sanitized = self._handle_findings(full_output, result, "output")
+        content_emitted = False
+        for chunk in buffered:
+            content = None
+            if chunk.content and not content_emitted:
+                content = sanitized
+                content_emitted = True
+            yield replace(chunk, content=content)
 
     def list_models(self) -> List[str]:
         """Delegate to wrapped engine."""

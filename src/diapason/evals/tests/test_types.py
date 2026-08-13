@@ -108,7 +108,9 @@ class TestEvalResult:
 
 class TestRunConfig:
     def test_defaults(self):
-        c = RunConfig(benchmark="supergpqa", backend="diapason-direct", model="qwen3:8b")
+        c = RunConfig(
+            benchmark="supergpqa", backend="diapason-direct", model="qwen3:8b"
+        )
         assert c.max_samples is None
         assert c.max_workers == 4
         assert c.temperature == 0.0

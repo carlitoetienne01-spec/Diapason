@@ -6,8 +6,7 @@ either hardcoded ``lambda _prompt: True`` (managed-agents chat) or passed
 nothing at all (main chat agent), so confirmation-gated tools ran silently
 or failed outright. This bridge gives that callback a real answer path:
 
-- ``agent.tool_approval = "auto"`` (default) — confirm immediately, which
-  is exactly the behavior the chat had before this setting existed.
+- ``agent.tool_approval = "auto"`` — legacy opt-in that confirms immediately.
 - ``agent.tool_approval = "ask"`` — queue the confirmation into the
   ApprovalStore that already feeds the frontend bell (GET
   /v1/approvals/pending + approve/deny), then wait for the user's
@@ -40,10 +39,10 @@ def current_mode() -> str:
     try:
         from diapason.core.config import load_config
 
-        mode = (load_config().agent.tool_approval or "auto").strip().lower()
-        return mode if mode in ("auto", "ask") else "auto"
-    except Exception:  # noqa: BLE001 - config trouble must not kill the chat
-        return "auto"
+        mode = (load_config().agent.tool_approval or "ask").strip().lower()
+        return mode if mode in ("auto", "ask") else "ask"
+    except Exception:  # noqa: BLE001 - config trouble must fail closed
+        return "ask"
 
 
 def _await_decision(prompt: str, wait_s: float) -> bool:

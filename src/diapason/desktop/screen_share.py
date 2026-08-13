@@ -92,10 +92,7 @@ class ScreenShareSession:
                 monitor=max(0, int(monitor)),
                 interval_s=max(2.0, float(interval_s)),
                 max_minutes=max(1.0, float(max_minutes)),
-                question=(
-                    question.strip()
-                    or ScreenShareState().question
-                ),
+                question=(question.strip() or ScreenShareState().question),
             )
             self._thread = threading.Thread(
                 target=self._loop, name="screen-share", daemon=True
@@ -145,7 +142,9 @@ class ScreenShareSession:
     def status(self) -> dict[str, Any]:
         with self._lock:
             s = self._state
-            elapsed = (time.monotonic() - s.started_at) if s.active and s.started_at else 0.0
+            elapsed = (
+                (time.monotonic() - s.started_at) if s.active and s.started_at else 0.0
+            )
             return {
                 "active": s.active,
                 "monitor": s.monitor,

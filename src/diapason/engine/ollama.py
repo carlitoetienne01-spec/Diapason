@@ -71,14 +71,16 @@ def _is_control_token_only_args(raw_args: Any) -> bool:
 
 
 def _default_num_ctx() -> int:
-    """Default context window (tokens). Override with ``JARVIS_NUM_CTX``.
+    """Default context window (tokens). Override with ``DIAPASON_NUM_CTX``.
 
     Raised above Ollama's 4k default so an image (which costs many tokens)
     plus a real conversation fit. 16k is comfortable for small models on a
     typical consumer GPU.
     """
     try:
-        return int(os.environ.get("JARVIS_NUM_CTX", "16384"))
+        from diapason.core.env import get as _env_get
+
+        return int(_env_get("NUM_CTX", "16384") or "16384")
     except ValueError:
         return 16384
 

@@ -22,8 +22,8 @@ from diapason.engine._stubs import InferenceEngine
 logger = logging.getLogger(__name__)
 
 # Sentinel markers (same as ClaudeCodeAgent)
-_OUTPUT_START = "---OPENJARVIS_OUTPUT_START---"
-_OUTPUT_END = "---OPENJARVIS_OUTPUT_END---"
+_OUTPUT_START = "---DIAPASON_OUTPUT_START---"
+_OUTPUT_END = "---DIAPASON_OUTPUT_END---"
 
 
 class ContainerRunner:

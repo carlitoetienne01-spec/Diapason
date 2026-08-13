@@ -19,7 +19,7 @@ What it does:
 3. Checks `git` on PATH.
 4. Installs `uv` (https://astral.sh/uv) if absent.
 5. Clones the Diapason repository to `%LOCALAPPDATA%\Diapason`
-   (override with `$env:OPENJARVIS_HOME`).
+   (override with `$env:DIAPASON_HOME`).
 6. Runs `uv sync --extra desktop --group desktop-native` so the FastAPI server,
    speech backend, and native extension are importable.
 7. Optionally prompts to register a scheduled task that auto-starts the
@@ -38,12 +38,12 @@ the same knobs are honored via env vars when the corresponding flag is
 absent:
 
 ```powershell
-$env:OPENJARVIS_SKIP_SERVICE = '1'
+$env:DIAPASON_SKIP_SERVICE = '1'
 irm https://open-diapason.github.io/Diapason/install.ps1 | iex
 ```
 
-The available env vars: `OPENJARVIS_SKIP_SERVICE`, `OPENJARVIS_SERVICE`,
-`OPENJARVIS_FORCE`. If you need richer control, save the script first
+The available env vars: `DIAPASON_SKIP_SERVICE`, `DIAPASON_SERVICE`,
+`DIAPASON_FORCE`. If you need richer control, save the script first
 (`irm ... -OutFile install.ps1; .\install.ps1 -Force`).
 
 ## Manual scheduled-task setup
@@ -79,14 +79,14 @@ To expose on your LAN:
 
 ```powershell
 # 1. Generate an API key. The server REFUSES to bind 0.0.0.0 without one.
-$env:OPENJARVIS_API_KEY = (uv run diapason auth generate-key)
+$env:DIAPASON_API_KEY = (uv run diapason auth generate-key)
 
 # 2. Re-register the task with -ListenHost 0.0.0.0.
 powershell -ExecutionPolicy Bypass -File $srv install -ListenHost 0.0.0.0
 ```
 
 `diapason-service.ps1 install` refuses `-ListenHost 0.0.0.0` if
-`$env:OPENJARVIS_API_KEY` is unset — same guard as the systemd unit's
+`$env:DIAPASON_API_KEY` is unset — same guard as the systemd unit's
 `EnvironmentFile=/etc/diapason/env`.
 
 ## Parity table

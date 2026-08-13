@@ -100,7 +100,9 @@ class TestMerkleAudit:
         logger.log(_make_event(content="test query"))
         events = logger.query(limit=10)
         assert len(events) == 1
-        assert events[0].content_preview == "test query"
+        assert events[0].content_preview.startswith("sha256:")
+        assert events[0].content_preview.endswith(";len:10")
+        assert "test query" not in events[0].content_preview
         logger.close()
 
     def test_schema_migration_idempotent(self, tmp_path):

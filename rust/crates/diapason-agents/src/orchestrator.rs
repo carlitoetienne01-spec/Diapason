@@ -61,9 +61,7 @@ impl<M: CompletionModel + 'static> OjAgent for OrchestratorAgent<M> {
                     .messages
                     .iter()
                     .filter_map(|m| match m.role {
-                        Role::User => {
-                            Some(rig::completion::message::Message::user(&m.content))
-                        }
+                        Role::User => Some(rig::completion::message::Message::user(&m.content)),
                         Role::Assistant => {
                             Some(rig::completion::message::Message::assistant(&m.content))
                         }
@@ -78,15 +76,9 @@ impl<M: CompletionModel + 'static> OjAgent for OrchestratorAgent<M> {
 
         // Use rig agent for generation. Multi-turn tool dispatch requires
         // direct CompletionModel access which we handle in future iterations.
-        let response = self
-            .agent
-            .chat(input, history)
-            .await
-            .map_err(|e| {
-                DiapasonError::Agent(diapason_core::error::AgentError::Execution(
-                    e.to_string(),
-                ))
-            })?;
+        let response = self.agent.chat(input, history).await.map_err(|e| {
+            DiapasonError::Agent(diapason_core::error::AgentError::Execution(e.to_string()))
+        })?;
 
         let content = strip_think_tags(&response);
 

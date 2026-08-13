@@ -1481,8 +1481,7 @@ def _install_local_only_gate() -> None:
 
             if local_only() and not host_is_local(endpoint):
                 raise LocalOnlyError(
-                    f"vLLM endpoint {endpoint!r} is not on this machine. "
-                    f"{REFUSAL_HINT}"
+                    f"vLLM endpoint {endpoint!r} is not on this machine. {REFUSAL_HINT}"
                 )
             return _vllm(model, endpoint, *args, **kwargs)
 

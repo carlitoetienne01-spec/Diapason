@@ -59,11 +59,11 @@ class TestSecurityConfigDefaults:
         assert cfg.local_engine_bypass is False
         assert cfg.local_tool_bypass is False
 
-    def test_profile_default_empty(self) -> None:
+    def test_profile_default_personal(self) -> None:
         from diapason.core.config import SecurityConfig
 
         cfg = SecurityConfig()
-        assert cfg.profile == ""
+        assert cfg.profile == "personal"
 
 
 def _is_loopback(host: str) -> bool:

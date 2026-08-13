@@ -91,4 +91,3 @@ def test_open_anything_app(monkeypatch):
                 result = tool.execute(target="Safari", kind="app")
     assert result.success
     assert run.called
-

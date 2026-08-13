@@ -77,7 +77,7 @@ class TestSecretScanner:
 
     def test_secret_scanner_stripe_key(self) -> None:
         scanner = SecretScanner()
-        result = scanner.scan("sk_test_abcdefghijklmnopqrst")
+        result = scanner.scan("sk_test_abcdefghijklmnopqrst")  # gitleaks:allow
         assert not result.clean
         assert any(f.pattern_name == "stripe_key" for f in result.findings)
 

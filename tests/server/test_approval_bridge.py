@@ -62,18 +62,18 @@ class TestAutoMode:
         assert confirm("Run shell command?") is True
         assert store.list_pending() == []
 
-    def test_unknown_mode_degrades_to_auto(self, store, monkeypatch):
+    def test_unknown_mode_fails_closed_to_ask(self, store, monkeypatch):
         _set_mode(monkeypatch, "yolo")
-        assert approval_bridge.current_mode() == "auto"
+        assert approval_bridge.current_mode() == "ask"
 
-    def test_config_trouble_degrades_to_auto(self, monkeypatch):
+    def test_config_trouble_fails_closed_to_ask(self, monkeypatch):
         import diapason.core.config as config_mod
 
         def boom():
             raise RuntimeError("no config")
 
         monkeypatch.setattr(config_mod, "load_config", boom)
-        assert approval_bridge.current_mode() == "auto"
+        assert approval_bridge.current_mode() == "ask"
 
 
 class TestAskMode:
@@ -139,7 +139,9 @@ class TestConfigRoute:
 
         monkeypatch.setenv("DIAPASON_CONFIG_DIR", str(tmp_path))
         monkeypatch.setattr(
-            config_mod, "get_config_path", lambda: tmp_path / "config.toml",
+            config_mod,
+            "get_config_path",
+            lambda: tmp_path / "config.toml",
             raising=False,
         )
         from diapason.server.config_routes import create_config_router
@@ -160,7 +162,5 @@ class TestConfigRoute:
         assert r.status_code == 400
 
     def test_other_agent_keys_stay_locked(self, client):
-        r = client.post(
-            "/v1/config/set", json={"key": "agent.max_turns", "value": 99}
-        )
+        r = client.post("/v1/config/set", json={"key": "agent.max_turns", "value": 99})
         assert r.status_code == 400

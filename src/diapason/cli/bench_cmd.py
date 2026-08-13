@@ -37,7 +37,7 @@ def _print_banner(console: Console) -> None:
     panel = Panel(
         _BANNER.rstrip(),
         border_style="cyan",
-        title="[bold white]v1.8[/bold white]",
+        title="[bold white]v1.0.0[/bold white]",
         expand=False,
     )
     console.print(panel)

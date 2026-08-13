@@ -184,7 +184,8 @@ mod tests {
             .collect();
         let recs = advisor.analyze_patterns(&traces);
         assert!(
-            recs.iter().any(|r| r.rec_type == "routing" && r.suggestion.contains("code")),
+            recs.iter()
+                .any(|r| r.rec_type == "routing" && r.suggestion.contains("code")),
             "should detect repeated code failures"
         );
     }

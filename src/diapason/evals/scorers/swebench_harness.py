@@ -327,7 +327,7 @@ def _harness_cache_dir() -> Path:
 
     Consolidated under the env-aware Diapason cache root
     (``<diapason-home>/cache/swebench``) so it never pollutes the project
-    root or scatters across ``$HOME``. Honors ``OPENJARVIS_HOME`` /
+    root or scatters across ``$HOME``. Honors ``DIAPASON_HOME`` /
     ``XDG_DATA_HOME`` via :func:`diapason.core.paths.get_cache_dir`.
     """
     cache = get_cache_dir() / "swebench"

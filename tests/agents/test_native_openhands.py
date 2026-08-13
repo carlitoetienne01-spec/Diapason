@@ -256,6 +256,8 @@ class TestNativeOpenHandsAgent:
             "test-model",
             tools=[_CodeInterpreterStub()],
             bus=bus,
+            interactive=True,
+            confirm_callback=lambda _prompt: True,
         )
         agent.run("Run code")
         event_types = [e.event_type for e in bus.history]

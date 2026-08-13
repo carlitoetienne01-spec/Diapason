@@ -31,16 +31,12 @@ pub struct FAISSMemory {
 impl FAISSMemory {
     pub fn new(db_path: &Path, dim: usize) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS faiss_documents (
@@ -52,11 +48,7 @@ impl FAISSMemory {
                 created_at REAL DEFAULT (julianday('now'))
             );",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -111,11 +103,7 @@ impl FAISSMemory {
              VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![doc_id, content, source, meta_str, emb_bytes],
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(doc_id)
     }
@@ -129,14 +117,8 @@ impl FAISSMemory {
         let conn = self.conn.lock();
 
         let mut stmt = conn
-            .prepare(
-                "SELECT id, content, source, metadata, embedding FROM faiss_documents",
-            )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .prepare("SELECT id, content, source, metadata, embedding FROM faiss_documents")
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let rows: Vec<(String, String, String, Vec<f64>)> = stmt
             .query_map([], |row| {
@@ -146,11 +128,7 @@ impl FAISSMemory {
                 let emb_bytes: Vec<u8> = row.get(4)?;
                 Ok((content, source, meta_str, bytes_to_embedding(&emb_bytes)))
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -194,11 +172,7 @@ impl MemoryBackend for FAISSMemory {
         self.store_with_embedding(content, source, metadata, &embedding)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         let query_embedding = self.embed(query);
         self.retrieve_by_embedding(&query_embedding, top_k)
     }
@@ -210,22 +184,14 @@ impl MemoryBackend for FAISSMemory {
                 "DELETE FROM faiss_documents WHERE id = ?1",
                 rusqlite::params![doc_id],
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(changes > 0)
     }
 
     fn clear(&self) -> Result<(), DiapasonError> {
         let conn = self.conn.lock();
         conn.execute_batch("DELETE FROM faiss_documents")
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 
@@ -233,11 +199,7 @@ impl MemoryBackend for FAISSMemory {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM faiss_documents", [], |row| row.get(0))
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(count as usize)
     }
 }

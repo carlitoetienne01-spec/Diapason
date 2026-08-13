@@ -16,7 +16,7 @@ reward knobs without editing this file.
 
 Run:
 
-    OPENJARVIS_HOME=/tmp/diapason-spec-search-demo \\
+    DIAPASON_HOME=/tmp/diapason-spec-search-demo \\
         python examples/diapason/spec_search_quickstart.py
 """
 
@@ -245,10 +245,10 @@ def main() -> None:
     )
 
     home = Path(
-        os.environ.get("OPENJARVIS_HOME")
+        os.environ.get("DIAPASON_HOME")
         or tempfile.mkdtemp(prefix="diapason-spec-search-")
     )
-    print(f"OPENJARVIS_HOME = {home}")
+    print(f"DIAPASON_HOME = {home}")
 
     # ----- Single session ---------------------------------------------------
     orch = build_orchestrator(cfg, home)

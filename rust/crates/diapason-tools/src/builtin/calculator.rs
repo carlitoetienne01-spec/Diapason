@@ -40,11 +40,21 @@ impl BaseTool for CalculatorTool {
     }
 
     fn execute(&self, params: &Value) -> Result<ToolResult, DiapasonError> {
-        let expression = params["expression"]
-            .as_str()
-            .unwrap_or("");
+        let expression = params["expression"].as_str().unwrap_or("");
 
-        match meval::eval_str(expression) {
+        // Keep the public calculator syntax compatible with the Python tool
+        // and the previous evaluator. fasteval exposes some constants as
+        // functions (pi(), e()) and has no sqrt/ln aliases by default.
+        let mut namespace = |name: &str, args: Vec<f64>| match (name, args.as_slice()) {
+            ("pi", []) => Some(std::f64::consts::PI),
+            ("e", []) => Some(std::f64::consts::E),
+            ("sqrt", [value]) => Some(value.sqrt()),
+            ("ln", [value]) => Some(value.ln()),
+            ("log2", [value]) => Some(value.log2()),
+            ("log10", [value]) => Some(value.log10()),
+            _ => None,
+        };
+        match fasteval::ez_eval(expression, &mut namespace) {
             Ok(result) => Ok(ToolResult::success("calculator", result.to_string())),
             Err(e) => Ok(ToolResult::failure(
                 "calculator",

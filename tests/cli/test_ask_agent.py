@@ -276,6 +276,9 @@ class TestAskAgentOption:
     ):
         agent_setup.config.tools.enabled = tools_enabled
         agent_setup.config.agent.tools = agent_tools
+        # This test covers configured-tool discovery, not the separate
+        # interactive approval flow.
+        agent_setup.config.agent.tool_approval = "auto"
 
         result = runner.invoke(
             cli,

@@ -35,7 +35,8 @@ impl RigTool for RigCalculatorTool {
         ToolDefinition {
             name: "calculator".into(),
             description: "Evaluate a mathematical expression".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(CalculatorArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(CalculatorArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -119,7 +120,8 @@ impl RigTool for RigFileReadTool {
         ToolDefinition {
             name: "file_read".into(),
             description: "Read the contents of a file".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(FileReadArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(FileReadArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -163,7 +165,8 @@ impl RigTool for RigFileWriteTool {
         ToolDefinition {
             name: "file_write".into(),
             description: "Write content to a file".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(FileWriteArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(FileWriteArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -207,7 +210,8 @@ impl RigTool for RigShellExecTool {
         ToolDefinition {
             name: "shell_exec".into(),
             description: "Execute a shell command".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ShellExecArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(ShellExecArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -258,7 +262,8 @@ impl RigTool for RigHttpRequestTool {
         ToolDefinition {
             name: "http_request".into(),
             description: "Send an HTTP request".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(HttpRequestArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(HttpRequestArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -309,7 +314,8 @@ impl RigTool for RigGitStatusTool {
         ToolDefinition {
             name: "git_status".into(),
             description: "Show git working tree status".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(GitStatusArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(GitStatusArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -350,7 +356,8 @@ impl RigTool for RigGitDiffTool {
         ToolDefinition {
             name: "git_diff".into(),
             description: "Show git diff of changes".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(GitDiffArgs)).unwrap_or_default(),
+            parameters: serde_json::to_value(schemars::schema_for!(GitDiffArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -413,4 +420,3 @@ impl RigTool for RigGitLogTool {
         Ok(result.content)
     }
 }
-

@@ -136,7 +136,7 @@ else
 fi
 
 # ── 6. Pull a starter model ─────────────────────────────────────────
-MODEL="${OPENJARVIS_MODEL:-qwen3:0.6b}"
+MODEL="${DIAPASON_MODEL:-${OPENJARVIS_MODEL:-${JARVIS_MODEL:-qwen3:0.6b}}}"
 info "Ensuring model '$MODEL' is available..."
 if ollama list 2>/dev/null | grep -q "$MODEL"; then
   ok "Model '$MODEL' already pulled"

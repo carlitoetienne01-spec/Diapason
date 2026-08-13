@@ -19,8 +19,9 @@ apply self-corrections ("4pm sorry 5pm" → "5pm");
 Never invent closings. Never explain."""
 
 _EMAIL_EXTRA = """\
-If this is clearly an email, add line breaks after the greeting and before any closing.
-Keep spoken closings exactly ("Best" stays "Best"). Never add a signature the user did not say."""
+If this is clearly an email, add line breaks after the greeting and before any
+closing. Keep spoken closings exactly ("Best" stays "Best"). Never add a
+signature the user did not say."""
 
 
 def _strip_model_noise(text: str) -> str:

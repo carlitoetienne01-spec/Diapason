@@ -69,7 +69,7 @@ class TestSanitizingFormatter:
             level=logging.INFO,
             pathname="",
             lineno=0,
-            msg="Token: xoxb-1234-5678-abcdefghij",
+            msg="Token: xoxb-1234-5678-abcdefghij",  # gitleaks:allow
             args=(),
             exc_info=None,
         )

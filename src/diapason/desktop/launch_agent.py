@@ -22,8 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-LABEL = "com.diapason.dictate"           # dictation agent
-SERVE_LABEL = "com.diapason.serve"        # API server
+LABEL = "com.diapason.dictate"  # dictation agent
+SERVE_LABEL = "com.diapason.serve"  # API server
 
 
 def plist_path(label: str = LABEL) -> Path:
@@ -37,11 +37,7 @@ def log_dir() -> Path:
 
 
 def _xml_escape(s: str) -> str:
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def build_plist(

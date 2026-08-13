@@ -29,16 +29,16 @@ DOUBLE_TAP_MAX_S = 1.0
 
 class State(enum.Enum):
     IDLE = "idle"
-    PTT_HELD = "ptt_held"       # key down, normal press-and-hold
-    HANDS_FREE = "hands_free"   # continuous, survives release
+    PTT_HELD = "ptt_held"  # key down, normal press-and-hold
+    HANDS_FREE = "hands_free"  # continuous, survives release
 
 
 class Action(enum.Enum):
-    START = "start"                       # begin capturing
-    STOP_AND_TRANSCRIBE = "stop_xcribe"   # end capture, transcribe, paste
+    START = "start"  # begin capturing
+    STOP_AND_TRANSCRIBE = "stop_xcribe"  # end capture, transcribe, paste
     START_HANDS_FREE = "start_hands_free"
     STOP_HANDS_FREE_AND_TRANSCRIBE = "stop_hands_free_xcribe"
-    CANCEL = "cancel"                     # discard audio, no transcription
+    CANCEL = "cancel"  # discard audio, no transcription
 
 
 @dataclass

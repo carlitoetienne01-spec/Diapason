@@ -41,8 +41,9 @@ export async function saveCloudKey(keyName: string, keyValue: string): Promise<v
 
 // Cached API base URL fetched from the Tauri backend at startup.
 // This avoids hardcoding the port — the Rust backend is the single
-// source of truth for JARVIS_PORT.
+// source of truth for the Diapason API port.
 let _tauriApiBase: string | null = null;
+let _tauriApiKey = '';
 
 /** Pre-fetch the API base URL from the Tauri backend (call once at init). */
 export async function initApiBase(): Promise<void> {
@@ -50,6 +51,19 @@ export async function initApiBase(): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     _tauriApiBase = await invoke<string>('get_api_base');
+    _tauriApiKey = await invoke<string>('get_local_api_key');
+    if (!_tauriApiKey) {
+      // The Python server creates the key during boot. Refresh in the
+      // background so rendering is never held behind model startup.
+      void (async () => {
+        for (let attempt = 0; attempt < 120 && !_tauriApiKey; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          try {
+            _tauriApiKey = await invoke<string>('get_local_api_key');
+          } catch {}
+        }
+      })();
+    }
   } catch {
     // Command may not exist on older builds; fall through to default.
   }
@@ -76,22 +90,24 @@ export const getBase = (): string => {
   return '';
 };
 
-// Resolve the local server API key (OPENJARVIS_API_KEY). When `diapason serve`
+// Resolve the local server API key (DIAPASON_API_KEY). When `diapason serve`
 // is started with a key, AuthMiddleware 401s every /v1 and /api request that
-// lacks a Bearer token — so the frontend must send it (#266). Sourced from the
-// same settings blob as the API URL, with an optional build-time env override.
-// Returns '' when unset, so a keyless local server keeps working unchanged.
+// lacks a Bearer token. Desktop reads the generated key through a narrow
+// Tauri command. Browser sessions keep manually entered keys in sessionStorage
+// so credentials are not persisted as readable localStorage data.
 export const getApiKey = (): string => {
-  try {
-    const raw = localStorage.getItem('diapason-settings');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.apiKey) return String(parsed.apiKey);
-    }
-  } catch {}
-  if (import.meta.env.VITE_DIAPASON_API_KEY) {
-    return import.meta.env.VITE_DIAPASON_API_KEY as string;
+  if (_tauriApiKey) {
+    try {
+      const url = new URL(getBase() || window.location.origin);
+      if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname === '::1') {
+        return _tauriApiKey;
+      }
+    } catch {}
   }
+  try {
+    const sessionKey = sessionStorage.getItem('diapason-api-key');
+    if (sessionKey) return sessionKey;
+  } catch {}
   return '';
 };
 
@@ -110,14 +126,25 @@ export const authHeaders = (
 // guarantees no /v1 or /api request is sent without auth — the bug in #266 was
 // that direct fetch() calls omitted the header and 401'd. `path` is the
 // server-relative path (e.g. "/v1/savings").
-export const apiFetch = (
+export const apiFetch = async (
   path: string,
   init: RequestInit = {},
 ): Promise<Response> => {
-  const headers = authHeaders(
+  let headers = authHeaders(
     (init.headers as Record<string, string> | undefined) ?? {},
   );
-  return fetch(`${getBase()}${path}`, { ...init, headers });
+  let response = await fetch(`${getBase()}${path}`, { ...init, headers });
+  if (response.status === 401 && isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      _tauriApiKey = await invoke<string>('get_local_api_key');
+      headers = authHeaders(
+        (init.headers as Record<string, string> | undefined) ?? {},
+      );
+      response = await fetch(`${getBase()}${path}`, { ...init, headers });
+    } catch {}
+  }
+  return response;
 };
 
 async function tauriInvoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {

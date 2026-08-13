@@ -199,12 +199,13 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
         try:
             from diapason.speech.realtime.tools import list_voice_tool_ids
 
-            tool_ids = list_voice_tool_ids(_parse_tools_csv(defaults.get("tools") or ""))
+            tool_ids = list_voice_tool_ids(
+                _parse_tools_csv(defaults.get("tools") or "")
+            )
         except Exception:
             tool_ids = []
     return {
-        "available": defaults.get("enabled", True)
-        and (gemini or openai or local),
+        "available": defaults.get("enabled", True) and (gemini or openai or local),
         "enabled": defaults.get("enabled", True),
         "default_provider": defaults.get("provider", "gemini"),
         "enable_tools": defaults.get("enable_tools", True),

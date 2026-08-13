@@ -136,9 +136,7 @@ def test_messages_compose_intent_fr():
         parse_smart_intent,
     )
 
-    intent = parse_smart_intent(
-        "envoie un message à +15551234567 disant Salut ça va"
-    )
+    intent = parse_smart_intent("envoie un message à +15551234567 disant Salut ça va")
     assert intent.kind == KIND_MESSAGES_COMPOSE
     assert "+15551234567" in intent.to
     assert "salut" in intent.body.lower()
@@ -254,7 +252,9 @@ def test_execute_play_opens_the_watch_url():
         return ToolResult(tool_name="open_uri", content=f"Opened {url}", success=True)
 
     with patch.object(
-        si, "resolve_youtube_watch_url", return_value="https://www.youtube.com/watch?v=abc12345678"
+        si,
+        "resolve_youtube_watch_url",
+        return_value="https://www.youtube.com/watch?v=abc12345678",
     ):
         with patch("diapason.tools.desktop_tools.open_in_browser", fake_open):
             result = si.execute_smart_intent(intent)
@@ -304,9 +304,13 @@ def test_spotify_missing_falls_back_to_youtube_playback():
         success=False,
         metadata={"spotify_missing": True},
     )
-    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing):
+    with patch(
+        "diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing
+    ):
         with patch.object(
-            si, "resolve_youtube_watch_url", return_value="https://www.youtube.com/watch?v=xyz98765432"
+            si,
+            "resolve_youtube_watch_url",
+            return_value="https://www.youtube.com/watch?v=xyz98765432",
         ):
             with patch("diapason.tools.desktop_tools.open_in_browser", fake_open):
                 result = si.execute_smart_intent(intent)
@@ -321,8 +325,12 @@ def test_spotify_other_failures_do_not_fall_back():
     from diapason.core.types import ToolResult
 
     intent = parse_smart_intent("joue du stromae sur spotify")
-    broken = ToolResult(tool_name="spotify_play", content="osascript died", success=False)
-    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=broken):
+    broken = ToolResult(
+        tool_name="spotify_play", content="osascript died", success=False
+    )
+    with patch(
+        "diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=broken
+    ):
         result = si.execute_smart_intent(intent)
     assert result is broken
 
@@ -352,7 +360,9 @@ def test_spotify_missing_search_never_autoplays():
         success=False,
         metadata={"spotify_missing": True},
     )
-    with patch("diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing):
+    with patch(
+        "diapason.tools.voice_mac_tools.SpotifyPlayTool.execute", return_value=missing
+    ):
         result = si.execute_smart_intent(intent)
     assert result is missing  # reported honestly, nothing auto-opened
 

@@ -91,8 +91,10 @@ class TestCues:
 
         def halves(samples):
             mid = len(samples) // 2
+
             def crossings(chunk):
                 return sum(1 for a, b in zip(chunk, chunk[1:]) if (a < 0) != (b < 0))
+
             return crossings(samples[:mid]), crossings(samples[mid:])
 
         early, late = halves(ac._start())

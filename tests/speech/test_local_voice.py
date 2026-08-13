@@ -786,7 +786,6 @@ class TestToolNote:
         note = _tool_note({}, {"content": "not json"})
         assert "?" in note  # unknown name and unknown outcome, but no crash
 
-
     def test_note_survives_a_non_dict_json_payload(self):
         # json.loads('"..."') is a str: .get on it is an AttributeError,
         # which — uncaught — aborted the whole spoken turn.

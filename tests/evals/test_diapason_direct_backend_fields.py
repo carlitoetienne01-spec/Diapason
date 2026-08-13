@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 
-class TestJarvisDirectExtendedFields:
+class TestDiapasonDirectExtendedFields:
     def test_generate_full_includes_framework_and_commit(self) -> None:
         from diapason.evals.backends.diapason_direct import DiapasonDirectBackend
 

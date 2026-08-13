@@ -17,9 +17,7 @@ def test_mail_send_requires_confirm():
 
 
 def test_messages_send_requires_confirm():
-    r = MessagesSendTool().execute(
-        recipient="+15551234567", body="hi", confirm=False
-    )
+    r = MessagesSendTool().execute(recipient="+15551234567", body="hi", confirm=False)
     assert r.success is False
     assert "confirm" in r.content.lower()
 
@@ -42,9 +40,7 @@ def test_email_mode_auto_uses_frontmost(monkeypatch):
             class wakeword:
                 text_gate = False
 
-    monkeypatch.setattr(
-        "diapason.core.config.load_config", lambda: _Cfg()
-    )
+    monkeypatch.setattr("diapason.core.config.load_config", lambda: _Cfg())
     with patch(
         "diapason.desktop.frontmost.is_email_composer_context",
         return_value=True,
@@ -59,9 +55,7 @@ def test_email_mode_auto_uses_frontmost(monkeypatch):
 
 
 def test_routine_idle_precheck_skips(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(
-        "diapason.desktop.idle.idle_seconds", lambda: 30.0
-    )
+    monkeypatch.setattr("diapason.desktop.idle.idle_seconds", lambda: 30.0)
     routine = Routine(
         id="idle-test",
         name="Idle",
@@ -76,9 +70,7 @@ def test_routine_idle_precheck_skips(monkeypatch, tmp_path: Path):
 
 
 def test_routine_idle_precheck_passes(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(
-        "diapason.desktop.idle.idle_seconds", lambda: 900.0
-    )
+    monkeypatch.setattr("diapason.desktop.idle.idle_seconds", lambda: 900.0)
     routine = Routine(
         id="idle-test-ok",
         name="Idle",

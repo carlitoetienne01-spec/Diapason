@@ -231,29 +231,36 @@ class TestGuardrailsEngineStream:
         tokens = [t async for t in ge.stream(messages, model="test")]
         assert tokens == ["Hello", " ", "world"]
 
-    async def test_stream_scans_output_post_hoc(self) -> None:
-        """stream() publishes SECURITY_ALERT after yielding sensitive tokens."""
+    async def test_stream_scans_before_release(self) -> None:
+        """stream() sanitizes sensitive output before releasing any token."""
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-abc123def456ghi789jkl012"],
+            [
+                "The key is ",
+                "sk-abc123def456ghi789jkl012",
+            ],  # gitleaks:allow
         )
         ge = GuardrailsEngine(mock, bus=bus)
 
         messages = [Message(role=Role.USER, content="show key")]
-        _ = [t async for t in ge.stream(messages, model="test")]
+        tokens = [t async for t in ge.stream(messages, model="test")]
 
         alerts = [e for e in bus.history if e.event_type == EventType.SECURITY_ALERT]
         assert len(alerts) >= 1
         assert alerts[0].data["direction"] == "output"
-        assert alerts[0].data["mode"] == "stream_post_hoc"
+        assert alerts[0].data["mode"] == "redact"
+        assert "sk-abc" not in "".join(tokens)
 
     async def test_stream_publishes_alert_with_findings(self) -> None:
         """Alert event contains a non-empty findings list with 'pattern' key."""
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-abc123def456ghi789jkl012"],
+            [
+                "The key is ",
+                "sk-abc123def456ghi789jkl012",
+            ],  # gitleaks:allow
         )
         ge = GuardrailsEngine(mock, bus=bus)
 
@@ -271,7 +278,10 @@ class TestGuardrailsEngineStream:
         bus = EventBus(record_history=True)
         mock = _make_mock_engine()
         mock.stream = lambda messages, **kw: _async_token_iter(
-            ["The key is ", "sk-abc123def456ghi789jkl012"],
+            [
+                "The key is ",
+                "sk-abc123def456ghi789jkl012",
+            ],  # gitleaks:allow
         )
         ge = GuardrailsEngine(mock, scan_output=False, bus=bus)
 

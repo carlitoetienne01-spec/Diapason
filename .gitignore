@@ -73,6 +73,7 @@ site/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
 
 # Desktop
 desktop/node_modules/
@@ -122,7 +123,7 @@ scratch/
 # ---------------------------------------------------------------------------
 # Distillation runtime artifacts (defense in depth — these should always live
 # in ~/.diapason/, never inside the source tree, but we ignore them here in
-# case OPENJARVIS_HOME is misconfigured during dev)
+# case DIAPASON_HOME is misconfigured during development)
 # ---------------------------------------------------------------------------
 .diapason/
 learning.db
@@ -134,6 +135,9 @@ learning.db
 
 # Local dev artifacts (hybrid worker logs + cli debug dumps)
 minion_logs/
+*.diapason-debug.json
+diapason-debug.*.json
+# Legacy debug artifacts (compatibility through Diapason 2.0)
 *.oj-debug.json
 oj-debug.*.json
 

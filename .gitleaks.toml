@@ -1,0 +1,23 @@
+title = "Diapason secret-scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated dependencies, caches, build outputs, and Git internals"
+paths = [
+  '''(^|/)\.git/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)\.ruff_cache/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)target/''',
+  '''(^|/)dist/''',
+  '''(^|/)build/''',
+  '''(^|/)site/''',
+  '''(^|/)\.worktrees/''',
+  '''(^|/)Inline/''',
+  '''(^|/)scratch/''',
+  '''^src/diapason/server/static/''',
+]

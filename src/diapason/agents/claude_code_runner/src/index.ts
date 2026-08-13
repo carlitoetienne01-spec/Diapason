@@ -8,15 +8,15 @@
  *   { prompt, api_key, workspace, allowed_tools, system_prompt, session_id }
  *
  * Output (on stdout, between sentinels):
- *   ---OPENJARVIS_OUTPUT_START---
+ *   ---DIAPASON_OUTPUT_START---
  *   { content, tool_results, metadata }
- *   ---OPENJARVIS_OUTPUT_END---
+ *   ---DIAPASON_OUTPUT_END---
  */
 
 import { query, type Tool } from "@anthropic-ai/claude-code";
 
-const OUTPUT_START = "---OPENJARVIS_OUTPUT_START---";
-const OUTPUT_END = "---OPENJARVIS_OUTPUT_END---";
+const OUTPUT_START = "---DIAPASON_OUTPUT_START---";
+const OUTPUT_END = "---DIAPASON_OUTPUT_END---";
 
 interface RunnerRequest {
   prompt: string;

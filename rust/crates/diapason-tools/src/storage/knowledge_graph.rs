@@ -15,16 +15,12 @@ pub struct KnowledgeGraphMemory {
 impl KnowledgeGraphMemory {
     pub fn new(db_path: &Path) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS entities (
@@ -45,11 +41,7 @@ impl KnowledgeGraphMemory {
             CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_id);
             CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_id);",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -76,11 +68,7 @@ impl KnowledgeGraphMemory {
             "INSERT INTO entities (id, name, entity_type, properties) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id, name, entity_type, props],
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(id)
     }
@@ -103,16 +91,15 @@ impl KnowledgeGraphMemory {
              VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![id, source_id, target_id, relation_type, props],
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(id)
     }
 
-    pub fn neighbors(&self, entity_id: &str) -> Result<Vec<(String, String, String)>, DiapasonError> {
+    pub fn neighbors(
+        &self,
+        entity_id: &str,
+    ) -> Result<Vec<(String, String, String)>, DiapasonError> {
         let conn = self.conn.lock();
         let mut stmt = conn
             .prepare(
@@ -124,11 +111,7 @@ impl KnowledgeGraphMemory {
                  FROM relations r JOIN entities e ON e.id = r.source_id
                  WHERE r.target_id = ?1",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let results = stmt
             .query_map(rusqlite::params![entity_id], |row| {
@@ -138,11 +121,7 @@ impl KnowledgeGraphMemory {
                     row.get::<_, String>(2)?,
                 ))
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -164,11 +143,7 @@ impl MemoryBackend for KnowledgeGraphMemory {
         self.add_entity(content, source, metadata)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         let conn = self.conn.lock();
         let pattern = format!("%{query}%");
         let mut stmt = conn
@@ -176,11 +151,7 @@ impl MemoryBackend for KnowledgeGraphMemory {
                 "SELECT name, entity_type, properties
                  FROM entities WHERE name LIKE ?1 LIMIT ?2",
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         let results = stmt
             .query_map(rusqlite::params![pattern, top_k as i64], |row| {
@@ -195,11 +166,7 @@ impl MemoryBackend for KnowledgeGraphMemory {
                         .unwrap_or_default(),
                 })
             })
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -213,22 +180,14 @@ impl MemoryBackend for KnowledgeGraphMemory {
                 "DELETE FROM entities WHERE id = ?1",
                 rusqlite::params![doc_id],
             )
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(changes > 0)
     }
 
     fn clear(&self) -> Result<(), DiapasonError> {
         let conn = self.conn.lock();
         conn.execute_batch("DELETE FROM relations; DELETE FROM entities;")
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 
@@ -236,11 +195,7 @@ impl MemoryBackend for KnowledgeGraphMemory {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(count as usize)
     }
 }
@@ -253,7 +208,9 @@ mod tests {
     fn test_kg_entities_and_relations() {
         let kg = KnowledgeGraphMemory::in_memory().unwrap();
         let e1 = kg.add_entity("Rust", "language", None).unwrap();
-        let e2 = kg.add_entity("Systems Programming", "concept", None).unwrap();
+        let e2 = kg
+            .add_entity("Systems Programming", "concept", None)
+            .unwrap();
         kg.add_relation(&e1, &e2, "used_for", None).unwrap();
 
         let neighbors = kg.neighbors(&e1).unwrap();

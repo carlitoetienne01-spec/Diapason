@@ -102,7 +102,9 @@ def save_dictionary(
         "version": 1,
         "entries": [asdict(e) for e in entries],
     }
-    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    p.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return p
 
 
@@ -131,7 +133,7 @@ def apply_dictionary(
     path: str | Path | None = None,
     bump_usage: bool = True,
 ) -> str:
-    """Replace STT mistakes with canonical spellings (word-boundary, case-insensitive)."""
+    """Replace STT mistakes using case-insensitive, word-boundary matches."""
     raw = text or ""
     if not raw.strip():
         return raw
@@ -359,7 +361,9 @@ def upsert_entry(
     return entry
 
 
-def dictionary_to_api(entries: Optional[list[DictionaryEntry]] = None) -> dict[str, Any]:
+def dictionary_to_api(
+    entries: Optional[list[DictionaryEntry]] = None,
+) -> dict[str, Any]:
     items = entries if entries is not None else load_dictionary()
     return {"version": 1, "entries": [asdict(e) for e in items]}
 

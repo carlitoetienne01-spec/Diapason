@@ -48,9 +48,7 @@ class GeminiLiveSession(RealtimeVoiceSession):
         # Environment first, then the desktop app's Keychain store — the
         # LaunchAgent server never receives the app's env injection, so the
         # key pasted into Settings must be reachable from here too.
-        self._api_key = api_key or get_cloud_key(
-            "GEMINI_API_KEY", "GOOGLE_API_KEY"
-        )
+        self._api_key = api_key or get_cloud_key("GEMINI_API_KEY", "GOOGLE_API_KEY")
         self._model = model or _DEFAULT_MODEL
         self._voice = voice or "Zephyr"
         self._instructions = instructions
@@ -137,9 +135,7 @@ class GeminiLiveSession(RealtimeVoiceSession):
         if self._closed or self._ws is None:
             return
         try:
-            await self._ws.send(
-                json.dumps({"realtimeInput": {"activityEnd": {}}})
-            )
+            await self._ws.send(json.dumps({"realtimeInput": {"activityEnd": {}}}))
         except Exception:
             logger.debug("Gemini interrupt send failed", exc_info=True)
         await self._queue.put(SessionEvent(kind="interrupted"))
@@ -187,9 +183,7 @@ class GeminiLiveSession(RealtimeVoiceSession):
             raise
         except Exception as exc:
             if not self._closed:
-                await self._queue.put(
-                    SessionEvent(kind="error", detail=str(exc))
-                )
+                await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
         finally:
             await self._queue.put(SessionEvent(kind="closed"))
             await self._queue.put(None)

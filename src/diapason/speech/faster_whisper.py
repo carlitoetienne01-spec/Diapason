@@ -227,12 +227,6 @@ class FasterWhisperBackend(SpeechBackend):
     def _ensure_model(self) -> WhisperModel:
         """Lazy-load the Whisper model on first use."""
         if self._model is None:
-            if WhisperModel is None:
-                self._last_error = (
-                    "faster-whisper is not installed. "
-                    "Install with: uv sync --extra desktop"
-                )
-                raise ImportError(self._last_error)
             # Local-only refuses a SILENT first-use download. Constructing
             # WhisperModel fetches the weights over the network if they are not
             # cached; under [privacy] local_only that background fetch is the
@@ -249,6 +243,13 @@ class FasterWhisperBackend(SpeechBackend):
                 local_only=local_only(),
                 already_cached=faster_whisper_cached(self._model_size),
             )
+
+            if WhisperModel is None:
+                self._last_error = (
+                    "faster-whisper is not installed. "
+                    "Install with: uv sync --extra desktop"
+                )
+                raise ImportError(self._last_error)
 
             compute_type = self._resolve_compute_type()
             self._model = WhisperModel(

@@ -48,7 +48,11 @@ def main() -> None:
     try:
         import pearl_mining
     except ImportError as e:
-        _fail(f"could not import pearl_mining — install with `uv pip install py-pearl-mining` or build from source: {e}", 1)
+        _fail(
+            "could not import pearl_mining — install with "
+            f"`uv pip install py-pearl-mining` or build from source: {e}",
+            1,
+        )
 
     _ok(f"pearl_mining loaded from {pearl_mining.__file__}")
     _ok(
@@ -92,7 +96,8 @@ def main() -> None:
         f"returned a proof in {t_mine:.3f} s"
     )
     print(
-        f"       proof.m={plain_proof.m} proof.n={plain_proof.n} proof.k={plain_proof.k}  "
+        f"       proof.m={plain_proof.m} proof.n={plain_proof.n} "
+        f"proof.k={plain_proof.k}  "
         f"noise_rank={plain_proof.noise_rank}"
     )
     print(
@@ -109,7 +114,11 @@ def main() -> None:
 
     _ok(f"verify_plain_proof: ok=True ({msg!r}, {t_verify_ms:.1f} ms)")
 
-    if plain_proof.m != DEFAULT_M or plain_proof.n != DEFAULT_N or plain_proof.k != DEFAULT_K:
+    if (
+        plain_proof.m != DEFAULT_M
+        or plain_proof.n != DEFAULT_N
+        or plain_proof.k != DEFAULT_K
+    ):
         _fail("plain_proof dimensions do not match request", 4)
     if plain_proof.noise_rank != DEFAULT_RANK:
         _fail("plain_proof noise_rank does not match request", 4)
@@ -125,7 +134,10 @@ def main() -> None:
     if a_deltas != ROWS_PATTERN:
         _fail(f"a.row_indices deltas ({a_deltas}) != ROWS_PATTERN ({ROWS_PATTERN})", 4)
     if bt_deltas != COLS_PATTERN:
-        _fail(f"bt.row_indices deltas ({bt_deltas}) != COLS_PATTERN ({COLS_PATTERN})", 4)
+        _fail(
+            f"bt.row_indices deltas ({bt_deltas}) != COLS_PATTERN ({COLS_PATTERN})",
+            4,
+        )
 
     print()
     print("[ok] all checks passed — Pearl mining works on this host")

@@ -36,5 +36,7 @@ pub use router_enum::RouterPolicyEnum;
 pub use sft_policy::SFTRouterPolicy;
 pub use skill_discovery::{DiscoveredSkill, SkillDiscovery};
 pub use trace_policy::{classify_query, TraceDrivenPolicy};
-pub use training_data::{AgentConfigPair, MinerTraceData, RoutingRecommendation, SFTPair, TrainingDataMiner};
+pub use training_data::{
+    AgentConfigPair, MinerTraceData, RoutingRecommendation, SFTPair, TrainingDataMiner,
+};
 pub use traits::{LearningPolicy, RouterPolicy};

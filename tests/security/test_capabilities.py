@@ -34,14 +34,14 @@ class TestCapability:
 
 
 class TestCapabilityPolicy:
-    def test_default_allow(self):
-        policy = CapabilityPolicy()
-        assert policy.check("agent1", "file:read")
-        assert policy.check("agent1", "code:execute")
-
     def test_default_deny(self):
-        policy = CapabilityPolicy(default_deny=True)
+        policy = CapabilityPolicy()
         assert not policy.check("agent1", "file:read")
+        assert not policy.check("agent1", "code:execute")
+
+    def test_explicit_default_allow(self):
+        policy = CapabilityPolicy(default_deny=False)
+        assert policy.check("agent1", "file:read")
 
     def test_explicit_grant(self):
         policy = CapabilityPolicy(default_deny=True)
@@ -50,13 +50,13 @@ class TestCapabilityPolicy:
         assert not policy.check("agent1", "code:execute")
 
     def test_explicit_deny(self):
-        policy = CapabilityPolicy()
+        policy = CapabilityPolicy(default_deny=False)
         policy.deny("agent1", "code:execute")
         assert not policy.check("agent1", "code:execute")
         assert policy.check("agent1", "file:read")
 
     def test_deny_overrides_grant(self):
-        policy = CapabilityPolicy()
+        policy = CapabilityPolicy(default_deny=False)
         policy.grant("agent1", "code:execute")
         policy.deny("agent1", "code:execute")
         assert not policy.check("agent1", "code:execute")
@@ -104,7 +104,9 @@ class TestCapabilityPolicy:
         assert not loaded.check("agent1", "code:execute")
 
     def test_load_nonexistent_file(self):
-        policy = CapabilityPolicy(policy_path="/nonexistent/path.json")
+        policy = CapabilityPolicy(
+            policy_path="/nonexistent/path.json", default_deny=False
+        )
         # Should not raise, just have no policies
         assert policy.check("agent1", "file:read")
 

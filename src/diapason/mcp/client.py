@@ -56,7 +56,7 @@ class MCPClient:
         params = {
             "protocolVersion": "2025-03-26",
             "capabilities": {},
-            "clientInfo": {"name": "diapason", "version": "0.1.0"},
+            "clientInfo": {"name": "diapason", "version": "1.0.0"},
         }
         response = self._send("initialize", params)
         self._initialized = True

@@ -1,7 +1,7 @@
 //! Ollama inference engine backend.
 
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::{EngineError, DiapasonError};
+use diapason_core::error::{DiapasonError, EngineError};
 use diapason_core::{GenerateResult, Message, ToolCall, Usage};
 use serde_json::Value;
 
@@ -88,9 +88,9 @@ impl InferenceEngine for OllamaEngine {
             ))));
         }
 
-        let data: Value = resp.json().map_err(|e| {
-            DiapasonError::Engine(EngineError::Deserialization(e.to_string()))
-        })?;
+        let data: Value = resp
+            .json()
+            .map_err(|e| DiapasonError::Engine(EngineError::Deserialization(e.to_string())))?;
 
         let prompt_tokens = data["prompt_eval_count"].as_i64().unwrap_or(0);
         let completion_tokens = data["eval_count"].as_i64().unwrap_or(0);
@@ -101,32 +101,27 @@ impl InferenceEngine for OllamaEngine {
         let model_name = data["model"].as_str().unwrap_or(model).to_string();
         let ttft = data["prompt_eval_duration"].as_f64().unwrap_or(0.0) / 1e9;
 
-        let tool_calls = data["message"]["tool_calls"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .enumerate()
-                    .map(|(i, tc)| {
-                        let func = &tc["function"];
-                        let args = if func["arguments"].is_object() {
-                            serde_json::to_string(&func["arguments"]).unwrap_or_default()
-                        } else {
-                            func["arguments"]
-                                .as_str()
-                                .unwrap_or("{}")
-                                .to_string()
-                        };
-                        ToolCall {
-                            id: tc["id"]
-                                .as_str()
-                                .unwrap_or(&format!("call_{i}"))
-                                .to_string(),
-                            name: func["name"].as_str().unwrap_or("").to_string(),
-                            arguments: args,
-                        }
-                    })
-                    .collect()
-            });
+        let tool_calls = data["message"]["tool_calls"].as_array().map(|arr| {
+            arr.iter()
+                .enumerate()
+                .map(|(i, tc)| {
+                    let func = &tc["function"];
+                    let args = if func["arguments"].is_object() {
+                        serde_json::to_string(&func["arguments"]).unwrap_or_default()
+                    } else {
+                        func["arguments"].as_str().unwrap_or("{}").to_string()
+                    };
+                    ToolCall {
+                        id: tc["id"]
+                            .as_str()
+                            .unwrap_or(&format!("call_{i}"))
+                            .to_string(),
+                        name: func["name"].as_str().unwrap_or("").to_string(),
+                        arguments: args,
+                    }
+                })
+                .collect()
+        });
 
         Ok(GenerateResult {
             content,
@@ -166,9 +161,7 @@ impl InferenceEngine for OllamaEngine {
         let async_client = reqwest::Client::builder()
             .timeout(self.timeout)
             .build()
-            .map_err(|e| {
-                DiapasonError::Engine(EngineError::Connection(e.to_string()))
-            })?;
+            .map_err(|e| DiapasonError::Engine(EngineError::Connection(e.to_string())))?;
 
         let resp = async_client
             .post(format!("{}/api/chat", self.host))
@@ -230,9 +223,7 @@ impl InferenceEngine for OllamaEngine {
             .get(format!("{}/api/tags", self.host))
             .send()
             .map_err(|_| {
-                DiapasonError::Engine(EngineError::Connection(
-                    "Ollama not reachable".into(),
-                ))
+                DiapasonError::Engine(EngineError::Connection("Ollama not reachable".into()))
             })?;
 
         if !resp.status().is_success() {

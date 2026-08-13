@@ -135,15 +135,11 @@ mod tests {
         assert_eq!(SFTRouterPolicy::classify_query("solve x^2 = 4"), "math");
         assert_eq!(SFTRouterPolicy::classify_query("hello"), "short");
         assert_eq!(
-            SFTRouterPolicy::classify_query(
-                "word ".repeat(101).trim()
-            ),
+            SFTRouterPolicy::classify_query("word ".repeat(101).trim()),
             "long"
         );
         assert_eq!(
-            SFTRouterPolicy::classify_query(
-                "word ".repeat(50).trim()
-            ),
+            SFTRouterPolicy::classify_query("word ".repeat(50).trim()),
             "general"
         );
     }
@@ -152,11 +148,36 @@ mod tests {
     fn test_update_from_data_builds_policy() {
         let policy = SFTRouterPolicy::new(2);
         let traces: Vec<(String, String, String, Option<f64>)> = vec![
-            ("def foo():".into(), "code_model".into(), "success".into(), Some(0.9)),
-            ("def bar():".into(), "code_model".into(), "success".into(), Some(0.8)),
-            ("def baz():".into(), "other_model".into(), "failure".into(), Some(0.2)),
-            ("solve x=1".into(), "math_model".into(), "success".into(), Some(0.85)),
-            ("solve y=2".into(), "math_model".into(), "success".into(), Some(0.9)),
+            (
+                "def foo():".into(),
+                "code_model".into(),
+                "success".into(),
+                Some(0.9),
+            ),
+            (
+                "def bar():".into(),
+                "code_model".into(),
+                "success".into(),
+                Some(0.8),
+            ),
+            (
+                "def baz():".into(),
+                "other_model".into(),
+                "failure".into(),
+                Some(0.2),
+            ),
+            (
+                "solve x=1".into(),
+                "math_model".into(),
+                "success".into(),
+                Some(0.85),
+            ),
+            (
+                "solve y=2".into(),
+                "math_model".into(),
+                "success".into(),
+                Some(0.9),
+            ),
         ];
         let result = policy.update_from_data(&traces);
         assert_eq!(result["updated"], serde_json::Value::Bool(true));
@@ -169,11 +190,24 @@ mod tests {
     fn test_min_samples_threshold() {
         let policy = SFTRouterPolicy::new(5);
         let traces: Vec<(String, String, String, Option<f64>)> = vec![
-            ("def foo():".into(), "m1".into(), "success".into(), Some(0.9)),
-            ("def bar():".into(), "m1".into(), "success".into(), Some(0.9)),
+            (
+                "def foo():".into(),
+                "m1".into(),
+                "success".into(),
+                Some(0.9),
+            ),
+            (
+                "def bar():".into(),
+                "m1".into(),
+                "success".into(),
+                Some(0.9),
+            ),
         ];
         policy.update_from_data(&traces);
         let map = policy.policy_map();
-        assert!(!map.contains_key("code"), "should not update with < min_samples");
+        assert!(
+            !map.contains_key("code"),
+            "should not update with < min_samples"
+        );
     }
 }

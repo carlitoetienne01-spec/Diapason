@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -180,10 +181,36 @@ def create_app(
     config:
         Optional DiapasonConfig for other settings.
     """
+
+    @asynccontextmanager
+    async def _lifespan(application: FastAPI):
+        try:
+            yield
+        finally:
+            bridge = getattr(application.state, "analytics_bridge", None)
+            if bridge is not None:
+                try:
+                    bridge.stop()
+                except Exception:
+                    pass
+            client = getattr(application.state, "analytics_client", None)
+            if client is not None:
+                try:
+                    client.shutdown()
+                except Exception:
+                    pass
+            service = getattr(application.state, "memory_service", None)
+            if service is not None:
+                try:
+                    service.stop()
+                except Exception:
+                    pass
+
     app = FastAPI(
         title="Diapason API",
         description="OpenAI-compatible API server for Diapason",
-        version="0.1.0",
+        version="1.0.0",
+        lifespan=_lifespan,
     )
 
     from fastapi.middleware.cors import CORSMiddleware
@@ -281,34 +308,8 @@ def create_app(
                 _bridge.start()
                 app.state.analytics_bridge = _bridge
 
-            @app.on_event("shutdown")
-            async def _shutdown_analytics() -> None:
-                bridge = getattr(app.state, "analytics_bridge", None)
-                if bridge is not None:
-                    try:
-                        bridge.stop()
-                    except Exception:
-                        pass
-                client = getattr(app.state, "analytics_client", None)
-                if client is not None:
-                    try:
-                        client.shutdown()
-                    except Exception:
-                        pass
     except Exception as _exc:
         logger.debug("Analytics init skipped: %s", _exc)
-
-    # Stop the background memory service cleanly when the server shuts down.
-    if memory_service is not None:
-
-        @app.on_event("shutdown")
-        async def _shutdown_memory_service() -> None:
-            svc = getattr(app.state, "memory_service", None)
-            if svc is not None:
-                try:
-                    svc.stop()
-                except Exception:
-                    pass
 
     app.include_router(router)
     app.include_router(dashboard_router)
@@ -340,7 +341,19 @@ def create_app(
     # API key authentication middleware
     if api_key:
         try:
-            from diapason.server.auth_middleware import AuthMiddleware
+            from diapason.server.auth_middleware import (
+                AuthMiddleware,
+                RateLimitMiddleware,
+            )
+
+            _rate = getattr(config, "security", None)
+            if _rate is not None:
+                app.add_middleware(
+                    RateLimitMiddleware,
+                    requests_per_minute=_rate.rate_limit_rpm,
+                    burst_size=_rate.rate_limit_burst,
+                    enabled=_rate.rate_limit_enabled,
+                )
 
             app.add_middleware(AuthMiddleware, api_key=api_key)
         except Exception as exc:

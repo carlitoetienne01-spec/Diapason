@@ -53,7 +53,9 @@ def test_finalize_wake_command(monkeypatch):
 def test_finalize_bare_wake_suggests_talk(monkeypatch):
     from diapason.desktop.voice_commands import finalize_dictation
 
-    out = finalize_dictation("Hey Diapason", polish=True, llm_polish=False, use_dictionary=False)
+    out = finalize_dictation(
+        "Hey Diapason", polish=True, llm_polish=False, use_dictionary=False
+    )
     assert out["mode"] == "wake"
     assert out["meta"]["suggest"] == "talk_open"
 

@@ -286,16 +286,12 @@ impl LLMOptimizer {
                 .into(),
         );
         lines.push(String::new());
+        lines.push("Return a JSON object inside a ```json code block with:".into());
         lines.push(
-            "Return a JSON object inside a ```json code block with:".into(),
+            "1. \"params\": dict of config params (dotted keys matching the search space)".into(),
         );
         lines.push(
-            "1. \"params\": dict of config params (dotted keys matching the search space)"
-                .into(),
-        );
-        lines.push(
-            "2. \"reasoning\": string explaining why this is a good starting configuration"
-                .into(),
+            "2. \"reasoning\": string explaining why this is a good starting configuration".into(),
         );
         lines.join("\n")
     }
@@ -329,12 +325,9 @@ impl LLMOptimizer {
                 .into(),
         );
         lines.push(String::new());
+        lines.push("Return a JSON object inside a ```json code block with:".into());
         lines.push(
-            "Return a JSON object inside a ```json code block with:".into(),
-        );
-        lines.push(
-            "1. \"params\": dict of config params (dotted keys matching the search space)"
-                .into(),
+            "1. \"params\": dict of config params (dotted keys matching the search space)".into(),
         );
         lines.push(
             "2. \"reasoning\": string explaining why this config should improve results".into(),
@@ -372,13 +365,11 @@ impl LLMOptimizer {
         }
         lines.push(String::new());
 
-        lines.push(
-            format!(
-                "Return a JSON object inside a ```json code block with:\n\
+        lines.push(format!(
+            "Return a JSON object inside a ```json code block with:\n\
                  1. \"params\": dict of config params (only change {target_primitive} params)\n\
                  2. \"reasoning\": string explaining your changes"
-            ),
-        );
+        ));
         lines.join("\n")
     }
 
@@ -396,11 +387,7 @@ impl LLMOptimizer {
 
         lines.push("## Frontier Candidates to Merge".into());
         for (i, cand) in candidates.iter().enumerate() {
-            lines.push(format!(
-                "### Candidate {} (id={})",
-                i + 1,
-                cand.trial_id
-            ));
+            lines.push(format!("### Candidate {} (id={})", i + 1, cand.trial_id));
             lines.push(format!(
                 "Params: {}",
                 serde_json::to_string(&cand.config.params).unwrap_or_default()
@@ -468,11 +455,7 @@ impl LLMOptimizer {
         }
     }
 
-    fn config_from_value(
-        &self,
-        data: &serde_json::Value,
-        trial_id: &str,
-    ) -> Option<TrialConfig> {
+    fn config_from_value(&self, data: &serde_json::Value, trial_id: &str) -> Option<TrialConfig> {
         let params_val = data.get("params")?;
         let params: HashMap<String, serde_json::Value> =
             serde_json::from_value(params_val.clone()).ok()?;
@@ -567,10 +550,7 @@ fn format_config_params(params: &HashMap<String, serde_json::Value>) -> String {
         .join("\n")
 }
 
-fn format_history(
-    history: &[TrialResult],
-    frontier_ids: Option<&HashSet<String>>,
-) -> String {
+fn format_history(history: &[TrialResult], frontier_ids: Option<&HashSet<String>>) -> String {
     let mut lines = Vec::new();
     for (i, result) in history.iter().enumerate() {
         let tag = frontier_ids
@@ -578,11 +558,7 @@ fn format_history(
             .map(|_| " [FRONTIER]")
             .unwrap_or("");
 
-        lines.push(format!(
-            "### Trial {} (id={}){tag}",
-            i + 1,
-            result.trial_id
-        ));
+        lines.push(format!("### Trial {} (id={}){tag}", i + 1, result.trial_id));
         lines.push(format!(
             "Params: {}",
             serde_json::to_string(&result.config.params).unwrap_or_default()
@@ -603,10 +579,7 @@ fn format_history(
                 let ratings: Vec<String> = {
                     let mut sorted: Vec<_> = fb.primitive_ratings.iter().collect();
                     sorted.sort_by_key(|(k, _)| k.as_str());
-                    sorted
-                        .iter()
-                        .map(|(k, v)| format!("{k}={v}"))
-                        .collect()
+                    sorted.iter().map(|(k, v)| format!("{k}={v}")).collect()
                 };
                 lines.push(format!("Primitive ratings: {}", ratings.join(", ")));
             }

@@ -55,11 +55,11 @@ def _service(audio=None, transcript="bonjour le monde"):
 def test_hold_release_captures_transcribes_and_pastes():
     svc, captures, pasted, clk = _service()
 
-    svc.on_down()          # START -> capture begins
+    svc.on_down()  # START -> capture begins
     assert captures[0].started is True
 
     clk["t"] = 0.8
-    svc.on_up()            # STOP -> transcribe -> paste
+    svc.on_up()  # STOP -> transcribe -> paste
 
     assert captures[0].stopped is True
     assert pasted == ["bonjour le monde"]
@@ -104,21 +104,21 @@ def test_double_tap_hands_free_survives_release_then_a_tap_pastes():
         clock=lambda: clk["t"],
     )
 
-    svc.on_down()          # tap 1 down -> capture[0] (the tiny one)
+    svc.on_down()  # tap 1 down -> capture[0] (the tiny one)
     clk["t"] = 0.05
-    svc.on_up()            # tap 1 up -> transcribe empty -> nothing pasted
+    svc.on_up()  # tap 1 up -> transcribe empty -> nothing pasted
     assert pasted == []
     clk["t"] = 0.2
-    svc.on_down()          # tap 2 -> CANCEL, START_HANDS_FREE -> capture[1]
+    svc.on_down()  # tap 2 -> CANCEL, START_HANDS_FREE -> capture[1]
 
     assert captures[1].started is True
 
     clk["t"] = 0.25
-    svc.on_up()            # release does NOT stop hands-free
+    svc.on_up()  # release does NOT stop hands-free
     assert pasted == []
 
     clk["t"] = 4.0
-    svc.on_down()          # tap -> stop hands-free -> transcribe -> paste
+    svc.on_down()  # tap -> stop hands-free -> transcribe -> paste
     assert pasted == ["bonjour le monde"]
 
 
@@ -129,8 +129,8 @@ def test_cancel_discards_audio_without_pasting():
     svc, captures, pasted, _clk = _service()
     svc.on_down()
     svc.cancel()
-    assert captures[0].stopped is True   # capture ended
-    assert pasted == []                  # but nothing transcribed/pasted
+    assert captures[0].stopped is True  # capture ended
+    assert pasted == []  # but nothing transcribed/pasted
 
 
 # ── WAV encoding ─────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ def test_wav_encoding_clips_out_of_range_samples():
     wav_bytes = float_mono_to_wav(loud, 16_000)
     with wave.open(__import__("io").BytesIO(wav_bytes)) as w:
         frames = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-    assert frames[0] == 32767   # +2.0 clipped to +full scale
+    assert frames[0] == 32767  # +2.0 clipped to +full scale
     assert frames[1] == -32767  # -2.0 clipped to -full scale
 
 

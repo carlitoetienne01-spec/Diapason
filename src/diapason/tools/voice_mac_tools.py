@@ -52,7 +52,8 @@ set outLines to {{}}
 tell application "Calendar"
   repeat with cal in calendars
     try
-      set evs to (every event of cal whose start date ≥ startOfDay and start date ≤ endOfDay)
+      set evs to (every event of cal whose start date ≥ startOfDay ¬
+        and start date ≤ endOfDay)
       repeat with ev in evs
         set t to summary of ev
         set s to start date of ev
@@ -86,7 +87,7 @@ class CalendarQueryTool(BaseTool):
             description=(
                 "List calendar events for today or tomorrow on this Mac. "
                 "Use when the user asks what's on their schedule "
-                "(\"qu'est-ce qu'il y a demain ?\", \"what's today?\")."
+                '("qu\'est-ce qu\'il y a demain ?", "what\'s today?").'
             ),
             parameters={
                 "type": "object",
@@ -180,9 +181,7 @@ class SpotifyPlayTool(BaseTool):
 
         try:
             if action == "pause" and sys.platform == "darwin":
-                r = _run(
-                    ["osascript", "-e", 'tell application "Spotify" to pause']
-                )
+                r = _run(["osascript", "-e", 'tell application "Spotify" to pause'])
                 ok = r.returncode == 0
                 return ToolResult(
                     tool_name="spotify_play",
@@ -255,9 +254,7 @@ class SpotifyPlayTool(BaseTool):
                 metadata={"uri": uri, "action": action},
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="spotify_play", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="spotify_play", content=str(exc), success=False)
 
 
 @ToolRegistry.register("find_files")
@@ -290,8 +287,7 @@ class FindFilesTool(BaseTool):
                     "scope": {
                         "type": "string",
                         "description": (
-                            "Optional folder to search in "
-                            "(default home directory)."
+                            "Optional folder to search in (default home directory)."
                         ),
                     },
                 },
@@ -323,9 +319,7 @@ class FindFilesTool(BaseTool):
                 r = _run(cmd, timeout=25.0)
                 if r.returncode == 0 and r.stdout.strip():
                     paths = [
-                        line.strip()
-                        for line in r.stdout.splitlines()
-                        if line.strip()
+                        line.strip() for line in r.stdout.splitlines() if line.strip()
                     ][:limit]
                 elif r.returncode != 0:
                     hint = (
@@ -430,7 +424,9 @@ def _mail_compose_script(
     return "\n".join(lines)
 
 
-def _mailto_uri(*, to: str = "", subject: str = "", body: str = "", cc: str = "") -> str:
+def _mailto_uri(
+    *, to: str = "", subject: str = "", body: str = "", cc: str = ""
+) -> str:
     from urllib.parse import quote, urlencode
 
     query = urlencode(
@@ -474,7 +470,8 @@ class MailComposeTool(BaseTool):
                 "Compose an email draft in macOS Mail.app. Does NOT send. "
                 "Use for « écris un mail à… », « email John about… ». "
                 "Ask for missing recipient or topic if unclear. "
-                "After opening, tell the user the draft is ready — they send it themselves."
+                "After opening, tell the user the draft is ready — "
+                "they send it themselves."
             ),
             parameters={
                 "type": "object",
@@ -546,9 +543,7 @@ class MailComposeTool(BaseTool):
                 )
             return ToolResult(
                 tool_name="mail_compose",
-                content=(
-                    f"Opened mailto draft for {to or 'new message'}. Not sent."
-                ),
+                content=(f"Opened mailto draft for {to or 'new message'}. Not sent."),
                 success=True,
                 metadata={
                     "to": to,
@@ -558,9 +553,7 @@ class MailComposeTool(BaseTool):
                 },
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="mail_compose", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="mail_compose", content=str(exc), success=False)
 
 
 @ToolRegistry.register("messages_compose")
@@ -759,9 +752,7 @@ class MailSendTool(BaseTool):
                 metadata={"sent": True},
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="mail_send", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="mail_send", content=str(exc), success=False)
 
 
 @ToolRegistry.register("messages_send")

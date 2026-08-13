@@ -11,8 +11,5 @@ pub trait RouterPolicy: Send + Sync {
 
 pub trait LearningPolicy: Send + Sync {
     fn target(&self) -> &str;
-    fn update(
-        &self,
-        trace_store: &TraceStore,
-    ) -> Result<HashMap<String, Value>, DiapasonError>;
+    fn update(&self, trace_store: &TraceStore) -> Result<HashMap<String, Value>, DiapasonError>;
 }

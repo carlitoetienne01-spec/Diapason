@@ -80,7 +80,10 @@ class LearningOrchestrator:
         agent_id:
             When provided, only traces from this agent are considered.
 
-        Returns a dict with at least ``timestamp`` and ``status`` keys.
+        Returns
+        -------
+        Dict[str, Any]
+            A result with at least ``timestamp`` and ``status`` keys.
 
         Steps
         -----

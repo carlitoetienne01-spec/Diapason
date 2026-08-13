@@ -1,0 +1,20 @@
+# Historical synthetic-secret fixtures from the imported OpenJarvis baseline.
+# Fingerprints are commit-, path-, rule-, and line-specific: future findings
+# remain visible and must be reviewed independently.
+981ef33b29edab2d11e4a931645d5d452c0dfda9:docs/user-guide/security.md:generic-api-key:201
+981ef33b29edab2d11e4a931645d5d452c0dfda9:src/openjarvis/evals/datasets/research_mining.py:generic-api-key:211
+981ef33b29edab2d11e4a931645d5d452c0dfda9:src/openjarvis/evals/datasets/security_scanner.py:generic-api-key:70
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/analytics/test_redaction.py:generic-api-key:137
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/analytics/test_redaction.py:jwt:68
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_log_sanitization.py:generic-api-key:72
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_boundary_guard.py:generic-api-key:73
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_boundary_guard.py:generic-api-key:86
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_boundary_guard.py:generic-api-key:94
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/server/test_webhook_routes.py:generic-api-key:119
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/server/test_webhook_routes.py:generic-api-key:134
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_scanner.py:stripe-access-token:80
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_guardrails.py:generic-api-key:239
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_guardrails.py:generic-api-key:256
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_guardrails.py:generic-api-key:274
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_taint.py:generic-api-key:111
+981ef33b29edab2d11e4a931645d5d452c0dfda9:tests/security/test_taint.py:generic-api-key:140

@@ -549,7 +549,7 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
               : t('dashboard.savings.share.title')}
           </button>
           <a
-            href="https://open-jarvis.github.io/OpenJarvis/leaderboard"
+            href="https://open-diapason.github.io/Diapason/leaderboard"
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: 12, color: colors.accent, textDecoration: 'none' }}

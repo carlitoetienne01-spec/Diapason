@@ -106,9 +106,7 @@ fn rig_request_to_oj_messages(request: &CompletionRequest) -> Vec<Message> {
             .map(|d| format!("[{}]\n{}", d.id, d.text))
             .collect::<Vec<_>>()
             .join("\n\n");
-        messages.push(Message::system(format!(
-            "Relevant context:\n{doc_context}"
-        )));
+        messages.push(Message::system(format!("Relevant context:\n{doc_context}")));
     }
 
     messages
@@ -162,17 +160,14 @@ impl<E: InferenceEngine + 'static> rig::completion::request::CompletionModel
     type Client = ();
 
     fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-        unimplemented!(
-            "Use RigModelAdapter::new() directly instead of CompletionModel::make()"
-        );
+        unimplemented!("Use RigModelAdapter::new() directly instead of CompletionModel::make()");
     }
 
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + Send {
+    ) -> impl std::future::Future<Output = Result<CompletionResponse<Self::Response>, CompletionError>>
+           + Send {
         let engine = Arc::clone(&self.engine);
         let model_id = self.model_id.clone();
 
@@ -182,21 +177,19 @@ impl<E: InferenceEngine + 'static> rig::completion::request::CompletionModel
             let max_tokens = request.max_tokens.unwrap_or(2048) as i64;
             let extra = tools_to_extra(&request.tools);
 
-            let result: Result<GenerateResult, _> =
-                tokio::task::spawn_blocking(move || {
-                    engine.generate(
-                        &messages,
-                        &model_id,
-                        temperature,
-                        max_tokens,
-                        extra.as_ref(),
-                    )
-                })
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            let result: Result<GenerateResult, _> = tokio::task::spawn_blocking(move || {
+                engine.generate(
+                    &messages,
+                    &model_id,
+                    temperature,
+                    max_tokens,
+                    extra.as_ref(),
+                )
+            })
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-            let result =
-                result.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+            let result = result.map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
             let raw = make_raw(&result);
             let usage = make_usage(&result);
@@ -217,10 +210,8 @@ impl<E: InferenceEngine + 'static> rig::completion::request::CompletionModel
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<
-        rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         // Our engines use blocking HTTP clients. Streaming is not supported
         // through the rig adapter — callers should use `completion()` instead.
         Err(CompletionError::ProviderError(

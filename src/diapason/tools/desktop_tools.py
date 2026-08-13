@@ -117,6 +117,18 @@ def open_in_browser(url: str, *, browser: str = "") -> ToolResult:
     """Open a URL in a preferred browser or the system default."""
     url = normalize_url(url)
     browser = (browser or "").strip()
+    if urlparse(url).scheme.lower() in {"http", "https"}:
+        from diapason.core.local_mode import LocalOnlyError, assert_may_leave
+
+        try:
+            assert_may_leave("the browser request", destination=url)
+        except LocalOnlyError as exc:
+            return ToolResult(
+                tool_name="open_anything",
+                content=str(exc),
+                success=False,
+                metadata={"nothing_left_the_machine": True},
+            )
     try:
         if sys.platform == "darwin" and browser:
             app = resolve_mac_app_name(browser) or browser
@@ -234,8 +246,10 @@ def _chrome_executable() -> str | None:
             p = os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")
             if os.path.isfile(p):
                 return p
-    return shutil.which("google-chrome") or shutil.which("chrome") or shutil.which(
-        "chromium"
+    return (
+        shutil.which("google-chrome")
+        or shutil.which("chrome")
+        or shutil.which("chromium")
     )
 
 
@@ -286,13 +300,17 @@ class OpenAnythingTool(BaseTool):
                     "search_engine": {
                         "type": "string",
                         "enum": ["google", "duckduckgo", "bing"],
-                        "description": "Search engine when kind=search (default google).",
+                        "description": (
+                            "Search engine when kind=search (default google)."
+                        ),
                     },
                 },
                 "required": ["target"],
             },
             category="system",
             timeout_seconds=20.0,
+            required_capabilities=["tool:invoke"],
+            requires_confirmation=True,
         )
 
     def execute(self, **params: Any) -> ToolResult:
@@ -342,7 +360,11 @@ class OpenAnythingTool(BaseTool):
 
         if kind == "file" or (
             kind == "auto"
-            and (target.startswith("~") or target.startswith("/") or Path(target).exists())
+            and (
+                target.startswith("~")
+                or target.startswith("/")
+                or Path(target).exists()
+            )
         ):
             path = Path(target).expanduser()
             if not path.exists() and kind == "file":
@@ -403,6 +425,8 @@ class OpenUriTool(BaseTool):
             },
             category="system",
             timeout_seconds=15.0,
+            required_capabilities=["tool:invoke"],
+            requires_confirmation=True,
         )
 
     def execute(self, **params: Any) -> ToolResult:
@@ -410,6 +434,14 @@ class OpenUriTool(BaseTool):
         if not uri:
             return ToolResult(
                 tool_name="open_uri", content="No uri provided.", success=False
+            )
+        if urlparse(uri).scheme.lower() in {"http", "https"}:
+            result = open_in_browser(uri)
+            return ToolResult(
+                tool_name="open_uri",
+                content=result.content,
+                success=result.success,
+                metadata=result.metadata,
             )
         try:
             if sys.platform == "darwin":
@@ -432,9 +464,7 @@ class OpenUriTool(BaseTool):
                 tool_name="open_uri", content=f"Opened {uri}", success=True
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="open_uri", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="open_uri", content=str(exc), success=False)
 
 
 @ToolRegistry.register("focus_app")
@@ -726,10 +756,7 @@ class PasteToFrontmostTool(BaseTool):
                     if paste_text(text):
                         return ToolResult(
                             tool_name="paste_to_frontmost",
-                            content=(
-                                "Pasted into frontmost app "
-                                "(clipboard preserved)"
-                            ),
+                            content=("Pasted into frontmost app (clipboard preserved)"),
                             success=True,
                             metadata={"chars": len(text), "clipboard_restored": True},
                         )
@@ -752,7 +779,8 @@ class PasteToFrontmostTool(BaseTool):
                     [
                         "osascript",
                         "-e",
-                        'tell application "System Events" to keystroke "v" using command down',
+                        'tell application "System Events" '
+                        'to keystroke "v" using command down',
                     ]
                 )
                 if r.returncode != 0:
@@ -760,8 +788,7 @@ class PasteToFrontmostTool(BaseTool):
                         tool_name="paste_to_frontmost",
                         content=(
                             "Clipboard set but paste failed — grant Accessibility "
-                            "to Terminal/Diapason. "
-                            + (r.stderr or "").strip()
+                            "to Terminal/Diapason. " + (r.stderr or "").strip()
                         ),
                         success=False,
                         metadata={"clipboard": True, "pasted": False},

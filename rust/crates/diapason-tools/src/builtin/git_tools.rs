@@ -53,8 +53,12 @@ git_tool!(GIT_LOG_SPEC, "git_log", "Show git log", "log");
 
 pub struct GitStatusTool;
 impl BaseTool for GitStatusTool {
-    fn tool_id(&self) -> &str { "git_status" }
-    fn spec(&self) -> &ToolSpec { &GIT_STATUS_SPEC }
+    fn tool_id(&self) -> &str {
+        "git_status"
+    }
+    fn spec(&self) -> &ToolSpec {
+        &GIT_STATUS_SPEC
+    }
     fn execute(&self, params: &Value) -> Result<ToolResult, DiapasonError> {
         let cwd = params["cwd"].as_str();
         match run_git(&["status", "--short"], cwd) {
@@ -66,8 +70,12 @@ impl BaseTool for GitStatusTool {
 
 pub struct GitDiffTool;
 impl BaseTool for GitDiffTool {
-    fn tool_id(&self) -> &str { "git_diff" }
-    fn spec(&self) -> &ToolSpec { &GIT_DIFF_SPEC }
+    fn tool_id(&self) -> &str {
+        "git_diff"
+    }
+    fn spec(&self) -> &ToolSpec {
+        &GIT_DIFF_SPEC
+    }
     fn execute(&self, params: &Value) -> Result<ToolResult, DiapasonError> {
         let cwd = params["cwd"].as_str();
         match run_git(&["diff"], cwd) {
@@ -79,8 +87,12 @@ impl BaseTool for GitDiffTool {
 
 pub struct GitLogTool;
 impl BaseTool for GitLogTool {
-    fn tool_id(&self) -> &str { "git_log" }
-    fn spec(&self) -> &ToolSpec { &GIT_LOG_SPEC }
+    fn tool_id(&self) -> &str {
+        "git_log"
+    }
+    fn spec(&self) -> &ToolSpec {
+        &GIT_LOG_SPEC
+    }
     fn execute(&self, params: &Value) -> Result<ToolResult, DiapasonError> {
         let cwd = params["cwd"].as_str();
         let n = params["n"].as_i64().unwrap_or(10);

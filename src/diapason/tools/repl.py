@@ -8,6 +8,7 @@ within the same session.
 from __future__ import annotations
 
 import io
+import multiprocessing
 import threading
 import time
 import uuid
@@ -121,10 +122,57 @@ def _make_restricted_builtins() -> Dict[str, Any]:
 @dataclass
 class _ReplSession:
     session_id: str
-    namespace: Dict[str, Any] = field(default_factory=dict)
+    process: Any
+    connection: Any
     created_at: float = field(default_factory=time.time)
     last_used: float = field(default_factory=time.time)
     execution_count: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+
+def _execute_code(code: str, namespace: Dict[str, Any]) -> tuple[str, bool]:
+    """Execute one snippet inside the isolated REPL worker."""
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    try:
+        with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+            try:
+                compiled = compile(code, "<repl>", "eval")
+                value = eval(compiled, namespace)  # noqa: S307
+                if value is not None:
+                    print(repr(value))  # noqa: T201
+            except SyntaxError:
+                compiled = compile(code, "<repl>", "exec")
+                exec(compiled, namespace)  # noqa: S102
+    except Exception as exc:
+        return f"{type(exc).__name__}: {exc}", False
+
+    output = stdout_buf.getvalue()
+    error_output = stderr_buf.getvalue()
+    if error_output:
+        output += ("\n" if output else "") + error_output
+    return output, True
+
+
+def _repl_worker(connection: Any) -> None:
+    """Own persistent state in a killable child process."""
+    namespace: Dict[str, Any] = {"__builtins__": _make_restricted_builtins()}
+    try:
+        while True:
+            message = connection.recv()
+            operation = message.get("operation")
+            if operation == "stop":
+                return
+            if operation == "reset":
+                namespace = {"__builtins__": _make_restricted_builtins()}
+                connection.send(("", True))
+                continue
+            if operation == "execute":
+                connection.send(_execute_code(str(message.get("code", "")), namespace))
+    except (EOFError, BrokenPipeError, OSError):
+        return
+    finally:
+        connection.close()
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +207,7 @@ class ReplTool(BaseTool):
         self._max_sessions = max_sessions
         self._sessions: Dict[str, _ReplSession] = {}
         self._lock = threading.Lock()
+        self._process_context = multiprocessing.get_context("spawn")
 
     @property
     def spec(self) -> ToolSpec:
@@ -191,6 +240,9 @@ class ReplTool(BaseTool):
                 "required": ["code"],
             },
             category="code",
+            requires_confirmation=True,
+            timeout_seconds=float(self._timeout),
+            required_capabilities=["code:execute"],
         )
 
     def execute(self, **params: Any) -> ToolResult:
@@ -220,7 +272,8 @@ class ReplTool(BaseTool):
         # Execute with timeout
         output, success = self._exec_with_timeout(code, session)
 
-        # Update session metadata
+        # Update metadata on the returned session object even if a timed-out
+        # worker was retired. A later call with the same ID gets fresh state.
         session.last_used = time.time()
         session.execution_count += 1
 
@@ -254,11 +307,9 @@ class ReplTool(BaseTool):
                 return session
 
             if session_id and session_id in self._sessions and reset:
-                # Reset existing session
                 session = self._sessions[session_id]
-                session.namespace = {"__builtins__": _make_restricted_builtins()}
-                session.execution_count = 0
-                return session
+                self._stop_session(session)
+                del self._sessions[session_id]
 
             # Create new session
             sid = session_id or str(uuid.uuid4())
@@ -269,14 +320,53 @@ class ReplTool(BaseTool):
                     self._sessions,
                     key=lambda k: self._sessions[k].last_used,
                 )
-                del self._sessions[oldest_id]
+                self._stop_session(self._sessions.pop(oldest_id))
 
-            session = _ReplSession(
-                session_id=sid,
-                namespace={"__builtins__": _make_restricted_builtins()},
+            parent_connection, child_connection = self._process_context.Pipe()
+            process = self._process_context.Process(
+                target=_repl_worker,
+                args=(child_connection,),
+                daemon=True,
+                name=f"diapason-repl-{sid}",
             )
+            process.start()
+            child_connection.close()
+            session = _ReplSession(sid, process, parent_connection)
             self._sessions[sid] = session
             return session
+
+    def _stop_session(self, session: _ReplSession) -> None:
+        """Stop a worker and close its IPC channel."""
+        try:
+            if session.process.is_alive():
+                session.connection.send({"operation": "stop"})
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+        try:
+            session.connection.close()
+        except OSError:
+            pass
+        session.process.join(timeout=0.2)
+        if session.process.is_alive():
+            session.process.terminate()
+            session.process.join(timeout=1)
+        if session.process.is_alive() and hasattr(session.process, "kill"):
+            session.process.kill()
+            session.process.join(timeout=1)
+
+    def close(self) -> None:
+        """Release all REPL worker processes."""
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
+            self._stop_session(session)
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Execution
@@ -287,49 +377,31 @@ class ReplTool(BaseTool):
         code: str,
         session: _ReplSession,
     ) -> tuple[str, bool]:
-        """Execute code in a daemon thread with timeout.
+        """Execute code in a persistent child process with a hard timeout.
 
         Returns (output, success).
         """
-        result_holder: Dict[str, Any] = {"output": "", "success": True}
-
-        def _run() -> None:
-            stdout_buf = io.StringIO()
-            stderr_buf = io.StringIO()
+        with session.lock:
+            if not session.process.is_alive():
+                self._retire_session(session)
+                return "REPL worker stopped unexpectedly.", False
             try:
-                with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-                    # Try eval first for expression display (REPL-like behavior)
-                    try:
-                        compiled = compile(code, "<repl>", "eval")
-                        val = eval(compiled, session.namespace)  # noqa: S307
-                        if val is not None:
-                            print(repr(val))  # noqa: T201
-                    except SyntaxError:
-                        # Not an expression — execute as statements
-                        compiled = compile(code, "<repl>", "exec")
-                        exec(compiled, session.namespace)  # noqa: S102
-            except Exception as exc:
-                result_holder["output"] = f"{type(exc).__name__}: {exc}"
-                result_holder["success"] = False
-                return
+                session.connection.send({"operation": "execute", "code": code})
+                if session.connection.poll(self._timeout):
+                    output, success = session.connection.recv()
+                    return str(output), bool(success)
+            except (BrokenPipeError, EOFError, OSError):
+                self._retire_session(session)
+                return "REPL worker stopped unexpectedly.", False
 
-            output = stdout_buf.getvalue()
-            err = stderr_buf.getvalue()
-            if err:
-                output += ("\n" if output else "") + err
-            result_holder["output"] = output
+            self._retire_session(session)
+            return f"Execution timed out after {self._timeout} seconds.", False
 
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
-        thread.join(timeout=self._timeout)
-
-        if thread.is_alive():
-            return (
-                f"Execution timed out after {self._timeout} seconds.",
-                False,
-            )
-
-        return result_holder["output"], result_holder["success"]
+    def _retire_session(self, session: _ReplSession) -> None:
+        with self._lock:
+            if self._sessions.get(session.session_id) is session:
+                del self._sessions[session.session_id]
+        self._stop_session(session)
 
 
 __all__ = ["ReplTool"]

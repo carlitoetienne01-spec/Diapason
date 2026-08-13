@@ -8,6 +8,7 @@ from typing import Any
 
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
+from diapason.security.process_utils import run_with_timeout
 from diapason.tools._stubs import BaseTool, ToolSpec
 
 # Dangerous patterns to block
@@ -56,6 +57,9 @@ class CodeInterpreterTool(BaseTool):
                 "required": ["code"],
             },
             category="code",
+            requires_confirmation=True,
+            timeout_seconds=float(self._timeout),
+            required_capabilities=["code:execute"],
         )
 
     def execute(self, **params: Any) -> ToolResult:
@@ -77,10 +81,8 @@ class CodeInterpreterTool(BaseTool):
                 )
 
         try:
-            result = subprocess.run(
+            result = run_with_timeout(
                 [sys.executable, "-c", code],
-                capture_output=True,
-                text=True,
                 timeout=self._timeout,
             )
             output = result.stdout

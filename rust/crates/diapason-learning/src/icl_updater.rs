@@ -166,12 +166,8 @@ mod tests {
     #[test]
     fn test_add_example_quality_gate() {
         let mut policy = ICLUpdaterPolicy::new(0.7, 20, 3);
-        assert!(!policy.add_example(
-            "q".into(), "r".into(), 0.3, HashMap::new(),
-        ));
-        assert!(policy.add_example(
-            "q".into(), "r".into(), 0.9, HashMap::new(),
-        ));
+        assert!(!policy.add_example("q".into(), "r".into(), 0.3, HashMap::new(),));
+        assert!(policy.add_example("q".into(), "r".into(), 0.9, HashMap::new(),));
         assert_eq!(policy.example_db().len(), 1);
         assert_eq!(policy.version(), 1);
     }

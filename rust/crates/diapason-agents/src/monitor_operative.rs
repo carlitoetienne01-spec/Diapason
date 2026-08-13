@@ -303,12 +303,8 @@ impl<M: CompletionModel + 'static> OjAgent for MonitorOperativeAgent<M> {
                     .messages
                     .iter()
                     .filter_map(|m| match m.role {
-                        diapason_core::Role::User => {
-                            Some(RigMessage::user(&m.content))
-                        }
-                        diapason_core::Role::Assistant => {
-                            Some(RigMessage::assistant(&m.content))
-                        }
+                        diapason_core::Role::User => Some(RigMessage::user(&m.content)),
+                        diapason_core::Role::Assistant => Some(RigMessage::assistant(&m.content)),
                         _ => None,
                     })
                     .collect()
@@ -328,9 +324,7 @@ impl<M: CompletionModel + 'static> OjAgent for MonitorOperativeAgent<M> {
                 .chat(&current_input, history.clone())
                 .await
                 .map_err(|e| {
-                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(
-                        e.to_string(),
-                    ))
+                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(e.to_string()))
                 })?;
 
             let text = strip_think_tags(&response);
@@ -365,15 +359,14 @@ impl<M: CompletionModel + 'static> OjAgent for MonitorOperativeAgent<M> {
                 let params: serde_json::Value =
                     serde_json::from_str(&action_input).unwrap_or(serde_json::json!({}));
 
-                let tool_result = match self.executor.execute(
-                    &action,
-                    &params,
-                    Some("monitor_operative"),
-                    None,
-                ) {
-                    Ok(r) => r,
-                    Err(e) => ToolResult::failure(&action, e.to_string()),
-                };
+                let tool_result =
+                    match self
+                        .executor
+                        .execute(&action, &params, Some("monitor_operative"), None)
+                    {
+                        Ok(r) => r,
+                        Err(e) => ToolResult::failure(&action, e.to_string()),
+                    };
 
                 // Compress observation according to strategy
                 let compressed = self.compress_observation(&tool_result.content);
@@ -462,12 +455,21 @@ mod tests {
     #[test]
     fn test_strategy_enum_debug() {
         // Ensure Debug formatting works (used in system prompt and metadata).
-        assert_eq!(format!("{:?}", MemoryExtraction::CausalityGraph), "CausalityGraph");
-        assert_eq!(format!("{:?}", ObservationCompression::Truncate), "Truncate");
+        assert_eq!(
+            format!("{:?}", MemoryExtraction::CausalityGraph),
+            "CausalityGraph"
+        );
+        assert_eq!(
+            format!("{:?}", ObservationCompression::Truncate),
+            "Truncate"
+        );
         assert_eq!(
             format!("{:?}", RetrievalStrategy::HybridWithSelfEval),
             "HybridWithSelfEval"
         );
-        assert_eq!(format!("{:?}", TaskDecomposition::Hierarchical), "Hierarchical");
+        assert_eq!(
+            format!("{:?}", TaskDecomposition::Hierarchical),
+            "Hierarchical"
+        );
     }
 }

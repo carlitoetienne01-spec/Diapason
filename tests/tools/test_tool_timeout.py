@@ -62,9 +62,12 @@ class TestToolTimeout:
     def test_slow_tool_times_out(self):
         executor = ToolExecutor([SlowTool(delay=5.0)])
         call = ToolCall(id="1", name="slow_tool", arguments="{}")
+        started = time.monotonic()
         result = executor.execute(call)
+        elapsed = time.monotonic() - started
         assert not result.success
         assert "timed out" in result.content
+        assert elapsed < 2.0, "deadline must return control without joining the worker"
 
     def test_timeout_event_emitted(self):
         bus = EventBus(record_history=True)

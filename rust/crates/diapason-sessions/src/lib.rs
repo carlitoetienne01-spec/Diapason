@@ -248,9 +248,7 @@ impl SessionStore {
         let expired: Vec<String> = {
             let mut stmt = self
                 .conn
-                .prepare(
-                    "SELECT session_id FROM sessions WHERE last_activity < ?1",
-                )
+                .prepare("SELECT session_id FROM sessions WHERE last_activity < ?1")
                 .expect("prepare decay query");
 
             stmt.query_map(params![cutoff], |row| row.get::<_, String>(0))
@@ -269,10 +267,9 @@ impl SessionStore {
                 "DELETE FROM channel_links WHERE session_id = ?1",
                 params![sid],
             );
-            let _ = self.conn.execute(
-                "DELETE FROM sessions WHERE session_id = ?1",
-                params![sid],
-            );
+            let _ = self
+                .conn
+                .execute("DELETE FROM sessions WHERE session_id = ?1", params![sid]);
         }
         n
     }
@@ -466,9 +463,7 @@ impl SessionStore {
     fn load_channel_ids(&self, session_id: &str) -> HashMap<String, String> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT channel, channel_user_id FROM channel_links WHERE session_id = ?1",
-            )
+            .prepare("SELECT channel, channel_user_id FROM channel_links WHERE session_id = ?1")
             .expect("prepare channel query");
 
         stmt.query_map(params![session_id], |row| {
@@ -554,10 +549,7 @@ mod tests {
 
         let reloaded = store.load_session(&s.session_id);
         assert_eq!(reloaded.identity.channel_ids.len(), 2);
-        assert_eq!(
-            reloaded.identity.channel_ids.get("slack").unwrap(),
-            "S003"
-        );
+        assert_eq!(reloaded.identity.channel_ids.get("slack").unwrap(), "S003");
         assert_eq!(
             reloaded.identity.channel_ids.get("discord").unwrap(),
             "D003"
@@ -582,7 +574,10 @@ mod tests {
 
         let after = store.load_session(&s.session_id);
         assert!(after.messages.len() < 10);
-        assert!(after.messages.iter().any(|m| m.content.contains("consolidated")));
+        assert!(after
+            .messages
+            .iter()
+            .any(|m| m.content.contains("consolidated")));
     }
 
     #[test]

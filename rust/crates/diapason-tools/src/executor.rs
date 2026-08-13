@@ -5,7 +5,7 @@ use crate::traits::BaseTool;
 use diapason_core::error::{DiapasonError, ToolError};
 use diapason_core::{EventBus, EventType, ToolResult};
 use diapason_security::capabilities::CapabilityPolicy;
-use diapason_security::taint::{TaintSet, check_taint};
+use diapason_security::taint::{check_taint, TaintSet};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,10 +19,7 @@ pub struct ToolExecutor {
 }
 
 impl ToolExecutor {
-    pub fn new(
-        capability_policy: Option<CapabilityPolicy>,
-        bus: Option<Arc<EventBus>>,
-    ) -> Self {
+    pub fn new(capability_policy: Option<CapabilityPolicy>, bus: Option<Arc<EventBus>>) -> Self {
         Self {
             tools: HashMap::new(),
             capability_policy,
@@ -45,7 +42,10 @@ impl ToolExecutor {
     }
 
     pub fn tool_specs(&self) -> Vec<Value> {
-        self.tools.values().map(|t| t.to_openai_function()).collect()
+        self.tools
+            .values()
+            .map(|t| t.to_openai_function())
+            .collect()
     }
 
     pub fn execute(
@@ -55,15 +55,38 @@ impl ToolExecutor {
         agent_id: Option<&str>,
         taint: Option<&TaintSet>,
     ) -> Result<ToolResult, DiapasonError> {
-        let tool = self.tools.get(tool_name).ok_or_else(|| {
-            DiapasonError::Tool(ToolError::NotFound(tool_name.to_string()))
-        })?;
+        let tool = self
+            .tools
+            .get(tool_name)
+            .ok_or_else(|| DiapasonError::Tool(ToolError::NotFound(tool_name.to_string())))?;
 
-        // RBAC check
-        if let (Some(policy), Some(aid)) = (&self.capability_policy, agent_id) {
-            let spec = tool.spec();
+        let spec = tool.spec();
+
+        // Native dispatch has no approval callback. Mutating tools must stop
+        // here instead of silently treating the absence of a UI as consent.
+        if spec.requires_confirmation {
+            return Err(DiapasonError::Tool(ToolError::ConfirmationRequired(
+                tool_name.to_string(),
+            )));
+        }
+
+        // RBAC is fail-closed: a capability-bearing tool cannot run when the
+        // caller omitted either the policy or the agent identity.
+        if !spec.required_capabilities.is_empty() {
+            let aid = agent_id.ok_or_else(|| {
+                DiapasonError::Tool(ToolError::CapabilityDenied(
+                    "<missing>".to_string(),
+                    format!("agent identity (tool: {tool_name})"),
+                ))
+            })?;
+            let policy = self.capability_policy.as_ref().ok_or_else(|| {
+                DiapasonError::Tool(ToolError::CapabilityDenied(
+                    aid.to_string(),
+                    format!("capability policy unavailable (tool: {tool_name})"),
+                ))
+            })?;
             for cap in &spec.required_capabilities {
-                if !policy.check(aid, cap, "") {
+                if !policy.check(aid, cap, tool_name) {
                     return Err(DiapasonError::Tool(ToolError::CapabilityDenied(
                         aid.to_string(),
                         format!("{cap} (tool: {tool_name})"),
@@ -85,13 +108,20 @@ impl ToolExecutor {
         // Emit start event
         if let Some(ref bus) = self.bus {
             let mut data = HashMap::new();
-            data.insert("tool_name".to_string(), Value::String(tool_name.to_string()));
+            data.insert(
+                "tool_name".to_string(),
+                Value::String(tool_name.to_string()),
+            );
             bus.publish(EventType::ToolCallStart, data);
         }
 
         let start = std::time::Instant::now();
         let timeout = Duration::from_secs_f64(tool.spec().timeout_seconds);
-        let timeout = if timeout.is_zero() { self.default_timeout } else { timeout };
+        let timeout = if timeout.is_zero() {
+            self.default_timeout
+        } else {
+            timeout
+        };
 
         let result = tool.execute(params);
         let elapsed = start.elapsed();
@@ -99,7 +129,10 @@ impl ToolExecutor {
         if elapsed > timeout {
             if let Some(ref bus) = self.bus {
                 let mut data = HashMap::new();
-                data.insert("tool_name".to_string(), Value::String(tool_name.to_string()));
+                data.insert(
+                    "tool_name".to_string(),
+                    Value::String(tool_name.to_string()),
+                );
                 bus.publish(EventType::ToolTimeout, data);
             }
             return Err(DiapasonError::Tool(ToolError::Timeout(
@@ -111,10 +144,14 @@ impl ToolExecutor {
         // Emit end event
         if let Some(ref bus) = self.bus {
             let mut data = HashMap::new();
-            data.insert("tool_name".to_string(), Value::String(tool_name.to_string()));
-            data.insert("duration_seconds".to_string(), Value::Number(
-                serde_json::Number::from_f64(elapsed.as_secs_f64()).unwrap(),
-            ));
+            data.insert(
+                "tool_name".to_string(),
+                Value::String(tool_name.to_string()),
+            );
+            data.insert(
+                "duration_seconds".to_string(),
+                Value::Number(serde_json::Number::from_f64(elapsed.as_secs_f64()).unwrap()),
+            );
             bus.publish(EventType::ToolCallEnd, data);
         }
 
@@ -129,9 +166,16 @@ mod tests {
     #[test]
     fn test_executor_register_and_execute() {
         let mut exec = ToolExecutor::new(None, None);
-        exec.register(BuiltinTool::Calculator(crate::builtin::calculator::CalculatorTool));
+        exec.register(BuiltinTool::Calculator(
+            crate::builtin::calculator::CalculatorTool,
+        ));
         let result = exec
-            .execute("calculator", &serde_json::json!({"expression": "2+2"}), None, None)
+            .execute(
+                "calculator",
+                &serde_json::json!({"expression": "2+2"}),
+                None,
+                None,
+            )
             .unwrap();
         assert!(result.success);
     }
@@ -143,5 +187,43 @@ mod tests {
             .execute("nonexistent", &serde_json::json!({}), None, None)
             .unwrap_err();
         assert!(matches!(err, DiapasonError::Tool(ToolError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_executor_denies_capability_tool_without_security_context() {
+        let mut exec = ToolExecutor::new(None, None);
+        exec.register(BuiltinTool::FileRead(
+            crate::builtin::file_tools::FileReadTool,
+        ));
+        let err = exec
+            .execute(
+                "file_read",
+                &serde_json::json!({"path": "Cargo.toml"}),
+                None,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DiapasonError::Tool(ToolError::CapabilityDenied(_, _))
+        ));
+    }
+
+    #[test]
+    fn test_executor_denies_confirmation_tool_without_approval_channel() {
+        let mut exec = ToolExecutor::new(None, None);
+        exec.register(BuiltinTool::ShellExec(crate::builtin::shell::ShellExecTool));
+        let err = exec
+            .execute(
+                "shell_exec",
+                &serde_json::json!({"command": "echo unsafe"}),
+                None,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DiapasonError::Tool(ToolError::ConfirmationRequired(_))
+        ));
     }
 }

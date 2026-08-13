@@ -116,9 +116,7 @@ pub fn check_ssrf(url_str: &str) -> Option<String> {
             // Normalize IPv4-mapped / IPv4-compatible IPv6 to embedded IPv4
             // so the `BLOCKED_HOSTS` and private-range checks below catch
             // them. This is the core SSRF fix.
-            embedded_ipv4(v6)
-                .map(IpAddr::V4)
-                .unwrap_or(IpAddr::V6(*v6)),
+            embedded_ipv4(v6).map(IpAddr::V4).unwrap_or(IpAddr::V6(*v6)),
         ),
         url::Host::Domain(_) => None,
     };
@@ -265,7 +263,10 @@ mod tests {
     #[test]
     fn test_check_ssrf_allows_ipv4_mapped_public() {
         let result = check_ssrf("http://[::ffff:8.8.8.8]/");
-        assert!(result.is_none(), "public IP wrapped as IPv6 must be allowed");
+        assert!(
+            result.is_none(),
+            "public IP wrapped as IPv6 must be allowed"
+        );
     }
 
     #[test]
@@ -273,7 +274,10 @@ mod tests {
         // ::ffff:100.100.100.200 — Alibaba metadata; not in any private CIDR,
         // so must be caught by `BLOCKED_HOSTS` lookup on the normalized IPv4.
         let result = check_ssrf("http://[::ffff:100.100.100.200]/");
-        assert!(result.is_some(), "Alibaba metadata via mapped form must be blocked");
+        assert!(
+            result.is_some(),
+            "Alibaba metadata via mapped form must be blocked"
+        );
         assert!(result.unwrap().contains("Blocked host"));
     }
 

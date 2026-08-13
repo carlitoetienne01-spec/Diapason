@@ -18,11 +18,7 @@ pub struct InstrumentedEngine<E: InferenceEngine> {
 }
 
 impl<E: InferenceEngine> InstrumentedEngine<E> {
-    pub fn new(
-        inner: E,
-        store: Arc<TelemetryStore>,
-        agent_name: String,
-    ) -> Self {
+    pub fn new(inner: E, store: Arc<TelemetryStore>, agent_name: String) -> Self {
         Self {
             inner,
             store,

@@ -1,9 +1,9 @@
 [package]
 name = "diapason-desktop"
-version = "1.0.1"
+version = "1.0.0"
 description = "Diapason Desktop — Native AI assistant with energy monitoring, trace debugging, and learning visualization"
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -12,7 +12,6 @@ tauri-build = { version = "2", features = [] }
 toml_edit = "0.22"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
@@ -44,3 +43,8 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[lints.rust]
+# objc 0.2 still emits this historical cfg from its macros. Declare it as an
+# expected cfg so current rustc does not produce dozens of false positives.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }

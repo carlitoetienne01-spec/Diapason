@@ -48,7 +48,7 @@ class MCPServer:
     """
 
     SERVER_NAME = "diapason"
-    SERVER_VERSION = "0.1.0"
+    SERVER_VERSION = "1.0.0"
     PROTOCOL_VERSION = "2025-11-25"
 
     def __init__(self, tools: Optional[List[BaseTool]] = None) -> None:

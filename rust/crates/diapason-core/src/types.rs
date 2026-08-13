@@ -728,10 +728,8 @@ mod tests {
 
     #[test]
     fn test_tool_spec_defaults() {
-        let spec: ToolSpec = serde_json::from_str(
-            r#"{"name": "test", "description": "test tool"}"#,
-        )
-        .unwrap();
+        let spec: ToolSpec =
+            serde_json::from_str(r#"{"name": "test", "description": "test tool"}"#).unwrap();
         assert_eq!(spec.timeout_seconds, 30.0);
         assert!(!spec.requires_confirmation);
     }

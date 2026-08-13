@@ -83,7 +83,7 @@ unaffected by these weights.
 
 The prebuilt config lives at
 `configs/diapason/examples/spec-search-quickstart.toml`. Copy it to
-`~/.diapason/config.toml` (or set `OPENJARVIS_CONFIG` to it) and the
+`~/.diapason/config.toml` (or set `DIAPASON_CONFIG` to it) and the
 regular loader picks it up:
 
 ```python

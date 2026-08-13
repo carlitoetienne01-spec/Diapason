@@ -32,9 +32,7 @@ _MANIFEST = Path(__file__).resolve().parent / "outbound_manifest.txt"
 def _manifest_entries() -> set[str]:
     lines = _MANIFEST.read_text(encoding="utf-8").splitlines()
     return {
-        ln.strip()
-        for ln in lines
-        if ln.strip() and not ln.lstrip().startswith("#")
+        ln.strip() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")
     }
 
 

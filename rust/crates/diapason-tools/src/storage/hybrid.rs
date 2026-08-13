@@ -92,11 +92,7 @@ impl MemoryBackend for HybridMemory {
         Ok(last_id)
     }
 
-    fn retrieve(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, DiapasonError> {
+    fn retrieve(&self, query: &str, top_k: usize) -> Result<Vec<RetrievalResult>, DiapasonError> {
         // Ask each backend for a generous number of results to give RRF enough data.
         let fetch_k = top_k * 3;
         let mut per_backend: Vec<Vec<RetrievalResult>> = Vec::with_capacity(self.backends.len());
@@ -125,10 +121,7 @@ impl MemoryBackend for HybridMemory {
 
     fn count(&self) -> Result<usize, DiapasonError> {
         // Return count from the first backend (all should be in sync after store/delete).
-        self.backends
-            .first()
-            .map(|b| b.count())
-            .unwrap_or(Ok(0))
+        self.backends.first().map(|b| b.count()).unwrap_or(Ok(0))
     }
 }
 

@@ -283,17 +283,20 @@ def show_path() -> None:
     """Print the resolved Diapason directories (home, config, cache).
 
     All Diapason state lives under a single root, resolved in priority
-    order: ``$OPENJARVIS_HOME`` > ``$XDG_DATA_HOME/diapason`` >
+    order: ``$DIAPASON_HOME`` > ``$XDG_DATA_HOME/diapason`` >
     ``~/.diapason``. Use this to confirm where your data is stored after
     setting an override.
     """
+    from diapason.core.env import names as _env_names
     from diapason.core.paths import get_cache_dir, get_config_dir, get_config_path
 
     console = Console(stderr=True)
     home = get_config_dir()
     override = (
-        "OPENJARVIS_HOME"
-        if os.environ.get("OPENJARVIS_HOME")
+        "DIAPASON_HOME"
+        if os.environ.get("DIAPASON_HOME")
+        else "legacy home alias"
+        if any(os.environ.get(name) for name in _env_names("HOME")[1:])
         else "XDG_DATA_HOME"
         if os.environ.get("XDG_DATA_HOME")
         else "default (~/.diapason)"
@@ -373,9 +376,7 @@ def set_config(key: str, value: str) -> None:
         raise SystemExit(1)
 
     # Load or create TOML document
-    config_path = Path(
-        _env_get("CONFIG") or (DEFAULT_CONFIG_DIR / "config.toml")
-    )
+    config_path = Path(_env_get("CONFIG") or (DEFAULT_CONFIG_DIR / "config.toml"))
     if config_path.exists():
         doc = tomlkit.parse(config_path.read_text())
     else:

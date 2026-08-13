@@ -9,6 +9,7 @@ from typing import Any, List
 
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
+from diapason.security.process_utils import run_with_timeout
 from diapason.tools._stubs import BaseTool, ToolSpec
 
 # Maximum output size per stream (100 KB)
@@ -124,39 +125,9 @@ class ShellExecTool(BaseTool):
                 env[key] = val
 
         try:
-            from diapason._rust_bridge import get_rust_module
-
-            _rust = get_rust_module()
-            output = _rust.ShellExecTool().execute(command, working_dir)
-            return ToolResult(
-                tool_name="shell_exec",
-                content=output or "(no output)",
-                success=True,
-                metadata={
-                    "returncode": 0,
-                    "timeout_used": timeout,
-                    "working_dir": working_dir,
-                },
-            )
-        except ImportError:
-            pass  # Fall through to subprocess below
-        except Exception as exc:
-            return ToolResult(
-                tool_name="shell_exec",
-                content=str(exc),
-                success=False,
-                metadata={
-                    "returncode": -1,
-                    "timeout_used": timeout,
-                    "working_dir": working_dir,
-                },
-            )
-        try:
-            result = subprocess.run(
+            result = run_with_timeout(
                 command,
                 shell=True,
-                capture_output=True,
-                text=True,
                 timeout=timeout,
                 cwd=working_dir,
                 env=env,

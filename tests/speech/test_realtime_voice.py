@@ -53,7 +53,11 @@ def test_oral_prompt_contains_clarification_and_brevity():
     from diapason.speech.realtime.oral_prompt import build_live_agent_template
 
     text = build_live_agent_template(enable_tools=True)
-    assert "two or three sentences" in text.lower() or "2–3" in text or "three sentences" in text
+    assert (
+        "two or three sentences" in text.lower()
+        or "2–3" in text
+        or "three sentences" in text
+    )
     assert "clarif" in text.lower()
     assert "calendar_query" in text
     assert "find_files" in text
@@ -93,7 +97,6 @@ def test_default_voice_tools_include_jarvis_parity():
     assert "screen_describe" in ids
     assert "screen_share_start" in ids
     assert "screen_share_stop" in ids
-
 
 
 def test_event_to_client_json():
@@ -159,7 +162,6 @@ def test_openai_tools_schema_shape():
         assert "name" in t["function"]
 
 
-
 def test_gemini_parse_audio_part():
     from diapason.speech.realtime.gemini_live import GeminiLiveSession
 
@@ -186,9 +188,7 @@ def test_openai_parse_audio_delta():
     from diapason.speech.realtime.openai_realtime import OpenAIRealtimeSession
 
     session = OpenAIRealtimeSession(api_key="test")
-    events = session._parse_event(
-        {"type": "response.audio.delta", "delta": "qq=="}
-    )
+    events = session._parse_event({"type": "response.audio.delta", "delta": "qq=="})
     assert len(events) == 1
     assert events[0].kind == "audio"
     assert events[0].audio_b64 == "qq=="

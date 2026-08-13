@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-12 — Diapason product line
+
+First unified Diapason release. This release completes the active-code and
+distribution rebrand while preserving Git and license provenance, aligns all
+product versions, introduces `diapason migrate`, enables secure profiles and
+local-only privacy by default, requires explicit tool approval, adds automatic
+local API authentication and rate limiting, removes desktop shell permissions,
+and makes Python security fallbacks fail safely when the Rust accelerator is
+unavailable.
+
+The earlier `1.0.1` and `1.0.2` entries below describe releases from the
+preserved pre-Diapason history; numbering restarts at `1.0.0` for the Diapason
+product line.
+
 ### Added
 
 **Vision input for `diapason ask`** — attach images to a query with
@@ -18,7 +32,7 @@ requests are unaffected. A privacy guard warns before any image is sent to a
 non-local engine, and the security guardrail now preserves images when it
 sanitizes a flagged prompt. Screen capture uses the built-in Windows .NET
 stack with `mss`/`Pillow` fallbacks on other platforms. Adds the
-`JARVIS_NUM_CTX` environment variable to tune the Ollama context window
+`DIAPASON_NUM_CTX` environment variable to tune the Ollama context window
 (default `16384`).
 
 ## [1.0.2] - 2026-05-24
@@ -114,9 +128,9 @@ installed desktop app would never check. Both are now fixed; the app
 polls `releases/download/desktop-latest/latest.json` every 30 minutes
 and signature-verifies downloads against the minisign pubkey baked
 into the app. Full flow, key-rotation runbook, and dev escape hatch
-(`OPENJARVIS_NO_UPDATER=1`) documented in `docs/desktop-auto-update.md`.
+(`DIAPASON_NO_UPDATER=1`) documented in `docs/desktop-auto-update.md`.
 
-**Analytics env-var opt-out** (`DO_NOT_TRACK`, `OPENJARVIS_NO_ANALYTICS`).
+**Analytics env-var opt-out** (`DO_NOT_TRACK`, `DIAPASON_NO_ANALYTICS`).
 Tanvir's analytics module (#351) only respected the
 `[analytics] enabled` config-file setting. Both env vars are now
 honored in `is_analytics_enabled()` and in the install.sh beacon
@@ -133,7 +147,7 @@ correct for editable installs). Now fires on every interactive
 command (`doctor`, `init`, `quickstart`, `model`, `agents`, `skill`,
 `memory`, `bench`, `telemetry`, `config`, `eval`, `optimize`, plus
 the original three) and uses install-detection to print the right
-upgrade command. Honors `JARVIS_NO_UPDATE_CHECK=1` and `CI=true` to
+upgrade command. Honors `DIAPASON_NO_UPDATE_CHECK=1` and `CI=true` to
 stay silent in automation.
 
 **Desktop app version bumped 0.1.0 → 1.0.1** across

@@ -22,8 +22,16 @@ from typing import Iterable, Set
 # because constructing it is already reading a credential.
 _TRANSPORT_VERBS = {
     "httpx": {
-        "get", "post", "put", "patch", "delete", "stream",
-        "request", "Client", "AsyncClient", "send",
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "stream",
+        "request",
+        "Client",
+        "AsyncClient",
+        "send",
     },
     "requests": {"get", "post", "put", "patch", "delete", "request", "Session", "head"},
     "aiohttp": {"ClientSession", "request", "get", "post"},

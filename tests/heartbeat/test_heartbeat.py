@@ -141,7 +141,9 @@ def test_sync_creates_tasks(tmp_path: Path):
     store = SchedulerStore(db)
     sched = TaskScheduler(store)
     cfg = DiapasonConfig(
-        heartbeat=HeartbeatConfig(enabled=True, interval_seconds=1800, workspace_dir=str(ws)),
+        heartbeat=HeartbeatConfig(
+            enabled=True, interval_seconds=1800, workspace_dir=str(ws)
+        ),
         routines=RoutinesConfig(enabled=True),
     )
     summary = sync_heartbeat_and_routines(sched, cfg, workspace=str(ws))

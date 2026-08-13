@@ -50,8 +50,9 @@ impl HeuristicRewardFunction {
         } else {
             0.5
         };
-        let reward =
-            self.weight_latency * lat_score + self.weight_cost * cost_score + self.weight_efficiency * eff_score;
+        let reward = self.weight_latency * lat_score
+            + self.weight_cost * cost_score
+            + self.weight_efficiency * eff_score;
         reward.clamp(0.0, 1.0)
     }
 }

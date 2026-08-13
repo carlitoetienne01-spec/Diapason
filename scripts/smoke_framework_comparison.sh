@@ -7,16 +7,16 @@
 # Required env vars:
 #   HERMES_AGENT_PATH   - path to pinned hermes-agent checkout
 #   OPENCLAW_PATH       - path to pinned openclaw checkout
-#   JARVIS_MOCK_LLM_URL - OpenAI-compatible endpoint (Ollama or vLLM)
+#   DIAPASON_MOCK_LLM_URL - OpenAI-compatible endpoint (Ollama or vLLM)
 #
 # Optional:
-#   JARVIS_ALLOW_COMMIT_DRIFT=1  - bypass commit-pin enforcement
+#   DIAPASON_ALLOW_COMMIT_DRIFT=1  - bypass commit-pin enforcement
 
 set -euo pipefail
 
 : "${HERMES_AGENT_PATH:?must be set}"
 : "${OPENCLAW_PATH:?must be set}"
-: "${JARVIS_MOCK_LLM_URL:?must be set (e.g. http://localhost:11434/v1)}"
+: "${DIAPASON_MOCK_LLM_URL:?must be set (e.g. http://localhost:11434/v1)}"
 
 # OpenClaw prerequisites: Node version + dist/ dir
 NODE_VERSION=$(node --version 2>&1 || echo "v0")
@@ -62,7 +62,7 @@ for fwk in "${SMOKE_FRAMEWORKS[@]}"; do
       --output-dir "$CONFIG_DIR" >/dev/null
     config="${CONFIG_DIR}/${bench}-${fwk}-${SMOKE_MODEL}.toml"
     run_dir="results/smoke/${fwk}/${SMOKE_MODEL}/${bench}/"
-    JARVIS_BACKEND_BASE_URL="$JARVIS_MOCK_LLM_URL" uv run python - "$config" "$run_dir" <<'PY'
+    DIAPASON_BACKEND_BASE_URL="$DIAPASON_MOCK_LLM_URL" uv run python - "$config" "$run_dir" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -76,8 +76,8 @@ path.write_text(text)
 PY
     echo "  ▸ $fwk × $bench"
     mkdir -p "$run_dir"
-    JARVIS_BACKEND_BASE_URL="$JARVIS_MOCK_LLM_URL" \
-    JARVIS_BACKEND_API_KEY="${JARVIS_BACKEND_API_KEY:-smoke}" \
+    DIAPASON_BACKEND_BASE_URL="$DIAPASON_MOCK_LLM_URL" \
+    DIAPASON_BACKEND_API_KEY="${DIAPASON_BACKEND_API_KEY:-smoke}" \
     uv run python -m diapason.evals run --config "$config" \
       || echo "    FAILED (continuing)"
   done

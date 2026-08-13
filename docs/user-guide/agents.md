@@ -41,7 +41,7 @@ By default the files are read from the config directory:
 ~/.diapason/USER.md
 ```
 
-(The config directory honors `$OPENJARVIS_HOME` / `$XDG_DATA_HOME` when set.) The paths are configurable under `[memory_files]`:
+(The config directory honors `$DIAPASON_HOME` / `$XDG_DATA_HOME` when set.) The paths are configurable under `[memory_files]`:
 
 ```toml
 [memory_files]
@@ -404,7 +404,7 @@ The `ClaudeCodeAgent` wraps the `@anthropic-ai/claude-code` SDK via a bundled No
 1. On first call, copies the bundled `claude_code_runner/` to `~/.diapason/claude_code_runner/` and runs `npm install --production` if `node_modules` is missing.
 2. Builds a JSON request payload (prompt, API key, workspace, allowed tools, system prompt, session ID) and sends it to `stdin` of a `node dist/index.js` subprocess.
 3. The Node.js runner calls the Claude Agent SDK and writes sentinel-delimited JSON to `stdout`.
-4. The Python side parses the output between `---OPENJARVIS_OUTPUT_START---` and `---OPENJARVIS_OUTPUT_END---` markers, extracting content, tool results, and metadata.
+4. The Python side parses the output between `---DIAPASON_OUTPUT_START---` and `---DIAPASON_OUTPUT_END---` markers, extracting content, tool results, and metadata.
 5. Returns an `AgentResult` with `turns=1`.
 
 **Constructor parameters:**

@@ -175,9 +175,7 @@ def describe_screen(
             keep_temp=keep_temp,
         )
     except Exception as exc:
-        return ToolResult(
-            tool_name="screen_describe", content=str(exc), success=False
-        )
+        return ToolResult(tool_name="screen_describe", content=str(exc), success=False)
 
     _last_capture_monotonic = time.monotonic()
 
@@ -218,9 +216,7 @@ def describe_screen(
 
 def _share_describe_fn(*, question: str = "", monitor: int = 1) -> str:
     """Background loop callback — skip rate limit, return text only."""
-    result = describe_screen(
-        question=question, monitor=monitor, skip_rate_limit=True
-    )
+    result = describe_screen(question=question, monitor=monitor, skip_rate_limit=True)
     if not result.success:
         raise RuntimeError(result.content)
     return result.content

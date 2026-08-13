@@ -69,6 +69,7 @@ _STOP_PHRASES = re.compile(
 def is_stop_phrase(text: str) -> bool:
     return bool(_STOP_PHRASES.match((text or "").strip()))
 
+
 # Sentence boundary for incremental speech: synthesise as soon as a sentence
 # is complete instead of waiting for the whole answer — this is what turns
 # "LLM total time" into "LLM time to first sentence" in perceived latency.
@@ -86,12 +87,12 @@ _FIRST_CHUNK_MIN_CHARS = 16
 # from the SANITISED text too, so what you read is what was said.
 _UNSPEAKABLE = re.compile(
     "["
-    "\U0001F000-\U0001FAFF"  # emoji blocks, symbols, pictographs
-    "\U00002600-\U000027BF"  # misc symbols, dingbats
-    "\U0001F1E6-\U0001F1FF"  # regional indicator flags
-    "\u2b00-\u2bff"          # arrows/stars block used by some emoji
-    "\ufe0e\ufe0f\u200d"    # variation selectors, ZWJ
-    "*_`#~|<>"                 # markdown furniture
+    "\U0001f000-\U0001faff"  # emoji blocks, symbols, pictographs
+    "\U00002600-\U000027bf"  # misc symbols, dingbats
+    "\U0001f1e6-\U0001f1ff"  # regional indicator flags
+    "\u2b00-\u2bff"  # arrows/stars block used by some emoji
+    "\ufe0e\ufe0f\u200d"  # variation selectors, ZWJ
+    "*_`#~|<>"  # markdown furniture
     "]+"
 )
 
@@ -110,6 +111,7 @@ def speakable(text: str) -> str:
         return ""
     return cleaned
 
+
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_VOICE = "ff_siwis"
 
@@ -122,8 +124,18 @@ _SHARED_LOCK = asyncio.Lock()
 
 _FRENCH_DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 _FRENCH_MONTHS = [
-    "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
 ]
 
 
@@ -154,6 +166,9 @@ def _ollama_base() -> str:
 def ollama_reachable(timeout_s: float = 1.5) -> bool:
     """True when the local model server answers. Never raises."""
     try:
+        from diapason.core.local_mode import assert_may_leave
+
+        assert_may_leave("the Ollama health request", destination=_ollama_base())
         with urllib.request.urlopen(
             f"{_ollama_base()}/api/tags", timeout=timeout_s
         ) as response:
@@ -233,16 +248,18 @@ def _default_llm(
 
         def worker() -> None:
             def stream_once(with_tools: bool) -> None:
+                from diapason.core.local_mode import assert_may_leave
+
+                assert_may_leave(
+                    "the realtime voice transcript", destination=_ollama_base()
+                )
                 # The clock is appended per CALL, not baked at warm-up: a
                 # session lives for hours, and yesterday's timestamp is worse
                 # than none.
-                dated = (
-                    f"{system}\n\nDate et heure actuelles : {french_now()}."
-                )
+                dated = f"{system}\n\nDate et heure actuelles : {french_now()}."
                 payload: dict[str, Any] = {
                     "model": model,
-                    "messages": [{"role": "system", "content": dated}]
-                    + messages,
+                    "messages": [{"role": "system", "content": dated}] + messages,
                     "stream": True,
                     "think": False,
                     "options": {"num_predict": 320},
@@ -270,9 +287,7 @@ def _default_llm(
                         if data.get("done"):
                             break
                 if calls:
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait, ("tools", calls)
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, ("tools", calls))
 
             try:
                 try:
@@ -290,16 +305,13 @@ def _default_llm(
                     # cannot act is degraded; one that errors on every single
                     # turn is broken. Retry once without tools and say so.
                     logger.warning(
-                        "%s does not support tools; local voice continues "
-                        "without them",
+                        "%s does not support tools; local voice continues without them",
                         model,
                     )
                     stream_once(with_tools=False)
             except Exception as exc:  # noqa: BLE001 - surfaced as an event
                 logger.debug("local LLM stream failed", exc_info=True)
-                loop.call_soon_threadsafe(
-                    queue.put_nowait, f"\x00ERROR\x00{exc}"
-                )
+                loop.call_soon_threadsafe(queue.put_nowait, f"\x00ERROR\x00{exc}")
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
@@ -418,9 +430,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 if self._stt is None:
                     self._stt = await asyncio.to_thread(_default_stt)
                 if self._tts is None:
-                    self._tts = await asyncio.to_thread(
-                        _default_tts, self._voice
-                    )
+                    self._tts = await asyncio.to_thread(_default_tts, self._voice)
                 if self._llm is None:
                     schema: List[dict] = []
                     if self._enable_tools:
@@ -433,18 +443,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         schema = await asyncio.to_thread(
                             openai_tools_schema, self._allowed_tools
                         )
-                    self._llm = _default_llm(
-                        self._model, self._system_prompt(), schema
-                    )
+                    self._llm = _default_llm(self._model, self._system_prompt(), schema)
                 if self._tool_executor is None and self._enable_tools:
                     from diapason.speech.realtime.tools import (
                         execute_voice_tool,
                     )
 
-                    self._tool_executor = (
-                        lambda name, args: execute_voice_tool(
-                            name, args, self._allowed_tools
-                        )
+                    self._tool_executor = lambda name, args: execute_voice_tool(
+                        name, args, self._allowed_tools
                     )
             except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
                 logger.exception("local voice warm-up failed")
@@ -466,9 +472,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     build_live_agent_template,
                 )
 
-                base = build_live_agent_template(
-                    enable_tools=self._enable_tools
-                )
+                base = build_live_agent_template(enable_tools=self._enable_tools)
             except Exception:  # noqa: BLE001 - a persona is never fatal
                 base = "You are Diapason, a helpful voice assistant."
         language = self._language or "the language the user speaks"
@@ -622,9 +626,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             assert self._llm is not None and self._tts is not None
             if not already_queued:
                 await self._queue.put(
-                    SessionEvent(
-                        kind="transcript", role="user", text=text, final=True
-                    )
+                    SessionEvent(kind="transcript", role="user", text=text, final=True)
                 )
             self._history.append({"role": "user", "content": text})
             # A cap on history keeps a long session from slowly pushing the
@@ -655,9 +657,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     if item.startswith("\x00ERROR\x00"):
                         raise RuntimeError(item.split("\x00", 2)[2])
                     pending += item
-                    pending = await self._speak_complete_sentences(
-                        pending, spoken
-                    )
+                    pending = await self._speak_complete_sentences(pending, spoken)
                 if pending.strip():
                     await self._speak_sentence(pending.strip(), spoken)
                 if not tool_calls or not self._enable_tools:
@@ -683,8 +683,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 self._history.append(
                     {
                         "role": "system",
-                        "content": "Actions just performed: "
-                        + " ; ".join(tool_notes),
+                        "content": "Actions just performed: " + " ; ".join(tool_notes),
                     }
                 )
             if answer:
@@ -748,9 +747,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             "content": json.dumps(result, ensure_ascii=False, default=str),
         }
 
-    async def _speak_complete_sentences(
-        self, pending: str, spoken: List[str]
-    ) -> str:
+    async def _speak_complete_sentences(self, pending: str, spoken: List[str]) -> str:
         while True:
             match = _SENTENCE_END.search(pending)
             if match is None and not spoken:

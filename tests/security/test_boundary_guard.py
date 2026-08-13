@@ -70,7 +70,7 @@ class TestBoundaryGuardScanOutbound:
 
     def test_redacts_openai_key(self) -> None:
         guard = _make_guard(mode="redact")
-        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"
+        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"  # gitleaks:allow  # noqa: E501
         result = guard.scan_outbound(text, destination="openai")
         assert "sk-proj-" not in result
         assert "[REDACTED" in result
@@ -83,7 +83,7 @@ class TestBoundaryGuardScanOutbound:
 
     def test_warn_mode_does_not_alter_text(self) -> None:
         guard = _make_guard(mode="warn")
-        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"
+        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"  # gitleaks:allow  # noqa: E501
         result = guard.scan_outbound(text, destination="openai")
         assert result == text
 
@@ -91,7 +91,7 @@ class TestBoundaryGuardScanOutbound:
         from diapason.security.boundary import SecurityBlockError
 
         guard = _make_guard(mode="block")
-        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"
+        text = "Use this key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu"  # gitleaks:allow  # noqa: E501
         with pytest.raises(SecurityBlockError):
             guard.scan_outbound(text, destination="openai")
 
@@ -255,7 +255,7 @@ class TestToolExecutorBoundaryIntegration:
         result = executor.execute(tc)
         assert "sk-proj-" not in result.content
 
-    def test_no_guard_passes_through(self) -> None:
+    def test_missing_guard_loads_secure_default(self) -> None:
         executor = self._make_executor(boundary_guard=None)
         tc = ToolCall(
             id="t2",
@@ -263,4 +263,4 @@ class TestToolExecutorBoundaryIntegration:
             arguments='{"q": "sk-proj-abc123def456ghi789jkl012mno345pqr678stu"}',
         )
         result = executor.execute(tc)
-        assert "sk-proj-" in result.content
+        assert "sk-proj-" not in result.content

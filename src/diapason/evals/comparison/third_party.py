@@ -3,7 +3,7 @@
 The ``_third_party.toml`` file declares the canonical filesystem path and
 expected git commit for each foreign framework (Hermes Agent, OpenClaw).
 Env vars (``HERMES_AGENT_PATH``, ``OPENCLAW_PATH``) override the default path.
-``JARVIS_ALLOW_COMMIT_DRIFT=1`` disables strict commit-pin enforcement.
+``DIAPASON_ALLOW_COMMIT_DRIFT=1`` disables strict commit-pin enforcement.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def verify_commit_pin(entry: ThirdPartyEntry) -> None:
     Raises:
         ThirdPartyNotFoundError: if the path doesn't exist or isn't a git repo.
         CommitDriftError: if HEAD doesn't match pinned_commit, unless
-            ``JARVIS_ALLOW_COMMIT_DRIFT=1`` is set (then logs a warning).
+            ``DIAPASON_ALLOW_COMMIT_DRIFT=1`` is set (then logs a warning).
     """
     env_var = _PATH_ENV_VAR.get(entry.name, "<env var>")
     if str(entry.path) == "" or str(entry.path) == ".":
@@ -162,9 +162,11 @@ def verify_commit_pin(entry: ThirdPartyEntry) -> None:
         msg = (
             f"{entry.name} commit drift: pinned={pinned}, actual={actual}. "
             f"Either reset the repo to the pinned commit or update _third_party.toml. "
-            f"To bypass for this run, set JARVIS_ALLOW_COMMIT_DRIFT=1."
+            f"To bypass for this run, set DIAPASON_ALLOW_COMMIT_DRIFT=1."
         )
-        if os.environ.get("JARVIS_ALLOW_COMMIT_DRIFT") == "1":
+        from diapason.core.env import get as _env_get
+
+        if _env_get("ALLOW_COMMIT_DRIFT") == "1":
             LOGGER.warning(msg)
             return
         raise CommitDriftError(msg)

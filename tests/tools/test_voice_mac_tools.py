@@ -53,7 +53,9 @@ def test_find_files_empty_query():
 def test_find_files_mdfind():
     tool = FindFilesTool()
     with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
-        with patch("diapason.tools.voice_mac_tools.shutil.which", return_value="mdfind"):
+        with patch(
+            "diapason.tools.voice_mac_tools.shutil.which", return_value="mdfind"
+        ):
             with patch("diapason.tools.voice_mac_tools._run") as run:
                 run.return_value.returncode = 0
                 run.return_value.stdout = "/Users/x/Documents/facture.pdf\n"

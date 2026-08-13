@@ -132,7 +132,9 @@ def quickstart(force: bool) -> None:
             )
             console.print()
             console.print(f"  Start the {engine_key} server and try again.")
-            console.print("  Run [bold]diapason doctor[/bold] for detailed diagnostics.")
+            console.print(
+                "  Run [bold]diapason doctor[/bold] for detailed diagnostics."
+            )
             raise SystemExit(1)
     else:
         console.print(f"  [green]Engine '{engine_key}' is healthy.[/green]")
@@ -156,5 +158,6 @@ def quickstart(force: bool) -> None:
 
     console.print()
     console.print(
-        '[bold green]Setup complete![/bold green] Try: [bold]diapason ask "Hello"[/bold]'
+        "[bold green]Setup complete![/bold green] "
+        'Try: [bold]diapason ask "Hello"[/bold]'
     )

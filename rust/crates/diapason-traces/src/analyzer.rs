@@ -38,10 +38,9 @@ impl<'a> TraceAnalyzer<'a> {
             .iter()
             .filter(|t| t.outcome.as_deref() == Some("failure"))
             .count();
-        let avg_latency = traces.iter().map(|t| t.total_latency_seconds).sum::<f64>()
-            / count as f64;
-        let avg_tokens =
-            traces.iter().map(|t| t.total_tokens as f64).sum::<f64>() / count as f64;
+        let avg_latency =
+            traces.iter().map(|t| t.total_latency_seconds).sum::<f64>() / count as f64;
+        let avg_tokens = traces.iter().map(|t| t.total_tokens as f64).sum::<f64>() / count as f64;
         let success_rate = if count > 0 {
             success_count as f64 / count as f64
         } else {
@@ -63,10 +62,7 @@ impl<'a> TraceAnalyzer<'a> {
         let mut by_agent: HashMap<String, Vec<_>> = HashMap::new();
 
         for trace in &traces {
-            by_agent
-                .entry(trace.agent.clone())
-                .or_default()
-                .push(trace);
+            by_agent.entry(trace.agent.clone()).or_default().push(trace);
         }
 
         let mut result = HashMap::new();
@@ -112,10 +108,7 @@ impl<'a> TraceAnalyzer<'a> {
         let mut by_model: HashMap<String, Vec<_>> = HashMap::new();
 
         for trace in &traces {
-            by_model
-                .entry(trace.model.clone())
-                .or_default()
-                .push(trace);
+            by_model.entry(trace.model.clone()).or_default().push(trace);
         }
 
         let mut result = HashMap::new();

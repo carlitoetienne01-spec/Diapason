@@ -5,9 +5,8 @@ use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 
 // Shared tokio runtime for async-to-sync bridge (agents, future async APIs).
-pub(crate) static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
-    tokio::runtime::Runtime::new().expect("Failed to create tokio runtime")
-});
+pub(crate) static RUNTIME: Lazy<tokio::runtime::Runtime> =
+    Lazy::new(|| tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"));
 
 pub mod a2a;
 pub mod agents;
@@ -94,9 +93,8 @@ fn diapason_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<tools::PyCalculatorTool>()?;
     m.add_class::<tools::PyThinkTool>()?;
     m.add_class::<tools::PyFileReadTool>()?;
-    m.add_class::<tools::PyFileWriteTool>()?;
-    m.add_class::<tools::PyShellExecTool>()?;
-    m.add_class::<tools::PyHttpRequestTool>()?;
+    // Mutating/network tools are intentionally not exposed as direct PyO3
+    // classes: doing so bypasses ToolExecutor confirmations, RBAC and taint.
     m.add_class::<tools::PyGitStatusTool>()?;
     m.add_class::<tools::PyGitDiffTool>()?;
     m.add_class::<tools::PyGitLogTool>()?;

@@ -15,6 +15,29 @@ from diapason.core.env import get as _env_get
 
 logger = logging.getLogger(__name__)
 
+
+def _execute_explicit_api_tool(tool: Any, params: Dict[str, Any], request: Request):
+    """Run a tool through the secured dispatcher for an explicit API action."""
+    from diapason.core.types import ToolCall
+    from diapason.tools._stubs import ToolExecutor
+
+    executor = ToolExecutor(
+        [tool],
+        bus=getattr(request.app.state, "bus", None),
+        interactive=True,
+        # The authenticated HTTP action itself is the operator confirmation.
+        confirm_callback=lambda _prompt: True,
+        agent_id="api-operator",
+    )
+    return executor.execute(
+        ToolCall(
+            id="api-explicit",
+            name=tool.spec.name,
+            arguments=json.dumps(params),
+        )
+    )
+
+
 # ---- Request/Response models ----
 
 
@@ -108,7 +131,7 @@ async def create_agent(req: AgentCreateRequest, request: Request):
             params["tools"] = ",".join(req.tools)
         if req.agent_id:
             params["agent_id"] = req.agent_id
-        result = tool.execute(**params)
+        result = _execute_explicit_api_tool(tool, params, request)
         if not result.success:
             raise HTTPException(status_code=400, detail=result.content)
         return {
@@ -127,7 +150,7 @@ async def kill_agent(agent_id: str, request: Request):
         from diapason.tools.agent_tools import AgentKillTool
 
         tool = AgentKillTool()
-        result = tool.execute(agent_id=agent_id)
+        result = _execute_explicit_api_tool(tool, {"agent_id": agent_id}, request)
         if not result.success:
             raise HTTPException(status_code=404, detail=result.content)
         return {"status": "stopped", "agent_id": agent_id}
@@ -142,7 +165,11 @@ async def message_agent(agent_id: str, req: AgentMessageRequest, request: Reques
         from diapason.tools.agent_tools import AgentSendTool
 
         tool = AgentSendTool()
-        result = tool.execute(agent_id=agent_id, message=req.message)
+        result = _execute_explicit_api_tool(
+            tool,
+            {"agent_id": agent_id, "message": req.message},
+            request,
+        )
         if not result.success:
             raise HTTPException(status_code=404, detail=result.content)
         return {"status": "sent", "content": result.content}
@@ -298,7 +325,7 @@ async def memory_index(req: MemoryIndexRequest, request: Request):
         if not target.exists():
             raise HTTPException(status_code=404, detail=f"Path not found: {req.path}")
 
-        # Sandbox: when workspace roots are configured via OPENJARVIS_WORKSPACE
+        # Sandbox: when workspace roots are configured via DIAPASON_WORKSPACE
         # (os.pathsep-separated), only allow indexing inside them. This endpoint
         # must not become an arbitrary-filesystem read primitive over the API.
         workspace = (_env_get("WORKSPACE") or "").strip()

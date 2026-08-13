@@ -94,11 +94,7 @@ impl McpServer {
                 serde_json::to_string(&response).unwrap_or_default()
             }
             Err(e) => {
-                let resp = McpResponse::error(
-                    Value::Null,
-                    -32700,
-                    &format!("Parse error: {e}"),
-                );
+                let resp = McpResponse::error(Value::Null, -32700, &format!("Parse error: {e}"));
                 serde_json::to_string(&resp).unwrap_or_default()
             }
         }
@@ -112,7 +108,9 @@ mod tests {
 
     fn make_server() -> McpServer {
         let mut exec = ToolExecutor::new(None, None);
-        exec.register(diapason_tools::builtin::BuiltinTool::Calculator(CalculatorTool));
+        exec.register(diapason_tools::builtin::BuiltinTool::Calculator(
+            CalculatorTool,
+        ));
         McpServer::new(Arc::new(exec))
     }
 

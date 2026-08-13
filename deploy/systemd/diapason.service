@@ -11,7 +11,7 @@ Restart=on-failure
 RestartSec=5
 Environment=HOME=/opt/diapason
 # Binding 0.0.0.0 requires authentication. This file MUST exist and contain:
-#   OPENJARVIS_API_KEY=<key>      (generate one: `diapason auth generate-key`)
+#   DIAPASON_API_KEY=<key>      (generate one: `diapason auth generate-key`)
 # It is not prefixed with "-", so the unit fails to start if the file is
 # missing — preventing an accidentally unauthenticated public server.
 # Keep secrets here (mode 0600, owned by root) rather than inline Environment=

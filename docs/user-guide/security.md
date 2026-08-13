@@ -1,6 +1,6 @@
 # Security
 
-Diapason includes a security layer that scans prompts and model outputs for secrets, personally identifiable information (PII), and sensitive file paths. The system is designed to be composable: scanners run as a pipeline, and the `GuardrailsEngine` wrapper drops in front of any inference backend without changing how the rest of your code works.
+Diapason enables security enforcement on a fresh installation. It scans prompts and model outputs, protects device-exit boundaries, authenticates the local API, limits request and tool rates, applies capability policy, requires approval for sensitive tools, and records tamper-evident audit metadata without persisting matched secrets.
 
 ---
 
@@ -157,10 +157,12 @@ guarded = GuardrailsEngine(
 
 ### Streaming
 
-For streaming calls, `GuardrailsEngine.stream()` yields tokens in real time and then performs a post-hoc scan on the accumulated output for logging. Because tokens are already delivered to the caller before scanning completes, BLOCK mode only applies to the input side during streaming.
-
-!!! warning "Streaming and BLOCK mode"
-    `SecurityBlockError` can only be raised before the stream starts (for input scanning). Output blocking during streaming is not possible — use REDACT mode if you need to sanitize model outputs in streaming scenarios.
+When output scanning is enabled, `GuardrailsEngine.stream()` and
+`stream_full()` buffer the completion, scan it, and only then release clean or
+sanitized content. This deliberately trades first-token latency for a strict
+guarantee that a secret split across token boundaries is not emitted before
+the scanner can evaluate it. Set `scan_output = false` only in an explicitly
+trusted local deployment that accepts this risk.
 
 ---
 
@@ -198,7 +200,7 @@ for finding in result.findings:
     print(f"  {finding.pattern_name}: {finding.description} at [{finding.start}:{finding.end}]")
 
 # Redact text
-clean = scanner.redact("Token: sk-abc123xyz789")
+clean = scanner.redact("Token: sk-abc123xyz789")  # gitleaks:allow
 print(clean)  # Token: [REDACTED:openai_key]
 ```
 

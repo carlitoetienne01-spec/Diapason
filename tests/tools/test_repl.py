@@ -16,6 +16,8 @@ class TestReplSpec:
     def test_spec_category(self):
         tool = ReplTool()
         assert tool.spec.category == "code"
+        assert tool.spec.requires_confirmation is True
+        assert "code:execute" in tool.spec.required_capabilities
 
     def test_spec_parameters(self):
         tool = ReplTool()
@@ -237,6 +239,15 @@ class TestReplTimeout:
         result = tool.execute(code="while True: pass")
         assert not result.success
         assert "timed out" in result.content
+
+    def test_timeout_kills_worker_and_discards_state(self):
+        tool = ReplTool(timeout=1)
+        tool.execute(code="x = 42", session_id="deadline")
+        timed_out = tool.execute(code="while True: pass", session_id="deadline")
+        assert not timed_out.success
+        after = tool.execute(code="print(x)", session_id="deadline")
+        assert not after.success
+        assert "NameError" in after.content
 
 
 class TestReplOutput:

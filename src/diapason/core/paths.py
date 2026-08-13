@@ -5,8 +5,9 @@ credentials, skills, recipes, …) under a single root so it never clutters the
 user's home directory beyond one directory. That root is resolved here, with
 the following precedence (highest first):
 
-1. ``$DIAPASON_HOME`` (legacy: ``$OPENJARVIS_HOME``/``$JARVIS_HOME``) — explicit override (also honored by the shell
-   installer, see ``scripts/install/install.sh``).
+1. ``$DIAPASON_HOME`` (legacy: ``$OPENJARVIS_HOME``/``$JARVIS_HOME``) —
+   explicit override (also honored by the shell installer, see
+   ``scripts/install/install.sh``).
 2. ``$XDG_DATA_HOME/diapason`` — when ``$XDG_DATA_HOME`` is set, follow the
    XDG Base Directory spec by nesting a single ``diapason`` directory under
    it. We deliberately use ONE directory rather than splitting across XDG
@@ -22,7 +23,7 @@ should call :func:`get_config_dir` (or :func:`get_data_dir` /
 :func:`get_cache_dir`) instead.
 
 Defense in depth: the resolved root must never live inside the Diapason
-source tree (a misconfigured ``$OPENJARVIS_HOME`` pointing at the repo would
+source tree (a misconfigured ``$DIAPASON_HOME`` pointing at the repo would
 otherwise scatter runtime artifacts into the working tree). This mirrors the
 guard in ``learning/spec_search/storage/paths.py`` and fails loudly per
 REVIEW.md's no-silent-failure discipline.
@@ -73,7 +74,7 @@ def _reject_source_tree(path: Path) -> Path:
             raise ConfigurationError(
                 f"Diapason home ({path}) is inside the source tree "
                 f"({source_root}). Diapason refuses to write runtime state "
-                "inside its own repo. Set OPENJARVIS_HOME (or XDG_DATA_HOME) "
+                "inside its own repo. Set DIAPASON_HOME (or XDG_DATA_HOME) "
                 "to a directory outside the repo (default: ~/.diapason)."
             )
     return path
@@ -82,7 +83,7 @@ def _reject_source_tree(path: Path) -> Path:
 def get_config_dir() -> Path:
     """Resolve Diapason' single root directory, honoring env overrides.
 
-    Precedence: ``$OPENJARVIS_HOME`` > ``$XDG_DATA_HOME/diapason`` >
+    Precedence: ``$DIAPASON_HOME`` > ``$XDG_DATA_HOME/diapason`` >
     ``~/.diapason``. The result is always absolute and is rejected if it
     falls inside the Diapason source tree.
     """

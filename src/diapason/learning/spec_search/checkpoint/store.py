@@ -54,7 +54,7 @@ class CheckpointStore:
     root :
         The directory that *contains* the checkpoint repo (the repo's
         ``.git`` lives at ``root / ".git"``). For production use this is
-        ``~/.diapason/`` (or ``$OPENJARVIS_HOME``); for tests it's a
+        ``~/.diapason/`` (or ``$DIAPASON_HOME``); for tests it's a
         ``tmp_path`` subdirectory.
     """
 

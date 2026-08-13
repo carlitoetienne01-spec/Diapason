@@ -12,7 +12,7 @@
 # See docs/development/contributing.md for full setup instructions.
 #
 # To bypass commit-pin enforcement (for development against a different
-# commit): set JARVIS_ALLOW_COMMIT_DRIFT=1.
+# commit): set DIAPASON_ALLOW_COMMIT_DRIFT=1.
 
 [hermes]
 path = ""

@@ -74,10 +74,7 @@ impl ScanResult {
     }
 
     pub fn highest_threat(&self) -> Option<ThreatLevel> {
-        self.findings
-            .iter()
-            .map(|f| f.threat_level)
-            .max()
+        self.findings.iter().map(|f| f.threat_level).max()
     }
 }
 

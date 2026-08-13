@@ -23,12 +23,7 @@ pub struct NativeReActAgent<M: CompletionModel> {
 }
 
 impl<M: CompletionModel> NativeReActAgent<M> {
-    pub fn new(
-        model: M,
-        executor: Arc<ToolExecutor>,
-        max_turns: usize,
-        temperature: f64,
-    ) -> Self {
+    pub fn new(model: M, executor: Arc<ToolExecutor>, max_turns: usize, temperature: f64) -> Self {
         let system_prompt = format!(
             "You are a helpful assistant that uses the ReAct framework.\n\
              Available tools: {}\n\n\
@@ -102,12 +97,8 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
                     .messages
                     .iter()
                     .filter_map(|m| match m.role {
-                        diapason_core::Role::User => {
-                            Some(RigMessage::user(&m.content))
-                        }
-                        diapason_core::Role::Assistant => {
-                            Some(RigMessage::assistant(&m.content))
-                        }
+                        diapason_core::Role::User => Some(RigMessage::user(&m.content)),
+                        diapason_core::Role::Assistant => Some(RigMessage::assistant(&m.content)),
                         _ => None,
                     })
                     .collect()
@@ -124,9 +115,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
                 .chat(&current_input, history.clone())
                 .await
                 .map_err(|e| {
-                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(
-                        e.to_string(),
-                    ))
+                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(e.to_string()))
                 })?;
 
             let text = strip_think_tags(&response);
@@ -153,15 +142,14 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
                 let params: serde_json::Value =
                     serde_json::from_str(&action_input).unwrap_or(serde_json::json!({}));
 
-                let tool_result = match self.executor.execute(
-                    &action,
-                    &params,
-                    Some("native_react"),
-                    None,
-                ) {
-                    Ok(r) => r,
-                    Err(e) => ToolResult::failure(&action, e.to_string()),
-                };
+                let tool_result =
+                    match self
+                        .executor
+                        .execute(&action, &params, Some("native_react"), None)
+                    {
+                        Ok(r) => r,
+                        Err(e) => ToolResult::failure(&action, e.to_string()),
+                    };
 
                 history.push(RigMessage::assistant(&text));
                 current_input = format!("Observation: {}", tool_result.content);

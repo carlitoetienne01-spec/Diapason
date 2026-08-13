@@ -15,7 +15,7 @@
       3. Check git on PATH.
       4. Install uv (https://astral.sh/uv) if absent.
       5. Clone the Diapason repository to $env:LOCALAPPDATA\Diapason
-         (override with $env:OPENJARVIS_HOME).
+         (override with $env:DIAPASON_HOME).
       6. Run `uv sync --extra desktop --group desktop-native` so the FastAPI
          server, speech backend, and native extension are importable.
       7. Optionally register the scheduled-task service (see
@@ -36,14 +36,14 @@
     Under `irm | iex` the param block is unreachable (Invoke-Expression
     can't pass named args into a piped script string), so the same knobs
     are honored via env vars when the corresponding flag is absent:
-      $env:OPENJARVIS_SKIP_SERVICE = '1'
-      $env:OPENJARVIS_SERVICE      = '1'
-      $env:OPENJARVIS_FORCE        = '1'
+      $env:DIAPASON_SKIP_SERVICE = '1'
+      $env:DIAPASON_SERVICE      = '1'
+      $env:DIAPASON_FORCE        = '1'
 
 .NOTES
     Loopback default: the scheduled-task service binds 127.0.0.1, so no
     API key is needed. To expose on the LAN, edit the registered task to
-    pass `--host 0.0.0.0` AND set $env:OPENJARVIS_API_KEY (an
+    pass `--host 0.0.0.0` AND set $env:DIAPASON_API_KEY (an
     unauthenticated 0.0.0.0 server refuses to start). See
     deploy/windows/README.md.
 #>
@@ -57,12 +57,19 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Compatibility aliases retained through Diapason 1.x. New names win.
+if (-not $env:DIAPASON_HOME -and $env:OPENJARVIS_HOME) { $env:DIAPASON_HOME = $env:OPENJARVIS_HOME }
+if (-not $env:DIAPASON_REPO_URL -and $env:OPENJARVIS_REPO_URL) { $env:DIAPASON_REPO_URL = $env:OPENJARVIS_REPO_URL }
+if (-not $env:DIAPASON_SKIP_SERVICE -and $env:OPENJARVIS_SKIP_SERVICE) { $env:DIAPASON_SKIP_SERVICE = $env:OPENJARVIS_SKIP_SERVICE }
+if (-not $env:DIAPASON_SERVICE -and $env:OPENJARVIS_SERVICE) { $env:DIAPASON_SERVICE = $env:OPENJARVIS_SERVICE }
+if (-not $env:DIAPASON_FORCE -and $env:OPENJARVIS_FORCE) { $env:DIAPASON_FORCE = $env:OPENJARVIS_FORCE }
+
 # Env-var fallback for the `irm | iex` path, where the param block is
 # unreachable (see header comment). Any explicit -switch wins; env vars
 # only fill in the gaps.
-if (-not $SkipService -and $env:OPENJARVIS_SKIP_SERVICE) { $SkipService = $true }
-if (-not $Service     -and $env:OPENJARVIS_SERVICE)      { $Service     = $true }
-if (-not $Force       -and $env:OPENJARVIS_FORCE)        { $Force       = $true }
+if (-not $SkipService -and $env:DIAPASON_SKIP_SERVICE) { $SkipService = $true }
+if (-not $Service     -and $env:DIAPASON_SERVICE)      { $Service     = $true }
+if (-not $Force       -and $env:DIAPASON_FORCE)        { $Force       = $true }
 
 # ---------------------------------------------------------------------------
 # Output helpers - coloured but plain enough for Constrained Language Mode.
@@ -244,8 +251,8 @@ Write-Ok "uv ($uvExe)"
 # 5. Clone the repo
 # ---------------------------------------------------------------------------
 
-$installRoot = if ($env:OPENJARVIS_HOME) {
-    $env:OPENJARVIS_HOME
+$installRoot = if ($env:DIAPASON_HOME) {
+    $env:DIAPASON_HOME
 } else {
     Join-Path $env:LOCALAPPDATA 'Diapason'
 }
@@ -257,8 +264,8 @@ if (-not (Test-Path $installRoot)) {
     New-Item -ItemType Directory -Path $installRoot | Out-Null
 }
 
-$repoUrl = if ($env:OPENJARVIS_REPO_URL) {
-    $env:OPENJARVIS_REPO_URL
+$repoUrl = if ($env:DIAPASON_REPO_URL) {
+    $env:DIAPASON_REPO_URL
 } else {
     'https://github.com/open-diapason/Diapason.git'
 }

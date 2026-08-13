@@ -1,7 +1,7 @@
 //! OpenAI-compatible inference engine for vLLM, SGLang, LM Studio, etc.
 
 use crate::traits::{InferenceEngine, TokenStream};
-use diapason_core::error::{EngineError, DiapasonError};
+use diapason_core::error::{DiapasonError, EngineError};
 use diapason_core::{GenerateResult, Message, ToolCall, Usage};
 use serde_json::Value;
 
@@ -18,12 +18,7 @@ pub struct OpenAICompatEngine {
 }
 
 impl OpenAICompatEngine {
-    pub fn new(
-        engine_name: &str,
-        host: &str,
-        api_key: Option<String>,
-        timeout_secs: f64,
-    ) -> Self {
+    pub fn new(engine_name: &str, host: &str, api_key: Option<String>, timeout_secs: f64) -> Self {
         let host = host.trim_end_matches('/').to_string();
         let timeout = std::time::Duration::from_secs_f64(timeout_secs);
         let client = reqwest::blocking::Client::builder()
@@ -148,9 +143,9 @@ impl InferenceEngine for OpenAICompatEngine {
             ))));
         }
 
-        let data: Value = resp.json().map_err(|e| {
-            DiapasonError::Engine(EngineError::Deserialization(e.to_string()))
-        })?;
+        let data: Value = resp
+            .json()
+            .map_err(|e| DiapasonError::Engine(EngineError::Deserialization(e.to_string())))?;
 
         let choice = &data["choices"][0];
         let content = choice["message"]["content"]
@@ -171,23 +166,18 @@ impl InferenceEngine for OpenAICompatEngine {
 
         let model_name = data["model"].as_str().unwrap_or(model).to_string();
 
-        let tool_calls = choice["message"]["tool_calls"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .map(|tc| {
-                        let func = &tc["function"];
-                        ToolCall {
-                            id: tc["id"].as_str().unwrap_or("").to_string(),
-                            name: func["name"].as_str().unwrap_or("").to_string(),
-                            arguments: func["arguments"]
-                                .as_str()
-                                .unwrap_or("{}")
-                                .to_string(),
-                        }
-                    })
-                    .collect()
-            });
+        let tool_calls = choice["message"]["tool_calls"].as_array().map(|arr| {
+            arr.iter()
+                .map(|tc| {
+                    let func = &tc["function"];
+                    ToolCall {
+                        id: tc["id"].as_str().unwrap_or("").to_string(),
+                        name: func["name"].as_str().unwrap_or("").to_string(),
+                        arguments: func["arguments"].as_str().unwrap_or("{}").to_string(),
+                    }
+                })
+                .collect()
+        });
 
         Ok(GenerateResult {
             content,
@@ -227,9 +217,7 @@ impl InferenceEngine for OpenAICompatEngine {
         let async_client = reqwest::Client::builder()
             .timeout(self.timeout)
             .build()
-            .map_err(|e| {
-                DiapasonError::Engine(EngineError::Connection(e.to_string()))
-            })?;
+            .map_err(|e| DiapasonError::Engine(EngineError::Connection(e.to_string())))?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(

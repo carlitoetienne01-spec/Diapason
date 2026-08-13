@@ -44,7 +44,7 @@ def build_endpoint_engine(
             f"(GET {host}/v1/models failed). Is an OpenAI-compatible server "
             "(e.g. `vllm serve`) running at that address? If it requires "
             "authentication (HTTP 401), pass --api-key or set "
-            "JARVIS_BACKEND_API_KEY."
+            "DIAPASON_BACKEND_API_KEY."
         )
     return engine
 

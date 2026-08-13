@@ -301,6 +301,22 @@ def test_remote_channel_works_when_local_only_is_off():
         assert _RemoteChannel().send("chan", "hello") == "SENT"
 
 
+def test_desktop_url_open_is_refused_before_launching_browser():
+    """Dynamic desktop tools remain local for files/apps but gate HTTP URLs."""
+    from unittest.mock import MagicMock
+
+    from diapason.tools.desktop_tools import open_in_browser
+
+    runner = MagicMock()
+    with _mode(True):
+        with patch("diapason.tools.desktop_tools._run", runner):
+            result = open_in_browser("https://example.com/private-query")
+
+    assert result.success is False
+    assert result.metadata.get("nothing_left_the_machine") is True
+    runner.assert_not_called()
+
+
 def test_channels_are_remote_unless_they_claim_otherwise():
     assert BaseChannel.is_local is False
 

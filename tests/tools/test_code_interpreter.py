@@ -11,6 +11,8 @@ class TestCodeInterpreterTool:
         tool = CodeInterpreterTool()
         assert tool.spec.name == "code_interpreter"
         assert tool.spec.category == "code"
+        assert tool.spec.requires_confirmation is True
+        assert "code:execute" in tool.spec.required_capabilities
 
     def test_spec_parameters_require_code(self):
         tool = CodeInterpreterTool()

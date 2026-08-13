@@ -3,7 +3,7 @@
 Six paradigms ported from the original ``hybrid-local-cloud-compute``
 harness — each is registered as a standard Diapason agent so the rest
 of the platform (SDK, CLI, distillation, evals) can use them like any
-other agent. Results live under ``$OPENJARVIS_HYBRID_EXPERIMENTS_DIR``
+other agent. Results live under ``$DIAPASON_HYBRID_EXPERIMENTS_DIR``
 (defaults to ``~/.diapason/experiments/hybrid/``).
 
 | Agent             | Plan shape      | Trains what?         | Workers                   |
@@ -62,7 +62,7 @@ source .env                                           # API keys
 ```
 
 Outputs land in
-`$OPENJARVIS_HYBRID_EXPERIMENTS_DIR/runs/<cell>/{results.jsonl,summary.json,config.json,logs/}`
+`$DIAPASON_HYBRID_EXPERIMENTS_DIR/runs/<cell>/{results.jsonl,summary.json,config.json,logs/}`
 (defaults to `~/.diapason-hybrid/experiments/`). The schema matches the
 hybrid harness so the existing rescore / dashboard scripts work
 unmodified.

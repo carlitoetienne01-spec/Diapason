@@ -99,7 +99,9 @@ def parse_heartbeat(text: str) -> tuple[list[HeartbeatTask], list[HeartbeatTask]
     return now, watching
 
 
-def read_heartbeat(workspace: Path | str | None = None) -> tuple[list[HeartbeatTask], list[HeartbeatTask]]:
+def read_heartbeat(
+    workspace: Path | str | None = None,
+) -> tuple[list[HeartbeatTask], list[HeartbeatTask]]:
     path = ensure_heartbeat_file(workspace)
     return parse_heartbeat(path.read_text(encoding="utf-8"))
 

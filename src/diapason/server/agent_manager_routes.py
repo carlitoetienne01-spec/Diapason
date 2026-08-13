@@ -1378,7 +1378,25 @@ async def _stream_managed_agent(
                                 parsed_args = json.loads(tool_args) if tool_args else {}
                             except (json.JSONDecodeError, TypeError):
                                 parsed_args = {}
-                            result = mcp_adapter.execute(**parsed_args)
+                            from diapason.core.types import ToolCall as _McpToolCall
+                            from diapason.tools._stubs import (
+                                ToolExecutor as _McpExecutor,
+                            )
+
+                            _mcp_executor = _McpExecutor(
+                                [mcp_adapter],
+                                bus=bus,
+                                interactive=True,
+                                confirm_callback=tool_confirm_callback(),
+                                agent_id=agent_id,
+                            )
+                            result = _mcp_executor.execute(
+                                _McpToolCall(
+                                    id=tc["id"],
+                                    name=tool_name,
+                                    arguments=json.dumps(parsed_args),
+                                )
+                            )
                             tool_result_content = result.content
                         else:
                             # Try to use ToolExecutor if tools are configured

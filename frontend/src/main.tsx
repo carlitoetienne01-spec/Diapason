@@ -27,7 +27,7 @@ function applyTheme() {
 applyTheme();
 
 // Fetch the API base URL from the Tauri backend before rendering.
-// This ensures JARVIS_PORT is defined in one place (the Rust backend).
+// This keeps the API port and generated local credential in the Rust backend.
 // In non-Tauri environments this is a no-op.
 initApiBase().finally(() => {
   // Kick off analytics init in the background — it's never awaited so

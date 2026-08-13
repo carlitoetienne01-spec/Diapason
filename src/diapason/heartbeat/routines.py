@@ -32,7 +32,8 @@ BUILTIN_ROUTINES: list[dict[str, Any]] = [
         "payload": {
             "prompt": (
                 "Using calendar tools only: if I have a meeting starting within "
-                "20 minutes, summarize title and start time. If none, reply exactly: SILENT."
+                "20 minutes, summarize title and start time. "
+                "If none, reply exactly: SILENT."
             )
         },
         "deliver": {"notify": True, "speak": False},
@@ -167,7 +168,9 @@ def save_routines(routines: list[Routine], workspace: Path | str | None = None) 
     return path
 
 
-def get_routine(routine_id: str, workspace: Path | str | None = None) -> Optional[Routine]:
+def get_routine(
+    routine_id: str, workspace: Path | str | None = None
+) -> Optional[Routine]:
     for r in load_routines(workspace):
         if r.id == routine_id:
             return r

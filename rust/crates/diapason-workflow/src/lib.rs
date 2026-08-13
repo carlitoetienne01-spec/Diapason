@@ -428,10 +428,30 @@ mod tests {
         g.add_node(simple_node("c", NodeType::Tool)).unwrap();
         g.add_node(simple_node("d", NodeType::Transform)).unwrap();
 
-        g.add_edge(WorkflowEdge { source: "a".into(), target: "b".into(), condition: String::new() }).unwrap();
-        g.add_edge(WorkflowEdge { source: "a".into(), target: "c".into(), condition: String::new() }).unwrap();
-        g.add_edge(WorkflowEdge { source: "b".into(), target: "d".into(), condition: String::new() }).unwrap();
-        g.add_edge(WorkflowEdge { source: "c".into(), target: "d".into(), condition: String::new() }).unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "a".into(),
+            target: "b".into(),
+            condition: String::new(),
+        })
+        .unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "a".into(),
+            target: "c".into(),
+            condition: String::new(),
+        })
+        .unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "b".into(),
+            target: "d".into(),
+            condition: String::new(),
+        })
+        .unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "c".into(),
+            target: "d".into(),
+            condition: String::new(),
+        })
+        .unwrap();
 
         let stages = g.execution_stages();
         assert_eq!(stages.len(), 3);
@@ -450,8 +470,18 @@ mod tests {
         g.add_node(simple_node("b", NodeType::Tool)).unwrap();
         g.add_node(simple_node("c", NodeType::Tool)).unwrap();
 
-        g.add_edge(WorkflowEdge { source: "a".into(), target: "b".into(), condition: String::new() }).unwrap();
-        g.add_edge(WorkflowEdge { source: "a".into(), target: "c".into(), condition: String::new() }).unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "a".into(),
+            target: "b".into(),
+            condition: String::new(),
+        })
+        .unwrap();
+        g.add_edge(WorkflowEdge {
+            source: "a".into(),
+            target: "c".into(),
+            condition: String::new(),
+        })
+        .unwrap();
 
         assert_eq!(g.successors("a").len(), 2);
         assert_eq!(g.predecessors("b"), vec!["a"]);

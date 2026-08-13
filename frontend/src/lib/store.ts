@@ -70,9 +70,9 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 interface Settings {
   theme: ThemeMode;
   apiUrl: string;
-  // Local server API key (OPENJARVIS_API_KEY). Sent as a Bearer token on
+  // Local server API key (DIAPASON_API_KEY). Sent as a Bearer token on
   // /v1 + /api requests so a key-protected `diapason serve` doesn't 401 the
-  // frontend (#266). Empty = no auth header (keyless local default).
+  // frontend. It is kept in sessionStorage, never persisted in this object.
   apiKey: string;
   fontSize: 'small' | 'default' | 'large';
   defaultModel: string;
@@ -97,14 +97,29 @@ function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return defaults;
-    return { ...defaults, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    if (parsed.apiKey) {
+      try {
+        sessionStorage.setItem('diapason-api-key', String(parsed.apiKey));
+      } catch {}
+      delete parsed.apiKey;
+      // Remove credentials left by older application builds now,
+      // instead of waiting for the next settings update.
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(parsed));
+    }
+    return { ...defaults, ...parsed, apiKey: sessionStorage.getItem('diapason-api-key') || '' };
   } catch {
     return defaults;
   }
 }
 
 function saveSettings(settings: Settings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  const { apiKey, ...persisted } = settings;
+  try {
+    if (apiKey) sessionStorage.setItem('diapason-api-key', apiKey);
+    else sessionStorage.removeItem('diapason-api-key');
+  } catch {}
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(persisted));
 }
 
 // ── Store ─────────────────────────────────────────────────────────────

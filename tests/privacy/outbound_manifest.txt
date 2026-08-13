@@ -59,6 +59,7 @@ connectors/slack_connector.py
 connectors/spotify.py
 connectors/strava.py
 connectors/weather.py
+desktop/smart_intents.py
 engine/_http_async.py
 engine/_openai_compat.py
 engine/cloud.py
@@ -71,12 +72,14 @@ mining/cpu_pearl.py
 mining/vllm_pearl.py
 server/agent_manager_routes.py
 server/cloud_router.py
+server/routes.py
 speech/cartesia_tts.py
 speech/deepgram.py
 speech/elevenlabs_tts.py
 speech/openai_tts.py
 speech/openai_whisper.py
 speech/realtime/gemini_live.py
+speech/realtime/local_voice.py
 speech/realtime/openai_realtime.py
 telemetry/vllm_metrics.py
 tools/audio_tool.py

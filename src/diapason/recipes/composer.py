@@ -64,7 +64,9 @@ def recipe_to_eval_suite(
         )
 
     has_agent = recipe.agent_type is not None
-    backend = recipe.eval_backend or ("diapason-agent" if has_agent else "diapason-direct")
+    backend = recipe.eval_backend or (
+        "diapason-agent" if has_agent else "diapason-direct"
+    )
 
     model_cfg = ModelConfig(
         name=model_name,

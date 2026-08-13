@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -60,6 +62,7 @@ class FileWriteTool(BaseTool):
                 "required": ["path", "content"],
             },
             category="filesystem",
+            requires_confirmation=True,
             required_capabilities=["file:write"],
         )
 
@@ -151,44 +154,33 @@ class FileWriteTool(BaseTool):
                     success=False,
                 )
 
-        if mode == "write":
-            try:
-                from diapason._rust_bridge import get_rust_module
-
-                _rust = get_rust_module()
-                _rust.FileWriteTool().execute(str(path), content)
-            except ImportError:
-                try:
-                    path.write_text(content, encoding="utf-8")
-                except OSError as exc:
-                    return ToolResult(
-                        tool_name="file_write",
-                        content=f"Write error: {exc}",
-                        success=False,
-                    )
-            except Exception as exc:
-                return ToolResult(
-                    tool_name="file_write",
-                    content=f"Write error: {exc}",
-                    success=False,
-                )
-        else:
-            # append mode — always Python
-            try:
-                with open(path, "a", encoding="utf-8") as f:
-                    f.write(content)
-            except PermissionError as exc:
-                return ToolResult(
-                    tool_name="file_write",
-                    content=f"Permission denied: {exc}",
-                    success=False,
-                )
-            except OSError as exc:
-                return ToolResult(
-                    tool_name="file_write",
-                    content=f"Write error: {exc}",
-                    success=False,
-                )
+        flags = os.O_WRONLY | os.O_CREAT
+        flags |= os.O_TRUNC if mode == "write" else os.O_APPEND
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(path, flags, 0o600)
+            file_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise OSError(f"Refusing non-regular file: {path}")
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = -1
+                handle.write(content)
+        except PermissionError as exc:
+            return ToolResult(
+                tool_name="file_write",
+                content=f"Permission denied: {exc}",
+                success=False,
+            )
+        except OSError as exc:
+            return ToolResult(
+                tool_name="file_write",
+                content=f"Write error: {exc}",
+                success=False,
+            )
+        finally:
+            if "descriptor" in locals() and descriptor >= 0:
+                os.close(descriptor)
 
         # Get final file size
         try:

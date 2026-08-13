@@ -32,6 +32,8 @@ class OrchestratorDeps(Protocol):
     tools: List[BaseTool]
     memory_backend: Optional[MemoryBackend]
     capability_policy: Optional[CapabilityPolicy]
+    boundary_guard: Any
+    rate_limiter: Any
     session_store: Optional[SessionStore]
     trace_store: Optional[TraceStore]
     trace_collector: Optional[TraceCollector]  # written by _run_agent

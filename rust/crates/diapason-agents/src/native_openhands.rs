@@ -71,12 +71,7 @@ pub struct NativeOpenHandsAgent<M: CompletionModel> {
 }
 
 impl<M: CompletionModel> NativeOpenHandsAgent<M> {
-    pub fn new(
-        model: M,
-        executor: Arc<ToolExecutor>,
-        max_turns: usize,
-        temperature: f64,
-    ) -> Self {
+    pub fn new(model: M, executor: Arc<ToolExecutor>, max_turns: usize, temperature: f64) -> Self {
         let tool_list = executor.list_tools().join(", ");
         let system_prompt = OPENHANDS_SYSTEM_PROMPT.replace("{tool_list}", &tool_list);
 
@@ -165,12 +160,8 @@ impl<M: CompletionModel + 'static> OjAgent for NativeOpenHandsAgent<M> {
                     .messages
                     .iter()
                     .filter_map(|m| match m.role {
-                        diapason_core::Role::User => {
-                            Some(RigMessage::user(&m.content))
-                        }
-                        diapason_core::Role::Assistant => {
-                            Some(RigMessage::assistant(&m.content))
-                        }
+                        diapason_core::Role::User => Some(RigMessage::user(&m.content)),
+                        diapason_core::Role::Assistant => Some(RigMessage::assistant(&m.content)),
                         _ => None,
                     })
                     .collect()
@@ -187,9 +178,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeOpenHandsAgent<M> {
                 .chat(&current_input, history.clone())
                 .await
                 .map_err(|e| {
-                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(
-                        e.to_string(),
-                    ))
+                    DiapasonError::Agent(diapason_core::error::AgentError::Execution(e.to_string()))
                 })?;
 
             let text = strip_think_tags(&response);
@@ -209,15 +198,14 @@ impl<M: CompletionModel + 'static> OjAgent for NativeOpenHandsAgent<M> {
                     });
                 }
 
-                let tool_result = match self.executor.execute(
-                    tool_name,
-                    &args,
-                    Some("native_openhands"),
-                    None,
-                ) {
-                    Ok(r) => r,
-                    Err(e) => ToolResult::failure(tool_name, e.to_string()),
-                };
+                let tool_result =
+                    match self
+                        .executor
+                        .execute(tool_name, &args, Some("native_openhands"), None)
+                    {
+                        Ok(r) => r,
+                        Err(e) => ToolResult::failure(tool_name, e.to_string()),
+                    };
 
                 let obs = Self::truncate_observation(&tool_result.content, 4000);
                 history.push(RigMessage::assistant(&text));
@@ -241,15 +229,14 @@ impl<M: CompletionModel + 'static> OjAgent for NativeOpenHandsAgent<M> {
                 let params: serde_json::Value =
                     serde_json::from_str(&action_input).unwrap_or(serde_json::json!({}));
 
-                let tool_result = match self.executor.execute(
-                    &action,
-                    &params,
-                    Some("native_openhands"),
-                    None,
-                ) {
-                    Ok(r) => r,
-                    Err(e) => ToolResult::failure(&action, e.to_string()),
-                };
+                let tool_result =
+                    match self
+                        .executor
+                        .execute(&action, &params, Some("native_openhands"), None)
+                    {
+                        Ok(r) => r,
+                        Err(e) => ToolResult::failure(&action, e.to_string()),
+                    };
 
                 let obs = Self::truncate_observation(&tool_result.content, 4000);
                 history.push(RigMessage::assistant(&text));
@@ -288,7 +275,8 @@ mod tests {
 
     #[test]
     fn test_parse_action() {
-        let text = "I need to search.\nAction: web_search\nAction Input: {\"query\": \"rust lang\"}";
+        let text =
+            "I need to search.\nAction: web_search\nAction Input: {\"query\": \"rust lang\"}";
         let (action, input) = OpenHandsAgent::parse_action(text).unwrap();
         assert_eq!(action, "web_search");
         assert!(input.contains("rust lang"));
@@ -326,10 +314,7 @@ mod tests {
     #[test]
     fn test_truncate_observation() {
         let short = "hello";
-        assert_eq!(
-            OpenHandsAgent::truncate_observation(short, 100),
-            "hello"
-        );
+        assert_eq!(OpenHandsAgent::truncate_observation(short, 100), "hello");
 
         let long = "x".repeat(5000);
         let truncated = OpenHandsAgent::truncate_observation(&long, 100);

@@ -160,12 +160,23 @@ impl AgentConfigEvolver {
 
         let best_agent = agent_scores
             .iter()
-            .max_by(|a, b| a.1.composite_score().partial_cmp(&b.1.composite_score()).unwrap())
+            .max_by(|a, b| {
+                a.1.composite_score()
+                    .partial_cmp(&b.1.composite_score())
+                    .unwrap()
+            })
             .map(|(name, _)| name.to_string())?;
 
         let mut ranked_tools: Vec<_> = tool_scores.iter().collect();
-        ranked_tools.sort_by(|a, b| b.1.composite_score().partial_cmp(&a.1.composite_score()).unwrap());
-        let recommended_tools: Vec<String> = ranked_tools.iter().map(|(name, _)| name.to_string()).collect();
+        ranked_tools.sort_by(|a, b| {
+            b.1.composite_score()
+                .partial_cmp(&a.1.composite_score())
+                .unwrap()
+        });
+        let recommended_tools: Vec<String> = ranked_tools
+            .iter()
+            .map(|(name, _)| name.to_string())
+            .collect();
 
         let recommended_max_turns = if turn_counts.is_empty() {
             10
@@ -219,7 +230,13 @@ mod tests {
         let evolver = AgentConfigEvolver::new(0.5);
         let traces = vec![
             make_trace("Hello", "simple", "success", Some(0.9), &["calculator"]),
-            make_trace("Hi there", "simple", "success", Some(0.8), &["calculator", "think"]),
+            make_trace(
+                "Hi there",
+                "simple",
+                "success",
+                Some(0.8),
+                &["calculator", "think"],
+            ),
             make_trace("Hey", "orchestrator", "failure", Some(0.3), &["think"]),
         ];
         let recs = evolver.analyze(&traces);
@@ -274,10 +291,25 @@ mod tests {
         let evolver = AgentConfigEvolver::new(0.5);
         let traces = vec![
             make_trace("Hello", "simple", "success", Some(0.9), &[]),
-            make_trace("def foo(): pass", "orchestrator", "success", Some(0.8), &["calculator"]),
-            make_trace("solve x^2 = 4 for the equation's roots", "simple", "success", Some(0.7), &["think"]),
+            make_trace(
+                "def foo(): pass",
+                "orchestrator",
+                "success",
+                Some(0.8),
+                &["calculator"],
+            ),
+            make_trace(
+                "solve x^2 = 4 for the equation's roots",
+                "simple",
+                "success",
+                Some(0.7),
+                &["think"],
+            ),
         ];
         let recs = evolver.analyze(&traces);
-        assert!(recs.len() >= 2, "should have recommendations for multiple classes");
+        assert!(
+            recs.len() >= 2,
+            "should have recommendations for multiple classes"
+        );
     }
 }

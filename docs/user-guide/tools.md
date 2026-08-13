@@ -438,7 +438,7 @@ from diapason.scheduler.scheduler import TaskScheduler
 from diapason.scheduler.store import SchedulerStore
 
 store = SchedulerStore(db_path="~/.diapason/scheduler.db")
-scheduler = TaskScheduler(store=store, system=jarvis_system)
+scheduler = TaskScheduler(store=store, system=diapason_system)
 scheduler.start()
 
 tool = ScheduleTaskTool()

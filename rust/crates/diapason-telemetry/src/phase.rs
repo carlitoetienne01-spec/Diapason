@@ -161,21 +161,14 @@ mod tests {
     #[test]
     fn split_at_ttft_basic() {
         let samples = vec![
-            make_sample(0, 300.0, 100.0),             // prefill start
-            make_sample(500_000_000, 300.0, 100.0),    // prefill end / TTFT
-            make_sample(500_000_000, 200.0, 80.0),     // decode start (at TTFT)
-            make_sample(1_000_000_000, 200.0, 80.0),   // decode mid
-            make_sample(2_000_000_000, 200.0, 80.0),   // decode end
+            make_sample(0, 300.0, 100.0),            // prefill start
+            make_sample(500_000_000, 300.0, 100.0),  // prefill end / TTFT
+            make_sample(500_000_000, 200.0, 80.0),   // decode start (at TTFT)
+            make_sample(1_000_000_000, 200.0, 80.0), // decode mid
+            make_sample(2_000_000_000, 200.0, 80.0), // decode end
         ];
 
-        let (prefill, decode) = split_at_ttft(
-            &samples,
-            0,
-            500_000_000,
-            2_000_000_000,
-            128,
-            256,
-        );
+        let (prefill, decode) = split_at_ttft(&samples, 0, 500_000_000, 2_000_000_000, 128, 256);
 
         assert!((prefill.duration_s - 0.5).abs() < 1e-9);
         assert_eq!(prefill.tokens, 128);
@@ -188,10 +181,10 @@ mod tests {
     #[test]
     fn phase_metrics_filters_outside_window() {
         let samples = vec![
-            make_sample(0, 999.0, 999.0),               // before window
-            make_sample(1_000_000_000, 100.0, 50.0),    // in window
-            make_sample(2_000_000_000, 100.0, 50.0),    // in window
-            make_sample(9_000_000_000, 999.0, 999.0),   // after window
+            make_sample(0, 999.0, 999.0),             // before window
+            make_sample(1_000_000_000, 100.0, 50.0),  // in window
+            make_sample(2_000_000_000, 100.0, 50.0),  // in window
+            make_sample(9_000_000_000, 999.0, 999.0), // after window
         ];
         let m = compute_phase_metrics(&samples, 1_000_000_000, 2_000_000_000, 20);
         // Only the two in-window samples contribute

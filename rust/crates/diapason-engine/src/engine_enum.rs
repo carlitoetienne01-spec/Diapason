@@ -7,8 +7,8 @@ use crate::llamacpp::LlamaCppEngine;
 use crate::ollama::OllamaEngine;
 use crate::openai_compat::OpenAICompatEngine;
 use crate::sglang::SGLangEngine;
-use crate::vllm::VLLMEngine;
 use crate::traits::{InferenceEngine, TokenStream};
+use crate::vllm::VLLMEngine;
 use diapason_core::error::DiapasonError;
 use diapason_core::{GenerateResult, Message};
 use serde_json::Value;
@@ -72,7 +72,15 @@ impl InferenceEngine for Engine {
         max_tokens: i64,
         extra: Option<&Value>,
     ) -> Result<GenerateResult, DiapasonError> {
-        delegate_engine!(self, generate, messages, model, temperature, max_tokens, extra)
+        delegate_engine!(
+            self,
+            generate,
+            messages,
+            model,
+            temperature,
+            max_tokens,
+            extra
+        )
     }
 
     async fn stream(
@@ -84,19 +92,58 @@ impl InferenceEngine for Engine {
         extra: Option<&Value>,
     ) -> Result<TokenStream, DiapasonError> {
         match self {
-            Engine::Ollama(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::VLLM(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::SGLang(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::LlamaCppNative(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Vllm(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Sglang(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::LlamaCpp(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Mlx(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::LmStudio(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Exo(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Nexa(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::Uzu(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
-            Engine::AppleFm(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
+            Engine::Ollama(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::VLLM(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::SGLang(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::LlamaCppNative(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Vllm(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Sglang(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::LlamaCpp(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Mlx(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::LmStudio(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Exo(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Nexa(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::Uzu(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
+            Engine::AppleFm(e) => {
+                e.stream(messages, model, temperature, max_tokens, extra)
+                    .await
+            }
         }
     }
 

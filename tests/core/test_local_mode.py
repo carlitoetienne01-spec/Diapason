@@ -58,6 +58,7 @@ def test_local_only_reads_the_privacy_section():
 
 def test_local_only_fails_closed_when_config_is_unreadable():
     """Cost asymmetry: a wrong "no" costs a feature, a wrong "yes" costs the data."""
+
     def _boom(self):
         raise RuntimeError("config unreadable")
 

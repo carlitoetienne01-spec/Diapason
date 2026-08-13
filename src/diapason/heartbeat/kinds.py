@@ -28,7 +28,9 @@ def _quiet_from_config(config: Any = None) -> bool:
         return False
 
 
-def _should_deliver(routine: Routine, *, force: bool = False, config: Any = None) -> bool:
+def _should_deliver(
+    routine: Routine, *, force: bool = False, config: Any = None
+) -> bool:
     if force:
         return True
     if _quiet_from_config(config):
@@ -115,7 +117,12 @@ def run_routine(
                 skipped=True,
                 workspace=workspace,
             )
-            return {"ok": False, "skipped": True, "reason": "shell_denied", "content": content}
+            return {
+                "ok": False,
+                "skipped": True,
+                "reason": "shell_denied",
+                "content": content,
+            }
         else:
             content = f"Unknown routine kind: {kind}"
 
@@ -192,7 +199,9 @@ def _run_morning_digest(*, system: Any = None, speak: bool = False) -> str:
     if system is not None:
         try:
             return str(
-                system.ask("Generate my morning digest (text only).", agent="morning_digest")
+                system.ask(
+                    "Generate my morning digest (text only).", agent="morning_digest"
+                )
             )[:4000]
         except Exception as exc:
             return f"Morning digest failed: {exc}"
@@ -205,9 +214,7 @@ def _run_morning_digest(*, system: Any = None, speak: bool = False) -> str:
 
 def _run_prompt(routine: Routine, *, system: Any = None) -> str:
     prompt = str(
-        (routine.payload or {}).get("prompt")
-        or (routine.raw or {}).get("prompt")
-        or ""
+        (routine.payload or {}).get("prompt") or (routine.raw or {}).get("prompt") or ""
     ).strip()
     if not prompt:
         return "SILENT"

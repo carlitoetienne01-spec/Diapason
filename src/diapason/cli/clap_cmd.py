@@ -1,4 +1,4 @@
-"""CLI: diapason clap-listen — double-clap → welcome sequence (+ optional trigger file)."""
+"""CLI for clap-triggered welcome sequences and optional trigger files."""
 
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 @click.command("clap-listen")
-@click.option("--once/--repeat", default=True, show_default=True, help="Fire once then exit.")
+@click.option(
+    "--once/--repeat", default=True, show_default=True, help="Fire once then exit."
+)
 @click.option("--spike-ratio", type=float, default=2.5, show_default=True)
 @click.option("--min-rms", type=float, default=0.003, show_default=True)
 @click.option(

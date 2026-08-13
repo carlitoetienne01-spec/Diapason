@@ -32,10 +32,7 @@ impl<T: Send + Sync + 'static> TypedRegistry<T> {
     pub fn register(&self, key: &str, value: T) -> Result<(), RegistryError> {
         let mut entries = self.entries.write();
         if entries.contains_key(key) {
-            return Err(RegistryError::DuplicateKey(
-                key.to_string(),
-                self.name,
-            ));
+            return Err(RegistryError::DuplicateKey(key.to_string(), self.name));
         }
         entries.insert(key.to_string(), Arc::new(value));
         Ok(())

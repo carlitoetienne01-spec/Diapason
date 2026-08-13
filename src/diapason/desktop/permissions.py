@@ -75,7 +75,7 @@ def request_input_monitoring() -> bool:
 
 
 _AV_AUDIO = "soun"  # AVMediaTypeAudio fourcc
-_AV_AUTHORIZED = 3   # AVAuthorizationStatusAuthorized
+_AV_AUTHORIZED = 3  # AVAuthorizationStatusAuthorized
 
 
 def microphone_ok() -> bool:
@@ -123,9 +123,7 @@ def request_accessibility() -> bool:
             AXIsProcessTrustedWithOptions,
         )
 
-        return bool(
-            AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True})
-        )
+        return bool(AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True}))
     except Exception:  # noqa: BLE001
         return accessibility_ok()
 

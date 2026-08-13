@@ -9,7 +9,6 @@ Reference: https://github.com/sierra-research/tau2-bench
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 from typing import Iterable, List, Optional
@@ -88,8 +87,10 @@ class TauBenchDataset(DatasetProvider):
         self._max_tokens: int = 4096
         self._user_model: Optional[str] = None
         # pass^k: best of k trials per task. Default 3, override via env var
-        # OPENJARVIS_TAUBENCH_TRIALS for faster runs (e.g. =1 for 3x speedup).
-        self._num_trials: int = int(os.environ.get("OPENJARVIS_TAUBENCH_TRIALS", "3"))
+        # DIAPASON_TAUBENCH_TRIALS for faster runs (e.g. =1 for 3x speedup).
+        from diapason.core.env import get as _env_get
+
+        self._num_trials = int(_env_get("TAUBENCH_TRIALS", "3") or "3")
         self._telemetry: bool = False
         self._gpu_metrics: bool = False
 

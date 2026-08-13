@@ -9,7 +9,7 @@ pytest.importorskip("fastapi", reason="diapason[server] not installed")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from diapason.server.auth_middleware import AuthMiddleware
+from diapason.server.auth_middleware import AuthMiddleware, ensure_local_api_key
 
 
 def _make_app(api_key: str) -> FastAPI:
@@ -82,3 +82,39 @@ class TestAuthMiddleware:
         resp = client.get("/v1/models")
         assert resp.status_code == 200
         assert client.get("/metrics").status_code == 200
+
+
+class TestLocalApiKeyProvisioning:
+    def test_generates_and_reuses_owner_only_key(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "diapason.server.auth_middleware.get_config_dir", lambda: tmp_path
+        )
+
+        generated, path = ensure_local_api_key()
+        reused, reused_path = ensure_local_api_key()
+
+        assert len(generated.encode("utf-8")) >= 32
+        assert reused == generated
+        assert reused_path == path
+        assert path is not None
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    def test_rejects_short_explicit_key(self):
+        with pytest.raises(ValueError, match="at least 32 bytes"):
+            ensure_local_api_key("too-short")
+
+    def test_refuses_symlink_key_file(self, tmp_path, monkeypatch):
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir()
+        target = tmp_path / "target"
+        target.write_text("x" * 40)
+        try:
+            (auth_dir / "local_api_key").symlink_to(target)
+        except OSError:
+            pytest.skip("symlink creation is not permitted on this platform")
+        monkeypatch.setattr(
+            "diapason.server.auth_middleware.get_config_dir", lambda: tmp_path
+        )
+
+        with pytest.raises((OSError, RuntimeError)):
+            ensure_local_api_key()

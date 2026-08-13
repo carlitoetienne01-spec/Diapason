@@ -26,7 +26,7 @@ clutters your home directory beyond one folder. By default that root is
 
 The root is resolved in priority order:
 
-1. **`$OPENJARVIS_HOME`** — explicit override. Honored by both the installer
+1. **`$DIAPASON_HOME`** — explicit override. Honored by both the installer
    and the Python runtime.
 2. **`$XDG_DATA_HOME/diapason`** — used when `$XDG_DATA_HOME` is set (a single
    `diapason` directory nested under it, per the XDG Base Directory spec).
@@ -35,10 +35,10 @@ The root is resolved in priority order:
 
 ```bash
 # Relocate the whole install + runtime tree at install time:
-OPENJARVIS_HOME=~/apps/diapason curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+DIAPASON_HOME=~/apps/diapason curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
 
 # Or for a single run / your shell profile:
-export OPENJARVIS_HOME=~/apps/diapason
+export DIAPASON_HOME=~/apps/diapason
 ```
 
 Confirm where your data lives with:
@@ -49,12 +49,12 @@ diapason config path
 
 !!! note "Migration"
     Because the default is unchanged, **no data migration is required** for
-    existing installs. If you set `OPENJARVIS_HOME` (or `XDG_DATA_HOME`) on a
+    existing installs. If you set `DIAPASON_HOME` (or `XDG_DATA_HOME`) on a
     machine that already has data in `~/.diapason`, Diapason will look in
     the new location and not see your old data — move it yourself if you want
-    to keep it: `mv ~/.diapason "$OPENJARVIS_HOME"`.
+    to keep it: `mv ~/.diapason "$DIAPASON_HOME"`.
 
-`$OPENJARVIS_CONFIG` still points at an explicit `config.toml` file
+`$DIAPASON_CONFIG` still points at an explicit `config.toml` file
 independently of the root, if you need to override just the config file path.
 
 ## Generating Configuration

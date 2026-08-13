@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 from pathlib import Path
 from typing import List
 
 import httpx
 
+from diapason.core.env import get as _env_get
+from diapason.core.paths import get_config_dir
 from diapason.core.registry import TTSRegistry
 from diapason.speech.tts import TTSBackend, TTSResult
 
@@ -19,11 +20,10 @@ _TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
 
 def _default_cache_dir() -> Path:
-    override = (os.environ.get("JARVIS_WELCOME_CACHE_DIR") or "").strip()
+    override = (_env_get("WELCOME_CACHE_DIR") or "").strip()
     if override:
         return Path(override).expanduser().resolve()
-    home = Path(os.environ.get("OPENJARVIS_HOME", Path.home() / ".diapason"))
-    return home / "cache" / "elevenlabs_tts"
+    return get_config_dir() / "cache" / "elevenlabs_tts"
 
 
 def _cache_path(
@@ -81,11 +81,12 @@ class ElevenLabsTTSBackend(TTSBackend):
         cache_enabled: bool = True,
         cache_dir: Path | None = None,
     ) -> None:
-        self._api_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
-        self._model = model_id or os.environ.get(
-            "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"
+        self._api_key = api_key or (_env_get("ELEVENLABS_API_KEY") or "")
+        self._model = model_id or (
+            _env_get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+            or "eleven_multilingual_v2"
         )
-        self._default_voice = os.environ.get("ELEVENLABS_VOICE_ID", "")
+        self._default_voice = _env_get("ELEVENLABS_VOICE_ID") or ""
         self._cache_enabled = cache_enabled
         self._cache_dir = cache_dir or _default_cache_dir()
 
@@ -117,7 +118,9 @@ class ElevenLabsTTSBackend(TTSBackend):
             logger.debug("ElevenLabs TTS cache hit: %s", cache_file)
             return TTSResult(
                 audio=audio,
-                format="mp3" if "mp3" in fmt else ("pcm" if fmt.startswith("pcm") else "wav"),
+                format="mp3"
+                if "mp3" in fmt
+                else ("pcm" if fmt.startswith("pcm") else "wav"),
                 voice_id=vid,
                 sample_rate=24000 if fmt.startswith("pcm") else 44100,
                 metadata={
@@ -128,9 +131,7 @@ class ElevenLabsTTSBackend(TTSBackend):
                 },
             )
 
-        audio = _elevenlabs_tts_request(
-            self._api_key, text, vid, self._model, fmt
-        )
+        audio = _elevenlabs_tts_request(self._api_key, text, vid, self._model, fmt)
         if self._cache_enabled and audio:
             try:
                 self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +143,9 @@ class ElevenLabsTTSBackend(TTSBackend):
 
         return TTSResult(
             audio=audio,
-            format="mp3" if "mp3" in fmt else ("pcm" if fmt.startswith("pcm") else "wav"),
+            format="mp3"
+            if "mp3" in fmt
+            else ("pcm" if fmt.startswith("pcm") else "wav"),
             voice_id=vid,
             sample_rate=24000 if fmt.startswith("pcm") else 44100,
             metadata={

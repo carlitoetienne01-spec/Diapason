@@ -582,7 +582,7 @@ export function SettingsPage() {
                 type="password"
                 value={settings.apiKey}
                 onChange={(e) => { updateSettings({ apiKey: e.target.value }); showSaved(); }}
-                placeholder="OPENJARVIS_API_KEY"
+                placeholder="DIAPASON_API_KEY"
                 autoComplete="off"
                 className="text-sm px-3 py-1.5 rounded-lg outline-none w-56"
                 style={{
@@ -923,7 +923,7 @@ export function SettingsPage() {
               <div className="text-xs mt-2 px-1" style={{ color: 'var(--color-text-tertiary)' }}>
                 {t('settings.speech.setupHint')}{' '}
                 {t('settings.speech.docsHintBefore')}{' '}
-                <a href="https://open-jarvis.github.io/OpenJarvis/user-guide/tools/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)' }}>{t('settings.speech.docsLink')}</a>{' '}
+                <a href="https://open-diapason.github.io/Diapason/user-guide/tools/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)' }}>{t('settings.speech.docsLink')}</a>{' '}
                 {t('settings.speech.docsHintAfter')}
               </div>
             )}
@@ -1209,7 +1209,7 @@ export function SettingsPage() {
                   {t('settings.about.projectSite')}
                 </a>
                 <a
-                  href="https://open-jarvis.github.io/OpenJarvis/"
+                  href="https://open-diapason.github.io/Diapason/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: 'var(--color-accent)' }}

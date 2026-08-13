@@ -5,7 +5,10 @@ def test_anthropic_cache_breakpoint_added():
     from diapason.engine.cloud import _annotate_anthropic_cache
 
     messages = [
-        {"role": "system", "content": "You are Diapason. ## Persona\nHelpful assistant."},
+        {
+            "role": "system",
+            "content": "You are Diapason. ## Persona\nHelpful assistant.",
+        },
         {"role": "user", "content": "Hello"},
     ]
     annotated = _annotate_anthropic_cache(messages)

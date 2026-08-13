@@ -13,16 +13,12 @@ pub struct TelemetryStore {
 impl TelemetryStore {
     pub fn new(db_path: &Path) -> Result<Self, DiapasonError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DiapasonError::Io(std::io::Error::other(e)))?;
         }
 
-        let conn = Connection::open(db_path).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS telemetry (
@@ -49,11 +45,7 @@ impl TelemetryStore {
                 metadata_json TEXT DEFAULT '{}'
             )",
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -99,11 +91,7 @@ impl TelemetryStore {
                 metadata_json,
             ],
         )
-        .map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 
@@ -111,21 +99,14 @@ impl TelemetryStore {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM telemetry", [], |row| row.get(0))
-            .map_err(|e| {
-                DiapasonError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(count as usize)
     }
 
     pub fn clear(&self) -> Result<(), DiapasonError> {
         let conn = self.conn.lock();
-        conn.execute("DELETE FROM telemetry", []).map_err(|e| {
-            DiapasonError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        conn.execute("DELETE FROM telemetry", [])
+            .map_err(|e| DiapasonError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 }
