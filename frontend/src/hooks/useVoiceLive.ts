@@ -65,7 +65,9 @@ export function useVoiceLive() {
   const [health, setHealth] = useState<VoiceLiveHealth | null>(null);
   const [checkingService, setCheckingService] = useState(true);
   const [serviceError, setServiceError] = useState<string | null>(null);
-  const [provider, setProvider] = useState<VoiceLiveProvider>('gemini');
+  // Local is the product's promise (« rien ne quitte ce Mac ») — it is the
+  // default everywhere; cloud providers are the opt-in, never the reverse.
+  const [provider, setProvider] = useState<VoiceLiveProvider>('local');
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolEventLine[]>([]);
   const [statusLabel, setStatusLabel] = useState('Idle');

@@ -23,7 +23,8 @@ def _realtime_defaults(app_state: Any) -> dict[str, Any]:
     rt = getattr(speech, "realtime", None) if speech is not None else None
     if rt is None:
         return {
-            "provider": "gemini",
+            # Local is the default everywhere: the cloud is the opt-in.
+            "provider": "local",
             "model": "",
             "voice": "",
             "language": "",
@@ -33,7 +34,7 @@ def _realtime_defaults(app_state: Any) -> dict[str, Any]:
             "tools": "",
         }
     return {
-        "provider": getattr(rt, "provider", "gemini") or "gemini",
+        "provider": getattr(rt, "provider", "local") or "local",
         "model": getattr(rt, "model", "") or "",
         "voice": getattr(rt, "voice", "") or "",
         "language": getattr(rt, "language", "") or "",

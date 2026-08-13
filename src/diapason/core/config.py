@@ -1492,10 +1492,11 @@ class OperatorsConfig:
 
 @dataclass(slots=True)
 class VoiceRealtimeConfig:
-    """Duplex realtime voice (Gemini Live / OpenAI Realtime)."""
+    """Duplex realtime voice (local pipeline / Gemini Live / OpenAI Realtime)."""
 
     enabled: bool = True
-    provider: str = "gemini"  # "gemini" | "openai"
+    # Local is the product's promise; the cloud providers are the opt-in.
+    provider: str = "local"  # "local" | "gemini" | "openai"
     model: str = ""  # empty = provider default
     voice: str = ""  # empty → Zephyr (Gemini) or alloy (OpenAI)
     language: str = ""
