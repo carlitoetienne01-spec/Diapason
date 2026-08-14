@@ -36,6 +36,15 @@ const SuccesPlannerPage = lazy(() =>
 const SuccesTasksPage = lazy(() =>
   import('./pages/SuccesTasksPage').then((module) => ({ default: module.SuccesTasksPage })),
 );
+const SuccesProjectsPage = lazy(() =>
+  import('./pages/SuccesProjectsPage').then((module) => ({ default: module.SuccesProjectsPage })),
+);
+const SuccesHabitsPage = lazy(() =>
+  import('./pages/SuccesHabitsPage').then((module) => ({ default: module.SuccesHabitsPage })),
+);
+const SuccesNotesPage = lazy(() =>
+  import('./pages/SuccesNotesPage').then((module) => ({ default: module.SuccesNotesPage })),
+);
 
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
@@ -215,6 +224,9 @@ export default function App() {
             <Route path="logs" element={<LogsPage />} />
             <Route path="succes/planner" element={<SuccesPlannerPage />} />
             <Route path="succes/tasks" element={<SuccesTasksPage />} />
+            <Route path="succes/projects" element={<SuccesProjectsPage />} />
+            <Route path="succes/habits" element={<SuccesHabitsPage />} />
+            <Route path="succes/notes" element={<SuccesNotesPage />} />
           </Route>
         </Routes>
       </Suspense>

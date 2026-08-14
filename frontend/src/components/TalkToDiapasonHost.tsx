@@ -91,7 +91,11 @@ export function TalkToDiapasonHost() {
         // server may be down
       }
       if (!cancelled) {
-        timer = window.setTimeout(tick, 1000);
+        // One request per second consumed the entire default 60 rpm local API
+        // budget by itself and intermittently starved unrelated screens.
+        // Two seconds keeps wake/clap triggers responsive while leaving room
+        // for normal authenticated UI actions.
+        timer = window.setTimeout(tick, 2000);
       }
     };
     timer = window.setTimeout(tick, 800);

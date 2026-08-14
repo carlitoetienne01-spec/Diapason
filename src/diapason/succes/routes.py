@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from diapason.succes.dates import normalize_time, resolve_date_expression
 from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
+from diapason.succes.workspace import HABIT_FREQUENCIES, SuccesWorkspaceStore
 
 router = APIRouter(prefix="/v1/succes", tags=["succes"])
 _store: SuccesStore | None = None
@@ -17,7 +18,7 @@ _store: SuccesStore | None = None
 def get_store() -> SuccesStore:
     global _store
     if _store is None:
-        _store = SuccesStore()
+        _store = SuccesWorkspaceStore()
     return _store
 
 
@@ -75,6 +76,72 @@ class DeleteBody(BaseModel):
 class LegacyImportBody(BaseModel):
     snapshot: dict[str, Any]
     source: str = Field(default="Life OS PHP/Flutter", max_length=120)
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=4000)
+    color: str = Field(default="#6366f1", max_length=7)
+    icon: str = Field(default="", max_length=16)
+    startDate: str = ""
+    endDate: str = ""
+    opId: str | None = None
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    color: str | None = Field(default=None, max_length=7)
+    icon: str | None = Field(default=None, max_length=16)
+    startDate: str | None = None
+    endDate: str | None = None
+    opId: str | None = None
+
+
+class HabitCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    icon: str = Field(default="", max_length=16)
+    color: str = Field(default="#6366f1", max_length=7)
+    frequency: Literal["daily", "weekly", "monthly"] = "daily"
+    startDate: str = ""
+    endDate: str = ""
+    weeklyDays: list[int] = Field(default_factory=list)
+    monthWeekSlots: list[int | Literal["last"]] = Field(default_factory=list)
+    monthWeekDay: int = Field(default=1, ge=0, le=6)
+    reminderTime: str = ""
+    opId: str | None = None
+
+
+class HabitPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    icon: str | None = Field(default=None, max_length=16)
+    color: str | None = Field(default=None, max_length=7)
+    frequency: Literal["daily", "weekly", "monthly"] | None = None
+    startDate: str | None = None
+    endDate: str | None = None
+    weeklyDays: list[int] | None = None
+    monthWeekSlots: list[int | Literal["last"]] | None = None
+    monthWeekDay: int | None = Field(default=None, ge=0, le=6)
+    reminderTime: str | None = None
+    opId: str | None = None
+
+
+class HabitLogBody(BaseModel):
+    date: str
+    done: bool
+    opId: str | None = None
+
+
+class NoteCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(default="", max_length=100_000)
+    opId: str | None = None
+
+
+class NotePatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, max_length=100_000)
+    opId: str | None = None
 
 
 def _domain_error(exc: SuccesError) -> HTTPException:
@@ -235,6 +302,192 @@ async def planner(date: str) -> dict[str, Any]:
             "open": sum(1 for task in tasks if not task["done"]),
         },
     }
+
+
+def _workspace_store() -> SuccesWorkspaceStore:
+    store = get_store()
+    if not isinstance(store, SuccesWorkspaceStore):
+        # Test stores created before phase two remain valid for task-only routes.
+        raise HTTPException(
+            status_code=503, detail="Le module Succès complet n'est pas initialisé."
+        )
+    return store
+
+
+@router.get("/projects")
+async def list_projects(
+    search: str = Query(default="", max_length=200),
+) -> dict[str, Any]:
+    projects = _workspace_store().list_projects(search=search)
+    return {"projects": projects, "count": len(projects)}
+
+
+@router.post("/projects", status_code=201)
+async def create_project(body: ProjectCreate) -> dict[str, Any]:
+    try:
+        project = _workspace_store().create_project(
+            body.model_dump(exclude={"opId"}), op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"project": project, "persistence": "local"}
+
+
+@router.patch("/projects/{project_id}")
+async def update_project(project_id: str, body: ProjectPatch) -> dict[str, Any]:
+    try:
+        project = _workspace_store().update_project(
+            project_id,
+            body.model_dump(exclude_none=True, exclude={"opId"}),
+            op_id=body.opId,
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"project": project, "persistence": "local"}
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, body: DeleteBody) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de ce projet.",
+            },
+        )
+    try:
+        _workspace_store().delete_project(project_id, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"deleted": True, "id": project_id, "persistence": "local"}
+
+
+@router.get("/habits")
+async def list_habits(date: str | None = None) -> dict[str, Any]:
+    try:
+        habits = _workspace_store().list_habits(
+            on_date=_resolved_date(date) if date is not None else None
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {
+        "habits": habits,
+        "count": len(habits),
+        "frequencies": sorted(HABIT_FREQUENCIES),
+    }
+
+
+@router.post("/habits", status_code=201)
+async def create_habit(body: HabitCreate) -> dict[str, Any]:
+    data = body.model_dump(exclude={"opId"})
+    if data["startDate"]:
+        data["startDate"] = _resolved_date(data["startDate"])
+    if data["endDate"]:
+        data["endDate"] = _resolved_date(data["endDate"])
+    try:
+        habit = _workspace_store().create_habit(data, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"habit": habit, "persistence": "local"}
+
+
+@router.patch("/habits/{habit_id}")
+async def update_habit(habit_id: str, body: HabitPatch) -> dict[str, Any]:
+    data = body.model_dump(exclude_none=True, exclude={"opId"})
+    for key in ("startDate", "endDate"):
+        if key in data and data[key]:
+            data[key] = _resolved_date(str(data[key]))
+    try:
+        habit = _workspace_store().update_habit(habit_id, data, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"habit": habit, "persistence": "local"}
+
+
+@router.post("/habits/{habit_id}/log")
+async def set_habit_done(habit_id: str, body: HabitLogBody) -> dict[str, Any]:
+    log_date = _resolved_date(body.date, allow_empty=False)
+    try:
+        habit = _workspace_store().set_habit_done(
+            habit_id, log_date, body.done, op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"habit": habit, "persistence": "local"}
+
+
+@router.delete("/habits/{habit_id}")
+async def delete_habit(habit_id: str, body: DeleteBody) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de cette habitude.",
+            },
+        )
+    try:
+        _workspace_store().delete_habit(habit_id, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"deleted": True, "id": habit_id, "persistence": "local"}
+
+
+@router.get("/notes")
+async def list_notes(
+    search: str = Query(default="", max_length=200),
+) -> dict[str, Any]:
+    notes = _workspace_store().list_notes(search=search)
+    return {"notes": notes, "count": len(notes)}
+
+
+@router.post("/notes", status_code=201)
+async def create_note(body: NoteCreate) -> dict[str, Any]:
+    try:
+        note = _workspace_store().create_note(
+            body.model_dump(exclude={"opId"}), op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"note": note, "persistence": "local"}
+
+
+@router.patch("/notes/{note_id}")
+async def update_note(note_id: str, body: NotePatch) -> dict[str, Any]:
+    try:
+        note = _workspace_store().update_note(
+            note_id,
+            body.model_dump(exclude_none=True, exclude={"opId"}),
+            op_id=body.opId,
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"note": note, "persistence": "local"}
+
+
+@router.delete("/notes/{note_id}")
+async def delete_note(note_id: str, body: DeleteBody) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de cette note.",
+            },
+        )
+    try:
+        _workspace_store().delete_note(note_id, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"deleted": True, "id": note_id, "persistence": "local"}
+
+
+@router.get("/dashboard")
+async def dashboard(date: str | None = None) -> dict[str, Any]:
+    return _workspace_store().dashboard(
+        on_date=_resolved_date(date) if date is not None else None
+    )
 
 
 @router.get("/sync/status")

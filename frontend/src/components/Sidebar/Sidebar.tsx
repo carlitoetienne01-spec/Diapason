@@ -19,6 +19,9 @@ import {
   Database,
   CalendarRange,
   ListTodo,
+  BriefcaseBusiness,
+  Repeat2,
+  NotebookPen,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -76,6 +79,9 @@ export function Sidebar() {
     { path: '/', icon: MessageSquare, label: t('nav.chat') },
     { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
     { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
+    { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
+    { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
+    { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
     { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
     { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
     { path: '/agents', icon: Bot, label: t('nav.agents') },

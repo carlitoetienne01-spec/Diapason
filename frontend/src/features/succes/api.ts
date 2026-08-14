@@ -1,14 +1,31 @@
 import { apiFetch } from '../../lib/api';
-import type { PlannerResponse, SuccesPriority, SuccesSyncStatus, SuccesTask } from './types';
+import type {
+  PlannerResponse,
+  SuccesDashboard,
+  SuccesHabit,
+  SuccesHabitFrequency,
+  SuccesNote,
+  SuccesPriority,
+  SuccesProject,
+  SuccesSyncStatus,
+  SuccesTask,
+} from './types';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await apiFetch(path, {
+  const requestInit = {
     ...init,
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...((init.headers as Record<string, string> | undefined) ?? {}),
     },
-  });
+  };
+  let response = await apiFetch(path, requestInit);
+  if (response.status === 429) {
+    const retrySeconds = Number(response.headers.get('Retry-After') || 1);
+    const delay = Math.min(1500, Math.max(250, retrySeconds * 1000));
+    await new Promise((resolve) => window.setTimeout(resolve, delay));
+    response = await apiFetch(path, requestInit);
+  }
   if (!response.ok) {
     let message = `Erreur Succès (${response.status})`;
     try {
@@ -112,11 +129,154 @@ export function fetchSuccesSyncStatus(): Promise<SuccesSyncStatus> {
 }
 
 export async function importLegacySuccesSnapshot(snapshot: unknown): Promise<{
-  summary: { tasksImported: number; projectsImported: number; alreadyImported: boolean };
+  summary: {
+    tasksImported: number;
+    projectsImported: number;
+    habitsImported?: number;
+    notesImported?: number;
+    habitLogsImported?: number;
+    alreadyImported: boolean;
+  };
   message: string;
 }> {
   return request('/v1/succes/import/legacy', {
     method: 'POST',
     body: JSON.stringify({ snapshot, source: 'Sauvegarde Life OS importée depuis Diapason' }),
   });
+}
+
+export async function listSuccesProjects(search = ''): Promise<SuccesProject[]> {
+  const payload = await request<{ projects: SuccesProject[] }>(
+    `/v1/succes/projects?search=${encodeURIComponent(search)}`,
+  );
+  return payload.projects;
+}
+
+export async function createSuccesProject(input: {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<SuccesProject> {
+  const payload = await request<{ project: SuccesProject }>('/v1/succes/projects', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.project;
+}
+
+export async function updateSuccesProject(
+  projectId: string,
+  patch: Partial<Pick<SuccesProject, 'name' | 'description' | 'color' | 'icon' | 'startDate' | 'endDate'>>,
+): Promise<SuccesProject> {
+  const payload = await request<{ project: SuccesProject }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.project;
+}
+
+export async function deleteSuccesProject(projectId: string): Promise<void> {
+  await request(`/v1/succes/projects/${encodeURIComponent(projectId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listSuccesHabits(date: string): Promise<SuccesHabit[]> {
+  const payload = await request<{ habits: SuccesHabit[] }>(
+    `/v1/succes/habits?date=${encodeURIComponent(date)}`,
+  );
+  return payload.habits;
+}
+
+export async function createSuccesHabit(input: {
+  name: string;
+  icon?: string;
+  color?: string;
+  frequency?: SuccesHabitFrequency;
+  startDate?: string;
+  endDate?: string;
+  weeklyDays?: number[];
+  monthWeekSlots?: Array<number | 'last'>;
+  monthWeekDay?: number;
+  reminderTime?: string;
+}): Promise<SuccesHabit> {
+  const payload = await request<{ habit: SuccesHabit }>('/v1/succes/habits', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.habit;
+}
+
+export async function updateSuccesHabit(
+  habitId: string,
+  patch: Partial<Pick<SuccesHabit, 'name' | 'icon' | 'color' | 'frequency' | 'startDate' | 'endDate' | 'weeklyDays' | 'monthWeekSlots' | 'monthWeekDay' | 'reminderTime'>>,
+): Promise<SuccesHabit> {
+  const payload = await request<{ habit: SuccesHabit }>(
+    `/v1/succes/habits/${encodeURIComponent(habitId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.habit;
+}
+
+export async function setSuccesHabitDone(
+  habitId: string,
+  date: string,
+  done: boolean,
+): Promise<SuccesHabit> {
+  const payload = await request<{ habit: SuccesHabit }>(
+    `/v1/succes/habits/${encodeURIComponent(habitId)}/log`,
+    { method: 'POST', body: JSON.stringify({ date, done }) },
+  );
+  return payload.habit;
+}
+
+export async function deleteSuccesHabit(habitId: string): Promise<void> {
+  await request(`/v1/succes/habits/${encodeURIComponent(habitId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listSuccesNotes(search = ''): Promise<SuccesNote[]> {
+  const payload = await request<{ notes: SuccesNote[] }>(
+    `/v1/succes/notes?search=${encodeURIComponent(search)}`,
+  );
+  return payload.notes;
+}
+
+export async function createSuccesNote(input: {
+  title: string;
+  content?: string;
+}): Promise<SuccesNote> {
+  const payload = await request<{ note: SuccesNote }>('/v1/succes/notes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.note;
+}
+
+export async function updateSuccesNote(
+  noteId: string,
+  patch: Partial<Pick<SuccesNote, 'title' | 'content'>>,
+): Promise<SuccesNote> {
+  const payload = await request<{ note: SuccesNote }>(
+    `/v1/succes/notes/${encodeURIComponent(noteId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.note;
+}
+
+export async function deleteSuccesNote(noteId: string): Promise<void> {
+  await request(`/v1/succes/notes/${encodeURIComponent(noteId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export function fetchSuccesDashboard(date: string): Promise<SuccesDashboard> {
+  return request(`/v1/succes/dashboard?date=${encodeURIComponent(date)}`);
 }

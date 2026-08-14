@@ -27,6 +27,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "screen_share_stop",
     "screen_share_status",
     "succes_tasks",
+    "succes_workspace",
 )
 
 # (module, [(registry_key, attribute_name), ...])
@@ -69,6 +70,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.succes_tasks",
         (("succes_tasks", "SuccesTasksTool"),),
+    ),
+    (
+        "diapason.tools.succes_workspace",
+        (("succes_workspace", "SuccesWorkspaceTool"),),
     ),
 )
 
