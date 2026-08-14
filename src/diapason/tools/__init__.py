@@ -157,4 +157,9 @@ try:
 except ImportError:
     pass
 
+try:
+    import diapason.tools.succes_tasks  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]

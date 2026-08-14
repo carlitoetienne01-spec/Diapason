@@ -17,6 +17,8 @@ import {
   Loader2,
   ScrollText,
   Database,
+  CalendarRange,
+  ListTodo,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -72,6 +74,8 @@ export function Sidebar() {
 
   const navItems = [
     { path: '/', icon: MessageSquare, label: t('nav.chat') },
+    { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
+    { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
     { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
     { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
     { path: '/agents', icon: Bot, label: t('nav.agents') },

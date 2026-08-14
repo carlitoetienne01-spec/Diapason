@@ -29,6 +29,8 @@ export const MESSAGES = {
     'composer.sessionTokens': 'Tokens generated',
     // ── navigation ──────────────────────────────────────────────────────
     'nav.chat': 'Chat',
+    'nav.succesPlanner': 'Planner',
+    'nav.succesTasks': 'Tasks',
     'nav.dashboard': 'Dashboard',
     'nav.dataSources': 'Data Sources',
     'nav.agents': 'Agents',
@@ -1124,6 +1126,8 @@ export const MESSAGES = {
     'composer.sessionRequests': 'Requêtes',
     'composer.sessionTokens': 'Jetons générés',
     'nav.chat': 'Discussion',
+    'nav.succesPlanner': 'Planificateur',
+    'nav.succesTasks': 'Tâches',
     'nav.dashboard': 'Tableau de bord',
     'nav.dataSources': 'Sources de données',
     'nav.agents': 'Agents',

@@ -30,6 +30,12 @@ const DataSourcesPage = lazy(() =>
 const LogsPage = lazy(() =>
   import('./pages/LogsPage').then((module) => ({ default: module.LogsPage })),
 );
+const SuccesPlannerPage = lazy(() =>
+  import('./pages/SuccesPlannerPage').then((module) => ({ default: module.SuccesPlannerPage })),
+);
+const SuccesTasksPage = lazy(() =>
+  import('./pages/SuccesTasksPage').then((module) => ({ default: module.SuccesTasksPage })),
+);
 
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
@@ -207,6 +213,8 @@ export default function App() {
             <Route path="data-sources" element={<DataSourcesPage />} />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="logs" element={<LogsPage />} />
+            <Route path="succes/planner" element={<SuccesPlannerPage />} />
+            <Route path="succes/tasks" element={<SuccesTasksPage />} />
           </Route>
         </Routes>
       </Suspense>
