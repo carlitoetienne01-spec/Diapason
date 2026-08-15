@@ -38,6 +38,7 @@ export interface SuccesSyncStatus {
 export interface PlannerResponse {
   date: string;
   tasks: SuccesTask[];
+  quote: SuccesQuote | null;
   summary: { total: number; completed: number; open: number };
 }
 
@@ -88,8 +89,65 @@ export interface SuccesNote {
 
 export interface SuccesDashboard {
   date: string;
-  tasks: { total: number; completed: number };
-  habits: { due: number; completed: number };
-  projects: number;
+  tasks: {
+    todayTotal: number;
+    todayOpen: number;
+    weekTotal: number;
+    weekCompleted: number;
+    weeklyCounts: number[];
+  };
+  habits: { due: number; completed: number; items: SuccesHabit[] };
+  projects: SuccesProject[];
   notes: number;
+  quote: SuccesQuote | null;
+}
+
+export type SuccesTemplateFrequency = 'daily' | 'weekly' | 'monthly';
+export type SuccesTemplateKind = 'task' | 'habit';
+
+export interface SuccesTemplate {
+  id: string;
+  title: string;
+  emoji: string;
+  frequency: SuccesTemplateFrequency;
+  daysOfWeek: number[];
+  weeklyDays: number[];
+  monthWeekSlots: Array<number | 'last'>;
+  monthWeekDow: number;
+  projectId: string;
+  priority: SuccesPriority;
+  templateKind: SuccesTemplateKind;
+  startDate: string;
+  endDate: string;
+  active: boolean;
+  linkedHabitId: string;
+  createdAt: string;
+  updatedAtMs: number;
+}
+
+export interface SuccesQuote {
+  id: string;
+  text: string;
+  author: string;
+  category: string;
+  updatedAtMs: number;
+}
+
+export interface SuccesYearReview {
+  year: number;
+  month: number | null;
+  activityByMonth: number[];
+  summary: {
+    tasksCreated: number;
+    tasksCompleted: number;
+    habitsCompleted: number;
+    projectsCreated: number;
+    projectsCompleted: number;
+  };
+  catalog: {
+    tasksCompletedAllTime: number;
+    projects: number;
+    habits: number;
+    longestHabitStreak: number;
+  };
 }

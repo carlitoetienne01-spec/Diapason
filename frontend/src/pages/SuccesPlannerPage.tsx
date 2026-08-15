@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarCheck2, ChevronLeft, ChevronRight, CirclePlus, Loader2 } from 'lucide-react';
+import { CalendarCheck2, ChevronLeft, ChevronRight, CirclePlus, Loader2, Quote } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -93,6 +93,26 @@ export function SuccesPlannerPage() {
           <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Planificateur</h1>
           <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>Une vue calme de votre journée, privée et disponible hors ligne.</p>
         </header>
+
+        {planner?.quote && (
+          <section
+            className="rounded-2xl px-5 py-4 mb-5 flex items-start gap-3"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+            aria-label="Les mots du jour"
+          >
+            <Quote size={18} className="mt-0.5 shrink-0" style={{ color: 'var(--color-accent)' }} />
+            <div>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text)' }}>
+                « {planner.quote.text} »
+              </p>
+              {planner.quote.author && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                  — {planner.quote.author}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         <section
           className="rounded-2xl p-4 mb-5"

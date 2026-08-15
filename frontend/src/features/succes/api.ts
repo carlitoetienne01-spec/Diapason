@@ -7,8 +7,13 @@ import type {
   SuccesNote,
   SuccesPriority,
   SuccesProject,
+  SuccesQuote,
   SuccesSyncStatus,
   SuccesTask,
+  SuccesTemplate,
+  SuccesTemplateFrequency,
+  SuccesTemplateKind,
+  SuccesYearReview,
 } from './types';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -279,4 +284,101 @@ export async function deleteSuccesNote(noteId: string): Promise<void> {
 
 export function fetchSuccesDashboard(date: string): Promise<SuccesDashboard> {
   return request(`/v1/succes/dashboard?date=${encodeURIComponent(date)}`);
+}
+
+export async function listSuccesTemplates(): Promise<SuccesTemplate[]> {
+  const payload = await request<{ templates: SuccesTemplate[] }>('/v1/succes/templates');
+  return payload.templates;
+}
+
+export async function createSuccesTemplate(input: {
+  title: string;
+  emoji?: string;
+  frequency: SuccesTemplateFrequency;
+  weeklyDays?: number[];
+  monthWeekSlots?: Array<number | 'last'>;
+  monthWeekDow?: number;
+  projectId?: string;
+  priority?: SuccesPriority;
+  templateKind?: SuccesTemplateKind;
+  startDate: string;
+  endDate: string;
+  active?: boolean;
+}): Promise<SuccesTemplate> {
+  const payload = await request<{ template: SuccesTemplate }>('/v1/succes/templates', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.template;
+}
+
+export async function updateSuccesTemplate(
+  templateId: string,
+  patch: Partial<Omit<SuccesTemplate, 'id' | 'createdAt' | 'updatedAtMs' | 'linkedHabitId'>>,
+): Promise<SuccesTemplate> {
+  const payload = await request<{ template: SuccesTemplate }>(
+    `/v1/succes/templates/${encodeURIComponent(templateId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.template;
+}
+
+export async function deleteSuccesTemplate(templateId: string): Promise<number> {
+  const payload = await request<{ tasksDeleted: number }>(
+    `/v1/succes/templates/${encodeURIComponent(templateId)}`,
+    { method: 'DELETE', body: JSON.stringify({ confirmed: true }) },
+  );
+  return payload.tasksDeleted;
+}
+
+export async function materializeSuccesTemplates(
+  startDate: string,
+  endDate: string,
+): Promise<number> {
+  const payload = await request<{ count: number }>('/v1/succes/templates/materialize', {
+    method: 'POST',
+    body: JSON.stringify({ startDate, endDate }),
+  });
+  return payload.count;
+}
+
+export async function listSuccesQuotes(): Promise<SuccesQuote[]> {
+  const payload = await request<{ quotes: SuccesQuote[] }>('/v1/succes/quotes');
+  return payload.quotes;
+}
+
+export async function createSuccesQuote(input: {
+  text: string;
+  author?: string;
+  category?: string;
+}): Promise<SuccesQuote> {
+  const payload = await request<{ quote: SuccesQuote }>('/v1/succes/quotes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.quote;
+}
+
+export async function deleteSuccesQuote(quoteId: string): Promise<void> {
+  await request(`/v1/succes/quotes/${encodeURIComponent(quoteId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export function fetchSuccesYearReview(year: number, month?: number): Promise<SuccesYearReview> {
+  const query = new URLSearchParams({ year: String(year) });
+  if (month) query.set('month', String(month));
+  return request(`/v1/succes/year-review?${query}`);
+}
+
+export async function downloadSuccesExport(): Promise<void> {
+  const payload = await request<Record<string, unknown>>('/v1/succes/export');
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `succes_${new Date().getFullYear()}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

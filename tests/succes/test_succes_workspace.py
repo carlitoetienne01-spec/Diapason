@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -123,6 +124,7 @@ def test_workspace_api_project_habit_note_lifecycle(tmp_path) -> None:
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
+    today = date.today().isoformat()
     try:
         project = client.post(
             "/v1/succes/projects", json={"name": "Application Diapason"}
@@ -137,7 +139,7 @@ def test_workspace_api_project_habit_note_lifecycle(tmp_path) -> None:
         habit_id = habit.json()["habit"]["id"]
         logged = client.post(
             f"/v1/succes/habits/{habit_id}/log",
-            json={"date": "2026-08-14", "done": True},
+            json={"date": today, "done": True},
         )
         assert logged.json()["habit"]["done"] is True
 
@@ -151,7 +153,7 @@ def test_workspace_api_project_habit_note_lifecycle(tmp_path) -> None:
         )
         assert refused.status_code == 409
 
-        dashboard = client.get("/v1/succes/dashboard?date=2026-08-14")
+        dashboard = client.get(f"/v1/succes/dashboard?date={today}")
         assert dashboard.status_code == 200
         assert dashboard.json()["projects"] == 1
         assert dashboard.json()["habits"] == {"due": 1, "completed": 1}

@@ -22,6 +22,8 @@ import {
   BriefcaseBusiness,
   Repeat2,
   NotebookPen,
+  CalendarClock,
+  Trophy,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -82,6 +84,8 @@ export function Sidebar() {
     { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
     { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
     { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
+    { path: '/succes/templates', icon: CalendarClock, label: t('nav.succesTemplates') },
+    { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
     { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
     { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
     { path: '/agents', icon: Bot, label: t('nav.agents') },

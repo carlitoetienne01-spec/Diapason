@@ -7,6 +7,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.dates import normalize_time, resolve_date_expression
 from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
 from diapason.succes.workspace import HABIT_FREQUENCIES, SuccesWorkspaceStore
@@ -18,7 +19,7 @@ _store: SuccesStore | None = None
 def get_store() -> SuccesStore:
     global _store
     if _store is None:
-        _store = SuccesWorkspaceStore()
+        _store = SuccesContinuityStore()
     return _store
 
 
@@ -141,6 +142,54 @@ class NoteCreate(BaseModel):
 class NotePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=100_000)
+    opId: str | None = None
+
+
+class TemplateCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    emoji: str = Field(default="", max_length=16)
+    frequency: Literal["daily", "weekly", "monthly"] = "weekly"
+    daysOfWeek: list[int] = Field(default_factory=list)
+    weeklyDays: list[int] = Field(default_factory=list)
+    monthWeekSlots: list[int | Literal["last"]] = Field(default_factory=list)
+    monthWeekDow: int = Field(default=1, ge=0, le=6)
+    projectId: str = ""
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    templateKind: Literal["task", "habit"] = "task"
+    startDate: str
+    endDate: str
+    active: bool = True
+    opId: str | None = None
+
+
+class TemplatePatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    emoji: str | None = Field(default=None, max_length=16)
+    frequency: Literal["daily", "weekly", "monthly"] | None = None
+    daysOfWeek: list[int] | None = None
+    weeklyDays: list[int] | None = None
+    monthWeekSlots: list[int | Literal["last"]] | None = None
+    monthWeekDow: int | None = Field(default=None, ge=0, le=6)
+    projectId: str | None = None
+    priority: Literal["low", "medium", "high", "urgent"] | None = None
+    templateKind: Literal["task", "habit"] | None = None
+    startDate: str | None = None
+    endDate: str | None = None
+    active: bool | None = None
+    opId: str | None = None
+
+
+class MaterializeBody(BaseModel):
+    startDate: str
+    endDate: str
+
+
+class QuoteCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+    author: str = Field(default="", max_length=200)
+    category: Literal[
+        "philosophie", "bienetre", "developpement", "sagesse", "motivation", "autre"
+    ] = "autre"
     opId: str | None = None
 
 
@@ -292,10 +341,16 @@ async def delete_task(task_id: str, body: DeleteBody) -> dict[str, Any]:
 @router.get("/planner")
 async def planner(date: str) -> dict[str, Any]:
     scheduled_date = _resolved_date(date, allow_empty=False)
-    tasks = get_store().list_tasks(scheduled_date=scheduled_date, include_done=True)
+    store = get_store()
+    quote = None
+    if isinstance(store, SuccesContinuityStore):
+        store.materialize_templates(scheduled_date, scheduled_date)
+        quote = store.quote_for_date(scheduled_date)
+    tasks = store.list_tasks(scheduled_date=scheduled_date, include_done=True)
     return {
         "date": scheduled_date,
         "tasks": tasks,
+        "quote": quote,
         "summary": {
             "total": len(tasks),
             "completed": sum(1 for task in tasks if task["done"]),
@@ -310,6 +365,16 @@ def _workspace_store() -> SuccesWorkspaceStore:
         # Test stores created before phase two remain valid for task-only routes.
         raise HTTPException(
             status_code=503, detail="Le module Succès complet n'est pas initialisé."
+        )
+    return store
+
+
+def _continuity_store() -> SuccesContinuityStore:
+    store = get_store()
+    if not isinstance(store, SuccesContinuityStore):
+        raise HTTPException(
+            status_code=503,
+            detail="Les récurrences et le bilan Succès ne sont pas initialisés.",
         )
     return store
 
@@ -488,6 +553,112 @@ async def dashboard(date: str | None = None) -> dict[str, Any]:
     return _workspace_store().dashboard(
         on_date=_resolved_date(date) if date is not None else None
     )
+
+
+@router.get("/templates")
+async def list_templates(include_inactive: bool = True) -> dict[str, Any]:
+    items = _continuity_store().list_templates(include_inactive=include_inactive)
+    return {"templates": items, "count": len(items)}
+
+
+@router.post("/templates", status_code=201)
+async def create_template(body: TemplateCreate) -> dict[str, Any]:
+    data = body.model_dump(exclude={"opId"})
+    data["startDate"] = _resolved_date(body.startDate, allow_empty=False)
+    data["endDate"] = _resolved_date(body.endDate, allow_empty=False)
+    try:
+        item = _continuity_store().create_template(data, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"template": item, "persistence": "local"}
+
+
+@router.patch("/templates/{template_id}")
+async def update_template(template_id: str, body: TemplatePatch) -> dict[str, Any]:
+    patch = body.model_dump(exclude_none=True, exclude={"opId"})
+    for key in ("startDate", "endDate"):
+        if key in patch:
+            patch[key] = _resolved_date(str(patch[key]), allow_empty=False)
+    try:
+        item = _continuity_store().update_template(template_id, patch, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"template": item, "persistence": "local"}
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, body: DeleteBody) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de ce modèle et de ses instances.",
+            },
+        )
+    try:
+        result = _continuity_store().delete_template(template_id, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {**result, "persistence": "local"}
+
+
+@router.post("/templates/materialize")
+async def materialize_templates(body: MaterializeBody) -> dict[str, Any]:
+    try:
+        return _continuity_store().materialize_templates(
+            _resolved_date(body.startDate, allow_empty=False),
+            _resolved_date(body.endDate, allow_empty=False),
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.get("/quotes")
+async def list_quotes(category: str = "") -> dict[str, Any]:
+    items = _continuity_store().list_quotes(category=category)
+    return {"quotes": items, "count": len(items)}
+
+
+@router.post("/quotes", status_code=201)
+async def create_quote(body: QuoteCreate) -> dict[str, Any]:
+    try:
+        item = _continuity_store().create_quote(
+            body.model_dump(exclude={"opId"}), op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"quote": item, "persistence": "local"}
+
+
+@router.delete("/quotes/{quote_id}")
+async def delete_quote(quote_id: str, body: DeleteBody) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de cette citation.",
+            },
+        )
+    try:
+        _continuity_store().delete_quote(quote_id, op_id=body.opId)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"deleted": True, "id": quote_id, "persistence": "local"}
+
+
+@router.get("/year-review")
+async def year_review(year: int, month: int | None = None) -> dict[str, Any]:
+    try:
+        return _continuity_store().year_review(year, month=month)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.get("/export")
+async def export_succes() -> dict[str, Any]:
+    return _continuity_store().export_state()
 
 
 @router.get("/sync/status")
