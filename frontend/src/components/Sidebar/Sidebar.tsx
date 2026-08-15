@@ -24,6 +24,7 @@ import {
   NotebookPen,
   CalendarClock,
   Trophy,
+  RefreshCw,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -86,6 +87,7 @@ export function Sidebar() {
     { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
     { path: '/succes/templates', icon: CalendarClock, label: t('nav.succesTemplates') },
     { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
+    { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
     { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
     { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
     { path: '/agents', icon: Bot, label: t('nav.agents') },

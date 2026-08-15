@@ -5,6 +5,7 @@ import type {
   SuccesHabit,
   SuccesHabitFrequency,
   SuccesNote,
+  SuccesPairingInvitation,
   SuccesPriority,
   SuccesProject,
   SuccesQuote,
@@ -131,6 +132,19 @@ export function fetchSuccesPlanner(date: string): Promise<PlannerResponse> {
 
 export function fetchSuccesSyncStatus(): Promise<SuccesSyncStatus> {
   return request('/v1/succes/sync/status');
+}
+
+export function createSuccesPairing(deviceName: string): Promise<SuccesPairingInvitation> {
+  return request('/v1/succes/sync/pairings', {
+    method: 'POST',
+    body: JSON.stringify({ deviceName }),
+  });
+}
+
+export async function revokeSuccesPeer(peerId: string): Promise<void> {
+  await request(`/v1/succes/sync/peers/${encodeURIComponent(peerId)}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function importLegacySuccesSnapshot(snapshot: unknown): Promise<{

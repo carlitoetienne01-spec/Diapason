@@ -28,11 +28,31 @@ export interface SuccesTask {
 }
 
 export interface SuccesSyncStatus {
-  mode: 'local_only' | string;
+  mode: 'local_only' | 'ready' | 'paired' | string;
   configured: boolean;
   deviceId: string;
   localCursor: number;
+  peerCount: number;
+  pendingPairings: number;
+  transport: 'loopback_only' | string;
+  peers: SuccesSyncPeer[];
   message: string;
+}
+
+export interface SuccesSyncPeer {
+  id: string;
+  deviceName: string;
+  createdAtMs: number;
+  lastSeenAtMs: number | null;
+  lastPullCursor: number;
+  lastPushAtMs: number | null;
+}
+
+export interface SuccesPairingInvitation {
+  pairingToken: string;
+  deviceName: string;
+  expiresAtMs: number;
+  expiresInSeconds: number;
 }
 
 export interface PlannerResponse {

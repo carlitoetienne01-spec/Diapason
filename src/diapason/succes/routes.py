@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.dates import normalize_time, resolve_date_expression
 from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
+from diapason.succes.sync import MAX_SYNC_BATCH, SuccesSyncStore
 from diapason.succes.workspace import HABIT_FREQUENCIES, SuccesWorkspaceStore
 
 router = APIRouter(prefix="/v1/succes", tags=["succes"])
@@ -19,7 +20,7 @@ _store: SuccesStore | None = None
 def get_store() -> SuccesStore:
     global _store
     if _store is None:
-        _store = SuccesContinuityStore()
+        _store = SuccesSyncStore()
     return _store
 
 
@@ -191,6 +192,32 @@ class QuoteCreate(BaseModel):
         "philosophie", "bienetre", "developpement", "sagesse", "motivation", "autre"
     ] = "autre"
     opId: str | None = None
+
+
+class PairingCreate(BaseModel):
+    deviceName: str = Field(min_length=1, max_length=80)
+
+
+class PairingRedeem(BaseModel):
+    pairingToken: str = Field(min_length=32, max_length=160)
+
+
+class SyncExchangeBody(BaseModel):
+    peerToken: str = Field(min_length=32, max_length=200)
+    cursor: int = Field(default=0, ge=0)
+    operations: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=MAX_SYNC_BATCH
+    )
+
+
+def _sync_store() -> SuccesSyncStore:
+    store = get_store()
+    if not isinstance(store, SuccesSyncStore):
+        raise HTTPException(
+            status_code=503,
+            detail="Le moteur de synchronisation Succès n'est pas disponible.",
+        )
+    return store
 
 
 def _domain_error(exc: SuccesError) -> HTTPException:
@@ -669,6 +696,48 @@ async def sync_status() -> dict[str, Any]:
 @router.get("/sync/operations")
 async def sync_operations(after: int = 0, limit: int = 500) -> dict[str, Any]:
     return get_store().list_operations(after=after, limit=limit)
+
+
+@router.post("/sync/pairings")
+async def create_sync_pairing(body: PairingCreate) -> dict[str, Any]:
+    """Prepare a ten-minute invitation from the authenticated local app."""
+    try:
+        return _sync_store().create_pairing(body.deviceName)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.post("/sync/pair")
+async def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
+    """Redeem locally; a future HTTPS relay may call this trusted endpoint."""
+    try:
+        return _sync_store().redeem_pairing(body.pairingToken)
+    except SuccesError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@router.post("/sync/exchange")
+async def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
+    """Exchange operations behind Diapason's existing local API boundary."""
+    peer = _sync_store().peer_for_token(body.peerToken)
+    if peer is None:
+        raise HTTPException(
+            status_code=401, detail="Cet appareil n'est pas autorisé à synchroniser."
+        )
+    try:
+        return _sync_store().exchange(
+            str(peer["id"]), after=body.cursor, operations=body.operations
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.delete("/sync/peers/{peer_id}")
+async def revoke_sync_peer(peer_id: str) -> dict[str, Any]:
+    revoked = _sync_store().revoke_peer(peer_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Cet appareil n'existe pas.")
+    return {"revoked": True, "peerId": peer_id}
 
 
 @router.post("/import/legacy")
