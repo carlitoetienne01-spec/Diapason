@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type PointerEvent } from 'react';
 import { BriefcaseBusiness, CirclePlus, Loader2, Pencil, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import projectFolder3d from '../assets/succes-project-folder-3d.png';
 import {
   createSuccesProject,
   deleteSuccesProject,
@@ -12,8 +13,75 @@ import type { SuccesProject } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
 
 const emptyDraft = {
-  name: '', description: '', icon: '🎯', color: '#6366f1', startDate: '', endDate: '',
+  name: '', description: '', icon: '', color: '#6366f1', startDate: '', endDate: '',
 };
+
+function ProjectFolderVisual({ project }: { project: SuccesProject }) {
+  const [tilt, setTilt] = useState({ x: 0, y: 0, glareX: 50, glareY: 50 });
+  const [active, setActive] = useState(false);
+
+  const followPointer = (event: PointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const glareX = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const glareY = ((event.clientY - bounds.top) / bounds.height) * 100;
+    setTilt({
+      x: (glareX / 100 - 0.5) * 9,
+      y: -(glareY / 100 - 0.5) * 7,
+      glareX,
+      glareY,
+    });
+  };
+
+  const reset = () => {
+    setActive(false);
+    setTilt({ x: 0, y: 0, glareX: 50, glareY: 50 });
+  };
+
+  return (
+    <div
+      aria-hidden="true"
+      className="relative h-64 overflow-hidden"
+      onPointerEnter={() => setActive(true)}
+      onPointerMove={followPointer}
+      onPointerLeave={reset}
+      style={{
+        perspective: '950px',
+        background: '#020c15',
+        borderBottom: `1px solid ${project.color}30`,
+      }}
+    >
+      <div
+        className="absolute inset-3 overflow-hidden rounded-2xl"
+        style={{
+          transform: `rotateX(${tilt.y}deg) rotateY(${tilt.x}deg) scale(${active ? 1.025 : 1})`,
+          transformStyle: 'preserve-3d',
+          transition: active ? 'transform 80ms linear' : 'transform 420ms cubic-bezier(.2,.8,.2,1)',
+          boxShadow: active
+            ? `0 24px 54px ${project.color}20, 0 8px 24px rgba(0,0,0,.48)`
+            : '0 14px 34px rgba(0,0,0,.38)',
+          willChange: 'transform',
+        }}
+      >
+        <img
+          src={projectFolder3d}
+          alt=""
+          draggable={false}
+          className="absolute inset-0 h-full w-full select-none object-cover"
+          style={{ transform: 'translateZ(26px) scale(1.055)' }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(144,238,255,${active ? 0.2 : 0.06}) 0%, transparent 36%)`,
+            mixBlendMode: 'screen',
+            transform: 'translateZ(42px)',
+            transition: active ? 'none' : 'background 300ms ease',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function SuccesProjectsPage() {
   const [projects, setProjects] = useState<SuccesProject[]>([]);
@@ -52,7 +120,7 @@ export function SuccesProjectsPage() {
     setDraft({
       name: project.name,
       description: project.description,
-      icon: project.icon || '🎯',
+      icon: project.icon,
       color: project.color,
       startDate: project.startDate,
       endDate: project.endDate,
@@ -116,8 +184,7 @@ export function SuccesProjectsPage() {
 
         {showForm && (
           <section className="grid gap-3 rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
-            <div className="grid grid-cols-[56px_1fr_54px] gap-3">
-              <input value={draft.icon} onChange={(event) => setDraft({ ...draft, icon: event.target.value })} maxLength={16} aria-label="Icône" className="rounded-xl px-3 text-center bg-transparent outline-none" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+            <div className="grid grid-cols-[1fr_54px] gap-3">
               <input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} maxLength={200} placeholder="Nom du projet" className="rounded-xl px-3 py-2.5 bg-transparent outline-none" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
               <input type="color" value={draft.color} onChange={(event) => setDraft({ ...draft, color: event.target.value })} aria-label="Couleur" className="size-[46px] rounded-xl bg-transparent cursor-pointer" />
             </div>
@@ -142,15 +209,23 @@ export function SuccesProjectsPage() {
             {projects.map((project) => {
               const progress = project.taskTotal ? Math.round((project.taskCompleted / project.taskTotal) * 100) : 0;
               return (
-                <article key={project.id} className="rounded-2xl p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-                  <div className="flex items-start gap-3">
-                    <div className="size-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${project.color}22`, border: `1px solid ${project.color}55` }}>{project.icon || '🎯'}</div>
-                    <div className="min-w-0 flex-1"><h2 className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{project.name}</h2><p className="text-xs mt-1 line-clamp-2 min-h-8" style={{ color: 'var(--color-text-secondary)' }}>{project.description || 'Aucune description'}</p></div>
-                    <button type="button" onClick={() => edit(project)} aria-label="Modifier" className="p-1.5 cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}><Pencil size={14} /></button>
-                    <button type="button" onClick={() => void remove(project)} aria-label="Supprimer" className="p-1.5 cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}><Trash2 size={14} /></button>
+                <article key={project.id} className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 18px 45px rgba(0,0,0,.16)' }}>
+                  <ProjectFolderVisual project={project} />
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="size-2 rounded-full shrink-0" style={{ background: project.color, boxShadow: `0 0 10px ${project.color}` }} />
+                          <h2 className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{project.name}</h2>
+                        </div>
+                        <p className="text-xs mt-2 line-clamp-2 min-h-8" style={{ color: 'var(--color-text-secondary)' }}>{project.description || 'Aucune description'}</p>
+                      </div>
+                      <button type="button" onClick={() => edit(project)} aria-label="Modifier" className="p-1.5 cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}><Pencil size={14} /></button>
+                      <button type="button" onClick={() => void remove(project)} aria-label="Supprimer" className="p-1.5 cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}><Trash2 size={14} /></button>
+                    </div>
+                    <div className="mt-4 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}><div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${progress}%`, background: project.color, boxShadow: `0 0 8px ${project.color}88` }} /></div>
+                    <div className="flex justify-between mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}><span>{project.taskCompleted}/{project.taskTotal} tâche(s)</span><span>{progress}%</span></div>
                   </div>
-                  <div className="mt-4 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}><div className="h-full rounded-full" style={{ width: `${progress}%`, background: project.color }} /></div>
-                  <div className="flex justify-between mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}><span>{project.taskCompleted}/{project.taskTotal} tâche(s)</span><span>{progress}%</span></div>
                 </article>
               );
             })}
