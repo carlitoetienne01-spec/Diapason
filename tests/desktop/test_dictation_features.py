@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from diapason.desktop.voice_commands import finalize_dictation, parse_voice_command
+from diapason.desktop.voice_commands import (
+    finalize_dictation,
+    is_explicit_voice_command,
+    parse_voice_command,
+)
 from diapason.speech.dictate_polish import polish_dictation
 
 
@@ -22,6 +26,19 @@ def test_parse_open_cursor():
     a = parse_voice_command("ouvre Cursor")
     assert a.kind == "focus_app"
     assert a.target == "Cursor"
+
+
+def test_parse_whispered_french_open_notes_variant():
+    a = parse_voice_command("Ouvres-moi l'application note")
+    assert a.kind == "focus_app"
+    assert a.target == "Notes"
+    assert is_explicit_voice_command("Ouvres-moi l'application note")
+
+
+def test_bare_app_name_is_not_an_explicit_action():
+    # Critical for silence hallucinations such as the reported "Google Chrome".
+    assert parse_voice_command("Google Chrome").kind == "focus_app"
+    assert not is_explicit_voice_command("Google Chrome")
 
 
 def test_parse_search():

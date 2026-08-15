@@ -53,6 +53,31 @@ def test_faster_whisper_transcribe():
         assert result.duration_seconds == 1.5
 
 
+def test_realtime_transcription_uses_fast_vad_decode_without_hotwords():
+    mock_model = MagicMock()
+    mock_info = MagicMock(language="fr", language_probability=0.99, duration=1.0)
+    mock_model.transcribe.return_value = (iter(()), mock_info)
+
+    with patch(
+        "diapason.speech.faster_whisper.WhisperModel", return_value=mock_model
+    ):
+        backend = FasterWhisperBackend(
+            model_size="small",
+            language="fr",
+            use_dictionary_hints=False,
+            realtime=True,
+        )
+        backend.transcribe(b"not a wav")
+
+    kwargs = mock_model.transcribe.call_args.kwargs
+    assert kwargs["beam_size"] == 1
+    assert kwargs["best_of"] == 1
+    assert kwargs["condition_on_previous_text"] is False
+    assert kwargs["vad_filter"] is True
+    assert kwargs["vad_parameters"]["min_speech_duration_ms"] >= 250
+    assert "hotwords" not in kwargs
+
+
 def test_faster_whisper_transcribe_temp_file_reopenable_and_removed():
     """The temp file must be closed before the model reads it, and gone after.
 

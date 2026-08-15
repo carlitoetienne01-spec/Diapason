@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   MessageSquare,
@@ -8,13 +8,11 @@ import {
   Search,
   PanelLeftClose,
   PanelLeft,
-  Cpu,
   Rocket,
   Bot,
   Sun,
   Moon,
   Monitor,
-  Loader2,
   ScrollText,
   Database,
   CalendarRange,
@@ -25,6 +23,8 @@ import {
   CalendarClock,
   Trophy,
   RefreshCw,
+  Target,
+  ChevronDown,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -37,15 +37,13 @@ export function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   // ChatGPT-style: a magnifier in the header, the input appears on demand.
   const [searchOpen, setSearchOpen] = useState(false);
+  const onSuccesRoute = location.pathname.startsWith('/succes');
+  const [succesOpen, setSuccesOpen] = useState(onSuccesRoute);
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const createConversation = useAppStore((s) => s.createConversation);
   const selectedModel = useAppStore((s) => s.selectedModel);
-  const serverInfo = useAppStore((s) => s.serverInfo);
-  const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
-  const modelLoading = useAppStore((s) => s.modelLoading);
-  const deepResearch = useAppStore((s) => s.deepResearch);
 
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
@@ -78,8 +76,16 @@ export function Sidebar() {
     navigate('/');
   };
 
-  const navItems = [
+  // Keep Succès expanded while browsing its pages; leave user toggle alone otherwise.
+  useEffect(() => {
+    if (onSuccesRoute) setSuccesOpen(true);
+  }, [onSuccesRoute]);
+
+  const primaryNavItems = [
     { path: '/', icon: MessageSquare, label: t('nav.chat') },
+  ];
+
+  const succesNavItems = [
     { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
     { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
     { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
@@ -88,6 +94,9 @@ export function Sidebar() {
     { path: '/succes/templates', icon: CalendarClock, label: t('nav.succesTemplates') },
     { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
     { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
+  ];
+
+  const secondaryNavItems = [
     { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
     { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
     { path: '/agents', icon: Bot, label: t('nav.agents') },
@@ -95,6 +104,45 @@ export function Sidebar() {
     { path: '/settings', icon: Settings, label: t('nav.settings') },
     { path: '/get-started', icon: Rocket, label: t('nav.getStarted') },
   ];
+
+  const renderNavButton = (item: {
+    path: string;
+    icon: typeof MessageSquare;
+    label: string;
+  }) => {
+    const isActive = location.pathname === item.path;
+    return (
+      <button
+        key={item.path}
+        onClick={() => navigate(item.path)}
+        className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
+        style={{
+          background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
+          color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
+          fontWeight: isActive ? 500 : 400,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) e.currentTarget.style.background = 'var(--color-bg-secondary)';
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        {isActive && (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
+            style={{
+              background: 'var(--color-accent)',
+              boxShadow: '0 0 8px var(--color-accent-glow)',
+            }}
+          />
+        )}
+        <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
+        {item.label}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -210,46 +258,38 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* Model badge */}
+          {/* Succès — reveals productivity tabs; replaces the old model badge */}
           <button
-            onClick={() => setCommandPaletteOpen(true)}
-            className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer"
+            onClick={() => setSuccesOpen((open) => !open)}
+            className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             style={{
-              background: 'var(--color-bg-secondary)',
-              color: 'var(--color-text-secondary)',
+              background: succesOpen || onSuccesRoute ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)',
+              color: 'var(--color-text)',
               border: '1px solid var(--color-border)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
+            onMouseEnter={(e) => {
+              if (!succesOpen && !onSuccesRoute) {
+                e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background =
+                succesOpen || onSuccesRoute ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)';
+            }}
+            aria-expanded={succesOpen}
+            aria-controls="succes-nav"
+            title={t('nav.succes')}
           >
-            {modelLoading ? (
-              <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
-            ) : (
-              <Cpu size={14} />
-            )}
-            <div className="flex-1 min-w-0">
-              <span
-                className="truncate block text-left"
-                style={{ color: deepResearch ? 'var(--color-accent)' : 'var(--color-text)' }}
-              >
-                {deepResearch
-                  ? t('common.deepResearch')
-                  : selectedModel || serverInfo?.model || t('sidebar.selectModel')}
-              </span>
-              {modelLoading && (
-                <span className="text-[10px] block text-left" style={{ color: 'var(--color-accent)' }}>
-                  {t('sidebar.loadingModel')}
-                </span>
-              )}
-            </div>
-            {!modelLoading && (
-              <kbd
-                className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}
-              >
-                ⌘K
-              </kbd>
-            )}
+            <Target size={16} style={{ color: 'var(--color-accent)' }} />
+            <span className="flex-1 text-left">{t('nav.succes')}</span>
+            <ChevronDown
+              size={16}
+              className="transition-transform duration-200"
+              style={{
+                color: 'var(--color-text-tertiary)',
+                transform: succesOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+              }}
+            />
           </button>
 
           {/* New conversation — a real, labeled button. The old tiny "+" was
@@ -268,40 +308,13 @@ export function Sidebar() {
 
           {/* Primary navigation — at the top, ChatGPT-style */}
           <nav className="px-2 pb-2 flex flex-col gap-0.5">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
-                  style={{
-                    background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
-                    color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                    fontWeight: isActive ? 500 : 400,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'var(--color-bg-secondary)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  {isActive && (
-                    <span
-                      aria-hidden="true"
-                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
-                      style={{
-                        background: 'var(--color-accent)',
-                        boxShadow: '0 0 8px var(--color-accent-glow)',
-                      }}
-                    />
-                  )}
-                  <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
-                  {item.label}
-                </button>
-              );
-            })}
+            {primaryNavItems.map(renderNavButton)}
+            {succesOpen && (
+              <div id="succes-nav" className="flex flex-col gap-0.5" role="group" aria-label={t('nav.succes')}>
+                {succesNavItems.map(renderNavButton)}
+              </div>
+            )}
+            {secondaryNavItems.map(renderNavButton)}
           </nav>
           {/* Conversation list — everything below the fold scrolls */}
           <div

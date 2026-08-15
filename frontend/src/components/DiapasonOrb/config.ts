@@ -12,29 +12,29 @@ export const DIAPASON_ORB_CONFIG = {
   camera: { fov: 35, z: 5.2 },
 
   /** Global scene scale multiplier applied to the whole group. */
-  worldScale: 1.0,
+  worldScale: 0.9,
 
   /** Slow whole-body motion. */
-  rotationSpeedY: 0.05,
-  rotationWobbleX: 0.08,
+  rotationSpeedY: 0.008,
+  rotationWobbleX: 0.055,
   rotationWobbleSpeed: 0.15,
 
   /** Pointer parallax budget, radians (≈ ±4°). */
   pointerTilt: 0.07,
 
   /** Bloom — the halo lives here, not in textures. */
-  bloom: { strength: 1.15, radius: 0.5, threshold: 0.15 },
-  toneMappingExposure: 1.0,
+  bloom: { strength: 0.86, radius: 0.32, threshold: 0.28 },
+  toneMappingExposure: 0.98,
 
   /** Core assembly. */
   core: {
-    radius: 0.15,
-    haloScale: 1.35,
-    sparkCount: 1400,
-    sparkMinRadius: 0.18,
-    sparkMaxRadius: 0.95,
-    ringRadii: [0.34, 0.47],
-    ringOpacity: 0.09,
+    radius: 0.075,
+    haloScale: 0.52,
+    sparkCount: 900,
+    sparkMinRadius: 0.15,
+    sparkMaxRadius: 1.22,
+    ringRadii: [0.3, 0.45, 0.62],
+    ringOpacity: 0.075,
   },
 
   /** Audio smoothing time constants (seconds). */
@@ -43,35 +43,42 @@ export const DIAPASON_ORB_CONFIG = {
 } as const;
 
 /** How many grid points each membrane gets per quality tier.
- * Three membranes → total roughly ×3 (before density culling). */
+ * Five membranes keep the total in the same performance envelope as the old
+ * three denser sheets, while producing the layered spherical silhouette. */
 export const MEMBRANE_GRID: Record<AIQuality, { u: number; v: number }> = {
-  ultra: { u: 168, v: 132 }, // ≈ 66.5k total
-  high: { u: 144, v: 112 }, // ≈ 48.4k
-  medium: { u: 112, v: 84 }, // ≈ 28.2k
-  low: { u: 82, v: 60 }, // ≈ 14.8k
+  ultra: { u: 116, v: 84 }, // ≈ 49k total
+  high: { u: 102, v: 74 }, // ≈ 38k
+  medium: { u: 84, v: 60 }, // ≈ 25k
+  low: { u: 64, v: 44 }, // ≈ 14k
 };
 
-/** The three veils. Each has its own geometry span, motion clock and warmth
- * so nothing ever synchronizes — the "multidimensional organism" effect. */
+/** The five broad ribbons visible in the reference. They share the same
+ * luminous point-grid material but follow independent spatial loops. */
 export interface MembraneSpec {
   seed: number;
-  /** Sheet half-size before wrapping. */
-  scale: [number, number];
-  /** How far the sheet is bent onto a spherical cap (0 flat → 1 sphere). */
-  wrap: number;
-  /** Spherical cap span, radians (theta, phi). */
-  span: [number, number];
-  radius: number;
-  /** Sine wave stacks: frequencies, speeds, amplitudes (3 each). */
-  freq: [number, number, number];
-  speed: [number, number, number];
-  amp: [number, number, number];
-  noiseStrength: number;
-  curlStrength: number;
+  /** Elliptical path around the core: horizontal, vertical and depth radii. */
+  orbit: [number, number, number];
+  /** Half-width of the cloth around its centreline. */
+  width: number;
+  /** Number of turns completed from one tapered end to the other. */
+  turns: number;
+  /** Vertical undulations along the centreline. */
+  lobes: number;
+  /** Starting position on the orbit. */
+  phase: number;
+  /** Frequency and height of the large folds across the cloth. */
+  foldFrequency: number;
+  foldAmplitude: number;
+  /** Rotation of the cloth around its own path. */
+  twist: number;
+  /** Independent animation speed. */
+  speed: number;
   /** Portion of the warm palette allowed on this veil. */
   warmth: number;
   /** Static orientation, radians. */
   rotation: [number, number, number];
+  /** Composition offset: keeps the five ribbons from collapsing at centre. */
+  offset: [number, number, number];
   /** Base point size multiplier. */
   size: number;
   /** Overall alpha multiplier — the third veil is the faint one. */
@@ -81,51 +88,88 @@ export interface MembraneSpec {
 export const MEMBRANES: MembraneSpec[] = [
   {
     seed: 7.31,
-    scale: [2.35, 1.35],
-    wrap: 0.62,
-    span: [2.5, 1.35],
-    radius: 1.42,
-    freq: [2.1, 2.9, 1.4],
-    speed: [0.32, 0.21, 0.4],
-    amp: [0.34, 0.22, 0.16],
-    noiseStrength: 0.42,
-    curlStrength: 0.22,
-    warmth: 0.4,
-    rotation: [0.0, 0.0, 0.1],
-    size: 1.0,
-    alpha: 1.0,
+    orbit: [1.7, 0.46, 0.72],
+    width: 0.9,
+    turns: 0.58,
+    lobes: 1.2,
+    phase: -0.2,
+    foldFrequency: 0.9,
+    foldAmplitude: 0.24,
+    twist: 0.12,
+    speed: 0.2,
+    warmth: 0.08,
+    rotation: [0.04, 0.08, -0.1],
+    offset: [-0.08, -0.34, 0.2],
+    size: 1.18,
+    alpha: 0.94,
   },
   {
     seed: 19.77,
-    scale: [2.1, 1.5],
-    wrap: 0.55,
-    span: [2.2, 1.5],
-    radius: 1.3,
-    freq: [1.7, 3.4, 2.2],
-    speed: [-0.24, 0.31, -0.18],
-    amp: [0.28, 0.18, 0.2],
-    noiseStrength: 0.5,
-    curlStrength: 0.28,
-    warmth: 0.25,
-    rotation: [0.52, -0.35, 0.26],
-    size: 0.9,
-    alpha: 0.85,
+    orbit: [1.58, 0.42, 0.68],
+    width: 0.86,
+    turns: 0.64,
+    lobes: 1.0,
+    phase: 1.35,
+    foldFrequency: 1.05,
+    foldAmplitude: 0.25,
+    twist: -0.15,
+    speed: -0.16,
+    warmth: 0.96,
+    rotation: [0.16, -0.12, 0.1],
+    offset: [-0.06, 0.55, -0.16],
+    size: 1.08,
+    alpha: 0.86,
   },
   {
     seed: 42.13,
-    scale: [2.6, 1.7],
-    wrap: 0.48,
-    span: [2.8, 1.6],
-    radius: 1.55,
-    freq: [1.2, 2.2, 3.1],
-    speed: [0.17, -0.13, 0.26],
-    amp: [0.22, 0.26, 0.12],
-    noiseStrength: 0.36,
-    curlStrength: 0.18,
-    warmth: 0.12,
-    rotation: [-0.42, 0.55, -0.2],
-    size: 0.72,
-    alpha: 0.55,
+    orbit: [1.48, 0.48, 0.72],
+    width: 0.8,
+    turns: 0.68,
+    lobes: 1.35,
+    phase: 2.45,
+    foldFrequency: 1.2,
+    foldAmplitude: 0.26,
+    twist: 0.18,
+    speed: 0.14,
+    warmth: 0.04,
+    rotation: [-0.18, 0.35, 0.32],
+    offset: [0.46, 0.09, 0.02],
+    size: 0.96,
+    alpha: 0.78,
+  },
+  {
+    seed: 63.41,
+    orbit: [1.42, 0.5, 0.7],
+    width: 0.78,
+    turns: 0.62,
+    lobes: 1.25,
+    phase: -2.2,
+    foldFrequency: 1.15,
+    foldAmplitude: 0.24,
+    twist: -0.2,
+    speed: -0.12,
+    warmth: 0.18,
+    rotation: [0.2, -0.3, -0.36],
+    offset: [-0.46, 0.08, -0.24],
+    size: 0.9,
+    alpha: 0.72,
+  },
+  {
+    seed: 88.09,
+    orbit: [1.62, 0.44, 0.78],
+    width: 0.88,
+    turns: 0.66,
+    lobes: 1.15,
+    phase: 0.75,
+    foldFrequency: 0.95,
+    foldAmplitude: 0.27,
+    twist: 0.2,
+    speed: 0.1,
+    warmth: 0.74,
+    rotation: [-0.18, -0.2, 0.16],
+    offset: [0.18, -0.5, 0.22],
+    size: 1.0,
+    alpha: 0.8,
   },
 ];
 
@@ -181,20 +225,20 @@ export const ORB_STATE_PROFILES: Record<AIState, OrbStateProfile> = {
     speed: 0.7,
     turbulence: 0.7,
     focus: 1.28,
-    glow: 1.0,
+    glow: 0.8,
     shimmer: 0.6,
-    coreActivity: 0.9,
+    coreActivity: 0.72,
     rotation: 0.8,
-    cyanBoost: 0.55,
+    cyanBoost: 0.38,
   },
   thinking: {
     amplitude: 0.95,
     speed: 1.25,
     turbulence: 1.35,
     focus: 1.08,
-    glow: 0.95,
+    glow: 0.84,
     shimmer: 0.45,
-    coreActivity: 1.25,
+    coreActivity: 0.95,
     rotation: 1.8,
     cyanBoost: 0.2,
   },
@@ -203,9 +247,9 @@ export const ORB_STATE_PROFILES: Record<AIState, OrbStateProfile> = {
     speed: 1.0,
     turbulence: 0.9,
     focus: 1.0,
-    glow: 1.15,
+    glow: 0.9,
     shimmer: 0.9,
-    coreActivity: 1.1,
+    coreActivity: 0.88,
     rotation: 1.1,
     cyanBoost: 0.15,
   },

@@ -131,7 +131,10 @@ export function TalkOrb({
             }}
             className="relative w-full cursor-pointer"
             style={{
-              height: 200,
+              // The orb is a volumetric presence, not a banner waveform. The
+              // extra vertical room lets its rear crown and lower gold veil
+              // remain visible without moving any conversation controls.
+              height: 'clamp(330px, 45vh, 390px)',
               background: 'none',
               border: 'none',
               padding: 0,
@@ -144,7 +147,7 @@ export function TalkOrb({
               <DiapasonOrb
                 state={entityState(state)}
                 // Dimmer when there is nothing to say: present, not performing.
-                intensity={active ? 1 : 0.62}
+                intensity={active ? 1 : 0.92}
                 audioSource={audioSource}
                 micSource={micSource}
                 style={{ position: 'absolute', inset: 0 }}
@@ -152,7 +155,7 @@ export function TalkOrb({
             </Suspense>
           </button>
 
-          <p className="mt-5 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
+          <p className="mt-3 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
             {t('chat.talk.justSpeak')}
           </p>
           <p className="mt-1 text-sm text-center max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>

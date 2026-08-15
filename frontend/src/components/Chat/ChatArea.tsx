@@ -5,7 +5,7 @@ import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
 import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X, AudioLines } from 'lucide-react';
-import logoDiapason from '../../assets/logo-diapason.png';
+import { DiaMascot } from './DiaMascot';
 import { listConnectors } from '../../lib/connectors-api';
 import { openTalkToDiapason } from '../TalkToDiapasonHost';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -150,19 +150,7 @@ export function ChatArea() {
       >
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full px-4">
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4"
-              // perspective on the PARENT: the child's rotateY needs a
-              // camera to read as a coin-spin instead of a squash.
-              style={{ background: 'var(--color-accent-subtle)', perspective: '600px' }}
-            >
-              <img
-                src={logoDiapason}
-                alt=""
-                draggable={false}
-                className="logo-spin w-16 h-16 object-contain select-none"
-              />
-            </div>
+            <DiaMascot label={t('chat.empty.greetDia')} />
             <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
               {t(greetingKey())}
             </h2>

@@ -3,7 +3,7 @@
  * Layer map (see the reference visual):
  *   1. core: emissive sphere + additive halo sprite + two whisper-thin rings
  *   2. sparks: radial particles exhaled by the core
- *   3. three membranes: independent point veils, each with its own clock
+ *   3. five membranes: independent point veils, each with its own clock
  *
  * JavaScript's per-frame job is deliberately tiny: advance clocks, ease the
  * state profile, smooth the audio bands, update uniforms. Every particle
@@ -201,6 +201,10 @@ export class DiapasonOrbScene {
     this.camera = new PerspectiveCamera(C.camera.fov, 1, 0.1, 100);
     this.camera.position.z = C.camera.z;
 
+    this.group.scale.setScalar(C.worldScale);
+    // Present the layered silhouette immediately; the slow runtime rotation
+    // then reveals its depth instead of beginning from a symmetrical front.
+    this.group.rotation.set(-0.08, 0.22, -0.03);
     this.scene.add(this.group);
     this.buildCore();
     this.buildMembranes();
@@ -237,7 +241,7 @@ export class DiapasonOrbScene {
         blending: AdditiveBlending,
         depthWrite: false,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.62,
       }),
     );
     this.halo.scale.setScalar(C.core.haloScale);
@@ -289,15 +293,15 @@ export class DiapasonOrbScene {
         uniforms: {
           uTime: { value: 0 },
           uSeed: { value: spec.seed },
-          uScale3: { value: [spec.scale[0], spec.scale[1], 0] },
-          uSpan: { value: spec.span },
-          uRadius: { value: spec.radius },
-          uWrap: { value: spec.wrap },
-          uFreq: { value: spec.freq },
-          uSpeed: { value: spec.speed },
-          uAmpv: { value: spec.amp },
-          uNoiseStrength: { value: spec.noiseStrength },
-          uCurlStrength: { value: spec.curlStrength },
+          uOrbit: { value: spec.orbit },
+          uWidth: { value: spec.width },
+          uTurns: { value: spec.turns },
+          uLobes: { value: spec.lobes },
+          uPhase: { value: spec.phase },
+          uFoldFrequency: { value: spec.foldFrequency },
+          uFoldAmplitude: { value: spec.foldAmplitude },
+          uTwist: { value: spec.twist },
+          uRibbonSpeed: { value: spec.speed },
           uWarmth: { value: spec.warmth },
           uSizeBase: { value: spec.size },
           uAlphaBase: { value: spec.alpha },
@@ -310,12 +314,18 @@ export class DiapasonOrbScene {
           uCyanBoost: { value: 0 },
           uIntensity: { value: 1 },
         },
-        blending: spec.alpha < 0.7 ? NormalBlending : AdditiveBlending,
+        // Normal blending preserves cyan/gold/rose where ribbons overlap.
+        // Additive blending made five colourful veils sum to a white cloud.
+        blending: NormalBlending,
         depthWrite: false,
         transparent: true,
       });
       const points = new Points(membraneGeometry(grid.u, grid.v), material);
       points.rotation.set(...spec.rotation);
+      // Tiny seeded offsets separate the layers without breaking the shared
+      // centre of gravity. This is what lets the eye read front, middle and
+      // rear folds instead of one overexposed particle cloud.
+      points.position.set(...spec.offset);
       this.membranes.push(points);
       this.membraneMaterials.push(material);
       this.group.add(points);
@@ -480,13 +490,17 @@ export class DiapasonOrbScene {
       this.bands.level * 0.16 * p.coreActivity;
     this.core.scale.setScalar(breath);
     this.coreMaterial.uniforms.uIntensity.value =
-      (2.2 + p.coreActivity * 1.2 + this.bands.level * 1.4) * this.intensity;
+      (0.78 + p.coreActivity * 0.42 + this.bands.level * 0.72) * this.intensity;
     this.halo.scale.setScalar(
       C.core.haloScale * (breath * 0.9 + 0.1) * (0.9 + p.coreActivity * 0.25),
     );
 
     for (const [index, ring] of this.rings.entries()) {
-      ring.rotation.z += dt * (index ? -0.12 : 0.18) * p.rotation * motion;
+      const direction = index % 2 === 0 ? 1 : -1;
+      ring.rotation.z +=
+        dt * direction * (0.1 + index * 0.045) * p.rotation * motion;
+      (ring.material as LineBasicMaterial).opacity =
+        C.core.ringOpacity * (0.75 + p.coreActivity * 0.22 + this.bands.level * 0.35);
     }
 
     const audio = [this.bands.bass, this.bands.mid, this.bands.high, this.bands.level];

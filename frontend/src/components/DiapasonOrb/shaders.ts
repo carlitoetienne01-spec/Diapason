@@ -91,15 +91,15 @@ attribute vec4 aRand;    // per-particle randoms: size, phase, density, tint
 
 uniform float uTime;
 uniform float uSeed;
-uniform vec3 uScale3;    // sheet half-size (x, y) — z unused
-uniform vec2 uSpan;      // spherical cap span (theta, phi)
-uniform float uRadius;
-uniform float uWrap;
-uniform vec3 uFreq;
-uniform vec3 uSpeed;
-uniform vec3 uAmpv;
-uniform float uNoiseStrength;
-uniform float uCurlStrength;
+uniform vec3 uOrbit;
+uniform float uWidth;
+uniform float uTurns;
+uniform float uLobes;
+uniform float uPhase;
+uniform float uFoldFrequency;
+uniform float uFoldAmplitude;
+uniform float uTwist;
+uniform float uRibbonSpeed;
 uniform float uWarmth;
 uniform float uSizeBase;
 uniform float uAlphaBase;
@@ -117,60 +117,75 @@ uniform float uIntensity;
 varying vec3 vColor;
 varying float vAlpha;
 
-const vec3 DEEP  = vec3(0.086, 0.486, 1.0);   // #167CFF
-const vec3 CYAN  = vec3(0.0,   0.851, 1.0);   // #00D9FF
-const vec3 ICE   = vec3(0.659, 0.929, 1.0);   // #A8EDFF
-const vec3 WARM  = vec3(1.0,   0.55,  0.10);  // amber-orange
-const vec3 VIOLET= vec3(0.467, 0.408, 1.0);   // #7768FF
+const vec3 DEEP  = vec3(0.01,  0.18,  0.95);  // saturated electric blue
+const vec3 CYAN  = vec3(0.0,   0.96,  1.0);   // reference cyan
+const vec3 ICE   = vec3(0.36,  0.88,  1.0);   // blue highlight, not white
+const vec3 WARM  = vec3(1.0,   0.28,  0.03);  // amber-orange
+const vec3 GOLD  = vec3(1.0,   0.68,  0.08);  // illuminated gold
+const vec3 ROSE  = vec3(1.0,   0.16,  0.54);  // warm/cool intersection
+const vec3 VIOLET= vec3(0.42,  0.2,   1.0);   // violet seam
+
+vec3 ribbonCenter(float path) {
+  float drift = uTime * uRibbonSpeed * uProf.y;
+  float theta = path * 3.14159265 * uTurns + uPhase;
+  return vec3(
+    path * uOrbit.x,
+    sin(theta + drift * 0.22) * uOrbit.y
+      + sin(path * 3.14159265 * uLobes + uSeed * 0.11) * 0.16,
+    cos(theta * 0.72 + uSeed * 0.07 - drift * 0.16) * uOrbit.z * 0.52
+  );
+}
 
 void main() {
   float t = uTime;
 
-  // ── Base surface: a sheet bent onto a spherical cap. The wrap keeps a
-  //    globally round presence without ever drawing an actual sphere.
-  float theta = aUV.x * uSpan.x;
-  float phi   = aUV.y * uSpan.y * 0.5;
-  vec3 cap = vec3(cos(phi) * sin(theta), sin(phi), cos(phi) * cos(theta)) * uRadius;
-  vec3 sheet = vec3(aUV.x * uScale3.x, aUV.y * uScale3.y, 0.0);
-  vec3 p = mix(sheet, cap, uWrap);
+  // A real ribbon: one coordinate travels along a looping centreline, the
+  // other crosses a broad cloth. This replaces the former spherical cap,
+  // which could only ever look like a particle cloud.
+  float theta = aUV.x * 3.14159265 * uTurns + uPhase;
+  vec3 center = ribbonCenter(aUV.x);
+  vec3 tangent = normalize(ribbonCenter(aUV.x + 0.012) - center);
+  vec3 side = normalize(cross(vec3(0.0, 0.0, 1.0), tangent) + vec3(0.0, 0.0001, 0.0));
+  vec3 normal = normalize(cross(tangent, side));
 
-  // ── Travelling waves, three interfering trains (the textile undulation).
-  float amp = uProf.x * (1.0 + uAudio.x * 0.9);
-  float clockSpeed = uProf.y;
-  p.z += (sin(aUV.x * uFreq.x + t * uSpeed.x * clockSpeed * 3.0) * uAmpv.x
-        + sin(aUV.y * uFreq.y - t * uSpeed.y * clockSpeed * 3.0) * uAmpv.y
-        + sin((aUV.x + aUV.y) * uFreq.z + t * uSpeed.z * clockSpeed * 3.0) * uAmpv.z)
-        * amp;
+  float twistAngle = aUV.x * 3.14159265 * uTwist
+    + sin(theta * 1.7 + t * uRibbonSpeed) * 0.36
+    + uAudio.y * 0.28;
+  float ct = cos(twistAngle);
+  float st = sin(twistAngle);
+  vec3 across = side * ct + normal * st;
+  vec3 foldAxis = -side * st + normal * ct;
 
-  // ── Multi-octave breathing of the whole cloth, along its radial dir.
-  float n = fbm(vec3(aUV * 1.35 + uSeed, t * 0.10 * clockSpeed));
-  vec3 radial = normalize(p + vec3(0.0, 0.0, 1e-4));
-  p += radial * n * uNoiseStrength * amp;
+  float endTaper = 1.0 - smoothstep(0.7, 1.0, abs(aUV.x));
+  float width = uWidth * endTaper
+    * (0.88 + sin(theta * 1.3 + uSeed) * 0.12);
+  float foldPhase = aUV.y * 3.14159265 * 1.35
+    + theta * uFoldFrequency
+    - t * uRibbonSpeed * 1.8;
+  float fold = sin(foldPhase) * uFoldAmplitude * uProf.x
+    + sin(foldPhase * 2.1 + uSeed) * uFoldAmplitude * 0.22 * uProf.z;
+  fold *= 1.0 + uAudio.x * 0.8;
 
-  // ── Curl flow: slow, divergence-free drift — the fluid signature.
-  vec3 flow = curlNoise(vec3(aUV * 0.9 + uSeed * 0.7, t * 0.06 * clockSpeed));
-  p += flow * uCurlStrength * uProf.z * (0.7 + uAudio.y * 0.8);
-
-  // ── Gentle twist around Y; mids feed the torsion when speaking.
-  float ang = p.y * 0.8 + t * 0.15 * clockSpeed + uAudio.y * 0.6;
-  float ca = cos(ang), sa = sin(ang);
-  p.xz = mat2(ca, -sa, sa, ca) * p.xz;
-
-  // ── Implicit shell: a breathing radial ripple keeps the silhouette
-  //    orb-like without a rigid boundary.
-  float r = length(p);
-  p *= 1.0 + sin(r * 4.0 - t * 1.2 * clockSpeed) * 0.06 * uProf.x;
+  vec3 p = center * (1.0 + uAudio.x * 0.06);
+  p += across * aUV.y * width;
+  p += foldAxis * fold;
+  // Very low-amplitude noise keeps the cloth organic without destroying its
+  // continuous rows of points.
+  float n = fbm(vec3(aUV * 0.85 + uSeed, t * 0.035));
+  p += foldAxis * n * 0.045 * uProf.z;
 
   // ── Focus: listening draws the veils toward the core.
-  p *= mix(1.0, 1.0 / uProf.w, 0.6);
+  p *= mix(1.0, 1.0 / uProf.w, 0.48);
 
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
 
-  // ── Density: procedural patchiness — denser knots, sparse fringes.
-  float density = smoothstep(0.15, 0.85,
-      snoise(vec3(aUV * 2.4 + uSeed * 1.9, uSeed)) * 0.5 + 0.5);
-  float keep = step(aRand.z, density * 0.92 + 0.08);
+  // Preserve the reference's visible regular rows. Only the outermost fringe
+  // thins into free points; the body remains a continuous luminous textile.
+  float edgeU = 1.0 - smoothstep(0.7, 1.0, abs(aUV.x));
+  float edgeV = 1.0 - smoothstep(0.82, 1.0, abs(aUV.y));
+  float edge = edgeU * edgeV;
+  float keep = step(aRand.z, clamp(edge * 1.08, 0.0, 1.0));
 
   // ── Size classes: 75 % fine grain, 20 % medium, 5 % bright rare.
   float size = mix(0.5, 1.2, fract(aRand.x * 7.77));
@@ -185,27 +200,29 @@ void main() {
 
   float depth = clamp(1.6 / max(-mv.z, 0.4), 0.0, 1.4);
   gl_PointSize = clamp(
-      size * uSizeBase * uPixelRatio * uFovScale * depth / max(-mv.z, 0.4),
+      size * uSizeBase * 1.42 * uPixelRatio * uFovScale * depth / max(-mv.z, 0.4),
       0.5, 9.0);
 
   // ── Color: cool gradient, whitened crests, slow warm currents,
   //    a rare violet accent (≈ 2 % of points).
-  float crest = smoothstep(0.25, 0.85, abs(n));
-  vec3 cool = mix(DEEP, CYAN, clamp(0.35 + n * 0.6 + uCyanBoost * 0.5, 0.0, 1.0));
-  cool = mix(cool, ICE, crest * 0.6);
+  float crest = 0.5 + 0.5 * sin(foldPhase);
+  float ribbonFlow = 0.5 + 0.5 * sin(theta * 0.72 + aUV.y * 1.4 + uSeed * 0.23);
+  vec3 cool = mix(DEEP, CYAN, clamp(0.42 + ribbonFlow * 0.45 + uCyanBoost * 0.35, 0.0, 1.0));
+  cool = mix(cool, ICE, crest * 0.12);
+  vec3 warmColor = mix(ROSE, GOLD, smoothstep(0.15, 0.82, ribbonFlow));
+  vec3 col = mix(cool, warmColor, clamp(uWarmth * (0.7 + ribbonFlow * 0.35), 0.0, 0.95));
+  float violetSeam = (1.0 - smoothstep(0.08, 0.34, abs(aUV.y - sin(theta) * 0.22))) * uWarmth;
+  col = mix(col, VIOLET, violetSeam * 0.32);
+  // The folds and outer edges form the bright contour lines in the target.
+  float rim = smoothstep(0.58, 0.98, abs(aUV.y));
+  col = mix(col, ICE, rim * 0.1 + twinkle * 0.18);
 
-  // Warm currents: slow amber rivers crossing the cold veils, like the
-  // golden sections of the reference. The gate opens earlier and the mix
-  // runs hotter so ACES + additive blending cannot wash them out.
-  float warmZone = smoothstep(0.28, 0.72,
-      snoise(vec3(aUV * 0.45 + uSeed * 3.1, t * 0.045)) * 0.5 + 0.5);
-  vec3 col = mix(cool, WARM, clamp(warmZone * uWarmth * 1.9, 0.0, 0.85));
-  col = mix(col, VIOLET, step(0.985, aRand.w) * 0.55);
-  col = mix(col, vec3(1.0), crest * 0.28 + twinkle * 0.5);
-
-  float brightness = uGlow * uIntensity * (0.85 + uAudio.w * 0.55);
+  // Stay below the tone-mapper's white-clipping range: the target is made of
+  // saturated cyan, blue and gold light, with white reserved for the core.
+  float brightness = uGlow * uIntensity * 1.24
+    * (0.94 + uAudio.w * 0.18) * (1.0 + uWarmth * 0.08);
   vColor = col * brightness;
-  vAlpha = keep * uAlphaBase * (0.55 + density * 0.45);
+  vAlpha = keep * pow(edge, 0.38) * uAlphaBase * (0.78 + crest * 0.22);
 }
 `;
 
