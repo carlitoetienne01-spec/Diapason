@@ -53,22 +53,24 @@ def a_key() -> str:
     return base64.b64encode(generate_keypair().public_key).decode("ascii")
 
 
-def enrol(client, device_id="dev_pc", platform="WINDOWS", capabilities=None):
+def enrol(
+    client, device_id="dev_pc", platform="WINDOWS", capabilities=None, address=""
+):
     invitation = client.post(
         "/v1/mesh/pairings", json={"deviceName": "PC du bureau"}, headers=auth()
     ).json()
-    return client.post(
-        "/v1/mesh/pairings/redeem",
-        json={
-            "pairingToken": invitation["pairingToken"],
-            "deviceId": device_id,
-            "publicKey": a_key(),
-            "name": "PC du bureau",
-            "platform": platform,
-            "deviceType": "DESKTOP",
-            "capabilities": capabilities or ["app.navigate", "tasks.write"],
-        },
-    )
+    payload = {
+        "pairingToken": invitation["pairingToken"],
+        "deviceId": device_id,
+        "publicKey": a_key(),
+        "name": "PC du bureau",
+        "platform": platform,
+        "deviceType": "DESKTOP",
+        "capabilities": capabilities or ["app.navigate", "tasks.write"],
+    }
+    if address:
+        payload["address"] = address
+    return client.post("/v1/mesh/pairings/redeem", json=payload)
 
 
 class TestAuthenticationBoundary:
@@ -82,6 +84,27 @@ class TestAuthenticationBoundary:
         """Pairing is mutual: the new device needs our key to verify us."""
         body = enrol(client).json()
         assert len(base64.b64decode(body["host"]["publicKey"])) == 32
+
+    def test_enrolment_tells_the_joining_device_where_we_live(self, client):
+        """Addresses are exchanged here or not at all: until each side knows
+        where the other is, neither can send nor even announce itself."""
+        body = enrol(client).json()
+        assert body["host"]["address"].startswith("http://")
+
+    def test_an_address_offered_at_pairing_is_recorded_and_echoed(self, client):
+        """Echoed from the row AFTER the write — reading back a null address
+        would tell the joining device its address had been refused."""
+        body = enrol(client, address="http://192.168.1.40:8000").json()
+        assert body["device"]["address"] == "http://192.168.1.40:8000"
+        listed = client.get("/v1/mesh/devices", headers=auth()).json()["devices"][0]
+        assert listed["address"] == "http://192.168.1.40:8000"
+
+    def test_pairing_without_an_address_still_succeeds(self, client):
+        """A phone behind NAT has no address worth giving; it simply becomes
+        command-able once it has announced itself."""
+        body = enrol(client).json()
+        assert body["device"]["trustLevel"] == "TRUSTED"
+        assert not body["device"].get("address")
 
     def test_listing_devices_requires_the_api_key(self, client):
         enrol(client)

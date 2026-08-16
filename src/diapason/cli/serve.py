@@ -775,4 +775,11 @@ def serve(
 
     import uvicorn
 
+    # The mesh advertises this address to paired devices, so it must be the
+    # one we are really about to listen on — not the one the config file
+    # happens to hold.
+    from diapason.mesh.beacon import set_local_endpoint
+
+    set_local_endpoint(bind_host, bind_port)
+
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")

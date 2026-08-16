@@ -29,6 +29,33 @@ from diapason.server.upload_router import router as upload_router
 logger = logging.getLogger(__name__)
 
 
+async def _mesh_heartbeat(app: FastAPI) -> None:
+    """Tell the paired devices, at a steady beat, that this machine is here.
+
+    Without this the fleet only learns we exist when we happen to send
+    something, so a laptop that is merely *on* looks offline — and every
+    other device would then correctly refuse to send it anything.
+
+    Deliberately quiet: a peer that cannot be reached is not an error worth
+    logging every fifteen seconds, it is the normal state of a fleet whose
+    devices come and go. The loop never raises, so a networking problem can
+    never take the API server down with it.
+    """
+    from diapason.mesh.presence import HEARTBEAT_INTERVAL_MS
+
+    interval = max(5.0, HEARTBEAT_INTERVAL_MS / 1000)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            from diapason.mesh.beacon import announce_to_fleet
+
+            await asyncio.to_thread(announce_to_fleet, app_state="foreground")
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a beacon failure is never fatal
+            logger.debug("battement mesh échoué", exc_info=True)
+
+
 async def _prewarm_local_model(app: FastAPI) -> None:
     """Load Ollama's model in the background without delaying API startup."""
     config = getattr(app.state, "config", None)
@@ -226,13 +253,15 @@ def create_app(
     @asynccontextmanager
     async def _lifespan(application: FastAPI):
         prewarm_task = asyncio.create_task(_prewarm_local_model(application))
+        heartbeat_task = asyncio.create_task(_mesh_heartbeat(application))
         try:
             yield
         finally:
-            if not prewarm_task.done():
-                prewarm_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await prewarm_task
+            for task in (prewarm_task, heartbeat_task):
+                if not task.done():
+                    task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
             bridge = getattr(application.state, "analytics_bridge", None)
             if bridge is not None:
                 try:

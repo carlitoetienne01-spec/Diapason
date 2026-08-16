@@ -255,9 +255,44 @@ class TestAnnouncing:
 
 
 class TestOurOwnAddress:
+    """An address is a promise that this process answers there. Guessing it
+    breaks the promise silently: peers send commands into the void and the
+    queue reports them delivered."""
+
+    @pytest.fixture(autouse=True)
+    def _restore(self):
+        from diapason.mesh import beacon as module
+
+        before = module._endpoint
+        yield
+        module._endpoint = before
+
     def test_it_is_an_http_url_on_a_private_host(self):
         from diapason.mesh.transport import address_is_private
 
         address = local_address()
         assert address.startswith("http://")
         assert address_is_private(address), address
+
+    def test_it_uses_the_port_the_server_really_bound(self):
+        """A second instance on --port 8100 must not advertise 8000."""
+        from diapason.mesh.beacon import set_local_endpoint
+
+        set_local_endpoint("127.0.0.1", 8100)
+        assert local_address() == "http://127.0.0.1:8100"
+
+    def test_a_loopback_bind_advertises_loopback_not_the_lan(self):
+        """Peers off this machine genuinely cannot reach a loopback server;
+        telling them otherwise would have commands reported as delivered."""
+        from diapason.mesh.beacon import set_local_endpoint
+
+        set_local_endpoint("127.0.0.1", 8000)
+        assert local_address() == "http://127.0.0.1:8000"
+
+    def test_a_wildcard_bind_advertises_a_reachable_interface(self):
+        from diapason.mesh.beacon import set_local_endpoint
+
+        set_local_endpoint("0.0.0.0", 8000)  # noqa: S104 - the case under test
+        address = local_address()
+        assert address.endswith(":8000")
+        assert "0.0.0.0" not in address

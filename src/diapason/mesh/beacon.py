@@ -274,40 +274,71 @@ def announce_to_fleet(
     return {"reached": reached, "skipped": skipped}
 
 
+# Where this process is actually listening, recorded by the server at
+# startup. Guessing instead — reading the config port and probing the LAN
+# interface — produces an address the process may not answer on: a second
+# instance on --port 8100 would advertise 8000, and a server bound to
+# loopback would advertise its LAN address to peers that cannot reach it.
+# An address is a promise; this is how the promise is kept.
+_endpoint: tuple[str, int] | None = None
+
+
+def set_local_endpoint(host: str, port: int) -> None:
+    """Record the host and port uvicorn was actually given."""
+    global _endpoint
+    _endpoint = (str(host or "127.0.0.1"), int(port))
+
+
 def local_address() -> str:
-    """This machine's address as a peer on the local network.
+    """The address at which peers can really reach this machine.
 
-    Falls back to loopback, which is correct for two instances on one
-    machine and harmless elsewhere: a peer that cannot reach us simply sees
-    us as offline, which is the honest outcome.
+    A server bound to loopback advertises loopback, even though a LAN
+    address would look more useful: peers off this machine genuinely cannot
+    reach it, and telling them otherwise would send commands into the void
+    and have them reported as delivered.
     """
-    import socket
+    host, port = _endpoint or (_configured_host(), _configured_port())
 
-    port = 8000
+    # Only a wildcard bind means "reachable on every interface" — that is the
+    # one case where the LAN address is the truthful thing to advertise.
+    if host in {"0.0.0.0", "::", ""}:  # noqa: S104 - matching, not binding
+        host = _lan_address() or "127.0.0.1"
+    return f"http://{host}:{port}"
+
+
+def _configured_host() -> str:
     try:
         from diapason.core.config import load_config
 
-        configured = getattr(load_config().server, "port", None)
-        if configured:
-            port = int(configured)
+        return str(getattr(load_config().server, "host", "") or "127.0.0.1")
     except Exception:  # noqa: BLE001 - a missing config is not a failure here
-        pass
+        return "127.0.0.1"
 
-    host = "127.0.0.1"
+
+def _configured_port() -> int:
     try:
-        # No packet is sent; this just asks the routing table which local
-        # interface would be used to reach the LAN.
+        from diapason.core.config import load_config
+
+        return int(getattr(load_config().server, "port", None) or 8000)
+    except Exception:  # noqa: BLE001
+        return 8000
+
+
+def _lan_address() -> str:
+    """Which local interface would be used to reach the LAN. No packet is
+    sent — this only consults the routing table."""
+    import socket
+
+    try:
         probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             probe.connect(("192.168.1.1", 1))
-            candidate = probe.getsockname()[0]
-            if candidate and not candidate.startswith("0."):
-                host = candidate
+            candidate = str(probe.getsockname()[0] or "")
+            return candidate if candidate and not candidate.startswith("0.") else ""
         finally:
             probe.close()
     except Exception:  # noqa: BLE001
-        pass
-    return f"http://{host}:{port}"
+        return ""
 
 
 def _local_capabilities() -> list[str]:
