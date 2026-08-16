@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS mesh_devices (
     last_seen_at_ms INTEGER,
     revoked_at_ms INTEGER,
     app_state TEXT,
-    transport TEXT
+    transport TEXT,
+    address TEXT
 );
 CREATE INDEX IF NOT EXISTS mesh_devices_trust_idx
     ON mesh_devices(trust_level, last_seen_at_ms);
@@ -119,7 +120,7 @@ class DeviceRegistry:
             row["name"]
             for row in conn.execute("PRAGMA table_info(mesh_devices)").fetchall()
         }
-        for name in ("app_state", "transport"):
+        for name in ("app_state", "transport", "address"):
             if name not in columns:
                 conn.execute(f"ALTER TABLE mesh_devices ADD COLUMN {name} TEXT")
 
@@ -318,6 +319,7 @@ class DeviceRegistry:
         *,
         app_state: str = "",
         transport: str = "",
+        address: str = "",
     ) -> dict[str, Any]:
         """Record that a TRUSTED device is alive right now.
 
@@ -325,14 +327,20 @@ class DeviceRegistry:
         able to make itself look reachable again simply by keeping a timer
         running.
         """
+        # The address is learned from the heartbeat rather than fixed at
+        # pairing: a laptop changes network, and a stale address is worse
+        # than none — it sends commands into the void.
+        clean_address = str(address or "").strip()[:200]
         with self._connect() as conn:
             cursor = conn.execute(
-                "UPDATE mesh_devices SET last_seen_at_ms=?, app_state=?, transport=? "
+                "UPDATE mesh_devices SET last_seen_at_ms=?, app_state=?, "
+                "transport=?, address=COALESCE(NULLIF(?,''), address) "
                 "WHERE device_id=? AND trust_level=?",
                 (
                     now_ms(),
                     str(app_state or "")[:40] or None,
                     str(transport or "")[:40] or None,
+                    clean_address,
                     device_id,
                     TRUST_TRUSTED,
                 ),
@@ -365,7 +373,9 @@ class DeviceRegistry:
         self, device_id: str, capabilities: Iterable[str]
     ) -> dict[str, Any]:
         """Record what a device CLAIMS. What it gets is computed on read."""
-        payload = json.dumps(sorted({str(c).strip() for c in capabilities if str(c).strip()}))
+        payload = json.dumps(
+            sorted({str(c).strip() for c in capabilities if str(c).strip()})
+        )
         with self._connect() as conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET declared_capabilities=?, last_seen_at_ms=? "
@@ -423,4 +433,5 @@ class DeviceRegistry:
             "revokedAtMs": row["revoked_at_ms"],
             "appState": row["app_state"] if "app_state" in row.keys() else None,
             "transport": row["transport"] if "transport" in row.keys() else None,
+            "address": row["address"] if "address" in row.keys() else None,
         }

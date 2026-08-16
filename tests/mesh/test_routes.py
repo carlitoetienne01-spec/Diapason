@@ -195,7 +195,9 @@ class TestPresenceLadder:
         assert presence_of(self._device(BACKGROUND_WINDOW_MS + 1))["state"] == "OFFLINE"
 
     def test_a_device_never_seen_is_offline(self):
-        assert presence_of({"deviceId": "d", "lastSeenAtMs": None})["state"] == "OFFLINE"
+        assert (
+            presence_of({"deviceId": "d", "lastSeenAtMs": None})["state"] == "OFFLINE"
+        )
 
     def test_a_revoked_device_is_offline_however_recent(self):
         # It beat one second ago, but we are not willing to reach it.

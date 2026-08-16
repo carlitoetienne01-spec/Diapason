@@ -89,6 +89,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # /v1/mesh (listing, revoking, heartbeats) stays behind the wall.
         if path == "/v1/mesh/pairings/redeem":
             return False
+        # Inbound commands carry their own, stronger credential: an Ed25519
+        # signature over the whole envelope, verified against the key we
+        # recorded when that device was paired. A shared API key would prove
+        # less — it says nothing about WHICH device, nor about the arguments.
+        if path == "/v1/mesh/commands/deliver":
+            return False
         return (
             path.startswith("/v1/")
             or path.startswith("/api/")

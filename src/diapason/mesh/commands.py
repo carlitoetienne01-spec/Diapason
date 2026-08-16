@@ -222,7 +222,9 @@ class NonceStore:
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
-    def spend(self, nonce: str, device_id: str, *, retention_ms: int = 3_600_000) -> bool:
+    def spend(
+        self, nonce: str, device_id: str, *, retention_ms: int = 3_600_000
+    ) -> bool:
         """Consume *nonce*. False when it was already spent — a replay.
 
         The INSERT itself is the check: relying on the primary key makes the

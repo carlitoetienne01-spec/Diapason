@@ -40,6 +40,28 @@ single-purpose fetch that completes a user-commanded browse of the same
 destination (``desktop/smart_intents.resolve_youtube_watch_url``). Anything
 the assistant initiates on its own, or that sends data anywhere the user did
 not name out loud, stays guarded.
+
+The user's own paired devices
+-----------------------------
+
+A second boundary, decided deliberately: a device the user has PAIRED —
+cryptographically, by carrying a one-time code from one machine to the other
+— is no longer "elsewhere". It is the same person's other computer, holding
+the same fleet identity, and reaching it is the point of owning both.
+
+This is narrower than it sounds, and the narrowness is what makes it safe:
+
+* it applies only to devices in the mesh registry with trust TRUSTED — a
+  revoked or unknown address gets no exemption at all;
+* the address must be private (loopback or RFC1918): the LAN the user is
+  standing on, never the open internet, which is why the mesh ships LAN-first;
+* it covers mesh traffic only. The Succès sync relay stays fully gated
+  (``succes/relay.py``), because a relay is a third party by construction.
+
+The check lives in ``mesh/transport.py`` — ``assert_may_reach_device`` — so
+this exemption cannot be claimed by any other code path merely by importing
+something. Everything else about the contract is unchanged: turning
+``local_only`` on still means Diapason itself sends nothing outward.
 """
 
 from __future__ import annotations

@@ -154,9 +154,7 @@ class TestReplay:
         with pytest.raises(CommandRejected):
             check(raw, world)
         # Same nonce, now on a tool the device does have: still accepted.
-        second = RemoteCommand(
-            **{**a_command().__dict__, "nonce": command.nonce}
-        )
+        second = RemoteCommand(**{**a_command().__dict__, "nonce": command.nonce})
         raw2 = sign_as_peer(second, keys.private_key)
         assert check(raw2, world).nonce == command.nonce
 

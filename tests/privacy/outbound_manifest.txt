@@ -66,6 +66,7 @@ engine/cloud.py
 engine/ollama.py
 learning/spec_search/student_runner.py
 mcp/transport.py
+mesh/transport.py
 mining/_collector.py
 mining/_discovery.py
 mining/cpu_pearl.py
