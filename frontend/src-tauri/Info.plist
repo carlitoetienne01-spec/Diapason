@@ -18,7 +18,13 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Diapason records audio only while you hold the dictation key, so it can turn your speech into text.</string>
+    <string>Diapason listens only while you are dictating or talking to it, so it can turn your speech into text.</string>
+
+    <!-- Live dictation runs on Apple's on-device recogniser. Without this key
+         the request does not merely fail: the OS aborts the process (SIGABRT)
+         the moment authorisation is requested. -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Diapason transcribes your speech on this Mac, as you speak, so your words appear as text. Nothing is sent to Apple when on-device recognition is available.</string>
 
     <key>NSAppleEventsUsageDescription</key>
     <string>Diapason uses Apple Events to read which application is in front and to insert dictated text into it.</string>

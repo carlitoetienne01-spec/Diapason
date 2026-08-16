@@ -9,6 +9,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  TerminalSquare,
   Download,
   Upload,
   Trash2,
@@ -18,7 +19,13 @@ import {
   Brain,
   RefreshCw,
 } from 'lucide-react';
-import { useAppStore, type ThemeMode } from '../lib/store';
+import {
+  useAppStore,
+  TERMINAL_SKINS,
+  type ThemeMode,
+  type TerminalSkin,
+} from '../lib/store';
+import { useConfirm } from '../components/ConfirmDialog';
 import {
   checkHealth,
   fetchSpeechHealth,
@@ -248,14 +255,29 @@ const themeOptions: { value: ThemeMode; icon: typeof Sun }[] = [
   { value: 'light', icon: Sun },
   { value: 'dark', icon: Moon },
   { value: 'system', icon: Monitor },
+  { value: 'terminal', icon: TerminalSquare },
 ];
+
+/**
+ * Screen names are proper nouns, so they are not translated. Each carries the
+ * two colours that identify it at a glance — a swatch says more about a screen
+ * than its name does.
+ */
+const TERMINAL_SKIN_SWATCHES: Record<TerminalSkin, { name: string; bg: string; fg: string }> = {
+  phosphor: { name: 'Phosphore', bg: '#030703', fg: '#7af046' },
+  ardechine: { name: 'Ardéchine', bg: '#beb3a1', fg: '#14120e' },
+  oxblood: { name: 'Oxblood', bg: '#150a09', fg: '#cf5346' },
+  sage: { name: 'Sauge', bg: '#000000', fg: '#90a481' },
+};
 
 export function SettingsPage() {
   const { t, locale, setLocale } = useTranslation();
+  const confirm = useConfirm();
   const themeLabels: Record<ThemeMode, string> = {
     light: t('settings.theme.light'),
     dark: t('settings.theme.dark'),
     system: t('settings.theme.system'),
+    terminal: t('settings.theme.terminal'),
   };
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
@@ -439,16 +461,17 @@ export function SettingsPage() {
     input.click();
   };
 
-  const [confirmClear, setConfirmClear] = useState(false);
-  const handleClear = () => {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 3000);
-      return;
-    }
+  const handleClear = async () => {
+    const confirmed = await confirm({
+      title: t('settings.data.clearDescription'),
+      description: t('common.confirmAgain'),
+      confirmLabel: 'Supprimer',
+      keepLabel: 'Garder',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     localStorage.removeItem('diapason-conversations');
     useAppStore.getState().loadConversations();
-    setConfirmClear(false);
     showSaved();
   };
 
@@ -525,6 +548,49 @@ export function SettingsPage() {
                 })}
               </div>
             </SettingRow>
+            {settings.theme === 'terminal' && (
+              <SettingRow
+                label={t('settings.terminalSkin.label')}
+                description={t('settings.terminalSkin.description')}
+              >
+                <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+                  {TERMINAL_SKINS.map((skin) => {
+                    const isActive = (settings.terminalSkin ?? 'phosphor') === skin;
+                    const swatch = TERMINAL_SKIN_SWATCHES[skin];
+                    return (
+                      <button
+                        key={skin}
+                        onClick={() => { updateSettings({ terminalSkin: skin }); showSaved(); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                        style={{
+                          background: isActive ? 'var(--color-surface)' : 'transparent',
+                          color: isActive ? 'var(--color-text)' : 'var(--color-text-tertiary)',
+                          boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="flex items-center justify-center"
+                          style={{
+                            width: 16,
+                            height: 16,
+                            background: swatch.bg,
+                            color: swatch.fg,
+                            border: '1px solid var(--color-border)',
+                            fontSize: 9,
+                            lineHeight: 1,
+                            fontFamily: 'var(--font-hud)',
+                          }}
+                        >
+                          A
+                        </span>
+                        {swatch.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </SettingRow>
+            )}
             <SettingRow label={t('settings.fontSize.label')}>
               <select
                 value={settings.fontSize}
@@ -1142,17 +1208,17 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow label={t('settings.data.clearLabel')} description={t('settings.data.clearDescription')}>
               <button
-                onClick={handleClear}
+                onClick={() => void handleClear()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                 style={{
-                  color: confirmClear ? 'white' : 'var(--color-error)',
-                  background: confirmClear ? 'var(--color-error)' : 'transparent',
+                  color: 'var(--color-error)',
+                  background: 'transparent',
                   border: '1px solid var(--color-error)',
                 }}
-                onMouseEnter={(e) => { if (!confirmClear) e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; }}
-                onMouseLeave={(e) => { if (!confirmClear) e.currentTarget.style.background = 'transparent'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <Trash2 size={12} /> {confirmClear ? t('common.confirmAgain') : t('common.clear')}
+                <Trash2 size={12} /> {t('common.clear')}
               </button>
             </SettingRow>
           </Section>

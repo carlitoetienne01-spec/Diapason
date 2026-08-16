@@ -56,6 +56,31 @@ def test_habit_logs_keep_false_values_and_compute_streak(tmp_path) -> None:
     assert value == 0
 
 
+def test_habit_logs_can_be_listed_for_a_date_span(tmp_path) -> None:
+    store = SuccesWorkspaceStore(tmp_path / "habit-logs.db")
+    habit = store.create_habit(
+        {"name": "Eau", "frequency": "daily", "startDate": "2026-01-01"}
+    )
+    other = store.create_habit(
+        {"name": "Marche", "frequency": "daily", "startDate": "2026-01-01"}
+    )
+    store.set_habit_done(habit["id"], "2026-03-01", True)
+    store.set_habit_done(habit["id"], "2026-03-02", True)
+    store.set_habit_done(habit["id"], "2026-03-02", False)
+    store.set_habit_done(other["id"], "2026-03-01", True)
+    store.set_habit_done(habit["id"], "2026-04-01", True)
+
+    logs = store.list_habit_logs(from_date="2026-03-01", to_date="2026-03-31")
+    assert logs == {
+        f"{habit['id']}_2026-03-01": True,
+        f"{other['id']}_2026-03-01": True,
+    }
+    scoped = store.list_habit_logs(
+        from_date="2026-03-01", to_date="2026-03-31", habit_id=habit["id"]
+    )
+    assert scoped == {f"{habit['id']}_2026-03-01": True}
+
+
 def test_weekly_habit_due_days_are_deterministic(tmp_path) -> None:
     store = SuccesWorkspaceStore(tmp_path / "weekly.db")
     habit = store.create_habit(
@@ -68,6 +93,27 @@ def test_weekly_habit_due_days_are_deterministic(tmp_path) -> None:
     )
     assert store.get_habit(habit["id"], on_date="2026-08-14")["due"] is True
     assert store.get_habit(habit["id"], on_date="2026-08-15")["due"] is False
+
+
+def test_notes_support_page_formats_and_fonts(tmp_path) -> None:
+    store = SuccesWorkspaceStore(tmp_path / "rich-notes.db")
+    note = store.create_note(
+        {
+            "title": "Carnet",
+            "content": "<p><strong>Bonjour</strong></p>",
+            "pageFormat": "letter",
+            "pageBackground": "lined",
+            "fontFamily": "Merriweather",
+            "docLang": "ht",
+        }
+    )
+    assert note["pageFormat"] == "letter"
+    assert note["pageBackground"] == "lined"
+    assert note["fontFamily"] == "Merriweather"
+    assert note["docLang"] == "ht"
+    updated = store.update_note(note["id"], {"pageFormat": "reading", "fontFamily": "Inter"})
+    assert updated["pageFormat"] == "reading"
+    assert updated["fontFamily"] == "Inter"
 
 
 def test_notes_are_versioned_and_deleted_with_tombstones(tmp_path) -> None:

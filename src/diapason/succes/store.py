@@ -15,7 +15,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -563,8 +563,15 @@ class SuccesStore:
             task = self._load_task(conn, task_id)
             if task is None:
                 raise SuccesNotFound("Cette tâche n'existe pas ou a été supprimée.")
-            if task["subtasks"] and done and not self._tree_all_done(task["subtasks"]):
-                raise SuccesError("Validez d'abord toutes les sous-tâches.")
+            # A parent's state is derived from its subtasks, so toggling the
+            # parent has to carry the whole tree with it. Leaving children out
+            # of sync would make the next toggle either fail or flip back.
+            if task["subtasks"]:
+                conn.execute(
+                    "UPDATE succes_subtasks SET done=?, updated_at_ms=? "
+                    "WHERE task_id=? AND deleted_at_ms IS NULL",
+                    (int(done), ts, task_id),
+                )
             completed = date.today().isoformat() if done else ""
             conn.execute(
                 "UPDATE succes_tasks SET done=?, completed_date=?, "
@@ -616,6 +623,69 @@ class SuccesStore:
                 op_id=op_id,
             )
         return task
+
+    def reschedule_series(
+        self, task_id: str, scheduled_date: str, *, op_id: str | None = None
+    ) -> dict[str, Any]:
+        """Shift every occurrence of a recurrence by the same day offset.
+
+        The dragged occurrence defines the delta between its current date and
+        the drop target; all sibling occurrences (same ``template_id``) move by
+        that delta. Occurrences without a date are left untouched, and the
+        recurrence rule itself is edited separately on the Récurrences page.
+        """
+        scheduled = _validate_iso_date(scheduled_date)
+        if not scheduled:
+            raise SuccesError("Une date valide est requise pour reporter la série.")
+        ts = now_ms()
+        with self._transaction() as conn:
+            anchor = self._load_task(conn, task_id)
+            if anchor is None:
+                raise SuccesNotFound("Cette tâche n'existe pas ou a été supprimée.")
+            template_id = str(anchor.get("templateId") or "")
+            if not template_id:
+                raise SuccesError("Cette tâche ne provient pas d'une récurrence.")
+            current = str(anchor.get("date") or "")
+            if not current:
+                raise SuccesError("La tâche de référence n'a pas encore de date.")
+            delta = (date.fromisoformat(scheduled) - date.fromisoformat(current)).days
+            rows = conn.execute(
+                "SELECT id, scheduled_date FROM succes_tasks "
+                "WHERE template_id=? AND deleted_at_ms IS NULL",
+                (template_id,),
+            ).fetchall()
+            updated = 0
+            for row in rows:
+                old = str(row["scheduled_date"] or "")
+                if not old:
+                    continue
+                new_date = (
+                    date.fromisoformat(old) + timedelta(days=delta)
+                ).isoformat()
+                if delta != 0:
+                    conn.execute(
+                        "UPDATE succes_tasks SET scheduled_date=?, updated_at_ms=? "
+                        "WHERE id=?",
+                        (new_date, ts, row["id"]),
+                    )
+                    task = self._load_task(conn, row["id"])
+                    assert task is not None
+                    self._record_op(
+                        conn,
+                        entity="tasks",
+                        entity_id=row["id"],
+                        kind="upsert",
+                        payload=task,
+                        request={
+                            "action": "reschedule_series",
+                            "taskId": row["id"],
+                            "templateId": template_id,
+                            "date": new_date,
+                        },
+                        timestamp_ms=ts,
+                    )
+                updated += 1
+        return {"templateId": template_id, "deltaDays": delta, "updated": updated}
 
     def add_subtask(
         self,
@@ -737,6 +807,50 @@ class SuccesStore:
             )
         return task
 
+    def delete_subtask(
+        self, task_id: str, subtask_id: str, *, op_id: str | None = None
+    ) -> dict[str, Any]:
+        request = {
+            "action": "delete_subtask",
+            "taskId": task_id,
+            "subtaskId": subtask_id,
+        }
+        ts = now_ms()
+        with self._transaction() as conn:
+            replayed = self._replayed_task(conn, op_id, request)
+            if replayed is not None:
+                return replayed
+            row = conn.execute(
+                "SELECT id FROM succes_subtasks "
+                "WHERE id=? AND task_id=? AND deleted_at_ms IS NULL",
+                (subtask_id, task_id),
+            ).fetchone()
+            if row is None:
+                raise SuccesNotFound("Cette sous-tâche n'existe pas.")
+            descendants = self._descendant_ids(conn, subtask_id)
+            ids = [subtask_id, *descendants]
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"UPDATE succes_subtasks SET deleted_at_ms=?, updated_at_ms=? "
+                f"WHERE id IN ({placeholders})",
+                [ts, ts, *ids],
+            )
+            self._recompute_groups(conn, task_id, ts)
+            self._recompute_task(conn, task_id, ts)
+            task = self._load_task(conn, task_id)
+            assert task is not None
+            self._record_op(
+                conn,
+                entity="subtasks",
+                entity_id=subtask_id,
+                kind="upsert",
+                payload=task,
+                request=request,
+                timestamp_ms=ts,
+                op_id=op_id,
+            )
+        return task
+
     def delete_task(self, task_id: str, *, op_id: str | None = None) -> None:
         request = {"action": "delete", "taskId": task_id}
         ts = now_ms()
@@ -764,17 +878,6 @@ class SuccesStore:
                 timestamp_ms=ts,
                 op_id=op_id,
             )
-
-    @staticmethod
-    def _tree_all_done(nodes: Sequence[Mapping[str, Any]]) -> bool:
-        if not nodes:
-            return False
-        return all(
-            SuccesStore._tree_all_done(node["children"])
-            if node.get("children")
-            else bool(node.get("done"))
-            for node in nodes
-        )
 
     @staticmethod
     def _descendant_ids(conn: sqlite3.Connection, parent_id: str) -> list[str]:

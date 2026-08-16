@@ -11,7 +11,14 @@ from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.dates import normalize_time, resolve_date_expression
 from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
 from diapason.succes.sync import MAX_SYNC_BATCH, SuccesSyncStore
-from diapason.succes.workspace import HABIT_FREQUENCIES, SuccesWorkspaceStore
+from diapason.succes.workspace import (
+    HABIT_FREQUENCIES,
+    NOTE_DOC_LANGS,
+    NOTE_FONTS,
+    NOTE_PAGE_BACKGROUNDS,
+    NOTE_PAGE_FORMATS,
+    SuccesWorkspaceStore,
+)
 
 router = APIRouter(prefix="/v1/succes", tags=["succes"])
 _store: SuccesStore | None = None
@@ -137,12 +144,22 @@ class HabitLogBody(BaseModel):
 class NoteCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=100_000)
+    pageFormat: str = "a4"
+    pageBackground: str = "default"
+    fontFamily: str = "Special Elite"
+    docLang: str = "fr"
+    color: str = "#6366f1"
     opId: str | None = None
 
 
 class NotePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=100_000)
+    pageFormat: str | None = None
+    pageBackground: str | None = None
+    fontFamily: str | None = None
+    docLang: str | None = None
+    color: str | None = None
     opId: str | None = None
 
 
@@ -208,6 +225,16 @@ class SyncExchangeBody(BaseModel):
     operations: list[dict[str, Any]] = Field(
         default_factory=list, max_length=MAX_SYNC_BATCH
     )
+
+
+class SyncRelayBody(BaseModel):
+    url: str = Field(min_length=8, max_length=500)
+
+
+class SyncJoinBody(BaseModel):
+    pairingToken: str = Field(min_length=32, max_length=160)
+    relayUrl: str | None = Field(default=None, max_length=500)
+    deviceName: str = Field(default="", max_length=80)
 
 
 def _sync_store() -> SuccesSyncStore:
@@ -324,6 +351,18 @@ async def reschedule_task(task_id: str, body: RescheduleBody) -> dict[str, Any]:
     return {"task": task, "warning": warning, "persistence": "local"}
 
 
+@router.post("/tasks/{task_id}/reschedule-series")
+async def reschedule_task_series(task_id: str, body: RescheduleBody) -> dict[str, Any]:
+    scheduled_date = _resolved_date(body.date, allow_empty=False)
+    try:
+        result = get_store().reschedule_series(
+            task_id, scheduled_date, op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {**result, "persistence": "local"}
+
+
 @router.post("/tasks/{task_id}/subtasks", status_code=201)
 async def create_subtask(task_id: str, body: SubtaskCreate) -> dict[str, Any]:
     try:
@@ -343,6 +382,25 @@ async def set_subtask_done(
         task = get_store().set_subtask_done(
             task_id, subtask_id, body.done, op_id=body.opId
         )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"task": task, "persistence": "local"}
+
+
+@router.delete("/tasks/{task_id}/subtasks/{subtask_id}")
+async def delete_subtask(
+    task_id: str, subtask_id: str, body: DeleteBody
+) -> dict[str, Any]:
+    if not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmation_required",
+                "message": "Confirmez la suppression de cette sous-tâche.",
+            },
+        )
+    try:
+        task = get_store().delete_subtask(task_id, subtask_id, op_id=body.opId)
     except SuccesError as exc:
         raise _domain_error(exc) from exc
     return {"task": task, "persistence": "local"}
@@ -470,6 +528,23 @@ async def list_habits(date: str | None = None) -> dict[str, Any]:
     }
 
 
+@router.get("/habits/logs")
+async def list_habit_logs(
+    from_date: str = Query(alias="from", min_length=1, max_length=80),
+    to_date: str = Query(alias="to", min_length=1, max_length=80),
+    habit_id: str | None = Query(default=None, alias="habitId", max_length=80),
+) -> dict[str, Any]:
+    try:
+        start = _resolved_date(from_date, allow_empty=False)
+        end = _resolved_date(to_date, allow_empty=False)
+        logs = _workspace_store().list_habit_logs(
+            from_date=start, to_date=end, habit_id=habit_id or None
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"from": start, "to": end, "logs": logs, "count": len(logs)}
+
+
 @router.post("/habits", status_code=201)
 async def create_habit(body: HabitCreate) -> dict[str, Any]:
     data = body.model_dump(exclude={"opId"})
@@ -531,7 +606,14 @@ async def list_notes(
     search: str = Query(default="", max_length=200),
 ) -> dict[str, Any]:
     notes = _workspace_store().list_notes(search=search)
-    return {"notes": notes, "count": len(notes)}
+    return {
+        "notes": notes,
+        "count": len(notes),
+        "pageFormats": sorted(NOTE_PAGE_FORMATS),
+        "pageBackgrounds": sorted(NOTE_PAGE_BACKGROUNDS),
+        "fonts": sorted(NOTE_FONTS),
+        "docLangs": sorted(NOTE_DOC_LANGS),
+    }
 
 
 @router.post("/notes", status_code=201)
@@ -709,7 +791,7 @@ async def create_sync_pairing(body: PairingCreate) -> dict[str, Any]:
 
 @router.post("/sync/pair")
 async def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
-    """Redeem locally; a future HTTPS relay may call this trusted endpoint."""
+    """Redeem a pairing token (auth = valid invitation; no API key required)."""
     try:
         return _sync_store().redeem_pairing(body.pairingToken)
     except SuccesError as exc:
@@ -718,7 +800,7 @@ async def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
 
 @router.post("/sync/exchange")
 async def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
-    """Exchange operations behind Diapason's existing local API boundary."""
+    """Exchange operations authenticated by the peer sync token in the body."""
     peer = _sync_store().peer_for_token(body.peerToken)
     if peer is None:
         raise HTTPException(
@@ -730,6 +812,46 @@ async def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
         )
     except SuccesError as exc:
         raise _domain_error(exc) from exc
+
+
+@router.put("/sync/relay")
+async def set_sync_relay(body: SyncRelayBody) -> dict[str, Any]:
+    try:
+        return _sync_store().set_relay_url(body.url)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.delete("/sync/relay")
+async def clear_sync_relay() -> dict[str, Any]:
+    return _sync_store().clear_relay_url()
+
+
+@router.post("/sync/join")
+async def join_sync_remote(body: SyncJoinBody) -> dict[str, Any]:
+    """Redeem a remote invitation and store guest credentials locally."""
+    try:
+        return _sync_store().join_remote(
+            body.pairingToken,
+            relay_url=body.relayUrl,
+            device_name=body.deviceName,
+        )
+    except SuccesError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/sync/run")
+async def run_sync_exchange() -> dict[str, Any]:
+    """Guest round-trip: push local ops, pull host ops through the relay."""
+    try:
+        return _sync_store().run_exchange()
+    except SuccesError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/sync/guest")
+async def clear_sync_guest() -> dict[str, Any]:
+    return _sync_store().clear_guest_session()
 
 
 @router.delete("/sync/peers/{peer_id}")

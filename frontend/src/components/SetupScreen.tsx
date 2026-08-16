@@ -19,6 +19,11 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]['key'];
 
+/** How long the model pre-selection may delay the hand-off to the app. */
+const PRESELECT_BUDGET_MS = 2500;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 function StepRow({
   icon: Icon,
   label,
@@ -91,31 +96,37 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
   const poll = useCallback(async () => {
     const s = await getSetupStatus();
     if (s) setStatus(s);
-    if (s?.phase === 'ready' && !handedOffRef.current) {
-      handedOffRef.current = true;
-      // Pre-select a model BEFORE handing off so the chat is usable on
-      // first send. Without this, the main app's post-mount fetch can
-      // lose a race to a fast first message and Ollama 400s.
-      try {
-        const [models, rec] = await Promise.all([
-          fetchModels().catch(() => []),
-          fetchRecommendedModel().catch(() => ({ model: '', reason: '' })),
-        ]);
-        const store = useAppStore.getState();
-        store.setModels(models);
-        store.setModelsLoading(false);
-        const recommended = rec.model && models.some((m) => m.id === rec.model)
-          ? rec.model
-          : models[0]?.id || '';
-        if (recommended && !store.selectedModel) {
-          store.setSelectedModel(recommended);
-        }
-      } catch {
-        // Non-fatal: store.setModels auto-selects on later fetch, and
-        // the InputArea guards the empty-model case with a toast.
+    if (s?.phase !== 'ready' || handedOffRef.current) return;
+    handedOffRef.current = true;
+
+    // Pre-select a model BEFORE handing off so the chat is usable on first
+    // send. Without this, the main app's post-mount fetch can lose a race to a
+    // fast first message and Ollama 400s.
+    const preselect = (async () => {
+      const [models, rec] = await Promise.all([
+        fetchModels().catch(() => []),
+        fetchRecommendedModel().catch(() => ({ model: '', reason: '' })),
+      ]);
+      const store = useAppStore.getState();
+      store.setModels(models);
+      store.setModelsLoading(false);
+      const recommended = rec.model && models.some((m) => m.id === rec.model)
+        ? rec.model
+        : models[0]?.id || '';
+      if (recommended && !store.selectedModel) {
+        store.setSelectedModel(recommended);
       }
-      setTimeout(() => onReady(), 600);
-    }
+      // Non-fatal: the store auto-selects on a later fetch, and the InputArea
+      // guards the empty-model case with a toast.
+    })().catch(() => {});
+
+    // Bounded, because this is only an optimisation. Awaiting it outright left
+    // the app on this screen forever whenever a request stalled — a loaded
+    // backend answers /health instantly while /v1/models crawls, and neither
+    // fetch carries a timeout. The hand-off had already been marked done by
+    // then, so no later poll would retry it. Nothing here may gate startup.
+    await Promise.race([preselect, sleep(PRESELECT_BUDGET_MS)]);
+    setTimeout(() => onReady(), 600);
   }, [onReady]);
 
   useEffect(() => {

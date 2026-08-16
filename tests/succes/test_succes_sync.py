@@ -97,6 +97,7 @@ def test_sync_routes_expose_diagnostics_and_local_exchange(tmp_path) -> None:
         status = client.get("/v1/succes/sync/status")
         assert status.status_code == 200
         assert status.json()["transport"] == "loopback_only"
+        assert status.json()["role"] == "ready"
 
         invitation = client.post(
             "/v1/succes/sync/pairings", json={"deviceName": "Android test"}
@@ -122,7 +123,9 @@ def test_sync_routes_expose_diagnostics_and_local_exchange(tmp_path) -> None:
         set_store_for_tests(None)
 
 
-def test_peer_token_cannot_bypass_the_local_api_boundary(tmp_path) -> None:
+def test_peer_token_cannot_access_general_api_but_exchange_is_token_auth(
+    tmp_path,
+) -> None:
     db = store(tmp_path, "auth-boundary")
     peer = authorize_peer(db)
     set_store_for_tests(db)
@@ -132,18 +135,92 @@ def test_peer_token_cannot_bypass_the_local_api_boundary(tmp_path) -> None:
     app.add_middleware(AuthMiddleware, api_key=local_key)
     client = TestClient(app)
     try:
-        rejected = client.post(
-            "/v1/succes/sync/exchange",
+        rejected = client.get(
+            "/v1/succes/sync/status",
             headers={"Authorization": f"Bearer {peer['syncToken']}"},
-            json={"peerToken": peer["syncToken"], "cursor": 0, "operations": []},
         )
         assert rejected.status_code == 401
 
         accepted = client.post(
             "/v1/succes/sync/exchange",
-            headers={"Authorization": f"Bearer {local_key}"},
             json={"peerToken": peer["syncToken"], "cursor": 0, "operations": []},
         )
         assert accepted.status_code == 200
+
+        with_key = client.get(
+            "/v1/succes/sync/status",
+            headers={"Authorization": f"Bearer {local_key}"},
+        )
+        assert with_key.status_code == 200
     finally:
         set_store_for_tests(None)
+
+
+def test_guest_join_and_exchange_through_http_relay(tmp_path) -> None:
+    host = store(tmp_path, "host")
+    guest = store(tmp_path, "guest")
+    set_store_for_tests(host)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    try:
+        invitation = host.create_pairing("Mac secondaire")
+        host.create_task(
+            {
+                "id": "shared",
+                "title": "Depuis l'hôte",
+                "date": "2026-08-18",
+                "updatedAtMs": 10,
+            }
+        )
+        guest.create_task(
+            {
+                "id": "guest-only",
+                "title": "Depuis l'invité",
+                "date": "2026-08-19",
+                "updatedAtMs": 20,
+            }
+        )
+
+        # Point guest at the in-process host via ASGI transport.
+        guest.set_relay_url("http://testserver")
+        from diapason.succes import sync as sync_mod
+
+        original_post = sync_mod.relay_post
+
+        def _asgi_post(base_url: str, path: str, payload: dict):
+            assert base_url.rstrip("/") == "http://testserver"
+            response = client.post(path, json=payload)
+            if response.status_code >= 400:
+                detail = response.json().get("detail") if response.content else ""
+                raise SuccesError(str(detail) or f"HTTP {response.status_code}")
+            return response.json()
+
+        sync_mod.relay_post = _asgi_post  # type: ignore[assignment]
+        try:
+            joined = guest.join_remote(invitation["pairingToken"], device_name="Invité")
+            assert joined["role"] == "guest"
+            assert joined["transport"] == "https_relay"
+            assert joined["guest"]["peerId"]
+
+            result = guest.run_exchange()
+            assert result["pulled"] >= 1
+            assert result["pushed"] >= 1
+            assert guest.get_task("shared")["title"] == "Depuis l'hôte"
+            assert host.get_task("guest-only")["title"] == "Depuis l'invité"
+        finally:
+            sync_mod.relay_post = original_post  # type: ignore[assignment]
+    finally:
+        set_store_for_tests(None)
+
+
+def test_normalize_relay_url_rejects_credentials_and_metadata() -> None:
+    from diapason.succes.relay import normalize_relay_url
+
+    assert normalize_relay_url("https://sync.example.com/diapason/") == (
+        "https://sync.example.com/diapason"
+    )
+    with pytest.raises(SuccesError, match="identifiants"):
+        normalize_relay_url("https://user:pass@example.com")
+    with pytest.raises(SuccesError, match="autorisée"):
+        normalize_relay_url("http://169.254.169.254/")

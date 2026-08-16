@@ -6,6 +6,8 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 
+mod live_speech;
+
 const OLLAMA_PORT: u16 = 11434;
 const DIAPASON_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
@@ -1906,10 +1908,17 @@ async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/models", base)))
-        .send()
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    // Bounded: reqwest has no default request timeout, so a backend that
+    // accepts the connection and then stalls used to hang this call forever,
+    // and with it anything awaiting the model list.
+    let resp = authenticated(
+        reqwest::Client::new()
+            .get(format!("{}/v1/models", base))
+            .timeout(Duration::from_secs(15)),
+    )
+    .send()
+    .await
+    .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
@@ -3129,6 +3138,9 @@ pub fn run() {
             toggle_overlay,
             hide_overlay,
             get_overlay_conversation,
+            live_speech::live_dictation_available,
+            live_speech::start_live_dictation,
+            live_speech::stop_live_dictation,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Diapason Desktop")

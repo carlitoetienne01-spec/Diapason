@@ -1,12 +1,13 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useLiveDictation } from '../../hooks/useLiveDictation';
 import type { AIState } from '../AIEntity/types';
 
 // Three.js is half a megabyte and is needed only once this panel opens, so it
 // is fetched then rather than on every cold start of the app.
-const DiapasonOrb = lazy(() =>
-  import('../DiapasonOrb/DiapasonOrb').then((m) => ({ default: m.DiapasonOrb })),
+const VoiceTerrain = lazy(() =>
+  import('../VoiceTerrain/VoiceTerrain').then((m) => ({ default: m.VoiceTerrain })),
 );
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
 
@@ -71,11 +72,62 @@ export function TalkOrb({
   onInterrupt,
   onClose,
 }: TalkOrbProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const active = state === 'listening' || state === 'speaking' || state === 'connecting';
+
+  // Captions come from Apple's on-device recogniser rather than from the voice
+  // session, because the local provider only reports a transcript once the
+  // turn is over — too late to read along with. This listens in parallel and
+  // costs nothing but a second tap on the same microphone.
+  const {
+    supported: captionsSupported,
+    transcript: heard,
+    start: startCaptions,
+    stop: stopCaptions,
+  } = useLiveDictation(locale);
+  const [caption, setCaption] = useState('');
+
+  useEffect(() => {
+    if (!captionsSupported) return;
+    if (!open || state !== 'listening') return;
+    void startCaptions();
+    return () => {
+      void stopCaptions();
+    };
+  }, [captionsSupported, open, state, startCaptions, stopCaptions]);
+
+  // Held after the user stops talking so their last sentence stays readable
+  // while Diapason answers, instead of blinking out mid-thought.
+  useEffect(() => {
+    if (heard) setCaption(heard);
+  }, [heard]);
+  useEffect(() => {
+    if (!active) setCaption('');
+  }, [active]);
+
+  // Readouts, kept deliberately few: the loudness driving the relief, and how
+  // long the session has been open. Both are measured, never decorative.
+  const [level, setLevel] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      startedAt.current = null;
+      setElapsed(0);
+      return;
+    }
+    startedAt.current ??= Date.now();
+    const timer = window.setInterval(() => {
+      if (startedAt.current) {
+        setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
 
   if (!open) return null;
 
-  const active = state === 'listening' || state === 'speaking' || state === 'connecting';
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -129,38 +181,96 @@ export function TalkOrb({
               if (active) onInterrupt();
               else void onStart();
             }}
-            className="relative w-full cursor-pointer"
+            className="relative w-full cursor-pointer overflow-hidden"
             style={{
-              // The orb is a volumetric presence, not a banner waveform. The
-              // extra vertical room lets its rear crown and lower gold veil
-              // remain visible without moving any conversation controls.
-              height: 'clamp(330px, 45vh, 390px)',
-              background: 'none',
+              // The summit needs headroom: too flat a frame and a loud syllable
+              // throws the spire straight off the top edge.
+              height: 'clamp(340px, 50vh, 440px)',
+              // Deliberately dark in BOTH themes, like a video player: the
+              // luminous relief and its survey grid are additive light and
+              // would vanish on a pale surface. Not #000 but the palette's
+              // deep blue, so the stage belongs to the product rather than
+              // punching a raw black hole through a light interface.
+              background: 'var(--color-stage, #05070d)',
               border: 'none',
+              borderRadius: 8,
               padding: 0,
             }}
             title={active ? t('chat.talk.interruptHint') : t('chat.talk.startHint')}
           >
+            {/* Survey grid: a faint horizon behind the relief, so the massif
+                reads as standing on something. */}
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage:
+                  'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),' +
+                  'linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                backgroundSize: '48px 48px',
+                maskImage: 'radial-gradient(ellipse at 50% 60%, #000 30%, transparent 78%)',
+                WebkitMaskImage:
+                  'radial-gradient(ellipse at 50% 60%, #000 30%, transparent 78%)',
+              }}
+            />
+
             {/* No fallback: an empty box for a few hundred milliseconds reads
                 as loading, a placeholder shape reads as a glitch. */}
             <Suspense fallback={null}>
-              <DiapasonOrb
+              <VoiceTerrain
                 state={entityState(state)}
                 // Dimmer when there is nothing to say: present, not performing.
-                intensity={active ? 1 : 0.92}
+                intensity={active ? 1 : 0.9}
                 audioSource={audioSource}
                 micSource={micSource}
+                onLevel={setLevel}
                 style={{ position: 'absolute', inset: 0 }}
               />
             </Suspense>
+
+            <div
+              className="absolute inset-x-0 bottom-0 flex items-center justify-between px-3 py-2 pointer-events-none"
+              style={{
+                fontFamily: 'var(--font-hud)',
+                fontSize: 10,
+                letterSpacing: '0.14em',
+                color: 'var(--color-text-tertiary)',
+              }}
+            >
+              {/* The state already reads in the header, so it is not repeated
+                  here — these two are what the header cannot show. */}
+              <span>
+                {t('chat.talk.hudLevel')} {Math.round(level * 100).toString().padStart(2, '0')}
+              </span>
+              <span>
+                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:
+                {String(elapsed % 60).padStart(2, '0')}
+              </span>
+            </div>
           </button>
 
-          <p className="mt-3 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
-            {t('chat.talk.justSpeak')}
-          </p>
-          <p className="mt-1 text-sm text-center max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            {t('chat.talk.shortcuts')}
-          </p>
+          {caption ? (
+            <p
+              className="mt-3 text-lg font-medium text-center max-w-md talk-caption"
+              style={{
+                // Dimmed once the user has stopped: still legible, but plainly
+                // no longer the live line.
+                color: state === 'listening' ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              }}
+              aria-live="polite"
+            >
+              {caption}
+            </p>
+          ) : (
+            <>
+              <p className="mt-3 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
+                {t('chat.talk.justSpeak')}
+              </p>
+              <p className="mt-1 text-sm text-center max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                {t('chat.talk.shortcuts')}
+              </p>
+            </>
+          )}
 
           <div className="mt-4 flex items-center gap-2">
             <select

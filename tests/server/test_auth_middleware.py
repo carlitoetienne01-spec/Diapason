@@ -55,6 +55,18 @@ def _make_app(
     async def voice_health():
         return {"available": True}
 
+    @app.get("/v1/succes/projects")
+    async def succes_projects():
+        return {"projects": [], "count": 0}
+
+    @app.post("/v1/succes/sync/pair")
+    async def succes_sync_pair():
+        return {"ok": True}
+
+    @app.post("/v1/succes/sync/exchange")
+    async def succes_sync_exchange():
+        return {"ok": True}
+
     return app
 
 
@@ -129,6 +141,23 @@ class TestAuthMiddleware:
         assert client.get("/v1/voice/live/health", headers=headers).status_code == 200
         assert client.get("/v1/voice/live/health", headers=headers).status_code == 200
         assert client.get("/v1/voice/live/health").status_code == 401
+
+    def test_succes_routes_are_authenticated_but_not_rate_limited(self):
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=1, burst_size=1)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+
+        # Exhausting the shared bucket must not block local Succès CRUD.
+        assert client.get("/v1/models", headers=headers).status_code == 200
+        assert client.get("/v1/models", headers=headers).status_code == 429
+        assert client.get("/v1/succes/projects", headers=headers).status_code != 429
+        assert client.get("/v1/succes/projects").status_code == 401
+
+    def test_succes_sync_pair_and_exchange_skip_api_key(self, client):
+        assert client.post("/v1/succes/sync/pair").status_code == 200
+        assert client.post("/v1/succes/sync/exchange").status_code == 200
+        assert client.get("/v1/succes/projects").status_code == 401
 
 
 class TestLocalApiKeyProvisioning:

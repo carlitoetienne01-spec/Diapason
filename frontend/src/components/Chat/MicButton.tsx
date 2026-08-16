@@ -9,6 +9,8 @@ interface MicButtonProps {
   onPointerUp?: () => void;
   disabled?: boolean;
   reason?: 'not-enabled' | 'no-backend' | 'streaming';
+  /** Click-to-toggle dictation that writes into the composer as you speak. */
+  live?: boolean;
 }
 
 export function MicButton({
@@ -18,6 +20,7 @@ export function MicButton({
   onPointerUp,
   disabled,
   reason,
+  live,
 }: MicButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const holdMode = Boolean(onPointerDown && onPointerUp);
@@ -30,14 +33,18 @@ export function MicButton({
         : reason === 'streaming'
           ? 'Wait for response'
           : state === 'recording'
-            ? holdMode
-              ? 'Release to stop'
-              : 'Stop recording'
+            ? live
+              ? 'Listening — click to stop'
+              : holdMode
+                ? 'Release to stop'
+                : 'Stop recording'
             : state === 'transcribing'
               ? 'Transcribing...'
-              : holdMode
-                ? 'Hold to talk'
-                : 'Voice input';
+              : live
+                ? 'Dictate — your words appear as you speak'
+                : holdMode
+                  ? 'Hold to talk'
+                  : 'Voice input';
 
   const isInactive = disabled || state === 'transcribing';
 

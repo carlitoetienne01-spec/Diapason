@@ -34,6 +34,7 @@ import {
 import type { AgentTask, ChannelBinding, AgentTemplate, ManagedAgent, LearningLogEntry, AgentTrace, AgentTraceDetail, ToolInfo } from '../lib/api';
 import { useAgentEvents } from '../lib/useAgentEvents';
 import type { AgentEvent } from '../lib/useAgentEvents';
+import { useConfirm } from '../components/ConfirmDialog';
 import {
   Plus,
   Bot,
@@ -3520,6 +3521,7 @@ function LogsTab({ agentId }: { agentId: string }) {
 // ---------------------------------------------------------------------------
 
 export function AgentsPage() {
+  const confirm = useConfirm();
   const { t } = useTranslation();
   const managedAgents = useAppStore((s) => s.managedAgents);
   const setManagedAgents = useAppStore((s) => s.setManagedAgents);
@@ -3574,6 +3576,15 @@ export function AgentsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    const agent = managedAgents.find((item) => item.id === id);
+    const confirmed = await confirm({
+      title: t('agents.deleteTitle'),
+      description: t('agents.deleteConfirm', { name: agent?.name || id }),
+      confirmLabel: t('common.delete'),
+      keepLabel: 'Garder',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await deleteManagedAgent(id).catch(() => {});
     if (selectedAgentId === id) setSelectedAgentId(null);
     await refresh();
@@ -3749,13 +3760,7 @@ export function AgentsPage() {
               </button>
             )}
             <button
-              onClick={async () => {
-                if (window.confirm(t('agents.deleteConfirm', { name: selectedAgent.name }))) {
-                  await deleteManagedAgent(selectedAgent.id);
-                  setSelectedAgentId(null);
-                  await refresh();
-                }
-              }}
+              onClick={() => void handleDelete(selectedAgent.id)}
               className="p-1.5 rounded-lg cursor-pointer transition-colors"
               style={{ color: 'var(--color-error)', background: 'var(--color-error)15' }}
               title={t('agents.deleteTitle')}

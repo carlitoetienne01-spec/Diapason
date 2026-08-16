@@ -7,6 +7,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
 import { initApiBase } from './lib/api';
 import { initAnalytics } from './lib/analytics';
+import '@fontsource/press-start-2p';
+import '@fontsource/vt323';
 import './index.css';
 
 function applyTheme() {
@@ -20,6 +22,21 @@ function applyTheme() {
     } else if (theme === 'light') {
       document.documentElement.classList.add('light');
       document.documentElement.classList.remove('dark');
+    } else if (theme === 'terminal') {
+      // Ardéchine is a reflective screen: dark ink on a pale panel, so it rides
+      // with `.light`. Kept in sync with `isLightTerminalSkin` in the store —
+      // duplicated rather than imported because this runs before any module
+      // graph is loaded, to avoid a flash of the wrong palette.
+      const skin = settings.terminalSkin || 'phosphor';
+      const light = skin === 'ardechine';
+      document.documentElement.classList.add(light ? 'light' : 'dark', 'terminal');
+      document.documentElement.classList.remove(light ? 'dark' : 'light');
+      document.documentElement.dataset.terminalSkin = skin;
+    }
+    // Applied before first paint so the UI never flashes at the wrong scale.
+    const fontSize = settings.fontSize;
+    if (fontSize === 'small' || fontSize === 'large') {
+      document.documentElement.dataset.fontSize = fontSize;
     }
   } catch { /* use system default */ }
 }

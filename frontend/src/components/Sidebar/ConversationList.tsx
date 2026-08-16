@@ -11,6 +11,7 @@ import {
 import { useNavigate } from 'react-router';
 import type { Conversation } from '../../types';
 import { useAppStore } from '../../lib/store';
+import { useConfirm } from '../ConfirmDialog';
 import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
@@ -77,6 +78,7 @@ interface MenuState {
 
 export function ConversationList({ searchQuery }: Props) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const conversations = useAppStore((s) => s.conversations);
   const activeId = useAppStore((s) => s.activeId);
@@ -87,15 +89,12 @@ export function ConversationList({ searchQuery }: Props) {
   const duplicateConversation = useAppStore((s) => s.duplicateConversation);
 
   const [menu, setMenu] = useState<MenuState | null>(null);
-  // Delete asks to be clicked twice; this holds the id of the pending one.
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = () => {
     setMenu(null);
-    setConfirmingDelete(null);
   };
 
   useEffect(() => {
@@ -122,7 +121,6 @@ export function ConversationList({ searchQuery }: Props) {
   const displayTitle = (conv: Conversation) => conv.title || t('sidebar.untitled');
 
   const openMenuAt = (convId: string, x: number, y: number) => {
-    setConfirmingDelete(null);
     // Keep the menu on screen when the row sits near the bottom edge.
     setMenu({ convId, x, y: Math.min(y, window.innerHeight - 190) });
   };
@@ -352,18 +350,22 @@ export function ConversationList({ searchQuery }: Props) {
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               onClick={() => {
-                if (confirmingDelete === menuConv.id) {
+                void (async () => {
+                  const confirmed = await confirm({
+                    title: t('sidebar.deleteConversation'),
+                    description: t('sidebar.confirmDelete'),
+                    confirmLabel: t('common.delete'),
+                    keepLabel: 'Garder',
+                    tone: 'danger',
+                  });
+                  if (!confirmed) return;
                   deleteConversation(menuConv.id);
                   closeMenu();
-                } else {
-                  setConfirmingDelete(menuConv.id);
-                }
+                })();
               }}
             >
               <Trash2 size={14} />
-              {confirmingDelete === menuConv.id
-                ? t('sidebar.confirmDelete')
-                : t('sidebar.deleteConversation')}
+              {t('sidebar.deleteConversation')}
             </button>
           </div>,
           document.body,

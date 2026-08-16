@@ -64,12 +64,40 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     updated_at_ms INTEGER NOT NULL,
-    deleted_at_ms INTEGER
+    deleted_at_ms INTEGER,
+    page_format TEXT NOT NULL DEFAULT 'a4',
+    page_background TEXT NOT NULL DEFAULT 'default',
+    font_family TEXT NOT NULL DEFAULT 'Special Elite',
+    doc_lang TEXT NOT NULL DEFAULT 'fr',
+    color TEXT NOT NULL DEFAULT '#6366f1'
 );
 CREATE INDEX IF NOT EXISTS succes_notes_active_idx
     ON succes_notes(deleted_at_ms, updated_at_ms DESC);
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 """
+
+NOTE_PAGE_FORMATS = frozenset(
+    {"a4", "letter", "a5", "wide", "narrow", "full", "reading"}
+)
+NOTE_PAGE_BACKGROUNDS = frozenset({"default", "lined", "grid", "sepia", "dark"})
+NOTE_DOC_LANGS = frozenset({"fr", "ht"})
+NOTE_FONTS = frozenset(
+    {
+        "Press Start 2P",
+        "VT323",
+        "Special Elite",
+        "Inter",
+        "Poppins",
+        "Roboto",
+        "Lato",
+        "Open Sans",
+        "Merriweather",
+        "Montserrat",
+        "Source Serif 4",
+        "Nunito",
+        "Playfair Display",
+    }
+)
 
 
 def _color(value: Any) -> str:
@@ -117,8 +145,38 @@ class SuccesWorkspaceStore(SuccesStore):
         super().__init__(db_path)
         with self._connect() as conn:
             conn.executescript(_WORKSPACE_SCHEMA)
+            self._ensure_note_columns(conn)
+            self._ensure_habit_columns(conn)
             conn.commit()
         self.materialize_archived_snapshots()
+
+    @staticmethod
+    def _ensure_note_columns(conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(succes_notes)").fetchall()
+        }
+        additions = (
+            ("page_format", "TEXT NOT NULL DEFAULT 'a4'"),
+            ("page_background", "TEXT NOT NULL DEFAULT 'default'"),
+            ("font_family", "TEXT NOT NULL DEFAULT 'Special Elite'"),
+            ("doc_lang", "TEXT NOT NULL DEFAULT 'fr'"),
+            ("color", "TEXT NOT NULL DEFAULT '#6366f1'"),
+        )
+        for name, declaration in additions:
+            if name not in columns:
+                conn.execute(f"ALTER TABLE succes_notes ADD COLUMN {name} {declaration}")
+
+    @staticmethod
+    def _ensure_habit_columns(conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(succes_habits)").fetchall()
+        }
+        if "reminder_time" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_habits ADD COLUMN reminder_time TEXT NOT NULL DEFAULT ''"
+            )
 
     def _replayed_entity(
         self,
@@ -373,7 +431,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "weeklyDays": json.loads(row["weekly_days_json"]),
             "monthWeekSlots": json.loads(row["month_week_slots_json"]),
             "monthWeekDay": row["month_week_day"],
-            "reminderTime": row["reminder_time"],
+            "reminderTime": row["reminder_time"] if "reminder_time" in row.keys() else "",
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
         }
@@ -592,6 +650,35 @@ class SuccesWorkspaceStore(SuccesStore):
             )
         return self.get_habit(habit_id)
 
+    def list_habit_logs(
+        self,
+        *,
+        from_date: str,
+        to_date: str,
+        habit_id: str | None = None,
+    ) -> dict[str, bool]:
+        """Return done=true logs keyed as ``habitId_YYYY-MM-DD`` for a date span."""
+        start = _validate_iso_date(from_date, "La date de début")
+        end = _validate_iso_date(to_date, "La date de fin")
+        if not start or not end:
+            raise SuccesError("Indiquez une plage de dates complète.")
+        if end < start:
+            raise SuccesError("La date de fin doit suivre la date de début.")
+        # Bound the window so a bad client cannot pull the entire history at once.
+        if (date.fromisoformat(end) - date.fromisoformat(start)).days > 400:
+            raise SuccesError("La plage de suivi ne peut pas dépasser 400 jours.")
+        query = """SELECT habit_id, log_date FROM succes_habit_logs
+                   WHERE done=1 AND log_date>=? AND log_date<=?"""
+        params: list[Any] = [start, end]
+        if habit_id:
+            query += " AND habit_id=?"
+            params.append(habit_id)
+        with self._connect() as conn:
+            if habit_id and self._load_habit(conn, habit_id) is None:
+                raise SuccesNotFound("Cette habitude n'existe pas ou a été supprimée.")
+            rows = conn.execute(query, params).fetchall()
+        return {f"{row['habit_id']}_{row['log_date']}": True for row in rows}
+
     def set_habit_done(
         self,
         habit_id: str,
@@ -671,6 +758,7 @@ class SuccesWorkspaceStore(SuccesStore):
 
     @staticmethod
     def _note_dict(row: sqlite3.Row) -> dict[str, Any]:
+        keys = set(row.keys())
         return {
             "id": row["id"],
             "title": row["title"],
@@ -679,6 +767,15 @@ class SuccesWorkspaceStore(SuccesStore):
             "updatedAt": row["updated_at"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
+            "pageFormat": row["page_format"] if "page_format" in keys else "a4",
+            "pageBackground": (
+                row["page_background"] if "page_background" in keys else "default"
+            ),
+            "fontFamily": (
+                row["font_family"] if "font_family" in keys else "Special Elite"
+            ),
+            "docLang": row["doc_lang"] if "doc_lang" in keys else "fr",
+            "color": row["color"] if "color" in keys else "#6366f1",
         }
 
     def _load_note(
@@ -709,7 +806,29 @@ class SuccesWorkspaceStore(SuccesStore):
         return [self._note_dict(row) for row in rows]
 
     @staticmethod
-    def _note_fields(data: Mapping[str, Any]) -> tuple[str, str]:
+    def _note_meta(data: Mapping[str, Any]) -> dict[str, str]:
+        page_format = str(data.get("pageFormat") or "a4").strip().lower()
+        if page_format not in NOTE_PAGE_FORMATS:
+            raise SuccesError("Le format de page de la note est invalide.")
+        page_background = str(data.get("pageBackground") or "default").strip().lower()
+        if page_background not in NOTE_PAGE_BACKGROUNDS:
+            raise SuccesError("Le fond de page de la note est invalide.")
+        font_family = str(data.get("fontFamily") or "Special Elite").strip()
+        if font_family not in NOTE_FONTS:
+            raise SuccesError("La police de la note est invalide.")
+        doc_lang = str(data.get("docLang") or "fr").strip().lower()
+        if doc_lang not in NOTE_DOC_LANGS:
+            raise SuccesError("La langue du document doit être fr ou ht.")
+        return {
+            "pageFormat": page_format,
+            "pageBackground": page_background,
+            "fontFamily": font_family,
+            "docLang": doc_lang,
+            "color": _color(data.get("color")),
+        }
+
+    @classmethod
+    def _note_fields(cls, data: Mapping[str, Any]) -> tuple[str, str, dict[str, str]]:
         title = _clean_text(
             data.get("title"), field="Le titre de la note", maximum=200, required=True
         )
@@ -718,13 +837,18 @@ class SuccesWorkspaceStore(SuccesStore):
             raise SuccesError(
                 "Le contenu de la note ne peut pas dépasser 100 000 caractères."
             )
-        return title, content
+        return title, content, cls._note_meta(data)
 
     def create_note(
         self, data: Mapping[str, Any], *, op_id: str | None = None
     ) -> dict[str, Any]:
-        title, content = self._note_fields(data)
-        request = {"action": "create_note", "title": title, "content": content}
+        title, content, meta = self._note_fields(data)
+        request = {
+            "action": "create_note",
+            "title": title,
+            "content": content,
+            **meta,
+        }
         note_id = str(data.get("id") or uuid.uuid4())
         timestamp = _safe_timestamp(data.get("updatedAtMs"))
         iso_time = str(data.get("updatedAt") or date.today().isoformat())
@@ -734,8 +858,9 @@ class SuccesWorkspaceStore(SuccesStore):
                 return replay
             conn.execute(
                 """INSERT INTO succes_notes
-                   (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms)
-                   VALUES (?,?,?,?,?,?,NULL)""",
+                   (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
+                    page_format,page_background,font_family,doc_lang,color)
+                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?)""",
                 (
                     note_id,
                     title,
@@ -743,6 +868,11 @@ class SuccesWorkspaceStore(SuccesStore):
                     str(data.get("createdAt") or date.today().isoformat()),
                     iso_time,
                     timestamp,
+                    meta["pageFormat"],
+                    meta["pageBackground"],
+                    meta["fontFamily"],
+                    meta["docLang"],
+                    meta["color"],
                 ),
             )
             note = self._load_note(conn, note_id)
@@ -763,7 +893,7 @@ class SuccesWorkspaceStore(SuccesStore):
         self, note_id: str, patch: Mapping[str, Any], *, op_id: str | None = None
     ) -> dict[str, Any]:
         current = self.get_note(note_id)
-        title, content = self._note_fields({**current, **patch})
+        title, content, meta = self._note_fields({**current, **patch})
         request = {"action": "update_note", "noteId": note_id, "patch": dict(patch)}
         timestamp = now_ms()
         iso_time = date.today().isoformat()
@@ -775,8 +905,20 @@ class SuccesWorkspaceStore(SuccesStore):
                 raise SuccesNotFound("Cette note n'existe pas ou a été supprimée.")
             conn.execute(
                 """UPDATE succes_notes SET title=?,content=?,updated_at=?,
-                   updated_at_ms=? WHERE id=?""",
-                (title, content, iso_time, timestamp, note_id),
+                   updated_at_ms=?,page_format=?,page_background=?,font_family=?,
+                   doc_lang=?,color=? WHERE id=?""",
+                (
+                    title,
+                    content,
+                    iso_time,
+                    timestamp,
+                    meta["pageFormat"],
+                    meta["pageBackground"],
+                    meta["fontFamily"],
+                    meta["docLang"],
+                    meta["color"],
+                    note_id,
+                ),
             )
             note = self._load_note(conn, note_id)
             assert note is not None
@@ -935,16 +1077,21 @@ class SuccesWorkspaceStore(SuccesStore):
                 if current and current["updated_at_ms"] >= timestamp:
                     continue
                 try:
-                    title, content = self._note_fields(raw)
+                    title, content, meta = self._note_fields(raw)
                 except SuccesError:
                     continue
                 conn.execute(
                     """INSERT INTO succes_notes
-                       (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms)
-                       VALUES (?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET
+                       (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
+                        page_format,page_background,font_family,doc_lang,color)
+                       VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                        title=excluded.title,content=excluded.content,
                        created_at=excluded.created_at,updated_at=excluded.updated_at,
-                       updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
+                       updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
+                       page_format=excluded.page_format,
+                       page_background=excluded.page_background,
+                       font_family=excluded.font_family,doc_lang=excluded.doc_lang,
+                       color=excluded.color""",
                     (
                         note_id,
                         title,
@@ -952,6 +1099,11 @@ class SuccesWorkspaceStore(SuccesStore):
                         str(raw.get("createdAt") or ""),
                         str(raw.get("updatedAt") or ""),
                         timestamp,
+                        meta["pageFormat"],
+                        meta["pageBackground"],
+                        meta["fontFamily"],
+                        meta["docLang"],
+                        meta["color"],
                     ),
                 )
                 summary["notesImported"] += 1
@@ -998,4 +1150,11 @@ class SuccesWorkspaceStore(SuccesStore):
         return summary
 
 
-__all__ = ["HABIT_FREQUENCIES", "SuccesWorkspaceStore"]
+__all__ = [
+    "HABIT_FREQUENCIES",
+    "NOTE_DOC_LANGS",
+    "NOTE_FONTS",
+    "NOTE_PAGE_BACKGROUNDS",
+    "NOTE_PAGE_FORMATS",
+    "SuccesWorkspaceStore",
+]

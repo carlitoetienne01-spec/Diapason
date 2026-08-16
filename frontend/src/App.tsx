@@ -1,16 +1,18 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
-import { useAppStore } from './lib/store';
+import { useAppStore, isLightTerminalSkin } from './lib/store';
 import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } from './lib/api';
 import { OptInModal } from './components/OptInModal';
+import { ConfirmProvider } from './components/ConfirmDialog';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
+import { startHabitReminderScheduler } from './features/succes/habitReminders';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -33,6 +35,9 @@ const LogsPage = lazy(() =>
 const SuccesPlannerPage = lazy(() =>
   import('./pages/SuccesPlannerPage').then((module) => ({ default: module.SuccesPlannerPage })),
 );
+const SuccesDashboardPage = lazy(() =>
+  import('./pages/SuccesDashboardPage').then((module) => ({ default: module.SuccesDashboardPage })),
+);
 const SuccesTasksPage = lazy(() =>
   import('./pages/SuccesTasksPage').then((module) => ({ default: module.SuccesTasksPage })),
 );
@@ -44,9 +49,6 @@ const SuccesHabitsPage = lazy(() =>
 );
 const SuccesNotesPage = lazy(() =>
   import('./pages/SuccesNotesPage').then((module) => ({ default: module.SuccesNotesPage })),
-);
-const SuccesTemplatesPage = lazy(() =>
-  import('./pages/SuccesTemplatesPage').then((module) => ({ default: module.SuccesTemplatesPage })),
 );
 const SuccesYearReviewPage = lazy(() =>
   import('./pages/SuccesYearReviewPage').then((module) => ({ default: module.SuccesYearReviewPage })),
@@ -86,13 +88,32 @@ export default function App() {
   const markOptInModalSeen = useAppStore((s) => s.markOptInModalSeen);
   const savings = useAppStore((s) => s.savings);
 
-  // Apply theme class to <html>
+  // Apply theme class to <html>. Terminal rides on top of `dark` so every
+  // `dark:` variant still resolves; its own class only re-skins the tokens.
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.remove('dark', 'light');
+    root.classList.remove('dark', 'light', 'terminal');
     if (settings.theme === 'dark') root.classList.add('dark');
     else if (settings.theme === 'light') root.classList.add('light');
-  }, [settings.theme]);
+    else if (settings.theme === 'terminal') {
+      const skin = settings.terminalSkin ?? 'phosphor';
+      // The companion class decides which way every `dark:` utility resolves,
+      // so a reflective screen has to travel with `.light` or Tailwind would
+      // paint dark surfaces over a pale panel.
+      root.classList.add(isLightTerminalSkin(skin) ? 'light' : 'dark', 'terminal');
+      root.dataset.terminalSkin = skin;
+    }
+    if (settings.theme !== 'terminal') delete root.dataset.terminalSkin;
+  }, [settings.theme, settings.terminalSkin]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (settings.fontSize === 'small' || settings.fontSize === 'large') {
+      root.dataset.fontSize = settings.fontSize;
+    } else {
+      delete root.dataset.fontSize;
+    }
+  }, [settings.fontSize]);
 
   // Sync overlay conversations into the main app
   const importOverlay = useAppStore((s) => s.importOverlayConversation);
@@ -195,6 +216,12 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Succès habit OS reminders (desktop only; in-process timers + Tauri notify).
+  useEffect(() => {
+    if (!setupDone || !isTauri()) return;
+    startHabitReminderScheduler();
+  }, [setupDone]);
+
   const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
 
   // Global keyboard shortcuts
@@ -219,7 +246,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <ConfirmProvider>
       <UpdateChecker />
       <Suspense fallback={<div role="status" className="p-6">Chargement…</div>}>
         <Routes>
@@ -232,11 +259,12 @@ export default function App() {
             <Route path="agents" element={<AgentsPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="succes/planner" element={<SuccesPlannerPage />} />
+            <Route path="succes/dashboard" element={<SuccesDashboardPage />} />
             <Route path="succes/tasks" element={<SuccesTasksPage />} />
             <Route path="succes/projects" element={<SuccesProjectsPage />} />
             <Route path="succes/habits" element={<SuccesHabitsPage />} />
             <Route path="succes/notes" element={<SuccesNotesPage />} />
-            <Route path="succes/templates" element={<SuccesTemplatesPage />} />
+            <Route path="succes/templates" element={<Navigate to="/succes/tasks" replace />} />
             <Route path="succes/year-review" element={<SuccesYearReviewPage />} />
             <Route path="succes/sync" element={<SuccesSyncPage />} />
           </Route>
@@ -248,6 +276,6 @@ export default function App() {
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />
       )}
-    </>
+    </ConfirmProvider>
   );
 }

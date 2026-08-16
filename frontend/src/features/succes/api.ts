@@ -9,6 +9,7 @@ import type {
   SuccesPriority,
   SuccesProject,
   SuccesQuote,
+  SuccesSyncRunResult,
   SuccesSyncStatus,
   SuccesTask,
   SuccesTemplate,
@@ -25,28 +26,60 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...((init.headers as Record<string, string> | undefined) ?? {}),
     },
   };
-  let response = await apiFetch(path, requestInit);
-  if (response.status === 429) {
-    const retrySeconds = Number(response.headers.get('Retry-After') || 1);
-    const delay = Math.min(1500, Math.max(250, retrySeconds * 1000));
-    await new Promise((resolve) => window.setTimeout(resolve, delay));
-    response = await apiFetch(path, requestInit);
-  }
-  if (!response.ok) {
-    let message = `Erreur Succès (${response.status})`;
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let response: Response;
     try {
-      const payload = await response.json();
-      const detail = payload?.detail;
-      message =
-        typeof detail === 'string'
-          ? detail
-          : detail?.message || message;
-    } catch {
-      // Keep the stable user-facing fallback; technical details stay in logs.
+      response = await apiFetch(path, requestInit);
+    } catch (error) {
+      lastError = error;
+      // WebKit reports aborted/network races as "Load failed".
+      if (attempt < 3) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        continue;
+      }
+      const raw = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        /load failed|failed to fetch|networkerror/i.test(raw)
+          ? 'Connexion locale interrompue. Réessayez.'
+          : /did not match the expected pattern|invalid url|failed to construct/i.test(raw)
+            ? "L'URL de l'API est invalide. Vérifiez Réglages → Connexion → URL de l'API."
+            : raw || 'Connexion locale impossible.',
+      );
     }
-    throw new Error(message);
+
+    if (response.status === 429) {
+      const retrySeconds = Number(response.headers.get('Retry-After') || attempt + 1);
+      const delay = Math.min(2500, Math.max(300, retrySeconds * 1000));
+      if (attempt < 3) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+        continue;
+      }
+      throw new Error('Trop de requêtes. Réessayez dans un instant.');
+    }
+
+    if (!response.ok) {
+      let message = `Erreur Succès (${response.status})`;
+      try {
+        const payload = await response.json();
+        const detail = payload?.detail;
+        message =
+          typeof detail === 'string'
+            ? detail
+            : detail?.message || message;
+      } catch {
+        // Keep the stable user-facing fallback; technical details stay in logs.
+      }
+      throw new Error(message);
+    }
+
+    return response.json() as Promise<T>;
   }
-  return response.json() as Promise<T>;
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Connexion locale impossible.');
 }
 
 export async function listSuccesTasks(options: {
@@ -68,6 +101,9 @@ export async function createSuccesTask(input: {
   time?: string;
   priority?: SuccesPriority;
   notes?: string;
+  projectId?: string;
+  category?: string;
+  emoji?: string;
 }): Promise<SuccesTask> {
   const payload = await request<{ task: SuccesTask }>('/v1/succes/tasks', {
     method: 'POST',
@@ -78,7 +114,9 @@ export async function createSuccesTask(input: {
 
 export async function updateSuccesTask(
   taskId: string,
-  patch: Partial<Pick<SuccesTask, 'title' | 'date' | 'time' | 'priority' | 'notes'>>,
+  patch: Partial<
+    Pick<SuccesTask, 'title' | 'date' | 'time' | 'priority' | 'notes' | 'projectId' | 'category' | 'emoji'>
+  >,
 ): Promise<SuccesTask> {
   const payload = await request<{ task: SuccesTask }>(
     `/v1/succes/tasks/${encodeURIComponent(taskId)}`,
@@ -93,6 +131,26 @@ export async function setSuccesTaskDone(taskId: string, done: boolean): Promise<
     { method: 'POST', body: JSON.stringify({ done }) },
   );
   return payload.task;
+}
+
+export async function rescheduleSuccesTask(
+  taskId: string,
+  date: string,
+): Promise<{ task: SuccesTask; warning: string | null }> {
+  return request(`/v1/succes/tasks/${encodeURIComponent(taskId)}/reschedule`, {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
+}
+
+export async function rescheduleSuccesSeries(
+  taskId: string,
+  date: string,
+): Promise<{ templateId: string; deltaDays: number; updated: number }> {
+  return request(`/v1/succes/tasks/${encodeURIComponent(taskId)}/reschedule-series`, {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
 }
 
 export async function addSuccesSubtask(
@@ -115,6 +173,17 @@ export async function setSuccesSubtaskDone(
   const payload = await request<{ task: SuccesTask }>(
     `/v1/succes/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/done`,
     { method: 'POST', body: JSON.stringify({ done }) },
+  );
+  return payload.task;
+}
+
+export async function deleteSuccesSubtask(
+  taskId: string,
+  subtaskId: string,
+): Promise<SuccesTask> {
+  const payload = await request<{ task: SuccesTask }>(
+    `/v1/succes/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}`,
+    { method: 'DELETE', body: JSON.stringify({ confirmed: true }) },
   );
   return payload.task;
 }
@@ -145,6 +214,36 @@ export async function revokeSuccesPeer(peerId: string): Promise<void> {
   await request(`/v1/succes/sync/peers/${encodeURIComponent(peerId)}`, {
     method: 'DELETE',
   });
+}
+
+export function setSuccesSyncRelay(url: string): Promise<SuccesSyncStatus> {
+  return request('/v1/succes/sync/relay', {
+    method: 'PUT',
+    body: JSON.stringify({ url }),
+  });
+}
+
+export function clearSuccesSyncRelay(): Promise<SuccesSyncStatus> {
+  return request('/v1/succes/sync/relay', { method: 'DELETE' });
+}
+
+export function joinSuccesSync(input: {
+  pairingToken: string;
+  relayUrl?: string;
+  deviceName?: string;
+}): Promise<SuccesSyncStatus> {
+  return request('/v1/succes/sync/join', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function runSuccesSync(): Promise<SuccesSyncRunResult> {
+  return request('/v1/succes/sync/run', { method: 'POST' });
+}
+
+export function clearSuccesSyncGuest(): Promise<SuccesSyncStatus> {
+  return request('/v1/succes/sync/guest', { method: 'DELETE' });
 }
 
 export async function importLegacySuccesSnapshot(snapshot: unknown): Promise<{
@@ -211,6 +310,19 @@ export async function listSuccesHabits(date: string): Promise<SuccesHabit[]> {
   return payload.habits;
 }
 
+export async function fetchSuccesHabitLogs(
+  from: string,
+  to: string,
+  habitId?: string,
+): Promise<Record<string, boolean>> {
+  const params = new URLSearchParams({ from, to });
+  if (habitId) params.set('habitId', habitId);
+  const payload = await request<{ logs: Record<string, boolean> }>(
+    `/v1/succes/habits/logs?${params.toString()}`,
+  );
+  return payload.logs;
+}
+
 export async function createSuccesHabit(input: {
   name: string;
   icon?: string;
@@ -270,6 +382,11 @@ export async function listSuccesNotes(search = ''): Promise<SuccesNote[]> {
 export async function createSuccesNote(input: {
   title: string;
   content?: string;
+  pageFormat?: SuccesNote['pageFormat'];
+  pageBackground?: SuccesNote['pageBackground'];
+  fontFamily?: string;
+  docLang?: SuccesNote['docLang'];
+  color?: string;
 }): Promise<SuccesNote> {
   const payload = await request<{ note: SuccesNote }>('/v1/succes/notes', {
     method: 'POST',
@@ -280,7 +397,18 @@ export async function createSuccesNote(input: {
 
 export async function updateSuccesNote(
   noteId: string,
-  patch: Partial<Pick<SuccesNote, 'title' | 'content'>>,
+  patch: Partial<
+    Pick<
+      SuccesNote,
+      | 'title'
+      | 'content'
+      | 'pageFormat'
+      | 'pageBackground'
+      | 'fontFamily'
+      | 'docLang'
+      | 'color'
+    >
+  >,
 ): Promise<SuccesNote> {
   const payload = await request<{ note: SuccesNote }>(
     `/v1/succes/notes/${encodeURIComponent(noteId)}`,

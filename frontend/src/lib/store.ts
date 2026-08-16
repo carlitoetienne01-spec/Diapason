@@ -38,6 +38,7 @@ const OPTIN_NAME_KEY = 'diapason-display-name';
 const OPTIN_EMAIL_KEY = 'diapason-email';
 const OPTIN_ANONID_KEY = 'diapason-anon-id';
 const OPTIN_SEEN_KEY = 'diapason-optin-seen';
+const SYSTEM_PANEL_KEY = 'diapason-system-panel-open';
 
 interface ConversationStore {
   version: 1;
@@ -47,6 +48,24 @@ interface ConversationStore {
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/** Absent on a fresh install, so the panel opens by default and stays shut only
+ * once the user has actually shut it. */
+function loadSystemPanelOpen(): boolean {
+  try {
+    return localStorage.getItem(SYSTEM_PANEL_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function saveSystemPanelOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SYSTEM_PANEL_KEY, open ? 'true' : 'false');
+  } catch {
+    /* private mode or quota: the panel simply won't be remembered */
+  }
 }
 
 function loadConversations(): ConversationStore {
@@ -65,10 +84,31 @@ function saveConversations(store: ConversationStore): void {
   localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
 }
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark' | 'system' | 'terminal';
+
+/**
+ * Screen types within the terminal theme. They swap the palette only — the
+ * pixel type, square corners and panel grammar are the theme's, not the
+ * screen's. `ardechine` is the odd one: a reflective LCD, so it is the single
+ * light member of the family and is applied alongside `.light`.
+ */
+export type TerminalSkin = 'phosphor' | 'ardechine' | 'oxblood' | 'sage';
+
+export const TERMINAL_SKINS: TerminalSkin[] = [
+  'phosphor',
+  'ardechine',
+  'oxblood',
+  'sage',
+];
+
+/** The one screen that is dark ink on a pale panel rather than light on black. */
+export function isLightTerminalSkin(skin: TerminalSkin): boolean {
+  return skin === 'ardechine';
+}
 
 interface Settings {
   theme: ThemeMode;
+  terminalSkin: TerminalSkin;
   apiUrl: string;
   // Local server API key (DIAPASON_API_KEY). Sent as a Bearer token on
   // /v1 + /api requests so a key-protected `diapason serve` doesn't 401 the
@@ -85,6 +125,7 @@ interface Settings {
 function loadSettings(): Settings {
   const defaults: Settings = {
     theme: 'system',
+    terminalSkin: 'phosphor',
     apiUrl: '',
     apiKey: '',
     fontSize: 'default',
@@ -278,7 +319,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     commandPaletteOpen: false,
     sidebarOpen: true,
-    systemPanelOpen: true,
+    systemPanelOpen: loadSystemPanelOpen(),
 
     optInEnabled: localStorage.getItem(OPTIN_KEY) === 'true',
     optInDisplayName: localStorage.getItem(OPTIN_NAME_KEY) || '',
@@ -564,8 +605,16 @@ export const useAppStore = create<AppState>((set, get) => {
     setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),
     toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
     setSidebarOpen: (open: boolean) => set({ sidebarOpen: open }),
-    toggleSystemPanel: () => set((s) => ({ systemPanelOpen: !s.systemPanelOpen })),
-    setSystemPanelOpen: (open: boolean) => set({ systemPanelOpen: open }),
+    toggleSystemPanel: () =>
+      set((s) => {
+        const systemPanelOpen = !s.systemPanelOpen;
+        saveSystemPanelOpen(systemPanelOpen);
+        return { systemPanelOpen };
+      }),
+    setSystemPanelOpen: (open: boolean) => {
+      saveSystemPanelOpen(open);
+      set({ systemPanelOpen: open });
+    },
 
     // ── Agents ─────────────────────────────────────────────────────
 

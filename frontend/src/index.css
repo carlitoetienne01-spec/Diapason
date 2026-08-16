@@ -14,6 +14,11 @@
     --color-bg-secondary: #f4f4f5;
     --color-bg-tertiary: #e4e4e7;
     --color-surface: #ffffff;
+    /* The 3D voice stage. Dark in EVERY theme on purpose — additive light
+       (the relief, its grid) has nothing to show on a pale surface, exactly
+       like a video player's letterbox. Defined once here so the value is a
+       product decision rather than a hardcoded #000 in a component. */
+    --color-stage: #05070d;
     --color-sidebar: rgba(250, 250, 250, 0.85);
     --color-border: rgba(0, 0, 0, 0.08);
     --color-border-subtle: rgba(0, 0, 0, 0.04);
@@ -116,7 +121,7 @@
   }
 
   @media (prefers-color-scheme: dark) {
-    :root:not(.light) {
+    :root:not(.light):not(.terminal) {
       --color-bg: #0a0a0b;
       --color-bg-secondary: #121214;
       --color-bg-tertiary: #18181b;
@@ -164,6 +169,234 @@
     }
   }
 
+  /*
+   * Terminal: a CRT phosphor skin, applied alongside `.dark` so every `dark:`
+   * variant keeps resolving. It must outrank the system-preference block
+   * above, hence `:root.terminal` and this position in the cascade.
+   *
+   * Green carries the interface; amber, cyan and red stay as the three
+   * signal colours so warnings and errors are still legible at a glance.
+   */
+  :root.terminal {
+    --color-bg: #030703;
+    --color-bg-secondary: #071007;
+    --color-bg-tertiary: #0c180c;
+    --color-surface: #061006;
+    --color-sidebar: rgba(3, 8, 3, 0.9);
+    --color-border: rgba(122, 240, 70, 0.32);
+    --color-border-subtle: rgba(122, 240, 70, 0.15);
+
+    --color-text: #b6ff6a;
+    --color-text-secondary: #86e04a;
+    --color-text-tertiary: #55a132;
+    --color-text-inverse: #040804;
+
+    --color-accent: #7af046;
+    --color-accent-hover: #a8ff7a;
+    --color-accent-subtle: rgba(122, 240, 70, 0.14);
+    --color-accent-glow: rgba(122, 240, 70, 0.4);
+
+    --color-accent-amber: #ffc043;
+    --color-accent-amber-hover: #ffd57a;
+    --color-accent-amber-subtle: rgba(255, 192, 67, 0.14);
+    --color-accent-purple: #45e0d0;
+    --color-accent-purple-hover: #86f0e4;
+    --color-accent-purple-subtle: rgba(69, 224, 208, 0.14);
+    --color-accent-blue-subtle: rgba(69, 224, 208, 0.1);
+
+    --color-success: #57ff3d;
+    --color-warning: #ffc043;
+    --color-error: #ff5f52;
+
+    --color-code-bg: #040c04;
+    --color-input-bg: #040c04;
+    --color-input-border: rgba(122, 240, 70, 0.34);
+
+    --color-user-bubble: rgba(122, 240, 70, 0.16);
+    --color-user-bubble-text: #d2ffa8;
+    --color-on-accent: #041004;
+    --color-disabled-bg: #0c180c;
+
+    --shadow-sm: 0 0 0 1px rgba(122, 240, 70, 0.18);
+    --shadow-md: 0 0 0 1px rgba(122, 240, 70, 0.22), 0 0 18px -6px rgba(122, 240, 70, 0.4);
+    --shadow-lg: 0 0 0 1px rgba(122, 240, 70, 0.26), 0 0 34px -10px rgba(122, 240, 70, 0.5);
+
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 2px;
+    --radius-xl: 2px;
+
+    --font-display: 'Press Start 2P', ui-monospace, monospace;
+    --font-hud: 'VT323', 'SF Mono', ui-monospace, monospace;
+
+    color-scheme: dark;
+  }
+
+  /*
+   * Screen types. Each one repaints the palette and nothing else: the pixel
+   * type, square corners and panel grammar above belong to the theme and are
+   * shared by all four. The block above is Phosphore, the default.
+   */
+
+  /*
+   * Ardéchine — a reflective industrial LCD: dark ink on a warm grey panel,
+   * lit from outside rather than from within. The family's only light screen,
+   * and strictly monochrome: the panel has no colour to give, so success,
+   * warning and error all collapse onto the ink and are told apart by an
+   * inverted block instead (see the alert rules further down).
+   */
+  :root.terminal[data-terminal-skin='ardechine'] {
+    --color-bg: #beb3a1;
+    --color-bg-secondary: #b4a997;
+    --color-bg-tertiary: #aa9f8d;
+    --color-surface: #c5bbaa;
+    --color-sidebar: rgba(174, 163, 145, 0.94);
+    --color-border: rgba(20, 18, 14, 0.34);
+    --color-border-subtle: rgba(20, 18, 14, 0.16);
+
+    --color-text: #14120e;
+    --color-text-secondary: #3b362d;
+    --color-text-tertiary: #6c6456;
+    --color-text-inverse: #c5bbaa;
+
+    --color-accent: #14120e;
+    --color-accent-hover: #2e2921;
+    --color-accent-subtle: rgba(20, 18, 14, 0.12);
+    --color-accent-glow: rgba(20, 18, 14, 0.18);
+
+    --color-accent-amber: #14120e;
+    --color-accent-amber-hover: #2e2921;
+    --color-accent-amber-subtle: rgba(20, 18, 14, 0.1);
+    --color-accent-purple: #14120e;
+    --color-accent-purple-hover: #2e2921;
+    --color-accent-purple-subtle: rgba(20, 18, 14, 0.1);
+    --color-accent-blue-subtle: rgba(20, 18, 14, 0.08);
+
+    --color-success: #14120e;
+    --color-warning: #14120e;
+    --color-error: #14120e;
+
+    --color-code-bg: #b1a694;
+    --color-input-bg: #c7bdac;
+    --color-input-border: rgba(20, 18, 14, 0.38);
+
+    --color-user-bubble: rgba(20, 18, 14, 0.12);
+    --color-user-bubble-text: #14120e;
+    --color-on-accent: #c9bfae;
+    --color-disabled-bg: #b0a593;
+
+    /* No glow: nothing on a reflective panel emits light. */
+    --shadow-sm: 0 0 0 1px rgba(20, 18, 14, 0.22);
+    --shadow-md: 0 0 0 1px rgba(20, 18, 14, 0.28), 0 2px 6px -2px rgba(20, 18, 14, 0.3);
+    --shadow-lg: 0 0 0 1px rgba(20, 18, 14, 0.32), 0 6px 16px -6px rgba(20, 18, 14, 0.36);
+
+    color-scheme: light;
+  }
+
+  /*
+   * Oxblood — a dark red phosphor tube. Text is the pale rose the glass throws
+   * back rather than pure white, and the signal colours are pulled warm so
+   * nothing sits outside the tube's range.
+   */
+  :root.terminal[data-terminal-skin='oxblood'] {
+    --color-bg: #150a09;
+    --color-bg-secondary: #201110;
+    --color-bg-tertiary: #2c1a18;
+    --color-surface: #261211;
+    --color-sidebar: rgba(14, 7, 6, 0.92);
+    --color-border: rgba(193, 175, 165, 0.26);
+    --color-border-subtle: rgba(193, 175, 165, 0.12);
+
+    --color-text: #c1afa5;
+    --color-text-secondary: #9c8880;
+    --color-text-tertiary: #6f5b55;
+    --color-text-inverse: #150a09;
+
+    --color-accent: #cf5346;
+    --color-accent-hover: #e87a6d;
+    --color-accent-subtle: rgba(207, 83, 70, 0.16);
+    --color-accent-glow: rgba(207, 83, 70, 0.38);
+
+    --color-accent-amber: #d59a5a;
+    --color-accent-amber-hover: #ecb87c;
+    --color-accent-amber-subtle: rgba(213, 154, 90, 0.14);
+    --color-accent-purple: #b0737d;
+    --color-accent-purple-hover: #cb939c;
+    --color-accent-purple-subtle: rgba(176, 115, 125, 0.14);
+    --color-accent-blue-subtle: rgba(176, 115, 125, 0.1);
+
+    --color-success: #8fb07a;
+    --color-warning: #d59a5a;
+    --color-error: #ff6b5a;
+
+    --color-code-bg: #1b0e0d;
+    --color-input-bg: #1b0e0d;
+    --color-input-border: rgba(193, 175, 165, 0.3);
+
+    --color-user-bubble: rgba(207, 83, 70, 0.16);
+    --color-user-bubble-text: #e8d5cc;
+    --color-on-accent: #1a0c0b;
+    --color-disabled-bg: #2c1a18;
+
+    --shadow-sm: 0 0 0 1px rgba(193, 175, 165, 0.16);
+    --shadow-md: 0 0 0 1px rgba(193, 175, 165, 0.2), 0 0 18px -6px rgba(207, 83, 70, 0.38);
+    --shadow-lg: 0 0 0 1px rgba(193, 175, 165, 0.24), 0 0 34px -10px rgba(207, 83, 70, 0.46);
+
+    color-scheme: dark;
+  }
+
+  /*
+   * Sauge — the matte green of a backlit dot-matrix panel on true black. The
+   * green is deliberately desaturated: this is the sober cousin of Phosphore,
+   * not a second neon.
+   */
+  :root.terminal[data-terminal-skin='sage'] {
+    --color-bg: #000000;
+    --color-bg-secondary: #070a06;
+    --color-bg-tertiary: #0f140d;
+    --color-surface: #0a0f09;
+    --color-sidebar: rgba(0, 0, 0, 0.94);
+    --color-border: rgba(144, 164, 129, 0.3);
+    --color-border-subtle: rgba(144, 164, 129, 0.14);
+
+    --color-text: #90a481;
+    --color-text-secondary: #778a66;
+    --color-text-tertiary: #55634a;
+    --color-text-inverse: #050704;
+
+    --color-accent: #90a481;
+    --color-accent-hover: #aec19c;
+    --color-accent-subtle: rgba(144, 164, 129, 0.14);
+    --color-accent-glow: rgba(144, 164, 129, 0.32);
+
+    --color-accent-amber: #b9a86a;
+    --color-accent-amber-hover: #d2c28a;
+    --color-accent-amber-subtle: rgba(185, 168, 106, 0.14);
+    --color-accent-purple: #7fa39b;
+    --color-accent-purple-hover: #9dbdb6;
+    --color-accent-purple-subtle: rgba(127, 163, 155, 0.14);
+    --color-accent-blue-subtle: rgba(127, 163, 155, 0.1);
+
+    --color-success: #8fb56f;
+    --color-warning: #b9a86a;
+    --color-error: #c4726a;
+
+    --color-code-bg: #050805;
+    --color-input-bg: #050805;
+    --color-input-border: rgba(144, 164, 129, 0.32);
+
+    --color-user-bubble: rgba(144, 164, 129, 0.14);
+    --color-user-bubble-text: #c2d1b3;
+    --color-on-accent: #050704;
+    --color-disabled-bg: #0f140d;
+
+    --shadow-sm: 0 0 0 1px rgba(144, 164, 129, 0.18);
+    --shadow-md: 0 0 0 1px rgba(144, 164, 129, 0.22), 0 0 18px -6px rgba(144, 164, 129, 0.3);
+    --shadow-lg: 0 0 0 1px rgba(144, 164, 129, 0.26), 0 0 34px -10px rgba(144, 164, 129, 0.36);
+
+    color-scheme: dark;
+  }
+
   * {
     margin: 0;
     padding: 0;
@@ -176,6 +409,157 @@
     overflow: hidden;
   }
 
+  /* Text size preference. Everything else is sized in rem, so moving the
+     root size scales the interface with the text rather than around it. */
+  html { font-size: 16px; }
+  html[data-font-size='small'] { font-size: 14px; }
+  html[data-font-size='large'] { font-size: 18px; }
+
+  /* VT323 has a small x-height for its em, so the whole scale is nudged up
+     to keep the terminal theme as readable as the default one. */
+  html.terminal { font-size: 18px; }
+  html.terminal[data-font-size='small'] { font-size: 16px; }
+  html.terminal[data-font-size='large'] { font-size: 20px; }
+
+  .terminal body {
+    font-family: 'VT323', 'SF Mono', ui-monospace, monospace;
+    letter-spacing: 0.01em;
+  }
+
+  /* Press Start 2P is a wide, tall pixel face: headings are stepped down and
+     allowed to break anywhere so a long French title cannot overflow. */
+  .terminal h1,
+  .terminal h2,
+  .terminal h3,
+  .terminal h4,
+  .terminal h5,
+  .terminal h6 {
+    font-family: 'Press Start 2P', ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .terminal h1 { font-size: 1.05rem; }
+  .terminal h2 { font-size: 0.9rem; }
+  .terminal h3 { font-size: 0.8rem; }
+  .terminal h4,
+  .terminal h5,
+  .terminal h6 { font-size: 0.72rem; }
+
+  /* DOS panels: square everything except deliberate circles (avatars, dots). */
+  .terminal [class*='rounded']:not([class*='rounded-full']) {
+    border-radius: 2px;
+  }
+
+  /* Accent-filled controls hardcode white text, which is unreadable on
+     phosphor green. Repaint them with the theme's on-accent ink. */
+  .terminal [style*="background: var(--color-accent)"],
+  .terminal [style*="background:var(--color-accent)"] {
+    color: var(--color-on-accent) !important;
+  }
+
+  .terminal input,
+  .terminal textarea,
+  .terminal select {
+    font-family: 'VT323', 'SF Mono', ui-monospace, monospace;
+    caret-color: var(--color-accent);
+  }
+
+  .terminal ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-text-inverse);
+  }
+
+  .terminal ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    border-radius: 0;
+  }
+
+  /* Screen texture. Fixed, non-interactive, and deliberately faint. Emissive
+     tubes get scanlines; the two LCDs get the pixel matrix instead, because a
+     reflective panel has no beam to draw lines with. */
+  .terminal body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.16) 0px,
+      rgba(0, 0, 0, 0.16) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    opacity: 0.4;
+  }
+
+  /* Oxblood: a slower, heavier tube than the green one. */
+  :root.terminal[data-terminal-skin='oxblood'] body::after {
+    opacity: 0.5;
+  }
+
+  /* Ardéchine: the dark grid between cells of a reflective segment panel. */
+  :root.terminal[data-terminal-skin='ardechine'] body::after {
+    background-image:
+      linear-gradient(to right, rgba(20, 18, 14, 0.09) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(20, 18, 14, 0.09) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: 0.75;
+  }
+
+  /* Sauge: the same matrix, seen lit from behind instead of reflected. */
+  :root.terminal[data-terminal-skin='sage'] body::after {
+    background-image:
+      linear-gradient(to right, rgba(144, 164, 129, 0.07) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(144, 164, 129, 0.07) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: 0.7;
+  }
+
+  /*
+   * Ardéchine alerts. With every signal colour collapsed onto the ink, an
+   * error reads as ordinary text, so severity is carried by inversion instead
+   * — the filled block a real industrial panel uses. Buttons already filled
+   * with the error colour invert on their own; this is for coloured text.
+   */
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-error)"]:not(button):not(.succes-priority),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-error)"]:not(button):not(.succes-priority),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-warning)"]:not(button):not(.succes-priority),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-warning)"]:not(button):not(.succes-priority) {
+    background: var(--color-text);
+    color: var(--color-bg) !important;
+    padding: 0 0.3em;
+  }
+
+  /*
+   * Priority badges carry their level in an inline colour. Ardéchine folds
+   * every signal colour onto the single ink, so the four levels would read
+   * identically; fill density carries the scale instead. The inline colours
+   * have to be overridden outright for the badge to stay legible.
+   */
+  :root.terminal[data-terminal-skin='ardechine'] .succes-priority {
+    color: var(--color-text) !important;
+    background: rgba(20, 18, 14, 0.14) !important;
+    border: 1px solid rgba(20, 18, 14, 0.3);
+  }
+
+  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='urgent'] {
+    color: var(--color-bg) !important;
+    background: var(--color-text) !important;
+    border-color: var(--color-text);
+  }
+
+  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='high'] {
+    background: rgba(20, 18, 14, 0.36) !important;
+  }
+
+  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='low'] {
+    color: var(--color-text-tertiary) !important;
+    background: transparent !important;
+    border-color: rgba(20, 18, 14, 0.24);
+  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-weight: 400;
@@ -1051,6 +1435,23 @@
   animation: diapason-sync-bump 400ms ease-out;
 }
 
+/* Live speech caption under the voice relief. The recogniser revises its own
+   guesses, so words can change a beat after they appear; the gentle fade keeps
+   those corrections from reading as a flicker. */
+@keyframes diapason-caption-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+.talk-caption {
+  animation: diapason-caption-in 180ms ease-out;
+  text-wrap: balance;
+}
+@media (prefers-reduced-motion: reduce) {
+  .talk-caption {
+    animation: none;
+  }
+}
+
 /* Deep Research inline citation pills — small rounded chips that flow
    with the surrounding text and link out to the cited email. */
 .research-citation {
@@ -1076,4 +1477,89 @@
   color: var(--color-on-accent, #ffffff);
   background: var(--color-accent);
   text-decoration: none;
+}
+
+/* Succès notes — simulated page formats */
+.succes-note-page {
+  margin: 0 auto;
+  width: var(--note-page-width, 210mm);
+  min-height: var(--note-page-height, 297mm);
+  max-width: 100%;
+  padding: var(--note-margin, 32px);
+  box-sizing: border-box;
+  border-radius: 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  background-color: #fff;
+  color: #1a2232;
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--note-page-height) - 1px),
+    rgba(0, 0, 0, 0.05) calc(var(--note-page-height) - 1px),
+    rgba(0, 0, 0, 0.05) var(--note-page-height)
+  );
+  background-size: 100% var(--note-page-height);
+}
+.succes-note-format-a4 { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 32px; }
+.succes-note-format-letter { --note-page-width: 216mm; --note-page-height: 279mm; --note-margin: 32px; }
+.succes-note-format-a5 { --note-page-width: 148mm; --note-page-height: 210mm; --note-margin: 24px; }
+.succes-note-format-wide { --note-page-width: 900px; --note-page-height: 400px; --note-margin: 40px; }
+.succes-note-format-narrow { --note-page-width: 400px; --note-page-height: 360px; --note-margin: 24px; }
+.succes-note-format-full { --note-page-width: 100%; --note-page-height: 280px; --note-margin: 16px; }
+.succes-note-format-reading { --note-page-width: 720px; --note-page-height: 360px; --note-margin: 48px; }
+.succes-note-format-reading .succes-note-editor { font-size: 18px; line-height: 1.75; }
+.succes-note-bg-lined {
+  background-image:
+    repeating-linear-gradient(transparent, transparent 27px, rgba(100, 116, 139, 0.18) 28px),
+    linear-gradient(to bottom, transparent 0, transparent calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) var(--note-page-height));
+  background-size: 100% 28px, 100% var(--note-page-height);
+}
+.succes-note-bg-grid {
+  background-image:
+    linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, transparent 0, transparent calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) var(--note-page-height));
+  background-size: 24px 24px, 24px 24px, 100% var(--note-page-height);
+}
+.succes-note-bg-sepia { background-color: #f4ecd8; color: #3c3028; }
+.succes-note-bg-dark { background-color: #1a2232; color: #e8eef8; }
+.succes-note-editor {
+  min-height: calc(var(--note-page-height, 297mm) - 2 * var(--note-margin, 32px));
+  font-size: 15px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+/* Pixel fonts carry a tall em box, so they need their own metrics to stay legible. */
+.succes-note-editor[data-font="Press Start 2P"] { font-size: 12px; line-height: 2.1; }
+.succes-note-editor[data-font="VT323"] { font-size: 20px; line-height: 1.35; }
+.succes-note-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #64748b;
+  opacity: 0.85;
+  pointer-events: none;
+}
+.succes-note-editor h1 { font-size: 1.75em; font-weight: 700; margin: 0.6em 0 0.35em; }
+.succes-note-editor h2 { font-size: 1.4em; font-weight: 650; margin: 0.55em 0 0.3em; }
+.succes-note-editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.succes-note-editor ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
+.succes-note-editor ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
+.succes-note-editor hr { border: none; border-top: 1px solid rgba(0,0,0,0.15); margin: 1em 0; }
+/* Manual page break: forces a new sheet in the note's folder icon. */
+.succes-note-editor hr.succes-page-break {
+  border-top: 2px dashed rgba(99, 102, 241, 0.55);
+  margin: 1.6em 0;
+  position: relative;
+}
+.succes-note-editor hr.succes-page-break::after {
+  content: 'Saut de page';
+  position: absolute;
+  top: -0.75em;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.5em;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(99, 102, 241, 0.9);
+  background: inherit;
 }

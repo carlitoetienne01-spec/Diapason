@@ -21,6 +21,7 @@ from diapason.succes.continuity import (
     SuccesContinuityStore,
 )
 from diapason.succes.dates import normalize_time
+from diapason.succes.relay import normalize_relay_url, relay_post
 from diapason.succes.store import (
     MAX_SUBTASK_DEPTH,
     PRIORITIES,
@@ -39,6 +40,23 @@ from diapason.succes.workspace import (
 
 MAX_SYNC_BATCH = 500
 PAIRING_TTL_MS = 10 * 60 * 1000
+_META_RELAY_URL = "sync_relay_url"
+_META_GUEST_TOKEN = "sync_guest_token"
+_META_GUEST_PEER_ID = "sync_guest_peer_id"
+_META_GUEST_SERVER_ID = "sync_guest_server_device_id"
+_META_GUEST_NAME = "sync_guest_device_name"
+_META_GUEST_PULL = "sync_guest_pull_cursor"
+_META_GUEST_PUSH = "sync_guest_push_cursor"
+_META_LAST_SYNC_AT = "sync_last_at_ms"
+_META_LAST_SYNC_ERROR = "sync_last_error"
+_GUEST_META_KEYS = (
+    _META_GUEST_TOKEN,
+    _META_GUEST_PEER_ID,
+    _META_GUEST_SERVER_ID,
+    _META_GUEST_NAME,
+    _META_GUEST_PULL,
+    _META_GUEST_PUSH,
+)
 SYNC_ENTITIES = frozenset(
     {
         "tasks",
@@ -366,6 +384,188 @@ class SuccesSyncStore(SuccesContinuityStore):
                 (now_ms(), peer_id),
             )
         return stats
+
+    def apply_inbound_operations(
+        self, operations: Sequence[Mapping[str, Any]]
+    ) -> dict[str, int]:
+        """Apply a trusted exchange bundle locally (guest side, no peer row)."""
+        if len(operations) > MAX_SYNC_BATCH:
+            raise SuccesError("Le lot reçu est trop volumineux.")
+        stats = {"applied": 0, "stale": 0, "duplicate": 0}
+        ordered = sorted(
+            operations, key=lambda op: str(op.get("entity")) == "habit_logs"
+        )
+        with self._transaction() as conn:
+            self._refresh_local_clocks(conn)
+            for raw in ordered:
+                result = self._apply_operation(conn, raw)
+                stats[result] += 1
+        return stats
+
+    def _meta_get(self, key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM succes_meta WHERE key=?", (key,)
+            ).fetchone()
+        return None if row is None else str(row["value"])
+
+    def _meta_set(self, conn: sqlite3.Connection, key: str, value: str) -> None:
+        conn.execute(
+            "INSERT INTO succes_meta(key,value) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+
+    def _meta_delete(self, conn: sqlite3.Connection, key: str) -> None:
+        conn.execute("DELETE FROM succes_meta WHERE key=?", (key,))
+
+    def relay_url(self) -> str:
+        return (self._meta_get(_META_RELAY_URL) or "").strip()
+
+    def set_relay_url(self, url: str) -> dict[str, Any]:
+        normalized = normalize_relay_url(url)
+        with self._transaction() as conn:
+            self._meta_set(conn, _META_RELAY_URL, normalized)
+        return self.sync_status()
+
+    def clear_relay_url(self) -> dict[str, Any]:
+        with self._transaction() as conn:
+            self._meta_delete(conn, _META_RELAY_URL)
+        return self.sync_status()
+
+    def guest_session(self) -> dict[str, Any] | None:
+        token = self._meta_get(_META_GUEST_TOKEN)
+        if not token:
+            return None
+        return {
+            "peerId": self._meta_get(_META_GUEST_PEER_ID) or "",
+            "deviceName": self._meta_get(_META_GUEST_NAME) or "",
+            "serverDeviceId": self._meta_get(_META_GUEST_SERVER_ID) or "",
+            "pullCursor": int(self._meta_get(_META_GUEST_PULL) or 0),
+            "pushCursor": int(self._meta_get(_META_GUEST_PUSH) or 0),
+            "hasToken": True,
+        }
+
+    def clear_guest_session(self) -> dict[str, Any]:
+        with self._transaction() as conn:
+            for key in _GUEST_META_KEYS:
+                self._meta_delete(conn, key)
+            self._meta_delete(conn, _META_LAST_SYNC_ERROR)
+        return self.sync_status()
+
+    def join_remote(
+        self,
+        pairing_token: str,
+        *,
+        relay_url: str | None = None,
+        device_name: str = "",
+    ) -> dict[str, Any]:
+        """Redeem a host invitation through the configured (or provided) relay."""
+        token = _clean_text(
+            pairing_token,
+            field="Le code d'appairage",
+            maximum=160,
+            required=True,
+        )
+        if not token.startswith("diapason_pair_"):
+            raise SuccesError("Ce code d'appairage n'a pas un format reconnu.")
+        base = normalize_relay_url(relay_url or self.relay_url())
+        remote = relay_post(base, "/v1/succes/sync/pair", {"pairingToken": token})
+        sync_token = str(remote.get("syncToken") or "")
+        peer_id = str(remote.get("peerId") or "")
+        if not sync_token.startswith("diapason_sync_") or not peer_id:
+            raise SuccesError("Le relais n'a pas renvoyé d'identifiants de sync valides.")
+        name = _clean_text(
+            device_name or remote.get("deviceName") or "Appareil distant",
+            field="Le nom de l'appareil",
+            maximum=80,
+            required=True,
+        )
+        with self._transaction() as conn:
+            self._meta_set(conn, _META_RELAY_URL, base)
+            self._meta_set(conn, _META_GUEST_TOKEN, sync_token)
+            self._meta_set(conn, _META_GUEST_PEER_ID, peer_id)
+            self._meta_set(
+                conn, _META_GUEST_SERVER_ID, str(remote.get("serverDeviceId") or "")
+            )
+            self._meta_set(conn, _META_GUEST_NAME, name)
+            self._meta_set(conn, _META_GUEST_PULL, "0")
+            self._meta_set(conn, _META_GUEST_PUSH, "0")
+            self._meta_delete(conn, _META_LAST_SYNC_ERROR)
+        status = self.sync_status()
+        status["joined"] = {
+            "peerId": peer_id,
+            "deviceName": name,
+            "serverDeviceId": remote.get("serverDeviceId"),
+            "relayUrl": base,
+        }
+        return status
+
+    def run_exchange(self) -> dict[str, Any]:
+        """Push local ops and pull host ops through the configured relay (guest)."""
+        base = self.relay_url()
+        token = self._meta_get(_META_GUEST_TOKEN)
+        if not base or not token:
+            raise SuccesError(
+                "Configurez d'abord un relais et rejoignez un appareil avec un code."
+            )
+        pull_cursor = int(self._meta_get(_META_GUEST_PULL) or 0)
+        push_cursor = int(self._meta_get(_META_GUEST_PUSH) or 0)
+        bundle = self.list_operations(after=push_cursor, limit=MAX_SYNC_BATCH)
+        outbound = [
+            {
+                "opId": op["opId"],
+                "deviceId": op["deviceId"],
+                "entity": op["entity"],
+                "entityId": op["entityId"],
+                "kind": op["kind"],
+                "request": op["request"],
+                "payload": op["payload"],
+                "timestampMs": op["timestampMs"],
+            }
+            for op in bundle["operations"]
+            if op["deviceId"] == self.device_id()
+        ]
+        try:
+            remote = relay_post(
+                base,
+                "/v1/succes/sync/exchange",
+                {
+                    "peerToken": token,
+                    "cursor": pull_cursor,
+                    "operations": outbound,
+                },
+            )
+        except SuccesError as exc:
+            with self._transaction() as conn:
+                self._meta_set(conn, _META_LAST_SYNC_ERROR, str(exc))
+            raise
+
+        inbound = remote.get("operations")
+        if not isinstance(inbound, list):
+            inbound = []
+        received = self.apply_inbound_operations(inbound)
+        next_pull = int(remote.get("cursor") or pull_cursor)
+        if bundle["operations"]:
+            next_push = int(bundle["operations"][-1]["cursor"])
+        else:
+            next_push = int(bundle["cursor"])
+        timestamp = now_ms()
+        with self._transaction() as conn:
+            self._meta_set(conn, _META_GUEST_PULL, str(next_pull))
+            self._meta_set(conn, _META_GUEST_PUSH, str(next_push))
+            self._meta_set(conn, _META_LAST_SYNC_AT, str(timestamp))
+            self._meta_delete(conn, _META_LAST_SYNC_ERROR)
+        return {
+            "pushed": len(outbound),
+            "pulled": len(inbound),
+            "received": received,
+            "pullCursor": next_pull,
+            "pushCursor": next_push,
+            "hasMore": bool(remote.get("hasMore")) or bool(bundle.get("hasMore")),
+            "syncedAtMs": timestamp,
+            "status": self.sync_status(),
+        }
 
     def _apply_operation(self, conn: sqlite3.Connection, raw: Mapping[str, Any]) -> str:
         if not isinstance(raw, Mapping):
@@ -788,22 +988,31 @@ class SuccesSyncStore(SuccesContinuityStore):
         content = str(data.get("content") or "")
         if len(content) > 100_000:
             raise SuccesError("La note synchronisée est trop longue.")
+        title, _, meta = self._note_fields({**data, "title": data.get("title") or "Note"})
         conn.execute(
             """INSERT INTO succes_notes
-               (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms)
-               VALUES (?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET
+               (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
+                page_format,page_background,font_family,doc_lang,color)
+               VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                title=excluded.title,content=excluded.content,
                created_at=excluded.created_at,updated_at=excluded.updated_at,
-               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
+               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
+               page_format=excluded.page_format,
+               page_background=excluded.page_background,
+               font_family=excluded.font_family,doc_lang=excluded.doc_lang,
+               color=excluded.color""",
             (
                 note_id,
-                _clean_text(
-                    data.get("title"), field="La note", maximum=200, required=True
-                ),
+                title,
                 content,
                 str(data.get("createdAt") or date.today().isoformat())[:40],
                 str(data.get("updatedAt") or date.today().isoformat())[:40],
                 ts,
+                meta["pageFormat"],
+                meta["pageBackground"],
+                meta["fontFamily"],
+                meta["docLang"],
+                meta["color"],
             ),
         )
 
@@ -897,23 +1106,55 @@ class SuccesSyncStore(SuccesContinuityStore):
                     (now_ms(),),
                 ).fetchone()["count"]
             )
-        configured = peer_count > 0
+        relay = self.relay_url()
+        guest = self.guest_session()
+        last_sync_raw = self._meta_get(_META_LAST_SYNC_AT)
+        last_error = self._meta_get(_META_LAST_SYNC_ERROR)
+        configured = peer_count > 0 or guest is not None
+        if guest is not None:
+            role = "guest"
+            mode = "paired"
+        elif peer_count > 0:
+            role = "host"
+            mode = "paired"
+        else:
+            role = "ready"
+            mode = "ready"
+        transport = "https_relay" if relay else "loopback_only"
+        if guest is not None:
+            message = (
+                f"Appairé en tant qu'invité via {relay}. "
+                "Lancez une synchronisation pour échanger les changements."
+            )
+        elif peer_count > 0:
+            message = (
+                f"{peer_count} appareil(s) autorisé(s)"
+                + (f" · relais {relay}" if relay else "")
+                + ". Les changements hors ligne seront échangés à la prochaine connexion."
+            )
+        elif relay:
+            message = (
+                f"Relais configuré ({relay}). Créez une invitation ici, ou "
+                "rejoignez un autre appareil avec son code."
+            )
+        else:
+            message = (
+                "Ce Mac est prêt à appairer un appareil. Indiquez l'URL d'un relais "
+                "HTTPS de confiance pour synchroniser hors de cette machine."
+            )
         return {
-            "mode": "paired" if configured else "ready",
+            "mode": mode,
+            "role": role,
             "configured": configured,
             "deviceId": self.device_id(),
             "localCursor": cursor,
             "peerCount": peer_count,
             "pendingPairings": pending_pairings,
-            "transport": "loopback_only",
+            "transport": transport,
+            "relayUrl": relay,
+            "guest": guest,
+            "lastSyncAtMs": int(last_sync_raw) if last_sync_raw else None,
+            "lastSyncError": last_error,
             "peers": self.list_peers(),
-            "message": (
-                f"{peer_count} appareil(s) autorisé(s). Les changements hors ligne "
-                "seront échangés à la prochaine connexion."
-                if configured
-                else (
-                    "Ce Mac est prêt à appairer un appareil. Les données restent "
-                    "locales tant qu'aucun appareil n'est autorisé."
-                )
-            ),
+            "message": message,
         }

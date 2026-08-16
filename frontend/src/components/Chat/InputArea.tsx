@@ -8,6 +8,7 @@ import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
+import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
@@ -19,6 +20,9 @@ import type {
   TokenUsage,
   ToolCallInfo,
 } from '../../types';
+
+/** Silence after dictation that counts as "I'm done talking". */
+const DICTATION_AUTO_SEND_MS = 6500;
 
 // While Deep Research is toggled on, poll connected sources for sync
 // progress so we can surface "Searching over N items — sync in progress"
@@ -79,7 +83,7 @@ function useResearchCorpusSync(enabled: boolean): {
 }
 
 export function InputArea() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -126,12 +130,28 @@ export function InputArea() {
     prevModelRef.current = selectedModel;
   }, [selectedModel, streamState.isStreaming, resetStream]);
 
-  const micDisabled = !speechEnabled || !speechAvailable || streamState.isStreaming;
+  // Live dictation runs entirely in the app on Apple's on-device recogniser,
+  // so it works whether or not the Python speech backend is configured. When
+  // it is available the microphone becomes a toggle that writes into the
+  // composer as you speak; otherwise the older hold-to-talk path stands.
+  const live = useLiveDictation(locale);
+  const liveMode = live.supported && speechEnabled;
+
+  const micDisabled =
+    !speechEnabled ||
+    (!liveMode && !speechAvailable) ||
+    streamState.isStreaming;
   const micReason: 'not-enabled' | 'no-backend' | 'streaming' | undefined =
     !speechEnabled ? 'not-enabled'
-    : !speechAvailable ? 'no-backend'
+    : !liveMode && !speechAvailable ? 'no-backend'
     : streamState.isStreaming ? 'streaming'
     : undefined;
+
+  useEffect(() => {
+    if (live.error) {
+      toast.error(live.error, { duration: 8000 });
+    }
+  }, [live.error]);
 
   useEffect(() => {
     if (speechError) {
@@ -139,7 +159,55 @@ export function InputArea() {
     }
   }, [speechError]);
 
+  // Destructured so the effects below depend on stable identities: `live`
+  // itself is a fresh object every render and would restart the idle timer
+  // forever.
+  const {
+    listening: liveListening,
+    transcript: liveTranscript,
+    start: liveStart,
+    stop: liveStop,
+  } = live;
+
+  /** Whatever was already typed when dictation began; speech appends to it. */
+  const dictationBaseRef = useRef('');
+  /** The last value we wrote ourselves, to tell our edits from the user's. */
+  const appliedRef = useRef<string | null>(null);
+
+  const composeDictated = useCallback((spoken: string) => {
+    const base = dictationBaseRef.current;
+    if (!base) return spoken;
+    return spoken ? base + ' ' + spoken : base;
+  }, []);
+
+  useEffect(() => {
+    if (!liveListening) return;
+    const next = composeDictated(liveTranscript);
+    appliedRef.current = next;
+    setInput(next);
+  }, [liveListening, liveTranscript, composeDictated]);
+
+  /** Ends dictation and folds in the words that land after the microphone closes. */
+  const finishDictation = useCallback(async () => {
+    const spoken = await liveStop();
+    const next = composeDictated(spoken);
+    appliedRef.current = next;
+    setInput(next);
+    if (spoken) recordDictationStat(spoken.length);
+    return next;
+  }, [liveStop, composeDictated]);
+
   const handleMicClick = useCallback(async () => {
+    if (liveMode) {
+      if (liveListening) {
+        await finishDictation();
+      } else {
+        dictationBaseRef.current = input.trim();
+        await liveStart();
+      }
+      return;
+    }
+
     if (speechState === 'recording') {
       try {
         const text = await stopRecording();
@@ -153,7 +221,16 @@ export function InputArea() {
     } else {
       await startRecording();
     }
-  }, [speechState, startRecording, stopRecording]);
+  }, [
+    liveMode,
+    liveListening,
+    liveStart,
+    finishDictation,
+    input,
+    speechState,
+    startRecording,
+    stopRecording,
+  ]);
 
   const handleMicPointerDown = useCallback(async () => {
     if (speechState === 'recording' || speechState === 'transcribing') return;
@@ -295,8 +372,10 @@ export function InputArea() {
     resetStream();
   }, [resetStream]);
 
-  const sendMessage = useCallback(async () => {
-    const content = input.trim();
+  // `override` exists for dictation: the last words are transcribed after the
+  // microphone closes, so the auto-send path has fresher text than `input`.
+  const sendMessage = useCallback(async (override?: string) => {
+    const content = (override ?? input).trim();
     if (!content || streamState.isStreaming) return;
     if (!selectedModel) {
       toast.error(t('chat.input.pickModel'));
@@ -687,11 +766,41 @@ export function InputArea() {
     t,
   ]);
 
+  // Falling silent ends the turn: once dictation has been quiet for this long,
+  // the message goes on its own. Pressing Enter or the send button beats the
+  // timer; typing cancels dictation altogether and with it the countdown.
+  useEffect(() => {
+    if (!liveListening || !liveTranscript.trim()) return;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const text = await finishDictation();
+        if (text.trim()) await sendMessage(text);
+      })();
+    }, DICTATION_AUTO_SEND_MS);
+    return () => clearTimeout(timer);
+  }, [liveListening, liveTranscript, finishDictation, sendMessage]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (liveListening) {
+        void (async () => {
+          const text = await finishDictation();
+          if (text.trim()) await sendMessage(text);
+        })();
+        return;
+      }
       sendMessage();
     }
+  };
+
+  /** Typing hands control back to the keyboard and closes the microphone. */
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    if (liveListening && value !== appliedRef.current) {
+      void liveStop();
+    }
+    setInput(value);
   };
 
   return (
@@ -720,7 +829,7 @@ export function InputArea() {
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder={
             selectedModel ? t('chat.input.placeholder') : t('chat.input.placeholderNoModel')
@@ -743,15 +852,18 @@ export function InputArea() {
         ) : (
           <div className="flex items-center gap-1">
             <MicButton
-              state={speechState}
+              state={liveMode ? (liveListening ? 'recording' : 'idle') : speechState}
               onClick={handleMicClick}
-              onPointerDown={handleMicPointerDown}
-              onPointerUp={handleMicPointerUp}
+              // Hold-to-talk only stands in for the batch path; live dictation
+              // is a toggle, and passing these would suppress its click.
+              onPointerDown={liveMode ? undefined : handleMicPointerDown}
+              onPointerUp={liveMode ? undefined : handleMicPointerUp}
               disabled={micDisabled}
               reason={micReason}
+              live={liveMode}
             />
             <button
-              onClick={sendMessage}
+              onClick={() => void sendMessage()}
               disabled={!input.trim() || modelLoading || !selectedModel}
               title={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
               aria-label={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}

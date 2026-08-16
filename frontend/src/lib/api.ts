@@ -71,12 +71,26 @@ export async function initApiBase(): Promise<void> {
 
 const DESKTOP_API_FALLBACK = 'http://127.0.0.1:8000';
 
+/** Reject values that make WebKit throw "string did not match the expected pattern". */
+function sanitizeHttpBase(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    if (!url.hostname) return '';
+    return trimmed;
+  } catch {
+    return '';
+  }
+}
+
 const getSettingsApiUrl = (): string => {
   try {
     const raw = localStorage.getItem('diapason-settings');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.apiUrl) return parsed.apiUrl.replace(/\/+$/, '');
+      if (parsed.apiUrl) return sanitizeHttpBase(String(parsed.apiUrl));
     }
   } catch {}
   return '';
@@ -85,8 +99,11 @@ const getSettingsApiUrl = (): string => {
 export const getBase = (): string => {
   const settingsUrl = getSettingsApiUrl();
   if (settingsUrl) return settingsUrl;
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (isTauri()) return _tauriApiBase || DESKTOP_API_FALLBACK;
+  const viteUrl = sanitizeHttpBase(String(import.meta.env.VITE_API_URL || ''));
+  if (viteUrl) return viteUrl;
+  if (isTauri()) {
+    return sanitizeHttpBase(_tauriApiBase || '') || DESKTOP_API_FALLBACK;
+  }
   return '';
 };
 
@@ -143,10 +160,35 @@ export const apiFetch = async (
   path: string,
   init: RequestInit = {},
 ): Promise<Response> => {
+  const base = getBase();
+  // Relative paths are fine in the browser (Vite proxy). Absolute bases must
+  // already be sanitized; still guard so WebKit never surfaces its opaque
+  // "string did not match the expected pattern" TypeError.
+  if (base) {
+    try {
+      void new URL(base);
+    } catch {
+      throw new Error(
+        "L'URL de l'API est invalide. Vérifiez Réglages → Connexion → URL de l'API.",
+      );
+    }
+  }
+  const target = `${base}${path}`;
   let headers = authHeaders(
     (init.headers as Record<string, string> | undefined) ?? {},
   );
-  let response = await fetch(`${getBase()}${path}`, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(target, { ...init, headers });
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (/did not match the expected pattern|invalid url|failed to construct/i.test(raw)) {
+      throw new Error(
+        "L'URL de l'API est invalide. Vérifiez Réglages → Connexion → URL de l'API.",
+      );
+    }
+    throw error;
+  }
   if (response.status === 401 && isTauri()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -154,7 +196,7 @@ export const apiFetch = async (
       headers = authHeaders(
         (init.headers as Record<string, string> | undefined) ?? {},
       );
-      response = await fetch(`${getBase()}${path}`, { ...init, headers });
+      response = await fetch(target, { ...init, headers });
     } catch {}
   }
   return response;

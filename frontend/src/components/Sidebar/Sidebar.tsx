@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   MessageSquare,
   Plus,
-  BarChart3,
+  Gauge,
   Settings,
   Search,
   PanelLeftClose,
@@ -13,22 +13,27 @@ import {
   Sun,
   Moon,
   Monitor,
+  TerminalSquare,
   ScrollText,
   Database,
   CalendarRange,
+  LayoutDashboard,
   ListTodo,
   BriefcaseBusiness,
   Repeat2,
   NotebookPen,
-  CalendarClock,
   Trophy,
   RefreshCw,
-  Target,
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
-import { useAppStore } from '../../lib/store';
+import { GlassNav } from './GlassNav';
+import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
 import { useTranslation } from '../../i18n/useTranslation';
+
+/** Pages that live behind the Réglages drawer, so a deep link opens it. */
+const SETTINGS_PATHS = ['/settings', '/data-sources', '/agents', '/logs', '/succes/sync', '/dashboard'];
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -37,8 +42,8 @@ export function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   // ChatGPT-style: a magnifier in the header, the input appears on demand.
   const [searchOpen, setSearchOpen] = useState(false);
-  const onSuccesRoute = location.pathname.startsWith('/succes');
-  const [succesOpen, setSuccesOpen] = useState(onSuccesRoute);
+  const onSettingsRoute = SETTINGS_PATHS.includes(location.pathname);
+  const [settingsOpen, setSettingsOpen] = useState(onSettingsRoute);
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
@@ -48,14 +53,45 @@ export function Sidebar() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
 
-  const ThemeIcon = settings.theme === 'light' ? Sun : settings.theme === 'dark' ? Moon : Monitor;
-  const nextTheme = settings.theme === 'light' ? 'dark' : settings.theme === 'dark' ? 'system' : 'light';
-  const themeName = (theme: string) =>
-    theme === 'light'
+  // Each terminal screen is its own stop, so the shortcut walks all seven
+  // looks rather than treating Terminal as a single destination.
+  const THEME_CYCLE: { theme: ThemeMode; skin?: TerminalSkin }[] = [
+    { theme: 'light' },
+    { theme: 'dark' },
+    { theme: 'system' },
+    { theme: 'terminal', skin: 'phosphor' },
+    { theme: 'terminal', skin: 'ardechine' },
+    { theme: 'terminal', skin: 'oxblood' },
+    { theme: 'terminal', skin: 'sage' },
+  ];
+  const TERMINAL_SKIN_NAMES: Record<TerminalSkin, string> = {
+    phosphor: 'Phosphore',
+    ardechine: 'Ardéchine',
+    oxblood: 'Oxblood',
+    sage: 'Sauge',
+  };
+  const THEME_ICONS: Record<ThemeMode, typeof Sun> = {
+    light: Sun,
+    dark: Moon,
+    system: Monitor,
+    terminal: TerminalSquare,
+  };
+  const ThemeIcon = THEME_ICONS[settings.theme] ?? Monitor;
+  const activeSkin = settings.terminalSkin ?? 'phosphor';
+  const currentIndex = THEME_CYCLE.findIndex(
+    (stop) =>
+      stop.theme === settings.theme &&
+      (stop.theme !== 'terminal' || stop.skin === activeSkin),
+  );
+  const nextStop = THEME_CYCLE[(currentIndex + 1) % THEME_CYCLE.length];
+  const themeName = (stop: { theme: ThemeMode; skin?: TerminalSkin }) =>
+    stop.theme === 'light'
       ? t('settings.theme.light')
-      : theme === 'dark'
+      : stop.theme === 'dark'
         ? t('settings.theme.dark')
-        : t('settings.theme.system');
+        : stop.theme === 'terminal'
+          ? `${t('settings.theme.terminal')} · ${TERMINAL_SKIN_NAMES[stop.skin ?? 'phosphor']}`
+          : t('settings.theme.system');
 
   const conversations = useAppStore((s) => s.conversations);
   const selectConversation = useAppStore((s) => s.selectConversation);
@@ -76,10 +112,36 @@ export function Sidebar() {
     navigate('/');
   };
 
-  // Keep Succès expanded while browsing its pages; leave user toggle alone otherwise.
+  // Keep Réglages open while browsing any of its pages.
   useEffect(() => {
-    if (onSuccesRoute) setSuccesOpen(true);
-  }, [onSuccesRoute]);
+    if (onSettingsRoute) setSettingsOpen(true);
+  }, [onSettingsRoute]);
+
+  // The page the drawer interrupted, so closing it can hand the view back.
+  const routeBeforeSettings = useRef<string | null>(null);
+
+  const openSettings = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSettingsOpen(true);
+    // Land on Général so the drawer never opens onto a blank pane.
+    if (!onSettingsRoute) {
+      routeBeforeSettings.current = location.pathname;
+      navigate('/settings');
+    }
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    const back = routeBeforeSettings.current;
+    routeBeforeSettings.current = null;
+    // Leaving the drawer has to move the content too: the sidebar was showing
+    // the app again while the pane still displayed Réglages. Deep links have no
+    // page to return to, so they fall back to the chat.
+    if (onSettingsRoute) {
+      navigate(back && !SETTINGS_PATHS.includes(back) ? back : '/');
+    }
+  };
 
   const primaryNavItems = [
     { path: '/', icon: MessageSquare, label: t('nav.chat') },
@@ -87,62 +149,41 @@ export function Sidebar() {
 
   const succesNavItems = [
     { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
+    { path: '/succes/dashboard', icon: LayoutDashboard, label: t('nav.succesDashboard') },
     { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
     { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
     { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
     { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
-    { path: '/succes/templates', icon: CalendarClock, label: t('nav.succesTemplates') },
     { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
-    { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
   ];
 
   const secondaryNavItems = [
-    { path: '/dashboard', icon: BarChart3, label: t('nav.dashboard') },
-    { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
-    { path: '/agents', icon: Bot, label: t('nav.agents') },
-    { path: '/logs', icon: ScrollText, label: t('nav.logs') },
-    { path: '/settings', icon: Settings, label: t('nav.settings') },
     { path: '/get-started', icon: Rocket, label: t('nav.getStarted') },
   ];
 
-  const renderNavButton = (item: {
-    path: string;
-    icon: typeof MessageSquare;
-    label: string;
-  }) => {
-    const isActive = location.pathname === item.path;
-    return (
-      <button
-        key={item.path}
-        onClick={() => navigate(item.path)}
-        className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
-        style={{
-          background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
-          color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
-          fontWeight: isActive ? 500 : 400,
-        }}
-        onMouseEnter={(e) => {
-          if (!isActive) e.currentTarget.style.background = 'var(--color-bg-secondary)';
-        }}
-        onMouseLeave={(e) => {
-          if (!isActive) e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        {isActive && (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
-            style={{
-              background: 'var(--color-accent)',
-              boxShadow: '0 0 8px var(--color-accent-glow)',
-            }}
-          />
-        )}
-        <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
-        {item.label}
-      </button>
-    );
-  };
+  // Réglages is administration, not a workspace: its tabs are grouped by what
+  // they govern — the app itself, what feeds it, then what it leaves behind.
+  const settingsGroups = [
+    {
+      label: t('sidebar.settingsGroupConfig'),
+      items: [{ path: '/settings', icon: Settings, label: t('nav.settingsGeneral') }],
+    },
+    {
+      label: t('sidebar.settingsGroupConnections'),
+      items: [
+        { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
+        { path: '/agents', icon: Bot, label: t('nav.agents') },
+        { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
+      ],
+    },
+    {
+      label: t('sidebar.settingsGroupObservability'),
+      items: [
+        { path: '/dashboard', icon: Gauge, label: t('nav.dashboard') },
+        { path: '/logs', icon: ScrollText, label: t('nav.logs') },
+      ],
+    },
+  ];
 
   return (
     <>
@@ -189,41 +230,49 @@ export function Sidebar() {
               >
                 <PanelLeftClose size={18} />
               </button>
-              <button
-                onClick={() => {
-                  setSearchOpen((open) => {
-                    if (open) setSearchQuery('');
-                    return !open;
-                  });
-                }}
-                className="p-2 rounded-lg transition-colors cursor-pointer"
-                style={{
-                  color: searchOpen ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                  background: searchOpen ? 'var(--color-accent-subtle)' : 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!searchOpen) e.currentTarget.style.background = 'var(--color-bg-tertiary)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!searchOpen) e.currentTarget.style.background = 'transparent';
-                }}
-                title={t('sidebar.searchPlaceholder')}
-                aria-label={t('sidebar.searchPlaceholder')}
-                aria-expanded={searchOpen}
-              >
-                <Search size={16} />
-              </button>
+              {!settingsOpen && (
+                <button
+                  onClick={() => {
+                    setSearchOpen((open) => {
+                      if (open) setSearchQuery('');
+                      return !open;
+                    });
+                  }}
+                  className="p-2 rounded-lg transition-colors cursor-pointer"
+                  style={{
+                    color: searchOpen ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    background: searchOpen ? 'var(--color-accent-subtle)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!searchOpen) e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!searchOpen) e.currentTarget.style.background = 'transparent';
+                  }}
+                  title={t('sidebar.searchPlaceholder')}
+                  aria-label={t('sidebar.searchPlaceholder')}
+                  aria-expanded={searchOpen}
+                >
+                  <Search size={16} />
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => updateSettings({ theme: nextTheme })}
+                onClick={() =>
+                  updateSettings(
+                    nextStop.skin
+                      ? { theme: nextStop.theme, terminalSkin: nextStop.skin }
+                      : { theme: nextStop.theme },
+                  )
+                }
                 className="p-2 rounded-lg transition-colors cursor-pointer"
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 title={t('sidebar.themeTooltip', {
-                  current: themeName(settings.theme),
-                  next: themeName(nextTheme),
+                  current: themeName({ theme: settings.theme, skin: activeSkin }),
+                  next: themeName(nextStop),
                 })}
               >
                 <ThemeIcon size={16} />
@@ -232,7 +281,7 @@ export function Sidebar() {
           </div>
 
           {/* Search input, on demand from the header magnifier */}
-          {searchOpen && (
+          {searchOpen && !settingsOpen && (
             <div className="px-3 mb-2">
               <div
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
@@ -258,72 +307,90 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* Succès — reveals productivity tabs; replaces the old model badge */}
-          <button
-            onClick={() => setSuccesOpen((open) => !open)}
-            className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-            style={{
-              background: succesOpen || onSuccesRoute ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)',
-            }}
-            onMouseEnter={(e) => {
-              if (!succesOpen && !onSuccesRoute) {
-                e.currentTarget.style.background = 'var(--color-bg-tertiary)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background =
-                succesOpen || onSuccesRoute ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)';
-            }}
-            aria-expanded={succesOpen}
-            aria-controls="succes-nav"
-            title={t('nav.succes')}
-          >
-            <Target size={16} style={{ color: 'var(--color-accent)' }} />
-            <span className="flex-1 text-left">{t('nav.succes')}</span>
-            <ChevronDown
-              size={16}
-              className="transition-transform duration-200"
-              style={{
-                color: 'var(--color-text-tertiary)',
-                transform: succesOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-              }}
-            />
-          </button>
+          {settingsOpen ? (
+            /* Réglages takes over the sidebar, grouped so the tabs read as a
+               short table of contents rather than a flat list */
+            <div id="settings-nav" className="flex-1 overflow-y-auto pt-1">
+              <button
+                onClick={closeSettings}
+                className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition-colors"
+                style={{ color: 'var(--color-text)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                title={t('sidebar.settingsBack')}
+              >
+                <ChevronLeft size={16} style={{ color: 'var(--color-accent)' }} />
+                <span className="flex-1 text-left">{t('sidebar.settingsBack')}</span>
+              </button>
+              {settingsGroups.map((group) => (
+                <div key={group.label}>
+                  <div
+                    className="px-5 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider"
+                    style={{ color: 'var(--color-text-tertiary)' }}
+                  >
+                    {group.label}
+                  </div>
+                  <GlassNav items={group.items} groupLabel={group.label} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* New conversation — a real, labeled button. The old tiny "+" was
+                  easy to miss and silently did nothing on an empty chat, which
+                  read as "I cannot create conversations". */}
+              <button
+                onClick={handleNewChat}
+                className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
+                style={{ background: 'var(--color-accent)', color: '#fff' }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                <Plus size={16} />
+                {t('sidebar.newChat')}
+              </button>
 
-          {/* New conversation — a real, labeled button. The old tiny "+" was
-              easy to miss and silently did nothing on an empty chat, which
-              read as "I cannot create conversations". */}
-          <button
-            onClick={handleNewChat}
-            className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
-            style={{ background: 'var(--color-accent)', color: '#fff' }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={16} />
-            {t('sidebar.newChat')}
-          </button>
-
-          {/* Primary navigation — at the top, ChatGPT-style */}
-          <nav className="px-2 pb-2 flex flex-col gap-0.5">
-            {primaryNavItems.map(renderNavButton)}
-            {succesOpen && (
-              <div id="succes-nav" className="flex flex-col gap-0.5" role="group" aria-label={t('nav.succes')}>
-                {succesNavItems.map(renderNavButton)}
+              {/* Everything in one list — chat, the app pages, then the Succès
+                  tabs — so a single lens travels across the whole sidebar.
+                  Nav and conversations scroll together: eleven tabs plus a long
+                  chat history would otherwise squeeze each other. */}
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <GlassNav
+                  items={[...primaryNavItems, ...secondaryNavItems, ...succesNavItems]}
+                />
+                {/* Conversation list — everything below the fold scrolls */}
+                <div
+                  className="px-2 pt-1"
+                  style={{ borderTop: '1px solid var(--color-border)' }}
+                >
+                  <ConversationList searchQuery={searchQuery} />
+                </div>
               </div>
-            )}
-            {secondaryNavItems.map(renderNavButton)}
-          </nav>
-          {/* Conversation list — everything below the fold scrolls */}
-          <div
-            className="flex-1 overflow-y-auto px-2 pt-1"
-            style={{ borderTop: '1px solid var(--color-border)' }}
-          >
-            <ConversationList searchQuery={searchQuery} />
-          </div>
+            </>
+          )}
 
+          {/* Réglages — flat footer entry into the grouped settings drawer,
+              landing on Général. Disappears once the drawer is open, which
+              carries its own back affordance at the top. */}
+          {!settingsOpen && (
+            <button
+              onClick={openSettings}
+              className="flex items-center gap-2 px-5 py-3 text-sm transition-colors cursor-pointer"
+              style={{
+                color: 'var(--color-text-secondary)',
+                background: 'transparent',
+                borderTop: '1px solid var(--color-border)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              aria-controls="settings-nav"
+              title={t('nav.settings')}
+            >
+              <Settings size={16} />
+              <span className="flex-1 text-left">{t('nav.settings')}</span>
+              <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+            </button>
+          )}
         </div>
       </aside>
     </>

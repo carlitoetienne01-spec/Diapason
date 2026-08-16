@@ -77,7 +77,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ``/metrics`` exposes request/token counters that should not be readable
         by unauthenticated clients, so it is gated alongside ``/v1`` and
         ``/api``. ``/health`` stays open for liveness probes.
+
+        Succès multi-device sync authenticates with pairing / peer tokens in the
+        request body, so pair + exchange stay reachable through a trusted HTTPS
+        relay without exposing the local Diapason API key.
         """
+        if path in {"/v1/succes/sync/pair", "/v1/succes/sync/exchange"}:
+            return False
         return (
             path.startswith("/v1/")
             or path.startswith("/api/")
@@ -113,13 +119,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        path = request.url.path
+        # Local-first Succès CRUD is driven by dense UI interactions (lists,
+        # toggles, autosave). Background polls already share the same bucket, so
+        # throttling /v1/succes/* starves the product surface with 429s.
+        if path == "/v1/voice/live/health" or path.startswith("/v1/succes"):
+            return await call_next(request)
+
         # This small, read-only readiness response is polled while the voice
         # panel is open. It remains authenticated, but unrelated dashboard
         # traffic must not exhaust its rate-limit bucket and disable Start.
-        if (
-            AuthMiddleware._requires_auth(request.url.path)
-            and request.url.path != "/v1/voice/live/health"
-        ):
+        if AuthMiddleware._requires_auth(path):
             auth = request.headers.get("Authorization", "")
             # Never retain the bearer token itself in limiter state or logs.
             credential = "unauthenticated"
@@ -132,7 +142,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if not allowed:
                 retry_after = max(1, int(wait_seconds + 0.999))
                 return JSONResponse(
-                    {"detail": "Rate limit exceeded"},
+                    {"detail": "Trop de requêtes. Réessayez dans un instant."},
                     status_code=429,
                     headers={"Retry-After": str(retry_after)},
                 )

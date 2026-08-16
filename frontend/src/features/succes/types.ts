@@ -20,6 +20,8 @@ export interface SuccesTask {
   category: string;
   notes: string;
   emoji: string;
+  templateId: string;
+  groupId: string;
   createdAt: string;
   completedDate: string;
   postponedCount: number;
@@ -29,14 +31,34 @@ export interface SuccesTask {
 
 export interface SuccesSyncStatus {
   mode: 'local_only' | 'ready' | 'paired' | string;
+  role?: 'ready' | 'host' | 'guest' | string;
   configured: boolean;
   deviceId: string;
   localCursor: number;
   peerCount: number;
   pendingPairings: number;
-  transport: 'loopback_only' | string;
+  transport: 'loopback_only' | 'https_relay' | string;
+  relayUrl?: string;
+  guest?: SuccesSyncGuestSession | null;
+  lastSyncAtMs?: number | null;
+  lastSyncError?: string | null;
   peers: SuccesSyncPeer[];
   message: string;
+  joined?: {
+    peerId: string;
+    deviceName: string;
+    serverDeviceId?: string;
+    relayUrl: string;
+  };
+}
+
+export interface SuccesSyncGuestSession {
+  peerId: string;
+  deviceName: string;
+  serverDeviceId: string;
+  pullCursor: number;
+  pushCursor: number;
+  hasToken: boolean;
 }
 
 export interface SuccesSyncPeer {
@@ -53,6 +75,17 @@ export interface SuccesPairingInvitation {
   deviceName: string;
   expiresAtMs: number;
   expiresInSeconds: number;
+}
+
+export interface SuccesSyncRunResult {
+  pushed: number;
+  pulled: number;
+  received: { applied: number; stale: number; duplicate: number };
+  pullCursor: number;
+  pushCursor: number;
+  hasMore: boolean;
+  syncedAtMs: number;
+  status: SuccesSyncStatus;
 }
 
 export interface PlannerResponse {
@@ -98,6 +131,24 @@ export interface SuccesHabit {
   streak: number;
 }
 
+export type SuccesNotePageFormat =
+  | 'a4'
+  | 'letter'
+  | 'a5'
+  | 'wide'
+  | 'narrow'
+  | 'full'
+  | 'reading';
+
+export type SuccesNotePageBackground =
+  | 'default'
+  | 'lined'
+  | 'grid'
+  | 'sepia'
+  | 'dark';
+
+export type SuccesNoteDocLang = 'fr' | 'ht';
+
 export interface SuccesNote {
   id: string;
   title: string;
@@ -105,6 +156,11 @@ export interface SuccesNote {
   createdAt: string;
   updatedAt: string;
   updatedAtMs: number;
+  pageFormat: SuccesNotePageFormat;
+  pageBackground: SuccesNotePageBackground;
+  fontFamily: string;
+  docLang: SuccesNoteDocLang;
+  color: string;
 }
 
 export interface SuccesDashboard {

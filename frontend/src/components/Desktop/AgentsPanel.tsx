@@ -16,6 +16,7 @@ import {
   fetchAgentTraces,
 } from '../../lib/api';
 import type { ManagedAgent, AgentTask, AgentMessage, AgentTemplate, LearningLogEntry, AgentTrace } from '../../lib/api';
+import { useConfirm } from '../ConfirmDialog';
 import { useTranslation } from '../../i18n/useTranslation';
 
 // Module-level helpers cannot call the hook, so they take `t` as an argument
@@ -1094,6 +1095,7 @@ interface Props {
 
 export function AgentsPanel({ apiUrl }: Props) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [agents, setAgents] = useState<ManagedAgent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
@@ -1149,11 +1151,19 @@ export function AgentsPanel({ apiUrl }: Props) {
   }, [apiUrl, refresh]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm(t('agents.list.deleteConfirm'))) return;
+    const agent = agents.find((item) => item.id === id);
+    const confirmed = await confirm({
+      title: t('agents.list.deleteTitle'),
+      description: t('agents.list.deleteConfirm'),
+      confirmLabel: t('common.delete'),
+      keepLabel: 'Garder',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await deleteManagedAgent(apiUrl, id).catch(() => {});
     if (selectedId === id) setSelectedId(null);
     refresh();
-  }, [apiUrl, selectedId, refresh, t]);
+  }, [apiUrl, selectedId, refresh, t, confirm, agents]);
 
   const selected = agents.find((a) => a.id === selectedId) ?? null;
 

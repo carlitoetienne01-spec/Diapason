@@ -34,11 +34,35 @@ def test_task_and_nested_subtasks_are_transactional(store: SuccesStore) -> None:
     assert task["completedDate"] == date.today().isoformat()
 
 
-def test_parent_cannot_be_completed_before_subtasks(store: SuccesStore) -> None:
+def test_toggling_a_parent_cascades_to_its_subtasks(store: SuccesStore) -> None:
     task = store.create_task({"title": "Tâche avec contrôle"})
     task = store.add_subtask(task["id"], "Étape obligatoire")
-    with pytest.raises(SuccesError, match="Validez d'abord"):
-        store.set_task_done(task["id"], True)
+    root_id = task["subtasks"][0]["id"]
+    task = store.add_subtask(task["id"], "Sous-étape", parent_id=root_id)
+
+    task = store.set_task_done(task["id"], True)
+    assert task["done"] is True
+    assert task["subtasks"][0]["done"] is True
+    assert task["subtasks"][0]["children"][0]["done"] is True
+
+    task = store.set_task_done(task["id"], False)
+    assert task["done"] is False
+    assert task["subtasks"][0]["done"] is False
+    assert task["subtasks"][0]["children"][0]["done"] is False
+
+
+def test_parent_can_be_toggled_repeatedly_without_conflict(store: SuccesStore) -> None:
+    """Regression: re-completing a parent used to 409 once a subtask reopened."""
+    task = store.create_task({"title": "Cycle de validation"})
+    task = store.add_subtask(task["id"], "Étape")
+    subtask_id = task["subtasks"][0]["id"]
+
+    for _ in range(3):
+        assert store.set_task_done(task["id"], True)["done"] is True
+        assert store.set_task_done(task["id"], False)["done"] is False
+
+    store.set_subtask_done(task["id"], subtask_id, False)
+    assert store.set_task_done(task["id"], True)["done"] is True
 
 
 def test_delete_is_a_tombstone_and_operation_cursor_advances(
@@ -51,6 +75,20 @@ def test_delete_is_a_tombstone_and_operation_cursor_advances(
     assert [op["kind"] for op in operations["operations"]] == ["upsert", "delete"]
     assert operations["operations"][-1]["payload"]["deletedAtMs"] > 0
     assert operations["cursor"] == 2
+
+
+def test_delete_subtask_removes_nested_children(store: SuccesStore) -> None:
+    task = store.create_task({"title": "Parent"})
+    task = store.add_subtask(task["id"], "Racine")
+    root_id = task["subtasks"][0]["id"]
+    task = store.add_subtask(task["id"], "Enfant", parent_id=root_id)
+    task = store.add_subtask(task["id"], "Sœur")
+    assert len(task["subtasks"]) == 2
+
+    task = store.delete_subtask(task["id"], root_id)
+    assert len(task["subtasks"]) == 1
+    assert task["subtasks"][0]["title"] == "Sœur"
+    assert task["subtasks"][0]["children"] == []
 
 
 def test_legacy_import_is_idempotent_and_archives_full_snapshot(

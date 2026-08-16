@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 
 import { useTranslation } from '../i18n/useTranslation';
 import { Copy, Trash2 } from 'lucide-react';
+import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -17,6 +18,7 @@ function formatTime(ts: number): string {
 
 export function LogsPage() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const logEntries = useAppStore((s) => s.logEntries);
   const clearLogs = useAppStore((s) => s.clearLogs);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -30,6 +32,19 @@ export function LogsPage() {
       .map((e) => `${formatTime(e.timestamp)} [${e.level}] [${e.category}] ${e.message}`)
       .join('\n');
     await navigator.clipboard.writeText(text);
+  };
+
+  const handleClear = async () => {
+    if (!logEntries.length) return;
+    const confirmed = await confirm({
+      title: t('common.clear'),
+      description: 'Effacer tous les journaux de cette session ?',
+      confirmLabel: 'Supprimer',
+      keepLabel: 'Garder',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    clearLogs();
   };
 
   return (
@@ -49,7 +64,7 @@ export function LogsPage() {
               >
                 <Copy size={12} />{t('logs.copyAll')}</button>
               <button
-                onClick={clearLogs}
+                onClick={() => void handleClear()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               >

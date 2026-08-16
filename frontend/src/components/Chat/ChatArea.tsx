@@ -10,6 +10,10 @@ import { listConnectors } from '../../lib/connectors-api';
 import { openTalkToDiapason } from '../TalkToDiapasonHost';
 import { useTranslation } from '../../i18n/useTranslation';
 
+/** Horizontal room the fixed approval bell needs: its 12px offset from the
+ * window edge, its 33px button, and a little air. */
+const BELL_CLEARANCE = 49;
+
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
 function greetingKey():
@@ -82,7 +86,16 @@ export function ChatArea() {
   return (
     <div className="flex flex-col h-full">
       {/* Toggle bar */}
-      <div className="flex items-center justify-end gap-1 px-3 py-1.5 shrink-0">
+      <div
+        className="flex items-center justify-end gap-1 pl-3 py-1.5 shrink-0"
+        style={{
+          // The approval bell is pinned to the window's top-right corner. With
+          // the system panel open the panel sits beneath it; closed, this bar
+          // reaches that same edge, so it has to yield the bell's footprint or
+          // the two icons land on top of one another.
+          paddingRight: systemPanelOpen ? 12 : BELL_CLEARANCE,
+        }}
+      >
         <button
           onClick={() => openTalkToDiapason()}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
