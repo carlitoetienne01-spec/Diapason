@@ -14,7 +14,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from diapason.evals.comparison.table_gen import (
+import pytest
+
+# table_gen imports polars, which ships in the optional `framework-comparison`
+# extra. Importing it unguarded killed COLLECTION for the whole suite — zero
+# tests ran, exit 2, on any machine without the extra. The sibling module
+# already did this correctly; this file did not.
+pytest.importorskip("polars")
+
+from diapason.evals.comparison.table_gen import (  # noqa: E402
     _build_t1,
     load_results,
 )

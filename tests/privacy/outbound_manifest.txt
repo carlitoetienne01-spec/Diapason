@@ -81,6 +81,7 @@ speech/openai_whisper.py
 speech/realtime/gemini_live.py
 speech/realtime/local_voice.py
 speech/realtime/openai_realtime.py
+succes/relay.py
 telemetry/vllm_metrics.py
 tools/audio_tool.py
 tools/http_request.py

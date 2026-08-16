@@ -11,7 +11,9 @@ def test_speech_config_defaults():
     assert cfg.device == "auto"
     assert cfg.compute_type == "float16"
     assert cfg.realtime.enabled is True
-    assert cfg.realtime.provider == "gemini"
+    # Local is the shipped default: the product promises « rien ne quitte ce
+    # Mac », so the cloud providers are the opt-in, never the reverse.
+    assert cfg.realtime.provider == "local"
 
 
 def test_jarvis_config_has_speech():

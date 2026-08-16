@@ -301,20 +301,51 @@ def test_remote_channel_works_when_local_only_is_off():
         assert _RemoteChannel().send("chan", "hello") == "SENT"
 
 
-def test_desktop_url_open_is_refused_before_launching_browser():
-    """Dynamic desktop tools remain local for files/apps but gate HTTP URLs."""
+def test_user_commanded_browsing_is_outside_the_contract():
+    """Handing a URL to the user's OWN browser is the user browsing.
+
+    This test used to assert the opposite. It was rewritten deliberately
+    when the boundary was documented in core/local_mode.py: the old guard
+    blocked « ouvre YouTube » for the very users local-only is meant to
+    serve, while protecting nothing — the disclosure IS the request, exactly
+    as when dictation pastes their words into a cloud-backed app.
+
+    What the contract still governs is DIAPASON's own egress; see
+    test_succes_sync_relay_is_still_gated below, where the user's data
+    genuinely leaves the machine.
+    """
     from unittest.mock import MagicMock
 
     from diapason.tools.desktop_tools import open_in_browser
 
     runner = MagicMock()
+    runner.return_value.returncode = 0
+    runner.return_value.stdout = ""
+    runner.return_value.stderr = ""
     with _mode(True):
         with patch("diapason.tools.desktop_tools._run", runner):
-            result = open_in_browser("https://example.com/private-query")
+            result = open_in_browser("https://example.com/user-asked-for-this")
 
-    assert result.success is False
-    assert result.metadata.get("nothing_left_the_machine") is True
-    runner.assert_not_called()
+    assert result.success is True
+    runner.assert_called()
+
+
+def test_succes_sync_relay_is_still_gated():
+    """Shipping the user's OWN DATA to a remote relay stays inside the gate.
+
+    The counterweight to the test above: sync is not browsing. Tasks, notes
+    and habits leaving for a Tailscale/Cloudflare relay is precisely what
+    local-only promises will not happen, and no per-feature switch may
+    override it — the refusal names the one setting that does.
+    """
+    from diapason.succes.relay import relay_post
+    from diapason.succes.store import SuccesError
+
+    with _mode(True):
+        with pytest.raises(SuccesError) as excinfo:
+            relay_post("https://relay.example.com", "/v1/succes/sync/pair", {})
+
+    assert "local_only" in str(excinfo.value)
 
 
 def test_channels_are_remote_unless_they_claim_otherwise():

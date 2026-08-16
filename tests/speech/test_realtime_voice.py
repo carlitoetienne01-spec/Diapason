@@ -17,12 +17,13 @@ def test_speech_config_has_realtime_defaults():
     cfg = SpeechConfig()
     assert isinstance(cfg.realtime, VoiceRealtimeConfig)
     assert cfg.realtime.enabled is True
-    assert cfg.realtime.provider == "gemini"
+    # See test_config.py: local is the shipped default.
+    assert cfg.realtime.provider == "local"
 
 
 def test_jarvis_config_nested_realtime():
     cfg = DiapasonConfig()
-    assert cfg.speech.realtime.provider == "gemini"
+    assert cfg.speech.realtime.provider == "local"
 
 
 def test_pcm_roundtrip():
