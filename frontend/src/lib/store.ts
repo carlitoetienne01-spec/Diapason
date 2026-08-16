@@ -289,6 +289,17 @@ interface AppState {
   addLogEntry: (entry: LogEntry) => void;
   clearLogs: () => void;
 
+  // Mesh
+  /**
+   * Ressource qu'un autre appareil demande d'ouvrir, consommée au montage de
+   * la page cible : le routeur ne transporte pas de sélection. Jamais
+   * persistée — une demande d'hier ne doit pas rouvrir un écran aujourd'hui.
+   */
+  pendingMeshSelection: { kind: 'project' | 'note'; id: string } | null;
+  setPendingMeshSelection: (
+    selection: { kind: 'project' | 'note'; id: string } | null,
+  ) => void;
+
   // Model loading
   modelLoading: boolean;
   setModelLoading: (loading: boolean) => void;
@@ -638,6 +649,10 @@ export const useAppStore = create<AppState>((set, get) => {
       logEntries: [...s.logEntries.slice(-499), entry],
     })),
     clearLogs: () => set({ logEntries: [] }),
+
+    // ── Mesh ────────────────────────────────────────────────────────
+    pendingMeshSelection: null,
+    setPendingMeshSelection: (selection) => set({ pendingMeshSelection: selection }),
 
     // ── Model loading ───────────────────────────────────────────────
     modelLoading: false,

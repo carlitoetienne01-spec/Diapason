@@ -10,6 +10,7 @@ import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } fr
 import { OptInModal } from './components/OptInModal';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
+import { MeshHost } from './components/MeshHost';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
@@ -55,6 +56,9 @@ const SuccesYearReviewPage = lazy(() =>
 );
 const SuccesSyncPage = lazy(() =>
   import('./pages/SuccesSyncPage').then((module) => ({ default: module.SuccesSyncPage })),
+);
+const DevicesPage = lazy(() =>
+  import('./pages/DevicesPage').then((module) => ({ default: module.DevicesPage })),
 );
 
 export default function App() {
@@ -267,11 +271,13 @@ export default function App() {
             <Route path="succes/templates" element={<Navigate to="/succes/tasks" replace />} />
             <Route path="succes/year-review" element={<SuccesYearReviewPage />} />
             <Route path="succes/sync" element={<SuccesSyncPage />} />
+            <Route path="devices" element={<DevicesPage />} />
           </Route>
         </Routes>
       </Suspense>
       <Toaster position="bottom-right" />
       <TalkToDiapasonHost />
+      <MeshHost />
       {commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />

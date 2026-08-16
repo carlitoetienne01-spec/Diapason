@@ -2940,6 +2940,28 @@ async fn hide_overlay() -> Result<(), String> {
     Ok(())
 }
 
+/// Ramène la fenêtre principale au premier plan, à la demande d'un autre
+/// appareil du maillage.
+///
+/// Les trois appels sont nécessaires, et dans cet ordre : `set_focus()` seul
+/// laisse une fenêtre masquée ou réduite exactement où elle était. Le
+/// raccourci Alt+Espace l'avait déjà appris ; cette séquence est la sienne.
+///
+/// À noter : sur macOS l'application est signée de façon ad hoc, et
+/// `set_focus()` ne passe pas toujours au-dessus de l'espace plein écran
+/// d'une autre application. L'écran demandé est bien ouvert dans tous les
+/// cas — c'est la fenêtre qui peut rester derrière.
+#[tauri::command]
+fn focus_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "La fenêtre principale de Diapason est introuvable.".to_string())?;
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.unminimize();
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
@@ -3106,6 +3128,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            focus_main_window,
             get_setup_status,
             get_api_base,
             get_local_api_key,

@@ -23,6 +23,7 @@ import {
   Repeat2,
   NotebookPen,
   Trophy,
+  MonitorSmartphone,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +34,7 @@ import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store'
 import { useTranslation } from '../../i18n/useTranslation';
 
 /** Pages that live behind the Réglages drawer, so a deep link opens it. */
-const SETTINGS_PATHS = ['/settings', '/data-sources', '/agents', '/logs', '/succes/sync', '/dashboard'];
+const SETTINGS_PATHS = ['/settings', '/data-sources', '/agents', '/logs', '/succes/sync', '/devices', '/dashboard'];
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -112,9 +113,14 @@ export function Sidebar() {
     navigate('/');
   };
 
-  // Keep Réglages open while browsing any of its pages.
+  // The drawer follows the route, in both directions.
+  //
+  // Only the opening half used to be enforced, which was invisible as long as
+  // every way in and out went through openSettings/closeSettings. A remote
+  // command from another appareil navigates without touching either, and left
+  // the Réglages drawer standing over a Succès page.
   useEffect(() => {
-    if (onSettingsRoute) setSettingsOpen(true);
+    setSettingsOpen(onSettingsRoute);
   }, [onSettingsRoute]);
 
   // The page the drawer interrupted, so closing it can hand the view back.
@@ -174,6 +180,7 @@ export function Sidebar() {
         { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
         { path: '/agents', icon: Bot, label: t('nav.agents') },
         { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
+        { path: '/devices', icon: MonitorSmartphone, label: t('nav.devices') },
       ],
     },
     {

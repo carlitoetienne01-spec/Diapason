@@ -145,6 +145,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if path == "/v1/voice/live/health":
             return await call_next(request)
+        # Same shape, same reason, for the two mesh surfaces the local UI
+        # polls: the inbox (another device asked us to open a screen) and the
+        # device list (presence goes stale on its own, so the Appareils screen
+        # has to re-read it). Sharing the 60/min bucket with the voice poller
+        # meant the fleet screen failed to load on a busy app — a failure the
+        # user would read as "le maillage est cassé", not as a rate limit.
+        #
+        # Reads only. Minting invitations, sending commands, revoking and
+        # forgetting stay throttled: those are the routes worth abusing, and
+        # none of them is polled.
+        if request.method == "GET" and (
+            path == "/v1/mesh/inbox"
+            or path == "/v1/mesh/me"
+            or path.startswith("/v1/mesh/devices")
+        ):
+            return await call_next(request)
 
         # This small, read-only readiness response is polled while the voice
         # panel is open. It remains authenticated, but unrelated dashboard
