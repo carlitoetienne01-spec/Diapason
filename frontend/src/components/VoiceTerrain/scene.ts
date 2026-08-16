@@ -178,7 +178,7 @@ export class VoiceTerrainScene {
     this.composer.addPass(new OutputPass());
   }
 
-  // ── public contract (mirrors DiapasonOrbScene) ───────────────────────────
+  // ── public contract (shared with AIEntityScene, the dictation ribbon) ────
 
   setState(state: AIState): void {
     this.state = state;
