@@ -84,6 +84,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         if path in {"/v1/succes/sync/pair", "/v1/succes/sync/exchange"}:
             return False
+        # Mesh enrolment: a device being paired does not hold the API key yet
+        # — the one-time invitation IS its credential. Everything else under
+        # /v1/mesh (listing, revoking, heartbeats) stays behind the wall.
+        if path == "/v1/mesh/pairings/redeem":
+            return False
         return (
             path.startswith("/v1/")
             or path.startswith("/api/")

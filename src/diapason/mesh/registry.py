@@ -63,7 +63,9 @@ CREATE TABLE IF NOT EXISTS mesh_devices (
     app_version TEXT NOT NULL DEFAULT '',
     created_at_ms INTEGER NOT NULL,
     last_seen_at_ms INTEGER,
-    revoked_at_ms INTEGER
+    revoked_at_ms INTEGER,
+    app_state TEXT,
+    transport TEXT
 );
 CREATE INDEX IF NOT EXISTS mesh_devices_trust_idx
     ON mesh_devices(trust_level, last_seen_at_ms);
@@ -107,7 +109,19 @@ class DeviceRegistry:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._ensure_columns(conn)
             conn.commit()
+
+    @staticmethod
+    def _ensure_columns(conn: sqlite3.Connection) -> None:
+        """Additive migration for registries created before presence existed."""
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(mesh_devices)").fetchall()
+        }
+        for name in ("app_state", "transport"):
+            if name not in columns:
+                conn.execute(f"ALTER TABLE mesh_devices ADD COLUMN {name} TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=5.0)
@@ -298,6 +312,36 @@ class DeviceRegistry:
 
     # ── writing ──────────────────────────────────────────────────────────
 
+    def heartbeat(
+        self,
+        device_id: str,
+        *,
+        app_state: str = "",
+        transport: str = "",
+    ) -> dict[str, Any]:
+        """Record that a TRUSTED device is alive right now.
+
+        Restricted to trusted devices on purpose: a revoked one must not be
+        able to make itself look reachable again simply by keeping a timer
+        running.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE mesh_devices SET last_seen_at_ms=?, app_state=?, transport=? "
+                "WHERE device_id=? AND trust_level=?",
+                (
+                    now_ms(),
+                    str(app_state or "")[:40] or None,
+                    str(transport or "")[:40] or None,
+                    device_id,
+                    TRUST_TRUSTED,
+                ),
+            )
+            conn.commit()
+        if cursor.rowcount == 0:
+            raise MeshError("Cet appareil n'est pas autorisé à signaler sa présence.")
+        return self.get(device_id)
+
     def touch(self, device_id: str) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -377,4 +421,6 @@ class DeviceRegistry:
             "createdAtMs": row["created_at_ms"],
             "lastSeenAtMs": row["last_seen_at_ms"],
             "revokedAtMs": row["revoked_at_ms"],
+            "appState": row["app_state"] if "app_state" in row.keys() else None,
+            "transport": row["transport"] if "transport" in row.keys() else None,
         }
