@@ -33,7 +33,9 @@ from diapason.core.paths import get_config_dir
 
 __all__ = [
     "DeviceIdentity",
+    "adopt_owner_id",
     "device_identity",
+    "owner_id",
     "identity_dir",
     "public_identity",
     "sign_envelope",
@@ -75,11 +77,70 @@ class DeviceIdentity:
             "name": self.name,
             "platform": self.platform,
             "createdAtMs": self.created_at_ms,
+            "ownerId": owner_id(),
         }
 
 
 def identity_dir() -> Path:
     return get_config_dir() / "mesh"
+
+
+_OWNER_FILENAME = "owner"
+
+
+def owner_id() -> str:
+    """The identity every device of this fleet shares.
+
+    Chosen shape (user decision): a locally minted identity propagated by
+    pairing, not an account on a server. No password, no e-mail, nothing to
+    breach remotely — and it still gives commands the "same owner" check
+    spec §9 requires, because a device only ever learns it by being paired.
+
+    Created once, then read; never regenerated silently, since a changed
+    owner id would orphan every device already paired.
+    """
+    directory = identity_dir()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / _OWNER_FILENAME
+    if path.exists():
+        existing = path.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    import secrets
+
+    minted = f"owner_{secrets.token_hex(16)}"
+    path.write_text(minted, encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:  # noqa: BLE001
+        pass
+    return minted
+
+
+def adopt_owner_id(value: str) -> str:
+    """Join an existing fleet: take the owner id our host handed us.
+
+    Refuses to overwrite a different established identity — a device cannot
+    silently change fleets, which is how paired devices would lose each other.
+    """
+    candidate = str(value or "").strip()
+    if not candidate.startswith("owner_") or len(candidate) > 80:
+        raise ValueError("Identifiant de propriétaire invalide.")
+    directory = identity_dir()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / _OWNER_FILENAME
+    if path.exists():
+        current = path.read_text(encoding="utf-8").strip()
+        if current and current != candidate:
+            raise ValueError(
+                "Cet appareil appartient déjà à un autre ensemble d'appareils."
+            )
+    path.write_text(candidate, encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:  # noqa: BLE001
+        pass
+    return candidate
 
 
 def _now_ms() -> int:

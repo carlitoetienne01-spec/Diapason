@@ -77,6 +77,9 @@ class TestSecrecy:
             "name",
             "platform",
             "createdAtMs",
+            # The fleet identity travels with the device: a peer needs it to
+            # tell "same owner" from "someone else's Diapason" (spec §9).
+            "ownerId",
         }
 
     def test_a_symlinked_key_is_refused(self, home):
