@@ -127,12 +127,27 @@ class SuccesSyncStore(SuccesContinuityStore):
         super().__init__(db_path)
         with self._connect() as conn:
             conn.executescript(_SYNC_SCHEMA)
+            self._ensure_peer_columns(conn)
             conn.execute(
                 "INSERT OR IGNORE INTO succes_meta(key,value) "
                 "VALUES('sync_clock_cursor','0')"
             )
             self._refresh_local_clocks(conn)
             conn.commit()
+
+    @staticmethod
+    def _ensure_peer_columns(conn: sqlite3.Connection) -> None:
+        """Additive migration: bind each peer to the device it authors as.
+
+        Nullable on purpose — existing pairs predate the binding and learn
+        their device on the next exchange rather than being locked out.
+        """
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(succes_sync_peers)").fetchall()
+        }
+        if "device_id" not in columns:
+            conn.execute("ALTER TABLE succes_sync_peers ADD COLUMN device_id TEXT")
 
     # Pairing and peer credentials -----------------------------------
 
@@ -375,15 +390,60 @@ class SuccesSyncStore(SuccesContinuityStore):
             ).fetchone()
             if peer is None:
                 raise SuccesError("Cet appareil n'est plus autorisé à synchroniser.")
+            # Bind peer ↔ device on first use: the pairing token proved the
+            # authorization, the first device id it authors becomes the
+            # identity it is held to from then on. Learning it (rather than
+            # demanding it at pairing time) keeps every existing pair working
+            # across the upgrade.
+            bound = self._peer_device_id(conn, peer_id)
+            authored = self._authored_device_id(conn, ordered)
+            if bound is None and authored is not None:
+                conn.execute(
+                    "UPDATE succes_sync_peers SET device_id=? WHERE id=?",
+                    (authored, peer_id),
+                )
+                bound = authored
             self._refresh_local_clocks(conn)
             for raw in ordered:
-                result = self._apply_operation(conn, raw)
+                result = self._apply_operation(conn, raw, expected_device_id=bound)
                 stats[result] += 1
             conn.execute(
                 "UPDATE succes_sync_peers SET last_seen_at_ms=? WHERE id=?",
                 (now_ms(), peer_id),
             )
         return stats
+
+    @staticmethod
+    def _peer_device_id(conn: sqlite3.Connection, peer_id: str) -> str | None:
+        row = conn.execute(
+            "SELECT device_id FROM succes_sync_peers WHERE id=?", (peer_id,)
+        ).fetchone()
+        value = None if row is None else row["device_id"]
+        return str(value) if value else None
+
+    @staticmethod
+    def _authored_device_id(
+        conn: sqlite3.Connection, operations: Sequence[Mapping[str, Any]]
+    ) -> str | None:
+        """The device id of the first operation this peer genuinely authors.
+
+        Relayed history (op ids we already hold) says nothing about who is
+        speaking, so it is skipped — otherwise the very first exchange, which
+        echoes our own operations back, would bind the peer to US.
+        """
+        for raw in operations:
+            if not isinstance(raw, Mapping):
+                continue
+            op_id = str(raw.get("opId") or "")
+            device_id = str(raw.get("deviceId") or "")
+            if not op_id or not device_id:
+                continue
+            known = conn.execute(
+                "SELECT 1 FROM succes_operations WHERE op_id=?", (op_id,)
+            ).fetchone()
+            if known is None:
+                return device_id
+        return None
 
     def apply_inbound_operations(
         self, operations: Sequence[Mapping[str, Any]]
@@ -567,7 +627,13 @@ class SuccesSyncStore(SuccesContinuityStore):
             "status": self.sync_status(),
         }
 
-    def _apply_operation(self, conn: sqlite3.Connection, raw: Mapping[str, Any]) -> str:
+    def _apply_operation(
+        self,
+        conn: sqlite3.Connection,
+        raw: Mapping[str, Any],
+        *,
+        expected_device_id: str | None = None,
+    ) -> str:
         if not isinstance(raw, Mapping):
             raise SuccesError("Une opération de synchronisation est illisible.")
         op_id = _clean_text(
@@ -633,6 +699,18 @@ class SuccesSyncStore(SuccesContinuityStore):
                     "Un identifiant d'opération reçu existe déjà avec un autre contenu."
                 )
             return "duplicate"
+
+        # ── Attribution: a peer may RELAY history it received (those arrive as
+        # duplicates above and never reach this point), but it may not AUTHOR a
+        # brand-new operation in another device's name. The device id used to be
+        # taken on trust from the body, so an authenticated peer could forge
+        # history attributed to any device — and every later guarantee (audit,
+        # revocation, conflict arbitration) keys on that field.
+        if expected_device_id is not None and device_id != expected_device_id:
+            raise SuccesError(
+                "Une opération inédite prétend venir d'un autre appareil que "
+                "celui qui l'envoie."
+            )
 
         timestamp = _safe_timestamp(raw.get("timestampMs"))
         effective_entity, effective_id = self._effective_entity(

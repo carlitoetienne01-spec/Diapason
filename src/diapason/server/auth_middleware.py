@@ -123,7 +123,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Local-first Succès CRUD is driven by dense UI interactions (lists,
         # toggles, autosave). Background polls already share the same bucket, so
         # throttling /v1/succes/* starves the product surface with 429s.
-        if path == "/v1/voice/live/health" or path.startswith("/v1/succes"):
+        #
+        # The sync control plane is the exception to the exception: /sync/pair
+        # and /sync/exchange are the only routes that skip the local API key
+        # (they authenticate by token in the body), so exempting them from the
+        # limiter too would leave the mesh's front door both unauthenticated
+        # and unthrottled. Those keep their bucket.
+        if path.startswith("/v1/succes") and not path.startswith("/v1/succes/sync/"):
+            return await call_next(request)
+        if path == "/v1/voice/live/health":
             return await call_next(request)
 
         # This small, read-only readiness response is polled while the voice

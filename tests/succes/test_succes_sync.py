@@ -224,3 +224,74 @@ def test_normalize_relay_url_rejects_credentials_and_metadata() -> None:
         normalize_relay_url("https://user:pass@example.com")
     with pytest.raises(SuccesError, match="autorisée"):
         normalize_relay_url("http://169.254.169.254/")
+
+
+# ---------------------------------------------------------------------------
+# Device attribution — the mesh's first invariant
+# ---------------------------------------------------------------------------
+
+
+def _operation(op_id: str, device_id: str, title: str) -> dict:
+    """A minimal authored upsert, shaped like the wire format."""
+    return {
+        "opId": op_id,
+        "deviceId": device_id,
+        "entity": "tasks",
+        "entityId": f"task_{op_id}",
+        "kind": "upsert",
+        "timestampMs": 1_700_000_000_000,
+        "payload": {"id": f"task_{op_id}", "title": title, "done": False},
+    }
+
+
+def test_peer_is_bound_to_the_device_it_first_authors(tmp_path) -> None:
+    db = store(tmp_path, "bind")
+    peer = authorize_peer(db, "iPhone")
+
+    db.apply_remote_operations(peer["peerId"], [_operation("op-1", "phone-a", "Un")])
+
+    with sqlite3.connect(db.db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        bound = conn.execute(
+            "SELECT device_id FROM succes_sync_peers WHERE id=?", (peer["peerId"],)
+        ).fetchone()["device_id"]
+    assert bound == "phone-a"
+
+
+def test_a_peer_cannot_author_in_another_devices_name(tmp_path) -> None:
+    """The forgery the old code allowed: authenticated ≠ authorized to be anyone.
+
+    Every later guarantee — audit, revocation, conflict arbitration — keys on
+    the device id, so a peer that can forge it can rewrite whose history it is.
+    """
+    db = store(tmp_path, "forge")
+    peer = authorize_peer(db, "iPhone")
+    db.apply_remote_operations(peer["peerId"], [_operation("op-1", "phone-a", "Un")])
+
+    with pytest.raises(SuccesError, match="autre appareil"):
+        db.apply_remote_operations(
+            peer["peerId"], [_operation("op-2", "mac-victime", "Forgé")]
+        )
+
+
+def test_relayed_history_from_other_devices_still_flows(tmp_path) -> None:
+    """The counterweight: a peer may RELAY what it received, star-topology.
+
+    A guest echoes back operations it pulled from the host; those carry other
+    devices' ids and must not be mistaken for forgeries — they arrive as
+    duplicates, which is precisely why the check sits after that branch.
+    """
+    db = store(tmp_path, "relay")
+    peer = authorize_peer(db, "iPhone")
+    # The host already holds an operation authored by the Mac…
+    db.apply_inbound_operations([_operation("op-mac", "mac-hote", "Depuis le Mac")])
+    # …and the guest echoes it back alongside its own new one.
+    stats = db.apply_remote_operations(
+        peer["peerId"],
+        [
+            _operation("op-mac", "mac-hote", "Depuis le Mac"),
+            _operation("op-phone", "phone-a", "Depuis le téléphone"),
+        ],
+    )
+    assert stats["duplicate"] == 1
+    assert stats["applied"] == 1
