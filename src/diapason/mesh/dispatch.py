@@ -164,39 +164,53 @@ def _apply_offline_policy(
     """What an unreachable device means, per tool (spec §44).
 
     Never "it worked". The wording distinguishes "will happen later" from
-    "will not happen", because a user who is told the wrong one acts on it.
+    "will not happen", because a user who is told the wrong one acts on it —
+    and it distinguishes "asleep" from "awake but unreachable", because those
+    two call for different things from the user: waiting, versus checking the
+    network.
     """
     name = device.get("name") or "cet appareil"
     state = presence.get("state", "OFFLINE")
 
+    if reason:
+        # Presence said reachable and the wire disagreed. Saying "hors ligne"
+        # here would send the user to look at a device that is in fact on.
+        absence = "n'a pas pu être joint"
+    elif state == "BACKGROUND":
+        absence = "est en arrière-plan"
+    else:
+        absence = "est hors ligne"
+
     if spec.offline_policy == "REQUIRE_ONLINE":
-        absence = "en arrière-plan" if state == "BACKGROUND" else "hors ligne"
         return queue.mark(
             command.command_id,
             "OFFLINE",
             user_message=(
-                f"{name} est {absence} : cette action demande un appareil "
-                "actif, elle n'a pas été effectuée."
+                f"{name} {absence} : cette action demande un appareil actif, "
+                "elle n'a pas été effectuée."
             ),
-            error_code="TARGET_OFFLINE",
+            error_code=_error_code(reason),
         )
     if spec.offline_policy == "DROP_IF_OFFLINE":
         return queue.mark(
             command.command_id,
             "EXPIRED",
-            user_message=f"{name} est hors ligne : la commande a été abandonnée.",
-            error_code="TARGET_OFFLINE",
+            user_message=f"{name} {absence} : la commande a été abandonnée.",
+            error_code=_error_code(reason),
         )
     # QUEUE_UNTIL_EXPIRATION — the only case where waiting is useful.
     return queue.mark(
         command.command_id,
         "QUEUED",
         user_message=(
-            f"{name} est hors ligne : la commande est en attente et partira "
-            "dès son retour."
+            f"{name} {absence} : la commande est en attente et partira dès son retour."
         ),
-        error_code=reason and "TRANSPORT_FAILED" or "TARGET_OFFLINE",
+        error_code=_error_code(reason),
     )
+
+
+def _error_code(reason: str) -> str:
+    return "TRANSPORT_FAILED" if reason else "TARGET_OFFLINE"
 
 
 def _refused(code: str, message: str, *, tool: str, target: str) -> DispatchResult:

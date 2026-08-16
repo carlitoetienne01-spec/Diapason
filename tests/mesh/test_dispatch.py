@@ -169,6 +169,26 @@ class TestOfflineHonesty:
         assert result["status"] != "SUCCESS"
         assert result["status"] in {"QUEUED", "OFFLINE"}
 
+    def test_awake_but_unreachable_is_not_described_as_offline(self, mesh):
+        """A device that answered a heartbeat and then failed on the wire is
+        not asleep — it is a network problem. Calling it « hors ligne » sends
+        the user to check a machine that is in fact on."""
+
+        def broken(command, device):
+            raise TransportError("Cet appareil n'a pas pu être joint.")
+
+        result = send(mesh, transport=broken)
+        assert "hors ligne" not in result["userSafeMessage"]
+        assert "n'a pas pu être joint" in result["userSafeMessage"]
+        assert result["errorCode"] == "TRANSPORT_FAILED"
+
+    def test_a_genuinely_offline_device_still_says_offline(self, mesh):
+        registry, _, _ = mesh
+        self._put_offline(registry)
+        result = send(mesh, transport=lambda c, d: {"status": "SUCCESS"})
+        assert "hors ligne" in result["userSafeMessage"]
+        assert result["errorCode"] == "TARGET_OFFLINE"
+
     def test_an_expired_queue_entry_stops_claiming_it_will_happen(self, mesh):
         registry, queue, _ = mesh
         self._put_offline(registry)
