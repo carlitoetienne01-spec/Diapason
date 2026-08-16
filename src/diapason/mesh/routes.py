@@ -72,6 +72,11 @@ class PairingRedeem(BaseModel):
     deviceType: Literal["DESKTOP", "LAPTOP", "PHONE", "TABLET", "BROWSER"] = "DESKTOP"
     capabilities: list[str] = Field(default_factory=list, max_length=64)
     appVersion: str = Field(default="", max_length=40)
+    # Where the joining device can be reached. Optional because a phone
+    # behind NAT may have no address worth giving; without it the pairing
+    # still succeeds and the device is simply command-able only once it has
+    # announced itself.
+    address: str = Field(default="", max_length=200)
 
 
 class Heartbeat(BaseModel):
@@ -130,11 +135,30 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
         )
     except MeshError as exc:
         raise _fail(exc) from exc
+    # Addresses are exchanged here or not at all: until each side knows where
+    # the other lives, neither can send anything, and neither can announce
+    # itself either — a chicken-and-egg that pairing is the only moment able
+    # to break.
+    if body.address:
+        try:
+            # Re-read: the row returned by redeem_pairing predates this write,
+            # and handing back a device whose address reads null would tell the
+            # joining side its own address was refused.
+            device = get_registry().heartbeat(
+                body.deviceId, transport="lan", address=body.address
+            )
+        except MeshError:  # noqa: BLE001 - a bad address must not undo pairing
+            pass
+
     # The new device needs OUR identity to verify what we send it later:
     # enrolment is mutual, not one-way.
+    from diapason.mesh.beacon import local_address
     from diapason.mesh.identity import public_identity
 
-    return {"device": device, "host": public_identity()}
+    return {
+        "device": device,
+        "host": {**public_identity(), "address": local_address()},
+    }
 
 
 # ── the fleet ────────────────────────────────────────────────────────────
@@ -266,6 +290,42 @@ def deliver_command(body: dict[str, Any]) -> dict[str, Any]:
         queue=get_queue(),
         executor=local_executor,
     )
+
+
+@router.post("/presence")
+def receive_presence(body: dict[str, Any]) -> dict[str, Any]:
+    """A paired device announcing itself.
+
+    Outside the API-key wall for the same reason as ``/commands/deliver``:
+    a device that joined this fleet never receives this machine's key, and
+    its Ed25519 signature is a stronger credential anyway — it binds the
+    exact claim, including the address commands will later be sent to.
+    """
+    from diapason.mesh.beacon import PresenceRejected, verify_beacon
+    from diapason.mesh.identity import device_identity, owner_id
+
+    try:
+        device = verify_beacon(
+            body,
+            registry=get_registry(),
+            local_owner_id=owner_id(),
+            local_device_id=device_identity().device_id,
+        )
+    except PresenceRejected as exc:
+        raise HTTPException(status_code=403, detail=exc.message) from exc
+    return {"ok": True, "presence": presence_of(device)}
+
+
+@router.post("/announce")
+def announce(appState: str = "") -> dict[str, Any]:
+    """Push our own presence to every peer we know how to reach.
+
+    Behind the key wall: this is the local app asking to be seen, not a
+    stranger asking to be believed.
+    """
+    from diapason.mesh.beacon import announce_to_fleet
+
+    return announce_to_fleet(registry=get_registry(), app_state=appState)
 
 
 @router.get("/inbox")

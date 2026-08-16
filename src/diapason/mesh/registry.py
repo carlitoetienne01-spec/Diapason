@@ -123,6 +123,12 @@ class DeviceRegistry:
         for name in ("app_state", "transport", "address"):
             if name not in columns:
                 conn.execute(f"ALTER TABLE mesh_devices ADD COLUMN {name} TEXT")
+        # The watermark that makes a replayed beacon useless. Nullable, so a
+        # registry that predates signed presence simply accepts the first one.
+        if "last_beacon_at_ms" not in columns:
+            conn.execute(
+                "ALTER TABLE mesh_devices ADD COLUMN last_beacon_at_ms INTEGER"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=5.0)
@@ -348,6 +354,49 @@ class DeviceRegistry:
             conn.commit()
         if cursor.rowcount == 0:
             raise MeshError("Cet appareil n'est pas autorisé à signaler sa présence.")
+        return self.get(device_id)
+
+    def heartbeat_signed(
+        self,
+        device_id: str,
+        *,
+        app_state: str = "",
+        transport: str = "",
+        address: str = "",
+        app_version: str = "",
+        sent_at_ms: int,
+    ) -> dict[str, Any] | None:
+        """Record presence claimed by the device itself, once per timestamp.
+
+        Returns ``None`` when the beacon is not strictly newer than the last
+        one accepted — which is what a replay looks like. The comparison and
+        the write are one UPDATE on purpose: two beacons arriving together
+        cannot both see the old watermark, so only one can win.
+        """
+        clean_address = str(address or "").strip()[:200]
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE mesh_devices SET last_seen_at_ms=?, last_beacon_at_ms=?, "
+                "app_state=?, transport=?, "
+                "address=COALESCE(NULLIF(?,''), address), "
+                "app_version=COALESCE(NULLIF(?,''), app_version) "
+                "WHERE device_id=? AND trust_level=? "
+                "  AND (last_beacon_at_ms IS NULL OR last_beacon_at_ms < ?)",
+                (
+                    now_ms(),
+                    int(sent_at_ms),
+                    str(app_state or "")[:40] or None,
+                    str(transport or "")[:40] or None,
+                    clean_address,
+                    str(app_version or "")[:40],
+                    device_id,
+                    TRUST_TRUSTED,
+                    int(sent_at_ms),
+                ),
+            )
+            conn.commit()
+        if cursor.rowcount == 0:
+            return None
         return self.get(device_id)
 
     def touch(self, device_id: str) -> None:

@@ -86,14 +86,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return False
         # Mesh enrolment: a device being paired does not hold the API key yet
         # — the one-time invitation IS its credential. Everything else under
-        # /v1/mesh (listing, revoking, heartbeats) stays behind the wall.
+        # /v1/mesh (listing, revoking, sending) stays behind the wall.
         if path == "/v1/mesh/pairings/redeem":
             return False
-        # Inbound commands carry their own, stronger credential: an Ed25519
-        # signature over the whole envelope, verified against the key we
-        # recorded when that device was paired. A shared API key would prove
-        # less — it says nothing about WHICH device, nor about the arguments.
-        if path == "/v1/mesh/commands/deliver":
+        # Inbound commands and presence beacons carry their own, stronger
+        # credential: an Ed25519 signature over the whole envelope, verified
+        # against the key we recorded when that device was paired. A shared
+        # API key would prove less — it says nothing about WHICH device, nor
+        # about what is being claimed.
+        if path in {"/v1/mesh/commands/deliver", "/v1/mesh/presence"}:
             return False
         return (
             path.startswith("/v1/")
