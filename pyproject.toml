@@ -29,6 +29,9 @@ classifiers = [
 ]
 dependencies = [
     "click>=8",
+    # Ed25519 for device identity: the mesh cannot treat its own identity as
+    # optional, so this moved out of the `security-signing` extra.
+    "cryptography>=43",
     "datasets>=4.5.0",
     "ddgs>=9.11.4",
     "httpx>=0.27",
