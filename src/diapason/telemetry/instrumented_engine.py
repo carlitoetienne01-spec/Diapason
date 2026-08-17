@@ -49,6 +49,49 @@ def _compute_itl_stats(itl_values_ms: list[float]) -> dict:
     }
 
 
+def _stream_usage_of(engine: Any, model: str = "") -> Any:
+    """Le compte de jetons du dernier flux, où qu'il se trouve dans la chaîne.
+
+    Le moteur concret est souvent enveloppé — routage, repli, télémétrie — et
+    c'est LUI qui connaît `prompt_eval_count`. Lire seulement l'enrobage le
+    plus extérieur rendait toujours vide, et chaque enregistrement streamé
+    portait prompt_tokens = 0.
+
+    La descente est bornée : une chaîne d'enrobages qui boucle ne doit pas
+    faire tourner cette fonction indéfiniment au milieu d'une requête.
+    """
+    seen = engine
+    for _ in range(6):
+        if seen is None:
+            return None
+        usage = getattr(seen, "_last_stream_usage", None)
+        if isinstance(usage, dict) and usage:
+            return usage
+        # MultiEngine n'enveloppe pas : il ROUTE. Sans cette branche la
+        # descente s'arrêtait sur lui, et le moteur qui détient réellement le
+        # compte — celui qui a servi ce modèle — n'était jamais atteint.
+        router = getattr(seen, "_engine_for", None)
+        if callable(router) and model:
+            try:
+                routed = router(model)
+            except Exception:  # noqa: BLE001 - un routage qui échoue n'est pas fatal
+                routed = None
+            if routed is not None and routed is not seen:
+                seen = routed
+                continue
+        # Les enrobages de ce dépôt ne s'accordent pas sur le nom du champ :
+        # InstrumentedEngine expose `_inner`, GuardrailsEngine `_engine`.
+        # N'en essayer qu'un s'arrêtait au premier maillon venu.
+        nxt = None
+        for attr in ("_inner", "_engine", "_wrapped"):
+            candidate = getattr(seen, attr, None)
+            if candidate is not None and candidate is not seen:
+                nxt = candidate
+                break
+        seen = nxt
+    return None
+
+
 class InstrumentedEngine(InferenceEngine):
     """Transparent wrapper that records telemetry around engine calls.
 
@@ -428,10 +471,35 @@ class InstrumentedEngine(InferenceEngine):
 
         engine_id = getattr(self._inner, "engine_id", "unknown")
 
+        # Le compte du prompt EXISTE déjà : le moteur le capture depuis le
+        # dernier fragment d'Ollama, qui rend prompt_eval_count. Cette couche
+        # ne le lisait pas, si bien que tout enregistrement streamé — donc
+        # TOUS ceux du chat, qui ne passe que par là — portait
+        # prompt_tokens = 0, et chaque total, coût et jauge bâti dessus était
+        # faux d'autant.
+        # Le type est vérifié, pas supposé : `getattr` sur un moteur qui
+        # expose autre chose sous ce nom rendrait un objet quelconque, et
+        # `int()` dessus produirait un chiffre — faux, mais enregistré comme
+        # une mesure. Un compteur qui invente est pire qu'un compteur à zéro.
+        raw_usage = _stream_usage_of(self._inner, model)
+        usage: dict[str, Any] = raw_usage if isinstance(raw_usage, dict) else {}
+
+        def _count(key: str) -> int:
+            value = usage.get(key)
+            return value if isinstance(value, int) and value >= 0 else 0
+
+        prompt_tokens = _count("prompt_tokens")
+        prompt_evaluated = _count("prompt_tokens_evaluated")
+        # Le moteur connaît mieux que nous ce qu'il a réellement décodé ;
+        # notre comptage de fragments n'est qu'un repli.
+        completion = _count("completion_tokens") or token_count
+
         record = TelemetryRecord(
             timestamp=t0,
             model_id=model,
-            completion_tokens=token_count,
+            prompt_tokens=prompt_tokens,
+            prompt_tokens_evaluated=prompt_evaluated or prompt_tokens,
+            completion_tokens=completion,
             latency_seconds=latency,
             ttft=ttft,
             throughput_tok_per_sec=throughput,
