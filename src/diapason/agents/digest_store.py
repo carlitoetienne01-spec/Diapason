@@ -123,14 +123,36 @@ class DigestStore:
             return None
         return self._row_to_artifact(row)
 
-    def get_today(self, timezone_name: str = "UTC") -> Optional[DigestArtifact]:
-        """Return today's digest if it exists, or None."""
+    def get_today(self, timezone_name: str = "") -> Optional[DigestArtifact]:
+        """Return today's digest if it exists, or None.
+
+        ``timezone_name`` must be the timezone the digest was *generated* in
+        — ``digest.timezone`` in the config. The stored ``generated_at``
+        carries that zone, so its date prefix is the reader's calendar day,
+        and comparing it against today in the same zone is like for like.
+
+        This defaulted to ``"UTC"`` while ``generated_at`` was written with a
+        naive ``datetime.now()``, i.e. machine-local. West of Greenwich the
+        two dates diverge every evening: at 21:00 in Toronto it is already
+        tomorrow in UTC, so the morning's digest stopped matching and the API
+        answered "No digest for today" about a digest sitting in the table.
+        The window was four hours a day, every day. East of Greenwich it
+        fails the other way round, in the early morning.
+
+        The fallback is the machine's own zone rather than UTC: rows written
+        before this fix are naive local, and local is what they mean.
+        """
         try:
             from zoneinfo import ZoneInfo
 
-            today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
-        except ImportError:
-            today = datetime.now().strftime("%Y-%m-%d")
+            now = (
+                datetime.now(ZoneInfo(timezone_name))
+                if timezone_name
+                else datetime.now().astimezone()
+            )
+        except Exception:  # noqa: BLE001 - un fuseau inconnu n'est pas fatal
+            now = datetime.now().astimezone()
+        today = now.strftime("%Y-%m-%d")
 
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"

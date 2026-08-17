@@ -26,8 +26,6 @@ def _now_in(timezone_name: str):
     étiquette fausse. Un fuseau mal orthographié dans la configuration ne doit
     pas faire échouer le briefing du matin.
     """
-    from datetime import datetime
-
     if timezone_name:
         try:
             from zoneinfo import ZoneInfo
@@ -63,7 +61,8 @@ class MorningDigestAgent(ToolUsingAgent):
             "sections", ["messages", "calendar", "health", "world"]
         )
         self._section_sources = kwargs.pop("section_sources", {})
-        self._timezone = kwargs.pop("timezone", "America/Los_Angeles")
+        # Vide = le fuseau de cette machine, cf. DigestConfig.timezone.
+        self._timezone = kwargs.pop("timezone", "")
         self._voice_id = kwargs.pop("voice_id", "")
         self._voice_speed = kwargs.pop("voice_speed", 1.0)
         self._tts_backend = kwargs.pop("tts_backend", "cartesia")
@@ -253,7 +252,10 @@ class MorningDigestAgent(ToolUsingAgent):
             audio_path=Path(audio_path) if audio_path else Path(""),
             sections={},
             sources_used=sources,
-            generated_at=datetime.now(),
+            # Daté dans le fuseau du briefing, pas dans celui de la machine.
+            # Un bulletin appartient à un JOUR — celui de la personne qui
+            # l'écoute — et c'est cette date que la relecture compare.
+            generated_at=_now_in(self._timezone),
             model_used=self._model,
             voice_used=self._voice_id,
             quality_score=quality_score,

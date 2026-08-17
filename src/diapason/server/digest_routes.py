@@ -29,10 +29,22 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     router = APIRouter(prefix="/api/digest", tags=["digest"])
     store = DigestStore(db_path=db_path) if db_path else DigestStore()
 
+    def _digest_tz() -> str:
+        """The zone the digest is generated in — the one that defines its day.
+
+        Read per request rather than captured at router construction: the
+        timezone is editable in the settings, and a router built at boot
+        would keep serving the old one until restart.
+        """
+        try:
+            return load_config().digest.timezone or ""
+        except Exception:  # noqa: BLE001 - une config illisible n'est pas fatale
+            return ""
+
     @router.get("")
     async def get_digest():
         """Return the latest digest artifact."""
-        artifact = store.get_today()
+        artifact = store.get_today(_digest_tz())
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         return {
@@ -50,7 +62,7 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     @router.get("/audio")
     async def get_digest_audio():
         """Stream the digest audio file."""
-        artifact = store.get_today()
+        artifact = store.get_today(_digest_tz())
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         if not artifact.audio_path.exists():

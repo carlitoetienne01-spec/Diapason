@@ -478,7 +478,9 @@ def init(
 [digest]
 enabled = true
 schedule = "0 7 * * *"
-timezone = "America/Los_Angeles"
+# Vide = le fuseau de cette machine. Mettez un nom IANA
+# ("America/Toronto", "Europe/Paris") pour en forcer un autre.
+timezone = ""
 persona = "diapason"
 honorific = "sir"
 tts_backend = "cartesia"

@@ -1696,7 +1696,12 @@ class DigestConfig:
 
     enabled: bool = False
     schedule: str = "0 6 * * *"
-    timezone: str = "America/Los_Angeles"
+    # Vide = le fuseau de cette machine. Le défaut était
+    # "America/Los_Angeles", une ville que le logiciel n'a aucune raison de
+    # connaître : sur une machine à Toronto, le briefing datait sa journée à
+    # Los Angeles et annonçait l'heure du Pacifique. Un assistant local-first
+    # doit lire l'horloge de la machine plutôt qu'affirmer une côte.
+    timezone: str = ""
     persona: str = "diapason"
     sections: List[str] = field(
         default_factory=lambda: ["messages", "calendar", "health", "world"]
