@@ -64,7 +64,19 @@ export function resolveSuccessRoute(route: string): MeshNavTarget | null {
   if (!match) return null;
 
   const kind = match[1].toLowerCase();
-  const id = match[2] ? decodeURIComponent(match[2]) : '';
+  // decodeURIComponent throws URIError on a malformed escape — `%` on its own
+  // is enough, and the id group admits it. Left to throw, it escaped all the
+  // way out of the inbox loop, and since the inbox drains on read, every
+  // entry after the bad one was lost silently. An unreadable id is just an
+  // unknown route.
+  let id = '';
+  if (match[2]) {
+    try {
+      id = decodeURIComponent(match[2]);
+    } catch {
+      return null;
+    }
+  }
   const path = PATHS[kind];
   if (!path) return null;
 

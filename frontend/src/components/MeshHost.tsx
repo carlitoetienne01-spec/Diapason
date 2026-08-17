@@ -70,7 +70,24 @@ export function MeshHost() {
         // cleans up and remounts in development; by the time the flag flips,
         // this request has already drained the server queue. Discarding the
         // response here would lose the navigation for good.
-        for (const entry of entries) await handleEntry(entry);
+        for (const entry of entries) {
+          // Each entry stands alone. The inbox has already been drained by
+          // the time we get here, so one entry that throws must not take the
+          // rest of the batch with it — a single malformed route from one
+          // device would silently swallow a command sent by another.
+          try {
+            await handleEntry(entry);
+          } catch (error) {
+            addLogEntry({
+              timestamp: Date.now(),
+              level: 'error',
+              category: 'mesh',
+              message: `Demande d'un autre appareil ignorée : ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            });
+          }
+        }
       } catch {
         // The backend may still be starting, or briefly unreachable. A
         // background poll must stay silent — there is nothing for the user
@@ -87,7 +104,7 @@ export function MeshHost() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [handleEntry]);
+  }, [handleEntry, addLogEntry]);
 
   return null;
 }

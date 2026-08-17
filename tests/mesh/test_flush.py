@@ -245,3 +245,78 @@ class TestItSurvivesTheRealWorld:
             "delivered": 0,
             "skipped": 0,
         }
+
+
+class TestIdempotencyIsTheSendersWord:
+    """A key is the SENDER's word for « the same intent ».
+
+    It used to be a single global namespace, so a paired device could pick a
+    key it had seen in its own inbox and collide with a row this machine
+    owned: enqueue handed back OUR row, the command executed anyway, and mark
+    then raised KeyError on a command_id no row carried — a 500, and nothing
+    recording that anything had run.
+    """
+
+    def test_two_senders_may_use_the_same_key(self, mesh):
+        _, queue = mesh
+        ours = build_command(
+            owner_id=OWNER,
+            origin_device_id=HOST,
+            target_device_id=LAPTOP,
+            tool="app.navigate",
+            arguments={"route": "success://today"},
+            requires_confirmation=False,
+            idempotency_key="meme-mot",
+        )
+        queue.enqueue(sign_command(ours), status="QUEUED")
+
+        theirs = build_command(
+            owner_id=OWNER,
+            origin_device_id=LAPTOP,
+            target_device_id=HOST,
+            tool="app.open",
+            arguments={},
+            requires_confirmation=False,
+            idempotency_key="meme-mot",
+        )
+        recorded = queue.enqueue(sign_command(theirs), status="RUNNING")
+
+        assert recorded["commandId"] == theirs.command_id
+        # And settling theirs must not need a row that does not exist.
+        queue.mark(theirs.command_id, "SUCCESS", user_message="C'est fait.")
+        assert queue.get(theirs.command_id)["status"] == "SUCCESS"
+        assert queue.get(ours.command_id)["status"] == "QUEUED"
+
+    def test_the_same_sender_reusing_a_key_still_gets_one_command(self, mesh):
+        _, queue = mesh
+
+        def one():
+            return build_command(
+                owner_id=OWNER,
+                origin_device_id=HOST,
+                target_device_id=LAPTOP,
+                tool="app.navigate",
+                arguments={"route": "success://today"},
+                requires_confirmation=False,
+                idempotency_key="une-seule-fois",
+            )
+
+        first = queue.enqueue(sign_command(one()), status="QUEUED")
+        again = queue.enqueue(sign_command(one()), status="QUEUED")
+        assert again["commandId"] == first["commandId"]
+
+    def test_a_peer_cannot_settle_our_command_by_colliding_on_its_key(self, mesh):
+        _, queue = mesh
+        ours = build_command(
+            owner_id=OWNER,
+            origin_device_id=HOST,
+            target_device_id=LAPTOP,
+            tool="notifications.show",
+            arguments={"title": "Diapason", "body": "Bilan"},
+            requires_confirmation=False,
+            idempotency_key="cle-visee",
+        )
+        queue.enqueue(sign_command(ours), status="QUEUED")
+
+        found = queue.find_by_idempotency("cle-visee", origin_device_id=LAPTOP)
+        assert found is None, "un pair ne doit pas retrouver notre ligne par sa clé"

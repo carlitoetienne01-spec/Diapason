@@ -556,6 +556,17 @@ export function SuccesProjectsPage() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
+  // Une autre appareil peut demander « montre-moi ce projet ». La sélection
+  // arrive par le magasin parce que le routeur ne la transporte pas ; elle est
+  // consommée une fois, sinon revenir sur l'écran la rouvrirait sans raison.
+  const pendingMeshSelection = useAppStore((s) => s.pendingMeshSelection);
+  const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
+  useEffect(() => {
+    if (pendingMeshSelection?.kind !== 'project') return;
+    setSelectedId(pendingMeshSelection.id);
+    setPendingMeshSelection(null);
+  }, [pendingMeshSelection, setPendingMeshSelection]);
+
   const selected = projects.find((project) => project.id === selectedId) ?? null;
   const projectTasks = selected
     ? tasks.filter((task) => task.projectId === selected.id)

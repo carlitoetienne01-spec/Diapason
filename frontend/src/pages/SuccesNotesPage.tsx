@@ -130,6 +130,21 @@ export function SuccesNotesPage() {
     setView('editor');
   };
 
+  // Un autre appareil peut demander « montre-moi cette note ». On passe par
+  // openNote plutôt que par setActiveId : c'est lui qui charge le contenu et
+  // bascule en mode éditeur, et court-circuiter cela ouvrirait une note vide.
+  const pendingMeshSelection = useAppStore((s) => s.pendingMeshSelection);
+  const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
+  useEffect(() => {
+    if (pendingMeshSelection?.kind !== 'note' || loading) return;
+    const wanted = notes.find((note) => note.id === pendingMeshSelection.id);
+    // Absente en local : l'appareil émetteur est peut-être en avance sur la
+    // synchronisation. On abandonne sans bruit plutôt que d'ouvrir autre chose.
+    if (wanted) openNote(wanted);
+    setPendingMeshSelection(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMeshSelection, notes, loading, setPendingMeshSelection]);
+
   const openCreateForm = () => {
     setFormNoteId(null);
     setFormDraft({ title: '', color: FOLDER_COLORS[0] });

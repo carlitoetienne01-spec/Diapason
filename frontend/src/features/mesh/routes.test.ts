@@ -33,6 +33,16 @@ describe('resolveSuccessRoute', () => {
     expect(resolveSuccessRoute('success://habits/h-7')).toEqual({ path: '/succes/habits' });
   });
 
+  it('treats an unreadable id as an unknown route rather than throwing', () => {
+    // decodeURIComponent throws URIError on a malformed escape. Left to
+    // throw, it escaped the inbox loop — and the inbox drains on read, so
+    // every entry after the bad one vanished with no trace.
+    expect(() => resolveSuccessRoute('success://notes/%')).not.toThrow();
+    expect(resolveSuccessRoute('success://notes/%')).toBeNull();
+    expect(resolveSuccessRoute('success://projects/%E0%A4%A')).toBeNull();
+    expect(resolveSuccessRoute('success://notes/%zz')).toBeNull();
+  });
+
   it('refuses a route it does not recognise instead of guessing', () => {
     expect(resolveSuccessRoute('success://settings')).toBeNull();
     expect(resolveSuccessRoute('success://tasks/../../etc/passwd')).toBeNull();

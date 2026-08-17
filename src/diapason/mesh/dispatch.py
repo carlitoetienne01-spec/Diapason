@@ -113,7 +113,9 @@ def dispatch_command(
     # 5. Idempotency: the same intent, already sent, returns what we know
     #    rather than doing it twice (spec §45).
     if idempotency_key:
-        known = queue.find_by_idempotency(idempotency_key)
+        known = queue.find_by_idempotency(
+            idempotency_key, origin_device_id=identity.device_id
+        )
         if known is not None and known["status"] not in {"PENDING", "QUEUED"}:
             return known
 
@@ -373,7 +375,9 @@ def receive_command(
 
     # Idempotency on the receiving side too: a redelivered command replays
     # its recorded result rather than acting twice (spec §17).
-    known = queue.find_by_idempotency(command.idempotency_key)
+    known = queue.find_by_idempotency(
+        command.idempotency_key, origin_device_id=command.origin_device_id
+    )
     if known is not None and known["status"] not in {"PENDING", "QUEUED"}:
         return known
 

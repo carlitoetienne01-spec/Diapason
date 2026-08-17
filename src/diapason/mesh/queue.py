@@ -58,8 +58,13 @@ CREATE TABLE IF NOT EXISTS mesh_commands (
 );
 CREATE INDEX IF NOT EXISTS mesh_commands_pending_idx
     ON mesh_commands(status, target_device_id, expires_at_ms);
-CREATE UNIQUE INDEX IF NOT EXISTS mesh_commands_idem_idx
-    ON mesh_commands(idempotency_key);
+-- Scoped to the SENDER, not global. The key is chosen and signed by whoever
+-- sent the command, so a global index put our own outgoing keys in the same
+-- namespace as every peer's: a paired device could pick a key it had seen in
+-- its own inbox and collide with a row we owned. The collision returned OUR
+-- row, the command ran anyway, and nothing recorded that it had.
+CREATE UNIQUE INDEX IF NOT EXISTS mesh_commands_idem_peer_idx
+    ON mesh_commands(origin_device_id, idempotency_key);
 """
 
 
@@ -74,6 +79,10 @@ class CommandQueue:
         self.db_path = Path(db_path or (get_data_dir() / "mesh.db"))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            # The old index was UNIQUE on the key alone. Left in place it
+            # would keep enforcing the very collision this schema removes,
+            # so it goes before the new one is created.
+            conn.execute("DROP INDEX IF EXISTS mesh_commands_idem_idx")
             conn.executescript(_SCHEMA)
             conn.commit()
 
@@ -96,8 +105,9 @@ class CommandQueue:
         stamp = now_ms()
         with self._connect() as conn:
             existing = conn.execute(
-                "SELECT * FROM mesh_commands WHERE idempotency_key=?",
-                (command.idempotency_key,),
+                "SELECT * FROM mesh_commands "
+                "WHERE origin_device_id=? AND idempotency_key=?",
+                (command.origin_device_id, command.idempotency_key),
             ).fetchone()
             if existing is not None:
                 # Same intent, already recorded — hand back what we know
@@ -196,10 +206,18 @@ class CommandQueue:
             raise KeyError(command_id)
         return self._serialize(row)
 
-    def find_by_idempotency(self, key: str) -> dict | None:
+    def find_by_idempotency(self, key: str, *, origin_device_id: str) -> dict | None:
+        """The command a given sender already sent under this key.
+
+        Scoped by sender because the key is the SENDER's word for "the same
+        intent". Two devices choosing the same string mean two different
+        intents, and conflating them let a peer speak about our rows.
+        """
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM mesh_commands WHERE idempotency_key=?", (key,)
+                "SELECT * FROM mesh_commands "
+                "WHERE origin_device_id=? AND idempotency_key=?",
+                (origin_device_id, key),
             ).fetchone()
         return None if row is None else self._serialize(row)
 
