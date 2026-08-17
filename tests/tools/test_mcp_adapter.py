@@ -73,8 +73,10 @@ class TestMCPToolAdapter:
         )
         adapter = MCPToolAdapter(client, spec)
         result = adapter.execute(expression="1/0")
-        assert result.success is True
-        assert result.content == "inf"
+        # Was ``success is True`` / ``content == "inf"``: the adapter's only
+        # failure-path test asserted that a failure came back as a success.
+        assert result.success is False
+        assert "division by zero" in result.content
 
     def test_adapter_unknown_tool(self, client):
         spec = ToolSpec(
@@ -145,8 +147,10 @@ class TestMCPAdapterRoundTrip:
 
         calc = tools[0]
         result = calc.execute(expression="1/0")
-        assert result.success is True
-        assert result.content == "inf"
+        # The full round trip: tool → server → transport → client → adapter.
+        # A failure must survive every hop still flagged as a failure.
+        assert result.success is False
+        assert "division by zero" in result.content
 
     def test_empty_server_discover(self):
         server = MCPServer([])

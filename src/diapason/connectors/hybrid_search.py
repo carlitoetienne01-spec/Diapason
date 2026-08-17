@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 # numpy imported lazily inside _vector_recall (see embeddings.py) so importing
 # this module never forces numpy at load time (#404, #309).
 from diapason.connectors.embeddings import OllamaEmbedder, decode_embedding
-from diapason.connectors.store import KnowledgeStore
+from diapason.connectors.store import KnowledgeStore, _quote_fts
 
 logger = logging.getLogger(__name__)
 
@@ -146,19 +146,6 @@ def _iso(ts: Optional[datetime | str]) -> Optional[str]:
     if isinstance(ts, datetime):
         return ts.isoformat()
     return str(ts)
-
-
-def _quote_fts(query: str) -> str:
-    """Make a plain user query safe for FTS5 MATCH.
-
-    FTS5 treats characters like ``-``, ``:``, ``"`` as operators; the simplest
-    way to avoid syntax errors on arbitrary user input is to quote each
-    whitespace-delimited token and OR them together.
-    """
-    tokens = [t for t in query.split() if t]
-    if not tokens:
-        return ""
-    return " OR ".join(f'"{t.replace(chr(34), "")}"' for t in tokens)
 
 
 def _parse_participants(raw: Any) -> List[str]:
@@ -378,7 +365,9 @@ class HybridSearch:
         self, query: str, filter_sql: str, filter_params: List[Any]
     ) -> List[Tuple[str, float]]:
         """Return ``[(chunk_id, bm25_score), ...]`` from FTS5."""
-        fts_query = _quote_fts(query)
+        # OR here on purpose: hybrid search casts a wide net and lets the
+# reranker choose. Keyword search below keeps FTS5's stricter AND.
+        fts_query = _quote_fts(query, operator="OR")
         if not fts_query:
             return []
         sql = f"""

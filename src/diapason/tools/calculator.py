@@ -97,12 +97,18 @@ def safe_eval(expression: str) -> float:
         _rust = get_rust_module()
         native_result = _rust.CalculatorTool().execute(expression)
         try:
-            return float(native_result)
+            native_float = float(native_result)
         except (TypeError, ValueError):
             # The native result includes a human-readable failure string.
             # Re-evaluate with the canonical AST path to preserve the public
             # Python exceptions and exact supported-function contract.
             pass
+        else:
+            # The Rust path yields inf/nan where Python raises. Fall through
+            # so the AST path can raise the precise exception — "division by
+            # zero" is a better thing to tell someone than "out of range".
+            if math.isfinite(native_float):
+                return native_float
     except (AttributeError, ImportError, RuntimeError):
         pass
 
@@ -112,10 +118,12 @@ def safe_eval(expression: str) -> float:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
         raise ValueError(f"Syntax error in expression: {exc}") from exc
-    try:
-        return float(_safe_eval_node(tree.body))
-    except ZeroDivisionError:
-        return math.inf
+    # ZeroDivisionError is deliberately *not* caught here. Converting it to
+    # ``inf`` made the caller's own "division by zero" branch unreachable, and
+    # handed the model a float it reads as an answer: asked to split a bill
+    # among zero people, the assistant answers "inf" rather than saying the
+    # question has no answer.
+    return float(_safe_eval_node(tree.body))
 
 
 @ToolRegistry.register("calculator")
@@ -158,6 +166,19 @@ class CalculatorTool(BaseTool):
             )
         try:
             result = safe_eval(expression)
+            # Overflow and log(0) reach here as inf/nan without ever raising.
+            # Neither is an answer, and both read as one: "inf" in a tool
+            # result is a number as far as the model is concerned.
+            if not math.isfinite(result):
+                kind = "undefined (0/0)" if math.isnan(result) else "out of range"
+                return ToolResult(
+                    tool_name="calculator",
+                    content=(
+                        f"Error: the result of '{expression}' is {kind}, "
+                        "not a number this can report."
+                    ),
+                    success=False,
+                )
             return ToolResult(
                 tool_name="calculator",
                 content=str(result),

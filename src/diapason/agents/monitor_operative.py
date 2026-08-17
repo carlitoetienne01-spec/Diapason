@@ -617,9 +617,9 @@ class MonitorOperativeAgent(ToolUsingAgent):
                         key = f"{operator_prefix}:causality:{rel['cause'][:50]}"
                         value = json.dumps(rel)
                         try:
-                            self._memory_backend.store(key, value)
+                            self._memory_backend.store(value, source=key)
                         except Exception as exc:
-                            logger.debug(
+                            logger.warning(
                                 "Failed to store causality relation in memory: %s",
                                 exc,
                             )
@@ -642,9 +642,11 @@ class MonitorOperativeAgent(ToolUsingAgent):
         # Truncate long content
         snippet = content[:1000] if len(content) > 1000 else content
         try:
-            self._memory_backend.store(key, snippet)
+            self._memory_backend.store(snippet, source=key)
         except Exception:
-            logger.debug("Could not store scratchpad for tool %s", tool_name)
+            logger.warning(
+                "Could not store scratchpad for tool %s", tool_name, exc_info=True
+            )
 
     def _store_structured(self, tool_name: str, content: str) -> None:
         """Try to parse JSON from tool output and store structured data."""
@@ -658,14 +660,14 @@ class MonitorOperativeAgent(ToolUsingAgent):
         try:
             data = json.loads(content)
             key = f"{operator_prefix}:structured:{tool_name}"
-            self._memory_backend.store(key, json.dumps(data))
+            self._memory_backend.store(json.dumps(data), source=key)
         except (json.JSONDecodeError, TypeError):
             # Not JSON -- store as plain text truncated
             key = f"{operator_prefix}:structured:{tool_name}"
             try:
-                self._memory_backend.store(key, content[:1000])
+                self._memory_backend.store(content[:1000], source=key)
             except Exception as exc:
-                logger.debug(
+                logger.warning(
                     "Failed to store structured data for tool %s: %s",
                     tool_name,
                     exc,
@@ -742,11 +744,12 @@ class MonitorOperativeAgent(ToolUsingAgent):
         state_key = f"monitor_operative:{self._operator_id}:state"
         try:
             summary = content[:1000] if content else ""
-            self._memory_backend.store(state_key, summary)
+            self._memory_backend.store(summary, source=state_key)
         except Exception:
-            logger.debug(
+            logger.warning(
                 "Could not auto-persist state for monitor_operative %s",
                 self._operator_id,
+                exc_info=True,
             )
 
 

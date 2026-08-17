@@ -62,10 +62,15 @@ class TestMCPClient:
         assert "Reasoning step." in result["content"][0]["text"]
 
     def test_call_tool_error(self, client):
-        # Rust calculator (meval) returns inf for 1/0 rather than an error
+        """What this test's name always promised.
+
+        While ``1/0`` succeeded and returned "inf", this asserted
+        ``isError is False`` — the one error-propagation test on the client
+        was checking that an error was *not* reported.
+        """
         result = client.call_tool("calculator", {"expression": "1/0"})
-        assert result["isError"] is False
-        assert "inf" in result["content"][0]["text"]
+        assert result["isError"] is True
+        assert "division by zero" in result["content"][0]["text"]
 
     def test_call_unknown_tool_raises(self, client):
         with pytest.raises(MCPError) as exc_info:

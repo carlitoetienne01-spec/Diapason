@@ -10,6 +10,7 @@ Pure Python ``sqlite3`` (no Rust extension required).
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 import uuid
@@ -20,6 +21,8 @@ from typing import Any, Dict, List, Optional, Union
 from diapason.core.events import EventType, get_event_bus
 from diapason.core.registry import MemoryRegistry
 from diapason.tools.storage._stubs import MemoryBackend, RetrievalResult
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # DDL
@@ -138,6 +141,26 @@ def _to_epoch(ts: Union[datetime, str, float, int]) -> float:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.timestamp()
+
+
+def _quote_fts(query: str, *, operator: str = "AND") -> str:
+    """Make a plain user query safe for FTS5 MATCH.
+
+    FTS5 reads ``-``, ``:``, ``"``, ``*``, ``(`` and the bare words ``AND``,
+    ``OR``, ``NOT`` as *operators*. An unquoted human query containing any of
+    them is a syntax error, not an empty result — but a caller that catches
+    ``OperationalError`` and returns ``[]`` turns the first into the second,
+    and the user reads "nothing found" about a document that is right there.
+
+    Quoting each whitespace-delimited token removes the ambiguity: every token
+    becomes a literal phrase. ``operator`` chooses how they combine — ``AND``
+    to keep FTS5's default (all terms must appear), ``OR`` to widen.
+    """
+    tokens = [t.replace('"', "") for t in query.split()]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return ""
+    return f" {operator} ".join(f'"{t}"' for t in tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -407,10 +430,23 @@ class KnowledgeStore(MemoryBackend):
             LIMIT ?
         """
 
+        # Quote before matching. Without this, an ordinary query — a
+        # hyphenated name, an apostrophe, a colon — is an FTS5 syntax error
+        # that the handler below reports as "nothing found".
+        fts_query = _quote_fts(query)
+        if not fts_query:
+            return []
+
         try:
-            rows = self._conn.execute(sql, [query] + params + [top_k]).fetchall()
-        except sqlite3.OperationalError:
-            # Malformed FTS query — return empty rather than crash
+            rows = self._conn.execute(sql, [fts_query] + params + [top_k]).fetchall()
+        except sqlite3.OperationalError as exc:
+            # Quoting should have made this unreachable. If we still land here
+            # the query is malformed in some way we did not anticipate: say so
+            # instead of returning [], which is indistinguishable from a real
+            # empty result set.
+            logger.warning(
+                "FTS search failed for %r (returning no results): %s", query, exc
+            )
             return []
 
         results: List[RetrievalResult] = []

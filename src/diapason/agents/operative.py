@@ -310,13 +310,19 @@ class OperativeAgent(ToolUsingAgent):
             return
         state_key = f"operator:{self._operator_id}:state"
         try:
-            # Store a summary of the agent's response as state
+            # Store a summary of the agent's response as state. The key is the
+            # *source*, not a positional: ``store`` takes the content first and
+            # everything else by keyword.
             summary = content[:1000] if content else ""
-            self._memory_backend.store(state_key, summary)
+            self._memory_backend.store(summary, source=state_key)
         except Exception:
-            logger.debug(
+            # WARNING, not DEBUG. This is the agent forgetting what it just
+            # did; the next run starts blind. A silent debug line is how a
+            # total failure to persist went unnoticed.
+            logger.warning(
                 "Could not auto-persist state for operator %s",
                 self._operator_id,
+                exc_info=True,
             )
 
 

@@ -182,14 +182,21 @@ class TestMCPServer:
         # Should still execute (with empty arguments)
         assert resp.error is None
 
-    def test_calculator_division_by_zero_returns_inf(self, server):
-        # Rust calculator (meval) returns inf for 1/0 rather than an error
+    def test_calculator_division_by_zero_is_an_error(self, server):
+        """A tool failure must reach the client flagged as one.
+
+        This asserted ``isError is False`` and ``"inf" in text``, describing
+        the Rust backend rather than requiring anything of the protocol. A
+        client — or a model — reading that response sees a successful call
+        returning a number.
+        """
         req = MCPRequest(
             method="tools/call",
             params={"name": "calculator", "arguments": {"expression": "1/0"}},
             id=12,
         )
         resp = server.handle(req)
+        # A tool-level failure is a valid response, not a protocol error.
         assert resp.error is None
-        assert resp.result["isError"] is False
-        assert "inf" in resp.result["content"][0]["text"]
+        assert resp.result["isError"] is True
+        assert "division by zero" in resp.result["content"][0]["text"]
