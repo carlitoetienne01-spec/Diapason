@@ -109,6 +109,26 @@ export class VoiceTerrainScene {
   private fpsFrames = 0;
   private fpsWindow = 0;
 
+  /** Last measured frame rate, over the adaptive window. 0 before the first
+   * window closes — a readout should show « — » rather than a made-up 60. */
+  get measuredFps(): number {
+    return this.lastFps;
+  }
+
+  /** The tier the scene is actually rendering at, which is not always the one
+   * it was asked for: the adaptive loop can step it down mid-session. */
+  get currentQuality(): AIQuality {
+    return this.quality;
+  }
+
+  /** Points currently in the cloud. */
+  get pointCount(): number {
+    return this.pointTotal;
+  }
+
+  private lastFps = 0;
+  private pointTotal = 0;
+
   constructor({ canvas, quality, reducedMotion }: SceneOptions) {
     this.quality = quality;
     this.reducedMotion = reducedMotion;
@@ -162,6 +182,7 @@ export class VoiceTerrainScene {
     });
 
     const grid = TERRAIN_GRID[quality];
+    this.pointTotal = grid.cols * grid.rows;
     this.points = new Points(terrainGeometry(grid.cols, grid.rows), this.material);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
@@ -215,6 +236,7 @@ export class VoiceTerrainScene {
     this.quality = quality;
     const grid = TERRAIN_GRID[quality];
     const old = this.points.geometry;
+    this.pointTotal = grid.cols * grid.rows;
     this.points.geometry = terrainGeometry(grid.cols, grid.rows);
     old.dispose();
     // Octave count is a compile-time constant, so the program has to be rebuilt.
@@ -272,6 +294,7 @@ export class VoiceTerrainScene {
     this.fpsWindow += dt;
     if (this.fpsWindow < 2) return;
     const fps = this.fpsFrames / this.fpsAccum;
+    this.lastFps = fps;
     this.fpsAccum = 0;
     this.fpsFrames = 0;
     this.fpsWindow = 0;

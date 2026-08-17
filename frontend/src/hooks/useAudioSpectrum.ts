@@ -28,7 +28,7 @@ function silentFrame(): SpectrumFrame {
 
 /** Log-spaced bin edges: an octave of bass gets as much width as an octave
  * of treble, which is how the ear hears it and how the ridges should read. */
-function bandEdges(): Float32Array {
+export function bandEdges(): Float32Array {
   const edges = new Float32Array(SPECTRUM_BINS + 1);
   const ratio = Math.log(HIGH_HZ / LOW_HZ);
   for (let i = 0; i <= SPECTRUM_BINS; i++) {
@@ -45,6 +45,19 @@ function bandEdges(): Float32Array {
  * flicker, and a decaying rolling peak so a whisper and a shout both fill the
  * visual range. Raw FFT bins fed straight to a shader make the terrain boil.
  */
+/** Centre frequency of each band, in Hz — what a readout must label a band
+ * with. The edges are the boundaries; the centre is what the ear would name. */
+export function bandCentres(): Float32Array {
+  const edges = bandEdges();
+  const centres = new Float32Array(SPECTRUM_BINS);
+  for (let i = 0; i < SPECTRUM_BINS; i++) {
+    // Geometric mean, not arithmetic: the bands are log-spaced, so the
+    // midpoint that reads as "the middle" is the geometric one.
+    centres[i] = Math.sqrt(edges[i] * edges[i + 1]);
+  }
+  return centres;
+}
+
 export function useAudioSpectrum(source: AIAudioSource, enabled: boolean): Analysis {
   const frameRef = useRef<SpectrumFrame>(silentFrame());
   const readRef = useRef<() => SpectrumFrame>(() => frameRef.current);

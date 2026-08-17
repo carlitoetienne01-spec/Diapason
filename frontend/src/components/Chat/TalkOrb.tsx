@@ -10,6 +10,9 @@ const VoiceTerrain = lazy(() =>
   import('../VoiceTerrain/VoiceTerrain').then((m) => ({ default: m.VoiceTerrain })),
 );
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
+import { useAppStore } from '../../lib/store';
+import { TalkHud } from './TalkHud';
+import type { TerrainTelemetry } from '../VoiceTerrain/VoiceTerrain';
 
 /**
  * The session has five states; the entity has four. `connecting` is the one
@@ -107,7 +110,14 @@ export function TalkOrb({
 
   // Readouts, kept deliberately few: the loudness driving the relief, and how
   // long the session has been open. Both are measured, never decorative.
-  const [level, setLevel] = useState(0);
+  // Le modèle en service : une ligne du cadran qui affiche « — » en
+  // permanence est une ligne morte, et une ligne morte dans un instrument
+  // apprend à ne plus lire les autres.
+  const selectedModel = useAppStore((s) => s.selectedModel);
+
+  // La télémétrie arrive à ~8 Hz depuis la boucle de rendu : assez pour que
+  // les cadrans vivent, assez peu pour ne pas coûter plus que le relief.
+  const [telemetry, setTelemetry] = useState<TerrainTelemetry | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef<number | null>(null);
 
@@ -137,7 +147,7 @@ export function TalkOrb({
       }}
     >
       <div
-        className="relative w-full max-w-lg mx-4 rounded-2xl overflow-hidden"
+        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden"
         style={{
           background: 'var(--color-bg-secondary, #12141a)',
           border: '1px solid var(--color-border, #2a2d36)',
@@ -185,7 +195,7 @@ export function TalkOrb({
             style={{
               // The summit needs headroom: too flat a frame and a loud syllable
               // throws the spire straight off the top edge.
-              height: 'clamp(340px, 50vh, 440px)',
+              height: 'clamp(380px, 62vh, 620px)',
               // Deliberately dark in BOTH themes, like a video player: the
               // luminous relief and its survey grid are additive light and
               // would vanish on a pale surface. Not #000 but the palette's
@@ -223,30 +233,19 @@ export function TalkOrb({
                 intensity={active ? 1 : 0.9}
                 audioSource={audioSource}
                 micSource={micSource}
-                onLevel={setLevel}
+                onTelemetry={setTelemetry}
                 style={{ position: 'absolute', inset: 0 }}
               />
             </Suspense>
 
-            <div
-              className="absolute inset-x-0 bottom-0 flex items-center justify-between px-3 py-2 pointer-events-none"
-              style={{
-                fontFamily: 'var(--font-hud)',
-                fontSize: 10,
-                letterSpacing: '0.14em',
-                color: 'var(--color-text-tertiary)',
-              }}
-            >
-              {/* The state already reads in the header, so it is not repeated
-                  here — these two are what the header cannot show. */}
-              <span>
-                {t('chat.talk.hudLevel')} {Math.round(level * 100).toString().padStart(2, '0')}
-              </span>
-              <span>
-                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:
-                {String(elapsed % 60).padStart(2, '0')}
-              </span>
-            </div>
+            <TalkHud
+              telemetry={telemetry}
+              state={statusLabel}
+              elapsed={elapsed}
+              provider={provider}
+              model={selectedModel}
+            />
+
           </button>
 
           {caption ? (

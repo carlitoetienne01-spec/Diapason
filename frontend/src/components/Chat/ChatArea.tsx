@@ -6,6 +6,7 @@ import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
 import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X, AudioLines } from 'lucide-react';
 import { DiaMascot } from './DiaMascot';
+import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { openTalkToDiapason } from '../TalkToDiapasonHost';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -156,80 +157,85 @@ export function ChatArea() {
           </button>
         </div>
       )}
-      <div
-        ref={listRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto"
-      >
-        {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full px-4">
-            <DiaMascot label={t('chat.empty.greetDia')} />
-            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
-              {t(greetingKey())}
-            </h2>
-            <p className="text-sm text-center max-w-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-              {t('chat.empty.subtitle')}
-            </p>
+      {/* The rain is a sibling of the scroller, not a child: inside it the
+          canvas would slide away with the messages. */}
+      <div className="flex-1 relative overflow-hidden">
+        <MatrixRain />
+        <div
+          ref={listRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto"
+        >
+          {isEmpty ? (
+            <div className="flex flex-col items-center justify-center h-full px-4">
+              <DiaMascot label={t('chat.empty.greetDia')} />
+              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
+                {t(greetingKey())}
+              </h2>
+              <p className="text-sm text-center max-w-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+                {t('chat.empty.subtitle')}
+              </p>
 
-            {/* Quick action hints */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => navigate('/data-sources')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
-                style={{
-                  background: 'var(--color-bg-secondary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-              >
-                <Database size={14} style={{ color: 'var(--color-accent)' }} />
-                {t('chat.empty.connectSources')}
-              </button>
-              <button
-                onClick={() => { navigate('/data-sources'); setTimeout(() => window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'messaging' })), 100); }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
-                style={{
-                  background: 'var(--color-bg-secondary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-              >
-                <MessageSquare size={14} style={{ color: 'var(--color-accent)' }} />
-                {t('chat.empty.setupMessaging')}
-              </button>
+              {/* Quick action hints */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => navigate('/data-sources')}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
+                  style={{
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+                >
+                  <Database size={14} style={{ color: 'var(--color-accent)' }} />
+                  {t('chat.empty.connectSources')}
+                </button>
+                <button
+                  onClick={() => { navigate('/data-sources'); setTimeout(() => window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'messaging' })), 100); }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
+                  style={{
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+                >
+                  <MessageSquare size={14} style={{ color: 'var(--color-accent)' }} />
+                  {t('chat.empty.setupMessaging')}
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="max-w-[var(--chat-max-width)] mx-auto px-4 py-6">
-            {messages.map((msg, i) => {
-              const isLastAssistant =
-                i === messages.length - 1 && msg.role === 'assistant';
-              return (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  isLive={isLastAssistant && streamState.isStreaming}
-                />
-              );
-            })}
-            {(() => {
-              if (!streamState.isStreaming || streamState.content !== '') return null;
-              // For research messages the ResearchTimeline handles its own
-              // pre-content loading state — suppress the generic dots.
-              const last = messages[messages.length - 1];
-              if (last?.role === 'assistant' && last.isResearch) return null;
-              return (
-                <div className="flex justify-start mb-4">
-                  <StreamingDots phase={streamState.phase} />
-                </div>
-              );
-            })()}
-          </div>
-        )}
+          ) : (
+            <div className="max-w-[var(--chat-max-width)] mx-auto px-4 py-6">
+              {messages.map((msg, i) => {
+                const isLastAssistant =
+                  i === messages.length - 1 && msg.role === 'assistant';
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    isLive={isLastAssistant && streamState.isStreaming}
+                  />
+                );
+              })}
+              {(() => {
+                if (!streamState.isStreaming || streamState.content !== '') return null;
+                // For research messages the ResearchTimeline handles its own
+                // pre-content loading state — suppress the generic dots.
+                const last = messages[messages.length - 1];
+                if (last?.role === 'assistant' && last.isResearch) return null;
+                return (
+                  <div className="flex justify-start mb-4">
+                    <StreamingDots phase={streamState.phase} />
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       </div>
       <InputArea />
     </div>

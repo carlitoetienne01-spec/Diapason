@@ -1,17 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { useAdaptiveQuality } from '../../hooks/useAdaptiveQuality';
-import { SPECTRUM_BINS, useAudioSpectrum } from '../../hooks/useAudioSpectrum';
-import type { AIAudioSource, AIState } from '../AIEntity/types';
+import { SPECTRUM_BINS, bandCentres, useAudioSpectrum } from '../../hooks/useAudioSpectrum';
+import type { AIAudioSource, AIQuality, AIState } from '../AIEntity/types';
 import { VoiceTerrainScene } from './scene';
 
 /** Full-length zeroes: a shorter array would leave the last frame's ridges
  * frozen in place instead of letting them settle. */
 const SILENT_BINS = new Float32Array(SPECTRUM_BINS);
 
+/** Band centres never change, so they are computed once for the module rather
+ * than rebuilt on every readout frame. */
+const BAND_CENTRES = bandCentres();
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
+/** Centre frequency of the loudest band, or 0 when nothing is loud enough to
+ * call dominant. The floor matters: without it, silence would report whichever
+ * band happened to hold the most numerical noise, and the readout would dance
+ * while nobody speaks. */
+function dominantFrequency(bins: Float32Array): number {
+  let best = -1;
+  let index = -1;
+  for (let i = 0; i < bins.length; i++) {
+    if (bins[i] > best) {
+      best = bins[i];
+      index = i;
+    }
+  }
+  return best > 0.04 && index >= 0 ? BAND_CENTRES[index] : 0;
 }
 
 function readAccent(): string {
@@ -32,8 +52,32 @@ export interface VoiceTerrainProps {
   micSource?: AIAudioSource;
   /** Reports the smoothed loudness for the readouts, ~8 Hz. */
   onLevel?: (level: number) => void;
+  /** Everything the relief measures, for an instrument-style readout. */
+  onTelemetry?: (frame: TerrainTelemetry) => void;
   className?: string;
   style?: React.CSSProperties;
+}
+
+/** What the relief actually knows about itself and the sound driving it.
+ *
+ * Every field is measured. Nothing here is generated to fill a panel: a
+ * readout that invents its own numbers is worse than an empty one, because
+ * it cannot be told apart from a working instrument. */
+export interface TerrainTelemetry {
+  /** Overall loudness, 0–1. */
+  level: number;
+  /** Per-band energy, low frequency first — 64 log-spaced bands. */
+  bins: Float32Array;
+  /** Centre frequency of each band, in Hz. Fixed for the session. */
+  edges: Float32Array;
+  /** Loudest band's centre frequency, or 0 in silence. */
+  dominantHz: number;
+  /** Rendered frames per second, averaged over the scene's own window. */
+  fps: number;
+  /** Points currently drawn. */
+  points: number;
+  /** Adaptive tier the scene settled on. */
+  quality: AIQuality;
 }
 
 /**
@@ -47,6 +91,7 @@ export function VoiceTerrain({
   audioSource = null,
   micSource = null,
   onLevel,
+  onTelemetry,
   className,
   style,
 }: VoiceTerrainProps) {
@@ -61,9 +106,11 @@ export function VoiceTerrain({
   const stateRef = useRef(state);
   const intensityRef = useRef(intensity);
   const levelRef = useRef(onLevel);
+  const telemetryRef = useRef(onTelemetry);
   stateRef.current = state;
   intensityRef.current = intensity;
   levelRef.current = onLevel;
+  telemetryRef.current = onTelemetry;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -131,9 +178,19 @@ export function VoiceTerrain({
       scene.setIntensity(intensityRef.current);
       // Readouts are text: refreshing them at 60 Hz would cost more than the
       // visualisation and be unreadable anyway.
-      if (levelRef.current && now - lastReport > 120) {
+      if (now - lastReport > 120) {
         lastReport = now;
-        levelRef.current(spectrum ? spectrum.level : 0);
+        const bins = spectrum ? spectrum.bins : SILENT_BINS;
+        levelRef.current?.(spectrum ? spectrum.level : 0);
+        telemetryRef.current?.({
+          level: spectrum ? spectrum.level : 0,
+          bins,
+          edges: BAND_CENTRES,
+          dominantHz: dominantFrequency(bins),
+          fps: scene.measuredFps,
+          points: scene.pointCount,
+          quality: scene.currentQuality,
+        });
       }
     };
     frame = requestAnimationFrame(pump);

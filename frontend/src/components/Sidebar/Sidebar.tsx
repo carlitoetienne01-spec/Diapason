@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
-  MessageSquare,
   Plus,
   Gauge,
   Settings,
@@ -149,10 +148,8 @@ export function Sidebar() {
     }
   };
 
-  const primaryNavItems = [
-    { path: '/', icon: MessageSquare, label: t('nav.chat') },
-  ];
-
+  // Discussion is not a nav tab: "Nouvelle discussion" and the conversation
+  // list already cover opening and switching chats.
   const succesNavItems = [
     { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
     { path: '/succes/dashboard', icon: LayoutDashboard, label: t('nav.succesDashboard') },
@@ -357,13 +354,11 @@ export function Sidebar() {
                 {t('sidebar.newChat')}
               </button>
 
-              {/* Everything in one list — chat, the app pages, then the Succès
-                  tabs — so a single lens travels across the whole sidebar.
-                  Nav and conversations scroll together: eleven tabs plus a long
-                  chat history would otherwise squeeze each other. */}
+              {/* App pages then Succès tabs. Nav and conversations scroll
+                  together so a long history does not squeeze the tabs. */}
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <GlassNav
-                  items={[...primaryNavItems, ...secondaryNavItems, ...succesNavItems]}
+                  items={[...secondaryNavItems, ...succesNavItems]}
                 />
                 {/* Conversation list — everything below the fold scrolls */}
                 <div

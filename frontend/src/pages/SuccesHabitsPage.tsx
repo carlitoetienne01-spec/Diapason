@@ -20,6 +20,7 @@ import {
   setSuccesHabitDone,
   updateSuccesHabit,
 } from '../features/succes/api';
+import { EmojiPicker } from '../features/succes/EmojiPicker';
 import { RecurrencesPanel } from '../features/succes/RecurrencesPanel';
 import {
   annualLevel,
@@ -356,13 +357,10 @@ export function SuccesHabitsPage() {
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
           >
             <div className="grid grid-cols-[56px_1fr_54px] gap-3">
-              <input
+              <EmojiPicker
                 value={draft.icon}
-                onChange={(event) => setDraft({ ...draft, icon: event.target.value })}
-                maxLength={16}
-                aria-label="Icône"
-                className="rounded-xl px-3 text-center bg-transparent outline-none"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                onChange={(icon) => setDraft({ ...draft, icon })}
+                aria-label="Icône de l’habitude"
               />
               <input
                 autoFocus

@@ -1563,3 +1563,179 @@
   color: rgba(99, 102, 241, 0.9);
   background: inherit;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Talk to Diapason — habillage d'instrument autour du relief.
+
+   Aucune couleur en dur. Tout dérive des tokens : les peaux terminal
+   écrasent les couleurs de statut sur une seule encre, et un habillage codé
+   en blanc y deviendrait soit invisible, soit criard. Ce qui distingue les
+   niveaux ici n'est donc pas la teinte mais l'opacité et la graisse.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.talk-hud {
+  font-family: var(--font-hud);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  /* Le relief est le sujet ; l'habillage se lit sans jamais lui disputer
+     l'attention. */
+  opacity: 0.78;
+}
+
+.talk-hud-block {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 148px;
+  padding-left: 8px;
+  /* Le filet gauche, comme les blocs de la référence : il regroupe sans
+     encadrer, ce qu'une bordure complète ferait trop lourdement. */
+  border-left: 1px solid var(--color-border);
+}
+
+.talk-hud-right {
+  padding-left: 0;
+  padding-right: 8px;
+  border-left: none;
+  border-right: 1px solid var(--color-border);
+  text-align: right;
+}
+
+.talk-hud-line {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.talk-hud-label {
+  opacity: 0.55;
+}
+
+.talk-hud-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+/* L'état est la seule valeur qui prend l'accent : c'est celle qui change le
+   sens de tout le reste. */
+.talk-hud-value-strong {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.talk-hud-caption {
+  position: absolute;
+  display: flex;
+  opacity: 0.5;
+}
+
+/* ── le tableau des bandes ── */
+
+.talk-hud-table {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 190px;
+  padding-right: 8px;
+  border-right: 1px solid var(--color-border);
+}
+
+.talk-hud-row {
+  display: grid;
+  /* Trois colonnes fixes : la fréquence ne bouge pas, la barre respire, la
+     valeur reste alignée. Une grille flexible ferait sauter les décimales
+     d'une ligne à l'autre à chaque syllabe. */
+  grid-template-columns: 58px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+}
+
+.talk-hud-row-hz {
+  opacity: 0.5;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.talk-hud-row-bar {
+  height: 3px;
+  background: var(--color-accent);
+  opacity: 0.75;
+  border-radius: 1px;
+  /* Pas de transition : la barre EST la mesure, et l'adoucir montrerait un
+     signal qui n'a pas existé. */
+}
+
+.talk-hud-row-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* ── le grand nombre ── */
+
+.talk-hud-big {
+  position: absolute;
+  bottom: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.talk-hud-big-label {
+  opacity: 0.5;
+}
+
+.talk-hud-big-value {
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  opacity: 0.92;
+}
+
+/* ── graduations verticales ── */
+
+.talk-hud-scale {
+  position: absolute;
+  top: 24%;
+  bottom: 18%;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.talk-hud-tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le trait de graduation lui-même. */
+.talk-hud-tick::after {
+  content: '';
+  width: 10px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* Écran étroit : l'habillage complet deviendrait une soupe. On garde les
+   blocs d'angle et on retire le tableau, qui est le plus gourmand en largeur. */
+@media (max-width: 720px) {
+  .talk-hud-table,
+  .talk-hud-scale {
+    display: none;
+  }
+  .talk-hud-big-value {
+    font-size: 32px;
+  }
+}
