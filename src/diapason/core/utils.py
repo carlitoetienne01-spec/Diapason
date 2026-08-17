@@ -50,3 +50,32 @@ def open_browser(url: str) -> None:
 
 
 __all__ = ["get_python_executable", "open_browser"]
+
+
+def now_in(timezone_name: str = ""):
+    """L'heure courante DANS le fuseau nommé, ou celle de cette machine.
+
+    Trois agents ont besoin de la même chose, et s'étaient trompés de la même
+    façon : afficher l'heure de la MACHINE sous le nom du fuseau CONFIGURÉ.
+    Quand les deux diffèrent, c'est pire qu'une heure fausse — l'heure est
+    juste et l'étiquette ment, donc rien ne permet de s'en apercevoir. Le
+    résultat est toujours *aware*, et il porte son vrai fuseau : de quoi
+    étiqueter honnêtement ce qu'on affiche.
+
+    ``timezone_name`` vide signifie « cette machine », qui est le bon défaut
+    pour un assistant local-first : il ne sait pas où vit la personne, et
+    supposer une ville produit une heure fausse énoncée avec assurance.
+
+    Le repli est explicite : un fuseau mal orthographié dans la configuration
+    ne doit pas faire échouer un briefing du matin.
+    """
+    from datetime import datetime
+
+    if timezone_name:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo(timezone_name))
+        except Exception:  # noqa: BLE001 - un fuseau inconnu n'est pas fatal
+            pass
+    return datetime.now().astimezone()

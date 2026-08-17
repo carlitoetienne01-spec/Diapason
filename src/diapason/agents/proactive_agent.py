@@ -47,6 +47,7 @@ from diapason.core.config import load_config
 from diapason.core.paths import get_config_dir
 from diapason.core.registry import AgentRegistry
 from diapason.core.types import Message, Role, ToolCall
+from diapason.core.utils import now_in
 from diapason.tools.approval_store import (
     DECISION_ALWAYS_APPROVE,
     DECISION_ALWAYS_DENY,
@@ -303,7 +304,8 @@ class ProactiveAgent(ToolUsingAgent):
         self._approval_store: Optional[ApprovalStore] = kwargs.pop(
             "approval_store", None
         )
-        self._timezone: str = kwargs.pop("timezone", "America/Los_Angeles")
+        # Vide = le fuseau de cette machine, cf. ProactiveConfig.timezone.
+        self._timezone: str = kwargs.pop("timezone", "")
 
         # Read config defaults before super().__init__ so we can inject tools
         try:
@@ -373,7 +375,12 @@ class ProactiveAgent(ToolUsingAgent):
     def _build_system_prompt(self) -> str:
         user_md = _load_md_file(get_config_dir() / "USER.md")
         memory_md = _load_md_file(get_config_dir() / "MEMORY.md")
-        now = datetime.now()
+        # L'heure était celle de la MACHINE, annoncée entre parenthèses sous
+        # le nom du fuseau CONFIGURÉ. Sur une machine à Toronto avec le
+        # défaut « America/Los_Angeles », la phrase affirmait une date de
+        # Toronto étiquetée Los Angeles — et de minuit à 3 h, cette date
+        # avait un jour d'avance sur le fuseau qu'elle nommait.
+        now = now_in(self._timezone)
         context_block = ""
         if user_md or memory_md:
             context_block = "\n\n---\nUSER CONTEXT:\n"
@@ -383,7 +390,8 @@ class ProactiveAgent(ToolUsingAgent):
                 context_block += f"\n{memory_md.strip()}\n"
         return (
             _SYSTEM_PROMPT
-            + f"\nToday is {now.strftime('%A, %B %d, %Y')} ({self._timezone})."
+            + f"\nToday is {now.strftime('%A, %B %d, %Y')}, "
+            + f"{now.strftime('%H:%M')} ({now.tzname()}, UTC{now.strftime('%z')})."
             + context_block
         )
 
@@ -618,7 +626,7 @@ def register_cron(
     except Exception:
         cron_expr = cron_expr or "0 5 * * *"
         hours_back = hours_back or 24
-        timezone = timezone or "America/Los_Angeles"
+        timezone = timezone or ""  # vide = cette machine
 
     metadata = {
         "notification_channel_id": notification_channel_id,

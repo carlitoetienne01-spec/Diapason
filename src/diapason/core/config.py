@@ -1108,7 +1108,10 @@ class ProactiveConfig:
     enabled: bool = False
     schedule: str = "0 5 * * *"  # cron expression (default: 5am daily)
     hours_back: int = 24  # how many hours of unacted items to scan
-    timezone: str = "America/Los_Angeles"
+    # Vide = le fuseau de cette machine, comme DigestConfig.timezone. Cet
+    # agent décide seul d'archiver ou de supprimer du courrier : lui donner
+    # une date d'une autre côte n'est pas une coquette d'affichage.
+    timezone: str = ""
     # Channel to send approval notifications and receive yes/no replies.
     # Format: "{type}:{id}", e.g. "imessage:+15551234567" or "telegram:123456789"
     notification_channel: str = ""

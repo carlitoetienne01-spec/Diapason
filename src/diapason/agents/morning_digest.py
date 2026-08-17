@@ -7,7 +7,6 @@ the LLM (narrative synthesis), and text_to_speech (audio generation).
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -16,24 +15,17 @@ from diapason.agents.digest_store import DigestArtifact, DigestStore
 from diapason.core.paths import get_config_dir
 from diapason.core.registry import AgentRegistry
 from diapason.core.types import Message, Role, ToolCall
+from diapason.core.utils import now_in
 
 
 def _now_in(timezone_name: str):
-    """L'heure courante DANS le fuseau nommé, ou celle de la machine.
+    """Alias local de :func:`diapason.core.utils.now_in`.
 
-    Le repli est explicite et étiqueté avec son vrai fuseau : mieux vaut
-    annoncer l'heure locale sous son propre nom qu'une heure juste sous une
-    étiquette fausse. Un fuseau mal orthographié dans la configuration ne doit
-    pas faire échouer le briefing du matin.
+    L'agent proactif avait besoin du même calcul, exactement, et l'avait raté
+    de la même façon : l'outil vit maintenant dans ``core.utils``, et ce nom
+    reste pour les appelants d'ici.
     """
-    if timezone_name:
-        try:
-            from zoneinfo import ZoneInfo
-
-            return datetime.now(ZoneInfo(timezone_name))
-        except Exception:  # noqa: BLE001 - un fuseau inconnu n'est pas fatal
-            pass
-    return datetime.now().astimezone()
+    return now_in(timezone_name)
 
 
 def _load_persona(persona_name: str) -> str:
