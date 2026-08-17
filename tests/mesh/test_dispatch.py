@@ -189,7 +189,15 @@ class TestOfflineHonesty:
         assert "hors ligne" in result["userSafeMessage"]
         assert result["errorCode"] == "TARGET_OFFLINE"
 
-    def test_an_expired_queue_entry_stops_claiming_it_will_happen(self, mesh):
+    def test_a_queueable_command_outlives_a_phone_s_sleep(self, mesh):
+        """One minute is useless for a device that has to come and fetch.
+
+        iOS suspends an app within seconds of backgrounding, so a queued
+        reminder used to die long before its phone ever polled again — and
+        « partira dès son retour » was true of a command already expired.
+        """
+        from diapason.mesh.commands import QUEUED_TTL_MS
+
         registry, queue, _ = mesh
         self._put_offline(registry)
         send(
@@ -197,9 +205,34 @@ class TestOfflineHonesty:
             tool="app.show_resource",
             arguments={"resourceType": "note", "resourceId": "n1"},
         )
-        changed = queue.expire_stale(now=now_ms() + 3_600_000)
+        # An hour later — a plausible night's interruption — it still stands.
+        assert queue.expire_stale(now=now_ms() + 3_600_000) == 0
+        assert queue.history()[0]["status"] == "QUEUED"
+
+        # Past its window it stops claiming it will happen.
+        changed = queue.expire_stale(now=now_ms() + QUEUED_TTL_MS + 60_000)
         assert changed == 1
         assert queue.history()[0]["status"] == "EXPIRED"
+
+    def test_a_command_that_must_act_now_keeps_the_short_window(self, mesh):
+        """« Ouvre mes tâches » an hour later would be a surprise, not a
+        service. Only the tools allowed to wait get the long window."""
+        from diapason.mesh.commands import DEFAULT_TTL_MS, QUEUED_TTL_MS
+
+        _, queue, _ = mesh
+        now = now_ms()
+        immediate = send(mesh, transport=lambda c, d: {"status": "SUCCESS"})
+        deferrable = send(
+            mesh,
+            tool="app.show_resource",
+            arguments={"resourceType": "note", "resourceId": "n1"},
+            transport=lambda c, d: {"status": "SUCCESS"},
+        )
+
+        short = queue.get(immediate["commandId"])["expiresAtMs"] - now
+        long_ = queue.get(deferrable["commandId"])["expiresAtMs"] - now
+        assert short <= DEFAULT_TTL_MS + 1_000
+        assert long_ >= QUEUED_TTL_MS - 1_000
 
 
 class TestRefusalsBeforeSending:

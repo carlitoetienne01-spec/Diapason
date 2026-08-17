@@ -40,6 +40,7 @@ __all__ = [
     "sign_command",
     "verify_command",
     "STATUS_VALUES",
+    "QUEUED_TTL_MS",
 ]
 
 COMMAND_VERSION = 1
@@ -47,6 +48,21 @@ COMMAND_VERSION = 1
 # How long a command may remain valid. Short on purpose: an envelope that
 # lives for hours is an envelope worth stealing.
 DEFAULT_TTL_MS = 60_000
+
+# The exception, for tools whose whole point is to wait (QUEUE_UNTIL_EXPIRATION).
+#
+# A minute is right for a command that must act now — nobody wants « ouvre mes
+# tâches » to fire an hour later. It is useless for a reminder addressed to a
+# phone: iOS suspends an app within seconds of backgrounding, so a queued
+# notification died before its device ever woke up, and « partira dès son
+# retour » was true of a command that had already expired.
+#
+# The original reasoning still holds for the short window — but it was about
+# commands that DO something on arrival. One that is queued by design, bound
+# to a single target device and single-use through its nonce, buys an
+# attacker who steals it the ability to show the user a reminder they
+# themselves asked for.
+QUEUED_TTL_MS = 6 * 60 * 60 * 1000
 
 # Tolerance for clock disagreement between two devices. Beyond this, a
 # command "from the future" is refused rather than silently trusted.

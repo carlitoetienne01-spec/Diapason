@@ -16,6 +16,8 @@ import logging
 from typing import Any, Mapping
 
 from diapason.mesh.commands import (
+    DEFAULT_TTL_MS,
+    QUEUED_TTL_MS,
     CommandError,
     CommandRejected,
     RemoteCommand,
@@ -104,6 +106,13 @@ def dispatch_command(
         arguments=arguments or {},
         requires_confirmation=spec.requires_confirmation,
         idempotency_key=idempotency_key,
+        # A tool that is allowed to wait must be given long enough to be worth
+        # waiting for. One minute expires before a sleeping phone ever polls.
+        ttl_ms=(
+            QUEUED_TTL_MS
+            if spec.offline_policy == "QUEUE_UNTIL_EXPIRATION"
+            else DEFAULT_TTL_MS
+        ),
     )
     try:
         spec.validate(command.arguments)
