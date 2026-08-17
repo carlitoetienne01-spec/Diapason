@@ -33,7 +33,16 @@ import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store'
 import { useTranslation } from '../../i18n/useTranslation';
 
 /** Pages that live behind the Réglages drawer, so a deep link opens it. */
-const SETTINGS_PATHS = ['/settings', '/data-sources', '/agents', '/logs', '/succes/sync', '/devices', '/dashboard'];
+const SETTINGS_PATHS = [
+  '/settings',
+  '/get-started',
+  '/data-sources',
+  '/agents',
+  '/logs',
+  '/succes/sync',
+  '/devices',
+  '/dashboard',
+];
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -151,8 +160,8 @@ export function Sidebar() {
   // Discussion is not a nav tab: "Nouvelle discussion" and the conversation
   // list already cover opening and switching chats.
   const succesNavItems = [
-    { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
     { path: '/succes/dashboard', icon: LayoutDashboard, label: t('nav.succesDashboard') },
+    { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
     { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
     { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
     { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
@@ -160,16 +169,15 @@ export function Sidebar() {
     { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
   ];
 
-  const secondaryNavItems = [
-    { path: '/get-started', icon: Rocket, label: t('nav.getStarted') },
-  ];
-
   // Réglages is administration, not a workspace: its tabs are grouped by what
   // they govern — the app itself, what feeds it, then what it leaves behind.
   const settingsGroups = [
     {
       label: t('sidebar.settingsGroupConfig'),
-      items: [{ path: '/settings', icon: Settings, label: t('nav.settingsGeneral') }],
+      items: [
+        { path: '/settings', icon: Settings, label: t('nav.settingsGeneral') },
+        { path: '/get-started', icon: Rocket, label: t('nav.getStarted') },
+      ],
     },
     {
       label: t('sidebar.settingsGroupConnections'),
@@ -354,12 +362,10 @@ export function Sidebar() {
                 {t('sidebar.newChat')}
               </button>
 
-              {/* App pages then Succès tabs. Nav and conversations scroll
-                  together so a long history does not squeeze the tabs. */}
+              {/* Succès tabs. Nav and conversations scroll together so a long
+                  history does not squeeze the tabs. */}
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <GlassNav
-                  items={[...secondaryNavItems, ...succesNavItems]}
-                />
+                <GlassNav items={succesNavItems} />
                 {/* Conversation list — everything below the fold scrolls */}
                 <div
                   className="px-2 pt-1"

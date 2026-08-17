@@ -33,8 +33,11 @@ export const TERRAIN_CONFIG = {
    * crest thrown up by a loud syllable has somewhere to go. */
   camera: {
     fov: 32,
-    position: [0, 1.5, 4.4] as const,
-    target: [0, 0.55, 0] as const,
+    // Reculée et relevée depuis que la flèche existe : à l'ancien cadrage,
+    // un mot un peu fort projetait le sommet hors de l'image, et une crête
+    // qu'on ne voit pas ne sert à rien.
+    position: [0, 2.05, 5.6] as const,
+    target: [0, 1.0, 0] as const,
   },
 
   /** World size of the sheet the relief is built on. Wider than the frame, so
@@ -57,9 +60,28 @@ export const TERRAIN_CONFIG = {
    * many of them. */
   pointSize: 1.2,
 
-  /** Seconds. Spectrum smoothing on the render side, on top of the analyser's. */
-  spectrumAttack: 0.05,
-  spectrumRelease: 0.2,
+  /** Secondes. Lissage du spectre côté rendu, par-dessus celui de l'analyseur.
+   *
+   * L'attaque est presque nulle : une syllabe doit lever la crête AVANT qu'on
+   * ait fini de la prononcer, sinon le relief a l'air de commenter la voix
+   * plutôt que de l'être. La retombée reste lente — une crête qui disparaît
+   * avant qu'on l'ait vue n'a pas servi. */
+  spectrumAttack: 0.012,
+  spectrumRelease: 0.28,
+
+  /** En dessous, on considère qu'il n'y a personne.
+   *
+   * Mesuré sur une pièce calme avec le Mac allumé : le bruit de fond monte
+   * à peine au-dessus de 0,02. Le seuil est juste au-dessus, assez bas pour
+   * qu'un mot murmuré passe, assez haut pour qu'un ventilateur ne passe pas. */
+  gateThreshold: 0.035,
+
+  /** Gain appliqué aux bandes une fois la porte franchie.
+   *
+   * Ce qui rend la réaction spectaculaire : au-delà de 1, une voix ordinaire
+   * sature les bandes hautes et jette la flèche au plafond. La saturation est
+   * voulue — elle est ce qui donne le pic, et le shader la borne. */
+  spectrumGain: 2.6,
 } as const;
 
 /** Per-state targets. A state change is a lerp toward these, never a jump. */
@@ -76,44 +98,53 @@ export interface TerrainStateProfile {
   glow: number;
   /** How strongly the spectrum sculpts the ridges. */
   spectrumDrive: number;
+  /** Poids de la flèche centrale, multiplié par le niveau vocal.
+   *
+   * À 0 le sommet n'existe pas : c'est l'état de repos voulu, où il ne reste
+   * que le massif. Ce qui monte, c'est la voix — pas un décor qui grossit. */
+  spire: number;
 }
 
 export const TERRAIN_STATE_PROFILES: Record<AIState, TerrainStateProfile> = {
   /** At rest: a real massif, only lower and calmer, breathing very slowly. */
   idle: {
-    amplitude: 0.62,
-    turbulence: 0.55,
+    amplitude: 0.74,
+    turbulence: 0.62,
     speed: 0.16,
-    spread: 1.0,
+    spread: 0.72,
     glow: 0.82,
-    spectrumDrive: 0.35,
+    spectrumDrive: 0.30,
+    spire: 0.0,
   },
   /** Listening: the mass narrows and sharpens, leaning toward the voice. */
   listening: {
-    amplitude: 0.72,
-    turbulence: 0.85,
-    speed: 0.4,
-    spread: 0.86,
+    amplitude: 0.78,
+    turbulence: 0.95,
+    speed: 0.45,
+    spread: 0.58,
     glow: 1.0,
-    spectrumDrive: 1.35,
+    spectrumDrive: 2.4,
+    spire: 2.9,
   },
   /** Thinking: no voice to follow, so the rock itself churns. */
   thinking: {
-    amplitude: 0.66,
+    amplitude: 0.60,
     turbulence: 1.6,
     speed: 1.4,
-    spread: 0.95,
+    spread: 0.70,
     glow: 0.9,
     spectrumDrive: 0.5,
+    spire: 0.25,
   },
   /** Speaking: full height, peaks driven hard by the assistant's own voice. */
   speaking: {
-    amplitude: 0.80,
-    turbulence: 1.05,
+    amplitude: 0.86,
+    turbulence: 1.15,
     speed: 0.7,
-    spread: 1.05,
+    spread: 0.60,
     glow: 1.15,
-    spectrumDrive: 1.6,
+    spectrumDrive: 2.6,
+    spire: 3.1,
   },
 };
 

@@ -57,6 +57,8 @@ uniform float uAmplitude;
 uniform float uTurbulence;
 uniform float uSpread;
 uniform float uDrive;
+// Poids de la flèche, piloté par la voix : ~0 au repos.
+uniform float uSpire;
 uniform float uLevel;
 uniform float uPointSize;
 uniform float uPixelRatio;
@@ -133,10 +135,22 @@ float terrainHeight(vec2 g) {
   float rr = sqrt(rx * rx + gz * gz * 0.8);
   float sx = rx - 0.07;
   float sz = gz + 0.05;
-  float cone  = pow(max(0.0, 1.0 - rr * 0.92), 1.55);
-  float spire = exp(-(sx * sx * 26.0 + sz * sz * 13.0));
-  float apron = exp(-(rx * rx * 0.55 + gz * gz * 0.5));
-  float env = cone * 0.40 + spire * 1.00 + apron * 0.25;
+  // Le cône se resserre (1.35 au lieu de 0.92) : les flancs remontent plus
+  // droit et la masse se concentre au centre au lieu de s'étaler.
+  float cone  = pow(max(0.0, 1.0 - rr * 1.35), 1.75);
+  // La flèche est deux fois plus étroite qu'avant sur les deux axes. C'est ce
+  // qui la fait lire comme une aiguille et non comme un sommet parmi d'autres.
+  float spire = exp(-(sx * sx * 42.0 + sz * sz * 22.0));
+  float apron = exp(-(rx * rx * 0.50 + gz * gz * 0.46));
+
+  // La flèche NAÎT DE LA VOIX. Au repos il ne reste que le massif et son
+  // tablier ; c'est l'arrivée du sommet qui devient l'événement, au lieu
+  // d'une silhouette permanente qui grandit un peu.
+  //
+  // uSpire vaut ~0 au repos et monte avec le niveau : ce terme est la
+  // différence entre un décor qui réagit et un corps qui répond.
+  float voice = clamp(uLevel * uSpire, 0.0, 1.6);
+  float env = cone * 0.34 + apron * 0.30 + spire * (0.06 + voice * 1.85);
 
   // Domain warp: bends the ridgelines so they meander like eroded rock rather
   // than running along the noise's own grain.
@@ -147,8 +161,10 @@ float terrainHeight(vec2 g) {
   // The rock term swings roughly 0.4–1.1, and that swing is what throws up the
   // jagged spires rather than a smooth dome.
   float body = env * (0.62 + band * uDrive * 0.45) * (0.34 + 0.92 * rock);
-  // A band pushing its own radius up: this is where a frequency becomes a peak.
-  float bump = env * band * uDrive * 0.22;
+  // Chaque fréquence creuse sa propre arête : c'est le « détail » demandé.
+  // Le terme est appliqué au rayon de la bande, pas à l'enveloppe entière,
+  // donc un aigu soulève les contreforts pendant qu'un grave gonfle le centre.
+  float bump = env * band * uDrive * 0.62;
   return (body + bump) * uAmplitude;
 }
 

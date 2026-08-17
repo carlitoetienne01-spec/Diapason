@@ -159,6 +159,7 @@ export class VoiceTerrainScene {
         uTurbulence: { value: this.profile.turbulence },
         uSpread: { value: this.profile.spread },
         uDrive: { value: this.profile.spectrumDrive },
+        uSpire: { value: this.profile.spire },
         uLevel: { value: 0 },
         uPointSize: { value: C.pointSize },
         uPixelRatio: { value: 1 },
@@ -322,9 +323,19 @@ export class VoiceTerrainScene {
     // lets the ridge settle instead of snapping flat.
     const attack = 1 - Math.exp(-dt / C.spectrumAttack);
     const release = 1 - Math.exp(-dt / C.spectrumRelease);
-    const silent = this.reducedMotion;
+    // La porte de bruit. Sans elle, « très sensible » veut dire « réagit au
+    // ventilateur » : le gain qui rend une syllabe spectaculaire rend aussi le
+    // souffle de la pièce visible, et un relief qui frémit en permanence ne
+    // laisse plus rien ressortir quand quelqu'un parle enfin.
+    //
+    // Le seuil est franchi ou non par le NIVEAU d'ensemble, pas bande par
+    // bande : une porte par bande ferait clignoter les aigus indépendamment
+    // des graves et hacherait la crête au lieu de la lever d'un bloc.
+    const gated = this.levelTarget < C.gateThreshold;
+    const silent = this.reducedMotion || gated;
+
     for (let i = 0; i < SPECTRUM_BINS; i++) {
-      const goal = silent ? 0 : this.binsTarget[i];
+      const goal = silent ? 0 : this.binsTarget[i] * C.spectrumGain;
       this.bins[i] += (goal - this.bins[i]) * (goal > this.bins[i] ? attack : release);
     }
 
@@ -340,6 +351,7 @@ export class VoiceTerrainScene {
     u.uTurbulence.value = p.turbulence;
     u.uSpread.value = p.spread;
     u.uDrive.value = p.spectrumDrive;
+    u.uSpire.value = p.spire;
     u.uGlow.value = p.glow;
     u.uLevel.value = this.level;
     u.uIntensity.value = this.intensity;
