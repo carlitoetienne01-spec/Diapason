@@ -81,6 +81,41 @@ def _resolve_server_model(
     return available[0] if available else ""
 
 
+def _announce_exposure(bind_host: str, bind_port: int) -> None:
+    """Say out loud what a non-loopback bind makes reachable, and by whom.
+
+    Leaving the loopback is the one configuration change that turns a purely
+    personal server into something anything on the same network can knock on.
+    It is a legitimate choice — a phone cannot reach a mesh that only answers
+    itself — but it must never be a silent one: the difference between « chez
+    moi » and « sur le wifi du café » is the whole security model.
+
+    Not a warning to dismiss. A statement of what is now true.
+    """
+    import ipaddress
+
+    try:
+        loopback = ipaddress.ip_address(bind_host).is_loopback
+    except ValueError:
+        loopback = bind_host in ("localhost", "")
+    if loopback:
+        return
+
+    from diapason.mesh.beacon import local_address
+
+    reachable = local_address()
+    # stderr, comme le reste des messages de démarrage : ce canal survit à une
+    # sortie redirigée vers un fichier de journal.
+    Console(stderr=True).print(
+        "\n[yellow]Ce serveur écoute au-delà de cette machine.[/yellow]\n"
+        f"  Joignable à : [cyan]{reachable}[/cyan] par tout ce qui partage ce réseau.\n"
+        "  Protégé par : la clé d'API locale sur toute l'API, et une signature\n"
+        "                Ed25519 sur les cinq routes du maillage qui n'en ont pas.\n"
+        "  À savoir    : sur un réseau que vous ne contrôlez pas — café, hôtel,\n"
+        "                bureau partagé — revenez à 127.0.0.1.\n"
+    )
+
+
 @click.command()
 @click.option("--host", default=None, help="Bind address (default: config).")
 @click.option(
@@ -704,6 +739,17 @@ def serve(
     check_bind_safety(bind_host, api_key=api_key)
     check_cors_safety(bind_host, config.server.cors_origins)
 
+    # Enregistré ICI, et pas juste avant uvicorn.run : le maillage annonce
+    # cette adresse aux appareils appairés, et l'avis ci-dessous la donne à
+    # l'utilisateur pour qu'il la recopie sur son téléphone. Le faire plus
+    # tard laissait les deux retomber sur le fichier de configuration —
+    # 127.0.0.1 alors que le serveur écoute partout, soit exactement
+    # l'adresse à laquelle un téléphone ne trouvera jamais rien.
+    from diapason.mesh.beacon import set_local_endpoint
+
+    set_local_endpoint(bind_host, bind_port)
+    _announce_exposure(bind_host, bind_port)
+
     # Log credential status at startup
     from diapason.core.credentials import TOOL_CREDENTIALS, get_credential_status
 
@@ -774,12 +820,5 @@ def serve(
     )
 
     import uvicorn
-
-    # The mesh advertises this address to paired devices, so it must be the
-    # one we are really about to listen on — not the one the config file
-    # happens to hold.
-    from diapason.mesh.beacon import set_local_endpoint
-
-    set_local_endpoint(bind_host, bind_port)
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
