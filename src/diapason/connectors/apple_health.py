@@ -21,7 +21,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from diapason.connectors._stubs import BaseConnector, Document, SyncStatus
+from diapason.connectors._stubs import (
+    BaseConnector,
+    Document,
+    SyncStatus,
+    can_read_sqlite,
+)
 from diapason.core.config import DEFAULT_CONFIG_DIR
 from diapason.core.registry import ConnectorRegistry
 
@@ -97,7 +102,16 @@ class AppleHealthConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def is_connected(self) -> bool:
-        return self._healthkit_db_path.exists() or self._export_path.exists()
+        """Readable HealthKit database, or an export file we can open.
+
+        ``exists()`` on the HealthKit store is True under macOS TCC even when
+        every read is refused, so it could not distinguish "connected" from
+        "visible and forbidden". The export path is an ordinary file the user
+        placed themselves, so existence is the right question for it.
+        """
+        if can_read_sqlite(self._healthkit_db_path):
+            return True
+        return self._export_path.exists()
 
     def disconnect(self) -> None:
         # Local connector -- nothing to revoke.

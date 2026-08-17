@@ -7,6 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from diapason.tools._stubs import ToolSpec
@@ -158,3 +159,31 @@ class BaseConnector(ABC):
     def mcp_tools(self) -> List[ToolSpec]:
         """Return MCP tool specs for real-time agent queries.  Optional."""
         return []
+
+
+def can_read_sqlite(path: Path) -> bool:
+    """Whether this process can actually OPEN *path* as a SQLite database.
+
+    ``path.exists()`` is not the same question. On macOS, the databases behind
+    Messages, Notes and Health sit under TCC protection: the file is visible —
+    ``exists()`` returns True — while every read is refused until the user
+    grants Full Disk Access to the process.
+
+    Connectors that answered ``is_connected()`` with ``exists()`` therefore
+    reported themselves connected to a database they could not read a single
+    row from. The sync then returned nothing, and nothing said why. Opening it
+    read-only is the only honest test, and it costs a few milliseconds.
+    """
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except Exception:  # noqa: BLE001 - toute panne d'ouverture vaut « non »
+        return False
+    try:
+        conn.execute("SELECT 1").fetchone()
+        return True
+    except Exception:  # noqa: BLE001 - autorisation refusée, fichier corrompu…
+        return False
+    finally:
+        conn.close()

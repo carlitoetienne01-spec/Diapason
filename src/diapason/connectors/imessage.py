@@ -22,7 +22,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple
 
-from diapason.connectors._stubs import BaseConnector, Document, SyncStatus
+from diapason.connectors._stubs import (
+    BaseConnector,
+    Document,
+    SyncStatus,
+    can_read_sqlite,
+)
 from diapason.core.registry import ConnectorRegistry
 from diapason.tools._stubs import ToolSpec
 
@@ -93,8 +98,14 @@ class IMessageConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def is_connected(self) -> bool:
-        """Return ``True`` if the chat.db file exists at the configured path."""
-        return self._db_path.exists()
+        """Whether Messages' database can actually be READ, not merely seen.
+
+        This answered ``exists()``, which is True under macOS TCC even while
+        every read is refused — so the connector announced itself connected
+        to a database it could not open, the sync returned nothing, and
+        nothing said why. Fix on the user's side: grant Full Disk Access.
+        """
+        return can_read_sqlite(self._db_path)
 
     def disconnect(self) -> None:
         """Mark the connector as disconnected."""

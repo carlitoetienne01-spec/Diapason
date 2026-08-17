@@ -30,7 +30,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator, List, Optional
 
-from diapason.connectors._stubs import BaseConnector, Document, SyncStatus
+from diapason.connectors._stubs import (
+    BaseConnector,
+    Document,
+    SyncStatus,
+    can_read_sqlite,
+)
 from diapason.core.registry import ConnectorRegistry
 from diapason.tools._stubs import ToolSpec
 
@@ -137,8 +142,12 @@ class AppleNotesConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def is_connected(self) -> bool:
-        """Return ``True`` if NoteStore.sqlite exists at the configured path."""
-        return self._db_path.exists()
+        """Whether the Notes store can actually be READ, not merely seen.
+
+        See ``can_read_sqlite``: under macOS TCC the file is visible and
+        unreadable at the same time, and ``exists()`` cannot tell them apart.
+        """
+        return can_read_sqlite(self._db_path)
 
     def disconnect(self) -> None:
         """Mark the connector as disconnected."""
