@@ -10,6 +10,18 @@ from diapason.core.events import EventBus, EventType
 from diapason.core.types import Conversation, Message, Role, ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
 
+
+def without_clock(messages):
+    """Les messages, sans l'ancrage temporel.
+
+    ``_build_messages`` ajoute toujours une ligne « MAINTENANT » : sans
+    horloge, un modèle répond une date lue dans sa mémoire. Ces tests portent
+    sur quel prompt système gagne et dans quel ordre — pas sur le nombre de
+    messages — donc ils écartent l'ancrage plutôt que de compter avec.
+    """
+    return [m for m in messages if "MAINTENANT" not in (m.content or "")]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -192,6 +204,7 @@ class TestOrchestratorAgent:
         agent.run("Hi", context=ctx)
         call_args = engine.generate.call_args
         messages = call_args[0][0]
+        messages = without_clock(messages)
         assert len(messages) == 2
         assert messages[0].role == Role.SYSTEM
 
@@ -558,6 +571,7 @@ class TestOrchestratorStructuredMode:
         agent.run("Hello")
         call_args = engine.generate.call_args
         messages = call_args[0][0]
+        messages = without_clock(messages)
         system_msg = messages[0].content
         assert "### calculator" in system_msg
         assert "expression" in system_msg

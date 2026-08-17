@@ -177,4 +177,8 @@ try:
 except ImportError:
     pass
 
+# Pas de garde ici : lire l'horloge n'a aucune dépendance optionnelle, et un
+# assistant sans horloge invente l'heure plutôt que de l'avouer.
+import diapason.tools.current_time  # noqa: E402,F401
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]

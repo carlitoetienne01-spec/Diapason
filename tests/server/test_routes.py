@@ -755,8 +755,12 @@ class TestIdentityPromptInjection:
         _ = resp.text
         msgs = captured[-1]
         system_msgs = [m for m in msgs if m.role.value == "system"]
-        assert len(system_msgs) == 1
-        assert system_msgs[0].content == "Be terse."
+        # Même contrat que la variante non-streamée : pas de double
+        # identité, mais l'horloge toujours présente.
+        identity = [m for m in system_msgs if "MAINTENANT" not in m.content]
+        assert len(identity) == 1
+        assert identity[0].content == "Be terse."
+        assert any("MAINTENANT" in m.content for m in system_msgs)
 
     def test_direct_injects_identity_when_absent(self):
         captured: list = []
@@ -795,8 +799,14 @@ class TestIdentityPromptInjection:
         assert resp.status_code == 200
         msgs = engine.generate.call_args.args[0]
         system_msgs = [m for m in msgs if m.role.value == "system"]
-        assert len(system_msgs) == 1
-        assert system_msgs[0].content == "Be terse."
+        # Ce que ce test protège : l'IDENTITÉ n'est pas injectée deux fois
+        # quand le client fournit la sienne. L'horloge, elle, l'est toujours —
+        # ce n'est pas une identité mais un fait, et un assistant qui l'ignore
+        # répond une date lue dans sa mémoire.
+        identity = [m for m in system_msgs if "MAINTENANT" not in m.content]
+        assert len(identity) == 1
+        assert identity[0].content == "Be terse."
+        assert any("MAINTENANT" in m.content for m in system_msgs)
 
     def test_direct_injects_soul_persona_when_present(self, tmp_path):
         """Regression: /v1/chat/completions previously injected only the bare

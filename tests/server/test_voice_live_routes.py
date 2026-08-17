@@ -83,9 +83,7 @@ def test_voice_health_reports_local_runtime_reason(monkeypatch):
         "diapason.speech.realtime.local_voice.local_voice_readiness",
         lambda: (False, "missing-dependencies"),
     )
-    monkeypatch.setattr(
-        "diapason.core.cloud_keys.get_cloud_key", lambda *_names: None
-    )
+    monkeypatch.setattr("diapason.core.cloud_keys.get_cloud_key", lambda *_names: None)
 
     response = _client().get("/v1/voice/live/health")
 

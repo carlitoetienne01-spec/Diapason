@@ -14,6 +14,18 @@ from diapason.core.events import EventBus, EventType
 from diapason.core.types import Conversation, Message, Role, ToolCall, ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
 
+
+def without_clock(messages):
+    """Les messages, sans l'ancrage temporel.
+
+    ``_build_messages`` ajoute toujours une ligne « MAINTENANT » : sans
+    horloge, un modèle répond une date lue dans sa mémoire. Ces tests portent
+    sur quel prompt système gagne et dans quel ordre — pas sur le nombre de
+    messages — donc ils écartent l'ancrage plutôt que de compter avec.
+    """
+    return [m for m in messages if "MAINTENANT" not in (m.content or "")]
+
+
 # ---------------------------------------------------------------------------
 # Concrete subclass for testing
 # ---------------------------------------------------------------------------
@@ -147,6 +159,7 @@ class TestBuildMessages:
         engine = MagicMock()
         agent = _ConcreteAgent(engine, "m")
         messages = agent._build_messages("hello")
+        messages = without_clock(messages)
         assert len(messages) == 2
         assert messages[0].role == Role.SYSTEM
         assert "local" in messages[0].content.lower()
@@ -157,6 +170,7 @@ class TestBuildMessages:
         engine = MagicMock()
         agent = _ConcreteAgent(engine, "m")
         messages = agent._build_messages("hello", system_prompt="Be helpful.")
+        messages = without_clock(messages)
         assert len(messages) == 2
         assert messages[0].role == Role.SYSTEM
         assert messages[0].content == "Be helpful."
@@ -172,6 +186,7 @@ class TestBuildMessages:
         engine = MagicMock()
         agent = _ConcreteAgent(engine, "m")
         messages = agent._build_messages("hello")
+        messages = without_clock(messages)
         assert len(messages) == 1
         assert messages[0].role == Role.USER
 
@@ -183,6 +198,7 @@ class TestBuildMessages:
         conv.add(Message(role=Role.ASSISTANT, content="reply"))
         ctx = AgentContext(conversation=conv)
         messages = agent._build_messages("new", ctx)
+        messages = without_clock(messages)
         # default system prompt + 2 context + 1 user
         assert messages[-1].content == "new"
         assert messages[-2].content == "reply"
@@ -194,10 +210,12 @@ class TestBuildMessages:
         conv = Conversation()
         conv.add(Message(role=Role.USER, content="prev"))
         ctx = AgentContext(conversation=conv)
-        messages = agent._build_messages(
-            "new",
-            ctx,
-            system_prompt="System.",
+        messages = without_clock(
+            agent._build_messages(
+                "new",
+                ctx,
+                system_prompt="System.",
+            )
         )
         assert len(messages) == 3
         assert messages[0].role == Role.SYSTEM

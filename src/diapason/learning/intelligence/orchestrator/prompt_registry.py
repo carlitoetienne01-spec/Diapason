@@ -18,6 +18,19 @@ SYSTEM_PROMPT_TEMPLATE = """\
 You are an intelligent orchestrator that solves tasks by \
 delegating to the most appropriate tools.
 
+=== NOW ===
+{now}
+
+This is the only clock you have. A model has no sense of time: without this
+line it cannot tell today from its training data, and asked the hour it will
+produce a plausible one rather than admit it does not know. Everything
+relative — "tomorrow", "this week", "last month", "how long ago" — is
+computed from here.
+
+The stamp is taken when this prompt is built, so it ages as a long
+conversation runs. When the exact minute matters, read the clock again with
+the `current_time` tool rather than trusting this line.
+
 Your job is to SELECT THE BEST TOOL for each task based on the tool's strengths.
 
 === AVAILABLE TOOLS ===
@@ -215,6 +228,25 @@ _CAT_LABELS: Dict[str, str] = {
 }
 
 
+def _now_line() -> str:
+    """L'instant présent, écrit pour être lu par un modèle.
+
+    Le fuseau est nommé et le décalage donné : sans eux, « 14:30 » ne désigne
+    rien, et l'assistant convertirait des heures entre des zones qu'il aurait
+    devinées. Le jour de la semaine est écrit en toutes lettres parce que
+    « lundi » est ce dont l'utilisateur parle, pas 2026-08-17.
+    """
+    from datetime import datetime
+
+    stamp = datetime.now().astimezone()
+    offset = stamp.strftime("%z")
+    offset = f"{offset[:3]}:{offset[3:]}" if offset else "?"
+    return (
+        f"Current date and time: {stamp.strftime('%A %d %B %Y, %H:%M')} "
+        f"({stamp.tzname()}, UTC{offset}). ISO: {stamp.isoformat(timespec='seconds')}"
+    )
+
+
 def build_system_prompt(
     tool_names: Optional[List[str]] = None,
     *,
@@ -256,6 +288,7 @@ def build_system_prompt(
             guide.append("")
 
         return SYSTEM_PROMPT_TEMPLATE.format(
+            now=_now_line(),
             tools_description=desc_text,
             tool_selection_guide="\n".join(guide),
         )
@@ -334,6 +367,7 @@ def build_system_prompt(
         guide.append("")
 
     return SYSTEM_PROMPT_TEMPLATE.format(
+        now=_now_line(),
         tools_description="\n".join(desc_lines),
         tool_selection_guide="\n".join(guide),
     )

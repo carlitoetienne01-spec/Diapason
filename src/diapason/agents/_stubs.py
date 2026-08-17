@@ -41,6 +41,45 @@ class AgentResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+def _now_anchor() -> str:
+    """L'instant présent, écrit pour un modèle qui n'en a aucune idée.
+
+    Le fuseau est nommé et le décalage donné : sans eux « 14:30 » ne désigne
+    rien, et l'assistant convertirait des heures entre des zones devinées.
+    """
+    from datetime import datetime
+
+    jours = (
+        "lundi",
+        "mardi",
+        "mercredi",
+        "jeudi",
+        "vendredi",
+        "samedi",
+        "dimanche",
+    )
+
+    stamp = datetime.now().astimezone()
+    raw = stamp.strftime("%z")
+    offset = f"{raw[:3]}:{raw[3:]}" if raw else "?"
+    # Le jour de la semaine est DONNÉ, pas laissé à calculer. Avec la seule
+    # date ISO, le modèle répondait « mardi 17 août » un lundi : il calcule
+    # de tête et se trompe, et la faute est invisible parce que la date, elle,
+    # était juste.
+    return (
+        "=== MAINTENANT ===\n"
+        f"Nous sommes {jours[stamp.weekday()]}. "
+        f"Date et heure courantes : {stamp.strftime('%Y-%m-%d %H:%M')} "
+        f"({stamp.tzname()}, UTC{offset}) — "
+        f"ISO {stamp.isoformat(timespec='seconds')}.\n"
+        "Cette ligne fait autorité sur toute autre date de ce contexte. "
+        "Les dates citées dans la mémoire, les notes ou les documents sont "
+        "PASSÉES : ne jamais les prendre pour aujourd'hui. "
+        "Pour l'heure exacte après un long échange, relire l'horloge avec "
+        "l'outil current_time."
+    )
+
+
 class BaseAgent(ABC):
     """Base class for all agent implementations.
 
@@ -182,6 +221,20 @@ class BaseAgent(ABC):
                 effective_system_prompt = None
         if effective_system_prompt:
             messages.append(Message(role=Role.SYSTEM, content=effective_system_prompt))
+
+        # L'horloge, toujours, et après le prompt système quel qu'il soit.
+        #
+        # Un modèle n'a aucune notion du temps. Sans cette ligne, le seul
+        # repère temporel de son contexte est ce qui traîne dans les fichiers
+        # de mémoire — et il répond « le 12 août » parce que c'est la date
+        # qu'il y lit. Il ne devine pas au hasard : il prend le repère qu'on
+        # lui a laissé.
+        #
+        # Placée ici plutôt que dans un prompt particulier parce que TOUS les
+        # agents passent par ce constructeur : un ancrage posé plus haut se
+        # perd dès qu'un agent compose son propre prompt, ce qui est
+        # précisément ce qui s'était produit.
+        messages.append(Message(role=Role.SYSTEM, content=_now_anchor()))
         if context and context.conversation.messages:
             messages.extend(context.conversation.messages)
         messages.append(Message(role=Role.USER, content=input))

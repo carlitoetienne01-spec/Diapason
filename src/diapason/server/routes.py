@@ -61,6 +61,33 @@ def _to_messages(chat_messages) -> list[Message]:
     return messages
 
 
+def _now_anchor() -> str:
+    """L'instant présent, écrit pour un modèle qui n'en a aucune idée.
+
+    Sans cette ligne, le seul repère temporel du contexte est ce qui traîne
+    dans les fichiers de mémoire — et l'assistant répond « le 12 août 2026 »
+    parce que c'est la date qu'il y lit, pas parce qu'il se trompe de calcul.
+    Il ne devine pas au hasard : il prend le repère qu'on lui a laissé.
+
+    Le fuseau est nommé et le décalage donné, sinon « 14:30 » ne désigne rien.
+    """
+    from datetime import datetime
+
+    stamp = datetime.now().astimezone()
+    raw = stamp.strftime("%z")
+    offset = f"{raw[:3]}:{raw[3:]}" if raw else "?"
+    return (
+        "=== MAINTENANT ===\n"
+        f"Nous sommes le {stamp.strftime('%A %d %B %Y')}, il est "
+        f"{stamp.strftime('%H:%M')} ({stamp.tzname()}, UTC{offset}). "
+        f"ISO : {stamp.isoformat(timespec='seconds')}\n"
+        "Ceci fait autorité sur toute autre date présente dans ce contexte : "
+        "les dates citées dans la mémoire ou les documents sont des dates "
+        "PASSÉES, jamais aujourd'hui. Pour l'heure exacte après un long "
+        "échange, relisez l'horloge avec l'outil current_time."
+    )
+
+
 def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message]:
     """Prepend Diapason's identity system prompt when the client omits one.
 
@@ -84,8 +111,14 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     injection" rather than crashing the endpoint, but the failure is logged
     (per REVIEW.md — never silently swallow).
     """
+    # L'heure d'abord, et quoi qu'il arrive. Le retour anticipé ci-dessous
+    # existe pour ne pas doubler l'IDENTITÉ quand l'appelant fournit la
+    # sienne ; laisser l'horloge sauter avec elle est ce qui faisait répondre
+    # une date lue dans la mémoire.
+    anchored = [Message(role=Role.SYSTEM, content=_now_anchor()), *messages]
+
     if any(m.role == Role.SYSTEM for m in messages):
-        return messages
+        return anchored
 
     prompt = ""
     try:
@@ -109,12 +142,12 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
             "serving request without identity grounding",
             exc_info=True,
         )
-        return messages
+        return anchored
 
     if not prompt:
-        return messages
+        return anchored
 
-    return [Message(role=Role.SYSTEM, content=prompt), *messages]
+    return [Message(role=Role.SYSTEM, content=prompt), *anchored]
 
 
 @router.post("/v1/chat/completions")

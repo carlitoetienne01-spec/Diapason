@@ -11,6 +11,18 @@ from diapason.core.registry import AgentRegistry
 from diapason.core.types import Conversation, Message, Role, ToolCall, ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
 
+
+def without_clock(messages):
+    """Les messages, sans l'ancrage temporel.
+
+    ``_build_messages`` ajoute toujours une ligne « MAINTENANT » : sans
+    horloge, un modèle répond une date lue dans sa mémoire. Ces tests portent
+    sur quel prompt système gagne et dans quel ordre — pas sur le nombre de
+    messages — donc ils écartent l'ancrage plutôt que de compter avec.
+    """
+    return [m for m in messages if "MAINTENANT" not in (m.content or "")]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -277,6 +289,7 @@ class TestNativeOpenHandsAgent:
         agent.run("Hello", context=ctx)
         call_args = engine.generate.call_args
         messages = call_args[0][0]
+        messages = without_clock(messages)
         # System prompt + 2 context + user input
         assert len(messages) == 4
         assert messages[0].role == Role.SYSTEM
@@ -341,6 +354,7 @@ class TestNativeOpenHandsAgent:
         agent.run("Hello")
         call_args = engine.generate.call_args
         messages = call_args[0][0]
+        messages = without_clock(messages)
         system_msg = messages[0]
         assert "code_interpreter" in system_msg.content
         assert "calculator" in system_msg.content
@@ -358,6 +372,7 @@ class TestNativeOpenHandsAgent:
         agent.run("Hello")
         call_args = engine.generate.call_args
         messages = call_args[0][0]
+        messages = without_clock(messages)
         system_msg = messages[0].content
         assert "### calculator" in system_msg
         assert "### code_interpreter" in system_msg

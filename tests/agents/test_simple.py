@@ -10,6 +10,17 @@ from diapason.core.events import EventBus, EventType
 from diapason.core.types import Conversation, Message, Role
 
 
+def without_clock(messages):
+    """Les messages, sans l'ancrage temporel.
+
+    ``_build_messages`` ajoute toujours une ligne « MAINTENANT » : sans
+    horloge, un modèle répond une date lue dans sa mémoire. Ces tests portent
+    sur quel prompt système gagne et dans quel ordre — pas sur le nombre de
+    messages — donc ils écartent l'ancrage plutôt que de compter avec.
+    """
+    return [m for m in messages if "MAINTENANT" not in (m.content or "")]
+
+
 def _make_mock_engine(content: str = "Hello there!") -> MagicMock:
     engine = MagicMock()
     engine.engine_id = "mock"
@@ -46,6 +57,7 @@ class TestSimpleAgent:
         agent.run("Hello", context=ctx)
         call_args = engine.generate.call_args
         messages = call_args[1].get("messages") or call_args[0][0]
+        messages = without_clock(messages)
         # Should have system message + user message
         assert len(messages) == 2
         assert messages[0].role == Role.SYSTEM
@@ -57,6 +69,7 @@ class TestSimpleAgent:
         agent.run("Hello")
         call_args = engine.generate.call_args
         messages = call_args[1].get("messages") or call_args[0][0]
+        messages = without_clock(messages)
         # Default system prompt + user message
         assert len(messages) == 2
         assert messages[0].role == Role.SYSTEM
