@@ -197,16 +197,37 @@ class DeviceRegistry:
 
         stamp = now_ms()
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT expires_at_ms, redeemed_at_ms FROM mesh_pairings "
-                "WHERE token_hash=?",
-                (_token_hash(token),),
-            ).fetchone()
-            if row is None:
-                raise MeshError("Ce code d'appairage est inconnu.")
-            if row["redeemed_at_ms"] is not None:
-                raise MeshError("Ce code d'appairage a déjà été utilisé.")
-            if int(row["expires_at_ms"]) < stamp:
+            # Claim the invitation FIRST, and let the UPDATE be the test.
+            #
+            # Reading `redeemed_at_ms` and then writing it is two steps with a
+            # gap, and sqlite3 opens its transaction only at the first write —
+            # so two redemptions racing both read "unused" and both succeed,
+            # enrolling two devices from one invitation. Worse than the extra
+            # device is the silence: the legitimate one still succeeds, so the
+            # « déjà utilisé » message that would have warned the user their
+            # code was stolen never appears.
+            #
+            # Making the spend the guard is the pattern this module already
+            # uses for nonces and for beacon watermarks: only one writer can
+            # see the old value, so only one can win.
+            claimed = conn.execute(
+                "UPDATE mesh_pairings SET redeemed_at_ms=? "
+                "WHERE token_hash=? AND redeemed_at_ms IS NULL "
+                "  AND expires_at_ms >= ?",
+                (stamp, _token_hash(token), stamp),
+            )
+            if claimed.rowcount != 1:
+                # Say which of the three it was, since the user acts on it
+                # differently: mistyped, already used, or waited too long.
+                row = conn.execute(
+                    "SELECT expires_at_ms, redeemed_at_ms FROM mesh_pairings "
+                    "WHERE token_hash=?",
+                    (_token_hash(token),),
+                ).fetchone()
+                if row is None:
+                    raise MeshError("Ce code d'appairage est inconnu.")
+                if row["redeemed_at_ms"] is not None:
+                    raise MeshError("Ce code d'appairage a déjà été utilisé.")
                 raise MeshError("Ce code d'appairage a expiré.")
 
             existing = conn.execute(
@@ -229,10 +250,6 @@ class DeviceRegistry:
                         "avec une autre clé. Révoquez-le avant de le réappairer."
                     )
 
-            conn.execute(
-                "UPDATE mesh_pairings SET redeemed_at_ms=? WHERE token_hash=?",
-                (stamp, _token_hash(token)),
-            )
             conn.execute(
                 """INSERT INTO mesh_devices
                    (device_id, public_key, name, platform, device_type,

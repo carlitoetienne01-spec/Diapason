@@ -16,6 +16,7 @@ import logging
 from typing import Any, Mapping
 
 from diapason.mesh.commands import (
+    CommandError,
     CommandRejected,
     RemoteCommand,
     build_command,
@@ -356,6 +357,18 @@ def receive_command(
             "status": exc.code,
             "errorCode": exc.code,
             "userSafeMessage": exc.message,
+        }
+    except (CommandError, TypeError, ValueError, AttributeError) as exc:
+        # A malformed envelope is a refusal, not a crash. This route is open
+        # to anyone who can reach the port, so an exception escaping here
+        # became a 500 and a stack trace in the log on demand.
+        logger.info("commande illisible refusée : %s", type(exc).__name__)
+        return {
+            "commandId": "",
+            "targetDeviceId": identity.device_id,
+            "status": "DENIED",
+            "errorCode": "MALFORMED",
+            "userSafeMessage": "Cette commande est illisible.",
         }
 
     # Idempotency on the receiving side too: a redelivered command replays

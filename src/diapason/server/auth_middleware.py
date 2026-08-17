@@ -112,6 +112,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
 
+# The mesh routes that authenticate by signature or invitation rather than by
+# the API key. Listed once, here, because being outside the key wall and being
+# outside the limiter used to be the same condition — and nobody meant the
+# second one.
+_OPEN_MESH_ROUTES = frozenset(
+    {
+        "/v1/mesh/pairings/redeem",
+        "/v1/mesh/commands/deliver",
+        "/v1/mesh/presence",
+        "/v1/mesh/commands/poll",
+        "/v1/mesh/commands/ack",
+    }
+)
+
+
+def _too_many(wait_seconds: float) -> JSONResponse:
+    return JSONResponse(
+        {"detail": "Trop de requêtes. Réessayez dans un instant."},
+        status_code=429,
+        headers={"Retry-After": str(max(1, int(wait_seconds + 0.999)))},
+    )
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Throttle authenticated API traffic per credential and client address."""
 
@@ -128,6 +151,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             RateLimitConfig(
                 requests_per_minute=requests_per_minute,
                 burst_size=burst_size,
+                enabled=enabled,
+            )
+        )
+        # A separate bucket for the mesh routes that carry no API key.
+        #
+        # The main limiter only ever ran for paths that require the key, so
+        # every route deliberately opened to unauthenticated devices was also
+        # opened to unlimited traffic — including the pairing front door,
+        # whose own module claimed the opposite. Keyed on client address,
+        # since there is no credential to key on before the body is parsed,
+        # and parsing the body is the cost we are trying to bound.
+        #
+        # Roomier than the authenticated bucket on purpose: a paired device
+        # legitimately polls every couple of seconds and beacons besides, and
+        # throttling that would break the very devices this is protecting.
+        self._open_limiter = RateLimiter(
+            RateLimitConfig(
+                requests_per_minute=max(120, requests_per_minute * 2),
+                burst_size=max(20, burst_size * 2),
                 enabled=enabled,
             )
         )
@@ -170,6 +212,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
+        client = request.client.host if request.client else "unknown"
+
+        # The mesh's key-less routes. Throttled on their own bucket rather
+        # than left unlimited: they are the only surface a stranger on the
+        # network can reach at all.
+        if path in _OPEN_MESH_ROUTES:
+            allowed, wait_seconds = self._open_limiter.check(f"{client}:mesh")
+            if not allowed:
+                return _too_many(wait_seconds)
+            return await call_next(request)
+
         # This small, read-only readiness response is polled while the voice
         # panel is open. It remains authenticated, but unrelated dashboard
         # traffic must not exhaust its rate-limit bucket and disable Start.
@@ -181,15 +234,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 import hashlib
 
                 credential = hashlib.sha256(auth.encode()).hexdigest()[:16]
-            client = request.client.host if request.client else "unknown"
             allowed, wait_seconds = self._limiter.check(f"{client}:{credential}")
             if not allowed:
-                retry_after = max(1, int(wait_seconds + 0.999))
-                return JSONResponse(
-                    {"detail": "Trop de requêtes. Réessayez dans un instant."},
-                    status_code=429,
-                    headers={"Retry-After": str(retry_after)},
-                )
+                return _too_many(wait_seconds)
         return await call_next(request)
 
 

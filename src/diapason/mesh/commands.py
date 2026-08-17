@@ -146,7 +146,10 @@ class RemoteCommand:
             )
         except KeyError as exc:
             raise CommandError(f"Champ de commande manquant : {exc.args[0]}.") from exc
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
+            # OverflowError included deliberately: JSON bounds no number, so
+            # `1e400` arrives as float("inf") and int() refuses it — which
+            # escaped as a 500 rather than a refusal.
             raise CommandError("La commande est mal formée.") from exc
 
 

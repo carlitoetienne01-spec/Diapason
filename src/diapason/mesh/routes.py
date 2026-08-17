@@ -4,8 +4,10 @@ Everything here is authenticated by the local API key EXCEPT one route:
 ``POST /v1/mesh/pairings/redeem``. A device being enrolled does not have the
 key yet — that is the whole point of enrolment — so it authenticates with
 the one-time pairing token instead, exactly as Succès sync already does.
-That route is rate-limited (unlike the Succès CRUD exemption), because it is
-the mesh's front door.
+That route is rate-limited on its own bucket (see ``_OPEN_MESH_ROUTES`` in
+the auth middleware), because it is the mesh's front door. It was not, for a
+while: the limiter ran only for paths that require the API key, so opening a
+route to unauthenticated devices silently opened it to unlimited traffic too.
 """
 
 from __future__ import annotations
@@ -313,6 +315,10 @@ def receive_presence(body: dict[str, Any]) -> dict[str, Any]:
         )
     except PresenceRejected as exc:
         raise HTTPException(status_code=403, detail=exc.message) from exc
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=400, detail="Cette annonce est illisible."
+        ) from exc
     return {"ok": True, "presence": presence_of(device)}
 
 
@@ -350,6 +356,18 @@ def poll_commands(body: dict[str, Any]) -> dict[str, Any]:
         )
     except PullRejected as exc:
         raise HTTPException(status_code=403, detail=exc.message) from exc
+    except (TypeError, ValueError, AttributeError) as exc:
+        # Open to anyone who can reach the port: garbage is a refusal, never
+        # a 500 with a stack trace in the log.
+        raise HTTPException(
+            status_code=400, detail="Cette confirmation est illisible."
+        ) from exc
+    except (TypeError, ValueError, AttributeError) as exc:
+        # Open to anyone who can reach the port: garbage is a refusal, never
+        # a 500 with a stack trace in the log.
+        raise HTTPException(
+            status_code=400, detail="Cette relève est illisible."
+        ) from exc
 
 
 @router.post("/commands/ack")

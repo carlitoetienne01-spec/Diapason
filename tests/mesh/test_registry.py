@@ -84,6 +84,83 @@ class TestPairing:
                 device_type="TABLET",
             )
 
+    def test_two_devices_racing_on_one_invitation_cannot_both_get_in(
+        self, registry, tmp_path
+    ):
+        """« Spent once » has to hold under a race, not just in sequence.
+
+        Reading redeemed_at_ms and then writing it left a gap — sqlite3 opens
+        its transaction at the first write — so two redemptions could both
+        read "unused" and both succeed. The extra device was not the worst of
+        it: the legitimate one succeeded too, so the « déjà utilisé » message
+        that would have told the user their code was stolen never appeared.
+        """
+        import threading
+
+        token = registry.create_pairing("MacBook de Carlito")["pairingToken"]
+        gate = threading.Barrier(2)
+        outcomes: dict[str, str] = {}
+
+        def redeem(tag: str, device_id: str) -> None:
+            # Its own connection, as two HTTP requests would have.
+            peer = DeviceRegistry(db_path=tmp_path / "mesh.db")
+            gate.wait()
+            try:
+                peer.redeem_pairing(
+                    token,
+                    device_id=device_id,
+                    public_key_b64=a_key(),
+                    name="MacBook de Carlito",
+                    platform="MACOS",
+                    device_type="LAPTOP",
+                )
+                outcomes[tag] = "admitted"
+            except MeshError:
+                outcomes[tag] = "refused"
+
+        threads = [
+            threading.Thread(target=redeem, args=("first", "dev_" + "a" * 20)),
+            threading.Thread(target=redeem, args=("second", "dev_" + "b" * 20)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert sorted(outcomes.values()) == ["admitted", "refused"]
+        assert len(registry.list_devices()) == 1
+
+    def test_a_refusal_after_the_claim_leaves_the_invitation_usable(self, registry):
+        """The claim is rolled back with the rest of the transaction.
+
+        Otherwise presenting a revoked device — which is refused several
+        checks later — would silently burn a perfectly good invitation and
+        the user would have to mint another for no reason they could see.
+        """
+        enrol(registry, device_id="dev_pc", platform="WINDOWS", device_type="DESKTOP")
+        registry.revoke("dev_pc")
+
+        token = registry.create_pairing("PC")["pairingToken"]
+        with pytest.raises(MeshError, match="révoqué"):
+            registry.redeem_pairing(
+                token,
+                device_id="dev_pc",
+                public_key_b64=a_key(),
+                name="PC",
+                platform="WINDOWS",
+                device_type="DESKTOP",
+            )
+        # Same invitation, a device that may join: still good.
+        device = registry.redeem_pairing(
+            token,
+            device_id="dev_portable",
+            public_key_b64=a_key(),
+            name="Portable",
+            platform="MACOS",
+            device_type="LAPTOP",
+        )
+        assert device["trustLevel"] == "TRUSTED"
+
     def test_an_expired_invitation_is_refused(self, registry, tmp_path):
         invitation = registry.create_pairing("Vieux PC")
         with sqlite3.connect(tmp_path / "mesh.db") as conn:

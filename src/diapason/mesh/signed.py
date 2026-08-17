@@ -40,6 +40,20 @@ class SignedRejected(Exception):
         self.message = message
 
 
+def _as_int(value: Any) -> int:
+    """Read an integer out of whatever arrived, or 0.
+
+    Never raises: a caller here is holding a payload from an unauthenticated
+    stranger, and every failure has to become a refusal rather than a 500.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError is not hypothetical: JSON puts no bound on a number's
+        # magnitude, so `1e400` arrives as float("inf") and int() refuses it.
+        return 0
+
+
 def signable(payload: Mapping[str, Any], fields: Sequence[str]) -> dict[str, Any]:
     """The exact subset the signature covers, in a stable order."""
     return {field: payload.get(field) for field in fields}
@@ -78,7 +92,14 @@ def verify_payload(
 
     @returns the verified sending device id.
     """
-    if int(raw.get("version") or 0) != version:
+    # Every read below is defensive. These four routes are the only surface a
+    # stranger on the network can reach, so anything they send has to come out
+    # as a refusal — a TypeError escaping here became a 500 with a stack trace
+    # in the log, on demand, from anyone.
+    if not isinstance(raw, Mapping):
+        raise SignedRejected("DENIED", f"Cette {subject} est illisible.")
+
+    if _as_int(raw.get("version")) != version:
         raise SignedRejected(
             "UNSUPPORTED", f"Cette {subject} utilise une version non prise en charge."
         )
@@ -103,7 +124,7 @@ def verify_payload(
             "DENIED", "Cet appareil n'est pas autorisé sur cette machine."
         )
 
-    sent_at = int(raw.get(stamp_field) or 0)
+    sent_at = _as_int(raw.get(stamp_field))
     if sent_at - MAX_SIGNED_SKEW_MS > now_ms:
         raise SignedRejected("DENIED", f"Cette {subject} est datée du futur.")
     if sent_at + MAX_SIGNED_SKEW_MS < now_ms:
