@@ -175,6 +175,7 @@ nav:
       - Learning: architecture/learning.md
       - Query Flow: architecture/query-flow.md
       - Security: architecture/security.md
+      - Device Mesh: architecture/device-mesh.md
       - Threat Model: security/threat-model.md
       - Design Principles: architecture/design-principles.md
   - API Reference: api-reference/
