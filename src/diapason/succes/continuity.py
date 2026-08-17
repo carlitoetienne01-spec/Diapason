@@ -677,6 +677,67 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
             "quote": self.quote_for_date(iso),
         }
 
+    def _longest_habit_streak(
+        self,
+        habits: list[dict[str, Any]],
+        year: int,
+        month: int | None,
+    ) -> int:
+        """La plus longue série JAMAIS tenue sur la période, pas celle en cours.
+
+        Le bilan prenait le maximum des séries courantes — c'est-à-dire ce que
+        `list_habits` calcule pour aujourd'hui. Un bilan sert précisément à
+        regarder en arrière : quelqu'un qui a tenu soixante jours au printemps
+        puis s'est arrêté lisait « 0 », et son meilleur mois avait disparu du
+        seul écran fait pour s'en souvenir.
+
+        La série est mesurée sur les jours DUS : sauter un dimanche pour une
+        habitude hebdomadaire n'est pas une rupture, et compter en jours
+        calendaires punirait les habitudes non quotidiennes.
+        """
+        if not habits:
+            return 0
+
+        start = date(year, month or 1, 1)
+        if month:
+            end = date(year + (month == 12), (month % 12) + 1, 1) - timedelta(days=1)
+        else:
+            end = date(year, 12, 31)
+        # Inutile de parcourir un futur qui n'a pas encore eu lieu.
+        end = min(end, date.today())
+        if end < start:
+            return 0
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT habit_id, log_date FROM succes_habit_logs "
+                "WHERE done=1 AND log_date BETWEEN ? AND ?",
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+
+        done_by_habit: dict[str, set[str]] = {}
+        for row in rows:
+            done_by_habit.setdefault(str(row["habit_id"]), set()).add(
+                str(row["log_date"])
+            )
+
+        best = 0
+        for habit in habits:
+            done = done_by_habit.get(str(habit["id"]))
+            if not done:
+                continue
+            run = 0
+            cursor = start
+            while cursor <= end:
+                if self._habit_due(habit, cursor):
+                    if cursor.isoformat() in done:
+                        run += 1
+                        best = max(best, run)
+                    else:
+                        run = 0
+                cursor += timedelta(days=1)
+        return best
+
     def year_review(self, year: int, *, month: int | None = None) -> dict[str, Any]:
         current_year = date.today().year
         if year < 1970 or year > current_year + 30:
@@ -751,8 +812,8 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
                 "tasksCompletedAllTime": sum(bool(task["done"]) for task in tasks),
                 "projects": len(projects),
                 "habits": len(habits),
-                "longestHabitStreak": max(
-                    (int(habit["streak"]) for habit in habits), default=0
+                "longestHabitStreak": self._longest_habit_streak(
+                    habits, year, month
                 ),
             },
         }

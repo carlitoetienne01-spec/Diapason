@@ -475,13 +475,31 @@ class SuccesWorkspaceStore(SuccesStore):
     def _habit_streak(
         self, conn: sqlite3.Connection, habit: Mapping[str, Any], on_date: date
     ) -> int:
+        """Jours dus consécutifs déjà tenus, en remontant depuis *on_date*.
+
+        Le jour COURANT ne rompt pas la série tant qu'il n'est pas écoulé.
+        Auparavant, une habitude due aujourd'hui et pas encore cochée cassait
+        la boucle au premier tour : quarante jours d'affilée s'affichaient
+        « 0 » chaque matin, jusqu'à ce qu'on coche la case. C'est-à-dire
+        précisément au moment où la série a le plus de valeur pour celui qui
+        la regarde — et l'effacer là décourage l'usage même de l'outil.
+
+        Une fois cochée, la journée compte normalement ; le lendemain, elle
+        n'est plus le jour courant et rompt la série si elle est restée vide.
+        """
         streak = 0
         cursor = on_date
         for _ in range(366):
             if self._habit_due(habit, cursor):
-                if not self._habit_done(conn, str(habit["id"]), cursor.isoformat()):
-                    break
-                streak += 1
+                done = self._habit_done(conn, str(habit["id"]), cursor.isoformat())
+                if not done:
+                    # Le jour en cours n'est pas encore manqué : il est en
+                    # cours. On l'enjambe sans le compter — la série montre ce
+                    # qui est acquis, pas ce qui est promis.
+                    if cursor != on_date:
+                        break
+                else:
+                    streak += 1
             cursor -= timedelta(days=1)
         return streak
 
