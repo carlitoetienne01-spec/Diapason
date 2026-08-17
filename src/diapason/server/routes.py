@@ -88,7 +88,12 @@ def _now_anchor() -> str:
     )
 
 
-def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message]:
+def _ensure_identity_prompt(
+    messages: list[Message],
+    app_config,
+    *,
+    client_supplied_system: bool | None = None,
+) -> list[Message]:
     """Prepend Diapason's identity system prompt when the client omits one.
 
     The desktop UI's chat backend posts only user/assistant turns to
@@ -117,7 +122,20 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     # une date lue dans la mémoire.
     anchored = [Message(role=Role.SYSTEM, content=_now_anchor()), *messages]
 
-    if any(m.role == Role.SYSTEM for m in messages):
+    # Le retour anticipé n'a de sens que si le CLIENT a fourni son propre
+    # cadrage. Il testait la liste telle qu'elle arrive ici — or le serveur y
+    # a peut-être glissé son propre message système entre-temps : dès qu'une
+    # recherche mémoire ramenait un seul résultat, ce message déclenchait le
+    # test et l'identité de Diapason, MEMORY.md et USER.md disparaissaient
+    # tous les trois. Le modèle repartait sur son identité d'entraînement et
+    # inventait le nom de l'utilisateur — exactement le défaut que ce code
+    # documente vouloir empêcher.
+    supplied = (
+        client_supplied_system
+        if client_supplied_system is not None
+        else any(m.role == Role.SYSTEM for m in messages)
+    )
+    if supplied:
         return anchored
 
     prompt = ""
@@ -220,6 +238,10 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                     usage=UsageInfo(),
                     lightning=outcome.public_metadata(),
                 )
+
+    # Relevé AVANT toute injection : après, on ne peut plus distinguer le
+    # cadrage du client de celui que le serveur vient d'ajouter.
+    client_system = any(m.role == "system" for m in request_body.messages)
 
     # Inject memory context into messages before dispatching
     memory_backend = getattr(request.app.state, "memory_backend", None)
@@ -326,6 +348,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                 app_config=config,
                 bus=getattr(request.app.state, "bus", None),
                 memory_service=getattr(request.app.state, "memory_service", None),
+                client_system=client_system,
             )
         return await _handle_stream(
             engine,
@@ -336,6 +359,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             app_config=config,
             bus=getattr(request.app.state, "bus", None),
             memory_service=getattr(request.app.state, "memory_service", None),
+            client_system=client_system,
         )
 
     # Non-streaming: use agent if available, otherwise direct engine call.
@@ -378,6 +402,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             bus=bus,
             complexity_info=complexity_info,
             app_config=config,
+            client_system=client_system,
         )
 
     # Hand the completed exchange to the background memory service.
@@ -506,10 +531,13 @@ def _handle_direct(
     bus=None,
     complexity_info=None,
     app_config=None,
+    client_system: bool = False,
 ) -> ChatCompletionResponse:
     """Direct engine call without agent."""
     messages = _to_messages(req.messages)
-    messages = _ensure_identity_prompt(messages, app_config)
+    messages = _ensure_identity_prompt(
+        messages, app_config, client_supplied_system=client_system
+    )
     kwargs: dict[str, Any] = {}
     if req.tools:
         kwargs["tools"] = req.tools
@@ -690,6 +718,7 @@ async def _handle_stream_tools(
     app_config=None,
     bus=None,
     memory_service=None,
+    client_system: bool = False,
 ):
     """Stream a raw OpenAI-compat function-calling response via SSE.
 
@@ -707,7 +736,9 @@ async def _handle_stream_tools(
     from diapason.server.cloud_router import is_cloud_model
 
     messages = _to_messages(req.messages)
-    messages = _ensure_identity_prompt(messages, app_config)
+    messages = _ensure_identity_prompt(
+        messages, app_config, client_supplied_system=client_system
+    )
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     use_cloud = is_cloud_model(model)
     query_text = ""
@@ -820,6 +851,7 @@ async def _handle_stream(
     app_config=None,
     bus=None,
     memory_service=None,
+    client_system: bool = False,
 ):
     """Stream response using SSE format.
 
@@ -838,7 +870,9 @@ async def _handle_stream(
     )
 
     messages = _to_messages(req.messages)
-    messages = _ensure_identity_prompt(messages, app_config)
+    messages = _ensure_identity_prompt(
+        messages, app_config, client_supplied_system=client_system
+    )
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     # Last user message — recorded as the trace query.
