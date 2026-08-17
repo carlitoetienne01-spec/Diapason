@@ -95,3 +95,46 @@ class TestLesConnecteursLocauxNeMententPlus:
         monkeypatch.setattr(c, "_healthkit_db_path", Path("/tmp/rien.db"))
         monkeypatch.setattr(c, "_export_path", base_lisible)
         assert c.is_connected() is True
+
+
+class TestLeDiagnosticExpliqueEtDonneLeBonChemin:
+    """Le message qui manquait le jour où « connected » a menti.
+
+    Autoriser un lien symbolique ne sert à rien : macOS résout le lien et
+    n'attribue l'accès qu'à la cible. C'est le piège qui a coûté un
+    aller-retour complet — l'instruction évidente était la mauvaise.
+    """
+
+    def test_rien_a_dire_quand_tout_est_lisible(self, base_lisible):
+        from diapason.connectors._stubs import tcc_remediation
+
+        assert tcc_remediation([base_lisible]) == ""
+
+    def test_rien_a_dire_pour_un_fichier_absent(self):
+        """Absent n'est pas « refusé » : ne pas avoir de Notes n'est pas un
+        problème d'autorisation, et le dire serait un faux diagnostic."""
+        from diapason.connectors._stubs import tcc_remediation
+
+        assert tcc_remediation([Path("/tmp/vraiment-rien.db")]) == ""
+
+    def test_il_nomme_la_base_bloquee(self, base_lisible):
+        from diapason.connectors._stubs import tcc_remediation
+
+        base_lisible.chmod(0o000)
+        try:
+            texte = tcc_remediation([base_lisible])
+            assert str(base_lisible) in texte
+        finally:
+            base_lisible.chmod(0o600)
+
+    def test_il_donne_le_binaire_resolu_pas_le_lien(self, base_lisible):
+        import sys
+
+        from diapason.connectors._stubs import tcc_remediation
+
+        base_lisible.chmod(0o000)
+        try:
+            texte = tcc_remediation([base_lisible])
+            assert str(Path(sys.executable).resolve()) in texte
+        finally:
+            base_lisible.chmod(0o600)

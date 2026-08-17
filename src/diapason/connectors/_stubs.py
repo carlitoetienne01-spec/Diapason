@@ -187,3 +187,43 @@ def can_read_sqlite(path: Path) -> bool:
         return False
     finally:
         conn.close()
+
+
+def tcc_remediation(paths: "list[Path]") -> str:
+    """Why a visible-but-unreadable local database is unreadable, and the fix.
+
+    macOS attributes a file access to the *responsible* binary, resolving
+    symlinks first. A virtualenv's ``bin/python`` is a symlink, so granting
+    Full Disk Access to that path grants nothing — the real interpreter lives
+    elsewhere, and only its resolved path counts. Someone following the
+    obvious instruction gets a permission they cannot use, with no feedback
+    saying so.
+
+    Returns an empty string when every path is already readable, so callers
+    can print it unconditionally.
+    """
+    import sys
+
+    blocked = [p for p in paths if p.exists() and not can_read_sqlite(p)]
+    if not blocked:
+        return ""
+    binaire = Path(sys.executable).resolve()
+    lignes = [
+        "Ces bases existent mais sont illisibles — macOS demande "
+        "« Accès complet au disque » :",
+    ]
+    lignes += [f"  · {p}" for p in blocked]
+    lignes += [
+        "",
+        "Réglages Système → Confidentialité et sécurité → Accès complet au "
+        "disque → « + », puis EXACTEMENT ce binaire :",
+        f"  {binaire}",
+    ]
+    if Path(sys.executable).resolve() != Path(sys.executable):
+        lignes.append(
+            f"  (et non {sys.executable} : c'est un lien symbolique, "
+            "macOS ne regarde que la cible)"
+        )
+    lignes.append("")
+    lignes.append("Puis : diapason restart")
+    return "\n".join(lignes)

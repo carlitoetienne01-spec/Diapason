@@ -36,6 +36,34 @@ def _list_sources(registry: object) -> None:
 
     console.print(table)
 
+    # Un « disconnected » sur une base locale n'est presque jamais une
+    # absence de fichier : c'est une autorisation macOS manquante. Le dire
+    # ici, avec le bon chemin de binaire, épargne une heure de recherche —
+    # et évite d'autoriser un lien symbolique, qui ne sert à rien.
+    from diapason.connectors._stubs import tcc_remediation
+
+    conseil = tcc_remediation(_local_db_paths(registry))
+    if conseil:
+        console.print()
+        console.print(conseil)
+
+
+def _local_db_paths(registry: object) -> list:
+    """Les bases SQLite locales que les connecteurs déclarent lire."""
+    from pathlib import Path
+
+    chemins: list[Path] = []
+    for key in registry.keys():  # type: ignore[attr-defined]
+        try:
+            instance = registry.get(key)()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - un connecteur qui ne s'instancie pas
+            continue
+        for attribut in ("_db_path", "_healthkit_db_path"):
+            chemin = getattr(instance, attribut, None)
+            if isinstance(chemin, Path):
+                chemins.append(chemin)
+    return chemins
+
 
 def _disconnect_source(registry: object, source: str) -> None:
     """Find and disconnect a registered source connector."""
