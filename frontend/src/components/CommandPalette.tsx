@@ -494,18 +494,25 @@ export function CommandPalette() {
               {CLOUD_PROVIDERS.map((provider) => {
                 const key = apiKeys[provider.envKey] || '';
                 const hasSavedKey = !!cloudKeyStatus[provider.envKey];
-                const hasKey = hasSavedKey || !!key.trim();
+                // Deliberately not `|| key.trim()`. `key` is the draft in the
+                // input: one keystroke used to turn the icon green and show
+                // "Connected", before anything was saved. Saving clears the
+                // draft and refreshes cloudKeyStatus, so this covers both.
                 const isVisible = showKeys[provider.envKey];
                 const isSaving = savingKey === provider.envKey;
 
                 return (
                   <div key={provider.name} className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Cloud size={14} style={{ color: hasKey ? 'var(--color-success)' : 'var(--color-text-tertiary)' }} />
+                      <Cloud size={14} style={{ color: hasSavedKey ? 'var(--color-success)' : 'var(--color-text-tertiary)' }} />
                       <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{provider.name}</span>
-                      {hasKey && (
+                      {hasSavedKey && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', color: 'var(--color-success)' }}>
-                          {t('common.connected')}
+                          {/* "Connected" was never earned: saving a key writes it
+                              to the keychain and reloads the engine, without ever
+                              calling the provider. A mistyped key read as
+                              connected until the first request failed. */}
+                          {t('models.keySaved')}
                         </span>
                       )}
                     </div>
@@ -543,8 +550,10 @@ export function CommandPalette() {
                       )}
                     </div>
 
-                    {/* Models for this provider (only show if key is set) */}
-                    {hasKey && (
+                    {/* Models for this provider (only once a key is stored:
+                        picking one against an unsaved draft fails at request
+                        time, well away from the click that caused it) */}
+                    {hasSavedKey && (
                       <div className="ml-5 flex flex-col gap-1">
                         {provider.models.map((model) => {
                           const isActive = model.id === selectedModel;

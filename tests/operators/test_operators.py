@@ -55,13 +55,22 @@ class FakeSessionStore:
 
 
 class FakeMemoryBackend:
-    """Minimal memory backend stub."""
+    """Minimal memory backend stub, mirroring the real signature.
+
+    This used to be ``store(key, value)`` — which no real backend accepts.
+    ``MemoryBackend.store`` takes the content first and the key as the
+    ``source`` keyword. So the double swallowed a call the real thing raises
+    ``TypeError`` on, and the agent's state was never written in production
+    while this test reported that it was. A double that is more forgiving
+    than the thing it stands in for tests nothing.
+    """
 
     def __init__(self) -> None:
         self._store: Dict[str, str] = {}
 
-    def store(self, key: str, value: str, **kwargs) -> None:
-        self._store[key] = value
+    def store(self, content: str, *, source: str = "", **kwargs) -> str:
+        self._store[source] = content
+        return source
 
     def retrieve(self, key: str, **kwargs) -> str:
         return self._store.get(key, "")
@@ -564,7 +573,9 @@ class TestOperativeAgent:
         from diapason.agents.operative import OperativeAgent
 
         memory = FakeMemoryBackend()
-        memory.store("operator:recall_test:state", '{"last_run": "2024-01-01"}')
+        memory.store(
+            '{"last_run": "2024-01-01"}', source="operator:recall_test:state"
+        )
 
         engine = FakeEngine([{"content": "State recalled."}])
         agent = OperativeAgent(

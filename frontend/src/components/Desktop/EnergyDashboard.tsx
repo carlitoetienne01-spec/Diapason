@@ -168,7 +168,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: colors.red,
   },
-  thermalStatus: {
+  powerLoad: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
@@ -199,15 +199,20 @@ function formatTimestamp(ts: string): string {
 
 // The label is picked here but translated at render: this helper runs outside a
 // component, where a hook cannot be called, so it hands back a catalogue key.
-type ThermalKey =
-  | 'dashboard.energy.thermalCool'
-  | 'dashboard.energy.thermalWarm'
-  | 'dashboard.energy.thermalHot';
+//
+// This was "Thermal Status" / « État thermique », with Cool/Warm/Hot — a
+// temperature, to anyone reading it. It is derived from average power alone.
+// The API's cpu_temp_c and gpu_temp_c are null here, so there is no
+// temperature to report; the honest reading of this number is power draw.
+type LoadKey =
+  | 'dashboard.energy.loadIdle'
+  | 'dashboard.energy.loadModerate'
+  | 'dashboard.energy.loadHeavy';
 
-function thermalIndicator(avgPower: number): { labelKey: ThermalKey; color: string } {
-  if (avgPower < 50) return { labelKey: 'dashboard.energy.thermalCool', color: colors.green };
-  if (avgPower < 150) return { labelKey: 'dashboard.energy.thermalWarm', color: colors.yellow };
-  return { labelKey: 'dashboard.energy.thermalHot', color: colors.red };
+function powerLoadIndicator(avgPower: number): { labelKey: LoadKey; color: string } {
+  if (avgPower < 50) return { labelKey: 'dashboard.energy.loadIdle', color: colors.green };
+  if (avgPower < 150) return { labelKey: 'dashboard.energy.loadModerate', color: colors.yellow };
+  return { labelKey: 'dashboard.energy.loadHeavy', color: colors.red };
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +292,7 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
     );
   }
 
-  const thermal = thermalIndicator(energyData?.avg_power_w ?? 0);
+  const powerLoad = powerLoadIndicator(energyData?.avg_power_w ?? 0);
 
   return (
     <div style={styles.container}>
@@ -351,9 +356,9 @@ export function EnergyDashboard({ apiUrl }: { apiUrl: string }) {
         </div>
 
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>{t('dashboard.energy.thermalStatus')}</div>
-          <div style={{ ...styles.thermalStatus, color: thermal.color }}>
-            {t(thermal.labelKey)}
+          <div style={styles.statLabel}>{t('dashboard.energy.powerLoad')}</div>
+          <div style={{ ...styles.powerLoad, color: powerLoad.color }}>
+            {t(powerLoad.labelKey)}
           </div>
         </div>
 

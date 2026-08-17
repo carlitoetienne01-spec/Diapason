@@ -289,19 +289,51 @@ def _default_tts(voice: str) -> Callable[[str], bytes]:
     return speak
 
 
-_TOOL_TURN_RE = re.compile(
-    r"\b(?:agenda|calendrier|calendar|spotify|youtube|mail|courriel|email|"
-    r"message|sms|fichier|document|écran|screen|partage|cherche|recherche|"
-    r"search|google|joue|play|envoie|compose|ouvre|open|lance|affiche|montre)\b",
+# Turns that plainly need no tool: acknowledgements, greetings, thanks. Every
+# entry must be impossible to read as a command — « arrête » and « stop » stay
+# out, they end screen sharing.
+#
+# This used to be the opposite: an allowlist of trigger words (agenda, spotify,
+# ouvre, joue…), and a turn without one got no tools at all. The system prompt
+# meanwhile advertises twenty tools, so « quelles sont mes tâches aujourd'hui »,
+# « combien j'ai dépensé ce mois-ci » and « note que je dois appeler le
+# dentiste » were all answered from the model's imagination — the prompt
+# promised, the filter removed, and the reply sounded exactly as confident
+# either way. An allowlist has to enumerate every phrasing of every capability
+# to be correct; a denylist only has to recognise "yeah, thanks" to be useful,
+# and anything it fails to recognise gets the tools.
+# ``'`` and ``’`` both, because which one arrives depends on the speech-to-text
+# engine, not on the speaker. Matching only the ASCII form let « d’accord »
+# through as a tool-bearing turn.
+_APOS = r"['’]"
+_NO_TOOL_TURN_RE = re.compile(
+    r"^\W*(?:"
+    r"oui|ouais|non|nan|ok|okay|d" + _APOS + r"accord|dac|entendu|"
+    r"merci(?:\s+beaucoup)?|de\s+rien|"
+    r"salut|bonjour|bonsoir|coucou|hello|hi|hey|"
+    r"au\s+revoir|bye|à\s+plus|à\s+bientôt|bonne\s+nuit|"
+    r"parfait|super|génial|cool|nickel|très\s+bien|"
+    r"exactement|voilà|c" + _APOS + r"est\s+ça|je\s+vois|"
+    r"ah|oh|hmm|euh|mm+"
+    r")\W*$",
     re.IGNORECASE,
 )
 
 
 def _turn_needs_tools(messages: Sequence[dict]) -> bool:
-    """Avoid sending a 9 KB tool schema for an ordinary spoken reply."""
+    """Whether to send the tool schema with this turn.
+
+    Sending it costs prefill on a local model, which in a spoken conversation
+    is audible. But withholding it costs the user a capability they were told
+    they had, silently — so the default is to send, and only an utterance
+    recognisably free of any request is exempt.
+    """
     for message in reversed(messages):
         if message.get("role") == "user":
-            return bool(_TOOL_TURN_RE.search(str(message.get("content") or "")))
+            content = str(message.get("content") or "").strip()
+            if not content:
+                return False
+            return not _NO_TOOL_TURN_RE.match(content)
     return False
 
 

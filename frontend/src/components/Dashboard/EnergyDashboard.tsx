@@ -108,11 +108,15 @@ export function EnergyDashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const thermalStatus = (energy?.avg_power_w ?? 0) < 50
-    ? { label: 'Cool', color: 'var(--color-success)' }
+  // Labelled "Thermal" with Cool/Warm/Hot, this was a temperature reading as
+  // far as anyone looking at it could tell — and it is derived entirely from
+  // average power. The API's cpu_temp_c/gpu_temp_c are null on this hardware;
+  // there is no temperature to show. So say what the number is: draw.
+  const powerLoad = (energy?.avg_power_w ?? 0) < 50
+    ? { label: 'Idle', color: 'var(--color-success)' }
     : (energy?.avg_power_w ?? 0) < 150
-    ? { label: 'Warm', color: 'var(--color-warning)' }
-    : { label: 'Hot', color: 'var(--color-error)' };
+    ? { label: 'Moderate', color: 'var(--color-warning)' }
+    : { label: 'Heavy', color: 'var(--color-error)' };
 
   if (error || !energy) {
     return (
@@ -157,8 +161,8 @@ export function EnergyDashboard() {
         />
         <StatCard
           icon={Gauge}
-          label="Thermal"
-          value={thermalStatus.label}
+          label="Power Load"
+          value={powerLoad.label}
         />
         <StatCard
           icon={Hash}

@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator, Sequence
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -197,16 +197,39 @@ def _is_unsupported_temperature_error(exc: Exception) -> bool:
     )
 
 
+def resolve_pricing(model: str) -> Optional[tuple[float, float]]:
+    """The (input, output) per-million rate for *model*, or None if unknown.
+
+    Exact match first, then the **longest** matching prefix. Longest matters:
+    the table holds both ``gpt-4o`` and ``gpt-4o-mini``, and a dated variant
+    like ``gpt-4o-mini-2024-07-18`` is a prefix match for both. Taking the
+    first hit in insertion order billed it at the full ``gpt-4o`` rate —
+    16× the real price — while ``MiniMax-M2.7-highspeed-v2`` fell back to
+    plain ``MiniMax-M2.7`` and was billed at half.
+    """
+    prices = PRICING.get(model)
+    if prices is not None:
+        return prices
+    best_key = ""
+    for key, val in PRICING.items():
+        if model.startswith(key) and len(key) > len(best_key):
+            best_key, prices = key, val
+    return prices if best_key else None
+
+
 def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Estimate USD cost based on the hardcoded pricing table."""
-    # Try exact match first, then prefix match
-    prices = PRICING.get(model)
+    prices = resolve_pricing(model)
     if prices is None:
-        for key, val in PRICING.items():
-            if model.startswith(key):
-                prices = val
-                break
-    if prices is None:
+        # 0.0 is what the callers' ``cost_usd`` field has always carried for
+        # an unpriced model, and it is indistinguishable from a free local
+        # run. Keep the value — a dozen call sites and the telemetry schema
+        # depend on the float — but stop it being silent.
+        logger.warning(
+            "No pricing entry for model %r: reporting $0.00, which is not the "
+            "same as free. Add it to PRICING to bill it.",
+            model,
+        )
         return 0.0
     input_cost = (prompt_tokens / 1_000_000) * prices[0]
     output_cost = (completion_tokens / 1_000_000) * prices[1]

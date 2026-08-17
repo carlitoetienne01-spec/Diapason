@@ -175,13 +175,50 @@ class TestTurnDetection:
 
 
 class TestRealtimeIntentLatency:
-    def test_ordinary_conversation_does_not_carry_the_full_tool_schema(self):
-        assert not _turn_needs_tools(
-            [{"role": "user", "content": "Comment vas-tu aujourd’hui ?"}]
-        )
-        assert _turn_needs_tools(
-            [{"role": "user", "content": "Que contient mon calendrier ?"}]
-        )
+    """The schema costs prefill; withholding it costs a promised capability.
+
+    This class used to assert that anything without a trigger word — « comment
+    vas-tu aujourd'hui » among them — skipped the schema. That optimization
+    was real, and so was its price: the allowlist had to name every phrasing
+    of every one of the twenty tools the system prompt advertises, and the
+    ones it missed were answered from imagination, in the same confident
+    voice. The rule is now inverted, so a phrasing nobody anticipated gets
+    the tools instead of getting invented.
+    """
+
+    @pytest.mark.parametrize(
+        "utterance",
+        [
+            "Comment vas-tu aujourd’hui ?",  # was exempt, now carries them
+            "Que contient mon calendrier ?",
+            "Quelles sont mes tâches aujourd’hui ?",
+            "Combien j’ai dépensé ce mois-ci ?",
+            "Note que je dois appeler le dentiste",
+            "Où j’en suis avec mes habitudes ?",
+            "arrête le partage",  # a command, never filler
+        ],
+    )
+    def test_anything_that_could_be_a_request_carries_the_schema(self, utterance):
+        assert _turn_needs_tools([{"role": "user", "content": utterance}])
+
+    @pytest.mark.parametrize(
+        "utterance",
+        [
+            "oui",
+            "Merci beaucoup",
+            "d’accord",  # apostrophe typographique — ce que rend la STT
+            "d'accord",  # apostrophe ASCII — ce que rendent d’autres moteurs
+            "Salut !",
+            "hmm",
+            "parfait",
+            "à plus",
+        ],
+    )
+    def test_recognisable_filler_still_skips_it(self, utterance):
+        assert not _turn_needs_tools([{"role": "user", "content": utterance}])
+
+    def test_an_empty_turn_skips_it(self):
+        assert not _turn_needs_tools([{"role": "user", "content": "   "}])
 
     @pytest.mark.asyncio
     async def test_explicit_open_notes_bypasses_the_llm(self, monkeypatch):
