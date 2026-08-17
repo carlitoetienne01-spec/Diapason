@@ -24,6 +24,7 @@ __all__ = [
     "ALL_CAPABILITIES",
     "PLATFORM_CAPABILITIES",
     "effective_capabilities",
+    "local_capabilities",
     "is_known_capability",
     "platform_allows",
 ]
@@ -103,6 +104,23 @@ PLATFORM_CAPABILITIES: dict[str, frozenset[str]] = {
     # An unrecognised platform gets the safe floor: read-only data.
     "UNKNOWN": frozenset({c for c in _DATA if c.endswith(".read")}),
 }
+
+
+def local_capabilities() -> frozenset[str]:
+    """What THIS machine may honour, from its own platform ceiling.
+
+    The receiver's authority on itself. Deliberately independent of the
+    registry: a device is never listed in its own registry, so a receiver
+    that looked itself up there found nothing and silently allowed
+    everything. Asking a peer what we are permitted to do would be asking
+    the wrong party anyway — it is the party whose record an attacker would
+    have tampered with.
+    """
+    from diapason.mesh.identity import device_identity
+    from diapason.mesh.tools import list_remote_tools
+
+    catalogue = [tool["capability"] for tool in list_remote_tools()]
+    return frozenset(effective_capabilities(device_identity().platform, catalogue))
 
 
 def is_known_capability(capability: str) -> bool:

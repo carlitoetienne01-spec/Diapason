@@ -48,8 +48,14 @@ async def _mesh_heartbeat(app: FastAPI) -> None:
         try:
             await asyncio.sleep(interval)
             from diapason.mesh.beacon import announce_to_fleet
+            from diapason.mesh.dispatch import flush_pending
 
             await asyncio.to_thread(announce_to_fleet, app_state="foreground")
+            # And drain whatever was waiting for a device that has come back.
+            # Without this pass, « partira dès son retour » is a promise
+            # nobody keeps: a command for a sleeping laptop stays queued
+            # until it expires, and the user was told it would arrive.
+            await asyncio.to_thread(flush_pending)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - a beacon failure is never fatal

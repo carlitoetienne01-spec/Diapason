@@ -216,6 +216,27 @@ class CommandQueue:
             ).fetchall()
         return [self._serialize(row) for row in rows]
 
+    def envelope_of(self, command_id: str) -> RemoteCommand | None:
+        """The signed command as it was recorded, ready to travel again.
+
+        Re-sent verbatim rather than rebuilt: the signature covers the
+        original bytes, so a command re-signed with a fresh timestamp would
+        be a *different* command, and the receiver's replay protection could
+        no longer tell a retry from a duplicate.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT envelope_json FROM mesh_commands WHERE command_id=?",
+                (command_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return RemoteCommand.from_dict(json.loads(row["envelope_json"]))
+        except (TypeError, ValueError, KeyError):
+            logger.warning("enveloppe illisible pour %s", command_id)
+            return None
+
     def pending_envelopes_for(
         self, target_device_id: str, *, limit: int = 50
     ) -> list[dict]:

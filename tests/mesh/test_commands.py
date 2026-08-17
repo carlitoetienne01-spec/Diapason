@@ -247,16 +247,46 @@ class TestToolDiscipline:
         with pytest.raises(CommandRejected, match="non autorisée"):
             check(raw, world)
 
-    def test_a_capability_this_device_lacks_is_unsupported(self, world):
+    def test_a_capability_this_platform_forbids_is_unsupported(
+        self, world, monkeypatch
+    ):
+        """The receiver's ceiling comes from its PLATFORM, not from a
+        registry row.
+
+        The earlier version of this test read the ceiling from a registry
+        entry for the local device — which the fixture helpfully created and
+        the real world never does. A device is not listed in its own
+        registry, so the lookup returned None and the check silently allowed
+        everything. The test was constructing the only world in which the
+        code worked.
+        """
         _, _, keys = world
-        # This Mac declared app.navigate/show_resource/open but not
-        # notifications.show.
+        import diapason.mesh.capabilities as caps
+
+        monkeypatch.setattr(
+            caps, "local_capabilities", lambda: frozenset({"app.navigate"})
+        )
         raw = sign_as_peer(
             a_command(tool="notifications.show", arguments={"title": "Bonjour"}),
             keys.private_key,
         )
         with pytest.raises(CommandRejected, match="ne peut pas exécuter"):
             check(raw, world)
+
+    def test_the_receiver_does_not_take_the_sender_s_word_for_its_own_limits(
+        self, world
+    ):
+        """What the sender recorded about us is exactly what an attacker
+        would have tampered with, so it cannot be what authorises us."""
+        registry, _, keys = world
+        # Wipe every capability the registry believes this Mac has.
+        registry.declare_capabilities(LOCAL_DEVICE, [])
+        raw = sign_as_peer(
+            a_command(tool="app.navigate", arguments={"route": "success://today"}),
+            keys.private_key,
+        )
+        # Still accepted: macOS genuinely allows it, and that is our call.
+        assert check(raw, world).tool == "app.navigate"
 
 
 class TestNoUniversalTool:

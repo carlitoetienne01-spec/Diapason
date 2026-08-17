@@ -325,10 +325,17 @@ def verify_command(
     # 8. arguments must match the tool's declared shape — no free-form passthrough
     spec.validate(command.arguments)
 
-    # 9. capabilities — what THIS device can actually honour
-    device = registry.find(local_device_id)
-    granted = set(device.get("capabilities") or []) if device else None
-    if granted is not None and spec.capability not in granted:
+    # 9. capabilities — what THIS device can actually honour.
+    #
+    # Read from the platform ceiling, NOT from a registry row: a device is
+    # never listed in its own registry, so looking itself up returned None
+    # and this check quietly did nothing on every receiver. The sender's
+    # identical check is not a substitute — it consults what the sender
+    # recorded about us, which is exactly the thing an attacker would have
+    # tampered with.
+    from diapason.mesh.capabilities import local_capabilities
+
+    if spec.capability not in local_capabilities():
         raise CommandRejected(
             "UNSUPPORTED",
             f"Cet appareil ne peut pas exécuter « {command.tool} ».",

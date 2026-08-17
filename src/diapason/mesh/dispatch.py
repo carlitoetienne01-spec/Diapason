@@ -30,7 +30,7 @@ from diapason.mesh.transport import TransportError, deliver
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["dispatch_command", "DispatchResult"]
+__all__ = ["dispatch_command", "flush_pending", "DispatchResult"]
 
 DispatchResult = dict[str, Any]
 
@@ -157,6 +157,69 @@ def dispatch_command(
         result=response.get("result"),
         error_code=str(response.get("errorCode") or ""),
     )
+
+
+def flush_pending(
+    *,
+    registry: DeviceRegistry | None = None,
+    queue: CommandQueue | None = None,
+    transport=None,
+    limit_per_device: int = 20,
+) -> dict[str, int]:
+    """Deliver what is waiting for devices that have come back.
+
+    This is the half of « partira dès son retour » that makes the sentence
+    true. Without it that message is a promise nobody keeps: a command for a
+    laptop that was asleep sits QUEUED until it expires, and the user was
+    told it would arrive.
+
+    Only push devices are drained here. A polling device fetches its own,
+    and delivering to it twice is not a courtesy — it is the same command
+    arriving on two paths.
+
+    Never raises: this runs on a timer, and a peer that cannot be reached is
+    the normal state of a fleet whose devices come and go.
+    """
+    registry = registry or DeviceRegistry()
+    queue = queue or CommandQueue()
+    send = transport or deliver
+
+    queue.expire_stale()
+    delivered = 0
+    skipped = 0
+
+    for device in registry.list_devices(include_revoked=False):
+        if device.get("trustLevel") != "TRUSTED":
+            continue
+        if device_collects_its_own(device) or not is_reachable(device):
+            continue
+        if not str(device.get("address") or "").strip():
+            continue
+
+        for row in queue.pending_for(device["deviceId"], limit=limit_per_device):
+            envelope = queue.envelope_of(row["commandId"])
+            if envelope is None:
+                continue
+            queue.record_attempt(row["commandId"])
+            try:
+                response = send(envelope, device)
+            except Exception:  # noqa: BLE001 - still away; try again next tick
+                skipped += 1
+                # Stop at the first failure for this device: the rest of its
+                # queue will fail the same way, and hammering an unreachable
+                # peer with twenty timeouts helps nobody.
+                break
+            status = str(response.get("status") or "FAILED").upper()
+            queue.mark(
+                row["commandId"],
+                status,
+                user_message=str(response.get("userSafeMessage") or ""),
+                result=response.get("result"),
+                error_code=str(response.get("errorCode") or ""),
+            )
+            delivered += 1
+
+    return {"delivered": delivered, "skipped": skipped}
 
 
 def _await_collection(

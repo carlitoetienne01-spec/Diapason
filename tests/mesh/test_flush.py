@@ -1,0 +1,247 @@
+"""The half of « partira dès son retour » that makes the sentence true.
+
+An adversarial audit found this missing: nothing in production ever re-read
+the queue, so a command for a sleeping laptop sat QUEUED until it expired
+while the user had been told it would arrive on the device's return. The
+message was the flagship of the honesty contract and it was false.
+
+These tests exist to keep it true.
+"""
+
+from __future__ import annotations
+
+import base64
+import sqlite3
+
+import pytest
+
+from diapason.mesh.commands import build_command, now_ms, sign_command
+from diapason.mesh.dispatch import dispatch_command, flush_pending
+from diapason.mesh.queue import CommandQueue
+from diapason.mesh.registry import DeviceRegistry
+from diapason.mesh.transport import TransportError
+from diapason.security.signing import generate_keypair
+
+OWNER = "owner_" + "e" * 32
+HOST = "mac_de_carlito"
+LAPTOP = "dev_portable"
+PHONE = "dev_iphone"
+
+
+@pytest.fixture
+def mesh(tmp_path):
+    registry = DeviceRegistry(db_path=tmp_path / "mesh.db")
+    queue = CommandQueue(db_path=tmp_path / "mesh.db")
+    for device_id, name, platform, kind in [
+        (LAPTOP, "Portable du salon", "MACOS", "LAPTOP"),
+        (PHONE, "iPhone de Carlito", "IOS", "PHONE"),
+    ]:
+        invitation = registry.create_pairing(name)
+        registry.redeem_pairing(
+            invitation["pairingToken"],
+            device_id=device_id,
+            public_key_b64=base64.b64encode(generate_keypair().public_key).decode(),
+            name=name,
+            platform=platform,
+            device_type=kind,
+            declared_capabilities=[
+                "app.navigate",
+                "app.show_resource",
+                "app.open",
+                "notifications.show",
+            ],
+        )
+    return registry, queue
+
+
+def sleep_device(registry, device_id):
+    with sqlite3.connect(registry.db_path) as conn:
+        conn.execute(
+            "UPDATE mesh_devices SET last_seen_at_ms=? WHERE device_id=?",
+            (now_ms() - 86_400_000, device_id),
+        )
+        conn.commit()
+
+
+def wake_device(registry, device_id, *, address="http://192.168.1.30:8000"):
+    registry.heartbeat(device_id, transport="lan", address=address)
+
+
+def queue_for(mesh, device_id, *, tool="notifications.show"):
+    registry, queue = mesh
+    return dispatch_command(
+        target_device_id=device_id,
+        tool=tool,
+        arguments={"title": "Diapason", "body": "Bilan du soir"},
+        registry=registry,
+        queue=queue,
+        transport=lambda c, d: {"status": "SUCCESS"},
+    )
+
+
+class TestThePromiseIsKept:
+    def test_a_queued_command_leaves_when_the_device_comes_back(self, mesh):
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+
+        queued = queue_for(mesh, LAPTOP)
+        assert queued["status"] == "QUEUED"
+        assert "dès son retour" in queued["userSafeMessage"]
+
+        # It comes back.
+        wake_device(registry, LAPTOP)
+        sent = []
+        out = flush_pending(
+            registry=registry,
+            queue=queue,
+            transport=lambda c, d: (
+                sent.append(c)
+                or {"status": "SUCCESS", "userSafeMessage": "C'est fait."}
+            ),
+        )
+        assert out["delivered"] == 1
+        assert len(sent) == 1
+        assert queue.get(queued["commandId"])["status"] == "SUCCESS"
+
+    def test_the_command_travels_verbatim_not_re_signed(self, mesh):
+        """Re-signing would mint a different command, and the receiver's
+        replay protection could no longer tell a retry from a duplicate."""
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        queued = queue_for(mesh, LAPTOP)
+        original = queue.envelope_of(queued["commandId"])
+
+        wake_device(registry, LAPTOP)
+        sent = []
+        flush_pending(
+            registry=registry,
+            queue=queue,
+            transport=lambda c, d: sent.append(c) or {"status": "SUCCESS"},
+        )
+        assert sent[0].command_id == original.command_id
+        assert sent[0].signature == original.signature
+        assert sent[0].nonce == original.nonce
+
+
+class TestItDoesNotOverreach:
+    def test_a_still_sleeping_device_is_left_alone(self, mesh):
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        queue_for(mesh, LAPTOP)
+
+        sent = []
+        out = flush_pending(
+            registry=registry, queue=queue, transport=lambda c, d: sent.append(c)
+        )
+        assert out["delivered"] == 0
+        assert not sent
+
+    def test_a_polling_device_is_never_pushed_to(self, mesh):
+        """It fetches its own. Delivering as well is not a courtesy — it is
+        the same command arriving twice by two paths."""
+        registry, queue = mesh
+        registry.heartbeat_signed(PHONE, transport="pull", sent_at_ms=now_ms())
+        queued = queue_for(mesh, PHONE)
+        assert queued["status"] == "QUEUED"
+
+        sent = []
+        out = flush_pending(
+            registry=registry, queue=queue, transport=lambda c, d: sent.append(c)
+        )
+        assert out["delivered"] == 0
+        assert not sent
+
+    def test_a_revoked_device_is_not_drained_to(self, mesh):
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        queue_for(mesh, LAPTOP)
+        wake_device(registry, LAPTOP)
+        registry.revoke(LAPTOP)
+
+        sent = []
+        out = flush_pending(
+            registry=registry, queue=queue, transport=lambda c, d: sent.append(c)
+        )
+        assert out["delivered"] == 0
+        assert not sent
+
+    def test_an_expired_command_is_settled_not_delivered(self, mesh):
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        queued = queue_for(mesh, LAPTOP)
+        with sqlite3.connect(queue.db_path) as conn:
+            conn.execute(
+                "UPDATE mesh_commands SET expires_at_ms=? WHERE command_id=?",
+                (now_ms() - 1000, queued["commandId"]),
+            )
+            conn.commit()
+
+        wake_device(registry, LAPTOP)
+        sent = []
+        flush_pending(
+            registry=registry, queue=queue, transport=lambda c, d: sent.append(c)
+        )
+        assert not sent
+        assert queue.get(queued["commandId"])["status"] == "EXPIRED"
+
+
+class TestItSurvivesTheRealWorld:
+    def test_a_peer_that_fails_mid_drain_is_not_hammered(self, mesh):
+        """Twenty timeouts against one unreachable machine helps nobody, and
+        delays every other device in the fleet."""
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        for _ in range(5):
+            command = build_command(
+                owner_id=OWNER,
+                origin_device_id=HOST,
+                target_device_id=LAPTOP,
+                tool="notifications.show",
+                arguments={"title": "x", "body": "y"},
+                requires_confirmation=False,
+            )
+            queue.enqueue(sign_command(command), status="QUEUED")
+        wake_device(registry, LAPTOP)
+
+        attempts = []
+
+        def broken(command, device):
+            attempts.append(command)
+            raise TransportError("injoignable")
+
+        out = flush_pending(registry=registry, queue=queue, transport=broken)
+        assert len(attempts) == 1
+        assert out["delivered"] == 0
+        assert out["skipped"] == 1
+
+    def test_a_failed_drain_leaves_the_command_collectable(self, mesh):
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        queued = queue_for(mesh, LAPTOP)
+        wake_device(registry, LAPTOP)
+
+        def broken(command, device):
+            raise TransportError("injoignable")
+
+        flush_pending(registry=registry, queue=queue, transport=broken)
+        assert queue.get(queued["commandId"])["status"] == "QUEUED"
+        # And the next pass, once it really is back, delivers it.
+        out = flush_pending(
+            registry=registry, queue=queue, transport=lambda c, d: {"status": "SUCCESS"}
+        )
+        assert out["delivered"] == 1
+
+    def test_an_empty_fleet_is_a_no_op(self, tmp_path):
+        registry = DeviceRegistry(db_path=tmp_path / "empty.db")
+        queue = CommandQueue(db_path=tmp_path / "empty.db")
+        assert flush_pending(registry=registry, queue=queue) == {
+            "delivered": 0,
+            "skipped": 0,
+        }
