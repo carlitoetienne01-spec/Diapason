@@ -66,17 +66,19 @@ def _now_anchor() -> str:
     # date ISO, le modèle répondait « mardi 17 août » un lundi : il calcule
     # de tête et se trompe, et la faute est invisible parce que la date, elle,
     # était juste.
+    # Resserré de 396 à ~150 caractères. Ce bloc est payé en traitement de
+    # prompt à CHAQUE message : mesuré, il pesait un quart des 926 tokens
+    # qu'une machine locale doit ingérer avant d'écrire son premier mot.
+    # L'ISO redoublait la date déjà écrite, et deux phrases d'instruction
+    # disaient ce que « fait autorité » dit seul. Ce qui reste est ce qui a
+    # corrigé le défaut : le jour de la semaine DONNÉ — avec la seule date,
+    # le modèle répondait « mardi 17 août » un lundi — l'heure, le fuseau,
+    # et la primauté sur toute autre date du contexte.
     return (
-        "=== MAINTENANT ===\n"
-        f"Nous sommes {jours[stamp.weekday()]}. "
-        f"Date et heure courantes : {stamp.strftime('%Y-%m-%d %H:%M')} "
-        f"({stamp.tzname()}, UTC{offset}) — "
-        f"ISO {stamp.isoformat(timespec='seconds')}.\n"
-        "Cette ligne fait autorité sur toute autre date de ce contexte. "
-        "Les dates citées dans la mémoire, les notes ou les documents sont "
-        "PASSÉES : ne jamais les prendre pour aujourd'hui. "
-        "Pour l'heure exacte après un long échange, relire l'horloge avec "
-        "l'outil current_time."
+        f"MAINTENANT : {jours[stamp.weekday()]} "
+        f"{stamp.strftime('%Y-%m-%d %H:%M')} ({stamp.tzname()}, UTC{offset}). "
+        "Fait autorité sur toute autre date du contexte, qui est passée. "
+        "Heure exacte : outil current_time."
     )
 
 

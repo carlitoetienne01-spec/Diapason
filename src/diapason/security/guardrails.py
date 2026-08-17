@@ -18,6 +18,31 @@ class SecurityBlockError(Exception):
     """Raised when mode is BLOCK and security findings are detected."""
 
 
+# Trailing characters never released while the stream is still running. Must
+# exceed the longest pattern any scanner can match, or a secret could reach
+# the screen in pieces before the scan that catches it.
+#
+# Sized against scanner.py rather than guessed. Every fixed pattern is short
+# — the longest is the 36-character private-key header — and the token-shaped
+# ones stop at the first character outside their class: an AWS key is 20, a
+# GitHub PAT ~93, Stripe ~30. 128 clears all of them with room to spare.
+#
+# It was 512 first, which was safe and useless: no answer under ~560
+# characters streamed at all, which is most of them. A window has to be
+# small enough that ordinary replies flow, or it protects nothing anyone
+# waits for.
+#
+# Residual case, stated rather than hidden: a quoted secret VALUE longer
+# than 128 characters could straddle the boundary. Detection still fires at
+# end of stream and the tail is redacted; the prefix already on screen
+# cannot be recalled. Raise this to trade latency back for margin.
+_STREAM_HOLDBACK = 128
+
+# Minimum new text before attempting a release. Scanning on every token is
+# quadratic in the response length and buys nothing perceptible.
+_STREAM_RELEASE_STEP = 48
+
+
 class GuardrailsEngine(InferenceEngine):
     """Wraps an existing ``InferenceEngine`` with security scanning.
 
@@ -229,9 +254,39 @@ class GuardrailsEngine(InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Buffer, scan, then release output so sensitive tokens never leak."""
+        """Scan output as it comes, releasing everything already proven safe.
+
+        This used to buffer the WHOLE response, scan once, and release it in
+        one burst. Correct, and the single largest source of felt slowness:
+        measured on this machine, 93 chunks arrived within 20 ms after 9.07
+        seconds of complete silence. The user waits in front of an empty
+        screen for the entire generation, then the answer appears at once.
+
+        Now the text is scanned as it grows and released continuously, minus
+        a trailing holdback window. The window is what makes it safe: a
+        pattern still being typed cannot be released half-formed, because
+        nothing within ``_STREAM_HOLDBACK`` characters of the end is ever
+        emitted — see that constant for how the window is sized and what it
+        does not cover.
+        """
         messages = self._process_input_messages(messages)
+
+        if not self._scan_output:
+            async for token in self._engine.stream(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            ):
+                yield token
+            return
+
         accumulated: list[str] = []
+        emitted = 0  # index du prochain jeton à relâcher
+        released = 0  # caractères déjà relâchés
+        tainted = False
+
         async for token in self._engine.stream(
             messages,
             model=model,
@@ -240,20 +295,41 @@ class GuardrailsEngine(InferenceEngine):
             **kwargs,
         ):
             accumulated.append(token)
-            if not self._scan_output:
-                yield token
+            if tainted:
+                continue
+            text = "".join(accumulated)
+            safe_upto = len(text) - _STREAM_HOLDBACK
+            # Rescanning on every token would be quadratic for no benefit;
+            # a chunk's worth of new text at a time still reads as flowing.
+            if safe_upto - released < _STREAM_RELEASE_STEP:
+                continue
+            if not self._scan_text(text).clean:
+                # Stop releasing. The findings are handled once, below, on
+                # the complete text — partial redaction of a growing match
+                # would leak the very characters it means to hide.
+                tainted = True
+                continue
+            # Relâcher les JETONS entiers du modèle, pas des tranches de
+            # caractères : c'est le découpage que l'interface affiche, et
+            # des blocs arbitraires de 48 caractères se lisent comme des
+            # saccades là où les jetons du modèle se lisent comme des mots.
+            while emitted < len(accumulated):
+                fin = released + len(accumulated[emitted])
+                if fin > safe_upto:
+                    break
+                yield accumulated[emitted]
+                released = fin
+                emitted += 1
 
-        if not self._scan_output:
-            return
         full_output = "".join(accumulated)
         if not full_output:
             return
         result = self._scan_text(full_output)
         if result.clean:
-            for token in accumulated:
+            for token in accumulated[emitted:]:
                 yield token
             return
-        yield self._handle_findings(full_output, result, "output")
+        yield self._handle_findings(full_output[released:], result, "output")
 
     async def stream_full(
         self,
