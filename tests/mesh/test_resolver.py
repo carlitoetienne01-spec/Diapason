@@ -41,6 +41,23 @@ PHONE = device("d3", "iPhone de Carlito", kind="PHONE", platform="IOS")
 TABLET = device("d4", "iPad", kind="TABLET", platform="IPADOS")
 
 
+@pytest.fixture(autouse=True)
+def _keep_the_fleet_awake():
+    """Refresh the shared devices before every test.
+
+    They are module-level for readability, which freezes their lastSeenAtMs
+    at import time. Run alone that is invisible; run inside the full suite,
+    minutes pass first and every one of them has silently aged past the
+    45-second window into OFFLINE — which does not merely change a presence
+    label, it changes tie-breaking, because being awake is what resolves two
+    equally-good matches. Both failure directions are possible, so pinning
+    the clock here is what makes these tests mean the same thing every run.
+    """
+    stamp = int(time.time() * 1000) - 1000
+    for shared in (MAC, PC, PHONE, TABLET):
+        shared["lastSeenAtMs"] = stamp
+
+
 class TestNaming:
     def test_the_exact_name_wins(self):
         out = resolve_device("sur PC du bureau", [MAC, PC, PHONE])
