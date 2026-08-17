@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from diapason.connectors._stubs import Document
@@ -62,11 +62,29 @@ def _format_duration(seconds: float) -> str:
 
 
 def _time_ago(ts: datetime) -> str:
-    """Return a human-readable relative time like '2h ago' or '15m ago'."""
-    now = datetime.now()
-    ts_naive = ts.replace(tzinfo=None) if ts.tzinfo else ts
-    delta = now - ts_naive
-    total_seconds = max(0, int(delta.total_seconds()))
+    """Return a human-readable relative time like '2h ago' or '15m ago'.
+
+    Les deux instants sont comparés dans le MÊME référentiel. L'ancienne
+    version faisait `ts.replace(tzinfo=None)` — elle arrachait le fuseau sans
+    convertir — puis soustrayait de l'heure locale. Les connecteurs rendant
+    des horodatages en UTC, l'écart valait exactement le décalage du fuseau :
+    à Montréal, tout message de moins de quatre heures s'annonçait « just
+    now », et le briefing disait « Marie vient de vous écrire » pour un
+    message du matin.
+
+    Un horodatage sans fuseau est supposé UTC, parce que c'est ce que rendent
+    tous les connecteurs ; le supposer local serait refaire le même pari dans
+    l'autre sens.
+    """
+    now = datetime.now(timezone.utc)
+    ts_aware = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    delta = now - ts_aware
+    seconds = int(delta.total_seconds())
+    if seconds < 0:
+        # Le `max(0, ...)` d'avant transformait un futur en « just now » et
+        # masquait précisément le signe qui aurait rendu le défaut visible.
+        return "in the future"
+    total_seconds = seconds
     if total_seconds < 60:
         return "just now"
     if total_seconds < 3600:

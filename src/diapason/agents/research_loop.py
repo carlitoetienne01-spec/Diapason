@@ -632,7 +632,10 @@ class ResearchAgent:
         sys_msg = Message(
             role=Role.SYSTEM,
             content=SYSTEM_PROMPT.format(
-                today=datetime.now().isoformat(timespec="minutes"),
+                # .astimezone() : sans le décalage dans la chaîne, le modèle
+                # relit cet instant comme de l'UTC et décale tout ce qu'il en
+                # déduit — des réunions terminées ressortaient « à venir ».
+                today=datetime.now().astimezone().isoformat(timespec="minutes"),
                 available_sources=sources_blurb,
             ),
         )

@@ -18,6 +18,26 @@ from diapason.core.registry import AgentRegistry
 from diapason.core.types import Message, Role, ToolCall
 
 
+def _now_in(timezone_name: str):
+    """L'heure courante DANS le fuseau nommé, ou celle de la machine.
+
+    Le repli est explicite et étiqueté avec son vrai fuseau : mieux vaut
+    annoncer l'heure locale sous son propre nom qu'une heure juste sous une
+    étiquette fausse. Un fuseau mal orthographié dans la configuration ne doit
+    pas faire échouer le briefing du matin.
+    """
+    from datetime import datetime
+
+    if timezone_name:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo(timezone_name))
+        except Exception:  # noqa: BLE001 - un fuseau inconnu n'est pas fatal
+            pass
+    return datetime.now().astimezone()
+
+
 def _load_persona(persona_name: str) -> str:
     """Load a persona prompt file by name."""
     search_paths = [
@@ -54,13 +74,18 @@ class MorningDigestAgent(ToolUsingAgent):
     def _build_system_prompt(self) -> str:
         """Assemble the system prompt from persona + briefing structure."""
         persona_text = _load_persona(self._persona)
-        now = datetime.now()
+        # L'heure était celle de la MACHINE, annoncée sous le nom du fuseau
+        # CONFIGURÉ. Quand les deux diffèrent, le briefing affirme une heure
+        # juste sous une étiquette fausse — ce qui est pire qu'une heure
+        # fausse, parce que rien ne permet de s'en apercevoir.
+        now = _now_in(self._timezone)
         honorific = getattr(self, "_honorific", "sir")
 
         return (
             f"{persona_text}\n\n"
             f"Today is {now.strftime('%A, %B %d, %Y')}. "
-            f"The time is {now.strftime('%I:%M %p')} in {self._timezone}.\n"
+            f"The time is {now.strftime('%I:%M %p')} "
+            f"({now.tzname()}, {now.strftime('%z')}).\n"
             f"The user's preferred honorific is: {honorific}\n\n"
             "You receive structured data from the user's connected services. "
             "The data has ALREADY been collected — it appears in the user "
