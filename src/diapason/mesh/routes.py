@@ -328,6 +328,53 @@ def announce(appState: str = "") -> dict[str, Any]:
     return announce_to_fleet(registry=get_registry(), app_state=appState)
 
 
+@router.post("/commands/poll")
+def poll_commands(body: dict[str, Any]) -> dict[str, Any]:
+    """A device asking for whatever is waiting for it.
+
+    Outside the API-key wall, like the other two device-signed surfaces. This
+    is how a phone joins the mesh at all: it has no address to be dialled at,
+    so it comes to fetch. The poll doubles as its heartbeat — asking for your
+    commands proves you are awake better than any beacon.
+    """
+    from diapason.mesh.identity import device_identity, owner_id
+    from diapason.mesh.pull import PullRejected, collect_for_device
+
+    try:
+        return collect_for_device(
+            body,
+            registry=get_registry(),
+            queue=get_queue(),
+            local_owner_id=owner_id(),
+            local_device_id=device_identity().device_id,
+        )
+    except PullRejected as exc:
+        raise HTTPException(status_code=403, detail=exc.message) from exc
+
+
+@router.post("/commands/ack")
+def ack_commands(body: dict[str, Any]) -> dict[str, Any]:
+    """A device reporting what it did with what it collected.
+
+    Without this half a polled command would stay PENDING forever and the
+    user would never learn whether it happened — which is the same failure as
+    claiming it did.
+    """
+    from diapason.mesh.identity import device_identity, owner_id
+    from diapason.mesh.pull import PullRejected, record_ack
+
+    try:
+        return record_ack(
+            body,
+            registry=get_registry(),
+            queue=get_queue(),
+            local_owner_id=owner_id(),
+            local_device_id=device_identity().device_id,
+        )
+    except PullRejected as exc:
+        raise HTTPException(status_code=403, detail=exc.message) from exc
+
+
 @router.get("/inbox")
 def inbox(drain: bool = True) -> dict[str, Any]:
     """What the local shell should open or show, oldest first.

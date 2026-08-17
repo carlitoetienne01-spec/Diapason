@@ -20,6 +20,7 @@ having executed anything.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 from pathlib import Path
@@ -27,6 +28,8 @@ from typing import Any, Mapping
 
 from diapason.core.paths import get_data_dir
 from diapason.mesh.commands import RemoteCommand
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "CommandQueue",
@@ -212,6 +215,37 @@ class CommandQueue:
                 (target_device_id, stamp, limit),
             ).fetchall()
         return [self._serialize(row) for row in rows]
+
+    def pending_envelopes_for(
+        self, target_device_id: str, *, limit: int = 50
+    ) -> list[dict]:
+        """The same queue, as signed envelopes a device can verify itself.
+
+        Separate from ``pending_for`` because the envelope is only ever wanted
+        by the one caller that hands commands to a polling device. Putting it
+        in every serialisation would push signatures through the command
+        history and the UI, which have no use for them.
+        """
+        stamp = now_ms()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT command_id, envelope_json FROM mesh_commands
+                   WHERE target_device_id=? AND status IN ('PENDING','QUEUED')
+                     AND expires_at_ms >= ?
+                   ORDER BY created_at_ms LIMIT ?""",
+                (target_device_id, stamp, limit),
+            ).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            try:
+                envelope = json.loads(row["envelope_json"])
+            except (TypeError, ValueError):
+                # A row we cannot parse is one we cannot honestly deliver.
+                # Skipping keeps the poll working for every other command.
+                logger.warning("enveloppe illisible pour %s", row["command_id"])
+                continue
+            out.append({"commandId": row["command_id"], "envelope": envelope})
+        return out
 
     def history(self, *, limit: int = 50) -> list[dict]:
         """Recent commands, newest first — the §43 command history."""

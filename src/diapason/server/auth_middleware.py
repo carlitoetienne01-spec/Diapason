@@ -94,7 +94,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # against the key we recorded when that device was paired. A shared
         # API key would prove less — it says nothing about WHICH device, nor
         # about what is being claimed.
-        if path in {"/v1/mesh/commands/deliver", "/v1/mesh/presence"}:
+        # The poll and its acknowledgement join the same list: a phone has no
+        # address to be dialled at, so fetching is the only way it can take
+        # part at all, and it holds no API key either.
+        if path in {
+            "/v1/mesh/commands/deliver",
+            "/v1/mesh/presence",
+            "/v1/mesh/commands/poll",
+            "/v1/mesh/commands/ack",
+        }:
             return False
         return (
             path.startswith("/v1/")

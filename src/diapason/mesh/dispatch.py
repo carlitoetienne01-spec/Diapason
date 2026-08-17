@@ -22,6 +22,7 @@ from diapason.mesh.commands import (
     sign_command,
 )
 from diapason.mesh.presence import is_reachable, presence_of
+from diapason.mesh.pull import device_collects_its_own
 from diapason.mesh.queue import CommandQueue
 from diapason.mesh.registry import DeviceRegistry
 from diapason.mesh.tools import get_remote_tool
@@ -120,12 +121,18 @@ def dispatch_command(
     #    that left without a row behind it is one nobody can report on.
     queue.enqueue(signed)
 
-    # 7. Reachability decides the policy, and the policy decides the wording.
+    # 7. A device we cannot dial is not a device we cannot reach. A phone has
+    #    no address and comes to fetch its own commands, so leaving this one
+    #    in the queue is delivery, not failure — and must be worded as such.
+    if device_collects_its_own(device):
+        return _await_collection(queue, signed, device)
+
+    # 8. Reachability decides the policy, and the policy decides the wording.
     if not is_reachable(device):
         presence = presence_of(device)
         return _apply_offline_policy(queue, signed, device, spec, presence)
 
-    # 8. Deliver.
+    # 9. Deliver.
     queue.record_attempt(signed.command_id)
     try:
         response = send(signed, device)
@@ -149,6 +156,33 @@ def dispatch_command(
         user_message=str(response.get("userSafeMessage") or ""),
         result=response.get("result"),
         error_code=str(response.get("errorCode") or ""),
+    )
+
+
+def _await_collection(
+    queue: CommandQueue,
+    command: RemoteCommand,
+    device: Mapping[str, Any],
+) -> DispatchResult:
+    """A device that fetches its own commands. Say when, not whether.
+
+    The distinction the wording has to carry: a phone that is awake will
+    collect this within seconds, and calling that "hors ligne" would be the
+    lie §57 forbids. A phone that is asleep will collect it when it wakes,
+    which is a wait, not a failure — nothing is lost, and the command still
+    expires on its own schedule if the wait becomes too long.
+    """
+    name = device.get("name") or "cet appareil"
+    awake = is_reachable(device)
+    return queue.mark(
+        command.command_id,
+        "QUEUED",
+        user_message=(
+            f"C'est prêt pour {name} : l'appareil le récupérera dans quelques secondes."
+            if awake
+            else f"C'est prêt pour {name} : l'appareil le récupérera à son réveil."
+        ),
+        error_code="",
     )
 
 

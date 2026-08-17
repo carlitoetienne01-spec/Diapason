@@ -128,46 +128,24 @@ def verify_beacon(
     advanced LAST — a beacon rejected for another reason must not move the
     watermark that the legitimate device still needs to clear.
     """
+    from diapason.mesh.signed import SignedRejected, verify_payload
+
     stamp = _now_ms() if now is None else int(now)
-
-    if int(raw.get("version") or 0) != PRESENCE_VERSION:
-        raise PresenceRejected(
-            "UNSUPPORTED", "Cette annonce utilise une version non prise en charge."
+    try:
+        device_id = verify_payload(
+            raw,
+            fields=_SIGNED_FIELDS,
+            version=PRESENCE_VERSION,
+            registry=registry,
+            local_owner_id=local_owner_id,
+            local_device_id=local_device_id,
+            now_ms=stamp,
+            subject="annonce",
         )
-
-    owner = str(raw.get("ownerId") or "")
-    if not owner or owner != local_owner_id:
-        raise PresenceRejected(
-            "DENIED", "Cette annonce vient d'un autre ensemble d'appareils."
-        )
-
-    device_id = str(raw.get("deviceId") or "")
-    if not device_id:
-        raise PresenceRejected("DENIED", "Cette annonce ne dit pas qui l'envoie.")
-    if device_id == local_device_id:
-        raise PresenceRejected("DENIED", "Un appareil ne s'annonce pas à lui-même.")
-
-    # A revoked device holds no key here, so revocation stops it at once —
-    # the same single choke point revocation already uses for commands.
-    public_key = registry.public_key_of(device_id)
-    if public_key is None:
-        raise PresenceRejected(
-            "DENIED", "Cet appareil n'est pas autorisé sur cette machine."
-        )
+    except SignedRejected as exc:
+        raise PresenceRejected(exc.code, exc.message) from exc
 
     sent_at = int(raw.get("sentAtMs") or 0)
-    if sent_at - MAX_BEACON_SKEW_MS > stamp:
-        raise PresenceRejected("DENIED", "Cette annonce est datée du futur.")
-    if sent_at + MAX_BEACON_SKEW_MS < stamp:
-        raise PresenceRejected("EXPIRED", "Cette annonce est trop ancienne.")
-
-    from diapason.mesh.identity import verify_envelope
-
-    signature = str(raw.get("signature") or "")
-    if not signature:
-        raise PresenceRejected("DENIED", "Cette annonce n'est pas signée.")
-    if not verify_envelope(_signable(raw), signature, public_key):
-        raise PresenceRejected("DENIED", "La signature de cette annonce est invalide.")
 
     # Monotonicity, checked last and enforced by the registry in the same
     # statement that records the heartbeat: two beacons racing cannot both
