@@ -752,6 +752,34 @@ def ask(
                 '`--agent ""` to use vision.'
             )
 
+    # `--tools` avec un agent qui ne les accepte pas jetait les outils EN
+    # SILENCE. L'agent par défaut est « simple » — docstring : « No tool
+    # calling » — donc le chemin le plus naturel du monde,
+    # `diapason ask --tools calculator "combien font…"`, construisait les
+    # outils, les abandonnait, et laissait le modèle inventer un nombre de
+    # tête. Mesuré : 48273 × 91847 rendait 4433560431, faux, zéro appel
+    # d'outil dans les traces. Même politique que pour --image juste
+    # au-dessus : router automatiquement quand rien n'était demandé
+    # explicitement, prévenir plutôt qu'ignorer quand il y a conflit.
+    if tool_names:
+        from diapason.core.registry import AgentRegistry as _AR
+
+        _cls = _AR.get(agent_name) if agent_name and _AR.contains(agent_name) else None
+        _sans_outils = _cls is None or not getattr(_cls, "accepts_tools", False)
+        if _sans_outils:
+            if not agent_explicitly_set:
+                agent_name = "native_react"
+                console.print(
+                    "[dim]--tools : routé vers l'agent « native_react » "
+                    "(l'agent par défaut n'appelle pas d'outils).[/dim]"
+                )
+            else:
+                console.print(
+                    f"[yellow]Attention :[/yellow] l'agent « {agent_name} » "
+                    "n'appelle pas d'outils — --tools sera ignoré. Utilisez "
+                    "--agent native_react pour un agent qui les exécute."
+                )
+
     # Track whether the user explicitly set --max-tokens
     user_set_max_tokens = max_tokens is not None
 
