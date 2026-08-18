@@ -56,13 +56,20 @@ def pair(registry: DeviceRegistry, name: str, *, kind="DESKTOP", platform="WINDO
 
 
 class TestTheCatalogueIsClosed:
-    def test_the_schema_offers_exactly_four_actions(self, send):
+    def test_the_schema_offers_exactly_the_declared_actions(self, send):
+        """Fermé, pas figé : ajouter est permis, ajouter en silence ne l'est
+        pas. Ce test a échoué à l'ajout de ``desktop.open`` — c'est
+        exactement son rôle, puisque cette action pilote le BUREAU de la
+        machine et non Succès comme les quatre autres. Le propriétaire l'a
+        demandée en connaissant les trois portées possibles.
+        """
         options = send.spec.parameters["properties"]["action"]["enum"]
         assert set(options) == {
             "app.navigate",
             "app.show_resource",
             "app.open",
             "notifications.show",
+            "desktop.open",
         }
 
     def test_an_uncatalogued_action_is_named_as_the_problem(self, registry, send):

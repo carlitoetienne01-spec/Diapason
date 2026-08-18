@@ -142,6 +142,30 @@ REMOTE_TOOLS: dict[str, RemoteToolSpec] = {
         },
         offline_policy="QUEUE_UNTIL_EXPIRATION",
     ),
+    "desktop.open": RemoteToolSpec(
+        name="desktop.open",
+        description=(
+            "Ouvrir une application, une adresse, un fichier ou une "
+            "recherche sur l'ORDINATEUR cible."
+        ),
+        capability="desktop.open",
+        parameters={
+            # Volontairement non contrainte : le propriétaire a choisi la
+            # portée ouverte en connaissance de cause. La cible est passée
+            # telle quelle à open_anything, qui porte déjà ses garde-fous —
+            # un second jeu de règles ici finirait par diverger du premier.
+            "target": {"type": "string", "required": True, "max": 500},
+            "kind": {
+                "type": "string",
+                "required": False,
+                "enum": ("auto", "app", "url", "search", "file"),
+            },
+        },
+        # Ouvrir quelque chose des heures plus tard, sur une machine dont on
+        # ne sait plus ce qu'elle affiche, serait une surprise, pas un
+        # service.
+        offline_policy="REQUIRE_ONLINE",
+    ),
     "app.open": RemoteToolSpec(
         name="app.open",
         description="Mettre Succès au premier plan sur l'appareil cible.",

@@ -108,6 +108,64 @@ def _notify(command: RemoteCommand) -> dict[str, Any]:
     return {"userSafeMessage": "Notification affichée."}
 
 
+def _desktop_open(command: RemoteCommand) -> dict[str, Any]:
+    """Ouvre une application, une URL, un fichier ou une recherche SUR CETTE
+    MACHINE, à la demande d'un appareil appairé.
+
+    Les quatre autres outils du maillage pilotent Succès. Celui-ci pilote le
+    bureau, et c'est un pouvoir d'une autre nature : le propriétaire l'a
+    demandé explicitement, en connaissant les trois portées possibles
+    (validation, liste blanche, ouvert) et en choisissant la troisième.
+
+    Ce qui protège ne dépend pas de ce choix et ne peut pas être désactivé
+    par l'appelant : seul un appareil APPAIRÉ peut émettre, chaque ordre
+    porte une signature Ed25519 liée à sa clé publique enregistrée et à ses
+    arguments exacts, le nonce interdit le rejeu, l'ordre expire, et
+    révoquer l'appareil coupe tout immédiatement.
+
+    La cible n'est PAS interprétée ici : elle est passée à ``open_anything``,
+    qui possède déjà ses propres garde-fous. Réimplémenter ce tri à côté
+    aurait créé un second jeu de règles à maintenir, et c'est ainsi que deux
+    chemins finissent par diverger.
+    """
+    target = str(command.arguments.get("target") or "").strip()
+    if not target:
+        return {
+            "ok": False,
+            "userSafeMessage": "Aucune cible à ouvrir n'a été indiquée.",
+        }
+
+    from diapason.core.registry import ToolRegistry
+
+    try:
+        outil = ToolRegistry.get("open_anything")()
+    except Exception as exc:  # noqa: BLE001 - outil absent = refus, pas 500
+        logger.warning("open_anything indisponible : %s", exc)
+        return {
+            "ok": False,
+            "userSafeMessage": "L'ouverture d'applications n'est pas "
+            "disponible sur cet ordinateur.",
+        }
+
+    kind = str(command.arguments.get("kind") or "auto")
+    resultat = outil.execute(target=target, kind=kind)
+    # Le verdict de l'outil est relayé tel quel. Annoncer « ouvert » sur un
+    # échec serait précisément le défaut que l'audit a passé la semaine à
+    # retirer d'ici.
+    return {
+        "ok": bool(resultat.success),
+        "userSafeMessage": (
+            resultat.content
+            if resultat.content
+            else (
+                f"{target} est ouvert."
+                if resultat.success
+                else "Échec de l'ouverture."
+            )
+        ),
+    }
+
+
 # One handler per tool, resolved by exact name. No dynamic dispatch on a
 # string the sender controls — that is how a narrow catalogue quietly
 # becomes a universal one.
@@ -116,6 +174,8 @@ _HANDLERS = {
     "app.show_resource": _show_resource,
     "app.open": _open,
     "notifications.show": _notify,
+    # Pilote le BUREAU, pas Succès — voir _desktop_open.
+    "desktop.open": _desktop_open,
 }
 
 

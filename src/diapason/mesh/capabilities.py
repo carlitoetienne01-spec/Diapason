@@ -49,6 +49,10 @@ ALL_CAPABILITIES: frozenset[str] = frozenset(
         "app.navigate",
         "app.show_resource",
         "notifications.show",
+        # Pilote le BUREAU de la machine, pas Succès. Séparée des quatre
+        # « app.* » parce qu'elle n'a pas la même portée : elle ouvre ce que
+        # l'ordinateur sait ouvrir.
+        "desktop.open",
         # input / output
         "voice.input",
         "voice.output",
