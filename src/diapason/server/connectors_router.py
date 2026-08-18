@@ -263,6 +263,30 @@ def create_connectors_router():
             "baseline_items": baseline_items,
         }
 
+        def _make_embedder():
+            """L'embedder si Ollama répond, sinon None — et on le DIT.
+
+            Le pipeline dégrade proprement en lexical seul, mais chaque
+            fragment indexé sans vecteur se paie à la recherche : la moitié
+            sémantique du rappel est morte pour lui, silencieusement. Ce
+            n'est acceptable qu'annoncé.
+            """
+            try:
+                from diapason.connectors.embeddings import OllamaEmbedder
+
+                emb = OllamaEmbedder()
+                if emb.embed("ping") is None:
+                    raise RuntimeError("le démon d'embedding ne répond pas")
+                return emb
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Sync de %s SANS vecteurs (%s) : ces fragments ne seront "
+                    "trouvables que par mots-clés.",
+                    connector_id,
+                    exc,
+                )
+                return None
+
         def _run_sync() -> None:
             try:
                 from diapason.connectors.pipeline import IngestionPipeline
@@ -270,7 +294,7 @@ def create_connectors_router():
                 from diapason.connectors.sync_engine import SyncEngine
 
                 store = KnowledgeStore()
-                pipeline = IngestionPipeline(store=store)
+                pipeline = IngestionPipeline(store=store, embedder=_make_embedder())
                 engine = SyncEngine(pipeline=pipeline)
                 engine.sync(instance)
                 logger.info("Sync completed for %s", connector_id)

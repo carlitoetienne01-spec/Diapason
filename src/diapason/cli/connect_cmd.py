@@ -152,7 +152,24 @@ def _connect_source(registry: object, source: str, path: str = "") -> None:
                     f"[yellow]Create an OAuth app at: {provider.setup_url}[/yellow]"
                 )
                 console.print(f"[dim]{provider.setup_hint}[/dim]")
+                # Un prompt nu a déjà fait inscrire un nom d'utilisateur
+                # macOS comme client OAuth — Google répondait
+                # « invalid_client » sans autre indice. Dire d'où viennent
+                # ces valeurs coûte quatre lignes.
+                click.echo(
+                    "\nCes identifiants viennent de Google Cloud Console\n"
+                    "(console.cloud.google.com → APIs & Services →\n"
+                    "Credentials → Create credentials → OAuth client ID →\n"
+                    "type « Desktop app »). Le Client ID se termine par\n"
+                    "« .apps.googleusercontent.com »."
+                )
                 client_id = click.prompt("Client ID")
+                if ".apps.googleusercontent.com" not in client_id:
+                    click.echo(
+                        "⚠ Ce Client ID ne ressemble pas à un client Google "
+                        "(attendu : …apps.googleusercontent.com). Google le "
+                        "refusera probablement avec « invalid_client »."
+                    )
                 client_secret = click.prompt("Client Secret")
                 save_client_credentials(provider, client_id, client_secret)
 
