@@ -34,6 +34,18 @@ if TYPE_CHECKING:
 # Everything else is a refusal or a delay, and must not be phrased as success.
 _DONE = {"SUCCESS"}
 
+# Un appareil en mode « pull » va CHERCHER ses commandes : le verdict n'existe
+# pas encore quand dispatch rend la main, seulement quelques centaines de
+# millisecondes plus tard. Mesuré sur un téléphone éveillé : 1,9 s entre
+# l'envoi et l'exécution.
+#
+# Sans cette attente, l'outil rendait success=False accompagné d'un message de
+# réussite — « C'est prêt pour Mon téléphone » — et la commande passait à
+# SUCCESS deux secondes après. Un agent qui lit ce drapeau conclut à une panne
+# et réessaie, ou annonce un échec qui n'a pas eu lieu.
+_ACK_WAIT_S = 4.0
+_ACK_POLL_S = 0.25
+
 
 def _result(name: str, success: bool, content: str, metadata: dict[str, Any]):
     return ToolResult(
@@ -239,6 +251,12 @@ class MeshSendTool(BaseTool):
             registry=self.registry,
             queue=self.queue,
         )
+        # Laisser au téléphone le temps de venir chercher, plutôt que de
+        # trancher avant qu'il n'ait pu répondre. Ne s'applique qu'à une mise
+        # en file : un refus, lui, est déjà définitif.
+        if outcome["status"] == "QUEUED":
+            outcome = self._await_ack(outcome)
+
         # The dispatcher owns the truth about what happened; this tool only
         # relays it. Success is narrow on purpose (spec §57).
         return _result(
@@ -247,11 +265,54 @@ class MeshSendTool(BaseTool):
             outcome["userSafeMessage"],
             {
                 "status": outcome["status"],
+                # Vrai quand l'appareil n'a pas répondu dans la fenêtre : la
+                # commande tient toujours, elle n'est simplement pas encore
+                # partie. « Pas encore » n'est pas « refusé ».
+                "pending": bool(outcome.get("pending")),
                 "commandId": outcome.get("commandId"),
                 "targetDeviceId": target,
                 "persistence": "remote",
             },
         )
+
+    def _await_ack(self, outcome: dict[str, Any]) -> dict[str, Any]:
+        """Attendre brièvement que l'appareil vienne chercher sa commande.
+
+        Rend l'issue réelle si elle arrive dans la fenêtre, sinon l'issue
+        d'origine inchangée — une attente qui dépasse le délai reste une
+        attente, pas un échec, et son message le dit déjà correctement.
+
+        Le drapeau ``pending`` est posé dans ce cas : un appelant peut alors
+        distinguer « refusé » de « pas encore », ce que ``success=False`` seul
+        ne permettait pas.
+        """
+        import time
+
+        command_id = outcome.get("commandId")
+        if not command_id:
+            return outcome
+
+        limite = time.monotonic() + _ACK_WAIT_S
+        while time.monotonic() < limite:
+            time.sleep(_ACK_POLL_S)
+            try:
+                courant = self.queue.get(str(command_id))
+            except Exception:  # noqa: BLE001 - une file illisible n'est pas fatale
+                break
+            if not courant:
+                break
+            statut = courant.get("status")
+            if statut and statut != "QUEUED":
+                return {
+                    **outcome,
+                    "status": statut,
+                    "userSafeMessage": (
+                        courant.get("user_message")
+                        or courant.get("userSafeMessage")
+                        or outcome["userSafeMessage"]
+                    ),
+                }
+        return {**outcome, "pending": True}
 
     def _target(self, params: dict[str, Any], local_id: str) -> str:
         explicit = str(params.get("device_id") or "").strip()
