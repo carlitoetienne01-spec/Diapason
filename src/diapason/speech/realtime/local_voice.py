@@ -189,6 +189,55 @@ def speakable(text: str) -> str:
     return cleaned
 
 
+class _SpecTurn:
+    """Une réponse en cours de spéculation : la file du modèle, dupliquée.
+
+    Le draineur lit la file originale et garde TOUT ce qu'il voit, y compris
+    le ``None`` final — la spéculation ne doit rien consommer que l'adoption
+    ne puisse rejouer. Au passage, il repère la première phrase avec le même
+    découpage que ``_speak_complete_sentences`` et la synthétise en avance.
+    L'audio n'est qu'un ``bytes`` en attente : l'émettre reste le privilège
+    exclusif de la boucle de drainage de ``_respond_to_text``.
+    """
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.items: list = []
+        self.grew = asyncio.Event()
+        self.first_sentence: Optional[str] = None
+        self.first_audio: Optional["asyncio.Task[bytes]"] = None
+        self.drainer: Optional["asyncio.Task[None]"] = None
+
+    def replay_queue(self) -> "asyncio.Queue[Any]":
+        """Une file équivalente à l'originale, rejouée depuis le début.
+
+        Le draineur peut être encore en train de lire : la rediffusion suit
+        au fil de l'eau, réveillée à chaque arrivée, et se termine sur le
+        ``None`` que le draineur aura relayé.
+        """
+        q: "asyncio.Queue[Any]" = asyncio.Queue()
+
+        async def pump() -> None:
+            i = 0
+            while True:
+                if i < len(self.items):
+                    item = self.items[i]
+                    i += 1
+                    await q.put(item)
+                    if item is None:
+                        return
+                else:
+                    # Effacer AVANT de revérifier : un ajout entre le test et
+                    # l'attente serait sinon perdu jusqu'au suivant.
+                    self.grew.clear()
+                    if i < len(self.items):
+                        continue
+                    await self.grew.wait()
+
+        asyncio.get_running_loop().create_task(pump())
+        return q
+
+
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_VOICE = "ff_siwis"
 
@@ -586,7 +635,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # construction : les outils ne s'exécutent et la voix ne part que
         # dans la boucle de drainage de _respond_to_text — une file qu'on
         # remplit sans la drainer ne peut ni agir ni parler.
-        self._spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None
+        self._spec_llm: Optional[_SpecTurn] = None
+        # Première phrase déjà synthétisée par la spéculation : (texte après
+        # speakable, tâche de synthèse). Consommé une seule fois, apparié sur
+        # le texte exact — un raté d'appariement coûte une synthèse normale,
+        # jamais un mauvais audio.
+        self._spec_audio: Optional[tuple[str, "asyncio.Task[bytes]"]] = None
         # Transcription affichée PENDANT qu'on parle. Distincte du
         # spéculatif, qui sert à répondre plus tôt et ne s'exécute que dans
         # le silence : celle-ci tourne au milieu de la phrase, et son seul
@@ -782,6 +836,53 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._partial_text = ""
         self._speech_end_mark = 0
 
+    async def _drain_speculative(
+        self, spec: _SpecTurn, src: "asyncio.Queue[Any]"
+    ) -> None:
+        """Dupliquer la file du modèle et préparer la première phrase.
+
+        Le découpage est copié de ``_speak_complete_sentences`` — fin de
+        phrase, ou première virgule au-delà du seuil pour le tout premier
+        morceau — parce que l'audio préparé n'est utile que si son texte est
+        EXACTEMENT celui que la boucle de parole découpera. Un désaccord ne
+        casse rien : l'appariement rate, la phrase est synthétisée
+        normalement, le gain est perdu et c'est tout.
+        """
+        pending = ""
+        try:
+            while True:
+                item = await src.get()
+                spec.items.append(item)
+                spec.grew.set()
+                if item is None:
+                    return
+                if (
+                    spec.first_audio is None
+                    and isinstance(item, str)
+                    and not item.startswith("\x00ERROR\x00")
+                    and self._tts is not None
+                ):
+                    pending += item
+                    match = _SENTENCE_END.search(pending)
+                    if match is None:
+                        candidate = _FIRST_CHUNK.search(pending)
+                        if (
+                            candidate is not None
+                            and candidate.end() >= _FIRST_CHUNK_MIN_CHARS
+                        ):
+                            match = candidate
+                    if match is not None:
+                        phrase = speakable(pending[: match.end()].strip())
+                        if phrase:
+                            spec.first_sentence = phrase
+                            spec.first_audio = asyncio.get_running_loop().create_task(
+                                asyncio.to_thread(self._tts, phrase)
+                            )
+        finally:
+            # Réveiller une rediffusion en attente même sur annulation, pour
+            # qu'elle ne dorme pas sur un événement que plus personne ne met.
+            spec.grew.set()
+
     def _speculation_pointless(self, text: str) -> bool:
         """Les énoncés qui ne passeront jamais par le modèle.
 
@@ -889,6 +990,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 # finie. On l'abandonne — même coût qu'un barge-in : le flux
                 # court jusqu'à son plafond de jetons, personne ne le lit.
                 logger.info("local voice timing: stage=spec_llm outcome=discarded")
+                if self._spec_llm.drainer is not None:
+                    self._spec_llm.drainer.cancel()
                 self._spec_llm = None
             if not self._in_speech and self._preroll:
                 # The turn's first loud frame: everything quieter that came
@@ -954,7 +1057,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 hist = list(self._history)[-15:] + [
                     {"role": "user", "content": spec_text}
                 ]
-                self._spec_llm = (spec_text, self._llm(hist))
+                spec = _SpecTurn(spec_text)
+                spec.drainer = asyncio.get_running_loop().create_task(
+                    self._drain_speculative(spec, self._llm(hist))
+                )
+                self._spec_llm = spec
                 logger.info("local voice timing: stage=spec_llm outcome=started")
 
         if self._silence_samples >= int(self._end_of_turn_s() * INPUT_RATE):
@@ -999,7 +1106,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self,
         utterance: bytes,
         early_stt: Optional["asyncio.Task[str]"] = None,
-        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
+        spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
         turn_started = time.monotonic()
         try:
@@ -1036,7 +1143,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         text: str,
         *,
         turn_started: float,
-        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
+        spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
         await self._queue.put(
             SessionEvent(kind="transcript", role="user", text=text, final=True)
@@ -1133,7 +1240,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         text: str,
         *,
         already_queued: bool = False,
-        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
+        spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
         response_started = time.monotonic()
         try:
@@ -1159,14 +1266,19 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
             for _round in range(self._budget.max_steps + 1):
-                if _round == 0 and spec_llm is not None and spec_llm[0] == text:
+                if _round == 0 and spec_llm is not None and spec_llm.text == text:
                     # La génération a démarré pendant le silence de fin de
                     # tour ; ses premiers jetons sont déjà dans la file. Le
                     # texte est comparé par défense : quand les deux existent
                     # ils sortent de la même tâche STT, donc l'écart est
                     # impossible — mais un raté ici parlerait d'un autre
                     # énoncé, et mieux vaut régénérer que répondre à côté.
-                    tokens = spec_llm[1]
+                    tokens = spec_llm.replay_queue()
+                    if spec_llm.first_sentence and spec_llm.first_audio:
+                        self._spec_audio = (
+                            spec_llm.first_sentence,
+                            spec_llm.first_audio,
+                        )
                     logger.info("local voice timing: stage=spec_llm outcome=adopted")
                 else:
                     tokens = self._llm(list(messages))
@@ -1341,7 +1453,19 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not sentence:
             # A chunk that was all emoji: nothing to say, nothing to record.
             return
-        pcm = await asyncio.to_thread(self._tts, sentence)
+        pcm: Optional[bytes] = None
+        spec_audio, self._spec_audio = self._spec_audio, None
+        if spec_audio is not None and spec_audio[0] == sentence:
+            # La spéculation a déjà synthétisé exactement cette phrase
+            # pendant le silence de fin de tour ; la tâche est peut-être
+            # même déjà finie. Un échec quelconque retombe sur la synthèse
+            # normale — le cache est un raccourci, jamais un point de panne.
+            try:
+                pcm = await spec_audio[1]
+            except BaseException:  # noqa: BLE001 - annulation comprise
+                pcm = None
+        if pcm is None:
+            pcm = await asyncio.to_thread(self._tts, sentence)
         spoken.append(sentence)
         if pcm:
             import time as _time

@@ -36,7 +36,8 @@ class Banc:
     def __init__(self, texte: str = TEXTE):
         self.appels: list[list] = []
         self.outils: list[str] = []
-        self.dits: list[str] = []
+        self.dits: list[str] = []      # appels de SYNTHÈSE (tts)
+        self.emis: list[str] = []      # événements audio ÉMIS vers le client
 
         def llm(messages):
             self.appels.append(list(messages))
@@ -60,7 +61,9 @@ class Banc:
     async def __aenter__(self):
         async def draine():
             while True:
-                await self.s._queue.get()
+                e = await self.s._queue.get()
+                if getattr(e, "kind", "") == "audio":
+                    self.emis.append(e.audio_b64)
 
         self._fond = asyncio.create_task(draine())
         return self
@@ -90,12 +93,17 @@ class TestLaGenerationPartPendantLeSilence:
 
     @pytest.mark.asyncio
     async def test_aucun_outil_ne_s_execute_avant_confirmation(self):
-        """LA propriété de sûreté. Le reste est de la vitesse."""
+        """LA propriété de sûreté. Le reste est de la vitesse.
+
+        La frontière exacte : la spéculation a le droit de SYNTHÉTISER
+        (préparer des octets), jamais d'ÉMETTRE (les envoyer au client).
+        C'est l'émission qui parle, et l'exécution qui agit."""
         async with Banc() as b:
             await b.parle(3.0)
             await b.se_tait(0.5)
+            await asyncio.sleep(0.1)
             assert b.outils == []
-            assert b.dits == [], "et aucun son ne part non plus"
+            assert b.emis == [], "rien ne doit atteindre les haut-parleurs"
 
     @pytest.mark.asyncio
     async def test_la_cloture_adopte_au_lieu_de_regenerer(self):
@@ -147,3 +155,79 @@ class TestCeQuiNeDoitPasSpeculer:
             await b.parle(3.0)
             await b.se_tait(0.5)
             assert b.appels == []
+
+
+class TestLaPremierePhraseEstPreteAvantLaCloture:
+    @pytest.mark.asyncio
+    async def test_synthetisee_pendant_le_silence_emise_apres(self):
+        """La frontière synthèse/émission, vue du bon côté : la voix est
+        PRÊTE pendant le silence, elle ne PART qu'à la confirmation."""
+        async with Banc() as b:
+            await b.parle(3.0)
+            await b.se_tait(0.5)
+            await asyncio.sleep(0.1)
+            assert b.dits, "la première phrase doit être synthétisée d'avance"
+            assert b.emis == [], "mais rien d'émis avant la clôture"
+            await b.se_tait(0.4)
+            await asyncio.sleep(0.3)
+            assert b.emis, "après la clôture, l'audio préparé part"
+
+    @pytest.mark.asyncio
+    async def test_la_phrase_n_est_pas_synthetisee_deux_fois(self):
+        """Le cache doit être un raccourci, pas un doublon : la première
+        phrase passe UNE fois par la synthèse, les suivantes normalement."""
+        async with Banc() as b:
+            await b.parle(3.0)
+            await b.se_tait(0.9)
+            await asyncio.sleep(0.3)
+            premiere = "Canberra, bien sûr."
+            assert b.dits.count(premiere) == 1, b.dits
+
+    @pytest.mark.asyncio
+    async def test_la_rediffusion_ne_perd_aucun_jeton(self):
+        """Le draineur consomme la file originale ; l'adoption doit rejouer
+        TOUT — y compris ce qui arrive après la première phrase."""
+        async with Banc() as b:
+            # Réponse en deux phrases, la seconde après la première synthèse.
+            def llm(messages):
+                b.appels.append(list(messages))
+                q: asyncio.Queue = asyncio.Queue()
+                q.put_nowait("Canberra, bien sûr. ")
+                q.put_nowait("C'est la capitale depuis 1913. ")
+                q.put_nowait(None)
+                return q
+
+            b.s._llm = llm
+            await b.parle(3.0)
+            await b.se_tait(0.9)
+            await asyncio.sleep(0.4)
+            assert "Canberra, bien sûr." in b.dits
+            assert "C'est la capitale depuis 1913." in b.dits
+
+    @pytest.mark.asyncio
+    async def test_un_appel_d_outil_traverse_le_tee_apres_confirmation(self):
+        """Les tuples (« tools », …) passent la duplication intacts, et ne
+        s'exécutent qu'après la clôture — jamais pendant le silence."""
+        async with Banc() as b:
+            rounds = {"n": 0}
+
+            def llm(messages):
+                b.appels.append(list(messages))
+                q: asyncio.Queue = asyncio.Queue()
+                if rounds["n"] == 0:
+                    rounds["n"] = 1
+                    q.put_nowait(("tools", [{"function": {"name": "calc", "arguments": "{}"}}]))
+                else:
+                    q.put_nowait("Voilà. ")
+                q.put_nowait(None)
+                return q
+
+            b.s._llm = llm
+            b.s._enable_tools = True
+            await b.parle(3.0)
+            await b.se_tait(0.5)
+            await asyncio.sleep(0.1)
+            assert b.outils == [], "pas d'exécution pendant le silence"
+            await b.se_tait(0.4)
+            await asyncio.sleep(0.4)
+            assert len(b.outils) == 1, "exécuté une fois, après confirmation"
