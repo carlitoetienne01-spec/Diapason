@@ -25,6 +25,12 @@ class SessionEvent:
     text: str = ""
     role: str = ""  # "user" | "assistant"
     final: bool = False
+    # Un partiel REMPLACE le texte affiché au lieu de s'y ajouter. Gemini et
+    # OpenAI envoient des deltas — chaque morceau prolonge le précédent. Une
+    # transcription locale relit tout le tampon à chaque passe et peut donc
+    # RÉVISER ce qu'elle avait compris : « est » devient « était ». Un delta
+    # ne sait pas exprimer ça, et concaténer donnerait « QuelleQuelle heure ».
+    replace: bool = False
     audio_b64: str = ""
     sample_rate: int = 24000
     detail: str = ""

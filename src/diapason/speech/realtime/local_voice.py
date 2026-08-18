@@ -56,6 +56,12 @@ END_OF_TURN_S = 0.8
 # resumes speaking the result is discarded — wasted work, never a wrong turn.
 # This overlaps most of Whisper's latency with a wait that existed anyway.
 SPECULATE_AFTER_S = 0.25
+# Nouvelle parole accumulée avant de retenter une transcription partielle.
+# Assez court pour que les mots apparaissent pendant qu'on parle, assez long
+# pour que faster-whisper ait le temps de finir la précédente : chaque passe
+# relit tout le tampon depuis le début, donc les lancer plus souvent ne rend
+# pas l'affichage plus vif, seulement la machine plus chaude.
+PARTIAL_EVERY_S = 0.7
 # Ignore blips shorter than this — a cough is not a turn.
 MIN_SPEECH_S = 0.35
 # While the assistant's audio is still playing on the client, the microphone
@@ -514,6 +520,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # (buffered byte count, transcription task) — valid only while the
         # buffer has not grown past the snapshot it was taken from.
         self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
+        # Transcription affichée PENDANT qu'on parle. Distincte du
+        # spéculatif, qui sert à répondre plus tôt et ne s'exécute que dans
+        # le silence : celle-ci tourne au milieu de la phrase, et son seul
+        # rôle est que l'écran suive la voix.
+        self._partial: Optional[asyncio.Task[str]] = None
+        self._partial_mark = 0
+        self._partial_text = ""
         # When, on OUR clock, the audio already shipped to the client will
         # finish playing. Synthesis outruns playback, so the respond task is
         # usually long done while the user is still hearing the answer — this
@@ -619,6 +632,74 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if excess > 0:
             del self._preroll[:excess]
 
+    async def _pump_partial(self) -> None:
+        """Faire suivre l'écran à la voix, pendant qu'elle parle.
+
+        Tous les événements « transcript » partaient avec ``final=True`` :
+        rien ne pouvait s'afficher avant la fin de la phrase, et l'écran
+        restait vide pendant qu'on parlait. ``SessionEvent`` portait déjà un
+        champ ``final`` que personne n'alimentait — le canal existait, il
+        était muet.
+
+        Une seule transcription à la fois, jamais attendue. La récolte se
+        fait au passage de la trame suivante : ``send_audio`` est appelée à
+        chaque paquet du micro et ne doit jamais bloquer, sinon c'est
+        l'audio lui-même qui prend du retard.
+
+        Le résultat est *remplacé*, pas ajouté : whisper relit tout le tampon
+        et peut réviser ce qu'il avait compris. C'est ce qui fait qu'un mot
+        se corrige tout seul à l'écran au lieu de se dupliquer.
+        """
+        if self._stt is None:
+            return
+
+        # 1. Récolter celle qui vient de finir.
+        if self._partial is not None and self._partial.done():
+            tache, self._partial = self._partial, None
+            try:
+                texte = (tache.result() or "").strip()
+            except BaseException:  # noqa: BLE001 - annulation comprise
+                texte = ""
+            if texte and texte != self._partial_text:
+                self._partial_text = texte
+                await self._queue.put(
+                    SessionEvent(
+                        kind="transcript",
+                        role="user",
+                        text=texte,
+                        final=False,
+                        replace=True,
+                    )
+                )
+
+        # 2. En relancer une si assez de parole neuve s'est accumulée.
+        if self._partial is not None:
+            return
+        if self._speech_samples < int(MIN_SPEECH_S * INPUT_RATE):
+            # Whisper invente des mots sur un souffle. Sous ce seuil, se taire
+            # vaut mieux qu'afficher une phrase que personne n'a dite.
+            return
+        neuf = len(self._buffer) - self._partial_mark
+        if neuf < int(PARTIAL_EVERY_S * INPUT_RATE) * 2:  # octets, pas samples
+            return
+        self._partial_mark = len(self._buffer)
+        instantane = bytes(self._buffer)
+        self._partial = asyncio.get_running_loop().create_task(
+            asyncio.to_thread(self._stt, instantane)
+        )
+
+    def _drop_partial(self) -> None:
+        """Oublier la transcription en cours et le texte affiché.
+
+        Appelé quand le tour se termine ou qu'il est abandonné : ce qui est
+        en vol décrit un tampon qui n'existe plus.
+        """
+        if self._partial is not None:
+            self._partial.cancel()
+            self._partial = None
+        self._partial_mark = 0
+        self._partial_text = ""
+
     async def send_audio(self, pcm16: bytes) -> None:
         if self._closed or not pcm16:
             return
@@ -667,6 +748,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._silence_samples = 0
             self._speech_samples += len(pcm16) // 2
             self._buffer.extend(pcm16)
+            await self._pump_partial()
             return
 
         if not self._in_speech:
@@ -705,6 +787,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._speech_samples = 0
             self._silence_samples = 0
             self._in_speech = False
+            self._drop_partial()
             if had_speech:
                 early = speculative[1] if speculative is not None else None
                 self._respond_task = asyncio.get_running_loop().create_task(

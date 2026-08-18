@@ -322,7 +322,16 @@ export function useVoiceLive() {
                   const next = [...prev];
                   next[next.length - 1] = {
                     role,
-                    text: msg.final ? msg.text : last.text + msg.text,
+                    // `replace` distingue les deux protocoles. Gemini et
+                    // OpenAI envoient des deltas, qu'on concatène. La
+                    // transcription locale relit tout le tampon et peut
+                    // réviser ce qu'elle avait compris, donc elle remplace :
+                    // c'est ce qui fait qu'un mot se corrige tout seul à
+                    // l'écran au lieu de se dupliquer.
+                    text:
+                      msg.final || msg.replace
+                        ? msg.text
+                        : last.text + msg.text,
                     final: !!msg.final,
                   };
                   return next;

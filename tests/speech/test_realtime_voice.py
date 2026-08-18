@@ -114,6 +114,10 @@ def test_event_to_client_json():
         "type": "transcript",
         "role": "user",
         "text": "hi",
+        # `replace` distingue un partiel qui REMPLACE le texte affiché d'un
+        # delta qui s'y ajoute. Faux par défaut : les fournisseurs distants
+        # envoient des deltas, et cette voie doit rester intacte.
+        "replace": False,
         "final": True,
     }
     tool = event_to_client_json(

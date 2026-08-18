@@ -85,7 +85,7 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
 
         {"type": "ready"}
         {"type": "audio", "data": "<base64 pcm16>", "sample_rate": 24000}
-        {"type": "transcript", "role": "user"|"assistant", "text": "...", "final": bool}
+        {"type": "transcript", "role": ..., "text": ..., "final": bool, "replace": bool}
         {"type": "tool", "name": "...", "ok": bool, "detail": "..."}
         {"type": "interrupted"}
         {"type": "error", "detail": "..."}

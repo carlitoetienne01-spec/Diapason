@@ -28,6 +28,7 @@ def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
             "role": event.role,
             "text": event.text,
             "final": event.final,
+            "replace": event.replace,
         }
     if event.kind == "interrupted":
         return {"type": "interrupted"}
