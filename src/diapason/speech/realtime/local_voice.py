@@ -581,6 +581,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # (buffered byte count, transcription task) — valid only while the
         # buffer has not grown past the snapshot it was taken from.
         self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
+        # Réponse spéculative : la GÉNÉRATION lancée pendant le silence de
+        # fin de tour, dès que la transcription complète est connue. Sûre par
+        # construction : les outils ne s'exécutent et la voix ne part que
+        # dans la boucle de drainage de _respond_to_text — une file qu'on
+        # remplit sans la drainer ne peut ni agir ni parler.
+        self._spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None
         # Transcription affichée PENDANT qu'on parle. Distincte du
         # spéculatif, qui sert à répondre plus tôt et ne s'exécute que dans
         # le silence : celle-ci tourne au milieu de la phrase, et son seul
@@ -776,6 +782,25 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._partial_text = ""
         self._speech_end_mark = 0
 
+    def _speculation_pointless(self, text: str) -> bool:
+        """Les énoncés qui ne passeront jamais par le modèle.
+
+        Une phrase d'arrêt ne reçoit aucune réponse, et une commande vocale
+        explicite prend le chemin direct sans LLM. Spéculer dessus ne serait
+        pas dangereux — la file ne serait jamais drainée — seulement du
+        calcul chauffé pour rien.
+        """
+        if is_stop_phrase(text):
+            return True
+        if not self._enable_tools:
+            return False
+        try:
+            from diapason.desktop.voice_commands import is_explicit_voice_command
+
+            return bool(is_explicit_voice_command(text))
+        except Exception:  # noqa: BLE001 - l'aide est un bonus, jamais un mur
+            return False
+
     def _endpoint_hint(self) -> tuple[Optional[str], bool]:
         """Le meilleur texte disponible pour juger la fin de tour, et si sa
         couverture de la parole est assez serrée pour un verdict « complet ».
@@ -859,6 +884,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # Any speculative transcription was of an utterance that turned
             # out not to be finished; it no longer describes the buffer.
             self._speculative = None
+            if self._spec_llm is not None:
+                # La génération en vol répond à une phrase qui n'était pas
+                # finie. On l'abandonne — même coût qu'un barge-in : le flux
+                # court jusqu'à son plafond de jetons, personne ne le lit.
+                logger.info("local voice timing: stage=spec_llm outcome=discarded")
+                self._spec_llm = None
             if not self._in_speech and self._preroll:
                 # The turn's first loud frame: everything quieter that came
                 # just before it is the word's real beginning.
@@ -900,6 +931,32 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 ),
             )
 
+        # Dès que la transcription spéculative atterrit, lancer la
+        # génération sur le silence restant. Le gain est l'écart entre
+        # « transcription connue » et « tour clos » — jusqu'à ~0,3 s sur un
+        # tour normal, ~0,6 s après une hésitation. Si la parole reprend, la
+        # branche parlée jette la file plus haut ; toute file qui survit
+        # jusqu'à la fin du tour décrit donc l'énoncé entier.
+        if (
+            self._spec_llm is None
+            and self._llm is not None
+            and self._speculative is not None
+            and self._speculative[1].done()
+        ):
+            try:
+                spec_text = (self._speculative[1].result() or "").strip()
+            except BaseException:  # noqa: BLE001 - annulation comprise
+                spec_text = ""
+            if spec_text and not self._speculation_pointless(spec_text):
+                # Le MÊME assemblage que _respond_to_text fera : l'historique
+                # plafonné plus le tour en cours, sans muter l'historique —
+                # le tour n'est pas confirmé.
+                hist = list(self._history)[-15:] + [
+                    {"role": "user", "content": spec_text}
+                ]
+                self._spec_llm = (spec_text, self._llm(hist))
+                logger.info("local voice timing: stage=spec_llm outcome=started")
+
         if self._silence_samples >= int(self._end_of_turn_s() * INPUT_RATE):
             utterance = bytes(self._buffer)
             had_speech = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
@@ -908,6 +965,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # snapshot boundary having remained the end of speech.
             speculative = self._speculative
             self._speculative = None
+            spec_llm = self._spec_llm
+            self._spec_llm = None
             self._buffer.clear()
             self._speech_samples = 0
             self._silence_samples = 0
@@ -916,7 +975,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if had_speech:
                 early = speculative[1] if speculative is not None else None
                 self._respond_task = asyncio.get_running_loop().create_task(
-                    self._respond(utterance, early_stt=early)
+                    self._respond(utterance, early_stt=early, spec_llm=spec_llm)
                 )
 
     async def send_text(self, text: str) -> None:
@@ -940,6 +999,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self,
         utterance: bytes,
         early_stt: Optional["asyncio.Task[str]"] = None,
+        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
     ) -> None:
         turn_started = time.monotonic()
         try:
@@ -962,14 +1022,22 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if not text:
                 logger.info("local voice rejected non-speech turn")
                 return
-            await self._dispatch_text(text, turn_started=turn_started)
+            await self._dispatch_text(
+                text, turn_started=turn_started, spec_llm=spec_llm
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - the UI must hear about it
             logger.exception("local voice turn failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
 
-    async def _dispatch_text(self, text: str, *, turn_started: float) -> None:
+    async def _dispatch_text(
+        self,
+        text: str,
+        *,
+        turn_started: float,
+        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
+    ) -> None:
         await self._queue.put(
             SessionEvent(kind="transcript", role="user", text=text, final=True)
         )
@@ -979,8 +1047,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # to stop.
             return
         if await self._try_fast_voice_action(text, turn_started=turn_started):
+            # Une action directe n'a pas besoin de la génération spéculative ;
+            # la file abandonnée court jusqu'à son plafond, personne ne la lit.
             return
-        await self._respond_to_text(text, already_queued=True)
+        await self._respond_to_text(text, already_queued=True, spec_llm=spec_llm)
 
     async def _try_fast_voice_action(
         self, text: str, *, turn_started: float
@@ -1059,7 +1129,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         return True
 
     async def _respond_to_text(
-        self, text: str, *, already_queued: bool = False
+        self,
+        text: str,
+        *,
+        already_queued: bool = False,
+        spec_llm: Optional[tuple[str, "asyncio.Queue[Any]"]] = None,
     ) -> None:
         response_started = time.monotonic()
         try:
@@ -1085,7 +1159,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
             for _round in range(self._budget.max_steps + 1):
-                tokens = self._llm(list(messages))
+                if _round == 0 and spec_llm is not None and spec_llm[0] == text:
+                    # La génération a démarré pendant le silence de fin de
+                    # tour ; ses premiers jetons sont déjà dans la file. Le
+                    # texte est comparé par défense : quand les deux existent
+                    # ils sortent de la même tâche STT, donc l'écart est
+                    # impossible — mais un raté ici parlerait d'un autre
+                    # énoncé, et mieux vaut régénérer que répondre à côté.
+                    tokens = spec_llm[1]
+                    logger.info("local voice timing: stage=spec_llm outcome=adopted")
+                else:
+                    tokens = self._llm(list(messages))
                 pending = ""
                 tool_calls: List[dict] = []
                 while True:
