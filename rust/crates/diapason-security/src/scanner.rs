@@ -121,7 +121,13 @@ static PII_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "us_phone",
-            r"\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+            // Un téléphone doit RESSEMBLER à un téléphone : indicatif +1,
+            // parenthèses, ou de vrais séparateurs. Tous les séparateurs
+            // étaient optionnels, si bien que dix chiffres quelconques
+            // suffisaient — 48273 × 91847 = 4433730231 ressortait
+            // « [REDACTED:us_phone] », et avec lui tout numéro de commande,
+            // horodatage en millisecondes ou montant en centimes.
+            r"(?:\+1[-.\s]?)?\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\+1[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b",
             ThreatLevel::Medium,
             "US phone number"
         ),

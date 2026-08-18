@@ -139,7 +139,10 @@ class PIIScanner(BaseScanner):
             "Amex credit card",
         ),
         "us_phone": (
-            r"\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+            # Voir scanner.rs : dix chiffres quelconques ne sont pas un
+            # numéro de téléphone. Il faut un indicatif +1, des parenthèses,
+            # ou de vrais séparateurs entre les groupes.
+            r"(?:\+1[-.\s]?)?\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\+1[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b",
             ThreatLevel.MEDIUM,
             "US phone number",
         ),
