@@ -51,6 +51,25 @@ PRE_ROLL_S = 0.4
 # makes every exchange feel laggy. 700 ms is where read-aloud French pauses
 # land between sentences but not between words.
 END_OF_TURN_S = 0.8
+# Fin de tour SÉMANTIQUE. 800 ms est le prix payé quand on ne sait rien du
+# contenu : assez long pour ne pas couper une phrase en deux. Mais quand la
+# transcription déjà en main se termine par « ? » ou « . », la phrase EST
+# finie — attendre 800 ms de plus est du silence pur, et c'est le premier
+# poste de latence de toute la boucle vocale, devant le modèle lui-même.
+# Les humains tournent à ~200 ms précisément parce qu'ils jugent la
+# complétude pendant que l'autre parle, au lieu d'attendre le silence.
+SEMANTIC_END_S = 0.45
+# L'autre direction, tout aussi importante : « et donc je voulais dire
+# que… » n'est PAS fini, même après 800 ms — couper là, c'est répondre à une
+# phrase que la personne est encore en train de construire. On attend plus.
+HESITATION_END_S = 1.15
+# Le verdict « complet » n'est cru que si la transcription couvre la parole
+# jusqu'à ~ce près de sa fin. Un partiel en retard peut dire « Quelle heure
+# est-il » — complet — alors que la personne a ajouté « à » et réfléchit à
+# la suite. L'hésitation, elle, accepte une couverture lâche : se tromper
+# dans ce sens ne coûte que de l'attente.
+ENDPOINT_COVERAGE_S = 0.75
+
 # After this much silence the utterance is PROBABLY over, so transcription
 # starts speculatively while the remaining silence confirms it. If the user
 # resumes speaking the result is discarded — wasted work, never a wrong turn.
@@ -80,6 +99,48 @@ _STOP_PHRASES = re.compile(
     r"(?:[,\s]+(?:s'?il\s+te\s+pla[îi]t|merci))?[\s.!…]*$",
     re.IGNORECASE,
 )
+
+
+# Mots français sur lesquels une phrase ne se termine pas : conjonctions,
+# prépositions, déterminants, auxiliaires. Un dernier mot dans cette liste
+# signifie « la suite arrive ». Les pronoms d'inversion (« est-il ») ne s'y
+# trouvent pas : Whisper les écrit avec le trait d'union, donc le dernier
+# token n'est jamais le pronom nu.
+_TRAILING_INCOMPLETE = frozenset(
+    "et mais ou donc or ni car que qu qui dont de du des à au aux le la les "
+    "un une avec pour sur dans par sans sous chez vers si comme quand alors "
+    "puis euh eh ben est sont être va vais vas veux veut peux peut dois doit "
+    "faut mon ma mes ton ta tes son sa ses ce cet cette ces très plus moins "
+    "je tu il elle on nous vous ils elles "
+    # Formes élidées : le découpage sur l'apostrophe laisse la lettre seule
+    # (« parce que j' » → « j »).
+    "j l d n c s t m".split()
+)
+
+
+def classify_endpoint(text: str) -> str:
+    """« complete », « hesitation » ou « neutral » pour une fin de tour.
+
+    Conservateur par construction : « complete » exige une ponctuation
+    terminale — c'est le seul verdict qui RACCOURCIT l'attente, donc le seul
+    qui puisse couper quelqu'un. « hesitation » ne fait qu'attendre plus,
+    l'erreur y est bon marché. Tout le reste garde le délai normal.
+    """
+    t = (text or "").strip().rstrip("»\"' ")
+    if not t:
+        return "neutral"
+    # « … » est l'orthographe même du trailing-off : Whisper l'émet quand la
+    # voix retombe sans conclure. C'est le contraire d'une phrase finie.
+    if t.endswith(("...", "…")):
+        return "hesitation"
+    if t[-1] in ".!?":
+        return "complete"
+    if t[-1] in ",;:":
+        return "hesitation"
+    dernier = re.split(r"[\s']+", t.lower())[-1]
+    if dernier in _TRAILING_INCOMPLETE:
+        return "hesitation"
+    return "neutral"
 
 
 def is_stop_phrase(text: str) -> bool:
@@ -527,6 +588,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._partial: Optional[asyncio.Task[str]] = None
         self._partial_mark = 0
         self._partial_text = ""
+        # Longueur du tampon à la dernière trame PARLÉE : la couverture d'un
+        # partiel se juge contre la fin de la parole, pas celle du tampon,
+        # qui continue de grossir avec le silence.
+        self._speech_end_mark = 0
         # When, on OUR clock, the audio already shipped to the client will
         # finish playing. Synthesis outruns playback, so the respond task is
         # usually long done while the user is still hearing the answer — this
@@ -632,6 +697,33 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if excess > 0:
             del self._preroll[:excess]
 
+    async def _harvest_partial(self) -> None:
+        """Récolter une transcription partielle terminée, sans en lancer.
+
+        Appelée aussi pendant le SILENCE : un partiel lancé juste avant la
+        fin de la parole se termine après elle, et son texte sert alors de
+        verdict à la fin de tour sémantique — le jeter aurait coûté
+        précisément le cas le plus utile.
+        """
+        if self._partial is None or not self._partial.done():
+            return
+        tache, self._partial = self._partial, None
+        try:
+            texte = (tache.result() or "").strip()
+        except BaseException:  # noqa: BLE001 - annulation comprise
+            texte = ""
+        if texte and texte != self._partial_text:
+            self._partial_text = texte
+            await self._queue.put(
+                SessionEvent(
+                    kind="transcript",
+                    role="user",
+                    text=texte,
+                    final=False,
+                    replace=True,
+                )
+            )
+
     async def _pump_partial(self) -> None:
         """Faire suivre l'écran à la voix, pendant qu'elle parle.
 
@@ -653,26 +745,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if self._stt is None:
             return
 
-        # 1. Récolter celle qui vient de finir.
-        if self._partial is not None and self._partial.done():
-            tache, self._partial = self._partial, None
-            try:
-                texte = (tache.result() or "").strip()
-            except BaseException:  # noqa: BLE001 - annulation comprise
-                texte = ""
-            if texte and texte != self._partial_text:
-                self._partial_text = texte
-                await self._queue.put(
-                    SessionEvent(
-                        kind="transcript",
-                        role="user",
-                        text=texte,
-                        final=False,
-                        replace=True,
-                    )
-                )
+        await self._harvest_partial()
 
-        # 2. En relancer une si assez de parole neuve s'est accumulée.
+        # En relancer une si assez de parole neuve s'est accumulée.
         if self._partial is not None:
             return
         if self._speech_samples < int(MIN_SPEECH_S * INPUT_RATE):
@@ -699,6 +774,51 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._partial = None
         self._partial_mark = 0
         self._partial_text = ""
+        self._speech_end_mark = 0
+
+    def _endpoint_hint(self) -> tuple[Optional[str], bool]:
+        """Le meilleur texte disponible pour juger la fin de tour, et si sa
+        couverture de la parole est assez serrée pour un verdict « complet ».
+
+        La transcription spéculative couvre TOUT le tampon : autoritaire.
+        Le partiel, lui, peut être en retard d'un cycle — dire « Quelle
+        heure est-il », complet, quand la personne a ajouté « à » et
+        réfléchit. D'où la marge de couverture, exigée seulement pour
+        raccourcir.
+        """
+        spec = self._speculative
+        if spec is not None and spec[1].done():
+            try:
+                texte = (spec[1].result() or "").strip()
+            except BaseException:  # noqa: BLE001 - annulation comprise
+                texte = ""
+            if texte:
+                return texte, True
+        if self._partial_text:
+            marge = int(ENDPOINT_COVERAGE_S * INPUT_RATE) * 2
+            couvre = self._partial_mark >= self._speech_end_mark - marge
+            return self._partial_text, couvre
+        return None, False
+
+    def _end_of_turn_s(self) -> float:
+        """Le silence exigé pour clore CE tour-ci — sémantique quand on sait.
+
+        800 ms est le prix de l'ignorance : sans indice sur le contenu, il
+        faut ce délai pour ne pas couper une phrase en deux. Quand la
+        transcription en main finit par « ? », attendre encore 400 ms est du
+        silence pur — le premier poste de latence de la boucle, devant le
+        modèle. Et quand elle finit par « donc… », 800 ms ne suffisent PAS :
+        couper là, c'est répondre à une phrase encore en construction.
+        """
+        texte, couvre = self._endpoint_hint()
+        if not texte:
+            return END_OF_TURN_S
+        verdict = classify_endpoint(texte)
+        if verdict == "hesitation":
+            return HESITATION_END_S
+        if verdict == "complete" and couvre:
+            return SEMANTIC_END_S
+        return END_OF_TURN_S
 
     async def send_audio(self, pcm16: bytes) -> None:
         if self._closed or not pcm16:
@@ -748,6 +868,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._silence_samples = 0
             self._speech_samples += len(pcm16) // 2
             self._buffer.extend(pcm16)
+            self._speech_end_mark = len(self._buffer)
             await self._pump_partial()
             return
 
@@ -759,6 +880,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
         self._buffer.extend(pcm16)
         self._silence_samples += len(pcm16) // 2
+
+        # Un partiel encore en vol à la fin de la parole atterrit ici ; son
+        # verdict décide du seuil de fin de tour quelques trames plus bas.
+        await self._harvest_partial()
 
         long_enough = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
         if (
@@ -775,7 +900,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 ),
             )
 
-        if self._silence_samples >= int(END_OF_TURN_S * INPUT_RATE):
+        if self._silence_samples >= int(self._end_of_turn_s() * INPUT_RATE):
             utterance = bytes(self._buffer)
             had_speech = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
             # Hand over the speculative result only if it covers everything
