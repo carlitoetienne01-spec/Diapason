@@ -883,6 +883,48 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # qu'elle ne dorme pas sur un événement que plus personne ne met.
             spec.grew.set()
 
+    def _turn_messages(self, text: str) -> List[dict]:
+        """L'assemblage du tour — LE MÊME pour la spéculation et l'adoption.
+
+        Extrait pour qu'il soit impossible aux deux chemins de diverger : une
+        spéculation bâtie sur d'autres messages répondrait à un autre
+        contexte que celui que l'adoption croit servir.
+        """
+        hist = list(self._history)[-15:]
+        note = self._anti_loop_note(hist)
+        extra = [note] if note else []
+        return hist + extra + [{"role": "user", "content": text}]
+
+    @staticmethod
+    def _anti_loop_note(hist: List[dict]) -> Optional[dict]:
+        """Casse les boucles de répétition, structurellement.
+
+        Vécu en session réelle : coincé par une question méta qu'il ne
+        savait pas traiter, le modèle a répondu « Je t'écoute. » — une
+        béquille que le prompt lui suggérait alors — puis l'a REDIT à chaque
+        tour : sa propre répétition dans l'historique devenait le motif le
+        plus probable à continuer. Un prompt corrigé réduit le risque ; ce
+        garde le constate et le nomme, ce qui est plus fort qu'interdire.
+        """
+        replies = [
+            (m.get("content") or "").strip()
+            for m in hist
+            if m.get("role") == "assistant"
+        ]
+        if len(replies) < 2 or not replies[-1]:
+            return None
+        if replies[-1].casefold() != replies[-2].casefold():
+            return None
+        return {
+            "role": "system",
+            "content": (
+                "Tes deux dernières réponses sont identiques : "
+                f"« {replies[-1][:80]} ». "
+                "Ne redis pas cette phrase. Réponds au fond de la question ; "
+                "si tu ne sais pas, dis précisément ce qui te manque."
+            ),
+        }
+
     def _speculation_pointless(self, text: str) -> bool:
         """Les énoncés qui ne passeront jamais par le modèle.
 
@@ -1051,15 +1093,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
             except BaseException:  # noqa: BLE001 - annulation comprise
                 spec_text = ""
             if spec_text and not self._speculation_pointless(spec_text):
-                # Le MÊME assemblage que _respond_to_text fera : l'historique
-                # plafonné plus le tour en cours, sans muter l'historique —
-                # le tour n'est pas confirmé.
-                hist = list(self._history)[-15:] + [
-                    {"role": "user", "content": spec_text}
-                ]
                 spec = _SpecTurn(spec_text)
                 spec.drainer = asyncio.get_running_loop().create_task(
-                    self._drain_speculative(spec, self._llm(hist))
+                    self._drain_speculative(
+                        spec, self._llm(self._turn_messages(spec_text))
+                    )
                 )
                 self._spec_llm = spec
                 logger.info("local voice timing: stage=spec_llm outcome=started")
@@ -1250,16 +1288,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 await self._queue.put(
                     SessionEvent(kind="transcript", role="user", text=text, final=True)
                 )
-            self._history.append({"role": "user", "content": text})
-            # A cap on history keeps a long session from slowly pushing the
-            # first-token latency past conversational.
-            del self._history[:-16]
-
             # The per-turn transcript: history plus whatever tool exchanges
             # this turn produces. Tool messages stay HERE and never enter the
             # long-term history — a session that opened three apps would
             # otherwise drag those payloads through every later turn.
-            messages = list(self._history)
+            # Assemblé AVANT la mutation de l'historique, par le même chemin
+            # que la spéculation.
+            messages = self._turn_messages(text)
+            self._history.append({"role": "user", "content": text})
+            # A cap on history keeps a long session from slowly pushing the
+            # first-token latency past conversational.
+            del self._history[:-16]
             spoken: List[str] = []
             tool_notes: List[str] = []
             self._budget.reset()
