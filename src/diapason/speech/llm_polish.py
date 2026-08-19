@@ -40,6 +40,21 @@ def _strip_model_noise(text: str) -> str:
     return t.strip()
 
 
+def _unwrap_engine(resultat: Any) -> Any:
+    """Le moteur, qu'on ait reçu un couple ``(nom, moteur)`` ou le moteur nu.
+
+    ``get_engine`` rend un couple. Garder le tuple donnait un objet sans
+    ``engine_id`` ni ``is_cloud``, que le garde local-only classait
+    « distant » — sa règle « un moteur inconnu n'est pas local » est juste,
+    elle refusait donc TOUJOURS. Le polissage par modèle était mort par une
+    erreur de dépaquetage, et le refus parfaitement expliqué dans un journal
+    que personne ne lisait.
+    """
+    if isinstance(resultat, tuple):
+        return resultat[1] if len(resultat) > 1 else None
+    return resultat
+
+
 def llm_polish_text(
     text: str,
     *,
@@ -75,6 +90,13 @@ def llm_polish_text(
 
             key = (cfg.engine.default or "").strip() or None
             eng = get_engine(cfg, key)
+            # get_engine rend (nom, moteur). Prendre le tuple entier donnait
+            # un objet sans engine_id ni is_cloud, que le garde local-only
+            # classait « distant » — sa règle « un moteur inconnu n'est pas
+            # local » est juste, elle refusait donc TOUJOURS. Le polissage
+            # par modèle était ainsi mort par une erreur de dépaquetage, et
+            # le refus, lui, était parfaitement expliqué dans le journal.
+            eng = _unwrap_engine(eng)
         if eng is None:
             return None
 

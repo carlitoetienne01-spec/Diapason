@@ -32,6 +32,36 @@ def _quiet_library_noise() -> None:
     )
 
 
+_CORRECTION_MARGE_ABSOLUE = 12
+
+
+def _correction_fidele(brut: str, corrige: str, *, marge: float = 0.35) -> bool:
+    """Si la correction reste proche de ce qui a été dit.
+
+    Le garde-fou que le polissage par modèle exige. Le prompt lui interdit
+    d'inventer, mais un prompt est un vœu : sur une phrase mal transcrite, un
+    petit modèle résume, complète ou répond à la question au lieu de la
+    corriger. L'écart de longueur est le signal le plus simple et le plus
+    robuste — une correction d'orthographe ne change pas un texte d'un tiers.
+
+    Une dictée corrigée à tort est difficile à rattraper : on écarte au
+    moindre doute, quitte à laisser passer une faute.
+    """
+    b, c = (brut or "").strip(), (corrige or "").strip()
+    if not c:
+        return False
+    if not b:
+        return True
+    delta = abs(len(c) - len(b))
+    # Un plancher absolu à côté de la marge relative : sur une phrase courte,
+    # « ca va » → « Ça va ? » fait +40 % tout en étant exactement la
+    # correction demandée. Accents, ponctuation et majuscules ajoutent un
+    # nombre BORNÉ de caractères ; c'est la proportion qui trompe, pas eux.
+    if delta <= _CORRECTION_MARGE_ABSOLUE:
+        return True
+    return delta / max(len(b), 1) <= marge
+
+
 @click.command("dictate")
 @click.option(
     "--hotkey",
@@ -122,6 +152,12 @@ def dictate(
         sys.exit(1)
 
     use_dictionary = bool(getattr(config.dictation, "dictionary", True))
+    # Le polissage par modèle existait dans la configuration et dans le code,
+    # mais la dictée de bureau — celle qu'on utilise vraiment — ne l'appelait
+    # pas : elle collait la sortie brute de Whisper. Le prompt était écrit,
+    # testé, et jamais atteint.
+    polish_llm = bool(getattr(config.dictation, "llm_polish", False))
+    polish_timeout_ms = int(getattr(config.dictation, "llm_timeout_ms", 2000))
 
     def _correct(text: str) -> str:
         """Apply the personal dictionary to raw model output.
@@ -137,15 +173,29 @@ def dictate(
         so routing dictation through it would let a spoken sentence launch an
         application instead of being typed.
         """
-        if not use_dictionary or not text.strip():
+        if not text.strip():
             return text
         try:
-            from diapason.speech.dictation_dictionary import apply_dictionary
+            from diapason.speech.dictate_polish import polish_pipeline
 
-            return apply_dictionary(text)
+            corrige = polish_pipeline(
+                text,
+                use_dictionary=use_dictionary,
+                llm_polish=polish_llm,
+                llm_timeout_ms=polish_timeout_ms,
+            )
         except Exception:  # noqa: BLE001 - a correction must never lose the text
-            logger.debug("dictionary correction failed", exc_info=True)
+            logger.debug("dictation polish failed", exc_info=True)
             return text
+
+        # Une correction n'a pas le droit de RÉÉCRIRE la phrase. Le modèle
+        # doit réparer l'écriture — accents, ponctuation, majuscules — pas le
+        # propos. Un écart de longueur trop grand signale qu'il a résumé,
+        # complété ou inventé : on garde alors les mots dits.
+        if not _correction_fidele(text, corrige):
+            logger.info("correction écartée : trop éloignée du dicté")
+            return text
+        return corrige
 
     def _transcribe(wav_bytes: bytes) -> str:
         result = backend.transcribe(wav_bytes, format="wav")
