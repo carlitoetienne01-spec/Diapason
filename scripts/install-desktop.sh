@@ -21,9 +21,34 @@ BUNDLE="$RACINE/frontend/src-tauri/target/release/bundle/macos/Diapason.app"
 
 echo "→ compilation (Rust + Vite, quelques minutes)"
 cd "$RACINE/frontend"
-npm run tauri:build
+# `tauri build` sort en CODE 1 alors que les bundles sont bel et bien
+# produits : il signale ainsi l'absence de TAURI_SIGNING_PRIVATE_KEY, qui
+# ne concerne que le mécanisme de mise à jour automatique, pas
+# l'application. Avec `set -e`, ce code arrêtait tout — constaté au premier
+# usage réel : compilation réussie, aucune étape suivante exécutée.
+#
+# On ne juge donc pas la compilation sur son code de sortie mais sur SON
+# RÉSULTAT : le bundle existe-t-il, et vient-il d'être écrit ? C'est la
+# question qui compte, et la seule qui ne mente pas.
+avant=0
+[ -d "$BUNDLE" ] && avant=$(stat -f %m "$BUNDLE" 2>/dev/null || echo 0)
 
-[ -d "$BUNDLE" ] || { echo "✗ bundle absent : $BUNDLE" >&2; exit 1; }
+set +e
+npm run tauri:build
+code_build=$?
+set -e
+
+if [ ! -d "$BUNDLE" ]; then
+  echo "✗ compilation échouée : aucun bundle produit (code $code_build)" >&2
+  exit 1
+fi
+apres=$(stat -f %m "$BUNDLE" 2>/dev/null || echo 0)
+if [ "$apres" -le "$avant" ]; then
+  echo "✗ compilation échouée : le bundle n'a pas été réécrit (code $code_build)." >&2
+  echo "  Installer l'ancien serait pire que de s'arrêter ici." >&2
+  exit 1
+fi
+[ "$code_build" -ne 0 ] && echo "  (tauri a signalé le code $code_build — bundle produit, on continue)"
 
 echo "→ fermeture de l'application"
 osascript -e 'tell application "Diapason" to quit' 2>/dev/null || true
