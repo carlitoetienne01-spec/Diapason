@@ -219,9 +219,13 @@ class LightningActionService:
 
         runtime: dict[str, Any] = {"platform": sys.platform}
         if sys.platform == "darwin":
-            from diapason.desktop.accessibility import accessibility_trusted
+            # Le test RÉEL, pas le drapeau : AXIsProcessTrusted peut
+            # répondre True pendant que chaque appel rend -25204. Afficher
+            # « accordé » dans ce cas envoie chercher le défaut partout
+            # sauf là où il est.
+            from diapason.desktop.accessibility import accessibility_works
 
-            runtime["accessibility_granted"] = accessibility_trusted(prompt=False)
+            runtime["accessibility_granted"] = accessibility_works()
             runtime["clipboard_preserving_fallback"] = True
         return {
             "enabled": bool(self._get("enabled", True)),
