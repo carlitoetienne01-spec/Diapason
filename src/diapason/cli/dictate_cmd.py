@@ -263,6 +263,22 @@ def dictate(
         "release. Double-tap for hands-free. Ctrl-C to quit."
     )
 
+    # Dire au démarrage ce que ce service peut réellement faire, plutôt que
+    # de le découvrir au premier mot dicté. Le test est un APPEL, pas un
+    # drapeau : AXIsProcessTrusted répondait True pendant que chaque
+    # insertion rendait -25204, et la dictée retombait silencieusement sur
+    # le collage — plus lent, et incapable de dictée progressive.
+    from diapason.desktop.accessibility import (
+        accessibility_remediation,
+        accessibility_works,
+    )
+
+    if accessibility_works():
+        click.echo("  Accessibilité : accordée — écriture directe disponible.")
+    else:
+        click.echo("  Accessibilité : REFUSÉE — le collage prend le relais.")
+        click.echo(accessibility_remediation())
+
     # The overlay draws from the main thread's run loop, so it has to be built
     # before whichever loop below takes that thread over. If there is no
     # window server (ssh, CI) start() returns False and dictation carries on

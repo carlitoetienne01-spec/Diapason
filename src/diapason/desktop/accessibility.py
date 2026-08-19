@@ -181,20 +181,35 @@ def accessibility_remediation() -> str:
     """
     if accessibility_works():
         return ""
-    binaire = Path(sys.executable).resolve()
     lignes = [
-        "L'accessibilité est refusée : la dictée ne peut pas écrire dans "
-        "les applications.",
+        "L'accessibilité est refusée : la dictée ne peut pas écrire "
+        "directement dans les applications (le collage prend le relais).",
         "",
         "Réglages Système → Confidentialité et sécurité → Accessibilité → "
-        "« + », puis EXACTEMENT ce binaire :",
-        f"  {binaire}",
+        "« + », puis :",
     ]
-    if Path(sys.executable).resolve() != Path(sys.executable):
-        lignes.append(
-            f"  (et non {sys.executable} : c'est un lien symbolique, "
-            "macOS ne regarde que la cible)"
-        )
+
+    # L'enveloppe d'abord quand elle existe. macOS attribue l'autorisation au
+    # processus RESPONSABLE, et l'agent launchd lance cette application, pas
+    # l'interpréteur : autoriser python n'accorde alors rien, et rien ne le
+    # signale. C'est cette enveloppe qui existe pour porter la permission.
+    enveloppe = Path.home() / "Applications" / "Diapason Dictation.app"
+    if enveloppe.exists():
+        lignes += [
+            f"  {enveloppe}",
+            "",
+            "C'est l'application qui lance la dictée : c'est elle que macOS "
+            "regarde, pas l'interpréteur qu'elle démarre.",
+        ]
+    else:
+        binaire = Path(sys.executable).resolve()
+        lignes.append(f"  {binaire}")
+        if binaire != Path(sys.executable):
+            lignes.append(
+                f"  (et non {sys.executable} : c'est un lien symbolique, "
+                "macOS ne regarde que la cible)"
+            )
+
     lignes += ["", "Puis : diapason dictate-service restart"]
     return "\n".join(lignes)
 
