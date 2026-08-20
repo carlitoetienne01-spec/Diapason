@@ -12,10 +12,13 @@ logger = logging.getLogger(__name__)
 
 _DICTATION_SYSTEM = """\
 You clean speech-to-text. Output ONLY the cleaned text.
+Always write in the SAME language as the input. Never translate: a
+translation is not a correction, even when it preserves the meaning.
 Preserve meaning and the user's words. Do not add facts, names, or signatures.
 Allowed: remove fillers; fix obvious STT/grammar/punctuation/capitalization;
 apply self-corrections ("4pm sorry 5pm" → "5pm");
-"readme dot md" → "readme.md"; spoken emoji phrases → emoji.
+"readme dot md" → "readme.md" ("readme point md" → "readme.md");
+spoken emoji phrases → emoji.
 Never invent closings. Never explain."""
 
 _EMAIL_EXTRA = """\
@@ -53,6 +56,91 @@ def _unwrap_engine(resultat: Any) -> Any:
     if isinstance(resultat, tuple):
         return resultat[1] if len(resultat) > 1 else None
     return resultat
+
+
+# Deux jeux de marqueurs. On ne cherche pas à nommer une langue dans l'absolu
+# — seulement à voir si la correction a CHANGÉ de langue. Les mots communs aux
+# deux langues (« note », « message », « important », « double », « page »)
+# sont volontairement absents : ils n'arbitrent rien. L'intersection est
+# retirée par construction plus bas, pour qu'aucun mot ne plaide des deux côtés.
+_MARQUEURS_FR = frozenset(
+    """
+je tu il elle nous vous ils elles te se lui leur y en
+le la les un une des du au aux ce cet cette ces
+et est sont etait etaient etre suis es sommes etes
+ai avons avez ont avait avaient
+ca cela ceci celui celle
+mon ma mes ton ta tes sa ses notre votre leurs
+qui que quoi dont ou quand comment pourquoi
+pour avec dans sur sous sans mais donc car ni
+plus moins tres bien tout tous toute toutes rien
+fais fait faire dis dit dire vais va aller
+ouvre ouvrir ferme fermer envoie envoyer envoyez
+demain hier aujourd hui matin soir
+merci bonjour salut oui non peux peut veux veut
+dois doit faut attends attendre regarde regarder
+""".split()
+)
+
+_MARQUEURS_EN = frozenset(
+    """
+the of and to is are was were be been being am
+this that these those there here
+with for from into onto about
+you your yours my mine it its they them their our ours
+he she his her we us
+will would can could should must shall may might
+have has had do does did doesn didn won isn aren
+open close send sent write wrote read tell told ask asked
+tomorrow yesterday today morning evening night
+please thanks thank sorry hello yes no not
+wait waiting stop start make made take took give gave
+what when where which who why how
+""".split()
+)
+
+# Un mot qui appartient aux deux ne départage rien : on le retire des deux.
+_AMBIGUS = _MARQUEURS_FR & _MARQUEURS_EN
+_MARQUEURS_FR = _MARQUEURS_FR - _AMBIGUS
+_MARQUEURS_EN = _MARQUEURS_EN - _AMBIGUS
+
+_ELISION = re.compile(r"\b(?:[cdjlmnst]|qu)'", re.I)
+_ACCENTS = re.compile(r"[\u00e0-\u00ff\u0153\u00e6]", re.I)
+_MOTS = re.compile(r"[a-z\u00e0-\u00ff\u0153\u00e6']+", re.I)
+
+
+def _profil_langue(texte: str) -> tuple[int, int]:
+    """Poids d'indices francais et anglais dans un texte. Jamais une certitude."""
+    plats: list[str] = []
+    for mot in _MOTS.findall(texte or ""):
+        plats.extend(p for p in mot.lower().split("'") if p)
+    fr = sum(1 for p in plats if p in _MARQUEURS_FR)
+    en = sum(1 for p in plats if p in _MARQUEURS_EN)
+    # Elision et accents ne se rencontrent pas en anglais : ce sont des indices
+    # francais que les listes de mots ne captent pas sur un texte tres court.
+    fr += len(_ELISION.findall(texte or ""))
+    if _ACCENTS.search(texte or ""):
+        fr += 1
+    return fr, en
+
+
+def _langue_conservee(brut: str, corrige: str) -> bool:
+    """La correction reste-t-elle dans la langue dictee ?
+
+    Une traduction a la meme longueur que l'original : le garde de fidelite,
+    qui compte des caracteres, ne peut pas la voir passer. Celui-ci refuse le
+    BASCULEMENT, pas une langue en particulier — dicter en anglais reste permis.
+
+    En cas de doute on accepte : refuser a tort ne coute qu'un texte non poli,
+    alors que laisser passer une traduction coute la phrase de l'utilisateur.
+    """
+    fb, eb = _profil_langue(brut)
+    fc, ec = _profil_langue(corrige)
+    if fb > eb and ec > fc:
+        return False
+    if eb > fb and fc > ec:
+        return False
+    return True
 
 
 def llm_polish_text(
@@ -150,6 +238,9 @@ def llm_polish_text(
                 return None
 
         if not out or len(out) > max(40, len(raw) * 3):
+            return None
+        if not _langue_conservee(raw, out):
+            logger.info("llm polish switched language, raw text kept")
             return None
         return out
     except Exception:
