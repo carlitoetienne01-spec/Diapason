@@ -73,7 +73,7 @@ up if missed).
 
 By default the scheduled task binds `127.0.0.1` — reachable only from
 this machine, no API key required. This matches launchd parity (see
-`deploy/launchd/com.diapason.plist`).
+`deploy/launchd/com.diapason.serve.plist`).
 
 To expose on your LAN:
 
@@ -93,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File $srv install -ListenHost 0.0.0.0
 
 | Concern | systemd | launchd | Windows |
 |---------|---------|---------|---------|
-| Service definition | `deploy/systemd/diapason.service` | `deploy/launchd/com.diapason.plist` | `deploy/windows/diapason-service.ps1` (cmdlet-driven) |
+| Service definition | `deploy/systemd/diapason.service` | `deploy/launchd/com.diapason.serve.plist` | `deploy/windows/diapason-service.ps1` (cmdlet-driven) |
 | Default bind | `0.0.0.0` (with API key) | `127.0.0.1` (no API key) | `127.0.0.1` (no API key) |
 | Restart on failure | `Restart=on-failure RestartSec=5` | `KeepAlive=true` | `RestartCount=3 RestartInterval=PT1M` |
 | Auto-start | `multi-user.target` | `RunAtLoad=true` | `AtLogOn` trigger |

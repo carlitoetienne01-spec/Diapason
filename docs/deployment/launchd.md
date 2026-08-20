@@ -15,12 +15,29 @@ Also ensure that an inference engine (such as Ollama) is running and accessible 
 
 ## Installing the Service
 
-Copy the plist file to `~/Library/LaunchAgents` and load it:
+The supported way is the CLI, which writes the plist for you against the
+interpreter you are actually running:
 
 ```bash
-cp deploy/launchd/com.diapason.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.diapason.plist
+diapason serve-service install
 ```
+
+Add `--allow-network` only if another device must reach this Mac — a paired
+phone cannot connect to `127.0.0.1`.
+
+If you would rather install by hand, copy the shipped plist and load it:
+
+```bash
+cp deploy/launchd/com.diapason.serve.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.diapason.serve.plist
+```
+
+!!! warning "One label, one server"
+    Both paths use the same label, `com.diapason.serve`, and that is what keeps
+    them from stacking: launchd replaces a job when you bootstrap a label it
+    already holds. A plist carrying any other label would run a *second* server
+    alongside the first, silently — the CLI would never see it, and the two
+    would fight over port 8000 without either reporting an error.
 
 The service starts immediately (due to `RunAtLoad`) and will automatically restart at each login.
 
@@ -38,7 +55,7 @@ Verify it is running:
 launchctl list | grep diapason
 ```
 
-You should see a line with the PID and the label `com.diapason`. A `0` in the status column indicates the service is running normally.
+You should see a line with the PID and the label `com.diapason.serve`. A `0` in the status column indicates the service is running normally.
 
 Confirm the server is responding:
 
@@ -48,7 +65,7 @@ curl http://localhost:8000/health
 
 ## Plist Reference
 
-The provided plist file at `deploy/launchd/com.diapason.plist`:
+The provided plist file at `deploy/launchd/com.diapason.serve.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -57,7 +74,7 @@ The provided plist file at `deploy/launchd/com.diapason.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.diapason</string>
+    <string>com.diapason.serve</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/diapason</string>
@@ -90,7 +107,7 @@ The provided plist file at `deploy/launchd/com.diapason.plist`:
 
 | Key                  | Value                          | Description                                                                                          |
 |----------------------|--------------------------------|------------------------------------------------------------------------------------------------------|
-| `Label`              | `com.diapason`               | Unique identifier for the service. Used with `launchctl` commands to manage the service.             |
+| `Label`              | `com.diapason.serve`               | Unique identifier for the service. Used with `launchctl` commands to manage the service.             |
 | `ProgramArguments`   | `["/usr/local/bin/diapason", "serve", "--host", "127.0.0.1", "--port", "8000"]` | The command and arguments to execute. Binds loopback by default; see the note above to expose on the LAN with an API key. |
 | `RunAtLoad`          | `true`                         | Start the service immediately when the plist is loaded (and on each login).                          |
 | `KeepAlive`          | `true`                         | Automatically restart the service if it exits for any reason. launchd monitors the process and relaunches it. |
@@ -130,10 +147,10 @@ tail -f /tmp/diapason.stdout.log /tmp/diapason.stderr.log
 
 ```bash
 # Load the service (starts it due to RunAtLoad)
-launchctl load ~/Library/LaunchAgents/com.diapason.plist
+launchctl load ~/Library/LaunchAgents/com.diapason.serve.plist
 
 # Unload the service (stops it and prevents it from starting at login)
-launchctl unload ~/Library/LaunchAgents/com.diapason.plist
+launchctl unload ~/Library/LaunchAgents/com.diapason.serve.plist
 ```
 
 ### Starting and Stopping
@@ -142,10 +159,10 @@ If the service is loaded but you want to manually stop or start it without unloa
 
 ```bash
 # Stop the service
-launchctl stop com.diapason
+launchctl stop com.diapason.serve
 
 # Start the service
-launchctl start com.diapason
+launchctl start com.diapason.serve
 ```
 
 !!! warning
@@ -164,7 +181,7 @@ The output columns are:
 |--------|----------------------------------------------------------------|
 | PID    | Process ID (or `-` if not running)                             |
 | Status | Last exit status (`0` = normal)                                |
-| Label  | The service label (`com.diapason`)                           |
+| Label  | The service label (`com.diapason.serve`)                           |
 
 ## Configuration Changes
 
@@ -239,8 +256,8 @@ If `diapason` is installed in a virtual environment or a non-standard location, 
 After editing the plist file, unload and reload the service:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.diapason.plist
-launchctl load ~/Library/LaunchAgents/com.diapason.plist
+launchctl unload ~/Library/LaunchAgents/com.diapason.serve.plist
+launchctl load ~/Library/LaunchAgents/com.diapason.serve.plist
 ```
 
 ## System-Wide Installation
@@ -252,9 +269,9 @@ The instructions above install the service as a **user agent** (runs only when y
 3. Optionally add a `UserName` key to run as a specific user.
 
 ```bash
-sudo cp deploy/launchd/com.diapason.plist /Library/LaunchDaemons/
-sudo chown root:wheel /Library/LaunchDaemons/com.diapason.plist
-sudo launchctl load /Library/LaunchDaemons/com.diapason.plist
+sudo cp deploy/launchd/com.diapason.serve.plist /Library/LaunchDaemons/
+sudo chown root:wheel /Library/LaunchDaemons/com.diapason.serve.plist
+sudo launchctl load /Library/LaunchDaemons/com.diapason.serve.plist
 ```
 
 !!! note

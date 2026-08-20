@@ -116,7 +116,7 @@ inherit it:
 |------------------------|-----------------|
 | CLI (`diapason ask`, `diapason chat`) | Your terminal (Terminal, iTerm, Warp) |
 | Desktop app | `Diapason.app`, which spawns `diapason serve` beneath it |
-| launchd (`deploy/launchd/com.diapason.plist`) | The `diapason` binary, as its own entry |
+| launchd (`deploy/launchd/com.diapason.serve.plist`) | The `diapason` binary, as its own entry |
 
 System Settings, then Privacy & Security, then Full Disk Access, then **+**.
 

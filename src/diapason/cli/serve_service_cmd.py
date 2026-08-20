@@ -39,21 +39,41 @@ def _label():
 @serve_service.command("install")
 @click.option("--host", default=DEFAULT_HOST, show_default=True)
 @click.option("--port", default=DEFAULT_PORT, show_default=True, type=int)
-def install(host: str, port: int) -> None:
+@click.option(
+    "--allow-network",
+    is_flag=True,
+    help="Autoriser une écoute au-delà du loopback (nécessaire au mesh : "
+    "un téléphone ne peut pas joindre 127.0.0.1).",
+)
+def install(host: str, port: int, allow_network: bool) -> None:
     """Run the API server at login, in the background."""
     _require_macos()
     from diapason.desktop import launch_agent
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        # Binding beyond loopback exposes the API to the network. That is a
-        # deliberate choice with security consequences, not a default.
+    if host not in ("127.0.0.1", "localhost", "::1") and not allow_network:
+        # Écouter au-delà du loopback expose l'API au réseau : c'est un choix
+        # délibéré, jamais un défaut. Mais le refus seul poussait à contourner
+        # — le plist installé sur cette machine portait « --host 0.0.0.0 »,
+        # écrit à la main, parce que le téléphone du mesh ne peut pas joindre
+        # 127.0.0.1. Un garde qu'on contourne ne garde rien : il vaut mieux
+        # nommer le cas légitime et le rendre explicite dans la commande.
         click.echo(
             f"Refusing to bind {host!r} from a background service: it would "
-            "expose the API beyond this machine. Use 127.0.0.1, or run "
-            "`diapason serve` manually if you really mean to.",
+            "expose the API beyond this machine.\n"
+            "  • Pour un usage local : gardez 127.0.0.1.\n"
+            "  • Pour que votre téléphone (mesh) atteigne ce Mac : ajoutez "
+            "--allow-network, en connaissance de cause.",
             err=True,
         )
         sys.exit(1)
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        click.echo(
+            f"⚠ L'API écoutera sur {host!r} : toute machine de votre réseau "
+            "local pourra l'atteindre. Assurez-vous qu'une clé d'API est "
+            "exigée (voir `diapason config`).",
+            err=True,
+        )
 
     path = launch_agent.install(
         label=launch_agent.SERVE_LABEL,

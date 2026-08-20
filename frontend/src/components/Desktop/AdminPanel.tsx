@@ -274,10 +274,14 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
     setCommandRunning(true);
     setCommandOutput(null);
     try {
-      const output = await invoke<string>('run_jarvis_command', {
-        args: ['serve', '--port', '8000'],
-      });
-      setCommandOutput(output);
+      // `run_jarvis_command` n'existe pas : le handler s'appelle
+      // `run_diapason_command`, et l'appel échouait donc silencieusement dans
+      // le catch. Le corriger tel quel aurait fabriqué un lanceur SANS garde
+      // en un clic — `run_diapason_command('serve')` fait un spawn direct,
+      // sans sonde ni verrou. On passe par `start_backend`, qui sonde /health
+      // et refuse un second démarrage déjà en vol.
+      await invoke('start_backend');
+      setCommandOutput('Démarrage du serveur demandé.');
       // Wait a moment then refresh health
       setTimeout(refresh, 2000);
     } catch (err) {
@@ -291,10 +295,8 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
     setCommandRunning(true);
     setCommandOutput(null);
     try {
-      const output = await invoke<string>('run_jarvis_command', {
-        args: ['stop'],
-      });
-      setCommandOutput(output);
+      await invoke('stop_backend');
+      setCommandOutput('Arrêt du serveur demandé.');
       setTimeout(refresh, 2000);
     } catch (err) {
       setCommandOutput(err instanceof Error ? err.message : String(err));

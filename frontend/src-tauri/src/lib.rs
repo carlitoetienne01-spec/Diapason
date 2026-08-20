@@ -1688,6 +1688,31 @@ fn get_local_api_key() -> String {
     key
 }
 
+/// Un seul démarrage de serveur à la fois.
+///
+/// Deux `boot_backend` concurrents passent tous deux la sonde /health — rien
+/// n'écoute encore — puis lancent chacun leur serveur. Il suffisait d'ouvrir
+/// l'application pendant qu'un démarrage manuel était en vol, ou de cliquer
+/// deux fois sur Start. Le drapeau retombe à la fin du démarrage, quel qu'en
+/// soit le résultat, pour qu'un échec ne condamne pas les tentatives suivantes.
+static BOOT_IN_FLIGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn spawn_boot_backend(backend: SharedBackend, status: SharedStatus) -> bool {
+    use std::sync::atomic::Ordering;
+    if BOOT_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return false;
+    }
+    tauri::async_runtime::spawn(async move {
+        boot_backend(backend, status).await;
+        BOOT_IN_FLIGHT.store(false, Ordering::SeqCst);
+    });
+    true
+}
+
 #[tauri::command]
 async fn start_backend(
     backend: tauri::State<'_, SharedBackend>,
@@ -1695,7 +1720,9 @@ async fn start_backend(
 ) -> Result<(), String> {
     let b = backend.inner().clone();
     let s = status.inner().clone();
-    tauri::async_runtime::spawn(boot_backend(b, s));
+    if !spawn_boot_backend(b, s) {
+        return Err("Un démarrage du serveur est déjà en cours.".into());
+    }
     Ok(())
 }
 
@@ -3123,7 +3150,7 @@ pub fn run() {
             }
 
             // Auto-start backend services on launch
-            tauri::async_runtime::spawn(boot_backend(boot_backend_ref, boot_status_ref));
+            spawn_boot_backend(boot_backend_ref, boot_status_ref);
 
             Ok(())
         })

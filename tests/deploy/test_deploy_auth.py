@@ -43,7 +43,7 @@ def test_systemd_unit_binds_public_and_requires_env_file():
 
 
 def test_launchd_plist_binds_loopback():
-    text = _read("launchd/com.diapason.plist")
+    text = _read("launchd/com.diapason.serve.plist")
     # Personal-device default: loopback, not the network.
     assert "<string>127.0.0.1</string>" in text
     assert "<string>0.0.0.0</string>" not in text
@@ -67,3 +67,33 @@ def test_check_bind_safety(host, api_key, should_exit):
             check_bind_safety(host, api_key=api_key)
     else:
         check_bind_safety(host, api_key=api_key)  # must not raise
+
+
+def test_le_plist_livre_porte_l_etiquette_que_le_code_gere():
+    """Une seconde étiquette ferait tourner DEUX serveurs, sans un mot.
+
+    Le dépôt livrait `com.diapason.plist` étiqueté « com.diapason », tandis que
+    `serve-service install` installe « com.diapason.serve ». Étiquettes
+    différentes : launchd fait tourner les deux jobs simultanément, et le code
+    n'inspecte jamais la première. La documentation disait de copier ce plist
+    dans ~/Library/LaunchAgents — c'était donc un doublon documenté.
+
+    Une seule étiquette, c'est launchd lui-même qui devient le verrou : un
+    bootstrap sur une étiquette déjà chargée remplace, il ne duplique pas.
+    """
+    import plistlib
+
+    from diapason.desktop.launch_agent import SERVE_LABEL
+
+    chemin = DEPLOY / "launchd" / "com.diapason.serve.plist"
+    donnees = plistlib.loads(chemin.read_bytes())
+    assert donnees["Label"] == SERVE_LABEL
+
+
+def test_le_nom_du_plist_livre_suit_son_etiquette():
+    """Un fichier nommé autrement que son étiquette est un piège en soi."""
+    import plistlib
+
+    chemin = DEPLOY / "launchd" / "com.diapason.serve.plist"
+    donnees = plistlib.loads(chemin.read_bytes())
+    assert chemin.name == f"{donnees['Label']}.plist"

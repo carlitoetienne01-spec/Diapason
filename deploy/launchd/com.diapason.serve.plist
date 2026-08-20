@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.diapason</string>
+    <string>com.diapason.serve</string>
     <!-- Binds loopback only: the personal-device default, reachable from this
          Mac but not the network, so no API key is required. To expose it on
          your LAN, change the host below to 0.0.0.0 AND uncomment the
