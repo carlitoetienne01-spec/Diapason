@@ -271,7 +271,45 @@ fn resolve_bin(name: &str) -> String {
 /// Find the Diapason project root (contains pyproject.toml).
 /// Checks OPENJARVIS_ROOT env var, walks up from the executable, then
 /// probes common clone locations.
+/// Où le projet a été trouvé la dernière fois.
+///
+/// La liste de chemins connus de `locate_project_root` est une DEVINETTE. Elle
+/// ne contenait pas « Projets » (l'orthographe française), et déplacer le dépôt
+/// a suffi à faire croire à l'application qu'il fallait le retélécharger depuis
+/// GitHub — jusqu'à afficher « Repository not found » à l'utilisateur. Se
+/// souvenir d'un emplacement prouvé vaut mieux que deviner une liste.
+/// Le dépôt d'où l'application se télécharge, quand elle le peut.
+const REPO_URL: &str = "https://github.com/open-diapason/Diapason.git";
+
+fn remembered_root_file() -> std::path::PathBuf {
+    std::path::PathBuf::from(home_dir())
+        .join(".diapason")
+        .join("project_root")
+}
+
+fn remember_project_root(path: &std::path::Path) {
+    let file = remembered_root_file();
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // N'écrire que si l'emplacement a changé : ce fichier est lu à chaque
+    // démarrage, une réécriture systématique ne servirait à rien.
+    let actuel = std::fs::read_to_string(&file).unwrap_or_default();
+    let voulu = path.to_string_lossy();
+    if actuel.trim() != voulu {
+        let _ = std::fs::write(&file, voulu.as_bytes());
+    }
+}
+
 fn find_project_root() -> Option<std::path::PathBuf> {
+    let trouve = locate_project_root();
+    if let Some(ref chemin) = trouve {
+        remember_project_root(chemin);
+    }
+    trouve
+}
+
+fn locate_project_root() -> Option<std::path::PathBuf> {
     // 1. Explicit env var override. DIAPASON_ROOT is the current name;
     //    OPENJARVIS_ROOT still works so an existing shell profile does not
     //    break silently — the same contract as the Python side.
@@ -281,6 +319,17 @@ fn find_project_root() -> Option<std::path::PathBuf> {
             if path.join("pyproject.toml").exists() {
                 return Some(path);
             }
+        }
+    }
+
+    // 1b. L'emplacement où le projet a RÉELLEMENT été trouvé la dernière fois.
+    //     Passe avant la remontée depuis l'exécutable et avant la liste de
+    //     chemins : une application installée dans /Applications ne peut pas
+    //     remonter jusqu'au dépôt, et la liste ne devine que des noms anglais.
+    if let Ok(texte) = std::fs::read_to_string(remembered_root_file()) {
+        let chemin = std::path::PathBuf::from(texte.trim());
+        if chemin.join("pyproject.toml").exists() {
+            return Some(chemin);
         }
     }
 
@@ -307,6 +356,11 @@ fn find_project_root() -> Option<std::path::PathBuf> {
         format!("{home}/Downloads/Diapason"),
         format!("{home}/projects/hazy/Diapason"),
         format!("{home}/projects/Diapason"),
+        // « Projets » : l'utilisateur de cette machine range son code là, et
+        // son absence de cette liste a déclenché un retéléchargement.
+        format!("{home}/Projets/Diapason"),
+        format!("{home}/projets/Diapason"),
+        format!("{home}/Documents/Projets/Diapason"),
         format!("{home}/src/Diapason"),
         format!("{home}/Documents/Diapason"),
         format!("{home}/Desktop/Diapason"),
@@ -1159,6 +1213,33 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         // Auto-clone on first launch
         let git_bin = resolve_bin("git");
 
+        // Ne promettre un téléchargement qu'après avoir VÉRIFIÉ qu'il est
+        // possible. Le dépôt visé peut être privé, renommé ou supprimé : le
+        // clone échouait alors sur « Repository not found », message qui laisse
+        // croire à une installation cassée alors que le projet est simplement
+        // ailleurs sur le disque. On teste l'accès avant d'annoncer quoi que
+        // ce soit, et à défaut on dit la seule chose utile : où pointer.
+        let joignable = tokio::process::Command::new(&git_bin)
+            .args(["ls-remote", "--exit-code", REPO_URL, "HEAD"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|st| st.success())
+            .unwrap_or(false);
+
+        if !joignable {
+            let mut s = status.lock().await;
+            s.error = Some(format!(
+                "Diapason project not found on this Mac, and {REPO_URL} is not \
+                 reachable — so it cannot be downloaded either.\n\n\
+                 If you already have the project, point the app at it:\n\
+                 echo '/path/to/Diapason' > ~/.diapason/project_root\n\n\
+                 then relaunch. (The DIAPASON_ROOT environment variable works too.)"
+            ));
+            return;
+        }
+
         // Check that git is installed
         if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
             let mut s = status.lock().await;
@@ -1194,7 +1275,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 "clone",
                 "--depth",
                 "1",
-                "https://github.com/open-diapason/Diapason.git",
+                REPO_URL,
                 &clone_target,
             ])
             .stdout(std::process::Stdio::null())
@@ -1211,7 +1292,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
+                         Clone manually: git clone {REPO_URL} {}",
                         stderr.trim(),
                         clone_target,
                     ));
@@ -1221,7 +1302,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
                         "Failed to download Diapason: {}. \
-                         Clone manually: git clone https://github.com/open-diapason/Diapason.git {}",
+                         Clone manually: git clone {REPO_URL} {}",
                         e, clone_target,
                     ));
                     return;
