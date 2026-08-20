@@ -15,6 +15,7 @@ import signal
 import sqlite3
 import subprocess
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -168,9 +169,11 @@ def run_daemon(
 def _get_max_rowid(db_path: str) -> int:
     """Get the current max ROWID from chat.db."""
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        row = conn.execute("SELECT MAX(ROWID) FROM message").fetchone()
-        conn.close()
+        # closing() plutôt qu'un close() en ligne droite : si la requête lève,
+        # l'ancien code sortait par l'except sans jamais fermer, et le démon
+        # sondant chat.db en boucle épuisait ses descripteurs.
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+            row = conn.execute("SELECT MAX(ROWID) FROM message").fetchone()
         return row[0] or 0
     except sqlite3.OperationalError:
         return 0

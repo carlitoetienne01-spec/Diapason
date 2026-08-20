@@ -177,11 +177,13 @@ class SuccesStore:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA busy_timeout = 5000")
+        # La configuration entre dans le try : un PRAGMA qui lève avant lui
+        # laisserait la connexion orpheline, sans personne pour la fermer.
         try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA busy_timeout = 5000")
             yield conn
         finally:
             conn.close()
@@ -659,9 +661,7 @@ class SuccesStore:
                 old = str(row["scheduled_date"] or "")
                 if not old:
                     continue
-                new_date = (
-                    date.fromisoformat(old) + timedelta(days=delta)
-                ).isoformat()
+                new_date = (date.fromisoformat(old) + timedelta(days=delta)).isoformat()
                 if delta != 0:
                     conn.execute(
                         "UPDATE succes_tasks SET scheduled_date=?, updated_at_ms=? "

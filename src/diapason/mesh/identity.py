@@ -25,6 +25,7 @@ import os
 import platform
 import socket
 import stat
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -221,7 +222,11 @@ def _legacy_succes_device_id() -> str | None:
     try:
         import sqlite3
 
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+        # `closing` parce que le gestionnaire de contexte d'une Connection ne
+        # gère QUE la transaction : sans lui, chaque appel fuit un descripteur
+        # de fichier, définitivement. Pas de `, conn` ici : l'URI est en
+        # mode=ro, il n'y a aucune écriture à committer.
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
             row = conn.execute(
                 "SELECT value FROM succes_meta WHERE key='device_id'"
             ).fetchone()

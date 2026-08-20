@@ -23,6 +23,7 @@ import json
 import secrets
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -108,7 +109,7 @@ class DeviceRegistry:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path or (get_data_dir() / "mesh.db"))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.executescript(_SCHEMA)
             self._ensure_columns(conn)
             conn.commit()
@@ -131,11 +132,33 @@ class DeviceRegistry:
             )
 
     def _connect(self) -> sqlite3.Connection:
+        """Ouvre une connexion NEUVE, que l'appelant doit fermer lui-même.
+
+        Toujours via ``with closing(self._connect()) as conn, conn:`` — car le
+        gestionnaire de contexte d'une connexion sqlite3 ne gère QUE la
+        transaction (commit en sortie, rollback sur exception) et ne ferme
+        jamais rien. Un simple ``with self._connect()`` fuit donc un
+        descripteur à chaque appel, jusqu'à « Too many open files » : le
+        serveur reste vivant et lié à son port mais n'accepte plus aucune
+        connexion, panne parfaitement silencieuse.
+
+        L'ordre des deux gestionnaires est vital : dans ``with A, B:`` c'est B
+        qui est quitté en premier, donc la transaction (``conn``) commit AVANT
+        que ``closing`` ne ferme. L'inverse perdrait les écritures.
+        """
         conn = sqlite3.connect(self.db_path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA foreign_keys=ON")
+        # Entre l'ouverture et le retour, la connexion n'appartient à personne :
+        # si un PRAGMA lève (base corrompue, disque plein, verrou exclusif), elle
+        # n'atteint jamais le closing() de l'appelant et fuit exactement comme
+        # avant le correctif. On la referme donc soi-même avant de relancer.
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     # ── pairing ──────────────────────────────────────────────────────────
@@ -146,7 +169,7 @@ class DeviceRegistry:
         token = f"diapason_mesh_{secrets.token_urlsafe(32)}"
         created = now_ms()
         expires = created + PAIRING_TTL_MS
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             # Expired and spent invitations are swept on each new one: an
             # unbounded table of dead secrets is a liability, not a record.
             conn.execute(
@@ -196,7 +219,7 @@ class DeviceRegistry:
         key = self._validate_public_key(public_key_b64)
 
         stamp = now_ms()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             # Claim the invitation FIRST, and let the UPDATE be the test.
             #
             # Reading `redeemed_at_ms` and then writing it is two steps with a
@@ -296,7 +319,7 @@ class DeviceRegistry:
     # ── reading ──────────────────────────────────────────────────────────
 
     def get(self, device_id: str) -> dict[str, Any]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT * FROM mesh_devices WHERE device_id=?", (device_id,)
             ).fetchone()
@@ -315,7 +338,7 @@ class DeviceRegistry:
         if not include_revoked:
             query += f" WHERE trust_level != '{TRUST_REVOKED}'"
         query += " ORDER BY created_at_ms"
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(query).fetchall()
         return [self._serialize(row) for row in rows]
 
@@ -325,7 +348,7 @@ class DeviceRegistry:
         Returns None for unknown OR revoked devices, so a caller cannot
         accidentally verify a signature from a device that was cut off.
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT public_key, trust_level FROM mesh_devices WHERE device_id=?",
                 (device_id,),
@@ -354,7 +377,7 @@ class DeviceRegistry:
         # pairing: a laptop changes network, and a stale address is worse
         # than none — it sends commands into the void.
         clean_address = str(address or "").strip()[:200]
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET last_seen_at_ms=?, app_state=?, "
                 "transport=?, address=COALESCE(NULLIF(?,''), address) "
@@ -391,7 +414,7 @@ class DeviceRegistry:
         cannot both see the old watermark, so only one can win.
         """
         clean_address = str(address or "").strip()[:200]
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET last_seen_at_ms=?, last_beacon_at_ms=?, "
                 "app_state=?, transport=?, "
@@ -417,7 +440,7 @@ class DeviceRegistry:
         return self.get(device_id)
 
     def touch(self, device_id: str) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 "UPDATE mesh_devices SET last_seen_at_ms=? WHERE device_id=?",
                 (now_ms(), device_id),
@@ -426,7 +449,7 @@ class DeviceRegistry:
 
     def rename(self, device_id: str, name: str) -> dict[str, Any]:
         clean = _clean(name, field="Le nom de l'appareil", maximum=80)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET name=? WHERE device_id=?", (clean, device_id)
             )
@@ -442,7 +465,7 @@ class DeviceRegistry:
         payload = json.dumps(
             sorted({str(c).strip() for c in capabilities if str(c).strip()})
         )
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET declared_capabilities=?, last_seen_at_ms=? "
                 "WHERE device_id=? AND trust_level=?",
@@ -455,7 +478,7 @@ class DeviceRegistry:
 
     def revoke(self, device_id: str) -> dict[str, Any]:
         """Cut a device off. Terminal until the user deletes it outright."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 "UPDATE mesh_devices SET trust_level=?, revoked_at_ms=? "
                 "WHERE device_id=?",
@@ -468,7 +491,7 @@ class DeviceRegistry:
 
     def forget(self, device_id: str) -> None:
         """Delete a device outright — the only way back from revocation."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute("DELETE FROM mesh_devices WHERE device_id=?", (device_id,))
             conn.commit()
 

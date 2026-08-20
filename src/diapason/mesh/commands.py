@@ -24,6 +24,7 @@ import secrets
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -224,7 +225,12 @@ class NonceStore:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path or (get_data_dir() / "mesh.db"))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
+        # `closing` ferme le descripteur, ce que le gestionnaire de contexte de
+        # sqlite3 ne fait PAS : seul, il ne gère que la transaction, et chaque
+        # appel fuyait donc un fichier ouvert jusqu'à « Too many open files ».
+        # L'ordre est celui-ci et pas l'inverse : dans « with A, B », B est
+        # quitté en premier, donc `conn` commit AVANT que `closing` ne ferme.
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS mesh_nonces (
                        nonce TEXT PRIMARY KEY,
@@ -236,9 +242,17 @@ class NonceStore:
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        # Entre l'ouverture et le retour, la connexion n'appartient à personne :
+        # si un PRAGMA lève (base corrompue, disque plein, verrou exclusif), elle
+        # n'atteint jamais le closing() de l'appelant et fuit exactement comme
+        # avant le correctif. On la referme donc soi-même avant de relancer.
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     def spend(
@@ -251,7 +265,10 @@ class NonceStore:
         deliveries of the same command both pass.
         """
         stamp = now_ms()
-        with self._connect() as conn:
+        # Même paire qu'à la création : `conn` commit, puis `closing` ferme.
+        # C'est le site le plus chaud du module — une commande reçue par
+        # seconde suffisait à épuiser les descripteurs du processus.
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 "DELETE FROM mesh_nonces WHERE seen_at_ms < ?", (stamp - retention_ms,)
             )

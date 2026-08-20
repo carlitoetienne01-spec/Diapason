@@ -23,6 +23,7 @@ import json
 import logging
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -78,7 +79,7 @@ class CommandQueue:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path or (get_data_dir() / "mesh.db"))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             # The old index was UNIQUE on the key alone. Left in place it
             # would keep enforcing the very collision this schema removes,
             # so it goes before the new one is created.
@@ -87,10 +88,35 @@ class CommandQueue:
             conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
+        """Une connexion neuve, que l'appelant DOIT refermer lui-même.
+
+        Le gestionnaire de contexte d'une connexion sqlite3 ne gère que la
+        transaction (commit en sortie normale, rollback sur exception) : il ne
+        ferme jamais rien. Un « with self._connect() as conn: » fuyait donc un
+        descripteur à chaque appel, jusqu'à ce que le serveur atteigne la
+        limite système et cesse silencieusement d'accepter des connexions.
+
+        D'où la forme employée partout ici :
+
+            with closing(self._connect()) as conn, conn:
+
+        L'ordre est ce qui la rend correcte : dans « with A, B: », B est quitté
+        avant A. B est la transaction, A la fermeture — on commit donc AVANT de
+        fermer. L'inverse perdrait les écritures. Les sites purement en lecture
+        se contentent de closing(), n'ayant rien à valider.
+        """
         conn = sqlite3.connect(self.db_path, timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        # Entre l'ouverture et le retour, la connexion n'appartient à personne :
+        # si un PRAGMA lève (base corrompue, disque plein, verrou exclusif), elle
+        # n'atteint jamais le closing() de l'appelant et fuit exactement comme
+        # avant le correctif. On la referme donc soi-même avant de relancer.
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     # ── writing ──────────────────────────────────────────────────────────
@@ -103,7 +129,7 @@ class CommandQueue:
         is the transactional-outbox rule of spec §16 applied to commands.
         """
         stamp = now_ms()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             existing = conn.execute(
                 "SELECT * FROM mesh_commands "
                 "WHERE origin_device_id=? AND idempotency_key=?",
@@ -146,7 +172,7 @@ class CommandQueue:
     ) -> dict:
         terminal = status in {"SUCCESS", "FAILED", "DENIED", "EXPIRED", "UNSUPPORTED"}
         stamp = now_ms()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """UPDATE mesh_commands
                    SET status=?, user_message=?, result_json=?, error_code=?,
@@ -168,7 +194,7 @@ class CommandQueue:
         return self.get(command_id)
 
     def record_attempt(self, command_id: str) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 "UPDATE mesh_commands SET attempts=attempts+1, updated_at_ms=? "
                 "WHERE command_id=?",
@@ -183,7 +209,7 @@ class CommandQueue:
         are still coming.
         """
         stamp = now_ms() if now is None else now
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cursor = conn.execute(
                 """UPDATE mesh_commands
                    SET status='EXPIRED', completed_at_ms=?, updated_at_ms=?,
@@ -198,7 +224,7 @@ class CommandQueue:
     # ── reading ──────────────────────────────────────────────────────────
 
     def get(self, command_id: str) -> dict:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT * FROM mesh_commands WHERE command_id=?", (command_id,)
             ).fetchone()
@@ -213,7 +239,7 @@ class CommandQueue:
         intent". Two devices choosing the same string mean two different
         intents, and conflating them let a peer speak about our rows.
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT * FROM mesh_commands "
                 "WHERE origin_device_id=? AND idempotency_key=?",
@@ -224,7 +250,7 @@ class CommandQueue:
     def pending_for(self, target_device_id: str, *, limit: int = 50) -> list[dict]:
         """Queued commands still worth delivering to this device."""
         stamp = now_ms()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(
                 """SELECT * FROM mesh_commands
                    WHERE target_device_id=? AND status IN ('PENDING','QUEUED')
@@ -242,7 +268,7 @@ class CommandQueue:
         be a *different* command, and the receiver's replay protection could
         no longer tell a retry from a duplicate.
         """
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT envelope_json FROM mesh_commands WHERE command_id=?",
                 (command_id,),
@@ -266,7 +292,7 @@ class CommandQueue:
         history and the UI, which have no use for them.
         """
         stamp = now_ms()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(
                 """SELECT command_id, envelope_json FROM mesh_commands
                    WHERE target_device_id=? AND status IN ('PENDING','QUEUED')
@@ -288,7 +314,7 @@ class CommandQueue:
 
     def history(self, *, limit: int = 50) -> list[dict]:
         """Recent commands, newest first — the §43 command history."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute(
                 "SELECT * FROM mesh_commands ORDER BY created_at_ms DESC LIMIT ?",
                 (limit,),

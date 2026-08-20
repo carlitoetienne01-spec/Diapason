@@ -158,9 +158,7 @@ def _desktop_open(command: RemoteCommand) -> dict[str, Any]:
             resultat.content
             if resultat.content
             else (
-                f"{target} est ouvert."
-                if resultat.success
-                else "Échec de l'ouverture."
+                f"{target} est ouvert." if resultat.success else "Échec de l'ouverture."
             )
         ),
     }
