@@ -107,3 +107,34 @@ def test_stats_reports_only_what_the_data_supports():
 def test_stats_of_nothing_is_zeroes():
     assert stats([])["count"] == 0
     assert stats([])["avg_chars"] == 0.0
+
+
+class TestQuelProcessusAEcrit:
+    """Deux services de dictée concurrents ne doivent pas rester indéductibles.
+
+    Constaté le 20 août 2026 : deux services écoutaient la même touche et
+    collaient chacun leur version du même audio. Rien ne les distinguait dans
+    l'historique — il fallait repérer deux entrées à moins d'une seconde
+    portant le même ``duration_s`` pour le deviner.
+    """
+
+    def test_l_entree_porte_un_pid(self) -> None:
+        entree = DictationEntry(text="bonjour", timestamp=0.0, pid=4242)
+        assert entree.pid == 4242
+
+    def test_le_pid_survit_a_l_aller_retour_sur_disque(self, tmp_path) -> None:
+        chemin = tmp_path / "historique.jsonl"
+        append_entry(
+            DictationEntry(text="bonjour", timestamp=1.0, pid=4242), path=chemin
+        )
+        relu = load_history(path=chemin)
+        assert relu and relu[0].pid == 4242
+
+    def test_une_entree_ancienne_sans_pid_reste_lisible(self, tmp_path) -> None:
+        """L'historique existant n'a pas ce champ : il ne doit pas devenir illisible."""
+        chemin = tmp_path / "historique.jsonl"
+        chemin.write_text(
+            json.dumps({"text": "ancien", "timestamp": 1.0}) + "\n", encoding="utf-8"
+        )
+        relu = load_history(path=chemin)
+        assert relu and relu[0].pid == 0

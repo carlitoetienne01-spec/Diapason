@@ -79,7 +79,7 @@ def setup_logging(
         )
         file_handler.setLevel(logging.DEBUG)
         file_fmt = SanitizingFormatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+            "%(asctime)s %(process)d %(levelname)s %(name)s: %(message)s"
         )
         file_handler.setFormatter(file_fmt)
         logger.addHandler(file_handler)

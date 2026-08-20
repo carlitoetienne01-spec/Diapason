@@ -45,6 +45,10 @@ class DictationEntry:
     app: str = ""  # frontmost app at paste time, when known
     model: str = ""  # which recogniser produced it
     chars: int = field(default=0)
+    # Quel processus a collé ce texte. Deux services concurrents ne se
+    # déduisaient qu'indirectement, en repérant deux entrées à moins d'une
+    # seconde avec le même duration_s. Le PID le dit.
+    pid: int = field(default=0)
 
     def __post_init__(self) -> None:
         if not self.chars:

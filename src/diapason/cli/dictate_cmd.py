@@ -8,6 +8,7 @@ Accessibility permission for the key tap and Microphone permission for capture.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 import click
@@ -308,9 +309,13 @@ def dictate(
         click.echo("Loading the speech model…")
         preload()
 
+    # Le PID dans la bannière : deux services de dictée écoutent tous deux la
+    # même touche, transcrivent le même audio et collent chacun leur version.
+    # Constaté le 20 août 2026, et indétectable — les deux écrivent dans le même
+    # journal, d'où deux bannières identiques que rien ne distinguait.
     click.echo(
-        f"Dictation ready. Hold the {key.capitalize()} key and speak, then "
-        "release. Double-tap for hands-free. Ctrl-C to quit."
+        f"Dictation ready (PID {os.getpid()}). Hold the {key.capitalize()} key "
+        "and speak, then release. Double-tap for hands-free. Ctrl-C to quit."
     )
 
     # Dire au démarrage ce que ce service peut réellement faire, plutôt que

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import wave
 from typing import Callable, Optional
 
@@ -216,6 +217,7 @@ class DictationService:
                     duration_s=round(seconds, 2),
                     app=app,
                     model=self._model_name,
+                    pid=os.getpid(),
                 )
             )
         except Exception:  # noqa: BLE001 - history must never break dictation
