@@ -321,12 +321,32 @@ def dictate(
     from diapason.desktop.accessibility import (
         accessibility_remediation,
         accessibility_works,
+        paste_works,
     )
 
-    if accessibility_works():
-        click.echo("  Accessibilité : accordée — écriture directe disponible.")
+    # Deux capacités, deux autorisations, deux messages. Les confondre
+    # faisait annoncer « accessibilité REFUSÉE » à un service qui collait
+    # parfaitement : mesuré sur cette machine, System Events répondait
+    # pendant que l'API AX brute rendait -25204. Un message alarmant à
+    # propos de rien envoie chercher un défaut là où il n'y en a pas.
+    colle = paste_works()
+    ecrit = accessibility_works()
+
+    if colle:
+        click.echo("  Collage : disponible — la dictée écrit dans vos apps.")
     else:
-        click.echo("  Accessibilité : REFUSÉE — le collage prend le relais.")
+        click.echo("  Collage : INDISPONIBLE — la dictée ne pourra rien écrire.")
+
+    if ecrit:
+        click.echo("  Écriture directe : disponible (dictée progressive).")
+    elif colle:
+        # Une absence, pas une panne : le chemin principal fonctionne.
+        click.echo(
+            "  Écriture directe : indisponible — pas de dictée progressive, "
+            "le reste fonctionne."
+        )
+
+    if not colle:
         click.echo(accessibility_remediation())
 
     # The overlay draws from the main thread's run loop, so it has to be built

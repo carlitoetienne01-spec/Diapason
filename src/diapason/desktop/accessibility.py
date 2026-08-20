@@ -171,6 +171,39 @@ def replace_previous(count: int, text: str) -> bool:
         return False
 
 
+def paste_works() -> bool:
+    """Si le COLLAGE peut atteindre l'application au premier plan.
+
+    Chemin distinct de l'écriture directe, et c'est celui que la dictée
+    emprunte réellement : ``pbcopy`` puis Cmd-V par System Events. Il dépend
+    d'une autorisation différente de l'API AX brute — mesuré sur cette
+    machine, System Events répondait pendant que ``AXUIElementCopy…`` rendait
+    -25204.
+
+    Les confondre faisait annoncer « accessibilité REFUSÉE » à un service qui
+    collait parfaitement : un message alarmant à propos de rien, qui envoie
+    chercher un défaut là où il n'y en a pas.
+    """
+    if sys.platform != "darwin":
+        return False
+    import subprocess
+
+    try:
+        r = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                'tell application "System Events" to get name of '
+                "first process whose frontmost is true",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        return r.returncode == 0
+    except Exception:  # noqa: BLE001 - osascript absent ou bloqué = non
+        return False
+
+
 def accessibility_remediation() -> str:
     """Quoi autoriser, et où — vide si l'API répond déjà.
 
@@ -216,6 +249,7 @@ def accessibility_remediation() -> str:
 
 __all__ = [
     "accessibility_remediation",
+    "paste_works",
     "accessibility_trusted",
     "accessibility_works",
     "insert_text",
