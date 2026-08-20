@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from diapason.cli import cli
-from diapason.cli.daemon_cmd import _read_pid, _write_pid
+from diapason.cli.daemon_cmd import SERVING, _read_pid, _write_pid
 
 
 class TestDaemonCommands:
@@ -45,16 +45,34 @@ class TestDaemonCommands:
             assert _read_pid() is None
 
     def test_write_and_read_pid(self, tmp_path: Path) -> None:
-        """Write a PID, then read it back (mock os.kill to succeed)."""
+        """Write a PID, then read it back — but only if it IS our server.
+
+        Ce test exigeait auparavant qu'un ``os.kill(pid, 0)`` réussi suffise à
+        rendre le PID : il encodait le défaut. Un PID recyclé passait ce
+        contrôle, et ``stop`` envoyait SIGTERM puis SIGKILL à un inconnu. La
+        preuve d'identité est désormais ce qui décide.
+        """
         pid_file = tmp_path / "server.pid"
         with (
             patch("diapason.cli.daemon_cmd._PID_FILE", pid_file),
             patch("diapason.cli.daemon_cmd.DEFAULT_CONFIG_DIR", tmp_path),
-            patch("os.kill", return_value=None),
+            patch("diapason.cli.daemon_cmd._is_diapason_server", return_value=True),
         ):
             _write_pid(12345)
             assert pid_file.exists()
             assert _read_pid() == 12345
+
+    def test_a_recycled_pid_is_not_our_server(self, tmp_path: Path) -> None:
+        """Le processus existe, mais ce n'est pas le nôtre : on ne le rend pas."""
+        pid_file = tmp_path / "server.pid"
+        with (
+            patch("diapason.cli.daemon_cmd._PID_FILE", pid_file),
+            patch("diapason.cli.daemon_cmd.DEFAULT_CONFIG_DIR", tmp_path),
+            patch("diapason.cli.daemon_cmd._is_diapason_server", return_value=False),
+        ):
+            _write_pid(12345)
+            assert _read_pid() is None
+            assert not pid_file.exists()
 
     def test_status_shows_running(self) -> None:
         """``diapason status`` shows running info when PID exists."""
@@ -103,6 +121,11 @@ class TestDaemonDetachment:
             patch("diapason.cli.daemon_cmd._read_pid", return_value=None),
             patch("diapason.cli.daemon_cmd._write_pid"),
             patch("diapason.cli.daemon_cmd.load_config"),
+            # `start` refuse maintenant si le port est pris, et vérifie que le
+            # serveur RÉPOND avant d'annoncer « started ». Ces tests ne
+            # regardent que la façon de lancer : on neutralise les deux.
+            patch("diapason.cli.daemon_cmd._port_holder", return_value=None),
+            patch("diapason.cli.daemon_cmd._wait_until_serving", return_value=SERVING),
             patch("diapason.cli.daemon_cmd.sys.platform", platform),
             patch("diapason.cli.daemon_cmd.subprocess.Popen") as popen,
             patch("builtins.open", MagicMock()),

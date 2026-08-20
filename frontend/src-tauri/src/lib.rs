@@ -976,13 +976,50 @@ fn format_port_unavailable(port: u16, reason: &str) -> String {
     )
 }
 
-fn check_jarvis_port_available() -> Result<(), String> {
-    match std::net::TcpListener::bind(("127.0.0.1", DIAPASON_PORT)) {
-        Ok(listener) => {
-            drop(listener);
-            Ok(())
+/// Le port est-il réellement libre ?
+///
+/// MESURÉ sur macOS le 20 août 2026, contre un vrai serveur détenant
+/// `0.0.0.0:8000` : une liaison sur `127.0.0.1:8000` RÉUSSIT. La bibliothèque
+/// standard de Rust pose `SO_REUSEADDR` par défaut sur Unix, et deux adresses
+/// différentes sur le même port ne se voient alors pas. Le contrôle d'origine,
+/// qui ne testait que le loopback, était donc aveugle au serveur qu'il devait
+/// justement détecter : c'est ainsi que deux serveurs ont coexisté, le lien le
+/// plus spécifique gagnant le routage et l'autre devenant un zombie muet.
+///
+/// La même mesure donne le remède : pour un détenteur donné, la liaison sur
+/// SA PROPRE adresse reste refusée. Tester les deux formes couvre donc les
+/// deux détenteurs possibles, sans dépendance supplémentaire.
+///
+/// Limite assumée : un détenteur lié à une adresse tierce (par ex.
+/// `192.168.0.10:8000`) échappe encore aux deux liaisons. La sonde `/health`
+/// qui précède couvre ce cas dès lors qu'il répond.
+fn port_conflict(port: u16) -> Option<String> {
+    // Les quatre formes qu'un serveur peut prendre. L'IPv6 y figure parce
+    // qu'un détenteur lié à « ::1 » en mode v6only échappe entièrement aux
+    // liaisons IPv4 — mesuré. Chaque sonde est refermée avant la suivante
+    // (le `Ok(_)` la laisse tomber aussitôt), donc aucune ne se bloque
+    // elle-même sur une pile double.
+    for addr in ["0.0.0.0", "127.0.0.1", "::", "::1"] {
+        match std::net::TcpListener::bind((addr, port)) {
+            Ok(_) => {}
+            // SEULE « adresse déjà utilisée » prouve une occupation. Un autre
+            // échec de liaison — bac à sable, pile réseau indisponible — n'en
+            // prouve rien, et bloquer le démarrage là-dessus transformerait un
+            // contrôle en panne. Dans le doute, on laisse passer : le serveur
+            // lui-même signalera son propre échec de liaison, lui.
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+                return Some(format!("{addr}: {err}"));
+            }
+            Err(_) => {}
         }
-        Err(err) => Err(format_port_unavailable(DIAPASON_PORT, &err.to_string())),
+    }
+    None
+}
+
+fn check_jarvis_port_available() -> Result<(), String> {
+    match port_conflict(DIAPASON_PORT) {
+        None => Ok(()),
+        Some(raison) => Err(format_port_unavailable(DIAPASON_PORT, &raison)),
     }
 }
 
@@ -1541,6 +1578,48 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     for (key, value) in read_cloud_keys() {
         cmd.env(&key, &value);
     }
+    // Dernier contrôle, JUSTE avant de lancer.
+    //
+    // La sonde /health du début est séparée d'ici par `uv sync`, qui prend une
+    // à deux minutes au premier démarrage. Un serveur lancé pendant ce
+    // temps — par launchd, par un terminal, par une seconde copie de
+    // l'application — n'était pas vu, et on en démarrait un deuxième. Vérifier
+    // au plus près du lancement réduit la fenêtre à ce qu'elle peut être.
+    if let Some(raison) = port_conflict(DIAPASON_PORT) {
+        let sonde = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .ok();
+        let sain = match sonde {
+            Some(client) => client
+                .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
+                .send()
+                .await
+                .map(|r| r.status().is_success())
+                .unwrap_or(false),
+            None => false,
+        };
+        let mut s = status.lock().await;
+        if sain {
+            // Quelqu'un a fait le travail pendant qu'on préparait : on s'y
+            // attache plutôt que de lui disputer le port.
+            s.phase = "ready".into();
+            s.detail = format!(
+                "Connected to an API server that started on port {} while \
+                 dependencies were installing.",
+                DIAPASON_PORT,
+            );
+            s.server_ready = true;
+            s.model_ready = true;
+            s.ollama_ready = true;
+        } else {
+            // Occupé mais muet : exactement le zombie observé. Ne rien lancer
+            // par-dessus, et nommer ce qu'on a mesuré.
+            s.error = Some(format_port_unavailable(DIAPASON_PORT, &raison));
+        }
+        return;
+    }
+
     let jarvis_child = cmd.spawn();
 
     match jarvis_child {
@@ -3291,6 +3370,30 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    /// Un port libre doit être annoncé libre.
+    ///
+    /// La sonde essaie quatre adresses, dont « :: ». Sur une pile double, une
+    /// liaison IPv6 non restreinte réserve AUSSI l'IPv4 : si les sondes se
+    /// chevauchaient, la seconde échouerait sur AddrInUse et le contrôle
+    /// déclarerait occupé un port que personne ne tient — l'application
+    /// refuserait alors de démarrer. Chaque sonde est donc refermée avant la
+    /// suivante, et ce test le prouve.
+    #[test]
+    fn un_port_libre_ne_se_bloque_pas_lui_meme() {
+        let ephemere = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = ephemere.local_addr().unwrap().port();
+        drop(ephemere);
+        assert_eq!(super::port_conflict(port), None);
+    }
+
+    /// Et un vrai détenteur doit être vu.
+    #[test]
+    fn un_auditeur_est_detecte() {
+        let detenteur = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = detenteur.local_addr().unwrap().port();
+        assert!(super::port_conflict(port).is_some());
+    }
     use super::{
         boot_plan, default_local_model, format_extension_import_failure,
         format_missing_rust_toolchain, format_port_unavailable, format_uv_sync_failure,
