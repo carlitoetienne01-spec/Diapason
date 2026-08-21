@@ -17,20 +17,22 @@ from click.testing import CliRunner
 
 from diapason.cli.daemon_cmd import (
     DEAD,
-    INCONNU,
-    LIBRE,
-    OCCUPE,
     SERVING,
     SILENT,
     USURPED,
     _is_diapason_server,
-    _listeners_on,
     _looks_like_serve_argv,
-    _port_state,
     _read_pid,
     _wait_until_serving,
     daemon,
 )
+from diapason.core.ports import (
+    INCONNU,
+    LIBRE,
+    OCCUPE,
+    listeners_on,
+    port_state,
+)  # noqa: F401 — importés pour lisibilité des assertions
 
 
 class FauxProcessus:
@@ -68,7 +70,7 @@ def test_un_detenteur_sur_une_adresse_tierce_est_vu() -> None:
     prise.listen(1)
     port = prise.getsockname()[1]
     try:
-        etat, detail = _port_state(port)
+        etat, detail = port_state(port)
         assert etat == OCCUPE, f"{adresse} devrait être vue ; détail={detail!r}"
         assert str(port) in detail
     finally:
@@ -82,7 +84,7 @@ def test_un_detenteur_local_est_vu(adresse: str) -> None:
     prise.bind((adresse, 0))
     prise.listen(1)
     try:
-        assert _port_state(prise.getsockname()[1])[0] == OCCUPE
+        assert port_state(prise.getsockname()[1])[0] == OCCUPE
     finally:
         prise.close()
 
@@ -92,7 +94,7 @@ def test_un_port_libre_est_dit_libre() -> None:
     prise.bind(("127.0.0.1", 0))
     port = prise.getsockname()[1]
     prise.close()
-    assert _port_state(port)[0] == LIBRE
+    assert port_state(port)[0] == LIBRE
 
 
 def test_le_detenteur_est_nomme_avec_son_pid() -> None:
@@ -103,7 +105,7 @@ def test_le_detenteur_est_nomme_avec_son_pid() -> None:
     prise.bind(("127.0.0.1", 0))
     prise.listen(1)
     try:
-        auditeurs = _listeners_on(prise.getsockname()[1])
+        auditeurs = listeners_on(prise.getsockname()[1])
         assert auditeurs is not None
         assert any(pid == os.getpid() for pid, _ in auditeurs)
     finally:
@@ -122,9 +124,9 @@ def test_un_tiers_qui_sert_n_est_pas_notre_serveur(monkeypatch) -> None:
     """
     monkeypatch.setattr("diapason.cli.daemon_cmd._http_status", lambda *a, **k: 200)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._listeners_on", lambda _p: [(999_999, "*:8000")]
+        "diapason.core.ports.listeners_on", lambda _p: [(999_999, "*:8000")]
     )
-    monkeypatch.setattr("diapason.cli.daemon_cmd._descendants", lambda _p: {4242})
+    monkeypatch.setattr("diapason.core.ports.descendants_of", lambda _p: {4242})
     assert _wait_until_serving(FauxProcessus(), "127.0.0.1", 8000, timeout_s=2) == (
         USURPED
     )
@@ -133,9 +135,9 @@ def test_un_tiers_qui_sert_n_est_pas_notre_serveur(monkeypatch) -> None:
 def test_notre_propre_processus_qui_sert_est_reconnu(monkeypatch) -> None:
     monkeypatch.setattr("diapason.cli.daemon_cmd._http_status", lambda *a, **k: 200)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._listeners_on", lambda _p: [(4242, "*:8000")]
+        "diapason.core.ports.listeners_on", lambda _p: [(4242, "*:8000")]
     )
-    monkeypatch.setattr("diapason.cli.daemon_cmd._descendants", lambda _p: {4242})
+    monkeypatch.setattr("diapason.core.ports.descendants_of", lambda _p: {4242})
     assert _wait_until_serving(FauxProcessus(), "127.0.0.1", 8000, timeout_s=2) == (
         SERVING
     )
@@ -145,9 +147,9 @@ def test_un_descendant_qui_sert_compte_aussi(monkeypatch) -> None:
     """Un lanceur peut s'intercaler : « uv run » tient l'enfant qui sert."""
     monkeypatch.setattr("diapason.cli.daemon_cmd._http_status", lambda *a, **k: 200)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._listeners_on", lambda _p: [(7777, "*:8000")]
+        "diapason.core.ports.listeners_on", lambda _p: [(7777, "*:8000")]
     )
-    monkeypatch.setattr("diapason.cli.daemon_cmd._descendants", lambda _p: {4242, 7777})
+    monkeypatch.setattr("diapason.core.ports.descendants_of", lambda _p: {4242, 7777})
     assert _wait_until_serving(FauxProcessus(), "127.0.0.1", 8000, timeout_s=2) == (
         SERVING
     )
@@ -169,7 +171,7 @@ def test_un_processus_vivant_mais_muet_n_est_pas_declare_mort(monkeypatch) -> No
 def test_un_503_est_une_reponse_pas_un_silence(monkeypatch) -> None:
     """« Moteur pas encore prêt » signifie que le serveur SERT déjà le port."""
     monkeypatch.setattr("diapason.cli.daemon_cmd._http_status", lambda *a, **k: 503)
-    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
+    monkeypatch.setattr("diapason.core.ports.listeners_on", lambda _p: None)
     assert (
         _wait_until_serving(FauxProcessus(), "127.0.0.1", 8000, timeout_s=2) == SERVING
     )
@@ -206,15 +208,15 @@ def test_l_identite_se_prouve_par_le_port_avant_la_ligne_de_commande(
 ) -> None:
     """Le noyau tranche ; la ligne de commande n'est qu'un repli."""
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._listeners_on", lambda _p: [(4242, "*:8000")]
+        "diapason.core.ports.listeners_on", lambda _p: [(4242, "*:8000")]
     )
     assert _is_diapason_server(4242, 8000) is True
     assert _is_diapason_server(9999, 8000) is False
 
 
 def test_sans_reponse_du_systeme_on_ne_conclut_rien(monkeypatch) -> None:
-    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
-    monkeypatch.setattr("diapason.cli.daemon_cmd._run", lambda *_a, **_k: None)
+    monkeypatch.setattr("diapason.core.ports.listeners_on", lambda _p: None)
+    monkeypatch.setattr("diapason.core.ports.run_tool", lambda *_a, **_k: None)
     assert _is_diapason_server(4242, 8000) is None
 
 
@@ -279,7 +281,7 @@ def test_start_refuse_quand_le_port_est_pris(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("diapason.cli.daemon_cmd._PID_FILE", tmp_path / "server.pid")
     monkeypatch.setattr("diapason.cli.daemon_cmd._read_pid", lambda *_a: None)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._port_state", lambda _p: (OCCUPE, "PID 1 sur *:8000")
+        "diapason.core.ports.port_state", lambda _p: (OCCUPE, "PID 1 sur *:8000")
     )
     resultat = CliRunner().invoke(daemon, ["start"])
     assert resultat.exit_code == 1
@@ -291,7 +293,7 @@ def test_start_refuse_quand_il_ne_peut_pas_verifier(monkeypatch, tmp_path) -> No
     monkeypatch.setattr("diapason.cli.daemon_cmd._PID_FILE", tmp_path / "server.pid")
     monkeypatch.setattr("diapason.cli.daemon_cmd._read_pid", lambda *_a: None)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._port_state", lambda _p: (INCONNU, "lsof absent")
+        "diapason.core.ports.port_state", lambda _p: (INCONNU, "lsof absent")
     )
     resultat = CliRunner().invoke(daemon, ["start"])
     assert resultat.exit_code == 1
@@ -304,7 +306,7 @@ def test_start_ne_lance_rien_quand_il_refuse(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("diapason.cli.daemon_cmd._PID_FILE", tmp_path / "server.pid")
     monkeypatch.setattr("diapason.cli.daemon_cmd._read_pid", lambda *_a: None)
     monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._port_state", lambda _p: (OCCUPE, "PID 1 sur *:8000")
+        "diapason.core.ports.port_state", lambda _p: (OCCUPE, "PID 1 sur *:8000")
     )
     monkeypatch.setattr(
         subprocess, "Popen", lambda *a, **k: lances.append(a) or FauxProcessus()
@@ -323,7 +325,7 @@ def test_sans_lsof_on_retombe_sur_la_liaison_directe(monkeypatch) -> None:
     voie rend None. Sans repli, ``_port_state`` répondrait « je ne sais pas » à
     l'infini et ``start``, qui refuse dans le doute, ne démarrerait jamais.
     """
-    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
+    monkeypatch.setattr("diapason.core.ports.listeners_on", lambda _p: None)
 
     prise = socket.socket()
     prise.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -331,7 +333,7 @@ def test_sans_lsof_on_retombe_sur_la_liaison_directe(monkeypatch) -> None:
     prise.listen(1)
     port = prise.getsockname()[1]
     try:
-        assert _port_state(port)[0] == OCCUPE
+        assert port_state(port)[0] == OCCUPE
     finally:
         prise.close()
 
@@ -339,13 +341,11 @@ def test_sans_lsof_on_retombe_sur_la_liaison_directe(monkeypatch) -> None:
     libre.bind(("127.0.0.1", 0))
     port_libre = libre.getsockname()[1]
     libre.close()
-    assert _port_state(port_libre)[0] == LIBRE
+    assert port_state(port_libre)[0] == LIBRE
 
 
 def test_quand_rien_ne_repond_on_dit_qu_on_ne_sait_pas(monkeypatch) -> None:
     """Et seulement là : INCONNU est le dernier recours, pas le premier."""
-    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
-    monkeypatch.setattr(
-        "diapason.cli.daemon_cmd._port_occupe_par_liaison", lambda _p: None
-    )
-    assert _port_state(8000)[0] == INCONNU
+    monkeypatch.setattr("diapason.core.ports.listeners_on", lambda _p: None)
+    monkeypatch.setattr("diapason.core.ports.port_occupe_par_liaison", lambda _p: None)
+    assert port_state(8000)[0] == INCONNU

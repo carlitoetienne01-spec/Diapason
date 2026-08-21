@@ -12,176 +12,11 @@ import time
 import click
 from rich.console import Console
 
+from diapason.core import ports
 from diapason.core.config import DEFAULT_CONFIG_DIR, load_config
 
 _PID_FILE = DEFAULT_CONFIG_DIR / "server.pid"
 _LOG_FILE = DEFAULT_CONFIG_DIR / "server.log"
-
-
-# Le PATH doit contenir /usr/sbin : c'est là que vit ``lsof`` sur macOS, et
-# un PATH forcé qui l'oublie ferait silencieusement échouer toute la mécanique.
-_PATH_SYS = "/usr/bin:/bin:/usr/sbin:/sbin"
-
-
-def _run(
-    argv: list[str], *, timeout: float = 10.0
-) -> subprocess.CompletedProcess | None:
-    """Lancer un utilitaire système. None si on n'a PAS PU demander.
-
-    La distinction compte : « je n'ai pas pu demander » n'est pas « la réponse
-    est non ». Confondre les deux faisait effacer le fichier PID d'un serveur
-    parfaitement vivant, qui devenait alors inarrêtable par la CLI.
-    """
-    try:
-        return subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            # LC_ALL=C : on ne compare jamais de la prose traduite.
-            env={"LC_ALL": "C", "PATH": os.environ.get("PATH", "") + ":" + _PATH_SYS},
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def _listeners_on(port: int) -> list[tuple[int, str]] | None:
-    """Qui ÉCOUTE sur ce port, d'après le NOYAU. None = indéterminé.
-
-    Sonder en tentant des liaisons, c'est deviner : quatre adresses littérales
-    ne couvriront jamais les N adresses d'une machine. MESURÉ — un serveur lié
-    à 192.168.0.121, exactement ce que « serve-service install --allow-network »
-    installe pour que le téléphone du maillage atteigne ce Mac, échappait aux
-    quatre sondes, et « diapason start » en lançait tranquillement un second.
-
-    ``lsof`` répond pour toutes les adresses à la fois, et donne le PID du
-    détenteur — ce dont la confirmation d'après-lancement a besoin.
-    """
-    if sys.platform == "win32":
-        return _listeners_windows(port)
-    sortie = _run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "pn"])
-    if sortie is None:
-        return None
-    if sortie.returncode not in (0, 1):
-        return None
-    if sortie.returncode == 1 and sortie.stdout.strip():
-        return None  # code d'erreur avec du bruit : on ne conclut rien
-    trouves: list[tuple[int, str]] = []
-    pid: int | None = None
-    for ligne in sortie.stdout.splitlines():
-        if ligne.startswith("p"):
-            try:
-                pid = int(ligne[1:])
-            except ValueError:
-                pid = None
-        elif ligne.startswith("n") and pid is not None:
-            trouves.append((pid, ligne[1:]))
-    return trouves
-
-
-def _listeners_windows(port: int) -> list[tuple[int, str]] | None:
-    """Équivalent Windows de ``lsof``, via ``netstat -ano``.
-
-    NON VÉRIFIÉ sur cette machine, faute de Windows sous la main : la forme est
-    documentée, pas mesurée, à la différence du reste de ce fichier. Elle existe
-    surtout pour que ``start`` ne réponde pas « je ne sais pas » à l'infini là
-    où lsof n'existe pas — un garde qui refuse toujours de démarrer serait une
-    panne, pas une protection.
-    """
-    sortie = _run(["netstat", "-ano", "-p", "TCP"])
-    if sortie is None or sortie.returncode != 0:
-        return None
-    trouves: list[tuple[int, str]] = []
-    for ligne in sortie.stdout.splitlines():
-        morceaux = ligne.split()
-        if len(morceaux) < 5 or morceaux[0].upper() != "TCP":
-            continue
-        if morceaux[3].upper() != "LISTENING":
-            continue
-        locale = morceaux[1]
-        if not locale.rsplit(":", 1)[-1].isdigit():
-            continue
-        if int(locale.rsplit(":", 1)[-1]) != port:
-            continue
-        try:
-            trouves.append((int(morceaux[4]), locale))
-        except ValueError:
-            continue
-    return trouves
-
-
-def _port_occupe_par_liaison(port: int) -> bool | None:
-    """Dernier repli : tenter la liaison soi-même. None si on n'apprend rien.
-
-    Ne voit qu'un détenteur sur l'une des quatre formes essayées — c'est
-    précisément la faiblesse qui a laissé passer un serveur lié à l'adresse du
-    maillage. On ne s'en sert donc que si le système n'a pas su répondre.
-
-    ``SO_REUSEADDR`` seulement sur POSIX : il y ignore TIME_WAIT, sans quoi un
-    port qu'on vient de libérer paraîtrait pris. Sur Windows sa sémantique est
-    INVERSE — il autorise à se lier par-dessus un socket actif — et le poser
-    annulerait entièrement le contrôle.
-    """
-    import errno
-    import socket
-
-    formes = (
-        (socket.AF_INET, "0.0.0.0"),
-        (socket.AF_INET, "127.0.0.1"),
-        (socket.AF_INET6, "::"),
-        (socket.AF_INET6, "::1"),
-    )
-    a_pu_tester = False
-    for famille, adresse in formes:
-        try:
-            sonde = socket.socket(famille, socket.SOCK_STREAM)
-        except OSError:
-            continue
-        if sys.platform != "win32":
-            sonde.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if famille == socket.AF_INET6:
-            with contextlib.suppress(OSError):
-                sonde.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-        try:
-            sonde.bind((adresse, port))
-            a_pu_tester = True
-        except OSError as erreur:
-            if erreur.errno == errno.EADDRINUSE:
-                sonde.close()
-                return True
-        finally:
-            sonde.close()
-    return False if a_pu_tester else None
-
-
-def _descendants(racine: int) -> set[int]:
-    """``racine`` et toute sa descendance, d'après ``ps``.
-
-    Un serveur peut être lancé derrière un lanceur (``uv run``), auquel cas le
-    processus qui tient le port n'est pas celui qu'on a lancé, mais son enfant.
-    """
-    sortie = _run(["ps", "-eo", "pid=,ppid="])
-    if sortie is None or sortie.returncode != 0:
-        return {racine}
-    enfants: dict[int, list[int]] = {}
-    for ligne in sortie.stdout.splitlines():
-        morceaux = ligne.split()
-        if len(morceaux) != 2:
-            continue
-        try:
-            fils, pere = int(morceaux[0]), int(morceaux[1])
-        except ValueError:
-            continue
-        enfants.setdefault(pere, []).append(fils)
-    vus = {racine}
-    a_voir = [racine]
-    while a_voir:
-        courant = a_voir.pop()
-        for fils in enfants.get(courant, ()):
-            if fils not in vus:
-                vus.add(fils)
-                a_voir.append(fils)
-    return vus
 
 
 def _looks_like_serve_argv(ligne: str) -> bool:
@@ -222,13 +57,13 @@ def _is_diapason_server(pid: int, port: int | None = None) -> bool | None:
     La ligne de commande n'est qu'un repli.
     """
     if port is not None:
-        auditeurs = _listeners_on(port)
+        auditeurs = ports.listeners_on(port)
         if auditeurs is not None:
             if any(p == pid for p, _ in auditeurs):
                 return True
             if auditeurs:
                 return False  # quelqu'un d'autre tient le port
-    sortie = _run(["ps", "-p", str(pid), "-o", "command="])
+    sortie = ports.run_tool(["ps", "-p", str(pid), "-o", "command="])
     if sortie is None:
         return None  # on n'a pas pu demander
     if sortie.returncode != 0:
@@ -257,31 +92,6 @@ def _read_pid(port: int | None = None) -> int | None:
     if verdict is None:
         return pid  # dans le doute, on garde la trace plutôt que de la perdre
     return pid
-
-
-# Trois états d'un port, et « je ne sais pas » en est un.
-LIBRE = "libre"
-OCCUPE = "occupe"
-INCONNU = "inconnu"
-
-
-def _port_state(port: int) -> tuple[str, str]:
-    """État du port et description lisible du détenteur."""
-    auditeurs = _listeners_on(port)
-    if auditeurs is None:
-        # Le système n'a pas su répondre. Plutôt que de refuser tout démarrage
-        # à jamais, on retombe sur la liaison directe — partielle, mais valant
-        # mieux que rien — et on ne rend INCONNU que si elle échoue aussi.
-        par_liaison = _port_occupe_par_liaison(port)
-        if par_liaison is True:
-            return OCCUPE, f"port {port} occupé (détecté par liaison directe)"
-        if par_liaison is False:
-            return LIBRE, ""
-        return INCONNU, "ni lsof ni liaison directe n'ont pu répondre"
-    if not auditeurs:
-        return LIBRE, ""
-    detail = ", ".join(f"PID {p} sur {adresse}" for p, adresse in auditeurs)
-    return OCCUPE, detail
 
 
 def _http_status(host: str, port: int, *, timeout: float = 3.0) -> int | None:
@@ -338,12 +148,12 @@ def _wait_until_serving(
             return DEAD
         code = _http_status(host, port, timeout=2.0)
         if code is not None:
-            auditeurs = _listeners_on(port)
+            auditeurs = ports.listeners_on(port)
             if auditeurs is None:
                 # Sans l'avis du noyau, on s'en tient au fait vérifiable : le
                 # processus est vivant et le port répond.
                 return SERVING if proc.poll() is None else DEAD
-            famille = _descendants(proc.pid)
+            famille = ports.descendants_of(proc.pid)
             if any(p in famille for p, _ in auditeurs):
                 return SERVING if proc.poll() is None else DEAD
             if auditeurs:
@@ -418,13 +228,13 @@ def start(
         # les adresses, y compris celle du maillage. On laisse quelques
         # secondes à un port qu'on vient d'arrêter : sans cela, `restart`
         # arrêtait le serveur puis refusait de le relancer.
-        etat, detail = _port_state(bind_port)
+        etat, detail = ports.port_state(bind_port)
         attente = time.time() + 5.0
-        while etat == OCCUPE and time.time() < attente:
+        while etat == ports.OCCUPE and time.time() < attente:
             time.sleep(0.4)
-            etat, detail = _port_state(bind_port)
+            etat, detail = ports.port_state(bind_port)
 
-        if etat == OCCUPE:
+        if etat == ports.OCCUPE:
             console.print(f"[yellow]Port {bind_port} is already in use.[/yellow]")
             console.print(f"  Held by: {detail}")
             console.print(
@@ -433,7 +243,7 @@ def start(
                 "an error: it would quietly lose the race for the port."
             )
             sys.exit(1)
-        if etat == INCONNU:
+        if etat == ports.INCONNU:
             # Fail-closed : ne pas lancer sur une ignorance. Un doublon
             # silencieux coûte plus cher qu'un démarrage refusé.
             console.print(
@@ -505,7 +315,7 @@ def start(
             _PID_FILE.unlink(missing_ok=True)
             with contextlib.suppress(OSError):
                 proc.terminate()
-            etat, detail = _port_state(bind_port)
+            etat, detail = ports.port_state(bind_port)
             console.print(
                 f"[red]Another server took port {bind_port} first.[/red]\n"
                 f"  Held by: {detail or 'unknown'}\n"
@@ -550,8 +360,8 @@ def stop() -> None:
         # Le fichier PID ne connaît que nos propres démarrages. Si le port est
         # servi par quelqu'un d'autre, le dire plutôt que laisser l'utilisateur
         # devant un « rien à arrêter » qui contredit ce qu'il voit.
-        etat, detail = _port_state(bind_port)
-        if etat == OCCUPE:
+        etat, detail = ports.port_state(bind_port)
+        if etat == ports.OCCUPE:
             console.print(f"  But port {bind_port} is served by: {detail}")
             console.print(
                 "  This server was not started by 'diapason start'. Stop it "
@@ -583,12 +393,12 @@ def stop() -> None:
     # serveur survivait, sans plus aucune trace pour le retrouver.
     fin = time.time() + 5.0
     while time.time() < fin:
-        etat, detail = _port_state(bind_port)
-        if etat != OCCUPE or all(str(pid) not in d for d in (detail,)):
+        etat, detail = ports.port_state(bind_port)
+        if etat != ports.OCCUPE or all(str(pid) not in d for d in (detail,)):
             break
         time.sleep(0.3)
-    etat, detail = _port_state(bind_port)
-    encore_la = etat == OCCUPE and f"PID {pid} " in f"{detail} "
+    etat, detail = ports.port_state(bind_port)
+    encore_la = etat == ports.OCCUPE and f"PID {pid} " in f"{detail} "
 
     if encore_la:
         console.print(
@@ -638,11 +448,11 @@ def status() -> None:
         # Trois commandes doivent raconter la même histoire. `start` refuse
         # quand le port est pris ; `status` doit donc le dire aussi, sans quoi
         # l'utilisateur reçoit deux réponses incompatibles et aucune action.
-        etat, detail = _port_state(bind_port)
-        if etat == OCCUPE:
+        etat, detail = ports.port_state(bind_port)
+        if etat == ports.OCCUPE:
             console.print(f"  But port {bind_port} is served by: {detail}")
             console.print("  It was not started by 'diapason start'.")
-        elif etat == INCONNU:
+        elif etat == ports.INCONNU:
             console.print(f"  (Could not check port {bind_port}: {detail})")
         return
 

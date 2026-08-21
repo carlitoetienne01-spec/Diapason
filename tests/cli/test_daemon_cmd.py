@@ -124,7 +124,7 @@ class TestDaemonDetachment:
             # `start` refuse maintenant si le port est pris, et vérifie que le
             # serveur RÉPOND avant d'annoncer « started ». Ces tests ne
             # regardent que la façon de lancer : on neutralise les deux.
-            patch("diapason.cli.daemon_cmd._port_state", return_value=("libre", "")),
+            patch("diapason.core.ports.port_state", return_value=("libre", "")),
             patch("diapason.cli.daemon_cmd._wait_until_serving", return_value=SERVING),
             patch("diapason.cli.daemon_cmd.sys.platform", platform),
             patch("diapason.cli.daemon_cmd.subprocess.Popen") as popen,

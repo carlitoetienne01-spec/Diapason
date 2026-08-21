@@ -75,6 +75,40 @@ def install(host: str, port: int, allow_network: bool) -> None:
             err=True,
         )
 
+    # Installer, c'est LANCER : le plist porte RunAtLoad. Poser un service sur
+    # un port déjà servi crée exactement le doublon silencieux que le reste de
+    # ce chantier traque — les deux se disputent le port, le plus spécifique
+    # gagne le routage, l'autre devient un zombie muet, et rien ne le dit.
+    #
+    # Réinstaller par-dessus SON PROPRE service reste permis : launchd remplace
+    # un job de même étiquette, il n'en empile pas un second.
+    from diapason.core import ports
+
+    etat, detail = ports.port_state(port)
+    if etat == ports.OCCUPE:
+        notre_pid = launch_agent.job_pid(launch_agent.SERVE_LABEL)
+        a_nous = notre_pid is not None and f"PID {notre_pid} " in f"{detail} "
+        if not a_nous:
+            click.echo(
+                f"Port {port} is already served by: {detail}\n"
+                "Installing would start a second server on the same port, and "
+                "neither would report an error.\n"
+                "Stop that one first, or install on another port with --port.",
+                err=True,
+            )
+            sys.exit(1)
+        click.echo(f"↻ Remplacement du service existant (PID {notre_pid}).", err=True)
+    elif etat == ports.INCONNU:
+        # Ici on avertit sans refuser : contrairement à `diapason start`, qui
+        # est répété au quotidien, une installation est un geste délibéré et
+        # rare. La bloquer parce que lsof manque empêcherait toute mise en
+        # place sur un système minimal.
+        click.echo(
+            f"⚠ Impossible de vérifier si le port {port} est libre ({detail}).\n"
+            f"  Vérifiez à la main :  lsof -nP -iTCP:{port} -sTCP:LISTEN",
+            err=True,
+        )
+
     path = launch_agent.install(
         label=launch_agent.SERVE_LABEL,
         log_prefix="serve",

@@ -426,6 +426,26 @@ struct ChildHandle {
 
 impl ChildHandle {
     async fn kill(&mut self) {
+        // Le serveur est lancé par « uv run diapason serve » : l'enfant direct
+        // est `uv`, et le vrai serveur son petit-fils. Tuer l'enfant laissait
+        // donc un serveur orphelin qui tenait le port, invisible à
+        // l'application qui croyait l'avoir arrêté.
+        //
+        // On demande l'arrêt de tout le GROUPE (PID négatif). Le groupe existe
+        // parce que le lancement pose `process_group(0)` ; si ce n'était pas le
+        // cas, la commande échoue sans rien casser et on retombe sur l'enfant.
+        #[cfg(unix)]
+        if let Some(pid) = self.child.id() {
+            let groupe = format!("-{pid}");
+            let _ = std::process::Command::new("/bin/kill")
+                .args(["-TERM", &groupe])
+                .status();
+            // Laisser une seconde à un arrêt propre avant d'insister.
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            let _ = std::process::Command::new("/bin/kill")
+                .args(["-KILL", &groupe])
+                .status();
+        }
         let _ = self.child.kill().await;
     }
 }
@@ -1598,6 +1618,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     }
 
     let mut cmd = tokio::process::Command::new(&uv_bin);
+    // Le serveur mène son propre groupe de processus, pour qu'on puisse
+    // l'arrêter EN ENTIER. Sans cela, « uv » seul recevait le signal et le
+    // serveur Python survivait, orphelin, en tenant le port.
+    #[cfg(unix)]
+    cmd.process_group(0);
     let mut serve_argv: Vec<String> = vec![
         "run".into(),
         "diapason".into(),
@@ -1950,7 +1975,7 @@ async fn start_backend(
     let b = backend.inner().clone();
     let s = status.inner().clone();
     if !spawn_boot_backend(b, s) {
-        return Err("Un démarrage du serveur est déjà en cours.".into());
+        return Err("A server start is already in progress.".into());
     }
     Ok(())
 }
@@ -2198,73 +2223,29 @@ async fn run_diapason_command(args: Vec<String>) -> Result<String, String> {
         cmd.current_dir(root);
     }
 
-    let is_serve = args.first().map(|a| a.as_str() == "serve").unwrap_or(false);
-
-    if !is_serve {
-        // Short-lived command (e.g. `stop`, `status`): wait for it and return
-        // its captured output.
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| format!("Failed to launch diapason: {}", e))?;
-        return if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
-        };
+    if args.first().map(|a| a.as_str() == "serve").unwrap_or(false) {
+        // Cette voie lançait un serveur sans rien vérifier : ni sonde de port,
+        // ni verrou, ni suivi du processus lancé. C'était un second lanceur, à
+        // un `invoke` de distance de n'importe quelle partie de l'interface, et
+        // il ne pouvait pas voir un serveur déjà en place. On la ferme au
+        // profit de `start_backend`, qui interroge le noyau, refuse un
+        // démarrage déjà en vol, et suit ce qu'il a lancé.
+        return Err(
+            "Use the start_backend command instead: it checks the port and \
+             refuses to start a second server."
+                .to_string(),
+        );
     }
 
-    // `diapason serve` is a long-running server that never exits. The old code
-    // used `.output()`, which waits for the process to exit and so hung this
-    // command forever — the "Start" button never resolved (#531). Spawn it
-    // detached instead, drain stderr (a full 4 KB Windows pipe can otherwise
-    // stall the child mid-startup, #309), and poll /health for readiness.
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to launch diapason serve: {}", e))?;
-
-    let tail: StderrTail = Arc::new(Mutex::new(Vec::new()));
-    if let Some(stderr) = child.stderr.take() {
-        spawn_diapason_stderr_drainer(stderr, tail.clone());
-    }
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-    let url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-
-    loop {
-        // Surface an early crash (bad venv, missing Rust ext, etc.) right away
-        // instead of waiting out the full readiness timeout.
-        if let Ok(Some(status)) = child.try_wait() {
-            let stderr = String::from_utf8_lossy(tail.lock().await.as_slice()).into_owned();
-            return Err(format!(
-                "diapason serve exited (code {:?}) before becoming healthy:\n{}",
-                status.code(),
-                stderr.trim()
-            ));
-        }
-        if let Ok(resp) = client.get(&url).send().await {
-            if resp.status().is_success() {
-                // Leave the server running (the Child is detached on drop —
-                // kill_on_drop defaults to false); `stop` tears it down.
-                return Ok(format!(
-                    "diapason serve is ready on http://127.0.0.1:{}",
-                    DIAPASON_PORT
-                ));
-            }
-        }
-        if tokio::time::Instant::now() >= deadline {
-            return Err(format!(
-                "diapason serve did not become healthy on port {} within 120s.",
-                DIAPASON_PORT
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+    // Commande courte (`stop`, `status`, …) : on l'attend et on rend sa sortie.
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Failed to launch diapason: {}", e))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
 }
 

@@ -18,6 +18,7 @@ those once, then `launchctl kickstart` it.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -197,6 +198,26 @@ def kickstart(label: str = LABEL) -> None:
         capture_output=True,
         check=False,
     )
+
+
+def job_pid(label: str = LABEL) -> int | None:
+    """Le PID que launchd donne à ce job, ou None s'il n'en a pas.
+
+    « Chargé » n'est ni « vivant » ni « seul » : ``is_loaded`` répond vrai pour
+    un job déclaré mais arrêté. Avec un PID, on peut comparer au détenteur réel
+    d'un port et savoir si le service qu'on croit posséder est bien celui qui
+    sert.
+    """
+    r = subprocess.run(
+        ["launchctl", "print", f"gui/{_uid()}/{label}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        return None
+    trouve = re.search(r"\n\tpid = (\d+)\n", r.stdout)
+    return int(trouve.group(1)) if trouve else None
 
 
 def is_loaded(label: str = LABEL) -> bool:

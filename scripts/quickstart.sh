@@ -24,11 +24,49 @@ warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 fail()  { echo -e "${RED}[fail]${NC}  $*"; exit 1; }
 
 CLEANUP_PIDS=()
+# Qui ECOUTE sur ce port, d'apres le noyau. Vide = libre, "?" = on ne sait pas.
+#
+# `curl /health` ne repond qu'a « quelqu'un parle-t-il HTTP ici ». Un serveur
+# qui tient le port sans repondre — le zombie observe le 20 aout 2026 — passait
+# donc pour absent, et quickstart en lancait un second par-dessus.
+port_listeners() {
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' '
+  else
+    echo "?"
+  fi
+}
+
+# Un PID et toute sa descendance. `uv run diapason serve` place `uv` en enfant
+# direct et le vrai serveur en petit-fils : tuer le PID connu laissait donc un
+# serveur orphelin qui tenait le port.
+descendants_of() {
+  local racine="$1" enfants
+  enfants="$(pgrep -P "$racine" 2>/dev/null || true)"
+  echo "$racine"
+  local enfant
+  for enfant in $enfants; do
+    descendants_of "$enfant"
+  done
+}
+
+kill_tree() {
+  local pid="$1" tous
+  tous="$(descendants_of "$pid" | tr '\n' ' ')"
+  # Les feuilles d'abord : tuer le parent en premier orphelinerait ses enfants.
+  local ordre
+  ordre="$(echo "$tous" | tr ' ' '\n' | grep -v '^$' | tail -r 2>/dev/null || echo "$tous" | tr ' ' '\n' | grep -v '^$')"
+  local p
+  for p in $ordre; do
+    kill "$p" 2>/dev/null || true
+  done
+}
+
 cleanup() {
   echo ""
   info "Shutting down..."
   for pid in "${CLEANUP_PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
+    kill_tree "$pid"
   done
   wait 2>/dev/null || true
   ok "Done."
@@ -165,9 +203,13 @@ ok "Frontend dependencies installed"
 
 # ── 9. Start backend ────────────────────────────────────────────────
 info "Starting backend API server on port 8000..."
-if curl -sf http://localhost:8000/health &>/dev/null; then
-  fail "An Diapason server is already running on port 8000. Stop it before re-running quickstart so updated environment variables are applied."
+HOLDERS="$(port_listeners 8000)"
+if [ "$HOLDERS" = "?" ]; then
+  warn "Cannot check port 8000 (lsof not found). Continuing without that check."
+elif [ -n "${HOLDERS// /}" ]; then
+  fail "Port 8000 is already served by PID(s): $HOLDERS. Stop it before re-running quickstart so updated environment variables are applied."
 fi
+
 uv run diapason serve --port 8000 &>/dev/null &
 BACKEND_PID=$!
 CLEANUP_PIDS+=("$BACKEND_PID")
@@ -175,8 +217,28 @@ sleep 3
 
 if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
   fail "Backend exited during startup. Run 'uv run diapason serve --port 8000' to see the error."
-elif curl -sf http://localhost:8000/health &>/dev/null; then
+fi
+
+# Verifier que c'est bien NOTRE processus qui sert, pas un autre qui repondrait
+# par hasard : sinon quickstart annoncait « running » pour un serveur tiers,
+# tandis que le sien mourait en silence apres avoir perdu la course au port.
+OWNERS="$(port_listeners 8000)"
+MINE="$(descendants_of "$BACKEND_PID" | tr '\n' ' ')"
+SERVED_BY_US=0
+for owner in $OWNERS; do
+  case " $MINE " in *" $owner "*) SERVED_BY_US=1 ;; esac
+done
+
+if [ "$OWNERS" = "?" ]; then
+  if curl -sf http://localhost:8000/health &>/dev/null; then
+    ok "Backend running at http://localhost:8000"
+  else
+    warn "Backend may still be starting..."
+  fi
+elif [ "$SERVED_BY_US" = "1" ]; then
   ok "Backend running at http://localhost:8000"
+elif [ -n "${OWNERS// /}" ]; then
+  fail "Port 8000 is served by PID(s): $OWNERS, which is not the server we just started. Stop that one and re-run."
 else
   warn "Backend may still be starting..."
 fi

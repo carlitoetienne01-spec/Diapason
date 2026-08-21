@@ -6,6 +6,8 @@ own isolated storage so registrations in one registry never leak into another.
 
 from __future__ import annotations
 
+import importlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generic, Tuple, Type, TypeVar
 
 if TYPE_CHECKING:
@@ -15,6 +17,16 @@ if TYPE_CHECKING:
     from diapason.tools.storage._stubs import MemoryBackend
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class _LazyEntry:
+    """Une clé déclarée dont le module n'est pas encore chargé."""
+
+    module: str
+
+    def __repr__(self) -> str:  # pragma: no cover - confort de débogage
+        return f"<lazy {self.module}>"
 
 
 class RegistryBase(Generic[T]):
@@ -35,7 +47,11 @@ class RegistryBase(Generic[T]):
 
         def decorator(entry: T) -> T:
             entries = cls._entries()
-            if key in entries:
+            # Une DÉCLARATION paresseuse n'est pas un enregistrement : le vrai
+            # la remplace. Sans quoi importer le module directement — ce que
+            # font les tests — se heurterait à la clé qu'il vient lui-même de
+            # faire déclarer.
+            if key in entries and not isinstance(entries[key], _LazyEntry):
                 raise ValueError(f"{cls.__name__} already has an entry for '{key}'")
             entries[key] = entry
             return entry
@@ -46,14 +62,51 @@ class RegistryBase(Generic[T]):
     def register_value(cls, key: str, value: T) -> T:
         """Imperatively register a *value* under *key*."""
         entries = cls._entries()
-        if key in entries:
+        if key in entries and not isinstance(entries[key], _LazyEntry):
             raise ValueError(f"{cls.__name__} already has an entry for '{key}'")
         entries[key] = value
         return value
 
     @classmethod
+    def register_lazy(cls, key: str, module: str) -> None:
+        """Déclarer *key* sans charger son module.
+
+        Importer un moteur « pour déclencher son enregistrement » fait payer
+        ses dépendances à TOUT LE MONDE, y compris à qui ne s'en servira
+        jamais. MESURÉ : charger ``colbert_backend`` ou ``faiss_backend``
+        tirait ``torch`` et ``numpy`` — puis échouait sur une dépendance
+        absente, et l'échec était avalé. Le coût restait, pas le moteur. Or un
+        ``numpy`` cassé fait alors tomber ``diapason serve`` au démarrage, pour
+        un moteur que personne n'a demandé.
+
+        Le module n'est donc chargé qu'à la première question portant sur
+        cette clé.
+        """
+        entries = cls._entries()
+        if key not in entries:
+            entries[key] = _LazyEntry(module)
+
+    @classmethod
+    def _resolve(cls, key: str) -> None:
+        """Charger le module d'une clé paresseuse, si c'en est une."""
+        entries = cls._entries()
+        entry = entries.get(key)
+        if not isinstance(entry, _LazyEntry):
+            return
+        # Retirer le marqueur AVANT d'importer : le module s'enregistre
+        # lui-même par décorateur et refuserait une clé déjà prise.
+        del entries[key]
+        try:
+            importlib.import_module(entry.module)
+        except ImportError:
+            # Dépendance absente : la clé disparaît, exactement comme
+            # aujourd'hui où l'import échouait au chargement du paquet.
+            pass
+
+    @classmethod
     def get(cls, key: str) -> T:
         """Retrieve the entry for *key*, raising ``KeyError`` if missing."""
+        cls._resolve(key)
         try:
             return cls._entries()[key]
         except KeyError as exc:
@@ -84,7 +137,13 @@ class RegistryBase(Generic[T]):
 
     @classmethod
     def contains(cls, key: str) -> bool:
-        """Check whether *key* is registered."""
+        """Check whether *key* is registered.
+
+        Résout une entrée paresseuse : répondre « oui » puis échouer à la
+        créer serait pire que de payer l'import ici. L'appelant qui pose la
+        question sur cette clé précise est justement celui qui va s'en servir.
+        """
+        cls._resolve(key)
         return key in cls._entries()
 
     @classmethod
