@@ -993,20 +993,74 @@ fn format_port_unavailable(port: u16, reason: &str) -> String {
 /// Limite assumée : un détenteur lié à une adresse tierce (par ex.
 /// `192.168.0.10:8000`) échappe encore aux deux liaisons. La sonde `/health`
 /// qui précède couvre ce cas dès lors qu'il répond.
+/// Qui ÉCOUTE sur ce port, d'après le NOYAU. `None` = on n'a pas pu demander.
+///
+/// Sonder en tentant des liaisons, c'est deviner : quatre adresses littérales
+/// ne couvriront jamais les N adresses d'une machine. MESURÉ — un serveur lié
+/// à `192.168.0.121`, exactement ce que `serve-service install --allow-network`
+/// installe pour que le téléphone du maillage atteigne ce Mac, échappait aux
+/// quatre sondes. `lsof` répond pour toutes les adresses d'un coup.
+#[cfg(unix)]
+fn port_listeners(port: u16) -> Option<Vec<String>> {
+    let sortie = std::process::Command::new("lsof")
+        .args([
+            "-nP",
+            &format!("-iTCP:{port}"),
+            "-sTCP:LISTEN",
+            "-F",
+            "pn",
+        ])
+        .env("LC_ALL", "C")
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+        .output()
+        .ok()?;
+    let code = sortie.status.code()?;
+    if code != 0 && code != 1 {
+        return None;
+    }
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    if code == 1 && !texte.trim().is_empty() {
+        return None;
+    }
+    let mut trouves = Vec::new();
+    let mut pid: Option<String> = None;
+    for ligne in texte.lines() {
+        if let Some(reste) = ligne.strip_prefix('p') {
+            pid = Some(reste.to_string());
+        } else if let Some(adresse) = ligne.strip_prefix('n') {
+            if let Some(ref p) = pid {
+                trouves.push(format!("PID {p} sur {adresse}"));
+            }
+        }
+    }
+    Some(trouves)
+}
+
+#[cfg(not(unix))]
+fn port_listeners(_port: u16) -> Option<Vec<String>> {
+    None
+}
+
 fn port_conflict(port: u16) -> Option<String> {
-    // Les quatre formes qu'un serveur peut prendre. L'IPv6 y figure parce
-    // qu'un détenteur lié à « ::1 » en mode v6only échappe entièrement aux
-    // liaisons IPv4 — mesuré. Chaque sonde est refermée avant la suivante
-    // (le `Ok(_)` la laisse tomber aussitôt), donc aucune ne se bloque
-    // elle-même sur une pile double.
+    // Le noyau d'abord : il voit toutes les adresses, y compris celle du
+    // maillage, et il nomme le détenteur.
+    if let Some(auditeurs) = port_listeners(port) {
+        if auditeurs.is_empty() {
+            return None;
+        }
+        return Some(auditeurs.join(", "));
+    }
+
+    // Repli quand `lsof` est absent : les liaisons directes. Elles ne voient
+    // qu'un détenteur sur l'une de ces quatre formes, mais mieux vaut un
+    // contrôle partiel que pas de contrôle.
     for addr in ["0.0.0.0", "127.0.0.1", "::", "::1"] {
         match std::net::TcpListener::bind((addr, port)) {
             Ok(_) => {}
             // SEULE « adresse déjà utilisée » prouve une occupation. Un autre
-            // échec de liaison — bac à sable, pile réseau indisponible — n'en
-            // prouve rien, et bloquer le démarrage là-dessus transformerait un
-            // contrôle en panne. Dans le doute, on laisse passer : le serveur
-            // lui-même signalera son propre échec de liaison, lui.
+            // échec — bac à sable, pile réseau absente — n'en prouve rien, et
+            // bloquer le démarrage là-dessus transformerait un contrôle en
+            // panne.
             Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
                 return Some(format!("{addr}: {err}"));
             }
@@ -1858,6 +1912,21 @@ fn get_local_api_key() -> String {
 static BOOT_IN_FLIGHT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Remet le drapeau à false quoi qu'il arrive, y compris sur une panique.
+///
+/// Un `store(false)` posé APRÈS l'await ne s'exécute jamais si le démarrage
+/// panique : le drapeau resterait à true et l'application refuserait tout
+/// démarrage jusqu'à son redémarrage complet. Un garde qui se bloque lui-même
+/// est pire que le doublon qu'il prévient — d'où `Drop`, que le déroulement de
+/// pile exécute aussi.
+struct BootGuard;
+
+impl Drop for BootGuard {
+    fn drop(&mut self) {
+        BOOT_IN_FLIGHT.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 fn spawn_boot_backend(backend: SharedBackend, status: SharedStatus) -> bool {
     use std::sync::atomic::Ordering;
     if BOOT_IN_FLIGHT
@@ -1867,8 +1936,8 @@ fn spawn_boot_backend(backend: SharedBackend, status: SharedStatus) -> bool {
         return false;
     }
     tauri::async_runtime::spawn(async move {
+        let _garde = BootGuard;
         boot_backend(backend, status).await;
-        BOOT_IN_FLIGHT.store(false, Ordering::SeqCst);
     });
     true
 }
@@ -3373,12 +3442,11 @@ mod tests {
 
     /// Un port libre doit être annoncé libre.
     ///
-    /// La sonde essaie quatre adresses, dont « :: ». Sur une pile double, une
-    /// liaison IPv6 non restreinte réserve AUSSI l'IPv4 : si les sondes se
-    /// chevauchaient, la seconde échouerait sur AddrInUse et le contrôle
+    /// Le repli par liaisons essaie « :: ». Sur une pile double, une liaison
+    /// IPv6 non restreinte réserve AUSSI l'IPv4 : si les sondes se
+    /// chevauchaient, la suivante échouerait sur AddrInUse et le contrôle
     /// déclarerait occupé un port que personne ne tient — l'application
-    /// refuserait alors de démarrer. Chaque sonde est donc refermée avant la
-    /// suivante, et ce test le prouve.
+    /// refuserait alors de démarrer.
     #[test]
     fn un_port_libre_ne_se_bloque_pas_lui_meme() {
         let ephemere = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
@@ -3387,7 +3455,44 @@ mod tests {
         assert_eq!(super::port_conflict(port), None);
     }
 
-    /// Et un vrai détenteur doit être vu.
+    /// Un détenteur sur une adresse TIERCE doit être vu.
+    ///
+    /// C'est le test qui distingue le correctif de ce qu'il remplace : la
+    /// version par liaisons n'essayait que 0.0.0.0, 127.0.0.1, :: et ::1, et
+    /// rendait donc « libre » face à un serveur lié à l'adresse du Mac sur le
+    /// réseau — exactement ce que `serve-service install --allow-network`
+    /// installe pour le maillage. Interroger le noyau voit toutes les adresses.
+    #[test]
+    fn un_detenteur_sur_une_adresse_tierce_est_detecte() {
+        // Trouver une adresse locale qui ne soit ni le joker ni le loopback.
+        let sonde = match std::net::UdpSocket::bind(("0.0.0.0", 0)) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if sonde.connect(("8.8.8.8", 53)).is_err() {
+            return;
+        }
+        let locale = match sonde.local_addr() {
+            Ok(a) => a.ip(),
+            Err(_) => return,
+        };
+        if locale.is_loopback() || locale.is_unspecified() {
+            return; // machine sans adresse réseau : rien à prouver ici
+        }
+        let detenteur = match std::net::TcpListener::bind((locale, 0)) {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let port = detenteur.local_addr().unwrap().port();
+        let verdict = super::port_conflict(port);
+        assert!(
+            verdict.is_some(),
+            "un détenteur sur {locale} doit être vu, pas seulement sur le loopback"
+        );
+        drop(detenteur);
+    }
+
+    /// Et un détenteur sur le loopback aussi, évidemment.
     #[test]
     fn un_auditeur_est_detecte() {
         let detenteur = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
