@@ -34,7 +34,14 @@ class FauxMoteur:
 
 
 def _polir(brut: str, sortie: str) -> Optional[str]:
-    return llm_polish_text(brut, engine=FauxMoteur(sortie), timeout_ms=4000)
+    # Modèle explicite : sans lui, le test dépendait du modèle par défaut de la
+    # configuration ambiante. Il passait donc pour une raison incidente, et
+    # échouait dès qu'une autre suite laissait une configuration sans modèle —
+    # « llm polish skipped: no default model », constaté en enchaînant
+    # tests/desktop puis tests/speech.
+    return llm_polish_text(
+        brut, engine=FauxMoteur(sortie), timeout_ms=4000, model="modele-de-test"
+    )
 
 
 # --- le basculement de langue est refusé ---------------------------------
