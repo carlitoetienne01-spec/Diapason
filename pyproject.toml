@@ -253,6 +253,17 @@ packages = ["src/diapason"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Les marqueurs ci-dessous DÉCLARENT une dépendance externe — un moteur qui
+# tourne, des clés d'API, des poids à télécharger — mais rien ne les excluait
+# de la passe par défaut. Résultat : `pytest tests` était rouge en permanence
+# sur toute machine ne réunissant pas ces conditions, et un rouge permanent
+# apprend à ignorer le rouge. La description du marqueur `hub` disait déjà
+# « exclu de la voie CI par défaut » : la politique existait, elle n'était pas
+# appliquée.
+#
+# Chaque famille reste lançable expressément : `pytest -m live`, `-m cloud`,
+# `-m hub`, etc.
+addopts = "-m 'not live and not live_channel and not live_external and not cloud and not hub and not modal'"
 markers = [
     "amd: requires AMD GPU",
     "apple: requires Apple Silicon",

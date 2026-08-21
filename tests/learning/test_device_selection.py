@@ -11,14 +11,29 @@ class TestSelectTorchDevice:
     returns None when torch is absent).
     """
 
-    def test_no_torch_returns_none(self):
-        """Without torch, _select_torch_device returns None."""
-        from diapason.learning.intelligence.orchestrator.sft_trainer import (
-            _select_torch_device,
-        )
+    def test_no_torch_returns_none(self, monkeypatch):
+        """Sans torch, ``_select_torch_device`` rend None.
 
-        # torch is not installed in test env, so HAS_TORCH is False
-        assert _select_torch_device() is None
+        Ce test SUPPOSAIT que torch était absent de l'environnement de test.
+        Il l'est chez certains, pas chez d'autres — ici torch est installé, et
+        la fonction rendait donc « mps ». Un test qui dépend de ce qui est
+        installé ne prouve pas ce qu'il annonce : on impose la condition au
+        lieu de l'espérer.
+        """
+        from diapason.learning.intelligence.orchestrator import sft_trainer
+
+        monkeypatch.setattr(sft_trainer, "HAS_TORCH", False)
+        assert sft_trainer._select_torch_device() is None
+
+    def test_torch_present_returns_a_device(self):
+        """Et l'autre moitié, que l'ancien test ne pouvait pas voir."""
+        from diapason.learning.intelligence.orchestrator import sft_trainer
+
+        if not sft_trainer.HAS_TORCH:
+            import pytest
+
+            pytest.skip("torch absent de cet environnement")
+        assert sft_trainer._select_torch_device() is not None
 
     def test_cuda_preferred(self):
         """CUDA is selected when available (logic test)."""

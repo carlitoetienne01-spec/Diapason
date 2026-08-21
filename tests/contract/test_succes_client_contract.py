@@ -26,9 +26,30 @@ from diapason.mesh.identity import canonical_bytes
 SUCCES = pathlib.Path.home() / "Desktop/Porfolio/Succes"
 VECTEURS = SUCCES / "test/mesh/canonical_vectors.json"
 
+
+def _lisible(chemin: pathlib.Path) -> bool:
+    """Le fichier est-il RÉELLEMENT lisible, pas seulement présent ?
+
+    ``exists()`` ne suffit pas sur macOS : le Bureau est protégé, et un
+    processus sans autorisation voit le fichier tout en se voyant refuser son
+    ouverture. Le test échouait alors sur un PermissionError et signalait une
+    rupture de contrat là où il n'y avait qu'une permission manquante — le
+    genre de faux défaut qui fait chercher au mauvais endroit.
+    """
+    try:
+        with chemin.open("rb") as f:
+            f.read(1)
+    except OSError:
+        return False
+    return True
+
+
 besoin_du_flutter = pytest.mark.skipif(
-    not VECTEURS.exists(),
-    reason="dépôt Succès absent — contrat vérifié là où les deux coexistent",
+    not _lisible(VECTEURS),
+    reason=(
+        "dépôt Succès absent ou illisible (autorisation macOS) — contrat "
+        "vérifié là où les deux coexistent ET sont lisibles"
+    ),
 )
 
 
@@ -71,9 +92,9 @@ class TestLEncodageCanoniqueNeDerivePas:
 
         assert any(len(p) > 1 for p in payloads), "aucun cas de tri des clés"
         assert "«" in texte or "—" in texte, "aucun cas non-ASCII"
-        assert any(
-            isinstance(v, list) for p in payloads for v in p.values()
-        ), "aucun cas de liste"
+        assert any(isinstance(v, list) for p in payloads for v in p.values()), (
+            "aucun cas de liste"
+        )
         assert any(
             isinstance(v, int) and v > 2**31 for p in payloads for v in p.values()
         ), "aucun cas d'entier 64 bits (les millisecondes débordent en 32)"

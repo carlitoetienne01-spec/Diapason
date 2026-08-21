@@ -35,6 +35,10 @@ channels/webhook.py
 channels/whatsapp.py
 cli/_version_check.py
 cli/config_cmd.py
+# cli/daemon_cmd.py — interroge /health sur l'hôte que l'utilisateur a
+# lui-même configuré pour SON serveur, afin de vérifier qu'un démarrage a
+# réellement pris le port. Aucune destination tierce, aucune donnée envoyée.
+cli/daemon_cmd.py
 cli/init_cmd.py
 cli/mine_cmd.py
 cli/model.py
@@ -59,6 +63,10 @@ connectors/slack_connector.py
 connectors/spotify.py
 connectors/strava.py
 connectors/weather.py
+# core/ports.py — n'appelle personne : il tente une LIAISON locale pour
+# savoir si un port est déjà tenu. Le scanner voit un socket, pas une
+# destination.
+core/ports.py
 desktop/smart_intents.py
 engine/_http_async.py
 engine/_openai_compat.py

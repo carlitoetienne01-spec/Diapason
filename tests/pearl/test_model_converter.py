@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,12 @@ def _load_converter():
     spec = importlib.util.spec_from_file_location("pearl_model_converter", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Enregistrer AVANT d'exécuter : ``dataclasses`` résout un ``InitVar`` en
+    # cherchant ``sys.modules[cls.__module__]``. Un module chargé par chemin
+    # sans être enregistré n'y figure pas, et la résolution échoue sur un
+    # None — l'erreur remonte alors depuis la bibliothèque standard, très loin
+    # de la ligne qui l'a causée.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

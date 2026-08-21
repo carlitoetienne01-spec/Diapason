@@ -65,4 +65,17 @@ def test_windows_installer_syncs_the_native_group() -> None:
 def test_quickstart_installs_web_search_dependencies() -> None:
     quickstart = QUICKSTART_SH.read_text()
     assert "--extra tools-search" in quickstart
-    assert "already running on port 8000" in quickstart
+
+
+def test_quickstart_refuses_a_port_already_served() -> None:
+    """Quickstart ne doit pas empiler un serveur sur un autre.
+
+    Cette assertion vivait dans le test des dépendances de recherche web, et
+    portait sur la formulation exacte du message. On vérifie désormais le
+    MÉCANISME : la question est posée au noyau — un ``curl /health`` ne voit
+    pas un détenteur muet — et un port occupé fait échouer le script.
+    """
+    quickstart = QUICKSTART_SH.read_text()
+    assert "port_listeners" in quickstart, "le port doit être vérifié"
+    assert "lsof" in quickstart, "la question doit être posée au noyau"
+    assert "already served by" in quickstart, "un port occupé doit faire échouer"
