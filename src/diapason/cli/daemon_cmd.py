@@ -58,7 +58,7 @@ def _listeners_on(port: int) -> list[tuple[int, str]] | None:
     détenteur — ce dont la confirmation d'après-lancement a besoin.
     """
     if sys.platform == "win32":
-        return None  # ni lsof ni équivalent ici : on ne prétend pas savoir
+        return _listeners_windows(port)
     sortie = _run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-F", "pn"])
     if sortie is None:
         return None
@@ -77,6 +77,81 @@ def _listeners_on(port: int) -> list[tuple[int, str]] | None:
         elif ligne.startswith("n") and pid is not None:
             trouves.append((pid, ligne[1:]))
     return trouves
+
+
+def _listeners_windows(port: int) -> list[tuple[int, str]] | None:
+    """Équivalent Windows de ``lsof``, via ``netstat -ano``.
+
+    NON VÉRIFIÉ sur cette machine, faute de Windows sous la main : la forme est
+    documentée, pas mesurée, à la différence du reste de ce fichier. Elle existe
+    surtout pour que ``start`` ne réponde pas « je ne sais pas » à l'infini là
+    où lsof n'existe pas — un garde qui refuse toujours de démarrer serait une
+    panne, pas une protection.
+    """
+    sortie = _run(["netstat", "-ano", "-p", "TCP"])
+    if sortie is None or sortie.returncode != 0:
+        return None
+    trouves: list[tuple[int, str]] = []
+    for ligne in sortie.stdout.splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) < 5 or morceaux[0].upper() != "TCP":
+            continue
+        if morceaux[3].upper() != "LISTENING":
+            continue
+        locale = morceaux[1]
+        if not locale.rsplit(":", 1)[-1].isdigit():
+            continue
+        if int(locale.rsplit(":", 1)[-1]) != port:
+            continue
+        try:
+            trouves.append((int(morceaux[4]), locale))
+        except ValueError:
+            continue
+    return trouves
+
+
+def _port_occupe_par_liaison(port: int) -> bool | None:
+    """Dernier repli : tenter la liaison soi-même. None si on n'apprend rien.
+
+    Ne voit qu'un détenteur sur l'une des quatre formes essayées — c'est
+    précisément la faiblesse qui a laissé passer un serveur lié à l'adresse du
+    maillage. On ne s'en sert donc que si le système n'a pas su répondre.
+
+    ``SO_REUSEADDR`` seulement sur POSIX : il y ignore TIME_WAIT, sans quoi un
+    port qu'on vient de libérer paraîtrait pris. Sur Windows sa sémantique est
+    INVERSE — il autorise à se lier par-dessus un socket actif — et le poser
+    annulerait entièrement le contrôle.
+    """
+    import errno
+    import socket
+
+    formes = (
+        (socket.AF_INET, "0.0.0.0"),
+        (socket.AF_INET, "127.0.0.1"),
+        (socket.AF_INET6, "::"),
+        (socket.AF_INET6, "::1"),
+    )
+    a_pu_tester = False
+    for famille, adresse in formes:
+        try:
+            sonde = socket.socket(famille, socket.SOCK_STREAM)
+        except OSError:
+            continue
+        if sys.platform != "win32":
+            sonde.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if famille == socket.AF_INET6:
+            with contextlib.suppress(OSError):
+                sonde.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        try:
+            sonde.bind((adresse, port))
+            a_pu_tester = True
+        except OSError as erreur:
+            if erreur.errno == errno.EADDRINUSE:
+                sonde.close()
+                return True
+        finally:
+            sonde.close()
+    return False if a_pu_tester else None
 
 
 def _descendants(racine: int) -> set[int]:
@@ -194,7 +269,15 @@ def _port_state(port: int) -> tuple[str, str]:
     """État du port et description lisible du détenteur."""
     auditeurs = _listeners_on(port)
     if auditeurs is None:
-        return INCONNU, "impossible d'interroger le noyau (lsof indisponible)"
+        # Le système n'a pas su répondre. Plutôt que de refuser tout démarrage
+        # à jamais, on retombe sur la liaison directe — partielle, mais valant
+        # mieux que rien — et on ne rend INCONNU que si elle échoue aussi.
+        par_liaison = _port_occupe_par_liaison(port)
+        if par_liaison is True:
+            return OCCUPE, f"port {port} occupé (détecté par liaison directe)"
+        if par_liaison is False:
+            return LIBRE, ""
+        return INCONNU, "ni lsof ni liaison directe n'ont pu répondre"
     if not auditeurs:
         return LIBRE, ""
     detail = ", ".join(f"PID {p} sur {adresse}" for p, adresse in auditeurs)

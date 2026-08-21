@@ -311,3 +311,41 @@ def test_start_ne_lance_rien_quand_il_refuse(monkeypatch, tmp_path) -> None:
     )
     CliRunner().invoke(daemon, ["start"])
     assert lances == []
+
+
+# --- le garde ne doit jamais se bloquer lui-même -------------------------
+
+
+def test_sans_lsof_on_retombe_sur_la_liaison_directe(monkeypatch) -> None:
+    """Un garde qui refuse toujours de démarrer serait une panne, pas un garde.
+
+    Là où ``lsof`` n'existe pas — Windows, un conteneur minimal — la première
+    voie rend None. Sans repli, ``_port_state`` répondrait « je ne sais pas » à
+    l'infini et ``start``, qui refuse dans le doute, ne démarrerait jamais.
+    """
+    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
+
+    prise = socket.socket()
+    prise.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    prise.bind(("127.0.0.1", 0))
+    prise.listen(1)
+    port = prise.getsockname()[1]
+    try:
+        assert _port_state(port)[0] == OCCUPE
+    finally:
+        prise.close()
+
+    libre = socket.socket()
+    libre.bind(("127.0.0.1", 0))
+    port_libre = libre.getsockname()[1]
+    libre.close()
+    assert _port_state(port_libre)[0] == LIBRE
+
+
+def test_quand_rien_ne_repond_on_dit_qu_on_ne_sait_pas(monkeypatch) -> None:
+    """Et seulement là : INCONNU est le dernier recours, pas le premier."""
+    monkeypatch.setattr("diapason.cli.daemon_cmd._listeners_on", lambda _p: None)
+    monkeypatch.setattr(
+        "diapason.cli.daemon_cmd._port_occupe_par_liaison", lambda _p: None
+    )
+    assert _port_state(8000)[0] == INCONNU
