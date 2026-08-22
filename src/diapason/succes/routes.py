@@ -42,6 +42,7 @@ class TaskCreate(BaseModel):
     time: str = ""
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
     projectId: str = ""
+    parentTaskId: str = ""
     category: str = Field(default="", max_length=100)
     notes: str = Field(default="", max_length=2000)
     emoji: str = Field(default="", max_length=16)
@@ -54,6 +55,7 @@ class TaskPatch(BaseModel):
     time: str | None = None
     priority: Literal["low", "medium", "high", "urgent"] | None = None
     projectId: str | None = None
+    parentTaskId: str | None = None
     category: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
     emoji: str | None = Field(default=None, max_length=16)
@@ -94,6 +96,8 @@ class ProjectCreate(BaseModel):
     icon: str = Field(default="", max_length=16)
     startDate: str = ""
     endDate: str = ""
+    structure: Literal["flat", "tree"] = "flat"
+    kitId: str = Field(default="", max_length=80)
     opId: str | None = None
 
 
@@ -104,6 +108,7 @@ class ProjectPatch(BaseModel):
     icon: str | None = Field(default=None, max_length=16)
     startDate: str | None = None
     endDate: str | None = None
+    structure: Literal["flat", "tree"] | None = None
     opId: str | None = None
 
 
@@ -355,9 +360,7 @@ async def reschedule_task(task_id: str, body: RescheduleBody) -> dict[str, Any]:
 async def reschedule_task_series(task_id: str, body: RescheduleBody) -> dict[str, Any]:
     scheduled_date = _resolved_date(body.date, allow_empty=False)
     try:
-        result = get_store().reschedule_series(
-            task_id, scheduled_date, op_id=body.opId
-        )
+        result = get_store().reschedule_series(task_id, scheduled_date, op_id=body.opId)
     except SuccesError as exc:
         raise _domain_error(exc) from exc
     return {**result, "persistence": "local"}
@@ -470,6 +473,14 @@ async def list_projects(
 ) -> dict[str, Any]:
     projects = _workspace_store().list_projects(search=search)
     return {"projects": projects, "count": len(projects)}
+
+
+@router.get("/project-kits")
+async def list_project_kits() -> dict[str, Any]:
+    from diapason.succes.project_kits import list_project_kits as _list_kits
+
+    kits = _list_kits()
+    return {"kits": kits, "count": len(kits)}
 
 
 @router.post("/projects", status_code=201)
@@ -875,6 +886,17 @@ async def import_legacy(body: LegacyImportBody) -> dict[str, Any]:
             "importées sans écraser les versions plus récentes."
         ),
     }
+
+
+from diapason.succes.finances_routes import register_finances_routes  # noqa: E402
+
+register_finances_routes(
+    router,
+    get_store=get_store,
+    domain_error=_domain_error,
+    resolved_date=_resolved_date,
+    DeleteBody=DeleteBody,
+)
 
 
 __all__ = ["get_store", "router", "set_store_for_tests"]

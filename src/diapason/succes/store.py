@@ -23,6 +23,7 @@ from diapason.core.paths import get_data_dir
 
 MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
 MAX_SUBTASK_DEPTH = 24
+MAX_TASK_TREE_DEPTH = 16
 PRIORITIES = frozenset({"low", "medium", "high", "urgent"})
 
 
@@ -168,11 +169,41 @@ class SuccesStore:
                     "ALTER TABLE succes_operations ADD COLUMN "
                     "request_json TEXT NOT NULL DEFAULT '{}'"
                 )
+            self._ensure_task_columns(conn)
+            self._ensure_project_columns(conn)
             conn.execute(
                 "INSERT OR IGNORE INTO succes_meta(key, value) VALUES('device_id', ?)",
                 (f"mac-{secrets.token_hex(8)}",),
             )
             conn.commit()
+
+    @staticmethod
+    def _ensure_task_columns(conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(succes_tasks)").fetchall()
+        }
+        if "parent_task_id" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_tasks ADD COLUMN "
+                "parent_task_id TEXT NOT NULL DEFAULT ''"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS succes_tasks_parent_idx "
+                "ON succes_tasks(project_id, parent_task_id, order_index)"
+            )
+
+    @staticmethod
+    def _ensure_project_columns(conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(succes_projects)").fetchall()
+        }
+        if "structure" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_projects ADD COLUMN "
+                "structure TEXT NOT NULL DEFAULT 'flat'"
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -273,6 +304,7 @@ class SuccesStore:
 
     @staticmethod
     def _task_dict(row: sqlite3.Row, subtasks: list[dict[str, Any]]) -> dict[str, Any]:
+        keys = row.keys()
         return {
             "id": row["id"],
             "title": row["title"],
@@ -281,6 +313,7 @@ class SuccesStore:
             "date": row["scheduled_date"],
             "time": row["scheduled_time"],
             "projectId": row["project_id"],
+            "parentTaskId": row["parent_task_id"] if "parent_task_id" in keys else "",
             "category": row["category"],
             "notes": row["notes"],
             "emoji": row["emoji"],
@@ -294,6 +327,55 @@ class SuccesStore:
             "deletedAtMs": row["deleted_at_ms"],
             "subtasks": subtasks,
         }
+
+    def _validate_task_parent(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        task_id: str,
+        project_id: str,
+        parent_task_id: str,
+    ) -> str:
+        parent_id = (parent_task_id or "").strip()
+        if not parent_id:
+            return ""
+        if not project_id.strip():
+            raise SuccesError(
+                "Une branche doit appartenir à un projet pour avoir un parent."
+            )
+        if parent_id == task_id:
+            raise SuccesError("Une tâche ne peut pas être son propre parent.")
+        parent = conn.execute(
+            """SELECT id, project_id, parent_task_id FROM succes_tasks
+               WHERE id=? AND deleted_at_ms IS NULL""",
+            (parent_id,),
+        ).fetchone()
+        if parent is None:
+            raise SuccesNotFound("La tâche parente n'existe pas ou a été supprimée.")
+        if str(parent["project_id"] or "") != project_id:
+            raise SuccesError("La tâche parente doit appartenir au même projet.")
+        depth = 1
+        cursor = parent
+        seen = {task_id, parent_id}
+        while str(cursor["parent_task_id"] or "").strip():
+            depth += 1
+            if depth >= MAX_TASK_TREE_DEPTH:
+                raise SuccesError(
+                    f"L'arbre de tâches ne peut pas dépasser "
+                    f"{MAX_TASK_TREE_DEPTH} niveaux."
+                )
+            next_id = str(cursor["parent_task_id"])
+            if next_id in seen:
+                raise SuccesError("Cette hiérarchie formerait une boucle.")
+            seen.add(next_id)
+            cursor = conn.execute(
+                """SELECT id, project_id, parent_task_id FROM succes_tasks
+                   WHERE id=? AND deleted_at_ms IS NULL""",
+                (next_id,),
+            ).fetchone()
+            if cursor is None:
+                break
+        return parent_id
 
     @staticmethod
     def _subtask_tree(rows: Sequence[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -414,6 +496,7 @@ class SuccesStore:
             "date": str(data.get("date") or ""),
             "time": str(data.get("time") or ""),
             "projectId": str(data.get("projectId") or ""),
+            "parentTaskId": str(data.get("parentTaskId") or ""),
             "category": str(data.get("category") or ""),
             "notes": str(data.get("notes") or ""),
         }
@@ -434,40 +517,48 @@ class SuccesStore:
             str(data.get("completedDate") or ""), "completedDate"
         )
         notes = _clean_text(data.get("notes"), field="Les notes", maximum=2000)
-        values = (
-            task_id,
-            title,
-            int(bool(data.get("done"))),
-            priority,
-            scheduled,
-            str(data.get("time") or ""),
-            str(data.get("projectId") or ""),
-            str(data.get("category") or "")[:100],
-            notes,
-            str(data.get("emoji") or "")[:16],
-            str(data.get("templateId") or ""),
-            str(data.get("groupId") or ""),
-            int(data.get("order") or 0),
-            created,
-            completed,
-            max(0, int(data.get("postponedCount") or 0)),
-            ts,
-        )
+        project_id = str(data.get("projectId") or "")
         with self._transaction() as conn:
             replayed = self._replayed_task(conn, op_id, request)
             if replayed is not None:
                 return replayed
+            parent_task_id = self._validate_task_parent(
+                conn,
+                task_id=task_id,
+                project_id=project_id,
+                parent_task_id=str(data.get("parentTaskId") or ""),
+            )
             existing = conn.execute(
                 "SELECT updated_at_ms FROM succes_tasks WHERE id=?", (task_id,)
             ).fetchone()
             if existing is not None:
                 raise SuccesError("Une tâche avec cet identifiant existe déjà.")
+            values = (
+                task_id,
+                title,
+                int(bool(data.get("done"))),
+                priority,
+                scheduled,
+                str(data.get("time") or ""),
+                project_id,
+                parent_task_id,
+                str(data.get("category") or "")[:100],
+                notes,
+                str(data.get("emoji") or "")[:16],
+                str(data.get("templateId") or ""),
+                str(data.get("groupId") or ""),
+                int(data.get("order") or 0),
+                created,
+                completed,
+                max(0, int(data.get("postponedCount") or 0)),
+                ts,
+            )
             conn.execute(
                 """INSERT INTO succes_tasks
                    (id,title,done,priority,scheduled_date,scheduled_time,project_id,
-                    category,notes,emoji,template_id,group_id,order_index,created_date,
-                    completed_date,postponed_count,updated_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    parent_task_id,category,notes,emoji,template_id,group_id,order_index,
+                    created_date,completed_date,postponed_count,updated_at_ms)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 values,
             )
             task = self._load_task(conn, task_id)
@@ -502,6 +593,7 @@ class SuccesStore:
             ),
             "time": ("scheduled_time", lambda value: str(value or "")),
             "projectId": ("project_id", lambda value: str(value or "")),
+            "parentTaskId": ("parent_task_id", lambda value: str(value or "")),
             "category": ("category", lambda value: str(value or "")[:100]),
             "notes": (
                 "notes",
@@ -527,8 +619,38 @@ class SuccesStore:
             replayed = self._replayed_task(conn, op_id, request)
             if replayed is not None:
                 return replayed
-            if self._load_task(conn, task_id) is None:
+            current = self._load_task(conn, task_id)
+            if current is None:
                 raise SuccesNotFound("Cette tâche n'existe pas ou a été supprimée.")
+            next_project = (
+                str(patch["projectId"])
+                if "projectId" in patch
+                else str(current.get("projectId") or "")
+            )
+            next_parent = (
+                str(patch["parentTaskId"])
+                if "parentTaskId" in patch
+                else str(current.get("parentTaskId") or "")
+            )
+            if "projectId" in patch or "parentTaskId" in patch:
+                validated_parent = self._validate_task_parent(
+                    conn,
+                    task_id=task_id,
+                    project_id=next_project,
+                    parent_task_id=next_parent,
+                )
+                # Replace parent value in the SET list when we validated it.
+                if "parentTaskId" in patch or validated_parent != next_parent:
+                    try:
+                        parent_idx = next(
+                            i
+                            for i, part in enumerate(assignments)
+                            if part.startswith("parent_task_id")
+                        )
+                        values[parent_idx] = validated_parent
+                    except StopIteration:
+                        assignments.insert(-2, "parent_task_id = ?")
+                        values.insert(-2, validated_parent)
             conn.execute(
                 f"UPDATE succes_tasks SET {', '.join(assignments)} WHERE id = ?", values
             )
@@ -1088,8 +1210,8 @@ class SuccesStore:
             """INSERT INTO succes_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,category,
                 notes,emoji,template_id,group_id,order_index,created_date,completed_date,
-                postponed_count,updated_at_ms,deleted_at_ms)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+                postponed_count,updated_at_ms,deleted_at_ms,parent_task_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title,done=excluded.done,
                priority=excluded.priority,scheduled_date=excluded.scheduled_date,
                scheduled_time=excluded.scheduled_time,project_id=excluded.project_id,
@@ -1097,7 +1219,8 @@ class SuccesStore:
                template_id=excluded.template_id,group_id=excluded.group_id,
                order_index=excluded.order_index,created_date=excluded.created_date,
                completed_date=excluded.completed_date,postponed_count=excluded.postponed_count,
-               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
+               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
+               parent_task_id=excluded.parent_task_id""",
             (
                 task_id,
                 title,
@@ -1116,6 +1239,7 @@ class SuccesStore:
                 str(todo.get("completedDate") or ""),
                 max(0, int(todo.get("postponedCount") or 0)),
                 ts,
+                str(todo.get("parentTaskId") or ""),
             ),
         )
         conn.execute(

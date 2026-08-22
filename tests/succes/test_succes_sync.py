@@ -26,9 +26,9 @@ def test_pairing_is_one_time_hashed_and_revocable(tmp_path) -> None:
     invitation = db.create_pairing("iPhone personnel")
 
     with sqlite3.connect(db.db_path) as conn:
-        stored = conn.execute(
-            "SELECT token_hash FROM succes_sync_pairings"
-        ).fetchone()[0]
+        stored = conn.execute("SELECT token_hash FROM succes_sync_pairings").fetchone()[
+            0
+        ]
     assert invitation["pairingToken"] not in stored
     assert len(stored) == 64
 
@@ -72,9 +72,7 @@ def test_lww_tombstone_prevents_older_update_from_resurrecting_task(tmp_path) ->
     source = store(tmp_path, "delete-source")
     target = store(tmp_path, "delete-target")
     peer = authorize_peer(target)
-    source.create_task(
-        {"id": "gone", "title": "À supprimer", "updatedAtMs": 2_000}
-    )
+    source.create_task({"id": "gone", "title": "À supprimer", "updatedAtMs": 2_000})
     source.delete_task("gone")
     operations = source.list_operations()["operations"]
 

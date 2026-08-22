@@ -16,11 +16,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from diapason.succes.continuity import (
-    QUOTE_CATEGORIES,
-    SuccesContinuityStore,
-)
+from diapason.succes.continuity import QUOTE_CATEGORIES
 from diapason.succes.dates import normalize_time
+from diapason.succes.finances import SuccesFinancesStore
 from diapason.succes.relay import normalize_relay_url, relay_post
 from diapason.succes.store import (
     MAX_SUBTASK_DEPTH,
@@ -67,6 +65,12 @@ SYNC_ENTITIES = frozenset(
         "notes",
         "todo_templates",
         "quotes",
+        "accounts",
+        "finance_categories",
+        "transactions",
+        "subscriptions",
+        "budgets",
+        "savings_goals",
     }
 )
 
@@ -120,7 +124,7 @@ def _clock_wins(timestamp_ms: int, op_id: str, current: sqlite3.Row | None) -> b
     return (timestamp_ms, op_id) > current_clock
 
 
-class SuccesSyncStore(SuccesContinuityStore):
+class SuccesSyncStore(SuccesFinancesStore):
     """Continuity store extended with authenticated operation replication."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
@@ -534,7 +538,9 @@ class SuccesSyncStore(SuccesContinuityStore):
         sync_token = str(remote.get("syncToken") or "")
         peer_id = str(remote.get("peerId") or "")
         if not sync_token.startswith("diapason_sync_") or not peer_id:
-            raise SuccesError("Le relais n'a pas renvoyé d'identifiants de sync valides.")
+            raise SuccesError(
+                "Le relais n'a pas renvoyé d'identifiants de sync valides."
+            )
         name = _clean_text(
             device_name or remote.get("deviceName") or "Appareil distant",
             field="Le nom de l'appareil",
@@ -778,6 +784,12 @@ class SuccesSyncStore(SuccesContinuityStore):
             "notes": "succes_notes",
             "todo_templates": "succes_task_templates",
             "quotes": "succes_quotes",
+            "accounts": "succes_accounts",
+            "finance_categories": "succes_finance_categories",
+            "transactions": "succes_transactions",
+            "subscriptions": "succes_subscriptions",
+            "budgets": "succes_budgets",
+            "savings_goals": "succes_savings_goals",
         }
         table = tables.get(entity)
         if table:
@@ -849,8 +861,8 @@ class SuccesSyncStore(SuccesContinuityStore):
             """INSERT INTO succes_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                 category,notes,emoji,template_id,group_id,order_index,created_date,
-                completed_date,postponed_count,updated_at_ms,deleted_at_ms)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+                completed_date,postponed_count,updated_at_ms,deleted_at_ms,parent_task_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title,done=excluded.done,
                priority=excluded.priority,scheduled_date=excluded.scheduled_date,
                scheduled_time=excluded.scheduled_time,project_id=excluded.project_id,
@@ -859,7 +871,8 @@ class SuccesSyncStore(SuccesContinuityStore):
                order_index=excluded.order_index,created_date=excluded.created_date,
                completed_date=excluded.completed_date,
                postponed_count=excluded.postponed_count,
-               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
+               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
+               parent_task_id=excluded.parent_task_id""",
             (
                 task_id,
                 title,
@@ -878,6 +891,7 @@ class SuccesSyncStore(SuccesContinuityStore):
                 completed,
                 max(0, int(data.get("postponedCount") or 0)),
                 ts,
+                str(data.get("parentTaskId") or "")[:300],
             ),
         )
         conn.execute(
@@ -959,15 +973,18 @@ class SuccesSyncStore(SuccesContinuityStore):
         end = _validate_iso_date(str(data.get("endDate") or ""))
         if start and end and end < start:
             raise SuccesError("Les dates du projet synchronisé sont incohérentes.")
+        from diapason.succes.project_kits import normalize_structure
+
+        structure = normalize_structure(data.get("structure"))
         conn.execute(
             """INSERT INTO succes_projects
                (id,name,description,color,icon,start_date,end_date,created_date,
-                updated_at_ms,deleted_at_ms) VALUES (?,?,?,?,?,?,?,?,?,NULL)
+                updated_at_ms,deleted_at_ms,structure) VALUES (?,?,?,?,?,?,?,?,?,NULL,?)
                ON CONFLICT(id) DO UPDATE SET name=excluded.name,
                description=excluded.description,color=excluded.color,icon=excluded.icon,
                start_date=excluded.start_date,end_date=excluded.end_date,
                created_date=excluded.created_date,updated_at_ms=excluded.updated_at_ms,
-               deleted_at_ms=NULL""",
+               deleted_at_ms=NULL,structure=excluded.structure""",
             (
                 project_id,
                 name,
@@ -980,6 +997,7 @@ class SuccesSyncStore(SuccesContinuityStore):
                 end,
                 str(data.get("createdAt") or date.today().isoformat())[:30],
                 ts,
+                structure,
             ),
         )
 
@@ -1066,7 +1084,9 @@ class SuccesSyncStore(SuccesContinuityStore):
         content = str(data.get("content") or "")
         if len(content) > 100_000:
             raise SuccesError("La note synchronisée est trop longue.")
-        title, _, meta = self._note_fields({**data, "title": data.get("title") or "Note"})
+        title, _, meta = self._note_fields(
+            {**data, "title": data.get("title") or "Note"}
+        )
         conn.execute(
             """INSERT INTO succes_notes
                (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
@@ -1208,7 +1228,8 @@ class SuccesSyncStore(SuccesContinuityStore):
             message = (
                 f"{peer_count} appareil(s) autorisé(s)"
                 + (f" · relais {relay}" if relay else "")
-                + ". Les changements hors ligne seront échangés à la prochaine connexion."
+                + ". Les changements hors ligne seront échangés à la prochaine "
+                "connexion."
             )
         elif relay:
             message = (

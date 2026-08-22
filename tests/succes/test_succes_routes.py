@@ -75,3 +75,36 @@ def test_api_refuses_ambiguous_date_without_writing(tmp_path) -> None:
         assert store.list_tasks() == []
     finally:
         set_store_for_tests(None)
+
+
+def test_finance_transaction_create_accepts_json_body(tmp_path) -> None:
+    from diapason.succes.sync import SuccesSyncStore
+
+    store = SuccesSyncStore(tmp_path / "finance-api.db")
+    set_store_for_tests(store)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    try:
+        accounts = client.get("/v1/succes/finances/accounts").json()["accounts"]
+        categories = client.get("/v1/succes/finances/categories").json()["categories"]
+        rent = next(cat for cat in categories if "Loyer" in cat["name"])
+        created = client.post(
+            "/v1/succes/finances/transactions",
+            json={
+                "accountId": accounts[0]["id"],
+                "type": "expense",
+                "amount": 1590,
+                "date": "2026-09-01",
+                "categoryId": rent["id"],
+                "payee": "Nobel Appartement",
+                "notes": "Loyer = 1570$ / Internet = 20$",
+            },
+        )
+        assert created.status_code == 201, created.text
+        txn = created.json()["transaction"]
+        assert txn["amount"] == 1590
+        assert txn["payee"] == "Nobel Appartement"
+        assert txn["date"] == "2026-09-01"
+    finally:
+        set_store_for_tests(None)

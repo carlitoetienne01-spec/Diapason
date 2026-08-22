@@ -15,6 +15,10 @@ const pkgVersion = JSON.parse(
 // VITE_SUPABASE_ANON_KEY is intentionally NOT required here: a missing key
 // disables the savings leaderboard at runtime (see src/lib/supabase.ts) rather
 // than failing the build, so the package/app stays publishable without it.
+const isTauriBuild =
+  process.env.npm_lifecycle_event === 'build:tauri' ||
+  Boolean(process.env.TAURI_ENV_PLATFORM);
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkgVersion),
@@ -27,26 +31,29 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
-        name: 'Diapason',
-        short_name: 'Diapason',
-        description: 'On-device AI assistant',
-        theme_color: '#161618',
-        background_color: '#161618',
-        display: 'standalone',
-        icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
-      },
-    }),
-  ],
+    // Desktop embeds assets directly — the Workbox SW step is unused there and
+    // has been aborting the Vite close hook (terser) on this machine.
+    !isTauriBuild &&
+      VitePWA({
+        registerType: 'autoUpdate',
+        manifest: {
+          name: 'Diapason',
+          short_name: 'Diapason',
+          description: 'On-device AI assistant',
+          theme_color: '#161618',
+          background_color: '#161618',
+          display: 'standalone',
+          icons: [
+            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
+        },
+      }),
+  ].filter(Boolean),
   build: {
     outDir: '../src/diapason/server/static',
     emptyOutDir: true,

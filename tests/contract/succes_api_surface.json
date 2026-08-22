@@ -28,6 +28,7 @@
  "GET /v1/succes/habits/logs",
  "GET /v1/succes/notes",
  "GET /v1/succes/planner",
+ "GET /v1/succes/project-kits",
  "GET /v1/succes/projects",
  "GET /v1/succes/quotes",
  "GET /v1/succes/sync/operations",

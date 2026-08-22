@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from diapason.succes.dates import normalize_time
+from diapason.succes.project_kits import (
+    get_project_kit,
+    normalize_structure,
+)
 from diapason.succes.store import (
     SuccesError,
     SuccesNotFound,
@@ -165,7 +169,9 @@ class SuccesWorkspaceStore(SuccesStore):
         )
         for name, declaration in additions:
             if name not in columns:
-                conn.execute(f"ALTER TABLE succes_notes ADD COLUMN {name} {declaration}")
+                conn.execute(
+                    f"ALTER TABLE succes_notes ADD COLUMN {name} {declaration}"
+                )
 
     @staticmethod
     def _ensure_habit_columns(conn: sqlite3.Connection) -> None:
@@ -175,7 +181,8 @@ class SuccesWorkspaceStore(SuccesStore):
         }
         if "reminder_time" not in columns:
             conn.execute(
-                "ALTER TABLE succes_habits ADD COLUMN reminder_time TEXT NOT NULL DEFAULT ''"
+                "ALTER TABLE succes_habits ADD COLUMN reminder_time TEXT NOT NULL "
+                "DEFAULT ''"
             )
 
     def _replayed_entity(
@@ -208,6 +215,7 @@ class SuccesWorkspaceStore(SuccesStore):
     def _project_dict(
         row: sqlite3.Row, task_total: int, task_done: int
     ) -> dict[str, Any]:
+        keys = row.keys()
         return {
             "id": row["id"],
             "name": row["name"],
@@ -216,6 +224,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "icon": row["icon"],
             "startDate": row["start_date"],
             "endDate": row["end_date"],
+            "structure": row["structure"] if "structure" in keys else "flat",
             "createdAt": row["created_date"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
@@ -279,6 +288,10 @@ class SuccesWorkspaceStore(SuccesStore):
         end_date = _validate_iso_date(str(data.get("endDate") or ""), "La date de fin")
         if start_date and end_date and end_date < start_date:
             raise SuccesError("La date de fin doit suivre la date de début.")
+        kit_id = str(data.get("kitId") or "").strip()
+        if kit_id:
+            get_project_kit(kit_id)  # validate early
+        structure = normalize_structure(data.get("structure"), kit_id=kit_id)
         request = {
             "action": "create_project",
             "name": name,
@@ -287,6 +300,8 @@ class SuccesWorkspaceStore(SuccesStore):
             "icon": _clean_text(data.get("icon"), field="L'icône", maximum=16),
             "startDate": start_date,
             "endDate": end_date,
+            "structure": structure,
+            "kitId": kit_id,
         }
         project_id = str(data.get("id") or uuid.uuid4())
         timestamp = _safe_timestamp(data.get("updatedAtMs"))
@@ -297,8 +312,8 @@ class SuccesWorkspaceStore(SuccesStore):
             conn.execute(
                 """INSERT INTO succes_projects
                    (id,name,description,color,icon,start_date,end_date,created_date,
-                    updated_at_ms,deleted_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,NULL)""",
+                    updated_at_ms,deleted_at_ms,structure)
+                   VALUES (?,?,?,?,?,?,?,?,?,NULL,?)""",
                 (
                     project_id,
                     name,
@@ -309,6 +324,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     end_date,
                     str(data.get("createdAt") or date.today().isoformat()),
                     timestamp,
+                    structure,
                 ),
             )
             project = self._load_project(conn, project_id)
@@ -323,7 +339,35 @@ class SuccesWorkspaceStore(SuccesStore):
                 timestamp_ms=timestamp,
                 op_id=op_id,
             )
-            return project
+        if kit_id:
+            self._materialize_project_kit(project_id, kit_id)
+            project = self.get_project(project_id)
+        return project
+
+    def _materialize_project_kit(self, project_id: str, kit_id: str) -> None:
+        kit = get_project_kit(kit_id)
+
+        def walk(nodes: list[dict[str, Any]], parent_task_id: str) -> None:
+            for order, node in enumerate(nodes):
+                title = _clean_text(
+                    node.get("title"), field="Le titre", maximum=200, required=True
+                )
+                notes = _clean_text(node.get("notes"), field="Les notes", maximum=2000)
+                task = self.create_task(
+                    {
+                        "title": title,
+                        "notes": notes,
+                        "projectId": project_id,
+                        "parentTaskId": parent_task_id,
+                        "order": order,
+                        "priority": "medium",
+                    }
+                )
+                children = node.get("children")
+                if isinstance(children, list) and children:
+                    walk(children, task["id"])
+
+        walk(kit.get("nodes") or [], "")
 
     def update_project(
         self,
@@ -348,6 +392,7 @@ class SuccesWorkspaceStore(SuccesStore):
         )
         if start_date and end_date and end_date < start_date:
             raise SuccesError("La date de fin doit suivre la date de début.")
+        structure = normalize_structure(merged.get("structure"))
         request = {
             "action": "update_project",
             "projectId": project_id,
@@ -362,7 +407,7 @@ class SuccesWorkspaceStore(SuccesStore):
                 raise SuccesNotFound("Ce projet n'existe pas ou a été supprimé.")
             conn.execute(
                 """UPDATE succes_projects SET name=?,description=?,color=?,icon=?,
-                   start_date=?,end_date=?,updated_at_ms=? WHERE id=?""",
+                   start_date=?,end_date=?,structure=?,updated_at_ms=? WHERE id=?""",
                 (
                     name,
                     description,
@@ -370,6 +415,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     _clean_text(merged.get("icon"), field="L'icône", maximum=16),
                     start_date,
                     end_date,
+                    structure,
                     timestamp,
                     project_id,
                 ),
@@ -431,7 +477,9 @@ class SuccesWorkspaceStore(SuccesStore):
             "weeklyDays": json.loads(row["weekly_days_json"]),
             "monthWeekSlots": json.loads(row["month_week_slots_json"]),
             "monthWeekDay": row["month_week_day"],
-            "reminderTime": row["reminder_time"] if "reminder_time" in row.keys() else "",
+            "reminderTime": row["reminder_time"]
+            if "reminder_time" in row.keys()
+            else "",
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
         }

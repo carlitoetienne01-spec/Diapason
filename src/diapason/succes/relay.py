@@ -30,7 +30,9 @@ def normalize_relay_url(raw: str) -> str:
     """Validate and normalize a user-provided sync relay base URL."""
     cleaned = (raw or "").strip().rstrip("/")
     if not cleaned:
-        raise SuccesError("Indiquez l'URL HTTPS (ou HTTP sur le réseau local) du relais.")
+        raise SuccesError(
+            "Indiquez l'URL HTTPS (ou HTTP sur le réseau local) du relais."
+        )
     if len(cleaned) > 500:
         raise SuccesError("L'URL du relais est trop longue.")
     parsed = urlparse(cleaned)
@@ -97,8 +99,7 @@ def relay_post(base_url: str, path: str, payload: dict[str, Any]) -> dict[str, A
         except Exception:
             detail = (response.text or "")[:200]
         raise SuccesError(
-            detail
-            or f"Le relais a renvoyé une erreur HTTP {response.status_code}."
+            detail or f"Le relais a renvoyé une erreur HTTP {response.status_code}."
         )
     data = response.json()
     if not isinstance(data, dict):

@@ -173,6 +173,11 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.succes_finances  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import diapason.tools.mesh_tools  # noqa: F401
 except ImportError:
     pass

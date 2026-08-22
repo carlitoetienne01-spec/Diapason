@@ -1,5 +1,19 @@
 import { apiFetch } from '../../lib/api';
 import type {
+  FinanceAccount,
+  FinanceAccountType,
+  FinanceBudget,
+  FinanceBudgetScope,
+  FinanceCategory,
+  FinanceCategoryKind,
+  FinanceCsvImportSummary,
+  FinanceGoal,
+  FinanceOverview,
+  FinancePeriod,
+  FinanceSubCadence,
+  FinanceSubscription,
+  FinanceTransaction,
+  FinanceTxnType,
   PlannerResponse,
   SuccesDashboard,
   SuccesHabit,
@@ -8,6 +22,7 @@ import type {
   SuccesPairingInvitation,
   SuccesPriority,
   SuccesProject,
+  SuccesProjectKit,
   SuccesQuote,
   SuccesSyncRunResult,
   SuccesSyncStatus,
@@ -64,17 +79,34 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       try {
         const payload = await response.json();
         const detail = payload?.detail;
-        message =
-          typeof detail === 'string'
-            ? detail
-            : detail?.message || message;
+        if (typeof detail === 'string') {
+          message = detail;
+        } else if (Array.isArray(detail) && detail[0]) {
+          const first = detail[0];
+          message =
+            typeof first.msg === 'string'
+              ? first.msg
+              : typeof first.message === 'string'
+                ? first.message
+                : message;
+        } else if (detail?.message) {
+          message = detail.message;
+        }
       } catch {
         // Keep the stable user-facing fallback; technical details stay in logs.
       }
       throw new Error(message);
     }
 
-    return response.json() as Promise<T>;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      // WebKit only says "the string did not match the expected pattern" here,
+      // which reads as a client bug even when the server sent a broken body.
+      throw new Error(
+        `Réponse illisible du serveur local (${path}). Redémarrez Diapason pour recharger le serveur.`,
+      );
+    }
   }
 
   throw lastError instanceof Error
@@ -102,6 +134,7 @@ export async function createSuccesTask(input: {
   priority?: SuccesPriority;
   notes?: string;
   projectId?: string;
+  parentTaskId?: string;
   category?: string;
   emoji?: string;
 }): Promise<SuccesTask> {
@@ -115,7 +148,18 @@ export async function createSuccesTask(input: {
 export async function updateSuccesTask(
   taskId: string,
   patch: Partial<
-    Pick<SuccesTask, 'title' | 'date' | 'time' | 'priority' | 'notes' | 'projectId' | 'category' | 'emoji'>
+    Pick<
+      SuccesTask,
+      | 'title'
+      | 'date'
+      | 'time'
+      | 'priority'
+      | 'notes'
+      | 'projectId'
+      | 'parentTaskId'
+      | 'category'
+      | 'emoji'
+    >
   >,
 ): Promise<SuccesTask> {
   const payload = await request<{ task: SuccesTask }>(
@@ -270,6 +314,11 @@ export async function listSuccesProjects(search = ''): Promise<SuccesProject[]> 
   return payload.projects;
 }
 
+export async function listSuccesProjectKits(): Promise<SuccesProjectKit[]> {
+  const payload = await request<{ kits: SuccesProjectKit[] }>('/v1/succes/project-kits');
+  return payload.kits;
+}
+
 export async function createSuccesProject(input: {
   name: string;
   description?: string;
@@ -277,6 +326,8 @@ export async function createSuccesProject(input: {
   icon?: string;
   startDate?: string;
   endDate?: string;
+  structure?: 'flat' | 'tree';
+  kitId?: string;
 }): Promise<SuccesProject> {
   const payload = await request<{ project: SuccesProject }>('/v1/succes/projects', {
     method: 'POST',
@@ -287,7 +338,9 @@ export async function createSuccesProject(input: {
 
 export async function updateSuccesProject(
   projectId: string,
-  patch: Partial<Pick<SuccesProject, 'name' | 'description' | 'color' | 'icon' | 'startDate' | 'endDate'>>,
+  patch: Partial<
+    Pick<SuccesProject, 'name' | 'description' | 'color' | 'icon' | 'startDate' | 'endDate' | 'structure'>
+  >,
 ): Promise<SuccesProject> {
   const payload = await request<{ project: SuccesProject }>(
     `/v1/succes/projects/${encodeURIComponent(projectId)}`,
@@ -523,4 +576,276 @@ export async function downloadSuccesExport(): Promise<void> {
   anchor.download = `succes_${new Date().getFullYear()}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Finances ─────────────────────────────────────────────────────────
+
+export async function listFinanceAccounts(includeArchived = false): Promise<FinanceAccount[]> {
+  const payload = await request<{ accounts: FinanceAccount[] }>(
+    `/v1/succes/finances/accounts?includeArchived=${includeArchived}`,
+  );
+  return payload.accounts;
+}
+
+export async function createFinanceAccount(input: {
+  name: string;
+  type?: FinanceAccountType;
+  openingBalance?: number;
+  color?: string;
+  icon?: string;
+}): Promise<FinanceAccount> {
+  const payload = await request<{ account: FinanceAccount }>('/v1/succes/finances/accounts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.account;
+}
+
+export async function updateFinanceAccount(
+  accountId: string,
+  patch: Partial<
+    Pick<FinanceAccount, 'name' | 'type' | 'openingBalance' | 'color' | 'icon' | 'archived'>
+  >,
+): Promise<FinanceAccount> {
+  const payload = await request<{ account: FinanceAccount }>(
+    `/v1/succes/finances/accounts/${encodeURIComponent(accountId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.account;
+}
+
+export async function deleteFinanceAccount(accountId: string): Promise<void> {
+  await request(`/v1/succes/finances/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listFinanceCategories(kind?: FinanceCategoryKind): Promise<FinanceCategory[]> {
+  const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  const payload = await request<{ categories: FinanceCategory[] }>(
+    `/v1/succes/finances/categories${query}`,
+  );
+  return payload.categories;
+}
+
+export async function createFinanceCategory(input: {
+  name: string;
+  kind?: FinanceCategoryKind;
+  color?: string;
+  icon?: string;
+}): Promise<FinanceCategory> {
+  const payload = await request<{ category: FinanceCategory }>('/v1/succes/finances/categories', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.category;
+}
+
+export async function deleteFinanceCategory(categoryId: string): Promise<void> {
+  await request(`/v1/succes/finances/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listFinanceTransactions(options: {
+  from?: string;
+  to?: string;
+  accountId?: string;
+  categoryId?: string;
+  type?: FinanceTxnType;
+  limit?: number;
+} = {}): Promise<FinanceTransaction[]> {
+  const query = new URLSearchParams();
+  if (options.from) query.set('from_date', options.from);
+  if (options.to) query.set('to_date', options.to);
+  if (options.accountId) query.set('accountId', options.accountId);
+  if (options.categoryId) query.set('categoryId', options.categoryId);
+  if (options.type) query.set('type', options.type);
+  if (options.limit !== undefined) query.set('limit', String(options.limit));
+  const suffix = query.toString() ? `?${query}` : '';
+  const payload = await request<{ transactions: FinanceTransaction[] }>(
+    `/v1/succes/finances/transactions${suffix}`,
+  );
+  return payload.transactions;
+}
+
+export async function createFinanceTransaction(input: {
+  accountId: string;
+  type: FinanceTxnType;
+  amount: number;
+  date?: string;
+  categoryId?: string;
+  payee?: string;
+  notes?: string;
+  transferAccountId?: string;
+  subscriptionId?: string;
+}): Promise<FinanceTransaction> {
+  const payload = await request<{ transaction: FinanceTransaction }>(
+    '/v1/succes/finances/transactions',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return payload.transaction;
+}
+
+export async function deleteFinanceTransaction(txnId: string): Promise<void> {
+  await request(`/v1/succes/finances/transactions/${encodeURIComponent(txnId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listFinanceSubscriptions(activeOnly = false): Promise<FinanceSubscription[]> {
+  const payload = await request<{ subscriptions: FinanceSubscription[] }>(
+    `/v1/succes/finances/subscriptions?activeOnly=${activeOnly}`,
+  );
+  return payload.subscriptions;
+}
+
+export async function createFinanceSubscription(input: {
+  name: string;
+  amount: number;
+  cadence?: FinanceSubCadence;
+  nextDueDate?: string;
+  accountId?: string;
+  categoryId?: string;
+  reminderDays?: number;
+  notes?: string;
+}): Promise<FinanceSubscription> {
+  const payload = await request<{ subscription: FinanceSubscription }>(
+    '/v1/succes/finances/subscriptions',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return payload.subscription;
+}
+
+export async function updateFinanceSubscription(
+  subId: string,
+  patch: Partial<
+    Pick<
+      FinanceSubscription,
+      | 'name'
+      | 'amount'
+      | 'cadence'
+      | 'nextDueDate'
+      | 'accountId'
+      | 'categoryId'
+      | 'active'
+      | 'reminderDays'
+      | 'notes'
+    >
+  >,
+): Promise<FinanceSubscription> {
+  const payload = await request<{ subscription: FinanceSubscription }>(
+    `/v1/succes/finances/subscriptions/${encodeURIComponent(subId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.subscription;
+}
+
+export async function deleteFinanceSubscription(subId: string): Promise<void> {
+  await request(`/v1/succes/finances/subscriptions/${encodeURIComponent(subId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function materializeFinanceSubscriptions(
+  onDate?: string,
+): Promise<{ created: FinanceTransaction[]; count: number }> {
+  const query = onDate ? `?onDate=${encodeURIComponent(onDate)}` : '';
+  return request(`/v1/succes/finances/subscriptions/materialize${query}`, {
+    method: 'POST',
+  });
+}
+
+export async function listFinanceBudgets(yearMonth?: string): Promise<FinanceBudget[]> {
+  const query = yearMonth ? `?yearMonth=${encodeURIComponent(yearMonth)}` : '';
+  const payload = await request<{ budgets: FinanceBudget[] }>(
+    `/v1/succes/finances/budgets${query}`,
+  );
+  return payload.budgets;
+}
+
+export async function upsertFinanceBudget(input: {
+  scope?: FinanceBudgetScope;
+  categoryId?: string;
+  yearMonth?: string;
+  limit: number;
+}): Promise<FinanceBudget> {
+  const payload = await request<{ budget: FinanceBudget }>('/v1/succes/finances/budgets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.budget;
+}
+
+export async function deleteFinanceBudget(budgetId: string): Promise<void> {
+  await request(`/v1/succes/finances/budgets/${encodeURIComponent(budgetId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export async function listFinanceGoals(): Promise<FinanceGoal[]> {
+  const payload = await request<{ goals: FinanceGoal[] }>('/v1/succes/finances/goals');
+  return payload.goals;
+}
+
+export async function createFinanceGoal(input: {
+  name: string;
+  target: number;
+  current?: number;
+  accountId?: string;
+  deadline?: string;
+  color?: string;
+  icon?: string;
+}): Promise<FinanceGoal> {
+  const payload = await request<{ goal: FinanceGoal }>('/v1/succes/finances/goals', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.goal;
+}
+
+export async function updateFinanceGoal(
+  goalId: string,
+  patch: Partial<
+    Pick<FinanceGoal, 'name' | 'target' | 'current' | 'accountId' | 'deadline' | 'color' | 'icon'>
+  >,
+): Promise<FinanceGoal> {
+  const payload = await request<{ goal: FinanceGoal }>(
+    `/v1/succes/finances/goals/${encodeURIComponent(goalId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.goal;
+}
+
+export async function deleteFinanceGoal(goalId: string): Promise<void> {
+  await request(`/v1/succes/finances/goals/${encodeURIComponent(goalId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export function fetchFinanceOverview(
+  period: FinancePeriod = 'month',
+  anchor?: string,
+): Promise<FinanceOverview> {
+  const query = new URLSearchParams({ period });
+  if (anchor) query.set('anchor', anchor);
+  return request(`/v1/succes/finances/overview?${query}`);
+}
+
+export async function importFinanceCsv(input: {
+  csvText: string;
+  accountId: string;
+  mapping?: Record<string, string>;
+}): Promise<FinanceCsvImportSummary> {
+  const payload = await request<{ summary: FinanceCsvImportSummary }>(
+    '/v1/succes/finances/import/csv',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return payload.summary;
 }

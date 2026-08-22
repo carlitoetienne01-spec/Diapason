@@ -16,6 +16,7 @@ import {
   createSuccesTask,
   deleteSuccesProject,
   deleteSuccesTask,
+  listSuccesProjectKits,
   listSuccesProjects,
   listSuccesTasks,
   rescheduleSuccesTask,
@@ -24,8 +25,9 @@ import {
   updateSuccesProject,
   updateSuccesTask,
 } from '../features/succes/api';
+import { ProjectTreeView } from '../features/succes/ProjectTreeView';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
-import type { SuccesProject, SuccesSubtask, SuccesTask } from '../features/succes/types';
+import type { SuccesProject, SuccesProjectKit, SuccesSubtask, SuccesTask } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 
@@ -37,7 +39,14 @@ const COLOR_PRESETS = [
 ];
 
 const emptyDraft = {
-  name: '', description: '', icon: '', color: FALLBACK_COLOR, startDate: '', endDate: '',
+  name: '',
+  description: '',
+  icon: '',
+  color: FALLBACK_COLOR,
+  startDate: '',
+  endDate: '',
+  structure: 'flat' as 'flat' | 'tree',
+  kitId: '',
 };
 
 function parseHex(hex: string): [number, number, number] {
@@ -532,16 +541,19 @@ export function SuccesProjectsPage() {
   const [draft, setDraft] = useState(emptyDraft);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quickTitle, setQuickTitle] = useState('');
+  const [kits, setKits] = useState<SuccesProjectKit[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextProjects, nextTasks] = await Promise.all([
+      const [nextProjects, nextTasks, nextKits] = await Promise.all([
         listSuccesProjects(search),
         listSuccesTasks({ includeDone: true }),
+        listSuccesProjectKits().catch(() => [] as SuccesProjectKit[]),
       ]);
       setProjects(nextProjects);
       setTasks(nextTasks);
+      setKits(nextKits);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({ timestamp: Date.now(), level: 'error', category: 'succes', message: `Projets : ${message}` });
@@ -590,7 +602,9 @@ export function SuccesProjectsPage() {
         draft.icon.trim() ||
         (draft.color && draft.color !== emptyDraft.color) ||
         draft.startDate ||
-        draft.endDate,
+        draft.endDate ||
+        draft.structure !== 'flat' ||
+        draft.kitId,
     );
     if (dirty || editingId) {
       const confirmed = await confirm({
@@ -613,6 +627,8 @@ export function SuccesProjectsPage() {
       color: project.color,
       startDate: project.startDate,
       endDate: project.endDate,
+      structure: project.structure || 'flat',
+      kitId: '',
     });
     setEditingId(project.id);
     setShowForm(true);
@@ -622,8 +638,28 @@ export function SuccesProjectsPage() {
     if (!draft.name.trim()) return;
     setSaving(true);
     try {
-      if (editingId) await updateSuccesProject(editingId, draft);
-      else await createSuccesProject(draft);
+      if (editingId) {
+        await updateSuccesProject(editingId, {
+          name: draft.name,
+          description: draft.description,
+          icon: draft.icon,
+          color: draft.color,
+          startDate: draft.startDate,
+          endDate: draft.endDate,
+          structure: draft.structure,
+        });
+      } else {
+        await createSuccesProject({
+          name: draft.name,
+          description: draft.description,
+          icon: draft.icon,
+          color: draft.color,
+          startDate: draft.startDate,
+          endDate: draft.endDate,
+          structure: draft.kitId ? 'tree' : draft.structure,
+          kitId: draft.kitId || undefined,
+        });
+      }
       toast.success(editingId ? 'Projet mis à jour' : 'Projet créé', { description: 'Enregistré localement sur ce Mac.' });
       closeFormNow();
       await load();
@@ -690,6 +726,8 @@ export function SuccesProjectsPage() {
     setQuickTitle('');
   };
 
+  const isTreeProject = (selected?.structure || 'flat') === 'tree';
+
   if (selected) {
     return (
       <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
@@ -726,6 +764,7 @@ export function SuccesProjectsPage() {
                 <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>{selected.description}</p>
               )}
               <div className="flex flex-wrap gap-3 mt-3 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span>{isTreeProject ? 'Vue arbre' : 'Vue liste'}</span>
                 {selected.startDate && <span>Début {selected.startDate}</span>}
                 {selected.endDate && <span>Fin {selected.endDate}</span>}
                 <span>{doneCount}/{projectTasks.length || selected.taskTotal} terminée(s)</span>
@@ -765,86 +804,111 @@ export function SuccesProjectsPage() {
             </section>
           )}
 
-          <section className="flex gap-2 mb-5">
-            <input
-              value={quickTitle}
-              onChange={(event) => setQuickTitle(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') void createTaskForProject(); }}
-              placeholder="Ajouter une tâche à ce projet…"
-              maxLength={200}
-              className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-transparent outline-none"
-              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+          {isTreeProject ? (
+            <ProjectTreeView
+              tasks={projectTasks}
+              saving={saving}
+              onCreate={async ({ title, notes, parentTaskId }) => {
+                await refreshAfter(
+                  () =>
+                    createSuccesTask({
+                      title,
+                      notes,
+                      projectId: selected.id,
+                      parentTaskId: parentTaskId || '',
+                    }),
+                  parentTaskId ? 'Branche ajoutée' : 'Racine ajoutée',
+                );
+              }}
+              onToggle={async (task) => {
+                await refreshAfter(
+                  () => setSuccesTaskDone(task.id, !task.done),
+                  task.done ? 'Branche rouverte' : 'Branche terminée',
+                );
+              }}
+              onUpdate={async (task, patch) => {
+                const clean = Object.fromEntries(
+                  Object.entries(patch).filter(([, value]) => value !== undefined),
+                );
+                if (Object.keys(clean).length === 0) return;
+                await refreshAfter(() => updateSuccesTask(task.id, clean), 'Branche mise à jour');
+              }}
+              onDelete={async (task) => {
+                const confirmed = await confirm({
+                  title: `Supprimer « ${task.title} » ?`,
+                  description: 'Les sous-branches restent sauf si vous les supprimez aussi.',
+                  confirmLabel: 'Supprimer',
+                  keepLabel: 'Garder',
+                  tone: 'danger',
+                });
+                if (!confirmed) return;
+                await refreshAfter(() => deleteSuccesTask(task.id), 'Branche supprimée');
+              }}
             />
-            <button
-              type="button"
-              disabled={!quickTitle.trim() || saving}
-              onClick={() => void createTaskForProject()}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}
-            >
-              <CirclePlus size={16} /> Ajouter
-            </button>
-          </section>
-
-          {loading ? (
-            <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-              <Loader2 size={17} className="animate-spin" /> Chargement…
-            </div>
-          ) : projectTasks.length === 0 ? (
-            <div className="rounded-2xl py-14 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-              <BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: selected.color || 'var(--color-accent)' }} />
-              <p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucune tâche dans ce projet</p>
-              <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Ajoutez-en une ci-dessus, ou assignez-en une depuis Tâches.</p>
-            </div>
           ) : (
-            <div className="grid gap-3">
-              {projectTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  projects={projects}
-                  onToggleTask={(item) => refreshAfter(() => setSuccesTaskDone(item.id, !item.done), item.done ? 'Tâche rouverte' : 'Tâche terminée')}
-                  onToggleSubtask={(item, subtask: SuccesSubtask) =>
-                    refreshAfter(() => setSuccesSubtaskDone(item.id, subtask.id, !subtask.done), 'Sous-tâche mise à jour')
-                  }
-                  onAddSubtask={(item, title, parentId) =>
-                    refreshAfter(() => addSuccesSubtask(item.id, title, parentId), 'Sous-tâche ajoutée')
-                  }
-                  onAssignProject={(item, projectId) =>
-                    refreshAfter(() => updateSuccesTask(item.id, { projectId }), projectId ? 'Tâche réassignée' : 'Tâche retirée du projet')
-                  }
-                  onUpdate={(item, patch: SuccesTaskPatch) =>
-                    refreshAfter(() => updateSuccesTask(item.id, patch), 'Tâche mise à jour')
-                  }
-                  onReschedule={async (item, date) => {
-                    setSaving(true);
-                    try {
-                      const result = await rescheduleSuccesTask(item.id, date);
-                      await load();
-                      toast.success(`Reportée au ${date}`, {
-                        description: result.warning || 'Enregistré localement sur ce Mac.',
-                      });
-                    } catch (error) {
-                      toast.error('Le report a échoué.', {
-                        description: error instanceof Error ? error.message : String(error),
-                      });
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  onDelete={async (item) => {
-                    const ok = await confirm({
-                      title: `Supprimer « ${item.title} » ?`,
-                      confirmLabel: 'Supprimer',
-                      keepLabel: 'Garder',
-                      tone: 'danger',
-                    });
-                    if (!ok) return;
-                    return refreshAfter(() => deleteSuccesTask(item.id), `Tâche supprimée : ${item.title}`);
-                  }}
+            <>
+              <section className="flex gap-2 mb-5">
+                <input
+                  value={quickTitle}
+                  onChange={(event) => setQuickTitle(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter') void createTaskForProject(); }}
+                  placeholder="Ajouter une tâche à ce projet…"
+                  maxLength={200}
+                  className="flex-1 rounded-xl px-3 py-2.5 text-sm bg-transparent outline-none"
+                  style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 />
-              ))}
-            </div>
+                <button
+                  type="button"
+                  disabled={!quickTitle.trim() || saving}
+                  onClick={() => void createTaskForProject()}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer"
+                  style={{ background: 'var(--color-accent)', color: '#fff' }}
+                >
+                  <CirclePlus size={16} /> Ajouter
+                </button>
+              </section>
+
+              {loading ? (
+                <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <Loader2 size={17} className="animate-spin" /> Chargement…
+                </div>
+              ) : projectTasks.length === 0 ? (
+                <div className="rounded-2xl py-14 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                  <BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: selected.color || 'var(--color-accent)' }} />
+                  <p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucune tâche dans ce projet</p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Ajoutez-en une ci-dessus, ou assignez-en une depuis Tâches.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {projectTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      projects={projects}
+                      onToggleTask={(item) => refreshAfter(() => setSuccesTaskDone(item.id, !item.done), item.done ? 'Tâche rouverte' : 'Tâche terminée')}
+                      onToggleSubtask={(item, subtask: SuccesSubtask) =>
+                        refreshAfter(() => setSuccesSubtaskDone(item.id, subtask.id, !subtask.done), 'Sous-tâche mise à jour')
+                      }
+                      onAddSubtask={(item, title, parentId) =>
+                        refreshAfter(() => addSuccesSubtask(item.id, title, parentId), 'Sous-tâche ajoutée')
+                      }
+                      onAssignProject={(item, projectId) =>
+                        refreshAfter(() => updateSuccesTask(item.id, { projectId }), projectId ? 'Tâche réassignée' : 'Tâche retirée du projet')
+                      }
+                      onUpdate={(item, patch: SuccesTaskPatch) =>
+                        refreshAfter(() => updateSuccesTask(item.id, patch), 'Tâche mise à jour')
+                      }
+                      onReschedule={(item, date) =>
+                        refreshAfter(() => rescheduleSuccesTask(item.id, date), 'Tâche replanifiée')
+                      }
+                      onDelete={(item) =>
+                        refreshAfter(() => deleteSuccesTask(item.id), 'Tâche supprimée')
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>
@@ -901,6 +965,81 @@ export function SuccesProjectsPage() {
               </div>
             </div>
             <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} rows={3} maxLength={4000} placeholder="Description et résultat attendu…" className="rounded-xl px-3 py-2 bg-transparent outline-none resize-none text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+            {!editingId && (
+              <div className="grid gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+                  Comment structurer ce projet ?
+                </p>
+                <div className="grid sm:grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'flat', label: 'Liste', hint: 'Tâches à plat, comme aujourd’hui.' },
+                      { id: 'tree', label: 'Arbre', hint: 'Branches parent / enfant + descriptions.' },
+                      { id: 'kit', label: 'Kit', hint: 'Démarrer depuis un modèle prêt.' },
+                    ] as const
+                  ).map((option) => {
+                    const selectedMode =
+                      option.id === 'kit'
+                        ? Boolean(draft.kitId)
+                        : !draft.kitId && draft.structure === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          if (option.id === 'kit') {
+                            setDraft({
+                              ...draft,
+                              structure: 'tree',
+                              kitId: draft.kitId || kits[0]?.id || '',
+                            });
+                          } else {
+                            setDraft({ ...draft, structure: option.id, kitId: '' });
+                          }
+                        }}
+                        className="rounded-xl px-3 py-2.5 text-left cursor-pointer"
+                        style={{
+                          border: `1px solid ${selectedMode ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                          background: selectedMode ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+                        }}
+                      >
+                        <span className="block text-sm font-medium" style={{ color: 'var(--color-text)' }}>{option.label}</span>
+                        <span className="block text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{option.hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {Boolean(draft.kitId) && (
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {kits.map((kit) => {
+                      const active = draft.kitId === kit.id;
+                      return (
+                        <button
+                          key={kit.id}
+                          type="button"
+                          onClick={() => setDraft({ ...draft, kitId: kit.id, structure: 'tree' })}
+                          className="rounded-xl px-3 py-2.5 text-left cursor-pointer"
+                          style={{
+                            border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                            background: active ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+                          }}
+                        >
+                          <span className="block text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                            {kit.icon ? `${kit.icon} ` : ''}{kit.name}
+                          </span>
+                          <span className="block text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {kit.description}
+                          </span>
+                          <span className="block text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {kit.nodeCount} branches
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="grid gap-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Début<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} className="rounded-xl px-3 py-2 bg-transparent outline-none text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }} /></label>
               <label className="grid gap-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Fin<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} className="rounded-xl px-3 py-2 bg-transparent outline-none text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }} /></label>

@@ -812,9 +812,7 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
                 "tasksCompletedAllTime": sum(bool(task["done"]) for task in tasks),
                 "projects": len(projects),
                 "habits": len(habits),
-                "longestHabitStreak": self._longest_habit_streak(
-                    habits, year, month
-                ),
+                "longestHabitStreak": self._longest_habit_streak(habits, year, month),
             },
         }
 

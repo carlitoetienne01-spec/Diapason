@@ -111,7 +111,9 @@ def test_notes_support_page_formats_and_fonts(tmp_path) -> None:
     assert note["pageBackground"] == "lined"
     assert note["fontFamily"] == "Merriweather"
     assert note["docLang"] == "ht"
-    updated = store.update_note(note["id"], {"pageFormat": "reading", "fontFamily": "Inter"})
+    updated = store.update_note(
+        note["id"], {"pageFormat": "reading", "fontFamily": "Inter"}
+    )
     assert updated["pageFormat"] == "reading"
     assert updated["fontFamily"] == "Inter"
 

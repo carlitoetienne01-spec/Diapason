@@ -89,7 +89,7 @@ export function ApprovalBell() {
   const count = approvals.length;
 
   return (
-    <div ref={containerRef} className="fixed top-2 right-3 z-40">
+    <div ref={containerRef} className="relative">
       {/* Bell trigger */}
       <button
         onClick={() => setOpen(o => !o)}

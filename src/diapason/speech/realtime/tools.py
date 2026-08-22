@@ -29,6 +29,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "succes_tasks",
     "succes_workspace",
     "succes_continuity",
+    "succes_finances",
 )
 
 # (module, [(registry_key, attribute_name), ...])
@@ -79,6 +80,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.succes_continuity",
         (("succes_continuity", "SuccesContinuityTool"),),
+    ),
+    (
+        "diapason.tools.succes_finances",
+        (("succes_finances", "SuccesFinancesTool"),),
     ),
 )
 

@@ -17,6 +17,7 @@ export interface SuccesTask {
   date: string;
   time: string;
   projectId: string;
+  parentTaskId: string;
   category: string;
   notes: string;
   emoji: string;
@@ -103,10 +104,19 @@ export interface SuccesProject {
   icon: string;
   startDate: string;
   endDate: string;
+  structure: 'flat' | 'tree';
   createdAt: string;
   updatedAtMs: number;
   taskTotal: number;
   taskCompleted: number;
+}
+
+export interface SuccesProjectKit {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  nodeCount: number;
 }
 
 export type SuccesHabitFrequency = 'daily' | 'weekly' | 'monthly';
@@ -226,4 +236,133 @@ export interface SuccesYearReview {
     habits: number;
     longestHabitStreak: number;
   };
+}
+
+export type FinancePeriod = 'day' | 'week' | 'month' | 'year';
+export type FinanceAccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'other';
+export type FinanceCategoryKind = 'income' | 'expense';
+export type FinanceTxnType = 'income' | 'expense' | 'transfer';
+export type FinanceSubCadence = 'weekly' | 'monthly' | 'yearly';
+export type FinanceBudgetScope = 'global' | 'category';
+
+export interface FinanceAccount {
+  id: string;
+  name: string;
+  type: FinanceAccountType;
+  currency: string;
+  openingBalance: number;
+  balance?: number;
+  color: string;
+  icon: string;
+  archived: boolean;
+  updatedAtMs: number;
+}
+
+export interface FinanceCategory {
+  id: string;
+  name: string;
+  kind: FinanceCategoryKind;
+  color: string;
+  icon: string;
+  system: boolean;
+  updatedAtMs: number;
+}
+
+export interface FinanceTransaction {
+  id: string;
+  accountId: string;
+  categoryId: string;
+  type: FinanceTxnType;
+  amount: number;
+  currency: string;
+  date: string;
+  payee: string;
+  notes: string;
+  transferAccountId: string;
+  subscriptionId: string;
+  updatedAtMs: number;
+}
+
+export interface FinanceSubscription {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  cadence: FinanceSubCadence;
+  nextDueDate: string;
+  accountId: string;
+  categoryId: string;
+  active: boolean;
+  reminderDays: number;
+  notes: string;
+  updatedAtMs: number;
+}
+
+export interface FinanceBudget {
+  id: string;
+  scope: FinanceBudgetScope;
+  categoryId: string;
+  yearMonth: string;
+  limit: number;
+  currency: string;
+  updatedAtMs: number;
+  spent?: number;
+  remaining?: number;
+  pct?: number;
+  over?: boolean;
+}
+
+export interface FinanceGoal {
+  id: string;
+  name: string;
+  target: number;
+  current: number;
+  currency: string;
+  accountId: string;
+  deadline: string;
+  color: string;
+  icon: string;
+  updatedAtMs: number;
+}
+
+export interface FinanceCategoryBreakdown {
+  categoryId: string;
+  name: string;
+  icon: string;
+  color: string;
+  amount: number;
+}
+
+export interface FinanceSeriesPoint {
+  date: string;
+  income: number;
+  expense: number;
+}
+
+export interface FinanceOverview {
+  period: FinancePeriod;
+  from: string;
+  to: string;
+  currency: string;
+  income: number;
+  expense: number;
+  net: number;
+  prevIncome: number;
+  prevExpense: number;
+  prevNet: number;
+  categoryBreakdown: FinanceCategoryBreakdown[];
+  series: FinanceSeriesPoint[];
+  forecastExpense: number;
+  forecastRemaining: number;
+  budgets: FinanceBudget[];
+  accounts: FinanceAccount[];
+  upcomingSubscriptions: FinanceSubscription[];
+  goals: FinanceGoal[];
+  transactionCount: number;
+}
+
+export interface FinanceCsvImportSummary {
+  created: number;
+  skipped: number;
+  errors: string[];
 }

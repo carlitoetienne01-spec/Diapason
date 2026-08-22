@@ -48,6 +48,9 @@ const SuccesProjectsPage = lazy(() =>
 const SuccesHabitsPage = lazy(() =>
   import('./pages/SuccesHabitsPage').then((module) => ({ default: module.SuccesHabitsPage })),
 );
+const SuccesFinancesPage = lazy(() =>
+  import('./pages/SuccesFinancesPage').then((module) => ({ default: module.SuccesFinancesPage })),
+);
 const SuccesNotesPage = lazy(() =>
   import('./pages/SuccesNotesPage').then((module) => ({ default: module.SuccesNotesPage })),
 );
@@ -266,6 +269,7 @@ export default function App() {
             <Route path="succes/dashboard" element={<SuccesDashboardPage />} />
             <Route path="succes/tasks" element={<SuccesTasksPage />} />
             <Route path="succes/projects" element={<SuccesProjectsPage />} />
+            <Route path="succes/finances" element={<SuccesFinancesPage />} />
             <Route path="succes/habits" element={<SuccesHabitsPage />} />
             <Route path="succes/notes" element={<SuccesNotesPage />} />
             <Route path="succes/templates" element={<Navigate to="/succes/tasks" replace />} />

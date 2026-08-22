@@ -4,16 +4,15 @@ import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
-import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X, AudioLines } from 'lucide-react';
+import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X } from 'lucide-react';
 import { DiaMascot } from './DiaMascot';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
-import { openTalkToDiapason } from '../TalkToDiapasonHost';
 import { useTranslation } from '../../i18n/useTranslation';
 
-/** Horizontal room the fixed approval bell needs: its 12px offset from the
- * window edge, its 33px button, and a little air. */
-const BELL_CLEARANCE = 49;
+/** Horizontal room the window's floating top-right cluster needs: its measured
+ * width, its 12px offset from the edge, and a little air. */
+const CLUSTER_CLEARANCE = 'calc(var(--top-right-cluster, 33px) + 20px)';
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -90,25 +89,13 @@ export function ChatArea() {
       <div
         className="flex items-center justify-end gap-1 pl-3 py-1.5 shrink-0"
         style={{
-          // The approval bell is pinned to the window's top-right corner. With
-          // the system panel open the panel sits beneath it; closed, this bar
-          // reaches that same edge, so it has to yield the bell's footprint or
-          // the two icons land on top of one another.
-          paddingRight: systemPanelOpen ? 12 : BELL_CLEARANCE,
+          // Talk and the approval bell are pinned to the window's top-right
+          // corner. With the system panel open the panel sits beneath them;
+          // closed, this bar reaches that same edge, so it has to yield their
+          // footprint or the controls land on top of one another.
+          paddingRight: systemPanelOpen ? 12 : CLUSTER_CLEARANCE,
         }}
       >
-        <button
-          onClick={() => openTalkToDiapason()}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer"
-          style={{
-            background: 'var(--color-accent)',
-            color: 'var(--color-on-accent, #fff)',
-          }}
-          title={t('chat.talk.buttonTooltip')}
-        >
-          <AudioLines size={14} />
-          {t('chat.talk.button')}
-        </button>
         <button
           onClick={toggleSystemPanel}
           className="p-1.5 rounded-md transition-colors cursor-pointer"

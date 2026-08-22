@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
+import { TalkButton } from './TalkButton';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
@@ -25,12 +26,30 @@ export function Layout() {
   }, []);
 
   const navigate = useNavigate();
+  const topRightRef = useRef<HTMLDivElement>(null);
+
+  // The cluster floats over every page, so its width is published as a token
+  // rather than duplicated as a magic number wherever content has to clear it.
+  useEffect(() => {
+    const node = topRightRef.current;
+    if (!node) return;
+    const publish = () =>
+      document.documentElement.style.setProperty('--top-right-cluster', `${node.offsetWidth}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
-      <ApprovalBell />
+
+      <div ref={topRightRef} className="fixed top-2 right-3 z-40 flex items-center gap-1.5">
+        <TalkButton />
+        <ApprovalBell />
+      </div>
 
       {/* Health check banner */}
       {apiReachable === false && (
