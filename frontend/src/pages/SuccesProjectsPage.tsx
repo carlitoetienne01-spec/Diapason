@@ -1339,7 +1339,19 @@ export function SuccesProjectsPage() {
               <label className="grid gap-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Début<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} className="rounded-xl px-3 py-2 bg-transparent outline-none text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }} /></label>
               <label className="grid gap-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Fin<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} className="rounded-xl px-3 py-2 bg-transparent outline-none text-sm" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }} /></label>
             </div>
-            <div className="flex justify-end gap-2">
+            {/* Barre ancrée au bas du formulaire. Le sélecteur de forme a
+                fait passer ce panneau de 3 tuiles sur une ligne à 7 sur
+                quatre : le bouton se retrouvait à 782 px dans une fenêtre de
+                720, donc hors d'atteinte sans faire défiler — et personne ne
+                devine qu'il faut faire défiler un formulaire qui a l'air
+                entier. Le formulaire grandira encore ; la barre reste. */}
+            <div
+              className="flex justify-end gap-2 sticky bottom-0 -mx-5 px-5 py-3 mt-1"
+              style={{
+                background: 'var(--color-surface)',
+                borderTop: '1px solid var(--color-border)',
+              }}
+            >
               <button type="button" onClick={() => void closeForm()} className="px-3 py-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>Annuler</button>
               <button type="button" disabled={!draft.name.trim() || saving} onClick={() => void save()} className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>{editingId ? 'Mettre à jour' : 'Créer le projet'}</button>
             </div>

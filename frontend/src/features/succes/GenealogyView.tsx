@@ -31,6 +31,8 @@ type LevelItem = {
   parentId: string | null;
   stats: SubtreeStats;
   hiddenCount: number;
+  /** Au dernier étage affiché : un enfant créé ici serait invisible. */
+  atDepthLimit: boolean;
 };
 
 type Edge = { id: string; x1: number; y1: number; x2: number; y2: number };
@@ -82,6 +84,7 @@ export function GenealogyView({
           parentId,
           stats: stats.get(node.id) ?? { total: 0, done: 0 },
           hiddenCount: lastVisible ? (stats.get(node.id)?.total ?? 0) : 0,
+          atDepthLimit: lastVisible,
         })),
       );
       const next: Array<{ node: ProjectTreeNode; parentId: string | null }> = [];
@@ -292,7 +295,7 @@ function GenealogyNodeCard({
   onDraftChange,
   onSubmitAdd,
 }: NodeCardProps) {
-  const { node, stats, hiddenCount } = item;
+  const { node, stats, hiddenCount, atDepthLimit } = item;
   const hasDescendants = stats.total > 0;
   const pct = hasDescendants ? Math.round((stats.done / stats.total) * 100) : 0;
 
@@ -406,6 +409,21 @@ function GenealogyNodeCard({
             </button>
           </div>
         </div>
+      ) : atDepthLimit ? (
+        // Au dernier étage affiché, ce bouton créait un enfant au niveau
+        // suivant — que la vue ne dessine pas. L'utilisateur voyait sa saisie
+        // acceptée puis rien apparaître, et sa tâche existait pourtant, hors
+        // de portée. Mieux vaut ne rien proposer que proposer en vain.
+        <span
+          className="rounded-full px-2 py-0.5 text-[10px] select-none"
+          style={{
+            color: 'var(--color-text-tertiary)',
+            border: '1px dashed var(--color-border)',
+          }}
+          title={`Dernier étage affiché (${MAX_VISIBLE_LEVELS}). Un enfant créé ici ne serait pas visible : passez par « Éditer les branches » pour aller plus profond.`}
+        >
+          fond de l'arbre
+        </span>
       ) : (
         <button
           type="button"
