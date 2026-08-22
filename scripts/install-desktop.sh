@@ -50,6 +50,18 @@ if [ "$apres" -le "$avant" ]; then
 fi
 [ "$code_build" -ne 0 ] && echo "  (tauri a signalé le code $code_build — bundle produit, on continue)"
 
+# L'interface web du SERVEUR vit dans src/diapason/server/static — une COPIE
+# de frontend/dist que rien ne rafraîchissait : le 22 août, le serveur servait
+# une interface du 17 pendant que l'app de bureau, elle, embarquait la
+# fraîche. Deux interfaces, deux âges, zéro message. La copie fait maintenant
+# partie de la construction.
+if [ -d "$RACINE/frontend/dist" ] && [ -f "$RACINE/frontend/dist/index.html" ]; then
+  echo "→ synchronisation de l'interface web du serveur"
+  rsync -a --delete "$RACINE/frontend/dist/" "$RACINE/src/diapason/server/static/"
+else
+  echo "✗ frontend/dist absent après la construction — interface du serveur NON rafraîchie" >&2
+fi
+
 echo "→ fermeture de l'application"
 osascript -e 'tell application "Diapason" to quit' 2>/dev/null || true
 sleep 3

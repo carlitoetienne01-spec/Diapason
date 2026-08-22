@@ -1,5 +1,42 @@
 export type SuccesPriority = 'low' | 'medium' | 'high' | 'urgent';
 
+/** Les cinq formes qu'un projet peut prendre, plus la liste simple. */
+export type SuccesProjectStructure =
+  | 'flat'
+  | 'tree'
+  | 'mindmap'
+  | 'pipeline'
+  | 'network'
+  | 'cycle';
+
+/** Réglages propres à une forme : étages nommés de l'arbre, étapes du pipeline. */
+export interface SuccesStructureConfig {
+  levelLabels?: string[];
+  stages?: string[];
+}
+
+/** La cadence d'une tâche de cycle : jour = 0..6 (semaine) ou 1..28 (mois). */
+export interface SuccesCadence {
+  every: 'day' | 'week' | 'month';
+  day?: number;
+}
+
+/** Une synapse du réseau : « from débloque to ». */
+export interface SuccesTaskEdge {
+  projectId: string;
+  fromTaskId: string;
+  toTaskId: string;
+  updatedAtMs: number;
+}
+
+/** Une entrée du catalogue de formes, pour le sélecteur de création. */
+export interface SuccesStructureInfo {
+  id: SuccesProjectStructure;
+  name: string;
+  icon: string;
+  description: string;
+}
+
 export interface SuccesSubtask {
   id: string;
   title: string;
@@ -27,6 +64,8 @@ export interface SuccesTask {
   completedDate: string;
   postponedCount: number;
   updatedAtMs: number;
+  stage: string;
+  cadence: SuccesCadence | null;
   subtasks: SuccesSubtask[];
 }
 
@@ -104,7 +143,8 @@ export interface SuccesProject {
   icon: string;
   startDate: string;
   endDate: string;
-  structure: 'flat' | 'tree';
+  structure: SuccesProjectStructure;
+  structureConfig: SuccesStructureConfig;
   createdAt: string;
   updatedAtMs: number;
   taskTotal: number;
@@ -116,6 +156,7 @@ export interface SuccesProjectKit {
   name: string;
   description: string;
   icon: string;
+  structure: SuccesProjectStructure;
   nodeCount: number;
 }
 

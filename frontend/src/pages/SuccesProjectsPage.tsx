@@ -22,12 +22,28 @@ import {
   rescheduleSuccesTask,
   setSuccesSubtaskDone,
   setSuccesTaskDone,
+  createSuccesTaskEdge,
+  deleteSuccesTaskEdge,
+  listSuccesTaskEdges,
+  resetSuccesProjectCycle,
   updateSuccesProject,
   updateSuccesTask,
 } from '../features/succes/api';
 import { ProjectTreeView } from '../features/succes/ProjectTreeView';
+import { GenealogyView } from '../features/succes/GenealogyView';
+import { MindMapView } from '../features/succes/MindMapView';
+import { PipelineBoard } from '../features/succes/PipelineBoard';
+import { NetworkView } from '../features/succes/NetworkView';
+import { CycleWheel } from '../features/succes/CycleWheel';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
-import type { SuccesProject, SuccesProjectKit, SuccesSubtask, SuccesTask } from '../features/succes/types';
+import type {
+  SuccesProject,
+  SuccesProjectKit,
+  SuccesProjectStructure,
+  SuccesSubtask,
+  SuccesTask,
+  SuccesTaskEdge,
+} from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 
@@ -45,9 +61,26 @@ const emptyDraft = {
   color: FALLBACK_COLOR,
   startDate: '',
   endDate: '',
-  structure: 'flat' as 'flat' | 'tree',
+  structure: 'flat' as SuccesProjectStructure,
   kitId: '',
 };
+
+/** Les cinq formes + la liste, plus l'entrée Kit. Le même catalogue vit côté
+ *  serveur (structures.py) ; le garder statique ici évite un aller réseau
+ *  pour ouvrir un simple formulaire. */
+const STRUCTURE_OPTIONS: ReadonlyArray<{
+  id: SuccesProjectStructure | 'kit';
+  label: string;
+  hint: string;
+}> = [
+  { id: 'flat', label: '☰ Liste', hint: 'Des tâches, dans l’ordre.' },
+  { id: 'tree', label: '🌳 Arbre', hint: 'L’objectif engendre ses livrables.' },
+  { id: 'mindmap', label: '🧠 Carte', hint: 'Les idées rayonnent du centre.' },
+  { id: 'pipeline', label: '🏭 Pipeline', hint: 'Chaque tâche traverse des étapes.' },
+  { id: 'network', label: '🕸️ Réseau', hint: 'Qui débloque quoi, et quoi faire là.' },
+  { id: 'cycle', label: '🔄 Cycle', hint: 'La roue des routines, tour après tour.' },
+  { id: 'kit', label: '📦 Kit', hint: 'Démarrer depuis un modèle prêt.' },
+];
 
 function parseHex(hex: string): [number, number, number] {
   const raw = (hex || '').trim().replace('#', '');
@@ -542,6 +575,10 @@ export function SuccesProjectsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quickTitle, setQuickTitle] = useState('');
   const [kits, setKits] = useState<SuccesProjectKit[]>([]);
+  const [edges, setEdges] = useState<SuccesTaskEdge[]>([]);
+  // La famille arbre (arbre, carte) garde un onglet « Édition » : la vue
+  // spécialisée montre et crée, l'édition renomme et supprime.
+  const [treeEditMode, setTreeEditMode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -580,6 +617,25 @@ export function SuccesProjectsPage() {
   }, [pendingMeshSelection, setPendingMeshSelection]);
 
   const selected = projects.find((project) => project.id === selectedId) ?? null;
+
+  const loadEdges = useCallback(async () => {
+    if (!selected || selected.structure !== 'network') {
+      setEdges([]);
+      return;
+    }
+    try {
+      setEdges(await listSuccesTaskEdges(selected.id));
+    } catch {
+      // Un réseau sans arêtes affichables reste utilisable : les tâches se
+      // voient, seules les flèches manquent jusqu'au prochain chargement.
+      setEdges([]);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    void loadEdges();
+    setTreeEditMode(false);
+  }, [selectedId, selected?.structure]); // eslint-disable-line react-hooks/exhaustive-deps
   const projectTasks = selected
     ? tasks.filter((task) => task.projectId === selected.id)
     : [];
@@ -656,7 +712,9 @@ export function SuccesProjectsPage() {
           color: draft.color,
           startDate: draft.startDate,
           endDate: draft.endDate,
-          structure: draft.kitId ? 'tree' : draft.structure,
+          // Avec un kit, la forme vient du kit (un kit pipeline crée un
+          // pipeline) : on n'envoie pas celle du brouillon par-dessus.
+          structure: draft.kitId ? undefined : draft.structure,
           kitId: draft.kitId || undefined,
         });
       }
@@ -726,7 +784,15 @@ export function SuccesProjectsPage() {
     setQuickTitle('');
   };
 
-  const isTreeProject = (selected?.structure || 'flat') === 'tree';
+  const structure: SuccesProjectStructure = selected?.structure || 'flat';
+  const isTreeFamily = structure === 'tree' || structure === 'mindmap';
+  const structureLabel =
+    STRUCTURE_OPTIONS.find((option) => option.id === structure)?.label ?? '☰ Liste';
+  const projectStages: string[] =
+    selected?.structureConfig?.stages && selected.structureConfig.stages.length >= 2
+      ? selected.structureConfig.stages
+      : ['À faire', 'En cours', 'Fait'];
+  const levelLabels: string[] = selected?.structureConfig?.levelLabels ?? [];
 
   if (selected) {
     return (
@@ -764,7 +830,21 @@ export function SuccesProjectsPage() {
                 <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>{selected.description}</p>
               )}
               <div className="flex flex-wrap gap-3 mt-3 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                <span>{isTreeProject ? 'Vue arbre' : 'Vue liste'}</span>
+                <span>{structureLabel}</span>
+                {isTreeFamily && (
+                  <button
+                    type="button"
+                    onClick={() => setTreeEditMode((mode) => !mode)}
+                    className="cursor-pointer underline-offset-2 hover:underline"
+                    style={{ color: 'var(--color-accent)' }}
+                  >
+                    {treeEditMode
+                      ? structure === 'mindmap'
+                        ? 'Voir la carte'
+                        : 'Voir la généalogie'
+                      : 'Éditer les branches'}
+                  </button>
+                )}
                 {selected.startDate && <span>Début {selected.startDate}</span>}
                 {selected.endDate && <span>Fin {selected.endDate}</span>}
                 <span>{doneCount}/{projectTasks.length || selected.taskTotal} terminée(s)</span>
@@ -804,7 +884,134 @@ export function SuccesProjectsPage() {
             </section>
           )}
 
-          {isTreeProject ? (
+          {structure === 'tree' && !treeEditMode ? (
+            <GenealogyView
+              tasks={projectTasks}
+              levelLabels={levelLabels}
+              saving={saving}
+              onToggle={async (task) => {
+                await refreshAfter(
+                  () => setSuccesTaskDone(task.id, !task.done),
+                  task.done ? 'Branche rouverte' : 'Branche terminée',
+                );
+              }}
+              onCreate={async ({ title, parentTaskId }) => {
+                await refreshAfter(
+                  () =>
+                    createSuccesTask({
+                      title,
+                      projectId: selected.id,
+                      parentTaskId: parentTaskId || '',
+                    }),
+                  parentTaskId ? 'Branche ajoutée' : 'Racine ajoutée',
+                );
+              }}
+            />
+          ) : structure === 'mindmap' && !treeEditMode ? (
+            <MindMapView
+              tasks={projectTasks}
+              projectName={selected.name}
+              saving={saving}
+              onToggle={async (task) => {
+                await refreshAfter(
+                  () => setSuccesTaskDone(task.id, !task.done),
+                  task.done ? 'Idée rouverte' : 'Idée accomplie',
+                );
+              }}
+              onCreate={async ({ title, parentTaskId }) => {
+                await refreshAfter(
+                  () =>
+                    createSuccesTask({
+                      title,
+                      projectId: selected.id,
+                      parentTaskId: parentTaskId || '',
+                    }),
+                  'Branche ajoutée',
+                );
+              }}
+            />
+          ) : structure === 'pipeline' ? (
+            <PipelineBoard
+              tasks={projectTasks}
+              stages={projectStages}
+              saving={saving}
+              onMove={async (task, stage) => {
+                await refreshAfter(
+                  () => updateSuccesTask(task.id, { stage }),
+                  `Déplacée vers « ${stage} »`,
+                );
+              }}
+              onCreate={async ({ title, stage }) => {
+                await refreshAfter(
+                  () =>
+                    createSuccesTask({
+                      title,
+                      projectId: selected.id,
+                      stage: stage || projectStages[0],
+                    }),
+                  'Carte ajoutée',
+                );
+              }}
+            />
+          ) : structure === 'network' ? (
+            <NetworkView
+              tasks={projectTasks}
+              edges={edges}
+              saving={saving}
+              onToggle={async (task) => {
+                await refreshAfter(
+                  () => setSuccesTaskDone(task.id, !task.done),
+                  task.done ? 'Tâche rouverte' : 'Tâche terminée',
+                );
+              }}
+              onLink={async (fromTaskId, toTaskId) => {
+                await refreshAfter(async () => {
+                  await createSuccesTaskEdge(selected.id, fromTaskId, toTaskId);
+                  await loadEdges();
+                }, 'Dépendance ajoutée');
+              }}
+              onUnlink={async (fromTaskId, toTaskId) => {
+                await refreshAfter(async () => {
+                  await deleteSuccesTaskEdge(selected.id, fromTaskId, toTaskId);
+                  await loadEdges();
+                }, 'Dépendance retirée');
+              }}
+              onCreate={async ({ title }) => {
+                await refreshAfter(
+                  () => createSuccesTask({ title, projectId: selected.id }),
+                  'Tâche ajoutée',
+                );
+              }}
+            />
+          ) : structure === 'cycle' ? (
+            <CycleWheel
+              tasks={projectTasks}
+              saving={saving}
+              onToggle={async (task) => {
+                await refreshAfter(
+                  () => setSuccesTaskDone(task.id, !task.done),
+                  task.done ? 'Routine rouverte' : 'Routine faite',
+                );
+              }}
+              onReset={async () => {
+                await refreshAfter(async () => {
+                  const { reopened } = await resetSuccesProjectCycle(selected.id);
+                  return reopened;
+                }, 'Nouveau tour — tout est décoché');
+              }}
+              onCreate={async ({ title, cadence }) => {
+                await refreshAfter(
+                  () =>
+                    createSuccesTask({
+                      title,
+                      projectId: selected.id,
+                      cadence: cadence ?? null,
+                    }),
+                  'Routine ajoutée',
+                );
+              }}
+            />
+          ) : isTreeFamily ? (
             <ProjectTreeView
               tasks={projectTasks}
               saving={saving}
@@ -970,14 +1177,8 @@ export function SuccesProjectsPage() {
                 <p className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
                   Comment structurer ce projet ?
                 </p>
-                <div className="grid sm:grid-cols-3 gap-2">
-                  {(
-                    [
-                      { id: 'flat', label: 'Liste', hint: 'Tâches à plat, comme aujourd’hui.' },
-                      { id: 'tree', label: 'Arbre', hint: 'Branches parent / enfant + descriptions.' },
-                      { id: 'kit', label: 'Kit', hint: 'Démarrer depuis un modèle prêt.' },
-                    ] as const
-                  ).map((option) => {
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {STRUCTURE_OPTIONS.map((option) => {
                     const selectedMode =
                       option.id === 'kit'
                         ? Boolean(draft.kitId)
@@ -990,7 +1191,6 @@ export function SuccesProjectsPage() {
                           if (option.id === 'kit') {
                             setDraft({
                               ...draft,
-                              structure: 'tree',
                               kitId: draft.kitId || kits[0]?.id || '',
                             });
                           } else {
@@ -1017,7 +1217,7 @@ export function SuccesProjectsPage() {
                         <button
                           key={kit.id}
                           type="button"
-                          onClick={() => setDraft({ ...draft, kitId: kit.id, structure: 'tree' })}
+                          onClick={() => setDraft({ ...draft, kitId: kit.id })}
                           className="rounded-xl px-3 py-2.5 text-left cursor-pointer"
                           style={{
                             border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,

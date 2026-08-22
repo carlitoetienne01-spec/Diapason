@@ -29,6 +29,11 @@ from diapason.succes.store import (
     _validate_iso_date,
     now_ms,
 )
+from diapason.succes.structures import (
+    decode_structure_config,
+    encode_structure_config,
+    normalize_structure_config,
+)
 
 HABIT_FREQUENCIES = frozenset({"daily", "weekly", "monthly"})
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -225,6 +230,9 @@ class SuccesWorkspaceStore(SuccesStore):
             "startDate": row["start_date"],
             "endDate": row["end_date"],
             "structure": row["structure"] if "structure" in keys else "flat",
+            "structureConfig": decode_structure_config(
+                row["structure_config"] if "structure_config" in keys else ""
+            ),
             "createdAt": row["created_date"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
@@ -289,9 +297,21 @@ class SuccesWorkspaceStore(SuccesStore):
         if start_date and end_date and end_date < start_date:
             raise SuccesError("La date de fin doit suivre la date de début.")
         kit_id = str(data.get("kitId") or "").strip()
-        if kit_id:
-            get_project_kit(kit_id)  # validate early
-        structure = normalize_structure(data.get("structure"), kit_id=kit_id)
+        kit = get_project_kit(kit_id) if kit_id else None
+        demande = data.get("structure")
+        if kit is not None and str(demande or "flat").strip().lower() == "flat":
+            # Le gabarit connaît sa forme : un kit de pipeline crée un
+            # pipeline, pas un arbre. Un choix explicite d'une autre forme
+            # arborescente reste respecté.
+            demande = kit.get("structure") or "tree"
+        structure = normalize_structure(demande, kit_id=kit_id)
+        # Le gabarit nourrit l'ENTRÉE, il ne rattrape pas la sortie : pour un
+        # pipeline, une entrée vide se normalise déjà en étapes par défaut,
+        # et un repli d'après-coup ne se déclencherait donc jamais.
+        config_entree = data.get("structureConfig")
+        if kit is not None and not config_entree:
+            config_entree = kit.get("structureConfig")
+        structure_config = normalize_structure_config(structure, config_entree)
         request = {
             "action": "create_project",
             "name": name,
@@ -301,6 +321,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "startDate": start_date,
             "endDate": end_date,
             "structure": structure,
+            "structureConfig": structure_config,
             "kitId": kit_id,
         }
         project_id = str(data.get("id") or uuid.uuid4())
@@ -312,8 +333,8 @@ class SuccesWorkspaceStore(SuccesStore):
             conn.execute(
                 """INSERT INTO succes_projects
                    (id,name,description,color,icon,start_date,end_date,created_date,
-                    updated_at_ms,deleted_at_ms,structure)
-                   VALUES (?,?,?,?,?,?,?,?,?,NULL,?)""",
+                    updated_at_ms,deleted_at_ms,structure,structure_config)
+                   VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)""",
                 (
                     project_id,
                     name,
@@ -325,6 +346,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     str(data.get("createdAt") or date.today().isoformat()),
                     timestamp,
                     structure,
+                    encode_structure_config(structure_config),
                 ),
             )
             project = self._load_project(conn, project_id)
@@ -361,6 +383,10 @@ class SuccesWorkspaceStore(SuccesStore):
                         "parentTaskId": parent_task_id,
                         "order": order,
                         "priority": "medium",
+                        # Un kit de pipeline place ses cartes, un kit de cycle
+                        # donne leur cadence. Absents, ces champs sont inertes.
+                        "stage": str(node.get("stage") or ""),
+                        "cadence": node.get("cadence"),
                     }
                 )
                 children = node.get("children")
@@ -368,6 +394,199 @@ class SuccesWorkspaceStore(SuccesStore):
                     walk(children, task["id"])
 
         walk(kit.get("nodes") or [], "")
+
+    # ── Le réseau : des synapses « from débloque to » ─────────────────────
+
+    def _edge_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "projectId": row["project_id"],
+            "fromTaskId": row["from_task_id"],
+            "toTaskId": row["to_task_id"],
+            "updatedAtMs": row["updated_at_ms"],
+        }
+
+    def list_task_edges(self, project_id: str) -> list[dict[str, Any]]:
+        self.get_project(project_id)  # 404 franc plutôt qu'une liste vide menteuse
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM succes_task_edges WHERE project_id=? "
+                "ORDER BY from_task_id, to_task_id",
+                (project_id,),
+            ).fetchall()
+        return [self._edge_dict(row) for row in rows]
+
+    def _assert_task_in_project(
+        self, conn: sqlite3.Connection, task_id: str, project_id: str, *, role: str
+    ) -> None:
+        row = conn.execute(
+            "SELECT project_id FROM succes_tasks WHERE id=? AND deleted_at_ms IS NULL",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            raise SuccesNotFound(f"La tâche {role} n'existe pas ou a été supprimée.")
+        if str(row["project_id"]) != project_id:
+            raise SuccesError(f"La tâche {role} n'appartient pas à ce projet.")
+
+    def create_task_edge(
+        self,
+        project_id: str,
+        from_task_id: str,
+        to_task_id: str,
+        *,
+        op_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Relier deux tâches : « from débloque to ».
+
+        Le graphe doit rester sans boucle. Avec un cycle, « que puis-je faire
+        maintenant ? » n'a plus de réponse — chaque tâche attend l'autre — et
+        c'est précisément la question que la forme réseau existe pour poser.
+        On refuse donc l'arête qui fermerait une boucle, en le disant.
+        """
+        de, vers = str(from_task_id or "").strip(), str(to_task_id or "").strip()
+        if not de or not vers:
+            raise SuccesError("Une arête relie deux tâches : les deux sont requises.")
+        if de == vers:
+            raise SuccesError("Une tâche ne peut pas se débloquer elle-même.")
+        request = {
+            "action": "create_edge",
+            "projectId": project_id,
+            "fromTaskId": de,
+            "toTaskId": vers,
+        }
+        ts = now_ms()
+        with self._transaction() as conn:
+            if self._load_project(conn, project_id) is None:
+                raise SuccesNotFound("Ce projet n'existe pas ou a été supprimé.")
+            self._assert_task_in_project(conn, de, project_id, role="amont")
+            self._assert_task_in_project(conn, vers, project_id, role="aval")
+            # Une boucle se formerait si « de » est déjà atteignable depuis
+            # « vers » en suivant les arêtes existantes.
+            atteints = {vers}
+            frontiere = [vers]
+            while frontiere:
+                courant = frontiere.pop()
+                for row in conn.execute(
+                    "SELECT to_task_id FROM succes_task_edges "
+                    "WHERE project_id=? AND from_task_id=?",
+                    (project_id, courant),
+                ).fetchall():
+                    suivant = row["to_task_id"]
+                    if suivant == de:
+                        raise SuccesError(
+                            "Cette arête fermerait une boucle : chaque tâche "
+                            "attendrait l'autre, et rien ne serait jamais "
+                            "faisable."
+                        )
+                    if suivant not in atteints:
+                        atteints.add(suivant)
+                        frontiere.append(suivant)
+            conn.execute(
+                "INSERT OR REPLACE INTO succes_task_edges "
+                "(project_id, from_task_id, to_task_id, updated_at_ms) "
+                "VALUES (?,?,?,?)",
+                (project_id, de, vers, ts),
+            )
+            edge = {
+                "projectId": project_id,
+                "fromTaskId": de,
+                "toTaskId": vers,
+                "updatedAtMs": ts,
+            }
+            self._record_op(
+                conn,
+                entity="task_edges",
+                entity_id=f"{de}->{vers}",
+                kind="upsert",
+                payload=edge,
+                request=request,
+                timestamp_ms=ts,
+                op_id=op_id,
+            )
+        return edge
+
+    def delete_task_edge(
+        self,
+        project_id: str,
+        from_task_id: str,
+        to_task_id: str,
+        *,
+        op_id: str | None = None,
+    ) -> None:
+        de, vers = str(from_task_id or "").strip(), str(to_task_id or "").strip()
+        request = {
+            "action": "delete_edge",
+            "projectId": project_id,
+            "fromTaskId": de,
+            "toTaskId": vers,
+        }
+        ts = now_ms()
+        with self._transaction() as conn:
+            cursor = conn.execute(
+                "DELETE FROM succes_task_edges "
+                "WHERE project_id=? AND from_task_id=? AND to_task_id=?",
+                (project_id, de, vers),
+            )
+            if cursor.rowcount == 0:
+                raise SuccesNotFound("Cette arête n'existe pas.")
+            self._record_op(
+                conn,
+                entity="task_edges",
+                entity_id=f"{de}->{vers}",
+                kind="delete",
+                payload={"projectId": project_id, "fromTaskId": de, "toTaskId": vers},
+                request=request,
+                timestamp_ms=ts,
+                op_id=op_id,
+            )
+
+    # ── Le cycle : chaque nouveau tour régénère les tâches ────────────────
+
+    def reset_cycle(
+        self, project_id: str, *, op_id: str | None = None
+    ) -> dict[str, Any]:
+        """Décoche toutes les tâches du projet : un tour recommence.
+
+        Explicite, jamais automatique : une régénération déclenchée par une
+        simple lecture serait un GET qui écrit, et l'utilisateur verrait ses
+        coches disparaître sans geste de sa part.
+        """
+        project = self.get_project(project_id)
+        if project.get("structure") != "cycle":
+            raise SuccesError("Seul un projet en cycle recommence un tour.")
+        request = {"action": "reset_cycle", "projectId": project_id}
+        ts = now_ms()
+        rouvertes = 0
+        with self._transaction() as conn:
+            ids = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM succes_tasks "
+                    "WHERE project_id=? AND deleted_at_ms IS NULL AND done=1",
+                    (project_id,),
+                ).fetchall()
+            ]
+            for task_id in ids:
+                conn.execute(
+                    "UPDATE succes_tasks SET done=0, completed_date='', "
+                    "updated_at_ms=? WHERE id=?",
+                    (ts, task_id),
+                )
+                task = self._load_task(conn, task_id)
+                assert task is not None
+                # Une opération PAR tâche : la synchronisation rejoue des
+                # tâches, pas des gestes de projet.
+                self._record_op(
+                    conn,
+                    entity="tasks",
+                    entity_id=task_id,
+                    kind="upsert",
+                    payload=task,
+                    request=request,
+                    timestamp_ms=ts,
+                    op_id=f"{op_id}:{task_id}" if op_id else None,
+                )
+                rouvertes += 1
+        return {"project": self.get_project(project_id), "reopened": rouvertes}
 
     def update_project(
         self,
@@ -393,6 +612,9 @@ class SuccesWorkspaceStore(SuccesStore):
         if start_date and end_date and end_date < start_date:
             raise SuccesError("La date de fin doit suivre la date de début.")
         structure = normalize_structure(merged.get("structure"))
+        structure_config = normalize_structure_config(
+            structure, merged.get("structureConfig")
+        )
         request = {
             "action": "update_project",
             "projectId": project_id,
@@ -407,7 +629,8 @@ class SuccesWorkspaceStore(SuccesStore):
                 raise SuccesNotFound("Ce projet n'existe pas ou a été supprimé.")
             conn.execute(
                 """UPDATE succes_projects SET name=?,description=?,color=?,icon=?,
-                   start_date=?,end_date=?,structure=?,updated_at_ms=? WHERE id=?""",
+                   start_date=?,end_date=?,structure=?,structure_config=?,
+                   updated_at_ms=? WHERE id=?""",
                 (
                     name,
                     description,
@@ -416,6 +639,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     start_date,
                     end_date,
                     structure,
+                    encode_structure_config(structure_config),
                     timestamp,
                     project_id,
                 ),

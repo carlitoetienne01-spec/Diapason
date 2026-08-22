@@ -31,6 +31,11 @@ import type {
   SuccesTemplateFrequency,
   SuccesTemplateKind,
   SuccesYearReview,
+  SuccesCadence,
+  SuccesProjectStructure,
+  SuccesStructureConfig,
+  SuccesStructureInfo,
+  SuccesTaskEdge,
 } from './types';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -137,6 +142,8 @@ export async function createSuccesTask(input: {
   parentTaskId?: string;
   category?: string;
   emoji?: string;
+  stage?: string;
+  cadence?: SuccesCadence | null;
 }): Promise<SuccesTask> {
   const payload = await request<{ task: SuccesTask }>('/v1/succes/tasks', {
     method: 'POST',
@@ -159,6 +166,8 @@ export async function updateSuccesTask(
       | 'parentTaskId'
       | 'category'
       | 'emoji'
+      | 'stage'
+      | 'cadence'
     >
   >,
 ): Promise<SuccesTask> {
@@ -319,6 +328,13 @@ export async function listSuccesProjectKits(): Promise<SuccesProjectKit[]> {
   return payload.kits;
 }
 
+export async function listSuccesProjectStructures(): Promise<SuccesStructureInfo[]> {
+  const payload = await request<{ structures: SuccesStructureInfo[] }>(
+    '/v1/succes/project-structures',
+  );
+  return payload.structures;
+}
+
 export async function createSuccesProject(input: {
   name: string;
   description?: string;
@@ -326,7 +342,8 @@ export async function createSuccesProject(input: {
   icon?: string;
   startDate?: string;
   endDate?: string;
-  structure?: 'flat' | 'tree';
+  structure?: SuccesProjectStructure;
+  structureConfig?: SuccesStructureConfig;
   kitId?: string;
 }): Promise<SuccesProject> {
   const payload = await request<{ project: SuccesProject }>('/v1/succes/projects', {
@@ -339,7 +356,17 @@ export async function createSuccesProject(input: {
 export async function updateSuccesProject(
   projectId: string,
   patch: Partial<
-    Pick<SuccesProject, 'name' | 'description' | 'color' | 'icon' | 'startDate' | 'endDate' | 'structure'>
+    Pick<
+      SuccesProject,
+      | 'name'
+      | 'description'
+      | 'color'
+      | 'icon'
+      | 'startDate'
+      | 'endDate'
+      | 'structure'
+      | 'structureConfig'
+    >
   >,
 ): Promise<SuccesProject> {
   const payload = await request<{ project: SuccesProject }>(
@@ -347,6 +374,45 @@ export async function updateSuccesProject(
     { method: 'PATCH', body: JSON.stringify(patch) },
   );
   return payload.project;
+}
+
+export async function listSuccesTaskEdges(projectId: string): Promise<SuccesTaskEdge[]> {
+  const payload = await request<{ edges: SuccesTaskEdge[] }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/edges`,
+  );
+  return payload.edges;
+}
+
+export async function createSuccesTaskEdge(
+  projectId: string,
+  fromTaskId: string,
+  toTaskId: string,
+): Promise<SuccesTaskEdge> {
+  const payload = await request<{ edge: SuccesTaskEdge }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/edges`,
+    { method: 'POST', body: JSON.stringify({ fromTaskId, toTaskId }) },
+  );
+  return payload.edge;
+}
+
+export async function deleteSuccesTaskEdge(
+  projectId: string,
+  fromTaskId: string,
+  toTaskId: string,
+): Promise<void> {
+  await request(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/edges/${encodeURIComponent(fromTaskId)}/${encodeURIComponent(toTaskId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function resetSuccesProjectCycle(
+  projectId: string,
+): Promise<{ project: SuccesProject; reopened: number }> {
+  return request<{ project: SuccesProject; reopened: number }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/cycle/reset`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
 }
 
 export async function deleteSuccesProject(projectId: string): Promise<void> {

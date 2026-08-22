@@ -46,6 +46,9 @@ class TaskCreate(BaseModel):
     category: str = Field(default="", max_length=100)
     notes: str = Field(default="", max_length=2000)
     emoji: str = Field(default="", max_length=16)
+    # L'étape (pipeline) et la cadence (cycle) ; validées contre le projet.
+    stage: str = Field(default="", max_length=40)
+    cadence: dict[str, Any] | None = None
     opId: str | None = None
 
 
@@ -60,6 +63,8 @@ class TaskPatch(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     emoji: str | None = Field(default=None, max_length=16)
     order: int | None = None
+    stage: str | None = Field(default=None, max_length=40)
+    cadence: dict[str, Any] | None = None
     opId: str | None = None
 
 
@@ -96,7 +101,10 @@ class ProjectCreate(BaseModel):
     icon: str = Field(default="", max_length=16)
     startDate: str = ""
     endDate: str = ""
-    structure: Literal["flat", "tree"] = "flat"
+    structure: Literal["flat", "tree", "mindmap", "pipeline", "network", "cycle"] = (
+        "flat"
+    )
+    structureConfig: dict[str, Any] = Field(default_factory=dict)
     kitId: str = Field(default="", max_length=80)
     opId: str | None = None
 
@@ -108,7 +116,20 @@ class ProjectPatch(BaseModel):
     icon: str | None = Field(default=None, max_length=16)
     startDate: str | None = None
     endDate: str | None = None
-    structure: Literal["flat", "tree"] | None = None
+    structure: (
+        Literal["flat", "tree", "mindmap", "pipeline", "network", "cycle"] | None
+    ) = None
+    structureConfig: dict[str, Any] | None = None
+    opId: str | None = None
+
+
+class EdgeCreate(BaseModel):
+    fromTaskId: str = Field(min_length=1, max_length=80)
+    toTaskId: str = Field(min_length=1, max_length=80)
+    opId: str | None = None
+
+
+class CycleResetBody(BaseModel):
     opId: str | None = None
 
 
@@ -481,6 +502,58 @@ async def list_project_kits() -> dict[str, Any]:
 
     kits = _list_kits()
     return {"kits": kits, "count": len(kits)}
+
+
+@router.get("/project-structures")
+async def list_project_structures() -> dict[str, Any]:
+    """Les cinq formes qu'un projet peut prendre, pour le sélecteur."""
+    from diapason.succes.structures import STRUCTURE_CATALOG
+
+    return {"structures": list(STRUCTURE_CATALOG)}
+
+
+@router.get("/projects/{project_id}/edges")
+async def list_task_edges(project_id: str) -> dict[str, Any]:
+    try:
+        edges = _workspace_store().list_task_edges(project_id)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"edges": edges, "count": len(edges)}
+
+
+@router.post("/projects/{project_id}/edges", status_code=201)
+async def create_task_edge(project_id: str, body: EdgeCreate) -> dict[str, Any]:
+    try:
+        edge = _workspace_store().create_task_edge(
+            project_id, body.fromTaskId, body.toTaskId, op_id=body.opId
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"edge": edge, "persistence": "local"}
+
+
+@router.delete("/projects/{project_id}/edges/{from_task_id}/{to_task_id}")
+async def delete_task_edge(
+    project_id: str, from_task_id: str, to_task_id: str
+) -> dict[str, Any]:
+    try:
+        _workspace_store().delete_task_edge(project_id, from_task_id, to_task_id)
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return {"deleted": True}
+
+
+@router.post("/projects/{project_id}/cycle/reset")
+async def reset_project_cycle(
+    project_id: str, body: CycleResetBody | None = None
+) -> dict[str, Any]:
+    try:
+        result = _workspace_store().reset_cycle(
+            project_id, op_id=body.opId if body else None
+        )
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+    return result
 
 
 @router.post("/projects", status_code=201)

@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from diapason.succes.store import SuccesError
-
-PROJECT_STRUCTURES = frozenset({"flat", "tree"})
+from diapason.succes.structures import (  # noqa: F401 - réexport de compat
+    PROJECT_STRUCTURES,
+    normalize_structure,
+)
 
 # Each node: title, optional notes (short description), optional children.
 _KitNode = Mapping[str, Any]
@@ -177,6 +179,57 @@ _KITS: tuple[dict[str, Any], ...] = (
 )
 
 
+_EXTRA_KITS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "video-release",
+        "name": "Sortie d'une vidéo",
+        "description": "Chaque vidéo traverse le même couloir, "
+        "de l'idée à la publication.",
+        "icon": "🎬",
+        "structure": "pipeline",
+        "structureConfig": {
+            "stages": ["Idée", "Écrit", "Tourné", "Monté", "Publié"],
+        },
+        "nodes": (
+            {"title": "Vidéo 1 — sujet à définir", "stage": "Idée"},
+            {"title": "Vidéo 2 — sujet à définir", "stage": "Idée"},
+            {"title": "Vidéo 3 — sujet à définir", "stage": "Idée"},
+        ),
+    },
+    {
+        "id": "weekly-reset",
+        "name": "Routine hebdomadaire",
+        "description": "La roue des rendez-vous avec soi-même ; "
+        "chaque tour les régénère.",
+        "icon": "🔄",
+        "structure": "cycle",
+        "nodes": (
+            {
+                "title": "Revue de la semaine",
+                "notes": "Ce qui a marché, ce qui attend.",
+                "cadence": {"every": "week", "day": 6},
+            },
+            {
+                "title": "Budget et dépenses",
+                "cadence": {"every": "week", "day": 2},
+            },
+            {
+                "title": "Sport",
+                "cadence": {"every": "week", "day": 0},
+            },
+            {
+                "title": "Ménage et courses",
+                "cadence": {"every": "week", "day": 5},
+            },
+        ),
+    },
+)
+
+
+def _all_kits() -> tuple[dict[str, Any], ...]:
+    return _KITS + _EXTRA_KITS
+
+
 def list_project_kits() -> list[dict[str, Any]]:
     """Return kit summaries (no full node trees) for the picker UI."""
     return [
@@ -185,33 +238,27 @@ def list_project_kits() -> list[dict[str, Any]]:
             "name": kit["name"],
             "description": kit["description"],
             "icon": kit.get("icon") or "",
+            "structure": str(kit.get("structure") or "tree"),
             "nodeCount": _count_nodes(kit["nodes"]),
         }
-        for kit in _KITS
+        for kit in _all_kits()
     ]
 
 
 def get_project_kit(kit_id: str) -> dict[str, Any]:
     needle = (kit_id or "").strip()
-    for kit in _KITS:
+    for kit in _all_kits():
         if kit["id"] == needle:
             return {
                 "id": kit["id"],
                 "name": kit["name"],
                 "description": kit["description"],
                 "icon": kit.get("icon") or "",
+                "structure": str(kit.get("structure") or "tree"),
+                "structureConfig": dict(kit.get("structureConfig") or {}),
                 "nodes": _clone_nodes(kit["nodes"]),
             }
     raise SuccesError("Ce modèle de projet est inconnu.")
-
-
-def normalize_structure(value: Any, *, kit_id: str = "") -> str:
-    if kit_id.strip():
-        return "tree"
-    raw = str(value or "flat").strip().lower()
-    if raw not in PROJECT_STRUCTURES:
-        raise SuccesError("La structure du projet doit être flat ou tree.")
-    return raw
 
 
 def _count_nodes(nodes: Any) -> int:
@@ -231,6 +278,10 @@ def _clone_nodes(nodes: Any) -> list[dict[str, Any]]:
             {
                 "title": str(node.get("title") or ""),
                 "notes": str(node.get("notes") or ""),
+                "stage": str(node.get("stage") or ""),
+                "cadence": dict(node["cadence"])
+                if isinstance(node.get("cadence"), Mapping)
+                else None,
                 "children": _clone_nodes(node.get("children")),
             }
         )

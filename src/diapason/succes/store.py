@@ -27,6 +27,24 @@ MAX_TASK_TREE_DEPTH = 16
 PRIORITIES = frozenset({"low", "medium", "high", "urgent"})
 
 
+def _cadence_convert(value: Any) -> str:
+    from diapason.succes.structures import normalize_cadence
+
+    return normalize_cadence(value)
+
+
+def _decode_cadence_raw(raw: Any) -> dict[str, Any] | None:
+    """La cadence stockée, ou None — jamais une lecture qui échoue."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 class SuccesError(ValueError):
     """Domain validation or conflict error safe to show to the user."""
 
@@ -192,6 +210,17 @@ class SuccesStore:
                 "CREATE INDEX IF NOT EXISTS succes_tasks_parent_idx "
                 "ON succes_tasks(project_id, parent_task_id, order_index)"
             )
+        # L'étape (pipeline) et la cadence (cycle) des cinq formes de projet.
+        # Colonnes additives : un client mobile qui les ignore continue de
+        # fonctionner, il ne les renverra simplement pas.
+        if "stage" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_tasks ADD COLUMN stage TEXT NOT NULL DEFAULT ''"
+            )
+        if "cadence" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_tasks ADD COLUMN cadence TEXT NOT NULL DEFAULT ''"
+            )
 
     @staticmethod
     def _ensure_project_columns(conn: sqlite3.Connection) -> None:
@@ -204,6 +233,29 @@ class SuccesStore:
                 "ALTER TABLE succes_projects ADD COLUMN "
                 "structure TEXT NOT NULL DEFAULT 'flat'"
             )
+        # Réglages propres à la forme (levelLabels, stages…), en JSON : une
+        # colonne par réglage condamnerait le schéma à suivre chaque idée.
+        if "structure_config" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_projects ADD COLUMN "
+                "structure_config TEXT NOT NULL DEFAULT '{}'"
+            )
+        # Les synapses du réseau : « from débloque to ». Une paire unique par
+        # sens ; la suppression est un effacement dur, l'arête n'ayant pas de
+        # contenu à restaurer.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS succes_task_edges (
+                project_id TEXT NOT NULL,
+                from_task_id TEXT NOT NULL,
+                to_task_id TEXT NOT NULL,
+                updated_at_ms INTEGER NOT NULL,
+                PRIMARY KEY (from_task_id, to_task_id)
+            )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS succes_task_edges_project_idx "
+            "ON succes_task_edges(project_id)"
+        )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -325,8 +377,66 @@ class SuccesStore:
             "postponedCount": row["postponed_count"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
+            "stage": row["stage"] if "stage" in keys else "",
+            "cadence": _decode_cadence_raw(row["cadence"])
+            if "cadence" in keys
+            else None,
             "subtasks": subtasks,
         }
+
+    def _project_form(
+        self, conn: sqlite3.Connection, project_id: str
+    ) -> tuple[str, list[str]]:
+        """La forme du projet et, s'il est un pipeline, ses étapes.
+
+        C'est la tâche qui porte l'étape, mais c'est le projet qui décide
+        lesquelles existent : valider ici évite qu'une étape fantôme entre en
+        base et se synchronise partout.
+        """
+        if not project_id:
+            return "flat", []
+        row = conn.execute(
+            "SELECT structure, structure_config FROM succes_projects "
+            "WHERE id=? AND deleted_at_ms IS NULL",
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            return "flat", []
+        keys = row.keys()
+        structure = row["structure"] if "structure" in keys else "flat"
+        from diapason.succes.structures import decode_structure_config, stages_of
+
+        config = decode_structure_config(
+            row["structure_config"] if "structure_config" in keys else ""
+        )
+        return structure, stages_of(structure, config)
+
+    def _resolve_stage(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        project_id: str,
+        stage: str,
+        currently_done: bool,
+    ) -> tuple[str, bool | None]:
+        """L'étape validée, et le sort de « done » qu'elle impose.
+
+        Dans un pipeline, la dernière étape EST l'achèvement : y entrer coche
+        la tâche, en sortir la décoche. Deux vérités séparées finiraient par
+        se contredire — une carte « Fait » non cochée, ou l'inverse.
+
+        Hors pipeline l'étape est effacée : elle ne veut rien dire là-bas, et
+        la laisser suivrait la tâche dans ses déménagements de projet.
+        """
+        structure, stages = self._project_form(conn, project_id)
+        if structure != "pipeline":
+            return "", None
+        wanted = str(stage or "").strip()
+        if not wanted:
+            return stages[0], (False if currently_done else None)
+        if wanted not in stages:
+            raise SuccesError("L'étape doit être l'une de : " + ", ".join(stages) + ".")
+        return wanted, wanted == stages[-1]
 
     def _validate_task_parent(
         self,
@@ -533,10 +643,26 @@ class SuccesStore:
             ).fetchone()
             if existing is not None:
                 raise SuccesError("Une tâche avec cet identifiant existe déjà.")
+            done = bool(data.get("done"))
+            stage, done_du_stage = self._resolve_stage(
+                conn,
+                project_id=project_id,
+                stage=str(data.get("stage") or ""),
+                currently_done=done,
+            )
+            if done_du_stage is not None:
+                done = done_du_stage
+                if done and not completed:
+                    completed = date.today().isoformat()
+                if not done:
+                    completed = ""
+            from diapason.succes.structures import normalize_cadence
+
+            cadence = normalize_cadence(data.get("cadence"))
             values = (
                 task_id,
                 title,
-                int(bool(data.get("done"))),
+                int(done),
                 priority,
                 scheduled,
                 str(data.get("time") or ""),
@@ -551,14 +677,17 @@ class SuccesStore:
                 created,
                 completed,
                 max(0, int(data.get("postponedCount") or 0)),
+                stage,
+                cadence,
                 ts,
             )
             conn.execute(
                 """INSERT INTO succes_tasks
                    (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                     parent_task_id,category,notes,emoji,template_id,group_id,order_index,
-                    created_date,completed_date,postponed_count,updated_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    created_date,completed_date,postponed_count,stage,cadence,
+                    updated_at_ms)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 values,
             )
             task = self._load_task(conn, task_id)
@@ -601,6 +730,10 @@ class SuccesStore:
             ),
             "emoji": ("emoji", lambda value: str(value or "")[:16]),
             "order": ("order_index", int),
+            # Validées plus bas, dans la transaction : l'étape dépend du
+            # projet cible, que seul le SELECT courant connaît.
+            "stage": ("stage", lambda value: str(value or "").strip()),
+            "cadence": ("cadence", _cadence_convert),
         }
         assignments: list[str] = []
         values: list[Any] = []
@@ -632,6 +765,36 @@ class SuccesStore:
                 if "parentTaskId" in patch
                 else str(current.get("parentTaskId") or "")
             )
+            if "stage" in patch or "projectId" in patch:
+                # Un changement d'étape, ou un déménagement de projet : la
+                # forme du projet CIBLE décide de l'étape et du sort de done.
+                stage_valide, done_du_stage = self._resolve_stage(
+                    conn,
+                    project_id=next_project,
+                    stage=(
+                        str(patch.get("stage") or "")
+                        if "stage" in patch
+                        else str(current.get("stage") or "")
+                    ),
+                    currently_done=bool(current.get("done")),
+                )
+                try:
+                    stage_idx = next(
+                        i
+                        for i, part in enumerate(assignments)
+                        if part.startswith("stage")
+                    )
+                    values[stage_idx] = stage_valide
+                except StopIteration:
+                    assignments.insert(-2, "stage = ?")
+                    values.insert(-2, stage_valide)
+                if done_du_stage is not None and done_du_stage != bool(
+                    current.get("done")
+                ):
+                    assignments.insert(-2, "done = ?")
+                    values.insert(-2, int(done_du_stage))
+                    assignments.insert(-2, "completed_date = ?")
+                    values.insert(-2, date.today().isoformat() if done_du_stage else "")
             if "projectId" in patch or "parentTaskId" in patch:
                 validated_parent = self._validate_task_parent(
                     conn,
