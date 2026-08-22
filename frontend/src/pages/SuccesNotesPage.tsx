@@ -31,6 +31,7 @@ import type {
 } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 type SortMode = 'recent' | 'oldest' | 'name-asc' | 'name-desc';
 
@@ -99,6 +100,11 @@ export function SuccesNotesPage() {
     const timer = window.setTimeout(() => void load(), 180);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   useEffect(() => {
     draftRef.current = { title: draftTitle, content: draftContent, meta, activeId };

@@ -35,6 +35,7 @@ import { MindMapView } from '../features/succes/MindMapView';
 import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
 import { CycleWheel } from '../features/succes/CycleWheel';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import type {
   SuccesProject,
@@ -609,6 +610,15 @@ export function SuccesProjectsPage() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
+  // Une page ouverte gardait son état indéfiniment : dans l'application de
+  // bureau, des tâches créées ailleurs n'apparaissaient pas et un projet
+  // supprimé restait affiché. On relit au retour du focus, avec les arêtes du
+  // projet ouvert s'il y en a.
+  useRefreshOnFocus(() => {
+    void load();
+    void loadEdges();
+  });
+
   // Une autre appareil peut demander « montre-moi ce projet ». La sélection
   // arrive par le magasin parce que le routeur ne la transporte pas ; elle est
   // consommée une fois, sinon revenir sur l'écran la rouvrirait sans raison.
@@ -621,6 +631,23 @@ export function SuccesProjectsPage() {
   }, [pendingMeshSelection, setPendingMeshSelection]);
 
   const selected = projects.find((project) => project.id === selectedId) ?? null;
+
+  // Un projet ouvert peut disparaître sous nos pieds : supprimé depuis le
+  // téléphone, une autre fenêtre, ou l'assistant. La page retombait alors sur
+  // la liste sans un mot, ce qui se lit comme un bogue. On le DIT, et on
+  // referme la sélection pour qu'un rechargement ne la rouvre pas.
+  useEffect(() => {
+    if (!selectedId || loading || selected) return;
+    // `projects` peut être vide le temps du premier chargement : on n'annonce
+    // une disparition que si la liste a bien été remplie.
+    if (projects.length === 0) return;
+    setSelectedId(null);
+    setEdges([]);
+    setInspected(null);
+    toast.info('Ce projet n’existe plus.', {
+      description: 'Il a été supprimé ailleurs — retour à la liste.',
+    });
+  }, [selectedId, selected, projects.length, loading]);
 
   const loadEdges = useCallback(async () => {
     if (!selected || selected.structure !== 'network') {

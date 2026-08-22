@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { downloadSuccesExport, fetchSuccesYearReview } from '../features/succes/api';
 import type { SuccesYearReview } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 const MONTHS = ['JAN', 'FÉV', 'MAR', 'AVR', 'MAI', 'JUN', 'JUL', 'AOÛ', 'SEP', 'OCT', 'NOV', 'DÉC'];
 const MONTH_NAMES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -31,6 +32,11 @@ export function SuccesYearReviewPage() {
   }, [month, year]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   const maxActivity = Math.max(1, ...(review?.activityByMonth ?? []));
   const metrics = useMemo(() => {

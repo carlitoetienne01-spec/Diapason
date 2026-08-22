@@ -15,6 +15,7 @@ import { fetchSuccesDashboard, setSuccesHabitDone } from '../features/succes/api
 import { resyncHabitReminders } from '../features/succes/habitReminders';
 import type { SuccesDashboard, SuccesHabit } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 function localIsoDate(value = new Date()) {
   const year = value.getFullYear();
@@ -53,6 +54,11 @@ export function SuccesDashboardPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   const toggleHabit = async (habit: SuccesHabit) => {
     setSaving(true);

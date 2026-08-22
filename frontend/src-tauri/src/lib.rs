@@ -3234,6 +3234,60 @@ pub fn run() {
             }
         }))
         .setup(move |app| {
+            // Un menu d'application, pour que ⌘R recharge vraiment.
+            //
+            // La fenêtre n'en avait aucun : ⌘R ne faisait RIEN, et une page
+            // ouverte gardait indéfiniment un état vieilli — des tâches créées
+            // ailleurs n'apparaissaient pas, un projet supprimé restait à
+            // l'écran. Le rafraîchissement au retour du focus couvre le cas
+            // courant ; ceci donne le geste explicite quand on veut forcer.
+            {
+                use tauri::menu::{PredefinedMenuItem, SubmenuBuilder};
+
+                let recharger = MenuItemBuilder::with_id("reload", "Recharger")
+                    .accelerator("CmdOrCtrl+R")
+                    .build(app)?;
+                let application = SubmenuBuilder::new(app, "Diapason")
+                    .item(&PredefinedMenuItem::hide(app, None)?)
+                    .item(&PredefinedMenuItem::hide_others(app, None)?)
+                    .separator()
+                    .item(&PredefinedMenuItem::quit(app, None)?)
+                    .build()?;
+                // Le menu Édition est indispensable : sans lui, ⌘C, ⌘V et ⌘A
+                // sont morts dans toute l'application — un champ de saisie où
+                // l'on ne peut pas coller n'est pas un champ de saisie.
+                let edition = SubmenuBuilder::new(app, "Édition")
+                    .item(&PredefinedMenuItem::undo(app, None)?)
+                    .item(&PredefinedMenuItem::redo(app, None)?)
+                    .separator()
+                    .item(&PredefinedMenuItem::cut(app, None)?)
+                    .item(&PredefinedMenuItem::copy(app, None)?)
+                    .item(&PredefinedMenuItem::paste(app, None)?)
+                    .item(&PredefinedMenuItem::select_all(app, None)?)
+                    .build()?;
+                let affichage = SubmenuBuilder::new(app, "Affichage")
+                    .item(&recharger)
+                    .separator()
+                    .item(&PredefinedMenuItem::fullscreen(app, None)?)
+                    .build()?;
+                let barre = MenuBuilder::new(app)
+                    .item(&application)
+                    .item(&edition)
+                    .item(&affichage)
+                    .build()?;
+                app.set_menu(barre)?;
+                app.on_menu_event(move |app, event| {
+                    if event.id().as_ref() == "reload" {
+                        if let Some(window) = app.get_webview_window("main") {
+                            // `eval` plutôt qu'un rechargement natif : on veut
+                            // que la page reparte de zéro comme dans un
+                            // navigateur, état React compris.
+                            let _ = window.eval("window.location.reload()");
+                        }
+                    }
+                });
+            }
+
             // System tray
             let show = MenuItemBuilder::with_id("show", "Show / Hide").build(app)?;
             let health = MenuItemBuilder::with_id("health", "Health: starting...")

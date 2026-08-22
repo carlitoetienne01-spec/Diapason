@@ -41,6 +41,7 @@ import type { SuccesHabit, SuccesHabitFrequency } from '../features/succes/types
 import { useConfirm } from '../components/ConfirmDialog';
 import { isTauri } from '../lib/api';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 const monthLabels = [
@@ -122,6 +123,11 @@ export function SuccesHabitsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   const closeFormNow = () => {
     setShowForm(false);

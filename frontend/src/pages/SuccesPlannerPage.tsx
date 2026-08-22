@@ -26,6 +26,7 @@ import { TaskCard } from '../features/succes/TaskCard';
 import type { PlannerResponse, SuccesQuote, SuccesSubtask, SuccesTask } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 type PlannerFilter = 'today' | 'week' | 'done' | 'high';
 
@@ -232,6 +233,11 @@ export function SuccesPlannerPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   useEffect(() => {
     void loadQuotes();

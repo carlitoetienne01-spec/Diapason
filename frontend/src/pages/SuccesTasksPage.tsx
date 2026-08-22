@@ -23,6 +23,7 @@ import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesSyncStatus, Su
 import { loadTasksViewMode, saveTasksViewMode, type SuccesTasksViewMode } from '../features/succes/uiPrefs';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
+import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 
 type ViewMode = SuccesTasksViewMode;
 
@@ -95,6 +96,11 @@ export function SuccesTasksPage() {
     const timer = window.setTimeout(() => void load(), 180);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  // Une page ouverte gardait son état indéfiniment : ce qui change
+  // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
+  // jamais. On relit au retour du focus.
+  useRefreshOnFocus(() => void load());
 
   const refreshAfter = async (action: () => Promise<unknown>, success: string) => {
     setSaving(true);
