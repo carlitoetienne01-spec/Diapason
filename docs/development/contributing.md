@@ -18,7 +18,7 @@ contribute code to Diapason.
 ### Clone and Install
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync --extra dev
 ```

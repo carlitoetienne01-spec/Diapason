@@ -298,7 +298,7 @@ We recommend creating **one Slack app** that handles both. The App Manifest belo
 
 8. **(Optional) Set the app icon:**
    - Go to Basic Information → Display Information
-   - Upload the [Diapason icon](https://github.com/open-diapason/Diapason/blob/main/assets/diapason-slack-icon.jpg)
+   - Upload the [Diapason icon](https://github.com/carlitoetienne01-spec/Diapason/blob/main/assets/diapason-slack-icon.jpg)
 
 ### Required Bot Token Scopes (reference)
 

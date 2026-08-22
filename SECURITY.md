@@ -9,7 +9,7 @@ should reproduce an issue on the latest release before reporting it.
 
 Do not open a public issue for an unpatched vulnerability. Use the private
 security-advisory form in the
-[open-diapason/Diapason repository](https://github.com/open-diapason/Diapason/security/advisories/new).
+[carlitoetienne01-spec/Diapason repository](https://github.com/carlitoetienne01-spec/Diapason/security/advisories/new).
 
 Include the affected version and platform, a minimal reproduction, expected
 impact, and any proposed mitigation. Do not include real credentials or

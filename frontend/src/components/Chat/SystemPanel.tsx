@@ -260,7 +260,7 @@ export function SystemPanel() {
           </button>
 
           <a
-            href="https://open-diapason.github.io/Diapason/leaderboard"
+            href="https://carlitoetienne01-spec.github.io/Diapason/leaderboard"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 mt-1.5 px-3 py-1.5 text-[11px] rounded-lg transition-colors"

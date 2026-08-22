@@ -7,7 +7,7 @@ An orchestrator agent with code execution, file I/O, and shell access. It can wr
 ### 1. Install and initialize
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync --extra dev
 diapason init --preset code-assistant

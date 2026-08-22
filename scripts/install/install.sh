@@ -2,7 +2,7 @@
 # install.sh — Diapason curl-pipe-bash installer.
 #
 # Usage:
-#   curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+#   curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 #
 # Flags (only used in tests / power users):
 #   --no-bg-orchestrator   Skip the detached background orchestrator
@@ -11,7 +11,7 @@
 #
 # Environment overrides:
 #   DIAPASON_HOME        Install dir (default: $HOME/.diapason)
-#   DIAPASON_REPO_URL    git repo URL (default: https://github.com/open-diapason/Diapason.git)
+#   DIAPASON_REPO_URL    git repo URL (default: https://github.com/carlitoetienne01-spec/Diapason.git)
 #   DIAPASON_FORCE_WSL   Set 1 to force WSL detection (testing)
 
 set -euo pipefail
@@ -49,13 +49,13 @@ Diapason runs on Windows via WSL2. Two paths:
 
      Open the Ubuntu shell that gets installed, then re-run:
 
-       curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+       curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 
   2. Desktop app — download the .exe from the Releases page:
-     https://github.com/open-diapason/Diapason/releases
+     https://github.com/carlitoetienne01-spec/Diapason/releases
 
 See the WSL2 install guide for the full walkthrough:
-  https://open-diapason.github.io/Diapason/getting-started/wsl2/
+  https://carlitoetienne01-spec.github.io/Diapason/getting-started/wsl2/
 EOF
         exit 1
         ;;
@@ -148,7 +148,7 @@ Two ways forward:
        Arch:          sudo pacman -S $tool
 
   2. Pre-authenticate sudo before piping (caches credentials for 5 min):
-       sudo -v && curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+       sudo -v && curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 EOF
         exit 1
     fi
@@ -219,7 +219,7 @@ fi
 # unset, $XDG_DATA_HOME/diapason if XDG_DATA_HOME is set). With nothing set
 # the root is ~/.diapason, so existing installs are untouched.
 DIAPASON_HOME="${DIAPASON_HOME:-${OPENJARVIS_HOME:-${JARVIS_HOME:-$HOME/.diapason}}}"
-DIAPASON_REPO_URL="${DIAPASON_REPO_URL:-${OPENJARVIS_REPO_URL:-https://github.com/open-diapason/Diapason.git}}"
+DIAPASON_REPO_URL="${DIAPASON_REPO_URL:-${OPENJARVIS_REPO_URL:-https://github.com/carlitoetienne01-spec/Diapason.git}}"
 SRC_DIR="$DIAPASON_HOME/src"
 VENV_DIR="$DIAPASON_HOME/.venv"
 STATE_DIR="$DIAPASON_HOME/.state"

@@ -2,8 +2,8 @@
 
 Serves the installers at::
 
-    https://open-diapason.github.io/Diapason/install.sh   (Linux / macOS / WSL2)
-    https://open-diapason.github.io/Diapason/install.ps1  (native Windows)
+    https://carlitoetienne01-spec.github.io/Diapason/install.sh   (Linux / macOS / WSL2)
+    https://carlitoetienne01-spec.github.io/Diapason/install.ps1  (native Windows)
 
 so users have an HTTPS-valid, project-controlled install URL that does not
 depend on the externally-hosted ``diapason.ai`` domain — whose TLS config

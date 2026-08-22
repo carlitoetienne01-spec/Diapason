@@ -35,7 +35,7 @@ The root is resolved in priority order:
 
 ```bash
 # Relocate the whole install + runtime tree at install time:
-DIAPASON_HOME=~/apps/diapason curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+DIAPASON_HOME=~/apps/diapason curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 
 # Or for a single run / your shell profile:
 export DIAPASON_HOME=~/apps/diapason

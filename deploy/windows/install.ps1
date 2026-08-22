@@ -22,10 +22,10 @@
          deploy/windows/diapason-service.ps1).
 
     Usage (one-liner):
-      irm https://open-diapason.github.io/Diapason/install.ps1 | iex
+      irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
 
     Usage (file invocation, supports flags):
-      irm https://open-diapason.github.io/Diapason/install.ps1 -OutFile install.ps1
+      irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 -OutFile install.ps1
       .\install.ps1 -SkipService
 
     Flags (when running the file directly):
@@ -267,7 +267,7 @@ if (-not (Test-Path $installRoot)) {
 $repoUrl = if ($env:DIAPASON_REPO_URL) {
     $env:DIAPASON_REPO_URL
 } else {
-    'https://github.com/open-diapason/Diapason.git'
+    'https://github.com/carlitoetienne01-spec/Diapason.git'
 }
 
 if (Test-Path (Join-Path $srcDir '.git')) {
@@ -532,5 +532,5 @@ if ($shouldInstallService) {
     Write-Host "           powershell -File `"$serviceScript`" uninstall    (remove)"
 }
 Write-Host ""
-Write-Host "  Docs:    https://open-diapason.github.io/Diapason/"
+Write-Host "  Docs:    https://carlitoetienne01-spec.github.io/Diapason/"
 Write-Host ""

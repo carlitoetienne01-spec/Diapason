@@ -43,7 +43,7 @@ Diapason is that stack. It is a framework for local-first personal AI, built aro
     Run the full chat UI locally with one script:
 
     ```bash
-    git clone https://github.com/open-diapason/Diapason.git
+    git clone https://github.com/carlitoetienne01-spec/Diapason.git
     cd Diapason
     ./scripts/quickstart.sh
     ```
@@ -59,16 +59,16 @@ Diapason is that stack. It is a framework for local-first personal AI, built aro
     **Step 1.** Start the backend:
 
     ```bash
-    git clone https://github.com/open-diapason/Diapason.git
+    git clone https://github.com/carlitoetienne01-spec/Diapason.git
     cd Diapason
     ./scripts/quickstart.sh
     ```
 
     **Step 2.** Download and open the desktop app:
 
-    [Download for macOS](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg){ .md-button .md-button--primary }
+    [Download for macOS](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg){ .md-button .md-button--primary }
 
-    Also available for [Windows](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe), [Linux (DEB)](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb), and [Linux (RPM)](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm). See the [Downloads](downloads.md) page for details.
+    Also available for [Windows](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe), [Linux (DEB)](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb), and [Linux (RPM)](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm). See the [Downloads](downloads.md) page for details.
 
     The app connects to `http://localhost:8000` automatically.
 

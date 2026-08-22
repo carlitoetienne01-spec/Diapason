@@ -279,7 +279,12 @@ fn resolve_bin(name: &str) -> String {
 /// GitHub — jusqu'à afficher « Repository not found » à l'utilisateur. Se
 /// souvenir d'un emplacement prouvé vaut mieux que deviner une liste.
 /// Le dépôt d'où l'application se télécharge, quand elle le peut.
-const REPO_URL: &str = "https://github.com/open-diapason/Diapason.git";
+///
+/// L'ancienne valeur (carlitoetienne01-spec/Diapason) rendait 404 : le repli de
+/// premier lancement promettait un téléchargement impossible. Le dépôt réel
+/// est privé — le clone exige donc des identifiants GitHub — mais le message
+/// d'échec nomme désormais au moins la bonne adresse.
+const REPO_URL: &str = "https://github.com/carlitoetienne01-spec/Diapason.git";
 
 fn remembered_root_file() -> std::path::PathBuf {
     std::path::PathBuf::from(home_dir())

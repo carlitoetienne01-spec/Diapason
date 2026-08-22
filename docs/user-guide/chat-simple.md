@@ -14,7 +14,7 @@ ollama pull qwen3.5:4b
 ### 2. Install and initialize Diapason
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync
 diapason init --preset chat-simple
@@ -113,7 +113,7 @@ The server is OpenAI-compatible, so any client that works with the OpenAI API ca
 ## Using the Desktop App
 
 1. Start the backend: `diapason serve` (or `./scripts/quickstart.sh`)
-2. Download and open the desktop app from the [releases page](https://github.com/open-diapason/Diapason/releases)
+2. Download and open the desktop app from the [releases page](https://github.com/carlitoetienne01-spec/Diapason/releases)
 3. The app connects to `http://localhost:8000` automatically
 
 ## Switching Models

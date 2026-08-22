@@ -19,7 +19,7 @@ your machine and the frontend connects via `localhost`.
 ### One-command setup
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 ./scripts/quickstart.sh
 ```
@@ -39,7 +39,7 @@ If you prefer to run each step yourself:
 === "Step 1: Clone and install"
 
     ```bash
-    git clone https://github.com/open-diapason/Diapason.git
+    git clone https://github.com/carlitoetienne01-spec/Diapason.git
     cd Diapason
     uv sync --extra desktop
     uv run maturin develop -m rust/crates/diapason-python/Cargo.toml
@@ -85,7 +85,7 @@ processing happens on your local machine — the app connects to the backend you
 **Step 1.** Start the backend (same as Browser App):
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 ./scripts/quickstart.sh
 ```
@@ -94,11 +94,11 @@ cd Diapason
 
 | Platform | Download |
 |----------|----------|
-| macOS (Universal) | [:material-download: **Diapason.dmg**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg) |
-| Windows (64-bit) | [:material-download: **Diapason-setup.exe**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe) |
-| Linux (DEB) | [:material-download: **Diapason.deb**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb) |
-| Linux (RPM) | [:material-download: **Diapason.rpm**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm) |
-| Linux (AppImage) | [:material-download: **Diapason.AppImage**](https://github.com/open-diapason/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.AppImage) |
+| macOS (Universal) | [:material-download: **Diapason.dmg**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg) |
+| Windows (64-bit) | [:material-download: **Diapason-setup.exe**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe) |
+| Linux (DEB) | [:material-download: **Diapason.deb**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb) |
+| Linux (RPM) | [:material-download: **Diapason.rpm**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm) |
+| Linux (AppImage) | [:material-download: **Diapason.AppImage**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.AppImage) |
 
 The app connects to `http://localhost:8000` automatically.
 
@@ -110,12 +110,12 @@ The app connects to `http://localhost:8000` automatically.
     This is normal for open-source apps distributed outside the App Store.
 
 !!! tip "All releases"
-    Browse all versions on the [GitHub Releases](https://github.com/open-diapason/Diapason/releases) page.
+    Browse all versions on the [GitHub Releases](https://github.com/carlitoetienne01-spec/Diapason/releases) page.
 
 ### Build from source
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason/frontend
 npm install
 npm run tauri:build
@@ -133,7 +133,7 @@ programmatically. Every feature is accessible from the terminal.
 ### Install
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync
 uv run maturin develop -m rust/crates/diapason-python/Cargo.toml
@@ -177,7 +177,7 @@ For programmatic access, the `Diapason` class provides a high-level sync API.
 ### Install
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync
 uv run maturin develop -m rust/crates/diapason-python/Cargo.toml

@@ -18,7 +18,7 @@ Then open the Ubuntu (or Debian) shell that gets installed.
 ## Install Diapason
 
 ```bash
-curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 ```
 
 About 3 minutes. Type `diapason` to start.

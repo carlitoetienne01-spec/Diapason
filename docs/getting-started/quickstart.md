@@ -103,13 +103,13 @@ Copy one of these to `~/.diapason/config.toml` to get a pre-configured setup:
 
 | Config | For | What it does |
 |--------|-----|-------------|
-| [`chat-simple.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/chat-simple.toml) | Any machine | Lightweight chat, no tools -- simplest setup |
-| [`code-assistant.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/code-assistant.toml) | Any machine | Orchestrator agent with code execution, file I/O, shell |
-| [`deep-research.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/deep-research.toml) | Any machine | Multi-hop research across indexed documents with citations |
-| [`scheduled-monitor.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/scheduled-monitor.toml) | Any machine | Persistent operative agent on a cron schedule |
-| [`morning-digest-mac.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/morning-digest-mac.toml) | Mac (Apple Silicon) | Daily spoken briefing from email, calendar, health, news |
-| [`morning-digest-linux.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/morning-digest-linux.toml) | Linux / GPU server | Same, with vLLM support |
-| [`morning-digest-minimal.toml`](https://github.com/open-diapason/Diapason/blob/main/configs/diapason/examples/morning-digest-minimal.toml) | Any machine | Just Gmail + Calendar |
+| [`chat-simple.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/chat-simple.toml) | Any machine | Lightweight chat, no tools -- simplest setup |
+| [`code-assistant.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/code-assistant.toml) | Any machine | Orchestrator agent with code execution, file I/O, shell |
+| [`deep-research.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/deep-research.toml) | Any machine | Multi-hop research across indexed documents with citations |
+| [`scheduled-monitor.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/scheduled-monitor.toml) | Any machine | Persistent operative agent on a cron schedule |
+| [`morning-digest-mac.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-mac.toml) | Mac (Apple Silicon) | Daily spoken briefing from email, calendar, health, news |
+| [`morning-digest-linux.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-linux.toml) | Linux / GPU server | Same, with vLLM support |
+| [`morning-digest-minimal.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-minimal.toml) | Any machine | Just Gmail + Calendar |
 
 Or generate a config with digest included:
 
@@ -127,7 +127,7 @@ This guide walks through the core workflows of Diapason: the browser app, CLI, P
 The quickest way to experience Diapason is the full chat UI running in your browser:
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 ./scripts/quickstart.sh
 ```

@@ -22,6 +22,6 @@ taking precedence when both are set. The migration command reports variables
 that must be renamed in shell profiles, CI secrets, containers, and services.
 
 The canonical project identity is
-[`open-diapason/Diapason`](https://github.com/open-diapason/Diapason). New
+[`carlitoetienne01-spec/Diapason`](https://github.com/carlitoetienne01-spec/Diapason). New
 releases use one version across Python, frontend, desktop, and protocol
 metadata.

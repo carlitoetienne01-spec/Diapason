@@ -6,7 +6,7 @@ to larger models.
 
 ## Requirements
 
-- Diapason installed (`git clone https://github.com/open-diapason/Diapason.git && cd Diapason && uv sync` or `uv sync --extra dev`)
+- Diapason installed (`git clone https://github.com/carlitoetienne01-spec/Diapason.git && cd Diapason && uv sync` or `uv sync --extra dev`)
 - An inference engine running with multiple models available
 
 ## Usage

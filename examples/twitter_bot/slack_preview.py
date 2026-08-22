@@ -88,7 +88,7 @@ FACTS = [
     ),
     (
         "Install Diapason by running git clone "
-        "https://github.com/open-diapason/Diapason.git then cd Diapason then uv sync. "
+        "https://github.com/carlitoetienne01-spec/Diapason.git then cd Diapason then uv sync. "
         "Use diapason init to auto-detect hardware and configure the engine."
     ),
     (
@@ -207,7 +207,7 @@ def main() -> None:
             '- "four rag backends, swap with one config change. been '
             'testing colbert on our docs and the retrieval quality jump is real"\n\n'
             "Only real facts. No invented stats. "
-            "Link: https://github.com/open-diapason/Diapason",
+            "Link: https://github.com/carlitoetienne01-spec/Diapason",
             agent="orchestrator",
             tools=["think", "memory_search", "channel_send"],
             temperature=0.7,

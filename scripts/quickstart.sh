@@ -6,7 +6,7 @@ set -euo pipefail
 # the backend API server and frontend, then opens the browser.
 #
 # Usage:
-#   git clone https://github.com/open-diapason/Diapason.git
+#   git clone https://github.com/carlitoetienne01-spec/Diapason.git
 #   cd Diapason
 #   ./scripts/quickstart.sh
 # ──────────────────────────────────────────────────────────────────────

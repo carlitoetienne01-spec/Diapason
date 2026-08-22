@@ -15,7 +15,7 @@ User runs `sudo bash install.sh` or invokes the installer from a root shell.
 Re-run as the regular user (without sudo):
 
 ```bash
-curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash
+curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 ```
 
 ## Test

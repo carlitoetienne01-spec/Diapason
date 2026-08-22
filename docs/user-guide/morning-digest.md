@@ -7,7 +7,7 @@ A personalized daily briefing that collects data from your connected services, s
 ### 1. Install and set up Diapason
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git
+git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd Diapason
 uv sync --extra dev
 ```

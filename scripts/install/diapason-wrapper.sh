@@ -7,7 +7,7 @@ VENV="$DIAPASON_HOME/.venv"
 
 if [[ ! -d "$VENV" ]]; then
     echo "diapason: venv not found at $VENV" >&2
-    echo "Re-run the installer: curl -fsSL https://open-diapason.github.io/Diapason/install.sh | bash" >&2
+    echo "Re-run the installer: curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash" >&2
     exit 1
 fi
 

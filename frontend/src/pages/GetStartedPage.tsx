@@ -21,7 +21,7 @@ import { isTauri, checkHealth } from '../lib/api';
 import { useTranslation } from '../i18n/useTranslation';
 
 const GITHUB_BASE =
-  'https://github.com/open-diapason/Diapason/releases/latest/download';
+  'https://github.com/carlitoetienne01-spec/Diapason/releases/latest/download';
 
 interface Platform {
   id: string;
@@ -452,7 +452,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {t('getstarted.cliClone')}
           </p>
-          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\nuv sync"} />
+          <CodeBlock code={"git clone https://github.com/carlitoetienne01-spec/Diapason.git\ncd Diapason\nuv sync"} />
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             {t('getstarted.cliThen')}
           </p>
@@ -463,7 +463,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {t('getstarted.browserIntro')}
           </p>
-          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\nuv sync --extra desktop\njarvis serve --port 8000"} />
+          <CodeBlock code={"git clone https://github.com/carlitoetienne01-spec/Diapason.git\ncd Diapason\nuv sync --extra desktop\njarvis serve --port 8000"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             {t('getstarted.browserNote')}
           </p>
@@ -473,7 +473,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {t('getstarted.dockerIntro')}
           </p>
-          <CodeBlock code={"git clone https://github.com/open-diapason/Diapason.git\ncd Diapason\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
+          <CodeBlock code={"git clone https://github.com/carlitoetienne01-spec/Diapason.git\ncd Diapason\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             {t('getstarted.dockerNote')}
           </p>

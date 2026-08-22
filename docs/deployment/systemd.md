@@ -15,7 +15,7 @@ Create the user and installation directory:
 ```bash
 sudo useradd --system --create-home --home-dir /opt/diapason diapason
 sudo -u diapason python3 -m venv /opt/diapason/.venv
-sudo -u diapason git clone https://github.com/open-diapason/Diapason.git /opt/diapason/Diapason
+sudo -u diapason git clone https://github.com/carlitoetienne01-spec/Diapason.git /opt/diapason/Diapason
 cd /opt/diapason/Diapason && sudo -u diapason uv sync --extra server
 ```
 

@@ -7,7 +7,7 @@ Diapason includes a launchd property list (plist) for running the API server as 
 Before installing the service, ensure that Diapason is installed and the `diapason` command is available at `/usr/local/bin/diapason`. If you installed via `uv` or `pip` with a different prefix, adjust the path in the plist accordingly.
 
 ```bash
-git clone https://github.com/open-diapason/Diapason.git && cd Diapason && uv sync --extra server
+git clone https://github.com/carlitoetienne01-spec/Diapason.git && cd Diapason && uv sync --extra server
 which diapason  # Verify the installation path
 ```
 

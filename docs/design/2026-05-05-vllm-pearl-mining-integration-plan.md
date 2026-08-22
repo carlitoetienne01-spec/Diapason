@@ -2740,7 +2740,7 @@ def _detect_hardware() -> HardwareInfo:
 def mine() -> None:
     """Pearl PoUW mining commands.
 
-    See https://open-diapason.github.io/Diapason/user-guide/mining/ for the
+    See https://carlitoetienne01-spec.github.io/Diapason/user-guide/mining/ for the
     full guide.
     """
 

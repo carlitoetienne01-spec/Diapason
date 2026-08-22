@@ -45,7 +45,7 @@ collected, where the data goes, and how to opt out.
 
 The canonical, authoritative list with every property name and its
 type validator lives in
-[`src/diapason/analytics/events.py`](https://github.com/open-diapason/Diapason/blob/main/src/diapason/analytics/events.py).
+[`src/diapason/analytics/events.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/events.py).
 That file is the only place new events can be added — PR review is
 the gate.
 
@@ -67,11 +67,11 @@ Hard guardrails, enforced by code:
 
 Two independent filters run before every event leaves the machine:
 
-1. [`src/diapason/analytics/redaction.py`](https://github.com/open-diapason/Diapason/blob/main/src/diapason/analytics/redaction.py) — value-level pattern matching (20+ regexes for PII).
-2. [`src/diapason/analytics/events.py`](https://github.com/open-diapason/Diapason/blob/main/src/diapason/analytics/events.py) — structural allowlist (event name + property name + type validator).
+1. [`src/diapason/analytics/redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/redaction.py) — value-level pattern matching (20+ regexes for PII).
+2. [`src/diapason/analytics/events.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/events.py) — structural allowlist (event name + property name + type validator).
 
 Any failure at either layer → the event or property is silently
-dropped. Tests covering the patterns: [`tests/analytics/test_redaction.py`](https://github.com/open-diapason/Diapason/blob/main/tests/analytics/test_redaction.py).
+dropped. Tests covering the patterns: [`tests/analytics/test_redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/tests/analytics/test_redaction.py).
 
 ## Where the data goes
 
@@ -115,7 +115,7 @@ are then orphaned.
 
 - Local telemetry (FLOPs, energy, latency stored in
   `~/.diapason/telemetry.db`) is a **separate** subsystem documented
-  in [`src/diapason/telemetry/`](https://github.com/open-diapason/Diapason/tree/main/src/diapason/telemetry). It
+  in [`src/diapason/telemetry/`](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/telemetry). It
   never leaves the machine and is controlled by `[telemetry]` (not
   `[analytics]`) in `config.toml`.
 - The leaderboard / contest opt-in (`OptInModal.tsx`) is a separate,

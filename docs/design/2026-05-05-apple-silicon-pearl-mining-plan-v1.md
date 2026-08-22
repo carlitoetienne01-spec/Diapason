@@ -1599,7 +1599,7 @@ Session
 | `maturin build` complains about `tikv-jemallocator` | macOS SDK too old | Update macOS / Xcode |
 
 For anything not on this list, capture `~/.diapason/logs/mining/` and open
-an issue at https://github.com/open-diapason/Diapason/issues.
+an issue at https://github.com/carlitoetienne01-spec/Diapason/issues.
 
 ## What changes in v2 / v3
 
