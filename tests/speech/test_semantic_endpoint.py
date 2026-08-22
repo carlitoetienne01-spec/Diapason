@@ -29,7 +29,9 @@ from diapason.speech.realtime.local_voice import (
 
 def trame(sec: float, ampl: float) -> bytes:
     n = int(INPUT_RATE * sec)
-    return struct.pack(f"<{n}h", *[int(ampl * 32767 * math.sin(i / 8)) for i in range(n)])
+    return struct.pack(
+        f"<{n}h", *[int(ampl * 32767 * math.sin(i / 8)) for i in range(n)]
+    )
 
 
 async def silence_avant_reponse(texte_stt: str, *, stt=None) -> float:
@@ -130,7 +132,7 @@ class TestLaCouvertureGardeLeRaccourci:
         if s._stt is None:
             s._stt = lambda pcm: "Quelle heure est-il ?"
         s._partial_text = "Quelle heure est-il ?"
-        s._partial_mark = 0                      # ne couvre rien
+        s._partial_mark = 0  # ne couvre rien
         s._speech_end_mark = INPUT_RATE * 2 * 3  # 3 s de parole
         s._speculative = None
         assert s._end_of_turn_s() == pytest.approx(0.8)

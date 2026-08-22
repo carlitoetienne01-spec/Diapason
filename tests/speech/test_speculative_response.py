@@ -27,7 +27,9 @@ TEXTE = "quelle est la capitale de l'Australie"  # neutre : clôture à 0,8 s
 
 def trame(sec: float, ampl: float) -> bytes:
     n = int(INPUT_RATE * sec)
-    return struct.pack(f"<{n}h", *[int(ampl * 32767 * math.sin(i / 8)) for i in range(n)])
+    return struct.pack(
+        f"<{n}h", *[int(ampl * 32767 * math.sin(i / 8)) for i in range(n)]
+    )
 
 
 class Banc:
@@ -36,8 +38,8 @@ class Banc:
     def __init__(self, texte: str = TEXTE):
         self.appels: list[list] = []
         self.outils: list[str] = []
-        self.dits: list[str] = []      # appels de SYNTHÈSE (tts)
-        self.emis: list[str] = []      # événements audio ÉMIS vers le client
+        self.dits: list[str] = []  # appels de SYNTHÈSE (tts)
+        self.emis: list[str] = []  # événements audio ÉMIS vers le client
 
         def llm(messages):
             self.appels.append(list(messages))
@@ -216,7 +218,9 @@ class TestLaPremierePhraseEstPreteAvantLaCloture:
                 q: asyncio.Queue = asyncio.Queue()
                 if rounds["n"] == 0:
                     rounds["n"] = 1
-                    q.put_nowait(("tools", [{"function": {"name": "calc", "arguments": "{}"}}]))
+                    q.put_nowait(
+                        ("tools", [{"function": {"name": "calc", "arguments": "{}"}}])
+                    )
                 else:
                     q.put_nowait("Voilà. ")
                 q.put_nowait(None)

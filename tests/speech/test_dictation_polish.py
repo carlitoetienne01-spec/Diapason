@@ -27,9 +27,7 @@ class TestUneCorrectionNeReecritPasLaPhrase:
     question au lieu de la corriger."""
 
     def test_les_accents_et_la_ponctuation_passent(self):
-        assert _correction_fidele(
-            "bonjour comment ca va", "Bonjour, comment ça va ?"
-        )
+        assert _correction_fidele("bonjour comment ca va", "Bonjour, comment ça va ?")
 
     def test_une_reponse_a_la_place_d_une_correction_est_ecartee(self):
         """Le cas qui fait mal : le modèle répond au lieu de corriger."""

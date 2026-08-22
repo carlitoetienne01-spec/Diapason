@@ -977,8 +977,10 @@ class TestPreRoll:
         await session.send_audio(pcm(END_OF_TURN_S + 0.2, 0.0))
         await session._respond_task
         got = len(harness.transcribed[0])
-        cap = len(pcm(0.5, 0.05)) + int(0.4 * INPUT_RATE) * 2 + len(
-            pcm(END_OF_TURN_S + 0.2, 0.0)
+        cap = (
+            len(pcm(0.5, 0.05))
+            + int(0.4 * INPUT_RATE) * 2
+            + len(pcm(END_OF_TURN_S + 0.2, 0.0))
         )
         assert got <= cap
 

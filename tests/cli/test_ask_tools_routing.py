@@ -10,10 +10,9 @@ rendait 4433560431 (faux), zéro appel d'outil dans les traces, jamais.
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
-
-import importlib
 
 import pytest
 from click.testing import CliRunner

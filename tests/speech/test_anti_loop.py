@@ -45,14 +45,18 @@ class TestLaNoteAntiBoucle:
         assert "Je t'écoute." in note["content"], "la phrase répétée est NOMMÉE"
 
     def test_la_casse_ne_deguise_pas_la_repetition(self):
-        assert LocalVoiceSession._anti_loop_note(
-            self._hist("Je t'écoute.", "JE T'ÉCOUTE.")
-        ) is not None
+        assert (
+            LocalVoiceSession._anti_loop_note(
+                self._hist("Je t'écoute.", "JE T'ÉCOUTE.")
+            )
+            is not None
+        )
 
     def test_deux_repliques_differentes_ne_declenchent_pas(self):
-        assert LocalVoiceSession._anti_loop_note(
-            self._hist("Bonjour.", "Je t'écoute.")
-        ) is None
+        assert (
+            LocalVoiceSession._anti_loop_note(self._hist("Bonjour.", "Je t'écoute."))
+            is None
+        )
 
     def test_une_seule_replique_ne_declenche_pas(self):
         assert LocalVoiceSession._anti_loop_note(self._hist("Je t'écoute.")) is None
@@ -118,6 +122,6 @@ class TestLePromptNEnseignePlusLaBequille:
         assert "Prefer natural openers" not in ORAL_VOICE_RULES
         # La phrase n'apparaît plus que dans la liste des INTERDITS.
         ligne = next(
-            l for l in ORAL_VOICE_RULES.splitlines() if "Je t'écoute" in l
+            li for li in ORAL_VOICE_RULES.splitlines() if "Je t'écoute" in li
         )
         assert "canned" in ligne or "filler" in ligne.lower() or '"' in ligne

@@ -58,9 +58,7 @@ def test_realtime_transcription_uses_fast_vad_decode_without_hotwords():
     mock_info = MagicMock(language="fr", language_probability=0.99, duration=1.0)
     mock_model.transcribe.return_value = (iter(()), mock_info)
 
-    with patch(
-        "diapason.speech.faster_whisper.WhisperModel", return_value=mock_model
-    ):
+    with patch("diapason.speech.faster_whisper.WhisperModel", return_value=mock_model):
         backend = FasterWhisperBackend(
             model_size="small",
             language="fr",

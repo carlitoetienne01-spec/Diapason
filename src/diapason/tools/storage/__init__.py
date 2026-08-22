@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 # Always-available backend
-import diapason.tools.storage.sqlite  # noqa: F401
+import diapason.tools.storage.sqlite  # noqa: E402,F401
+from diapason.core.registry import MemoryRegistry
+from diapason.tools.storage._stubs import MemoryBackend, RetrievalResult
+from diapason.tools.storage.chunking import Chunk, ChunkConfig, chunk_text
+from diapason.tools.storage.context import ContextConfig, inject_context
+from diapason.tools.storage.ingest import ingest_path, read_document
 
 # Moteurs optionnels : déclarés, pas chargés.
 #
@@ -15,7 +20,6 @@ import diapason.tools.storage.sqlite  # noqa: F401
 # que personne n'a demandé.
 #
 # Chacun est désormais chargé à la première question portant sur sa clé.
-from diapason.core.registry import MemoryRegistry  # noqa: E402
 
 for _cle, _module in (
     ("bm25", "diapason.tools.storage.bm25"),
@@ -26,10 +30,6 @@ for _cle, _module in (
 ):
     MemoryRegistry.register_lazy(_cle, _module)
 
-from diapason.tools.storage._stubs import MemoryBackend, RetrievalResult
-from diapason.tools.storage.chunking import Chunk, ChunkConfig, chunk_text
-from diapason.tools.storage.context import ContextConfig, inject_context
-from diapason.tools.storage.ingest import ingest_path, read_document
 
 __all__ = [
     "Chunk",

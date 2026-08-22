@@ -299,6 +299,10 @@ select = ["E", "F", "I", "W"]
 "src/diapason/agents/research_loop.py" = ["E501"]
 # Prompt content is intentionally kept as readable sentences.
 "src/diapason/speech/realtime/oral_prompt.py" = ["E501"]
+# Les colonnes des requêtes SQL restent alignées sur une ligne par groupe :
+# les couper au caractère 88 rendrait chaque INSERT illisible sans rien
+# protéger — une chaîne SQL n'a pas de longueur de ligne exécutable.
+"src/diapason/succes/finances.py" = ["E501"]
 
 [dependency-groups]
 dev = [

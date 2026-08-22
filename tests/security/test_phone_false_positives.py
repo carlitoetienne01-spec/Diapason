@@ -26,7 +26,8 @@ def scanner() -> PIIScanner:
 
 def masque(scanner: PIIScanner, texte: str) -> bool:
     return any(
-        getattr(f, "pattern_name", "") == "us_phone" for f in scanner.scan(texte).findings
+        getattr(f, "pattern_name", "") == "us_phone"
+        for f in scanner.scan(texte).findings
     )
 
 
