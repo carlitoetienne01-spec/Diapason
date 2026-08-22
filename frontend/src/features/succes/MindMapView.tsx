@@ -118,6 +118,11 @@ export function MindMapView({
     const svg = svgRef.current;
     if (!svg) return;
     const onWheel = (event: WheelEvent) => {
+      // Le zoom demande une intention : sans cette condition, la carte
+      // confisquait la molette et l'on ne pouvait plus faire défiler la page
+      // dès que le pointeur la survolait. Avec ⌘/Ctrl — le geste de zoom
+      // habituel — la carte prend la main ; sans lui, la page défile.
+      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const factor = Math.exp(-event.deltaY * 0.0015);
       setZoom((value) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value * factor)));

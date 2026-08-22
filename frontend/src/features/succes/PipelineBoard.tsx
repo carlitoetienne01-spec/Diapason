@@ -39,8 +39,16 @@ export function PipelineBoard({
   const doneCount = tasksByStage.get(lastStage)?.length ?? 0;
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
+  /** L'étape où la carte est RÉELLEMENT affichée, pas celle qu'elle prétend. */
+  const displayedStage = (task: SuccesTask) =>
+    stages.includes(task.stage) ? task.stage : (stages[0] ?? '');
+
   const moveTask = (task: SuccesTask, stage: string) => {
-    if (task.stage === stage) return;
+    // Comparer à l'étape affichée, pas à l'étape stockée : une carte dont
+    // l'étape est inconnue est montrée en première colonne, et l'y déposer
+    // semblait un déplacement — ce qui, sur une tâche terminée, la décochait
+    // en silence. Déposer une carte là où elle est déjà ne fait rien.
+    if (displayedStage(task) === stage) return;
     void onMove(task, stage);
   };
 

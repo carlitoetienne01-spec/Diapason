@@ -433,7 +433,13 @@ class SuccesStore:
             return "", None
         wanted = str(stage or "").strip()
         if not wanted:
-            return stages[0], (False if currently_done else None)
+            # Sans étape demandée, la coche décide : une tâche créée déjà
+            # faite entre par la fin du couloir. L'ancienne version la rangeait
+            # en première étape ET la décochait — un client important une tâche
+            # terminée perdait silencieusement son achèvement.
+            if currently_done:
+                return stages[-1], True
+            return stages[0], None
         if wanted not in stages:
             raise SuccesError("L'étape doit être l'une de : " + ", ".join(stages) + ".")
         return wanted, wanted == stages[-1]
@@ -860,11 +866,37 @@ class SuccesStore:
                     (int(done), ts, task_id),
                 )
             completed = date.today().isoformat() if done else ""
-            conn.execute(
-                "UPDATE succes_tasks SET done=?, completed_date=?, "
-                "updated_at_ms=? WHERE id=?",
-                (int(done), completed, ts, task_id),
+            # Dans un pipeline, la dernière étape EST l'achèvement — c'est le
+            # contrat que _resolve_stage tient à l'écriture d'une étape. Mais
+            # cocher passe par ICI, le plus vieux chemin, qui ne consultait
+            # jamais la forme du projet : on obtenait une carte cochée en
+            # première colonne, ou une carte « Fait » décochée. Deux vérités
+            # séparées finissent toujours par se contredire, alors la coche
+            # déplace la carte, et la décocher la fait reculer.
+            stage_final = None
+            structure, stages = self._project_form(
+                conn, str(task.get("projectId") or "")
             )
+            if structure == "pipeline" and stages:
+                courant = str(task.get("stage") or "")
+                if done:
+                    stage_final = stages[-1]
+                elif courant == stages[-1]:
+                    # Reculer d'un cran plutôt que revenir au début : le travail
+                    # accompli n'est pas annulé, il n'est plus « publié ».
+                    stage_final = stages[-2] if len(stages) >= 2 else stages[0]
+            if stage_final is None:
+                conn.execute(
+                    "UPDATE succes_tasks SET done=?, completed_date=?, "
+                    "updated_at_ms=? WHERE id=?",
+                    (int(done), completed, ts, task_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE succes_tasks SET done=?, completed_date=?, stage=?, "
+                    "updated_at_ms=? WHERE id=?",
+                    (int(done), completed, stage_final, ts, task_id),
+                )
             task = self._load_task(conn, task_id)
             assert task is not None
             self._record_op(
@@ -1153,6 +1185,23 @@ class SuccesStore:
                 "WHERE task_id=? AND deleted_at_ms IS NULL",
                 (ts, task_id),
             )
+            # Les arêtes qui touchaient cette tâche disparaissent avec elle.
+            # Sans ça, la vue réseau les cachait (elle filtre les orphelines)
+            # tandis que le serveur les suivait toujours : le parcours
+            # anti-boucle refusait une arête légitime « à cause » d'un chemin
+            # passant par un mort, sur un écran où plus aucune flèche n'était
+            # visible. Une contrainte invisible et insupprimable.
+            orphelines = conn.execute(
+                "SELECT from_task_id, to_task_id FROM succes_task_edges "
+                "WHERE from_task_id=? OR to_task_id=?",
+                (task_id, task_id),
+            ).fetchall()
+            if orphelines:
+                conn.execute(
+                    "DELETE FROM succes_task_edges "
+                    "WHERE from_task_id=? OR to_task_id=?",
+                    (task_id, task_id),
+                )
             self._record_op(
                 conn,
                 entity="tasks",
@@ -1163,6 +1212,20 @@ class SuccesStore:
                 timestamp_ms=ts,
                 op_id=op_id,
             )
+            for arete in orphelines:
+                # Une op par arête : le pair doit les oublier aussi, sans quoi
+                # son propre graphe garderait des liens vers un disparu.
+                de, vers = arete["from_task_id"], arete["to_task_id"]
+                self._record_op(
+                    conn,
+                    entity="task_edges",
+                    entity_id=f"{de}->{vers}",
+                    kind="delete",
+                    payload={"fromTaskId": de, "toTaskId": vers},
+                    request={"action": "delete_edges_of_task", "taskId": task_id},
+                    timestamp_ms=ts,
+                    op_id=f"{op_id}:edge:{de}:{vers}" if op_id else None,
+                )
 
     @staticmethod
     def _descendant_ids(conn: sqlite3.Connection, parent_id: str) -> list[str]:

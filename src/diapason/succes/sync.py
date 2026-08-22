@@ -55,6 +55,27 @@ _GUEST_META_KEYS = (
     _META_GUEST_PULL,
     _META_GUEST_PUSH,
 )
+
+
+def _encode_cadence_for_sync(value: Any) -> str:
+    """La cadence telle qu'elle est STOCKÉE, depuis ce qu'un pair a envoyé.
+
+    Le payload porte un objet ({every, day}) ; la colonne porte son JSON. Une
+    valeur illisible devient vide plutôt que de faire échouer le lot entier :
+    une cadence perdue est un désagrément, un lot rejeté brise la réplication.
+    """
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return value[:120]
+    try:
+        from diapason.succes.structures import normalize_cadence
+
+        return normalize_cadence(value)
+    except Exception:
+        return ""
+
+
 SYNC_ENTITIES = frozenset(
     {
         "tasks",
@@ -65,6 +86,12 @@ SYNC_ENTITIES = frozenset(
         "notes",
         "todo_templates",
         "quotes",
+        # Sans cette entrée, la première arête créée fait lever _apply_operation,
+        # qui tourne DANS une transaction : le lot entier est annulé, et
+        # l'opération restant au journal, chaque échange suivant échoue au même
+        # endroit. Mesuré : un réseau à une arête répliquait zéro projet et
+        # zéro tâche, définitivement.
+        "task_edges",
         "accounts",
         "finance_categories",
         "transactions",
@@ -791,6 +818,17 @@ class SuccesSyncStore(SuccesFinancesStore):
             "budgets": "succes_budgets",
             "savings_goals": "succes_savings_goals",
         }
+        if entity == "task_edges":
+            # Une arête n'a rien à restaurer : pas de pierre tombale, on efface.
+            # L'identité est « depuis->vers », le même format que _record_op.
+            de, _, vers = entity_id.partition("->")
+            if de and vers:
+                conn.execute(
+                    "DELETE FROM succes_task_edges "
+                    "WHERE from_task_id=? AND to_task_id=?",
+                    (de, vers),
+                )
+            return
         table = tables.get(entity)
         if table:
             conn.execute(
@@ -840,6 +878,8 @@ class SuccesSyncStore(SuccesFinancesStore):
             self._upsert_template(conn, entity_id, payload, timestamp)
         elif entity == "quotes":
             self._upsert_quote(conn, entity_id, payload, timestamp)
+        elif entity == "task_edges":
+            self._upsert_task_edge(conn, entity_id, payload, timestamp)
 
     def _upsert_task(
         self, conn: sqlite3.Connection, task_id: str, data: Mapping[str, Any], ts: int
@@ -861,8 +901,9 @@ class SuccesSyncStore(SuccesFinancesStore):
             """INSERT INTO succes_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                 category,notes,emoji,template_id,group_id,order_index,created_date,
-                completed_date,postponed_count,updated_at_ms,deleted_at_ms,parent_task_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)
+                completed_date,postponed_count,updated_at_ms,deleted_at_ms,
+                parent_task_id,stage,cadence)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title,done=excluded.done,
                priority=excluded.priority,scheduled_date=excluded.scheduled_date,
                scheduled_time=excluded.scheduled_time,project_id=excluded.project_id,
@@ -872,7 +913,8 @@ class SuccesSyncStore(SuccesFinancesStore):
                completed_date=excluded.completed_date,
                postponed_count=excluded.postponed_count,
                updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
-               parent_task_id=excluded.parent_task_id""",
+               parent_task_id=excluded.parent_task_id,stage=excluded.stage,
+               cadence=excluded.cadence""",
             (
                 task_id,
                 title,
@@ -892,6 +934,11 @@ class SuccesSyncStore(SuccesFinancesStore):
                 max(0, int(data.get("postponedCount") or 0)),
                 ts,
                 str(data.get("parentTaskId") or "")[:300],
+                # L'étape d'un pipeline et la cadence d'un cycle sont des faits
+                # de la tâche : les perdre à la traversée ferait arriver un
+                # pipeline vidé de ses colonnes sur l'appareil d'en face.
+                str(data.get("stage") or "")[:40],
+                _encode_cadence_for_sync(data.get("cadence")),
             ),
         )
         conn.execute(
@@ -900,6 +947,35 @@ class SuccesSyncStore(SuccesFinancesStore):
             (ts, ts, task_id),
         )
         self._replace_subtasks(conn, task_id, data.get("subtasks"), ts)
+
+    def _upsert_task_edge(
+        self,
+        conn: sqlite3.Connection,
+        entity_id: str,
+        data: Mapping[str, Any],
+        ts: int,
+    ) -> None:
+        """Poser une arête venue d'un autre appareil.
+
+        On ne rejoue PAS le refus de boucle ici : deux appareils peuvent avoir
+        créé, chacun de son côté, deux arêtes qui ne ferment un cycle qu'une
+        fois réunies. Refuser à la réception ferait échouer tout le lot — le
+        défaut même qu'on vient de corriger — et laisserait les deux appareils
+        durablement divergents. La boucle est refusée à la CRÉATION, là où un
+        humain peut la comprendre ; à la réception on accepte et on répare
+        ensuite si besoin.
+        """
+        de = str(data.get("fromTaskId") or "")[:300]
+        vers = str(data.get("toTaskId") or "")[:300]
+        if not de or not vers:
+            de, _, vers = entity_id.partition("->")
+        if not de or not vers or de == vers:
+            return
+        conn.execute(
+            "INSERT OR REPLACE INTO succes_task_edges "
+            "(project_id, from_task_id, to_task_id, updated_at_ms) VALUES (?,?,?,?)",
+            (str(data.get("projectId") or "")[:300], de, vers, ts),
+        )
 
     def _replace_subtasks(
         self,
@@ -973,18 +1049,28 @@ class SuccesSyncStore(SuccesFinancesStore):
         end = _validate_iso_date(str(data.get("endDate") or ""))
         if start and end and end < start:
             raise SuccesError("Les dates du projet synchronisé sont incohérentes.")
-        from diapason.succes.project_kits import normalize_structure
+        from diapason.succes.structures import (
+            encode_structure_config,
+            normalize_structure,
+            normalize_structure_config,
+        )
 
         structure = normalize_structure(data.get("structure"))
+        # Les étages nommés d'un arbre et les étapes d'un pipeline SONT le
+        # projet : sans eux, un pipeline arrivait en face avec ses colonnes par
+        # défaut et ses tâches rangées n'importe où.
+        config = normalize_structure_config(structure, data.get("structureConfig"))
         conn.execute(
             """INSERT INTO succes_projects
                (id,name,description,color,icon,start_date,end_date,created_date,
-                updated_at_ms,deleted_at_ms,structure) VALUES (?,?,?,?,?,?,?,?,?,NULL,?)
+                updated_at_ms,deleted_at_ms,structure,structure_config)
+               VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)
                ON CONFLICT(id) DO UPDATE SET name=excluded.name,
                description=excluded.description,color=excluded.color,icon=excluded.icon,
                start_date=excluded.start_date,end_date=excluded.end_date,
                created_date=excluded.created_date,updated_at_ms=excluded.updated_at_ms,
-               deleted_at_ms=NULL,structure=excluded.structure""",
+               deleted_at_ms=NULL,structure=excluded.structure,
+               structure_config=excluded.structure_config""",
             (
                 project_id,
                 name,
@@ -998,6 +1084,7 @@ class SuccesSyncStore(SuccesFinancesStore):
                 str(data.get("createdAt") or date.today().isoformat())[:30],
                 ts,
                 structure,
+                encode_structure_config(config),
             ),
         )
 

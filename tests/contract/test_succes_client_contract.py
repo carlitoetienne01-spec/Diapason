@@ -3,7 +3,8 @@
 Les deux vivent dans des dépôts séparés — Succès doit rester présentable
 seul — et communiquent par deux surfaces : l'encodage canonique du maillage
 (des octets signés, où un écart d'UN caractère invalide toutes les
-signatures) et les 49 routes ``/v1/succes``.
+signatures) et les routes ``/v1/succes``, dont l'instantané fait foi
+(tests/contract/succes_api_surface.json).
 
 Une frontière entre deux dépôts ne se surveille pas toute seule. Sans ces
 tests, un changement anodin ici casse l'application mobile en silence, et
@@ -116,7 +117,11 @@ SURFACE = pathlib.Path(__file__).with_name("succes_api_surface.json")
 
 
 class TestLaSurfaceApiNeBougePasParAccident:
-    """Les 73 routes que l'application mobile appelle.
+    """Les routes que l'application mobile appelle.
+
+    Le compte vit dans l'instantané, pas dans cette phrase : deux nombres
+    écrits en dur (49 ici, 73 là) contredisaient déjà le fichier, qui en
+    porte 79. Un commentaire qui vieillit est pire qu'aucun.
 
     Un cliquet, pas une interdiction : renommer ou supprimer une route
     reste permis — il faut seulement régénérer l'instantané dans le MÊME

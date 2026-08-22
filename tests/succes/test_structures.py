@@ -294,3 +294,263 @@ class TestLesKitsDeFormes:
     ) -> None:
         projet = store.create_project({"name": "Démgt", "kitId": "moving"})
         assert projet["structure"] == "tree"
+
+
+# ── ce que la réfutation a trouvé, et qui ne doit pas revenir ─────────────
+
+
+class TestLaSynchronisationPorteLesFormes:
+    """Une arête suffisait à briser TOUTE la réplication, définitivement.
+
+    « task_edges » manquait à SYNC_ENTITIES. À la réception, l'entité inconnue
+    faisait lever _apply_operation — qui tourne DANS une transaction : le lot
+    entier était annulé. L'opération restant au journal de l'émetteur, chaque
+    échange suivant échouait au même endroit. Mesuré : zéro projet, zéro tâche
+    répliqués.
+    """
+
+    def _pair(self, tmp_path) -> tuple[SuccesSyncStore, SuccesSyncStore]:
+        return (
+            SuccesSyncStore(tmp_path / "a.db"),
+            SuccesSyncStore(tmp_path / "b.db"),
+        )
+
+    def _repliquer(self, source: SuccesSyncStore, cible: SuccesSyncStore) -> dict:
+        ops = source.list_operations(after=0, limit=500)["operations"]
+        return cible.apply_inbound_operations(ops)
+
+    def test_une_arete_ne_brise_plus_la_replication(self, tmp_path) -> None:
+        a, b = self._pair(tmp_path)
+        projet = a.create_project({"name": "N", "structure": "network"})
+        t1 = a.create_task({"title": "un", "projectId": projet["id"]})
+        t2 = a.create_task({"title": "deux", "projectId": projet["id"]})
+        a.create_task_edge(projet["id"], t1["id"], t2["id"])
+        a.create_task({"title": "après l'arête", "projectId": projet["id"]})
+
+        self._repliquer(a, b)
+        assert len(b.list_projects()) == 1
+        assert len(b.list_tasks()) == 3, "tout ce qui suit l'arête doit arriver"
+        assert len(b.list_task_edges(projet["id"])) == 1
+
+    def test_la_suppression_d_arete_traverse(self, tmp_path) -> None:
+        a, b = self._pair(tmp_path)
+        projet = a.create_project({"name": "N", "structure": "network"})
+        t1 = a.create_task({"title": "un", "projectId": projet["id"]})
+        t2 = a.create_task({"title": "deux", "projectId": projet["id"]})
+        a.create_task_edge(projet["id"], t1["id"], t2["id"])
+        self._repliquer(a, b)
+        a.delete_task_edge(projet["id"], t1["id"], t2["id"])
+        self._repliquer(a, b)
+        assert b.list_task_edges(projet["id"]) == []
+
+    def test_l_etape_et_la_cadence_traversent(self, tmp_path) -> None:
+        """Un pipeline arrivait vidé de ses colonnes, ses tâches nulle part."""
+        a, b = self._pair(tmp_path)
+        pipeline = a.create_project(
+            {
+                "name": "V",
+                "structure": "pipeline",
+                "structureConfig": {"stages": ["Idée", "Monté", "Publié"]},
+            }
+        )
+        a.create_task({"title": "v1", "projectId": pipeline["id"], "stage": "Monté"})
+        cycle = a.create_project({"name": "R", "structure": "cycle"})
+        a.create_task(
+            {
+                "title": "revue",
+                "projectId": cycle["id"],
+                "cadence": {"every": "week", "day": 6},
+            }
+        )
+        self._repliquer(a, b)
+
+        projets = {p["name"]: p for p in b.list_projects()}
+        assert projets["V"]["structureConfig"]["stages"] == ["Idée", "Monté", "Publié"]
+        taches = {t["title"]: t for t in b.list_tasks()}
+        assert taches["v1"]["stage"] == "Monté"
+        assert taches["revue"]["cadence"] == {"every": "week", "day": 6}
+
+    def test_une_arete_recue_qui_fermerait_une_boucle_est_acceptee(
+        self, tmp_path
+    ) -> None:
+        """Refuser à la RÉCEPTION ferait échouer le lot et figerait les pairs.
+
+        Deux appareils peuvent créer chacun une arête qui ne ferme un cycle
+        qu'une fois réunies. La boucle se refuse à la création, là où un humain
+        peut la comprendre.
+        """
+        a, b = self._pair(tmp_path)
+        projet = b.create_project({"id": "p1", "name": "N", "structure": "network"})
+        t1 = b.create_task({"id": "t1", "title": "un", "projectId": projet["id"]})
+        t2 = b.create_task({"id": "t2", "title": "deux", "projectId": projet["id"]})
+        b.create_task_edge(projet["id"], t1["id"], t2["id"])
+
+        recue = [
+            {
+                "opId": "op-boucle",
+                "deviceId": "autre-appareil",
+                "entity": "task_edges",
+                "entityId": "t2->t1",
+                "kind": "upsert",
+                "timestampMs": 9_999_999_999_999,
+                "payload": {
+                    "projectId": "p1",
+                    "fromTaskId": "t2",
+                    "toTaskId": "t1",
+                },
+                "request": {},
+            }
+        ]
+        b.apply_inbound_operations(recue)
+        assert len(b.list_task_edges("p1")) == 2
+
+
+class TestCocherRespecteLaForme:
+    """L'invariant du pipeline n'était tenu que dans un sens.
+
+    « Entrer dans la dernière étape coche » passait par _resolve_stage. Mais
+    cocher passe par set_task_done, le plus vieux chemin, qui ne consultait
+    jamais la forme : on obtenait une carte cochée en première colonne, ou une
+    carte « Fait » décochée. Deux vérités séparées finissent par se contredire.
+    """
+
+    def _pipeline(self, store: SuccesSyncStore) -> dict:
+        return store.create_project(
+            {
+                "name": "V",
+                "structure": "pipeline",
+                "structureConfig": {"stages": ["Idée", "Monté", "Publié"]},
+            }
+        )
+
+    def test_cocher_deplace_vers_la_derniere_etape(
+        self, store: SuccesSyncStore
+    ) -> None:
+        projet = self._pipeline(store)
+        tache = store.create_task({"title": "v", "projectId": projet["id"]})
+        coche = store.set_task_done(tache["id"], True)
+        assert coche["done"] is True
+        assert coche["stage"] == "Publié"
+
+    def test_decocher_fait_reculer_d_un_cran(self, store: SuccesSyncStore) -> None:
+        """Reculer, pas revenir au début : le travail fait n'est pas annulé."""
+        projet = self._pipeline(store)
+        tache = store.create_task(
+            {"title": "v", "projectId": projet["id"], "stage": "Publié"}
+        )
+        recule = store.set_task_done(tache["id"], False)
+        assert recule["done"] is False
+        assert recule["stage"] == "Monté"
+
+    def test_hors_pipeline_cocher_ne_touche_a_aucune_etape(
+        self, store: SuccesSyncStore
+    ) -> None:
+        liste = store.create_project({"name": "L", "structure": "flat"})
+        tache = store.create_task({"title": "t", "projectId": liste["id"]})
+        coche = store.set_task_done(tache["id"], True)
+        assert coche["done"] is True
+        assert coche["stage"] == ""
+
+
+class TestLesTachesSuiventLaForme:
+    def test_changer_les_etapes_range_les_taches_egarees(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Le serveur fabriquait lui-même les étapes fantômes qu'il interdit."""
+        projet = store.create_project(
+            {
+                "name": "V",
+                "structure": "pipeline",
+                "structureConfig": {"stages": ["Un", "Deux", "Trois"]},
+            }
+        )
+        tache = store.create_task(
+            {"title": "x", "projectId": projet["id"], "stage": "Deux"}
+        )
+        store.update_project(
+            projet["id"], {"structureConfig": {"stages": ["Brouillon", "Final"]}}
+        )
+        assert store.get_task(tache["id"])["stage"] == "Brouillon"
+
+    def test_quitter_le_pipeline_efface_les_etapes(
+        self, store: SuccesSyncStore
+    ) -> None:
+        projet = store.create_project(
+            {
+                "name": "V",
+                "structure": "pipeline",
+                "structureConfig": {"stages": ["Un", "Deux"]},
+            }
+        )
+        tache = store.create_task(
+            {"title": "x", "projectId": projet["id"], "stage": "Deux"}
+        )
+        store.update_project(projet["id"], {"structure": "flat"})
+        assert store.get_task(tache["id"])["stage"] == ""
+
+
+class TestLesAretesSuiventLeursTaches:
+    def test_supprimer_une_tache_emporte_ses_aretes(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Sinon : une contrainte invisible, et donc insupprimable."""
+        projet = store.create_project({"name": "N", "structure": "network"})
+        a = store.create_task({"title": "a", "projectId": projet["id"]})
+        b = store.create_task({"title": "b", "projectId": projet["id"]})
+        c = store.create_task({"title": "c", "projectId": projet["id"]})
+        store.create_task_edge(projet["id"], a["id"], b["id"])
+        store.create_task_edge(projet["id"], b["id"], c["id"])
+        store.delete_task(b["id"])
+        assert store.list_task_edges(projet["id"]) == []
+        # Et le refus fantôme disparaît avec elles.
+        store.create_task_edge(projet["id"], c["id"], a["id"])
+        assert len(store.list_task_edges(projet["id"])) == 1
+
+    def test_une_arete_en_double_ne_cree_pas_d_operation(
+        self, store: SuccesSyncStore
+    ) -> None:
+        projet = store.create_project({"name": "N", "structure": "network"})
+        a = store.create_task({"title": "a", "projectId": projet["id"]})
+        b = store.create_task({"title": "b", "projectId": projet["id"]})
+        store.create_task_edge(projet["id"], a["id"], b["id"])
+        avant = len(store.list_operations(after=0, limit=500)["operations"])
+        store.create_task_edge(projet["id"], a["id"], b["id"])
+        apres = len(store.list_operations(after=0, limit=500)["operations"])
+        assert apres == avant, "un double-clic ne doit rien ajouter au journal"
+        assert len(store.list_task_edges(projet["id"])) == 1
+
+
+class TestLeTourDeCycleEstComplet:
+    def test_le_tour_decoche_aussi_les_sous_taches(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Sinon le tour « recommencé » s'achevait tout seul.
+
+        Les sous-tâches restées cochées faisaient re-marquer la tâche faite au
+        premier geste sur l'une d'elles, par recalcul de l'arbre.
+        """
+        projet = store.create_project({"name": "C", "structure": "cycle"})
+        tache = store.create_task({"title": "revue", "projectId": projet["id"]})
+        ajoutee = store.add_subtask(tache["id"], "point 1")
+        sous_id = ajoutee["subtasks"][0]["id"]
+        store.set_subtask_done(tache["id"], sous_id, True)
+        assert store.get_task(tache["id"])["done"] is True
+
+        store.reset_cycle(projet["id"])
+        relue = store.get_task(tache["id"])
+        assert relue["done"] is False
+        assert all(not s["done"] for s in relue["subtasks"])
+
+    def test_rejouer_un_tour_ne_le_refait_pas(self, store: SuccesSyncStore) -> None:
+        """Un client qui renvoie son op après une coupure annulerait un travail
+        refait entre-temps."""
+        projet = store.create_project({"name": "C", "structure": "cycle"})
+        tache = store.create_task({"title": "revue", "projectId": projet["id"]})
+        store.set_task_done(tache["id"], True)
+        premier = store.reset_cycle(projet["id"], op_id="tour-1")
+        assert premier["reopened"] == 1
+
+        store.set_task_done(tache["id"], True)  # le travail est refait
+        rejeu = store.reset_cycle(projet["id"], op_id="tour-1")
+        assert rejeu["reopened"] == 0
+        assert store.get_task(tache["id"])["done"] is True

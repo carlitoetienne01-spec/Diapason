@@ -33,6 +33,7 @@ from diapason.succes.structures import (
     decode_structure_config,
     encode_structure_config,
     normalize_structure_config,
+    stages_of,
 )
 
 HABIT_FREQUENCIES = frozenset({"daily", "weekly", "monthly"})
@@ -480,8 +481,23 @@ class SuccesWorkspaceStore(SuccesStore):
                     if suivant not in atteints:
                         atteints.add(suivant)
                         frontiere.append(suivant)
+            existante = conn.execute(
+                "SELECT updated_at_ms FROM succes_task_edges "
+                "WHERE from_task_id=? AND to_task_id=?",
+                (de, vers),
+            ).fetchone()
+            if existante is not None:
+                # Rien n'a changé : ne pas enregistrer d'op. Un double-clic
+                # gonflait le journal que le pair rejoue et rafraîchissait
+                # updatedAtMs comme si l'arête venait de naître.
+                return {
+                    "projectId": project_id,
+                    "fromTaskId": de,
+                    "toTaskId": vers,
+                    "updatedAtMs": int(existante["updated_at_ms"]),
+                }
             conn.execute(
-                "INSERT OR REPLACE INTO succes_task_edges "
+                "INSERT INTO succes_task_edges "
                 "(project_id, from_task_id, to_task_id, updated_at_ms) "
                 "VALUES (?,?,?,?)",
                 (project_id, de, vers, ts),
@@ -557,6 +573,19 @@ class SuccesWorkspaceStore(SuccesStore):
         ts = now_ms()
         rouvertes = 0
         with self._transaction() as conn:
+            # Rejouer un tour ne doit pas en refaire un : sans ce garde, un
+            # client qui renvoie son op après une coupure décoche une seconde
+            # fois un travail entre-temps refait.
+            if op_id:
+                deja = conn.execute(
+                    "SELECT 1 FROM succes_operations WHERE op_id LIKE ? LIMIT 1",
+                    (f"{op_id}:%",),
+                ).fetchone()
+                if deja is not None:
+                    return {
+                        "project": self._load_project(conn, project_id),
+                        "reopened": 0,
+                    }
             ids = [
                 row["id"]
                 for row in conn.execute(
@@ -569,6 +598,15 @@ class SuccesWorkspaceStore(SuccesStore):
                 conn.execute(
                     "UPDATE succes_tasks SET done=0, completed_date='', "
                     "updated_at_ms=? WHERE id=?",
+                    (ts, task_id),
+                )
+                # Les sous-tâches suivent. Sans cela, elles restaient cochées :
+                # au premier geste sur l'une d'elles, le recalcul voyait tout
+                # l'arbre fait et re-cochait la tâche — le tour « recommencé »
+                # s'achevait tout seul, sans que rien n'ait été fait.
+                conn.execute(
+                    "UPDATE succes_subtasks SET done=0, updated_at_ms=? "
+                    "WHERE task_id=? AND deleted_at_ms IS NULL",
                     (ts, task_id),
                 )
                 task = self._load_task(conn, task_id)
@@ -644,6 +682,49 @@ class SuccesWorkspaceStore(SuccesStore):
                     project_id,
                 ),
             )
+            # Les tâches suivent la forme du projet. Sans ça, changer les
+            # étapes d'un pipeline — ou le sortir de cette forme — laissait des
+            # tâches portant une étape que le projet ne connaît plus : la vue
+            # les rangeait en première colonne pendant que la base disait autre
+            # chose, et réaffirmer sa propre étape courante était REFUSÉ. Le
+            # serveur interdisait une étape fantôme à l'écriture d'une tâche
+            # tout en en fabriquant lui-même ici.
+            etapes_valides = stages_of(structure, structure_config)
+            if etapes_valides:
+                marques = ",".join("?" * len(etapes_valides))
+                egarees = conn.execute(
+                    f"""SELECT id FROM succes_tasks WHERE project_id=?
+                        AND deleted_at_ms IS NULL AND stage NOT IN ({marques})""",
+                    (project_id, *etapes_valides),
+                ).fetchall()
+                repli = etapes_valides[0]
+            else:
+                egarees = conn.execute(
+                    "SELECT id FROM succes_tasks WHERE project_id=? "
+                    "AND deleted_at_ms IS NULL AND stage != ''",
+                    (project_id,),
+                ).fetchall()
+                repli = ""
+            for ligne in egarees:
+                conn.execute(
+                    "UPDATE succes_tasks SET stage=?, updated_at_ms=? WHERE id=?",
+                    (repli, timestamp, ligne["id"]),
+                )
+                tache = self._load_task(conn, ligne["id"])
+                if tache is not None:
+                    # Une op par tâche : le pair doit voir le rangement, sinon
+                    # il garderait des étapes que son propre projet ignore.
+                    self._record_op(
+                        conn,
+                        entity="tasks",
+                        entity_id=ligne["id"],
+                        kind="upsert",
+                        payload=tache,
+                        request={"action": "restage", "projectId": project_id},
+                        timestamp_ms=timestamp,
+                        op_id=f"{op_id}:restage:{ligne['id']}" if op_id else None,
+                    )
+
             project = self._load_project(conn, project_id)
             assert project is not None
             self._record_op(

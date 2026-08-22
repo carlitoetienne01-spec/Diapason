@@ -13,8 +13,10 @@ tâches se pensent autrement :
 - ``network``  — le réseau de dépendances : des tâches reliées par des
   arêtes « débloque → », sans hiérarchie ; le graphe doit rester sans
   boucle, sinon « que puis-je faire maintenant ? » n'a plus de réponse.
-- ``cycle``    — la roue des routines : les tâches portent une cadence et
-  chaque « nouveau tour » les régénère.
+- ``cycle``    — la roue des routines : un « nouveau tour » décoche TOUTES
+  les tâches du projet, cadencées ou non. La cadence est un rappel affiché,
+  pas un filtre : une tâche exceptionnelle terminée dans un projet cycle
+  repart elle aussi au tour suivant, et c'est voulu — un tour est un tour.
 
 Ce module ne touche pas à la base : il définit et VALIDE. Les écritures
 vivent dans store.py / workspace.py, la surface HTTP dans routes.py.
@@ -88,8 +90,7 @@ STRUCTURE_CATALOG: tuple[dict[str, str], ...] = (
         "id": "cycle",
         "name": "Cycle",
         "icon": "🔄",
-        "description": "La roue des routines : chaque tour régénère "
-        "les tâches à cadence.",
+        "description": "La roue des routines : chaque tour décoche tout et recommence.",
     },
 )
 

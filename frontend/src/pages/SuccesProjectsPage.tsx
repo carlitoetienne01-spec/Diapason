@@ -576,6 +576,10 @@ export function SuccesProjectsPage() {
   const [quickTitle, setQuickTitle] = useState('');
   const [kits, setKits] = useState<SuccesProjectKit[]>([]);
   const [edges, setEdges] = useState<SuccesTaskEdge[]>([]);
+  const [edgesFailed, setEdgesFailed] = useState(false);
+  // Les cinq vues exposent onSelect ; sans destinataire, chips « faisable »,
+  // titres de cartes et clics simples étaient des boutons morts.
+  const [inspected, setInspected] = useState<SuccesTask | null>(null);
   // La famille arbre (arbre, carte) garde un onglet « Édition » : la vue
   // spécialisée montre et crée, l'édition renomme et supprime.
   const [treeEditMode, setTreeEditMode] = useState(false);
@@ -625,10 +629,19 @@ export function SuccesProjectsPage() {
     }
     try {
       setEdges(await listSuccesTaskEdges(selected.id));
-    } catch {
-      // Un réseau sans arêtes affichables reste utilisable : les tâches se
-      // voient, seules les flèches manquent jusqu'au prochain chargement.
+      setEdgesFailed(false);
+    } catch (error) {
+      // Avaler cet échec était pire que la panne : sans arêtes, TOUTES les
+      // tâches paraissent « faisables maintenant », y compris celles qui
+      // attendent. Un réseau muet qui ment est plus dangereux qu'un réseau
+      // qui dit ne pas savoir.
       setEdges([]);
+      setEdgesFailed(true);
+      toast.error('Les dépendances de ce projet ne peuvent pas être chargées.', {
+        description:
+          (error instanceof Error ? error.message : String(error)) +
+          " — les tâches affichées comme faisables ne le sont peut-être pas.",
+      });
     }
   }, [selected]);
 
@@ -886,6 +899,7 @@ export function SuccesProjectsPage() {
 
           {structure === 'tree' && !treeEditMode ? (
             <GenealogyView
+              onSelect={setInspected}
               tasks={projectTasks}
               levelLabels={levelLabels}
               saving={saving}
@@ -909,6 +923,7 @@ export function SuccesProjectsPage() {
             />
           ) : structure === 'mindmap' && !treeEditMode ? (
             <MindMapView
+              onSelect={setInspected}
               tasks={projectTasks}
               projectName={selected.name}
               saving={saving}
@@ -932,6 +947,7 @@ export function SuccesProjectsPage() {
             />
           ) : structure === 'pipeline' ? (
             <PipelineBoard
+              onSelect={setInspected}
               tasks={projectTasks}
               stages={projectStages}
               saving={saving}
@@ -955,7 +971,11 @@ export function SuccesProjectsPage() {
             />
           ) : structure === 'network' ? (
             <NetworkView
-              tasks={projectTasks}
+              onSelect={setInspected}
+              // Sans les arêtes, le raisonnement « faisable / bloquée » n'a
+              // plus de fondement : on n'affiche aucune tâche plutôt que de
+              // toutes les déclarer faisables.
+              tasks={edgesFailed ? [] : projectTasks}
               edges={edges}
               saving={saving}
               onToggle={async (task) => {
@@ -985,6 +1005,7 @@ export function SuccesProjectsPage() {
             />
           ) : structure === 'cycle' ? (
             <CycleWheel
+              onSelect={setInspected}
               tasks={projectTasks}
               saving={saving}
               onToggle={async (task) => {
@@ -1116,6 +1137,80 @@ export function SuccesProjectsPage() {
                 </div>
               )}
             </>
+          )}
+          {inspected && (
+            <aside
+              className="fixed right-6 bottom-6 z-30 w-80 rounded-2xl p-4 shadow-xl"
+              style={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>
+                  {inspected.title}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setInspected(null)}
+                  aria-label="Fermer"
+                  className="cursor-pointer text-xs"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  ✕
+                </button>
+              </div>
+              {inspected.notes && (
+                <p className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  {inspected.notes}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2 mt-3 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span>{inspected.done ? 'Terminée' : 'Ouverte'}</span>
+                {inspected.stage && <span>Étape : {inspected.stage}</span>}
+                {inspected.date && <span>Le {inspected.date}</span>}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    const cible = inspected;
+                    setInspected(null);
+                    void refreshAfter(
+                      () => setSuccesTaskDone(cible.id, !cible.done),
+                      cible.done ? 'Tâche rouverte' : 'Tâche terminée',
+                    );
+                  }}
+                  className="flex-1 rounded-xl px-3 py-2 text-xs font-medium disabled:opacity-50 cursor-pointer"
+                  style={{ background: 'var(--color-accent)', color: '#fff' }}
+                >
+                  {inspected.done ? 'Rouvrir' : 'Terminer'}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    const cible = inspected;
+                    const confirme = await confirm({
+                      title: `Supprimer « ${cible.title} » ?`,
+                      description: 'Cette tâche et ses liens disparaîtront.',
+                      confirmLabel: 'Supprimer',
+                      keepLabel: 'Garder',
+                      tone: 'danger',
+                    });
+                    if (!confirme) return;
+                    setInspected(null);
+                    await refreshAfter(() => deleteSuccesTask(cible.id), 'Tâche supprimée');
+                    await loadEdges();
+                  }}
+                  className="rounded-xl px-3 py-2 text-xs disabled:opacity-50 cursor-pointer"
+                  style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                >
+                  Supprimer
+                </button>
+              </div>
+            </aside>
           )}
         </main>
       </div>

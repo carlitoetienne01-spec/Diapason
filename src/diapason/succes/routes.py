@@ -49,6 +49,10 @@ class TaskCreate(BaseModel):
     # L'étape (pipeline) et la cadence (cycle) ; validées contre le projet.
     stage: str = Field(default="", max_length=40)
     cadence: dict[str, Any] | None = None
+    # Le magasin lit « done » depuis toujours ; la route le laissait tomber en
+    # silence, si bien qu'un client important une tâche déjà terminée la
+    # récupérait ouverte, sans le moindre message.
+    done: bool = False
     opId: str | None = None
 
 
