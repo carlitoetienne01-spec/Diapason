@@ -50,11 +50,34 @@ def strip_whisper_credits(text: str) -> str:
     return nettoye.strip(" \t\n,;")
 
 
+# L'homophone qui résiste à TOUS les modèles Whisper (small, medium,
+# large-v3-turbo, mesuré le 23 août 2026) : « mets de la musique » transcrit
+# « mais de la musique ». En tête d'ordre — début d'énoncé, éventuellement
+# après le nom de l'assistant — « mais » suivi d'un article n'est jamais la
+# conjonction : c'est le verbe. On ne touche à rien ailleurs dans la phrase,
+# où « mais » redevient une vraie conjonction.
+_MAIS_METS_RE = re.compile(
+    r"(^\W*(?:diapason[\s,]+)?)(mais)(\s+(?:de\s+la|de\s+l['’]|du|des|la|le|les|un|une|ta|ma)\b)",
+    re.IGNORECASE,
+)
+
+
+def reparer_homophones_de_commande(text: str) -> str:
+    """Répare les homophones de verbes d'ordre en tête d'énoncé."""
+
+    def _verbe(m: "re.Match[str]") -> str:
+        verbe = "Mets" if m.group(2)[0].isupper() else "mets"
+        return f"{m.group(1)}{verbe}{m.group(3)}"
+
+    return _MAIS_METS_RE.sub(_verbe, text or "")
+
+
 def polish_dictation(raw: str, *, aggressive: bool = True) -> str:
     """Clean raw STT text: drop fillers, fix spacing, capitalize sentences."""
     text = strip_whisper_credits(raw)
     if not text:
         return ""
+    text = reparer_homophones_de_commande(text)
 
     if aggressive:
         text = _FILLER_RE.sub(" ", text)

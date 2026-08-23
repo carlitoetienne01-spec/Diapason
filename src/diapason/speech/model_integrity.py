@@ -103,7 +103,20 @@ def faster_whisper_cached(model_size: str) -> bool:
     returns False, which fails safe — the caller then refuses an implicit
     download rather than risking a silent one.
     """
-    repo = model_size if "/" in model_size else f"Systran/faster-whisper-{model_size}"
+    # La table d'alias de faster-whisper fait foi : large-v3-turbo vit chez
+    # mobiuslabsgmbh/, pas chez Systran/ — le gabarit codé en dur déclarait
+    # « absent » un modèle pourtant téléchargé, et la garde le bloquait
+    # (constaté le 23 août 2026). Le gabarit reste le repli pour une taille
+    # que la table ne connaîtrait pas.
+    if "/" in model_size:
+        repo = model_size
+    else:
+        try:
+            from faster_whisper.utils import _MODELS
+
+            repo = _MODELS.get(model_size, f"Systran/faster-whisper-{model_size}")
+        except Exception:  # noqa: BLE001 - la table est un bonus, pas une porte
+            repo = f"Systran/faster-whisper-{model_size}"
     try:
         from huggingface_hub import try_to_load_from_cache  # type: ignore
 

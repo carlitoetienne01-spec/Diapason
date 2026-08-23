@@ -397,6 +397,12 @@ def polish_transcript(text: str) -> str:
     if not cleaned:
         return cleaned
     try:
+        from diapason.speech.dictate_polish import reparer_homophones_de_commande
+
+        cleaned = reparer_homophones_de_commande(cleaned)
+    except Exception:  # noqa: BLE001 - la réparation est un bonus, jamais une porte
+        pass
+    try:
         from diapason.speech.dictation_dictionary import apply_dictionary
 
         return apply_dictionary(cleaned, bump_usage=False)
@@ -473,6 +479,22 @@ _turn_needs_tools = turn_needs_tools
 
 # Voir le payload de _default_llm : mesuré, pas choisi.
 VOICE_TOOL_TURN_TEMPERATURE = 0.1
+
+# Les tournures par lesquelles le modèle ANNONCE une action au présent —
+# « d'accord, je cherche du R&B sur YouTube pour toi » — sans l'avoir faite.
+# Constaté le 23 août 2026 : après un dialogue de clarification, le tour
+# répondait en promesse au lieu d'appeler l'outil. Présent et futur proche
+# seulement : « j'ai ouvert » est un compte rendu, pas une promesse.
+_PROMESSE_SANS_ACTE_RE = re.compile(
+    r"\bje\s+(?:"
+    r"vais\s+(?:chercher|ouvrir|lancer|mettre|jouer|cr[ée]er|installer|"
+    r"regarder|faire|noter|ajouter)|"
+    r"cherche|lance|joue|mets|note|ajoute|"
+    r"m['’]en\s+occupe"
+    r")\b"
+    r"|\bj['’]ouvre\b|\bun\s+(?:instant|moment)\b",
+    re.IGNORECASE,
+)
 
 
 def _default_llm(
@@ -1566,6 +1588,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             del self._history[:-16]
             spoken: List[str] = []
             tool_notes: List[str] = []
+            relance_promesse = False
             self._budget.reset()
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
@@ -1602,6 +1625,42 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 if pending.strip():
                     await self._speak_sentence(pending.strip(), spoken)
                 if not tool_calls or not self._enable_tools:
+                    # La PROMESSE SANS L'ACTE (23 août 2026) : « d'accord, je
+                    # cherche du R&B sur YouTube pour toi » — dit, rien fait.
+                    # Un tour qui annonce une action au présent sans avoir
+                    # appelé d'outil est repris UNE fois, avec sommation. La
+                    # promesse est déjà sortie des haut-parleurs ; l'acte la
+                    # suit, et l'usager entend promesse puis livraison.
+                    if (
+                        self._enable_tools
+                        and not relance_promesse
+                        and not tool_notes
+                        and _PROMESSE_SANS_ACTE_RE.search(" ".join(spoken))
+                    ):
+                        relance_promesse = True
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": " ".join(spoken).strip(),
+                            }
+                        )
+                        messages.append(
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Tu viens d'ANNONCER une action sans "
+                                    "appeler d'outil — c'est une promesse en "
+                                    "l'air. Appelle MAINTENANT l'outil qui "
+                                    "convient (open_anything pour jouer ou "
+                                    "ouvrir quelque chose), puis confirme en "
+                                    "une phrase courte."
+                                ),
+                            }
+                        )
+                        logger.warning(
+                            "voice promise without action, retrying with a summons"
+                        )
+                        continue
                     break
                 messages.append(
                     {

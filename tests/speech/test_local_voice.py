@@ -1030,3 +1030,79 @@ class TestVoiceTranscriptPolish:
 
         monkeypatch.setattr(dd, "apply_dictionary", boom)
         assert polish_transcript("bonjour") == "bonjour"
+
+
+class TestPromesseSansActe:
+    """« D'accord, je cherche du R&B sur YouTube pour toi » — dit, rien fait
+    (23 août 2026). Un tour qui promet sans appeler d'outil est repris une
+    fois, avec sommation, et l'acte suit la parole."""
+
+    @staticmethod
+    def _harnais(reponses):
+        """Un LLM scripté : chaque élément est soit un texte, soit une liste
+        d'appels d'outils."""
+        etat = {"i": 0}
+        journal = {"executed": [], "rounds": []}
+
+        def llm(messages):
+            journal["rounds"].append(list(messages))
+            queue: asyncio.Queue = asyncio.Queue()
+            scenario = reponses[min(etat["i"], len(reponses) - 1)]
+            etat["i"] += 1
+            if isinstance(scenario, list):
+                queue.put_nowait(("tools", scenario))
+                queue.put_nowait("Voilà, ça joue.")
+            else:
+                queue.put_nowait(scenario)
+            queue.put_nowait(None)
+            return queue
+
+        def executor(name, args):
+            journal["executed"].append((name, args))
+            return {"ok": True, "content": "ouvert"}
+
+        session = LocalVoiceSession(
+            stt=lambda _a: "je veux du R&B",
+            llm=llm,
+            tts=lambda _t: b"\x01" * 64,
+            tool_executor=executor,
+            enable_tools=True,
+        )
+        return session, journal
+
+    @pytest.mark.asyncio
+    async def test_la_promesse_est_sommee_puis_l_acte_suit(self):
+        session, journal = self._harnais(
+            [
+                "D'accord, je cherche de la musique R&B sur YouTube pour toi.",
+                [{"function": {"name": "open_anything",
+                               "arguments": {"target": "joue du R&B sur youtube"}}}],
+            ]
+        )
+        await session._respond_to_text("je veux du R&B")
+        assert journal["executed"], "la sommation doit produire l'acte"
+        assert journal["executed"][0][0] == "open_anything"
+        # la sommation est bien passée au second appel
+        sommation = journal["rounds"][1][-1]
+        assert sommation["role"] == "system"
+        assert "sans appeler d'outil" in sommation["content"]
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_ordinaire_ne_declenche_rien(self):
+        session, journal = self._harnais(["Le R&B est né dans les années 40."])
+        await session._respond_to_text("c'est quoi le R&B ?")
+        assert journal["executed"] == []
+        assert len(journal["rounds"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_une_seule_sommation_jamais_deux(self):
+        session, journal = self._harnais(
+            [
+                "Je cherche ça pour toi.",
+                "Je vais chercher, un instant.",
+            ]
+        )
+        await session._respond_to_text("je veux du R&B")
+        # deux promesses de suite : une seule relance, pas de boucle
+        assert len(journal["rounds"]) == 2
+        assert journal["executed"] == []

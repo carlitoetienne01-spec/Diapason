@@ -303,10 +303,18 @@ class FasterWhisperBackend(SpeechBackend):
                 raise ImportError(self._last_error)
 
             compute_type = self._resolve_compute_type()
+            # Le défaut de CTranslate2 est 4 fils — les 4 cœurs performance
+            # du M5. Prendre aussi les cœurs efficience fait passer medium
+            # de 3,4 s à 2,5 s par phrase (mesuré le 23 août 2026, six
+            # phrases françaises, int8). Plafonné à 8 : au-delà, la mêlée
+            # des fils coûte plus qu'elle ne rend.
+            import os as _os
+
             self._model = WhisperModel(
                 self._model_size,
                 device=self._device,
                 compute_type=compute_type,
+                cpu_threads=min(8, _os.cpu_count() or 4),
             )
         self._last_error = None
         return self._model

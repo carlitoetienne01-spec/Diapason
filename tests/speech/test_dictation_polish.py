@@ -103,3 +103,35 @@ class TestLeDepaquetageDuMoteur:
 
         assert engine_is_local(Inconnu()) is False
         assert engine_is_local(None) is False
+
+
+class TestHomophonesDeCommande:
+    """« mets de la musique » → « mais de la musique » chez TOUS les modèles
+    Whisper (mesuré le 23 août 2026). En tête d'ordre, « mais » + article est
+    le verbe ; ailleurs, la conjonction reste intouchée."""
+
+    def test_le_mais_de_tete_redevient_mets(self):
+        from diapason.speech.dictate_polish import reparer_homophones_de_commande
+
+        assert reparer_homophones_de_commande("mais de la musique") == "mets de la musique"
+        assert reparer_homophones_de_commande("Mais de la musique.") == "Mets de la musique."
+        assert (
+            reparer_homophones_de_commande("Diapason, mais de la musique")
+            == "Diapason, mets de la musique"
+        )
+        assert reparer_homophones_de_commande("mais du jazz") == "mets du jazz"
+
+    def test_la_vraie_conjonction_reste_intouchee(self):
+        from diapason.speech.dictate_polish import reparer_homophones_de_commande
+
+        for phrase in (
+            "je veux bien, mais la musique est trop forte",
+            "mais pourquoi tu dis ça",
+            "il pleut mais on sort",
+        ):
+            assert reparer_homophones_de_commande(phrase) == phrase
+
+    def test_la_dictee_passe_par_la_reparation(self):
+        from diapason.speech.dictate_polish import polish_dictation
+
+        assert polish_dictation("mais de la musique") == "Mets de la musique."

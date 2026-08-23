@@ -1,6 +1,6 @@
 """Tests for Faster-Whisper speech backend."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -161,7 +161,9 @@ def test_faster_whisper_falls_back_from_unsupported_float16():
         )
         assert backend._ensure_model() is mock_model
 
-    mock_whisper.assert_called_once_with("base", device="cpu", compute_type="int8")
+    mock_whisper.assert_called_once_with(
+        "base", device="cpu", compute_type="int8", cpu_threads=ANY
+    )
 
 
 def test_faster_whisper_missing_dependency_hint_uses_desktop_extra():
