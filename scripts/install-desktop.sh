@@ -87,7 +87,13 @@ open -a "$CIBLE"
 sleep 5
 
 if pgrep -f "Diapason.app/Contents/MacOS" >/dev/null; then
-  echo "✓ installée et relancée"
+  # L'artefact de compilation disparaît sitôt la copie installée : Spotlight
+# indexe target/release/bundle, et l'utilisateur voyait DEUX « Diapason » —
+# l'installée et le sous-produit du build — sans pouvoir les distinguer.
+# Constaté le 23 août 2026, quatre entrées Diapason dans Spotlight. Le
+# bundle renaît à chaque compilation ; sa place n'est pas dans l'index.
+rm -rf "$BUNDLE"
+echo "✓ installée et relancée"
 else
   # Ne pas prétendre que ça marche. La sauvegarde est là, on dit comment.
   echo "✗ l'application n'a pas démarré." >&2
