@@ -174,13 +174,13 @@ export function TalkOrb({
       }}
     >
       <div
-        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden"
+        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden flex flex-col max-h-[92vh]"
         style={{
           background: 'var(--color-bg-secondary, #12141a)',
           border: '1px solid var(--color-border, #2a2d36)',
         }}
       >
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between px-4 py-3 shrink-0">
           <div className="flex items-center gap-2">
             <div className="text-xs tracking-widest uppercase" style={{ color: 'var(--color-text-tertiary)' }}>
               {statusLabel}
@@ -211,7 +211,7 @@ export function TalkOrb({
           </button>
         </div>
 
-        <div className="flex flex-col items-center px-6 pb-4 pt-2">
+        <div className="flex flex-col items-center px-6 pb-3 pt-1 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -222,7 +222,16 @@ export function TalkOrb({
             style={{
               // The summit needs headroom: too flat a frame and a loud syllable
               // throws the spire straight off the top edge.
-              height: 'clamp(380px, 62vh, 620px)',
+              //
+              // Dès qu'une conversation existe, la scène se retire : 62 vh de
+              // relief plus les commandes plus le fil dépassaient l'écran, et
+              // overflow-hidden COUPAIT la dernière réponse — invisible même
+              // en défilant, c'est le défaut rapporté. La conversation est ce
+              // qu'on vient lire ; la montagne l'accompagne.
+              height: fil.length
+                ? 'clamp(180px, 30vh, 340px)'
+                : 'clamp(380px, 62vh, 620px)',
+              transition: 'height 320ms ease',
               // Deliberately dark in BOTH themes, like a video player: the
               // luminous relief and its survey grid are additive light and
               // would vanish on a pale surface. Not #000 but the palette's
@@ -287,7 +296,7 @@ export function TalkOrb({
             >
               {caption}
             </p>
-          ) : (
+          ) : fil.length === 0 ? (
             <>
               <p className="mt-3 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
                 {t('chat.talk.justSpeak')}
@@ -296,9 +305,9 @@ export function TalkOrb({
                 {t('chat.talk.shortcuts')}
               </p>
             </>
-          )}
+          ) : null}
 
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-2">
             <select
               value={provider}
               disabled={active}
@@ -365,7 +374,7 @@ export function TalkOrb({
           <div
             ref={feedRef}
             onScroll={surDefilement}
-            className="max-h-80 overflow-y-auto px-4 py-4 text-sm space-y-3"
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 text-sm space-y-3"
             style={{
               borderTop: '1px solid var(--color-border)',
               color: 'var(--color-text-secondary)',
@@ -429,7 +438,7 @@ export function TalkOrb({
         )}
 
         <div
-          className="px-4 py-2 text-[11px] text-center"
+          className="px-4 py-2 text-[11px] text-center shrink-0"
           style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
         >
           {provider === 'local'
