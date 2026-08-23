@@ -25,7 +25,11 @@ _BROWSE_RE = re.compile(
 _SEARCH_RE = re.compile(
     # « recherche-moi des jeux » est la formulation NATURELLE à l'oral — elle
     # tombait dans le vide, le motif ne connaissant que « cherche » nu.
+    # « fais-moi la recherche du jeu solitaire » aussi (23 août 2026) : le
+    # verbe est « faire », la recherche est un nom, et l'article qui suit
+    # appartient à la tournure, pas à la requête.
     r"^\s*(?:search(?:\s+for)?|(?:re)?cherche(?:r|z)?(?:[- ]moi)?"
+    r"|fais(?:[- ]moi)?\s+(?:la|une)\s+recherche(?:\s+(?:de\s+la|de\s+l['’]|du|des|de|d['’]|sur|pour))?"
     r"|trouve(?:z)?(?:[- ]moi)?|google|duckduckgo|bing)\s+"
     r"(?P<query>.+?)\s*$",
     re.IGNORECASE,
@@ -99,8 +103,21 @@ class VoiceAction:
     extra: dict[str, Any] | None = None
 
 
+# À l'oral, un ordre enchaîné commence par un connecteur : « Maintenant,
+# fais-moi la recherche… », « Ensuite, ouvre… ». Tous les motifs sont ancrés
+# en début de phrase — le connecteur les faisait TOUS échouer (constaté le
+# 23 août 2026 : « Maintenant, fais-moi la recherche du jeu solitaire »
+# tombait dans le vide). On le dépouille une fois, pour toutes les commandes.
+_CONNECTEURS_RE = re.compile(
+    r"^\s*(?:(?:maintenant|ensuite|puis|alors|donc|ok|bon|et|voil[àa]|allez|"
+    r"s['’]il\s+te\s+pla[iî]t|stp)[\s,]+)+",
+    re.IGNORECASE,
+)
+
+
 def parse_voice_command(text: str) -> VoiceAction:
     raw = (text or "").strip()
+    raw = _CONNECTEURS_RE.sub("", raw)
     if not raw:
         return VoiceAction(kind="none", raw=raw)
 
