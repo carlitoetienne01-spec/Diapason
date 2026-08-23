@@ -1284,6 +1284,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
         action_started = time.monotonic()
         result = await asyncio.to_thread(execute_voice_action, action)
+        # Symétrique du journal des outils LLM : sans cette ligne, un échec
+        # du chemin rapide ne laissait AUCUNE trace côté serveur, et chaque
+        # diagnostic commençait à l'aveugle.
+        logger.warning(
+            "voice fast action %s target=%s ok=%s",
+            action.kind,
+            action.target,
+            bool(result.get("success")),
+        )
         if not result.get("handled"):
             return False
         success = bool(result.get("success"))

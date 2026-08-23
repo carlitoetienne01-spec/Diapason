@@ -150,10 +150,28 @@ def test_email_intent_en():
     assert intent.to == "bob@example.com"
 
 
-def test_ouvre_mails_still_gmail():
+def test_ouvre_mails_ouvre_l_application_installee():
+    """Retourné le 23 août 2026 — l'ancien test verrouillait le défaut vécu.
+
+    « Ouvre mes mails » partait sur mail.google.com dans un navigateur alors
+    que Mail.app est installée ; pour l'utilisateur, « Mail ne s'ouvre pas ».
+    L'application installée gagne ; le web n'est que le repli de qui dit
+    « gmail ». La règle Gmail n'attrape donc plus la forme française."""
     from diapason.desktop.smart_intents import KIND_GMAIL, parse_smart_intent
 
     intent = parse_smart_intent("ouvre mes mails")
+    assert intent.kind != KIND_GMAIL
+
+    a = parse_voice_command("ouvre mes mails")
+    assert a.kind == "focus_app"
+    assert a.target == "Mail"
+
+
+def test_gmail_nomme_va_toujours_au_web():
+    """Qui DIT « gmail » veut le site — ce chemin-là ne bouge pas."""
+    from diapason.desktop.smart_intents import KIND_GMAIL, parse_smart_intent
+
+    intent = parse_smart_intent("ouvre gmail")
     assert intent.kind == KIND_GMAIL
     assert "mail.google" in intent.url
 

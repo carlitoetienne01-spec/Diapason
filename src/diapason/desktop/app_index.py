@@ -98,6 +98,15 @@ class MacAppIndex:
         return self.refresh()
 
     def resolve(self, name: str) -> str | None:
+        """Le nom pour ``open -a`` : l'installé si on le trouve, sinon le brut.
+
+        Launch Services connaît des applications hors des dossiers balayés —
+        le repli sur le nom brut reste donc utile. Qui veut savoir si l'app
+        est RÉELLEMENT installée utilise ``lookup``, qui rend None.
+        """
+        return self.lookup(name) or ((name or "").strip().removesuffix(".app") or None)
+
+    def lookup(self, name: str) -> str | None:
         raw = (name or "").strip()
         if raw.lower().endswith(".app"):
             raw = raw[:-4]
@@ -158,8 +167,7 @@ class MacAppIndex:
                     partial.append(candidate)
         if partial:
             return min(partial, key=len)
-        # Launch Services may know apps outside the indexed roots.
-        return raw
+        return None
 
 
 APP_INDEX = MacAppIndex()

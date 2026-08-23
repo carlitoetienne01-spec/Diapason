@@ -475,8 +475,13 @@ def parse_smart_intent(command: str) -> SmartIntent:
             )
 
     # --- Gmail / email web ---
+    # « gmail » doit être DIT pour aller au web. La forme française « ouvre
+    # (mes) mails » déclenchait cette règle et envoyait mail.google.com dans
+    # un navigateur alors que Mail.app est installée — pour l'utilisateur,
+    # « Mail ne s'ouvre pas ». L'application installée gagne ; le site n'est
+    # que le repli de qui le nomme.
     if "gmail" in low or re.search(
-        r"\b(?:check(?:\s+my)?\s+email|ouvre\s+(?:mes\s+)?mails?|check\s+mail)\b",
+        r"\b(?:check(?:\s+my)?\s+email|check\s+mail)\b",
         low,
     ):
         if "apple mail" not in low:
@@ -545,12 +550,27 @@ def parse_smart_intent(command: str) -> SmartIntent:
     if m:
         target = m.group("target").strip().strip(".!?")
         # "youtube and search for cats" already handled above if youtube in string
+        target = re.sub(r"^(?:de\s+|d['’]\s*|du\s+)", "", target)
         if target in _NATIVE_APPS:
             return SmartIntent(
                 kind=KIND_APP,
                 app=_NATIVE_APPS[target],
                 confidence=0.95,
                 reasoning="Native app",
+            )
+        # L'application INSTALLÉE gagne sur le raccourci web : qui a
+        # l'application ChatGPT ne veut pas chatgpt.com dans un onglet.
+        # L'index couvre tout le disque — chaque application du Mac devient
+        # ouvrable à la voix sans figurer dans une table écrite à la main.
+        from diapason.desktop.app_index import APP_INDEX
+
+        installee = APP_INDEX.lookup(target)
+        if installee is not None:
+            return SmartIntent(
+                kind=KIND_APP,
+                app=installee,
+                confidence=0.94,
+                reasoning="Installed app",
             )
         if target in _WEBSITES:
             return SmartIntent(

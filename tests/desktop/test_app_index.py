@@ -88,3 +88,66 @@ def test_un_inconnu_est_rendu_tel_quel_pour_launch_services(index):
 
 def test_le_suffixe_app_est_toléré(index):
     assert index.resolve("Musique.app") == "Music"
+
+
+class TestLookupStrict:
+    """``lookup`` dit si l'application est RÉELLEMENT installée.
+
+    ``resolve`` rend le nom brut quand rien ne correspond — utile pour Launch
+    Services, mais inutilisable pour décider « l'installé gagne sur le web » :
+    il fallait un verdict franc. C'est lui qui fait passer « Ouvre ChatGPT »
+    par l'application installée plutôt que par chatgpt.com dans un onglet.
+    """
+
+    def test_un_installe_est_trouve(self, index):
+        assert index.lookup("Apple TV") == "TV"
+
+    def test_un_absent_rend_none_et_non_le_nom_brut(self, index):
+        assert index.lookup("Blender") is None
+        assert index.resolve("Blender") == "Blender"
+
+
+class TestCommandesVocales:
+    """Le routage parlé : l'installé en chemin rapide, le web en repli."""
+
+    @pytest.fixture(autouse=True)
+    def _index_fige(self, monkeypatch):
+        from diapason.desktop.app_index import APP_INDEX
+
+        monkeypatch.setattr(
+            APP_INDEX,
+            "_scan",
+            staticmethod(lambda: ("Mail", "ChatGPT", "Xcode", "TV")),
+        )
+        APP_INDEX.refresh()
+        yield
+        APP_INDEX.refresh()
+
+    def test_ouvre_chatgpt_prend_l_application_pas_le_site(self):
+        """Constaté le 23 août 2026 : « ChatGPT ne s'ouvre pas » — le raccourci
+        web chatgpt.com passait avant l'application installée."""
+        from diapason.desktop.voice_commands import parse_voice_command
+
+        a = parse_voice_command("ouvre chatgpt")
+        assert (a.kind, a.target) == ("focus_app", "ChatGPT")
+
+    def test_le_de_de_l_application_ne_survit_pas(self):
+        """« l'application DE ChatGPT » donnait la cible « de ChatGPT »."""
+        from diapason.desktop.voice_commands import parse_voice_command
+
+        a = parse_voice_command("ouvre l'application de ChatGPT")
+        assert (a.kind, a.target) == ("focus_app", "ChatGPT")
+
+    def test_toute_application_installee_part_en_chemin_rapide(self):
+        """Xcode n'est dans aucune table écrite à la main : l'index suffit."""
+        from diapason.desktop.voice_commands import parse_voice_command
+
+        a = parse_voice_command("ouvre xcode")
+        assert (a.kind, a.target) == ("focus_app", "Xcode")
+
+    def test_un_site_sans_application_reste_du_web(self):
+        from diapason.desktop.voice_commands import parse_voice_command
+
+        a = parse_voice_command("ouvre youtube")
+        assert a.kind == "open_uri"
+        assert "youtube" in a.target

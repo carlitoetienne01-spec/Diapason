@@ -42,6 +42,9 @@ _APP_ALIASES = {
     "iterm": "iTerm",
     "finder": "Finder",
     "mail": "Mail",
+    "mails": "Mail",
+    "mes mails": "Mail",
+    "courrier": "Mail",
     "messages": "Messages",
     "imessage": "Messages",
     "calendar": "Calendar",
@@ -184,6 +187,10 @@ def parse_voice_command(text: str) -> VoiceAction:
             target,
             flags=re.IGNORECASE,
         )
+        # « l'application DE ChatGPT » : l'article tombait, le « de » restait,
+        # et la cible devenait « de ChatGPT » — introuvable. Constaté sur la
+        # machine de Carlito le 23 août 2026.
+        target = re.sub(r"^(?:de\s+|d['’]\s*|du\s+)", "", target, flags=re.IGNORECASE)
         key = target.lower()
         mapped = _APP_ALIASES.get(key)
         if mapped and mapped.startswith("http"):
@@ -193,6 +200,15 @@ def parse_voice_command(text: str) -> VoiceAction:
         if "." in target and " " not in target:
             url = target if target.startswith("http") else f"https://{target}"
             return VoiceAction(kind="open_uri", target=url, raw=raw)
+        # TOUTE application réellement installée part en chemin rapide :
+        # 0,3 s au lieu de deux tours de modèle. L'alias écrit à la main ne
+        # couvrait qu'une poignée de noms ; l'index couvre le disque entier,
+        # accents et noms français compris.
+        from diapason.desktop.app_index import APP_INDEX
+
+        installee = APP_INDEX.lookup(target)
+        if installee is not None:
+            return VoiceAction(kind="focus_app", target=installee, raw=raw)
         # Delegate to open_anything for fuzzy app / search resolution
         return VoiceAction(kind="open_anything", target=target, raw=raw)
 
