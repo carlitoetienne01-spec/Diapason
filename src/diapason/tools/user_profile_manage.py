@@ -24,7 +24,21 @@ class UserProfileManageTool(BaseTool):
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="user_profile_manage",
-            description=("Read, add, update, or remove entries in user profile."),
+            description=((
+                # « Read, add, update, or remove entries in user profile. »
+                # décrivait le CRUD sans jamais dire QUAND appeler. Un modèle
+                # 9b répondait donc « Noté. » à « retiens que… » sans rien
+                # écrire — la pire des réponses : l'utilisateur croit que
+                # l'assistant sait, et à la session suivante il a tout oublié.
+                # Les outils qui marchent (current_time) nomment le moment.
+                "Remember a lasting fact ABOUT THE USER: preferences, habits, "
+                "how they like to be answered, people close to them, their "
+                "tools and routines. Call this whenever they say « retiens "
+                "que… », « note que… », « souviens-toi que… », « je préfère… », "
+                "or state something durable about themselves. Never answer "
+                "\"noted\" without calling it — nothing would be kept. "
+                "Stored in USER.md, re-read at the start of every session."
+            )),
             parameters={
                 "type": "object",
                 "properties": {
