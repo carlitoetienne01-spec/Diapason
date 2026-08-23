@@ -129,6 +129,8 @@ describe('translate', () => {
   it('returns the message for the locale', () => {
     expect(translate('fr', 'nav.settings')).toBe('Réglages');
     expect(translate('en', 'nav.settings')).toBe('Settings');
+    expect(translate('fr', 'chat.talk.navLabel')).toBe('Parler');
+    expect(translate('en', 'chat.talk.navLabel')).toBe('Talk');
   });
 
   it('falls back to English rather than showing a key', () => {

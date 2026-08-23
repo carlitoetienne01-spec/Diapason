@@ -26,10 +26,10 @@ import {
   MonitorSmartphone,
   RefreshCw,
   ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { GlassNav } from './GlassNav';
+import { TalkButton } from '../TalkButton';
 import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
 import { useTranslation } from '../../i18n/useTranslation';
 
@@ -379,28 +379,39 @@ export function Sidebar() {
             </>
           )}
 
-          {/* Réglages — flat footer entry into the grouped settings drawer,
-              landing on Général. Disappears once the drawer is open, which
-              carries its own back affordance at the top. */}
-          {!settingsOpen && (
-            <button
-              onClick={openSettings}
-              className="flex items-center gap-2 px-5 py-3 text-sm transition-colors cursor-pointer"
-              style={{
-                color: 'var(--color-text-secondary)',
-                background: 'transparent',
-                borderTop: '1px solid var(--color-border)',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              aria-controls="settings-nav"
-              title={t('nav.settings')}
-            >
-              <Settings size={16} />
-              <span className="flex-1 text-left">{t('nav.settings')}</span>
-              <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />
-            </button>
-          )}
+          {/* Voice + Réglages share one quiet footer so neither floats over
+              the workspace. Talk stays reachable while the settings drawer
+              is open; Réglages itself yields to the back row above. */}
+          <div
+            className="flex items-stretch shrink-0"
+            style={{ borderTop: '1px solid var(--color-border)' }}
+          >
+            <TalkButton />
+            {!settingsOpen && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="w-px self-stretch my-2 shrink-0"
+                  style={{ background: 'var(--color-border)' }}
+                />
+                <button
+                  onClick={openSettings}
+                  className="flex flex-1 items-center gap-2 px-4 py-3 text-sm transition-colors cursor-pointer min-w-0"
+                  style={{
+                    color: 'var(--color-text-secondary)',
+                    background: 'transparent',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  aria-controls="settings-nav"
+                  title={t('nav.settings')}
+                >
+                  <Settings size={16} className="shrink-0" />
+                  <span className="flex-1 text-left truncate">{t('nav.settings')}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </aside>
     </>

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
-import { TalkButton } from './TalkButton';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
@@ -47,7 +46,6 @@ export function Layout() {
       <SystemPulse apiReachable={apiReachable} />
 
       <div ref={topRightRef} className="fixed top-2 right-3 z-40 flex items-center gap-1.5">
-        <TalkButton />
         <ApprovalBell />
       </div>
 
