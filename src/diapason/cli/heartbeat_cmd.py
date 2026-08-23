@@ -128,3 +128,143 @@ def heartbeat_clear_done() -> None:
 
     n = clear_done(_workspace())
     Console().print(f"Removed {n} done item(s).")
+
+
+@heartbeat.command("briefing")
+@click.option(
+    "--silencieux",
+    is_flag=True,
+    help="N'affiche rien et ne notifie pas quand il n'y a rien à dire.",
+)
+@click.option("--sans-notification", is_flag=True, help="Journalise seulement.")
+@click.option("--prenom", default="", help="Nom par lequel saluer.")
+def heartbeat_briefing(silencieux: bool, sans_notification: bool, prenom: str) -> None:
+    """Compose le briefing du jour et le fait parvenir à l'utilisateur.
+
+    C'est la commande qu'un déclencheur (launchd) appelle le matin. Elle ne
+    consulte AUCUN modèle : le briefing se compose des données de Succès, ce
+    qui le rend instantané, toujours juste, et sans effet sur le créneau
+    unique d'Ollama. À ne pas confondre avec ``diapason digest``, qui fait
+    rédiger un résumé par le modèle à partir des connecteurs (Gmail, agenda
+    Google) — utile quand ils sont branchés, muet sinon.
+    """
+    from diapason.heartbeat.briefing import briefing_du_jour
+    from diapason.heartbeat.livraison import livrer
+
+    console = Console()
+    b = briefing_du_jour(prenom=prenom or _prenom_configure())
+
+    if b.rien_a_signaler and silencieux:
+        # Une notification quotidienne qui ne dit rien apprend à être ignorée,
+        # et le jour où elle compte, elle ne sera pas lue non plus.
+        return
+
+    resultat = livrer(b.titre, b.corps, notifier=not sans_notification)
+    console.print(b.corps)
+    if not resultat.ok:
+        console.print(f"[red]Non livré[/red] : {resultat.detail}")
+        raise SystemExit(1)
+    if not resultat.notifiee and not sans_notification:
+        console.print(f"[yellow]Notification non posée[/yellow] : {resultat.detail}")
+
+
+def _prenom_configure() -> str:
+    """Le prénom lu dans USER.md, s'il s'y trouve."""
+    import re
+
+    try:
+        from diapason.core.paths import get_config_dir
+
+        texte = (get_config_dir() / "USER.md").read_text(encoding="utf-8")
+    except Exception:
+        return ""
+    trouve = re.search(r"Pr[ée]nom[^:\n]*:\s*([^\n,.]+)", texte)
+    return trouve.group(1).strip().split()[0] if trouve else ""
+
+
+@heartbeat.group("briefing-service")
+def briefing_service() -> None:
+    """Le réveil qui déclenche le briefing chaque matin.
+
+    Il s'appuie sur launchd, l'ordonnanceur de macOS, et NON sur
+    l'ordonnanceur interne de Diapason : celui-ci calcule ses crons en UTC
+    (sept heures y devient trois heures du matin), son analyseur casse sur
+    « */15 » et « 7,13,18 », et sa porte one-shot est inopérante. launchd,
+    lui, lit l'heure locale, survit au redémarrage, et exécute au réveil un
+    travail manqué pendant que la machine dormait.
+    """
+
+
+def _heure(valeur: str) -> tuple[int, int]:
+    morceaux = str(valeur or "").strip().split(":")
+    if len(morceaux) != 2 or not all(m.isdigit() for m in morceaux):
+        raise click.BadParameter("Format attendu : HH:MM, par exemple 07:00.")
+    heure, minute = int(morceaux[0]), int(morceaux[1])
+    if not (0 <= heure <= 23 and 0 <= minute <= 59):
+        raise click.BadParameter("Heure hors du cadran.")
+    return heure, minute
+
+
+@briefing_service.command("install")
+@click.option("--a", "--at", "quand", default="07:00", help="Heure locale, HH:MM.")
+def briefing_install(quand: str) -> None:
+    """Installe le réveil quotidien du briefing."""
+    import sys
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    heure = _heure(quand)
+    chemin = launch_agent.install(
+        label=launch_agent.BRIEFING_LABEL,
+        args=[
+            sys.executable,
+            "-m",
+            "diapason.cli",
+            "heartbeat",
+            "briefing",
+            "--silencieux",
+        ],
+        log_prefix="briefing",
+        schedule=heure,
+    )
+    console.print(f"[green]Installé[/green] — briefing à {quand}, tous les jours.")
+    console.print(f"  plist   : {chemin}")
+    console.print(f"  journaux: {launch_agent.log_dir()}/briefing.out.log")
+    console.print("[dim]Essai immédiat : diapason heartbeat briefing[/dim]")
+
+
+@briefing_service.command("uninstall")
+def briefing_uninstall() -> None:
+    """Retire le réveil quotidien."""
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    existait = launch_agent.uninstall(launch_agent.BRIEFING_LABEL)
+    console.print("[green]Retiré[/green]" if existait else "[dim]Rien à retirer[/dim]")
+
+
+@briefing_service.command("status")
+def briefing_status() -> None:
+    """Dit si le réveil est en place, et à quelle heure."""
+    import plistlib
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    chemin = launch_agent.plist_path(launch_agent.BRIEFING_LABEL)
+    if not chemin.exists():
+        console.print("[yellow]Aucun réveil installé.[/yellow]")
+        console.print(
+            "[dim]diapason heartbeat briefing-service install --at 07:00[/dim]"
+        )
+        return
+    with chemin.open("rb") as f:
+        donnees = plistlib.load(f)
+    quand = donnees.get("StartCalendarInterval") or {}
+    charge = launch_agent.is_loaded(launch_agent.BRIEFING_LABEL)
+    console.print(
+        f"Réveil à {quand.get('Hour', '?'):02}:{quand.get('Minute', 0):02} "
+        f"— chargé : {'oui' if charge else 'non'}"
+    )
+    console.print(f"  plist : {chemin}")

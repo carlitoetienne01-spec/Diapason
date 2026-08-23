@@ -25,6 +25,7 @@ from pathlib import Path
 
 LABEL = "com.diapason.dictate"  # dictation agent
 SERVE_LABEL = "com.diapason.serve"  # API server
+BRIEFING_LABEL = "com.diapason.briefing"  # briefing du matin, une fois par jour
 
 
 def plist_path(label: str = LABEL) -> Path:
@@ -50,6 +51,7 @@ def build_plist(
     executable: str | None = None,
     label: str = LABEL,
     args: list[str] | None = None,
+    schedule: tuple[int, int] | None = None,
 ) -> str:
     """Render the LaunchAgent plist.
 
@@ -67,6 +69,15 @@ def build_plist(
         program_args = [python, "-m", "diapason.cli", "dictate"]
     args = program_args
     args_xml = "\n".join(f"        <string>{_xml_escape(a)}</string>" for a in args)
+    if schedule is not None:
+        return _build_plist_horaire(
+            label=label,
+            args_xml=args_xml,
+            workdir=workdir,
+            out_log=out_log,
+            err_log=err_log,
+            schedule=schedule,
+        )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -103,6 +114,67 @@ def build_plist(
 """
 
 
+def _build_plist_horaire(
+    *,
+    label: str,
+    args_xml: str,
+    workdir: str,
+    out_log: str,
+    err_log: str,
+    schedule: tuple[int, int],
+) -> str:
+    """Un travail qui part à l'heure dite, puis se tait.
+
+    C'est l'exact opposé du démon rendu par ``build_plist`` : celui-ci vit et
+    doit renaître s'il tombe, celui-là fait une chose et s'arrête. D'où trois
+    différences qui comptent :
+
+    - ``RunAtLoad`` est FAUX. Sinon un briefing partirait à chaque ouverture de
+      session et à chaque réinstallation, à n'importe quelle heure.
+    - AUCUN ``KeepAlive``. Avec ``SuccessfulExit: false``, un briefing qui
+      échoue serait relancé en boucle — une notification toutes les dix
+      secondes jusqu'à ce que la cause disparaisse.
+    - ``StartCalendarInterval`` est lu en heure LOCALE par launchd. C'est
+      précisément ce qui manque à l'ordonnanceur interne, dont le cron est
+      calculé en UTC : sept heures du matin y devient trois heures.
+
+    Et si la machine dormait à l'heure dite, launchd exécute le travail manqué
+    au réveil. Un briefing de sept heures atteint donc un portable ouvert à
+    neuf — ce qui est le comportement voulu : mieux vaut tard que jamais.
+    """
+    heure, minute = schedule
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{label}</string>
+    <key>ProgramArguments</key>
+    <array>
+{args_xml}
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{_xml_escape(workdir)}</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>{int(heure)}</integer>
+        <key>Minute</key>
+        <integer>{int(minute)}</integer>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>{_xml_escape(out_log)}</string>
+    <key>StandardErrorPath</key>
+    <string>{_xml_escape(err_log)}</string>
+</dict>
+</plist>
+"""
+
+
 def _uid() -> int:
     import os
 
@@ -115,6 +187,7 @@ def install(
     label: str = LABEL,
     args: list[str] | None = None,
     log_prefix: str = "dictate",
+    schedule: tuple[int, int] | None = None,
 ) -> Path:
     """Write the plist and bootstrap it into the user's launchd domain.
 
@@ -142,6 +215,7 @@ def install(
             executable=executable,
             label=label,
             args=args,
+            schedule=schedule,
         ),
         encoding="utf-8",
     )

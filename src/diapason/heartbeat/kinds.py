@@ -97,7 +97,7 @@ def run_routine(
     kind = (routine.kind or "prompt").strip().lower()
 
     try:
-        if kind == "morning-digest":
+        if kind in ("morning-digest", "morning-brief"):
             content = _run_morning_digest(system=system, speak=False)
         elif kind == "reminder":
             content = str(
@@ -124,7 +124,29 @@ def run_routine(
                 "content": content,
             }
         else:
-            content = f"Unknown routine kind: {kind}"
+            # Un kind inconnu était enregistré comme un SUCCÈS, sans un mot
+            # dans les journaux. Neuf des douze routines de l'utilisateur
+            # étaient dans ce cas : elles « réussissaient » chaque jour sans
+            # rien faire, et rien ne le lui apprenait. Un échec silencieux qui
+            # se déclare réussi est pire qu'un échec bruyant.
+            content = (
+                f"Type de routine inconnu : « {kind} ». "
+                f"Types exécutables : {', '.join(KINDS_EXECUTABLES)}."
+            )
+            logger.warning("routine %s : %s", routine.id, content)
+            record_run(
+                routine.id,
+                success=False,
+                result=content,
+                skipped=False,
+                workspace=workspace,
+            )
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": "unknown_kind",
+                "content": content,
+            }
 
         # SILENT short-circuit (calendar ping with nothing due)
         if (content or "").strip().upper() == "SILENT":
@@ -181,34 +203,60 @@ def run_routine(
         return {"ok": False, "skipped": False, "content": str(exc), "error": str(exc)}
 
 
+KINDS_EXECUTABLES: tuple[str, ...] = (
+    "morning-digest",
+    "morning-brief",
+    "reminder",
+    "prompt",
+    "calendar-ping",
+    "shell",
+)
+
+
 def _run_morning_digest(*, system: Any = None, speak: bool = False) -> str:
-    # Prefer cached digest text; optionally trigger generation via agent
+    """Le briefing du matin. Les données d'abord, le modèle seulement en plus.
+
+    Ce chemin commençait par chercher un digest rédigé par le modèle à partir
+    des connecteurs, et rendait « No morning digest available » quand il n'y en
+    avait pas — c'est-à-dire toujours, sur une installation sans OAuth Google.
+    La routine tournait donc chaque matin pour annoncer qu'elle n'avait rien.
+
+    Or l'essentiel d'un briefing ne s'invente pas : « trois tâches en retard
+    depuis le 19 août, dont une urgente » est une phrase que succes.db écrit
+    toute seule, en quelques millisecondes, sans disputer à personne le créneau
+    unique d'Ollama. C'est donc elle qui vient en premier.
+
+    Le digest du modèle reste JOINT quand il existe : le jour où les
+    connecteurs seront branchés, il apportera ce que la base locale ne sait pas
+    — les courriels, l'agenda partagé. Il enrichit, il ne remplace pas.
+    """
+    morceaux: list[str] = []
+    try:
+        from diapason.heartbeat.briefing import briefing_du_jour
+
+        morceaux.append(briefing_du_jour().corps)
+    except Exception:
+        logger.warning("briefing local indisponible", exc_info=True)
+
     try:
         from diapason.agents.digest_store import DigestStore
 
         store = DigestStore()
-        artifact = store.get_today() or store.get_latest()
-        if artifact and artifact.text:
-            text = artifact.text
+        try:
+            artifact = store.get_today()
+            if artifact and artifact.text:
+                morceaux.append(artifact.text.strip())
+        finally:
             store.close()
-            return text[:4000]
-        store.close()
     except Exception:
         logger.debug("digest store unavailable", exc_info=True)
 
-    if system is not None:
-        try:
-            return str(
-                system.ask(
-                    "Generate my morning digest (text only).", agent="morning_digest"
-                )
-            )[:4000]
-        except Exception as exc:
-            return f"Morning digest failed: {exc}"
+    if morceaux:
+        return "\n\n".join(morceaux)[:4000]
 
     return (
-        "No morning digest available. Run: diapason digest --fresh "
-        "(or enable [digest] + connectors)."
+        "Briefing indisponible : ni les données locales ni un digest en cache "
+        "n'ont pu être lus. Voir les journaux du serveur."
     )
 
 
