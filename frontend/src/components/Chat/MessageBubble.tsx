@@ -108,19 +108,24 @@ export function MessageBubble({ message, isLive = false }: Props) {
   const isUser = message.role === 'user';
 
   if (isUser) {
+    // Ses propres mots se copient aussi (demandé le 23 août 2026) : même
+    // bouton que côté réponse, à gauche de la bulle, révélé au survol.
     return (
-      <div className="flex justify-end mb-4">
-        <div
-          className="max-w-[85%] px-4 py-2.5 text-sm leading-relaxed"
-          style={{
-            background: 'var(--color-user-bubble)',
-            color: 'var(--color-user-bubble-text)',
-            borderRadius: 'var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          {message.content}
+      <div className="flex justify-end mb-4 group">
+        <div className="flex items-end gap-1.5 max-w-[85%]">
+          <CopyMessageButton content={message.content} />
+          <div
+            className="px-4 py-2.5 text-sm leading-relaxed"
+            style={{
+              background: 'var(--color-user-bubble)',
+              color: 'var(--color-user-bubble-text)',
+              borderRadius: 'var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {message.content}
+          </div>
         </div>
       </div>
     );

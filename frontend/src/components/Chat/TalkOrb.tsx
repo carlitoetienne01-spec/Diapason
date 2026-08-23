@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Check, Copy, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useLiveDictation } from '../../hooks/useLiveDictation';
 import type { AIState } from '../AIEntity/types';
@@ -54,6 +54,26 @@ interface TalkOrbProps {
   onStop: () => void;
   onInterrupt: () => void;
   onClose: () => void;
+}
+
+function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: string }) {
+  const [copie, setCopie] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(texte);
+        setCopie(true);
+        window.setTimeout(() => setCopie(false), 2000);
+      }}
+      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+      style={{ color: 'var(--color-text-tertiary)' }}
+      title={etiquette}
+      aria-label={etiquette}
+    >
+      {copie ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  );
 }
 
 export function TalkOrb({
@@ -390,7 +410,7 @@ export function TalkOrb({
               ) : (
                 <div
                   key={`m-${entree.at}`}
-                  className={`flex flex-col gap-1 ${
+                  className={`group flex flex-col gap-1 ${
                     entree.role === 'user' ? 'items-end' : 'items-start'
                   }`}
                 >
@@ -400,25 +420,34 @@ export function TalkOrb({
                   >
                     {entree.role === 'user' ? t('common.you') : 'Diapason'}
                   </span>
+                  {/* Ce qui s'est dit se copie aussi (23 août 2026) : le
+                      bouton vit du côté opposé à l'alignement de la bulle. */}
                   <div
-                    className="max-w-[85%] rounded-md px-3 py-2 leading-relaxed"
-                    style={
-                      entree.role === 'user'
-                        ? {
-                            background: 'var(--color-surface)',
-                            border: '1px solid var(--color-border)',
-                            color: 'var(--color-text)',
-                          }
-                        : {
-                            borderLeft: '2px solid var(--color-accent)',
-                            paddingLeft: '10px',
-                            color: 'var(--color-text)',
-                            opacity: entree.final ? 1 : 0.65,
-                          }
-                    }
+                    className={`flex items-end gap-1.5 max-w-[85%] ${
+                      entree.role === 'user' ? 'flex-row' : 'flex-row-reverse'
+                    }`}
                   >
-                    {entree.text}
-                    {!entree.final && <span className="animate-pulse">▍</span>}
+                    <CopieTranscript texte={entree.text} etiquette={t('chat.message.copy')} />
+                    <div
+                      className="rounded-md px-3 py-2 leading-relaxed"
+                      style={
+                        entree.role === 'user'
+                          ? {
+                              background: 'var(--color-surface)',
+                              border: '1px solid var(--color-border)',
+                              color: 'var(--color-text)',
+                            }
+                          : {
+                              borderLeft: '2px solid var(--color-accent)',
+                              paddingLeft: '10px',
+                              color: 'var(--color-text)',
+                              opacity: entree.final ? 1 : 0.65,
+                            }
+                      }
+                    >
+                      {entree.text}
+                      {!entree.final && <span className="animate-pulse">▍</span>}
+                    </div>
                   </div>
                 </div>
               ),
