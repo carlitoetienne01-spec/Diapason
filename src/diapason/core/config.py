@@ -1442,6 +1442,20 @@ class HeartbeatConfig:
 
 
 @dataclass(slots=True)
+class ReflexionConfig:
+    """Le brouillon-critique des questions analytiques (server/reflexion.py).
+
+    ``model`` vide = le modèle du tour se relit lui-même ; un nom de modèle
+    ("qwen3:14b") fait monter ces tours-là en gamme. Choisir un modèle qui
+    COHABITE en mémoire avec celui du quotidien, sinon chaque question
+    analytique évince le modèle de la voix et tout le monde attend.
+    """
+
+    enabled: bool = True
+    model: str = ""
+
+
+@dataclass(slots=True)
 class RoutinesConfig:
     """Named cron routines catalog (ROUTINES.json)."""
 
@@ -1784,6 +1798,7 @@ class DiapasonConfig:
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
+    reflexion: ReflexionConfig = field(default_factory=ReflexionConfig)
     routines: RoutinesConfig = field(default_factory=RoutinesConfig)
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
     sessions: SessionConfig = field(default_factory=SessionConfig)
@@ -2078,6 +2093,7 @@ def load_config(path: Optional[Path] = None) -> DiapasonConfig:
             "sandbox",
             "scheduler",
             "heartbeat",
+            "reflexion",
             "routines",
             "workflow",
             "sessions",

@@ -1082,12 +1082,30 @@ async def _handle_stream(
                     # seule une parole sans demande en est dispensée.
                     token_iter = None
                 else:
-                    token_iter = engine.stream(
-                        messages,
-                        model=model,
-                        temperature=req.temperature,
-                        max_tokens=req.max_tokens,
-                    )
+                    # Les questions analytiques passent par le brouillon-
+                    # critique (server/reflexion.py) : silence le temps d'un
+                    # premier jet, puis la version relue arrive en flux —
+                    # éventuellement d'un modèle plus grand ([reflexion]).
+                    from diapason.server import reflexion as _reflexion
+
+                    if _reflexion.est_activee(app_config) and _reflexion.meriter_reflexion(
+                        query_text
+                    ):
+                        token_iter = _reflexion.repondre_en_reflechissant(
+                            engine,
+                            _reflexion.modele_de_reflexion(app_config, model),
+                            messages,
+                            temperature=req.temperature,
+                            max_tokens=req.max_tokens,
+                            modele_de_secours=model,
+                        )
+                    else:
+                        token_iter = engine.stream(
+                            messages,
+                            model=model,
+                            temperature=req.temperature,
+                            max_tokens=req.max_tokens,
+                        )
 
             if token_iter is None:
                 # Chemin outillé : mêmes jetons, au même rythme, mais le
