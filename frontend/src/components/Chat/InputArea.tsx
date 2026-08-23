@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Square, Paperclip, Search } from 'lucide-react';
+import { Send, Square, Paperclip, Brain } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId } from '../../lib/store';
 import { streamChat, streamResearch } from '../../lib/sse';
@@ -889,7 +889,8 @@ export function InputArea() {
             onClick={() => setDeepResearch(!deepResearch)}
             disabled={streamState.isStreaming}
             aria-pressed={deepResearch}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+            aria-label={t('common.deepResearch')}
+            className="inline-flex items-center justify-center size-7 rounded-full transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
             style={{
               background: deepResearch ? 'var(--color-accent-subtle)' : 'transparent',
               border: `1px solid ${deepResearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -897,8 +898,7 @@ export function InputArea() {
             }}
             title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
           >
-            <Search size={12} />
-            {t('common.deepResearch')}
+            <Brain size={15} strokeWidth={1.75} />
           </button>
           <div className="flex-1" />
           <ContextRing draftLength={input.length} />
