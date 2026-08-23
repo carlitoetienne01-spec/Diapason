@@ -285,9 +285,14 @@ def _ensure_identity_prompt(
             cfg = load_config()
 
         from diapason.prompt.builder import SystemPromptBuilder
+        from diapason.prompt.regles_ecrites import habiller_pour_le_chat
 
+        # La voix a ses règles orales (oral_prompt.py) ; le chat a les
+        # siennes — même identité, manière propre à l'écrit (23 août 2026).
         builder = SystemPromptBuilder(
-            agent_template=cfg.agent.default_system_prompt or "",
+            agent_template=habiller_pour_le_chat(
+                cfg.agent.default_system_prompt or ""
+            ),
             memory_files_config=getattr(cfg, "memory_files", None),
             system_prompt_config=getattr(cfg, "system_prompt", None),
         )
