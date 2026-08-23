@@ -63,6 +63,8 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "open_anything",
     "app_search",
     "notes_write",
+    "reminders_write",
+    "calendar_add",
     "screen_describe",
     "calculator",
 )

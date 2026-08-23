@@ -50,6 +50,8 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # « des fois mes mains ne sont pas libres ». Ouvrir ne suffit pas.
     "app_search",
     "notes_write",
+    "reminders_write",
+    "calendar_add",
     "succes_delete_task",
     "succes_delete_item",
     "succes_delete_continuity",
