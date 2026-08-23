@@ -14,21 +14,25 @@ import pytest
 
 from diapason.desktop.app_index import MacAppIndex
 
+# (nom sur disque, nom affiché en français lu dans le bundle — ou None)
 _INSTALLEES = (
-    "TV",
-    "Music",
-    "System Settings",
-    "Calendar",
-    "Maps",
-    "Preview",
-    "Podcasts",
-    "VoiceMemos",
-    "Phone",
-    "Terminal",
-    "QuickTime Player",
-    "Safari",
-    "Photo Booth",
-    "Visual Studio Code",
+    ("TV", None),
+    ("Music", "Musique"),
+    ("System Settings", "Réglages Système"),
+    ("Calendar", "Calendrier"),
+    ("Maps", "Plans"),
+    ("Preview", "Aperçu"),
+    ("Podcasts", "Podcasts"),
+    ("VoiceMemos", "Dictaphone"),
+    ("Phone", "Téléphone"),
+    ("Terminal", None),
+    ("QuickTime Player", None),
+    ("Safari", None),
+    ("Photo Booth", None),
+    ("Visual Studio Code", None),
+    ("Chess", "Échecs"),
+    ("Activity Monitor", "Moniteur d’activité"),
+    ("Finder", None),
 )
 
 
@@ -117,7 +121,14 @@ class TestCommandesVocales:
         monkeypatch.setattr(
             APP_INDEX,
             "_scan",
-            staticmethod(lambda: ("Mail", "ChatGPT", "Xcode", "TV")),
+            staticmethod(
+                lambda: (
+                    ("Mail", None),
+                    ("ChatGPT", None),
+                    ("Xcode", None),
+                    ("TV", None),
+                )
+            ),
         )
         APP_INDEX.refresh()
         yield
@@ -151,3 +162,34 @@ class TestCommandesVocales:
         a = parse_voice_command("ouvre youtube")
         assert a.kind == "open_uri"
         assert "youtube" in a.target
+
+class TestNomsAffiches:
+    """Le nom FRANÇAIS que le Finder montre — « Échecs » est Chess.app.
+
+    Mesuré le 23 août 2026 : vingt-trois noms affichés sur quatre-vingt-sept
+    étaient injoignables — un quart du Mac. Une table écrite à la main ne
+    gagne jamais cette course ; le bundle porte le nom, on le lit.
+    """
+
+    def test_le_nom_affiche_trouve_l_application(self, index):
+        assert index.lookup("Échecs") == "Chess"
+        assert index.lookup("échecs") == "Chess"
+
+    def test_l_apostrophe_typographique_rencontre_la_droite(self, index):
+        """macOS écrit « Moniteur d'activité » avec ' ; la voix dicte '."""
+        assert index.lookup("moniteur d'activité") == "Activity Monitor"
+
+    def test_l_article_parle_tombe_naturellement(self, index):
+        assert index.lookup("le Finder") == "Finder"
+
+    def test_apres_l_audit_complet_le_vrai_disque_repond(self):
+        """Sur la machine réelle : les cas rapportés comme injoignables."""
+        from diapason.desktop.app_index import APP_INDEX
+
+        APP_INDEX.refresh()
+        for parle, attendu in (
+            ("le dictionnaire", "Dictionary"),
+            ("les raccourcis", "Shortcuts"),
+            ("aide-mémoire", "Stickies"),
+        ):
+            assert APP_INDEX.lookup(parle) == attendu
