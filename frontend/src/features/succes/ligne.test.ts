@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   construireStations,
+  estDoubleClic,
   etapeVoisine,
   linkifier,
   stationCourante,
@@ -74,5 +75,17 @@ describe('etapeVoisine', () => {
   it('s’arrête net aux extrémités', () => {
     expect(etapeVoisine('e1', taches, -1)).toBeNull();
     expect(etapeVoisine('e3', taches, 1)).toBeNull();
+  });
+});
+
+describe('estDoubleClic', () => {
+  it('deux clics rapprochés sur la même station valent édition', () => {
+    expect(estDoubleClic({ id: 's1', a: 1000 }, 's1', 1400)).toBe(true);
+  });
+
+  it('trop lent, ou sur une autre station : simple clic', () => {
+    expect(estDoubleClic({ id: 's1', a: 1000 }, 's1', 1460)).toBe(false);
+    expect(estDoubleClic({ id: 's1', a: 1000 }, 's2', 1100)).toBe(false);
+    expect(estDoubleClic({ id: '', a: 0 }, 's1', 100)).toBe(false);
   });
 });

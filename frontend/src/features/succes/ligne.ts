@@ -82,3 +82,24 @@ export function etapeVoisine(
   const voisin = racines[i + sens];
   return voisin ? voisin.id : null;
 }
+
+/**
+ * Le double-clic MAISON : deux clics sur la même station en moins de 450 ms
+ * valent édition. L'événement dblclick natif n'arrivait pas dans le WebView
+ * de l'app de bureau (constaté le 23 août 2026 — le formulaire ne s'ouvrait
+ * jamais) ; on ne dépend donc plus du seuil du moteur, ni de la vitesse de
+ * la main.
+ */
+export interface ClicPrecedent {
+  id: string;
+  a: number;
+}
+
+export function estDoubleClic(
+  precedent: ClicPrecedent,
+  id: string,
+  maintenant: number,
+  seuilMs = 450,
+): boolean {
+  return precedent.id === id && maintenant - precedent.a < seuilMs;
+}

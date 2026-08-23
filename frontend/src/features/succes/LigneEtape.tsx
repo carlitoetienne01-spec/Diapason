@@ -10,10 +10,17 @@
 // sans changer d'écran. Échap annule l'édition, puis ferme la ligne.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
 
 import type { SuccesTask } from './types';
-import { construireStations, etapeVoisine, linkifier, stationCourante } from './ligne';
+import {
+  construireStations,
+  estDoubleClic,
+  etapeVoisine,
+  linkifier,
+  stationCourante,
+  type ClicPrecedent,
+} from './ligne';
 
 interface Props {
   etape: SuccesTask;
@@ -82,7 +89,10 @@ export function LigneEtape({
   // Le simple clic attend 220 ms avant de plier/déplier : sinon le premier
   // clic d'un double-clic replie la carte ouverte au-dessus, tout remonte,
   // et le second clic édite LA MAUVAISE station (vu au banc d'essai).
+  // Le double-clic est détecté MAISON (deux clics < 450 ms) : le dblclick
+  // natif n'arrivait jamais dans le WebView de l'app de bureau.
   const clicEnAttente = useRef<number | null>(null);
+  const clicPrecedent = useRef<ClicPrecedent>({ id: '', a: 0 });
   useEffect(
     () => () => {
       if (clicEnAttente.current) window.clearTimeout(clicEnAttente.current);
@@ -284,12 +294,24 @@ export function LigneEtape({
                         if (enEdition === tache.id) return;
                         if (clicEnAttente.current)
                           window.clearTimeout(clicEnAttente.current);
+                        const maintenant = performance.now();
+                        if (
+                          estDoubleClic(clicPrecedent.current, tache.id, maintenant)
+                        ) {
+                          clicPrecedent.current = { id: '', a: 0 };
+                          clicEnAttente.current = null;
+                          commencerEdition(tache);
+                          return;
+                        }
+                        clicPrecedent.current = { id: tache.id, a: maintenant };
                         clicEnAttente.current = window.setTimeout(() => {
                           clicEnAttente.current = null;
                           setDeplie((d) => (d === tache.id ? null : tache.id));
                         }, 220);
                       }}
                       onDoubleClick={() => {
+                        // Filet natif — quand le moteur veut bien l'envoyer.
+                        if (enEdition === tache.id) return;
                         if (clicEnAttente.current) {
                           window.clearTimeout(clicEnAttente.current);
                           clicEnAttente.current = null;
@@ -389,6 +411,21 @@ export function LigneEtape({
                           {ouverte && (
                             <div className="pb-2 flex flex-col gap-2">
                               {tache.notes ? <Note texte={tache.notes} /> : null}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (clicEnAttente.current) {
+                                    window.clearTimeout(clicEnAttente.current);
+                                    clicEnAttente.current = null;
+                                  }
+                                  commencerEdition(tache);
+                                }}
+                                className="self-start flex items-center gap-1 text-[12px] cursor-pointer"
+                                style={{ color: 'var(--color-text-tertiary)' }}
+                              >
+                                <Pencil size={12} /> modifier
+                              </button>
                               {ajoutSous === tache.id ? (
                                 <div
                                   className="flex gap-2"
