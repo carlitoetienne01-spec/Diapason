@@ -31,6 +31,7 @@ import {
 } from '../features/succes/api';
 import { ProjectTreeView } from '../features/succes/ProjectTreeView';
 import { GenealogyView } from '../features/succes/GenealogyView';
+import { LigneEtape } from '../features/succes/LigneEtape';
 import { MindMapView } from '../features/succes/MindMapView';
 import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
@@ -581,6 +582,10 @@ export function SuccesProjectsPage() {
   // Les cinq vues exposent onSelect ; sans destinataire, chips « faisable »,
   // titres de cartes et clics simples étaient des boutons morts.
   const [inspected, setInspected] = useState<SuccesTask | null>(null);
+  // La Ligne (23 août 2026) : cliquer une étape RACINE de l'arbre déroule ses
+  // cours en stations de métro. On garde l'id, pas l'objet — après chaque
+  // enregistrement, l'étape affichée se relit dans les tâches fraîches.
+  const [etapeLigneId, setEtapeLigneId] = useState<string | null>(null);
   // La famille arbre (arbre, carte) garde un onglet « Édition » : la vue
   // spécialisée montre et crée, l'édition renomme et supprime.
   const [treeEditMode, setTreeEditMode] = useState(false);
@@ -644,6 +649,7 @@ export function SuccesProjectsPage() {
     setSelectedId(null);
     setEdges([]);
     setInspected(null);
+    setEtapeLigneId(null);
     toast.info('Ce projet n’existe plus.', {
       description: 'Il a été supprimé ailleurs — retour à la liste.',
     });
@@ -934,7 +940,11 @@ export function SuccesProjectsPage() {
 
           {structure === 'tree' && !treeEditMode ? (
             <GenealogyView
-              onSelect={setInspected}
+              onSelect={(task) => {
+                // Une racine s'ouvre en Ligne ; une branche garde l'aperçu.
+                if (!task.parentTaskId) setEtapeLigneId(task.id);
+                else setInspected(task);
+              }}
               tasks={projectTasks}
               levelLabels={levelLabels}
               saving={saving}
@@ -1173,6 +1183,45 @@ export function SuccesProjectsPage() {
               )}
             </>
           )}
+          {(() => {
+            // L'étape se RELIT à chaque rendu : après un enregistrement, la
+            // superposition reflète les tâches fraîches, pas une photo figée.
+            const etapeLigne = etapeLigneId
+              ? projectTasks.find((t) => t.id === etapeLigneId) ?? null
+              : null;
+            return etapeLigne ? (
+              <LigneEtape
+                etape={etapeLigne}
+                tasks={projectTasks}
+                saving={saving}
+                onClose={() => setEtapeLigneId(null)}
+                onNavigate={setEtapeLigneId}
+                onToggle={async (task) => {
+                  await refreshAfter(
+                    () => setSuccesTaskDone(task.id, !task.done),
+                    task.done ? 'Station rouverte' : 'Station franchie',
+                  );
+                }}
+                onUpdate={async (taskId, patch) => {
+                  await refreshAfter(
+                    () => updateSuccesTask(taskId, patch),
+                    'Étape mise à jour',
+                  );
+                }}
+                onCreate={async ({ title, parentTaskId }) => {
+                  await refreshAfter(
+                    () =>
+                      createSuccesTask({
+                        title,
+                        projectId: selected.id,
+                        parentTaskId,
+                      }),
+                    'Sous-étape ajoutée',
+                  );
+                }}
+              />
+            ) : null;
+          })()}
           {inspected && (
             <aside
               className="fixed right-6 bottom-6 z-30 w-80 rounded-2xl p-4 shadow-xl"
