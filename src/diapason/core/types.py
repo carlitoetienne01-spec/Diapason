@@ -134,8 +134,8 @@ class ToolResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-# Bump when token-counting methodology changes so the leaderboard can
-# distinguish entries computed under different rules.
+# Bump when token-counting methodology changes so the local savings
+# dashboard can distinguish entries computed under different rules.
 #   v1 = original (Ollama prompt_eval_count, may under-count due to KV cache)
 #   v2 = full prompt token count, no KV-cache assumption, system prompt
 #        always counted
@@ -188,11 +188,10 @@ class TelemetryRecord:
     tokens_per_joule: float = 0.0
     # Version tag for the token-counting methodology used when this record
     # was produced. `None` (= legacy) means the record predates per-record
-    # versioning; the leaderboard aggregator filters those out to avoid
+    # versioning; the savings aggregator filters those out to avoid
     # mixing pre-fix and post-fix records in the same per-token efficiency
-    # metric — they were the dominant source of the bimodal Wh/token
-    # distribution on the public leaderboard. New records always write
-    # `TOKEN_COUNTING_VERSION` from `server/savings.py`.
+    # metric. New records always write `TOKEN_COUNTING_VERSION` from
+    # `server/savings.py`.
     token_counting_version: Optional[int] = None
     mining_session_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)

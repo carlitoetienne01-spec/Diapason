@@ -118,7 +118,3 @@ are then orphaned.
   in [`src/diapason/telemetry/`](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/telemetry). It
   never leaves the machine and is controlled by `[telemetry]` (not
   `[analytics]`) in `config.toml`.
-- The leaderboard / contest opt-in (`OptInModal.tsx`) is a separate,
-  voluntary feature that publicly shares your energy and savings on
-  the Diapason leaderboard. It is **not** the same as analytics and
-  requires explicit opt-in with a display name and email.

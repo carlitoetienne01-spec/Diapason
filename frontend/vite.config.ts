@@ -12,9 +12,6 @@ const pkgVersion = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 ).version as string;
 
-// VITE_SUPABASE_ANON_KEY is intentionally NOT required here: a missing key
-// disables the savings leaderboard at runtime (see src/lib/supabase.ts) rather
-// than failing the build, so the package/app stays publishable without it.
 const isTauriBuild =
   process.env.npm_lifecycle_event === 'build:tauri' ||
   Boolean(process.env.TAURI_ENV_PLATFORM);

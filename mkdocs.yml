@@ -127,8 +127,6 @@ markdown_extensions:
   - pymdownx.tilde
 
 extra_javascript:
-  - javascripts/leaderboard-config.js
-  - javascripts/leaderboard.js
   - https://cdn.jsdelivr.net/npm/@docsearch/js@3
   - javascripts/docsearch-init.js
 
@@ -203,7 +201,6 @@ nav:
       - Lightning Actions: user-guide/lightning-actions.md
       - Security: user-guide/security.md
       - LLM-guided spec search: user-guide/llm-guided-spec-search.md
-  - Leaderboard: leaderboard.md
   - Roadmap: development/roadmap.md
   - Development:
       - Mining: development/mining.md

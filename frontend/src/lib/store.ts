@@ -33,12 +33,26 @@ export interface AgentEvent {
 
 const CONVERSATIONS_KEY = 'diapason-conversations';
 const SETTINGS_KEY = 'diapason-settings';
-const OPTIN_KEY = 'diapason-optin';
-const OPTIN_NAME_KEY = 'diapason-display-name';
-const OPTIN_EMAIL_KEY = 'diapason-email';
-const OPTIN_ANONID_KEY = 'diapason-anon-id';
-const OPTIN_SEEN_KEY = 'diapason-optin-seen';
 const SYSTEM_PANEL_KEY = 'diapason-system-panel-open';
+
+/** Drop leftover contest / leaderboard keys from older installs. */
+function wipeLegacyLeaderboardKeys() {
+  if (typeof localStorage === 'undefined') return;
+  for (const key of [
+    'diapason-optin',
+    'diapason-display-name',
+    'diapason-email',
+    'diapason-anon-id',
+    'diapason-optin-seen',
+    'diapason-desktop-optin',
+    'diapason-desktop-display-name',
+    'diapason-desktop-email',
+    'diapason-desktop-anon-id',
+  ]) {
+    localStorage.removeItem(key);
+  }
+}
+wipeLegacyLeaderboardKeys();
 
 interface ConversationStore {
   version: 1;
@@ -199,14 +213,6 @@ interface AppState {
   // System panel
   systemPanelOpen: boolean;
 
-  // Opt-in sharing
-  optInEnabled: boolean;
-  optInDisplayName: string;
-  optInEmail: string;
-  optInAnonId: string;
-  optInModalSeen: boolean;
-  optInModalOpen: boolean;
-
   // Actions: conversations
   loadConversations: () => void;
   importOverlayConversation: () => Promise<void>;
@@ -279,11 +285,6 @@ interface AppState {
   addAgentEvent: (event: AgentEvent) => void;
   clearAgentEvents: () => void;
 
-  // Actions: opt-in sharing
-  setOptIn: (enabled: boolean, displayName: string, email: string) => void;
-  setOptInModalOpen: (open: boolean) => void;
-  markOptInModalSeen: () => void;
-
   // Logs
   logEntries: LogEntry[];
   addLogEntry: (entry: LogEntry) => void;
@@ -331,13 +332,6 @@ export const useAppStore = create<AppState>((set, get) => {
     commandPaletteOpen: false,
     sidebarOpen: true,
     systemPanelOpen: loadSystemPanelOpen(),
-
-    optInEnabled: localStorage.getItem(OPTIN_KEY) === 'true',
-    optInDisplayName: localStorage.getItem(OPTIN_NAME_KEY) || '',
-    optInEmail: localStorage.getItem(OPTIN_EMAIL_KEY) || '',
-    optInAnonId: localStorage.getItem(OPTIN_ANONID_KEY) || crypto.randomUUID(),
-    optInModalSeen: localStorage.getItem(OPTIN_SEEN_KEY) === 'true',
-    optInModalOpen: false,
 
     // ── Conversations ───────────────────────────────────────────────
 
@@ -657,22 +651,6 @@ export const useAppStore = create<AppState>((set, get) => {
     // ── Model loading ───────────────────────────────────────────────
     modelLoading: false,
     setModelLoading: (loading) => set({ modelLoading: loading }),
-
-    // ── Opt-in sharing ──────────────────────────────────────────────
-
-    setOptIn: (enabled: boolean, displayName: string, email: string) => {
-      const anonId = get().optInAnonId;
-      localStorage.setItem(OPTIN_KEY, String(enabled));
-      localStorage.setItem(OPTIN_NAME_KEY, displayName);
-      localStorage.setItem(OPTIN_EMAIL_KEY, email);
-      localStorage.setItem(OPTIN_ANONID_KEY, anonId);
-      set({ optInEnabled: enabled, optInDisplayName: displayName, optInEmail: email });
-    },
-    setOptInModalOpen: (open: boolean) => set({ optInModalOpen: open }),
-    markOptInModalSeen: () => {
-      localStorage.setItem(OPTIN_SEEN_KEY, 'true');
-      set({ optInModalSeen: true });
-    },
   };
 });
 

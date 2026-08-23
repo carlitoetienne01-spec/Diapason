@@ -31,7 +31,7 @@ This directory holds the hero screenshot for each Showcase entry in `docs/showca
 
 - Model names ("llama3.1:8b", "qwen2.5:14b") — they're informative
 - Timestamps — proves the screenshot is recent
-- Dollar amounts on the leaderboard — the whole point
+- Dollar amounts on the savings dashboard — the whole point
 - Emoji reactions, your own first name, your own avatar
 
 ## Placeholder PNGs

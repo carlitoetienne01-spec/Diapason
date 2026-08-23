@@ -22,7 +22,7 @@ It's the first thing I read on my phone, while I'm still in bed. The brief used 
 
 ## Why it's nice
 
-- **Costs me nothing per month.** It runs on a Mac mini in my closet. Same prompt-volume on the OpenAI API would be `~$18/month` based on the leaderboard's estimates.
+- **Costs me nothing per month.** It runs on a Mac mini in my closet. Same prompt-volume on the OpenAI API would be `~$18/month` based on the local savings estimates.
 - **Nothing leaves my house.** My inbox, my Slack DMs, my calendar — Diapason reads them locally and writes the digest locally. The only network call is the Discord webhook to my own private server.
 - **It learns my taste.** Over a few weeks Diapason figured out that PR titles starting with `chore:` aren't worth surfacing and that I don't want to see calendar holds I created myself. The summarizer has a `MEMORY.md` it updates when I react with 👎 to a bullet.
 

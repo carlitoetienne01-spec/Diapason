@@ -29,8 +29,6 @@
 >
 > **[Paper](https://arxiv.org/abs/2605.17172)**
 >
-> **[Leaderboard](https://carlitoetienne01-spec.github.io/Diapason/leaderboard/)**
->
 > **[Roadmap](https://carlitoetienne01-spec.github.io/Diapason/development/roadmap/)**
 
 ## Why Diapason?

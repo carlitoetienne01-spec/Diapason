@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { LEADERBOARD_ENABLED, SUPABASE_ANON_KEY, SUPABASE_URL } from '../../lib/supabase';
 import { useTranslation } from '../../i18n/useTranslation';
 
 // ---------------------------------------------------------------------------
@@ -250,37 +249,6 @@ function fmtDuration(hours: number): string {
 // Component
 // ---------------------------------------------------------------------------
 
-const BLOCKED_WORDS = new Set([
-  "ass","asshole","bastard","bitch","bollocks","bullshit","cock","crap",
-  "cunt","damn","dick","douchebag","fag","faggot","fuck","fucker","fucking",
-  "goddamn","hell","jackass","jerk","motherfucker","nigga","nigger","penis",
-  "piss","prick","pussy","retard","shit","slut","twat","vagina","wanker","whore",
-]);
-
-function isProfane(text: string): boolean {
-  const words = text.toLowerCase().replace(/[^a-z]/g, ' ').split(/\s+/);
-  for (const w of words) {
-    if (BLOCKED_WORDS.has(w)) return true;
-    for (const b of BLOCKED_WORDS) {
-      if (w.includes(b)) return true;
-    }
-  }
-  return false;
-}
-
-const OPTIN_KEY = 'diapason-desktop-optin';
-const OPTIN_NAME_KEY = 'diapason-desktop-display-name';
-const OPTIN_EMAIL_KEY = 'diapason-desktop-email';
-const OPTIN_ANONID_KEY = 'diapason-desktop-anon-id';
-
-function getOrCreateAnonId(): string {
-  const stored = localStorage.getItem(OPTIN_ANONID_KEY);
-  if (stored) return stored;
-  const id = crypto.randomUUID();
-  localStorage.setItem(OPTIN_ANONID_KEY, id);
-  return id;
-}
-
 const REFRESH_INTERVAL_MS = 5000;
 
 export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
@@ -288,15 +256,6 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
   const [data, setData] = useState<SavingsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const [optInEnabled, setOptInEnabled] = useState(localStorage.getItem(OPTIN_KEY) === 'true');
-  const [displayName, setDisplayName] = useState(localStorage.getItem(OPTIN_NAME_KEY) || '');
-  const [emailStored, setEmailStored] = useState(localStorage.getItem(OPTIN_EMAIL_KEY) || '');
-  const [nameInput, setNameInput] = useState(localStorage.getItem(OPTIN_NAME_KEY) || '');
-  const [emailInput, setEmailInput] = useState(localStorage.getItem(OPTIN_EMAIL_KEY) || '');
-  const [nameError, setNameError] = useState('');
-  const [showOptIn, setShowOptIn] = useState(false);
-  const anonId = getOrCreateAnonId();
 
   const fetchData = useCallback(async () => {
     try {
@@ -317,65 +276,6 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
     const timer = setInterval(fetchData, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [fetchData]);
-
-  // Share savings to Supabase when opted in and data changes. Skipped entirely
-  // when no anon key was built in (leaderboard disabled).
-  useEffect(() => {
-    if (!LEADERBOARD_ENABLED || !optInEnabled || !displayName || !data) return;
-    const dollarSavings = data.per_provider.reduce((s, p) => s + p.total_cost, 0);
-    const energySaved = data.per_provider.reduce((s, p) => s + (p.energy_wh || 0), 0);
-    const flopsSaved = data.per_provider.reduce((s, p) => s + (p.flops || 0), 0);
-    invoke('submit_savings', {
-      supabaseUrl: SUPABASE_URL,
-      supabaseKey: SUPABASE_ANON_KEY,
-      payload: {
-        anon_id: anonId,
-        display_name: displayName,
-        email: emailStored,
-        total_calls: data.total_calls,
-        total_tokens: data.total_tokens,
-        dollar_savings: dollarSavings,
-        energy_wh_saved: energySaved,
-        flops_saved: flopsSaved,
-        token_counting_version: data.token_counting_version ?? 1,
-      },
-    }).catch(() => {});
-  }, [data, optInEnabled, displayName, anonId]);
-
-  const handleOptInJoin = () => {
-    const trimmed = nameInput.trim();
-    const trimmedEmail = emailInput.trim();
-    if (!trimmed || trimmed.length < 2 || trimmed.length > 30) {
-      setNameError(t('dashboard.savings.share.errorNameLength'));
-      return;
-    }
-    if (isProfane(trimmed)) {
-      setNameError(t('dashboard.savings.share.errorNameRejected'));
-      return;
-    }
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setNameError(t('dashboard.savings.share.errorEmailInvalid'));
-      return;
-    }
-    setNameError('');
-    localStorage.setItem(OPTIN_KEY, 'true');
-    localStorage.setItem(OPTIN_NAME_KEY, trimmed);
-    localStorage.setItem(OPTIN_EMAIL_KEY, trimmedEmail);
-    setOptInEnabled(true);
-    setDisplayName(trimmed);
-    setEmailStored(trimmedEmail);
-    setShowOptIn(false);
-  };
-
-  const handleOptOut = () => {
-    localStorage.removeItem(OPTIN_KEY);
-    localStorage.removeItem(OPTIN_NAME_KEY);
-    localStorage.removeItem(OPTIN_EMAIL_KEY);
-    setOptInEnabled(false);
-    setDisplayName('');
-    setEmailStored('');
-    setShowOptIn(false);
-  };
 
   if (!loading && !data && !error) {
     return (
@@ -417,147 +317,6 @@ export function SavingsDashboard({ apiUrl }: { apiUrl: string }) {
       </div>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
-
-      {/* Leaderboard Opt-in */}
-      {showOptIn ? (
-        <div style={{ ...styles.statCard, marginBottom: 24, padding: 20 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: colors.text }}>
-            {t('dashboard.savings.share.title')}
-          </div>
-          <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 14, lineHeight: 1.5 }}>
-            {t('dashboard.savings.share.description')}
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <input
-              type="text"
-              value={nameInput}
-              onChange={(e) => { setNameInput(e.target.value); setNameError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleOptInJoin(); }}
-              placeholder={t('dashboard.savings.share.namePlaceholder')}
-              maxLength={30}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: colors.bg,
-                border: `1px solid ${colors.border}`,
-                color: colors.text,
-                fontSize: 14,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>
-              {t('common.email')} <span style={{ color: colors.red }}>*</span>
-              <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>
-                {t('dashboard.savings.share.emailPrivacy')}
-              </span>
-            </div>
-            <input
-              type="email"
-              value={emailInput}
-              onChange={(e) => { setEmailInput(e.target.value); setNameError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleOptInJoin(); }}
-              placeholder={t('common.emailPlaceholder')}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: colors.bg,
-                border: `1px solid ${colors.border}`,
-                color: colors.text,
-                fontSize: 14,
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-            {nameError && (
-              <div style={{ fontSize: 12, color: colors.red, marginTop: 4 }}>{nameError}</div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={handleOptInJoin}
-              style={{
-                padding: '8px 18px',
-                borderRadius: 8,
-                background: colors.accent,
-                color: '#1e1e2e',
-                fontWeight: 600,
-                fontSize: 13,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {t('dashboard.savings.share.join')}
-            </button>
-            <button
-              onClick={() => setShowOptIn(false)}
-              style={{
-                padding: '8px 14px',
-                borderRadius: 8,
-                background: 'transparent',
-                color: colors.textMuted,
-                fontSize: 13,
-                border: `1px solid ${colors.border}`,
-                cursor: 'pointer',
-              }}
-            >
-              {t('common.cancel')}
-            </button>
-            {optInEnabled && (
-              <button
-                onClick={handleOptOut}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  background: 'transparent',
-                  color: colors.red,
-                  fontSize: 13,
-                  border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
-                  marginLeft: 'auto',
-                }}
-              >
-                {t('dashboard.savings.share.optOut')}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            onClick={() => setShowOptIn(true)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              background: optInEnabled ? 'rgba(166,227,161,0.15)' : colors.surface,
-              border: optInEnabled ? `1px solid ${colors.green}` : `1px solid ${colors.border}`,
-              color: optInEnabled ? colors.green : colors.textMuted,
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            {optInEnabled
-              ? t('dashboard.savings.share.sharingAs', { name: displayName })
-              : t('dashboard.savings.share.title')}
-          </button>
-          <a
-            href="https://carlitoetienne01-spec.github.io/Diapason/leaderboard"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 12, color: colors.accent, textDecoration: 'none' }}
-          >
-            {t('dashboard.savings.viewLeaderboard')} ↗
-          </a>
-        </div>
-      )}
 
       {/* Stat cards row */}
       <div style={styles.statsGrid}>

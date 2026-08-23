@@ -32,7 +32,7 @@ These are stories from people who use Diapason day to day. Each entry shows the 
 
     ---
 
-    A leaderboard that tells you exactly how much you saved by running locally — and reminds you that none of your prompts ever left your house.
+    A local dashboard that tells you exactly how much you saved by running on-device — and reminds you that none of your prompts ever left your house.
 
     [:octicons-arrow-right-24: See it](cost-savings.md)
 

@@ -695,12 +695,12 @@ def _handle_direct(
         #     tokens only; no energy meter, no version stamp).
         #
         # The doubled count was the dominant driver of the bimodal
-        # Wh/token distribution on the public leaderboard.
+        # Wh/token distribution on the local savings dashboard.
         #
         # The fix below is NOT "unwrap and call instrumented_generate":
         # that would have replaced "doubled records" with "every
         # request emits only a bare record with no energy / no version",
-        # which the leaderboard's `current_methodology_only=True` filter
+        # which the savings `current_methodology_only=True` filter
         # would then drop entirely. Instead, when the engine is already
         # an InstrumentedEngine, skip the wrapper and call `generate`
         # directly — InstrumentedEngine publishes the full per-record

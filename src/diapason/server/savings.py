@@ -110,14 +110,13 @@ def compute_savings(
     by summing each turn's full prompt — which counts the system prompt
     N times for an N-turn conversation — so the fallback turned the FLOPs
     and energy estimates into N×-too-high numbers. That was the dominant
-    contributor to the bimodal Wh/token distribution on the leaderboard.
+    contributor to the bimodal Wh/token distribution on the local
+    savings dashboard.
 
     Conservative behaviour now: when the KV-cache-aware count is
     missing, treat `prompt_tokens_evaluated` as 0 — so the FLOPs/energy
     denominator becomes just `completion_tokens`. That under-estimates
-    rather than over-estimates compute, and (intentionally) cascades
-    into the leaderboard's `isMissingTelemetry` UI render so those
-    rows show `—` instead of a misleading zero.
+    rather than over-estimates compute.
     """
     if prompt_tokens_evaluated <= 0:
         prompt_tokens_evaluated = 0

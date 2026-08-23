@@ -1,13 +1,12 @@
-"""Regression tests for compute_savings — leaderboard correctness.
+"""Regression tests for compute_savings — local dashboard correctness.
 
-The leaderboard pipeline feeds aggregated telemetry sums into
-`compute_savings`, which in turn feeds the public leaderboard. The old
-behaviour fell back from `prompt_tokens_evaluated` to `prompt_tokens`
-when the KV-cache-aware count was missing — but routes.py aggregates
-by summing per-turn full prompts, which counts the system prompt N
-times in an N-turn conversation. The fallback was the dominant
-contributor to the bimodal Wh/token distribution observed on the public
-leaderboard. These tests pin the conservative fallback behaviour.
+The savings pipeline feeds aggregated telemetry sums into
+`compute_savings` for the on-device dashboard. The old behaviour fell
+back from `prompt_tokens_evaluated` to `prompt_tokens` when the
+KV-cache-aware count was missing — but routes.py aggregates by summing
+per-turn full prompts, which counts the system prompt N times in an
+N-turn conversation. These tests pin the conservative fallback
+behaviour.
 """
 
 from __future__ import annotations

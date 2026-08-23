@@ -1,16 +1,16 @@
 ---
 title: Track Your Savings
-description: A leaderboard that tells you exactly how much you saved by running locally
+description: A local dashboard that tells you exactly how much you saved by running on-device
 ---
 
-# 💸 Track Your Savings — the leaderboard that makes local-first feel real
+# 💸 Track Your Savings — the local dashboard that makes local-first feel real
 
 <figure markdown>
-  ![Diapason savings leaderboard with personal row highlighted](../assets/showcase/cost-savings.png){ .showcase-screenshot loading=lazy }
-  <figcaption>The public leaderboard. The bar on the right is what a month of my Diapason usage would have cost on the cloud — measured per-query, not estimated.</figcaption>
+  ![Diapason savings dashboard](../assets/showcase/cost-savings.png){ .showcase-screenshot loading=lazy }
+  <figcaption>The on-device savings dashboard. The comparison is what a month of Diapason usage would have cost on the cloud — measured per-query, not estimated. Nothing is uploaded.</figcaption>
 </figure>
 
-Diapason tracks every inference call you make — the tokens, the latency, the GPU energy — and computes what that same call *would have cost* on OpenAI, Anthropic, Google, and Bedrock. There's a public leaderboard at **[/leaderboard](../leaderboard.md)** where anyone running Diapason can opt in and watch their savings rack up.
+Diapason tracks every inference call you make — the tokens, the latency, the GPU energy — and computes what that same call *would have cost* on OpenAI, Anthropic, Google, and Bedrock. Those numbers stay on your machine.
 
 My current month is roughly:
 
@@ -31,8 +31,6 @@ The dollar number is the hook. The bottom row is the actual reason I run Diapaso
 
 ## How I set this up
 
-You don't, really — it's on by default. Every `diapason ask`, `diapason serve` request, and channel-routed message is metered by the [telemetry system](../telemetry.md). To opt your savings into the public leaderboard:
-
-→ **[Leaderboard guide](../leaderboard.md)** — one command to opt in, one command to opt out. Telemetry is local-only by default.
+You don't, really — metering is on by default and stays local. Every `diapason ask`, `diapason serve` request, and channel-routed message is recorded by the [telemetry system](../telemetry.md).
 
 → **[Telemetry overview](../telemetry.md)** — what's measured, where it's stored, and how to inspect it yourself with `diapason telemetry`.
