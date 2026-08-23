@@ -19,9 +19,40 @@ _SPOKEN_DOT_EXT = re.compile(
 )
 
 
+# Les GÉNÉRIQUES DE SOUS-TITRES que Whisper hallucine sur le silence.
+#
+# Whisper a appris sur des sous-titres de vidéos ; face au souffle du micro en
+# fin de phrase, il « entend » ce qu'il a le plus vu à cet endroit : le crédit
+# des sous-titreurs. Rapporté le 23 août 2026 — « à chaque fin de phrase, ça
+# me dit : Sous-titres par la communauté d'Amara.org ». La parade première est
+# le filtre de silence (vad_filter) ; celle-ci raye ce qui passerait quand
+# même. Les motifs exigent la FORMULE, jamais un mot seul : dicter une phrase
+# qui parle réellement d'Amara reste possible.
+_WHISPER_CREDITS_RE = re.compile(
+    r"(?:"
+    r"sous[- ]?titr\w*[^.!?\n]*?amara\.org[^.!?\n]*"
+    r"|sous[- ]?titrage\s+(?:société\s+)?radio[- ]?canada[^.!?\n]*"
+    r"|sous[- ]?titrage\s+st'?\s?501"
+    r"|[^.!?\n]*soustitreur\.com[^.!?\n]*"
+    r"|subtitles?\s+by\s+the\s+amara\.org\s+community"
+    r"|merci\s+d['’ ]?\s*avoir\s+regardé\s+(?:cette\s+vidéo|la\s+vidéo)[^.!?\n]*"
+    r"|thanks?\s+for\s+watching[^.!?\n]*"
+    r"|n['’]oubliez\s+pas\s+de\s+(?:vous\s+)?abonner[^.!?\n]*"
+    r")[.!?]?",
+    re.IGNORECASE,
+)
+
+
+def strip_whisper_credits(text: str) -> str:
+    """Raye les génériques hallucinés, puis nettoie la ponctuation orpheline."""
+    nettoye = _WHISPER_CREDITS_RE.sub("", text or "")
+    nettoye = re.sub(r"\s{2,}", " ", nettoye)
+    return nettoye.strip(" \t\n,;")
+
+
 def polish_dictation(raw: str, *, aggressive: bool = True) -> str:
     """Clean raw STT text: drop fillers, fix spacing, capitalize sentences."""
-    text = (raw or "").strip()
+    text = strip_whisper_credits(raw)
     if not text:
         return ""
 

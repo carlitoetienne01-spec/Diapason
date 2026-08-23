@@ -314,6 +314,27 @@ class FasterWhisperBackend(SpeechBackend):
                         },
                     }
                 )
+            else:
+                # La DICTÉE aussi filtre le silence. Elle envoyait la phrase
+                # avec sa queue de souffle, et Whisper — nourri de sous-titres
+                # de vidéos — y hallucinait le générique des sous-titreurs :
+                # « Sous-titres par la communauté d'Amara.org » à chaque fin
+                # de phrase (rapporté le 23 août 2026). Couper le silence
+                # avant le modèle tue l'hallucination à la source, et
+                # transcrit moins d'audio par-dessus le marché. Le rembourrage
+                # est plus généreux qu'en temps réel : ici la précision prime,
+                # aucun bord de mot ne doit tomber avec le silence.
+                kwargs.update(
+                    {
+                        "vad_filter": True,
+                        "vad_parameters": {
+                            "threshold": 0.5,
+                            "min_speech_duration_ms": 200,
+                            "min_silence_duration_ms": 300,
+                            "speech_pad_ms": 250,
+                        },
+                    }
+                )
 
             samples = _decode_pcm_wav(audio) if format.lstrip(".") == "wav" else None
             if samples is not None:
