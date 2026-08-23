@@ -29,6 +29,36 @@ WHISPER_RATE = 16_000
 LANGUAGE_LATCH_CONFIDENCE = 0.85
 LANGUAGE_LATCH_SECONDS = 2.0
 
+# Le garde-fou anti-hallucination, aux seuils canoniques de Whisper : un
+# segment n'est rejeté que si les DEUX signaux s'accordent — le modèle
+# doute que ce soit de la parole ET sa transcription est peu sûre. En
+# environnement bruyant, un « Merci. » fantôme apparaissait dans le chat
+# vocal (23 août 2026) : du bruit jugé parole par le VAD, transcrit en
+# formule de politesse apprise dans les sous-titres de vidéos. La parole
+# réelle, même un vrai « Merci. », garde un avg_logprob bien au-dessus
+# de ce plancher.
+HALLUCINATION_NO_SPEECH_MIN = 0.6
+HALLUCINATION_LOGPROB_MAX = -1.0
+
+
+def est_hallucination(no_speech_prob: object, avg_logprob: object) -> bool:
+    """Vrai quand un segment a toutes les marques d'une hallucination.
+
+    Les valeurs passent par float() : un attribut absent ou exotique vaut
+    « pas d'alarme » — on ne raye jamais de la parole sur un doute technique.
+    """
+
+    def _nombre(valeur: object, defaut: float) -> float:
+        try:
+            return float(valeur)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return defaut
+
+    return (
+        _nombre(no_speech_prob, 0.0) > HALLUCINATION_NO_SPEECH_MIN
+        and _nombre(avg_logprob, 0.0) < HALLUCINATION_LOGPROB_MAX
+    )
+
 
 def _decode_pcm_wav(audio: bytes):
     """Decode 16 kHz mono 16-bit PCM WAV to a float32 array, or None.
@@ -386,7 +416,16 @@ class FasterWhisperBackend(SpeechBackend):
             if confident and seconds >= LANGUAGE_LATCH_SECONDS:
                 self._detected = getattr(info, "language", None)
 
-        # Build result
+        # Build result — sans les segments qui ont toutes les marques d'une
+        # hallucination (voir est_hallucination pour le pourquoi).
+        segments_list = [
+            seg
+            for seg in segments_list
+            if not est_hallucination(
+                getattr(seg, "no_speech_prob", 0.0) or 0.0,
+                getattr(seg, "avg_logprob", 0.0) or 0.0,
+            )
+        ]
         text = "".join(seg.text for seg in segments_list).strip()
         segments = [
             Segment(

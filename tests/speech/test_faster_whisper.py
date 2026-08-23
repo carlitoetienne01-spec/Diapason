@@ -419,3 +419,45 @@ class TestLanguageLatchGuards:
         # nor be at its mercy.
         backend = FasterWhisperBackend(model_size="base", language="fr")
         assert backend._effective_language(None) == "fr"
+
+
+def _segment(text, no_speech, logprob):
+    seg = MagicMock()
+    seg.text = text
+    seg.start = 0.0
+    seg.end = 1.0
+    seg.no_speech_prob = no_speech
+    seg.avg_logprob = logprob
+    return seg
+
+
+def test_le_merci_fantome_est_raye():
+    """Bruit transcrit « Merci. » (23 août 2026) : les deux signaux d'alarme
+    s'accordent, le segment tombe ; la vraie phrase à côté survit."""
+    mock_model = MagicMock()
+    mock_info = MagicMock(language="fr", language_probability=0.95, duration=2.0)
+    mock_model.transcribe.return_value = (
+        [_segment(" Bonjour Diapason", 0.1, -0.3), _segment(" Merci.", 0.92, -1.6)],
+        mock_info,
+    )
+    with patch(
+        "diapason.speech.faster_whisper.WhisperModel",
+        return_value=mock_model,
+    ):
+        from diapason.speech.faster_whisper import FasterWhisperBackend
+
+        backend = FasterWhisperBackend(model_size="base", device="cpu")
+        result = backend.transcribe(b"fake audio bytes")
+        assert result.text == "Bonjour Diapason"
+        assert [s.text for s in result.segments] == ["Bonjour Diapason"]
+
+
+def test_un_seul_signal_ne_suffit_pas_a_rejeter():
+    """Un vrai « Merci. » clairement prononcé garde un bon logprob ; douter
+    de la parole sans douter de la transcription (ou l'inverse) ne raye rien."""
+    from diapason.speech.faster_whisper import est_hallucination
+
+    assert est_hallucination(0.92, -1.6) is True
+    assert est_hallucination(0.92, -0.4) is False  # transcription sûre
+    assert est_hallucination(0.2, -1.6) is False  # parole probable
+    assert est_hallucination(0.0, 0.0) is False
