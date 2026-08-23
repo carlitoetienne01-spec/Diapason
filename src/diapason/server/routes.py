@@ -1301,12 +1301,28 @@ async def _context_length_of(model_id: str) -> Optional[int]:
     return None
 
 
+def _est_modele_embedding(nom: str) -> bool:
+    """Vrai pour les modèles d'embeddings — ils ne savent pas discuter.
+
+    Constaté le 23 août 2026 : l'app de bureau choisit le PREMIER modèle de
+    cette liste comme modèle de chat par défaut, et Ollama trie ses modèles
+    par date de modification — nomic-embed-text est passé en tête et chaque
+    « Salut » répondait « does not support chat », HTTP 400.
+    """
+    bas = (nom or "").lower()
+    return "embed" in bas or bas.startswith("bge-")
+
+
 @router.get("/v1/models")
 async def list_models(request: Request) -> ModelListResponse:
     """List locally installed models (Ollama).
 
     Cloud models are not included here — they live in the Cloud Models tab
-    of the UI and are selected there, not from this endpoint.
+    of the UI and are selected there, not from this endpoint. Embedding
+    models are not included either — offering a model that cannot chat in
+    a chat-model picker is a loaded footgun (see _est_modele_embedding).
+    The server's own default model comes first: it is what the desktop app
+    picks when nothing is selected yet.
     """
     from diapason.server.cloud_router import is_cloud_model, list_local_models
 
@@ -1315,9 +1331,15 @@ async def list_models(request: Request) -> ModelListResponse:
     # Fall back to direct Ollama query only when the engine returns nothing.
     engine = request.app.state.engine
     all_ids = await asyncio.to_thread(engine.list_models)
-    model_ids = [m for m in all_ids if not is_cloud_model(m)]
+    model_ids = [
+        m for m in all_ids if not is_cloud_model(m) and not _est_modele_embedding(m)
+    ]
     if not model_ids:
-        model_ids = await list_local_models()
+        model_ids = [m for m in await list_local_models() if not _est_modele_embedding(m)]
+
+    defaut = str(getattr(request.app.state, "model", "") or "")
+    if defaut in model_ids:
+        model_ids = [defaut, *[m for m in model_ids if m != defaut]]
 
     lengths = await asyncio.gather(*(_context_length_of(mid) for mid in model_ids))
     return ModelListResponse(
