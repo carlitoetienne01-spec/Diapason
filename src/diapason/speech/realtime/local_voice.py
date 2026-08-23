@@ -284,6 +284,62 @@ def french_now(now=None) -> str:
     return f"{day} {now.day} {month} {now.year}, {now.hour} h {now.minute:02d}"
 
 
+def french_today(now=None) -> str:
+    """La date seule, sans l'heure — stable toute la journée.
+
+    L'horloge à la minute près, recollée au prompt à chaque appel, invalidait
+    le cache de préfixe d'Ollama dès que la minute changeait : les six mille
+    jetons de prompt et de schémas d'outils étaient relus en entier, plusieurs
+    secondes par tour. La voix dispose maintenant de ``current_time`` : quand
+    l'heure compte, le modèle la LIT — c'est plus juste qu'une heure figée au
+    début du tour, et le préfixe, lui, ne bouge plus qu'à minuit.
+    """
+    import datetime
+
+    if now is None:
+        now = datetime.datetime.now()
+    day = _FRENCH_DAYS[now.weekday()]
+    month = _FRENCH_MONTHS[now.month - 1]
+    return f"{day} {now.day} {month} {now.year}"
+
+
+def _prewarm_prefix(model: str, system: str, tools_schema: list) -> None:
+    """Fait lire le préfixe (système + outils) au modèle, en tâche de fond."""
+    import threading
+
+    def _lire() -> None:
+        try:
+            from diapason.core.local_mode import assert_may_leave
+
+            assert_may_leave("the voice prefix prewarm", destination=_ollama_base())
+            dated = (
+                f"{system}\n\nDate actuelle : {french_today()}. "
+                "Pour l'heure exacte, appelle l'outil current_time."
+            )
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "system", "content": dated}],
+                "stream": False,
+                "think": False,
+                "keep_alive": "30m",
+                "options": {"num_predict": 1},
+            }
+            if tools_schema:
+                payload["tools"] = tools_schema
+            request = urllib.request.Request(
+                f"{_ollama_base()}/api/chat",
+                json.dumps(payload).encode(),
+                {"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=120):
+                pass
+            logger.debug("voice prefix prewarmed")
+        except Exception:  # noqa: BLE001 - le confort ne casse rien
+            logger.debug("voice prefix prewarm failed", exc_info=True)
+
+    threading.Thread(target=_lire, daemon=True, name="voice-prewarm").start()
+
+
 def _ollama_base() -> str:
     from diapason.core.env import get as env_get
 
@@ -444,10 +500,16 @@ def _default_llm(
                 assert_may_leave(
                     "the realtime voice transcript", destination=_ollama_base()
                 )
-                # The clock is appended per CALL, not baked at warm-up: a
-                # session lives for hours, and yesterday's timestamp is worse
-                # than none.
-                dated = f"{system}\n\nDate et heure actuelles : {french_now()}."
+                # La date est relue à chaque APPEL — une session vit des
+                # heures et la date d'hier est pire que rien — mais l'HEURE
+                # n'y est plus : elle changeait chaque minute et brûlait le
+                # cache de préfixe (six mille jetons relus par tour). L'heure
+                # exacte vient de l'outil current_time, qui dit le présent
+                # au lieu d'un instantané pris au début du tour.
+                dated = (
+                    f"{system}\n\nDate actuelle : {french_today()}. "
+                    "Pour l'heure exacte, appelle l'outil current_time."
+                )
                 payload: dict[str, Any] = {
                     "model": model,
                     "messages": [{"role": "system", "content": dated}] + messages,
@@ -689,6 +751,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
                             openai_tools_schema, self._allowed_tools
                         )
                     self._llm = _default_llm(self._model, self._system_prompt(), schema)
+                    # Préchauffer le PRÉFIXE, pas seulement le modèle : le
+                    # premier tour d'une session payait ~2,4 s à relire prompt
+                    # système et schémas d'outils (~6 000 jetons). On les fait
+                    # lire MAINTENANT, pendant que Whisper et Kokoro chargent
+                    # et que l'interface affiche déjà « préparation ». En fil
+                    # détaché : un préchauffage raté ne doit jamais retarder
+                    # ni faire échouer la session.
+                    _prewarm_prefix(self._model, self._system_prompt(), schema)
                 if self._tool_executor is None and self._enable_tools:
                     from diapason.speech.realtime.tools import (
                         execute_voice_tool,

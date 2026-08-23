@@ -41,6 +41,14 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "succes_workspace",
     "succes_continuity",
     "succes_finances",
+    # La suppression, demandée le 23 août 2026 — dans Diapason SEULEMENT.
+    # Les trois outils déclarent requires_confirmation : l'ordre part à la
+    # cloche d'approbation et attend le clic de l'utilisateur (45 s à la
+    # voix). Supprimer un fichier du disque, envoyer, exécuter du code
+    # restent hors de portée de la voix, quoi qu'on lui dise.
+    "succes_delete_task",
+    "succes_delete_item",
+    "succes_delete_continuity",
 )
 
 # (module, [(registry_key, attribute_name), ...])

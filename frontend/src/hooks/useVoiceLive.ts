@@ -23,9 +23,12 @@ export interface TranscriptLine {
   role: 'user' | 'assistant';
   text: string;
   final: boolean;
+  /** Rang d'arrivée, partagé avec les outils : le fil se lit dans l'ordre vécu. */
+  at: number;
 }
 
 export interface ToolEventLine {
+  at: number;
   name: string;
   ok: boolean;
   detail: string;
@@ -70,6 +73,9 @@ export function useVoiceLive() {
   const [provider, setProvider] = useState<VoiceLiveProvider>('local');
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolEventLine[]>([]);
+  // Paroles et outils arrivent par deux canaux : sans rang commun, le fil
+  // affiché ne peut pas respecter l'ordre réellement vécu.
+  const seqRef = useRef(0);
   const [statusLabel, setStatusLabel] = useState('Idle');
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -321,6 +327,7 @@ export function useVoiceLive() {
                 if (last && last.role === role && !last.final) {
                   const next = [...prev];
                   next[next.length - 1] = {
+                    at: last.at,
                     role,
                     // `replace` distingue les deux protocoles. Gemini et
                     // OpenAI envoient des deltas, qu'on concatène. La
@@ -336,9 +343,15 @@ export function useVoiceLive() {
                   };
                   return next;
                 }
+                seqRef.current += 1;
                 return [
                   ...prev,
-                  { role, text: msg.text || '', final: !!msg.final },
+                  {
+                    role,
+                    text: msg.text || '',
+                    final: !!msg.final,
+                    at: seqRef.current,
+                  },
                 ];
               });
               break;
@@ -348,9 +361,11 @@ export function useVoiceLive() {
               setStatusLabel('Listening · speak');
               break;
             case 'tool':
+              seqRef.current += 1;
               setToolEvents((prev) => [
                 ...prev.slice(-11),
                 {
+                  at: seqRef.current,
                   name: msg.name || 'tool',
                   ok: !!msg.ok,
                   detail: msg.detail || '',

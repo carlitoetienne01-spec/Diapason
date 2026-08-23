@@ -76,6 +76,33 @@ export function TalkOrb({
   onClose,
 }: TalkOrbProps) {
   const { t, locale } = useTranslation();
+
+  // Le FIL : paroles et outils fusionnés par rang d'arrivée — l'ordre vécu,
+  // pas deux listes empilées.
+  const fil = [
+    ...transcripts.map((l) => ({ kind: 'msg' as const, ...l })),
+    ...toolEvents.map((e) => ({ kind: 'tool' as const, ...e })),
+  ].sort((a, b) => a.at - b.at);
+
+  // Suivre la conversation sans arracher la main : on ne défile
+  // automatiquement que si le lecteur était déjà en bas. Remonter relire
+  // détache le suivi ; revenir en bas le raccroche.
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const suiviRef = useRef(true);
+  const surDefilement = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    suiviRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
+  const derniere = fil[fil.length - 1];
+  const dernierTexte = derniere
+    ? `${fil.length}:${derniere.kind === 'msg' ? derniere.text : derniere.name}`
+    : '';
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el && suiviRef.current) el.scrollTop = el.scrollHeight;
+  }, [dernierTexte]);
+
   const active = state === 'listening' || state === 'speaking' || state === 'connecting';
 
   // Captions come from Apple's on-device recogniser rather than from the voice
@@ -336,26 +363,68 @@ export function TalkOrb({
 
         {(transcripts.length > 0 || toolEvents.length > 0) && (
           <div
-            className="max-h-40 overflow-y-auto px-4 py-3 text-sm space-y-2"
+            ref={feedRef}
+            onScroll={surDefilement}
+            className="max-h-80 overflow-y-auto px-4 py-4 text-sm space-y-3"
             style={{
               borderTop: '1px solid var(--color-border)',
               color: 'var(--color-text-secondary)',
+              scrollBehavior: 'smooth',
             }}
           >
-            {toolEvents.slice(-4).map((ev, i) => (
-              <div key={`tool-${i}`} style={{ color: ev.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
-                {t('chat.talk.tool')} · {ev.name}{ev.detail ? ` — ${ev.detail}` : ''}
-              </div>
-            ))}
-            {transcripts.slice(-8).map((line, i) => (
-              <div key={`${line.role}-${i}`}>
-                <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                  {line.role === 'user' ? t('common.you') : 'Diapason'}
-                </span>
-                {': '}
-                {line.text}
-              </div>
-            ))}
+            {fil.map((entree) =>
+              entree.kind === 'tool' ? (
+                <div key={`t-${entree.at}`} className="flex justify-center">
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-[11px] tracking-wide"
+                    style={{
+                      border: '1px solid var(--color-border)',
+                      color: entree.ok
+                        ? 'var(--color-success)'
+                        : 'var(--color-error)',
+                      background: 'var(--color-surface)',
+                    }}
+                  >
+                    {entree.ok ? '✓' : '✗'} {entree.name}
+                    {entree.detail ? ` — ${entree.detail}` : ''}
+                  </span>
+                </div>
+              ) : (
+                <div
+                  key={`m-${entree.at}`}
+                  className={`flex flex-col gap-1 ${
+                    entree.role === 'user' ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <span
+                    className="text-[10px] uppercase tracking-[0.14em]"
+                    style={{ color: 'var(--color-text-tertiary)' }}
+                  >
+                    {entree.role === 'user' ? t('common.you') : 'Diapason'}
+                  </span>
+                  <div
+                    className="max-w-[85%] rounded-md px-3 py-2 leading-relaxed"
+                    style={
+                      entree.role === 'user'
+                        ? {
+                            background: 'var(--color-surface)',
+                            border: '1px solid var(--color-border)',
+                            color: 'var(--color-text)',
+                          }
+                        : {
+                            borderLeft: '2px solid var(--color-accent)',
+                            paddingLeft: '10px',
+                            color: 'var(--color-text)',
+                            opacity: entree.final ? 1 : 0.65,
+                          }
+                    }
+                  >
+                    {entree.text}
+                    {!entree.final && <span className="animate-pulse">▍</span>}
+                  </div>
+                </div>
+              ),
+            )}
           </div>
         )}
 

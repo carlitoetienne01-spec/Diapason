@@ -270,7 +270,14 @@ class OpenAnythingTool(BaseTool):
             category="system",
             timeout_seconds=20.0,
             required_capabilities=["tool:invoke"],
-            requires_confirmation=True,
+            # Ouvrir est VISIBLE et RÉVERSIBLE : l'application apparaît à
+            # l'écran, se referme d'un geste, et c'est l'utilisateur qui l'a
+            # demandé de vive voix. Gater ce geste derrière la cloche coûtait
+            # un clic et jusqu'à quarante-cinq secondes d'attente à chaque
+            # « ouvre-moi… » — mesuré le 23 août 2026 : « Apple TV » refusée
+            # faute de clic. La confirmation reste pour ce qui écrit, envoie
+            # ou supprime.
+            requires_confirmation=False,
         )
 
     def execute(self, **params: Any) -> ToolResult:
@@ -386,7 +393,14 @@ class OpenUriTool(BaseTool):
             category="system",
             timeout_seconds=15.0,
             required_capabilities=["tool:invoke"],
-            requires_confirmation=True,
+            # Ouvrir est VISIBLE et RÉVERSIBLE : l'application apparaît à
+            # l'écran, se referme d'un geste, et c'est l'utilisateur qui l'a
+            # demandé de vive voix. Gater ce geste derrière la cloche coûtait
+            # un clic et jusqu'à quarante-cinq secondes d'attente à chaque
+            # « ouvre-moi… » — mesuré le 23 août 2026 : « Apple TV » refusée
+            # faute de clic. La confirmation reste pour ce qui écrit, envoie
+            # ou supprime.
+            requires_confirmation=False,
         )
 
     def execute(self, **params: Any) -> ToolResult:

@@ -76,14 +76,33 @@ class TestTrousseVocale:
         assert "memory_manage" in DEFAULT_VOICE_TOOL_IDS
         assert "user_profile_manage" in DEFAULT_VOICE_TOOL_IDS
 
-    def test_elle_ne_sait_toujours_pas_supprimer(self):
-        """Une phrase mal comprise ne doit pas pouvoir effacer une tâche."""
+    def test_la_suppression_succes_est_offerte_mais_jamais_libre(self):
+        """Demandé le 23 août 2026 : supprimer à la voix, dans Diapason
+        seulement. Le garde-fou n'est plus l'absence de l'outil mais la
+        cloche : chacun des trois déclare requires_confirmation, et une
+        phrase mal comprise s'arrête donc à l'accord, pas à l'acte."""
+        # Le conftest vide ToolRegistry et l'import mis en cache ne le
+        # repeuple pas : on inscrit les classes soi-même, comme partout.
+        from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
+        from diapason.tools.succes_continuity import SuccesDeleteContinuityTool
+        from diapason.tools.succes_tasks import SuccesDeleteTaskTool
+        from diapason.tools.succes_workspace import SuccesDeleteItemTool
+
+        classes = {
+            "succes_delete_task": SuccesDeleteTaskTool,
+            "succes_delete_item": SuccesDeleteItemTool,
+            "succes_delete_continuity": SuccesDeleteContinuityTool,
+        }
+        for nom, classe in classes.items():
+            assert nom in DEFAULT_VOICE_TOOL_IDS
+            assert classe().spec.requires_confirmation is True, (
+                f"{nom} sans confirmation : une phrase mal comprise effacerait"
+            )
+
+    def test_le_disque_et_l_envoi_de_code_restent_hors_de_portee(self):
+        """« Supprimer » ne vaut QUE dans Diapason — jamais sur le disque."""
         from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
 
-        for dangereux in (
-            "succes_delete_task",
-            "succes_delete_item",
-            "shell_exec",
-            "file_write",
-        ):
+        interdits = ("shell_exec", "file_write", "apply_patch", "docker_shell_exec")
+        for dangereux in interdits:
             assert dangereux not in DEFAULT_VOICE_TOOL_IDS
