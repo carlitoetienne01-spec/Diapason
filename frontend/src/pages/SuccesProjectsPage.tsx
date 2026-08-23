@@ -36,6 +36,7 @@ import { MindMapView } from '../features/succes/MindMapView';
 import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
 import { CycleWheel } from '../features/succes/CycleWheel';
+import { StructureGlyph } from '../features/succes/StructureGlyph';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import type {
@@ -303,7 +304,16 @@ function folderPalette(tone: string, isLight: boolean) {
  * sheet, the light bleeding under the flap and the tint inside the glass stay
  * physically consistent.
  */
-function ProjectFolderVisual({ color, height = 'h-72' }: { color: string; height?: string }) {
+function ProjectFolderVisual({
+  color,
+  height = 'h-72',
+  structure,
+}: {
+  color: string;
+  height?: string;
+  /** Pictogramme au survol — grille seulement. */
+  structure?: SuccesProjectStructure;
+}) {
   const isLight = useIsLightTheme();
   const tone = readableColor(color || FALLBACK_COLOR, isLight);
   const palette = folderPalette(tone, isLight);
@@ -312,6 +322,8 @@ function ProjectFolderVisual({ color, height = 'h-72' }: { color: string; height
   const ref = (name: string) => `${uid}-${name}`;
   const [tilt, setTilt] = useState({ x: 0, y: 0, glareX: 50, glareY: 42 });
   const [active, setActive] = useState(false);
+  const showGlyph = Boolean(structure) && active;
+  const glyphInk = luminance(tone) > 0.42 ? 'rgba(15,23,42,0.78)' : 'rgba(255,255,255,0.92)';
 
   const followPointer = (event: PointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -559,6 +571,30 @@ function ProjectFolderVisual({ color, height = 'h-72' }: { color: string; height
             transition: active ? 'none' : 'background 300ms ease',
           }}
         />
+
+        {structure && (
+          <svg
+            viewBox={ART_VIEWBOX}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            style={{
+              transform: 'translateZ(24px)',
+              opacity: showGlyph ? 1 : 0,
+              transition: 'opacity 220ms ease',
+            }}
+            aria-hidden="true"
+          >
+            <defs>
+              <clipPath id={ref('glyphClip')}>
+                <path d={FOLDER_PATH} />
+              </clipPath>
+            </defs>
+            <g clipPath={`url(#${ref('glyphClip')})`}>
+              <svg x="98" y="86" width="48" height="50" viewBox="0 0 48 48">
+                <StructureGlyph structure={structure} stroke={glyphInk} />
+              </svg>
+            </g>
+          </svg>
+        )}
       </div>
     </div>
   );
@@ -1456,7 +1492,11 @@ export function SuccesProjectsPage() {
                   className="w-full cursor-pointer bg-transparent border-0 p-0 text-inherit"
                   aria-label={`Ouvrir ${project.name}`}
                 >
-                  <ProjectFolderVisual color={project.color || FALLBACK_COLOR} height="h-[188px]" />
+                  <ProjectFolderVisual
+                    color={project.color || FALLBACK_COLOR}
+                    height="h-[188px]"
+                    structure={project.structure || 'flat'}
+                  />
                   <h2
                     className="max-w-full truncate text-sm font-medium text-center px-2 pb-1"
                     title={project.name}
