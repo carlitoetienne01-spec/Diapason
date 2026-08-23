@@ -23,7 +23,10 @@ _BROWSE_RE = re.compile(
     re.IGNORECASE,
 )
 _SEARCH_RE = re.compile(
-    r"^\s*(?:search(?:\s+for)?|cherche(?:r)?|google|duckduckgo|bing)\s+"
+    # « recherche-moi des jeux » est la formulation NATURELLE à l'oral — elle
+    # tombait dans le vide, le motif ne connaissant que « cherche » nu.
+    r"^\s*(?:search(?:\s+for)?|(?:re)?cherche(?:r|z)?(?:[- ]moi)?"
+    r"|trouve(?:z)?(?:[- ]moi)?|google|duckduckgo|bing)\s+"
     r"(?P<query>.+?)\s*$",
     re.IGNORECASE,
 )
@@ -162,9 +165,27 @@ def parse_voice_command(text: str) -> VoiceAction:
 
     search_m = _SEARCH_RE.match(raw)
     if search_m:
-        return VoiceAction(
-            kind="search", target=search_m.group("query").strip(), raw=raw
+        query = search_m.group("query").strip().strip(".!?")
+        # « cherche des jeux SUR L'APP STORE » : la destination est dans la
+        # phrase. Sans cette découpe, la recherche partait sur Google — la
+        # mauvaise fenêtre s'ouvrait et l'utilisateur voyait un échec.
+        porte = re.match(
+            r"^(?P<quoi>.+?)\s+(?:sur|dans)\s+"
+            r"(?:l['’]\s*|le\s+|la\s+|mon\s+|mes\s+)?(?P<ou>.+)$",
+            query,
+            re.IGNORECASE,
         )
+        if porte:
+            from diapason.tools.app_actions import _normaliser_app
+
+            if _normaliser_app(porte.group("ou")) is not None:
+                return VoiceAction(
+                    kind="app_search",
+                    target=porte.group("quoi").strip(),
+                    raw=raw,
+                    extra={"app": porte.group("ou").strip()},
+                )
+        return VoiceAction(kind="search", target=query, raw=raw)
 
     for pattern in (_OPEN_RE, _BROWSE_RE):
         m = pattern.match(raw)
@@ -248,6 +269,19 @@ def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
 
     if action.kind == "open_uri":
         result = OpenUriTool().execute(uri=action.target)
+        return {
+            "handled": True,
+            "kind": action.kind,
+            "target": action.target,
+            "success": result.success,
+            "detail": result.content,
+        }
+    if action.kind == "app_search":
+        from diapason.tools.app_actions import AppSearchTool
+
+        result = AppSearchTool().execute(
+            app=str((action.extra or {}).get("app") or ""), query=action.target
+        )
         return {
             "handled": True,
             "kind": action.kind,

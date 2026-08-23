@@ -148,6 +148,7 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.app_actions  # noqa: F401
     import diapason.tools.voice_mac_tools  # noqa: F401
 except ImportError:
     pass

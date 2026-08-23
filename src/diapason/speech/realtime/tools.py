@@ -46,6 +46,10 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # cloche d'approbation et attend le clic de l'utilisateur (45 s à la
     # voix). Supprimer un fichier du disque, envoyer, exécuter du code
     # restent hors de portée de la voix, quoi qu'on lui dise.
+    # Agir DANS une application — chercher, écrire — demandé le 23 août 2026 :
+    # « des fois mes mains ne sont pas libres ». Ouvrir ne suffit pas.
+    "app_search",
+    "notes_write",
     "succes_delete_task",
     "succes_delete_item",
     "succes_delete_continuity",

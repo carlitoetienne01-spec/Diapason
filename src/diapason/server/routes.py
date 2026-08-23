@@ -61,6 +61,8 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "web_search",
     "find_files",
     "open_anything",
+    "app_search",
+    "notes_write",
     "screen_describe",
     "calculator",
 )

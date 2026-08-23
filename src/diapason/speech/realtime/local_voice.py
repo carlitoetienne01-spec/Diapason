@@ -720,6 +720,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # old lifecycle sent it before Kokoro/Whisper loaded, so a missing
         # optional dependency looked like a successful session and then died.
         # Warm under the shared lock first; later sessions reuse the models.
+        self._derniere_app_ouverte = ""
         self._warm_task = asyncio.get_running_loop().create_task(self._warm())
         if await self._warm_task:
             await self._queue.put(SessionEvent(kind="ready"))
@@ -1276,10 +1277,26 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not is_explicit_voice_command(text):
             return False
         action = parse_voice_command(text)
+        # L'ENCHAÎNEMENT, mains libres : « ouvre l'App Store » puis
+        # « recherche-moi des jeux » — sans redire où. Une recherche nue qui
+        # suit une ouverture s'applique à ce qui vient d'être ouvert, pas à
+        # Google. C'est le scénario dicté mot pour mot le 23 août 2026.
+        if action.kind == "search" and self._derniere_app_ouverte:
+            from diapason.tools.app_actions import _normaliser_app
+
+            if _normaliser_app(self._derniere_app_ouverte) is not None:
+                from diapason.desktop.voice_commands import VoiceAction
+
+                action = VoiceAction(
+                    kind="app_search",
+                    target=action.target,
+                    raw=action.raw,
+                    extra={"app": self._derniere_app_ouverte},
+                )
         # ``open_anything`` is intentionally left to the regular tool path:
         # its target may be an app, file, folder or web page and a failed
         # deterministic guess must not swallow the model's richer resolver.
-        if action.kind not in {"focus_app", "open_uri", "search"}:
+        if action.kind not in {"focus_app", "open_uri", "search", "app_search"}:
             return False
 
         action_started = time.monotonic()
@@ -1296,6 +1313,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not result.get("handled"):
             return False
         success = bool(result.get("success"))
+        if success and action.kind == "focus_app":
+            self._derniere_app_ouverte = str(action.target or "")
         extra = action.extra or {}
         # A URL read aloud is noise; the human label travels in extra.
         target = str(
@@ -1314,7 +1333,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         )
         self._history.append({"role": "user", "content": text})
         spoken: List[str] = []
-        verb = "Je lance" if extra.get("play") else "J’ouvre"
+        if action.kind == "app_search":
+            verb = "Je cherche"
+            target = f"{action.target} dans {str(extra.get('app') or 'l’application')}"
+        else:
+            verb = "Je lance" if extra.get("play") else "J’ouvre"
         response = (
             f"{verb} {target}."
             if success
