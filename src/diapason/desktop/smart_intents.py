@@ -230,8 +230,12 @@ def parse_smart_intent(command: str) -> SmartIntent:
         # navigateur et joue-moi la chanson X » became a search for
         # "sur mon navigateur et joue-moi la chanson x". Strip the padding
         # first; the patterns then see the sentence the user meant.
+        # « depuis mon navigateur » avait échappé à la liste : la requête
+        # devenait littéralement « depuis mon navigateur » (23 août 2026).
         yt = re.sub(
-            r"\b(?:dans|sur)\s+(?:mon|ton|le|un)\s+navigateur\b", " ", low
+            r"\b(?:dans|sur|depuis|via|avec)\s+(?:mon|ton|le|un)\s+navigateur\b",
+            " ",
+            low,
         )
         # « joue-moi » → « joue », mais seulement après un verbe de commande :
         # un titre comme « Laisse-moi » doit garder son -moi.
@@ -286,6 +290,19 @@ def parse_smart_intent(command: str) -> SmartIntent:
                     "music",
                     "song",
                 )
+                # « joue de la musique sur youtube » : le sujet ENTIER est
+                # fait de mots vides (« de la musique ») et la requête
+                # nettoyée est vide — mais l'intention, elle, est limpide.
+                # YouTube a une maison pour ça : YouTube Music.
+                if not q and action == "play" and re.search(
+                    r"\bmusi(?:que|c)\b", yt
+                ):
+                    return SmartIntent(
+                        kind=KIND_URL,
+                        url="https://music.youtube.com",
+                        confidence=0.9,
+                        reasoning="YouTube Music",
+                    )
                 # « mets la vidéo en pause sur youtube » must not PLAY a
                 # video titled "pause" — control words are not queries.
                 if q and (action != "play" or q not in _CONTROL_WORDS):
@@ -308,8 +325,18 @@ def parse_smart_intent(command: str) -> SmartIntent:
         )
 
     # --- Spotify ---
-    if "spotify" in low or re.search(
-        r"\b(?:écoute|ecoute|listen(?:\s+to)?|joue|play)\b.+\b(?:musique|music|song|chanson)\b",
+    if (
+        "spotify" in low
+        or re.search(
+            r"\b(?:écoute|ecoute|listen(?:\s+to)?|joue|play|mets?|lance)\b.+"
+            r"\b(?:musique|music|song|chanson)\b",
+            low,
+        )
+    ) and not re.search(
+        # « mets la musique en pause » est un ordre de contrôle, pas une
+        # envie de musique : il ne doit ni chercher « en pause » ni ouvrir
+        # l'application.
+        r"\b(?:pause|arr[êe]te|arrete|stop|coupe|[ée]teins)\b",
         low,
     ):
         # Search patterns come FIRST and each pattern carries its own
@@ -333,7 +360,7 @@ def parse_smart_intent(command: str) -> SmartIntent:
             ),
             (r"spotify\s+(?:joue|play)\s+(.+)", "play"),
             (r"spotify\s+(.+)", "search"),
-            (r"(?:joue|play|écoute|ecoute)\s+(.+)", "play"),
+            (r"(?:joue|play|écoute|ecoute|mets?|lance)\s+(.+)", "play"),
         ):
             m = re.search(pat, low, re.IGNORECASE)
             if m:
@@ -366,6 +393,16 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 confidence=0.88,
                 reasoning="Open Spotify app",
             )
+        # « Mets de la musique » tout court : pas de titre, pas de service —
+        # la requête nettoyée est vide mais l'envie est claire. On ouvre le
+        # juke-box plutôt que de répondre qu'on ne peut pas (23 août 2026,
+        # le chat répondait un refus à cette phrase).
+        return SmartIntent(
+            kind=KIND_APP,
+            app="Spotify",
+            confidence=0.85,
+            reasoning="De la musique, sans titre : on ouvre Spotify",
+        )
 
     # --- Amazon ---
     if "amazon" in low:

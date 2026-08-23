@@ -444,3 +444,33 @@ def test_titles_keep_their_own_moi():
     # « -moi » only strips after a COMMAND verb; it belongs to this title.
     intent = parse_smart_intent("joue Laisse-moi sur youtube")
     assert intent.query == "laisse-moi"
+
+
+class TestMusiqueGenerique:
+    """Constaté au chat le 23 août 2026 : « joue-moi de la musique sur
+    youtube depuis mon navigateur » cherchait littéralement « depuis mon
+    navigateur », et « met de la musique » se faisait répondre un refus."""
+
+    def test_depuis_mon_navigateur_est_du_remplissage(self):
+        intent = parse_smart_intent(
+            "Joue moi de la musique sur Youtube depuis mon navigateur"
+        )
+        assert intent.url == "https://music.youtube.com"
+
+    def test_de_la_musique_sur_youtube_ouvre_youtube_music(self):
+        intent = parse_smart_intent("joue de la musique sur youtube")
+        assert intent.url == "https://music.youtube.com"
+
+    def test_mets_de_la_musique_ouvre_le_juke_box(self):
+        for phrase in ("mets de la musique", "met de la musique", "lance de la musique"):
+            intent = parse_smart_intent(phrase)
+            assert intent.kind == "app" and intent.app == "Spotify", phrase
+
+    def test_un_vrai_titre_reste_une_lecture(self):
+        intent = parse_smart_intent("joue Papaoutai de Stromae sur youtube")
+        assert intent.action == "play"
+        assert intent.query == "papaoutai de stromae"
+
+    def test_la_pause_n_est_ni_une_recherche_ni_une_ouverture(self):
+        intent = parse_smart_intent("mets la musique en pause")
+        assert intent.kind not in {"spotify", "app"}
