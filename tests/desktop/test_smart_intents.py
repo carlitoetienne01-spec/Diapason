@@ -455,11 +455,25 @@ class TestMusiqueGenerique:
         intent = parse_smart_intent(
             "Joue moi de la musique sur Youtube depuis mon navigateur"
         )
-        assert intent.url == "https://music.youtube.com"
+        assert intent.kind == "youtube"
+        assert intent.action == "play_mix"
+        assert intent.query == "musique"
 
-    def test_de_la_musique_sur_youtube_ouvre_youtube_music(self):
+    def test_de_la_musique_sur_youtube_lance_la_radio(self):
+        # « Que ça joue, n'importe quelle musique » : l'intention est une
+        # lecture en radio, jamais une simple page d'accueil.
         intent = parse_smart_intent("joue de la musique sur youtube")
-        assert intent.url == "https://music.youtube.com"
+        assert intent.action == "play_mix"
+        assert intent.url == "https://music.youtube.com"  # le repli seulement
+
+    def test_la_radio_enchaine_les_titres(self):
+        from diapason.desktop.smart_intents import resolve_youtube_watch_url
+
+        page = '"videoRenderer": {"videoId": "abc123XYZ_-"'
+        url = resolve_youtube_watch_url("musique", fetch=lambda _u: page, mix=True)
+        assert url == "https://www.youtube.com/watch?v=abc123XYZ_-&list=RDabc123XYZ_-"
+        url = resolve_youtube_watch_url("musique", fetch=lambda _u: page)
+        assert url == "https://www.youtube.com/watch?v=abc123XYZ_-"
 
     def test_mets_de_la_musique_ouvre_le_juke_box(self):
         for phrase in ("mets de la musique", "met de la musique", "lance de la musique"):

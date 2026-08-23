@@ -162,6 +162,7 @@ def resolve_youtube_watch_url(
     # load. Losing the feature to save 2.5 s of worst case is a bad trade.
     timeout: float = 4.0,
     fetch=None,
+    mix: bool = False,
 ) -> str:
     """Top YouTube search hit as a watch URL, or "" when resolution fails.
 
@@ -192,7 +193,15 @@ def resolve_youtube_watch_url(
 
         m = _YT_TOP_RESULT.search(fetch(url))
         if m:
-            return "https://www.youtube.com/watch?v=" + m.group(1)
+            video = m.group(1)
+            if mix:
+                # La radio de YouTube : la liste RD<id> enchaîne des titres
+                # voisins sans fin — c'est « mets de la musique », pas
+                # « mets UNE musique » (demandé le 23 août 2026).
+                return (
+                    "https://www.youtube.com/watch?v=" + video + "&list=RD" + video
+                )
+            return "https://www.youtube.com/watch?v=" + video
     except Exception:  # noqa: BLE001 - resolution is best-effort by design
         # Best-effort, but never mute: a silent "" here downgrades every
         # « joue X » to a results page with nothing in the logs to say why.
@@ -292,16 +301,21 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 )
                 # « joue de la musique sur youtube » : le sujet ENTIER est
                 # fait de mots vides (« de la musique ») et la requête
-                # nettoyée est vide — mais l'intention, elle, est limpide.
-                # YouTube a une maison pour ça : YouTube Music.
+                # nettoyée est vide — mais l'intention, elle, est limpide :
+                # QUE ÇA JOUE, n'importe quelle musique. L'action play_mix
+                # se résout en radio YouTube (watch + list=RD…) qui démarre
+                # et s'enchaîne ; l'url ici n'est que le repli si la
+                # résolution échoue.
                 if not q and action == "play" and re.search(
                     r"\bmusi(?:que|c)\b", yt
                 ):
                     return SmartIntent(
-                        kind=KIND_URL,
+                        kind=KIND_YOUTUBE,
+                        action="play_mix",
+                        query="musique",
                         url="https://music.youtube.com",
                         confidence=0.9,
-                        reasoning="YouTube Music",
+                        reasoning="De la musique, sans titre : radio YouTube",
                     )
                 # « mets la vidéo en pause sur youtube » must not PLAY a
                 # video titled "pause" — control words are not queries.

@@ -132,21 +132,32 @@ def parse_voice_command(text: str) -> VoiceAction:
                     raw=raw,
                     extra={"recipient": intent.to, "body": intent.body},
                 )
-            if intent.kind == "youtube" and intent.action == "play" and intent.query:
+            if (
+                intent.kind == "youtube"
+                and intent.action in ("play", "play_mix")
+                and intent.query
+            ):
                 # « joue X sur youtube » must PLAY, not strand the user on a
                 # results page. This fast path used to discard the play
                 # intent and open intent.url raw — the LLM was never even
-                # consulted, so no prompt could fix it.
+                # consulted, so no prompt could fix it. play_mix : « de la
+                # musique » sans titre — la radio YouTube (list=RD…) démarre
+                # et s'enchaîne toute seule.
                 from diapason.desktop.smart_intents import resolve_youtube_watch_url
 
-                watch = resolve_youtube_watch_url(intent.query)
+                en_radio = intent.action == "play_mix"
+                watch = resolve_youtube_watch_url(intent.query, mix=en_radio)
                 return VoiceAction(
                     kind="open_uri",
                     target=watch or intent.url,
                     raw=raw,
                     extra={
                         "play": bool(watch),
-                        "spoken": f"{intent.query} sur YouTube",
+                        "spoken": (
+                            "de la musique sur YouTube"
+                            if en_radio
+                            else f"{intent.query} sur YouTube"
+                        ),
                     },
                 )
             if intent.url:
