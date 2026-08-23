@@ -268,3 +268,110 @@ def briefing_status() -> None:
         f"— chargé : {'oui' if charge else 'non'}"
     )
     console.print(f"  plist : {chemin}")
+
+
+@heartbeat.command("consolidation")
+@click.option(
+    "--jour",
+    default="",
+    help="Journée à consolider, AAAA-MM-JJ. Vide = hier.",
+)
+def consolidation_cmd(jour: str) -> None:
+    """Relit la journée, dépose les faits durables, écrit le résumé."""
+    from datetime import date
+
+    from diapason.heartbeat.consolidation import consolider_le_jour
+
+    console = Console()
+    cible = None
+    if jour.strip():
+        try:
+            cible = date.fromisoformat(jour.strip())
+        except ValueError as exc:
+            raise click.BadParameter("Format attendu : AAAA-MM-JJ.") from exc
+
+    resultat = consolider_le_jour(cible)
+    if resultat.vide:
+        console.print("[dim]Aucune conversation ce jour-là — rien à consolider.[/dim]")
+        return
+    console.print(
+        f"[green]Consolidé[/green] — {resultat.echanges_lus} échange(s) relus, "
+        f"{resultat.faits_ajoutes} fait(s) nouveaux."
+    )
+    for fait in resultat.faits:
+        console.print(f"  · {fait}")
+    if resultat.resume:
+        console.print(f"[dim]{resultat.resume}[/dim]")
+
+
+@heartbeat.group("consolidation-service")
+def consolidation_service() -> None:
+    """La passe nocturne qui dépose la journée en mémoire durable.
+
+    Même ordonnanceur que le briefing : launchd, en heure locale, avec
+    rattrapage au réveil si la machine dormait à l'heure dite.
+    """
+
+
+@consolidation_service.command("install")
+@click.option("--a", "--at", "quand", default="03:30", help="Heure locale, HH:MM.")
+def consolidation_install(quand: str) -> None:
+    """Installe la passe nocturne quotidienne."""
+    import sys
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    heure = _heure(quand)
+    chemin = launch_agent.install(
+        label=launch_agent.CONSOLIDATION_LABEL,
+        args=[
+            sys.executable,
+            "-m",
+            "diapason.cli",
+            "heartbeat",
+            "consolidation",
+        ],
+        log_prefix="consolidation",
+        schedule=heure,
+    )
+    console.print(f"[green]Installé[/green] — consolidation à {quand}, chaque nuit.")
+    console.print(f"  plist   : {chemin}")
+    console.print(f"  journaux: {launch_agent.log_dir()}/consolidation.out.log")
+    console.print("[dim]Essai immédiat : diapason heartbeat consolidation[/dim]")
+
+
+@consolidation_service.command("uninstall")
+def consolidation_uninstall() -> None:
+    """Retire la passe nocturne."""
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    existait = launch_agent.uninstall(launch_agent.CONSOLIDATION_LABEL)
+    console.print("[green]Retiré[/green]" if existait else "[dim]Rien à retirer[/dim]")
+
+
+@consolidation_service.command("status")
+def consolidation_status() -> None:
+    """Dit si la passe nocturne est en place, et à quelle heure."""
+    import plistlib
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    chemin = launch_agent.plist_path(launch_agent.CONSOLIDATION_LABEL)
+    if not chemin.exists():
+        console.print("[yellow]Aucune passe nocturne installée.[/yellow]")
+        console.print(
+            "[dim]diapason heartbeat consolidation-service install --at 03:30[/dim]"
+        )
+        return
+    with chemin.open("rb") as f:
+        donnees = plistlib.load(f)
+    quand = donnees.get("StartCalendarInterval") or {}
+    charge = launch_agent.is_loaded(launch_agent.CONSOLIDATION_LABEL)
+    console.print(
+        f"Consolidation à {quand.get('Hour', '?'):02}:{quand.get('Minute', 0):02} "
+        f"— chargée : {'oui' if charge else 'non'}"
+    )
+    console.print(f"  plist : {chemin}")

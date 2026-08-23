@@ -26,6 +26,7 @@ from pathlib import Path
 LABEL = "com.diapason.dictate"  # dictation agent
 SERVE_LABEL = "com.diapason.serve"  # API server
 BRIEFING_LABEL = "com.diapason.briefing"  # briefing du matin, une fois par jour
+CONSOLIDATION_LABEL = "com.diapason.consolidation"  # mémoire de la nuit
 
 
 def plist_path(label: str = LABEL) -> Path:
