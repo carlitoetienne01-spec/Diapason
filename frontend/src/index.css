@@ -1740,12 +1740,19 @@
   }
 }
 
-/* Les synapses de l'arbre généalogique : une comète (segment de tiret
-   normalisé par pathLength=100) parcourt la branche du début à la fin.
-   Le décalage part de 12 (la comète attend, invisible, avant l'entrée)
-   et finit à -100 (elle est sortie de l'autre côté). */
-@keyframes synapse-file {
+/* Les synapses de l'arbre généalogique : la comète est faite de deux
+   tirets superposés de même période (118, sur un chemin normalisé à
+   pathLength=100) — la queue (18) et la tête (6). Chacun part avec un
+   décalage égal à sa longueur (invisible, juste avant l'entrée) et
+   recule d'une période entière : leurs fronts coïncident donc à chaque
+   instant, et la tête brillante file avec sa queue diaphane collée. */
+@keyframes synapse-queue {
   to {
     stroke-dashoffset: -100;
+  }
+}
+@keyframes synapse-tete {
+  to {
+    stroke-dashoffset: -112;
   }
 }

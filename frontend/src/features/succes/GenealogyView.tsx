@@ -9,7 +9,12 @@ import {
 import { Check, CirclePlus, Loader2, Plus } from 'lucide-react';
 
 import { buildProjectTaskTree, type ProjectTreeNode } from './ProjectTreeView';
-import { planifierRafale, type Impulsion } from './synapses';
+import {
+  impulsionAleatoire,
+  plafondImpulsions,
+  relaisDepuis,
+  type Impulsion,
+} from './synapses';
 import type { SuccesTask } from './types';
 
 /** Nombre maximal d'étages affichés ; au-delà, un compteur « +N » sur le dernier étage. */
@@ -173,12 +178,12 @@ export function GenealogyView({
   }, [recompute]);
 
   // ── les synapses ─────────────────────────────────────────────────────────
-  // L'arbre pense : par moments, une impulsion lumineuse part d'une branche
-  // au hasard et se propage aux branches voisines — voir synapses.ts pour la
-  // planification. Ici on ne fait que JOUER les rafales : monter les comètes,
-  // allumer les halos à l'arrivée, et se taire quand l'onglet est caché ou
-  // que la personne préfère les interfaces immobiles.
-  const [rafale, setRafale] = useState<Array<Impulsion & { cle: string }>>([]);
+  // L'arbre pense en continu : plusieurs lumières lentes voyagent en même
+  // temps, un peu partout, chacune née au hasard — voir synapses.ts pour le
+  // tirage. À l'arrivée, une impulsion peut allumer un halo bref sur la
+  // carte, ou se relayer vers une branche voisine. Tout se tait quand la
+  // fenêtre est cachée ou que la personne préfère les interfaces immobiles.
+  const [impulsions, setImpulsions] = useState<Array<Impulsion & { cle: string }>>([]);
   const [halos, setHalos] = useState<Set<string>>(new Set());
   const edgesRef = useRef<Edge[]>([]);
   useEffect(() => {
@@ -190,6 +195,8 @@ export function GenealogyView({
       return undefined;
     }
     let vivant = true;
+    let graine = 0;
+    const occupees = new Set<string>();
     const minuteries = new Set<number>();
     const poser = (fn: () => void, delai: number) => {
       const t = window.setTimeout(() => {
@@ -198,24 +205,15 @@ export function GenealogyView({
       }, delai);
       minuteries.add(t);
     };
-    const feu = () => {
-      if (!vivant) return;
-      const aretes = edgesRef.current;
-      if (document.hidden || aretes.length === 0) {
-        poser(feu, 4000);
-        return;
-      }
-      const naissance = Date.now();
-      const pensee = planifierRafale(aretes).map((imp, i) => ({
-        ...imp,
-        cle: `${naissance}-${i}`,
-      }));
-      setRafale(pensee);
-      let fin = 0;
-      for (const imp of pensee) {
-        const arrivee = imp.departMs + imp.dureeMs;
-        fin = Math.max(fin, arrivee);
-        poser(() => {
+    const jouer = (imp: Impulsion) => {
+      const cle = `syn-${graine++}`;
+      occupees.add(imp.areteId);
+      setImpulsions((liste) => [...liste, { ...imp, cle }]);
+      poser(() => {
+        occupees.delete(imp.areteId);
+        // Le halo reste rare : avec des lumières partout, une carte qui
+        // clignoterait à chaque arrivée tournerait à la guirlande.
+        if (Math.random() < 0.3) {
           setHalos((h) => new Set(h).add(imp.arriveeId));
           poser(
             () =>
@@ -224,14 +222,35 @@ export function GenealogyView({
                 suivant.delete(imp.arriveeId);
                 return suivant;
               }),
-            550,
+            600,
           );
-        }, arrivee);
-      }
-      poser(() => setRafale([]), fin + 700);
-      poser(feu, 3500 + Math.random() * 4500);
+        }
+        if (Math.random() < 0.35) {
+          const relais = relaisDepuis(imp.arriveeId, edgesRef.current, occupees);
+          if (relais) jouer(relais);
+        }
+        poser(
+          () => setImpulsions((liste) => liste.filter((i) => i.cle !== cle)),
+          400,
+        );
+      }, imp.dureeMs);
     };
-    poser(feu, 1200 + Math.random() * 1500);
+    const tic = () => {
+      if (!vivant) return;
+      const aretes = edgesRef.current;
+      if (document.hidden || aretes.length === 0) {
+        poser(tic, 3000);
+        return;
+      }
+      const plafond = plafondImpulsions(aretes.length);
+      const naissances = Math.min(2, plafond - occupees.size);
+      for (let i = 0; i < naissances; i += 1) {
+        const imp = impulsionAleatoire(aretes, occupees);
+        if (imp) jouer(imp);
+      }
+      poser(tic, 400 + Math.random() * 700);
+    };
+    poser(tic, 600 + Math.random() * 600);
     return () => {
       vivant = false;
       for (const t of minuteries) window.clearTimeout(t);
@@ -306,28 +325,47 @@ export function GenealogyView({
               strokeWidth={1.5}
             />
           ))}
-          {rafale.map((imp) => {
+          {impulsions.map((imp) => {
             // La comète relit l'arête au rendu : si l'arbre se réagence en
             // plein vol, elle suit la branche au lieu de flotter dans le vide.
             const arete = edges.find((e) => e.id === imp.areteId);
             if (!arete) return null;
+            const d = cheminArete(arete, imp.descend);
+            // Deux tirets de même période (118) dont les fronts coïncident :
+            // la queue diaphane (18) épouse la tête brillante (6) tout du
+            // long — c'est ce qui fait la comète, sans dégradé impossible
+            // sur une courbe.
             return (
-              <path
-                key={imp.cle}
-                d={cheminArete(arete, imp.descend)}
-                pathLength={100}
-                fill="none"
-                stroke="var(--color-accent)"
-                strokeWidth={2}
-                strokeLinecap="round"
-                style={{
-                  strokeDasharray: '12 100',
-                  strokeDashoffset: 12,
-                  animation: `synapse-file ${imp.dureeMs}ms linear ${imp.departMs}ms forwards`,
-                  filter: 'drop-shadow(0 0 3px var(--color-accent))',
-                  opacity: 0.9,
-                }}
-              />
+              <g key={imp.cle}>
+                <path
+                  d={d}
+                  pathLength={100}
+                  fill="none"
+                  stroke="var(--color-accent)"
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  style={{
+                    strokeDasharray: '18 100',
+                    strokeDashoffset: 18,
+                    animation: `synapse-queue ${imp.dureeMs}ms linear forwards`,
+                    opacity: 0.35,
+                  }}
+                />
+                <path
+                  d={d}
+                  pathLength={100}
+                  fill="none"
+                  stroke="var(--color-accent)"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  style={{
+                    strokeDasharray: '6 112',
+                    strokeDashoffset: 6,
+                    animation: `synapse-tete ${imp.dureeMs}ms linear forwards`,
+                    filter: 'drop-shadow(0 0 5px var(--color-accent))',
+                  }}
+                />
+              </g>
             );
           })}
         </svg>

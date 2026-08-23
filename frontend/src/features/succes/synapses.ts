@@ -1,13 +1,14 @@
-// Les synapses — la planification des rafales lumineuses de l'arbre.
+// Les synapses — le tirage des impulsions lumineuses de l'arbre.
 //
-// Demandé le 23 août 2026 : « des fines lumières qui passent dans les
-// branches, comme un cerveau où les neurones envoient de l'information ».
-// Choix arrêtés : comète fine couleur accent, rythme en rafales (une pensée
-// se propage de proche en proche), halo bref sur la carte atteinte.
+// Demandé le 23 août 2026, réglé le même soir après un premier essai jugé
+// trop nerveux : « ça va trop rapide, je veux des lumières un peu partout
+// et aléatoirement ». Le modèle n'est donc plus la rafale occasionnelle
+// mais un FLUX : à tout moment, plusieurs impulsions indépendantes
+// voyagent quelque part dans l'arbre, lentes et somptueuses, et l'une
+// d'elles peut se relayer vers une branche voisine à l'arrivée.
 //
-// Ce module ne touche pas au DOM : il PLANIFIE. Une rafale est une liste
-// d'impulsions datées, chacune parcourant une arête dans un sens, et le
-// composant n'a plus qu'à les jouer. Le hasard s'injecte, pour les tests.
+// Ce module ne touche pas au DOM : il TIRE. Le hasard s'injecte, pour les
+// tests ; le composant joue les impulsions et tient l'horloge.
 
 export interface AreteSynapse {
   /** id du nœud ENFANT — c'est ainsi que la vue identifie ses arêtes. */
@@ -23,9 +24,8 @@ export interface Impulsion {
   areteId: string;
   /** true : du parent vers l'enfant ; false : l'information remonte. */
   descend: boolean;
-  departMs: number;
   dureeMs: number;
-  /** Le nœud atteint — celui dont la carte recevra le halo. */
+  /** Le nœud atteint — celui qui peut recevoir le halo, ou relayer. */
   arriveeId: string;
 }
 
@@ -34,88 +34,58 @@ export function longueurApprochee(a: Pick<AreteSynapse, 'x1' | 'y1' | 'x2' | 'y2
   return Math.hypot(a.x2 - a.x1, a.y2 - a.y1) * 1.1;
 }
 
-/** Durée de voyage : vitesse constante, bornée pour rester lisible. */
+/** Durée de voyage : lente et contemplative, bornée pour rester vivante. */
 export function dureeImpulsion(longueur: number): number {
-  return Math.min(1300, Math.max(500, Math.round(longueur * 2.4)));
+  return Math.min(3600, Math.max(1600, Math.round(longueur * 6)));
 }
 
-const IMPULSIONS_MAX = 5;
-const PROFONDEUR_MAX = 3;
-const EMBRANCHEMENTS_MAX = 2;
-const RELAIS_MS = 90; // le souffle entre l'arrivée et la repropagation
+/** Combien de lumières en même temps — grandit avec l'arbre, sans orage. */
+export function plafondImpulsions(nbAretes: number): number {
+  return Math.max(3, Math.min(9, Math.ceil(nbAretes / 3)));
+}
+
+function fabriquer(arete: AreteSynapse, descend: boolean): Impulsion {
+  return {
+    areteId: arete.id,
+    descend,
+    dureeMs: dureeImpulsion(longueurApprochee(arete)),
+    arriveeId: descend ? arete.id : arete.parentId,
+  };
+}
 
 /**
- * Une pensée se propage : une arête s'allume au hasard, puis l'information
- * repart du nœud atteint vers 1-2 arêtes voisines, et ainsi de suite.
- * Jamais de demi-tour immédiat, jamais deux passages sur la même arête.
+ * Une impulsion quelque part : arête libre au hasard, descente le plus
+ * souvent. Rend null quand tout est déjà allumé.
  */
-export function planifierRafale(
+export function impulsionAleatoire(
   aretes: AreteSynapse[],
+  occupees: ReadonlySet<string>,
   rng: () => number = Math.random,
-): Impulsion[] {
-  if (aretes.length === 0) return [];
-  const parEnfant = new Map(aretes.map((a) => [a.id, a]));
-  const parParent = new Map<string, AreteSynapse[]>();
+): Impulsion | null {
+  const libres = aretes.filter((a) => !occupees.has(a.id));
+  if (libres.length === 0) return null;
+  const arete = libres[Math.floor(rng() * libres.length)];
+  return fabriquer(arete, rng() < 0.7);
+}
+
+/**
+ * Le relais : depuis un nœud atteint, l'information repart vers une arête
+ * voisine libre — enfant ou parent, jamais celle d'où elle vient (elle est
+ * encore occupée). Rend null quand le nœud est un cul-de-sac.
+ */
+export function relaisDepuis(
+  noeudId: string,
+  aretes: AreteSynapse[],
+  occupees: ReadonlySet<string>,
+  rng: () => number = Math.random,
+): Impulsion | null {
+  const voisines: Array<{ arete: AreteSynapse; descend: boolean }> = [];
   for (const a of aretes) {
-    const liste = parParent.get(a.parentId) ?? [];
-    liste.push(a);
-    parParent.set(a.parentId, liste);
+    if (occupees.has(a.id)) continue;
+    if (a.parentId === noeudId) voisines.push({ arete: a, descend: true });
+    else if (a.id === noeudId) voisines.push({ arete: a, descend: false });
   }
-
-  const graine = aretes[Math.floor(rng() * aretes.length)];
-  const descend = rng() < 0.7; // l'information descend le plus souvent
-  const utilisees = new Set<string>([graine.id]);
-  const impulsions: Impulsion[] = [];
-
-  const premiere: Impulsion = {
-    areteId: graine.id,
-    descend,
-    departMs: 0,
-    dureeMs: dureeImpulsion(longueurApprochee(graine)),
-    arriveeId: descend ? graine.id : graine.parentId,
-  };
-  impulsions.push(premiere);
-
-  let front = [premiere];
-  for (let etage = 1; etage < PROFONDEUR_MAX && impulsions.length < IMPULSIONS_MAX; etage += 1) {
-    const prochain: Impulsion[] = [];
-    for (const venue of front) {
-      const noeud = venue.arriveeId;
-      const voisines: Array<{ arete: AreteSynapse; descend: boolean }> = [];
-      for (const a of parParent.get(noeud) ?? []) {
-        if (!utilisees.has(a.id)) voisines.push({ arete: a, descend: true });
-      }
-      const versParent = parEnfant.get(noeud);
-      if (versParent && !utilisees.has(versParent.id)) {
-        voisines.push({ arete: versParent, descend: false });
-      }
-      // mélange de Fisher-Yates sur ce petit tableau
-      for (let i = voisines.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(rng() * (i + 1));
-        [voisines[i], voisines[j]] = [voisines[j], voisines[i]];
-      }
-      const combien = Math.min(
-        voisines.length,
-        1 + Math.floor(rng() * EMBRANCHEMENTS_MAX),
-        IMPULSIONS_MAX - impulsions.length,
-      );
-      for (const { arete, descend: sens } of voisines.slice(0, combien)) {
-        utilisees.add(arete.id);
-        const impulsion: Impulsion = {
-          areteId: arete.id,
-          descend: sens,
-          departMs: venue.departMs + venue.dureeMs + RELAIS_MS,
-          dureeMs: dureeImpulsion(longueurApprochee(arete)),
-          arriveeId: sens ? arete.id : arete.parentId,
-        };
-        impulsions.push(impulsion);
-        prochain.push(impulsion);
-        if (impulsions.length >= IMPULSIONS_MAX) break;
-      }
-      if (impulsions.length >= IMPULSIONS_MAX) break;
-    }
-    if (prochain.length === 0) break;
-    front = prochain;
-  }
-  return impulsions;
+  if (voisines.length === 0) return null;
+  const { arete, descend } = voisines[Math.floor(rng() * voisines.length)];
+  return fabriquer(arete, descend);
 }
