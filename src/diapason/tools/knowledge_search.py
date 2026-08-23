@@ -3,10 +3,19 @@
 Wraps ``KnowledgeStore`` so agents can search ingested documents by text query
 and optional provenance filters (source, doc_type, author, date range).
 Optionally delegates to a ``TwoStageRetriever`` for BM25 + reranking.
+
+Depuis le 23 août 2026, l'outil sait aussi se construire SEUL : sans magasin
+injecté, il monte à la première recherche la même pile hybride que la
+recherche profonde — KnowledgeStore + OllamaEmbedder (nomic-embed-text) +
+HybridSearch (BM25 et vecteurs, fusion RRF). C'est ce qui l'a fait entrer
+dans la trousse du chat : le savoir personnel (notes Obsidian, Apple Notes,
+documents ingérés) était indexé, embarqué… et inaccessible au modèle.
+Ollama absent = repli BM25 seul, jamais un échec.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Optional
 
 from diapason.connectors.store import KnowledgeStore
@@ -16,6 +25,8 @@ from diapason.tools._stubs import BaseTool, ToolSpec
 
 if TYPE_CHECKING:
     from diapason.connectors.retriever import TwoStageRetriever
+
+logger = logging.getLogger(__name__)
 
 
 @ToolRegistry.register("knowledge_search")
@@ -36,15 +47,40 @@ class KnowledgeSearchTool(BaseTool):
     ) -> None:
         self._store = store
         self._retriever = retriever
+        self._hybride: Any = None  # monté paresseusement, voir _pile_hybride
+
+    def _pile_hybride(self) -> Any:
+        """La pile de la recherche profonde, montée une fois, ou None."""
+        if self._hybride is not None:
+            return self._hybride
+        try:
+            from diapason.connectors.embeddings import OllamaEmbedder
+            from diapason.connectors.hybrid_search import HybridSearch
+
+            magasin = KnowledgeStore()
+            embedder: Optional[OllamaEmbedder] = OllamaEmbedder()
+            if embedder is not None and not embedder.is_available():
+                logger.warning(
+                    "knowledge_search : embedder Ollama indisponible, BM25 seul"
+                )
+                embedder = None
+            self._hybride = HybridSearch(magasin, embedder)
+        except Exception as exc:  # noqa: BLE001 - l'outil répond, ne lève pas
+            logger.warning("knowledge_search : pile hybride impossible (%s)", exc)
+            self._hybride = None
+        return self._hybride
 
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="knowledge_search",
             description=(
-                "Search ingested personal knowledge (emails, Slack messages,"
-                " documents) using full-text BM25 retrieval with optional"
-                " filters for source, type, author, and date range."
+                "Recherche dans le savoir personnel de l'utilisateur : ses"
+                " notes Obsidian, ses Apple Notes et ses documents ingérés"
+                " (recherche hybride texte + sens). À utiliser dès que la"
+                " question porte sur SES notes, SES écrits, SES projets"
+                " documentés — « qu'est-ce que j'ai noté sur… », « retrouve"
+                " ma note… ». Filtres optionnels par source et par dates."
             ),
             parameters={
                 "type": "object",
@@ -94,13 +130,6 @@ class KnowledgeSearchTool(BaseTool):
         )
 
     def execute(self, **params: Any) -> ToolResult:
-        if self._store is None and self._retriever is None:
-            return ToolResult(
-                tool_name="knowledge_search",
-                content="No knowledge store configured.",
-                success=False,
-            )
-
         query: str = params.get("query", "")
         if not query:
             return ToolResult(
@@ -126,12 +155,30 @@ class KnowledgeSearchTool(BaseTool):
                 since=since or "",
                 until=until or "",
             )
-        else:
-            results = self._store.retrieve(  # type: ignore[union-attr]
+        elif self._store is not None:
+            results = self._store.retrieve(
                 query,
                 top_k=top_k,
                 source=source,
                 doc_type=doc_type,
+                author=author,
+                since=since,
+                until=until,
+            )
+        else:
+            # Construction nue (la trousse du chat) : la pile hybride.
+            hybride = self._pile_hybride()
+            if hybride is None:
+                return ToolResult(
+                    tool_name="knowledge_search",
+                    content="Le savoir personnel est inaccessible pour le moment.",
+                    success=False,
+                )
+            return self._chercher_en_hybride(
+                hybride,
+                query,
+                top_k=top_k,
+                source=source,
                 author=author,
                 since=since,
                 until=until,
@@ -176,6 +223,78 @@ class KnowledgeSearchTool(BaseTool):
             content=formatted,
             success=True,
             metadata={"num_results": len(results)},
+        )
+
+
+    def _chercher_en_hybride(
+        self,
+        hybride: Any,
+        query: str,
+        *,
+        top_k: int,
+        source: Optional[str],
+        author: Optional[str],
+        since: Optional[str],
+        until: Optional[str],
+    ) -> ToolResult:
+        """La branche autonome : HybridSearch, résultats parlés en français."""
+        from datetime import datetime
+
+        def _date(brut: Optional[str]) -> Optional[datetime]:
+            if not brut:
+                return None
+            try:
+                return datetime.fromisoformat(str(brut))
+            except ValueError:
+                return None
+
+        debut, fin = _date(since), _date(until)
+        try:
+            touches = hybride.search(
+                query,
+                person=author or None,
+                time_range=(debut, fin) if (debut or fin) else None,
+                sources=[source] if source else None,
+                limit=max(1, min(int(top_k), 10)),
+            )
+        except Exception as exc:  # noqa: BLE001 - l'outil répond, ne lève pas
+            logger.warning("knowledge_search : recherche en échec (%s)", exc)
+            return ToolResult(
+                tool_name="knowledge_search",
+                content="La recherche dans le savoir personnel a échoué.",
+                success=False,
+            )
+
+        if not touches:
+            return ToolResult(
+                tool_name="knowledge_search",
+                content="Rien trouvé dans les notes et documents personnels.",
+                success=True,
+                metadata={"num_results": 0},
+            )
+
+        # Le content est écrit pour être LU (voix comprise) ; le détail
+        # structuré vit dans metadata, comme partout dans la trousse.
+        lignes = [f"{len(touches)} extrait(s) du savoir personnel :"]
+        extraits = []
+        for i, touche in enumerate(touches, start=1):
+            titre = (touche.title or "sans titre").strip()
+            fragment = " ".join((touche.content_snippet or "").split())[:300]
+            lignes.append(f"{i}. [{touche.source}] {titre} — {fragment}")
+            extraits.append(
+                {
+                    "titre": titre,
+                    "source": touche.source,
+                    "extrait": fragment,
+                    "date": touche.timestamp,
+                    "score": round(float(touche.score), 4),
+                }
+            )
+        return ToolResult(
+            tool_name="knowledge_search",
+            content="\n".join(lignes),
+            success=True,
+            metadata={"num_results": len(touches), "resultats": extraits},
         )
 
 

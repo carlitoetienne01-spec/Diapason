@@ -107,12 +107,19 @@ class TestKnowledgeSearchTool:
         assert result.success is False
         assert "No query provided" in result.content
 
-    def test_no_store(self):
-        """Missing store returns success=False."""
+    def test_no_store(self, monkeypatch):
+        """Nu, l'outil monte sa pile hybride ; pile impossible = échec doux.
+
+        L'ancien contrat — « sans magasin injecté, échec » — était
+        l'infirmité qui tenait l'outil hors de la trousse du chat. Le
+        monkeypatch simule une pile qui ne se monte pas, SANS toucher au
+        vrai ~/.diapason/knowledge.db.
+        """
         tool = KnowledgeSearchTool()
+        monkeypatch.setattr(tool, "_pile_hybride", lambda: None)
         result = tool.execute(query="kubernetes")
         assert result.success is False
-        assert "No knowledge store configured" in result.content
+        assert "inaccessible" in result.content
 
     def test_spec_has_filter_params(self):
         """ToolSpec.parameters includes all required and optional filter fields."""

@@ -11,6 +11,8 @@ from diapason.core.registry import ToolRegistry
 EXPECTED_TOOLS = {
     # calculator.py
     "calculator",
+    # knowledge_search.py
+    "knowledge_search",
     # think.py
     "think",
     # retrieval.py

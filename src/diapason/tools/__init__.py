@@ -13,6 +13,11 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.knowledge_search  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import diapason.tools.think  # noqa: F401
 except ImportError:
     pass

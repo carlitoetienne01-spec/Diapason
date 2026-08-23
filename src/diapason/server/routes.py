@@ -58,6 +58,10 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # préremplissage pour ne rendre que des échecs.
     "memory_manage",
     "user_profile_manage",
+    # Le savoir personnel (Obsidian, Apple Notes, documents ingérés) était
+    # indexé ET embarqué dans knowledge.db — mais seul le mode recherche
+    # profonde y avait accès. Le chat le lit désormais aussi (23 août 2026).
+    "knowledge_search",
     "web_search",
     "find_files",
     "open_anything",

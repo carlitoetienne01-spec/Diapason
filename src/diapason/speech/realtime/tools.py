@@ -20,6 +20,9 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "current_time",
     "memory_manage",
     "user_profile_manage",
+    # « Qu'est-ce que j'ai noté sur… » les mains prises : le savoir
+    # personnel (Obsidian, Apple Notes) répond aussi à la voix (23/08/2026).
+    "knowledge_search",
     "open_anything",
     "open_uri",
     "focus_app",
@@ -60,6 +63,10 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
 
 # (module, [(registry_key, attribute_name), ...])
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "diapason.tools.knowledge_search",
+        (("knowledge_search", "KnowledgeSearchTool"),),
+    ),
     (
         "diapason.tools.desktop_tools",
         (
