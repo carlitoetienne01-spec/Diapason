@@ -147,3 +147,55 @@ def test_un_projet_sans_tache_se_supprime_sans_bruit(tmp_path) -> None:
     projet = store.create_project({"name": "Vide"})
     store.delete_project(projet["id"])
     assert _ops(chemin, "tasks") == []
+
+
+class TestOrdreDeCreation:
+    """L'ordre de création est l'ordre d'affichage — sans qu'on le demande.
+
+    ``order_index`` restait à 0 pour toute tâche créée sans rang explicite, et
+    le tri de la vue arbre (``ORDER BY order_index, id``) retombait sur l'id :
+    des UUID, c'est-à-dire l'ordre du hasard. Constaté le 22 août 2026 : un
+    parcours de cent quarante-huit cours créés dans l'ordre chronologique
+    s'affichait battu comme un jeu de cartes. Les sous-tâches faisaient déjà
+    MAX+1 ; les tâches, non.
+    """
+
+    def test_les_taches_prennent_la_suite_de_leurs_soeurs(self, tmp_path):
+        store = SuccesWorkspaceStore(tmp_path / "ordre.db")
+        projet = store.create_project({"name": "Parcours", "structure": "tree"})
+        rangs = [
+            store.create_task({"title": t, "projectId": projet["id"]})["order"]
+            for t in ("Étape 1", "Étape 2", "Étape 3")
+        ]
+        assert rangs == [0, 1, 2], "l'ordre de création doit survivre au tri"
+
+    def test_chaque_parent_compte_ses_propres_enfants(self, tmp_path):
+        """Les rangs sont PAR fratrie : deux sous-arbres n'interfèrent pas."""
+        store = SuccesWorkspaceStore(tmp_path / "fratries.db")
+        projet = store.create_project({"name": "P", "structure": "tree"})
+        a = store.create_task({"title": "A", "projectId": projet["id"]})
+        b = store.create_task({"title": "B", "projectId": projet["id"]})
+        a1 = store.create_task(
+            {"title": "A1", "projectId": projet["id"], "parentTaskId": a["id"]}
+        )
+        b1 = store.create_task(
+            {"title": "B1", "projectId": projet["id"], "parentTaskId": b["id"]}
+        )
+        assert (a1["order"], b1["order"]) == (0, 0)
+
+    def test_un_rang_explicite_est_respecte(self, tmp_path):
+        """Un client qui ordonne lui-même (import, synchro) garde la main."""
+        store = SuccesWorkspaceStore(tmp_path / "explicite.db")
+        projet = store.create_project({"name": "P"})
+        t = store.create_task(
+            {"title": "Rang imposé", "projectId": projet["id"], "order": 41}
+        )
+        assert t["order"] == 41
+
+    def test_une_soeur_supprimee_ne_bloque_pas_la_suite(self, tmp_path):
+        store = SuccesWorkspaceStore(tmp_path / "trou.db")
+        projet = store.create_project({"name": "P"})
+        premiere = store.create_task({"title": "Un", "projectId": projet["id"]})
+        store.delete_task(premiere["id"])
+        seconde = store.create_task({"title": "Deux", "projectId": projet["id"]})
+        assert seconde["order"] >= 1, "le rang ne se réutilise pas, il avance"

@@ -676,8 +676,16 @@ export function SuccesProjectsPage() {
     void loadEdges();
     setTreeEditMode(false);
   }, [selectedId, selected?.structure]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Trié par RANG, pas par priorité. La liste globale place la priorité avant
+  // order_index — juste pour la page Tâches, faux pour un arbre : un jalon
+  // « high » sautait en tête de son étape et les cours « low » coulaient au
+  // fond, à rebours de l'ordre chronologique voulu. Dans une généalogie,
+  // l'ordre EST l'information.
   const projectTasks = selected
-    ? tasks.filter((task) => task.projectId === selected.id)
+    ? tasks
+        .filter((task) => task.projectId === selected.id)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
   const openCount = projectTasks.filter((task) => !task.done).length;
   const doneCount = projectTasks.filter((task) => task.done).length;

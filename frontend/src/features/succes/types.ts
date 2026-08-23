@@ -60,6 +60,8 @@ export interface SuccesTask {
   emoji: string;
   templateId: string;
   groupId: string;
+  /** Rang d'affichage parmi les sœurs — l'API l'a toujours envoyé, le type l'ignorait. */
+  order: number;
   createdAt: string;
   completedDate: string;
   postponedCount: number;

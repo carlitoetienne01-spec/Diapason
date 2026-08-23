@@ -665,6 +665,26 @@ class SuccesStore:
             from diapason.succes.structures import normalize_cadence
 
             cadence = normalize_cadence(data.get("cadence"))
+            # L'ordre d'affichage. Sans rang explicite, la tâche prend la
+            # SUITE de ses sœurs — même projet, même parent — comme les
+            # sous-tâches le font depuis toujours. Il restait à 0 pour toutes,
+            # et le tri de la vue arbre (ORDER BY order_index, id) retombait
+            # alors sur l'id : des UUID, c'est-à-dire l'ordre du hasard.
+            # Constaté le 22 août 2026 : un parcours de cent quarante-huit
+            # cours créés dans l'ordre chronologique s'affichait battu comme
+            # un jeu de cartes.
+            rang = data.get("order")
+            if rang is None:
+                # Les tombstones COMPTENT : un rang ne se réutilise jamais,
+                # il avance. Exclure les supprimées ferait renaître leur rang
+                # sous une nouvelle tâche — et un pair qui resynchronise la
+                # tombe se retrouverait avec deux tâches au même rang.
+                rang = conn.execute(
+                    """SELECT COALESCE(MAX(order_index), -1) + 1 AS n
+                       FROM succes_tasks
+                       WHERE project_id=? AND parent_task_id=?""",
+                    (project_id, parent_task_id),
+                ).fetchone()["n"]
             values = (
                 task_id,
                 title,
@@ -679,7 +699,7 @@ class SuccesStore:
                 str(data.get("emoji") or "")[:16],
                 str(data.get("templateId") or ""),
                 str(data.get("groupId") or ""),
-                int(data.get("order") or 0),
+                int(rang or 0),
                 created,
                 completed,
                 max(0, int(data.get("postponedCount") or 0)),
