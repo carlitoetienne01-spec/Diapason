@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re as _re
 import threading
 import time
 import unicodedata
@@ -56,7 +57,7 @@ def _normalise(texte: str) -> str:
     L'apostrophe TYPOGRAPHIQUE (') des noms macOS — « Moniteur d'activité » —
     doit rencontrer l'apostrophe droite (') de la transcription vocale.
     """
-    brut = str(texte or "").replace("’", "'")
+    brut = str(texte or "").replace("’", "'").replace("-", " ")
     decompose = unicodedata.normalize("NFD", brut)
     sans_accents = "".join(c for c in decompose if not unicodedata.combining(c))
     return " ".join(sans_accents.casefold().split())
@@ -256,6 +257,37 @@ class MacAppIndex:
                     partial.append(candidate)
         if partial:
             return min(partial, key=len)
+
+        # Dernier étage : le FLOU. La transcription déforme les noms — mesuré
+        # le 23 août 2026 : « safary », « cursore », « gitub desktop »,
+        # « chatte gpt », neuf déformations réalistes sur quatorze rataient.
+        # Deux garde-fous, parce que deviner coûte plus cher que rater :
+        # un seuil haut (0,8), et le REFUS quand deux candidats se valent —
+        # ouvrir la mauvaise application est pire qu'avouer ne pas savoir.
+        import difflib
+
+        candidats_flous: list[tuple[float, str]] = []
+        for parle in candidats_parles:
+            sans_article = _re.sub(
+                r"^(?:le|la|les|l'|mon|ma|mes)\s+", "", parle
+            )
+            compact = sans_article.replace(" ", "")
+            if len(compact) < 5:
+                continue
+            for cle, candidate in tous.items():
+                score = difflib.SequenceMatcher(
+                    None, compact, cle.replace(" ", "")
+                ).ratio()
+                if score >= 0.8:
+                    candidats_flous.append((score, candidate))
+        if candidats_flous:
+            candidats_flous.sort(reverse=True)
+            meilleur = candidats_flous[0]
+            rivaux = {
+                c for score, c in candidats_flous if meilleur[0] - score < 0.03
+            }
+            if len(rivaux) == 1:
+                return meilleur[1]
         return None
 
 

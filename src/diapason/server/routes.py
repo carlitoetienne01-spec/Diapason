@@ -62,6 +62,7 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "find_files",
     "open_anything",
     "app_search",
+    "app_install",
     "notes_write",
     "reminders_write",
     "calendar_add",

@@ -67,14 +67,29 @@ class TestAppSearch:
         assert r.success
         assert espion["open"] == ["spotify:search:jazz"]
 
-    def test_une_destination_inconnue_est_refusee_en_nommant_ce_qui_marche(
-        self, espion
+    def test_une_destination_inconnue_part_sur_le_web_en_le_disant(
+        self, espion, monkeypatch
     ):
-        """Une recherche qui « part » dans le vide serait un mensonge de plus."""
-        r = AppSearchTool().execute(app="LinkedIn", query="x")
-        assert r.success is False
-        assert "App Store" in r.content
-        assert espion["open"] == []
+        """Retourné le 23 août 2026 : le refus sec laissait l'utilisateur sans
+        rien — « certaines recherches, il n'arrive pas à les faire ». Le repli
+        web agit, et l'honnêteté est sauve : la réponse dit où la recherche
+        est réellement partie."""
+        from diapason.tools import desktop_tools
+
+        ouverts = []
+
+        def faux_navigateur(url, **kw):
+            ouverts.append(url)
+            from diapason.tools._stubs import ToolResult
+
+            return ToolResult(tool_name="open_uri", content="", success=True)
+
+        monkeypatch.setattr(desktop_tools, "open_in_browser", faux_navigateur)
+        r = AppSearchTool().execute(app="LinkedIn", query="offres python")
+        assert r.success is True
+        assert "sur le web" in r.content
+        assert "LinkedIn" in r.content, "dire OÙ la recherche est partie"
+        assert len(ouverts) == 1 and "offres" in ouverts[0]
 
     def test_sans_quoi_chercher_le_refus_est_franc(self, espion):
         r = AppSearchTool().execute(app="Spotify", query="  ")

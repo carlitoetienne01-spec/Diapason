@@ -153,14 +153,28 @@ class AppSearchTool(BaseTool):
             )
         mecanisme = _normaliser_app(app)
         if mecanisme is None:
+            # Le refus sec laissait l'utilisateur sans rien — « certaines
+            # recherches, il n'arrive pas à les faire » (23 août 2026). Le
+            # repli : chercher sur le web EN LE DISANT. Une action annoncée
+            # vaut mieux qu'une impasse, et l'honnêteté est sauve : la
+            # réponse dit où la recherche est vraiment partie.
+            from diapason.tools.desktop_tools import open_in_browser, web_search_url
+
+            r = open_in_browser(web_search_url(f"{query} {app}".strip()))
+            if not r.success:
+                return ToolResult(
+                    tool_name="app_search",
+                    content=f"La recherche n'est pas partie : {r.content}",
+                    success=False,
+                )
             return ToolResult(
                 tool_name="app_search",
                 content=(
-                    f"Je ne sais pas chercher dans « {app} ». Je sais chercher "
-                    "dans : l'App Store, Spotify, Notes, YouTube, Amazon, et "
-                    "sur le web."
+                    f"Je ne sais pas chercher directement dans « {app} » — "
+                    f"j'ai lancé la recherche « {query} {app} » sur le web à "
+                    "la place."
                 ),
-                success=False,
+                success=True,
             )
 
         if mecanisme == "app_store":

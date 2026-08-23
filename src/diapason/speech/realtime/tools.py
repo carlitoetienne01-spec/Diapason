@@ -49,6 +49,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # Agir DANS une application — chercher, écrire — demandé le 23 août 2026 :
     # « des fois mes mains ne sont pas libres ». Ouvrir ne suffit pas.
     "app_search",
+    "app_install",
     "notes_write",
     "reminders_write",
     "calendar_add",

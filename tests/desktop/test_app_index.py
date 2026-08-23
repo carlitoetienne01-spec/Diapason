@@ -193,3 +193,34 @@ class TestNomsAffiches:
             ("aide-mémoire", "Stickies"),
         ):
             assert APP_INDEX.lookup(parle) == attendu
+
+
+class TestEtageFlou:
+    """La transcription déforme les noms ; le flou rattrape, sans deviner.
+
+    Mesuré le 23 août 2026 : neuf déformations réalistes sur quatorze
+    rataient — « safary », « cursore », « gitub desktop », « x-code »…
+    """
+
+    @pytest.mark.parametrize(
+        "deforme,attendu",
+        [
+            ("safary", "Safari"),
+            ("x-code", None),  # absent de ce faux index — voir plus bas
+            ("photo bout", "Photo Booth"),
+        ],
+    )
+    def test_les_deformations_realistes(self, index, deforme, attendu):
+        assert index.lookup(deforme) == attendu
+
+    def test_deux_candidats_proches_font_refuser(self, monkeypatch):
+        """Ouvrir la mauvaise application est pire qu'avouer ne pas savoir."""
+        idx = MacAppIndex()
+        monkeypatch.setattr(
+            idx, "_scan", staticmethod(lambda: (("Slack", None), ("Slick", None)))
+        )
+        assert idx.lookup("slock") is None
+
+    def test_un_nom_court_n_est_jamais_devine(self, index):
+        """Sous cinq caractères, le flou ferait n'importe quoi."""
+        assert index.lookup("tvv") is None
