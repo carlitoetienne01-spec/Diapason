@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional, Sequence
 
@@ -162,30 +163,95 @@ def openai_tools_schema(
     return out
 
 
+# Attendre l'accord de l'utilisateur, à la voix.
+#
+# Le pont d'approbation laisse deux minutes au chat : la cloche est à l'écran,
+# la fenêtre est ouverte, rien ne presse. Une conversation parlée ne supporte
+# pas ce silence — deux minutes sans réponse, c'est une panne, pas une
+# attente. Quarante-cinq secondes suffisent à porter le regard sur la cloche
+# et à cliquer ; passé ce délai, le refus est franc et Diapason le DIT, ce
+# qui vaut mieux qu'un blanc.
+VOICE_APPROVAL_WAIT_S = 45.0
+
+_executeurs: dict[tuple[str, ...], Any] = {}
+
+
+def _executeur_pour(ids: Sequence[str]) -> Any:
+    """Le ToolExecutor de la voix, construit une fois par liste d'outils.
+
+    Le construire coûte le chargement de la configuration et des contrôles de
+    sécurité ; une session vocale en appelle plusieurs par tour.
+    """
+    cle = tuple(ids)
+    existant = _executeurs.get(cle)
+    if existant is not None:
+        return existant
+
+    from diapason.core.registry import ToolRegistry
+    from diapason.server.approval_bridge import tool_confirm_callback
+    from diapason.tools._stubs import BaseTool, ToolExecutor
+
+    instances = []
+    for tid in ids:
+        classe = ToolRegistry.get(tid)
+        if isinstance(classe, type) and issubclass(classe, BaseTool):
+            instances.append(classe())
+        elif isinstance(classe, BaseTool):
+            instances.append(classe)
+
+    executeur = ToolExecutor(
+        instances,
+        None,
+        interactive=True,
+        confirm_callback=tool_confirm_callback(VOICE_APPROVAL_WAIT_S),
+        agent_id="voice",
+    )
+    _executeurs[cle] = executeur
+    return executeur
+
+
 def execute_voice_tool(
     name: str,
     arguments: Optional[dict[str, Any]] = None,
     allowed: Optional[Sequence[str]] = None,
 ) -> dict[str, Any]:
-    """Run a allow-listed tool; returns a JSON-serializable payload."""
+    """Run an allow-listed tool through the executor; JSON-serializable payload.
+
+    Cette fonction appelait ``tool.execute(**args)`` EN DIRECT. Elle sautait
+    donc ``ToolExecutor``, et avec lui la politique de capacités, le
+    garde-frontière, le limiteur de débit et — le plus grave — la confirmation
+    des actions sensibles. Or ``mail_send`` et ``messages_send`` figurent dans
+    la liste vocale : une phrase mal comprise pouvait envoyer un courriel ou un
+    SMS au nom de l'utilisateur, sans que rien ne lui soit demandé.
+
+    Le commentaire « never auto-send from live voice — drafts only » ne
+    protégeait que ``mail_compose`` et ``messages_compose``. Les deux outils
+    d'envoi, eux, passaient à côté.
+
+    La liste d'autorisation reste la première barrière ; l'exécuteur est la
+    seconde, et c'est celle qui demande l'accord.
+    """
     _ensure_desktop_tools_loaded()
-    from diapason.core.registry import ToolRegistry
+    from diapason.core.types import ToolCall
 
     tid = (name or "").strip()
-    allowed_set = set(list_voice_tool_ids(allowed))
-    if tid not in allowed_set:
+    ids = list_voice_tool_ids(allowed)
+    if tid not in set(ids):
         return {"ok": False, "error": f"Tool not allowed in voice mode: {tid}"}
     try:
         args = dict(arguments or {})
         # Never auto-send from live voice — drafts only.
         if tid in ("mail_compose", "messages_compose"):
             args.pop("send", None)
-        tool = ToolRegistry.create(tid)
-        result = tool.execute(**args)
+        resultat = _executeur_pour(ids).execute(
+            ToolCall(
+                id=f"voice-{tid}", name=tid, arguments=json.dumps(args, default=str)
+            )
+        )
         return {
-            "ok": bool(result.success),
-            "content": result.content,
-            "metadata": getattr(result, "metadata", None) or {},
+            "ok": bool(resultat.success),
+            "content": resultat.content,
+            "metadata": getattr(resultat, "metadata", None) or {},
         }
     except Exception as exc:
         logger.exception("voice tool %s failed", tid)
