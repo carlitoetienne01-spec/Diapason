@@ -112,6 +112,25 @@ def dictate(
     overlay: bool,
 ) -> None:
     """Start global push-to-talk dictation."""
+    # Le MICRO d'abord — le contrôle le moins cher, avant de résoudre modèle
+    # ou touches. Trois fois déjà, ce venv a perdu des paquets (une
+    # synchronisation d'uv sans les extras les élague) ; le service démarrait
+    # « prêt », puis chaque pression de Contrôle échouait en silence dans le
+    # journal — pour l'utilisateur, « la dictée ne fonctionne plus » sans un
+    # mot. Constaté le 23 août 2026, sounddevice absent. Sortie 0 exprès :
+    # avec KeepAlive, un code d'échec relancerait la même impasse en boucle.
+    try:
+        import sounddevice  # noqa: F401
+    except ImportError:
+        click.echo(
+            "La dictée ne peut pas démarrer : le paquet du micro (sounddevice) "
+            "manque à l'environnement.\n"
+            "Remède :  uv pip install --python .venv/bin/python 'sounddevice>=0.4'\n"
+            "puis :    launchctl kickstart -k gui/$UID/com.diapason.dictate",
+            err=True,
+        )
+        sys.exit(0)
+
     from diapason.core.config import load_config
     from diapason.desktop.dictation_service import DictationService
     from diapason.desktop.hotkey import AccessibilityError

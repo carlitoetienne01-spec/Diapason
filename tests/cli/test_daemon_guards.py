@@ -349,3 +349,37 @@ def test_quand_rien_ne_repond_on_dit_qu_on_ne_sait_pas(monkeypatch) -> None:
     monkeypatch.setattr("diapason.core.ports.listeners_on", lambda _p: None)
     monkeypatch.setattr("diapason.core.ports.port_occupe_par_liaison", lambda _p: None)
     assert port_state(8000)[0] == INCONNU
+
+
+class TestPreflightMicro:
+    """Le service de dictée doit DIRE quand le micro lui manque.
+
+    Trois fois déjà, ce venv a perdu des paquets (une synchronisation d'uv
+    sans les extras les élague). Le service démarrait « prêt », puis chaque
+    pression de Contrôle échouait en silence dans le journal — pour
+    l'utilisateur, « la dictée ne fonctionne plus » sans un mot. Constaté le
+    23 août 2026, sounddevice absent.
+    """
+
+    def test_sans_sounddevice_la_banniere_dit_le_remede(self, monkeypatch):
+        import builtins
+
+        from click.testing import CliRunner
+
+        from diapason.cli import cli
+
+        vrai_import = builtins.__import__
+
+        def sans_micro(name, *args, **kwargs):
+            if name == "sounddevice":
+                raise ImportError("No module named 'sounddevice'")
+            return vrai_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", sans_micro)
+        resultat = CliRunner().invoke(cli, ["dictate"])
+        sortie = resultat.output or ""
+        assert "sounddevice" in sortie, "la cause doit être nommée"
+        assert "uv pip install" in sortie, "le remède doit être donné tel quel"
+        assert resultat.exit_code == 0, (
+            "sortie 0 exprès : un code d'échec relancerait la boucle KeepAlive"
+        )
