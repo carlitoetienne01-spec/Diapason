@@ -1507,6 +1507,10 @@ class VoiceRealtimeConfig:
     max_tool_steps: int = 12
     # Comma-separated tool ids; empty = defaults (open_anything, apps, browser, …)
     tools: str = ""
+    # Ne répondre qu'à la voix ENRÔLÉE du propriétaire. L'empreinte s'apprend
+    # silencieusement sur les premiers tours adressés, puis le verrou s'arme :
+    # un film, un tiers, une autre voix disant « Diapason » — ignorés.
+    voice_lock: bool = True
 
 
 @dataclass(slots=True)

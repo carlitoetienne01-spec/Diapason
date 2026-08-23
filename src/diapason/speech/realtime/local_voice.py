@@ -729,6 +729,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # Engagé dès la construction : le premier tour d'une session vient de
         # quelqu'un qui a cliqué « Démarrer » — il s'adresse à nous.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
+        self._voice_lock: Optional[bool] = None
         # (buffered byte count, transcription task) — valid only while the
         # buffer has not grown past the snapshot it was taken from.
         self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
@@ -1285,7 +1286,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 logger.info("local voice rejected non-speech turn")
                 return
             await self._dispatch_text(
-                text, turn_started=turn_started, spec_llm=spec_llm
+                text,
+                turn_started=turn_started,
+                spec_llm=spec_llm,
+                utterance=bytes(utterance),
             )
         except asyncio.CancelledError:
             raise
@@ -1293,12 +1297,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
             logger.exception("local voice turn failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
 
+    def _voice_lock_actif(self) -> bool:
+        if self._voice_lock is None:
+            try:
+                from diapason.core.config import load_config
+
+                rt = load_config().speech.realtime
+                self._voice_lock = bool(getattr(rt, "voice_lock", True))
+            except Exception:  # noqa: BLE001 - sans config, verrou par défaut
+                self._voice_lock = True
+        return self._voice_lock
+
     async def _dispatch_text(
         self,
         text: str,
         *,
         turn_started: float,
         spec_llm: Optional[_SpecTurn] = None,
+        utterance: Optional[bytes] = None,
     ) -> None:
         nomme = mentions_assistant_name(text)
         engagee = time.monotonic() < self._engagee_jusqua
@@ -1311,6 +1327,35 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 "voice turn ignored (not addressed): %d chars", len(text)
             )
             return
+        # L'EMPREINTE VOCALE tranche après le nom : la garde par le nom
+        # filtre le film et le bruit, elle ne filtre pas un tiers qui DIT
+        # « Diapason ». Demandé le 23 août 2026 : ne répondre qu'à la voix du
+        # propriétaire. Tant que le profil n'est pas nourri (cinq tours
+        # adressés), chaque tour adressé l'enrôle en silence ; ensuite le
+        # verrou s'arme. Le doute profite au propriétaire — un faux rejet
+        # rendrait l'assistant sourd à son maître.
+        if utterance is not None and self._voice_lock_actif():
+            from diapason.speech.speaker_id import get_verifier
+
+            verifier = get_verifier()
+            if verifier.arme:
+                score, proprietaire = await asyncio.to_thread(
+                    verifier.verify, utterance
+                )
+                if not proprietaire:
+                    logger.info(
+                        "voice turn ignored (unknown voice, score=%.2f): %d chars",
+                        score,
+                        len(text),
+                    )
+                    return
+            else:
+                await asyncio.to_thread(verifier.enroll, utterance)
+                logger.info(
+                    "voice enrollment: %d/%d samples",
+                    verifier.echantillons,
+                    5,
+                )
         # Chaque tour adressé prolonge la conversation ; dire le nom rouvre
         # une conversation éteinte.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S

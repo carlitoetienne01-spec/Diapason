@@ -332,3 +332,33 @@ def written_sidecar(sidecar_path: Path, sample_sidecar_payload: dict) -> Path:
     """A written mining sidecar JSON file; returns the path."""
     sidecar_path.write_text(json.dumps(sample_sidecar_payload))
     return sidecar_path
+
+@pytest.fixture(autouse=True)
+def _isoler_le_profil_vocal(monkeypatch, tmp_path):
+    """Aucun test ne touche l'empreinte vocale RÉELLE du propriétaire.
+
+    Découvert le 23 août 2026, à la première exécution : les bancs vocaux ont
+    enrôlé leur audio synthétique dans ~/.diapason/voice_profile.npz — cinq
+    échantillons de bruit, verrou armé. Armé ainsi, l'assistant aurait été
+    SOURD à la vraie voix de l'utilisateur. Chaque test reçoit donc un
+    vérificateur neutre (jamais armé, enrôlement muet) ; les tests du module
+    speaker_id construisent explicitement leur propre instance sur tmp_path.
+    """
+    from diapason.speech import speaker_id
+
+    class _VerificateurNeutre:
+        arme = False
+        echantillons = 0
+
+        def enroll(self, *a, **k):
+            return False
+
+        def verify(self, *a, **k):
+            return 1.0, True
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(speaker_id, "_partage", None)
+    monkeypatch.setattr(speaker_id, "get_verifier", lambda: _VerificateurNeutre())
+
