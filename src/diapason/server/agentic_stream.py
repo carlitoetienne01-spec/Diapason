@@ -46,6 +46,25 @@ DEFAULT_MAX_TOOL_TURNS = 3
 # qu'il a tout vu.
 MAX_TOOL_RESULT_CHARS = 4000
 
+# Plafond de température des tours qui PROPOSENT des outils.
+#
+# Décider d'appeler un outil n'est pas un acte créatif, et le hasard s'y voit.
+# Mesuré sur qwen3.5:9b, « qu'est-ce que j'ai comme tâches aujourd'hui ? »,
+# dix essais par palier :
+#
+#     0,7 →  9/10 appels        0,3 → 10/10
+#     0,1 → 10/10               0,0 → 10/10
+#
+# L'essai manquant à 0,7 n'était pas un refus mais pire : le modèle répondait
+# « Je vais regarder tes tâches pour aujourd'hui. » et s'arrêtait là. Une
+# promesse sans suite, que rien ne signale comme un échec — l'utilisateur
+# attend un résultat qui ne viendra pas.
+#
+# Le plafond ne s'applique QU'AUX tours porteurs d'outils. Le dernier tour,
+# celui qui rédige sans outils, garde la température demandée par l'appelant :
+# c'est là que la prose se joue.
+TOOL_TURN_TEMPERATURE = 0.3
+
 
 def _tronquer(texte: str, limite: int = MAX_TOOL_RESULT_CHARS) -> str:
     if len(texte) <= limite:
@@ -184,6 +203,7 @@ async def stream_with_tools(
     specs = [outil.to_openai_function() for outil in tools]
     travail: list[Message] = list(messages)
     deja_vus: set[str] = set()
+    deja_ecrit = False
 
     for tour in range(max_tool_turns + 1):
         # Le tour de trop se fait sans outils : on veut une phrase, pas un
@@ -193,6 +213,7 @@ async def stream_with_tools(
 
         morceaux: list[str] = []
         fragments: dict[int, dict[str, Any]] = {}
+        premier_du_tour = True
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -201,9 +222,20 @@ async def stream_with_tools(
         }
         if specs_du_tour:
             kwargs["tools"] = specs_du_tour
+            kwargs["temperature"] = min(temperature, TOOL_TURN_TEMPERATURE)
 
         async for morceau in engine.stream_full(travail, **kwargs):
             if morceau.content:
+                if premier_du_tour and deja_ecrit and morceau.content.strip():
+                    # Le tour précédent avait écrit (« Je regarde tes
+                    # tâches… ») et celui-ci reprend après l'outil. Sans ce
+                    # séparateur les deux se recollent :
+                    # « Je regarde tes tâches.Tu as une tâche ».
+                    yield ToolStreamEvent("token", "\n\n")
+                premier_du_tour = False
+                # Du blanc n'est pas du texte écrit : un tour qui n'émet que
+                # des espaces ne doit pas faire précéder le suivant d'un saut.
+                deja_ecrit = deja_ecrit or bool(morceau.content.strip())
                 morceaux.append(morceau.content)
                 yield ToolStreamEvent("token", morceau.content)
             if morceau.tool_calls:
@@ -299,6 +331,7 @@ async def stream_with_tools(
 __all__ = [
     "DEFAULT_MAX_TOOL_TURNS",
     "MAX_TOOL_RESULT_CHARS",
+    "TOOL_TURN_TEMPERATURE",
     "ToolStreamEvent",
     "observation",
     "stream_with_tools",

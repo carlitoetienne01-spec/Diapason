@@ -342,3 +342,84 @@ def test_le_modele_recoit_l_observation_complete_pas_le_seul_contenu():
     _collecter(moteur, ExecuteurRiche(), outils=("taches",))
     renvoye = moteur.appels[1]["messages"][-1].content
     assert "Appeler le dentiste" in renvoye
+
+
+class TestSeparateur:
+    """Le texte d'avant l'outil ne doit pas se coller à celui d'après.
+
+    Constaté à l'écran : « Je vais consulter tes tâches d'aujourd'hui.Tu as une
+    tâche aujourd'hui ». Deux tours distincts, recollés sans respiration, parce
+    que la boucle émettait les jetons du second à la suite du premier.
+    """
+
+    def test_deux_tours_qui_ecrivent_sont_separes(self):
+        moteur = MoteurFactice(
+            [
+                [
+                    StreamChunk(content="Je regarde tes tâches."),
+                    StreamChunk(tool_calls=[_appel("taches")]),
+                ],
+                [StreamChunk(content="Tu as une tâche.")],
+            ]
+        )
+        evts = _collecter(moteur, ExecuteurFactice("1 tâche"), outils=("taches",))
+        texte = "".join(e.data for e in evts if e.kind == "token")
+        assert texte == "Je regarde tes tâches.\n\nTu as une tâche."
+
+    def test_pas_de_separateur_quand_le_premier_tour_est_muet(self):
+        """Le cas courant : l'outil part sans préambule. Pas de saut en tête."""
+        moteur = MoteurFactice(
+            [
+                [StreamChunk(tool_calls=[_appel("taches")])],
+                [StreamChunk(content="Tu as une tâche.")],
+            ]
+        )
+        evts = _collecter(moteur, ExecuteurFactice("1 tâche"), outils=("taches",))
+        texte = "".join(e.data for e in evts if e.kind == "token")
+        assert texte == "Tu as une tâche."
+
+    def test_un_seul_tour_n_est_jamais_separe(self):
+        moteur = MoteurFactice([[StreamChunk(content="Bon"), StreamChunk(content="soir")]])
+        evts = _collecter(moteur, ExecuteurFactice())
+        assert "".join(e.data for e in evts if e.kind == "token") == "Bonsoir"
+
+    def test_un_tour_qui_n_emet_que_du_blanc_ne_declenche_pas_le_separateur(self):
+        moteur = MoteurFactice(
+            [
+                [StreamChunk(content="   "), StreamChunk(tool_calls=[_appel("taches")])],
+                [StreamChunk(content="Tu as une tâche.")],
+            ]
+        )
+        evts = _collecter(moteur, ExecuteurFactice("1 tâche"), outils=("taches",))
+        texte = "".join(e.data for e in evts if e.kind == "token")
+        assert texte == "   Tu as une tâche.", "un blanc n'est pas du texte écrit"
+
+
+class TestTemperatureDesToursOutilles:
+    """Décider d'appeler un outil n'est pas un acte créatif.
+
+    Mesuré sur qwen3.5:9b : à 0,7 le modèle répondait « Je vais regarder tes
+    tâches pour aujourd'hui. » et s'arrêtait là une fois sur dix — une promesse
+    sans suite, que rien ne signale comme un échec. À 0,3 et en dessous, dix
+    sur dix.
+    """
+
+    def test_un_tour_porteur_d_outils_est_refroidi(self):
+        from diapason.server.agentic_stream import TOOL_TURN_TEMPERATURE
+
+        moteur = MoteurFactice([[StreamChunk(content="fini")]])
+        _collecter(moteur, ExecuteurFactice(), temperature=0.9)
+        assert moteur.appels[0]["kwargs"]["temperature"] == TOOL_TURN_TEMPERATURE
+
+    def test_le_dernier_tour_garde_la_temperature_demandee(self):
+        """Sans outils à choisir, c'est la prose qui se joue : on rend la main."""
+        moteur = MoteurFactice([[StreamChunk(tool_calls=[_appel("horloge")])]])
+        _collecter(moteur, ExecuteurFactice(), temperature=0.9, max_tool_turns=1)
+        assert "tools" in moteur.appels[0]["kwargs"]
+        assert "tools" not in moteur.appels[1]["kwargs"]
+        assert moteur.appels[1]["kwargs"]["temperature"] == 0.9
+
+    def test_une_temperature_deja_basse_n_est_jamais_rechauffee(self):
+        moteur = MoteurFactice([[StreamChunk(content="fini")]])
+        _collecter(moteur, ExecuteurFactice(), temperature=0.05)
+        assert moteur.appels[0]["kwargs"]["temperature"] == 0.05
