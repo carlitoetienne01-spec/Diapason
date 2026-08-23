@@ -740,10 +740,14 @@ class SuccesWorkspaceStore(SuccesStore):
             return project
 
     def delete_project(self, project_id: str, *, op_id: str | None = None) -> None:
-        project = self.get_project(project_id)
         timestamp = now_ms()
         request = {"action": "delete_project", "projectId": project_id}
         with self._transaction() as conn:
+            # La garde d'idempotence AVANT de charger le projet. Elle était
+            # après : ``get_project`` levait « ce projet n'existe pas ou a été
+            # supprimé » et la garde n'était jamais atteinte. Un pair qui
+            # renvoie son op après une coupure réseau recevait donc une erreur
+            # là où il attendait un non-événement — et cessait de synchroniser.
             if (
                 op_id
                 and conn.execute(
@@ -751,6 +755,9 @@ class SuccesWorkspaceStore(SuccesStore):
                 ).fetchone()
             ):
                 return
+            project = self._load_project(conn, project_id)
+            if project is None:
+                raise SuccesNotFound("Ce projet n'existe pas ou a été supprimé.")
             conn.execute(
                 "UPDATE succes_projects SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                 (timestamp, timestamp, project_id),
@@ -765,6 +772,62 @@ class SuccesWorkspaceStore(SuccesStore):
                 timestamp_ms=timestamp,
                 op_id=op_id,
             )
+            # Le projet emporte ses tâches. Il ne les emportait pas : constaté
+            # le 22 août 2026 sur l'installation de Carlito, soixante-quinze
+            # tâches survivaient à seize projets supprimés et s'entassaient
+            # dans « sans date ». Elles n'étaient plus rattachées à rien de
+            # visible, donc impossibles à retrouver par leur projet — et
+            # impossibles à supprimer autrement qu'une par une.
+            #
+            # Une op par tâche, et non une seule pour le projet : le téléphone
+            # applique les suppressions entité par entité, et un pair qui ne
+            # reçoit que la mort du projet garde toutes les tâches.
+            survivantes = conn.execute(
+                "SELECT id FROM succes_tasks "
+                "WHERE project_id=? AND deleted_at_ms IS NULL",
+                (project_id,),
+            ).fetchall()
+            for rang, ligne in enumerate(survivantes):
+                task_id = ligne["id"]
+                conn.execute(
+                    "UPDATE succes_tasks SET deleted_at_ms=?,updated_at_ms=? "
+                    "WHERE id=?",
+                    (timestamp, timestamp, task_id),
+                )
+                aretes = self._emporter_les_dependances(conn, task_id, timestamp)
+                self._record_op(
+                    conn,
+                    entity="tasks",
+                    entity_id=task_id,
+                    kind="delete",
+                    payload={"id": task_id, "deletedAtMs": timestamp},
+                    request={
+                        "action": "delete_tasks_of_project",
+                        "projectId": project_id,
+                        "taskId": task_id,
+                    },
+                    timestamp_ms=timestamp,
+                    # Dérivé de l'op du projet : rejouer la suppression après
+                    # une coupure ne doit pas produire une seconde salve d'ops.
+                    op_id=f"{op_id}:task:{rang}" if op_id else None,
+                )
+                for arete in aretes:
+                    de, vers = arete["from_task_id"], arete["to_task_id"]
+                    self._record_op(
+                        conn,
+                        entity="task_edges",
+                        entity_id=f"{de}->{vers}",
+                        kind="delete",
+                        payload={"fromTaskId": de, "toTaskId": vers},
+                        request={
+                            "action": "delete_edges_of_task",
+                            "taskId": task_id,
+                        },
+                        timestamp_ms=timestamp,
+                        op_id=(
+                            f"{op_id}:task:{rang}:edge:{de}:{vers}" if op_id else None
+                        ),
+                    )
 
     # Habits -----------------------------------------------------------
 

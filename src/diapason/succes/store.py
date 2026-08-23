@@ -1180,28 +1180,7 @@ class SuccesStore:
                 "UPDATE succes_tasks SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
                 (ts, ts, task_id),
             )
-            conn.execute(
-                "UPDATE succes_subtasks SET deleted_at_ms=? "
-                "WHERE task_id=? AND deleted_at_ms IS NULL",
-                (ts, task_id),
-            )
-            # Les arêtes qui touchaient cette tâche disparaissent avec elle.
-            # Sans ça, la vue réseau les cachait (elle filtre les orphelines)
-            # tandis que le serveur les suivait toujours : le parcours
-            # anti-boucle refusait une arête légitime « à cause » d'un chemin
-            # passant par un mort, sur un écran où plus aucune flèche n'était
-            # visible. Une contrainte invisible et insupprimable.
-            orphelines = conn.execute(
-                "SELECT from_task_id, to_task_id FROM succes_task_edges "
-                "WHERE from_task_id=? OR to_task_id=?",
-                (task_id, task_id),
-            ).fetchall()
-            if orphelines:
-                conn.execute(
-                    "DELETE FROM succes_task_edges "
-                    "WHERE from_task_id=? OR to_task_id=?",
-                    (task_id, task_id),
-                )
+            orphelines = self._emporter_les_dependances(conn, task_id, ts)
             self._record_op(
                 conn,
                 entity="tasks",
@@ -1226,6 +1205,45 @@ class SuccesStore:
                     timestamp_ms=ts,
                     op_id=f"{op_id}:edge:{de}:{vers}" if op_id else None,
                 )
+
+    @staticmethod
+    def _emporter_les_dependances(
+        conn: sqlite3.Connection, task_id: str, ts: int
+    ) -> list[sqlite3.Row]:
+        """Ce qu'une tâche emporte en disparaissant : sous-tâches et arêtes.
+
+        Extrait de ``delete_task`` le 22 août 2026, quand ``delete_project``
+        s'est révélé ne rien emporter du tout. Deux cascades séparées
+        divergent : celle qui apprend l'existence d'une nouvelle table
+        dépendante, et celle qui ne l'apprend pas. C'est exactement ainsi que
+        soixante-quinze tâches ont survécu à leurs projets.
+
+        Les arêtes qui touchaient la tâche disparaissent avec elle. Sans ça,
+        la vue réseau les cachait (elle filtre les orphelines) tandis que le
+        serveur les suivait toujours : le parcours anti-boucle refusait une
+        arête légitime « à cause » d'un chemin passant par un mort, sur un
+        écran où plus aucune flèche n'était visible. Une contrainte invisible
+        et insupprimable.
+
+        Rend les arêtes retirées : l'appelant doit en enregistrer une op
+        chacune, sans quoi le pair garde des liens vers un disparu.
+        """
+        conn.execute(
+            "UPDATE succes_subtasks SET deleted_at_ms=? "
+            "WHERE task_id=? AND deleted_at_ms IS NULL",
+            (ts, task_id),
+        )
+        orphelines = conn.execute(
+            "SELECT from_task_id, to_task_id FROM succes_task_edges "
+            "WHERE from_task_id=? OR to_task_id=?",
+            (task_id, task_id),
+        ).fetchall()
+        if orphelines:
+            conn.execute(
+                "DELETE FROM succes_task_edges WHERE from_task_id=? OR to_task_id=?",
+                (task_id, task_id),
+            )
+        return list(orphelines)
 
     @staticmethod
     def _descendant_ids(conn: sqlite3.Connection, parent_id: str) -> list[str]:
