@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple
@@ -18,6 +19,24 @@ class PromptSection:
     content: str
     source: str
     cache_segment: PromptCacheSegment
+
+
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _strip_html_comments(text: str) -> str:
+    """Drop HTML comments from a persona file before the model reads it.
+
+    ``USER.md`` ships with an editorial note — "this file is yours, add what
+    Diapason should know" — addressed to the PERSON, inside an HTML comment
+    because Markdown renderers hide it. The model has no renderer: it reads
+    the note as context, and on Carlito's install those three lines were 19%
+    of the whole system prompt. Guidance meant for the author became an
+    instruction to the assistant.
+
+    Only the comments go; the surrounding text keeps its shape.
+    """
+    return _HTML_COMMENT_RE.sub("", text).strip()
 
 
 class SystemPromptBuilder:
@@ -241,7 +260,7 @@ class SystemPromptBuilder:
         # Always read as UTF-8. On Windows, ``read_text()`` falls back to the
         # system code page (e.g. cp950 for zh-TW, cp932 for ja) and raises
         # ``UnicodeDecodeError`` on any non-ASCII persona content.
-        content = path.read_text(encoding="utf-8")
+        content = _strip_html_comments(path.read_text(encoding="utf-8"))
         if len(content) <= max_chars:
             return content
         return self._truncate(content, max_chars)

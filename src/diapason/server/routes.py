@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from diapason.core.paths import get_config_dir
+from diapason.core.tool_turn import text_needs_tools
 from diapason.core.types import Message, Role
 from diapason.server.models import (
     ChatCompletionChunk,
@@ -28,6 +29,127 @@ from diapason.server.models import (
 )
 
 router = APIRouter()
+
+
+# La trousse du chat, résolue une fois puis gardée sur l'état de l'app.
+# Sans elle, le chat en flux parlait au moteur nu : l'agent — et avec lui les
+# 98 outils enregistrés — était contourné, si bien que Diapason pouvait décrire
+# un agenda sans jamais le lire. Voir server/agentic_stream.py.
+#
+# Cette liste est le défaut d'un assistant personnel : lire l'heure et l'agenda,
+# consulter Succès, chercher, se souvenir, regarder l'écran. Elle exclut
+# délibérément shell_exec, file_write et apply_patch — un assistant de salon
+# n'a pas à écrire sur le disque pour répondre à une question. ``[agent] tools``
+# dans la configuration la remplace entièrement quand elle est renseignée.
+_TROUSSE_ASSISTANT: tuple[str, ...] = (
+    "current_time",
+    "calendar_query",
+    "succes_tasks",
+    "succes_workspace",
+    "succes_continuity",
+    "succes_finances",
+    "succes_delete_task",
+    "succes_delete_item",
+    # memory_manage écrit dans ~/.diapason/MEMORY.md, que le constructeur de
+    # prompt relit à chaque session : c'est le seul circuit de mémoire qui
+    # boucle réellement. memory_search, memory_store et retrieval visent un
+    # magasin vectoriel désactivé ([memory] enabled = false) et ne savent que
+    # répondre « No memory backend configured » — trois outils qui coûtent du
+    # préremplissage pour ne rendre que des échecs.
+    "memory_manage",
+    "user_profile_manage",
+    "web_search",
+    "find_files",
+    "open_anything",
+    "screen_describe",
+    "calculator",
+)
+
+
+def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
+    """(outils, exécuteur) pour le chat, ou None si aucun outil n'est utilisable.
+
+    Le cache vit sur l'état de l'app : résoudre la trousse coûte l'import de
+    tout ``diapason.tools``, et une requête de chat ne peut pas le payer.
+    ``None`` est mis en cache aussi — une installation sans outils ne doit pas
+    retenter l'import à chaque message.
+    """
+    sentinelle = getattr(app_state, "_chat_tooling_cache", "absent")
+    if sentinelle != "absent":
+        return sentinelle
+
+    resultat: Optional[tuple[list, Any]] = None
+    try:
+        import diapason.tools  # noqa: F401  # déclenche les enregistrements
+        from diapason.core.registry import ToolRegistry
+        from diapason.server.approval_bridge import tool_confirm_callback
+        from diapason.tools._stubs import BaseTool, ToolExecutor
+
+        configures = getattr(getattr(config, "agent", None), "tools", "") or ""
+        if isinstance(configures, str):
+            voulus = [t.strip() for t in configures.split(",") if t.strip()]
+        else:
+            voulus = [str(t).strip() for t in configures if str(t).strip()]
+        noms = voulus or list(_TROUSSE_ASSISTANT)
+
+        outils = []
+        for nom in noms:
+            if not ToolRegistry.contains(nom):
+                # Un outil nommé mais absent (dépendance non installée) ne doit
+                # pas priver le chat des autres.
+                logging.getLogger("diapason.server").debug(
+                    "outil de chat inconnu, ignoré : %s", nom
+                )
+                continue
+            classe = ToolRegistry.get(nom)
+            if isinstance(classe, type) and issubclass(classe, BaseTool):
+                outils.append(classe())
+            elif isinstance(classe, BaseTool):
+                outils.append(classe)
+
+        if outils:
+            executeur = ToolExecutor(
+                outils,
+                getattr(app_state, "bus", None),
+                interactive=True,
+                confirm_callback=tool_confirm_callback(),
+                agent_id="chat",
+            )
+            resultat = (outils, executeur)
+    except Exception:
+        logging.getLogger("diapason.server").warning(
+            "trousse du chat indisponible — réponse sans outils",
+            exc_info=True,
+        )
+        resultat = None
+
+    app_state._chat_tooling_cache = resultat
+    return resultat
+
+
+_JOURS = (
+    "lundi",
+    "mardi",
+    "mercredi",
+    "jeudi",
+    "vendredi",
+    "samedi",
+    "dimanche",
+)
+_MOIS = (
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+)
 
 
 def _host_actions_allowed(request: Request, config) -> bool:
@@ -76,15 +198,22 @@ def _now_anchor() -> str:
     stamp = datetime.now().astimezone()
     raw = stamp.strftime("%z")
     offset = f"{raw[:3]}:{raw[3:]}" if raw else "?"
+    # ``strftime('%A %d %B')`` rendait « Saturday 22 August 2026 » : une date
+    # ANGLAISE au milieu d'une phrase française, dans l'ancre même qui fait
+    # autorité sur le contexte. Un modèle qu'on prie de répondre en français
+    # lit d'abord ça. ``setlocale`` corrigerait au prix d'un état global au
+    # processus — deux tables suffisent et ne dépendent d'aucun environnement.
+    jour = _JOURS[stamp.weekday()]
+    mois = _MOIS[stamp.month - 1]
     return (
         "=== MAINTENANT ===\n"
-        f"Nous sommes le {stamp.strftime('%A %d %B %Y')}, il est "
+        f"Nous sommes le {jour} {stamp.day} {mois} {stamp.year}, il est "
         f"{stamp.strftime('%H:%M')} ({stamp.tzname()}, UTC{offset}). "
         f"ISO : {stamp.isoformat(timespec='seconds')}\n"
         "Ceci fait autorité sur toute autre date présente dans ce contexte : "
         "les dates citées dans la mémoire ou les documents sont des dates "
         "PASSÉES, jamais aujourd'hui. Pour l'heure exacte après un long "
-        "échange, relisez l'horloge avec l'outil current_time."
+        "échange, relis l'horloge avec l'outil current_time."
     )
 
 
@@ -360,6 +489,11 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             bus=getattr(request.app.state, "bus", None),
             memory_service=getattr(request.app.state, "memory_service", None),
             client_system=client_system,
+            # Sans cette trousse, le chat du bureau parlait au moteur nu et
+            # Diapason ne pouvait rien LIRE — ni l'heure, ni l'agenda, ni une
+            # tâche Succès. C'est le fil qui manquait entre les 98 outils
+            # enregistrés et la seule interface qui sert vraiment.
+            tooling=_chat_tooling(request.app.state, config),
         )
 
     # Non-streaming: use agent if available, otherwise direct engine call.
@@ -852,6 +986,7 @@ async def _handle_stream(
     bus=None,
     memory_service=None,
     client_system: bool = False,
+    tooling=None,
 ):
     """Stream response using SSE format.
 
@@ -908,6 +1043,7 @@ async def _handle_stream(
             # mis-route the request to a cloud backend (MultiEngine routing
             # confusion), which is detected by checking the routed engine's
             # is_cloud attribute.
+            token_iter = None
             if use_cloud:
                 token_iter = stream_cloud(
                     model, messages, req.temperature, req.max_tokens
@@ -933,6 +1069,13 @@ async def _handle_stream(
                     token_iter = stream_local(
                         model, messages, req.temperature, req.max_tokens
                     )
+                elif tooling is not None and text_needs_tools(query_text):
+                    # Les schémas des dix-sept outils pèsent près de trois mille
+                    # jetons que le modèle relit avant de répondre. Sur « merci »
+                    # c'est du temps pur perdu ; le chemin vocal l'avait déjà
+                    # mesuré (voir core/tool_turn.py). Par défaut on les envoie :
+                    # seule une parole sans demande en est dispensée.
+                    token_iter = None
                 else:
                     token_iter = engine.stream(
                         messages,
@@ -940,18 +1083,61 @@ async def _handle_stream(
                         temperature=req.temperature,
                         max_tokens=req.max_tokens,
                     )
-            async for token in token_iter:
-                full_content += token
-                chunk = ChatCompletionChunk(
-                    id=chunk_id,
-                    model=model,
-                    choices=[
-                        StreamChoice(
-                            delta=DeltaMessage(content=token),
+
+            if token_iter is None:
+                # Chemin outillé : mêmes jetons, au même rythme, mais le
+                # modèle peut s'interrompre pour lire l'heure ou l'agenda.
+                # Les événements tool_call_* sont ceux que le chat affiche
+                # déjà (voir Chat/InputArea.tsx).
+                import json as _json_outils
+
+                from diapason.server.agentic_stream import stream_with_tools
+
+                _outils, _executeur = tooling
+                async for _evt in stream_with_tools(
+                    engine,
+                    model,
+                    messages,
+                    tools=_outils,
+                    executor=_executeur,
+                    temperature=req.temperature,
+                    max_tokens=req.max_tokens,
+                ):
+                    if _evt.kind == "token":
+                        full_content += _evt.data
+                        chunk = ChatCompletionChunk(
+                            id=chunk_id,
+                            model=model,
+                            choices=[
+                                StreamChoice(
+                                    delta=DeltaMessage(content=_evt.data),
+                                )
+                            ],
                         )
-                    ],
-                )
-                yield f"data: {chunk.model_dump_json()}\n\n"
+                        yield f"data: {chunk.model_dump_json()}\n\n"
+                    else:
+                        _nom = (
+                            "tool_call_start"
+                            if _evt.kind == "tool_start"
+                            else "tool_call_end"
+                        )
+                        yield (
+                            f"event: {_nom}\n"
+                            f"data: {_json_outils.dumps(_evt.data)}\n\n"
+                        )
+            else:
+                async for token in token_iter:
+                    full_content += token
+                    chunk = ChatCompletionChunk(
+                        id=chunk_id,
+                        model=model,
+                        choices=[
+                            StreamChoice(
+                                delta=DeltaMessage(content=token),
+                            )
+                        ],
+                    )
+                    yield f"data: {chunk.model_dump_json()}\n\n"
         except Exception as exc:
             # Surface errors as a content chunk so the frontend can
             # display them instead of silently failing.

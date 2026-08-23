@@ -31,7 +31,13 @@ def test_digest_displays_cached(tmp_path):
             audio_path=Path("/nonexistent/audio.mp3"),
             sections={},
             sources_used=["gmail"],
-            generated_at=datetime.now(tz=__import__("datetime").timezone.utc),
+            # L'heure LOCALE, pas UTC. ``get_today`` compare la date du
+            # tampon à aujourd'hui dans le fuseau de la machine — c'est le
+            # sens du champ, et sa docstring le dit. Un tampon UTC désigne
+            # déjà demain à l'ouest de Greenwich dès le début de soirée : ce
+            # test échouait quatre heures par jour, tous les jours, sur la
+            # machine de quiconque n'est pas à UTC.
+            generated_at=datetime.now().astimezone(),
             model_used="test",
             voice_used="diapason",
         )

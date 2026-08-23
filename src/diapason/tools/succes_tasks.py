@@ -29,7 +29,17 @@ class SuccesTasksTool(BaseTool):
                 "Manage the user's private Succès tasks on this Mac. Supports listing, "
                 "creating, completing/reopening, rescheduling, and adding or toggling "
                 "subtasks. Never claims remote sync. Deletion and bulk changes "
-                "are not allowed."
+                "are not allowed. "
+                # Sans cette phrase, un modèle 9b appelle list sans date et
+                # reçoit les quatre-vingt-cinq tâches d'un coup — dont il ne
+                # voit qu'un extrait, et sur lequel il répond de travers. La
+                # question posée est presque toujours datée (« aujourd'hui »,
+                # « demain », « cette semaine ») : le dire ici coûte une ligne
+                # et change la réponse.
+                "When listing, ALWAYS pass `date` if the question is about a "
+                "day — 'aujourd'hui', 'demain', '2026-08-22'. Listing without a "
+                "date returns every task ever created, which is rarely what was "
+                "asked."
             ),
             parameters={
                 "type": "object",
