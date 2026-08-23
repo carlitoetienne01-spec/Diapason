@@ -77,7 +77,6 @@ export default function App() {
   const prevModelRef = useRef<string>('');
   const setModels = useAppStore((s) => s.setModels);
   const setModelsLoading = useAppStore((s) => s.setModelsLoading);
-  const setSelectedModel = useAppStore((s) => s.setSelectedModel);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const setServerInfo = useAppStore((s) => s.setServerInfo);
   const setSavings = useAppStore((s) => s.setSavings);
@@ -126,7 +125,6 @@ export default function App() {
     fetchModels()
       .then((m) => {
         setModels(m);
-        if (!selectedModel && m.length > 0) setSelectedModel(m[0].id);
       })
       .catch(() => setModels([]))
       .finally(() => setModelsLoading(false));

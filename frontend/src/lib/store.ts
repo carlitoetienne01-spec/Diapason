@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+
+import { modeleInitial } from './modelePrefere';
 import type {
   Conversation,
   ChatMessage,
@@ -246,6 +248,8 @@ interface AppState {
   setModels: (models: ModelInfo[]) => void;
   setModelsLoading: (loading: boolean) => void;
   setSelectedModel: (model: string) => void;
+  /** Choix de l'utilisateur : sélectionne ET retient la préférence. */
+  chooseModel: (model: string) => void;
   setServerInfo: (info: ServerInfo | null) => void;
   setSavings: (data: SavingsData | null) => void;
   incrementSavings: (usage: TokenUsage) => void;
@@ -564,13 +568,25 @@ export const useAppStore = create<AppState>((set, get) => {
     // ── Models & server ────────────────────────────────────────────
 
     setModels: (models: ModelInfo[]) =>
-      set((state) =>
-        !state.selectedModel && models.length > 0
-          ? { models, selectedModel: models[0].id }
-          : { models },
-      ),
+      set((state) => {
+        if (state.selectedModel) return { models };
+        const choix = modeleInitial(state.settings.defaultModel, models);
+        return choix ? { models, selectedModel: choix } : { models };
+      }),
     setModelsLoading: (loading: boolean) => set({ modelsLoading: loading }),
     setSelectedModel: (model: string) => set({ selectedModel: model }),
+    // Un modèle CHOISI est une préférence (23 août 2026) : elle survit au
+    // redémarrage (réglages locaux) et même à un stockage effacé — la config
+    // serveur la relit au démarrage et la remet en tête de /v1/models.
+    chooseModel: (model: string) => {
+      set({ selectedModel: model });
+      get().updateSettings({ defaultModel: model });
+      void import('./api')
+        .then(({ setServerConfigKey }) =>
+          setServerConfigKey('intelligence.default_model', model),
+        )
+        .catch(() => undefined);
+    },
     setServerInfo: (info: ServerInfo | null) => set({ serverInfo: info }),
     setSavings: (data: SavingsData | null) => set({ savings: data }),
     incrementSavings: (usage: TokenUsage) => {

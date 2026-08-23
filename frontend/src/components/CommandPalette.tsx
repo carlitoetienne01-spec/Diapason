@@ -110,7 +110,7 @@ export function CommandPalette() {
 
   const models = useAppStore((s) => s.models);
   const selectedModel = useAppStore((s) => s.selectedModel);
-  const setSelectedModel = useAppStore((s) => s.setSelectedModel);
+  const chooseModel = useAppStore((s) => s.chooseModel);
   const setModels = useAppStore((s) => s.setModels);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
 
@@ -168,7 +168,7 @@ export function CommandPalette() {
 
   const handleSelect = async (modelId: string) => {
     const previousModel = selectedModel;
-    setSelectedModel(modelId);
+    chooseModel(modelId);
     setCommandPaletteOpen(false);
 
     if (modelId !== previousModel) {
@@ -213,7 +213,7 @@ export function CommandPalette() {
         message: t('logs.model.downloaded', { model: modelId }),
       });
       await refreshModels();
-      setSelectedModel(modelId);
+      chooseModel(modelId);
     } catch (e: any) {
       setPullError(e.message || t('common.downloadFailed'));
       useAppStore.getState().addLogEntry({
@@ -236,7 +236,7 @@ export function CommandPalette() {
       await refreshModels();
       if (selectedModel === modelId) {
         const remaining = models.filter((m) => m.id !== modelId);
-        if (remaining.length > 0) setSelectedModel(remaining[0].id);
+        if (remaining.length > 0) chooseModel(remaining[0].id);
       }
     } catch {} finally {
       setDeleting(null);

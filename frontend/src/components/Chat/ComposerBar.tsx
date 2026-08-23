@@ -208,7 +208,7 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
   const { t } = useTranslation();
   const models = useAppStore((s) => s.models);
   const selectedModel = useAppStore((s) => s.selectedModel);
-  const setSelectedModel = useAppStore((s) => s.setSelectedModel);
+  const chooseModel = useAppStore((s) => s.chooseModel);
   const modelLoading = useAppStore((s) => s.modelLoading);
   const setModelLoading = useAppStore((s) => s.setModelLoading);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
@@ -220,7 +220,7 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
   const pick = (id: string) => {
     setAnchor(null);
     if (id === selectedModel) return;
-    setSelectedModel(id);
+    chooseModel(id);
     // Same path as the ⌘K palette: warm the model so the first message
     // does not pay the load.
     setModelLoading(true);
