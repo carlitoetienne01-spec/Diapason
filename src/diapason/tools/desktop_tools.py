@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -125,8 +126,15 @@ def open_in_browser(url: str, *, browser: str = "") -> ToolResult:
         return ToolResult(tool_name="open_anything", content=str(exc), success=False)
 
 
-def open_application(app_name: str) -> ToolResult:
-    """Launch or focus an application by name."""
+def open_application(app_name: str, *, attente_s: float = 0.35) -> ToolResult:
+    """Launch or focus an application by name.
+
+    Regarder avant, vérifier après (demandé le 23 août 2026) : une app
+    déjà au premier plan se CONSTATE (« elle est déjà devant toi »), une
+    app en marche se REMET devant, une app éteinte se LANCE — et la mise
+    au premier plan se vérifie au lieu de se proclamer. Le content est
+    écrit pour être dit tel quel ; l'état précis vit dans metadata.
+    """
     name = (app_name or "").strip()
     if not name:
         return ToolResult(
@@ -134,7 +142,24 @@ def open_application(app_name: str) -> ToolResult:
         )
     try:
         if sys.platform == "darwin":
+            from diapason.desktop import etat_bureau
+
             resolved = resolve_mac_app_name(name) or name
+
+            etat = etat_bureau.etat_du_bureau()
+            bas = resolved.casefold()
+            deja_devant = etat is not None and etat.premier_plan.casefold() == bas
+            en_marche = etat is not None and any(
+                p.casefold() == bas for p in etat.en_marche
+            )
+            if deja_devant:
+                return ToolResult(
+                    tool_name="open_anything",
+                    content=f"{resolved} est déjà devant toi.",
+                    success=True,
+                    metadata={"kind": "app", "app": resolved, "etat": "deja_devant"},
+                )
+
             r = _run(["open", "-a", resolved], timeout=8.0)
             if r.returncode != 0:
                 # Activate via AppleScript as fallback
@@ -150,11 +175,40 @@ def open_application(app_name: str) -> ToolResult:
                         ).strip(),
                         success=False,
                     )
+
+            # La vérification : deux regards espacés, puis l'honnêteté.
+            verifie = False
+            for _ in range(2):
+                if attente_s > 0:
+                    time.sleep(attente_s)
+                if etat_bureau.premier_plan().casefold() == bas:
+                    verifie = True
+                    break
+
+            if en_marche:
+                contenu = (
+                    f"{resolved} est devant toi."
+                    if verifie
+                    else f"{resolved} est ouvert, mais une autre fenêtre est restée devant."
+                )
+                situation = "remise_devant"
+            else:
+                contenu = (
+                    f"{resolved} est lancé et devant toi."
+                    if verifie
+                    else f"Je lance {resolved}, il arrive."
+                )
+                situation = "lancee"
             return ToolResult(
                 tool_name="open_anything",
-                content=f"Opened app {resolved}",
+                content=contenu,
                 success=True,
-                metadata={"kind": "app", "app": resolved},
+                metadata={
+                    "kind": "app",
+                    "app": resolved,
+                    "etat": situation,
+                    "verifie": verifie,
+                },
             )
         if sys.platform == "win32":
             r = _run(["cmd", "/c", "start", "", name])

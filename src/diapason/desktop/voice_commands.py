@@ -309,6 +309,9 @@ def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
             "handled": True,
             "kind": action.kind,
             "target": action.target,
+            # « déjà devant » / « remise devant » / « lancée » — la voix
+            # choisit sa phrase d'après la réalité constatée, pas l'inverse.
+            "etat": str((result.metadata or {}).get("etat") or ""),
             "success": result.success,
             "detail": result.content,
         }

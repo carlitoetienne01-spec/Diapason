@@ -362,3 +362,21 @@ def _isoler_le_profil_vocal(monkeypatch, tmp_path):
     monkeypatch.setattr(speaker_id, "_partage", None)
     monkeypatch.setattr(speaker_id, "get_verifier", lambda: _VerificateurNeutre())
 
+
+
+@pytest.fixture(autouse=True)
+def _isoler_le_bureau(monkeypatch):
+    """Aucun test ne lit le VRAI bureau (osascript System Events).
+
+    Le rafraîchissement d'état parti en tâche de fond pendant les tests de
+    parole remplissait le cache module avec les vraies applications de la
+    machine — et ce cliché fuyait dans les tours d'autres tests (constaté
+    le 23 août 2026). Un test qui veut un état l'injecte explicitement en
+    patchant ``etat_bureau._cache`` ou les fonctions elles-mêmes.
+    """
+    from diapason.desktop import etat_bureau
+
+    monkeypatch.setattr(etat_bureau, "_cache", None)
+    monkeypatch.setattr(etat_bureau, "etat_du_bureau", lambda **_k: None)
+    monkeypatch.setattr(etat_bureau, "premier_plan", lambda *_a, **_k: "")
+    yield

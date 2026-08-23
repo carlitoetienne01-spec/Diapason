@@ -1106,3 +1106,30 @@ class TestPromesseSansActe:
         # deux promesses de suite : une seule relance, pas de boucle
         assert len(journal["rounds"]) == 2
         assert journal["executed"] == []
+
+
+class TestClicheDuBureau:
+    """Le cliché du bureau entre dans le tour — en FIN de contexte, jamais
+    dans le préambule où il brûlerait le cache de préfixe."""
+
+    def test_le_cliche_arrive_juste_avant_le_tour_utilisateur(self, monkeypatch):
+        from diapason.desktop.etat_bureau import EtatBureau
+        import diapason.desktop.etat_bureau as eb
+
+        monkeypatch.setattr(
+            eb, "_cache", EtatBureau("Safari", ("Safari", "Notes"), 0.0)
+        )
+        session = Harness().session
+        messages = session._turn_messages("ouvre Notes")
+        assert messages[-1] == {"role": "user", "content": "ouvre Notes"}
+        assert messages[-2]["role"] == "system"
+        assert "au premier plan, Safari" in messages[-2]["content"]
+
+    def test_sans_cliche_le_tour_reste_nu(self, monkeypatch):
+        import diapason.desktop.etat_bureau as eb
+
+        monkeypatch.setattr(eb, "_cache", None)
+        session = Harness().session
+        messages = session._turn_messages("bonjour")
+        assert messages[-1]["role"] == "user"
+        assert all("État du bureau" not in (m.get("content") or "") for m in messages)

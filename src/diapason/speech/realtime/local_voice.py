@@ -1039,6 +1039,20 @@ class LocalVoiceSession(RealtimeVoiceSession):
         hist = list(self._history)[-15:]
         note = self._anti_loop_note(hist)
         extra = [note] if note else []
+        # Le CLICHÉ DU BUREAU (23 août 2026) : l'app au premier plan et les
+        # apps en marche, pour que « ouvre X » sur une app déjà ouverte se
+        # dise au lieu de se rejouer. Lecture du cache seulement — jamais
+        # une milliseconde d'attente ici — et EN FIN de contexte : dans le
+        # préambule, cet état volatil brûlerait le cache de préfixe à
+        # chaque tour.
+        try:
+            from diapason.desktop.etat_bureau import decrire, dernier_etat_connu
+
+            cliche = dernier_etat_connu()
+            if cliche is not None:
+                extra.append({"role": "system", "content": decrire(cliche)})
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
         return hist + extra + [{"role": "user", "content": text}]
 
     @staticmethod
@@ -1431,6 +1445,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # Chaque tour adressé prolonge la conversation ; dire le nom rouvre
         # une conversation éteinte.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
+        # Le cliché du bureau se rafraîchit EN PARALLÈLE du tour (~100 ms
+        # d'osascript) : le tour ne lit que le cache, jamais l'osascript.
+        # La référence est gardée, sinon la tâche part au ramasse-miettes.
+        try:
+            from diapason.desktop.etat_bureau import etat_du_bureau
+
+            self._tache_etat_bureau = asyncio.create_task(
+                asyncio.to_thread(etat_du_bureau)
+            )
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
         if nomme:
             text = strip_assistant_name(text)
             if not text:
@@ -1536,6 +1561,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if success
             else f"Je n’ai pas pu ouvrir {target}."
         )
+        # Quand l'outil a constaté l'état (« déjà devant toi », « remise
+        # devant », « lancée »), sa phrase dit la vérité — elle prime sur
+        # le verbe générique (demandé le 23 août 2026 : la parole suit la
+        # réalité, jamais l'inverse).
+        if success and result.get("etat") and result.get("detail"):
+            response = str(result["detail"])
         await self._speak_sentence(response, spoken)
         self._history.append({"role": "assistant", "content": response})
         del self._history[:-16]
@@ -1653,7 +1684,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
                                     "l'air. Appelle MAINTENANT l'outil qui "
                                     "convient (open_anything pour jouer ou "
                                     "ouvrir quelque chose), puis confirme en "
-                                    "une phrase courte."
+                                    "une phrase courte, sans répéter ton "
+                                    "annonce."
                                 ),
                             }
                         )
