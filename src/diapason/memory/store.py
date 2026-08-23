@@ -10,16 +10,19 @@ caps the total number of facts, and is safe to call from multiple threads.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 from diapason.core.paths import get_config_dir
 from diapason.core.registry import FactStoreRegistry
+
+logger = logging.getLogger(__name__)
 
 
 def _default_fact_path() -> Path:
@@ -183,6 +186,57 @@ def _ensure_fact_store_backends_registered() -> None:
         FactStoreRegistry.register_value("local", LocalFactStore)
 
 
+class SearchableFactStore(FactStore):
+    """Écrit chaque fait DEUX fois : dans le journal, et là où on le relira.
+
+    Constaté le 22 août 2026. Le service d'extraction rangeait ses faits dans
+    ``memory_facts.jsonl`` ; l'injection de contexte, elle, interrogeait le
+    magasin vectoriel de ``memory.db``. Deux magasins qui ne se croisaient
+    jamais : Diapason extrayait correctement « le projet Olala doit être publié
+    sur l'App Store avant fin septembre », le rangeait, et ne le retrouvait
+    plus jamais. La mémoire automatique écrivait dans le vide.
+
+    Le journal reste : il est append-only, lisible et modifiable à la main,
+    survit à une base corrompue, et c'est LUI qui dédoublonne. Seul un fait
+    réellement nouveau part à l'indexation — réindexer un doublon coûterait un
+    calcul d'embedding pour rien et polluerait les résultats.
+
+    Une panne du magasin de recherche ne fait pas perdre le fait : le journal a
+    déjà écrit, et l'échec est journalisé plutôt qu'avalé.
+    """
+
+    def __init__(self, journal: FactStore, backend: Any) -> None:
+        self._journal = journal
+        self._backend = backend
+
+    def add(self, text: str, source: str = "") -> bool:
+        nouveau = self._journal.add(text, source=source)
+        if not nouveau:
+            return False
+        try:
+            self._backend.store(
+                text,
+                source=source or "memory",
+                metadata={"kind": "fact"},
+            )
+        except Exception:  # noqa: BLE001 - le fait est déjà sauf dans le journal
+            logger.warning(
+                "fait non indexé pour la recherche (il reste au journal) : %.80s",
+                text,
+                exc_info=True,
+            )
+        return True
+
+    def list(self) -> List[Fact]:
+        return self._journal.list()
+
+    def clear(self) -> int:
+        return self._journal.clear()
+
+    def count(self) -> int:
+        return self._journal.count()
+
+
 def create_fact_store(
     backend: str = "local",
     *,
@@ -205,4 +259,10 @@ def create_fact_store(
     return FactStoreRegistry.create(key, path, max_facts=max_facts)
 
 
-__all__ = ["Fact", "FactStore", "LocalFactStore", "create_fact_store"]
+__all__ = [
+    "Fact",
+    "FactStore",
+    "LocalFactStore",
+    "SearchableFactStore",
+    "create_fact_store",
+]

@@ -590,6 +590,10 @@ def serve(
             engine,
             model_name,
             event_bus=bus,
+            # Le magasin que l'injection de contexte RELIT. Sans lui, les
+            # faits extraits partaient dans un journal que personne
+            # n'interroge.
+            memory_backend=memory_backend,
         )
         if memory_service is not None:
             memory_service.start()

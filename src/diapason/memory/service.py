@@ -22,7 +22,12 @@ from typing import Any, List, Optional
 
 from diapason.core.events import Event, EventBus, EventType
 from diapason.memory.extractor import FactExtractor
-from diapason.memory.store import Fact, FactStore, create_fact_store
+from diapason.memory.store import (
+    Fact,
+    FactStore,
+    SearchableFactStore,
+    create_fact_store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +186,7 @@ def build_memory_service(
     default_model: str = "",
     *,
     event_bus: EventBus | None = None,
+    memory_backend: Any = None,
 ) -> Optional[MemoryService]:
     """Build a :class:`MemoryService` from config, or ``None`` if disabled.
 
@@ -204,11 +210,18 @@ def build_memory_service(
         logger.debug("Memory service disabled: no extraction model available")
         return None
 
-    store = create_fact_store(
+    store: FactStore = create_fact_store(
         getattr(mem, "backend", "local"),
         path=getattr(mem, "facts_path", None),
         max_facts=getattr(mem, "max_facts", 1000),
     )
+    # Sans ce raccord, l'extraction écrivait dans le vide : les faits allaient
+    # au journal JSONL tandis que l'injection de contexte interrogeait le
+    # magasin vectoriel. Diapason distillait correctement « le projet Olala
+    # doit être publié avant fin septembre », le rangeait, et ne le retrouvait
+    # plus jamais. Voir SearchableFactStore.
+    if memory_backend is not None:
+        store = SearchableFactStore(store, memory_backend)
     extractor = FactExtractor(engine, model)
     return MemoryService(store, extractor, event_bus=event_bus)
 
