@@ -10,6 +10,16 @@ logger = logging.getLogger(__name__)
 
 # Diapason-parity allow-list for live voice.
 DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
+    # current_time, memory_manage et user_profile_manage manquaient. Le modèle
+    # RÉCLAMAIT current_time à « quelle heure est-il ? » et se voyait répondre
+    # « Tool not allowed in voice mode » — il s'en tirait grâce à l'horloge
+    # collée dans le prompt, mais tout ce qui dépend de « maintenant » sans y
+    # figurer (« dans combien de jours », « c'était quand ») restait hors
+    # d'atteinte. Et surtout : à la voix, « retiens que… » n'écrivait nulle
+    # part, exactement le défaut corrigé pour le chat le même jour.
+    "current_time",
+    "memory_manage",
+    "user_profile_manage",
     "open_anything",
     "open_uri",
     "focus_app",

@@ -415,6 +415,10 @@ _NO_TOOL_TURN_RE = NO_TOOL_TURN_RE
 _turn_needs_tools = turn_needs_tools
 
 
+# Voir le payload de _default_llm : mesuré, pas choisi.
+VOICE_TOOL_TURN_TEMPERATURE = 0.1
+
+
 def _default_llm(
     model: str, system: str, tools_schema: Optional[List[dict]] = None
 ) -> Callable[[List[dict]], "asyncio.Queue[Any]"]:
@@ -449,7 +453,26 @@ def _default_llm(
                     "messages": [{"role": "system", "content": dated}] + messages,
                     "stream": True,
                     "think": False,
-                    "options": {"num_predict": 320},
+                    "options": {
+                        "num_predict": 320,
+                        # Le tour qui PORTE des outils est refroidi. Décider
+                        # d'appeler un outil n'est pas un acte créatif, et à
+                        # la voix la règle « keep answers short and spoken »
+                        # pousse activement contre l'action : le modèle
+                        # préfère répondre vite que regarder. Mesuré sur
+                        # qwen3.5:9b avec le prompt vocal COMPLET, six essais
+                        # par palier, « retiens que… » et « mes tâches ? » :
+                        #
+                        #   défaut d'Ollama (0,8)   3/6
+                        #   0,3                     4/6
+                        #   0,1                   6/6 et 5/6
+                        #
+                        # Un tour SANS outils garde la chaleur par défaut :
+                        # c'est là que la parole se joue, et une réponse
+                        # parlée glacée s'entend.
+                        **({"temperature": VOICE_TOOL_TURN_TEMPERATURE}
+                           if (with_tools and tools_schema) else {}),
+                    },
                     # Without this Ollama unloads the model after five idle
                     # minutes, and the next turn silently pays a 6–9 s reload
                     # — the single worst "why is it slow now" in a session.
@@ -701,7 +724,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 base = "You are Diapason, a helpful voice assistant."
         language = self._language or "the language the user speaks"
         return (
-            f"{base}\n\nAnswer in {language}. Keep answers short and spoken: "
+            f"{base}\n\nAnswer in {language}. Brevity governs what you SAY, "
+            "never whether you ACT: call the tool first, then report what it "
+            "returned in one to three spoken sentences. Claiming an action "
+            "you did not take is the one unacceptable answer. Keep answers "
+            "short and spoken: "
             "one to three sentences unless asked for more. Your words are "
             "READ ALOUD by a voice synthesizer: never use emojis, emoticons, "
             "markdown, bullet points or any visual formatting — they come "
