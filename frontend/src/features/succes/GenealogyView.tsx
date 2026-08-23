@@ -9,6 +9,7 @@ import {
 import { Check, CirclePlus, Loader2, Plus } from 'lucide-react';
 
 import { buildProjectTaskTree, type ProjectTreeNode } from './ProjectTreeView';
+import { planifierRafale, type Impulsion } from './synapses';
 import type { SuccesTask } from './types';
 
 /** Nombre maximal d'étages affichés ; au-delà, un compteur « +N » sur le dernier étage. */
@@ -35,7 +36,22 @@ type LevelItem = {
   atDepthLimit: boolean;
 };
 
-type Edge = { id: string; x1: number; y1: number; x2: number; y2: number };
+type Edge = {
+  id: string;
+  parentId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
+/** La courbe en S d'une arête — inversée quand l'information remonte. */
+function cheminArete(edge: Edge, descend: boolean): string {
+  const midY = (edge.y1 + edge.y2) / 2;
+  return descend
+    ? `M ${edge.x1} ${edge.y1} C ${edge.x1} ${midY}, ${edge.x2} ${midY}, ${edge.x2} ${edge.y2}`
+    : `M ${edge.x2} ${edge.y2} C ${edge.x2} ${midY}, ${edge.x1} ${midY}, ${edge.x1} ${edge.y1}`;
+}
 
 /** Compte les descendants (tous niveaux confondus) de chaque nœud du sous-arbre. */
 function collectStats(node: ProjectTreeNode, into: Map<string, SubtreeStats>): SubtreeStats {
@@ -129,6 +145,7 @@ export function GenealogyView({
         const parentRect = parentEl.getBoundingClientRect();
         next.push({
           id: item.node.id,
+          parentId: item.parentId,
           x1: parentRect.left + parentRect.width / 2 - canvasRect.left,
           y1: parentRect.bottom - canvasRect.top,
           x2: childRect.left + childRect.width / 2 - canvasRect.left,
@@ -154,6 +171,72 @@ export function GenealogyView({
     observer.observe(canvas);
     return () => observer.disconnect();
   }, [recompute]);
+
+  // ── les synapses ─────────────────────────────────────────────────────────
+  // L'arbre pense : par moments, une impulsion lumineuse part d'une branche
+  // au hasard et se propage aux branches voisines — voir synapses.ts pour la
+  // planification. Ici on ne fait que JOUER les rafales : monter les comètes,
+  // allumer les halos à l'arrivée, et se taire quand l'onglet est caché ou
+  // que la personne préfère les interfaces immobiles.
+  const [rafale, setRafale] = useState<Array<Impulsion & { cle: string }>>([]);
+  const [halos, setHalos] = useState<Set<string>>(new Set());
+  const edgesRef = useRef<Edge[]>([]);
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+    let vivant = true;
+    const minuteries = new Set<number>();
+    const poser = (fn: () => void, delai: number) => {
+      const t = window.setTimeout(() => {
+        minuteries.delete(t);
+        fn();
+      }, delai);
+      minuteries.add(t);
+    };
+    const feu = () => {
+      if (!vivant) return;
+      const aretes = edgesRef.current;
+      if (document.hidden || aretes.length === 0) {
+        poser(feu, 4000);
+        return;
+      }
+      const naissance = Date.now();
+      const pensee = planifierRafale(aretes).map((imp, i) => ({
+        ...imp,
+        cle: `${naissance}-${i}`,
+      }));
+      setRafale(pensee);
+      let fin = 0;
+      for (const imp of pensee) {
+        const arrivee = imp.departMs + imp.dureeMs;
+        fin = Math.max(fin, arrivee);
+        poser(() => {
+          setHalos((h) => new Set(h).add(imp.arriveeId));
+          poser(
+            () =>
+              setHalos((h) => {
+                const suivant = new Set(h);
+                suivant.delete(imp.arriveeId);
+                return suivant;
+              }),
+            550,
+          );
+        }, arrivee);
+      }
+      poser(() => setRafale([]), fin + 700);
+      poser(feu, 3500 + Math.random() * 4500);
+    };
+    poser(feu, 1200 + Math.random() * 1500);
+    return () => {
+      vivant = false;
+      for (const t of minuteries) window.clearTimeout(t);
+    };
+  }, []);
 
   const submitCreate = async (parentTaskId?: string) => {
     const title = draftTitle.trim();
@@ -214,15 +297,36 @@ export function GenealogyView({
           preserveAspectRatio="none"
           aria-hidden="true"
         >
-          {edges.map((edge) => {
-            const midY = (edge.y1 + edge.y2) / 2;
+          {edges.map((edge) => (
+            <path
+              key={edge.id}
+              d={cheminArete(edge, true)}
+              fill="none"
+              stroke="var(--color-border)"
+              strokeWidth={1.5}
+            />
+          ))}
+          {rafale.map((imp) => {
+            // La comète relit l'arête au rendu : si l'arbre se réagence en
+            // plein vol, elle suit la branche au lieu de flotter dans le vide.
+            const arete = edges.find((e) => e.id === imp.areteId);
+            if (!arete) return null;
             return (
               <path
-                key={edge.id}
-                d={`M ${edge.x1} ${edge.y1} C ${edge.x1} ${midY}, ${edge.x2} ${midY}, ${edge.x2} ${edge.y2}`}
+                key={imp.cle}
+                d={cheminArete(arete, imp.descend)}
+                pathLength={100}
                 fill="none"
-                stroke="var(--color-border)"
-                strokeWidth={1.5}
+                stroke="var(--color-accent)"
+                strokeWidth={2}
+                strokeLinecap="round"
+                style={{
+                  strokeDasharray: '12 100',
+                  strokeDashoffset: 12,
+                  animation: `synapse-file ${imp.dureeMs}ms linear ${imp.departMs}ms forwards`,
+                  filter: 'drop-shadow(0 0 3px var(--color-accent))',
+                  opacity: 0.9,
+                }}
               />
             );
           })}
@@ -242,6 +346,7 @@ export function GenealogyView({
                 <GenealogyNodeCard
                   key={item.node.id}
                   item={item}
+                  halo={halos.has(item.node.id)}
                   saving={saving}
                   adding={addingFor === item.node.id}
                   draftTitle={addingFor === item.node.id ? draftTitle : ''}
@@ -270,6 +375,8 @@ export function GenealogyView({
 
 type NodeCardProps = {
   item: LevelItem;
+  /** La carte vient de recevoir une impulsion — elle s'illumine un instant. */
+  halo: boolean;
   saving: boolean;
   adding: boolean;
   draftTitle: string;
@@ -284,6 +391,7 @@ type NodeCardProps = {
 
 function GenealogyNodeCard({
   item,
+  halo,
   saving,
   adding,
   draftTitle,
@@ -306,7 +414,11 @@ function GenealogyNodeCard({
         className="w-44 rounded-xl p-3 grid gap-2"
         style={{
           background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
+          border: `1px solid ${halo ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          boxShadow: halo
+            ? '0 0 14px color-mix(in srgb, var(--color-accent) 30%, transparent)'
+            : '0 0 0 transparent',
+          transition: 'box-shadow 320ms ease, border-color 320ms ease',
           opacity: node.done ? 0.72 : 1,
         }}
       >

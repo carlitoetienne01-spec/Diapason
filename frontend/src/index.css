@@ -1739,3 +1739,13 @@
     font-size: 32px;
   }
 }
+
+/* Les synapses de l'arbre généalogique : une comète (segment de tiret
+   normalisé par pathLength=100) parcourt la branche du début à la fin.
+   Le décalage part de 12 (la comète attend, invisible, avant l'entrée)
+   et finit à -100 (elle est sortie de l'autre côté). */
+@keyframes synapse-file {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
