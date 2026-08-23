@@ -726,6 +726,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._in_speech = False
         self._respond_task: Optional[asyncio.Task[None]] = None
         self._warm_task: Optional[asyncio.Task[None]] = None
+        # L'historique des échanges vocaux (traces.db, agent='voice') — la
+        # mémoire nocturne ne relit que ce qui est écrit quelque part. Résolu
+        # paresseusement ; ici et pas dans connect() : les bancs d'essai des
+        # tests contournent connect() (leçon du 23 août 2026).
+        self._magasin_traces_obj: Any = None
+        self._magasin_traces_resolu = False
         # Engagé dès la construction : le premier tour d'une session vient de
         # quelqu'un qui a cliqué « Démarrer » — il s'adresse à nous.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
@@ -1308,6 +1314,50 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 self._voice_lock = True
         return self._voice_lock
 
+    def _magasin_traces(self) -> Any:
+        """Le magasin d'historique, résolu une fois. None = traces coupées."""
+        if self._magasin_traces_resolu:
+            return self._magasin_traces_obj
+        self._magasin_traces_resolu = True
+        try:
+            from diapason.core.config import load_config
+            from diapason.traces.store import TraceStore
+
+            config = load_config()
+            if getattr(config.traces, "enabled", False):
+                self._magasin_traces_obj = TraceStore(config.traces.db_path)
+        except Exception:  # noqa: BLE001 - l'historique est un bonus, la voix prime
+            logger.debug("voice: traces indisponibles", exc_info=True)
+            self._magasin_traces_obj = None
+        return self._magasin_traces_obj
+
+    def _journaliser_echange(
+        self, question: str, reponse: str, *, duree_s: float = 0.0
+    ) -> None:
+        """L'échange vocal abouti rejoint traces.db, étiqueté agent='voice'.
+
+        Demandé le 23 août 2026 : la voix ne laissait AUCUNE persistance
+        serveur, donc la consolidation nocturne ne relisait que le chat —
+        une mémoire qui rate le mode principal d'usage. record_response_trace
+        est best-effort : jamais une exception dans le chemin de la parole.
+        """
+        magasin = self._magasin_traces()
+        if magasin is None or not question.strip() or not reponse.strip():
+            return
+        from diapason.traces.collector import record_response_trace
+
+        fin = time.time()
+        record_response_trace(
+            magasin,
+            query=question.strip(),
+            result=reponse.strip(),
+            model=str(self._model or ""),
+            engine="ollama",
+            agent="voice",
+            started_at=fin - max(0.0, float(duree_s)),
+            ended_at=fin,
+        )
+
     async def _dispatch_text(
         self,
         text: str,
@@ -1467,6 +1517,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         await self._speak_sentence(response, spoken)
         self._history.append({"role": "assistant", "content": response})
         del self._history[:-16]
+        self._journaliser_echange(
+            text, response, duree_s=time.monotonic() - action_started
+        )
         await self._queue.put(
             SessionEvent(
                 kind="transcript",
@@ -1586,6 +1639,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         text=answer,
                         final=True,
                     )
+                )
+                self._journaliser_echange(
+                    text, answer, duree_s=time.monotonic() - response_started
                 )
             logger.info(
                 "local voice timing: stage=response total_ms=%.0f "
