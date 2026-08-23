@@ -286,6 +286,7 @@ export function SettingsPage() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [speechBackendAvailable, setSpeechBackendAvailable] = useState<boolean | null>(null);
   const [voiceLiveAvailable, setVoiceLiveAvailable] = useState<boolean | null>(null);
+  const [voiceProvider, setVoiceProvider] = useState('local');
   // Held as a shape rather than a finished sentence: the sentence is built at
   // render, so it follows a language change instead of freezing the wording
   // that was current when the health check answered.
@@ -387,6 +388,11 @@ export function SettingsPage() {
       .then((h) => setSpeechBackendAvailable(h.available))
       .catch(() => setSpeechBackendAvailable(false));
     fetchVoiceLiveHealth()
+      .then((h) => {
+        const p = (h as { default_provider?: string }).default_provider;
+        if (p === 'local' || p === 'gemini' || p === 'openai') setVoiceProvider(p);
+        return h;
+      })
       .then((h) => {
         setVoiceLiveAvailable(h.available);
         const parts = Object.entries(h.providers || {})
@@ -984,6 +990,31 @@ export function SettingsPage() {
                         : t('common.unavailable')}
                 </span>
               </div>
+            </SettingRow>
+            <SettingRow
+              label={t('settings.speech.providerLabel')}
+              description={t('settings.speech.providerDescription')}
+            >
+              <select
+                value={voiceProvider}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setVoiceProvider(v);
+                  void setServerConfigKey('speech.realtime.provider', v).catch(
+                    () => undefined,
+                  );
+                }}
+                className="text-xs rounded-md px-2 py-1.5"
+                style={{
+                  background: 'var(--color-bg-tertiary)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <option value="local">{t('talk.providerLocal')}</option>
+                <option value="gemini">Gemini Live</option>
+                <option value="openai">OpenAI Realtime</option>
+              </select>
             </SettingRow>
             {!speechBackendAvailable && speechBackendAvailable !== null && (
               <div className="text-xs mt-2 px-1" style={{ color: 'var(--color-text-tertiary)' }}>

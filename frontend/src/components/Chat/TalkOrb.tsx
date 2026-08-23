@@ -307,22 +307,11 @@ export function TalkOrb({
             </>
           ) : null}
 
+          {/* Le choix du fournisseur vit dans Réglages → Parole : un panneau
+              de conversation n'est pas un panneau de configuration. Demandé
+              le 23 août 2026. Le pied de page continue d'afficher le
+              fournisseur actif — on doit toujours SAVOIR où va sa voix. */}
           <div className="mt-3 flex items-center gap-2">
-            <select
-              value={provider}
-              disabled={active}
-              onChange={(e) => onProviderChange(e.target.value as VoiceLiveProvider)}
-              className="text-xs rounded-md px-2 py-1.5"
-              style={{
-                background: 'var(--color-bg-tertiary)',
-                color: 'var(--color-text)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <option value="local">{t('talk.providerLocal')}</option>
-              <option value="gemini">Gemini Live</option>
-              <option value="openai">OpenAI Realtime</option>
-            </select>
             {active ? (
               <button
                 type="button"

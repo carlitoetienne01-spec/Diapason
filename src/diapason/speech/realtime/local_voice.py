@@ -630,6 +630,58 @@ def _tool_note(call: dict, reply: dict) -> str:
     return f"{name}{detail} -> {ok}{tail}"
 
 
+# ── Suis-je celui à qui l'on parle ? ─────────────────────────────────────
+#
+# Demandé le 23 août 2026 : « même si Diapason écoute, il doit savoir quand on
+# s'adresse à lui — si je parle à quelqu'un d'autre, s'il y a du bruit, si je
+# regarde un film. » La règle est celle d'une personne réelle dans la pièce :
+#
+# - on lui répond quand on vient de l'appeler par son NOM ;
+# - une conversation ENGAGÉE se poursuit sans redire le nom à chaque phrase ;
+# - passé un silence prolongé, elle attend d'être rappelée par son nom, et le
+#   dialogue d'un film ou la voix d'un tiers ne la fait plus réagir.
+#
+# Le premier tour d'une session est toujours engagé : qui vient de cliquer
+# « Démarrer » s'adresse évidemment à l'assistant.
+
+ADDRESS_WINDOW_S = 90.0
+
+# La transcription déforme le nom : « diapasant », « diapazon », « d'apaison »…
+_NOM_RE = re.compile(r"[a-zà-ÿ]+")
+
+
+def mentions_assistant_name(text: str) -> bool:
+    """Vrai si un mot — ou DEUX mots adjacents recollés — ressemble au nom.
+
+    La transcription coupe le nom en deux : « Dia pasons, quelle heure… »,
+    constaté en session réelle. Un seul mot ne suffit donc pas ; les paires
+    adjacentes se recollent avant la comparaison.
+    """
+    import difflib
+
+    mots = _NOM_RE.findall(str(text or "").casefold())
+    candidats = [m for m in mots if len(m) >= 6]
+    candidats += [
+        a + b for a, b in zip(mots, mots[1:]) if len(a + b) >= 6
+    ]
+    return any(
+        difflib.SequenceMatcher(None, c, "diapason").ratio() >= 0.75
+        for c in candidats
+    )
+
+
+def strip_assistant_name(text: str) -> str:
+    """Retire l'appel initial — « Diapason, ouvre… » → « ouvre… »."""
+    return re.sub(
+        # « Diapason, », « diapasant » — et « Dia pasons, », le nom coupé en
+        # deux par la transcription.
+        r"^\W*(?:[a-zà-ÿ]{2,4}\s+)?[a-zà-ÿ]*(?:diapa|pason|pazon)\w*[\s,.:!?]*",
+        "",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ).strip() or str(text or "").strip()
+
+
 class LocalVoiceSession(RealtimeVoiceSession):
     """Turn-based local voice with barge-in, behind the realtime contract."""
 
@@ -674,6 +726,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._in_speech = False
         self._respond_task: Optional[asyncio.Task[None]] = None
         self._warm_task: Optional[asyncio.Task[None]] = None
+        # Engagé dès la construction : le premier tour d'une session vient de
+        # quelqu'un qui a cliqué « Démarrer » — il s'adresse à nous.
+        self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
         # (buffered byte count, transcription task) — valid only while the
         # buffer has not grown past the snapshot it was taken from.
         self._speculative: Optional[tuple[int, asyncio.Task[str]]] = None
@@ -721,6 +776,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # optional dependency looked like a successful session and then died.
         # Warm under the shared lock first; later sessions reuse the models.
         self._derniere_app_ouverte = ""
+        # Ré-engager à l'ouverture : qui clique « Démarrer » s'adresse à nous.
+        self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
         self._warm_task = asyncio.get_running_loop().create_task(self._warm())
         if await self._warm_task:
             await self._queue.put(SessionEvent(kind="ready"))
@@ -1243,6 +1300,25 @@ class LocalVoiceSession(RealtimeVoiceSession):
         turn_started: float,
         spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
+        nomme = mentions_assistant_name(text)
+        engagee = time.monotonic() < self._engagee_jusqua
+        if not nomme and not engagee:
+            # Personne ne nous parle : un tiers, la télévision, le bruit.
+            # Ni réponse, ni affichage — remplir le fil avec le dialogue d'un
+            # film serait aussi impoli que d'y répondre. Une trace sobre au
+            # journal, pour pouvoir diagnostiquer sans écouter personne.
+            logger.info(
+                "voice turn ignored (not addressed): %d chars", len(text)
+            )
+            return
+        # Chaque tour adressé prolonge la conversation ; dire le nom rouvre
+        # une conversation éteinte.
+        self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
+        if nomme:
+            text = strip_assistant_name(text)
+            if not text:
+                # « Diapason ? » tout seul : on signale qu'on écoute.
+                text = "Oui ?"
         await self._queue.put(
             SessionEvent(kind="transcript", role="user", text=text, final=True)
         )
