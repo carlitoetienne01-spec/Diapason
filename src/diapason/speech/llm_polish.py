@@ -157,6 +157,16 @@ def llm_polish_text(
         return None
     if len(raw.split()) < 3:
         return None
+    # Une LONGUE phrase ne se polit pas au modèle : il la RÉGÉNÈRE mot à mot,
+    # et la mesure est sans appel — cinquante-huit mots prennent 4,0 s modèle
+    # CHAUD, c'est-à-dire tout le budget avant même un aléa. Tenter, c'est
+    # garantir l'expiration : quatre secondes brûlées pour coller le brut
+    # qu'on aurait pu coller tout de suite. Le dictionnaire personnel et le
+    # polissage mécanique s'appliquent toujours, eux.
+    if len(raw.split()) > 40:
+        logger.debug("llm polish skipped: %d words, cannot fit the budget",
+                     len(raw.split()))
+        return None
 
     system = _DICTATION_SYSTEM
     if email_mode:
@@ -229,13 +239,21 @@ def llm_polish_text(
                 content = str(result.get("content") or "")
             return _strip_model_noise(content)
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(_call)
-            try:
-                out = fut.result(timeout=timeout_s)
-            except FuturesTimeout:
-                logger.info("llm polish timed out after %sms", timeout_ms)
-                return None
+        # PAS de « with » : sa sortie attend la fin du travail même après
+        # l'expiration. Mesuré — délai demandé 1 s, durée réelle 8,2 s sur un
+        # moteur lent : le délai était factice, et une dictée derrière un
+        # créneau Ollama occupé restait suspendue jusqu'au bout de la file.
+        # À l'expiration on ABANDONNE le fil (il mourra seul en fin de
+        # génération, sans rien retenir) et le brut se colle à l'heure dite.
+        pool = ThreadPoolExecutor(max_workers=1)
+        fut = pool.submit(_call)
+        try:
+            out = fut.result(timeout=timeout_s)
+        except FuturesTimeout:
+            logger.info("llm polish timed out after %sms", timeout_ms)
+            return None
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
         if not out or len(out) > max(40, len(raw) * 3):
             return None
