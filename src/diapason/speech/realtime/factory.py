@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from diapason.speech.realtime.base import RealtimeVoiceSession
 
@@ -18,6 +18,10 @@ def create_realtime_session(
     enable_tools: bool = True,
     max_tool_steps: int = 12,
     allowed_tools: Optional[Sequence[str]] = None,
+    # Appelé (question, réponse) à chaque échange abouti — le raccord vers
+    # la mémoire vivante. Fournisseur LOCAL seulement : les sessions cloud
+    # ne journalisent rien côté serveur.
+    sur_echange: Optional[Callable[[str, str], None]] = None,
 ) -> RealtimeVoiceSession:
     """Create a provider session. Raises ``ValueError`` for unknown providers.
 
@@ -75,7 +79,9 @@ def create_realtime_session(
     if name in ("local", "local_voice"):
         from diapason.speech.realtime.local_voice import LocalVoiceSession
 
-        return LocalVoiceSession(model=model, voice=voice, **common)
+        return LocalVoiceSession(
+            model=model, voice=voice, sur_echange=sur_echange, **common
+        )
     raise ValueError(
         f"Unknown realtime voice provider: {provider!r} "
         "(expected 'gemini', 'openai' or 'local')"

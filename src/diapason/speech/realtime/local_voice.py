@@ -749,6 +749,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         llm: Optional[Callable[[List[dict]], Any]] = None,
         tts: Optional[Callable[[str], bytes]] = None,
         tool_executor: Optional[Callable[[str, dict], dict]] = None,
+        sur_echange: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self._model = model or DEFAULT_MODEL
         self._voice = voice or DEFAULT_VOICE
@@ -777,6 +778,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # tests contournent connect() (leçon du 23 août 2026).
         self._magasin_traces_obj: Any = None
         self._magasin_traces_resolu = False
+        # Le raccord vers la mémoire vivante (24 août 2026) : appelé à
+        # chaque échange abouti, en plus de la trace. Sans lui, un fait
+        # confié à l'oral attendait la consolidation du lendemain 3h30.
+        self._sur_echange = sur_echange
         # Engagé dès la construction : le premier tour d'une session vient de
         # quelqu'un qui a cliqué « Démarrer » — il s'adresse à nous.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
@@ -1400,6 +1405,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         une mémoire qui rate le mode principal d'usage. record_response_trace
         est best-effort : jamais une exception dans le chemin de la parole.
         """
+        if question.strip() and reponse.strip() and self._sur_echange is not None:
+            try:
+                self._sur_echange(question.strip(), reponse.strip())
+            except Exception:  # noqa: BLE001 - la mémoire est un bonus, la voix prime
+                logger.warning("voice: échange non transmis à la mémoire", exc_info=True)
         magasin = self._magasin_traces()
         if magasin is None or not question.strip() or not reponse.strip():
             return

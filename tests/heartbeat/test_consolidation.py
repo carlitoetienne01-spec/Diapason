@@ -176,3 +176,28 @@ def test_composer_borne_la_transcription():
     assert len(messages) == 2
     assert "2026-08-23" in messages[0].content
     assert "faits" in messages[0].content and "resume" in messages[0].content
+
+
+class TestPurgeDuBanc:
+    """293 « who are you? » → « Hello world » au modèle test-model noyaient
+    les vraies conversations (23 août 2026) : la mémoire n'apprend que du
+    vécu, jamais du banc d'essai."""
+
+    def test_le_banc_se_reconnait_au_modele(self):
+        from diapason.heartbeat.consolidation import est_trace_de_banc
+
+        assert est_trace_de_banc("test-model")
+        assert est_trace_de_banc("TEST")
+        assert not est_trace_de_banc("qwen3.5:9b")
+        assert not est_trace_de_banc("")
+
+    def test_la_collecte_ignore_le_banc(self, tmp_path):
+        chemin = tmp_path / "traces.db"
+        quand = datetime(JOUR.year, JOUR.month, JOUR.day, 9).timestamp()
+        magasin = TraceStore(chemin)
+        magasin.save(Trace(trace_id="vrai", query="Bonjour", result="Salut.",
+                           model="qwen3.5:9b", started_at=quand))
+        magasin.save(Trace(trace_id="banc", query="who are you?", result="Hello world",
+                           model="test-model", started_at=quand + 60))
+        echanges = collecter_le_jour(chemin, JOUR)
+        assert [e.question for e in echanges] == ["Bonjour"]

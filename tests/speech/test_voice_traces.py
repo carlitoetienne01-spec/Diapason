@@ -83,3 +83,32 @@ def test_la_consolidation_relit_la_voix(tmp_path):
     )
     assert resultat.echanges_lus == 1
     assert resultat.faits_ajoutes == 1
+
+
+@pytest.mark.asyncio
+async def test_l_echange_abouti_nourrit_la_memoire_vivante(tmp_path):
+    """Le raccord sur_echange : un fait dit à l'oral part en mémoire dans la
+    minute, comme au chat — plus d'attente jusqu'à 3h30 (24 août 2026)."""
+    recueillis = []
+    harness = Harness(answer="C'est noté, patron.")
+    harness.session._sur_echange = lambda q, r: recueillis.append((q, r))
+    _armer(harness.session, tmp_path)
+
+    await harness.session.send_audio(pcm(0.6))
+    await harness.session.send_audio(pcm(END_OF_TURN_S + 0.1, amplitude=0.0))
+    await harness.session._respond_task
+
+    assert len(recueillis) == 1
+    question, reponse = recueillis[0]
+    assert "diapason" in question.lower()
+    assert "noté" in reponse.lower()
+
+
+def test_un_raccord_grognon_ne_casse_pas_la_voix(tmp_path):
+    harness = Harness()
+    def _explose(_q, _r):
+        raise RuntimeError("mémoire indisponible")
+    harness.session._sur_echange = _explose
+    magasin = _armer(harness.session, tmp_path)
+    harness.session._journaliser_echange("bonjour", "salut")
+    assert len(magasin.list_traces()) == 1  # la trace, elle, est passée

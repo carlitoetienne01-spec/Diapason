@@ -148,6 +148,19 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
                 websocket.app.state, enable_tools=enable_tools
             )
 
+        # La voix nourrit la mémoire vivante COMME le chat (24 août 2026) :
+        # sans ce raccord, un fait confié à l'oral — le mode d'usage
+        # principal — attendait la consolidation de 3h30 du lendemain.
+        def _vers_la_memoire(question: str, reponse: str) -> None:
+            from diapason.memory.service import publish_completed_exchange
+
+            publish_completed_exchange(
+                getattr(websocket.app.state, "bus", None),
+                question,
+                reponse,
+                source="voice.live",
+            )
+
         try:
             session = create_realtime_session(
                 provider,
@@ -158,6 +171,7 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
                 enable_tools=enable_tools,
                 max_tool_steps=max_tool_steps,
                 allowed_tools=allowed_tools,
+                sur_echange=_vers_la_memoire,
             )
         except ValueError as exc:
             await websocket.send_json({"type": "error", "detail": str(exc)})

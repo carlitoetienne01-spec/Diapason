@@ -60,6 +60,17 @@ class Consolidation:
         return self.echanges_lus == 0
 
 
+def est_trace_de_banc(model: str) -> bool:
+    """Vrai pour le trafic de banc d'essai — jamais de la vie vécue.
+
+    Constaté à la première consolidation réelle (23 août 2026) : 293 traces
+    « who are you? » → « Hello world » au modèle « test-model » noyaient les
+    vraies conversations, et le journal du jour résumait fidèlement... le
+    banc. La mémoire n'apprend que du vécu.
+    """
+    return "test" in (model or "").lower()
+
+
 def collecter_le_jour(chemin_traces: str | Path, jour: date) -> List[Echange]:
     """Les échanges du jour, du matin au soir, bornés et tronqués."""
     from diapason.traces.store import TraceStore
@@ -78,7 +89,7 @@ def collecter_le_jour(chemin_traces: str | Path, jour: date) -> List[Echange]:
             quand=datetime.fromtimestamp(t.started_at),
         )
         for t in traces
-        if t.query.strip() and t.result.strip()
+        if t.query.strip() and t.result.strip() and not est_trace_de_banc(t.model)
     ]
     # list_traces rend du plus récent au plus ancien ; la journée se lit
     # dans l'ordre du vécu, et si elle déborde, ce sont les DERNIERS
