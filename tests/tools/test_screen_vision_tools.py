@@ -84,7 +84,7 @@ def test_screen_describe_local_ok():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
                 ):
                     result = tool.execute(question="What do you see?")
     assert result.success
@@ -123,7 +123,7 @@ def test_screen_describe_blocks_cloud():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
                 ):
                     result = tool.execute(question="see?")
     assert result.success is False
@@ -159,7 +159,7 @@ def test_screen_describe_rate_limit():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=engine
+                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
                 ):
                     first = tool.execute(question="a")
                     second = tool.execute(question="b")
@@ -226,7 +226,7 @@ def test_refused_cloud_request_never_captures_the_screen():
     with patch(_VISION_CFG, return_value=_refusing_cfg()):
         with patch(_CAPTURE) as capture:
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
-                with patch(_GET_ENGINE, return_value=engine):
+                with patch(_GET_ENGINE, return_value=("ollama", engine)):
                     result = tool.execute(question="see?")
 
     assert result.success is False
@@ -253,7 +253,7 @@ def test_missing_model_never_captures_the_screen():
     ):
         with patch(_CAPTURE) as capture:
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
-                with patch(_GET_ENGINE, return_value=engine):
+                with patch(_GET_ENGINE, return_value=("ollama", engine)):
                     result = tool.execute(question="see?")
 
     assert result.success is False
@@ -281,7 +281,7 @@ def test_local_only_overrides_allow_cloud():
     ):
         with patch(_CAPTURE) as capture:
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
-                with patch(_GET_ENGINE, return_value=engine):
+                with patch(_GET_ENGINE, return_value=("ollama", engine)):
                     result = tool.execute(question="see?")
 
     assert result.success is False
