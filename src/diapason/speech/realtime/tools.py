@@ -61,6 +61,14 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "succes_delete_task",
     "succes_delete_item",
     "succes_delete_continuity",
+    # Les gestes d'une seconde (Atlas, 24 août 2026) : « monte le son »,
+    # « mets pause », « qu'est-ce que j'ai copié ? » — des réflexes, pas des
+    # projets. Tous visibles, réversibles et 100 % locaux.
+    "volume_control",
+    "media_control",
+    "clipboard_read",
+    "screen_snap",
+    "system_vitals",
 )
 
 # (module, [(registry_key, attribute_name), ...])
@@ -123,6 +131,16 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.succes_finances",
         (("succes_finances", "SuccesFinancesTool"),),
+    ),
+    (
+        "diapason.tools.gestes",
+        (
+            ("volume_control", "VolumeControlTool"),
+            ("media_control", "MediaControlTool"),
+            ("clipboard_read", "ClipboardReadTool"),
+            ("screen_snap", "ScreenSnapTool"),
+            ("system_vitals", "SystemVitalsTool"),
+        ),
     ),
 )
 

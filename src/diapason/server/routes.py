@@ -83,6 +83,14 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "messages_send",
     "screen_describe",
     "calculator",
+    # Les gestes d'une seconde (Atlas, 24 août 2026) : monter le son ou
+    # mettre pause passait par shell_exec, donc par la cloche — un clic et
+    # deux minutes d'attente pour un geste visible et réversible.
+    "volume_control",
+    "media_control",
+    "clipboard_read",
+    "screen_snap",
+    "system_vitals",
 )
 
 

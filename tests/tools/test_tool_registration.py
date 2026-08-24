@@ -70,6 +70,12 @@ EXPECTED_TOOLS = {
     "kg_add_relation",
     "kg_query",
     "kg_neighbors",
+    # gestes.py — stdlib à l'import (PyObjC seulement à l'exécution)
+    "volume_control",
+    "media_control",
+    "clipboard_read",
+    "screen_snap",
+    "system_vitals",
 }
 
 

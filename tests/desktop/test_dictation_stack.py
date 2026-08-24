@@ -127,6 +127,13 @@ class _FakePasteboard:
         self._data[t] = data
         return True
 
+    def stringForType_(self, type_):
+        # Miroir du Protocol (PasteboardLike n'est pas runtime_checkable :
+        # sans cette méthode le double divergerait en silence).
+        data = self._data.get(type_)
+        return data.decode("utf-8") if isinstance(data, bytes) else data
+
+
 
 def test_paste_restores_the_previous_clipboard():
     pb = _FakePasteboard({"public.utf8-plain-text": "user had this copied"})
@@ -210,3 +217,13 @@ def test_capture_ingest_accumulates_resampled_audio():
     buf = cap.buffer()
     assert abs(len(buf) - 16_000) <= 1  # ~1 s at 16 kHz
     assert cap.level > 0.0
+
+
+def test_lire_texte_rend_le_texte_du_presse_papiers():
+    pb = _FakePasteboard({"public.utf8-plain-text": "copié tel quel"})
+    assert clipboard.lire_texte(pb) == "copié tel quel"
+
+
+def test_lire_texte_rend_none_sans_texte():
+    pb = _FakePasteboard({"public.png": b"\x89PNG"})
+    assert clipboard.lire_texte(pb) is None

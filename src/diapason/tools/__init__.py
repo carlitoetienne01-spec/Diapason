@@ -194,4 +194,9 @@ except ImportError:
 # assistant sans horloge invente l'heure plutôt que de l'avouer.
 import diapason.tools.current_time  # noqa: E402,F401
 
+# Pas de garde non plus : les gestes d'une seconde (volume, musique, presse-
+# papiers, capture, vitaux) n'importent PyObjC qu'à l'exécution — le module
+# lui-même est stdlib (24 août 2026).
+import diapason.tools.gestes  # noqa: E402,F401
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]

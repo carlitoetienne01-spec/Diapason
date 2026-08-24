@@ -31,6 +31,7 @@ class PasteboardLike(Protocol):
     def clearContents(self) -> int: ...
     def setString_forType_(self, string: str, type_: str) -> bool: ...
     def setData_forType_(self, data: Any, type_: str) -> bool: ...
+    def stringForType_(self, type_: str) -> Optional[str]: ...
 
 
 _TEXT_TYPE = "public.utf8-plain-text"
@@ -60,6 +61,21 @@ def restore(pb: PasteboardLike, saved: List[tuple[str, Any]]) -> None:
 def _write_text(pb: PasteboardLike, text: str) -> None:
     pb.clearContents()
     pb.setString_forType_(text, _TEXT_TYPE)
+
+
+def lire_texte(pb: Optional[PasteboardLike] = None) -> Optional[str]:
+    """Le texte du presse-papiers — None s'il n'en contient pas.
+
+    Lecture seule, rien n'est écrit ni effacé. Ajoutée pour le geste
+    « qu'est-ce que j'ai copié ? » (24 août 2026) — jusqu'ici ce module ne
+    savait qu'écrire.
+    """
+    if pb is None:
+        from AppKit import NSPasteboard  # import local : pas d'AppKit hors macOS
+
+        pb = NSPasteboard.generalPasteboard()
+    texte = pb.stringForType_(_TEXT_TYPE)
+    return str(texte) if texte is not None else None
 
 
 # --------------------------------------------------------------------------
