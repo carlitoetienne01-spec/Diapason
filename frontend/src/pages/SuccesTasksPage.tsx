@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, CirclePlus, HardDrive, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ import {
 } from '../features/succes/api';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import { TasksBoard } from '../features/succes/TasksBoard';
+import { jalonSuivant, jalonsEnAttente, tachesDuJour } from '../features/succes/jalons';
 import { RecurrencesPanel } from '../features/succes/RecurrencesPanel';
 import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesSyncStatus, SuccesTask } from '../features/succes/types';
 import { loadTasksViewMode, saveTasksViewMode, type SuccesTasksViewMode } from '../features/succes/uiPrefs';
@@ -145,8 +146,32 @@ export function SuccesTasksPage() {
     setShowCreate(false);
   };
 
-  const toggleTask = (task: SuccesTask) =>
-    refreshAfter(() => setSuccesTaskDone(task.id, !task.done), task.done ? 'Tâche rouverte' : 'Tâche terminée');
+  const toggleTask = async (task: SuccesTask) => {
+    await refreshAfter(
+      () => setSuccesTaskDone(task.id, !task.done),
+      task.done ? 'Tâche rouverte' : 'Tâche terminée',
+    );
+    // Une étape de parcours cochée appelle la suivante (24 août 2026) :
+    // « une étape datée à la fois ». On la propose pour aujourd'hui, sans
+    // rien imposer — un clic la pose, l'ignorer la laisse sur sa carte.
+    if (task.done || !task.projectId) return;
+    const projet = projects.find((p) => p.id === task.projectId);
+    if (!projet || (projet.structure || 'flat') === 'flat') return;
+    const suivant = jalonSuivant(tasks, task.projectId, task);
+    if (!suivant || suivant.date) return;
+    toast(`Étape suivante : ${suivant.title}`, {
+      description: `Prochaine sur ${projet.name}.`,
+      action: {
+        label: "Faire aujourd'hui",
+        onClick: () => {
+          void refreshAfter(
+            () => updateSuccesTask(suivant.id, { date: localIsoDate() }),
+            'Étape programmée pour aujourd’hui',
+          );
+        },
+      },
+    });
+  };
 
   const toggleSubtask = (task: SuccesTask, subtask: SuccesSubtask) =>
     refreshAfter(
@@ -251,7 +276,20 @@ export function SuccesTasksPage() {
     setShowCreate(false);
   };
 
-  const visibleTasks = tasks.filter((task) => {
+  // Les jalons des projets structurés (parcours, anglais) ne remplissent
+  // plus cette page : ils vivent sur leur carte, dans Projets, et n'entrent
+  // ici que lorsqu'on leur donne une date (24 août 2026). Choisir un projet
+  // dans le filtre les fait réapparaître : demander à voir un projet, c'est
+  // vouloir tout son contenu.
+  const jalonsQuiAttendent = useMemo(
+    () => (projectFilter ? [] : jalonsEnAttente(tasks, projects)),
+    [tasks, projects, projectFilter],
+  );
+  const tachesDuQuotidien = useMemo(
+    () => (projectFilter ? tasks : tachesDuJour(tasks, projects)),
+    [tasks, projects, projectFilter],
+  );
+  const visibleTasks = tachesDuQuotidien.filter((task) => {
     if (projectFilter === '__none__') return !task.projectId;
     if (projectFilter) return task.projectId === projectFilter;
     return true;
@@ -442,6 +480,34 @@ export function SuccesTasksPage() {
           </section>
         )}
 
+        {!loading && jalonsQuiAttendent.length > 0 && (
+          <section
+            className="mb-5 rounded-2xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <span className="text-[11px] uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-tertiary)' }}>
+              Sur leurs cartes
+            </span>
+            {jalonsQuiAttendent.map(({ projet, total }) => (
+              <button
+                key={projet.id}
+                type="button"
+                onClick={() => setProjectFilter(projet.id)}
+                className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                title={`Voir les ${total} étapes de ${projet.name} ici`}
+              >
+                {projet.name} · {total}
+              </button>
+            ))}
+            <span className="text-[11px] flex-1 min-w-[12rem]" style={{ color: 'var(--color-text-tertiary)' }}>
+              Ces étapes attendent dans Projets. Donnez-en une à une date pour la voir ici.
+            </span>
+          </section>
+        )}
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des tâches…

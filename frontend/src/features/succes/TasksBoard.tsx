@@ -621,6 +621,10 @@ export function TasksBoard({
     return map;
   }, [tasks]);
 
+  // La réserve est repliée par défaut (24 août 2026) : le calendrier est ce
+  // qu'on vient voir, la réserve est ce qu'on vient chercher. Elle reste une
+  // cible de dépôt même repliée — glisser dessus déplie et retire la date.
+  const [reserveOuverte, setReserveOuverte] = useState(false);
   const unscheduled = useMemo(
     () => sortColumn(tasks.filter((task) => !task.date)),
     [tasks],
@@ -721,6 +725,7 @@ export function TasksBoard({
           event.preventDefault();
           event.dataTransfer.dropEffect = 'move';
           setUndatedOver(true);
+          if (!reserveOuverte) setReserveOuverte(true);
         }}
         onDragLeave={() => setUndatedOver(false)}
         onDrop={(event) => {
@@ -730,10 +735,24 @@ export function TasksBoard({
           if (id) void dropToUndated(id);
         }}
       >
-        <h3 className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-tertiary)' }}>
+        <button
+          type="button"
+          onClick={() => setReserveOuverte((v) => !v)}
+          className="w-full flex items-center gap-2 text-xs font-medium mb-2 cursor-pointer text-left"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          aria-expanded={reserveOuverte}
+        >
+          <ChevronRight
+            size={13}
+            style={{
+              transform: reserveOuverte ? 'rotate(90deg)' : 'none',
+              transition: 'transform 160ms ease',
+            }}
+          />
           Sans date ({unscheduled.length})
-        </h3>
-        {unscheduled.length > 0 ? (
+          <span className="font-normal">{reserveOuverte ? '· replier' : '· déplier'}</span>
+        </button>
+        {reserveOuverte && unscheduled.length > 0 ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {unscheduled.map((task) => (
               <BoardCard
@@ -745,14 +764,16 @@ export function TasksBoard({
               />
             ))}
           </div>
-        ) : (
+        ) : reserveOuverte ? (
           <p className="text-[11px] py-2 text-center" style={{ color: 'var(--color-text-tertiary)' }}>
             Déposez une tâche ici pour retirer sa date.
           </p>
+        ) : null}
+        {reserveOuverte && (
+          <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-tertiary)' }}>
+            Glissez une tâche sur un jour pour la planifier, ou ici pour la remettre sans date.
+          </p>
         )}
-        <p className="text-[11px] mt-2" style={{ color: 'var(--color-text-tertiary)' }}>
-          Glissez une tâche sur un jour pour la planifier, ou ici pour la remettre sans date.
-        </p>
       </section>
 
       {pendingDrop && (
