@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -460,6 +461,158 @@ def _looks_like_phone(value: str) -> bool:
     return bare.isdigit() and 7 <= len(bare) <= 15
 
 
+# « Envoie un message à Maman » (Atlas, 24 août 2026) : le destinataire
+# arrivait BRUT — sms:maman — et Messages haussait les épaules. Les fiches
+# vivent déjà dans knowledge.db (121 contacts Google + Contacts Apple),
+# téléphones dans le CONTENT (jamais dans metadata). La résolution vit ICI,
+# dans les outils, parce que c'est le seul endroit qui couvre les trois
+# chemins : le modèle vocal, le chat, et la dictée déterministe qui
+# n'appelle AUCUN LLM (desktop/voice_commands.py). SQL pur — pas d'Ollama,
+# le créneau -np 1 appartient à la voix.
+_PARENTE_FR_EN = {
+    "maman": ("mom", "mother", "mère", "maman"),
+    "mamane": ("mom", "mother", "mère", "maman"),
+    "papa": ("dad", "father", "père", "papa"),
+    "frère": ("brother", "frère", "bro"),
+    "soeur": ("sister", "sœur", "soeur", "sis"),
+    "sœur": ("sister", "sœur", "soeur", "sis"),
+}
+
+# Deux dialectes constatés sur la vraie base (24 août 2026) : gcontacts
+# écrit « Phone: +509… », apple_contacts « Phone +1941… » — SANS deux-points,
+# label optionnel (« Phone Mobile: … »). On capte le numéro lui-même.
+_LIGNE_PHONE_RE = re.compile(r"^Phone[^\n]*?[\s:](\+?[\d][\d\s.\-()]*)$", re.M)
+_LIGNE_EMAIL_RE = re.compile(r"^Email[^\n]*?[\s:]\s*(\S+@\S+)$", re.M)
+
+
+def _normaliser_numero(brut: str) -> str:
+    return re.sub(r"[\s.\-()]", "", brut.strip())
+
+
+def _rang_de_correspondance(terme: str, titre: str) -> int:
+    """0 = titre exact (hors émojis/ponctuation), 1 = mot entier, 2 = sous-chaîne."""
+    bas, titre_bas = terme.lower(), titre.lower()
+    lettres = re.sub(r"[^a-zà-ÿ0-9 ]", "", titre_bas).strip()
+    if lettres == bas:
+        return 0
+    if re.search(rf"(?<![a-zà-ÿ0-9]){re.escape(bas)}(?![a-zà-ÿ0-9])", titre_bas):
+        return 1
+    return 2
+
+
+def _ne_garder_que_les_plus_exacts(
+    terme: str, lignes: "list[tuple[str, str]]"
+) -> "list[tuple[str, str]]":
+    if not lignes:
+        return lignes
+    rangs = [(_rang_de_correspondance(terme, titre), titre, contenu) for titre, contenu in lignes]
+    meilleur = min(r for r, _t, _c in rangs)
+    return [(t_, c) for r, t_, c in rangs if r == meilleur]
+
+
+def _resolve_contact(name: str, *, db_path: str | None = None) -> list[dict]:
+    """Les fiches locales qui répondent à un petit nom — [] si rien.
+
+    Lecture seule de knowledge.db. Chaque fiche : {title, phone, email},
+    phone préférant la forme internationale « + » quand la fiche en a
+    plusieurs. Les surnoms de parenté français passent par un petit
+    dictionnaire (« maman » → « Mom💫 ») ; les surnoms libres (« le boss »)
+    vivent dans USER.md et c'est le modèle qui les traduit en nom de fiche.
+    """
+    import sqlite3
+
+    if db_path is None:
+        from diapason.core.paths import get_config_dir
+
+        db_path = str(get_config_dir() / "knowledge.db")
+    chemin = pathlib.Path(db_path) if isinstance(db_path, str) else db_path
+    if not chemin.exists():
+        return []
+
+    candidats = [name.strip()]
+    candidats.extend(_PARENTE_FR_EN.get(name.strip().lower(), ()))
+
+    fiches: dict[str, dict] = {}
+    try:
+        with sqlite3.connect(f"file:{chemin}?mode=ro", uri=True) as db:
+            for terme in candidats:
+                lignes = db.execute(
+                    "SELECT title, content FROM knowledge_chunks "
+                    "WHERE doc_type = 'contact' AND deleted_at IS NULL "
+                    "AND title LIKE ? COLLATE NOCASE",
+                    (f"%{terme}%",),
+                ).fetchall()
+                # LIKE %mom% attrape aussi « JOSCHAVIA MOMPREMIER » (constaté
+                # sur la vraie base, 24 août 2026). On classe : titre exact
+                # (émojis et ponctuation retirés) > mot entier > sous-chaîne,
+                # et on ne garde que le meilleur rang présent.
+                lignes = _ne_garder_que_les_plus_exacts(terme, lignes)
+                for titre, contenu in lignes:
+                    if titre in fiches:
+                        continue
+                    telephones = [
+                        _normaliser_numero(m)
+                        for m in _LIGNE_PHONE_RE.findall(contenu or "")
+                    ]
+                    telephones = [n for n in telephones if n]
+                    # La forme « + » d'abord : send_imessage veut du E.164.
+                    telephones.sort(key=lambda n: not n.startswith("+"))
+                    emails = _LIGNE_EMAIL_RE.findall(contenu or "")
+                    fiches[titre] = {
+                        "title": titre,
+                        "phone": telephones[0] if telephones else "",
+                        "email": emails[0].strip() if emails else "",
+                    }
+                if fiches:
+                    break  # le nom exact prime sur les synonymes de parenté
+    except Exception:  # noqa: BLE001 - une base illisible = aucune fiche
+        logger.debug("résolution de contact impossible", exc_info=True)
+        return []
+    return list(fiches.values())
+
+
+def _resoudre_ou_avouer(
+    recipient: str, tool_name: str, *, veut: str = "phone"
+) -> "tuple[str, str, ToolResult | None]":
+    """(destinataire résolu, fiche nommée, ou le ToolResult d'aveu).
+
+    Convention de la maison : zéro ou plusieurs candidats, on AVOUE avec la
+    liste — jamais un premier-de-la-liste silencieux.
+    """
+    if _looks_like_email(recipient) or _looks_like_phone(recipient):
+        return recipient, "", None
+    fiches = _resolve_contact(recipient)
+    utilisables = [f for f in fiches if f.get(veut)]
+    if len(utilisables) == 1:
+        fiche = utilisables[0]
+        return fiche[veut], fiche["title"], None
+    if not utilisables:
+        detail = (
+            " Contacts found but none has an email on file."
+            if fiches and veut == "email"
+            else ""
+        )
+        return recipient, "", ToolResult(
+            tool_name=tool_name,
+            success=False,
+            content=(
+                f"No local contact matches '{recipient}'.{detail} "
+                "Ask the user for the exact name, a phone number, or an email."
+            ),
+            metadata={"resolved": False, "candidates": []},
+        )
+    noms = ", ".join(f["title"] for f in utilisables[:5])
+    return recipient, "", ToolResult(
+        tool_name=tool_name,
+        success=False,
+        content=(
+            f"Several contacts match '{recipient}': {noms}. "
+            "Ask the user which one, then call again with that exact name."
+        ),
+        metadata={"resolved": False, "candidates": [f["title"] for f in utilisables[:5]]},
+    )
+
+
 def _mail_compose_script(
     *, to: str = "", subject: str = "", body: str = "", cc: str = ""
 ) -> str:
@@ -634,7 +787,8 @@ class MessagesComposeTool(BaseTool):
             description=(
                 "Compose an iMessage/SMS draft in macOS Messages. Does NOT send. "
                 "Use for « envoie un message à… », « text Mom saying… ». "
-                "Recipient should be a phone number or iMessage email when possible. "
+                "Recipient can be a phone number, an iMessage email, or a contact "
+                "name as spoken — names are resolved from local contacts. "
                 "After opening, tell the user the draft is ready — they hit Send."
             ),
             parameters={
@@ -642,7 +796,11 @@ class MessagesComposeTool(BaseTool):
                 "properties": {
                     "recipient": {
                         "type": "string",
-                        "description": "Phone (E.164) or iMessage email.",
+                        "description": (
+                            "Phone (E.164), iMessage email, or a contact NAME "
+                            "as spoken (« maman », « Gaël ») — names are "
+                            "resolved from the local contacts."
+                        ),
                     },
                     "body": {
                         "type": "string",
@@ -671,6 +829,11 @@ class MessagesComposeTool(BaseTool):
                 success=False,
             )
 
+        demande = recipient
+        recipient, fiche, aveu = _resoudre_ou_avouer(recipient, "messages_compose")
+        if aveu is not None:
+            return aveu
+
         # Prefer URL scheme — opens draft, does not send (unlike send_imessage).
         uri = _messages_compose_uri(recipient=recipient, body=body)
         try:
@@ -687,21 +850,18 @@ class MessagesComposeTool(BaseTool):
                     success=False,
                     metadata={"recipient": recipient, "sent": False},
                 )
-            hint = ""
-            if not (_looks_like_email(recipient) or _looks_like_phone(recipient)):
-                hint = (
-                    " Recipient may need to be chosen in Messages if the name "
-                    "did not resolve."
-                )
+            qui = f"{fiche} ({recipient})" if fiche else recipient
             return ToolResult(
                 tool_name="messages_compose",
                 content=(
-                    f"Draft open in Messages for {recipient}. "
-                    f"Not sent — user must tap Send.{hint}"
+                    f"Draft open in Messages for {qui}. "
+                    "Not sent — user must tap Send."
                 ),
                 success=True,
                 metadata={
                     "recipient": recipient,
+                    "resolved_from": demande if fiche else "",
+                    "contact": fiche,
                     "sent": False,
                     "uri": uri,
                 },
@@ -846,7 +1006,11 @@ class MessagesSendTool(BaseTool):
                 "properties": {
                     "recipient": {
                         "type": "string",
-                        "description": "Phone (E.164) or iMessage email.",
+                        "description": (
+                            "Phone (E.164), iMessage email, or a contact NAME "
+                            "as spoken (« maman », « Gaël ») — names are "
+                            "resolved from the local contacts."
+                        ),
                     },
                     "body": {"type": "string", "description": "Message text."},
                     "confirm": {
@@ -886,6 +1050,10 @@ class MessagesSendTool(BaseTool):
                 content="messages_send is only implemented on macOS.",
                 success=False,
             )
+        demande = recipient
+        recipient, fiche, aveu = _resoudre_ou_avouer(recipient, "messages_send")
+        if aveu is not None:
+            return aveu
         try:
             from diapason.channels.imessage_daemon import send_imessage
 
@@ -900,11 +1068,16 @@ class MessagesSendTool(BaseTool):
                     success=False,
                     metadata={"sent": False, "recipient": recipient},
                 )
+            qui = f"{fiche} ({recipient})" if fiche else recipient
             return ToolResult(
                 tool_name="messages_send",
-                content=f"Message sent to {recipient}.",
+                content=f"Message sent to {qui}.",
                 success=True,
-                metadata={"sent": True, "recipient": recipient},
+                metadata={
+                    "sent": True,
+                    "recipient": recipient,
+                    "resolved_from": demande if fiche else "",
+                },
             )
         except Exception as exc:
             return ToolResult(

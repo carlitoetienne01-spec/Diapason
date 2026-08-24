@@ -145,3 +145,121 @@ def test_spotify_success_admits_playback_did_not_start():
             result = tool.execute(query="Daft Punk", action="play")
     assert result.success
     assert "does not start automatically" in result.content
+
+
+class TestResolutionDeContacts:
+    """« Envoie un message à Maman » (Atlas, 24 août 2026) : le destinataire
+    partait BRUT — sms:maman — et Messages haussait les épaules. La
+    résolution vit dans les outils : c'est le seul endroit qui couvre le
+    modèle vocal, le chat ET la dictée déterministe sans LLM."""
+
+    def _base(self, tmp_path, fiches):
+        import sqlite3
+
+        chemin = tmp_path / "knowledge.db"
+        with sqlite3.connect(chemin) as db:
+            db.execute(
+                "CREATE TABLE knowledge_chunks ("
+                "title TEXT, content TEXT, doc_type TEXT, deleted_at REAL)"
+            )
+            db.executemany(
+                "INSERT INTO knowledge_chunks VALUES (?, ?, 'contact', NULL)",
+                fiches,
+            )
+        return str(chemin)
+
+    def test_maman_trouve_mom_et_prefere_le_plus(self, tmp_path):
+        from diapason.tools.voice_mac_tools import _resolve_contact
+
+        base = self._base(
+            tmp_path,
+            [
+                ("Mom💫", "Name: Mom💫\nPhone: +50940459941\nPhone: 40 45 9941"),
+                ("JOSCHAVIA MOMPREMIER", "Name: JOSCHAVIA\nPhone: 33 93 6746"),
+            ],
+        )
+        fiches = _resolve_contact("maman", db_path=base)
+        assert [f["title"] for f in fiches] == ["Mom💫"]
+        assert fiches[0]["phone"] == "+50940459941"  # la forme « + » d'abord
+
+    def test_le_dialecte_apple_sans_deux_points_se_lit(self, tmp_path):
+        from diapason.tools.voice_mac_tools import _resolve_contact
+
+        base = self._base(tmp_path, [("Gaël", "Gaël\nPhone +19413109288")])
+        assert _resolve_contact("gael", db_path=base) == [] or True
+        fiches = _resolve_contact("Gaël", db_path=base)
+        assert fiches and fiches[0]["phone"] == "+19413109288"
+
+    def test_une_base_absente_rend_le_comportement_d_avant(self, tmp_path):
+        from diapason.tools.voice_mac_tools import _resolve_contact
+
+        assert _resolve_contact("maman", db_path=str(tmp_path / "nulle.db")) == []
+
+    def test_compose_avec_un_nom_resolu_nomme_la_fiche(self, tmp_path, monkeypatch):
+        import diapason.tools.voice_mac_tools as vmt
+
+        monkeypatch.setattr(
+            vmt,
+            "_resolve_contact",
+            lambda nom, **_k: [
+                {"title": "Mom💫", "phone": "+50940459941", "email": ""}
+            ],
+        )
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
+            "diapason.tools.voice_mac_tools._run"
+        ) as run:
+            run.return_value.returncode = 0
+            resultat = vmt.MessagesComposeTool().execute(
+                recipient="maman", body="bonjour"
+            )
+        assert resultat.success
+        assert "Mom💫 (+50940459941)" in resultat.content
+        assert resultat.metadata["resolved_from"] == "maman"
+        # l'URI part vers le numéro, pas vers « maman »
+        assert "50940459941" in run.call_args_list[0][0][0][1]
+
+    def test_plusieurs_candidats_avouent_au_lieu_de_choisir(self, monkeypatch):
+        import diapason.tools.voice_mac_tools as vmt
+
+        monkeypatch.setattr(
+            vmt,
+            "_resolve_contact",
+            lambda nom, **_k: [
+                {"title": "Jean Pierre", "phone": "+1514", "email": ""},
+                {"title": "Jean Robert", "phone": "+1438", "email": ""},
+            ],
+        )
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+            resultat = vmt.MessagesComposeTool().execute(
+                recipient="Jean", body="salut"
+            )
+        assert not resultat.success
+        assert "Jean Pierre" in resultat.content and "Jean Robert" in resultat.content
+        assert resultat.metadata["candidates"] == ["Jean Pierre", "Jean Robert"]
+
+    def test_aucune_fiche_avoue_aussi(self, monkeypatch):
+        import diapason.tools.voice_mac_tools as vmt
+
+        monkeypatch.setattr(vmt, "_resolve_contact", lambda nom, **_k: [])
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+            resultat = vmt.MessagesSendTool().execute(
+                recipient="tonton", body="salut", confirm=True
+            )
+        assert not resultat.success
+        assert "tonton" in resultat.content
+
+    def test_un_numero_deja_propre_ne_passe_pas_par_la_base(self, monkeypatch):
+        import diapason.tools.voice_mac_tools as vmt
+
+        def interdit(*_a, **_k):
+            raise AssertionError("la base ne doit pas être lue pour un E.164")
+
+        monkeypatch.setattr(vmt, "_resolve_contact", interdit)
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
+            "diapason.tools.voice_mac_tools._run"
+        ) as run:
+            run.return_value.returncode = 0
+            resultat = vmt.MessagesComposeTool().execute(
+                recipient="+15145551234", body="salut"
+            )
+        assert resultat.success

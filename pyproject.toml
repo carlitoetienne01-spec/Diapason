@@ -100,6 +100,7 @@ desktop = [
     "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
     "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
     "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
 ]
 # Push-to-talk dictation stack (macOS). The whole chain — global hotkey
 # (CGEventTap), mic capture, clipboard paste, menu bar — is pure Python via

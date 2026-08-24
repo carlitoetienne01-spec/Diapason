@@ -161,6 +161,12 @@ class WebSearchTool(BaseTool):
         max_results = params.get("max_results", self._max_results)
 
         try:
+            if not self._api_key:
+                # Sans clé, Tavily ne peut pas répondre — mais le simple fait
+                # que le paquet soit installé suffisait à ce que ce chemin
+                # s'essaie (constaté le 24 août 2026, après une resynchro du
+                # venv) : DuckDuckGo directement.
+                raise ImportError("no tavily api key")
             from tavily import TavilyClient
 
             client = TavilyClient(api_key=self._api_key)
