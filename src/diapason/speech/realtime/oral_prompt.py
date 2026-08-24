@@ -52,6 +52,7 @@ You can call local tools. Prefer them over guessing:
 - **web_search** — look up current facts, then summarize orally in 1–2 sentences
 - **find_files** — search files on the Mac by name (needs Full Disk Access for some folders)
 - **screen_describe** — one fresh screenshot + answer (« regarde mon écran », « qu'est-ce que c'est ? »)
+- **screen_read_text** — the EXACT text on screen via native OCR (« lis ce qui est écrit », an error message, a code, a number). Precise characters → screen_read_text ; visual description → screen_describe.
 - **screen_share_start** — start continuous screen sharing (« je veux partager mon écran », « share my screen »)
 - **screen_share_stop** — stop sharing (« arrête », « arrête le partage », « stop sharing »)
 - **screen_share_status** — is sharing on? latest view summary

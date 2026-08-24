@@ -40,6 +40,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "messages_send",
     "messages_status",
     "screen_describe",
+    "screen_read_text",
     "screen_share_start",
     "screen_share_stop",
     "screen_share_status",
@@ -109,6 +110,7 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         "diapason.tools.screen_vision_tools",
         (
             ("screen_describe", "ScreenDescribeTool"),
+            ("screen_read_text", "ScreenReadTextTool"),
             ("screen_share_start", "ScreenShareStartTool"),
             ("screen_share_stop", "ScreenShareStopTool"),
             ("screen_share_status", "ScreenShareStatusTool"),

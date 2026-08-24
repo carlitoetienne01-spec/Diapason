@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 from diapason.core.registry import ToolRegistry
@@ -415,7 +416,139 @@ def reset_rate_limit_for_tests() -> None:
     _last_capture_monotonic = 0.0
 
 
+
+def read_screen_text(*, monitor: Optional[int] = None) -> ToolResult:
+    """Le texte exact de l'écran, par l'OCR natif Apple — zéro Ollama.
+
+    Même discipline que describe_screen : autoriser d'abord, capturer
+    ensuite, et le fichier temporaire meurt dans le finally. Mais rien ne
+    part vers un modèle : les caractères lus restent des caractères.
+    """
+    global _last_capture_monotonic
+
+    cfg = _vision_config()
+    if not _vision_enabled(cfg):
+        return ToolResult(
+            tool_name="screen_read_text",
+            content=(
+                "Screen vision is disabled. Enable with "
+                "[desktop.vision] enabled = true "
+                "(and grant Screen Recording on macOS)."
+            ),
+            success=False,
+        )
+    rate_ms = int(getattr(cfg, "rate_limit_ms", 1500) or 1500)
+    now = time.monotonic()
+    if rate_ms > 0 and (now - _last_capture_monotonic) * 1000 < rate_ms:
+        return ToolResult(
+            tool_name="screen_read_text",
+            content="Please wait a moment before capturing the screen again.",
+            success=False,
+            metadata={"rate_limited": True},
+        )
+
+    from diapason.desktop.ocr import ocr_available
+
+    if not ocr_available():
+        return ToolResult(
+            tool_name="screen_read_text",
+            content=(
+                "Apple Vision OCR is unavailable. Install it with: "
+                "uv pip install 'pyobjc-framework-Vision>=10' "
+                "— or use screen_describe instead."
+            ),
+            success=False,
+        )
+
+    if monitor is None:
+        monitor = int(getattr(cfg, "monitor", 1) or 1)
+
+    chemin = None
+    try:
+        from diapason.desktop.ocr import recognize_text
+        from diapason.desktop.screen_capture import capture_screen_to_temp
+
+        # Pleine résolution Retina — PAS capture_screen_b64, qui écrase à
+        # 1280 px pour le modèle de vision : l'OCR veut les pixels.
+        chemin = capture_screen_to_temp(monitor=int(monitor))
+        _last_capture_monotonic = time.monotonic()
+        lignes = recognize_text(chemin)
+    except Exception as exc:  # noqa: BLE001 - dont le refus Screen Recording
+        return ToolResult(
+            tool_name="screen_read_text",
+            content=f"Could not read the screen: {str(exc)[:200]}",
+            success=False,
+        )
+    finally:
+        if chemin:
+            try:
+                Path(chemin).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    texte = "\n".join(l["text"] for l in lignes)
+    if not texte.strip():
+        return ToolResult(
+            tool_name="screen_read_text",
+            content="No readable text on that screen.",
+            success=True,
+            metadata={"lines": 0, "monitor": int(monitor)},
+        )
+    return ToolResult(
+        tool_name="screen_read_text",
+        content=texte,
+        success=True,
+        metadata={
+            "lines": len(lignes),
+            "monitor": int(monitor),
+            "engine": "apple-vision",
+            "local": True,
+        },
+    )
+
+
+@ToolRegistry.register("screen_read_text")
+class ScreenReadTextTool(BaseTool):
+    """Le texte exact de l'écran — lu, pas décrit."""
+
+    tool_id = "screen_read_text"
+    is_local = True
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="screen_read_text",
+            description=(
+                "Read the EXACT text on the screen with native OCR — every "
+                "character as written, top to bottom. Use it when the user "
+                "needs precise content: an error message, a number, a code, "
+                "« lis ce qui est écrit ». To get a visual DESCRIPTION of "
+                "the screen, use screen_describe instead."
+            ),
+            parameters={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "monitor": {
+                        "type": "integer",
+                        "description": "1-based monitor index (optional).",
+                    },
+                },
+            },
+            category="system",
+            requires_confirmation=False,
+            # screencapture porte son propre timeout de 30 s.
+            timeout_seconds=45.0,
+            metadata={"risk": "read_only", "reversible": True},
+        )
+
+    def execute(self, **params: Any) -> ToolResult:
+        monitor = params.get("monitor")
+        return read_screen_text(monitor=monitor if monitor is None else int(monitor))
+
 __all__ = [
+    "ScreenReadTextTool",
+    "read_screen_text",
     "ScreenDescribeTool",
     "ScreenShareStartTool",
     "ScreenShareStopTool",

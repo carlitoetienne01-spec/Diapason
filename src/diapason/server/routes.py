@@ -85,6 +85,9 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # chat.db au lieu de se deviner.
     "messages_status",
     "screen_describe",
+    # Le texte EXACT (OCR natif Apple) — zéro paraphrase, zéro Ollama
+    # (Atlas, 24/08/2026).
+    "screen_read_text",
     "calculator",
     # Les gestes d'une seconde (Atlas, 24 août 2026) : monter le son ou
     # mettre pause passait par shell_exec, donc par la cloche — un clic et

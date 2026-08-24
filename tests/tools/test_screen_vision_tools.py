@@ -287,3 +287,87 @@ def test_local_only_overrides_allow_cloud():
     assert result.success is False
     capture.assert_not_called()
     engine.generate.assert_not_called()
+
+
+class TestLectureDuTexteExact:
+    """« Lis ce qui est écrit » : l'OCR natif rend les caractères eux-mêmes,
+    là où gemma3:4b paraphrase (Atlas, 24 août 2026). Zéro créneau Ollama."""
+
+    def _cfg(self, enabled=True):
+        class _Cfg:
+            pass
+
+        c = _Cfg()
+        c.enabled = enabled
+        # 0 retomberait sur 1500 via le `or` du code : -1 désarme vraiment.
+        c.rate_limit_ms = -1
+        c.monitor = 1
+        return c
+
+    def test_desactive_refuse_avant_toute_capture(self, monkeypatch):
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg(enabled=False))
+        with patch(
+            "diapason.desktop.screen_capture.capture_screen_to_temp"
+        ) as capture:
+            r = svt.read_screen_text()
+        assert not r.success and "disabled" in r.content
+        capture.assert_not_called()
+
+    def test_vision_absent_nomme_le_remede(self, monkeypatch):
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg())
+        with patch("diapason.desktop.ocr.ocr_available", return_value=False):
+            r = svt.read_screen_text()
+        assert not r.success
+        assert "pyobjc-framework-Vision" in r.content
+
+    def test_les_lignes_reviennent_dans_l_ordre_et_le_temp_meurt(
+        self, monkeypatch, tmp_path
+    ):
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg())
+        capture = tmp_path / "ecran.png"
+        capture.write_bytes(b"\x89PNG")
+        with patch("diapason.desktop.ocr.ocr_available", return_value=True), patch(
+            "diapason.desktop.screen_capture.capture_screen_to_temp",
+            return_value=str(capture),
+        ), patch(
+            "diapason.desktop.ocr.recognize_text",
+            return_value=[
+                {"text": "Erreur 403", "confidence": 0.99, "x": 0.1, "y": 0.9},
+                {"text": "Réessayer", "confidence": 0.95, "x": 0.1, "y": 0.4},
+            ],
+        ):
+            r = svt.read_screen_text()
+        assert r.success
+        assert r.content == "Erreur 403\nRéessayer"
+        assert r.metadata["engine"] == "apple-vision"
+        assert not capture.exists()  # le fichier temporaire meurt au finally
+
+    def test_un_ecran_sans_texte_l_avoue(self, monkeypatch, tmp_path):
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg())
+        capture = tmp_path / "ecran.png"
+        capture.write_bytes(b"\x89PNG")
+        with patch("diapason.desktop.ocr.ocr_available", return_value=True), patch(
+            "diapason.desktop.screen_capture.capture_screen_to_temp",
+            return_value=str(capture),
+        ), patch("diapason.desktop.ocr.recognize_text", return_value=[]):
+            r = svt.read_screen_text()
+        assert r.success and "No readable text" in r.content
+
+    def test_present_dans_les_deux_trousses(self):
+        from diapason.server.routes import _TROUSSE_ASSISTANT
+        from diapason.speech.realtime.tools import (
+            DEFAULT_VOICE_TOOL_IDS,
+            list_voice_tool_ids,
+        )
+
+        assert "screen_read_text" in _TROUSSE_ASSISTANT
+        assert "screen_read_text" in DEFAULT_VOICE_TOOL_IDS
+        assert "screen_read_text" in list_voice_tool_ids()
