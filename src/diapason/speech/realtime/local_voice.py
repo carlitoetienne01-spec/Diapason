@@ -495,28 +495,12 @@ _turn_needs_tools = turn_needs_tools
 # Voir le payload de _default_llm : mesuré, pas choisi.
 VOICE_TOOL_TURN_TEMPERATURE = 0.1
 
-# Les tournures par lesquelles le modèle ANNONCE une action au présent —
-# « d'accord, je cherche du R&B sur YouTube pour toi » — sans l'avoir faite.
-# Constaté le 23 août 2026 : après un dialogue de clarification, le tour
-# répondait en promesse au lieu d'appeler l'outil. Présent et futur proche
-# seulement : « j'ai ouvert » est un compte rendu, pas une promesse.
-_PROMESSE_SANS_ACTE_RE = re.compile(
-    r"\bje\s+(?:"
-    r"vais\s+(?:chercher|ouvrir|lancer|relancer|mettre|jouer|cr[ée]er|"
-    r"installer|regarder|faire|refaire|noter|ajouter|r[ée]essayer)|"
-    r"cherche|lance|relance|refais|r[ée]essaie|recommence|joue|mets|note|"
-    r"ajoute|m['’]en\s+occupe"
-    r")\b"
-    r"|\bj['’]ouvre\b|\bun\s+(?:instant|moment)\b"
-    # Les AFFIRMATIONS D'ACCOMPLI sans acte (23 août 2026) : « la recherche
-    # est relancée », « les résultats s'affichent », « c'est fait » — dites
-    # dans un tour où AUCUN outil n'a tourné, ce sont des mensonges par
-    # construction, et la sommation les rattrape comme les promesses.
-    r"|\bc['’]est\s+fait\b"
-    r"|\best\s+(?:relanc[ée]|lanc[ée]|faite|refaite|ouverte?|ferm[ée]|"
-    r"cr[ée][ée]|install[ée]|not[ée]|ajout[ée])e?s?\b"
-    r"|\bs['’]affichent?\b|\bdevraient\s+s['’]afficher\b",
-    re.IGNORECASE,
+# Le filet anti-promesse vit désormais dans core/promesse.py (partagé avec
+# le chat, affiné le 24 août 2026 : les OFFRES — « veux-tu que je
+# cherche ? » — ne somment plus). L'alias garde les tests et le nom connus.
+from diapason.core.promesse import (  # noqa: E402
+    PROMESSE_SANS_ACTE_RE as _PROMESSE_SANS_ACTE_RE,
+    est_une_promesse_sans_acte as _est_une_promesse_sans_acte,
 )
 
 
@@ -1707,7 +1691,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         self._enable_tools
                         and not relance_promesse
                         and not tool_notes
-                        and _PROMESSE_SANS_ACTE_RE.search(" ".join(spoken))
+                        and _est_une_promesse_sans_acte(" ".join(spoken))
                     ):
                         relance_promesse = True
                         messages.append(

@@ -32,6 +32,7 @@ import logging
 import time
 from typing import Any, AsyncIterator, Iterable, Sequence
 
+from diapason.core.promesse import est_une_promesse_sans_acte
 from diapason.core.types import Message, Role, ToolCall
 
 logger = logging.getLogger("diapason.server")
@@ -204,6 +205,11 @@ async def stream_with_tools(
     travail: list[Message] = list(messages)
     deja_vus: set[str] = set()
     deja_ecrit = False
+    # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
+    # sommation par réponse, et jamais après qu'un outil a réellement tourné
+    # — un compte rendu d'outil n'est pas une promesse en l'air.
+    sommation_faite = False
+    un_outil_a_tourne = False
 
     for tour in range(max_tool_turns + 1):
         # Le tour de trop se fait sans outils : on veut une phrase, pas un
@@ -242,7 +248,36 @@ async def stream_with_tools(
                 _fusionner_fragments(fragments, morceau.tool_calls)
 
         appels = [fragments[i] for i in sorted(fragments)]
-        if not appels or dernier_tour:
+        if not appels:
+            # La PROMESSE SANS L'ACTE, version chat : « je regarde tes
+            # tâches » sans appel d'outil. La promesse est déjà partie dans
+            # le flux — la livraison la suit après le séparateur \n\n, et
+            # les événements tool_start rendent la reprise visible.
+            texte_du_tour = "".join(morceaux)
+            if (
+                not dernier_tour
+                and specs
+                and not sommation_faite
+                and not un_outil_a_tourne
+                and est_une_promesse_sans_acte(texte_du_tour, ecrit=True)
+            ):
+                sommation_faite = True
+                travail.append(Message(role=Role.ASSISTANT, content=texte_du_tour))
+                travail.append(
+                    Message(
+                        role=Role.SYSTEM,
+                        content=(
+                            "Tu viens d'ANNONCER une action sans appeler "
+                            "d'outil — c'est une promesse en l'air. Appelle "
+                            "MAINTENANT l'outil qui convient, puis confirme "
+                            "en une phrase courte, sans répéter ton annonce."
+                        ),
+                    )
+                )
+                logger.warning("chat promise without action, retrying with a summons")
+                continue
+            return
+        if dernier_tour:
             return
 
         # Le modèle veut des outils. On enregistre son intention avant les
@@ -292,6 +327,7 @@ async def stream_with_tools(
 
             yield ToolStreamEvent("tool_start", {"tool": nom, "arguments": arguments})
 
+            un_outil_a_tourne = True
             debut = time.time()
             try:
                 resultat = await asyncio.to_thread(

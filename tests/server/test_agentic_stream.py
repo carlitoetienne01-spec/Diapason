@@ -423,3 +423,79 @@ class TestTemperatureDesToursOutilles:
         moteur = MoteurFactice([[StreamChunk(content="fini")]])
         _collecter(moteur, ExecuteurFactice(), temperature=0.05)
         assert moteur.appels[0]["kwargs"]["temperature"] == 0.05
+
+
+class TestPromesseSansActe:
+    """Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : « je
+    regarde tes tâches » sans appel d'outil est sommé UNE fois, l'acte suit
+    dans le même flux ; une offre reste libre."""
+
+    def test_la_promesse_est_sommee_puis_l_acte_suit(self):
+        moteur = MoteurFactice(
+            [
+                [StreamChunk(content="D'accord, je cherche tes tâches.")],
+                [StreamChunk(tool_calls=[_appel("horloge")])],
+                [StreamChunk(content="Tu as deux tâches aujourd'hui.")],
+            ]
+        )
+        executeur = ExecuteurFactice()
+        evenements = _collecter(moteur, executeur)
+        assert len(executeur.recus) == 1  # l'acte a bien eu lieu
+        types = [e.kind for e in evenements]
+        assert "tool_start" in types and "tool_end" in types
+        # la sommation est repartie au moteur en message system
+        sommations = [
+            m
+            for appel in moteur.appels
+            for m in appel["messages"]
+            if getattr(m, "role", None) is not None
+            and "promesse en l'air" in str(getattr(m, "content", ""))
+        ]
+        assert sommations, "le moteur doit recevoir la sommation"
+
+    def test_une_seule_sommation_jamais_deux(self):
+        moteur = MoteurFactice(
+            [
+                [StreamChunk(content="Je cherche tes tâches.")],
+                [StreamChunk(content="Je cherche encore.")],
+            ]
+        )
+        executeur = ExecuteurFactice()
+        _collecter(moteur, executeur)
+        # tour 1 = promesse → sommation ; tour 2 = promesse encore, mais le
+        # filet ne relance pas : 2 appels moteur en tout, pas trois.
+        assert len(moteur.appels) == 2
+
+    def test_une_offre_reste_libre(self):
+        moteur = MoteurFactice(
+            [[StreamChunk(content="Je peux chercher tes tâches si tu veux.")]]
+        )
+        executeur = ExecuteurFactice()
+        _collecter(moteur, executeur)
+        assert len(moteur.appels) == 1  # aucune sommation
+
+    def test_le_cliche_du_bureau_reste_libre(self):
+        moteur = MoteurFactice(
+            [[StreamChunk(content="Safari est ouvert au premier plan.")]]
+        )
+        executeur = ExecuteurFactice()
+        _collecter(moteur, executeur)
+        assert len(moteur.appels) == 1
+
+    def test_apres_un_outil_le_compte_rendu_est_libre(self):
+        """« La tâche est notée » APRÈS succes_tasks n'est pas une promesse."""
+        moteur = MoteurFactice(
+            [
+                [StreamChunk(tool_calls=[_appel("horloge")])],
+                [StreamChunk(content="C'est fait, la tâche est notée.")],
+            ]
+        )
+        executeur = ExecuteurFactice()
+        _collecter(moteur, executeur)
+        assert len(moteur.appels) == 2  # pas de troisième tour de sommation
+
+    def test_jamais_de_sommation_au_dernier_tour(self):
+        moteur = MoteurFactice([[StreamChunk(content="Je cherche.")]])
+        executeur = ExecuteurFactice()
+        _collecter(moteur, executeur, max_tool_turns=0)
+        assert len(moteur.appels) == 1
