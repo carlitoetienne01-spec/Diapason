@@ -194,3 +194,17 @@ class TestLocalApiKeyProvisioning:
 
         with pytest.raises((OSError, RuntimeError)):
             ensure_local_api_key()
+
+
+def test_les_routes_oauth_naviguees_passent_sans_cle():
+    """La fenêtre OAuth et le retour de Google ne peuvent pas porter la clé
+    locale — ces deux routes GET passent, tout le reste de /v1/connectors
+    reste derrière le mur (24 août 2026)."""
+    from diapason.server.auth_middleware import AuthMiddleware
+
+    exige = AuthMiddleware._requires_auth
+    assert not exige("/v1/connectors/gmail/oauth/start")
+    assert not exige("/v1/connectors/gcalendar/oauth/callback")
+    assert exige("/v1/connectors")
+    assert exige("/v1/connectors/gmail/sync")
+    assert exige("/v1/connectors/gmail/oauth/callback/extra")

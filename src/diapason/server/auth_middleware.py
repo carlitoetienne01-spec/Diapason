@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import stat
 from pathlib import Path
@@ -83,6 +84,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         relay without exposing the local Diapason API key.
         """
         if path in {"/v1/succes/sync/pair", "/v1/succes/sync/exchange"}:
+            return False
+        # Les deux routes OAuth NAVIGUÉES par le navigateur (24 août 2026) :
+        # la fenêtre qui s'ouvre vers /oauth/start ne peut pas porter la clé
+        # locale, et Google redirige vers /oauth/callback sans elle non plus.
+        # Ce qu'elles exposent est mesuré : start ne fait que rediriger vers
+        # Google avec le client_id (public par nature) ; callback n'accepte
+        # qu'un code émis par Google — c'est LUI la lettre de créance.
+        if re.match(r"^/v1/connectors/[^/]+/oauth/(?:start|callback)$", path):
             return False
         # Mesh enrolment: a device being paired does not hold the API key yet
         # — the one-time invitation IS its credential. Everything else under
