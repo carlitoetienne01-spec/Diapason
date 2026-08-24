@@ -19,6 +19,16 @@ La compréhension du langage (Ollama), la reconnaissance vocale (Whisper), la
 synthèse vocale (Kokoro) et la description d'écran s'exécutent localement. Les
 paroles, les captures d'écran et les conversations ne quittent pas l'ordinateur.
 
+## Ce que Diapason perçoit de la machine
+
+Pour agir à propos, Diapason lit l'état du bureau : l'application au premier
+plan, les applications en marche, le titre de la fenêtre active et, si un
+navigateur est devant, le titre de son onglet actif. Ces informations entrent
+dans le contexte du modèle **local** et n'en sortent pas. Le contenu de l'écran
+n'est lu que par `screen_describe`, sur autorisation explicite et par un modèle
+local, et reste désactivé tant que `[desktop.vision] enabled` ne vaut pas
+`true`.
+
 ## Les données Google
 
 Quand l'utilisateur connecte lui-même ses comptes Google, Diapason lit, **depuis

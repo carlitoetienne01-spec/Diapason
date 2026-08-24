@@ -70,3 +70,75 @@ class TestDecrire:
         etat = EtatBureau("Safari", tuple(f"App{i}" for i in range(20)), 0.0)
         texte = decrire(etat, limite=3)
         assert "App0, App1, App2 (+17)" in texte
+
+
+class TestTitreEtOnglet:
+    """« Safari » ne dit rien ; « Safari — Gmail, brouillon à Julie » dit
+    tout, sans capture d'écran (Atlas, 24 août 2026)."""
+
+    def test_le_titre_de_fenetre_se_lit_en_troisieme_ligne(self):
+        etat = interpreter("Mail\nMail|Finder\nBoîte de réception — 3 messages")
+        assert etat.titre_fenetre == "Boîte de réception — 3 messages"
+        assert etat.onglet == ""
+
+    def test_une_sortie_sans_titre_reste_lisible(self):
+        """L'ancien format à deux lignes ne casse pas : titre vide."""
+        etat = interpreter("Mail\nMail|Finder")
+        assert etat.titre_fenetre == ""
+        assert etat.premier_plan == "Mail"
+
+    def test_l_onglet_n_est_demande_qu_a_un_navigateur_connu(self, monkeypatch):
+        """Le contrat testé ici est la DÉCISION d'aller chercher l'onglet ;
+        la lecture elle-même est testée juste en dessous, avec son runner.
+        (La garde autouse du dossier neutralise onglet_actif : on l'espionne
+        plutôt que de la contourner.)"""
+        import diapason.desktop.etat_bureau as eb
+
+        demandes = []
+        monkeypatch.setattr(
+            eb, "onglet_actif", lambda app, *_a, **_k: demandes.append(app) or "Gmail"
+        )
+        etat = eb.interpreter("Google Chrome\nGoogle Chrome|Finder\nGmail")
+        assert demandes == ["Google Chrome"]
+        assert etat.onglet == "Gmail"
+
+        demandes.clear()
+        eb.interpreter("Mail\nMail|Finder\nBoîte")
+        assert demandes == []  # Mail n'est pas un navigateur : rien n'est demandé
+
+    def test_un_navigateur_inconnu_ne_compile_aucun_script(self):
+        """Un `tell application` littéral pour une app non installée ouvre une
+        boîte « Où se trouve… ? » qu'aucun try ne rattrape — d'où la liste
+        blanche."""
+        import importlib
+
+        vrai = importlib.reload(
+            importlib.import_module("diapason.desktop.etat_bureau")
+        ).onglet_actif
+        appels = []
+        assert vrai("Opera GX", lambda s: appels.append(s) or "x") == ""
+        assert appels == []
+
+    def test_un_onglet_illisible_se_tait(self):
+        import importlib
+
+        def casse(_s):
+            raise RuntimeError("automatisation refusée")
+
+        vrai = importlib.reload(
+            importlib.import_module("diapason.desktop.etat_bureau")
+        ).onglet_actif
+        assert vrai("Safari", casse) == ""
+
+    def test_la_phrase_reste_identique_sans_precision(self):
+        """Comparée à l'égalité ailleurs : elle ne doit pas bouger d'un octet."""
+        etat = EtatBureau("Mail", ("Mail", "Finder"), 0.0)
+        assert decrire(etat) == (
+            "État du bureau : au premier plan, Mail. Aussi en marche : Finder."
+        )
+
+    def test_l_onglet_prime_sur_le_titre_dans_la_phrase(self):
+        etat = EtatBureau(
+            "Safari", ("Safari",), 0.0, titre_fenetre="Safari", onglet="EF SET — test"
+        )
+        assert "Safari — EF SET — test" in decrire(etat)

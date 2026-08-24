@@ -379,4 +379,7 @@ def _isoler_le_bureau(monkeypatch):
     monkeypatch.setattr(etat_bureau, "_cache", None)
     monkeypatch.setattr(etat_bureau, "etat_du_bureau", lambda **_k: None)
     monkeypatch.setattr(etat_bureau, "premier_plan", lambda *_a, **_k: "")
+    # onglet_actif est publique et lance osascript : sans ce patch, la suite
+    # interrogerait le VRAI navigateur (24 août 2026, même fuite que le cliché).
+    monkeypatch.setattr(etat_bureau, "onglet_actif", lambda *_a, **_k: "")
     yield

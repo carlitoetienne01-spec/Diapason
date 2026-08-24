@@ -147,10 +147,22 @@ touch it.
 
 ## What you can't do
 
-There's no computer use. Diapason can't see your screen, move the pointer or
-send keystrokes. No tool for it is registered and no input automation library
-appears anywhere in the codebase, so granting Accessibility or Screen Recording
-buys you nothing on its own.
+There's no general computer use: Diapason does not move the pointer, and it
+sends keystrokes only where you asked it to (dictation paste, `paste_to_frontmost`).
+
+It *can* look, and you should know exactly how much:
+
+- **Desktop state** — the frontmost app, the apps that are running, the title
+  of the front window, and, when a browser is in front, the title of its
+  active tab. One AppleScript pass through System Events, cached for a few
+  seconds, and it rides along in the model's context on every turn.
+- **The screen itself** — `screen_describe` takes a screenshot and sends it to
+  a *local* vision model, and only after you authorise the capture. It is off
+  until you set `[desktop.vision] enabled = true`.
+
+Both stay on the machine. Window titles can be revealing (a document name, a
+subject line), so if that is more than you want, turn off `[desktop.vision]`
+and see `[privacy] local_only`.
 
 The `click` and `type` actions you'll find are Playwright, scoped to a browser
 page rather than the desktop.
