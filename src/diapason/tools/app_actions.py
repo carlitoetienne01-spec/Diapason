@@ -26,7 +26,7 @@ Le texte de l'utilisateur ne s'interpole JAMAIS dans un script : il passe en
 from __future__ import annotations
 
 import subprocess
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote, quote_plus
 
 from diapason.core.registry import ToolRegistry
@@ -52,6 +52,26 @@ def _osascript(script: str, *args: str) -> tuple[bool, str]:
     if r.returncode != 0:
         return False, (r.stderr or "").strip()[:200]
     return True, (r.stdout or "").strip()
+
+
+def _constater_devant(app: str, essais: int = 3, attente_s: float = 0.3) -> bool:
+    """L'app est-elle venue au premier plan ? Trois regards espacés.
+
+    Le constat, pas la proclamation : macOS refuse parfois la mise au
+    premier plan à un processus d'arrière-plan, et un lien profond peut
+    atterrir derrière la fenêtre courante.
+    """
+    import time as _temps
+
+    from diapason.desktop.etat_bureau import premier_plan
+
+    bas = app.casefold()
+    for _ in range(max(1, essais)):
+        if attente_s > 0:
+            _temps.sleep(attente_s)
+        if premier_plan().casefold() == bas:
+            return True
+    return False
 
 
 def _ouvrir(url: str) -> tuple[bool, str]:
@@ -216,10 +236,30 @@ class AppSearchTool(BaseTool):
                 content=f"La recherche n'est pas partie : {detail}",
                 success=False,
             )
+        # « Résultats à l'écran » était une proclamation (Atlas, 24 août
+        # 2026 : la parole suit la réalité constatée, jamais l'inverse).
+        # Pour une app on CONSTATE qu'elle est venue devant ; pour le
+        # navigateur on dit ce qu'on a fait, sans jurer de ce qu'on n'a
+        # pas regardé.
+        attendue = {"app_store": "App Store", "spotify": "Spotify"}.get(mecanisme)
+        verifie: Optional[bool] = None
+        if attendue is not None:
+            verifie = _constater_devant(attendue)
+        if verifie is False:
+            contenu = (
+                f"Recherche « {query} » envoyée à {ou}, mais sa fenêtre "
+                f"n'est pas venue devant — regarde si {ou} ne demande pas "
+                "quelque chose."
+            )
+        elif verifie is True:
+            contenu = f"Recherche « {query} » à l'écran dans {ou}."
+        else:
+            contenu = f"Recherche « {query} » lancée dans {ou}."
         return ToolResult(
             tool_name="app_search",
-            content=f"Recherche « {query} » lancée dans {ou} — résultats à l'écran.",
+            content=contenu,
             success=True,
+            metadata={"ou": ou, "verifie": verifie},
         )
 
     @staticmethod

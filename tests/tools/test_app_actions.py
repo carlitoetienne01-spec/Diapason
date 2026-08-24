@@ -158,3 +158,30 @@ class TestEnchainement:
 
         a = parse_voice_command("Cherche la météo à Montréal")
         assert a.kind == "search"
+
+
+class TestConstatApresRecherche:
+    """La parole suit le constat (Atlas, 24 août 2026) : « résultats à
+    l'écran » ne se dit que si l'app est réellement venue devant."""
+
+    def _chercher(self, monkeypatch, devant):
+        import diapason.tools.app_actions as m
+
+        monkeypatch.setattr(m, "_ouvrir", lambda _u: (True, ""))
+        monkeypatch.setattr(
+            m, "_constater_devant", lambda app, **_k: devant
+        )
+        from diapason.tools.app_actions import AppSearchTool
+
+        return AppSearchTool().execute(app="app store", query="solitaire")
+
+    def test_le_constat_positif_se_dit(self, monkeypatch):
+        r = self._chercher(monkeypatch, True)
+        assert r.success and "à l'écran dans l'App Store" in r.content
+        assert r.metadata["verifie"] is True
+
+    def test_l_echec_de_mise_devant_s_avoue(self, monkeypatch):
+        r = self._chercher(monkeypatch, False)
+        assert r.success  # la recherche EST partie
+        assert "n'est pas venue devant" in r.content
+        assert r.metadata["verifie"] is False

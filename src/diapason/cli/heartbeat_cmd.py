@@ -375,3 +375,92 @@ def consolidation_status() -> None:
         f"— chargée : {'oui' if charge else 'non'}"
     )
     console.print(f"  plist : {chemin}")
+
+
+@heartbeat.command("tick")
+def tick_cmd() -> None:
+    """Un passage de la veille de jour : agenda imminent, rappels, batterie."""
+    from diapason.heartbeat.tick import faire_le_tick
+
+    console = Console()
+    passage = faire_le_tick()
+    if not passage.notifications and not passage.erreurs:
+        console.print("[dim]Rien à signaler.[/dim]")
+        return
+    for titre, corps in passage.notifications:
+        console.print(f"[green]{titre}[/green] — {corps}")
+    for erreur in passage.erreurs:
+        console.print(f"[yellow]{erreur}[/yellow]")
+
+
+@heartbeat.group("tick-service")
+def tick_service() -> None:
+    """La veille de jour : launchd réveille le tick tous les quarts d'heure.
+
+    Entre le briefing de 07:00 et la consolidation de 03:30, personne ne
+    veillait : pas de « rendez-vous dans 20 minutes », pas de batterie
+    faible signalée, pas de rappel interne. Le tick est cette veille —
+    sans inférence, moins d'une seconde par passage.
+    """
+
+
+@tick_service.command("install")
+@click.option(
+    "--intervalle",
+    default=900,
+    type=int,
+    help="Secondes entre deux passages (défaut 900 = 15 min).",
+)
+def tick_install(intervalle: int) -> None:
+    """Installe la veille de jour."""
+    import sys
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    chemin = launch_agent.install(
+        label=launch_agent.TICK_LABEL,
+        args=[sys.executable, "-m", "diapason.cli", "heartbeat", "tick"],
+        log_prefix="tick",
+        interval_s=max(60, intervalle),
+    )
+    console.print(
+        f"[green]Installé[/green] — un passage toutes les {max(60, intervalle) // 60} min."
+    )
+    console.print(f"  plist   : {chemin}")
+    console.print(f"  journaux: {launch_agent.log_dir()}/tick.out.log")
+    console.print("[dim]Essai immédiat : diapason heartbeat tick[/dim]")
+
+
+@tick_service.command("uninstall")
+def tick_uninstall() -> None:
+    """Retire la veille de jour."""
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    existait = launch_agent.uninstall(launch_agent.TICK_LABEL)
+    console.print("[green]Retiré[/green]" if existait else "[dim]Rien à retirer[/dim]")
+
+
+@tick_service.command("status")
+def tick_status() -> None:
+    """Dit si la veille est en place, et à quel rythme."""
+    import plistlib
+
+    from diapason.desktop import launch_agent
+
+    console = Console()
+    chemin = launch_agent.plist_path(launch_agent.TICK_LABEL)
+    if not chemin.exists():
+        console.print("[yellow]Aucune veille installée.[/yellow]")
+        console.print("[dim]diapason heartbeat tick-service install[/dim]")
+        return
+    with chemin.open("rb") as f:
+        donnees = plistlib.load(f)
+    intervalle = int(donnees.get("StartInterval") or 0)
+    charge = launch_agent.is_loaded(launch_agent.TICK_LABEL)
+    console.print(
+        f"Veille toutes les {intervalle // 60} min — chargée : "
+        f"{'oui' if charge else 'non'}"
+    )
+    console.print(f"  plist : {chemin}")

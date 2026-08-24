@@ -27,6 +27,7 @@ LABEL = "com.diapason.dictate"  # dictation agent
 SERVE_LABEL = "com.diapason.serve"  # API server
 BRIEFING_LABEL = "com.diapason.briefing"  # briefing du matin, une fois par jour
 CONSOLIDATION_LABEL = "com.diapason.consolidation"  # mémoire de la nuit
+TICK_LABEL = "com.diapason.tick"  # le tick de jour, tous les quarts d'heure
 
 
 def plist_path(label: str = LABEL) -> Path:
@@ -53,6 +54,7 @@ def build_plist(
     label: str = LABEL,
     args: list[str] | None = None,
     schedule: tuple[int, int] | None = None,
+    interval_s: int | None = None,
 ) -> str:
     """Render the LaunchAgent plist.
 
@@ -78,6 +80,15 @@ def build_plist(
             out_log=out_log,
             err_log=err_log,
             schedule=schedule,
+        )
+    if interval_s is not None:
+        return _build_plist_intervalle(
+            label=label,
+            args_xml=args_xml,
+            workdir=workdir,
+            out_log=out_log,
+            err_log=err_log,
+            interval_s=int(interval_s),
         )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -182,6 +193,49 @@ def _uid() -> int:
     return os.getuid()
 
 
+def _build_plist_intervalle(
+    *,
+    label: str,
+    args_xml: str,
+    workdir: str,
+    out_log: str,
+    err_log: str,
+    interval_s: int,
+) -> str:
+    """Un travail qui repart toutes les N secondes — le tick de jour.
+
+    Même famille que la variante horaire : RunAtLoad FAUX (le tick n'a rien
+    d'urgent à l'ouverture de session), AUCUN KeepAlive (un tick en échec ne
+    doit pas marteler), et launchd rattrape au réveil le passage manqué
+    pendant le sommeil.
+    """
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{label}</string>
+    <key>ProgramArguments</key>
+    <array>
+{args_xml}
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{_xml_escape(workdir)}</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StartInterval</key>
+    <integer>{int(interval_s)}</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>{_xml_escape(out_log)}</string>
+    <key>StandardErrorPath</key>
+    <string>{_xml_escape(err_log)}</string>
+</dict>
+</plist>
+"""
+
+
 def install(
     *,
     executable: str | None = None,
@@ -189,6 +243,7 @@ def install(
     args: list[str] | None = None,
     log_prefix: str = "dictate",
     schedule: tuple[int, int] | None = None,
+    interval_s: int | None = None,
 ) -> Path:
     """Write the plist and bootstrap it into the user's launchd domain.
 
@@ -217,6 +272,7 @@ def install(
             label=label,
             args=args,
             schedule=schedule,
+            interval_s=interval_s,
         ),
         encoding="utf-8",
     )
