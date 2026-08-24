@@ -1,4 +1,4 @@
-import { apiFetch, getBase } from './api';
+import { apiFetch, getBase, isTauri } from './api';
 import type { ConnectorInfo, SyncStatus, ConnectRequest, ConnectResponse } from '../types/connectors';
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,17 @@ export async function connectSource(id: string, req: ConnectRequest): Promise<Co
  *  connector whose /connect returned `oauth_required` (issue #512). */
 export function startServerOAuth(id: string, oauthStartPath?: string): Promise<void> {
   const path = oauthStartPath || `/v1/connectors/${encodeURIComponent(id)}/oauth/start`;
-  window.open(`${getBase()}${path}`, '_blank', 'width=600,height=700');
+  const url = `${getBase()}${path}`;
+  // Le WebView bloque window.open : dans l'app, la danse OAuth part dans le
+  // VRAI navigateur (cookies du compte, mots de passe) via la commande
+  // native ; window.open reste le chemin du web (24 août 2026).
+  if (isTauri()) {
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke('open_external_url', { url }))
+      .catch(() => window.open(url, '_blank', 'width=600,height=700'));
+  } else {
+    window.open(url, '_blank', 'width=600,height=700');
+  }
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       try {

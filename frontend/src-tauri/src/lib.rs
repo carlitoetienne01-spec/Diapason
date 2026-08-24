@@ -2318,6 +2318,25 @@ async fn transcribe_audio(
 }
 
 /// Paste text into the frontmost OS application (macOS: pbcopy + Cmd+V).
+/// Ouvre une URL http(s) dans le navigateur PAR DÉFAUT du système.
+///
+/// Le WebView bloque `window.open` : le bouton « Connect » des sources
+/// OAuth cliquait dans le vide (constaté le 24 août 2026 — identifiants
+/// enregistrés, fenêtre Google jamais ouverte). Une navigation OAuth doit
+/// vivre dans le vrai navigateur de toute façon : cookies du compte,
+/// gestionnaire de mots de passe, barre d'adresse lisible.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("URL non http(s) refusée".into());
+    }
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn paste_to_frontmost(text: String) -> Result<String, String> {
     if text.is_empty() {
@@ -3417,6 +3436,7 @@ pub fn run() {
             fetch_models,
             run_diapason_command,
             fetch_savings,
+            open_external_url,
             transcribe_audio,
             paste_to_frontmost,
             speech_health,
