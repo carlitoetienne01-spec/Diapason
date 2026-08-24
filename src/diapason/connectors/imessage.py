@@ -135,18 +135,34 @@ class IMessageConnector(BaseConnector):
         """
         db_path = str(self._db_path)
 
+        # L'échec silencieux mentait (Atlas, 24 août 2026) : sans Accès
+        # complet au disque, la synchro « réussissait » avec zéro message et
+        # error=None dans sync_state — un faux « tout va bien » impossible à
+        # diagnostiquer depuis l'interface. Ici, l'échec porte son remède.
+        _REMEDE = (
+            "Accès complet au disque requis pour lire iMessage "
+            f"({db_path}). Réglages Système → Confidentialité et sécurité → "
+            "Accès complet au disque : ajoute Diapason (ou le terminal qui "
+            "lance `diapason serve`), puis resynchronise."
+        )
+
         try:
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        except sqlite3.OperationalError:
-            return
+        except sqlite3.OperationalError as exc:
+            raise PermissionError(_REMEDE) from exc
 
         try:
             # ------------------------------------------------------------------
             # 1. Build handle_id → identifier map
             # ------------------------------------------------------------------
+            # macOS peut laisser passer l'ouverture et refuser la PREMIÈRE
+            # lecture : la garde couvre les deux portes.
             handle_map: Dict[int, str] = {}
-            for row in conn.execute("SELECT ROWID, id FROM handle"):
-                handle_map[row[0]] = row[1]
+            try:
+                for row in conn.execute("SELECT ROWID, id FROM handle"):
+                    handle_map[row[0]] = row[1]
+            except sqlite3.OperationalError as exc:
+                raise PermissionError(_REMEDE) from exc
 
             # ------------------------------------------------------------------
             # 2. Build message_id → chat_id map

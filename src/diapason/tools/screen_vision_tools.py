@@ -110,15 +110,19 @@ def describe_screen(
 
         config = load_config()
         key = engine_key or (config.engine.default or "").strip() or None
-        engine = get_engine(config, key)
-        if engine is None:
+        # get_engine rend (clé, moteur) — le couple passait pour le moteur
+        # et .generate explosait au premier regard réel (bogue dormant tant
+        # que la vision restait éteinte ; réveillé à l'allumage, 24/08/2026).
+        paire = get_engine(config, key)
+        if paire is None:
             return ToolResult(
                 tool_name="screen_describe",
                 content="No inference engine available for vision.",
                 success=False,
             )
+        cle_resolue, engine = paire
 
-        engine_id = getattr(engine, "engine_id", "") or key or ""
+        engine_id = getattr(engine, "engine_id", "") or cle_resolue or key or ""
         is_local = engine_id in LOCAL_VISION_ENGINES
         if engine_id and engine_id not in LOCAL_VISION_ENGINES:
             if getattr(engine, "is_cloud", False) or engine_id in {

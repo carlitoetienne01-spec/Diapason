@@ -29,25 +29,72 @@ def _run(cmd: list[str], *, timeout: float = 8.0) -> subprocess.CompletedProcess
     )
 
 
-def _calendar_events_applescript(which: str) -> str:
-    """Return AppleScript that prints event lines for today/tomorrow."""
-    offset_days = 0
-    label = "today"
-    w = (which or "today").strip().lower()
+_JOURS_SEMAINE = {
+    "lundi": 0, "monday": 0, "mardi": 1, "tuesday": 1, "mercredi": 2,
+    "wednesday": 2, "jeudi": 3, "thursday": 3, "vendredi": 4, "friday": 4,
+    "samedi": 5, "saturday": 5, "dimanche": 6, "sunday": 6,
+}
+
+
+def interpreter_quand(quand: str, aujourd_hui=None):
+    """« jeudi », « semaine prochaine », « 2026-08-28 »… → (décalage, durée, étiquette).
+
+    Rend None quand la formulation est illisible — l'outil l'AVOUE alors,
+    au lieu de retomber en silence sur aujourd'hui et de donner le mauvais
+    jour avec aplomb (Atlas, 24 août 2026 : seuls today/tomorrow étaient
+    compris, tout le reste devenait « aujourd'hui »).
+    """
+    import datetime as _dt
+
+    if aujourd_hui is None:
+        aujourd_hui = _dt.date.today()
+    w = (quand or "today").strip().lower().replace("'", "'")
+    w = w.replace("l'agenda de ", "").replace("le ", "").strip()
+
+    if w in ("today", "aujourd'hui", "aujourdhui", ""):
+        return 0, 1, "aujourd'hui"
     if w in ("tomorrow", "demain"):
-        offset_days = 1
-        label = "tomorrow"
-    elif w in ("today", "aujourd'hui", "aujourdhui"):
-        offset_days = 0
-        label = "today"
-    # Custom YYYY-MM-DD → treat as today offset via date math is hard in AS;
-    # fall back to today window for unknown tokens.
+        return 1, 1, "demain"
+    if w in ("après-demain", "apres-demain", "après demain", "apres demain"):
+        return 2, 1, "après-demain"
+    if w in ("semaine", "cette semaine", "week", "this week"):
+        return 0, 7, "les 7 prochains jours"
+    if w in ("semaine prochaine", "la semaine prochaine", "next week"):
+        lundi = (7 - aujourd_hui.weekday()) % 7 or 7
+        return lundi, 7, "la semaine prochaine"
+    if w in ("week-end", "weekend", "ce week-end", "ce weekend"):
+        samedi = (5 - aujourd_hui.weekday()) % 7
+        return samedi, 2, "le week-end"
+    for nom, cible in _JOURS_SEMAINE.items():
+        if w == nom or w == f"{nom} prochain":
+            ecart = (cible - aujourd_hui.weekday()) % 7
+            if ecart == 0 and w.endswith("prochain"):
+                ecart = 7
+            return ecart, 1, nom
+    try:
+        cible_date = _dt.date.fromisoformat(w)
+        return (cible_date - aujourd_hui).days, 1, cible_date.strftime("%d/%m")
+    except ValueError:
+        return None
+
+
+def _calendar_events_applescript(
+    offset_days: int, span_days: int, label: str
+) -> str:
+    """Return AppleScript that prints event lines for the given window."""
+    # Sur plusieurs jours, chaque ligne porte sa date — sinon « la semaine
+    # prochaine » rendait sept jours indiscernables.
+    prefixe_date = (
+        '((day of s as text) & "/" & ((month of s as integer) as text)) & " " & '
+        if span_days > 1
+        else ""
+    )
     return f'''
-set dayOffset to {offset_days}
+set dayOffset to {int(offset_days)}
 set calLabel to "{label}"
 set nowDate to current date
 set startOfDay to nowDate - (time of nowDate) + (dayOffset * days)
-set endOfDay to startOfDay + (1 * days) - 1
+set endOfDay to startOfDay + ({int(span_days)} * days) - 1
 set outLines to {{}}
 tell application "Calendar"
   repeat with cal in calendars
@@ -60,7 +107,7 @@ tell application "Calendar"
         set hh to hours of s as integer
         set mm to minutes of s as integer
         set timeStr to (hh as text) & ":" & text -2 thru -1 of ("0" & mm)
-        set end of outLines to timeStr & " — " & t
+        set end of outLines to {prefixe_date}timeStr & " — " & t
       end repeat
     end try
   end repeat
@@ -85,16 +132,21 @@ class CalendarQueryTool(BaseTool):
         return ToolSpec(
             name="calendar_query",
             description=(
-                "List calendar events for today or tomorrow on this Mac. "
-                "Use when the user asks what's on their schedule "
-                '("qu\'est-ce qu\'il y a demain ?", "what\'s today?").'
+                "List calendar events on this Mac for a day or a range: "
+                "aujourd'hui, demain, après-demain, un jour de la semaine "
+                "(jeudi, vendredi prochain), une date (2026-08-28), "
+                "« semaine », « semaine prochaine », « week-end »."
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "when": {
                         "type": "string",
-                        "description": "today | tomorrow (or aujourd'hui | demain).",
+                        "description": (
+                            "aujourd'hui | demain | après-demain | jeudi | "
+                            "vendredi prochain | 2026-08-28 | semaine | "
+                            "semaine prochaine | week-end"
+                        ),
                     },
                 },
                 "required": [],
@@ -111,7 +163,19 @@ class CalendarQueryTool(BaseTool):
                 content="calendar_query is only implemented on macOS.",
                 success=False,
             )
-        script = _calendar_events_applescript(when)
+        fenetre = interpreter_quand(when)
+        if fenetre is None:
+            return ToolResult(
+                tool_name="calendar_query",
+                content=(
+                    f"Je n'ai pas compris la date « {when} ». Dis un jour "
+                    "(jeudi), une date (2026-08-28), demain, ou "
+                    "« semaine prochaine »."
+                ),
+                success=False,
+            )
+        decalage, duree, etiquette = fenetre
+        script = _calendar_events_applescript(decalage, duree, etiquette)
         try:
             r = _run(["osascript", "-e", script], timeout=40.0)
             if r.returncode != 0:
