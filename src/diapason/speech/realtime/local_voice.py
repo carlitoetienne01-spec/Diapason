@@ -410,6 +410,21 @@ def polish_transcript(text: str) -> str:
         return cleaned
 
 
+def _taille_stt(config: Any) -> str:
+    """L'oreille de la conversation : [speech.realtime] stt_model, sinon
+    celle de la dictée ([speech] model), sinon small.
+
+    Séparées le 24 août 2026 : medium partout rendait la voix lente à
+    répondre (+1,5 s par tour) — la conversation préfère la vitesse, la
+    dictée préfère la lettre.
+    """
+    realtime = getattr(getattr(config, "speech", None), "realtime", None)
+    voix = str(getattr(realtime, "stt_model", "") or "").strip()
+    if voix:
+        return voix
+    return str(getattr(config.speech, "model", "") or "small")
+
+
 def _default_stt() -> Callable[[bytes], str]:
     """Whisper, shared across sessions, French pinned via the user's config."""
     from diapason.core.config import load_config
@@ -419,7 +434,7 @@ def _default_stt() -> Callable[[bytes], str]:
     if backend is None:
         config = load_config()
         backend = FasterWhisperBackend(
-            model_size=str(getattr(config.speech, "model", "") or "small"),
+            model_size=_taille_stt(config),
             language=str(getattr(config.speech, "language", "") or ""),
             # Realtime audio must not inherit the dictation hotword list:
             # on pure background noise it reproducibly hallucinated the first
@@ -487,12 +502,20 @@ VOICE_TOOL_TURN_TEMPERATURE = 0.1
 # seulement : « j'ai ouvert » est un compte rendu, pas une promesse.
 _PROMESSE_SANS_ACTE_RE = re.compile(
     r"\bje\s+(?:"
-    r"vais\s+(?:chercher|ouvrir|lancer|mettre|jouer|cr[ée]er|installer|"
-    r"regarder|faire|noter|ajouter)|"
-    r"cherche|lance|joue|mets|note|ajoute|"
-    r"m['’]en\s+occupe"
+    r"vais\s+(?:chercher|ouvrir|lancer|relancer|mettre|jouer|cr[ée]er|"
+    r"installer|regarder|faire|refaire|noter|ajouter|r[ée]essayer)|"
+    r"cherche|lance|relance|refais|r[ée]essaie|recommence|joue|mets|note|"
+    r"ajoute|m['’]en\s+occupe"
     r")\b"
-    r"|\bj['’]ouvre\b|\bun\s+(?:instant|moment)\b",
+    r"|\bj['’]ouvre\b|\bun\s+(?:instant|moment)\b"
+    # Les AFFIRMATIONS D'ACCOMPLI sans acte (23 août 2026) : « la recherche
+    # est relancée », « les résultats s'affichent », « c'est fait » — dites
+    # dans un tour où AUCUN outil n'a tourné, ce sont des mensonges par
+    # construction, et la sommation les rattrape comme les promesses.
+    r"|\bc['’]est\s+fait\b"
+    r"|\best\s+(?:relanc[ée]|lanc[ée]|faite|refaite|ouverte?|ferm[ée]|"
+    r"cr[ée][ée]|install[ée]|not[ée]|ajout[ée])e?s?\b"
+    r"|\bs['’]affichent?\b|\bdevraient\s+s['’]afficher\b",
     re.IGNORECASE,
 )
 

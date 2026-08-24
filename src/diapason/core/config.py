@@ -1519,6 +1519,10 @@ class VoiceRealtimeConfig:
     language: str = ""
     enable_tools: bool = True
     max_tool_steps: int = 12
+    # L'oreille de la CONVERSATION, séparée de celle de la dictée (24 août
+    # 2026) : medium partout rendait la voix lente à répondre — « c'était
+    # mieux avant ». Vide = hérite de [speech] model.
+    stt_model: str = ""
     # Comma-separated tool ids; empty = defaults (open_anything, apps, browser, …)
     tools: str = ""
     # Ne répondre qu'à la voix ENRÔLÉE du propriétaire. L'empreinte s'apprend

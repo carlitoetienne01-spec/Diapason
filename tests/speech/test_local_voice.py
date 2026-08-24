@@ -1133,3 +1133,44 @@ class TestClicheDuBureau:
         messages = session._turn_messages("bonjour")
         assert messages[-1]["role"] == "user"
         assert all("État du bureau" not in (m.get("content") or "") for m in messages)
+
+
+class TestPromessesElargies:
+    """« Je relance » et « la recherche est relancée » — dits sans outil —
+    sont des mensonges par construction (24 août 2026)."""
+
+    def test_relancer_et_les_accomplis_sont_des_promesses(self):
+        from diapason.speech.realtime.local_voice import _PROMESSE_SANS_ACTE_RE as RE
+
+        for phrase in (
+            "Oui, je relance la recherche solitaire dans l'App Store.",
+            "La recherche est relancée dans l'App Store.",
+            "Les résultats devraient s'afficher maintenant.",
+            "C'est fait.",
+            "Je vais réessayer tout de suite.",
+        ):
+            assert RE.search(phrase), phrase
+
+    def test_le_parler_ordinaire_reste_libre(self):
+        from diapason.speech.realtime.local_voice import _PROMESSE_SANS_ACTE_RE as RE
+
+        for phrase in (
+            "Le R&B est né dans les années quarante.",
+            "Tu as trois tâches aujourd'hui.",
+            "Il fait beau à Montréal.",
+        ):
+            assert not RE.search(phrase), phrase
+
+
+class TestOreilleSeparee:
+    def test_la_voix_prend_son_oreille_puis_herite(self):
+        from unittest.mock import MagicMock
+
+        from diapason.speech.realtime.local_voice import _taille_stt
+
+        config = MagicMock()
+        config.speech.realtime.stt_model = "small"
+        config.speech.model = "medium"
+        assert _taille_stt(config) == "small"
+        config.speech.realtime.stt_model = ""
+        assert _taille_stt(config) == "medium"
