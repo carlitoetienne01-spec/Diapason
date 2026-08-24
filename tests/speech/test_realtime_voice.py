@@ -54,11 +54,10 @@ def test_oral_prompt_contains_clarification_and_brevity():
     from diapason.speech.realtime.oral_prompt import build_live_agent_template
 
     text = build_live_agent_template(enable_tools=True)
-    assert (
-        "two or three sentences" in text.lower()
-        or "2–3" in text
-        or "three sentences" in text
-    )
+    # Durcie le 24 août 2026 : une phrase suffit presque toujours, jamais
+    # plus de deux — « je déteste les phrases longues », mot pour mot.
+    assert "NEVER more than two" in text
+    assert "ONE sentence" in text
     assert "clarif" in text.lower()
     assert "calendar_query" in text
     assert "find_files" in text
