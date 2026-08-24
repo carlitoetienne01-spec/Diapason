@@ -199,4 +199,7 @@ import diapason.tools.current_time  # noqa: E402,F401
 # lui-même est stdlib (24 août 2026).
 import diapason.tools.gestes  # noqa: E402,F401
 
+# Onglets du navigateur de l'utilisateur — stdlib + osascript, pas de garde.
+import diapason.tools.browser_tabs  # noqa: E402,F401
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]

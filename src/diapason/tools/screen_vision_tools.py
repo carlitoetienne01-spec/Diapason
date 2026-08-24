@@ -19,6 +19,13 @@ from diapason.tools._stubs import BaseTool, ToolSpec
 logger = logging.getLogger(__name__)
 
 _last_capture_monotonic: float = 0.0
+# La dernière trame du PARTAGE, par empreinte exacte : un écran inchangé ne
+# repaie pas une inférence gemma3:4b sur le créneau Ollama unique (-np 1).
+# Empreinte exacte, pas perceptuelle : l'horloge de la barre de menus change
+# les pixels ~1 fois/min, donc au pire une inférence par minute d'écran
+# immobile — déjà 4 trames sur 5 économisées à 12 s d'intervalle.
+_derniere_empreinte_partage: str = ""
+_derniere_description_partage: str = ""
 
 
 def _vision_config() -> Any:
@@ -184,6 +191,25 @@ def describe_screen(
 
     _last_capture_monotonic = time.monotonic()
 
+    if skip_rate_limit:
+        # La boucle de partage seulement : trame identique = description
+        # identique, sans réveiller le modèle.
+        import hashlib
+
+        global _derniere_empreinte_partage, _derniere_description_partage
+        empreinte = hashlib.sha256(b64.encode("ascii")).hexdigest()
+        if (
+            empreinte == _derniere_empreinte_partage
+            and _derniere_description_partage
+        ):
+            return ToolResult(
+                tool_name="screen_describe",
+                content=_derniere_description_partage,
+                success=True,
+                metadata={"cached": True, "unchanged": True},
+            )
+        _derniere_empreinte_partage = empreinte
+
     try:
         result = engine.generate(
             [Message(role=Role.USER, content=q, images=[b64])],
@@ -196,6 +222,8 @@ def describe_screen(
             content = str(result.get("content") or "").strip()
         if not content:
             content = "I could not read the screen clearly."
+        if skip_rate_limit:
+            _derniere_description_partage = content
 
         return ToolResult(
             tool_name="screen_describe",

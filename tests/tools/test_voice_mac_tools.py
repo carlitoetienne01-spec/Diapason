@@ -5,6 +5,9 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from diapason.tools.voice_mac_tools import (
+    FileTrashTool,
+)
+from diapason.tools.voice_mac_tools import (
     CalendarQueryTool,
     FindFilesTool,
     MailComposeTool,
@@ -312,3 +315,60 @@ class TestVeriteDesEnvois:
         )
         assert r.success and "messages_status" in r.content
         assert r.metadata["verified"] is False
+
+
+class TestRangementVersLaCorbeille:
+    """file_trash : liste explicite, maison seulement, jamais un secret —
+    et le constat post-action avant de dire « fait »."""
+
+    def test_hors_de_la_maison_est_refuse(self):
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+            r = FileTrashTool().execute(paths=["/etc/hosts"])
+        assert not r.success and "outside the home" in r.content
+
+    def test_un_fichier_sensible_est_refuse(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "pathlib.Path.home", staticmethod(lambda: tmp_path)
+        )
+        secret = tmp_path / ".env"
+        secret.write_text("KEY=x")
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
+            r = FileTrashTool().execute(paths=[str(secret)])
+        assert not r.success and "sensitive" in r.content
+        assert secret.exists()
+
+    def test_le_constat_tranche_pas_le_code_retour(self, tmp_path, monkeypatch):
+        """Finder répond 0 mais le fichier existe encore : on ne proclame pas."""
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
+        fichier = tmp_path / "brouillon.txt"
+        fichier.write_text("x")
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
+            "diapason.tools.voice_mac_tools._run"
+        ) as run:
+            run.return_value.returncode = 0
+            r = FileTrashTool().execute(paths=[str(fichier)])
+        assert not r.success and "still exist" in r.content
+
+    def test_reussi_dit_ou_c_est_parti(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
+        fichier = tmp_path / "vieux.log"
+        fichier.write_text("x")
+
+        def _finder(cmd, **_kw):
+            fichier.unlink()  # le Finder « déplace »
+            import subprocess as sp
+
+            return sp.CompletedProcess(cmd, 0, "", "")
+
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
+            "diapason.tools.voice_mac_tools._run", side_effect=_finder
+        ):
+            r = FileTrashTool().execute(paths=[str(fichier)])
+        assert r.success
+        # find_files élague .Trash : le résultat dit OÙ récupérer.
+        assert "Put Back" in r.content
+
+    def test_la_cloche_est_obligatoire(self):
+        assert FileTrashTool().spec.requires_confirmation is True, (
+            "toucher au disque passe par la cloche — doctrine de la voix"
+        )

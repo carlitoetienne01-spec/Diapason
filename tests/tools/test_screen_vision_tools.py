@@ -371,3 +371,75 @@ class TestLectureDuTexteExact:
         assert "screen_read_text" in _TROUSSE_ASSISTANT
         assert "screen_read_text" in DEFAULT_VOICE_TOOL_IDS
         assert "screen_read_text" in list_voice_tool_ids()
+
+
+class TestTramesInchangees:
+    """La boucle de partage ne repaie pas gemma3:4b pour un écran immobile :
+    trame identique = description du cache, zéro créneau Ollama (-np 1)."""
+
+    def test_une_trame_identique_ne_reveille_pas_le_modele(self, monkeypatch):
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_derniere_empreinte_partage", "")
+        monkeypatch.setattr(svt, "_derniere_description_partage", "")
+        cfg = SimpleNamespace(
+            enabled=True, rate_limit_ms=-1, monitor=1, max_dimension=1280,
+            keep_temp=False, allow_cloud=False, model="gemma3:4b", engine="ollama",
+        )
+        monkeypatch.setattr(svt, "_vision_config", lambda: cfg)
+        moteur = MagicMock()
+        moteur.engine_id = "ollama"
+        moteur.is_cloud = False
+        moteur.generate.return_value = {"content": "Un éditeur de code."}
+        fake_cfg = MagicMock()
+        fake_cfg.engine.default = "ollama"
+        fake_cfg.intelligence.default_model = "gemma3:4b"
+        with patch(
+            "diapason.tools.screen_vision_tools.capture_screen_b64",
+            return_value=("MEMEIMAGE", {}),
+        ), patch(
+            "diapason.core.config.load_config", return_value=fake_cfg
+        ), patch(
+            "diapason.engine._discovery.get_engine",
+            return_value=("ollama", moteur),
+        ):
+            premier = svt.describe_screen(skip_rate_limit=True)
+            second = svt.describe_screen(skip_rate_limit=True)
+        assert premier.success and second.success
+        assert second.content == "Un éditeur de code."
+        assert second.metadata.get("unchanged") is True
+        assert moteur.generate.call_count == 1, (
+            "écran inchangé = pas de seconde inférence"
+        )
+
+    def test_un_appel_direct_n_est_jamais_deduplique(self, monkeypatch):
+        """skip_rate_limit=False (screen_describe à la demande) : l'usager
+        veut un regard FRAIS, la dédup ne s'applique qu'à la boucle."""
+        import diapason.tools.screen_vision_tools as svt
+
+        monkeypatch.setattr(svt, "_derniere_empreinte_partage", "")
+        monkeypatch.setattr(svt, "_derniere_description_partage", "")
+        cfg = SimpleNamespace(
+            enabled=True, rate_limit_ms=-1, monitor=1, max_dimension=1280,
+            keep_temp=False, allow_cloud=False, model="gemma3:4b", engine="ollama",
+        )
+        monkeypatch.setattr(svt, "_vision_config", lambda: cfg)
+        moteur = MagicMock()
+        moteur.engine_id = "ollama"
+        moteur.is_cloud = False
+        moteur.generate.return_value = {"content": "Pareil."}
+        fake_cfg = MagicMock()
+        fake_cfg.engine.default = "ollama"
+        fake_cfg.intelligence.default_model = "gemma3:4b"
+        with patch(
+            "diapason.tools.screen_vision_tools.capture_screen_b64",
+            return_value=("MEMEIMAGE", {}),
+        ), patch(
+            "diapason.core.config.load_config", return_value=fake_cfg
+        ), patch(
+            "diapason.engine._discovery.get_engine",
+            return_value=("ollama", moteur),
+        ):
+            svt.describe_screen(skip_rate_limit=False)
+            svt.describe_screen(skip_rate_limit=False)
+        assert moteur.generate.call_count == 2

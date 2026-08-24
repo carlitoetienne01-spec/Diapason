@@ -39,6 +39,8 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "mail_send",
     "messages_send",
     "messages_status",
+    "browser_tabs",
+    "file_trash",
     "screen_describe",
     "screen_read_text",
     "screen_share_start",
@@ -121,6 +123,7 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("mail_send", "MailSendTool"),
             ("messages_send", "MessagesSendTool"),
             ("messages_status", "MessagesStatusTool"),
+            ("file_trash", "FileTrashTool"),
         ),
     ),
     (
@@ -152,6 +155,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.succes_finances",
         (("succes_finances", "SuccesFinancesTool"),),
+    ),
+    (
+        "diapason.tools.browser_tabs",
+        (("browser_tabs", "BrowserTabsTool"),),
     ),
     (
         "diapason.tools.gestes",

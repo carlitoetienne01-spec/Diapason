@@ -1283,7 +1283,154 @@ class MessagesStatusTool(BaseTool):
             },
         )
 
+
+@ToolRegistry.register("file_trash")
+class FileTrashTool(BaseTool):
+    """Mettre des fichiers à la corbeille — la quarantaine réversible de macOS.
+
+    Atlas, panier « Ensuite », 24 août 2026. Aucun outil ne savait déplacer
+    ni supprimer un fichier ; le périmètre choisi est le plus sûr qui soit
+    utile : la CORBEILLE, via le Finder — réversible d'un « Remettre », avec
+    une interface de restauration que l'utilisateur connaît déjà. Pas de
+    déplacement libre vers un dossier arbitraire, pas de glob, pas de
+    récursif : une liste EXPLICITE de chemins, et c'est tout.
+    """
+
+    tool_id = "file_trash"
+    is_local = True
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="file_trash",
+            description=(
+                "Move specific files to the macOS Trash (reversible via "
+                "Finder's Put Back). Pass EXACT paths — use find_files first "
+                "to locate them; its metadata.paths is the expected input. "
+                "Refuses folders outside the user's home and sensitive files."
+            ),
+            parameters={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact absolute file paths to trash.",
+                    },
+                },
+                "required": ["paths"],
+            },
+            category="system",
+            # Toucher au disque passe par la cloche (doctrine
+            # speech/realtime/tools.py) : 45 s à la voix, acceptable pour un
+            # rangement qui n'est pas un réflexe.
+            requires_confirmation=True,
+            timeout_seconds=30.0,
+            metadata={"risk": "routine_write", "reversible": True},
+        )
+
+    def execute(self, **params: Any) -> ToolResult:
+        if sys.platform != "darwin":
+            return ToolResult(
+                tool_name="file_trash",
+                content="file_trash is only implemented on macOS.",
+                success=False,
+            )
+        from diapason.security.file_policy import is_sensitive_file
+
+        bruts = params.get("paths") or []
+        if not isinstance(bruts, list) or not bruts:
+            return ToolResult(
+                tool_name="file_trash",
+                content="Need a non-empty list of exact file paths.",
+                success=False,
+            )
+        maison = pathlib.Path.home().resolve()
+        chemins: list[pathlib.Path] = []
+        for brut in bruts[:20]:
+            chemin = pathlib.Path(str(brut)).expanduser()
+            try:
+                reel = chemin.resolve()
+            except OSError:
+                reel = chemin
+            if not reel.is_relative_to(maison):
+                return ToolResult(
+                    tool_name="file_trash",
+                    content=f"Refused: {chemin} is outside the home folder.",
+                    success=False,
+                    metadata={"refused": str(chemin)},
+                )
+            if is_sensitive_file(reel):
+                return ToolResult(
+                    tool_name="file_trash",
+                    content=(
+                        f"Refused: {chemin.name} looks like a sensitive file "
+                        "(credentials, keys). Not touching it."
+                    ),
+                    success=False,
+                    metadata={"refused": str(chemin)},
+                )
+            if not reel.exists():
+                return ToolResult(
+                    tool_name="file_trash",
+                    content=f"Not found: {chemin}. Nothing was trashed.",
+                    success=False,
+                    metadata={"missing": str(chemin)},
+                )
+            chemins.append(reel)
+
+        # Le Finder est toujours installé : pas le piège de compilation des
+        # tell vers une app absente. Un seul script pour toute la liste.
+        elements = ", ".join(
+            f'POSIX file "{_as_escape(str(c))}"' for c in chemins
+        )
+        script = f"tell application \"Finder\" to delete {{{elements}}}"
+        try:
+            fait = _run(["osascript", "-e", script], timeout=20.0)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return ToolResult(
+                tool_name="file_trash", content=str(exc), success=False
+            )
+        if fait.returncode != 0:
+            return ToolResult(
+                tool_name="file_trash",
+                content=(
+                    f"Finder refused: {(fait.stderr or '').strip()[:160]}. "
+                    "Grant Automation for Finder if prompted."
+                ),
+                success=False,
+            )
+        # Constater, ne pas proclamer : la source doit avoir disparu.
+        restants = [str(c) for c in chemins if c.exists()]
+        if restants:
+            return ToolResult(
+                tool_name="file_trash",
+                content=(
+                    "Finder answered but these still exist: "
+                    + ", ".join(restants)
+                ),
+                success=False,
+                metadata={"remaining": restants},
+            )
+        noms = ", ".join(c.name for c in chemins)
+        return ToolResult(
+            tool_name="file_trash",
+            # find_files élague .Trash : dire OÙ c'est parti, sinon le modèle
+            # chercherait le fichier « disparu ».
+            content=(
+                f"Moved to the Trash: {noms}. Recoverable via Finder → "
+                "Trash → Put Back (find_files will no longer see them)."
+            ),
+            success=True,
+            metadata={
+                "trashed": [str(c) for c in chemins],
+                "persistence": "local",
+            },
+        )
+
 __all__ = [
+    "FileTrashTool",
     "MessagesStatusTool",
     "CalendarQueryTool",
     "SpotifyPlayTool",

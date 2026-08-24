@@ -1181,6 +1181,26 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 extra.append({"role": "system", "content": decrire(cliche)})
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
+        # PERCEPTION CONTINUE sans inférence ajoutée (Atlas, 24 août 2026) :
+        # pendant un partage d'écran, la boucle a DÉJÀ payé la description —
+        # le tour la lit du cache au lieu d'obliger le modèle à appeler
+        # screen_share_status pour voir ce que la session sait déjà. En fin
+        # de contexte, comme le cliché : volatil, donc jamais en préambule.
+        try:
+            from diapason.desktop.screen_share import get_screen_share
+
+            partage = get_screen_share()
+            if partage.is_active():
+                resume = (partage.latest_summary() or "").strip()
+                if resume:
+                    extra.append(
+                        {
+                            "role": "system",
+                            "content": f"Sur l'écran partagé : {resume}",
+                        }
+                    )
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
         return hist + extra + [{"role": "user", "content": text}]
 
     @staticmethod
