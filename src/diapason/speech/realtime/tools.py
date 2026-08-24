@@ -23,6 +23,8 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # « Qu'est-ce que j'ai noté sur… » les mains prises : le savoir
     # personnel (Obsidian, Apple Notes) répond aussi à la voix (23/08/2026).
     "knowledge_search",
+    # « Qu'est-ce que j'ai manqué ? » les mains prises (Atlas, 24/08/2026).
+    "digest_collect",
     "open_anything",
     "open_uri",
     "focus_app",
@@ -66,6 +68,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.knowledge_search",
         (("knowledge_search", "KnowledgeSearchTool"),),
+    ),
+    (
+        "diapason.tools.digest_collect",
+        (("digest_collect", "DigestCollectTool"),),
     ),
     (
         "diapason.tools.desktop_tools",

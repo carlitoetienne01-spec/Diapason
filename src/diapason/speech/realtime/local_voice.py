@@ -1280,6 +1280,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 spec_text = (self._speculative[1].result() or "").strip()
             except BaseException:  # noqa: BLE001 - annulation comprise
                 spec_text = ""
+            # La spéculation subit la MÊME toilette que le tour réel — le nom
+            # de l'assistant retiré. Sans ça, « Diapason, ouvre X » spéculait
+            # sur le texte avec nom, le tour réel arrivait sans, et la
+            # comparaison jetait la réponse préparée : le premier jeton se
+            # payait deux fois précisément sur le mode d'adresse principal
+            # (Atlas, 24 août 2026).
+            if spec_text and mentions_assistant_name(spec_text):
+                spec_text = strip_assistant_name(spec_text) or spec_text
             if spec_text and not self._speculation_pointless(spec_text):
                 spec = _SpecTurn(spec_text)
                 spec.drainer = asyncio.get_running_loop().create_task(

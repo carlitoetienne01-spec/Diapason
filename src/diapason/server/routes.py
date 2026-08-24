@@ -62,6 +62,9 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # indexé ET embarqué dans knowledge.db — mais seul le mode recherche
     # profonde y avait accès. Le chat le lit désormais aussi (23 août 2026).
     "knowledge_search",
+    # « J'ai reçu quoi ? » en direct — mails non lus, messages, agenda —
+    # au lieu de réserver ce talent au brief du matin (Atlas, 24/08/2026).
+    "digest_collect",
     "web_search",
     "find_files",
     "open_anything",
@@ -70,6 +73,14 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "notes_write",
     "reminders_write",
     "calendar_add",
+    # Le chat rattrape la voix (Atlas, 24 août 2026) : musique, mails et
+    # messages marchent aussi au clavier. Les envois passent par la cloche
+    # d'approbation, comme partout.
+    "spotify_play",
+    "mail_compose",
+    "messages_compose",
+    "mail_send",
+    "messages_send",
     "screen_describe",
     "calculator",
 )
@@ -258,7 +269,19 @@ def _ensure_identity_prompt(
     # existe pour ne pas doubler l'IDENTITÉ quand l'appelant fournit la
     # sienne ; laisser l'horloge sauter avec elle est ce qui faisait répondre
     # une date lue dans la mémoire.
-    anchored = [Message(role=Role.SYSTEM, content=_now_anchor()), *messages]
+    ancre = _now_anchor()
+    # Le cliché du bureau rejoint l'ancre (Atlas, 24 août 2026) : le chat
+    # sait ce qui tourne et ce qui est devant, comme la voix. L'ancre est
+    # déjà volatile à la minute — l'état n'y coûte rien de plus.
+    try:
+        from diapason.desktop.etat_bureau import decrire, dernier_etat_connu
+
+        cliche = dernier_etat_connu()
+        if cliche is not None:
+            ancre = f"{ancre}\n{decrire(cliche)}"
+    except Exception:  # noqa: BLE001 - la perception est un bonus
+        pass
+    anchored = [Message(role=Role.SYSTEM, content=ancre), *messages]
 
     # Le retour anticipé n'a de sens que si le CLIENT a fourni son propre
     # cadrage. Il testait la liste telle qu'elle arrive ici — or le serveur y
@@ -318,6 +341,16 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
     config = getattr(request.app.state, "config", None)
+
+    # Le cliché du bureau se rafraîchit en parallèle de la requête (~100 ms
+    # d'osascript) ; l'ancre du prompt ne lit que le cache — même mécanique
+    # que la voix (Atlas, 24 août 2026).
+    try:
+        from diapason.desktop.etat_bureau import etat_du_bureau
+
+        asyncio.get_running_loop().run_in_executor(None, etat_du_bureau)
+    except Exception:  # noqa: BLE001 - la perception est un bonus
+        pass
 
     # Trusted desktop fast path.  It runs BEFORE memory retrieval, complexity
     # scoring and inference, turning explicit low-risk commands into one local

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 # ``Request`` must be importable at *module* scope so that FastAPI can resolve
@@ -25,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 # Module-level cache of connector instances (keyed by connector_id).
 _instances: Dict[str, Any] = {}
+
+# La synchro périodique ne démarre qu'UNE fois par processus, même si
+# plusieurs applications sont construites (les tests en fabriquent des
+# dizaines) — et son premier passage attend deux minutes : un serveur qui
+# démarre a mieux à faire que d'ingérer.
+_SYNCHRO_DEMARREE = False
+SYNCHRO_PREMIER_DELAI_S = 120.0
+SYNCHRO_INTERVALLE_S = 3600.0
 
 
 def _ensure_connectors_registered() -> None:
@@ -770,6 +779,48 @@ def create_connectors_router():
             "oldest_item_date": oldest_item_date,
             "error": effective_error,
         }
+
+    def _synchroniser_les_connectes() -> int:
+        """Une passe : chaque connecteur CONNECTÉ part en synchro de fond.
+
+        Réutilise exactement la machinerie du bouton « Sync » de l'interface
+        (_start_sync : garde de réentrance, checkpoints, ingestion) — la
+        seule différence est que personne n'a eu à cliquer.
+        """
+        _ensure_connectors_registered()
+        lances = 0
+        for cid in list(ConnectorRegistry.keys()):
+            try:
+                inst = _get_or_create(cid)
+                if inst.is_connected() and _start_sync(cid, inst) == "started":
+                    lances += 1
+            except Exception:  # noqa: BLE001 - un connecteur grognon n'arrête pas la passe
+                logger.debug("synchro auto : %s en échec", cid, exc_info=True)
+        return lances
+
+    # Le savoir cessait d'être frais dès qu'on ne cliquait plus : Apple
+    # Notes figé au 18 août, Obsidian au dernier passage manuel (Atlas,
+    # 24 août 2026). La boucle horaire rend la fraîcheur automatique.
+    global _SYNCHRO_DEMARREE
+    if not _SYNCHRO_DEMARREE:
+        _SYNCHRO_DEMARREE = True
+
+        def _boucle() -> None:
+            import time as _temps
+
+            _temps.sleep(SYNCHRO_PREMIER_DELAI_S)
+            while True:
+                try:
+                    lances = _synchroniser_les_connectes()
+                    if lances:
+                        logger.info("synchro auto : %d connecteur(s) lancés", lances)
+                except Exception:  # noqa: BLE001 - la boucle survit à tout
+                    logger.warning("synchro auto : passe en échec", exc_info=True)
+                _temps.sleep(SYNCHRO_INTERVALLE_S)
+
+        threading.Thread(
+            target=_boucle, daemon=True, name="synchro-connecteurs"
+        ).start()
 
     return router
 
