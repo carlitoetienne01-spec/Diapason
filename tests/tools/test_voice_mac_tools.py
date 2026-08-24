@@ -263,3 +263,52 @@ class TestResolutionDeContacts:
                 recipient="+15145551234", body="salut"
             )
         assert resultat.success
+
+
+class TestVeriteDesEnvois:
+    """« Message sent » ne se proclame plus sur le code retour d'osascript :
+    la rangée réelle de chat.db tranche (Atlas, 24 août 2026)."""
+
+    def _envoyer(self, monkeypatch, constat):
+        import diapason.tools.voice_mac_tools as vmt
+        from diapason.channels.imessage_status import Constat
+
+        monkeypatch.setattr(vmt, "_resolve_contact", lambda *a, **k: [])
+        monkeypatch.setattr(
+            vmt, "_constater_l_envoi", lambda *a, **k: Constat(**constat)
+        )
+        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
+            "diapason.channels.imessage_daemon.send_imessage", return_value=True
+        ):
+            return vmt.MessagesSendTool().execute(
+                recipient="+15145551234", body="salut", confirm=True
+            )
+
+    def test_confirme_dans_la_base_se_dit_confirme(self, monkeypatch):
+        r = self._envoyer(
+            monkeypatch, {"issue": "found", "guid": "g1", "is_sent": True}
+        )
+        assert r.success and "confirmed in Messages" in r.content
+        assert r.metadata["verified"] is True
+
+    def test_le_not_delivered_devient_un_echec_franc(self, monkeypatch):
+        r = self._envoyer(
+            monkeypatch, {"issue": "found", "guid": "g1", "error": 22}
+        )
+        assert not r.success
+        assert "Not Delivered" in r.content
+        assert r.metadata["sent"] is False and r.metadata["verified"] is True
+
+    def test_base_illisible_avoue_avec_le_remede(self, monkeypatch):
+        r = self._envoyer(monkeypatch, {"issue": "unreadable", "detail": "auth"})
+        assert r.success  # remis à Messages, c'est vrai
+        assert "could not verify" in r.content
+        assert "Full Disk Access" in r.content
+        assert r.metadata["verified"] is False
+
+    def test_encore_en_boite_d_envoi_pointe_messages_status(self, monkeypatch):
+        r = self._envoyer(
+            monkeypatch, {"issue": "found", "guid": "g1", "is_sent": False}
+        )
+        assert r.success and "messages_status" in r.content
+        assert r.metadata["verified"] is False

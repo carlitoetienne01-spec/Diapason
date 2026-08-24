@@ -38,6 +38,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "messages_compose",
     "mail_send",
     "messages_send",
+    "messages_status",
     "screen_describe",
     "screen_share_start",
     "screen_share_stop",
@@ -101,6 +102,7 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("messages_compose", "MessagesComposeTool"),
             ("mail_send", "MailSendTool"),
             ("messages_send", "MessagesSendTool"),
+            ("messages_status", "MessagesStatusTool"),
         ),
     ),
     (

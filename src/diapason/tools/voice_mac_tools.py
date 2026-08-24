@@ -510,6 +510,34 @@ def _ne_garder_que_les_plus_exacts(
     return [(t_, c) for r, t_, c in rangs if r == meilleur]
 
 
+def _remede_fda() -> str:
+    from diapason.channels.imessage_status import remede_fda
+
+    return remede_fda()
+
+
+def _constater_l_envoi(recipient: str, envoye_apres, *, essais: int = 6):
+    """La rangée sortante réelle, en sondant chat.db ~3 s au plus.
+
+    Connexion rouverte à chaque essai (la base bouge sous nos pieds). Bien
+    sous le timeout_seconds=30 de la spec — et sans rapport avec les 45 s
+    d'approbation : ici le message est déjà accepté par Messages.
+    """
+    import time as _time
+
+    from diapason.channels.imessage_status import Constat, find_outgoing
+
+    dernier = Constat(issue="not_found")
+    for _ in range(max(1, essais)):
+        dernier = find_outgoing(recipient, envoye_apres)
+        if dernier.issue == "unreadable" or (
+            dernier.issue == "found" and (dernier.is_sent or dernier.error)
+        ):
+            return dernier
+        _time.sleep(0.5)
+    return dernier
+
+
 def _resolve_contact(name: str, *, db_path: str | None = None) -> list[dict]:
     """Les fiches locales qui répondent à un petit nom — [] si rien.
 
@@ -1055,8 +1083,13 @@ class MessagesSendTool(BaseTool):
         if aveu is not None:
             return aveu
         try:
+            from datetime import datetime, timedelta, timezone
+
             from diapason.channels.imessage_daemon import send_imessage
 
+            # Le moment AVANT l'envoi, avec 5 s de marge d'horloge : c'est la
+            # borne de recherche du constat dans chat.db.
+            envoye_apres = datetime.now(timezone.utc) - timedelta(seconds=5)
             ok = bool(send_imessage(recipient, body))
             if not ok:
                 return ToolResult(
@@ -1069,14 +1102,73 @@ class MessagesSendTool(BaseTool):
                     metadata={"sent": False, "recipient": recipient},
                 )
             qui = f"{fiche} ({recipient})" if fiche else recipient
+            # Constater, ne pas proclamer (Atlas, 24 août 2026) : le code
+            # retour d'osascript dit « Messages a accepté », pas « c'est
+            # parti » — le « Not Delivered » est silencieux. On regarde la
+            # rangée réelle dans chat.db, quelques secondes au plus.
+            constat = _constater_l_envoi(recipient, envoye_apres)
+            if constat.issue == "found" and constat.error:
+                return ToolResult(
+                    tool_name="messages_send",
+                    content=(
+                        f"Messages reported a send FAILURE to {qui} "
+                        f"(Not Delivered, error {constat.error}). Tell the "
+                        "user; suggest checking the number or using SMS."
+                    ),
+                    success=False,
+                    metadata={
+                        "sent": False,
+                        "verified": True,
+                        "recipient": recipient,
+                        "guid": constat.guid,
+                        "error": constat.error,
+                    },
+                )
+            if constat.issue == "found" and constat.is_sent:
+                return ToolResult(
+                    tool_name="messages_send",
+                    content=f"Message sent to {qui} (confirmed in Messages).",
+                    success=True,
+                    metadata={
+                        "sent": True,
+                        "verified": True,
+                        "recipient": recipient,
+                        "guid": constat.guid,
+                        "resolved_from": demande if fiche else "",
+                    },
+                )
+            if constat.issue == "found":
+                return ToolResult(
+                    tool_name="messages_send",
+                    content=(
+                        f"Handed to Messages for {qui}, still sending — "
+                        "call messages_status to confirm if asked."
+                    ),
+                    success=True,
+                    metadata={
+                        "sent": True,
+                        "verified": False,
+                        "recipient": recipient,
+                        "guid": constat.guid,
+                    },
+                )
+            raison = (
+                "chat.db unreadable — " + _remede_fda()
+                if constat.issue == "unreadable"
+                else "row not visible yet"
+            )
             return ToolResult(
                 tool_name="messages_send",
-                content=f"Message sent to {qui}.",
+                content=(
+                    f"Handed to Messages for {qui}; could not verify delivery "
+                    f"({raison})."
+                ),
                 success=True,
                 metadata={
                     "sent": True,
+                    "verified": False,
                     "recipient": recipient,
-                    "resolved_from": demande if fiche else "",
+                    "reason": constat.issue,
                 },
             )
         except Exception as exc:
@@ -1085,7 +1177,114 @@ class MessagesSendTool(BaseTool):
             )
 
 
+
+@ToolRegistry.register("messages_status")
+class MessagesStatusTool(BaseTool):
+    """L'état réel d'un envoi iMessage — lu dans chat.db, jamais inventé."""
+
+    tool_id = "messages_status"
+    is_local = True
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="messages_status",
+            description=(
+                "Check in the local Messages database whether an iMessage "
+                "actually went out. Call it when the user asks « c'est "
+                "parti ? », or on the next turn after messages_send returned "
+                "verified=false. Pass the guid from messages_send when you "
+                "have it, else the recipient."
+            ),
+            parameters={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "guid": {
+                        "type": "string",
+                        "description": "The message guid from messages_send.",
+                    },
+                    "recipient": {
+                        "type": "string",
+                        "description": "Phone/email if no guid is known.",
+                    },
+                },
+            },
+            category="system",
+            requires_confirmation=False,
+            timeout_seconds=15.0,
+            metadata={"risk": "read_only", "reversible": True},
+        )
+
+    def execute(self, **params: Any) -> ToolResult:
+        if sys.platform != "darwin":
+            return ToolResult(
+                tool_name="messages_status",
+                content="messages_status is only implemented on macOS.",
+                success=False,
+            )
+        from datetime import datetime, timedelta, timezone
+
+        from diapason.channels.imessage_status import (
+            find_outgoing,
+            remede_fda,
+            status_by_guid,
+        )
+
+        guid = str(params.get("guid") or "").strip()
+        recipient = str(params.get("recipient") or "").strip()
+        if guid:
+            constat = status_by_guid(guid)
+        elif recipient:
+            constat = find_outgoing(
+                recipient, datetime.now(timezone.utc) - timedelta(minutes=10)
+            )
+        else:
+            return ToolResult(
+                tool_name="messages_status",
+                content="Need a guid or a recipient.",
+                success=False,
+            )
+        if constat.issue == "unreadable":
+            return ToolResult(
+                tool_name="messages_status",
+                content=f"Cannot read the Messages database — {remede_fda()}",
+                success=False,
+                metadata={"reason": "unreadable"},
+            )
+        if constat.issue == "not_found":
+            return ToolResult(
+                tool_name="messages_status",
+                content=(
+                    "No recent outgoing message found for that — it may not "
+                    "have been handed to Messages at all."
+                ),
+                success=True,
+                metadata={"found": False},
+            )
+        if constat.error:
+            verdict = f"NOT delivered (error {constat.error}) — tell the user."
+        elif constat.is_delivered:
+            verdict = "delivered."
+        elif constat.is_sent:
+            verdict = "sent (delivery receipt not seen yet)."
+        else:
+            verdict = "still in Messages' outbox."
+        return ToolResult(
+            tool_name="messages_status",
+            content=f"That message is {verdict}",
+            success=True,
+            metadata={
+                "found": True,
+                "guid": constat.guid,
+                "is_sent": constat.is_sent,
+                "is_delivered": constat.is_delivered,
+                "error": constat.error,
+            },
+        )
+
 __all__ = [
+    "MessagesStatusTool",
     "CalendarQueryTool",
     "SpotifyPlayTool",
     "FindFilesTool",

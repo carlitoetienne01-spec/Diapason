@@ -81,6 +81,9 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "messages_compose",
     "mail_send",
     "messages_send",
+    # Le constat d'envoi (Atlas, 24/08/2026) : « c'est parti ? » se lit dans
+    # chat.db au lieu de se deviner.
+    "messages_status",
     "screen_describe",
     "calculator",
     # Les gestes d'une seconde (Atlas, 24 août 2026) : monter le son ou
