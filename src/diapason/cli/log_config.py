@@ -64,6 +64,17 @@ def setup_logging(
     console_handler.setFormatter(fmt)
     logger.addHandler(console_handler)
 
+    # Les lignes « local voice timing » sont le SEUL instrument de latence de
+    # la voix — au niveau WARNING par défaut, elles n'atteignaient jamais les
+    # journaux du serveur : l'avant et l'après d'une optimisation étaient
+    # inconstatables (Atlas, 24 août 2026). Le canal vocal parle en INFO ;
+    # le handler laisse passer l'INFO sauf en mode quiet.
+    if not quiet:
+        console_handler.setLevel(min(level, logging.INFO))
+        logging.getLogger("diapason.speech.realtime.local_voice").setLevel(
+            logging.INFO
+        )
+
     # File handler (verbose or explicit path)
     if verbose or log_file is not None:
         if log_file is None:

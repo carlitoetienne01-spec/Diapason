@@ -208,6 +208,17 @@ class _SpecTurn:
         self.first_sentence: Optional[str] = None
         self.first_audio: Optional["asyncio.Task[bytes]"] = None
         self.drainer: Optional["asyncio.Task[None]"] = None
+        # La file productrice d'origine : c'est elle qu'abort() doit tuer —
+        # annuler le drainer seul laissait le flux Ollama courir en zombie.
+        self.source: Optional[Any] = None
+
+    def abort(self) -> None:
+        """Abandonner la spéculation ET son producteur — le créneau se libère."""
+        if self.drainer is not None:
+            self.drainer.cancel()
+        arret = getattr(self.source, "abort", None)
+        if arret is not None:
+            arret()
 
     def replay_queue(self) -> "asyncio.Queue[Any]":
         """Une file équivalente à l'originale, rejouée depuis le début.
@@ -504,8 +515,38 @@ from diapason.core.promesse import (  # noqa: E402
 )
 
 
+class _AbortableQueue(asyncio.Queue):
+    """File de jetons dont le producteur peut être ABANDONNÉ.
+
+    Le zombie (Atlas, 24 août 2026) : l'ancien producteur était un thread
+    urllib bloquant sans canal d'annulation — barge-in, phrase d'arrêt ou
+    action rapide laissaient le flux Ollama courir jusqu'à ses 320 jetons,
+    et avec -np 1 ce fantôme BLOQUAIT le créneau du tour suivant. La
+    latence surprise juste après une interruption, c'était lui.
+
+    ``abort()`` annule la tâche productrice : l'``async with`` du client
+    httpx ferme la connexion, Ollama avorte la génération, le créneau se
+    libère — puis le ``finally`` du producteur pousse le ``None`` terminal,
+    donc tout consommateur en attente se termine proprement.
+    """
+
+    producer: Optional["asyncio.Task[None]"] = None
+
+    def abort(self) -> None:
+        if self.producer is not None and not self.producer.done():
+            self.producer.cancel()
+
+
+class _RefusOutils(RuntimeError):
+    """Ollama a refusé le champ tools (« does not support tools »)."""
+
+
 def _default_llm(
-    model: str, system: str, tools_schema: Optional[List[dict]] = None
+    model: str,
+    system: str,
+    tools_schema: Optional[List[dict]] = None,
+    *,
+    mesures: Optional[dict] = None,
 ) -> Callable[[List[dict]], "asyncio.Queue[Any]"]:
     """Streamed chat against Ollama; the queue carries tokens and tool calls.
 
@@ -515,111 +556,160 @@ def _default_llm(
     ``think`` is disabled explicitly: qwen3.5 reasons silently first, and in
     a voice conversation that silence IS the latency — measured, it swallowed
     the entire token budget before a single audible word.
+
+    ``mesures`` est un dict mutable où le producteur consigne les postes
+    aveugles du tour (ttft_ms, prefill_ms, eval_ms, load_ms…) — le témoin
+    prefill dit si le cache de préfixe tient (dizaines de jetons) ou brûle
+    (~6 000).
     """
 
     def start(messages: List[dict]) -> "asyncio.Queue[Any]":
-        queue: asyncio.Queue[Any] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-        needs_tools = bool(tools_schema) and _turn_needs_tools(messages)
+        queue: _AbortableQueue = _AbortableQueue()
+        # La trousse s'attache MÊME aux tours « merci » (24 août 2026) :
+        # chaque variante de préfixe est un préfixe différent, et Ollama
+        # (-np 1) n'en cache qu'un — c'est l'ALTERNANCE qui coûtait les
+        # ~2,4 s de relecture, pas la taille. Un préfixe stable reste chaud.
+        needs_tools = bool(tools_schema)
 
-        def worker() -> None:
-            def stream_once(with_tools: bool) -> None:
-                from diapason.core.local_mode import assert_may_leave
+        async def stream_once(with_tools: bool) -> None:
+            import httpx
 
-                assert_may_leave(
-                    "the realtime voice transcript", destination=_ollama_base()
-                )
-                # La date est relue à chaque APPEL — une session vit des
-                # heures et la date d'hier est pire que rien — mais l'HEURE
-                # n'y est plus : elle changeait chaque minute et brûlait le
-                # cache de préfixe (six mille jetons relus par tour). L'heure
-                # exacte vient de l'outil current_time, qui dit le présent
-                # au lieu d'un instantané pris au début du tour.
-                dated = (
-                    f"{system}\n\nDate actuelle : {french_today()}. "
-                    "Pour l'heure exacte, appelle l'outil current_time."
-                )
-                payload: dict[str, Any] = {
-                    "model": model,
-                    "messages": [{"role": "system", "content": dated}] + messages,
-                    "stream": True,
-                    "think": False,
-                    "options": {
-                        "num_predict": 320,
-                        # Le tour qui PORTE des outils est refroidi. Décider
-                        # d'appeler un outil n'est pas un acte créatif, et à
-                        # la voix la règle « keep answers short and spoken »
-                        # pousse activement contre l'action : le modèle
-                        # préfère répondre vite que regarder. Mesuré sur
-                        # qwen3.5:9b avec le prompt vocal COMPLET, six essais
-                        # par palier, « retiens que… » et « mes tâches ? » :
-                        #
-                        #   défaut d'Ollama (0,8)   3/6
-                        #   0,3                     4/6
-                        #   0,1                   6/6 et 5/6
-                        #
-                        # Un tour SANS outils garde la chaleur par défaut :
-                        # c'est là que la parole se joue, et une réponse
-                        # parlée glacée s'entend.
-                        **({"temperature": VOICE_TOOL_TURN_TEMPERATURE}
-                           if (with_tools and tools_schema) else {}),
-                    },
-                    # Without this Ollama unloads the model after five idle
-                    # minutes, and the next turn silently pays a 6–9 s reload
-                    # — the single worst "why is it slow now" in a session.
-                    "keep_alive": "30m",
-                }
-                if with_tools and tools_schema:
-                    payload["tools"] = tools_schema
-                request = urllib.request.Request(
-                    f"{_ollama_base()}/api/chat",
-                    json.dumps(payload).encode(),
-                    {"Content-Type": "application/json"},
-                )
-                calls: List[dict] = []
-                with urllib.request.urlopen(request, timeout=120) as response:
-                    for line in response:
+            from diapason.core.local_mode import assert_may_leave
+
+            assert_may_leave(
+                "the realtime voice transcript", destination=_ollama_base()
+            )
+            # La date est relue à chaque APPEL — une session vit des
+            # heures et la date d'hier est pire que rien — mais l'HEURE
+            # n'y est plus : elle changeait chaque minute et brûlait le
+            # cache de préfixe (six mille jetons relus par tour). L'heure
+            # exacte vient de l'outil current_time, qui dit le présent
+            # au lieu d'un instantané pris au début du tour.
+            dated = (
+                f"{system}\n\nDate actuelle : {french_today()}. "
+                "Pour l'heure exacte, appelle l'outil current_time."
+            )
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "system", "content": dated}] + messages,
+                "stream": True,
+                "think": False,
+                "options": {
+                    "num_predict": 320,
+                    # Le tour qui PORTE des outils est refroidi. Décider
+                    # d'appeler un outil n'est pas un acte créatif, et à
+                    # la voix la règle « keep answers short and spoken »
+                    # pousse activement contre l'action : le modèle
+                    # préfère répondre vite que regarder. Mesuré sur
+                    # qwen3.5:9b avec le prompt vocal COMPLET, six essais
+                    # par palier, « retiens que… » et « mes tâches ? » :
+                    #
+                    #   défaut d'Ollama (0,8)   3/6
+                    #   0,3                     4/6
+                    #   0,1                   6/6 et 5/6
+                    #
+                    # Un tour SANS outils garde la chaleur par défaut :
+                    # c'est là que la parole se joue, et une réponse
+                    # parlée glacée s'entend.
+                    **({"temperature": VOICE_TOOL_TURN_TEMPERATURE}
+                       if (with_tools and tools_schema) else {}),
+                },
+                # Without this Ollama unloads the model after five idle
+                # minutes, and the next turn silently pays a 6–9 s reload
+                # — the single worst "why is it slow now" in a session.
+                "keep_alive": "30m",
+            }
+            if with_tools and tools_schema:
+                payload["tools"] = tools_schema
+            calls: List[dict] = []
+            t0 = time.monotonic()
+            premier_jeton: Optional[float] = None
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST", f"{_ollama_base()}/api/chat", json=payload
+                ) as response:
+                    if response.status_code >= 400:
+                        detail = (await response.aread()).decode(
+                            "utf-8", "replace"
+                        )
+                        if (
+                            response.status_code == 400
+                            and "does not support tools" in detail
+                        ):
+                            raise _RefusOutils(detail)
+                        raise RuntimeError(
+                            f"Ollama HTTP {response.status_code}: {detail[:300]}"
+                        )
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
                         data = json.loads(line)
                         message = data.get("message") or {}
                         token = message.get("content", "")
                         if token:
-                            loop.call_soon_threadsafe(queue.put_nowait, token)
+                            if premier_jeton is None:
+                                premier_jeton = time.monotonic()
+                                ttft_ms = (premier_jeton - t0) * 1000
+                                if mesures is not None:
+                                    mesures["ttft_ms"] = round(ttft_ms)
+                                logger.info(
+                                    "local voice timing: stage=llm ttft_ms=%.0f",
+                                    ttft_ms,
+                                )
+                            queue.put_nowait(token)
                         calls.extend(message.get("tool_calls") or [])
                         if data.get("done"):
+                            # Les métriques du chunk final (nanosecondes) :
+                            # prefill est LE témoin du cache de préfixe.
+                            prefill_ms = (data.get("prompt_eval_duration") or 0) / 1e6
+                            eval_ms = (data.get("eval_duration") or 0) / 1e6
+                            load_ms = (data.get("load_duration") or 0) / 1e6
+                            jetons = data.get("prompt_eval_count") or 0
+                            if mesures is not None:
+                                mesures.update(
+                                    prefill_ms=round(prefill_ms),
+                                    eval_ms=round(eval_ms),
+                                    load_ms=round(load_ms),
+                                    prompt_tokens=jetons,
+                                    rounds=(mesures.get("rounds") or 0) + 1,
+                                )
+                            logger.info(
+                                "local voice timing: stage=llm prefill_ms=%.0f "
+                                "eval_ms=%.0f load_ms=%.0f prompt_tokens=%d",
+                                prefill_ms,
+                                eval_ms,
+                                load_ms,
+                                jetons,
+                            )
                             break
-                if calls:
-                    loop.call_soon_threadsafe(queue.put_nowait, ("tools", calls))
+            if calls:
+                queue.put_nowait(("tools", calls))
 
+        async def produire() -> None:
             try:
                 try:
-                    # The full schema is ~9 KB / ~2,600 prompt tokens. On the
-                    # measured 14B local model, a cold ordinary turn spent
-                    # almost eight seconds parsing tools it could not need.
-                    stream_once(with_tools=needs_tools)
-                except urllib.error.HTTPError as exc:
-                    detail = ""
-                    try:
-                        detail = exc.read().decode("utf-8", "replace")
-                    except Exception:  # noqa: BLE001
-                        pass
-                    if "does not support tools" not in detail:
-                        raise
+                    await stream_once(with_tools=needs_tools)
+                except _RefusOutils:
                     # Some models (gemma3 among them) refuse the tools field
                     # outright — Ollama 400s the whole request. A voice that
                     # cannot act is degraded; one that errors on every single
                     # turn is broken. Retry once without tools and say so.
                     logger.warning(
-                        "%s does not support tools; local voice continues without them",
+                        "%s does not support tools; "
+                        "local voice continues without them",
                         model,
                     )
-                    stream_once(with_tools=False)
+                    await stream_once(with_tools=False)
+            except asyncio.CancelledError:
+                # L'abandon n'est pas une panne : le finally clôt la file.
+                raise
             except Exception as exc:  # noqa: BLE001 - surfaced as an event
                 logger.debug("local LLM stream failed", exc_info=True)
-                loop.call_soon_threadsafe(queue.put_nowait, f"\x00ERROR\x00{exc}")
+                queue.put_nowait(f"\x00ERROR\x00{exc}")
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
+                queue.put_nowait(None)
 
-        loop.run_in_executor(None, worker)
+        queue.producer = asyncio.get_running_loop().create_task(produire())
         return queue
 
     return start
@@ -784,6 +874,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # le texte exact — un raté d'appariement coûte une synthèse normale,
         # jamais un mauvais audio.
         self._spec_audio: Optional[tuple[str, "asyncio.Task[bytes]"]] = None
+        # Les postes de latence du tour en cours, remplis par le producteur
+        # LLM et les jalons du tour ; snapshotés dans traces.db à la fin.
+        self._mesures: dict[str, Any] = {}
+        self._response_started: Optional[float] = None
+        self._first_audio_logged = True
+        self._ack_suivant = 0
         # Transcription affichée PENDANT qu'on parle. Distincte du
         # spéculatif, qui sert à répondre plus tôt et ne s'exécute que dans
         # le silence : celle-ci tourne au milieu de la phrase, et son seul
@@ -837,6 +933,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         # preparing, instead of after the user's first words.
                         await asyncio.to_thread(self._tts, "Prêt.")
                         _SHARED["tts_warmed"] = True
+                    if not _SHARED.get("acks"):
+                        # Les accusés OPTIMISTES, payés une fois au chauffage :
+                        # sur « monte le son », la voix répond en ~1 s au lieu
+                        # de 3-5 — la 2e passe LLM se déroule pendant que
+                        # l'accusé joue. Un échec = pas d'accusés, jamais une
+                        # session en panne.
+                        accuses: dict[str, bytes] = {}
+                        for phrase in ("Ça marche.", "Je regarde."):
+                            try:
+                                pcm = await asyncio.to_thread(self._tts, phrase)
+                                if pcm:
+                                    accuses[phrase] = pcm
+                            except Exception:  # noqa: BLE001
+                                logger.debug("ack prerender failed", exc_info=True)
+                        _SHARED["acks"] = accuses
                 if self._llm is None:
                     schema: List[dict] = []
                     if self._enable_tools:
@@ -849,7 +960,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         schema = await asyncio.to_thread(
                             openai_tools_schema, self._allowed_tools
                         )
-                    self._llm = _default_llm(self._model, self._system_prompt(), schema)
+                    self._llm = _default_llm(
+                        self._model,
+                        self._system_prompt(),
+                        schema,
+                        mesures=self._mesures,
+                    )
                     # Préchauffer le PRÉFIXE, pas seulement le modèle : le
                     # premier tour d'une session payait ~2,4 s à relire prompt
                     # système et schémas d'outils (~6 000 jetons). On les fait
@@ -1204,8 +1320,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 # finie. On l'abandonne — même coût qu'un barge-in : le flux
                 # court jusqu'à son plafond de jetons, personne ne le lit.
                 logger.info("local voice timing: stage=spec_llm outcome=discarded")
-                if self._spec_llm.drainer is not None:
-                    self._spec_llm.drainer.cancel()
+                self._spec_llm.abort()
                 self._spec_llm = None
             if not self._in_speech and self._preroll:
                 # The turn's first loud frame: everything quieter that came
@@ -1274,10 +1389,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 spec_text = strip_assistant_name(spec_text) or spec_text
             if spec_text and not self._speculation_pointless(spec_text):
                 spec = _SpecTurn(spec_text)
+                spec.source = self._llm(self._turn_messages(spec_text))
                 spec.drainer = asyncio.get_running_loop().create_task(
-                    self._drain_speculative(
-                        spec, self._llm(self._turn_messages(spec_text))
-                    )
+                    self._drain_speculative(spec, spec.source)
                 )
                 self._spec_llm = spec
                 logger.info("local voice timing: stage=spec_llm outcome=started")
@@ -1417,6 +1531,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
             agent="voice",
             started_at=fin - max(0.0, float(duree_s)),
             ended_at=fin,
+            # Les postes du tour (ttft, prefill, tts, premier audio…) : la
+            # consolidation nocturne et un simple sqlite peuvent enfin voir
+            # OÙ la voix perd ses secondes, au lieu de régresser à l'oreille.
+            metadata={"latence": dict(self._mesures)} if self._mesures else None,
         )
 
     async def _dispatch_text(
@@ -1492,11 +1610,16 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if is_stop_phrase(text):
             # They asked for quiet. The barge-in already silenced playback;
             # answering would be one more sentence of exactly what they asked
-            # to stop.
+            # to stop. La spéculation en vol est tuée, pas seulement ignorée.
+            if spec_llm is not None:
+                spec_llm.abort()
             return
         if await self._try_fast_voice_action(text, turn_started=turn_started):
-            # Une action directe n'a pas besoin de la génération spéculative ;
-            # la file abandonnée court jusqu'à son plafond, personne ne la lit.
+            # Une action directe n'a pas besoin de la génération spéculative.
+            # Avant, « la file abandonnée court[ait] jusqu'à son plafond » —
+            # c'était le zombie qui bloquait le créneau -np 1 du tour suivant.
+            if spec_llm is not None:
+                spec_llm.abort()
             return
         await self._respond_to_text(text, already_queued=True, spec_llm=spec_llm)
 
@@ -1624,6 +1747,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
         response_started = time.monotonic()
+        self._response_started = response_started
+        self._first_audio_logged = False
+        tokens: Optional["asyncio.Queue[Any]"] = None
         try:
             await self._wait_warm()
             assert self._llm is not None and self._tts is not None
@@ -1726,8 +1852,20 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         "tool_calls": tool_calls,
                     }
                 )
+                if _round == 0 and not spoken:
+                    # L'accusé OPTIMISTE (Atlas, 24 août 2026) : sur un geste
+                    # local sûr, un accusé pré-synthétisé part TOUT DE SUITE
+                    # — la deuxième passe LLM (1-2,5 s, le plus gros silence
+                    # du tour) se déroule pendant qu'il joue.
+                    await self._emit_optimistic_ack(tool_calls, spoken)
                 for call in tool_calls:
+                    debut_outil = time.monotonic()
                     reply = await self._run_tool(call)
+                    logger.info(
+                        "local voice timing: stage=tool_exec tool=%s ms=%.0f",
+                        (call.get("function") or {}).get("name", ""),
+                        (time.monotonic() - debut_outil) * 1000,
+                    )
                     messages.append(reply)
                     tool_notes.append(_tool_note(call, reply))
 
@@ -1759,6 +1897,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 self._journaliser_echange(
                     text, answer, duree_s=time.monotonic() - response_started
                 )
+            self._mesures.clear()
             logger.info(
                 "local voice timing: stage=response total_ms=%.0f "
                 "chars=%d tool_steps=%d",
@@ -1771,6 +1910,18 @@ class LocalVoiceSession(RealtimeVoiceSession):
         except Exception as exc:  # noqa: BLE001
             logger.exception("local voice response failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
+        finally:
+            # Quoi qu'il arrive — fin normale, barge-in, fermeture — aucun
+            # producteur ne survit au tour : un flux qui a fini ignore
+            # l'abort, un flux en vol libère le créneau -np 1. getattr :
+            # les fakes des tests sont des files nues.
+            arret = getattr(tokens, "abort", None)
+            if arret is not None:
+                arret()
+            if spec_llm is not None:
+                arret_spec = getattr(spec_llm, "abort", None)
+                if arret_spec is not None:
+                    arret_spec()
 
     def _restore_spoken_target(self, name: str, args: dict) -> dict:
         """The spoken phrase is the source of truth, not the model's URL.
@@ -1870,6 +2021,54 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if sentence:
                 await self._speak_sentence(sentence, spoken)
 
+    async def _emit_optimistic_ack(
+        self, tool_calls: List[dict], spoken: List[str]
+    ) -> None:
+        """Un accusé pré-rendu part pendant que le geste s'exécute.
+
+        Seulement pour les gestes locaux SÛRS (FAST_ACK_TOOL_IDS) : tous
+        sans confirmation, exécution sous la seconde. Un envoi de message ou
+        une suppression n'a pas d'accusé optimiste — la cloche et le constat
+        gardent le dernier mot.
+        """
+        try:
+            from diapason.speech.realtime.tools import FAST_ACK_TOOL_IDS
+        except Exception:  # noqa: BLE001 - l'accusé est un bonus
+            return
+        noms = [
+            (c.get("function") or {}).get("name", "") for c in tool_calls
+        ]
+        if not noms or not all(n in FAST_ACK_TOOL_IDS for n in noms):
+            return
+        accuses = _SHARED.get("acks") or {}
+        if not accuses:
+            return
+        phrases = list(accuses)
+        phrase = phrases[self._ack_suivant % len(phrases)]
+        self._ack_suivant += 1
+        pcm = accuses[phrase]
+        spoken.append(phrase)
+        duration = len(pcm) / 2 / OUTPUT_RATE
+        now = time.monotonic()
+        self._speaking_until = max(now, self._speaking_until) + duration
+        await self._queue.put(
+            SessionEvent(
+                kind="audio",
+                audio_b64=base64.b64encode(pcm).decode("ascii"),
+                sample_rate=OUTPUT_RATE,
+            )
+        )
+        self._marquer_premier_audio(now)
+        logger.info("local voice timing: stage=ack phrase=%r", phrase)
+
+    def _marquer_premier_audio(self, quand: float) -> None:
+        if self._first_audio_logged or self._response_started is None:
+            return
+        self._first_audio_logged = True
+        ms = (quand - self._response_started) * 1000
+        self._mesures["first_audio_ms"] = round(ms)
+        logger.info("local voice timing: stage=first_audio ms=%.0f", ms)
+
     async def _speak_sentence(self, sentence: str, spoken: List[str]) -> None:
         assert self._tts is not None
         sentence = speakable(sentence)
@@ -1887,8 +2086,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 pcm = await spec_audio[1]
             except BaseException:  # noqa: BLE001 - annulation comprise
                 pcm = None
+        spec_hit = pcm is not None
         if pcm is None:
+            debut_tts = time.monotonic()
             pcm = await asyncio.to_thread(self._tts, sentence)
+            logger.info(
+                "local voice timing: stage=tts ms=%.0f spec_hit=0",
+                (time.monotonic() - debut_tts) * 1000,
+            )
         spoken.append(sentence)
         if pcm:
             import time as _time
@@ -1905,6 +2110,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     sample_rate=OUTPUT_RATE,
                 )
             )
+            self._marquer_premier_audio(now)
+            if spec_hit:
+                logger.info("local voice timing: stage=tts ms=0 spec_hit=1")
 
     async def _wait_warm(self) -> None:
         # Await the warm-up TASK, not the lock: between connect() returning
@@ -1929,6 +2137,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._closed = True
         if self._respond_task is not None and not self._respond_task.done():
             self._respond_task.cancel()
+        if self._spec_llm is not None:
+            self._spec_llm.abort()
+            self._spec_llm = None
         await self._queue.put(SessionEvent(kind="closed"))
         await self._queue.put(None)
 

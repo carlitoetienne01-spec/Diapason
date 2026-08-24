@@ -745,6 +745,48 @@ class TestPromptComposition:
         assert "READ ALOUD" in session._system_prompt()
 
 
+class _FauxHttpx:
+    """Un httpx.AsyncClient factice : 400 « does not support tools » quand la
+    requête porte des outils, flux normal sinon. Retient chaque payload."""
+
+    def __init__(self, bodies):
+        self._bodies = bodies
+
+    def __call__(self, *a, **k):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def stream(self, method, url, json=None):
+        self._bodies.append(json)
+        return _FauxFlux(avec_outils="tools" in (json or {}))
+
+
+class _FauxFlux:
+    def __init__(self, avec_outils):
+        self._avec_outils = avec_outils
+        self.status_code = 400 if avec_outils else 200
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def aread(self):
+        return b'{"error":"gemma3 does not support tools"}'
+
+    async def aiter_lines(self):
+        import json as _json
+
+        yield _json.dumps({"message": {"content": "Bonjour."}})
+        yield _json.dumps({"done": True})
+
+
 class TestToolsRefusalFallback:
     @pytest.mark.asyncio
     async def test_a_model_without_tools_degrades_instead_of_breaking(
@@ -754,46 +796,12 @@ class TestToolsRefusalFallback:
         does not support the tools field. A voice that cannot act is
         degraded; one that errors on EVERY turn is broken — the retry strips
         the tools and streams normally."""
-        import io
-        import json as _json
-        import urllib.error
+        import httpx
 
         from diapason.speech.realtime import local_voice
 
         bodies: list[dict] = []
-
-        class FakeResponse:
-            def __init__(self, lines):
-                self._lines = lines
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-            def __iter__(self):
-                return iter(self._lines)
-
-        def fake_urlopen(request, timeout=0):
-            body = _json.loads(request.data)
-            bodies.append(body)
-            if "tools" in body:
-                raise urllib.error.HTTPError(
-                    "http://x",
-                    400,
-                    "Bad Request",
-                    {},
-                    io.BytesIO(b'{"error":"gemma3 does not support tools"}'),
-                )
-            return FakeResponse(
-                [
-                    _json.dumps({"message": {"content": "Bonjour."}}).encode(),
-                    _json.dumps({"done": True}).encode(),
-                ]
-            )
-
-        monkeypatch.setattr(local_voice.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setattr(httpx, "AsyncClient", _FauxHttpx(bodies))
         llm = local_voice._default_llm("gemma3:12b", "système", [{"type": "function"}])
         queue = llm([{"role": "user", "content": "ouvre Notes"}])
         items = []
@@ -805,6 +813,80 @@ class TestToolsRefusalFallback:
 
         assert items == ["Bonjour."], "the retry must stream normally"
         assert "tools" in bodies[0] and "tools" not in bodies[1]
+
+    @pytest.mark.asyncio
+    async def test_abort_tue_le_producteur_et_clot_la_file(self, monkeypatch):
+        """Le zombie (Atlas, 24 août 2026) : un flux abandonné courait
+        jusqu'à ses 320 jetons et bloquait le créneau -np 1 du tour
+        suivant. abort() annule la tâche productrice ET pousse le None
+        terminal — le consommateur en attente se termine, le créneau se
+        libère."""
+        import httpx
+
+        from diapason.speech.realtime import local_voice
+
+        class _FluxInterminable:
+            status_code = 200
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def aiter_lines(self):
+                import json as _json
+
+                while True:
+                    yield _json.dumps({"message": {"content": "bla "}})
+                    await asyncio.sleep(0.01)
+
+        class _ClientInterminable:
+            def __call__(self, *a, **k):
+                return self
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def stream(self, *a, **k):
+                return _FluxInterminable()
+
+        monkeypatch.setattr(httpx, "AsyncClient", _ClientInterminable())
+        llm = local_voice._default_llm("qwen3.5:9b", "système")
+        queue = llm([{"role": "user", "content": "raconte"}])
+        assert (await asyncio.wait_for(queue.get(), timeout=5)) == "bla "
+        queue.abort()
+        # le None terminal DOIT arriver malgré l'abandon
+        restant = "bla "
+        while restant is not None:
+            restant = await asyncio.wait_for(queue.get(), timeout=5)
+        assert queue.producer.done(), "le producteur ne survit pas à l'abort"
+
+    def test_la_spec_abandonnee_tue_aussi_sa_source(self):
+        """spec.abort() annule le drainer ET le producteur — annuler le
+        drainer seul laissait le flux Ollama courir en zombie."""
+        from diapason.speech.realtime.local_voice import _SpecTurn
+
+        class _Source:
+            def __init__(self):
+                self.aborted = False
+
+            def abort(self):
+                self.aborted = True
+
+        async def scenario():
+            spec = _SpecTurn("ouvre Notes")
+            spec.source = _Source()
+            spec.drainer = asyncio.get_running_loop().create_task(asyncio.sleep(30))
+            spec.abort()
+            await asyncio.sleep(0)
+            assert spec.source.aborted
+            assert spec.drainer.cancelled() or spec.drainer.cancelling()
+
+        asyncio.run(scenario())
 
     @pytest.mark.asyncio
     async def test_other_http_errors_still_surface(self, monkeypatch):

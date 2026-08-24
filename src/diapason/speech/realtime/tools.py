@@ -74,6 +74,23 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
 )
 
 # (module, [(registry_key, attribute_name), ...])
+# Les gestes qui méritent un accusé OPTIMISTE (Atlas, 24 août 2026) : tous
+# locaux, sans confirmation, exécution sous la seconde — un « Ça marche. »
+# pré-rendu part pendant que le geste s'exécute, et la deuxième passe LLM se
+# déroule pendant qu'il joue. JAMAIS un envoi, une suppression ou un outil à
+# cloche : là, seul le constat a droit de parole.
+FAST_ACK_TOOL_IDS = frozenset(
+    {
+        "volume_control",
+        "media_control",
+        "clipboard_read",
+        "system_vitals",
+        "current_time",
+        "screen_snap",
+        "focus_app",
+    }
+)
+
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.knowledge_search",

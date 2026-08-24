@@ -235,6 +235,7 @@ def record_response_trace(
     agent: str = "server",
     started_at: float,
     ended_at: float,
+    metadata: Optional[dict] = None,
 ) -> Optional[Trace]:
     """Persist a minimal single-step ``Trace`` for a non-agent response.
 
@@ -257,6 +258,7 @@ def record_response_trace(
             model=model,
             engine=engine,
             result=result,
+            metadata=dict(metadata) if metadata else {},
             started_at=started_at,
             ended_at=ended_at,
             steps=[
