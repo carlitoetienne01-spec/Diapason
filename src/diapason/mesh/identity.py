@@ -18,6 +18,8 @@ symlink or a world-readable secret — applies identically here.
 
 from __future__ import annotations
 
+import logging
+
 import base64
 import hashlib
 import json
@@ -43,6 +45,8 @@ __all__ = [
     "verify_envelope",
     "canonical_bytes",
 ]
+
+logger = logging.getLogger(__name__)
 
 _KEY_FILENAME = "device_key"
 _MANIFEST_FILENAME = "device.json"
@@ -118,11 +122,28 @@ def owner_id() -> str:
     return minted
 
 
-def adopt_owner_id(value: str) -> str:
+def adopt_owner_id(value: str, *, remplacer_si_solitaire: bool = False) -> str:
     """Join an existing fleet: take the owner id our host handed us.
 
     Refuses to overwrite a different established identity — a device cannot
     silently change fleets, which is how paired devices would lose each other.
+
+    ``remplacer_si_solitaire`` — constaté le 25 août 2026 en branchant enfin
+    cette fonction : elle était écrite pour un appareil VIERGE, et il n'en
+    existe aucun. ``owner_id()`` frappe un identifiant dès le premier appel,
+    et le serveur l'appelle à chaque démarrage pour publier son identité :
+    tout Diapason ayant tourné une fois portait donc déjà une flotte à lui,
+    et refusait d'en rejoindre une. La fonction était juste, mais
+    inatteignable.
+
+    La distinction qui manquait n'est pas « a-t-il un identifiant » mais
+    « cet identifiant est-il partagé avec quelqu'un ». Un identifiant frappé
+    tout seul et connu de personne est un nom de naissance, pas une
+    appartenance : le remplacer ne coûte rien. Un identifiant qu'au moins un
+    pair de confiance connaît est une vraie flotte, et l'écraser les
+    perdrait tous d'un coup — c'est le danger que ce docstring nommait
+    depuis le début. L'appelant tranche, et il ne le fait qu'après avoir
+    CONSTATÉ la solitude, jamais par confort.
     """
     candidate = str(value or "").strip()
     if not candidate.startswith("owner_") or len(candidate) > 80:
@@ -132,9 +153,16 @@ def adopt_owner_id(value: str) -> str:
     path = directory / _OWNER_FILENAME
     if path.exists():
         current = path.read_text(encoding="utf-8").strip()
-        if current and current != candidate:
+        if current and current != candidate and not remplacer_si_solitaire:
             raise ValueError(
                 "Cet appareil appartient déjà à un autre ensemble d'appareils."
+            )
+        if current and current != candidate:
+            logger.info(
+                "adoption d'une flotte : l'identifiant local %s, connu de "
+                "personne, cède la place à %s",
+                current[:14],
+                candidate[:14],
             )
     path.write_text(candidate, encoding="utf-8")
     try:

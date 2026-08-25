@@ -94,6 +94,15 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "mail_archive",
     "mail_trash",
     "imessage_conversation",
+    # LA MAIN SUR LE MAILLAGE (Spatial Mesh, phase 0, 25/08/2026). Quatre
+    # mille lignes de maillage vivaient sans poignée : les deux outils
+    # étaient enregistrés et distribués à personne, et la documentation
+    # affirmait pourtant que « le modèle voit deux outils ». « Ouvre mes
+    # tâches sur mon PC » n'avait aucun chemin. L'absence côté VOIX reste
+    # délibérée et gardée par test_voice_boundary : execute_voice_tool
+    # court-circuite l'exécuteur, donc la cloche.
+    "mesh_devices",
+    "mesh_send",
     "screen_describe",
     # Le texte EXACT (OCR natif Apple) — zéro paraphrase, zéro Ollama
     # (Atlas, 24/08/2026).

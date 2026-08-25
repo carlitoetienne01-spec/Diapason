@@ -28,6 +28,7 @@ from diapason.cli.eval_cmd import eval_group
 from diapason.cli.feedback_cmd import feedback_group
 from diapason.cli.gateway_cmd import gateway
 from diapason.cli.heartbeat_cmd import heartbeat
+from diapason.cli.mesh_cmd import mesh
 from diapason.cli.voice_cmd import voice
 from diapason.cli.host_cmd import host
 from diapason.cli.init_cmd import init
@@ -124,6 +125,7 @@ cli.add_command(serve_service, "serve-service")
 cli.add_command(wake_listen, "wake-listen")
 cli.add_command(scheduler, "scheduler")
 cli.add_command(heartbeat, "heartbeat")
+cli.add_command(mesh, "mesh")
 cli.add_command(voice, "voice")
 cli.add_command(routines, "routines")
 cli.add_command(doctor, "doctor")

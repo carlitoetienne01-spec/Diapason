@@ -60,8 +60,16 @@ class TestTheCatalogueIsClosed:
         """Fermé, pas figé : ajouter est permis, ajouter en silence ne l'est
         pas. Ce test a échoué à l'ajout de ``desktop.open`` — c'est
         exactement son rôle, puisque cette action pilote le BUREAU de la
-        machine et non Succès comme les quatre autres. Le propriétaire l'a
-        demandée en connaissant les trois portées possibles.
+        machine et non Succès comme les quatre autres.
+
+        Il a rougi une SECONDE fois le 25 août 2026, au retrait de cette même
+        action : en branchant enfin les deux outils dans la trousse du chat,
+        il est apparu que le modèle gagnait d'un coup un verbe à portée
+        ouverte sur une machine distante, sans cloche — un pouvoir que la
+        même phrase ne lui donne pas en local, où « ouvre X » passe par
+        open_anything et ses garde-fous. desktop.open reste dans le
+        catalogue de la flotte et exige désormais une attestation de
+        l'émetteur ; il n'est simplement plus proposé au modèle.
         """
         options = send.spec.parameters["properties"]["action"]["enum"]
         assert set(options) == {
@@ -69,7 +77,6 @@ class TestTheCatalogueIsClosed:
             "app.show_resource",
             "app.open",
             "notifications.show",
-            "desktop.open",
         }
 
     def test_an_uncatalogued_action_is_named_as_the_problem(self, registry, send):
@@ -168,3 +175,53 @@ class TestLookingIsSafe:
         out = MeshDevicesTool(registry).execute(device_phrase="sur mon PC du bureau")
         assert out.success is True
         assert out.metadata["deviceId"] == "dev_pc_du_bureau"
+
+
+class TestLaMainEstBranchee:
+    """Le pendant de test_voice_boundary : ce qui garde une PRÉSENCE.
+
+    Spatial Mesh, phase 0 — 25 août 2026. Les deux outils étaient
+    enregistrés, testés, documentés… et absents de la trousse du chat. Le
+    maillage entier — identité, jumelage, présence, commandes signées — était
+    inatteignable par la seule surface capable de l'appeler. Rien ne gardait
+    cette omission ; ce test est cette garde.
+    """
+
+    def test_le_chat_a_les_deux_outils(self):
+        from diapason.server.routes import _TROUSSE_ASSISTANT
+
+        assert "mesh_devices" in _TROUSSE_ASSISTANT, (
+            "sans cet outil, « quels appareils sont allumés ? » n'a pas de "
+            "réponse et 4 000 lignes de maillage n'ont pas de poignée"
+        )
+        assert "mesh_send" in _TROUSSE_ASSISTANT, (
+            "sans cet outil, « ouvre mes tâches sur mon PC » n'a aucun chemin"
+        )
+
+    def test_la_voix_reste_volontairement_a_l_ecart(self):
+        """L'asymétrie est une décision, pas un oubli : la voix exécute sa
+        liste blanche sans passer par l'exécuteur, donc sans la cloche."""
+        from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
+
+        assert "mesh_send" not in DEFAULT_VOICE_TOOL_IDS
+
+    def test_le_bureau_distant_n_est_pas_a_portee_du_modele(self):
+        """desktop.open pilote une machine où l'utilisateur n'est peut-être
+        pas, avec une cible non contrainte. Le modèle ne le propose pas."""
+        from diapason.tools.mesh_tools import MeshSendTool
+
+        actions = MeshSendTool().spec.parameters["properties"]["action"]["enum"]
+        assert "desktop.open" not in actions
+        assert set(actions) == {
+            "app.navigate",
+            "app.open",
+            "app.show_resource",
+            "notifications.show",
+        }
+
+    def test_desktop_open_exige_une_attestation_cote_recepteur(self):
+        """Le contrôle 10 de verify_command n'était exercé par AUCUN outil :
+        onze vérifications annoncées, dix vivantes."""
+        from diapason.mesh.tools import REMOTE_TOOLS
+
+        assert REMOTE_TOOLS["desktop.open"].requires_confirmation is True

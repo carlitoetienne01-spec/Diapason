@@ -165,6 +165,14 @@ REMOTE_TOOLS: dict[str, RemoteToolSpec] = {
         # ne sait plus ce qu'elle affiche, serait une surprise, pas un
         # service.
         offline_policy="REQUIRE_ONLINE",
+        # Le SEUL verbe du catalogue qui sorte de l'application pour piloter
+        # le bureau, et le seul à portée ouverte. Il exige donc que
+        # l'émetteur atteste avoir obtenu l'accord de l'utilisateur : le
+        # récepteur refuse une enveloppe qui ne le porte pas (contrôle 10 de
+        # verify_command). Avant le 25 août 2026, aucun outil ne déclarait
+        # cette exigence — le contrôle existait sans jamais s'exercer, et un
+        # relecteur y voyait une garantie qui n'en était pas une.
+        requires_confirmation=True,
     ),
     "app.open": RemoteToolSpec(
         name="app.open",

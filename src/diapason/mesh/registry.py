@@ -303,6 +303,89 @@ class DeviceRegistry:
             conn.commit()
         return self.get(device_id)
 
+    def enrol_host(
+        self,
+        *,
+        device_id: str,
+        public_key_b64: str,
+        name: str,
+        platform: str = "UNKNOWN",
+        device_type: str = "DESKTOP",
+        declared_capabilities: Sequence[str] | None = None,
+        address: str = "",
+    ) -> dict[str, Any]:
+        """Enregistrer l'hôte QUI VIENT DE NOUS ACCUEILLIR dans la flotte.
+
+        Le pendant invité de ``redeem_pairing`` (Spatial Mesh, 25 août
+        2026) : sans lui, un Diapason qui rejoint sait parler à son hôte
+        mais ne sait pas le reconnaître quand il répond — le jumelage
+        n'était mutuel que d'un côté.
+
+        La confiance vient d'un fait, pas d'une déclaration : cette méthode
+        n'est appelable qu'après avoir consommé AVEC SUCCÈS une invitation
+        que l'hôte a lui-même émise. Les mêmes refus qu'au jumelage
+        s'appliquent — une révocation ne se blanchit pas, et une clé qui
+        change demande l'arbitrage de l'utilisateur.
+        """
+        key = self._validate_public_key(public_key_b64)
+        # La MÊME validation que redeem_pairing, et pas une plus sévère :
+        # constaté le 25 août 2026 en jumelant deux vraies instances, un
+        # hôte peut porter un identifiant HÉRITÉ (« mac-… », lu de la table
+        # succes_meta) au lieu du « dev_… » dérivé de sa clé. Exiger le
+        # préfixe ici rejetait la machine de développement elle-même — un
+        # test avec un identifiant fabriqué ne l'aurait jamais montré.
+        device_id = _clean(device_id, field="L'identifiant d'appareil", maximum=120)
+        stamp = now_ms()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT public_key, trust_level FROM mesh_devices WHERE device_id=?",
+                (device_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing["trust_level"] == TRUST_REVOKED:
+                    raise MeshError(
+                        "Cet hôte a été révoqué ici. Supprimez-le de la liste "
+                        "des appareils avant de le rejoindre à nouveau."
+                    )
+                if existing["public_key"] != key:
+                    raise MeshError(
+                        "Un appareil portant cet identifiant est déjà connu "
+                        "avec une autre clé. Révoquez-le d'abord."
+                    )
+            conn.execute(
+                """INSERT INTO mesh_devices
+                   (device_id, public_key, name, platform, device_type,
+                    trust_level, declared_capabilities, app_version,
+                    created_at_ms, last_seen_at_ms)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(device_id) DO UPDATE SET
+                     name=excluded.name,
+                     platform=excluded.platform,
+                     device_type=excluded.device_type,
+                     trust_level=excluded.trust_level,
+                     declared_capabilities=excluded.declared_capabilities,
+                     last_seen_at_ms=excluded.last_seen_at_ms""",
+                (
+                    device_id,
+                    key,
+                    str(name or "Hôte")[:80],
+                    str(platform or "UNKNOWN"),
+                    str(device_type or "DESKTOP"),
+                    TRUST_TRUSTED,
+                    json.dumps(sorted({str(c) for c in (declared_capabilities or [])})),
+                    "",
+                    stamp,
+                    stamp,
+                ),
+            )
+            conn.commit()
+        if address:
+            try:
+                return self.heartbeat(device_id, transport="lan", address=address)
+            except MeshError:  # noqa: BLE001 - une adresse fausse n'annule pas le jumelage
+                pass
+        return self.get(device_id)
+
     @staticmethod
     def _validate_public_key(public_key_b64: str) -> str:
         """Accept only a real Ed25519 public key, in canonical base64."""

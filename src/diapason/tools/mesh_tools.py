@@ -53,6 +53,19 @@ def _result(name: str, success: bool, content: str, metadata: dict[str, Any]):
     )
 
 
+# Ce que le MODÈLE ne demande pas, même si la flotte sait le faire.
+# desktop.open est le seul verbe du catalogue qui sorte de l'application
+# pour piloter le bureau d'une machine où l'utilisateur n'est peut-être pas,
+# et le seul à portée ouverte (n'importe quelle cible passée à
+# open_anything). Le laisser dans l'énumération d'un outil sans cloche
+# donnerait au modèle, sur simple phrase, un pouvoir que la même phrase ne
+# lui donne pas sur la machine locale — où « ouvre X » passe par
+# open_anything et ses garde-fous. Il reste disponible pour un chemin
+# explicite (interface, outil dédié) ; il n'est pas à portée de tour de
+# conversation (25 août 2026).
+_HORS_PORTEE_DU_MODELE = frozenset({"desktop.open"})
+
+
 def _fleet(registry: DeviceRegistry) -> list[dict[str, Any]]:
     return registry.list_devices(include_revoked=False)
 
@@ -169,7 +182,9 @@ class MeshSendTool(BaseTool):
     def spec(self) -> ToolSpec:
         from diapason.mesh.tools import list_remote_tools
 
-        catalogue = list_remote_tools()
+        catalogue = [
+            t for t in list_remote_tools() if t["name"] not in _HORS_PORTEE_DU_MODELE
+        ]
         names = [t["name"] for t in catalogue]
         return ToolSpec(
             name="mesh_send",

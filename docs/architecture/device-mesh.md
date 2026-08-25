@@ -37,6 +37,16 @@ The remote catalogue is closed and small (`tools.py`):
 | `app.show_resource` | Show one task, project, note or habit | `QUEUE_UNTIL_EXPIRATION` |
 | `app.open` | Bring the app to the front | `REQUIRE_ONLINE` |
 | `notifications.show` | Display a notification | `QUEUE_UNTIL_EXPIRATION` |
+| `desktop.open` | Open an app, URL, file or search on the target **computer** | `REQUIRE_ONLINE` |
+
+`desktop.open` is the only verb that leaves the application to drive the
+**desktop**, and the only one with an open-ended target. Two consequences,
+both settled on 25 August 2026: it declares `requires_confirmation`, so the
+receiver refuses an envelope that does not attest the user agreed — which is
+what finally makes check 10 of `verify_command` a live check rather than a
+documented one; and it is **not offered to the model** (`_HORS_PORTEE_DU_MODELE`
+in `tools/mesh_tools.py`), because a sentence should not grant more power over
+a distant machine than the same sentence grants locally.
 
 Each tool declares typed parameters, and a structural guard refuses any tool whose parameters include a passthrough name — `command`, `path`, `url`, `sql`, `script`, `eval` and the rest:
 
@@ -170,7 +180,7 @@ A paired, trusted device at a private address is the user's own other computer, 
 
 ### What the assistant can do
 
-The LLM sees two tools, split deliberately: `mesh_devices` only looks, `mesh_send` acts. The model can answer *« quels appareils sont allumés ? »* without ever entering the code path that sends something.
+The chat assistant sees two tools, split deliberately: `mesh_devices` only looks, `mesh_send` acts. Both entered `_TROUSSE_ASSISTANT` on 25 August 2026 — until then this paragraph described an intention, not the code: the tools were registered and handed to nobody, so « ouvre mes tâches sur mon PC » had no path at all. A test now guards their presence, mirroring the one that guards their absence in voice.
 
 `mesh_send` declares `risk: "outward_action"`. It is **not** in the live-voice allow-list (`speech/realtime/tools.py`), because that path runs its tools directly rather than through `ToolExecutor`, where the approval system lives. A tripwire test enforces this and says when to delete itself.
 
@@ -181,6 +191,18 @@ The LLM sees two tools, split deliberately: `mesh_devices` only looks, `mesh_sen
 - **The server binds `127.0.0.1` by default**, so the mesh does not yet cross machines without the user opening the network interface. That is a security decision that belongs to them.
 - **`execute_voice_tool` bypasses `ToolExecutor`**, and therefore approvals. This must be fixed before any `remote.*` tool is exposed to the voice path.
 - **The inbox queue is in-process memory**, capped at 16 entries. A backend restart loses whatever was waiting for the desktop shell to collect.
+- **Joining is one-way in the UI.** The host can mint an invitation from the
+  Devices page; nothing there redeems one. The guest path lives in the CLI
+  (`diapason mesh join <address> <code>`) and in `mesh/join.py`. Before
+  25 August 2026 it did not exist at all in this repository, which is why the
+  only paired peers were created by the Flutter client.
+- **There is no file transfer.** This is a mesh of *commands*: stateless,
+  short-lived, signed envelopes. A resumable transfer needs a session
+  lifecycle that neither `commands.py` nor `queue.py` carries — and it must
+  not be bolted onto the command envelope, since adding a signed field breaks
+  every phone in the field.
+- **Envelopes are signed, not encrypted.** On a trusted LAN that is enough;
+  it stops being enough the day a relay exists.
 
 ---
 
