@@ -36,11 +36,13 @@ ROUTES_DU_TELEPHONE = frozenset(
 
 
 def _actuelles() -> set[str]:
+    from diapason.mesh.files_routes import router as files_router
     from diapason.mesh.routes import router
 
     return {
         f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
-        for r in router.routes
+        for routeur in (router, files_router)
+        for r in routeur.routes
         if getattr(r, "methods", None)
     }
 
@@ -96,4 +98,53 @@ class TestLesQuatrePortesDuTelephone:
             chemin = route.split(" ", 1)[1]
             assert not mur._requires_auth(chemin), (
                 f"{chemin} exige une clé d'API que le téléphone n'a pas"
+            )
+
+
+class TestLInvariantReciproque:
+    """Toute route hors du mur doit être dans un seau de limitation.
+
+    Le test existant ne verrouille qu'un sens : une route exemptée du mur
+    mais absente des listes de seaux ne déclenche aucune alarme — c'est le
+    bug historique que le commentaire d'auth_middleware raconte. Ceci est
+    l'autre sens.
+    """
+
+    def test_aucune_route_mesh_n_est_hors_mur_et_hors_seau(self):
+        from diapason.server.auth_middleware import (
+            _OPEN_MESH_ROUTES,
+            AuthMiddleware,
+            est_route_de_transfert,
+        )
+
+        orphelines = []
+        for route in sorted(_actuelles()):
+            chemin = route.split(" ", 1)[1]
+            if AuthMiddleware._requires_auth(chemin):
+                continue  # derrière le mur : le seau authentifié s'applique
+            if chemin in _OPEN_MESH_ROUTES or est_route_de_transfert(chemin):
+                continue  # hors du mur, mais dans un seau connu
+            orphelines.append(chemin)
+        assert not orphelines, (
+            "Ces routes sont hors du mur d'authentification ET hors de tout "
+            "seau de limitation — un inconnu du réseau peut les marteler :\n  "
+            + "\n  ".join(orphelines)
+        )
+
+    def test_les_routes_de_transfert_sont_reconnues_comme_telles(self):
+        from diapason.server.auth_middleware import est_route_de_transfert
+
+        transferts = [
+            r.split(" ", 1)[1]
+            for r in _actuelles()
+            if "/files/" in r or r.endswith("/files/offer")
+        ]
+        assert transferts, "le routeur de transfert doit être dans l'instantané"
+        for chemin in transferts:
+            # Les chemins déclarés portent {session_id} : on le remplace par
+            # un identifiant plausible, comme le ferait une vraie requête.
+            concret = chemin.replace("{session_id}", "abc123")
+            assert est_route_de_transfert(concret), (
+                f"{concret} n'est pas reconnue : elle partirait derrière le "
+                "mur, et l'appareil émetteur n'a pas la clé d'API"
             )

@@ -17,6 +17,10 @@
   "POST /v1/mesh/devices/{device_id}/capabilities",
   "POST /v1/mesh/devices/{device_id}/heartbeat",
   "POST /v1/mesh/devices/{device_id}/revoke",
+  "POST /v1/mesh/files/offer",
+  "POST /v1/mesh/files/{session_id}/chunk",
+  "POST /v1/mesh/files/{session_id}/finish",
+  "POST /v1/mesh/files/{session_id}/status",
   "POST /v1/mesh/pairings",
   "POST /v1/mesh/pairings/redeem",
   "POST /v1/mesh/presence"

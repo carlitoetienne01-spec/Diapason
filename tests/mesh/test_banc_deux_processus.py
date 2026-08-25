@@ -209,3 +209,153 @@ class TestDeuxProcessusSeParlent:
         assert second.get("status") != "SUCCESS", (
             f"le rejeu aurait dû être refusé : {second}"
         )
+
+
+class TestUnFichierTraverse:
+    """Le transfert, de bout en bout, sur un vrai socket.
+
+    Spatial Mesh, phase 3 — 25 août 2026. Deux processus, deux identités,
+    une session chiffrée, un fichier qui arrive intact et vérifié.
+    """
+
+    def _jumeler(self, hote, tmp_path, monkeypatch, nom):
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": nom}, cle=hote.cle
+        )
+        assert invitation.get("pairingToken"), f"invitation refusée : {invitation}"
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
+        from diapason.mesh.join import join_fleet
+
+        return join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+    def test_un_fichier_arrive_intact_et_chiffre(self, hote, tmp_path, monkeypatch):
+        import hashlib
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "envoyeur")
+
+        # Un fichier de plusieurs morceaux, avec du contenu reconnaissable.
+        from diapason.mesh.transfert import TAILLE_MORCEAU
+
+        # Au moins trois morceaux : la reprise et l ordre ne se testent pas sur un seul.
+        contenu = (b"CONTENU CONFIDENTIEL " * 120_000)[: TAILLE_MORCEAU * 2 + 4242]
+        source = tmp_path / "rapport secret.bin"
+        source.write_bytes(contenu)
+
+        from diapason.mesh.envoi_fichier import envoyer_fichier
+        from diapason.mesh.registry import DeviceRegistry
+
+        cible = DeviceRegistry().get(jumelage.host_device_id)
+        resultat = envoyer_fichier(source, cible)
+
+        assert resultat.statut == "COMPLETE", resultat.message
+        assert resultat.morceaux == 3
+        recu = Path(resultat.chemin_distant)
+        assert recu.exists(), "le fichier doit exister chez le récepteur"
+        assert recu.read_bytes() == contenu
+        assert (
+            hashlib.sha256(recu.read_bytes()).hexdigest()
+            == hashlib.sha256(contenu).hexdigest()
+        )
+        # Le nom est assaini et rien n'est exécutable.
+        assert recu.name == "rapport secret.bin"
+        assert recu.stat().st_mode & 0o111 == 0
+
+    def test_le_meme_fichier_ne_repart_pas_deux_fois(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """Déduplication par CONTENU (§45) : le second envoi ne transfère
+        aucun octet."""
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "dedup")
+        source = tmp_path / "doc.txt"
+        source.write_bytes(b"un contenu unique et reconnaissable")
+
+        from diapason.mesh.envoi_fichier import envoyer_fichier
+        from diapason.mesh.registry import DeviceRegistry
+
+        cible = DeviceRegistry().get(jumelage.host_device_id)
+        premier = envoyer_fichier(source, cible)
+        assert premier.statut == "COMPLETE"
+
+        # Même contenu, autre nom : la déduplication compare les empreintes.
+        autre = tmp_path / "copie-du-doc.txt"
+        autre.write_bytes(source.read_bytes())
+        second = envoyer_fichier(autre, cible)
+        assert second.statut == "ALREADY_PRESENT"
+        assert second.morceaux == 0, "aucun octet ne doit repartir"
+
+    def test_un_inconnu_ne_peut_rien_deposer(self, hote, tmp_path, monkeypatch):
+        """L'offre est signée : un appareil non appairé est refusé avant
+        d'avoir envoyé le moindre octet."""
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "intrus"))
+        import time as _t
+
+        from diapason.mesh.identity import device_identity, owner_id
+        from diapason.mesh.signed import sign_payload
+        from diapason.mesh.files_routes import _CHAMPS_SIGNES
+
+        offre = sign_payload(
+            {
+                "version": 1,
+                "ownerId": owner_id(),
+                "deviceId": device_identity().device_id,
+                "sentAtMs": int(_t.time() * 1000),
+                "sessionNonce": "n",
+                "manifest": {
+                    "name": "cheval.bin",
+                    "size": 4,
+                    "sha256": "a" * 64,
+                    "chunks": 1,
+                },
+                "ephemeralPublicKey": "A" * 44,
+            },
+            _CHAMPS_SIGNES,
+        )
+        reponse = _http(f"{hote.base}/v1/mesh/files/offer", offre)
+        assert reponse.get("_status") == 403, f"un inconnu doit être refusé : {reponse}"
+
+    def test_un_jeton_de_session_faux_ne_depose_rien(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """La signature garde la porte, le jeton garde le couloir."""
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "jeton")
+        source = tmp_path / "petit.txt"
+        source.write_bytes(b"court")
+
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.envoi_fichier import _champs
+        from diapason.mesh.identity import device_identity, owner_id
+        from diapason.mesh.signed import sign_payload
+        from diapason.mesh.transfert import decrire_fichier
+        import time as _t
+
+        demi = nouvelle_demi_cle()
+        offre = sign_payload(
+            {
+                "version": 1,
+                "ownerId": owner_id(),
+                "deviceId": device_identity().device_id,
+                "sentAtMs": int(_t.time() * 1000),
+                "sessionNonce": "n2",
+                "manifest": decrire_fichier(source).to_dict(),
+                "ephemeralPublicKey": demi.publique_b64,
+            },
+            _champs(),
+        )
+        accord = _http(f"{hote.base}/v1/mesh/files/offer", offre)
+        session = accord.get("sessionId")
+        assert session, f"offre refusée : {accord}"
+
+        import urllib.request
+
+        requete = urllib.request.Request(
+            f"{hote.base}/v1/mesh/files/{session}/chunk?index=0",
+            data=b"n'importe quoi",
+            method="POST",
+        )
+        requete.add_header("X-Transfer-Token", "jeton-invente")
+        requete.add_header("Content-Type", "application/octet-stream")
+        try:
+            urllib.request.urlopen(requete, timeout=10)
+            raise AssertionError("un jeton inventé ne doit rien déposer")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403

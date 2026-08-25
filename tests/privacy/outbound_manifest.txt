@@ -75,6 +75,7 @@ engine/ollama.py
 learning/spec_search/student_runner.py
 mcp/transport.py
 mesh/beacon.py
+mesh/envoi_fichier.py
 mesh/join.py
 mesh/transport.py
 mining/_collector.py

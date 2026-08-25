@@ -113,12 +113,39 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/v1/mesh/commands/ack",
         }:
             return False
+        # Le transfert de fichiers : même raison, créance plus forte que la
+        # clé d'API — signature d'appareil pour l'offre, jeton de session
+        # pour les morceaux.
+        if est_route_de_transfert(path):
+            return False
         return (
             path.startswith("/v1/")
             or path.startswith("/api/")
             or path == "/metrics"
             or path.startswith("/metrics/")
         )
+
+
+# Les routes de TRANSFERT DE FICHIERS (Spatial Mesh, 25 août 2026). Elles
+# portent un identifiant de session dans le chemin, donc elles ne peuvent pas
+# vivre dans un ensemble de chemins exacts. Un seul prédicat, partagé entre le
+# mur d'authentification et le limiteur : être hors du mur et être hors du
+# limiteur ont été la même condition une fois, et personne n'avait voulu la
+# seconde.
+#
+# Leur créance n'est pas la clé d'API — l'appareil qui envoie ne l'a pas :
+# l'OFFRE est signée Ed25519 comme une commande, et elle rend un jeton de
+# session à usage unique qui autorise les morceaux. Le vrai plafond de ces
+# routes n'est d'ailleurs pas un débit mais un VOLUME, appliqué dans le
+# routeur : octets par session, et sessions simultanées.
+_TRANSFERT_RE = re.compile(
+    r"^/v1/mesh/files/(?:offer|[A-Za-z0-9_-]{1,64}/(?:chunk|finish|status))$"
+)
+
+
+def est_route_de_transfert(path: str) -> bool:
+    """Une route de transfert de fichiers, authentifiée par session."""
+    return bool(_TRANSFERT_RE.match(path or ""))
 
 
 # The mesh routes that authenticate by signature or invitation rather than by
@@ -183,6 +210,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         )
 
+        # Le seau du TRANSFERT, à part (25 août 2026). Un morceau vaut un
+        # mégaoctet : un fichier de 500 Mio, c'est cinq cents requêtes en
+        # rafale, parfaitement légitimes. Les compter dans le seau du
+        # maillage aurait fait tomber présence et relèves. Ce seau est donc
+        # large en NOMBRE — le vrai plafond est en octets, et il vit dans le
+        # routeur, là où l'on sait ce qu'une session a déjà reçu.
+        self._transfer_limiter = RateLimiter(
+            RateLimitConfig(
+                requests_per_minute=max(1200, requests_per_minute * 20),
+                burst_size=max(200, burst_size * 20),
+                enabled=enabled,
+            )
+        )
+
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
         # Preflight requests are browser permission checks, not data-plane API
         # calls. Let CORSMiddleware answer them and rate-limit the authenticated
@@ -228,6 +269,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # network can reach at all.
         if path in _OPEN_MESH_ROUTES:
             allowed, wait_seconds = self._open_limiter.check(f"{client}:mesh")
+            if not allowed:
+                return _too_many(wait_seconds)
+            return await call_next(request)
+
+        # Le transfert a SON seau. Partager celui du maillage était le piège
+        # évident : un fichier découpé en mille morceaux aurait vidé le seau
+        # commun et fait échouer les battements de présence et les relèves
+        # des autres appareils — le maillage aurait paru cassé pendant qu'un
+        # transfert légitime se déroulait.
+        if est_route_de_transfert(path):
+            allowed, wait_seconds = self._transfer_limiter.check(
+                f"{client}:transfer"
+            )
             if not allowed:
                 return _too_many(wait_seconds)
             return await call_next(request)

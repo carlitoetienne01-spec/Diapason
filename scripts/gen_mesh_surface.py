@@ -19,11 +19,16 @@ SORTIE = Path(__file__).resolve().parents[1] / "tests" / "contract" / "mesh_api_
 
 
 def surface() -> list[str]:
+    # Les DEUX routeurs du maillage : les commandes et le transfert de
+    # fichiers. Oublier le second laisserait ses routes libres de bouger —
+    # exactement le trou que cet instantané existe pour fermer.
+    from diapason.mesh.files_routes import router as files_router
     from diapason.mesh.routes import router
 
     return sorted(
         f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
-        for r in router.routes
+        for routeur in (router, files_router)
+        for r in routeur.routes
         if getattr(r, "methods", None)
     )
 

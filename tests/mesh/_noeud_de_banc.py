@@ -34,9 +34,12 @@ def main() -> None:
     # au mauvais endroit.
     set_local_endpoint("127.0.0.1", port)
 
+    from diapason.mesh.files_routes import router as files_router
+
     app = FastAPI()
     app.add_middleware(AuthMiddleware, api_key=cle)
     app.include_router(router)
+    app.include_router(files_router)
 
     moi = device_identity()
     print(f"PRÊT {moi.device_id}", flush=True)

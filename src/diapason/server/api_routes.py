@@ -1085,6 +1085,12 @@ def include_all_routes(app) -> None:
     app.include_router(succes_router)
     app.include_router(mesh_router)
 
+    # Le transfert de fichiers (Spatial Mesh, 25/08/2026) : routes à part,
+    # session à part, seau de limitation à part.
+    from diapason.mesh.files_routes import router as mesh_files_router
+
+    app.include_router(mesh_files_router)
+
     # Le cliché de l'écran courant (handoff, 25/08/2026) : sans lui, « continue
     # ce projet sur mon téléphone » n'a aucun référent pour « ce projet ».
     from diapason.server.contexte_routes import router as contexte_router

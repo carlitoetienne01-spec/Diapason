@@ -83,6 +83,59 @@ jamais de ce qu'on a envoyé.
   paresseux non initialisé, invisible pour des tests qui remplaçaient tous
   la résolution. Un test exerce désormais le vrai chemin.
 
+## Phase 3 — le transfert de fichiers
+
+Un maillage de commandes ne transporte pas un fichier : ses enveloppes sont
+courtes, sans état, et y ajouter un champ signé casserait toutes les
+signatures du client mobile. Le transfert a donc sa propre session, ses
+propres routes, son propre seau de limitation.
+
+| Livré | Où |
+|---|---|
+| **Le cœur** — manifeste, découpage, reprise, intégrité, déduplication par contenu, finalisation atomique | `mesh/transfert.py` |
+| **Le chiffrement de session** — X25519 éphémère signé Ed25519, HKDF, AES-256-GCM par morceau | `mesh/coffre.py` |
+| **Les routes** — offre signée, morceaux authentifiés par jeton de session, plafond en octets | `mesh/files_routes.py` |
+| **L'émetteur** | `mesh/envoi_fichier.py` |
+| **Le banc réel** — 2 Mo en trois morceaux entre deux processus, plus deux tentatives d'intrusion refusées | `tests/mesh/test_banc_deux_processus.py` |
+
+### Les décisions, et pourquoi
+
+- **Le nom reçu est une donnée hostile.** `../../.ssh/authorized_keys` est
+  un nom de fichier valide pour celui qui l'envoie.
+- **Rien n'est visible avant d'être entier.** Les morceaux vont dans un
+  `.partiel` anonyme ; un `os.replace` atomique fait apparaître le fichier
+  d'un coup. Un partiel qui porterait déjà son nom final serait ouvert par
+  quelqu'un, un jour, au milieu d'un transfert.
+- **L'empreinte est recalculée sur le disque**, jamais déduite du compte des
+  morceaux : croire l'émetteur sur parole n'est pas vérifier.
+- **Le contenu est chiffré.** Les commandes sont signées et voyagent en
+  clair — savoir qui parle suffit pour « ouvre cet écran ». Un document
+  personnel sur un Wi-Fi partagé, non. Paire X25519 **éphémère** signée par
+  la clé d'appareil : pas de conversion Ed25519 → X25519 (elle n'existe pas
+  dans `cryptography`, et détourner une clé de signature pour de l'accord de
+  clé se paie plus tard), et une clé volée demain ne déchiffre pas un
+  transfert d'aujourd'hui. Nonce **dérivé de l'index** : le réutiliser est la
+  seule façon de casser GCM, et l'index authentifié fait qu'un morceau
+  déplacé devient illisible plutôt que silencieusement faux.
+- **La signature garde la porte, le jeton garde le couloir.** L'offre est
+  vérifiée par le même `verify_payload` que les balises — sept contrôles,
+  révocation comprise — et rend un jeton de session à usage unique.
+- **Le transfert a son propre seau.** Partager celui du maillage était le
+  piège : un fichier en mille morceaux aurait vidé le seau commun et fait
+  échouer présence et relèves des autres appareils. Et le vrai plafond n'est
+  pas un débit mais un **volume**, appliqué dans le routeur : un limiteur de
+  requêtes ne dit rien de la taille d'un corps.
+- **L'invariant réciproque est désormais testé** : toute route hors du mur
+  d'authentification doit être dans un seau connu. Le test existant ne
+  verrouillait qu'un sens — c'était le bug historique que le code raconte.
+
+### Ce qui n'est pas fait
+
+Le client Flutter ne peut pas recevoir de fichier : il n'a ni sélecteur de
+fichiers, ni accès au stockage, ni capacité déclarée pour cela. Le transfert
+est donc **Diapason ↔ Diapason** aujourd'hui. Le jour où le Dart saura
+recevoir, il l'annoncera par une capacité — et rien côté serveur ne bougera.
+
 ## Ce qui vient ensuite, dans l'ordre
 
 L'ordre du §149 tient, moins ce qui est déjà fait :
