@@ -91,6 +91,77 @@ def desarmer() -> None:
     _session = None
 
 
+# ── Le double-clap (§78) ────────────────────────────────────────────────
+# Une quatrième voie d'armement, à côté du bouton : claper deux fois. Elle
+# a un coût que le bouton n'a pas — le micro reste OUVERT pour l'entendre —
+# et ce coût ne se subit pas, il se choisit. L'écoute est donc éteinte par
+# défaut, et le panneau dit ce qu'elle implique.
+_ecouteur_claps: Any = None
+
+
+def claps_actifs() -> bool:
+    return _ecouteur_claps is not None
+
+
+@router.post("/clap/on")
+def ecouter_les_claps() -> dict[str, Any]:
+    """Ouvrir le micro pour entendre un double-clap, et rien d'autre.
+
+    Le détecteur ne transcrit rien et ne garde rien : il suit le niveau
+    sonore et cherche deux pics rapprochés. Aucune parole n'est analysée,
+    aucun son n'est enregistré.
+    """
+    global _ecouteur_claps
+    if _ecouteur_claps is not None:
+        return {"listening": True, "already": True}
+    try:
+        from diapason.speech.clap_listener import ClapListener
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503, detail=f"Écoute indisponible : {str(exc)[:120]}"
+        ) from exc
+
+    def _sur_double_clap() -> None:
+        # Deux claps arment ; deux claps de plus désarment. Le même geste
+        # dans les deux sens, parce qu'un mode qu'on ne sait pas couper
+        # sans souris n'est pas vraiment mains libres.
+        try:
+            if session_active():
+                desarmer()
+                logger.info("double-clap : mode gestes désarmé")
+            else:
+                armer()
+                logger.info("double-clap : mode gestes armé")
+        except Exception:  # noqa: BLE001 - un clap raté n'arrête pas l'écoute
+            logger.warning("double-clap non traité", exc_info=True)
+
+    try:
+        ecouteur = ClapListener(_sur_double_clap, once=False)
+        ecouteur.start()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}"
+            ),
+        ) from exc
+    _ecouteur_claps = ecouteur
+    return {"listening": True}
+
+
+@router.post("/clap/off")
+def ne_plus_ecouter() -> dict[str, Any]:
+    """Refermer le micro. Il ne doit pas rester ouvert par oubli."""
+    global _ecouteur_claps
+    ecouteur, _ecouteur_claps = _ecouteur_claps, None
+    if ecouteur is not None:
+        try:
+            ecouteur.stop()
+        except Exception:  # noqa: BLE001
+            logger.debug("arrêt de l'écoute imparfait", exc_info=True)
+    return {"listening": False}
+
+
 @router.post("/arm")
 def armer() -> dict[str, Any]:
     """Armer le mode gestes. La caméra ne s'ouvre qu'après, côté interface."""
@@ -128,7 +199,7 @@ def desarmer_route() -> dict[str, Any]:
 @router.get("/state")
 def etat() -> dict[str, Any]:
     if not session_active() or _session is None:
-        return {"armed": False}
+        return {"armed": False, "clapListening": claps_actifs()}
     confiance = (
         _session.confiance_totale / _session.confiance_mesures
         if _session.confiance_mesures
@@ -136,6 +207,7 @@ def etat() -> dict[str, Any]:
     )
     return {
         "armed": True,
+        "clapListening": claps_actifs(),
         "state": _session.moteur.etat.value,
         "frames": _session.images,
         "handsSeen": _session.mains_vues,
@@ -453,4 +525,4 @@ def finir_la_mesure(pose: str) -> dict[str, Any]:
     return {"pose": pose, "value": round(mediane, 3), "samples": len(echantillons)}
 
 
-__all__ = ["desarmer", "router", "session_active"]
+__all__ = ["claps_actifs", "desarmer", "router", "session_active"]

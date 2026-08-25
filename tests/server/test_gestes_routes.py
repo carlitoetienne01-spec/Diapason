@@ -8,7 +8,7 @@ dire la vérité.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,9 +25,13 @@ def client():
     app = FastAPI()
     app.include_router(gr.router)
     gr.desarmer()
+    gr._ecouteur_claps = None
     with TestClient(app) as c:
         yield c
     gr.desarmer()
+    # Un micro laissé ouvert par un test le laisserait ouvert pour les
+    # suivants — et pour la machine.
+    gr._ecouteur_claps = None
 
 
 def _image_factice() -> bytes:
@@ -36,7 +40,8 @@ def _image_factice() -> bytes:
 
 class TestArmement:
     def test_rien_ne_guette_avant_l_armement(self, client):
-        assert client.get("/v1/gestures/state").json() == {"armed": False}
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["armed"] is False
 
     def test_une_image_sans_armement_est_refusee(self, client):
         """Poster des images sans armer serait une caméra qui tourne sans
@@ -130,7 +135,7 @@ class TestCeQuiEteint:
             gr.time, "monotonic", lambda: depart + gr._INACTIVITE_MAX_S + 1
         )
         assert gr.session_active() is False
-        assert client.get("/v1/gestures/state").json() == {"armed": False}
+        assert client.get("/v1/gestures/state").json()["armed"] is False
 
     def test_la_duree_maximale_desarme_meme_si_on_bouge(self, client, monkeypatch):
         """Le §83 : la caméra coûte. Une session ne tient pas une heure
@@ -494,3 +499,80 @@ class TestLeJournalDesGestes:
         entree = client.get("/v1/gestures/state").json()["journal"][0]
         assert entree["ok"] is False
         assert "joignable" in entree["detail"]
+
+
+class TestLeDoubleClap:
+    """§78 — une quatrième voie d'armement, au coût explicite.
+
+    Le bouton n'ouvre rien tant qu'on ne clique pas ; entendre un clap
+    suppose un micro OUVERT en continu. Ce coût ne se subit pas, il se
+    choisit : l'écoute est éteinte par défaut.
+    """
+
+    def test_le_micro_est_ferme_par_defaut(self, client):
+        """Rien ne guette sans qu'on l'ait demandé."""
+        assert client.get("/v1/gestures/state").json()["clapListening"] is False
+
+    def test_l_ecoute_s_allume_et_s_eteint(self, client):
+        faux = MagicMock()
+        with patch("diapason.speech.clap_listener.ClapListener", return_value=faux):
+            assert client.post("/v1/gestures/clap/on").json()["listening"] is True
+            faux.start.assert_called_once()
+            assert client.get("/v1/gestures/state").json()["clapListening"] is True
+        assert client.post("/v1/gestures/clap/off").json()["listening"] is False
+        faux.stop.assert_called_once()
+
+    def test_deux_claps_arment_puis_desarment(self, client):
+        """Le même geste dans les deux sens : un mode qu'on ne sait pas
+        couper sans souris n'est pas vraiment mains libres."""
+        from diapason.server import gestes_routes as gr
+
+        capture = {}
+
+        def _capturer(rappel, **_kw):
+            capture["rappel"] = rappel
+            return MagicMock()
+
+        with patch(
+            "diapason.speech.clap_listener.ClapListener", side_effect=_capturer
+        ):
+            client.post("/v1/gestures/clap/on")
+        rappel = capture["rappel"]
+
+        assert gr.session_active() is False
+        rappel()
+        assert gr.session_active() is True, "le premier double-clap arme"
+        rappel()
+        assert gr.session_active() is False, "le second désarme"
+        client.post("/v1/gestures/clap/off")
+
+    def test_un_micro_indisponible_le_dit_franchement(self, client):
+        """Prétendre écouter sans micro laisserait attendre un clap qui ne
+        serait jamais entendu."""
+        with patch(
+            "diapason.speech.clap_listener.ClapListener",
+            side_effect=RuntimeError("aucun périphérique d'entrée"),
+        ):
+            reponse = client.post("/v1/gestures/clap/on")
+        assert reponse.status_code == 503
+        assert "micro" in reponse.json()["detail"]
+
+    def test_un_clap_rate_n_arrete_pas_l_ecoute(self, client):
+        """Une erreur pendant l'armement ne doit pas rendre le micro sourd
+        pour la suite de la session."""
+        from diapason.server import gestes_routes as gr
+
+        capture = {}
+
+        def _capturer(rappel, **_kw):
+            capture["rappel"] = rappel
+            return MagicMock()
+
+        with patch(
+            "diapason.speech.clap_listener.ClapListener", side_effect=_capturer
+        ):
+            client.post("/v1/gestures/clap/on")
+        with patch.object(gr, "armer", side_effect=RuntimeError("panne")):
+            capture["rappel"]()  # ne lève pas
+        assert gr.claps_actifs() is True
+        client.post("/v1/gestures/clap/off")

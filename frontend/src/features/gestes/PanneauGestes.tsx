@@ -27,8 +27,16 @@ export function PanneauGestes() {
   // L'état vient du contexte : le mode doit survivre au changement de
   // page, sinon il s'éteint au moment où l'on va chercher ce qu'on veut
   // attraper.
-  const { actif, etat, mainVue, erreur, diagnostic, basculer } =
-    useModeGestesPartage();
+  const {
+    actif,
+    etat,
+    mainVue,
+    erreur,
+    diagnostic,
+    clapsEcoutent,
+    basculerLesClaps,
+    basculer,
+  } = useModeGestesPartage();
   const calibration = useCalibration(actif);
 
   return (
@@ -74,6 +82,26 @@ export function PanneauGestes() {
           </span>
         </div>
       )}
+
+      <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+        {/* §78 : une quatrième voie d'armement, au coût explicite. Le
+            bouton n'ouvre rien tant qu'on ne clique pas ; entendre un clap
+            suppose un micro OUVERT, et cela se choisit. */}
+        <input
+          type="checkbox"
+          checked={clapsEcoutent}
+          onChange={basculerLesClaps}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="text-foreground">Activer par un double clap</span>
+          <span className="block text-xs text-muted-foreground">
+            {clapsEcoutent
+              ? 'Le micro écoute en continu, uniquement le niveau sonore : deux claps activent les gestes, deux autres les arrêtent. Rien n’est transcrit ni enregistré.'
+              : 'Demande d’ouvrir le micro en continu pour entendre deux claps. Rien n’est transcrit ni enregistré.'}
+          </span>
+        </span>
+      </label>
 
       {actif && diagnostic?.held && (
         <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm">

@@ -42,8 +42,18 @@ export type EntreeJournal = {
   ok: boolean;
 };
 
+export async function ecouterLesClaps(actif: boolean): Promise<boolean> {
+  const reponse = await apiFetch(`/v1/gestures/clap/${actif ? 'on' : 'off'}`, {
+    method: 'POST',
+  });
+  const corps = await reponse.json().catch(() => null);
+  if (!reponse.ok) throw new Error(corps?.detail ?? 'Écoute impossible.');
+  return Boolean(corps?.listening);
+}
+
 export type Diagnostic = {
   armed: boolean;
+  clapListening?: boolean;
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;

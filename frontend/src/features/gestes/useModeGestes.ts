@@ -14,6 +14,7 @@ import {
   type Diagnostic,
   EchecGeste,
   envoyerImage,
+  ecouterLesClaps,
   lireDiagnostic,
   type EtatGeste,
 } from './api';
@@ -30,6 +31,8 @@ export type ModeGestes = {
   mainVue: boolean;
   erreur: string | null;
   diagnostic: Diagnostic | null;
+  clapsEcoutent: boolean;
+  basculerLesClaps: () => void;
   basculer: () => void;
 };
 
@@ -39,6 +42,7 @@ export function useModeGestes(): ModeGestes {
   const [mainVue, setMainVue] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
+  const [clapsEcoutent, setClapsEcoutent] = useState(false);
   const flux = useRef<MediaStream | null>(null);
   const video = useRef<HTMLVideoElement | null>(null);
   const canevas = useRef<HTMLCanvasElement | null>(null);
@@ -102,11 +106,14 @@ export function useModeGestes(): ModeGestes {
     }
   }, [eteindre]);
 
-  const allumer = useCallback(async () => {
+  const allumer = useCallback(async (dejaArme = false) => {
     setErreur(null);
     echecs.current = 0;
     try {
-      await armer();
+      // `dejaArme` : la session a été ouverte par un double-clap, côté
+      // serveur. Ré-armer ici la réinitialiserait — et perdrait le geste
+      // qui vient d'être fait.
+      if (!dejaArme) await armer();
     } catch (exc) {
       const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
       setErreur(`Échec à l'${etape} : ${exc instanceof Error ? exc.message : exc}`);
@@ -142,6 +149,13 @@ export function useModeGestes(): ModeGestes {
     );
   }, [capturer]);
 
+  const basculerLesClaps = useCallback(() => {
+    const voulu = !clapsEcoutent;
+    void ecouterLesClaps(voulu)
+      .then(setClapsEcoutent)
+      .catch((exc) => setErreur(String(exc?.message ?? exc)));
+  }, [clapsEcoutent]);
+
   const basculer = useCallback(() => {
     if (actif) {
       void desarmer();
@@ -150,6 +164,22 @@ export function useModeGestes(): ModeGestes {
       void allumer();
     }
   }, [actif, allumer, eteindre]);
+
+  // Suivre le serveur quand un DOUBLE-CLAP arme la session : la caméra
+  // n'est pas ouverte, donc rien ne l'apprendrait autrement. On sonde
+  // toutes les deux secondes, et seulement tant que le micro écoute — un
+  // sondage perpétuel pour une fonction éteinte serait du bruit.
+  useEffect(() => {
+    if (actif || !clapsEcoutent) return;
+    const t = window.setInterval(() => {
+      void lireDiagnostic()
+        .then((d) => {
+          if (d.armed) void allumer(true);
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [actif, clapsEcoutent, allumer]);
 
   // Le diagnostic se relit une fois par seconde : assez pour juger, trop
   // peu pour peser. Il n'est jamais dans le chemin des images.
@@ -169,5 +199,14 @@ export function useModeGestes(): ModeGestes {
   // vert est censé rendre impossible.
   useEffect(() => () => eteindre(), [eteindre]);
 
-  return { actif, etat, mainVue, erreur, diagnostic, basculer };
+  return {
+    actif,
+    etat,
+    mainVue,
+    erreur,
+    diagnostic,
+    clapsEcoutent,
+    basculerLesClaps,
+    basculer,
+  };
 }
