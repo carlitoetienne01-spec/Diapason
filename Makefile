@@ -10,7 +10,13 @@
 setup:
 	uv sync --extra dev --extra framework-comparison --extra server \
 	  --extra desktop --extra tools-search --extra speech --extra voice-local \
+	  --extra speech-wake \
 	  --group dev --group desktop-native
+	@# sherpa-onnx perd ses dylibs à CHAQUE sync (constaté deux fois les
+	@# 24 et 25 août 2026) : la roue s'installe, la bibliothèque native
+	@# n'est pas reposée, et la reconnaissance du locuteur tombe. La
+	@# réinstaller ici évite de rechercher la cause une troisième fois.
+	uv pip install --reinstall --quiet "sherpa-onnx>=1.10"
 
 build:
 	uv run maturin develop --manifest-path rust/crates/diapason-python/Cargo.toml

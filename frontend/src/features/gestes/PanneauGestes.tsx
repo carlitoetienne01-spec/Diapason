@@ -99,6 +99,20 @@ export function PanneauGestes() {
             {clapsEcoutent
               ? 'Le micro écoute en continu, uniquement le niveau sonore : deux claps activent les gestes, deux autres les arrêtent. Rien n’est transcrit ni enregistré.'
               : 'Demande d’ouvrir le micro en continu pour entendre deux claps. Rien n’est transcrit ni enregistré.'}
+            {clapsEcoutent && (
+              <span className="mt-1 block">
+                {/* Sans ce compte, on peut claper une heure sans savoir si
+                    le micro entend, si le seuil est trop haut, ou si c'est
+                    l'écart entre les deux claps qui ne convient pas. */}
+                Claps entendus&nbsp;:{' '}
+                <span className="tabular-nums text-foreground">
+                  {diagnostic?.clapsHeard ?? 0}
+                </span>
+                {(diagnostic?.clapsHeard ?? 0) === 0
+                  ? ' — tape plus fort ou rapproche-toi du Mac.'
+                  : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
+              </span>
+            )}
           </span>
         </span>
       </label>

@@ -36,6 +36,12 @@ class ClapDetector:
     first_clap_time: float | None = None
     spike_armed: bool = True
     last_miss_reason: str | None = None
+    # Ce que le micro ENTEND, même quand aucun double ne se forme.
+    # Sans ce compte, quelqu'un qui clape peut le faire une heure sans
+    # savoir si le micro l'entend, si le seuil est trop haut, ou si c'est
+    # l'écart entre les deux claps qui ne convient pas (25 août 2026).
+    claps_entendus: int = 0
+    dernier_clap_a: float = 0.0
 
     def process(self, level: float, now: float) -> bool:
         self.last_miss_reason = None
@@ -62,6 +68,8 @@ class ClapDetector:
             return False
 
         self.spike_armed = False
+        self.claps_entendus += 1
+        self.dernier_clap_a = now
         if self.first_clap_time is None:
             self.first_clap_time = now
             return False
@@ -247,15 +255,55 @@ class ClapListener:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._fired = False
+        # Le fil d'écoute meurt en silence quand sounddevice manque ou que
+        # le micro refuse de s'ouvrir : start() rend la main sans rien dire,
+        # et l'appelant croit écouter (constaté le 25 août 2026 — le mode
+        # annonçait « écoute active » alors que le fil était mort à la
+        # première ligne). Ces deux signaux rendent le démarrage
+        # CONSTATABLE au lieu d'être supposé.
+        self._pret = threading.Event()
+        self._panne: Optional[str] = None
+        self._detecteur: Optional[ClapDetector] = None
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        self._pret.clear()
+        self._panne = None
         self._thread = threading.Thread(
             target=self._run, name="clap-listener", daemon=True
         )
         self._thread.start()
+        # Attendre le verdict plutôt que de rendre la main sur une
+        # espérance : deux secondes suffisent à ouvrir un micro, et
+        # au-delà c'est que quelque chose ne va pas.
+        self._pret.wait(2.0)
+
+    @property
+    def ecoute(self) -> bool:
+        """Le micro est-il RÉELLEMENT ouvert ? Constaté, jamais supposé."""
+        return (
+            self._pret.is_set()
+            and self._panne is None
+            and self._thread is not None
+            and self._thread.is_alive()
+        )
+
+    @property
+    def claps_entendus(self) -> int:
+        """Combien de pics le micro a relevés — doubles ou non."""
+        return self._detecteur.claps_entendus if self._detecteur else 0
+
+    @property
+    def dernier_echec(self) -> Optional[str]:
+        """Pourquoi le dernier pic n'a pas formé un double, s'il y a lieu."""
+        return self._detecteur.last_miss_reason if self._detecteur else None
+
+    @property
+    def panne(self) -> Optional[str]:
+        """Pourquoi l'écoute n'a pas démarré, s'il y a une raison."""
+        return self._panne
 
     def stop(self) -> None:
         self._stop.set()
@@ -266,10 +314,11 @@ class ClapListener:
         try:
             import sounddevice as sd
         except ImportError:
-            logger.error(
-                "sounddevice is required for clap listening: "
-                "pip install sounddevice numpy"
+            self._panne = (
+                "sounddevice manque : uv sync --extra speech-wake"
             )
+            logger.error(self._panne)
+            self._pret.set()
             return
 
         blocksize = max(
@@ -277,6 +326,7 @@ class ClapListener:
             int(self._cfg.sample_rate * self._cfg.block_ms / 1000),
         )
         detector = ClapDetector(cfg=self._cfg)
+        self._detecteur = detector
         logger.info(
             "Clap listener started "
             "(spike_ratio=%.1f, gap=%.2f–%.2fs, once=%s, debug=%s)",
@@ -297,6 +347,9 @@ class ClapListener:
                 dtype="float32",
                 blocksize=blocksize,
             ) as stream:
+                # Le micro est ouvert POUR DE VRAI : c'est seulement ici
+                # qu'on peut le dire.
+                self._pret.set()
                 while not self._stop.is_set():
                     data, _overflowed = stream.read(blocksize)
                     level = rms_mono(data)

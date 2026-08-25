@@ -54,6 +54,7 @@ export async function ecouterLesClaps(actif: boolean): Promise<boolean> {
 export type Diagnostic = {
   armed: boolean;
   clapListening?: boolean;
+  clapsHeard?: number;
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;

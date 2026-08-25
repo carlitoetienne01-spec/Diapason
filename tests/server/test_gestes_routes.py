@@ -576,3 +576,49 @@ class TestLeDoubleClap:
             capture["rappel"]()  # ne lève pas
         assert gr.claps_actifs() is True
         client.post("/v1/gestures/clap/off")
+
+
+class TestLEcouteSeConstate:
+    """Le mensonge le plus coûteux de la session : « écoute active ».
+
+    Le fil d'écoute meurt en silence quand sounddevice manque ou que le
+    micro refuse. start() rendait la main sans rien dire, et la route
+    répondait « listening: true » à quelqu'un qui pouvait claper jusqu'au
+    soir sans que rien n'arrive. Proclamer sans constater est la faute que
+    ce projet corrige partout ailleurs.
+    """
+
+    def test_un_fil_mort_ne_passe_pas_pour_une_ecoute(self, client):
+        mort = MagicMock()
+        mort.ecoute = False
+        mort.panne = "sounddevice manque"
+        with patch("diapason.speech.clap_listener.ClapListener", return_value=mort):
+            reponse = client.post("/v1/gestures/clap/on")
+        assert reponse.status_code == 503
+        assert "sounddevice" in reponse.json()["detail"]
+        mort.stop.assert_called_once(), "un fil mort doit être rangé"
+        assert client.get("/v1/gestures/state").json()["clapListening"] is False
+
+    def test_un_ecouteur_qui_meurt_apres_coup_cesse_de_compter(self, client):
+        """Un objet gardé n'est pas une preuve : l'état doit refléter le
+        micro, pas la variable."""
+        vivant = MagicMock()
+        vivant.ecoute = True
+        vivant.claps_entendus = 3
+        with patch("diapason.speech.clap_listener.ClapListener", return_value=vivant):
+            client.post("/v1/gestures/clap/on")
+        assert client.get("/v1/gestures/state").json()["clapListening"] is True
+        vivant.ecoute = False  # le fil meurt en cours de route
+        assert client.get("/v1/gestures/state").json()["clapListening"] is False
+        client.post("/v1/gestures/clap/off")
+
+    def test_les_claps_entendus_sont_rapportes(self, client):
+        """Sans ce compte, on ne sait pas distinguer « le micro n'entend
+        rien » de « mes deux claps sont trop espacés »."""
+        ecouteur = MagicMock()
+        ecouteur.ecoute = True
+        ecouteur.claps_entendus = 7
+        with patch("diapason.speech.clap_listener.ClapListener", return_value=ecouteur):
+            client.post("/v1/gestures/clap/on")
+        assert client.get("/v1/gestures/state").json()["clapsHeard"] == 7
+        client.post("/v1/gestures/clap/off")

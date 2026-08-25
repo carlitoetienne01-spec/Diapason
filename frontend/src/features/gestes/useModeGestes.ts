@@ -174,6 +174,9 @@ export function useModeGestes(): ModeGestes {
     const t = window.setInterval(() => {
       void lireDiagnostic()
         .then((d) => {
+          // Le diagnostic sert aussi caméra éteinte : c'est là qu'on voit
+          // si le micro entend les claps, et donc si le seuil convient.
+          setDiagnostic(d);
           if (d.armed) void allumer(true);
         })
         .catch(() => {});

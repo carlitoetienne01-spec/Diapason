@@ -100,7 +100,18 @@ _ecouteur_claps: Any = None
 
 
 def claps_actifs() -> bool:
-    return _ecouteur_claps is not None
+    """Le micro écoute-t-il vraiment ? Un objet gardé n'est pas une preuve."""
+    ecouteur = _ecouteur_claps
+    if ecouteur is None:
+        return False
+    ecoute = getattr(ecouteur, "ecoute", True)
+    return bool(ecoute)
+
+
+def _claps_entendus() -> int:
+    """Ce que le micro a entendu — pour savoir si le seuil est atteignable."""
+    ecouteur = _ecouteur_claps
+    return int(getattr(ecouteur, "claps_entendus", 0) or 0) if ecouteur else 0
 
 
 @router.post("/clap/on")
@@ -141,11 +152,23 @@ def ecouter_les_claps() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=503,
-            detail=(
-                f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}"
-            ),
+            detail=f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}",
         ) from exc
+    # CONSTATER, pas supposer. Le fil d'écoute meurt en silence quand
+    # sounddevice manque ou que le micro refuse : start() rendait la main
+    # sans rien dire, et cette route répondait « écoute active » à un
+    # utilisateur qui pouvait claper jusqu'au soir (25 août 2026).
+    if not ecouteur.ecoute:
+        raison = ecouteur.panne or "le micro n'a pas répondu"
+        try:
+            ecouteur.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        raise HTTPException(
+            status_code=503, detail=f"L'écoute n'a pas démarré : {raison}"
+        )
     _ecouteur_claps = ecouteur
+    logger.info("écoute des claps démarrée")
     return {"listening": True}
 
 
@@ -199,7 +222,11 @@ def desarmer_route() -> dict[str, Any]:
 @router.get("/state")
 def etat() -> dict[str, Any]:
     if not session_active() or _session is None:
-        return {"armed": False, "clapListening": claps_actifs()}
+        return {
+            "armed": False,
+            "clapListening": claps_actifs(),
+            "clapsHeard": _claps_entendus(),
+        }
     confiance = (
         _session.confiance_totale / _session.confiance_mesures
         if _session.confiance_mesures
@@ -208,6 +235,7 @@ def etat() -> dict[str, Any]:
     return {
         "armed": True,
         "clapListening": claps_actifs(),
+        "clapsHeard": _claps_entendus(),
         "state": _session.moteur.etat.value,
         "frames": _session.images,
         "handsSeen": _session.mains_vues,
