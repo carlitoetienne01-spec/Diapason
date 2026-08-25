@@ -71,6 +71,23 @@ export function PanneauGestes() {
         </div>
       )}
 
+      {actif && diagnostic?.held && (
+        <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm">
+          {/* Le retour visuel (§47) : ce que la main tient doit se VOIR,
+              sinon le geste est un pari. */}
+          <span className="text-muted-foreground">Dans ta main&nbsp;: </span>
+          <span className="font-medium">{diagnostic.held.title}</span>
+        </div>
+      )}
+
+      {actif && diagnostic?.lastDrop?.message && (
+        <p
+          className={`mt-2 text-sm ${diagnostic.lastDrop.done ? 'text-emerald-500' : 'text-muted-foreground'}`}
+        >
+          {diagnostic.lastDrop.message}
+        </p>
+      )}
+
       {actif && diagnostic?.armed && (
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
           {/* Ce qui permet de JUGER la fiabilité (§141) : le serveur compte

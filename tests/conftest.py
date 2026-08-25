@@ -382,4 +382,20 @@ def _isoler_le_bureau(monkeypatch):
     # onglet_actif est publique et lance osascript : sans ce patch, la suite
     # interrogerait le VRAI navigateur (24 août 2026, même fuite que le cliché).
     monkeypatch.setattr(etat_bureau, "onglet_actif", lambda *_a, **_k: "")
+
+    # Le CONTEXTE D'APPLICATION suit la même règle, et pour la même raison
+    # (25 août 2026) : c'est un cliché volatile en variable de module,
+    # injecté en fin de contexte de chaque tour vocal. Un test qui le pose
+    # — ceux du presse-papiers spatial, par exemple — le laissait visible
+    # aux tests de parole, qui comptaient alors un message système de trop.
+    # Une variable de module partagée sans garde finit toujours par fuir.
+    from diapason.desktop import contexte_app
+
+    monkeypatch.setattr(contexte_app, "_cache", None)
+
+    # Et le presse-papiers spatial, pour la même raison : un objet « tenu »
+    # qui survit à son test ferait déposer quelque chose au suivant.
+    from diapason.desktop import presse_papiers_spatial
+
+    monkeypatch.setattr(presse_papiers_spatial, "_tenu", None)
     yield

@@ -19,8 +19,26 @@ export type EtatGeste =
   | 'PERDU'
   | 'ANNULE';
 
+export type ObjetTenu = {
+  type: string;
+  id: string;
+  title: string;
+  screen?: string;
+};
+
+export type Depot = {
+  done: boolean;
+  reason?: string;
+  message?: string;
+  target?: string;
+  candidates?: string[];
+  object?: ObjetTenu;
+};
+
 export type Diagnostic = {
   armed: boolean;
+  held?: ObjetTenu | null;
+  lastDrop?: Depot | null;
   state?: EtatGeste;
   frames?: number;
   handsSeen?: number;

@@ -55,6 +55,8 @@ class _Session:
     confiance_totale: float = 0.0
     confiance_mesures: int = 0
     dernier_repliement: float = 0.0
+    dernier_attrape: Any = None
+    dernier_depot: Any = None
     calibration_en_cours: str = ""
     echantillons: list = field(default_factory=list)
 
@@ -146,7 +148,102 @@ def etat() -> dict[str, Any]:
         "confidence": round(confiance, 2),
         "curl": round(_session.dernier_repliement, 3),
         "calibrating": _session.calibration_en_cours,
+        "held": _session.dernier_attrape.to_dict()
+        if _session.dernier_attrape is not None
+        else None,
+        "lastDrop": _session.dernier_depot,
         "recentStates": list(_session.derniers_etats),
+    }
+
+
+def _deposer() -> dict[str, Any]:
+    """Ouvrir la main : envoyer ce qu'on tenait — ou dire pourquoi non.
+
+    Le §34 gouverne : aucun capteur de cette flotte ne mesure une
+    direction, donc rien n'est deviné. S'il n'y a qu'un seul appareil
+    joignable, c'est lui ; sinon on le dit et l'utilisateur tranche. Un
+    geste ne doit jamais envoyer un document à un appareil choisi au
+    hasard — ce serait l'échec le plus grave de cette fonctionnalité.
+    """
+    from diapason.desktop.presse_papiers_spatial import lacher
+
+    objet = lacher()
+    if objet is None:
+        return {"done": False, "reason": "NOTHING_HELD",
+                "message": "La main s'ouvre sur rien : rien n'avait été attrapé."}
+    try:
+        from diapason.mesh.presence import presence_of
+        from diapason.mesh.registry import DeviceRegistry
+
+        flotte = [
+            d
+            for d in DeviceRegistry().list_devices()
+            if d.get("trustLevel") == "TRUSTED"
+        ]
+        joignables = [
+            d
+            for d in flotte
+            if (presence_of(d) or {}).get("state") in ("ONLINE", "IDLE")
+        ]
+    except Exception as exc:  # noqa: BLE001 - un registre illisible se dit
+        logger.warning("flotte illisible au dépôt", exc_info=True)
+        return {"done": False, "reason": "NO_FLEET", "message": str(exc)[:120],
+                "object": objet.to_dict()}
+
+    if not joignables:
+        noms = ", ".join(str(d.get("name") or "?") for d in flotte)
+        return {
+            "done": False,
+            "reason": "ALL_OFFLINE",
+            "object": objet.to_dict(),
+            "message": (
+                f"« {objet.titre} » est prêt, mais aucun appareil n'est "
+                f"joignable{' (' + noms + ')' if noms else ''}."
+            ),
+        }
+    if len(joignables) > 1:
+        # §81 : deux candidats, aucune direction mesurée — on demande.
+        return {
+            "done": False,
+            "reason": "AMBIGUOUS",
+            "object": objet.to_dict(),
+            "candidates": [str(d.get("name") or "?") for d in joignables],
+            "message": (
+                f"« {objet.titre} » est prêt. Vers lequel : "
+                + ", ".join(str(d.get("name") or "?") for d in joignables)
+                + " ?"
+            ),
+        }
+
+    cible = joignables[0]
+    from diapason.mesh.dispatch import dispatch_command
+
+    if objet.type == "screen":
+        from diapason.desktop.contexte_app import _ECRANS
+
+        route = (_ECRANS.get(objet.id) or (None, ""))[0]
+        if not route:
+            return {"done": False, "reason": "UNSUPPORTED",
+                    "object": objet.to_dict(),
+                    "message": f"{objet.titre} n'existe pas sur les autres appareils."}
+        resultat = dispatch_command(
+            target_device_id=str(cible.get("deviceId") or ""),
+            tool="app.navigate",
+            arguments={"route": f"success://{route}"},
+        )
+    else:
+        resultat = dispatch_command(
+            target_device_id=str(cible.get("deviceId") or ""),
+            tool="app.show_resource",
+            arguments={"resourceType": objet.type, "resourceId": objet.id},
+        )
+    # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
+    return {
+        "done": resultat.get("status") == "SUCCESS",
+        "reason": resultat.get("status"),
+        "object": objet.to_dict(),
+        "target": str(cible.get("name") or "?"),
+        "message": str(resultat.get("userSafeMessage") or ""),
     }
 
 
@@ -187,6 +284,7 @@ async def image(request: Request) -> dict[str, Any]:
     n'est jamais écrite : Vision la lit en mémoire, et seuls des points en
     sortent.
     """
+    from diapason.desktop.presse_papiers_spatial import attraper, vider
     from diapason.desktop.vision_mains import mains_dans_les_octets
 
     if not session_active() or _session is None:
@@ -228,10 +326,18 @@ async def image(request: Request) -> dict[str, Any]:
         del _session.derniers_etats[:-10]
         if apres.value == "SAISI":
             _session.saisies += 1
+            # Le geste exprime une INTENTION ; il ne transporte rien. Fermer
+            # le poing désigne ce que l'écran affiche et le retient.
+            _session.dernier_attrape = attraper()
         elif apres.value == "RELACHE":
             _session.relachements += 1
+            _session.dernier_depot = _deposer()
         elif apres.value in ("PERDU", "ANNULE"):
             _session.pertes += 1
+            # Une main perdue au milieu d'un geste ne laisse pas un objet
+            # « tenu » que personne ne tient (§12).
+            vider()
+            _session.dernier_attrape = None
     return {
         "state": apres.value,
         "changed": apres is not avant,

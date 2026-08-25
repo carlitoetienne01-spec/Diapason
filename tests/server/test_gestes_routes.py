@@ -328,3 +328,96 @@ class TestLesChiffresQuiPermettentDeJuger:
         etat = client.get("/v1/gestures/state").json()
         for invente in ("falsePositives", "intended", "accuracy", "reliability"):
             assert invente not in etat
+
+
+class TestAttraperEtDeposer:
+    """Le geste agit — mais ne devine jamais où (§34).
+
+    Aucun capteur de cette flotte ne mesure une direction. Un geste qui
+    enverrait un document à un appareil choisi au hasard serait l'échec le
+    plus grave de cette fonctionnalité.
+    """
+
+    def _contexte(self):
+        from diapason.desktop import contexte_app as ca
+
+        ca.poser_contexte(
+            "/succes/projects", ressource_type="project",
+            ressource_id="p1", ressource_titre="Zéro à Héro",
+        )
+
+    def _appareil(self, nom, etat):
+        return {"deviceId": f"dev_{nom}", "name": nom, "trustLevel": "TRUSTED"}
+
+    def test_rien_de_tenu_se_dit_au_lieu_de_rien_faire(self):
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server.gestes_routes import _deposer
+
+        pp.vider()
+        resultat = _deposer()
+        assert resultat["done"] is False
+        assert resultat["reason"] == "NOTHING_HELD"
+
+    def test_tous_hors_ligne_le_dit_avec_les_noms(self):
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server.gestes_routes import _deposer
+
+        self._contexte()
+        pp.attraper()
+        with patch(
+            "diapason.mesh.registry.DeviceRegistry.list_devices",
+            return_value=[self._appareil("PC du bureau", "OFFLINE")],
+        ), patch(
+            "diapason.mesh.presence.presence_of", return_value={"state": "OFFLINE"}
+        ):
+            resultat = _deposer()
+        assert resultat["done"] is False
+        assert resultat["reason"] == "ALL_OFFLINE"
+        assert "PC du bureau" in resultat["message"]
+        assert "Zéro à Héro" in resultat["message"]
+
+    def test_deux_candidats_font_poser_la_question(self):
+        """§81 : deux appareils joignables, aucune direction mesurée — on
+        demande, on ne tire pas au sort."""
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server.gestes_routes import _deposer
+
+        self._contexte()
+        pp.attraper()
+        with patch(
+            "diapason.mesh.registry.DeviceRegistry.list_devices",
+            return_value=[self._appareil("iPad", "ONLINE"),
+                          self._appareil("PC", "ONLINE")],
+        ), patch(
+            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+        ), patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+            resultat = _deposer()
+        assert resultat["reason"] == "AMBIGUOUS"
+        assert set(resultat["candidates"]) == {"iPad", "PC"}
+        envoi.assert_not_called(), "rien ne doit partir vers un appareil deviné"
+
+    def test_un_seul_appareil_joignable_recoit(self):
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server.gestes_routes import _deposer
+
+        self._contexte()
+        pp.attraper()
+        with patch(
+            "diapason.mesh.registry.DeviceRegistry.list_devices",
+            return_value=[self._appareil("iPad", "ONLINE")],
+        ), patch(
+            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+        ), patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS",
+                          "userSafeMessage": "Le projet est affiché sur Succès."},
+        ) as envoi:
+            resultat = _deposer()
+        assert resultat["done"] is True
+        assert resultat["target"] == "iPad"
+        # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
+        assert resultat["message"] == "Le projet est affiché sur Succès."
+        assert envoi.call_args.kwargs["arguments"] == {
+            "resourceType": "project",
+            "resourceId": "p1",
+        }
