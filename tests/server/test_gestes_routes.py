@@ -198,3 +198,64 @@ class TestLesDeuxChemins:
     def test_un_json_sans_image_est_traite_comme_vide(self, client):
         self._armer(client)
         assert client.post("/v1/gestures/frame", json={}).status_code == 400
+
+
+class TestLeDebitDesImages:
+    """Le défaut qui a coûté quatre allers-retours de diagnostic.
+
+    Douze images par seconde est un usage NORMAL du mode gestes. Le seau
+    ordinaire — soixante par minute, rafale de dix — était épuisé en moins
+    d'une seconde, et les images suivantes revenaient en 429. Pire : ce 429,
+    émis par le middleware, court-circuitait CORSMiddleware et arrivait donc
+    SANS en-têtes. Vu de la fenêtre, il devenait « Load failed » : un
+    message qui ne dit ni le code, ni la raison, ni où chercher.
+    """
+
+    def test_les_gestes_ont_leur_propre_seau(self):
+        from diapason.server.auth_middleware import est_route_de_gestes
+
+        for chemin in ("/v1/gestures/arm", "/v1/gestures/frame",
+                       "/v1/gestures/state", "/v1/gestures/disarm"):
+            assert est_route_de_gestes(chemin), (
+                f"{chemin} partagerait le seau ordinaire, épuisé en une seconde"
+            )
+
+    def test_le_seau_des_gestes_tient_douze_images_par_seconde(self):
+        """Une rafale d'une seconde ne doit pas être refusée."""
+        from diapason.security.rate_limiter import RateLimitConfig, RateLimiter
+        from diapason.server.auth_middleware import RateLimitMiddleware
+
+        mur = RateLimitMiddleware(app=None)
+        refus = [
+            i
+            for i in range(24)  # deux secondes à douze images
+            if not mur._gesture_limiter.check("test:gestures")[0]
+        ]
+        assert not refus, f"refusé dès l'image {refus[0] + 1} sur vingt-quatre"
+
+    def test_un_refus_reste_lisible_par_celui_qu_il_refuse(self):
+        """Un 429 sans en-tête CORS est un refus muet : le navigateur ne
+        peut pas le lire et affiche un échec réseau générique."""
+        from starlette.requests import Request
+
+        from diapason.server.auth_middleware import _too_many
+
+        portee = {
+            "type": "http",
+            "headers": [(b"origin", b"tauri://localhost")],
+        }
+        reponse = _too_many(2.0, Request(portee))
+        assert reponse.status_code == 429
+        assert reponse.headers["access-control-allow-origin"] == "tauri://localhost"
+        assert reponse.headers["Retry-After"] == "2"
+
+    def test_sans_origine_le_refus_reste_valide(self):
+        """Une requête en ligne de commande n'a pas d'origine : elle ne doit
+        pas pour autant recevoir un en-tête vide ou faux."""
+        from starlette.requests import Request
+
+        from diapason.server.auth_middleware import _too_many
+
+        reponse = _too_many(1.0, Request({"type": "http", "headers": []}))
+        assert reponse.status_code == 429
+        assert "access-control-allow-origin" not in reponse.headers

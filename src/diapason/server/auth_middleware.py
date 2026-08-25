@@ -143,6 +143,20 @@ _TRANSFERT_RE = re.compile(
 )
 
 
+# Le mode gestes (25 août 2026). Une image toutes les quatre-vingts
+# millisecondes est un usage NORMAL, pas un abus : le seau ordinaire
+# (soixante par minute, rafale de dix) était épuisé en moins d'une seconde,
+# et les images suivantes revenaient en 429 — que la fenêtre affichait
+# « Load failed », faute d'en-têtes CORS sur la réponse d'erreur. Deux
+# défauts pour un symptôme.
+_GESTES_RE = re.compile(r"^/v1/gestures/(?:arm|disarm|state|frame)$")
+
+
+def est_route_de_gestes(path: str) -> bool:
+    """Une route du mode gestes, dont le débit normal est élevé."""
+    return bool(_GESTES_RE.match(path or ""))
+
+
 def est_route_de_transfert(path: str) -> bool:
     """Une route de transfert de fichiers, authentifiée par session."""
     return bool(_TRANSFERT_RE.match(path or ""))
@@ -163,11 +177,28 @@ _OPEN_MESH_ROUTES = frozenset(
 )
 
 
-def _too_many(wait_seconds: float) -> JSONResponse:
+def _too_many(wait_seconds: float, request: Optional[Request] = None) -> JSONResponse:
+    """Un refus qui reste LISIBLE, y compris depuis la fenêtre.
+
+    Constaté le 25 août 2026 : une réponse d'erreur émise par ce middleware
+    court-circuite CORSMiddleware, qui n'a donc jamais l'occasion d'y poser
+    ses en-têtes. Vu du navigateur, la réponse devient inaccessible et
+    l'échec s'affiche « Load failed » — un message qui ne dit ni le code,
+    ni la raison, ni où chercher. Le mode gestes en a fait les frais : le
+    serveur criait « trop de requêtes », la fenêtre entendait un silence.
+
+    Un refus doit pouvoir être lu par celui qu'il refuse.
+    """
+    entetes = {"Retry-After": str(max(1, int(wait_seconds + 0.999)))}
+    origine = request.headers.get("origin") if request is not None else None
+    if origine:
+        entetes["Access-Control-Allow-Origin"] = origine
+        entetes["Access-Control-Allow-Credentials"] = "true"
+        entetes["Vary"] = "Origin"
     return JSONResponse(
         {"detail": "Trop de requêtes. Réessayez dans un instant."},
         status_code=429,
-        headers={"Retry-After": str(max(1, int(wait_seconds + 0.999)))},
+        headers=entetes,
     )
 
 
@@ -216,6 +247,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # maillage aurait fait tomber présence et relèves. Ce seau est donc
         # large en NOMBRE — le vrai plafond est en octets, et il vit dans le
         # routeur, là où l'on sait ce qu'une session a déjà reçu.
+        # Le seau des GESTES. Douze images par seconde pendant dix minutes,
+        # c'est sept mille deux cents requêtes — toutes légitimes. Ce seau
+        # est large en nombre parce que le vrai garde-fou est ailleurs : la
+        # session se désarme seule après quatre-vingt-dix secondes de
+        # silence et dix minutes au total.
+        self._gesture_limiter = RateLimiter(
+            RateLimitConfig(
+                requests_per_minute=max(1200, requests_per_minute * 20),
+                burst_size=max(60, burst_size * 6),
+                enabled=enabled,
+            )
+        )
+
         self._transfer_limiter = RateLimiter(
             RateLimitConfig(
                 requests_per_minute=max(1200, requests_per_minute * 20),
@@ -270,7 +314,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path in _OPEN_MESH_ROUTES:
             allowed, wait_seconds = self._open_limiter.check(f"{client}:mesh")
             if not allowed:
-                return _too_many(wait_seconds)
+                return _too_many(wait_seconds, request)
             return await call_next(request)
 
         # Le transfert a SON seau. Partager celui du maillage était le piège
@@ -278,12 +322,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # commun et fait échouer les battements de présence et les relèves
         # des autres appareils — le maillage aurait paru cassé pendant qu'un
         # transfert légitime se déroulait.
+        if est_route_de_gestes(path):
+            allowed, wait_seconds = self._gesture_limiter.check(
+                f"{client}:gestures"
+            )
+            if not allowed:
+                return _too_many(wait_seconds, request)
+            return await call_next(request)
+
         if est_route_de_transfert(path):
             allowed, wait_seconds = self._transfer_limiter.check(
                 f"{client}:transfer"
             )
             if not allowed:
-                return _too_many(wait_seconds)
+                return _too_many(wait_seconds, request)
             return await call_next(request)
 
         # This small, read-only readiness response is polled while the voice
@@ -299,7 +351,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 credential = hashlib.sha256(auth.encode()).hexdigest()[:16]
             allowed, wait_seconds = self._limiter.check(f"{client}:{credential}")
             if not allowed:
-                return _too_many(wait_seconds)
+                return _too_many(wait_seconds, request)
         return await call_next(request)
 
 
