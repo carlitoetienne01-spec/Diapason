@@ -1,0 +1,23 @@
+[
+  "DELETE /v1/mesh/devices/{device_id}",
+  "GET /v1/mesh/commands",
+  "GET /v1/mesh/commands/{command_id}",
+  "GET /v1/mesh/devices",
+  "GET /v1/mesh/devices/{device_id}",
+  "GET /v1/mesh/devices/{device_id}/presence",
+  "GET /v1/mesh/inbox",
+  "GET /v1/mesh/me",
+  "GET /v1/mesh/tools",
+  "PATCH /v1/mesh/devices/{device_id}",
+  "POST /v1/mesh/announce",
+  "POST /v1/mesh/commands",
+  "POST /v1/mesh/commands/ack",
+  "POST /v1/mesh/commands/deliver",
+  "POST /v1/mesh/commands/poll",
+  "POST /v1/mesh/devices/{device_id}/capabilities",
+  "POST /v1/mesh/devices/{device_id}/heartbeat",
+  "POST /v1/mesh/devices/{device_id}/revoke",
+  "POST /v1/mesh/pairings",
+  "POST /v1/mesh/pairings/redeem",
+  "POST /v1/mesh/presence"
+]

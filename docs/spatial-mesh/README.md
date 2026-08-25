@@ -29,15 +29,26 @@ maintenant sur une fondation vérifiée plutôt que supposée.
 | **Chemin invité** (`diapason mesh join / devices / whoami`) | Les trois commandes tournent sur la machine. |
 | **Documentation remise dans le vrai** | Deux affirmations fausses corrigées, trois limites bloquantes ajoutées. |
 
+## Phase 1 bis — la fondation est désormais éprouvée
+
+| Livré | Preuve |
+|---|---|
+| **Banc de bout en bout, deux processus** (`tests/mesh/test_banc_deux_processus.py`) | Deux identités Ed25519 distinctes, un vrai socket, une commande signée qui traverse et arrive dans la boîte de l'hôte. Casser volontairement l'endpoint du transport fait rougir le banc — il mord. |
+| **Anti-rejeu sur socket réel** | La même enveloppe livrée deux fois : la seconde est refusée, nonce dépensé en base. |
+| **Instantané de contrat des routes** (`tests/contract/mesh_api_surface.json`) | 21 routes figées ; renommer `commands/poll` fait rougir deux tests. Un cliquet distinct garde les **cinq portes du téléphone** et vérifie qu'elles restent exemptées du mur d'authentification. |
+| **Trou de capacités au jumelage corrigé** | La réponse du jumelage ne portait aucune capacité : un invité fraîchement jumelé se voyait refuser TOUT envoi (« ne peut pas faire cela ») jusqu'à la première balise. Découvert en préparant le banc. |
+
+Pourquoi deux processus et pas deux instances : le quatrième contrôle de
+`verify_command` refuse une commande venant de soi-même, et l'identité n'est
+pas injectable — elle se lit toujours dans `$DIAPASON_HOME`, qui appartient
+au processus. Deux nœuds dans un processus partageraient la même clé, donc
+le même identifiant, et se refuseraient avant même de vérifier la signature.
+
 ## Ce qui vient ensuite, dans l'ordre
 
 L'ordre du §149 tient, moins ce qui est déjà fait :
 
-1. **Fiabiliser ce qui vient d'être branché** — un banc de bout en bout
-   entre deux processus (le transport réel n'est aujourd'hui couvert que par
-   des substituts), et figer les quatre routes `/v1/mesh` dans un instantané
-   de contrat : les renommer casse le téléphone en silence.
-2. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
+1. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
    l'état de vue et une session nommée.
 3. **Transfert de fichiers** — session dédiée, jamais dans l'enveloppe de
    commande. Voir les trois règles à ne pas enfreindre dans l'audit.

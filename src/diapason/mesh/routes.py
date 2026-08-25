@@ -157,9 +157,22 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
     from diapason.mesh.beacon import local_address
     from diapason.mesh.identity import public_identity
 
+    # Les CAPACITÉS de l'hôte voyagent ici ou l'invité reste impuissant :
+    # public_identity() n'en porte aucune, et un appareil enregistré avec
+    # une liste vide se voit refuser TOUT envoi (« ne peut pas faire cela »)
+    # par dispatch_command. En production ce trou se comble à la première
+    # balise de l'hôte ; côté invité fraîchement jumelé, cela veut dire une
+    # fenêtre où rien ne marche sans qu'on sache pourquoi. Constaté le
+    # 25 août 2026 en préparant le banc à deux processus.
+    from diapason.mesh.capabilities import local_capabilities
+
     return {
         "device": device,
-        "host": {**public_identity(), "address": local_address()},
+        "host": {
+            **public_identity(),
+            "address": local_address(),
+            "capabilities": sorted(local_capabilities()),
+        },
     }
 
 
