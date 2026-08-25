@@ -138,15 +138,54 @@ recevoir, il l'annoncera par une capacité — et rien côté serveur ne bougera
 
 ## Phase 4 — les gestes
 
-Le moteur et la détection **fonctionnent et sont mesurés** ; il manque une
-source d'images. Détail dans [`GESTES.md`](GESTES.md).
+Le moteur, la détection **et la source d'images** fonctionnent et sont
+mesurés. Détail dans [`GESTES.md`](GESTES.md).
 
 | Pièce | État | Mesure |
 |---|---|---|
 | Détection de main (`desktop/vision_mains.py`) | ✅ | **4 ms/image** en taille caméra — 230 im/s possibles, sur le Neural Engine, sans toucher au créneau Ollama |
 | Moteur de gestes (`desktop/gestes_main.py`) | ✅ | 16 tests : machine à états, hystérésis, temps de repos, seuils centralisés |
 | Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
-| Flux caméra (`desktop/camera.py`) | ⚠️ écrit, bloqué | macOS refuse de POSER la question — le binaire Python n'est pas un paquet |
+| Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé — le mur est tombé |
+| Trancher entre deux appareils | ✅ | `/v1/gestures/drop/target`, 14 tests |
+| État d'énergie (§83) | ❌ | Cadence figée à 12 im/s ; aucun `OFF / READY / ACTIVE / LOW_POWER` |
+| `desktop/camera.py` (session AVFoundation) | ⚠️ **code mort** | Écrit, importé nulle part. Ce n'est pas lui qui alimente les gestes. |
+
+### Poser une question sans moyen d'y répondre est une impasse
+
+Le §34 interdit de deviner une direction, et le §81 fait donc demander « vers
+lequel ? » dès que deux appareils sont capables. C'était juste, et c'était
+inutilisable : `_deposer()` appelait `lacher()` **en première instruction**,
+avant même de savoir s'il existait une cible. La question consommait donc ce
+qu'elle proposait d'envoyer. Refaire le geste ré-attrapait le même objet et
+reposait la même question — une boucle sans issue, dont chaque tour laissait
+une ligne « dépôt refusé » dans le journal.
+
+Quatre corrections, chacune testée :
+
+- **L'objet n'est lâché que sur une issue terminale** — un envoi effectué, ou
+  un écran qu'aucun client ne connaît. `AMBIGUOUS`, `ALL_OFFLINE` et
+  `INCAPABLE` gardent la main fermée ; le TTL de 120 s empêche qu'elle hante
+  la session.
+- **La question devient répondable** : `POST /v1/gestures/drop/target`
+  `{token, deviceId}`, et `POST /v1/gestures/drop/cancel` pour « laisse
+  tomber ». Le `deviceId` reçu doit figurer dans la liste que le serveur a
+  lui-même mesurée — on choisit *parmi*, on ne désigne pas. Le jeton sert de
+  clé d'idempotence : deux clics n'envoient qu'une fois.
+- **La question s'affiche là où le geste a lieu.** Elle voyage par
+  `pendingDrop` dans `/state`, et se rend dans le **voyant**, seul élément du
+  mode monté sur toutes les pages. Le panneau ne vit que dans la page
+  Appareils — c'est-à-dire jamais là où l'on attrape un projet.
+- **Le fantôme est mort** : `held` venait de la session, le presse-papiers de
+  son module, et les deux pouvaient se contredire. Le voyant annonçait « dans
+  ta main : Zéro à Héro » sur une main vide. Vider l'un vide désormais
+  l'autre, et désarmer vide les deux.
+
+Et un cinquième défaut trouvé en le construisant : **un appareil joignable
+qui ne déclare pas la capacité n'était pas écarté**. On posait donc une
+question dont l'une des réponses était un refus garanti. Le fixture de test
+qui aurait dû l'attraper décrivait des appareils sans aucune capacité — une
+flotte qui n'existe pas.
 
 **Le mur, dit franchement** : la demande d'accès revient refusée
 immédiatement, sans dialogue, et le statut reste « à demander ». Ce n'est pas
@@ -157,14 +196,31 @@ Aucun réglage ne corrige cela. Trois sorties possibles sont décrites dans
 
 ## Ce qui vient ensuite, dans l'ordre
 
-L'ordre du §149 tient, moins ce qui est déjà fait :
+L'ordre du §149 tient, moins ce qui est déjà fait. Les phases 2, 3 et 4 sont
+livrées ; ce qui suit est ce qu'elles ont laissé ouvert, du moins cher au
+plus cher :
 
-1. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
-   l'état de vue et une session nommée.
-3. **Transfert de fichiers** — session dédiée, jamais dans l'enveloppe de
-   commande. Voir les trois règles à ne pas enfreindre dans l'audit.
-4. **Gestes** — entitlement caméra, flux, machine à états, et un drapeau.
-   Jamais l'unique chemin vers une action (§82).
+1. **L'état d'énergie des gestes (§83)** — la cadence est figée à 12 im/s,
+   sans `OFF / READY / ACTIVE / LOW_POWER` ni adaptation sur batterie. C'est
+   le seul point du §83 encore ouvert : les quatre chemins d'extinction, eux,
+   existent et sont testés.
+2. **`desktop/camera.py`** — une session AVFoundation écrite, importée nulle
+   part. Ce n'est pas elle qui alimente les gestes. À supprimer, ou à
+   assumer comme second chemin.
+3. **`filesystem.workspace.*`** — une capacité déclarable qu'aucun outil
+   n'exerce. Une promesse en attente est ce que le §5 interdit : soit un
+   outil la consomme, soit elle sort du catalogue.
+4. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
+   l'état de vue et une session nommée. Les deux attendent le Dart : il ne
+   sait restaurer ni onglet, ni filtre, ni position de défilement.
+5. **Fusion voix + geste** — le contexte du tour vocal est le point
+   d'insertion. Attention : `handoff_continue` repart de l'écran courant et
+   **non** du presse-papiers spatial, donc répondre « sur l'iPad » à la voix
+   enverrait ce qui est affiché, pas ce qui est dans la main.
+6. **Découverte (mDNS)** — aujourd'hui l'adresse LAN se tape à la main.
+7. **Une application Windows** — c'est ce qui manque au MVP du §121, et
+   c'est de loin le plus cher. Le premier MVP démontrable reste Mac ↔ Mac,
+   puis Mac ↔ Android.
 
 ## Trois règles qui ne se négocient pas
 

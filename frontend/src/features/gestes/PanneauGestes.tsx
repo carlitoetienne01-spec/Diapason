@@ -39,6 +39,8 @@ export function PanneauGestes() {
     clapsEcoutent,
     basculerLesClaps,
     basculer,
+    choisir,
+    renoncer,
   } = useModeGestesPartage();
   const calibration = useCalibration(actif);
 
@@ -141,7 +143,42 @@ export function PanneauGestes() {
         </div>
       )}
 
-      {actif && diagnostic?.lastDrop?.message && (
+      {actif && diagnostic?.pendingDrop && (
+        <div className="mt-3 rounded-lg border border-border px-3 py-2 text-sm">
+          {/* §34 et §81 : aucune direction n'est mesurée, donc rien n'est
+              tiré au sort. La question posée par le serveur se répond ici —
+              et aussi dans le voyant, qui est visible depuis toute page. */}
+          <p>
+            «&nbsp;{diagnostic.pendingDrop.object.title}&nbsp;» — vers
+            lequel&nbsp;?
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {diagnostic.pendingDrop.candidates.map((candidat) => (
+              <button
+                key={candidat.deviceId}
+                type="button"
+                onClick={() => choisir(candidat.deviceId)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent"
+              >
+                {candidat.name}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={renoncer}
+              className="rounded-md px-2.5 py-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              laisse tomber
+            </button>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {Math.round(diagnostic.pendingDrop.secondsLeft)}&nbsp;s pour
+            répondre — passé ce délai, rien ne part.
+          </p>
+        </div>
+      )}
+
+      {actif && !diagnostic?.pendingDrop && diagnostic?.lastDrop?.message && (
         <p
           className={`mt-2 text-sm ${diagnostic.lastDrop.done ? 'text-emerald-500' : 'text-muted-foreground'}`}
         >

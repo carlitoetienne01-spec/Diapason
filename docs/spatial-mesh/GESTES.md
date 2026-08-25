@@ -1,13 +1,15 @@
-# Les gestes — ce qui marche, et le seul mur qui reste
+# Les gestes — ce qui marche, et le mur qui est tombé
 
 *25 août 2026. Phase 4 du cahier des charges (§110, §141).*
 
 ## En une phrase
 
-Le moteur de gestes et la détection de main **fonctionnent et sont mesurés** ;
-il manque uniquement une **source d'images**, parce que macOS refuse la
-caméra au processus Python — et refuse pour une raison qu'aucun réglage ne
-corrige.
+Le geste **attrape et dépose pour de vrai** : le moteur, la détection et la
+source d'images fonctionnent et sont mesurés, et quand deux appareils sont
+capables, la question « vers lequel ? » se pose — et se répond. Le mur qui
+bloquait tout était que macOS refusait la caméra au processus Python, pour
+une raison qu'aucun réglage ne corrigeait ; c'est désormais l'application qui
+capture. Reste ouvert : l'**état d'énergie** du §83.
 
 ## Ce qui est livré et vérifié
 
@@ -16,7 +18,10 @@ corrige.
 | **Détection de main** (`desktop/vision_mains.py`) | ✅ | **4 ms par image** en taille caméra, soit 230 images/s possibles. Sur le Neural Engine : le créneau Ollama n'est pas touché. |
 | **Moteur de gestes** (`desktop/gestes_main.py`) | ✅ | 16 tests. Machine à états, hystérésis, temps de repos, seuils centralisés. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
-| **Flux caméra** (`desktop/camera.py`) | ⚠️ écrit, **bloqué** | Voir ci-dessous. |
+| **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
+| **Trancher entre deux appareils** | ✅ | `/v1/gestures/drop/target` : la question du §81 est enfin répondable, et l'objet n'est plus perdu en la posant. 14 tests. |
+| **État d'énergie** (§83) | ❌ | Cadence figée. Aucun `OFF / READY / ACTIVE / LOW_POWER`. |
+| **`desktop/camera.py`** (session AVFoundation) | ⚠️ **code mort** | Écrit pour le chemin Python, bloqué par TCC, puis contourné par l'application. Importé nulle part. |
 
 ### Ce que le moteur refuse de faire, et c'est le point
 

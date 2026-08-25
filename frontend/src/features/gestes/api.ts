@@ -32,7 +32,29 @@ export type Depot = {
   message?: string;
   target?: string;
   candidates?: string[];
+  token?: string;
   object?: ObjetTenu;
+};
+
+export type CandidatDepot = {
+  deviceId: string;
+  name: string;
+};
+
+/**
+ * Un dépôt qui attend qu'on tranche (§81).
+ *
+ * Le `deviceId` vient du serveur et lui revient tel quel : l'interface
+ * choisit PARMI ce qui lui a été proposé, elle ne désigne pas une
+ * destination. Le serveur refuse tout identifiant absent de sa propre
+ * liste — c'est ce qui empêche cette route de devenir un « envoie
+ * n'importe quoi à n'importe qui ».
+ */
+export type DepotEnAttente = {
+  token: string;
+  object: ObjetTenu;
+  candidates: CandidatDepot[];
+  secondsLeft: number;
 };
 
 export type EntreeJournal = {
@@ -115,6 +137,7 @@ export type Diagnostic = {
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;
+  pendingDrop?: DepotEnAttente | null;
   state?: EtatGeste;
   frames?: number;
   handsSeen?: number;
@@ -130,6 +153,28 @@ export async function lireDiagnostic(): Promise<Diagnostic> {
   const reponse = await apiFetch('/v1/gestures/state');
   if (!reponse.ok) return { armed: false };
   return reponse.json();
+}
+
+/** Trancher : envoyer vers l'un des appareils que le serveur a proposés. */
+export async function choisirLAppareil(
+  token: string,
+  deviceId: string,
+): Promise<Depot> {
+  const reponse = await apiFetch('/v1/gestures/drop/target', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, deviceId }),
+  });
+  const corps = await reponse.json().catch(() => null);
+  // 409 : la question a expiré, ou la main s'est vidée entre-temps. Le
+  // serveur dit laquelle ; le répéter vaut mieux que « une erreur ».
+  if (!reponse.ok) throw new Error(corps?.detail ?? "L'envoi n'a pas eu lieu.");
+  return corps as Depot;
+}
+
+/** « Laisse tomber » : la main s'ouvre sur rien, et c'est un choix. */
+export async function renoncerAuDepot(): Promise<void> {
+  await apiFetch('/v1/gestures/drop/cancel', { method: 'POST' });
 }
 
 export async function mesurerPose(

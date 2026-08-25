@@ -351,8 +351,21 @@ class TestAttraperEtDeposer:
             ressource_id="p1", ressource_titre="Zéro à Héro",
         )
 
-    def _appareil(self, nom, etat):
-        return {"deviceId": f"dev_{nom}", "name": nom, "trustLevel": "TRUSTED"}
+    def _appareil(self, nom, etat, capacites=("app.show_resource", "app.navigate")):
+        """Un appareil de la flotte — capacités comprises.
+
+        Les capacités ne sont pas décoratives : un appareil joignable qui ne
+        déclare pas « app.show_resource » n'est pas un candidat, et le
+        proposer ferait poser une question dont l'une des réponses est un
+        refus garanti. Le registre réel les porte toujours ; les omettre ici
+        revenait à tester une flotte qui n'existe pas.
+        """
+        return {
+            "deviceId": f"dev_{nom}",
+            "name": nom,
+            "trustLevel": "TRUSTED",
+            "capabilities": list(capacites),
+        }
 
     def test_rien_de_tenu_se_dit_au_lieu_de_rien_faire(self):
         from diapason.desktop import presse_papiers_spatial as pp
@@ -426,6 +439,270 @@ class TestAttraperEtDeposer:
             "resourceType": "project",
             "resourceId": "p1",
         }
+
+
+class TestTrancherEntreDeuxAppareils:
+    """« Vers lequel ? » est une question — encore faut-il pouvoir répondre.
+
+    Le §81 la fait poser dès que deux appareils sont capables, et c'est
+    juste. Mais une question sans moyen d'y répondre n'est pas de la
+    prudence, c'est une impasse : la main se vidait en la posant, si bien
+    que refaire le geste ne pouvait que la reposer, indéfiniment.
+    """
+
+    def _contexte(self):
+        from diapason.desktop import contexte_app as ca
+
+        ca.poser_contexte(
+            "/succes/projects", ressource_type="project",
+            ressource_id="p1", ressource_titre="Zéro à Héro",
+        )
+
+    def _appareil(self, nom, capacites=("app.show_resource", "app.navigate")):
+        return {
+            "deviceId": f"dev_{nom}",
+            "name": nom,
+            "trustLevel": "TRUSTED",
+            "capabilities": list(capacites),
+        }
+
+    def _poser_la_question(self, client, *appareils):
+        """Armer, attraper, puis ouvrir la main devant plusieurs appareils."""
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        self._contexte()
+        pp.attraper()
+        joignables = appareils or (self._appareil("iPad"), self._appareil("PC"))
+        with patch(
+            "diapason.mesh.registry.DeviceRegistry.list_devices",
+            return_value=list(joignables),
+        ), patch(
+            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+        ), patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+            resultat = gr._deposer()
+            gr._session.dernier_depot = resultat
+            if resultat.get("reason") == "AMBIGUOUS":
+                envoi.assert_not_called(), "rien ne part tant qu'on n'a pas tranché"
+        return resultat
+
+    def test_un_depot_ambigu_ne_perd_pas_l_objet(self, client):
+        """Le défaut historique : `lacher()` vidait la main AVANT de savoir
+        s'il existait une cible. La question consommait ce qu'elle
+        proposait d'envoyer."""
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        resultat = self._poser_la_question(client)
+        assert resultat["reason"] == "AMBIGUOUS"
+        assert pp.tenu() is not None, "la main reste fermée le temps de répondre"
+        assert pp.tenu().id == "p1"
+
+    def test_l_etat_publie_la_question(self, client):
+        """Le geste se fait sur la page d'un projet, pas sur la page
+        Appareils : la question doit voyager par le sondage d'état."""
+        self._poser_la_question(client)
+        attente = client.get("/v1/gestures/state").json()["pendingDrop"]
+        assert attente is not None
+        assert attente["object"]["title"] == "Zéro à Héro"
+        assert {c["name"] for c in attente["candidates"]} == {"iPad", "PC"}
+        assert all(c["deviceId"] for c in attente["candidates"])
+        assert 0 < attente["secondsLeft"] <= 45.0
+
+    def test_le_choix_envoie_vers_l_appareil_nomme(self, client):
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        jeton = self._poser_la_question(client)["token"]
+        with patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS",
+                          "userSafeMessage": "Le projet est affiché sur Succès."},
+        ) as envoi:
+            reponse = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_iPad"},
+            )
+        corps = reponse.json()
+        assert reponse.status_code == 200
+        assert corps["done"] is True
+        assert corps["target"] == "iPad"
+        # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
+        assert corps["message"] == "Le projet est affiché sur Succès."
+        assert envoi.call_args.kwargs["target_device_id"] == "dev_iPad"
+        assert envoi.call_args.kwargs["arguments"] == {
+            "resourceType": "project",
+            "resourceId": "p1",
+        }
+        assert pp.tenu() is None, "l'envoi fait, la main s'ouvre pour de bon"
+
+    def test_la_main_ne_garde_pas_de_fantome_apres_un_depot(self, client):
+        """`held` venait de la session, le presse-papiers de son module :
+        les deux pouvaient se contredire, et le voyant annonçait « dans ta
+        main : Zéro à Héro » sur une main vide."""
+        jeton = self._poser_la_question(client)["token"]
+        with patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+        ):
+            client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_iPad"},
+            )
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["held"] is None
+        assert etat["pendingDrop"] is None
+
+    def test_un_appareil_hors_liste_est_refuse(self, client):
+        """Le client choisit PARMI ce qu'on lui a proposé. Sinon cette route
+        serait un « envoie n'importe quoi à n'importe qui » déguisé."""
+        jeton = self._poser_la_question(client)["token"]
+        with patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+            reponse = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_le-mac-du-voisin"},
+            )
+        assert reponse.status_code == 409
+        assert "candidats" in reponse.json()["detail"]
+        envoi.assert_not_called(), "rien ne part vers un appareil non proposé"
+
+    def test_un_jeton_qui_ne_correspond_pas_est_refuse(self, client):
+        self._poser_la_question(client)
+        with patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+            reponse = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": "un-jeton-inventé", "deviceId": "dev_iPad"},
+            )
+        assert reponse.status_code == 409
+        envoi.assert_not_called()
+
+    def test_une_question_perimee_ne_se_repond_plus(self, client):
+        """Le jeton est plus court que le TTL de l'objet : il ne doit jamais
+        survivre à ce qu'il désigne."""
+        from diapason.server import gestes_routes as gr
+
+        jeton = self._poser_la_question(client)["token"]
+        gr._session.depot_en_attente["a"] -= gr._CHOIX_MAX_S + 1.0
+        with patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+            reponse = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_iPad"},
+            )
+        assert reponse.status_code == 409
+        assert "expiré" in reponse.json()["detail"]
+        envoi.assert_not_called()
+
+    def test_deux_clics_n_envoient_qu_une_fois(self, client):
+        jeton = self._poser_la_question(client)["token"]
+        with patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+        ) as envoi:
+            premier = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_iPad"},
+            )
+            second = client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_iPad"},
+            )
+        assert premier.status_code == 200
+        assert second.status_code == 409
+        assert envoi.call_count == 1
+        # Et si le second passait tout de même, la clé le rendrait inoffensif.
+        assert envoi.call_args.kwargs["idempotency_key"] == jeton
+
+    def test_renoncer_vide_la_main_et_le_dit(self, client):
+        """Sans cette sortie, la seule issue serait d'attendre l'expiration
+        pour apprendre qu'il ne se passera rien."""
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        self._poser_la_question(client)
+        corps = client.post("/v1/gestures/drop/cancel").json()
+        assert corps["cancelled"] is True
+        assert "Zéro à Héro" in corps["message"]
+        assert pp.tenu() is None
+        assert client.get("/v1/gestures/state").json()["pendingDrop"] is None
+
+    def test_renoncer_sans_question_ne_pretend_rien(self, client):
+        client.post("/v1/gestures/arm")
+        assert client.post("/v1/gestures/drop/cancel").json()["cancelled"] is False
+
+    def test_une_nouvelle_saisie_annule_la_question(self, client):
+        """Refermer le poing, c'est RECOMMENCER : le jeton tomberait sinon
+        sur l'objet suivant."""
+        from diapason.desktop.gestes_main import Etat
+        from diapason.server import gestes_routes as gr
+
+        self._poser_la_question(client)
+        gr._session.moteur.observer = lambda points: Etat.SAISI
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+        ):
+            client.post("/v1/gestures/frame", content=_image_factice())
+        assert gr._session.depot_en_attente is None
+        assert client.get("/v1/gestures/state").json()["pendingDrop"] is None
+
+    def test_un_appareil_sans_la_capacite_n_est_pas_propose(self, client):
+        """Un appareil joignable qui ne sait pas afficher une ressource
+        n'est pas un candidat : le proposer ferait poser une question dont
+        une réponse est un refus garanti."""
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        self._contexte()
+        pp.attraper()
+        with patch(
+            "diapason.mesh.registry.DeviceRegistry.list_devices",
+            return_value=[
+                self._appareil("iPad"),
+                self._appareil("Ampoule", capacites=("notifications.show",)),
+            ],
+        ), patch(
+            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+        ), patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+        ) as envoi:
+            resultat = gr._deposer()
+        assert resultat["reason"] != "AMBIGUOUS", (
+            "un seul appareil CAPABLE : il n'y a rien à demander"
+        )
+        assert envoi.call_args.kwargs["target_device_id"] == "dev_iPad"
+
+    def test_aucun_appareil_capable_le_dit_sans_mentir(self, client):
+        """« Aucun appareil n'est joignable » serait faux : ils le sont, ils
+        ne savent simplement pas faire cela."""
+        resultat = self._poser_la_question(
+            client,
+            self._appareil("Ampoule", capacites=("notifications.show",)),
+        )
+        assert resultat["reason"] == "INCAPABLE"
+        assert "Ampoule" in resultat["message"]
+        assert "ne sait l'afficher" in resultat["message"]
+
+    def test_le_choix_est_journalise(self, client):
+        jeton = self._poser_la_question(client)["token"]
+        with patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+        ):
+            client.post(
+                "/v1/gestures/drop/target",
+                json={"token": jeton, "deviceId": "dev_PC"},
+            )
+        entree = client.get("/v1/gestures/state").json()["journal"][0]
+        assert entree["what"] == "déposé"
+        assert entree["ok"] is True
+
+    def test_desarmer_vide_la_main(self, client):
+        """Un objet ne survit pas 120 s à la session qui l'a saisi : la
+        caméra est éteinte, le voyant a disparu, plus rien ne l'affiche."""
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        self._poser_la_question(client)
+        client.post("/v1/gestures/disarm")
+        assert pp.tenu() is None
 
 
 class TestLeJournalDesGestes:

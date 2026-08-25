@@ -36,6 +36,11 @@ router = APIRouter(prefix="/v1/gestures", tags=["gestures"])
 _INACTIVITE_MAX_S = 90.0
 # Le §83 : la caméra coûte. Une session ne tient pas une heure par accident.
 _DUREE_MAX_S = 600.0
+# Le temps laissé pour répondre à « vers lequel ? » (§81). Il est
+# délibérément plus court que le TTL du presse-papiers (120 s) : un jeton
+# ne doit jamais survivre à l'objet qu'il désigne, sinon on répondrait à une
+# question dont la réponse est déjà partie en fumée.
+_CHOIX_MAX_S = 45.0
 
 
 @dataclass
@@ -65,6 +70,11 @@ class _Session:
     journal: list = field(default_factory=list)
     calibration_en_cours: str = ""
     echantillons: list = field(default_factory=list)
+    # Un dépôt qui attend que l'utilisateur tranche (§81). Il porte son
+    # jeton, l'objet visé et les candidats TELS QUE LE SERVEUR LES A
+    # MESURÉS : le client renvoie un identifiant, il ne l'invente pas.
+    # {"jeton", "objet", "candidats", "a"}
+    depot_en_attente: Any = None
 
     @property
     def expiree(self) -> bool:
@@ -83,12 +93,18 @@ def session_active() -> bool:
     global _session
     if _session is not None and _session.expiree:
         logger.info("mode gestes désarmé : silence ou durée dépassée")
-        _session = None
+        desarmer()
     return _session is not None
 
 
 def desarmer() -> None:
     global _session
+    from diapason.desktop.presse_papiers_spatial import vider
+
+    # La main se vide avec la session. Sans cela, un objet attrapé survit
+    # jusqu'à 120 s à la session qui l'a saisi : la caméra est éteinte, le
+    # voyant a disparu, et un objet reste « tenu » que plus rien n'affiche.
+    vider()
     _session = None
 
 
@@ -512,6 +528,10 @@ def etat() -> dict[str, Any]:
         if _session.dernier_attrape is not None
         else None,
         "lastDrop": _session.dernier_depot,
+        # La question « vers lequel ? » voyage par le sondage qui existe
+        # déjà : elle est posée par un geste, mais elle se répond à l'écran,
+        # et l'écran n'est pas forcément celui du panneau.
+        "pendingDrop": _choix_public(),
         "journal": list(reversed(_session.journal)),
         "recentStates": list(_session.derniers_etats),
     }
@@ -532,21 +552,103 @@ def _noter(quoi: str, detail: str, *, reussi: bool) -> None:
     del _session.journal[:-8]
 
 
+def _oublier_la_main() -> None:
+    """Vider le presse-papiers ET l'écho que l'interface en affiche.
+
+    Les deux vont ensemble, toujours. Vider l'un sans l'autre laisse le
+    voyant annoncer « dans ta main : Zéro à Héro » sur une main vide — le
+    fantôme exact que le §12 interdit.
+    """
+    from diapason.desktop.presse_papiers_spatial import vider
+
+    vider()
+    if _session is not None:
+        _session.dernier_attrape = None
+        _session.depot_en_attente = None
+
+
+def _commande_pour(objet: Any) -> tuple[str, dict[str, Any]] | None:
+    """L'outil distant qui affiche cet objet, et ses arguments — ou rien.
+
+    Rien : c'est un écran que le client mobile ne connaît pas. Aucun
+    appareil ne l'acceptera jamais, donc ce n'est pas la peine d'aller
+    interroger la flotte, ni de garder l'objet en main.
+    """
+    if objet.type != "screen":
+        return (
+            "app.show_resource",
+            {"resourceType": objet.type, "resourceId": objet.id},
+        )
+    from diapason.desktop.contexte_app import _ECRANS
+
+    route = (_ECRANS.get(objet.id) or (None, ""))[0]
+    if not route:
+        return None
+    return "app.navigate", {"route": f"success://{route}"}
+
+
+def _envoyer(objet: Any, cible: dict, *, cle: str = "") -> dict[str, Any]:
+    """Envoyer pour de bon, et rendre ce que le RÉCEPTEUR en a dit."""
+    from diapason.mesh.dispatch import dispatch_command
+
+    commande = _commande_pour(objet)
+    if commande is None:
+        return {
+            "done": False,
+            "reason": "UNSUPPORTED",
+            "object": objet.to_dict(),
+            "message": f"{objet.titre} n'existe pas sur les autres appareils.",
+        }
+    outil, arguments = commande
+    resultat = dispatch_command(
+        target_device_id=str(cible.get("deviceId") or ""),
+        tool=outil,
+        arguments=arguments,
+        idempotency_key=cle,
+    )
+    # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
+    return {
+        "done": resultat.get("status") == "SUCCESS",
+        "reason": resultat.get("status"),
+        "object": objet.to_dict(),
+        "target": str(cible.get("name") or "?"),
+        "message": str(resultat.get("userSafeMessage") or ""),
+    }
+
+
 def _deposer() -> dict[str, Any]:
     """Ouvrir la main : envoyer ce qu'on tenait — ou dire pourquoi non.
 
     Le §34 gouverne : aucun capteur de cette flotte ne mesure une
     direction, donc rien n'est deviné. S'il n'y a qu'un seul appareil
-    joignable, c'est lui ; sinon on le dit et l'utilisateur tranche. Un
+    capable, c'est lui ; sinon on le dit et l'utilisateur tranche. Un
     geste ne doit jamais envoyer un document à un appareil choisi au
     hasard — ce serait l'échec le plus grave de cette fonctionnalité.
-    """
-    from diapason.desktop.presse_papiers_spatial import lacher
 
-    objet = lacher()
+    **L'objet n'est lâché que sur une issue TERMINALE.** Il l'était
+    autrefois dès la première ligne, avant même de savoir s'il existait une
+    cible : une question « vers lequel ? » consommait donc ce qu'elle
+    proposait d'envoyer, et refaire le geste ne pouvait que reposer la même
+    question. Une main ne s'ouvre pas parce qu'on a demandé où viser.
+    """
+    from diapason.desktop.presse_papiers_spatial import tenu
+
+    objet = tenu()
     if objet is None:
+        _oublier_la_main()
         return {"done": False, "reason": "NOTHING_HELD",
                 "message": "La main s'ouvre sur rien : rien n'avait été attrapé."}
+
+    commande = _commande_pour(objet)
+    if commande is None:
+        # Aucun appareil ne l'acceptera jamais : garder l'objet en main
+        # serait promettre une seconde chance qui n'existe pas.
+        _oublier_la_main()
+        return {"done": False, "reason": "UNSUPPORTED",
+                "object": objet.to_dict(),
+                "message": f"{objet.titre} n'existe pas sur les autres appareils."}
+    capacite_requise = _capacite_de(commande[0])
+
     try:
         from diapason.mesh.presence import presence_of
         from diapason.mesh.registry import DeviceRegistry
@@ -577,50 +679,201 @@ def _deposer() -> dict[str, Any]:
                 f"joignable{' (' + noms + ')' if noms else ''}."
             ),
         }
-    if len(joignables) > 1:
-        # §81 : deux candidats, aucune direction mesurée — on demande.
+
+    # Un appareil joignable qui ne sait pas afficher cela n'est pas un
+    # candidat : le proposer ferait poser une question dont une des
+    # réponses est un refus garanti (dispatch le refuserait en UNSUPPORTED).
+    capables = [
+        d
+        for d in joignables
+        if capacite_requise in set(d.get("capabilities") or [])
+    ]
+    if not capables:
+        noms = ", ".join(str(d.get("name") or "?") for d in joignables)
         return {
             "done": False,
-            "reason": "AMBIGUOUS",
+            "reason": "INCAPABLE",
             "object": objet.to_dict(),
-            "candidates": [str(d.get("name") or "?") for d in joignables],
             "message": (
-                f"« {objet.titre} » est prêt. Vers lequel : "
-                + ", ".join(str(d.get("name") or "?") for d in joignables)
-                + " ?"
+                f"« {objet.titre} » est prêt, mais aucun appareil joignable "
+                f"ne sait l'afficher{' (' + noms + ')' if noms else ''}."
             ),
         }
 
-    cible = joignables[0]
-    from diapason.mesh.dispatch import dispatch_command
+    if len(capables) > 1:
+        # §81 : deux candidats, aucune direction mesurée — on demande. Et on
+        # garde la main fermée le temps de la réponse.
+        return _demander_vers_lequel(objet, capables)
 
-    if objet.type == "screen":
-        from diapason.desktop.contexte_app import _ECRANS
+    return _issue_terminale(_envoyer(objet, capables[0]))
 
-        route = (_ECRANS.get(objet.id) or (None, ""))[0]
-        if not route:
-            return {"done": False, "reason": "UNSUPPORTED",
-                    "object": objet.to_dict(),
-                    "message": f"{objet.titre} n'existe pas sur les autres appareils."}
-        resultat = dispatch_command(
-            target_device_id=str(cible.get("deviceId") or ""),
-            tool="app.navigate",
-            arguments={"route": f"success://{route}"},
-        )
-    else:
-        resultat = dispatch_command(
-            target_device_id=str(cible.get("deviceId") or ""),
-            tool="app.show_resource",
-            arguments={"resourceType": objet.type, "resourceId": objet.id},
-        )
-    # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
+
+def _capacite_de(outil: str) -> str:
+    """La capacité qu'un appareil doit déclarer pour accepter cet outil."""
+    from diapason.mesh.tools import get_remote_tool
+
+    spec = get_remote_tool(outil)
+    return spec.capability if spec is not None else outil
+
+
+def _issue_terminale(resultat: dict[str, Any]) -> dict[str, Any]:
+    """L'envoi a eu lieu : l'intention est consommée, quel qu'en soit le sort.
+
+    Y compris sur un échec. Un refus du récepteur n'est pas une invitation à
+    garder l'objet en main : le geste a été fait, il a produit une réponse,
+    et la refaire est un nouveau geste — pas une reprise silencieuse.
+    """
+    _oublier_la_main()
+    return resultat
+
+
+def _demander_vers_lequel(objet: Any, capables: list[dict]) -> dict[str, Any]:
+    """Poser la question, et retenir de quoi accepter la réponse."""
+    import secrets
+
+    candidats = [
+        {
+            "deviceId": str(d.get("deviceId") or ""),
+            "name": str(d.get("name") or "?"),
+        }
+        for d in capables
+    ]
+    jeton = secrets.token_urlsafe(8)
+    if _session is not None:
+        _session.depot_en_attente = {
+            "jeton": jeton,
+            "objet": objet,
+            "candidats": candidats,
+            "a": time.monotonic(),
+        }
     return {
-        "done": resultat.get("status") == "SUCCESS",
-        "reason": resultat.get("status"),
+        "done": False,
+        "reason": "AMBIGUOUS",
         "object": objet.to_dict(),
-        "target": str(cible.get("name") or "?"),
-        "message": str(resultat.get("userSafeMessage") or ""),
+        "candidates": [c["name"] for c in candidats],
+        "token": jeton,
+        "message": (
+            f"« {objet.titre} » est prêt. Vers lequel : "
+            + ", ".join(c["name"] for c in candidats)
+            + " ?"
+        ),
     }
+
+
+def _choix_en_attente() -> Optional[dict]:
+    """Le dépôt qui attend une réponse, s'il en attend encore une.
+
+    Trois horloges peuvent l'invalider — la sienne, celle de l'objet
+    (TTL_S), et celle de la session. La sienne est la plus courte, mais
+    l'objet peut disparaître autrement (une nouvelle saisie, un
+    désarmement) : on le relit plutôt que de le supposer intact.
+    """
+    from diapason.desktop.presse_papiers_spatial import tenu
+
+    if _session is None or not _session.depot_en_attente:
+        return None
+    attente = _session.depot_en_attente
+    perime = time.monotonic() - float(attente["a"]) > _CHOIX_MAX_S
+    if perime or tenu() is None:
+        _session.depot_en_attente = None
+        return None
+    return attente
+
+
+def _choix_public() -> Optional[dict]:
+    """Ce que l'interface doit savoir pour afficher la question."""
+    attente = _choix_en_attente()
+    if attente is None:
+        return None
+    return {
+        "token": attente["jeton"],
+        "object": attente["objet"].to_dict(),
+        "candidates": list(attente["candidats"]),
+        "secondsLeft": round(
+            max(0.0, _CHOIX_MAX_S - (time.monotonic() - float(attente["a"]))), 1
+        ),
+    }
+
+
+class ChoixDAppareil(BaseModel):
+    """La réponse à « vers lequel ? » : le jeton posé, et un appareil."""
+
+    token: str
+    deviceId: str
+
+
+@router.post("/drop/target")
+def choisir_lappareil(body: ChoixDAppareil) -> dict[str, Any]:
+    """Trancher entre les candidats, et envoyer pour de bon.
+
+    Le `deviceId` reçu n'est jamais cru sur parole : il doit figurer dans la
+    liste que le serveur a lui-même mesurée en posant la question. Un client
+    ne choisit pas une destination, il choisit PARMI celles qu'on lui a
+    proposées — c'est ce qui empêche cette route de devenir un « envoie
+    n'importe quoi à n'importe qui » déguisé en réponse.
+    """
+    if not session_active() or _session is None:
+        raise HTTPException(status_code=409, detail="Le mode gestes n'est pas armé.")
+    attente = _choix_en_attente()
+    if attente is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Aucun dépôt n'attend de réponse : la question a expiré, ou "
+                "la main s'est vidée entre-temps."
+            ),
+        )
+    if body.token != attente["jeton"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Ce jeton ne correspond pas à la question posée.",
+        )
+    cible = next(
+        (c for c in attente["candidats"] if c["deviceId"] == body.deviceId), None
+    )
+    if cible is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cet appareil ne faisait pas partie des candidats proposés.",
+        )
+    # Le jeton sert de clé d'idempotence : deux clics n'envoient qu'une fois.
+    resultat = _issue_terminale(
+        _envoyer(attente["objet"], cible, cle=attente["jeton"])
+    )
+    _session.dernier_depot = resultat
+    _noter(
+        "déposé" if resultat.get("done") else "dépôt refusé",
+        str(resultat.get("message") or ""),
+        reussi=bool(resultat.get("done")),
+    )
+    return resultat
+
+
+@router.post("/drop/cancel")
+def renoncer_au_depot() -> dict[str, Any]:
+    """« Laisse tomber. » Sans cette route, la seule sortie serait le silence.
+
+    Une question qui ne peut qu'expirer laisse l'utilisateur attendre
+    quarante-cinq secondes pour apprendre qu'il ne se passera rien. Renoncer
+    est une réponse ; elle mérite d'exister.
+    """
+    attente = _choix_en_attente()
+    if attente is None:
+        return {
+            "cancelled": False,
+            "message": "Aucun dépôt n'attendait de réponse.",
+        }
+    titre = attente["objet"].titre
+    _oublier_la_main()
+    resultat = {
+        "done": False,
+        "reason": "CANCELLED",
+        "message": f"« {titre} » n'a été envoyé nulle part.",
+    }
+    if _session is not None:
+        _session.dernier_depot = resultat
+    _noter("abandonné", titre, reussi=False)
+    return {"cancelled": True, **resultat}
 
 
 async def _lire_image(request: Request) -> bytes:
@@ -660,7 +913,7 @@ async def image(request: Request) -> dict[str, Any]:
     n'est jamais écrite : Vision la lit en mémoire, et seuls des points en
     sortent.
     """
-    from diapason.desktop.presse_papiers_spatial import attraper, vider
+    from diapason.desktop.presse_papiers_spatial import attraper
     from diapason.desktop.vision_mains import mains_dans_les_octets
 
     if not session_active() or _session is None:
@@ -702,6 +955,10 @@ async def image(request: Request) -> dict[str, Any]:
         del _session.derniers_etats[:-10]
         if apres.value == "SAISI":
             _session.saisies += 1
+            # Refermer le poing, c'est RECOMMENCER : une question restée sans
+            # réponse tombe avec l'objet qu'elle désignait. Sans cela, le
+            # jeton survivrait à son objet et désignerait la saisie suivante.
+            _session.depot_en_attente = None
             # Le geste exprime une INTENTION ; il ne transporte rien. Fermer
             # le poing désigne ce que l'écran affiche et le retient.
             _session.dernier_attrape = attraper()
@@ -723,9 +980,9 @@ async def image(request: Request) -> dict[str, Any]:
         elif apres.value in ("PERDU", "ANNULE"):
             _session.pertes += 1
             # Une main perdue au milieu d'un geste ne laisse pas un objet
-            # « tenu » que personne ne tient (§12).
-            vider()
-            _session.dernier_attrape = None
+            # « tenu » que personne ne tient (§12) — ni une question en
+            # suspens sur cet objet.
+            _oublier_la_main()
     return {
         "state": apres.value,
         "changed": apres is not avant,

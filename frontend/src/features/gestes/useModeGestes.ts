@@ -10,12 +10,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   armer,
+  choisirLAppareil,
   desarmer,
   type Diagnostic,
   EchecGeste,
   envoyerImage,
   ecouterLesClaps,
   lireDiagnostic,
+  renoncerAuDepot,
   type EtatGeste,
 } from './api';
 
@@ -34,6 +36,10 @@ export type ModeGestes = {
   clapsEcoutent: boolean;
   basculerLesClaps: () => void;
   basculer: () => void;
+  /** Répondre à « vers lequel ? » — l'appareil vient de `pendingDrop`. */
+  choisir: (deviceId: string) => void;
+  /** Renoncer au dépôt en attente sans rien envoyer. */
+  renoncer: () => void;
 };
 
 export function useModeGestes(): ModeGestes {
@@ -182,6 +188,32 @@ export function useModeGestes(): ModeGestes {
     });
   }, []);
 
+  // Après avoir tranché, relire l'état TOUT DE SUITE plutôt que d'attendre
+  // la seconde suivante : celui qui vient de cliquer regarde l'écran, et une
+  // seconde de silence après un clic se lit comme un clic perdu.
+  const rafraichir = useCallback(() => {
+    void lireDiagnostic().then(accorder).catch(() => {});
+  }, [accorder]);
+
+  const choisir = useCallback(
+    (deviceId: string) => {
+      const jeton = diagnostic?.pendingDrop?.token;
+      // Sans jeton, aucune question n'est en cours : ne rien envoyer vaut
+      // mieux qu'envoyer vers un appareil que plus rien ne désigne.
+      if (!jeton) return;
+      void choisirLAppareil(jeton, deviceId)
+        .catch((exc) => setErreur(String(exc?.message ?? exc)))
+        .finally(rafraichir);
+    },
+    [diagnostic, rafraichir],
+  );
+
+  const renoncer = useCallback(() => {
+    void renoncerAuDepot()
+      .catch((exc) => setErreur(String(exc?.message ?? exc)))
+      .finally(rafraichir);
+  }, [rafraichir]);
+
   // Suivre le serveur quand un DOUBLE-CLAP arme la session : la caméra
   // n'est pas ouverte, donc rien ne l'apprendrait autrement. On sonde
   // toutes les deux secondes, et seulement tant que le micro écoute — un
@@ -231,5 +263,7 @@ export function useModeGestes(): ModeGestes {
     clapsEcoutent,
     basculerLesClaps,
     basculer,
+    choisir,
+    renoncer,
   };
 }
