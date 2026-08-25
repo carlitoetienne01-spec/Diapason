@@ -26,6 +26,22 @@ from pathlib import Path
 import pytest
 
 _NOEUD = Path(__file__).parent / "_noeud_de_banc.py"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _aucun_noeud_ne_survit():
+    """Le filet : même si un test tombe en plein vol, rien ne reste debout."""
+    yield
+    import signal
+
+    restants = subprocess.run(
+        ["pgrep", "-f", "_noeud_de_banc"], capture_output=True, text=True
+    ).stdout.split()
+    for pid in restants:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (ProcessLookupError, ValueError):
+            pass
 _DEMARRAGE_MAX_S = 40.0
 
 
@@ -95,12 +111,33 @@ class _Noeud:
         pytest.skip(f"le nœud de banc n'a jamais répondu : {erreurs}")
 
     def arreter(self) -> None:
-        if self._proc is not None and self._proc.poll() is None:
-            self._proc.terminate()
+        """Tuer le nœud, et s'assurer qu'il est MORT.
+
+        Constaté le 25 août 2026 : deux nœuds de banc tournaient encore huit
+        heures après leur test, tenant leurs ports et prêtant à confusion
+        avec les serveurs de l'application. terminate() suivi d'un wait qui
+        expire laissait le processus vivant, et personne ne le revérifiait.
+        On attend le décès, on force, puis on VÉRIFIE.
+        """
+        proc = self._proc
+        self._proc = None
+        if proc is None or proc.poll() is not None:
+            return
+        for arret in (proc.terminate, proc.kill):
+            arret()
             try:
-                self._proc.wait(timeout=5)
+                proc.wait(timeout=5)
+                break
             except subprocess.TimeoutExpired:
-                self._proc.kill()
+                continue
+        # Les tuyaux aussi : un stdout jamais fermé retient un descripteur.
+        for tuyau in (proc.stdout, proc.stderr):
+            try:
+                if tuyau is not None:
+                    tuyau.close()
+            except Exception:  # noqa: BLE001
+                pass
+        assert proc.poll() is not None, "un nœud de banc a survécu à son test"
 
 
 @pytest.fixture()

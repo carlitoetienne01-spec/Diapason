@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { armer, desarmer, envoyerImage, type EtatGeste } from './api';
+import { armer, desarmer, EchecGeste, envoyerImage, type EtatGeste } from './api';
 
 // Le serveur reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle
 // locale, pas l'analyse. Douze images par seconde suffisent à un geste de
@@ -34,6 +34,7 @@ export function useModeGestes(): ModeGestes {
   const canevas = useRef<HTMLCanvasElement | null>(null);
   const boucle = useRef<number | null>(null);
   const enVol = useRef(false);
+  const echecs = useRef(0);
 
   const eteindre = useCallback(() => {
     if (boucle.current !== null) {
@@ -68,7 +69,7 @@ export function useModeGestes(): ModeGestes {
     if (!image) return;
     enVol.current = true;
     try {
-      const reponse = await envoyerImage(image);
+      const reponse = await envoyerImage(await image.arrayBuffer());
       if (reponse === null) {
         // Le serveur s'est désarmé tout seul : on suit, caméra comprise.
         eteindre();
@@ -76,9 +77,15 @@ export function useModeGestes(): ModeGestes {
       }
       setEtat(reponse.state);
       setMainVue(reponse.hand);
+      echecs.current = 0;
     } catch (exc) {
-      setErreur(exc instanceof Error ? exc.message : String(exc));
-      eteindre();
+      // Un hoquet réseau ne doit pas tuer le mode ; trois d'affilée, si.
+      echecs.current += 1;
+      const message = exc instanceof Error ? exc.message : String(exc);
+      if (echecs.current >= 3) {
+        setErreur(`Échec à l'envoi des images : ${message}`);
+        eteindre();
+      }
     } finally {
       enVol.current = false;
     }
@@ -86,10 +93,12 @@ export function useModeGestes(): ModeGestes {
 
   const allumer = useCallback(async () => {
     setErreur(null);
+    echecs.current = 0;
     try {
       await armer();
     } catch (exc) {
-      setErreur(exc instanceof Error ? exc.message : String(exc));
+      const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
+      setErreur(`Échec à l'${etape} : ${exc instanceof Error ? exc.message : exc}`);
       return;
     }
     try {
@@ -104,7 +113,7 @@ export function useModeGestes(): ModeGestes {
       setErreur(
         exc instanceof Error && exc.name === 'NotAllowedError'
           ? 'Accès à la caméra refusé. Réglages Système → Confidentialité et sécurité → Caméra.'
-          : String(exc),
+          : `Échec à l'ouverture de la caméra : ${exc}`,
       );
       return;
     }
