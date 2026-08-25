@@ -1,0 +1,217 @@
+# CLAUDE.md — ce qu'une session doit savoir avant d'écrire une ligne
+
+Ce fichier est lu automatiquement au début de chaque session Claude Code dans
+ce dépôt. Plusieurs sessions travaillent souvent **en parallèle** sur cette
+machine : ce qui suit existe pour qu'elles ne se contredisent pas.
+
+Il est court à dessein. Ce qui est long vit dans `docs/`, et est pointé d'ici.
+
+---
+
+## 1. Ce qu'est Diapason
+
+Un assistant personnel **local d'abord**. Le modèle, la voix et la vision
+tournent sur la machine ; aucun backend cloud n'existe et aucun n'est
+souhaité. Le serveur FastAPI écoute **127.0.0.1** et vit comme agent launchd
+(`com.diapason.serve`).
+
+```
+Diapason (ce dépôt)                    Succès (~/Desktop/Porfolio/Succes)
+├── src/diapason/     Python 3.13      └── lib/   Dart/Flutter, client mobile
+│   ├── mesh/         maillage d'appareils           (Android construit,
+│   ├── server/       FastAPI                         iOS à moitié préparé,
+│   ├── desktop/      macOS : Vision, OCR, gestes     le reste : squelettes)
+│   ├── speech/       Whisper, Kokoro, claps
+│   ├── succes/       73 routes métier
+│   └── tools/        ~100 outils
+├── frontend/         React 19 + Vite 6 + Tailwind 4
+│   └── src-tauri/    l'app de bureau (Tauri 2, Rust)
+└── rust/             17 crates, dont l'extension PyO3 obligatoire
+```
+
+**Quatre applications, pas plus** : le bundle React (servi à la fois par le
+serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
+
+---
+
+## 2. Vérifier — les commandes exactes de la CI
+
+```bash
+.venv/bin/python -m ruff check src/ tests/
+.venv/bin/python -m ruff format --check src/ tests/
+.venv/bin/python -m pytest tests/ -n auto -q -m "not live and not cloud and not hub"
+cd frontend && npx tsc --noEmit && npx vitest run
+```
+
+**N'utilise pas `uv run` pour lancer un simple lint.** `uv sync` ÉLAGUE tout
+extra non listé dans `make setup` — constaté deux fois : `faster-whisper` et
+`pytest` ont disparu du venv, et la voix serait morte au redémarrage suivant.
+`make setup` réinstalle aussi `sherpa-onnx`, qui perd ses dylibs à chaque
+synchronisation. En cas de doute, `.venv/bin/python -m <outil>`.
+
+Deux tests de `tests/desktop/test_vision_mains.py` se **sautent** quand
+« Enregistrement de l'écran » n'est pas accordé au programme qui lance
+pytest. C'est normal, et le message dit quoi faire.
+
+### Reconstruire l'app / recharger le serveur
+
+```bash
+./scripts/install-desktop.sh                              # l'app de bureau
+launchctl kickstart -k gui/$(id -u)/com.diapason.serve    # le serveur
+```
+
+Les deux sont indépendants par choix : le serveur ne doit pas mourir parce
+que l'interface se recompile. Voir `docs/reconstruire-le-bureau.md`.
+
+---
+
+## 3. Les conventions, et pourquoi elles ont cette forme
+
+### La frontière de langue est stricte et signifiante
+
+- **Français** dans la couche produit : `desktop/`, `server/gestes_routes.py`,
+  `speech/`, `succes/`, `frontend/src/features/`. Les identifiants aussi :
+  `attraper`, `lacher`, `tenu`, `joignables`, `cible`, `basculer`.
+- **Anglais** dans `mesh/` : `resolve_device`, `dispatch_command`,
+  `presence_of`. Docstrings anglaises comprises. **Ne francise pas en y
+  entrant.**
+- **Les champs qui passent sur le fil sont TOUJOURS en anglais camelCase**,
+  même émis par un module français : `handRatio`, `lastDrop`, `deviceId`. Un
+  champ en snake_case se lit `undefined` côté TypeScript, en silence.
+
+### Les commentaires racontent le défaut, avec sa date
+
+Pas ce que fait le code — le code le dit déjà. Le commentaire dit ce qui est
+arrivé quand il n'était pas là :
+
+```python
+# Le fil est mort — casque débranché, micro repris par une autre
+# application. Garder le cadavre fait répondre « déjà en écoute » à toute
+# tentative de relance, et le micro reste fermé sans que rien ne le dise.
+```
+
+Un nombre porte toujours sa justification chiffrée. `_CHOIX_MAX_S = 45.0` est
+suivi de la raison pour laquelle ce n'est pas 120.
+
+### Les tests
+
+Classes `Test…` et méthodes en phrases françaises, docstring citant le §N du
+cahier et l'échec évité. Assertions porteuses d'un message :
+
+```python
+assert pp.tenu() is None, "la main doit être vide après avoir lâché"
+```
+
+`tests/` miroite `src/`. Frontend : vitest colocalisé. **Il n'existe aucun
+test de composant React dans ce dépôt** — n'en invente pas l'outillage ;
+extrais la logique en fonction pure et teste celle-là.
+
+### Les messages de commit
+
+Sujet : une phrase française qui nomme le DÉFAUT, pas la fonctionnalité.
+« Le geste attrape et dépose », « Le portier nommait trois personnes qui
+n'ont pas la clé ». Corps : des sections en CAPITALES, chacune racontant une
+cause et sa preuve chiffrée. Finir par :
+
+```
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+```
+
+---
+
+## 4. Ce qui casse le client mobile — à ne pas enfreindre
+
+Le Dart de *Succès* réimplémente l'encodage canonique et n'applique qu'un
+contrôle sur onze. Trois règles ne se négocient pas :
+
+1. **Aucun flottant dans une enveloppe signée.** Python écrit `1e-07`, Dart
+   écrit `1e-7` : signatures invalides, sans un mot d'explication.
+2. **Ne pas incrémenter `COMMAND_VERSION` ni `PULL_VERSION`** avant qu'un
+   client Dart acceptant deux versions soit déployé. Le Dart écrit `1` en dur.
+3. **Ne pas ajouter de champ à `_POLL_FIELDS` / `_ACK_FIELDS`.** La signature
+   couvre une liste explicite ; un champ absent côté Dart y entre comme
+   `null` et invalide toutes les relèves.
+
+Ajouter des **capacités** et des **outils** est en revanche sûr par
+construction : le plafond écarte les verbes inconnus et un client ancien
+répond `UNSUPPORTED`, statut accepté.
+
+### Les contrats sont figés par des instantanés
+
+| Instantané | Régénérer avec |
+|---|---|
+| `tests/contract/mesh_api_surface.json` | `scripts/gen_mesh_surface.py` |
+| `tests/contract/succes_api_surface.json` | `scripts/gen_succes_surface.py` |
+| `canonical_vectors.json` (dépôt Succès) | `scripts/gen_canonical_vectors.py` |
+
+Régénère **dans le même commit** que le changement qui l'a causé, jamais
+après. Voir `docs/succes-client-mobile.md`.
+
+---
+
+## 5. Pièges déjà payés — ne pas les repayer
+
+| Piège | Ce qu'il faut savoir |
+|---|---|
+| **Ollama tourne avec `-np 1`** | Un seul créneau d'inférence. Un workflow multi-agents affame l'assistant, et le délai d'attente ment en disant « not reachable ». |
+| **`ruff --fix` supprime les ré-exports** | Un alias d'import inutilisé DANS le module est supprimé même s'il est importé d'ailleurs. Écris un ré-export comme une **affectation** (`_X = X`), jamais comme un alias. Voir `speech/realtime/local_voice.py`. |
+| **`Path(MagicMock())` écrit sur le disque** | `__fspath__` rend « MagicMock/<nom>/<id> ». 42 vraies bases SQLite ont dormi à la racine. Un code qui écrit doit valider son chemin. |
+| **WKWebView refuse les corps binaires** | La fenêtre Tauri échoue sur un `Blob` ou un `ArrayBuffer` avec un « Load failed » opaque. Passe par du JSON base64. |
+| **Le `dblclick` n'arrive pas au WebView** | Détection maison et bouton visible ; un banc Chromium ne le reproduit pas. |
+| **L'app est signée *ad hoc*** | Le droit Accessibilité est révoqué à **chaque recompilation**. |
+| **Aucun runner macOS en CI** | Tout le code caméra / Vision / PyObjC / gestes n'est vérifié qu'à la main, sur cette machine. |
+| **Aucune migration SQLite** | Six bases dans `~/.diapason/` ; chacune crée son schéma à l'ouverture. |
+
+---
+
+## 6. Où en est le chantier
+
+La branche de travail est `feat/diapason-spatial-mesh`. Le point d'entrée est
+[`docs/spatial-mesh/README.md`](docs/spatial-mesh/README.md) — il dit ce qui
+est livré, ce qui reste, et dans quel ordre. Deux compagnons :
+
+- [`INITIAL_AUDIT.md`](docs/spatial-mesh/INITIAL_AUDIT.md) — pourquoi chaque
+  chose est dans cet état. Un audit ne se réécrit pas : ce qui est traité y
+  est **barré**, pas effacé.
+- [`CAPABILITY_MATRIX.md`](docs/spatial-mesh/CAPABILITY_MATRIX.md) — l'état
+  réel par plateforme. **Elle périme en quinze heures** : elle l'a déjà fait
+  une fois, en niant un travail livré le matin même. Relis-la à chaque
+  modification du maillage ou des gestes.
+
+Le reste du produit : `docs/development/roadmap.md`.
+
+---
+
+## 7. Travailler à plusieurs sessions sur cette machine
+
+1. **`git status` d'abord.** Des modifications non commitées peuvent être le
+   chantier d'une autre session — ou de Carlito. Ne les commite pas sans
+   demander, ne les écrase jamais.
+2. **Committe par thème**, pas par lot. Un thème = un défaut nommé.
+3. **Annonce le périmètre avant d'éditer.** Deux sessions dans
+   `gestes_routes.py` en même temps, c'est un conflit garanti.
+4. **Ne reformate pas ce que tu ne modifies pas.** Un `ruff format` global
+   noie le diff de l'autre session. (Le dépôt est formaté depuis le 25 août
+   2026 ; il n'y a plus de raison d'y revenir.)
+5. **Ne pousse pas et ne fusionne pas sans que Carlito le demande.**
+
+---
+
+## 8. Ce que ce projet refuse
+
+Ces règles viennent du cahier des charges et gouvernent les arbitrages :
+
+- **§5 — ne jamais faire semblant.** Un champ qui voyage sans être lu finit
+  par se faire promettre. Une capacité que rien n'exerce est une promesse en
+  attente.
+- **§34 — ne jamais deviner une direction.** Aucun capteur de cette flotte ne
+  mesure où l'on pointe. Quand deux appareils conviennent, on **demande** —
+  et la question doit pouvoir être répondue, sinon c'est une impasse.
+- **§78 — rien ne guette en permanence.** Micro et caméra s'arment
+  explicitement et se désarment seuls. Le voyant vert doit dire la vérité.
+- **§82 — un geste n'est jamais l'unique chemin vers une action.** Tout
+  reste atteignable au clic, au clavier et à la voix.
+- **§100 — jamais de faux SUCCESS.** La phrase rendue vient du RÉCEPTEUR,
+  jamais de ce qu'on a envoyé.
+
+« Je pense que cela a fonctionné » est déjà un échec.

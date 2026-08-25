@@ -96,8 +96,13 @@ docs/plans/
 docs/superpowers/
 .superpowers/
 
-# Claude Code project instructions (per-developer)
-CLAUDE.md
+# Claude Code : les RÉGLAGES restent personnels, les INSTRUCTIONS sont
+# partagées. `CLAUDE.md` était ignoré en héritage du fork amont, où chaque
+# contributeur avait le sien — d'où les renvois à « CLAUDE.md » dans
+# pyproject.toml et docs/design/ qui ne pointaient vers rien. Un fichier de
+# coordination que le dépôt ignore ne coordonne rien : plusieurs sessions
+# travaillent en parallèle sur ce dépôt, et elles doivent lire les mêmes
+# conventions.
 .claude/
 
 # Tauri auto-generated schemas
