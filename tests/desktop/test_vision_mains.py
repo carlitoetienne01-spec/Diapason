@@ -85,3 +85,49 @@ class TestContrat:
                 f"« {interdit} » est apparu dans le pont : la logique de "
                 "geste doit rester dans gestes_main"
             )
+
+
+class TestLeContratAvecVision:
+    """Le trou qui a laissé passer un bug jusqu'à la caméra de Carlito.
+
+    Les tests ne regardaient que des images SANS main : la fonction qui lit
+    les points n'était donc jamais atteinte, et deux noms inventés y
+    dormaient — « recognizedPointsForGroupName_error_ » (qui n'existe pas)
+    et le groupe « VNHLKAll » (qui s'appelle « VNIPOAll »). Ces tests
+    vérifient le contrat AVEC le framework, sans avoir besoin d'une main.
+    """
+
+    def test_la_methode_de_lecture_existe_vraiment(self):
+        import Vision
+
+        assert hasattr(
+            Vision.VNHumanHandPoseObservation,
+            "recognizedPointsForJointsGroupName_error_",
+        ), "le nom de la méthode a changé : le pont ne lira plus aucun point"
+
+    def test_la_constante_du_groupe_existe_vraiment(self):
+        import Vision
+
+        groupe = Vision.VNHumanHandPoseObservationJointsGroupNameAll
+        assert isinstance(groupe, str) and groupe
+
+    def test_les_vingt_et_une_cles_sont_celles_de_vision(self):
+        """Une clé inventée rendrait Diapason aveugle à un doigt entier, en
+        silence — le point serait simplement absent du dictionnaire."""
+        import Vision
+
+        reelles = {
+            getattr(Vision, nom)
+            for nom in dir(Vision)
+            if nom.startswith("VNHumanHandPoseObservationJointName")
+            and isinstance(getattr(Vision, nom, None), str)
+        }
+        assert set(vm._NOMS) == reelles
+
+    def test_le_pont_lit_les_constantes_au_lieu_de_les_recopier(self):
+        """Recopier une constante, c'est parier qu'elle ne changera pas."""
+        import pathlib
+
+        source = pathlib.Path(vm.__file__).read_text(encoding="utf-8")
+        assert "VNHumanHandPoseObservationJointsGroupNameAll" in source
+        assert '"VNHLKAll"' not in source

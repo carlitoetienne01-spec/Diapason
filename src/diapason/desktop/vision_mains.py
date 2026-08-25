@@ -79,8 +79,17 @@ def _lire_points(observation: Any) -> list:
     """Les points d'UNE main, traduits dans le vocabulaire du moteur."""
     from diapason.desktop.gestes_main import Point
 
-    points, erreur = observation.recognizedPointsForGroupName_error_(
-        "VNHLKAll", None
+    import Vision
+
+    # Le nom de la méthode ET la constante du groupe se LISENT, ils ne se
+    # devinent pas. Constaté le 25 août 2026, en direct sur la caméra de
+    # Carlito : « recognizedPointsForGroupName_error_ » n'existe pas (c'est
+    # « …ForJointsGroupName… »), et le groupe « toutes les articulations »
+    # ne s'appelle pas « VNHLKAll » mais « VNIPOAll ». Les tests ne
+    # pouvaient pas le voir : sans main dans l'image, cette fonction n'est
+    # jamais atteinte — le trou était là, pas dans le pipeline.
+    points, erreur = observation.recognizedPointsForJointsGroupName_error_(
+        Vision.VNHumanHandPoseObservationJointsGroupNameAll, None
     )
     if not points:
         return []
