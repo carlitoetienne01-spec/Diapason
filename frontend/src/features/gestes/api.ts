@@ -51,10 +51,36 @@ export async function ecouterLesClaps(actif: boolean): Promise<boolean> {
   return Boolean(corps?.listening);
 }
 
+export type MesureDesClaps = {
+  calibrated: boolean;
+  roomPeak: number;
+  clapPeaks: number[];
+  threshold: number;
+};
+
+/** Mesurer la pièce puis les claps : environ huit secondes de micro. */
+export async function calibrerLesClaps(): Promise<MesureDesClaps> {
+  const reponse = await apiFetch('/v1/gestures/clap/calibrate', {
+    method: 'POST',
+  });
+  const corps = await reponse.json().catch(() => null);
+  if (!reponse.ok) throw new Error(corps?.detail ?? 'Mesure impossible.');
+  return corps as MesureDesClaps;
+}
+
+export async function oublierLaMesureDesClaps(): Promise<void> {
+  const reponse = await apiFetch('/v1/gestures/clap/calibrate/reset', {
+    method: 'POST',
+  });
+  if (!reponse.ok) throw new Error('Le réglage n\'a pas pu être oublié.');
+}
+
 export type Diagnostic = {
   armed: boolean;
   clapListening?: boolean;
   clapsHeard?: number;
+  clapThreshold?: number;
+  clapCalibrated?: boolean;
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;

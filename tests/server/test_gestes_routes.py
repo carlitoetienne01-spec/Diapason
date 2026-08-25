@@ -622,3 +622,73 @@ class TestLEcouteSeConstate:
             client.post("/v1/gestures/clap/on")
         assert client.get("/v1/gestures/state").json()["clapsHeard"] == 7
         client.post("/v1/gestures/clap/off")
+
+
+class TestLeSeuilSeMesure:
+    """Un seuil d'usine est une supposition sur une pièce jamais entendue.
+
+    Celui d'origine valait 0,003 quand la pièce de Carlito vit à 0,005 : le
+    silence lui-même le franchissait, et « n'importe quel bruit activait la
+    caméra ». La mesure remplace la supposition.
+    """
+
+    def test_la_mesure_pose_le_seuil_entre_la_piece_et_les_claps(
+        self, client, tmp_path, monkeypatch
+    ):
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
+        with patch.object(
+            cl, "mesurer_la_piece_et_les_claps", return_value=(0.02, [0.44, 0.39, 0.51])
+        ):
+            r = client.post("/v1/gestures/clap/calibrate")
+        assert r.status_code == 200, r.text
+        vu = r.json()
+        assert vu["calibrated"] is True
+        assert vu["roomPeak"] == 0.02
+        assert len(vu["clapPeaks"]) == 3
+        # Entre la pièce et le plus faible des claps, jamais au-delà.
+        assert 0.02 < vu["threshold"] < 0.39
+        assert (tmp_path / "claps.json").exists()
+
+    def test_des_claps_noyes_dans_le_bruit_sont_refuses(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Poser le seuil dans le bruit ferait déclencher la pièce toute
+        seule. Mieux vaut le dire que bricoler un chiffre."""
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
+        with patch.object(
+            cl, "mesurer_la_piece_et_les_claps", return_value=(0.05, [0.06])
+        ):
+            r = client.post("/v1/gestures/clap/calibrate")
+        assert r.status_code == 422
+        assert "ne se détachent pas assez" in r.json()["detail"]
+        assert not (tmp_path / "claps.json").exists()
+
+    def test_aucun_clap_entendu_le_dit(self, client, tmp_path, monkeypatch):
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
+        with patch.object(
+            cl, "mesurer_la_piece_et_les_claps", return_value=(0.01, [])
+        ):
+            r = client.post("/v1/gestures/clap/calibrate")
+        assert r.status_code == 422
+        assert "Aucun clap" in r.json()["detail"]
+
+    def test_l_etat_montre_le_seuil_en_vigueur(self, client, tmp_path, monkeypatch):
+        """Sans ce chiffre, « ça ne déclenche pas » et « ça déclenche tout
+        seul » se ressemblent depuis l'interface."""
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
+        vu = client.get("/v1/gestures/state").json()
+        assert vu["clapCalibrated"] is False
+        assert vu["clapThreshold"] == cl.ClapConfig().min_rms
+
+        cl.enregistrer_reglage_claps(cl.ClapConfig(min_rms=0.123))
+        vu = client.get("/v1/gestures/state").json()
+        assert vu["clapCalibrated"] is True
+        assert vu["clapThreshold"] == 0.123

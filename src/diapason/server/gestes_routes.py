@@ -108,6 +108,24 @@ def claps_actifs() -> bool:
     return bool(ecoute)
 
 
+def _reglage_des_claps() -> tuple[float, bool]:
+    """Le seuil réellement en vigueur, et s'il vient d'une mesure.
+
+    Sans ce chiffre, « ça ne déclenche pas » et « ça déclenche tout seul »
+    se ressemblent depuis l'interface, et personne ne peut choisir entre
+    calibrer et se rapprocher du micro.
+    """
+    try:
+        from diapason.speech.clap_listener import (
+            charger_reglage_claps,
+            chemin_reglage_claps,
+        )
+
+        return charger_reglage_claps().min_rms, chemin_reglage_claps().exists()
+    except Exception:  # noqa: BLE001
+        return 0.0, False
+
+
 def _claps_entendus() -> int:
     """Ce que le micro a entendu — pour savoir si le seuil est atteignable."""
     ecouteur = _ecouteur_claps
@@ -185,6 +203,78 @@ def ne_plus_ecouter() -> dict[str, Any]:
     return {"listening": False}
 
 
+@router.post("/clap/calibrate")
+def calibrer_les_claps() -> dict[str, Any]:
+    """Mesurer la pièce, puis les claps de son occupant, et poser le seuil
+    entre les deux.
+
+    Un seuil d'usine est une supposition sur une pièce qu'on n'a jamais
+    entendue. Celle de Carlito vit à 0,005 quand le plancher d'origine
+    était à 0,003 : le silence lui-même déclenchait. On mesure.
+    """
+    global _ecouteur_claps
+    try:
+        from diapason.speech.clap_listener import (
+            enregistrer_reglage_claps,
+            mesurer_la_piece_et_les_claps,
+            reglage_calibre,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503, detail=f"Écoute indisponible : {str(exc)[:120]}"
+        ) from exc
+
+    # Le micro ne se partage pas : on referme l'écoute, on mesure, on la
+    # rouvre si elle tournait.
+    ecoutait = _ecouteur_claps is not None
+    if ecoutait:
+        ne_plus_ecouter()
+
+    try:
+        piece, claps = mesurer_la_piece_et_les_claps()
+        cfg = reglage_calibre(piece, claps)
+    except ValueError as exc:
+        if ecoutait:
+            ecouter_les_claps()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        if ecoutait:
+            ecouter_les_claps()
+        raise HTTPException(
+            status_code=503,
+            detail=f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}",
+        ) from exc
+
+    enregistrer_reglage_claps(cfg)
+    logger.info(
+        "claps calibrés : pièce %.4f, %d claps, seuil %.4f",
+        piece,
+        len(claps),
+        cfg.min_rms,
+    )
+    if ecoutait:
+        ecouter_les_claps()
+    return {
+        "calibrated": True,
+        "roomPeak": round(piece, 4),
+        "clapPeaks": [round(c, 4) for c in claps],
+        "threshold": cfg.min_rms,
+    }
+
+
+@router.post("/clap/calibrate/reset")
+def oublier_les_claps() -> dict[str, Any]:
+    """Revenir au réglage d'usine."""
+    global _ecouteur_claps
+    from diapason.speech.clap_listener import oublier_le_reglage_claps
+
+    oublier_le_reglage_claps()
+    if _ecouteur_claps is not None:
+        ne_plus_ecouter()
+        ecouter_les_claps()
+    return {"calibrated": False}
+
+
 @router.post("/arm")
 def armer() -> dict[str, Any]:
     """Armer le mode gestes. La caméra ne s'ouvre qu'après, côté interface."""
@@ -226,6 +316,8 @@ def etat() -> dict[str, Any]:
             "armed": False,
             "clapListening": claps_actifs(),
             "clapsHeard": _claps_entendus(),
+            "clapThreshold": _reglage_des_claps()[0],
+            "clapCalibrated": _reglage_des_claps()[1],
         }
     confiance = (
         _session.confiance_totale / _session.confiance_mesures
@@ -236,6 +328,8 @@ def etat() -> dict[str, Any]:
         "armed": True,
         "clapListening": claps_actifs(),
         "clapsHeard": _claps_entendus(),
+        "clapThreshold": _reglage_des_claps()[0],
+        "clapCalibrated": _reglage_des_claps()[1],
         "state": _session.moteur.etat.value,
         "frames": _session.images,
         "handsSeen": _session.mains_vues,

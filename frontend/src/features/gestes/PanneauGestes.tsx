@@ -6,8 +6,11 @@
  * animation qui masquerait une absence de reconnaissance (§5).
  */
 
+import { useState } from 'react';
+
 import { Hand, Video, VideoOff } from 'lucide-react';
 
+import { calibrerLesClaps } from './api';
 import { useCalibration } from './useCalibration';
 import { useModeGestesPartage } from './ModeGestesContexte';
 
@@ -117,6 +120,8 @@ export function PanneauGestes() {
         </span>
       </label>
 
+      {clapsEcoutent && <MesureDesClaps seuil={diagnostic?.clapThreshold} mesure={diagnostic?.clapCalibrated} />}
+
       {actif && diagnostic?.held && (
         <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm">
           {/* Le retour visuel (§47) : ce que la main tient doit se VOIR,
@@ -212,5 +217,83 @@ export function PanneauGestes() {
         </p>
       )}
     </section>
+  );
+}
+
+
+/**
+ * Mesurer plutôt que supposer.
+ *
+ * Le seuil d'usine était réglé pour une pièce imaginaire : celle de Carlito
+ * vit au-dessus, et le silence déclenchait tout seul (25 août 2026). Un
+ * seuil juste se mesure dans la pièce où l'on clape, avec les mains qu'on a.
+ */
+function MesureDesClaps({
+  seuil,
+  mesure,
+}: {
+  seuil?: number;
+  mesure?: boolean;
+}) {
+  const [phase, setPhase] = useState<'repos' | 'piece' | 'claps'>('repos');
+  const [resultat, setResultat] = useState<string | null>(null);
+  const [souci, setSouci] = useState<string | null>(null);
+
+  // Le serveur écoute deux secondes la pièce, puis six secondes les claps.
+  // L'interface suit ce calendrier pour dire quoi faire QUAND il faut le
+  // faire : « clape maintenant » arrivé trop tôt ne mesure que du silence.
+  async function mesurer() {
+    setSouci(null);
+    setResultat(null);
+    setPhase('piece');
+    const bascule = window.setTimeout(() => setPhase('claps'), 2000);
+    try {
+      const vu = await calibrerLesClaps();
+      setResultat(
+        `${vu.clapPeaks.length} clap${vu.clapPeaks.length > 1 ? 's' : ''} entendu${
+          vu.clapPeaks.length > 1 ? 's' : ''
+        } — seuil posé à ${vu.threshold.toFixed(3)}, au-dessus de ta pièce (${vu.roomPeak.toFixed(3)}).`,
+      );
+    } catch (e) {
+      setSouci(e instanceof Error ? e.message : 'La mesure a échoué.');
+    } finally {
+      window.clearTimeout(bascule);
+      setPhase('repos');
+    }
+  }
+
+  const enCours = phase !== 'repos';
+  return (
+    <div className="mt-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">
+          Seuil&nbsp;:{' '}
+          <span className="tabular-nums text-foreground">
+            {seuil ? seuil.toFixed(3) : '—'}
+          </span>
+          {mesure ? ' (mesuré ici)' : ' (réglage d’usine)'}
+        </span>
+        <button
+          type="button"
+          onClick={mesurer}
+          disabled={enCours}
+          className="shrink-0 rounded-md border border-border px-2 py-1 text-foreground disabled:opacity-60"
+        >
+          {enCours ? 'Mesure en cours…' : 'Mesurer mes claps'}
+        </button>
+      </div>
+      {phase === 'piece' && (
+        <p className="mt-2 text-foreground">
+          Ne bouge pas — j’écoute ta pièce (2&nbsp;s).
+        </p>
+      )}
+      {phase === 'claps' && (
+        <p className="mt-2 text-foreground">
+          Clape trois fois, normalement, là où tu es d’habitude (6&nbsp;s).
+        </p>
+      )}
+      {resultat && <p className="mt-2 text-muted-foreground">{resultat}</p>}
+      {souci && <p className="mt-2 text-destructive">{souci}</p>}
+    </div>
   );
 }

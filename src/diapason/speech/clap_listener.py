@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,14 +17,25 @@ class ClapConfig:
     sample_rate: int = 44100
     block_ms: int = 40
     channels: int = 1
-    spike_ratio: float = 2.5
+    # Un clap est un son FORT et bref. Les valeurs d'origine (rapport 2,5 et
+    # plancher 0,003) avaient été posées pour un studio imaginaire : mesurée
+    # le 25 août 2026, la pièce de Carlito au repos vit entre 0,005 et 0,015,
+    # soit AU-DESSUS de ce plancher. Le silence lui-même franchissait le
+    # seuil — cinq « claps » en huit secondes sans que personne ne bouge.
+    spike_ratio: float = 8.0
+    min_rms: float = 0.05
     cooldown_s: float = 0.35
     min_double_gap_s: float = 0.04
     max_double_gap_s: float = 0.80
     retrigger_ratio: float = 0.80
-    noise_floor_alpha: float = 0.992
-    min_rms: float = 0.003
-    quiet_gate_mult: float = 2.2
+    # Le fond sonore retombe vite et ne monte que lentement : un clap dure
+    # un bloc et ne doit pas soulever le plancher qu'il vient de franchir.
+    descente_alpha: float = 0.90
+    montee_alpha: float = 0.98
+    plafond_de_montee: float = 1.6
+    # Une seconde d'écoute pour apprendre la pièce avant d'y prétendre
+    # entendre quoi que ce soit.
+    blocs_d_amorcage: int = 25
 
 
 @dataclass
@@ -42,17 +54,34 @@ class ClapDetector:
     # l'écart entre les deux claps qui ne convient pas (25 août 2026).
     claps_entendus: int = 0
     dernier_clap_a: float = 0.0
+    # L'apprentissage de la pièce : tant qu'il n'est pas fini, on se tait.
+    blocs_ecoutes: int = 0
+    amorce: list[float] = field(default_factory=list)
 
     def process(self, level: float, now: float) -> bool:
         self.last_miss_reason = None
         cfg = self.cfg
-        quiet_gate = self.noise_floor * cfg.quiet_gate_mult
-        if level < quiet_gate:
-            self.noise_floor = (
-                cfg.noise_floor_alpha * self.noise_floor
-                + (1.0 - cfg.noise_floor_alpha) * level
-            )
-            self.noise_floor = max(self.noise_floor, 1e-7)
+
+        # 1. Apprendre la pièce. Le fond sonore ne se devine pas : il partait
+        #    de 0,0001 et ne se mettait à jour QUE si le niveau descendait
+        #    sous 0,0002 — ce qu'aucune pièce réelle ne fait. Il restait donc
+        #    figé à vie, et le seuil qu'il gouverne avec lui.
+        if self.blocs_ecoutes < cfg.blocs_d_amorcage:
+            self.blocs_ecoutes += 1
+            self.amorce.append(level)
+            calme = sorted(self.amorce)
+            self.noise_floor = max(calme[len(calme) // 2], 1e-7)
+            self.last_miss_reason = "amorcage"
+            return False
+
+        # 2. Le suivre ensuite, sans le laisser soulever par ce qu'il filtre :
+        #    la cible est plafonnée, donc un clap ne peut pas relever le
+        #    plancher qu'il vient de franchir.
+        cible = min(level, self.noise_floor * cfg.plafond_de_montee)
+        alpha = cfg.descente_alpha if cible < self.noise_floor else cfg.montee_alpha
+        self.noise_floor = max(
+            alpha * self.noise_floor + (1.0 - alpha) * cible, 1e-7
+        )
 
         threshold = max(self.noise_floor * cfg.spike_ratio, cfg.min_rms)
         retrigger_level = threshold * cfg.retrigger_ratio
@@ -235,6 +264,121 @@ def choose_input_device(
     return None
 
 
+def chemin_reglage_claps() -> "Path":
+    from diapason.core.paths import get_config_dir
+
+    return Path(get_config_dir()) / "claps.json"
+
+
+def charger_reglage_claps() -> ClapConfig:
+    """Le réglage de CETTE pièce — celui d'usine si rien n'est calibré."""
+    import json
+
+    try:
+        brut = json.loads(chemin_reglage_claps().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ClapConfig()
+    connus = set(ClapConfig.__dataclass_fields__)
+    return ClapConfig(**{k: v for k, v in brut.items() if k in connus})
+
+
+def enregistrer_reglage_claps(cfg: ClapConfig) -> None:
+    import json
+    from dataclasses import asdict
+
+    chemin = chemin_reglage_claps()
+    chemin.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    chemin.write_text(json.dumps(asdict(cfg), indent=2) + "\n", encoding="utf-8")
+
+
+def oublier_le_reglage_claps() -> None:
+    chemin_reglage_claps().unlink(missing_ok=True)
+
+
+def reglage_calibre(
+    pic_de_la_piece: float,
+    pics_des_claps: list[float],
+    *,
+    base: ClapConfig | None = None,
+) -> ClapConfig:
+    """Un seuil posé entre DEUX mesures : la pièce, et les claps de son
+    occupant.
+
+    Le seuil vise la moyenne géométrique — le milieu au sens de l'oreille,
+    qui entend des rapports et non des différences. On se cale sur le clap
+    le PLUS FAIBLE, pour qu'aucun ne soit perdu, et sur le pic le plus fort
+    de la pièce, pour qu'elle ne parle jamais à sa place.
+    """
+    from dataclasses import replace
+    from math import sqrt
+
+    base = base or ClapConfig()
+    if not pics_des_claps:
+        raise ValueError(
+            "Aucun clap n'a été entendu. Rapproche-toi du micro et "
+            "recommence : je dois entendre au moins un clap pour le mesurer."
+        )
+    plus_faible = min(pics_des_claps)
+    if plus_faible < pic_de_la_piece * 3.0:
+        # Calibrer là-dessus placerait le seuil dans le bruit : la pièce
+        # déclencherait toute seule. On le dit plutôt que de bricoler.
+        raise ValueError(
+            f"Tes claps ({plus_faible:.3f}) ne se détachent pas assez du "
+            f"bruit de la pièce ({pic_de_la_piece:.3f}). Clape plus fort, "
+            "plus près du micro, ou dans un endroit plus calme."
+        )
+    return replace(base, min_rms=round(sqrt(pic_de_la_piece * plus_faible), 4))
+
+
+def mesurer_la_piece_et_les_claps(
+    *,
+    cfg: ClapConfig | None = None,
+    device: int | None = None,
+    silence_s: float = 2.0,
+    claps_s: float = 6.0,
+) -> tuple[float, list[float]]:
+    """Écouter la pièce, puis les claps. Rien n'est enregistré : seuls des
+    niveaux sonores sortent d'ici, jamais de son (§10)."""
+    import sounddevice as sd
+
+    cfg = cfg or ClapConfig()
+    bloc = int(cfg.sample_rate * cfg.block_ms / 1000)
+    with sd.InputStream(
+        device=device,
+        samplerate=cfg.sample_rate,
+        channels=cfg.channels,
+        dtype="float32",
+        blocksize=bloc,
+    ) as flux:
+
+        def _relever(duree: float) -> list[float]:
+            releves: list[float] = []
+            fin = time.monotonic() + duree
+            while time.monotonic() < fin:
+                donnees, _ = flux.read(bloc)
+                releves.append(rms_mono(donnees))
+            return releves
+
+        piece = _relever(silence_s)
+        pendant = _relever(claps_s)
+
+    pic_piece = max(piece) if piece else 0.0
+    # Un clap tient dans un ou deux blocs : on ne garde qu'un sommet par
+    # bouffée, sinon le même clap serait compté trois fois.
+    seuil = max(pic_piece * 2.5, 0.02)
+    pics: list[float] = []
+    en_cours = 0.0
+    for niveau in pendant:
+        if niveau >= seuil:
+            en_cours = max(en_cours, niveau)
+        elif en_cours:
+            pics.append(en_cours)
+            en_cours = 0.0
+    if en_cours:
+        pics.append(en_cours)
+    return pic_piece, pics
+
+
 class ClapListener:
     """Background mic loop that invokes a callback on double clap."""
 
@@ -248,7 +392,7 @@ class ClapListener:
         debug: bool = False,
     ) -> None:
         self._on_double = on_double_clap
-        self._cfg = cfg or ClapConfig()
+        self._cfg = cfg or charger_reglage_claps()
         self._once = once
         self._device = device
         self._debug = debug
