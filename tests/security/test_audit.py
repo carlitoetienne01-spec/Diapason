@@ -15,6 +15,41 @@ from diapason.security.types import (
 )
 
 
+class TestUnCheminQuiNEnEstPasUn:
+    """Un chemin qui n'est pas un chemin doit échouer BRUYAMMENT.
+
+    `Path()` accepte tout objet exposant `__fspath__`, et un `MagicMock` en
+    fait partie : le sien rend « MagicMock/<nom>/<id> ». Un test qui patchait
+    `load_config` sans configurer `security.audit_log_path` faisait donc créer
+    en silence un vrai répertoire et une vraie base SQLite à la racine du
+    dépôt — 42 fichiers y ont dormi jusqu'au 25 août 2026. Le nom du
+    répertoire était la preuve, et personne ne l'a lue pendant des mois.
+    """
+
+    def test_un_mock_ne_devient_pas_un_repertoire(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        # Le chemin fabriqué est RELATIF : on se place donc dans un
+        # répertoire jetable, sans quoi ce test constaterait le répertoire
+        # laissé par les exécutions d'autrefois au lieu du sien.
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(TypeError, match="str ou un Path"):
+            AuditLogger(db_path=MagicMock())
+        assert list(tmp_path.iterdir()) == [], (
+            "rien ne doit être écrit sur le disque avant que le chemin soit valide"
+        )
+
+    def test_un_chemin_normal_passe_toujours(self, tmp_path: Path) -> None:
+        """Le garde ne doit rien casser de ce qui marchait."""
+        journal = AuditLogger(db_path=tmp_path / "audit.db")
+        assert journal.query() == []
+        assert (tmp_path / "audit.db").exists()
+
+
 class TestAuditLogger:
     def test_log_and_query(self, tmp_path: Path) -> None:
         logger = AuditLogger(db_path=tmp_path / "audit.db")

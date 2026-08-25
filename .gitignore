@@ -64,7 +64,9 @@ logs/
 /traces/
 coding_task_*
 get-pip.py
-# Junk from mocked-path tests that write to their mock's __repr__ as a path
+# Filet de secours : `Path(MagicMock())` rend « MagicMock/<nom>/<id> » via
+# __fspath__ (pas __repr__). AuditLogger refuse désormais ce qui n'est ni
+# str ni Path, mais une autre voie pourrait rouvrir ce trou.
 MagicMock/
 
 # MkDocs build output

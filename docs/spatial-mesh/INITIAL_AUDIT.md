@@ -255,13 +255,36 @@ touche donc **pas** au créneau Ollama unique. Manque le flux caméra
 
 ## Dette technique pertinente
 
-- `MagicMock/load_config().security.audit_log_path/` à la racine : **44
+*Cette liste est datée du 25 août 2026 au matin. Les lignes ~~barrées~~ ont
+été traitées dans la journée ; elles restent ici parce qu'un audit qu'on
+réécrit cesse d'être un constat.*
+
+- ~~`MagicMock/load_config().security.audit_log_path/` à la racine : **44
   vraies bases SQLite** créées par un test qui a passé un `MagicMock` comme
-  chemin. Le mécanisme est toujours actif.
+  chemin. Le mécanisme est toujours actif.~~ **Traité.** Le répertoire est
+  supprimé (42 fichiers, toutes bases vides). La cause n'était pas
+  `__repr__` mais `__fspath__` : `Path(MagicMock())` rend
+  « MagicMock/<nom>/<id> », et `AuditLogger` le créait sans broncher.
+  `AuditLogger` refuse désormais ce qui n'est ni `str` ni `Path`, avec deux
+  tests. Une passe complète (9 154 tests) ne le recrée plus.
 - `src/diapason/evals/tests/` (~87 Ko de tests) est **hors** de
   `testpaths` : jamais collecté, mais livré dans la roue.
-- `.github/CODEOWNERS` désigne trois comptes étrangers au dépôt (héritage de
-  fork) : si la règle de branche est active, aucune PR n'est débloquable.
+- ~~`.github/CODEOWNERS` désigne trois comptes étrangers au dépôt (héritage
+  de fork) : si la règle de branche est active, aucune PR n'est
+  débloquable.~~ **Traité.** Le fichier nomme `@carlitoetienne01-spec`,
+  vérifié contre cinq sources (`git remote`, `pyproject.toml`, `mkdocs.yml`,
+  `README.md`, l'endpoint de mise à jour Tauri). L'organisation
+  `@open-diapason`, qui n'existe nulle part ailleurs, a disparu — ce dépôt
+  vit sur un compte personnel, où un slug d'équipe est inopérant.
+- ~~`desktop/` à la racine est un vestige mort (un binaire Ollama de 77 Mo et
+  une copie d'`overlay.html`, aucun Cargo.toml).~~ **Traité.** Les deux
+  fichiers étaient suivis par git et référencés nulle part : `overlay.html`
+  était l'octet pour octet identique à celui de `frontend/src-tauri/src/`,
+  et le binaire n'est sidecar d'aucun `tauri.conf.json` — la CI le télécharge
+  à la demande dans `frontend/src-tauri/binaries/`, dont le `.gitignore`
+  interdit précisément de le committer. 73 Mo de moins dans l'arbre de
+  travail ; **rien de moins dans le clone**, le blob restant dans
+  l'historique.
 - **Aucun runner macOS n'exécute pytest**, et la CI n'installe ni `desktop`,
   ni `speech`, ni `voice-local`. Tout le code caméra/Vision/PyObjC est hors
   d'atteinte de la CI : il ne sera vérifié qu'à la main sur cette machine.

@@ -36,6 +36,18 @@ class AuditLogger:
         db_path: Union[str, Path] = DEFAULT_CONFIG_DIR / "audit.db",
         bus: Optional[EventBus] = None,
     ) -> None:
+        # `Path()` accepte tout objet exposant `__fspath__` — un `MagicMock`
+        # en fait partie, et le sien rend « MagicMock/<nom>/<id> ». Un test
+        # qui patchait `load_config` sans configurer `security.audit_log_path`
+        # faisait donc créer, en silence, un vrai répertoire et une vraie base
+        # SQLite à la racine du dépôt : 42 fichiers y ont dormi jusqu'au
+        # 25 août 2026. La signature promettait `str | Path` ; elle le vérifie
+        # désormais, et l'échec est bruyant plutôt qu'écrit sur le disque.
+        if not isinstance(db_path, (str, Path)):
+            raise TypeError(
+                "db_path doit être un str ou un Path, pas un "
+                f"{type(db_path).__name__}."
+            )
         self._db_path = Path(db_path)
         from diapason.security.file_utils import secure_create
 
