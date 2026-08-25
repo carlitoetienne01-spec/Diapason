@@ -28,9 +28,15 @@ class TestDisponibilite:
         table le rendrait aveugle à un doigt entier, en silence."""
         attendus = {
             "wrist",
-            *(f"{d}{a}" for d in ("index", "middle", "ring", "little")
-              for a in ("MCP", "PIP", "DIP", "Tip")),
-            "thumbCMC", "thumbMP", "thumbIP", "thumbTip",
+            *(
+                f"{d}{a}"
+                for d in ("index", "middle", "ring", "little")
+                for a in ("MCP", "PIP", "DIP", "Tip")
+            ),
+            "thumbCMC",
+            "thumbMP",
+            "thumbIP",
+            "thumbTip",
         }
         assert set(vm._NOMS.values()) == attendus
         assert len(vm._NOMS) == 21
@@ -42,11 +48,25 @@ class TestSurUneVraieImage:
     @pytest.fixture()
     def image(self, tmp_path):
         chemin = tmp_path / "ecran.jpg"
-        subprocess.run(
+        capture = subprocess.run(
             ["screencapture", "-x", "-t", "jpg", str(chemin)],
-            check=True,
             capture_output=True,
         )
+        # `screencapture` sort en erreur quand « Enregistrement de l'écran »
+        # n'est pas accordé AU PROGRAMME QUI LANCE PYTEST — un terminal, un
+        # agent, un runner de CI. Ce n'est pas un défaut du pont Vision, et
+        # faire rougir la suite pour cela apprend à ignorer le rouge : au
+        # bout de trois fois, plus personne ne lit les deux erreurs de fin.
+        # Un test sauté, lui, dit l'absence d'une vérification sans la
+        # maquiller en succès (§5).
+        manquante = not chemin.exists() or chemin.stat().st_size == 0
+        if capture.returncode != 0 or manquante:
+            detail = (capture.stderr or b"").decode(errors="replace").strip()
+            pytest.skip(
+                "capture d'écran indisponible : autorise « Enregistrement de "
+                "l'écran » pour le programme qui lance pytest"
+                + (f" — {detail}" if detail else "")
+            )
         subprocess.run(
             ["sips", "-Z", "640", str(chemin), "--out", str(chemin)],
             check=True,
@@ -77,9 +97,7 @@ class TestContrat:
     def test_le_pont_ne_decide_de_rien(self):
         """Toute la logique de geste vit ailleurs : ce module n'a ni seuil,
         ni état, ni notion de pose. Le vérifier empêche la dérive."""
-        source = (
-            __import__("pathlib").Path(vm.__file__).read_text(encoding="utf-8")
-        )
+        source = __import__("pathlib").Path(vm.__file__).read_text(encoding="utf-8")
         for interdit in ("Seuils", "Etat.", "images_stables", "hysteresis"):
             assert interdit not in source, (
                 f"« {interdit} » est apparu dans le pont : la logique de "
