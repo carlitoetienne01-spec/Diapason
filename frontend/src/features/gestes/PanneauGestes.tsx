@@ -9,7 +9,7 @@
 import { Hand, Video, VideoOff } from 'lucide-react';
 
 import { useCalibration } from './useCalibration';
-import { useModeGestes } from './useModeGestes';
+import { useModeGestesPartage } from './ModeGestesContexte';
 
 const PHRASES: Record<string, string> = {
   REPOS: 'Aucune main devant la caméra.',
@@ -24,7 +24,11 @@ const PHRASES: Record<string, string> = {
 };
 
 export function PanneauGestes() {
-  const { actif, etat, mainVue, erreur, diagnostic, basculer } = useModeGestes();
+  // L'état vient du contexte : le mode doit survivre au changement de
+  // page, sinon il s'éteint au moment où l'on va chercher ce qu'on veut
+  // attraper.
+  const { actif, etat, mainVue, erreur, diagnostic, basculer } =
+    useModeGestesPartage();
   const calibration = useCalibration(actif);
 
   return (
@@ -55,7 +59,7 @@ export function PanneauGestes() {
 
       <p className="mt-2 text-sm text-muted-foreground">
         {actif
-          ? 'La caméra est allumée. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
+          ? 'La caméra est allumée et le reste quand tu changes de page — va ouvrir un projet, puis ferme le poing. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
           : 'La caméra reste éteinte tant que tu n’actives pas ce mode.'}
       </p>
 
