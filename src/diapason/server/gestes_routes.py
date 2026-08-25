@@ -57,6 +57,11 @@ class _Session:
     dernier_repliement: float = 0.0
     dernier_attrape: Any = None
     dernier_depot: Any = None
+    # Le journal des gestes (§73 appliqué aux gestes). Sans lui, un geste
+    # qui réussit et dont le message disparaît laisse l'utilisateur dire
+    # « je PENSE que ça a marché » — et c'est déjà un échec : il devrait le
+    # savoir, pas le supposer.
+    journal: list = field(default_factory=list)
     calibration_en_cours: str = ""
     echantillons: list = field(default_factory=list)
 
@@ -152,8 +157,24 @@ def etat() -> dict[str, Any]:
         if _session.dernier_attrape is not None
         else None,
         "lastDrop": _session.dernier_depot,
+        "journal": list(reversed(_session.journal)),
         "recentStates": list(_session.derniers_etats),
     }
+
+
+def _noter(quoi: str, detail: str, *, reussi: bool) -> None:
+    """Garder trace de ce qui vient de se passer, pour que ça se SACHE."""
+    if _session is None:
+        return
+    _session.journal.append(
+        {
+            "at": time.strftime("%H:%M:%S"),
+            "what": quoi,
+            "detail": detail[:160],
+            "ok": reussi,
+        }
+    )
+    del _session.journal[:-8]
 
 
 def _deposer() -> dict[str, Any]:
@@ -329,9 +350,21 @@ async def image(request: Request) -> dict[str, Any]:
             # Le geste exprime une INTENTION ; il ne transporte rien. Fermer
             # le poing désigne ce que l'écran affiche et le retient.
             _session.dernier_attrape = attraper()
+            _noter(
+                "attrapé",
+                _session.dernier_attrape.titre
+                if _session.dernier_attrape is not None
+                else "rien — aucun écran de Diapason n'était ouvert",
+                reussi=_session.dernier_attrape is not None,
+            )
         elif apres.value == "RELACHE":
             _session.relachements += 1
             _session.dernier_depot = _deposer()
+            _noter(
+                "déposé" if _session.dernier_depot.get("done") else "dépôt refusé",
+                str(_session.dernier_depot.get("message") or ""),
+                reussi=bool(_session.dernier_depot.get("done")),
+            )
         elif apres.value in ("PERDU", "ANNULE"):
             _session.pertes += 1
             # Une main perdue au milieu d'un geste ne laisse pas un objet

@@ -421,3 +421,76 @@ class TestAttraperEtDeposer:
             "resourceType": "project",
             "resourceId": "p1",
         }
+
+
+class TestLeJournalDesGestes:
+    """« Je pense que cela a fonctionné » est déjà un échec.
+
+    Un geste réussi dont le message disparaît laisse l'utilisateur dans le
+    doute. Le journal garde ce qui s'est passé, avec l'heure, pour que ça
+    se SACHE au lieu de se supposer.
+    """
+
+    def _main_fermee(self):
+        from diapason.desktop.gestes_main import Point
+
+        pts = [
+            Point("wrist", 0.5, 0.9),
+            Point("indexMCP", 0.42, 0.7),
+            Point("littleMCP", 0.62, 0.7),
+            Point("thumbCMC", 0.38, 0.82),
+            Point("thumbTip", 0.42, 0.55),
+        ]
+        for i, doigt in enumerate(("index", "middle", "ring", "little")):
+            base = 0.42 + i * 0.066
+            pts.append(Point(f"{doigt}MCP", base, 0.7))
+            pts.append(Point(f"{doigt}Tip", base, 0.53))
+        return pts
+
+    def test_le_journal_est_vide_au_depart(self, client):
+        client.post("/v1/gestures/arm")
+        assert client.get("/v1/gestures/state").json()["journal"] == []
+
+    def test_une_saisie_laisse_une_trace_horodatee(self, client):
+        from diapason.desktop import contexte_app as ca
+        from diapason.server import gestes_routes as gr
+
+        ca.poser_contexte(
+            "/succes/projects", ressource_type="project",
+            ressource_id="p1", ressource_titre="Zéro à Héro",
+        )
+        client.post("/v1/gestures/arm")
+        gr._noter("attrapé", "Zéro à Héro", reussi=True)
+        journal = client.get("/v1/gestures/state").json()["journal"]
+        assert len(journal) == 1
+        assert journal[0]["what"] == "attrapé"
+        assert journal[0]["detail"] == "Zéro à Héro"
+        assert journal[0]["ok"] is True
+        assert ":" in journal[0]["at"], "l'heure doit être lisible"
+        ca.oublier()
+
+    def test_le_plus_recent_est_en_tete(self, client):
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        gr._noter("attrapé", "premier", reussi=True)
+        gr._noter("déposé", "second", reussi=True)
+        journal = client.get("/v1/gestures/state").json()["journal"]
+        assert journal[0]["detail"] == "second"
+
+    def test_le_journal_ne_grossit_pas_sans_fin(self, client):
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        for i in range(30):
+            gr._noter("attrapé", f"objet {i}", reussi=True)
+        assert len(client.get("/v1/gestures/state").json()["journal"]) <= 8
+
+    def test_un_refus_est_journalise_comme_tel(self, client):
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        gr._noter("dépôt refusé", "aucun appareil n'est joignable", reussi=False)
+        entree = client.get("/v1/gestures/state").json()["journal"][0]
+        assert entree["ok"] is False
+        assert "joignable" in entree["detail"]

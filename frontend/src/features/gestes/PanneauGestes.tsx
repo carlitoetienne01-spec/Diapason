@@ -147,6 +147,23 @@ export function PanneauGestes() {
         </div>
       )}
 
+      {actif && (diagnostic?.journal?.length ?? 0) > 0 && (
+        <ol className="mt-3 space-y-1 border-t border-border pt-3 text-xs">
+          {/* Ce qui s'est VRAIMENT passé. Sans cette trace, un geste réussi
+              dont le message disparaît laisse dire « je pense que ça a
+              marché » — et le supposer est déjà un échec. */}
+          {diagnostic!.journal!.map((ligne, i) => (
+            <li key={`${ligne.at}-${i}`} className="flex gap-2">
+              <span className="tabular-nums text-muted-foreground">{ligne.at}</span>
+              <span className={ligne.ok ? 'text-emerald-500' : 'text-muted-foreground'}>
+                {ligne.what}
+              </span>
+              <span className="text-muted-foreground">{ligne.detail}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
       {erreur && (
         <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {erreur}

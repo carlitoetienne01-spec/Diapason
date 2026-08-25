@@ -35,8 +35,16 @@ export type Depot = {
   object?: ObjetTenu;
 };
 
+export type EntreeJournal = {
+  at: string;
+  what: string;
+  detail: string;
+  ok: boolean;
+};
+
 export type Diagnostic = {
   armed: boolean;
+  journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;
   state?: EtatGeste;
