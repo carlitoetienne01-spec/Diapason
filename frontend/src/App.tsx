@@ -6,6 +6,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
 import { useAppStore, isLightTerminalSkin } from './lib/store';
+import { ContexteVueHost } from './features/mesh/ContexteVueHost';
 import { fetchModels, fetchServerInfo, fetchSavings, isTauri } from './lib/api';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
@@ -235,6 +236,7 @@ export default function App() {
       <Toaster position="bottom-right" />
       <TalkToDiapasonHost />
       <MeshHost />
+      <ContexteVueHost />
       {commandPaletteOpen && <CommandPalette />}
     </ConfirmProvider>
   );

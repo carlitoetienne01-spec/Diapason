@@ -1181,6 +1181,22 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 extra.append({"role": "system", "content": decrire(cliche)})
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
+        # CE QUE L'UTILISATEUR REGARDE DANS DIAPASON (handoff, 25 août
+        # 2026) : sans ce cliché, « continue ce projet sur mon téléphone »
+        # n'a aucun référent pour « ce projet ». Même discipline que le
+        # cliché du bureau : lecture d'un cache volatile, en fin de
+        # contexte, et silence total quand rien n'est frais.
+        try:
+            from diapason.desktop.contexte_app import (
+                decrire as decrire_app,
+                dernier_contexte,
+            )
+
+            vue = dernier_contexte()
+            if vue is not None:
+                extra.append({"role": "system", "content": decrire_app(vue)})
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
         # PERCEPTION CONTINUE sans inférence ajoutée (Atlas, 24 août 2026) :
         # pendant un partage d'écran, la boucle a DÉJÀ payé la description —
         # le tour la lit du cache au lieu d'obliger le modèle à appeler

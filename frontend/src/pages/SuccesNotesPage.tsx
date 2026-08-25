@@ -32,6 +32,7 @@ import type {
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { useContexteVue } from '../features/mesh/useContexteVue';
 
 type SortMode = 'recent' | 'oldest' | 'name-asc' | 'name-desc';
 
@@ -61,6 +62,14 @@ export function SuccesNotesPage() {
   const [sort, setSort] = useState<SortMode>('recent');
   const [view, setView] = useState<'list' | 'editor'>('list');
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Le référent de « cette note » (handoff, 25/08/2026).
+  const noteOuverte = notes.find((note) => note.id === activeId) ?? null;
+  useContexteVue(
+    noteOuverte
+      ? { type: 'note', id: noteOuverte.id, title: noteOuverte.title }
+      : null,
+  );
   const [draftTitle, setDraftTitle] = useState('Sans titre');
   const [draftContent, setDraftContent] = useState('');
   const [meta, setMeta] = useState(emptyMeta());

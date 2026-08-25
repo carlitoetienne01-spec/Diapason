@@ -192,3 +192,58 @@ def test_the_phrases_a_person_actually_says(phrase, expected):
     out = resolve_device(phrase, [MAC, PC, TABLET])
     assert out["status"] == "RESOLVED", out["message"]
     assert out["device"]["deviceId"] == expected
+
+
+class TestLesMotsQuiNeDesignentRien:
+    """« mon PC » envoyait au TÉLÉPHONE (constaté le 25 août 2026).
+
+    Avec une flotte nommée « PC du bureau » et « Mon téléphone », le seul
+    mot partagé entre la phrase et un nom était « mon » — et « PC », deux
+    lettres, tombait sous un filtre de longueur destiné à éliminer le bruit.
+    Le filtre visait juste et visait mal : ce n'est pas la longueur qui rend
+    un mot inutile, c'est d'être un mot outil.
+    """
+
+    FLOTTE = [
+        {
+            "deviceId": "dev_pc",
+            "name": "PC du bureau",
+            "platform": "WINDOWS",
+            "deviceType": "DESKTOP",
+            "trustLevel": "TRUSTED",
+            "lastSeenAtMs": 0,
+        },
+        {
+            "deviceId": "dev_tel",
+            "name": "Mon téléphone",
+            "platform": "ANDROID",
+            "deviceType": "PHONE",
+            "trustLevel": "TRUSTED",
+            "lastSeenAtMs": 0,
+        },
+    ]
+
+    def _resoudre(self, phrase):
+        from diapason.mesh.resolver import resolve_device
+
+        return resolve_device(phrase, self.FLOTTE, local_device_id="dev_moi")
+
+    def test_mon_pc_designe_le_pc(self):
+        resultat = self._resoudre("mon PC")
+        assert resultat["status"] == "RESOLVED"
+        assert resultat["device"]["name"] == "PC du bureau"
+
+    def test_mon_telephone_designe_le_telephone(self):
+        resultat = self._resoudre("mon téléphone")
+        assert resultat["status"] == "RESOLVED"
+        assert resultat["device"]["name"] == "Mon téléphone"
+
+    def test_le_possessif_seul_ne_designe_personne(self):
+        """« mon » n'est pas un nom d'appareil : il ne doit jamais suffire."""
+        from diapason.mesh.resolver import _name_score, _fold
+
+        for appareil in self.FLOTTE:
+            assert _name_score(_fold("mon"), appareil) == 0
+
+    def test_une_phrase_sans_rapport_reste_inconnue(self):
+        assert self._resoudre("mon truc")["status"] == "UNKNOWN"

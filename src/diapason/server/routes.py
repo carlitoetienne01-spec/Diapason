@@ -103,6 +103,10 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # court-circuite l'exécuteur, donc la cloche.
     "mesh_devices",
     "mesh_send",
+    # « Continue ce projet sur mon téléphone » (handoff, 25/08/2026) : part
+    # de ce que l'interface affiche, au lieu d'exiger un identifiant que le
+    # modèle n'a aucun moyen de connaître.
+    "handoff_continue",
     "screen_describe",
     # Le texte EXACT (OCR natif Apple) — zéro paraphrase, zéro Ollama
     # (Atlas, 24/08/2026).
@@ -316,6 +320,21 @@ def _ensure_identity_prompt(
         cliche = dernier_etat_connu()
         if cliche is not None:
             ancre = f"{ancre}\n{decrire(cliche)}"
+    except Exception:  # noqa: BLE001 - la perception est un bonus
+        pass
+    # Et ce que l'utilisateur regarde DANS Diapason (handoff, 25/08/2026) :
+    # « continue ce projet sur mon téléphone » a enfin un référent pour
+    # « ce projet ». Même place que le cliché du bureau — l'ancre est déjà
+    # volatile à la minute, un état de plus n'y coûte rien.
+    try:
+        from diapason.desktop.contexte_app import (
+            decrire as decrire_app,
+            dernier_contexte,
+        )
+
+        vue = dernier_contexte()
+        if vue is not None:
+            ancre = f"{ancre}\n{decrire_app(vue)}"
     except Exception:  # noqa: BLE001 - la perception est un bonus
         pass
     anchored = [Message(role=Role.SYSTEM, content=ancre), *messages]

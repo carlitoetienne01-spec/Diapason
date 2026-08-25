@@ -370,3 +370,141 @@ def _catalogue_hint(catalogue: list[dict[str, Any]]) -> str:
         keys = ", ".join(tool.get("parameters", {}).keys()) or "aucun paramètre"
         lines.append(f"{tool['name']} ({keys}) — {tool.get('description', '')}")
     return " | ".join(lines)
+
+
+@ToolRegistry.register("handoff_continue")
+class HandoffContinueTool(BaseTool):
+    """« Continue ça sur mon téléphone » — reprendre ici ce qu'on regarde là.
+
+    Spatial Mesh, handoff — 25 août 2026. mesh_send savait déjà envoyer une
+    ressource, à condition qu'on lui dise laquelle : le modèle devait donc
+    connaître un identifiant que rien ne lui donnait. Cet outil part de ce
+    que l'utilisateur REGARDE — le cliché d'écran publié par l'interface —
+    et n'invente rien quand il n'y a rien à reprendre.
+
+    Ce qu'il ne fait pas, délibérément : promettre un état de vue. Le client
+    mobile ouvre un écran et met en évidence une tâche ou un projet ; il ne
+    sait restaurer ni onglet, ni filtre, ni position. Envoyer ces champs les
+    ferait voyager sans être lus, et la phrase de confirmation finirait par
+    les promettre. La phrase rendue vient du RÉCEPTEUR, jamais de l'envoi.
+    """
+
+    tool_id = "handoff_continue"
+    is_local = True
+    # La propriété registry empruntée à MeshSendTool s'initialise
+    # paresseusement sur self._registry, que son __init__ pose. Sans ce
+    # défaut de classe, le premier appel RÉEL lève AttributeError — un
+    # défaut que les tests ne voyaient pas, puisqu'ils remplaçaient _target.
+    _registry = None
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="handoff_continue",
+            description=(
+                "Continue what the user is currently looking at IN DIAPASON "
+                "on one of their other devices: « continue ce projet sur mon "
+                "téléphone », « reprends ça sur l'iPad ». Reads the current "
+                "screen by itself — do not pass a resource id. If nothing is "
+                "open it says so; use mesh_send when the user names a "
+                "specific item instead."
+            ),
+            parameters={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "device_phrase": {
+                        "type": "string",
+                        "description": (
+                            "How the user named the device (« mon téléphone », "
+                            "« l'iPad »). Refused if it matches several."
+                        ),
+                    },
+                    "device_id": {
+                        "type": "string",
+                        "description": "Exact id from mesh_devices, if known.",
+                    },
+                },
+            },
+            category="mesh",
+            requires_confirmation=False,
+            timeout_seconds=30.0,
+            metadata={"risk": "outward_action", "reversible": True},
+        )
+
+    def execute(self, **params: Any) -> ToolResult:
+        from diapason.desktop.contexte_app import dernier_contexte
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.identity import device_identity
+
+        vue = dernier_contexte()
+        if vue is None:
+            return _result(
+                "handoff_continue",
+                False,
+                "Je ne sais pas ce que tu regardes en ce moment — ouvre "
+                "l'écran ou nomme l'élément, et je l'envoie.",
+                {"status": "NO_ACTIVE_CONTEXT", "persistence": "unchanged"},
+            )
+
+        # Décider CE QU'ON ENVOIE avant de chercher OÙ : un écran qui
+        # n'existe pas ailleurs se dit tout de suite, sans faire résoudre un
+        # appareil pour rien.
+        if vue.ressource_id and vue.ressource_type:
+            action = "app.show_resource"
+            arguments = {
+                "resourceType": vue.ressource_type,
+                "resourceId": vue.ressource_id,
+            }
+            quoi = vue.ressource_titre or vue.ressource_id
+        else:
+            # Aucun élément sélectionné : on ouvre l'écran, et on le DIT —
+            # « continue ce projet » quand aucun projet n'est ouvert doit
+            # rendre un écran, pas un élément inventé.
+            from diapason.desktop.contexte_app import _ECRANS
+
+            route_courte = (_ECRANS.get(vue.chemin) or (None, ""))[0]
+            if not route_courte:
+                return _result(
+                    "handoff_continue",
+                    False,
+                    f"{vue.ecran} n'existe pas sur les autres appareils. "
+                    "Nomme un projet, une note ou une tâche à reprendre.",
+                    {"status": "UNSUPPORTED", "persistence": "unchanged"},
+                )
+            action = "app.navigate"
+            arguments = {"route": f"success://{route_courte}"}
+            quoi = vue.ecran
+
+        try:
+            target = self._target(params, device_identity().device_id)
+        except _Unresolved as exc:
+            return _result("handoff_continue", False, exc.message, exc.metadata)
+        except MeshError as exc:
+            return _result("handoff_continue", False, str(exc), {})
+
+        resultat = dispatch_command(
+            target_device_id=target,
+            tool=action,
+            arguments=arguments,
+        )
+        # La phrase vient du récepteur : lui seul sait ce qui s'est passé.
+        phrase = str(resultat.get("userSafeMessage") or "").strip()
+        succes = resultat.get("status") == "SUCCESS"
+        return _result(
+            "handoff_continue",
+            succes,
+            phrase or f"Statut : {resultat.get('status')}",
+            {
+                **resultat,
+                "handedOff": quoi,
+                "action": action,
+                "persistence": "unchanged" if not succes else "remote",
+            },
+        )
+
+    # _target et registry sont empruntés à MeshSendTool : la résolution
+    # « mon téléphone » → appareil doit être LA MÊME des deux côtés, sinon
+    # deux outils répondraient différemment à la même phrase.
+    registry = MeshSendTool.registry
+    _target = MeshSendTool._target

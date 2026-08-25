@@ -49,6 +49,7 @@ import type {
 } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
+import { useContexteVue } from '../features/mesh/useContexteVue';
 
 const FALLBACK_COLOR = '#6366f1';
 
@@ -672,6 +673,11 @@ export function SuccesProjectsPage() {
   }, [pendingMeshSelection, setPendingMeshSelection]);
 
   const selected = projects.find((project) => project.id === selectedId) ?? null;
+  // Le référent de « ce projet » (handoff, 25/08/2026) : sans ce cliché,
+  // « continue ça sur mon téléphone » ne désigne rien.
+  useContexteVue(
+    selected ? { type: 'project', id: selected.id, title: selected.name } : null,
+  );
 
   // Un projet ouvert peut disparaître sous nos pieds : supprimé depuis le
   // téléphone, une autre fenêtre, ou l'assistant. La page retombait alors sur

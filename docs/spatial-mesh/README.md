@@ -44,6 +44,45 @@ pas injectable — elle se lit toujours dans `$DIAPASON_HOME`, qui appartient
 au processus. Deux nœuds dans un processus partageraient la même clé, donc
 le même identifiant, et se refuseraient avant même de vérifier la signature.
 
+## Phase 2 — le handoff
+
+« Continue ce projet sur mon téléphone » suppose que « ce projet » ait un
+référent. Il n'en avait aucun : les dix-neuf routes du frontend sont
+statiques, la ressource sélectionnée vit en état local de composant, et le
+serveur n'en savait rien.
+
+| Livré | Où |
+|---|---|
+| **Le cliché de l'écran courant** — volatile (3 min), jamais persisté, miroir exact d'`etat_bureau` | `desktop/contexte_app.py`, route `/v1/context/view` |
+| **L'interface le publie** — écran global, plus la ressource dans Projets et Notes | `frontend/src/features/mesh/` |
+| **Le modèle le voit** — injecté en fin de contexte, voix ET chat | `local_voice._turn_messages`, `routes._now_anchor` |
+| **`handoff_continue`** — part de ce qu'on regarde, ne demande aucun identifiant | `tools/mesh_tools.py` |
+
+### Ce que ce handoff refuse de faire
+
+Le §68 demande un `viewState`. **Il n'est pas envoyé, et c'est délibéré** :
+le client mobile ouvre un écran et met en évidence une tâche ou un projet ;
+il ne sait restaurer ni onglet, ni filtre, ni position de défilement — ces
+états sont privés à leurs widgets, sans point d'entrée externe. Un champ qui
+voyage sans être lu finit toujours par se faire promettre, et le §5 interdit
+précisément cela. Le jour où le Dart saura restaurer une vue, il l'annoncera
+par une capacité déclarée — le seul canal de négociation qui existe, puisque
+`appVersion` est toujours vide côté client.
+
+Corollaire tenu dans le code : **la phrase rendue vient du récepteur**,
+jamais de ce qu'on a envoyé.
+
+### Deux défauts trouvés en le construisant
+
+- **« Mon PC » désignait le téléphone.** Avec une flotte nommée « PC du
+  bureau » et « Mon téléphone », le seul mot partagé était « mon », et
+  « PC » tombait sous un filtre de longueur destiné au bruit. Le filtre
+  visait juste et visait mal : ce n'est pas la longueur qui rend un mot
+  inutile, c'est d'être un mot outil.
+- **L'outil levait une exception au premier appel réel** — un registre
+  paresseux non initialisé, invisible pour des tests qui remplaçaient tous
+  la résolution. Un test exerce désormais le vrai chemin.
+
 ## Ce qui vient ensuite, dans l'ordre
 
 L'ordre du §149 tient, moins ce qui est déjà fait :

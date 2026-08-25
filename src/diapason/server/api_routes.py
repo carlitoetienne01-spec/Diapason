@@ -1084,6 +1084,12 @@ def include_all_routes(app) -> None:
     app.include_router(approval_router)
     app.include_router(succes_router)
     app.include_router(mesh_router)
+
+    # Le cliché de l'écran courant (handoff, 25/08/2026) : sans lui, « continue
+    # ce projet sur mon téléphone » n'a aucun référent pour « ce projet ».
+    from diapason.server.contexte_routes import router as contexte_router
+
+    app.include_router(contexte_router)
     app.include_router(agents_router)
     app.include_router(memory_router)
     app.include_router(traces_router)

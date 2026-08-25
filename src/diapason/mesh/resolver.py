@@ -83,6 +83,27 @@ def _fold(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
 
 
+# Les mots qui ne désignent rien. Constaté le 25 août 2026 : avec une flotte
+# nommée « PC du bureau » et « Mon téléphone », la phrase « mon PC »
+# désignait le TÉLÉPHONE — « mon » était le seul mot partagé, et « PC »
+# était écarté par un filtre de longueur qui voulait éliminer le bruit. Le
+# filtre visait juste, il visait mal : ce n'est pas la longueur qui rend un
+# mot inutile, c'est d'être un mot outil. « PC », « TV », « Mac » sont
+# courts et parfaitement désignants.
+_MOTS_VIDES = frozenset(
+    {
+        "mon", "ma", "mes", "le", "la", "les", "un", "une", "des",
+        "du", "de", "au", "aux", "sur", "dans", "chez", "the", "my",
+        "on", "to", "at", "of", "et", "and",
+    }
+)
+
+
+def _mot_utile(mot: str) -> bool:
+    """Un mot qui désigne quelque chose — ni article, ni possessif."""
+    return len(mot) >= 2 and mot not in _MOTS_VIDES
+
+
 def _name_score(phrase: str, device: Mapping[str, Any]) -> int:
     """How strongly the words in *phrase* point at this device's name.
 
@@ -94,10 +115,10 @@ def _name_score(phrase: str, device: Mapping[str, Any]) -> int:
         return 0
     if name and name == phrase:
         return 100
-    if name and name in phrase:
+    if name and _mot_utile(name) and name in phrase:
         return 80
-    name_words = {w for w in name.split() if len(w) > 2}
-    phrase_words = {w for w in phrase.split() if len(w) > 2}
+    name_words = {w for w in name.split() if _mot_utile(w)}
+    phrase_words = {w for w in phrase.split() if _mot_utile(w)}
     shared = name_words & phrase_words
     return 40 + len(shared) if shared else 0
 
