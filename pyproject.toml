@@ -101,6 +101,10 @@ desktop = [
     "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
     "pyobjc-framework-ApplicationServices>=10; sys_platform == 'darwin'",
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
+    # Le flux caméra des gestes (25/08/2026). Voir docs/spatial-mesh/GESTES.md :
+    # la capture depuis ce processus est bloquée par TCC ; la dépendance est
+    # déclarée pour que le module soit importable et testable.
+    "pyobjc-framework-AVFoundation>=10; sys_platform == 'darwin'",
 ]
 # Push-to-talk dictation stack (macOS). The whole chain — global hotkey
 # (CGEventTap), mic capture, clipboard paste, menu bar — is pure Python via

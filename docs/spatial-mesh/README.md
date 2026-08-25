@@ -136,6 +136,25 @@ fichiers, ni accès au stockage, ni capacité déclarée pour cela. Le transfert
 est donc **Diapason ↔ Diapason** aujourd'hui. Le jour où le Dart saura
 recevoir, il l'annoncera par une capacité — et rien côté serveur ne bougera.
 
+## Phase 4 — les gestes
+
+Le moteur et la détection **fonctionnent et sont mesurés** ; il manque une
+source d'images. Détail dans [`GESTES.md`](GESTES.md).
+
+| Pièce | État | Mesure |
+|---|---|---|
+| Détection de main (`desktop/vision_mains.py`) | ✅ | **4 ms/image** en taille caméra — 230 im/s possibles, sur le Neural Engine, sans toucher au créneau Ollama |
+| Moteur de gestes (`desktop/gestes_main.py`) | ✅ | 16 tests : machine à états, hystérésis, temps de repos, seuils centralisés |
+| Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
+| Flux caméra (`desktop/camera.py`) | ⚠️ écrit, bloqué | macOS refuse de POSER la question — le binaire Python n'est pas un paquet |
+
+**Le mur, dit franchement** : la demande d'accès revient refusée
+immédiatement, sans dialogue, et le statut reste « à demander ». Ce n'est pas
+l'utilisateur qui refuse — c'est TCC qui n'a rien à afficher, faute de
+`NSCameraUsageDescription` dans un `Info.plist` que l'interpréteur n'a pas.
+Aucun réglage ne corrige cela. Trois sorties possibles sont décrites dans
+`GESTES.md` ; le choix appartient à Carlito.
+
 ## Ce qui vient ensuite, dans l'ordre
 
 L'ordre du §149 tient, moins ce qui est déjà fait :
