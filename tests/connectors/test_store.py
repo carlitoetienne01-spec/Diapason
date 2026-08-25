@@ -460,3 +460,44 @@ def test_context_manager_closes_on_exception(tmp_path: Path) -> None:
 
     with pytest.raises(sqlite3.ProgrammingError):
         ks._conn.execute("SELECT 1")
+
+
+class TestGetDocument:
+    """Le dernier kilomètre (Atlas, 25 août 2026) : l'index porte le corps
+    COMPLET, découpé — get_document le recoud, recouvrement compris."""
+
+    def test_les_chunks_se_recousent_dans_l_ordre(self, ks):
+        for i, morceau in enumerate(["Début du mail. ", "Milieu. ", "Fin."]):
+            _store(
+                ks,
+                content=morceau,
+                doc_id="gmail:abc",
+                chunk_index=i,
+                title="Objet du mail",
+                author="alice@example.com",
+                source="gmail",
+                url="https://mail.google.com/mail/u/0/#all/abc",
+            )
+        doc = ks.get_document("gmail:abc")
+        assert doc["content"] == "Début du mail. Milieu. Fin."
+        assert doc["title"] == "Objet du mail"
+        assert doc["chunks"] == 3
+        assert doc["url"].endswith("#all/abc")
+
+    def test_le_recouvrement_du_chunker_ne_se_duplique_pas(self, ks):
+        """Le chunker prépend ~100 jetons du chunk précédent : la couture
+        retire ce doublon quand elle le retrouve en tête du suivant."""
+        queue = "cette longue fin de premier chunk qui sert de recouvrement"
+        _store(ks, content=f"Le tout début. {queue}", doc_id="d", chunk_index=0)
+        _store(ks, content=f"{queue} et la suite du texte.", doc_id="d", chunk_index=1)
+        doc = ks.get_document("d")
+        assert doc["content"].count(queue) == 1
+        assert doc["content"].endswith("et la suite du texte.")
+
+    def test_un_doc_inconnu_rend_none(self, ks):
+        assert ks.get_document("gmail:inexistant") is None
+
+    def test_un_doc_efface_ne_revient_pas(self, ks):
+        _store(ks, content="secret", doc_id="gmail:x", chunk_index=0)
+        ks.delete(doc_id="gmail:x")
+        assert ks.get_document("gmail:x") is None

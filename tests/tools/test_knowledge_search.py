@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -160,3 +161,95 @@ def test_tool_uses_two_stage_retriever(tmp_path: Path) -> None:
     result = tool.execute(query="deep learning")
     assert result.success
     assert result.metadata["num_results"] > 0
+
+
+class TestLeDocumentEntier:
+    """knowledge_get_document : l'extrait de 300 caractères remonte au
+    document complet — le dernier kilomètre (Atlas, 25 août 2026)."""
+
+    def test_le_document_revient_entier_avec_son_entete(self, monkeypatch):
+        from diapason.tools.knowledge_search import KnowledgeGetDocumentTool
+
+        magasin = MagicMock()
+        magasin.get_document.return_value = {
+            "doc_id": "gmail:abc",
+            "title": "Relevé de mars",
+            "author": "banque@x.com",
+            "source": "gmail",
+            "timestamp": "2026-03-04T10:00:00",
+            "url": "https://mail.google.com/mail/u/0/#all/abc",
+            "thread_id": "gmail:abc",
+            "content": "Le corps complet du relevé.",
+            "chunks": 2,
+        }
+        with patch(
+            "diapason.tools.knowledge_search.KnowledgeStore",
+            return_value=magasin,
+        ):
+            r = KnowledgeGetDocumentTool().execute(doc_id="gmail:abc")
+        assert r.success
+        assert "[gmail] Relevé de mars — banque@x.com (2026-03-04)" in r.content
+        assert "Le corps complet du relevé." in r.content
+        assert r.metadata["url"].endswith("#all/abc")
+
+    def test_un_long_document_se_tronque_et_le_dit(self, monkeypatch):
+        from diapason.tools.knowledge_search import KnowledgeGetDocumentTool
+
+        magasin = MagicMock()
+        magasin.get_document.return_value = {
+            "doc_id": "d", "title": "t", "author": "", "source": "gmail",
+            "timestamp": "", "url": "", "thread_id": "",
+            "content": "x" * 50_000, "chunks": 25,
+        }
+        with patch(
+            "diapason.tools.knowledge_search.KnowledgeStore",
+            return_value=magasin,
+        ):
+            r = KnowledgeGetDocumentTool().execute(doc_id="d", max_chars=1000)
+        assert r.success and r.metadata["truncated"]
+        assert "50000 caractères" in r.content
+        assert "max_chars" in r.content  # le remède est dans le message
+
+    def test_un_doc_inconnu_renvoie_vers_la_recherche(self):
+        from diapason.tools.knowledge_search import KnowledgeGetDocumentTool
+
+        magasin = MagicMock()
+        magasin.get_document.return_value = None
+        with patch(
+            "diapason.tools.knowledge_search.KnowledgeStore",
+            return_value=magasin,
+        ):
+            r = KnowledgeGetDocumentTool().execute(doc_id="gmail:zzz")
+        assert not r.success and "knowledge_search" in r.content
+
+    def test_les_extraits_de_recherche_portent_le_doc_id(self):
+        """Sans doc_id/url dans les metadata de knowledge_search, cet outil
+        est inatteignable — c'était exactement le trou : hybrid_search les
+        portait, le façonnage les jetait."""
+        from diapason.connectors.hybrid_search import SearchHit
+        from diapason.tools.knowledge_search import KnowledgeSearchTool
+
+        touche = SearchHit(
+            chunk_id="c1", document_id="gmail:abc", chunk_idx=0,
+            title="Relevé", content_snippet="extrait du relevé",
+            source="gmail", timestamp="2026-03-04", participants=[],
+            score=0.9, bm25_score=0.5, vector_score=0.4,
+            thread_id="gmail:t",
+            url="https://mail.google.com/mail/u/0/#all/abc",
+        )
+        faux_hybride = MagicMock()
+        faux_hybride.search.return_value = [touche]
+        r = KnowledgeSearchTool()._chercher_en_hybride(
+            faux_hybride,
+            "relevé",
+            top_k=5,
+            source=None,
+            author=None,
+            since=None,
+            until=None,
+        )
+        assert r.success
+        extrait = r.metadata["resultats"][0]
+        assert extrait["doc_id"] == "gmail:abc"
+        assert extrait["url"].endswith("#all/abc")
+        assert extrait["thread_id"] == "gmail:t"

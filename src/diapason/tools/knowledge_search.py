@@ -288,6 +288,15 @@ class KnowledgeSearchTool(BaseTool):
                     "extrait": fragment,
                     "date": touche.timestamp,
                     "score": round(float(touche.score), 4),
+                    # Le dernier kilomètre (Atlas, 25 août 2026) : sans ces
+                    # trois champs, impossible de remonter de l'extrait au
+                    # document — knowledge_get_document les attend, et l'url
+                    # est le deep-link (Gmail, Drive) que l'usager peut
+                    # ouvrir. hybrid_search les portait déjà ; ils étaient
+                    # jetés ici.
+                    "doc_id": touche.document_id,
+                    "url": touche.url,
+                    "thread_id": touche.thread_id,
                 }
             )
         return ToolResult(
@@ -298,4 +307,113 @@ class KnowledgeSearchTool(BaseTool):
         )
 
 
-__all__ = ["KnowledgeSearchTool"]
+@ToolRegistry.register("knowledge_get_document")
+class KnowledgeGetDocumentTool(BaseTool):
+    """Le document ENTIER derrière un extrait de recherche.
+
+    Le dernier kilomètre (Atlas, 25 août 2026) : knowledge_search rend des
+    extraits de 300 caractères alors que l'index porte le corps COMPLET des
+    mails et des notes. Cet outil recoud les chunks — « retrouve le mail de
+    X sur Y » devient recherche puis lecture, corps entier, même hors ligne,
+    même Ollama éteint.
+    """
+
+    tool_id = "knowledge_get_document"
+    is_local = True
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="knowledge_get_document",
+            description=(
+                "Read the FULL document behind a knowledge_search result: "
+                "pass the doc_id from its metadata (e.g. 'gmail:19fec…'). "
+                "Returns the whole body — use it when the 300-char excerpt "
+                "is not enough: reading a full email, a whole note. "
+                "Truncates very long documents; pass max_chars to read more."
+            ),
+            parameters={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "doc_id": {
+                        "type": "string",
+                        "description": "The doc_id from knowledge_search metadata.",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Body cap (default 6000, max 20000).",
+                    },
+                },
+                "required": ["doc_id"],
+            },
+            category="memory",
+            requires_confirmation=False,
+            timeout_seconds=15.0,
+            metadata={"risk": "read_only", "reversible": True},
+        )
+
+    def execute(self, **params: Any) -> ToolResult:
+        doc_id = str(params.get("doc_id") or "").strip()
+        if not doc_id:
+            return ToolResult(
+                tool_name="knowledge_get_document",
+                content="Need a doc_id — knowledge_search metadata carries it.",
+                success=False,
+            )
+        try:
+            plafond = int(params.get("max_chars") or 6000)
+        except (TypeError, ValueError):
+            plafond = 6000
+        plafond = max(500, min(20000, plafond))
+        try:
+            magasin = KnowledgeStore()
+            doc = magasin.get_document(doc_id)
+        except Exception as exc:  # noqa: BLE001 - l'outil répond, ne lève pas
+            return ToolResult(
+                tool_name="knowledge_get_document",
+                content=f"Lecture impossible : {str(exc)[:160]}",
+                success=False,
+            )
+        if doc is None:
+            return ToolResult(
+                tool_name="knowledge_get_document",
+                content=(
+                    f"Aucun document {doc_id!r} dans l'index. Le doc_id vient "
+                    "de knowledge_search — refais la recherche."
+                ),
+                success=False,
+                metadata={"found": False},
+            )
+        corps = doc["content"]
+        tronque = len(corps) > plafond
+        extrait = corps[:plafond]
+        entete = f"[{doc['source']}] {doc['title']}"
+        if doc["author"]:
+            entete += f" — {doc['author']}"
+        if doc["timestamp"]:
+            entete += f" ({doc['timestamp'][:10]})"
+        suite = (
+            f"\n… (tronqué : {len(corps)} caractères en tout — "
+            "repasse avec max_chars pour la suite)"
+            if tronque
+            else ""
+        )
+        return ToolResult(
+            tool_name="knowledge_get_document",
+            content=f"{entete}\n\n{extrait}{suite}",
+            success=True,
+            metadata={
+                "doc_id": doc_id,
+                "source": doc["source"],
+                "url": doc["url"],
+                "thread_id": doc["thread_id"],
+                "chars": len(corps),
+                "truncated": tronque,
+                "chunks": doc["chunks"],
+                "persistence": "unchanged",
+            },
+        )
+
+
+__all__ = ["KnowledgeGetDocumentTool", "KnowledgeSearchTool"]

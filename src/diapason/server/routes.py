@@ -62,6 +62,9 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # indexé ET embarqué dans knowledge.db — mais seul le mode recherche
     # profonde y avait accès. Le chat le lit désormais aussi (23 août 2026).
     "knowledge_search",
+    # Le dernier kilomètre (25/08/2026) : l'extrait de 300 caractères
+    # remonte au document ENTIER — le corps complet est déjà dans l'index.
+    "knowledge_get_document",
     # « J'ai reçu quoi ? » en direct — mails non lus, messages, agenda —
     # au lieu de réserver ce talent au brief du matin (Atlas, 24/08/2026).
     "digest_collect",
@@ -84,6 +87,13 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # Le constat d'envoi (Atlas, 24/08/2026) : « c'est parti ? » se lit dans
     # chat.db au lieu de se deviner.
     "messages_status",
+    # Les mains des connecteurs (Atlas, 25/08/2026) : chercher TOUT
+    # l'historique Gmail en direct, archiver et corbeille sous cloche,
+    # lire une conversation Messages. Les specs fantômes s'incarnent.
+    "gmail_search",
+    "mail_archive",
+    "mail_trash",
+    "imessage_conversation",
     "screen_describe",
     # Le texte EXACT (OCR natif Apple) — zéro paraphrase, zéro Ollama
     # (Atlas, 24/08/2026).

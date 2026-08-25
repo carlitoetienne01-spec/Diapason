@@ -501,6 +501,52 @@ class KnowledgeStore(MemoryBackend):
     # Extra helpers
     # ------------------------------------------------------------------
 
+    def get_document(self, doc_id: str) -> Optional[dict]:
+        """Le document ENTIER, recousu depuis ses chunks — None s'il n'existe pas.
+
+        Le dernier kilomètre (Atlas, 25 août 2026) : l'index n'est pas un
+        index d'extraits — le corps complet y est, découpé en chunks de
+        2 048 caractères. C'est la reconstruction « doc_id-based » que le
+        commentaire de SearchHit.url prévoyait sans que personne ne l'écrive.
+
+        Le chunker prépend ~100 jetons de recouvrement à chaque chunk après
+        le premier : la couture retire ce doublon quand elle le retrouve en
+        tête du chunk suivant, et le laisse sinon — un doublon vaut mieux
+        qu'un trou.
+        """
+        lignes = self._conn.execute(
+            "SELECT content, title, author, source, timestamp, url, thread_id "
+            "FROM knowledge_chunks WHERE doc_id = ? AND deleted_at IS NULL "
+            "ORDER BY chunk_index",
+            (doc_id,),
+        ).fetchall()
+        if not lignes:
+            return None
+        morceaux = [lignes[0][0]]
+        for precedent, courant in zip(lignes, lignes[1:]):
+            texte = courant[0]
+            # Cherche la plus longue fin du chunk précédent qui ouvre
+            # celui-ci — c'est le recouvrement du chunker.
+            recouvrement = 0
+            maxi = min(len(precedent[0]), len(texte), 800)
+            for taille in range(maxi, 40, -1):
+                if precedent[0][-taille:] == texte[:taille]:
+                    recouvrement = taille
+                    break
+            morceaux.append(texte[recouvrement:])
+        premier = lignes[0]
+        return {
+            "doc_id": doc_id,
+            "title": premier[1],
+            "author": premier[2],
+            "source": premier[3],
+            "timestamp": premier[4],
+            "url": premier[5],
+            "thread_id": premier[6],
+            "content": "".join(morceaux),
+            "chunks": len(lignes),
+        }
+
     def count(self) -> int:
         """Return the total number of stored chunks."""
         row = self._conn.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()

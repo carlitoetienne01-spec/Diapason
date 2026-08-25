@@ -70,6 +70,13 @@ EXPECTED_TOOLS = {
     "kg_add_relation",
     "kg_query",
     "kg_neighbors",
+    # gmail_live.py / imessage_tools.py / knowledge_search.py — les mains
+    # des connecteurs (25/08/2026), dépendances sûres à l'import
+    "gmail_search",
+    "mail_archive",
+    "mail_trash",
+    "imessage_conversation",
+    "knowledge_get_document",
     # gestes.py — stdlib à l'import (PyObjC seulement à l'exécution)
     "volume_control",
     "media_control",

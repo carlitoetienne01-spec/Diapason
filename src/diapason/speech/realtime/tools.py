@@ -23,6 +23,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # « Qu'est-ce que j'ai noté sur… » les mains prises : le savoir
     # personnel (Obsidian, Apple Notes) répond aussi à la voix (23/08/2026).
     "knowledge_search",
+    "knowledge_get_document",
     # « Qu'est-ce que j'ai manqué ? » les mains prises (Atlas, 24/08/2026).
     "digest_collect",
     "open_anything",
@@ -41,6 +42,10 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "messages_status",
     "browser_tabs",
     "file_trash",
+    "gmail_search",
+    "mail_archive",
+    "mail_trash",
+    "imessage_conversation",
     "screen_describe",
     "screen_read_text",
     "screen_share_start",
@@ -96,7 +101,22 @@ FAST_ACK_TOOL_IDS = frozenset(
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.knowledge_search",
-        (("knowledge_search", "KnowledgeSearchTool"),),
+        (
+            ("knowledge_search", "KnowledgeSearchTool"),
+            ("knowledge_get_document", "KnowledgeGetDocumentTool"),
+        ),
+    ),
+    (
+        "diapason.tools.gmail_live",
+        (
+            ("gmail_search", "GmailSearchTool"),
+            ("mail_archive", "MailArchiveTool"),
+            ("mail_trash", "MailTrashTool"),
+        ),
+    ),
+    (
+        "diapason.tools.imessage_tools",
+        (("imessage_conversation", "IMessageConversationTool"),),
     ),
     (
         "diapason.tools.digest_collect",

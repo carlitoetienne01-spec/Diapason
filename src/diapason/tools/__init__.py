@@ -202,4 +202,10 @@ import diapason.tools.gestes  # noqa: E402,F401
 # Onglets du navigateur de l'utilisateur — stdlib + osascript, pas de garde.
 import diapason.tools.browser_tabs  # noqa: E402,F401
 
+# Les mains des connecteurs (Atlas, 25 août 2026) : Gmail en direct et la
+# conversation iMessage — les specs mcp_tools déclaraient, personne
+# n'exécutait. httpx et sqlite sont des dépendances sûres : pas de garde.
+import diapason.tools.gmail_live  # noqa: E402,F401
+import diapason.tools.imessage_tools  # noqa: E402,F401
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]
