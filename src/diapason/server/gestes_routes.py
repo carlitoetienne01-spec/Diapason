@@ -44,6 +44,15 @@ class _Session:
     images: int = 0
     mains_vues: int = 0
     derniers_etats: list = field(default_factory=list)
+    # De quoi JUGER la fiabilité, comme le §141 l'exige : un geste n'est
+    # fini que quand ses faux positifs sont mesurés. Le serveur ne peut pas
+    # savoir ce que l'utilisateur VOULAIT — il compte donc ce qui s'est
+    # produit, et c'est l'humain qui dit combien étaient voulus.
+    saisies: int = 0
+    relachements: int = 0
+    pertes: int = 0
+    confiance_totale: float = 0.0
+    confiance_mesures: int = 0
 
     @property
     def expiree(self) -> bool:
@@ -108,6 +117,11 @@ def desarmer_route() -> dict[str, Any]:
 def etat() -> dict[str, Any]:
     if not session_active() or _session is None:
         return {"armed": False}
+    confiance = (
+        _session.confiance_totale / _session.confiance_mesures
+        if _session.confiance_mesures
+        else 0.0
+    )
     return {
         "armed": True,
         "state": _session.moteur.etat.value,
@@ -116,6 +130,16 @@ def etat() -> dict[str, Any]:
         "secondsLeft": round(
             max(0.0, _INACTIVITE_MAX_S - (time.monotonic() - _session.vue_a)), 1
         ),
+        # Ce qui permet de juger, et rien de plus : le serveur ne prétend
+        # pas savoir lesquelles étaient voulues.
+        "grabs": _session.saisies,
+        "releases": _session.relachements,
+        "losses": _session.pertes,
+        "handRatio": round(
+            _session.mains_vues / _session.images if _session.images else 0.0, 2
+        ),
+        "confidence": round(confiance, 2),
+        "recentStates": list(_session.derniers_etats),
     }
 
 
@@ -180,11 +204,24 @@ async def image(request: Request) -> dict[str, Any]:
     points = mains[0] if mains else None
     if points:
         _session.mains_vues += 1
+    if points:
+        from diapason.desktop.gestes_main import mesurer
+
+        mesures = mesurer(points)
+        if mesures is not None:
+            _session.confiance_totale += mesures.confiance
+            _session.confiance_mesures += 1
     avant = _session.moteur.etat
     apres = _session.moteur.observer(points)
     if apres is not avant:
         _session.derniers_etats.append(apres.value)
         del _session.derniers_etats[:-10]
+        if apres.value == "SAISI":
+            _session.saisies += 1
+        elif apres.value == "RELACHE":
+            _session.relachements += 1
+        elif apres.value in ("PERDU", "ANNULE"):
+            _session.pertes += 1
     return {
         "state": apres.value,
         "changed": apres is not avant,

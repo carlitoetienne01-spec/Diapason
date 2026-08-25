@@ -19,6 +19,25 @@ export type EtatGeste =
   | 'PERDU'
   | 'ANNULE';
 
+export type Diagnostic = {
+  armed: boolean;
+  state?: EtatGeste;
+  frames?: number;
+  handsSeen?: number;
+  grabs?: number;
+  releases?: number;
+  losses?: number;
+  handRatio?: number;
+  confidence?: number;
+  secondsLeft?: number;
+};
+
+export async function lireDiagnostic(): Promise<Diagnostic> {
+  const reponse = await apiFetch('/v1/gestures/state');
+  if (!reponse.ok) return { armed: false };
+  return reponse.json();
+}
+
 export type ReponseImage = {
   state: EtatGeste;
   changed: boolean;

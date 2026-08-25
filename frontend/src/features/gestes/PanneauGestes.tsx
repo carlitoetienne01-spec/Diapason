@@ -23,7 +23,7 @@ const PHRASES: Record<string, string> = {
 };
 
 export function PanneauGestes() {
-  const { actif, etat, mainVue, erreur, basculer } = useModeGestes();
+  const { actif, etat, mainVue, erreur, diagnostic, basculer } = useModeGestes();
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -67,6 +67,31 @@ export function PanneauGestes() {
             {etat ? (PHRASES[etat] ?? etat) : 'En attente d’une première image…'}
           </span>
         </div>
+      )}
+
+      {actif && diagnostic?.armed && (
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+          {/* Ce qui permet de JUGER la fiabilité (§141) : le serveur compte
+              ce qui s'est produit, c'est toi qui sais ce que tu voulais. */}
+          <div>
+            <dt className="inline">Saisies&nbsp;:&nbsp;</dt>
+            <dd className="inline tabular-nums text-foreground">{diagnostic.grabs ?? 0}</dd>
+          </div>
+          <div>
+            <dt className="inline">Dépôts&nbsp;:&nbsp;</dt>
+            <dd className="inline tabular-nums text-foreground">{diagnostic.releases ?? 0}</dd>
+          </div>
+          <div>
+            <dt className="inline">Pertes&nbsp;:&nbsp;</dt>
+            <dd className="inline tabular-nums text-foreground">{diagnostic.losses ?? 0}</dd>
+          </div>
+          <div>
+            <dt className="inline">Main vue&nbsp;:&nbsp;</dt>
+            <dd className="inline tabular-nums text-foreground">
+              {Math.round((diagnostic.handRatio ?? 0) * 100)}&nbsp;%
+            </dd>
+          </div>
+        </dl>
       )}
 
       {erreur && (

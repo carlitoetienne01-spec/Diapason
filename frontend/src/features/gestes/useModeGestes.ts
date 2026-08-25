@@ -8,7 +8,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { armer, desarmer, EchecGeste, envoyerImage, type EtatGeste } from './api';
+import {
+  armer,
+  desarmer,
+  type Diagnostic,
+  EchecGeste,
+  envoyerImage,
+  lireDiagnostic,
+  type EtatGeste,
+} from './api';
 
 // Le serveur reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle
 // locale, pas l'analyse. Douze images par seconde suffisent à un geste de
@@ -21,6 +29,7 @@ export type ModeGestes = {
   etat: EtatGeste | null;
   mainVue: boolean;
   erreur: string | null;
+  diagnostic: Diagnostic | null;
   basculer: () => void;
 };
 
@@ -29,6 +38,7 @@ export function useModeGestes(): ModeGestes {
   const [etat, setEtat] = useState<EtatGeste | null>(null);
   const [mainVue, setMainVue] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
   const flux = useRef<MediaStream | null>(null);
   const video = useRef<HTMLVideoElement | null>(null);
   const canevas = useRef<HTMLCanvasElement | null>(null);
@@ -141,10 +151,23 @@ export function useModeGestes(): ModeGestes {
     }
   }, [actif, allumer, eteindre]);
 
+  // Le diagnostic se relit une fois par seconde : assez pour juger, trop
+  // peu pour peser. Il n'est jamais dans le chemin des images.
+  useEffect(() => {
+    if (!actif) {
+      setDiagnostic(null);
+      return;
+    }
+    const t = window.setInterval(() => {
+      void lireDiagnostic().then(setDiagnostic).catch(() => {});
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [actif]);
+
   // Le filet de sécurité : quoi qu'il arrive au composant, la caméra se
   // ferme. Une caméra qui survit à sa page est exactement ce que le voyant
   // vert est censé rendre impossible.
   useEffect(() => () => eteindre(), [eteindre]);
 
-  return { actif, etat, mainVue, erreur, basculer };
+  return { actif, etat, mainVue, erreur, diagnostic, basculer };
 }

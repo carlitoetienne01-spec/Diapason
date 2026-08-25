@@ -259,3 +259,72 @@ class TestLeDebitDesImages:
         reponse = _too_many(1.0, Request({"type": "http", "headers": []}))
         assert reponse.status_code == 429
         assert "access-control-allow-origin" not in reponse.headers
+
+
+class TestLesChiffresQuiPermettentDeJuger:
+    """§141 : un geste n'est fini que quand ses faux positifs sont MESURÉS.
+
+    Le serveur ne peut pas savoir ce que l'utilisateur voulait — il compte
+    donc ce qui s'est produit, et c'est l'humain qui dit combien étaient
+    voulus. Compter à sa place serait inventer.
+    """
+
+    def _main_ouverte(self):
+        from diapason.desktop.gestes_main import Point
+
+        pts = [
+            Point("wrist", 0.5, 0.9),
+            Point("indexMCP", 0.42, 0.7),
+            Point("littleMCP", 0.62, 0.7),
+            Point("thumbCMC", 0.38, 0.82),
+            Point("thumbTip", 0.3, 0.25),
+        ]
+        for i, doigt in enumerate(("index", "middle", "ring", "little")):
+            base = 0.42 + i * 0.066
+            pts.append(Point(f"{doigt}MCP", base, 0.7))
+            pts.append(Point(f"{doigt}Tip", base, 0.18))
+        return pts
+
+    def test_les_compteurs_partent_de_zero(self, client):
+        client.post("/v1/gestures/arm")
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["grabs"] == 0 and etat["releases"] == 0 and etat["losses"] == 0
+
+    def test_la_proportion_de_mains_vues_se_mesure(self, client):
+        """Un mauvais éclairage ou une main hors champ se voient là, et
+        expliquent pourquoi les gestes « ne marchent pas »."""
+        client.post("/v1/gestures/arm")
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+        ):
+            for _ in range(3):
+                client.post("/v1/gestures/frame", content=_image_factice())
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._main_ouverte()],
+        ):
+            client.post("/v1/gestures/frame", content=_image_factice())
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["frames"] == 4
+        assert etat["handsSeen"] == 1
+        assert etat["handRatio"] == 0.25
+
+    def test_la_confiance_moyenne_est_rapportee(self, client):
+        from diapason.desktop.gestes_main import Point
+
+        client.post("/v1/gestures/arm")
+        floue = [Point(p.nom, p.x, p.y, confiance=0.4) for p in self._main_ouverte()]
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[floue],
+        ):
+            client.post("/v1/gestures/frame", content=_image_factice())
+        assert client.get("/v1/gestures/state").json()["confidence"] == 0.4
+
+    def test_le_serveur_ne_pretend_pas_savoir_ce_qui_etait_voulu(self, client):
+        """Aucun champ ne prétend distinguer un vrai geste d'un faux : ce
+        jugement appartient à l'humain, et l'inventer serait mentir."""
+        client.post("/v1/gestures/arm")
+        etat = client.get("/v1/gestures/state").json()
+        for invente in ("falsePositives", "intended", "accuracy", "reliability"):
+            assert invente not in etat
