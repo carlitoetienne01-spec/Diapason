@@ -32,8 +32,12 @@ def _main(*, ouverture: float = 1.0, pince: float = 1.0) -> list[Point]:
     points = [Point(POIGNET := "wrist", 0.5, 0.9)]
     points.append(Point("indexMCP", 0.42, 0.7))
     points.append(Point("littleMCP", 0.62, 0.7))  # paume = 0.2
-    # Un doigt tendu place son bout à ~2× la paume du poignet.
-    portee = 0.2 * (0.6 + 3.0 * ouverture)
+    # Calibré sur des mesures RÉELLES (25 août 2026) : une main ouverte
+    # donne un repliement de ~1,73, un poing serré de ~0,85. Les valeurs
+    # précédentes allaient de 0,10 à 2,00 — une plage qu'aucune main ne
+    # produit, et qui validait donc des seuils qu'aucune main ne franchit.
+    # Un double de test doit ressembler à ce qu'il double.
+    portee = 0.2 * (1.752 + 0.978 * ouverture)
     for i, doigt in enumerate(("index", "middle", "ring", "little")):
         base = 0.42 + i * 0.066
         points.append(Point(f"{doigt}MCP", base, 0.7))
@@ -148,7 +152,7 @@ class TestHysteresis:
     def test_une_main_a_la_frontiere_ne_fait_pas_osciller_l_etat(self):
         """Sans hystérésis, une main qui hésite change d'état dix fois par
         seconde — et chaque changement serait une action."""
-        seuils = Seuils(fermeture_entree=0.55, fermeture_sortie=0.70)
+        seuils = Seuils(fermeture_entree=1.14, fermeture_sortie=1.44)
         moteur = MoteurDeGestes(seuils)
         for i in range(12):
             moteur.observer(_main(ouverture=1.0), maintenant=i * 0.05)
@@ -157,9 +161,11 @@ class TestHysteresis:
         assert moteur.etat is Etat.SAISI
         # Une main juste au-dessus du seuil d'entrée ne doit PAS rouvrir :
         # il faut franchir le seuil de sortie, plus haut.
+        # ouverture 0,51 → repliement ≈ 1,25, soit ENTRE le seuil d'entrée
+        # (1,14) et celui de sortie (1,44) : la bande morte de l'hystérésis.
         etats = set()
         for i in range(8):
-            etats.add(moteur.observer(_main(ouverture=0.30), maintenant=2.0 + i * 0.05))
+            etats.add(moteur.observer(_main(ouverture=0.51), maintenant=2.0 + i * 0.05))
         assert etats == {Etat.SAISI}, f"l'état a oscillé : {etats}"
 
 
@@ -259,16 +265,17 @@ class TestCalibration:
             seuils_calibres,
         )
 
-        # Un poing « peu serré » : repliement 0,58, au-dessus de l'usine.
+        # Un poing « peu serré » : repliement ≈ 1,30, donc AU-DESSUS du
+        # seuil d'usine (1,14) — jamais reconnu comme fermé sans calibrer.
         usine = MoteurDeGestes(Seuils())
-        calibre = MoteurDeGestes(seuils_calibres(0.90, 0.55))
+        calibre = MoteurDeGestes(seuils_calibres(1.75, 1.30))
         for moteur in (usine, calibre):
             for i in range(15):
                 moteur.observer(_main(ouverture=1.0), maintenant=i * 0.05)
         vus = {}
         for nom, moteur in (("usine", usine), ("calibré", calibre)):
             for i in range(20):
-                moteur.observer(_main(ouverture=0.35), maintenant=2.0 + i * 0.05)
+                moteur.observer(_main(ouverture=0.56), maintenant=2.0 + i * 0.05)
             vus[nom] = moteur.etat
         assert vus["calibré"] is Etat.SAISI, "une main calibrée doit être reconnue"
 

@@ -90,12 +90,21 @@ class Seuils:
     # Une main est « fermée » quand ses doigts sont repliés sous ce ratio de
     # leur longueur déployée ; « ouverte » au-dessus. L'écart entre les deux
     # est l'hystérésis : sans lui, la frontière fait osciller l'état.
-    # Échelle du repliement local : ~0,3 poing serré, ~1,0 main tendue.
-    # L'écart entre entrée et sortie est l'hystérésis.
-    fermeture_entree: float = 0.50
-    fermeture_sortie: float = 0.62
-    ouverture_entree: float = 0.72
-    ouverture_sortie: float = 0.60
+    # MESURÉ SUR UNE VRAIE MAIN, le 25 août 2026, et pas déduit d'une
+    # géométrie idéale : poing serré ≈ 0,85, main tendue ≈ 1,73. Les
+    # valeurs précédentes (0,50 pour la fermeture) venaient de mains
+    # synthétiques dont les doigts se repliaient entièrement sur leur base —
+    # ce qu'aucune main ne fait : l'épaisseur des phalanges maintient les
+    # bouts à distance, et Vision place les doigts occultés par un poing
+    # fermé encore plus loin. Conséquence vécue : un poing réel restait
+    # TOUJOURS au-dessus du seuil, donc jamais reconnu comme fermé.
+    #
+    # Ces valeurs restent un point de départ. La calibration les remplace
+    # par celles de la main qui s'en sert — c'est elle qui a la raison.
+    fermeture_entree: float = 1.14
+    fermeture_sortie: float = 1.44
+    ouverture_entree: float = 1.52
+    ouverture_sortie: float = 1.38
     # Une pince : pouce et index qui se touchent, mesuré en fraction de la
     # largeur de la paume — donc indépendant de la distance à l'objectif.
     pince_entree: float = 0.35
@@ -186,7 +195,9 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
         # bras. Mesuré : le critère local sépare trois fois mieux.
         etendue = _distance(base, bout) / paume
         replis.append(etendue)
-        if etendue > 0.75:
+        # Même échelle réelle : un doigt tendu dépasse 1,3 fois la largeur
+        # de paume mesurée entre les bases de l'index et de l'auriculaire.
+        if etendue > 1.3:
             tendus += 1
 
     if len(replis) < 3:
