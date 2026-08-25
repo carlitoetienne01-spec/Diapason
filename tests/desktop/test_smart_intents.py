@@ -476,7 +476,11 @@ class TestMusiqueGenerique:
         assert url == "https://www.youtube.com/watch?v=abc123XYZ_-"
 
     def test_mets_de_la_musique_ouvre_le_juke_box(self):
-        for phrase in ("mets de la musique", "met de la musique", "lance de la musique"):
+        for phrase in (
+            "mets de la musique",
+            "met de la musique",
+            "lance de la musique",
+        ):
             intent = parse_smart_intent(phrase)
             assert intent.kind == "app" and intent.app == "Spotify", phrase
 

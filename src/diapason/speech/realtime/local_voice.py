@@ -508,11 +508,18 @@ VOICE_TOOL_TURN_TEMPERATURE = 0.1
 
 # Le filet anti-promesse vit désormais dans core/promesse.py (partagé avec
 # le chat, affiné le 24 août 2026 : les OFFRES — « veux-tu que je
-# cherche ? » — ne somment plus). L'alias garde les tests et le nom connus.
-from diapason.core.promesse import (  # noqa: E402
-    PROMESSE_SANS_ACTE_RE as _PROMESSE_SANS_ACTE_RE,
-    est_une_promesse_sans_acte as _est_une_promesse_sans_acte,
-)
+# cherche ? » — ne somment plus).
+from diapason.core import promesse as _promesse  # noqa: E402
+
+# Ces trois noms RÉ-EXPORTENT — même motif que `_NO_TOOL_TURN_RE` plus haut.
+# Des AFFECTATIONS, et non des alias d'import : `ruff --fix` a supprimé
+# l'alias `_PROMESSE_SANS_ACTE_RE` le 25 août 2026 en le jugeant inutilisé —
+# ce qu'il était, dans ce module — et deux tests sont tombés à l'import. Un
+# ré-export qui ne ressemble pas à un usage est une bombe à retardement ;
+# une affectation, aucun linter ne la prendra jamais pour un oubli.
+PROMESSE_SANS_ACTE_RE = _promesse.PROMESSE_SANS_ACTE_RE
+_PROMESSE_SANS_ACTE_RE = PROMESSE_SANS_ACTE_RE
+_est_une_promesse_sans_acte = _promesse.est_une_promesse_sans_acte
 
 
 class _AbortableQueue(asyncio.Queue):
@@ -611,8 +618,11 @@ def _default_llm(
                     # Un tour SANS outils garde la chaleur par défaut :
                     # c'est là que la parole se joue, et une réponse
                     # parlée glacée s'entend.
-                    **({"temperature": VOICE_TOOL_TURN_TEMPERATURE}
-                       if (with_tools and tools_schema) else {}),
+                    **(
+                        {"temperature": VOICE_TOOL_TURN_TEMPERATURE}
+                        if (with_tools and tools_schema)
+                        else {}
+                    ),
                 },
                 # Without this Ollama unloads the model after five idle
                 # minutes, and the next turn silently pays a 6–9 s reload
@@ -629,9 +639,7 @@ def _default_llm(
                     "POST", f"{_ollama_base()}/api/chat", json=payload
                 ) as response:
                     if response.status_code >= 400:
-                        detail = (await response.aread()).decode(
-                            "utf-8", "replace"
-                        )
+                        detail = (await response.aread()).decode("utf-8", "replace")
                         if (
                             response.status_code == 400
                             and "does not support tools" in detail
@@ -695,8 +703,7 @@ def _default_llm(
                     # cannot act is degraded; one that errors on every single
                     # turn is broken. Retry once without tools and say so.
                     logger.warning(
-                        "%s does not support tools; "
-                        "local voice continues without them",
+                        "%s does not support tools; local voice continues without them",
                         model,
                     )
                     await stream_once(with_tools=False)
@@ -780,25 +787,25 @@ def mentions_assistant_name(text: str) -> bool:
 
     mots = _NOM_RE.findall(str(text or "").casefold())
     candidats = [m for m in mots if len(m) >= 6]
-    candidats += [
-        a + b for a, b in zip(mots, mots[1:]) if len(a + b) >= 6
-    ]
+    candidats += [a + b for a, b in zip(mots, mots[1:]) if len(a + b) >= 6]
     return any(
-        difflib.SequenceMatcher(None, c, "diapason").ratio() >= 0.75
-        for c in candidats
+        difflib.SequenceMatcher(None, c, "diapason").ratio() >= 0.75 for c in candidats
     )
 
 
 def strip_assistant_name(text: str) -> str:
     """Retire l'appel initial — « Diapason, ouvre… » → « ouvre… »."""
-    return re.sub(
-        # « Diapason, », « diapasant » — et « Dia pasons, », le nom coupé en
-        # deux par la transcription.
-        r"^\W*(?:[a-zà-ÿ]{2,4}\s+)?[a-zà-ÿ]*(?:diapa|pason|pazon)\w*[\s,.:!?]*",
-        "",
-        str(text or ""),
-        flags=re.IGNORECASE,
-    ).strip() or str(text or "").strip()
+    return (
+        re.sub(
+            # « Diapason, », « diapasant » — et « Dia pasons, », le nom coupé en
+            # deux par la transcription.
+            r"^\W*(?:[a-zà-ÿ]{2,4}\s+)?[a-zà-ÿ]*(?:diapa|pason|pazon)\w*[\s,.:!?]*",
+            "",
+            str(text or ""),
+            flags=re.IGNORECASE,
+        ).strip()
+        or str(text or "").strip()
+    )
 
 
 class LocalVoiceSession(RealtimeVoiceSession):
@@ -1189,6 +1196,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         try:
             from diapason.desktop.contexte_app import (
                 decrire as decrire_app,
+            )
+            from diapason.desktop.contexte_app import (
                 dernier_contexte,
             )
 
@@ -1551,7 +1560,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
             try:
                 self._sur_echange(question.strip(), reponse.strip())
             except Exception:  # noqa: BLE001 - la mémoire est un bonus, la voix prime
-                logger.warning("voice: échange non transmis à la mémoire", exc_info=True)
+                logger.warning(
+                    "voice: échange non transmis à la mémoire", exc_info=True
+                )
         magasin = self._magasin_traces()
         if magasin is None or not question.strip() or not reponse.strip():
             return
@@ -1588,9 +1599,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # Ni réponse, ni affichage — remplir le fil avec le dialogue d'un
             # film serait aussi impoli que d'y répondre. Une trace sobre au
             # journal, pour pouvoir diagnostiquer sans écouter personne.
-            logger.info(
-                "voice turn ignored (not addressed): %d chars", len(text)
-            )
+            logger.info("voice turn ignored (not addressed): %d chars", len(text))
             return
         # L'EMPREINTE VOCALE tranche après le nom : la garde par le nom
         # filtre le film et le bruit, elle ne filtre pas un tiers qui DIT
@@ -1659,9 +1668,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             return
         await self._respond_to_text(text, already_queued=True, spec_llm=spec_llm)
 
-    async def _try_fast_voice_action(
-        self, text: str, *, turn_started: float
-    ) -> bool:
+    async def _try_fast_voice_action(self, text: str, *, turn_started: float) -> bool:
         """Execute an explicit open/search command without two LLM rounds.
 
         A bare app name is deliberately excluded: Whisper hallucinated
@@ -1741,9 +1748,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         else:
             verb = "Je lance" if extra.get("play") else "J’ouvre"
         response = (
-            f"{verb} {target}."
-            if success
-            else f"Je n’ai pas pu ouvrir {target}."
+            f"{verb} {target}." if success else f"Je n’ai pas pu ouvrir {target}."
         )
         # Quand l'outil a constaté l'état (« déjà devant toi », « remise
         # devant », « lancée »), sa phrase dit la vérité — elle prime sur
@@ -2071,9 +2076,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             from diapason.speech.realtime.tools import FAST_ACK_TOOL_IDS
         except Exception:  # noqa: BLE001 - l'accusé est un bonus
             return
-        noms = [
-            (c.get("function") or {}).get("name", "") for c in tool_calls
-        ]
+        noms = [(c.get("function") or {}).get("name", "") for c in tool_calls]
         if not noms or not all(n in FAST_ACK_TOOL_IDS for n in noms):
             return
         accuses = _SHARED.get("acks") or {}

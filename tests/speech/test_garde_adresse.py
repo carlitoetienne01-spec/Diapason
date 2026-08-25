@@ -27,7 +27,7 @@ class TestLeNom:
         [
             "Diapason, ouvre Safari",
             "diapason quelle heure est-il",
-            "diapasant ouvre-moi la télé",   # la transcription déforme
+            "diapasant ouvre-moi la télé",  # la transcription déforme
             "diapazon, mes tâches",
             "Dia pasons, quelle heure est-il ?",  # le nom coupé en deux
             "Dis-moi Diapason, il pleut demain ?",
@@ -39,9 +39,9 @@ class TestLeNom:
     @pytest.mark.parametrize(
         "phrase",
         [
-            "Ouvre Safari",                       # pas de nom : hors fenêtre, ignoré
-            "Tu as vu le match hier soir ?",      # on parle à un tiers
-            "Le suspect a quitté la maison.",     # un film
+            "Ouvre Safari",  # pas de nom : hors fenêtre, ignoré
+            "Tu as vu le match hier soir ?",  # on parle à un tiers
+            "Le suspect a quitté la maison.",  # un film
             "",
         ],
     )

@@ -7,7 +7,6 @@ from datetime import datetime
 import pytest
 
 from diapason.heartbeat.tick import (
-    TickEtat,
     cron_correspond,
     echu_depuis,
     etat_batterie,
@@ -43,7 +42,9 @@ class TestMiniCron:
 
 class TestAgenda:
     def test_la_fenetre_retient_l_imminent(self):
-        contenu = "Events for aujourd'hui:\n12:10 — Dentiste\n14:30 — Marche\n11:50 — Passé"
+        contenu = (
+            "Events for aujourd'hui:\n12:10 — Dentiste\n14:30 — Marche\n11:50 — Passé"
+        )
         imminents = evenements_imminents(contenu, MIDI)
         assert [(t, r) for _c, r, t in imminents] == [("Dentiste", 10)]
 
@@ -64,7 +65,7 @@ class TestAgenda:
 
 class TestBatterie:
     def test_pmset_se_lit(self):
-        sortie = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=123)\t9%; discharging; 0:42 remaining"
+        sortie = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=123)\t9%; discharging; 0:42 remaining"  # noqa: E501 - sortie réelle de pmset, reproduite telle quelle
         assert etat_batterie(sortie) == (9, True)
         assert etat_batterie("garbage") is None
 

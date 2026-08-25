@@ -79,9 +79,7 @@ class ClapDetector:
         #    plancher qu'il vient de franchir.
         cible = min(level, self.noise_floor * cfg.plafond_de_montee)
         alpha = cfg.descente_alpha if cible < self.noise_floor else cfg.montee_alpha
-        self.noise_floor = max(
-            alpha * self.noise_floor + (1.0 - alpha) * cible, 1e-7
-        )
+        self.noise_floor = max(alpha * self.noise_floor + (1.0 - alpha) * cible, 1e-7)
 
         threshold = max(self.noise_floor * cfg.spike_ratio, cfg.min_rms)
         retrigger_level = threshold * cfg.retrigger_ratio
@@ -557,6 +555,7 @@ def reglage_calibre(
         )
     return replace(base, min_rms=round(seuil, 4))
 
+
 class ClapListener:
     """Background mic loop that invokes a callback on double clap."""
 
@@ -658,9 +657,7 @@ class ClapListener:
         try:
             import sounddevice as sd
         except ImportError:
-            self._panne = (
-                "sounddevice manque : uv sync --extra speech-wake"
-            )
+            self._panne = "sounddevice manque : uv sync --extra speech-wake"
             logger.error(self._panne)
             self._pret.set()
             return

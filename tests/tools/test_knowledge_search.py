@@ -197,9 +197,15 @@ class TestLeDocumentEntier:
 
         magasin = MagicMock()
         magasin.get_document.return_value = {
-            "doc_id": "d", "title": "t", "author": "", "source": "gmail",
-            "timestamp": "", "url": "", "thread_id": "",
-            "content": "x" * 50_000, "chunks": 25,
+            "doc_id": "d",
+            "title": "t",
+            "author": "",
+            "source": "gmail",
+            "timestamp": "",
+            "url": "",
+            "thread_id": "",
+            "content": "x" * 50_000,
+            "chunks": 25,
         }
         with patch(
             "diapason.tools.knowledge_search.KnowledgeStore",
@@ -230,10 +236,17 @@ class TestLeDocumentEntier:
         from diapason.tools.knowledge_search import KnowledgeSearchTool
 
         touche = SearchHit(
-            chunk_id="c1", document_id="gmail:abc", chunk_idx=0,
-            title="Relevé", content_snippet="extrait du relevé",
-            source="gmail", timestamp="2026-03-04", participants=[],
-            score=0.9, bm25_score=0.5, vector_score=0.4,
+            chunk_id="c1",
+            document_id="gmail:abc",
+            chunk_idx=0,
+            title="Relevé",
+            content_snippet="extrait du relevé",
+            source="gmail",
+            timestamp="2026-03-04",
+            participants=[],
+            score=0.9,
+            bm25_score=0.5,
+            vector_score=0.4,
             thread_id="gmail:t",
             url="https://mail.google.com/mail/u/0/#all/abc",
         )

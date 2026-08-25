@@ -329,6 +329,8 @@ def _ensure_identity_prompt(
     try:
         from diapason.desktop.contexte_app import (
             decrire as decrire_app,
+        )
+        from diapason.desktop.contexte_app import (
             dernier_contexte,
         )
 
@@ -369,9 +371,7 @@ def _ensure_identity_prompt(
         # La voix a ses règles orales (oral_prompt.py) ; le chat a les
         # siennes — même identité, manière propre à l'écrit (23 août 2026).
         builder = SystemPromptBuilder(
-            agent_template=habiller_pour_le_chat(
-                cfg.agent.default_system_prompt or ""
-            ),
+            agent_template=habiller_pour_le_chat(cfg.agent.default_system_prompt or ""),
             memory_files_config=getattr(cfg, "memory_files", None),
             system_prompt_config=getattr(cfg, "system_prompt", None),
         )
@@ -1186,9 +1186,9 @@ async def _handle_stream(
                     # éventuellement d'un modèle plus grand ([reflexion]).
                     from diapason.server import reflexion as _reflexion
 
-                    if _reflexion.est_activee(app_config) and _reflexion.meriter_reflexion(
-                        query_text
-                    ):
+                    if _reflexion.est_activee(
+                        app_config
+                    ) and _reflexion.meriter_reflexion(query_text):
                         token_iter = _reflexion.repondre_en_reflechissant(
                             engine,
                             _reflexion.modele_de_reflexion(app_config, model),
@@ -1243,8 +1243,7 @@ async def _handle_stream(
                             else "tool_call_end"
                         )
                         yield (
-                            f"event: {_nom}\n"
-                            f"data: {_json_outils.dumps(_evt.data)}\n\n"
+                            f"event: {_nom}\ndata: {_json_outils.dumps(_evt.data)}\n\n"
                         )
             else:
                 async for token in token_iter:
@@ -1424,7 +1423,9 @@ async def list_models(request: Request) -> ModelListResponse:
         m for m in all_ids if not is_cloud_model(m) and not _est_modele_embedding(m)
     ]
     if not model_ids:
-        model_ids = [m for m in await list_local_models() if not _est_modele_embedding(m)]
+        model_ids = [
+            m for m in await list_local_models() if not _est_modele_embedding(m)
+        ]
 
     defaut = str(getattr(request.app.state, "model", "") or "")
     if defaut in model_ids:

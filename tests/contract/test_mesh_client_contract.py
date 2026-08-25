@@ -83,7 +83,7 @@ class TestLesQuatrePortesDuTelephone:
         manquantes = ROUTES_DU_TELEPHONE - _actuelles()
         assert not manquantes, (
             "Le client Flutter écrit ces URL en dur et n'a aucune autre "
-            f"porte — il deviendrait muet :\n  " + "\n  ".join(sorted(manquantes))
+            "porte — il deviendrait muet :\n  " + "\n  ".join(sorted(manquantes))
         )
 
     def test_elles_sont_exemptees_du_mur_d_authentification(self):

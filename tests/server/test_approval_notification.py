@@ -30,7 +30,7 @@ def test_le_nom_de_l_outil_prime_sur_les_arguments():
     JSON des arguments ne tient pas dans une bannière."""
     assert (
         approval_bridge.resumer_la_demande(
-            "Allow execution of tool 'shell_exec' with args {\"cmd\": \"ls\"}?"
+            'Allow execution of tool \'shell_exec\' with args {"cmd": "ls"}?'
         )
         == "Diapason veut utiliser shell_exec"
     )

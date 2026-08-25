@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence
 

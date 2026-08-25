@@ -161,9 +161,7 @@ class FluxCamera:
         if not demander_autorisation():
             raise CameraIndisponible(_pourquoi_refuse())
 
-        appareil = AV.AVCaptureDevice.defaultDeviceWithMediaType_(
-            AV.AVMediaTypeVideo
-        )
+        appareil = AV.AVCaptureDevice.defaultDeviceWithMediaType_(AV.AVMediaTypeVideo)
         if appareil is None:
             raise CameraIndisponible("Aucune caméra sur cette machine.")
 

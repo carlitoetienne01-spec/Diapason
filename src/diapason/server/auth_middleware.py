@@ -177,7 +177,7 @@ _OPEN_MESH_ROUTES = frozenset(
 )
 
 
-def _too_many(wait_seconds: float, request: Optional[Request] = None) -> JSONResponse:
+def _too_many(wait_seconds: float, request: Request | None = None) -> JSONResponse:
     """Un refus qui reste LISIBLE, y compris depuis la fenêtre.
 
     Constaté le 25 août 2026 : une réponse d'erreur émise par ce middleware
@@ -323,17 +323,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # des autres appareils — le maillage aurait paru cassé pendant qu'un
         # transfert légitime se déroulait.
         if est_route_de_gestes(path):
-            allowed, wait_seconds = self._gesture_limiter.check(
-                f"{client}:gestures"
-            )
+            allowed, wait_seconds = self._gesture_limiter.check(f"{client}:gestures")
             if not allowed:
                 return _too_many(wait_seconds, request)
             return await call_next(request)
 
         if est_route_de_transfert(path):
-            allowed, wait_seconds = self._transfer_limiter.check(
-                f"{client}:transfer"
-            )
+            allowed, wait_seconds = self._transfer_limiter.check(f"{client}:transfer")
             if not allowed:
                 return _too_many(wait_seconds, request)
             return await call_next(request)

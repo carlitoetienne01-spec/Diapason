@@ -29,7 +29,7 @@ _SEARCH_RE = re.compile(
     # verbe est « faire », la recherche est un nom, et l'article qui suit
     # appartient à la tournure, pas à la requête.
     r"^\s*(?:search(?:\s+for)?|(?:re)?cherche(?:r|z)?(?:[- ]moi)?"
-    r"|fais(?:[- ]moi)?\s+(?:la|une)\s+recherche(?:\s+(?:de\s+la|de\s+l['’]|du|des|de|d['’]|sur|pour))?"
+    r"|fais(?:[- ]moi)?\s+(?:la|une)\s+recherche(?:\s+(?:de\s+la|de\s+l['’]|du|des|de|d['’]|sur|pour))?"  # noqa: E501 - couper une alternation la rend illisible
     r"|trouve(?:z)?(?:[- ]moi)?|google|duckduckgo|bing)\s+"
     r"(?P<query>.+?)\s*$",
     re.IGNORECASE,

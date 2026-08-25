@@ -148,7 +148,8 @@ def test_les_evenements_portent_ce_que_l_interface_affiche():
 
 
 def test_le_dernier_tour_se_fait_sans_outils():
-    """Sinon un modèle qui boucle rendrait le silence — l'utilisateur veut une phrase."""
+    """Sinon un modèle qui boucle rendrait le silence — et l'utilisateur
+    attend une phrase, pas un tour de plus."""
     moteur = MoteurFactice([[StreamChunk(tool_calls=[_appel("horloge")])]])
     _collecter(moteur, ExecuteurFactice(), max_tool_turns=2)
 
@@ -218,7 +219,10 @@ def test_les_fragments_openai_sont_recomposes():
                 ),
                 StreamChunk(
                     tool_calls=[
-                        {"index": 0, "function": {"name": "loge", "arguments": '"MTL"}'}}
+                        {
+                            "index": 0,
+                            "function": {"name": "loge", "arguments": '"MTL"}'},
+                        }
                     ]
                 ),
             ],
@@ -379,14 +383,19 @@ class TestSeparateur:
         assert texte == "Tu as une tâche."
 
     def test_un_seul_tour_n_est_jamais_separe(self):
-        moteur = MoteurFactice([[StreamChunk(content="Bon"), StreamChunk(content="soir")]])
+        moteur = MoteurFactice(
+            [[StreamChunk(content="Bon"), StreamChunk(content="soir")]]
+        )
         evts = _collecter(moteur, ExecuteurFactice())
         assert "".join(e.data for e in evts if e.kind == "token") == "Bonsoir"
 
     def test_un_tour_qui_n_emet_que_du_blanc_ne_declenche_pas_le_separateur(self):
         moteur = MoteurFactice(
             [
-                [StreamChunk(content="   "), StreamChunk(tool_calls=[_appel("taches")])],
+                [
+                    StreamChunk(content="   "),
+                    StreamChunk(tool_calls=[_appel("taches")]),
+                ],
                 [StreamChunk(content="Tu as une tâche.")],
             ]
         )

@@ -1157,8 +1157,14 @@ class TestPromesseSansActe:
         session, journal = self._harnais(
             [
                 "D'accord, je cherche de la musique R&B sur YouTube pour toi.",
-                [{"function": {"name": "open_anything",
-                               "arguments": {"target": "joue du R&B sur youtube"}}}],
+                [
+                    {
+                        "function": {
+                            "name": "open_anything",
+                            "arguments": {"target": "joue du R&B sur youtube"},
+                        }
+                    }
+                ],
             ]
         )
         await session._respond_to_text("je veux du R&B")
@@ -1195,8 +1201,8 @@ class TestClicheDuBureau:
     dans le préambule où il brûlerait le cache de préfixe."""
 
     def test_le_cliche_arrive_juste_avant_le_tour_utilisateur(self, monkeypatch):
-        from diapason.desktop.etat_bureau import EtatBureau
         import diapason.desktop.etat_bureau as eb
+        from diapason.desktop.etat_bureau import EtatBureau
 
         monkeypatch.setattr(
             eb, "_cache", EtatBureau("Safari", ("Safari", "Notes"), 0.0)

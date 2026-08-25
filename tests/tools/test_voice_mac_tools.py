@@ -5,10 +5,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from diapason.tools.voice_mac_tools import (
-    FileTrashTool,
-)
-from diapason.tools.voice_mac_tools import (
     CalendarQueryTool,
+    FileTrashTool,
     FindFilesTool,
     MailComposeTool,
     MessagesComposeTool,
@@ -208,9 +206,10 @@ class TestResolutionDeContacts:
                 {"title": "Mom💫", "phone": "+50940459941", "email": ""}
             ],
         )
-        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
-            "diapason.tools.voice_mac_tools._run"
-        ) as run:
+        with (
+            patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"),
+            patch("diapason.tools.voice_mac_tools._run") as run,
+        ):
             run.return_value.returncode = 0
             resultat = vmt.MessagesComposeTool().execute(
                 recipient="maman", body="bonjour"
@@ -233,9 +232,7 @@ class TestResolutionDeContacts:
             ],
         )
         with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
-            resultat = vmt.MessagesComposeTool().execute(
-                recipient="Jean", body="salut"
-            )
+            resultat = vmt.MessagesComposeTool().execute(recipient="Jean", body="salut")
         assert not resultat.success
         assert "Jean Pierre" in resultat.content and "Jean Robert" in resultat.content
         assert resultat.metadata["candidates"] == ["Jean Pierre", "Jean Robert"]
@@ -258,9 +255,10 @@ class TestResolutionDeContacts:
             raise AssertionError("la base ne doit pas être lue pour un E.164")
 
         monkeypatch.setattr(vmt, "_resolve_contact", interdit)
-        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
-            "diapason.tools.voice_mac_tools._run"
-        ) as run:
+        with (
+            patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"),
+            patch("diapason.tools.voice_mac_tools._run") as run,
+        ):
             run.return_value.returncode = 0
             resultat = vmt.MessagesComposeTool().execute(
                 recipient="+15145551234", body="salut"
@@ -280,8 +278,9 @@ class TestVeriteDesEnvois:
         monkeypatch.setattr(
             vmt, "_constater_l_envoi", lambda *a, **k: Constat(**constat)
         )
-        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
-            "diapason.channels.imessage_daemon.send_imessage", return_value=True
+        with (
+            patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"),
+            patch("diapason.channels.imessage_daemon.send_imessage", return_value=True),
         ):
             return vmt.MessagesSendTool().execute(
                 recipient="+15145551234", body="salut", confirm=True
@@ -295,9 +294,7 @@ class TestVeriteDesEnvois:
         assert r.metadata["verified"] is True
 
     def test_le_not_delivered_devient_un_echec_franc(self, monkeypatch):
-        r = self._envoyer(
-            monkeypatch, {"issue": "found", "guid": "g1", "error": 22}
-        )
+        r = self._envoyer(monkeypatch, {"issue": "found", "guid": "g1", "error": 22})
         assert not r.success
         assert "Not Delivered" in r.content
         assert r.metadata["sent"] is False and r.metadata["verified"] is True
@@ -327,9 +324,7 @@ class TestRangementVersLaCorbeille:
         assert not r.success and "outside the home" in r.content
 
     def test_un_fichier_sensible_est_refuse(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "pathlib.Path.home", staticmethod(lambda: tmp_path)
-        )
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         secret = tmp_path / ".env"
         secret.write_text("KEY=x")
         with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"):
@@ -342,9 +337,10 @@ class TestRangementVersLaCorbeille:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         fichier = tmp_path / "brouillon.txt"
         fichier.write_text("x")
-        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
-            "diapason.tools.voice_mac_tools._run"
-        ) as run:
+        with (
+            patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"),
+            patch("diapason.tools.voice_mac_tools._run") as run,
+        ):
             run.return_value.returncode = 0
             r = FileTrashTool().execute(paths=[str(fichier)])
         assert not r.success and "still exist" in r.content
@@ -360,8 +356,9 @@ class TestRangementVersLaCorbeille:
 
             return sp.CompletedProcess(cmd, 0, "", "")
 
-        with patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"), patch(
-            "diapason.tools.voice_mac_tools._run", side_effect=_finder
+        with (
+            patch("diapason.tools.voice_mac_tools.sys.platform", "darwin"),
+            patch("diapason.tools.voice_mac_tools._run", side_effect=_finder),
         ):
             r = FileTrashTool().execute(paths=[str(fichier)])
         assert r.success

@@ -39,8 +39,10 @@ class TestSansContexte:
 class TestAvecUneRessource:
     def test_le_projet_ouvert_part_vers_l_appareil(self):
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p_42", ressource_titre="Zéro à Héro",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p_42",
+            ressource_titre="Zéro à Héro",
         )
         envois = []
 
@@ -52,8 +54,11 @@ class TestAvecUneRessource:
                 "commandId": "c1",
             }
 
-        with patch("diapason.mesh.dispatch.dispatch_command", faux_dispatch), patch.object(
-            _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+        with (
+            patch("diapason.mesh.dispatch.dispatch_command", faux_dispatch),
+            patch.object(
+                _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+            ),
         ):
             resultat = _outil().execute(device_phrase="mon téléphone")
 
@@ -70,34 +75,44 @@ class TestAvecUneRessource:
         """Le récepteur seul sait ce qui s'est passé. Fabriquer la phrase à
         l'émission, c'est promettre ce qu'on n'a pas constaté."""
         ca.poser_contexte(
-            "/succes/notes", ressource_type="note",
-            ressource_id="n1", ressource_titre="Idées",
+            "/succes/notes",
+            ressource_type="note",
+            ressource_id="n1",
+            ressource_titre="Idées",
         )
-        with patch(
-            "diapason.mesh.dispatch.dispatch_command",
-            lambda **kw: {
-                "status": "SUCCESS",
-                "userSafeMessage": "L'écran est ouvert sur Succès.",
-            },
-        ), patch.object(
-            _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+        with (
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                lambda **kw: {
+                    "status": "SUCCESS",
+                    "userSafeMessage": "L'écran est ouvert sur Succès.",
+                },
+            ),
+            patch.object(
+                _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+            ),
         ):
             resultat = _outil().execute(device_phrase="iPad")
         assert resultat.content == "L'écran est ouvert sur Succès."
 
     def test_un_echec_du_recepteur_reste_un_echec(self):
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="X",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="X",
         )
-        with patch(
-            "diapason.mesh.dispatch.dispatch_command",
-            lambda **kw: {
-                "status": "OFFLINE",
-                "userSafeMessage": "« iPad » est hors ligne.",
-            },
-        ), patch.object(
-            _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+        with (
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                lambda **kw: {
+                    "status": "OFFLINE",
+                    "userSafeMessage": "« iPad » est hors ligne.",
+                },
+            ),
+            patch.object(
+                _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+            ),
         ):
             resultat = _outil().execute(device_phrase="iPad")
         assert not resultat.success
@@ -108,11 +123,16 @@ class TestEcranSansRessource:
     def test_un_ecran_adressable_s_ouvre_ailleurs(self):
         ca.poser_contexte("/succes/tasks")
         envois = []
-        with patch(
-            "diapason.mesh.dispatch.dispatch_command",
-            lambda **kw: envois.append(kw) or {"status": "SUCCESS", "userSafeMessage": "ok"},
-        ), patch.object(
-            _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+        with (
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                lambda **kw: (
+                    envois.append(kw) or {"status": "SUCCESS", "userSafeMessage": "ok"}
+                ),
+            ),
+            patch.object(
+                _outil().__class__, "_target", lambda self, p, moi: "dev_cible"
+            ),
         ):
             _outil().execute(device_phrase="téléphone")
         assert envois[0]["tool"] == "app.navigate"
@@ -151,8 +171,10 @@ class TestLeVraiCheminDeResolution:
         from diapason.tools.mesh_tools import HandoffContinueTool
 
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="X",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="X",
         )
         outil = HandoffContinueTool()
         outil._registry = DeviceRegistry(tmp_path / "vide.db")

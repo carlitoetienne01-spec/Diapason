@@ -42,6 +42,8 @@ def _aucun_noeud_ne_survit():
             os.kill(int(pid), signal.SIGKILL)
         except (ProcessLookupError, ValueError):
             pass
+
+
 _DEMARRAGE_MAX_S = 40.0
 
 
@@ -53,7 +55,9 @@ def _port_libre() -> int:
         return int(s.getsockname()[1])
 
 
-def _http(url: str, corps: dict | None = None, cle: str = "", methode: str = "") -> dict:
+def _http(
+    url: str, corps: dict | None = None, cle: str = "", methode: str = ""
+) -> dict:
     donnees = json.dumps(corps).encode() if corps is not None else None
     requete = urllib.request.Request(url, data=donnees, method=methode or None)
     requete.add_header("Content-Type", "application/json")
@@ -152,7 +156,9 @@ def hote(tmp_path):
 class TestDeuxProcessusSeParlent:
     """Le chemin complet, sans un seul substitut."""
 
-    def test_jumelage_puis_commande_reellement_livree(self, hote, tmp_path, monkeypatch):
+    def test_jumelage_puis_commande_reellement_livree(
+        self, hote, tmp_path, monkeypatch
+    ):
         # ── 1. l'hôte émet une invitation ────────────────────────────────
         invitation = _http(
             f"{hote.base}/v1/mesh/pairings",
@@ -297,9 +303,7 @@ class TestUnFichierTraverse:
         assert recu.name == "rapport secret.bin"
         assert recu.stat().st_mode & 0o111 == 0
 
-    def test_le_meme_fichier_ne_repart_pas_deux_fois(
-        self, hote, tmp_path, monkeypatch
-    ):
+    def test_le_meme_fichier_ne_repart_pas_deux_fois(self, hote, tmp_path, monkeypatch):
         """Déduplication par CONTENU (§45) : le second envoi ne transfère
         aucun octet."""
         jumelage = self._jumeler(hote, tmp_path, monkeypatch, "dedup")
@@ -326,9 +330,9 @@ class TestUnFichierTraverse:
         monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "intrus"))
         import time as _t
 
+        from diapason.mesh.files_routes import _CHAMPS_SIGNES
         from diapason.mesh.identity import device_identity, owner_id
         from diapason.mesh.signed import sign_payload
-        from diapason.mesh.files_routes import _CHAMPS_SIGNES
 
         offre = sign_payload(
             {
@@ -350,20 +354,19 @@ class TestUnFichierTraverse:
         reponse = _http(f"{hote.base}/v1/mesh/files/offer", offre)
         assert reponse.get("_status") == 403, f"un inconnu doit être refusé : {reponse}"
 
-    def test_un_jeton_de_session_faux_ne_depose_rien(
-        self, hote, tmp_path, monkeypatch
-    ):
+    def test_un_jeton_de_session_faux_ne_depose_rien(self, hote, tmp_path, monkeypatch):
         """La signature garde la porte, le jeton garde le couloir."""
-        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "jeton")
+        self._jumeler(hote, tmp_path, monkeypatch, "jeton")
         source = tmp_path / "petit.txt"
         source.write_bytes(b"court")
+
+        import time as _t
 
         from diapason.mesh.coffre import nouvelle_demi_cle
         from diapason.mesh.envoi_fichier import _champs
         from diapason.mesh.identity import device_identity, owner_id
         from diapason.mesh.signed import sign_payload
         from diapason.mesh.transfert import decrire_fichier
-        import time as _t
 
         demi = nouvelle_demi_cle()
         offre = sign_payload(

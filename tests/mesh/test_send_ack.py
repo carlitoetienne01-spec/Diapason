@@ -64,8 +64,9 @@ def _fenetre_courte(monkeypatch):
 class TestLAttenteRendLeVraiVerdict:
     def test_un_appareil_qui_repond_donne_un_succes(self):
         """Le cas mesuré en vrai : le téléphone récupère et exécute."""
-        r = outil(FausseFile(["QUEUED", "SUCCESS"], "Notification affichée.")) \
-            ._await_ack(dict(BASE))
+        r = outil(
+            FausseFile(["QUEUED", "SUCCESS"], "Notification affichée.")
+        )._await_ack(dict(BASE))
         assert r["status"] == "SUCCESS"
         assert r["userSafeMessage"] == "Notification affichée."
         assert not r.get("pending")

@@ -225,7 +225,6 @@ class KnowledgeSearchTool(BaseTool):
             metadata={"num_results": len(results)},
         )
 
-
     def _chercher_en_hybride(
         self,
         hybride: Any,

@@ -201,9 +201,7 @@ def _poster(url: str, corps: dict) -> dict:
             f"Diapason lancé ? ({str(exc)[:80]})"
         ) from exc
     if reponse.status_code == 404:
-        raise JoinError(
-            "Cette adresse répond, mais pas au maillage : vérifie le port."
-        )
+        raise JoinError("Cette adresse répond, mais pas au maillage : vérifie le port.")
     if reponse.status_code >= 400:
         detail = ""
         try:

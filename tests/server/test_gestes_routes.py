@@ -116,9 +116,10 @@ class TestLesImages:
             "diapason.desktop.vision_mains.mains_dans_les_octets",
             side_effect=RuntimeError("pas une image"),
         ):
-            assert client.post(
-                "/v1/gestures/frame", content=_image_factice()
-            ).status_code == 400
+            assert (
+                client.post("/v1/gestures/frame", content=_image_factice()).status_code
+                == 400
+            )
         # La session tient : une image ratée n'est pas une panne de mode.
         assert client.get("/v1/gestures/state").json()["armed"] is True
 
@@ -146,9 +147,7 @@ class TestCeQuiEteint:
         depart = _t.monotonic()
         # Vu à l'instant, mais armé depuis trop longtemps.
         gr._session.vue_a = depart + gr._DUREE_MAX_S
-        monkeypatch.setattr(
-            gr.time, "monotonic", lambda: depart + gr._DUREE_MAX_S + 1
-        )
+        monkeypatch.setattr(gr.time, "monotonic", lambda: depart + gr._DUREE_MAX_S + 1)
         assert gr.session_active() is False
 
 
@@ -219,15 +218,18 @@ class TestLeDebitDesImages:
     def test_les_gestes_ont_leur_propre_seau(self):
         from diapason.server.auth_middleware import est_route_de_gestes
 
-        for chemin in ("/v1/gestures/arm", "/v1/gestures/frame",
-                       "/v1/gestures/state", "/v1/gestures/disarm"):
+        for chemin in (
+            "/v1/gestures/arm",
+            "/v1/gestures/frame",
+            "/v1/gestures/state",
+            "/v1/gestures/disarm",
+        ):
             assert est_route_de_gestes(chemin), (
                 f"{chemin} partagerait le seau ordinaire, épuisé en une seconde"
             )
 
     def test_le_seau_des_gestes_tient_douze_images_par_seconde(self):
         """Une rafale d'une seconde ne doit pas être refusée."""
-        from diapason.security.rate_limiter import RateLimitConfig, RateLimiter
         from diapason.server.auth_middleware import RateLimitMiddleware
 
         mur = RateLimitMiddleware(app=None)
@@ -347,8 +349,10 @@ class TestAttraperEtDeposer:
         from diapason.desktop import contexte_app as ca
 
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="Zéro à Héro",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Zéro à Héro",
         )
 
     def _appareil(self, nom, etat, capacites=("app.show_resource", "app.navigate")):
@@ -382,11 +386,14 @@ class TestAttraperEtDeposer:
 
         self._contexte()
         pp.attraper()
-        with patch(
-            "diapason.mesh.registry.DeviceRegistry.list_devices",
-            return_value=[self._appareil("PC du bureau", "OFFLINE")],
-        ), patch(
-            "diapason.mesh.presence.presence_of", return_value={"state": "OFFLINE"}
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[self._appareil("PC du bureau", "OFFLINE")],
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "OFFLINE"}
+            ),
         ):
             resultat = _deposer()
         assert resultat["done"] is False
@@ -402,13 +409,19 @@ class TestAttraperEtDeposer:
 
         self._contexte()
         pp.attraper()
-        with patch(
-            "diapason.mesh.registry.DeviceRegistry.list_devices",
-            return_value=[self._appareil("iPad", "ONLINE"),
-                          self._appareil("PC", "ONLINE")],
-        ), patch(
-            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
-        ), patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[
+                    self._appareil("iPad", "ONLINE"),
+                    self._appareil("PC", "ONLINE"),
+                ],
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+            ),
+            patch("diapason.mesh.dispatch.dispatch_command") as envoi,
+        ):
             resultat = _deposer()
         assert resultat["reason"] == "AMBIGUOUS"
         assert set(resultat["candidates"]) == {"iPad", "PC"}
@@ -420,16 +433,22 @@ class TestAttraperEtDeposer:
 
         self._contexte()
         pp.attraper()
-        with patch(
-            "diapason.mesh.registry.DeviceRegistry.list_devices",
-            return_value=[self._appareil("iPad", "ONLINE")],
-        ), patch(
-            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
-        ), patch(
-            "diapason.mesh.dispatch.dispatch_command",
-            return_value={"status": "SUCCESS",
-                          "userSafeMessage": "Le projet est affiché sur Succès."},
-        ) as envoi:
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[self._appareil("iPad", "ONLINE")],
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+            ),
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                return_value={
+                    "status": "SUCCESS",
+                    "userSafeMessage": "Le projet est affiché sur Succès.",
+                },
+            ) as envoi,
+        ):
             resultat = _deposer()
         assert resultat["done"] is True
         assert resultat["target"] == "iPad"
@@ -454,8 +473,10 @@ class TestTrancherEntreDeuxAppareils:
         from diapason.desktop import contexte_app as ca
 
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="Zéro à Héro",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Zéro à Héro",
         )
 
     def _appareil(self, nom, capacites=("app.show_resource", "app.navigate")):
@@ -475,12 +496,16 @@ class TestTrancherEntreDeuxAppareils:
         self._contexte()
         pp.attraper()
         joignables = appareils or (self._appareil("iPad"), self._appareil("PC"))
-        with patch(
-            "diapason.mesh.registry.DeviceRegistry.list_devices",
-            return_value=list(joignables),
-        ), patch(
-            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
-        ), patch("diapason.mesh.dispatch.dispatch_command") as envoi:
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=list(joignables),
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+            ),
+            patch("diapason.mesh.dispatch.dispatch_command") as envoi,
+        ):
             resultat = gr._deposer()
             gr._session.dernier_depot = resultat
             if resultat.get("reason") == "AMBIGUOUS":
@@ -515,8 +540,10 @@ class TestTrancherEntreDeuxAppareils:
         jeton = self._poser_la_question(client)["token"]
         with patch(
             "diapason.mesh.dispatch.dispatch_command",
-            return_value={"status": "SUCCESS",
-                          "userSafeMessage": "Le projet est affiché sur Succès."},
+            return_value={
+                "status": "SUCCESS",
+                "userSafeMessage": "Le projet est affiché sur Succès.",
+            },
         ) as envoi:
             reponse = client.post(
                 "/v1/gestures/drop/target",
@@ -652,18 +679,22 @@ class TestTrancherEntreDeuxAppareils:
         client.post("/v1/gestures/arm")
         self._contexte()
         pp.attraper()
-        with patch(
-            "diapason.mesh.registry.DeviceRegistry.list_devices",
-            return_value=[
-                self._appareil("iPad"),
-                self._appareil("Ampoule", capacites=("notifications.show",)),
-            ],
-        ), patch(
-            "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
-        ), patch(
-            "diapason.mesh.dispatch.dispatch_command",
-            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
-        ) as envoi:
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[
+                    self._appareil("iPad"),
+                    self._appareil("Ampoule", capacites=("notifications.show",)),
+                ],
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+            ),
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+            ) as envoi,
+        ):
             resultat = gr._deposer()
         assert resultat["reason"] != "AMBIGUOUS", (
             "un seul appareil CAPABLE : il n'y a rien à demander"
@@ -738,8 +769,10 @@ class TestLeJournalDesGestes:
         from diapason.server import gestes_routes as gr
 
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="Zéro à Héro",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Zéro à Héro",
         )
         client.post("/v1/gestures/arm")
         gr._noter("attrapé", "Zéro à Héro", reussi=True)
@@ -810,9 +843,7 @@ class TestLeDoubleClap:
             capture["rappel"] = rappel
             return MagicMock()
 
-        with patch(
-            "diapason.speech.clap_listener.ClapListener", side_effect=_capturer
-        ):
+        with patch("diapason.speech.clap_listener.ClapListener", side_effect=_capturer):
             client.post("/v1/gestures/clap/on")
         rappel = capture["rappel"]
 
@@ -845,9 +876,7 @@ class TestLeDoubleClap:
             capture["rappel"] = rappel
             return MagicMock()
 
-        with patch(
-            "diapason.speech.clap_listener.ClapListener", side_effect=_capturer
-        ):
+        with patch("diapason.speech.clap_listener.ClapListener", side_effect=_capturer):
             client.post("/v1/gestures/clap/on")
         with patch.object(gr, "armer", side_effect=RuntimeError("panne")):
             capture["rappel"]()  # ne lève pas

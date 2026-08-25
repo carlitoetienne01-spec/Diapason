@@ -33,7 +33,9 @@ class TestInterpreterQuand:
     def test_les_plages(self):
         assert interpreter_quand("semaine", DIMANCHE) == (0, 7, "les 7 prochains jours")
         assert interpreter_quand("la semaine prochaine", DIMANCHE) == (
-            1, 7, "la semaine prochaine",
+            1,
+            7,
+            "la semaine prochaine",
         )
         assert interpreter_quand("ce week-end", DIMANCHE) == (6, 2, "le week-end")
 

@@ -168,9 +168,7 @@ class TestConstatApresRecherche:
         import diapason.tools.app_actions as m
 
         monkeypatch.setattr(m, "_ouvrir", lambda _u: (True, ""))
-        monkeypatch.setattr(
-            m, "_constater_devant", lambda app, **_k: devant
-        )
+        monkeypatch.setattr(m, "_constater_devant", lambda app, **_k: devant)
         from diapason.tools.app_actions import AppSearchTool
 
         return AppSearchTool().execute(app="app store", query="solitaire")

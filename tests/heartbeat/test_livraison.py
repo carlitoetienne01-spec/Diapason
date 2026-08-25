@@ -86,7 +86,9 @@ class TestNotification:
 class TestJournal:
     def test_le_texte_est_ajoute_avec_son_horodatage(self, tmp_path):
         cible = tmp_path / "briefings.md"
-        assert journaliser("Trois retards.", chemin=cible, quand=datetime(2026, 8, 22, 7, 0))
+        assert journaliser(
+            "Trois retards.", chemin=cible, quand=datetime(2026, 8, 22, 7, 0)
+        )
         contenu = cible.read_text(encoding="utf-8")
         assert "## 2026-08-22 07:00" in contenu
         assert "Trois retards." in contenu
@@ -112,7 +114,9 @@ class TestLivrer:
         r = livrer("T", "C", chemin_journal=tmp_path / "b.md")
         assert r.notifiee and r.journalisee and r.ok
 
-    def test_une_notification_ratee_n_emporte_pas_le_journal(self, tmp_path, monkeypatch):
+    def test_une_notification_ratee_n_emporte_pas_le_journal(
+        self, tmp_path, monkeypatch
+    ):
         """Le journal se relit ; c'est le filet quand la notification échoue."""
         monkeypatch.setattr(
             "diapason.heartbeat.livraison.notifier_macos",

@@ -19,7 +19,7 @@ disque, à aucun moment.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +77,9 @@ def _requete(mains_max: int = 2) -> Any:
 
 def _lire_points(observation: Any) -> list:
     """Les points d'UNE main, traduits dans le vocabulaire du moteur."""
-    from diapason.desktop.gestes_main import Point
-
     import Vision
+
+    from diapason.desktop.gestes_main import Point
 
     # Le nom de la méthode ET la constante du groupe se LISENT, ils ne se
     # devinent pas. Constaté le 25 août 2026, en direct sur la caméra de

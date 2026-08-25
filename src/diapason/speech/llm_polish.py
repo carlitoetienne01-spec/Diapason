@@ -164,8 +164,9 @@ def llm_polish_text(
     # qu'on aurait pu coller tout de suite. Le dictionnaire personnel et le
     # polissage mécanique s'appliquent toujours, eux.
     if len(raw.split()) > 40:
-        logger.debug("llm polish skipped: %d words, cannot fit the budget",
-                     len(raw.split()))
+        logger.debug(
+            "llm polish skipped: %d words, cannot fit the budget", len(raw.split())
+        )
         return None
 
     system = _DICTATION_SYSTEM

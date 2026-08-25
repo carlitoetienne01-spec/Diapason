@@ -198,9 +198,7 @@ def resolve_youtube_watch_url(
                 # La radio de YouTube : la liste RD<id> enchaîne des titres
                 # voisins sans fin — c'est « mets de la musique », pas
                 # « mets UNE musique » (demandé le 23 août 2026).
-                return (
-                    "https://www.youtube.com/watch?v=" + video + "&list=RD" + video
-                )
+                return "https://www.youtube.com/watch?v=" + video + "&list=RD" + video
             return "https://www.youtube.com/watch?v=" + video
     except Exception:  # noqa: BLE001 - resolution is best-effort by design
         # Best-effort, but never mute: a silent "" here downgrades every
@@ -306,9 +304,7 @@ def parse_smart_intent(command: str) -> SmartIntent:
                 # se résout en radio YouTube (watch + list=RD…) qui démarre
                 # et s'enchaîne ; l'url ici n'est que le repli si la
                 # résolution échoue.
-                if not q and action == "play" and re.search(
-                    r"\bmusi(?:que|c)\b", yt
-                ):
+                if not q and action == "play" and re.search(r"\bmusi(?:que|c)\b", yt):
                     return SmartIntent(
                         kind=KIND_YOUTUBE,
                         action="play_mix",

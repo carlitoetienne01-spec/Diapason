@@ -43,9 +43,13 @@ class TestDatesParlees:
     def test_demain_devient_une_date_exacte(self):
         jour, erreur = _date_parlee("demain")
         assert erreur == ""
-        assert jour == date.today().replace(day=date.today().day).fromordinal(
-            date.today().toordinal() + 1
-        ).isoformat()
+        assert (
+            jour
+            == date.today()
+            .replace(day=date.today().day)
+            .fromordinal(date.today().toordinal() + 1)
+            .isoformat()
+        )
 
     def test_une_date_ambigue_est_refusee_avec_les_deux_choix(self):
         """« Vendredi prochain » peut désigner deux jours : un rendez-vous posé
@@ -121,9 +125,7 @@ class TestCalendrier:
         assert args[5] == "60"
 
     def test_une_date_ambigue_n_ecrit_rien(self, espion):
-        r = CalendarAddTool().execute(
-            summary="X", date="vendredi prochain", time="9 h"
-        )
+        r = CalendarAddTool().execute(summary="X", date="vendredi prochain", time="9 h")
         assert r.success is False
         assert espion == [], "rien ne doit partir tant que le jour n'est pas sûr"
 

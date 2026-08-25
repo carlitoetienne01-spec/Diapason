@@ -38,9 +38,7 @@ def _pcm(chemin: Path) -> bytes:
 
 @pytest.fixture()
 def verifier(tmp_path):
-    return SpeakerVerifier(
-        model_path=_MODELE, profile_path=tmp_path / "profil.npz"
-    )
+    return SpeakerVerifier(model_path=_MODELE, profile_path=tmp_path / "profil.npz")
 
 
 class TestCycleDeVie:
@@ -74,8 +72,13 @@ class TestCycleDeVie:
 class TestLeVerdict:
     @pytest.fixture()
     def arme_sur_thomas(self, verifier):
-        for n in ("v_Thomas_1.wav", "v_Thomas_2.wav", "v_Thomas_3.wav",
-                  "v_Thomas_1.wav", "v_Thomas_2.wav"):
+        for n in (
+            "v_Thomas_1.wav",
+            "v_Thomas_2.wav",
+            "v_Thomas_3.wav",
+            "v_Thomas_1.wav",
+            "v_Thomas_2.wav",
+        ):
             verifier.enroll(_pcm(_S / n))
         assert verifier.arme
         return verifier

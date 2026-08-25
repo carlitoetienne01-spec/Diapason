@@ -25,33 +25,35 @@ def _faux_connecteur():
 class TestGmailSearch:
     def test_la_recherche_liste_puis_lit_les_entetes(self):
         connecteur = _faux_connecteur()
-        with patch(
-            "diapason.tools.gmail_live._connecteur", return_value=connecteur
-        ), patch(
-            "diapason.connectors.gmail._gmail_api_list_messages",
-            return_value={"messages": [{"id": "m1"}, {"id": "m2"}]},
-        ), patch(
-            "diapason.connectors.gmail._gmail_api_get_message",
-            side_effect=[
-                {
-                    "id": "m1",
-                    "threadId": "t1",
-                    "snippet": "On d&#233;jeune ?",
-                    "payload": {
-                        "headers": [
-                            {"name": "From", "value": "Alice <a@x.com>"},
-                            {"name": "Subject", "value": "Déjeuner"},
-                            {"name": "Date", "value": "Mon, 25 Aug 2026"},
-                        ]
+        with (
+            patch("diapason.tools.gmail_live._connecteur", return_value=connecteur),
+            patch(
+                "diapason.connectors.gmail._gmail_api_list_messages",
+                return_value={"messages": [{"id": "m1"}, {"id": "m2"}]},
+            ),
+            patch(
+                "diapason.connectors.gmail._gmail_api_get_message",
+                side_effect=[
+                    {
+                        "id": "m1",
+                        "threadId": "t1",
+                        "snippet": "On d&#233;jeune ?",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "Alice <a@x.com>"},
+                                {"name": "Subject", "value": "Déjeuner"},
+                                {"name": "Date", "value": "Mon, 25 Aug 2026"},
+                            ]
+                        },
                     },
-                },
-                {
-                    "id": "m2",
-                    "threadId": "t2",
-                    "snippet": "Relance",
-                    "payload": {"headers": []},
-                },
-            ],
+                    {
+                        "id": "m2",
+                        "threadId": "t2",
+                        "snippet": "Relance",
+                        "payload": {"headers": []},
+                    },
+                ],
+            ),
         ):
             r = GmailSearchTool().execute(query="from:alice", max_results=5)
         assert r.success
@@ -67,11 +69,12 @@ class TestGmailSearch:
 
     def test_zero_resultat_se_dit_sans_inventer(self):
         connecteur = _faux_connecteur()
-        with patch(
-            "diapason.tools.gmail_live._connecteur", return_value=connecteur
-        ), patch(
-            "diapason.connectors.gmail._gmail_api_list_messages",
-            return_value={},
+        with (
+            patch("diapason.tools.gmail_live._connecteur", return_value=connecteur),
+            patch(
+                "diapason.connectors.gmail._gmail_api_list_messages",
+                return_value={},
+            ),
         ):
             r = GmailSearchTool().execute(query="from:personne")
         assert r.success and "Aucun mail" in r.content
@@ -85,9 +88,7 @@ class TestGmailSearch:
 class TestActionsGmail:
     def test_archiver_appelle_le_connecteur_et_le_dit_reversible(self):
         connecteur = _faux_connecteur()
-        with patch(
-            "diapason.tools.gmail_live._connecteur", return_value=connecteur
-        ):
+        with patch("diapason.tools.gmail_live._connecteur", return_value=connecteur):
             r = MailArchiveTool().execute(message_id="m1")
         assert r.success
         connecteur.archive_message.assert_called_once_with("m1")
@@ -95,9 +96,7 @@ class TestActionsGmail:
 
     def test_la_corbeille_dit_les_trente_jours(self):
         connecteur = _faux_connecteur()
-        with patch(
-            "diapason.tools.gmail_live._connecteur", return_value=connecteur
-        ):
+        with patch("diapason.tools.gmail_live._connecteur", return_value=connecteur):
             r = MailTrashTool().execute(message_id="m2")
         assert r.success
         connecteur.delete_message.assert_called_once_with("m2")
@@ -113,8 +112,6 @@ class TestActionsGmail:
     def test_un_refus_google_remonte_sans_lever(self):
         connecteur = _faux_connecteur()
         connecteur.archive_message.side_effect = RuntimeError("HTTP 403")
-        with patch(
-            "diapason.tools.gmail_live._connecteur", return_value=connecteur
-        ):
+        with patch("diapason.tools.gmail_live._connecteur", return_value=connecteur):
             r = MailArchiveTool().execute(message_id="m1")
         assert not r.success and "403" in r.content

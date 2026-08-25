@@ -189,7 +189,10 @@ def open_application(app_name: str, *, attente_s: float = 0.35) -> ToolResult:
                 contenu = (
                     f"{resolved} est devant toi."
                     if verifie
-                    else f"{resolved} est ouvert, mais une autre fenêtre est restée devant."
+                    else (
+                        f"{resolved} est ouvert, mais une autre fenêtre est "
+                        "restée devant."
+                    )
                 )
                 situation = "remise_devant"
             else:

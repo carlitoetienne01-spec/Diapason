@@ -155,7 +155,6 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
     # The new device needs OUR identity to verify what we send it later:
     # enrolment is mutual, not one-way.
     from diapason.mesh.beacon import local_address
-    from diapason.mesh.identity import public_identity
 
     # Les CAPACITÉS de l'hôte voyagent ici ou l'invité reste impuissant :
     # public_identity() n'en porte aucune, et un appareil enregistré avec
@@ -165,6 +164,7 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
     # fenêtre où rien ne marche sans qu'on sache pourquoi. Constaté le
     # 25 août 2026 en préparant le banc à deux processus.
     from diapason.mesh.capabilities import local_capabilities
+    from diapason.mesh.identity import public_identity
 
     return {
         "device": device,

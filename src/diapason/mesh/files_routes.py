@@ -25,7 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -277,4 +277,9 @@ def etat(session_id: str, request: Request) -> dict[str, Any]:
     }
 
 
-__all__ = ["OFFER_VERSION", "dossier_de_reception", "reinitialiser_pour_tests", "router"]
+__all__ = [
+    "OFFER_VERSION",
+    "dossier_de_reception",
+    "reinitialiser_pour_tests",
+    "router",
+]

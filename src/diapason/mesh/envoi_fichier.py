@@ -45,7 +45,6 @@ def envoyer_fichier(
     confiance. La vérification que l'on a le DROIT de le joindre reste celle
     du transport — un seul endroit décide de ce qui sort de la machine.
     """
-    import httpx
 
     from diapason.mesh.coffre import cle_de_session, nouvelle_demi_cle
     from diapason.mesh.identity import device_identity, owner_id

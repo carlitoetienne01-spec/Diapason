@@ -76,7 +76,10 @@ def test_la_consolidation_relit_la_voix(tmp_path):
         date.today(),
         chemin_traces=tmp_path / "traces.db",
         generer=lambda _m: json.dumps(
-            {"faits": ["Carlito part à Montréal vendredi."], "resume": "Départ préparé."}
+            {
+                "faits": ["Carlito part à Montréal vendredi."],
+                "resume": "Départ préparé.",
+            }
         ),
         magasin_faits=faits,
         chemin_journal=tmp_path / "journal.md",
@@ -106,8 +109,10 @@ async def test_l_echange_abouti_nourrit_la_memoire_vivante(tmp_path):
 
 def test_un_raccord_grognon_ne_casse_pas_la_voix(tmp_path):
     harness = Harness()
+
     def _explose(_q, _r):
         raise RuntimeError("mémoire indisponible")
+
     harness.session._sur_echange = _explose
     magasin = _armer(harness.session, tmp_path)
     harness.session._journaliser_echange("bonjour", "salut")

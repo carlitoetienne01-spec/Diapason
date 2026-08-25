@@ -31,9 +31,7 @@ def voice_status() -> None:
 
 
 @voice.command("reset")
-@click.confirmation_option(
-    prompt="Effacer l'empreinte vocale et tout réapprendre ?"
-)
+@click.confirmation_option(prompt="Effacer l'empreinte vocale et tout réapprendre ?")
 def voice_reset() -> None:
     """Oublie l'empreinte : les prochains tours adressés réapprennent."""
     from diapason.speech.speaker_id import get_verifier

@@ -84,7 +84,8 @@ def test_screen_describe_local_ok():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
+                    "diapason.engine._discovery.get_engine",
+                    return_value=("ollama", engine),
                 ):
                     result = tool.execute(question="What do you see?")
     assert result.success
@@ -123,7 +124,8 @@ def test_screen_describe_blocks_cloud():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
+                    "diapason.engine._discovery.get_engine",
+                    return_value=("ollama", engine),
                 ):
                     result = tool.execute(question="see?")
     assert result.success is False
@@ -159,7 +161,8 @@ def test_screen_describe_rate_limit():
         ):
             with patch("diapason.core.config.load_config", return_value=fake_cfg):
                 with patch(
-                    "diapason.engine._discovery.get_engine", return_value=("ollama", engine)
+                    "diapason.engine._discovery.get_engine",
+                    return_value=("ollama", engine),
                 ):
                     first = tool.execute(question="a")
                     second = tool.execute(question="b")
@@ -308,9 +311,7 @@ class TestLectureDuTexteExact:
         import diapason.tools.screen_vision_tools as svt
 
         monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg(enabled=False))
-        with patch(
-            "diapason.desktop.screen_capture.capture_screen_to_temp"
-        ) as capture:
+        with patch("diapason.desktop.screen_capture.capture_screen_to_temp") as capture:
             r = svt.read_screen_text()
         assert not r.success and "disabled" in r.content
         capture.assert_not_called()
@@ -332,15 +333,19 @@ class TestLectureDuTexteExact:
         monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg())
         capture = tmp_path / "ecran.png"
         capture.write_bytes(b"\x89PNG")
-        with patch("diapason.desktop.ocr.ocr_available", return_value=True), patch(
-            "diapason.desktop.screen_capture.capture_screen_to_temp",
-            return_value=str(capture),
-        ), patch(
-            "diapason.desktop.ocr.recognize_text",
-            return_value=[
-                {"text": "Erreur 403", "confidence": 0.99, "x": 0.1, "y": 0.9},
-                {"text": "Réessayer", "confidence": 0.95, "x": 0.1, "y": 0.4},
-            ],
+        with (
+            patch("diapason.desktop.ocr.ocr_available", return_value=True),
+            patch(
+                "diapason.desktop.screen_capture.capture_screen_to_temp",
+                return_value=str(capture),
+            ),
+            patch(
+                "diapason.desktop.ocr.recognize_text",
+                return_value=[
+                    {"text": "Erreur 403", "confidence": 0.99, "x": 0.1, "y": 0.9},
+                    {"text": "Réessayer", "confidence": 0.95, "x": 0.1, "y": 0.4},
+                ],
+            ),
         ):
             r = svt.read_screen_text()
         assert r.success
@@ -354,10 +359,14 @@ class TestLectureDuTexteExact:
         monkeypatch.setattr(svt, "_vision_config", lambda: self._cfg())
         capture = tmp_path / "ecran.png"
         capture.write_bytes(b"\x89PNG")
-        with patch("diapason.desktop.ocr.ocr_available", return_value=True), patch(
-            "diapason.desktop.screen_capture.capture_screen_to_temp",
-            return_value=str(capture),
-        ), patch("diapason.desktop.ocr.recognize_text", return_value=[]):
+        with (
+            patch("diapason.desktop.ocr.ocr_available", return_value=True),
+            patch(
+                "diapason.desktop.screen_capture.capture_screen_to_temp",
+                return_value=str(capture),
+            ),
+            patch("diapason.desktop.ocr.recognize_text", return_value=[]),
+        ):
             r = svt.read_screen_text()
         assert r.success and "No readable text" in r.content
 
@@ -383,8 +392,14 @@ class TestTramesInchangees:
         monkeypatch.setattr(svt, "_derniere_empreinte_partage", "")
         monkeypatch.setattr(svt, "_derniere_description_partage", "")
         cfg = SimpleNamespace(
-            enabled=True, rate_limit_ms=-1, monitor=1, max_dimension=1280,
-            keep_temp=False, allow_cloud=False, model="gemma3:4b", engine="ollama",
+            enabled=True,
+            rate_limit_ms=-1,
+            monitor=1,
+            max_dimension=1280,
+            keep_temp=False,
+            allow_cloud=False,
+            model="gemma3:4b",
+            engine="ollama",
         )
         monkeypatch.setattr(svt, "_vision_config", lambda: cfg)
         moteur = MagicMock()
@@ -394,14 +409,16 @@ class TestTramesInchangees:
         fake_cfg = MagicMock()
         fake_cfg.engine.default = "ollama"
         fake_cfg.intelligence.default_model = "gemma3:4b"
-        with patch(
-            "diapason.tools.screen_vision_tools.capture_screen_b64",
-            return_value=("MEMEIMAGE", {}),
-        ), patch(
-            "diapason.core.config.load_config", return_value=fake_cfg
-        ), patch(
-            "diapason.engine._discovery.get_engine",
-            return_value=("ollama", moteur),
+        with (
+            patch(
+                "diapason.tools.screen_vision_tools.capture_screen_b64",
+                return_value=("MEMEIMAGE", {}),
+            ),
+            patch("diapason.core.config.load_config", return_value=fake_cfg),
+            patch(
+                "diapason.engine._discovery.get_engine",
+                return_value=("ollama", moteur),
+            ),
         ):
             premier = svt.describe_screen(skip_rate_limit=True)
             second = svt.describe_screen(skip_rate_limit=True)
@@ -420,8 +437,14 @@ class TestTramesInchangees:
         monkeypatch.setattr(svt, "_derniere_empreinte_partage", "")
         monkeypatch.setattr(svt, "_derniere_description_partage", "")
         cfg = SimpleNamespace(
-            enabled=True, rate_limit_ms=-1, monitor=1, max_dimension=1280,
-            keep_temp=False, allow_cloud=False, model="gemma3:4b", engine="ollama",
+            enabled=True,
+            rate_limit_ms=-1,
+            monitor=1,
+            max_dimension=1280,
+            keep_temp=False,
+            allow_cloud=False,
+            model="gemma3:4b",
+            engine="ollama",
         )
         monkeypatch.setattr(svt, "_vision_config", lambda: cfg)
         moteur = MagicMock()
@@ -431,14 +454,16 @@ class TestTramesInchangees:
         fake_cfg = MagicMock()
         fake_cfg.engine.default = "ollama"
         fake_cfg.intelligence.default_model = "gemma3:4b"
-        with patch(
-            "diapason.tools.screen_vision_tools.capture_screen_b64",
-            return_value=("MEMEIMAGE", {}),
-        ), patch(
-            "diapason.core.config.load_config", return_value=fake_cfg
-        ), patch(
-            "diapason.engine._discovery.get_engine",
-            return_value=("ollama", moteur),
+        with (
+            patch(
+                "diapason.tools.screen_vision_tools.capture_screen_b64",
+                return_value=("MEMEIMAGE", {}),
+            ),
+            patch("diapason.core.config.load_config", return_value=fake_cfg),
+            patch(
+                "diapason.engine._discovery.get_engine",
+                return_value=("ollama", moteur),
+            ),
         ):
             svt.describe_screen(skip_rate_limit=False)
             svt.describe_screen(skip_rate_limit=False)

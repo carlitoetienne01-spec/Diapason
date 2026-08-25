@@ -59,8 +59,7 @@ def _entetes(message: dict) -> dict:
 
 
 _PAS_CONNECTE = (
-    "Gmail is not connected. Ask the user to connect it in "
-    "Sources de données → Gmail."
+    "Gmail is not connected. Ask the user to connect it in Sources de données → Gmail."
 )
 
 
@@ -135,9 +134,7 @@ class GmailSearchTool(BaseTool):
             )
             ids = [m.get("id") for m in (reponse.get("messages") or [])][:plafond]
             resultats = [
-                _entetes(
-                    connecteur._call_with_refresh(_gmail_api_get_message, mid)
-                )
+                _entetes(connecteur._call_with_refresh(_gmail_api_get_message, mid))
                 for mid in ids
                 if mid
             ]
@@ -216,8 +213,7 @@ class MailArchiveTool(_ActionGmail):
 
     tool_id = "mail_archive"
     _verbe = (
-        "Archived [gmail id={id}] — out of the inbox, still in All Mail "
-        "(reversible)."
+        "Archived [gmail id={id}] — out of the inbox, still in All Mail (reversible)."
     )
 
     @property
@@ -256,9 +252,7 @@ class MailTrashTool(_ActionGmail):
     """Mettre un mail à la corbeille Gmail — récupérable 30 jours."""
 
     tool_id = "mail_trash"
-    _verbe = (
-        "Moved [gmail id={id}] to Gmail's Trash — recoverable for 30 days."
-    )
+    _verbe = "Moved [gmail id={id}] to Gmail's Trash — recoverable for 30 days."
 
     @property
     def spec(self) -> ToolSpec:

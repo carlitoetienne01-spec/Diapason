@@ -25,7 +25,6 @@ class MemoryManageTool(BaseTool):
         return ToolSpec(
             name="memory_manage",
             description=(
-                (
                 # Voir user_profile_manage : décrire le CRUD ne dit pas quand
                 # appeler, et « Noté. » sans écriture est un mensonge.
                 "Remember a lasting fact about a SITUATION, a project or an "
@@ -34,9 +33,8 @@ class MemoryManageTool(BaseTool):
                 "user themselves, use user_profile_manage instead. Call this "
                 "whenever the user says « retiens que… », « note que… », "
                 "« souviens-toi que… » about anything other than themselves. "
-                "Never answer \"noted\" without calling it. Stored in "
+                'Never answer "noted" without calling it. Stored in '
                 "MEMORY.md, re-read at the start of every session."
-            )
             ),
             parameters={
                 "type": "object",

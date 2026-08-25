@@ -333,6 +333,7 @@ def written_sidecar(sidecar_path: Path, sample_sidecar_payload: dict) -> Path:
     sidecar_path.write_text(json.dumps(sample_sidecar_payload))
     return sidecar_path
 
+
 @pytest.fixture(autouse=True)
 def _isoler_le_profil_vocal(monkeypatch, tmp_path):
     """Aucun test ne touche l'empreinte vocale RÉELLE du propriétaire.
@@ -361,7 +362,6 @@ def _isoler_le_profil_vocal(monkeypatch, tmp_path):
 
     monkeypatch.setattr(speaker_id, "_partage", None)
     monkeypatch.setattr(speaker_id, "get_verifier", lambda: _VerificateurNeutre())
-
 
 
 @pytest.fixture(autouse=True)

@@ -139,9 +139,7 @@ class IMessageConversationTool(BaseTool):
         # Le même résolveur que messages_send : « maman » → +509…
         from diapason.tools.voice_mac_tools import _resoudre_ou_avouer
 
-        identifiant, fiche, aveu = _resoudre_ou_avouer(
-            contact, "imessage_conversation"
-        )
+        identifiant, fiche, aveu = _resoudre_ou_avouer(contact, "imessage_conversation")
         if aveu is not None:
             return aveu
 

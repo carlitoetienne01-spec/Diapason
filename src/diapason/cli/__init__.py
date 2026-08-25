@@ -28,11 +28,10 @@ from diapason.cli.eval_cmd import eval_group
 from diapason.cli.feedback_cmd import feedback_group
 from diapason.cli.gateway_cmd import gateway
 from diapason.cli.heartbeat_cmd import heartbeat
-from diapason.cli.mesh_cmd import mesh
-from diapason.cli.voice_cmd import voice
 from diapason.cli.host_cmd import host
 from diapason.cli.init_cmd import init
 from diapason.cli.memory_cmd import memory
+from diapason.cli.mesh_cmd import mesh
 from diapason.cli.migrate_cmd import migrate
 from diapason.cli.mine_cmd import mine
 from diapason.cli.model import model
@@ -51,6 +50,7 @@ from diapason.cli.skill_cmd import skill
 from diapason.cli.telemetry_cmd import telemetry
 from diapason.cli.tool_cmd import tool
 from diapason.cli.vault_cmd import vault
+from diapason.cli.voice_cmd import voice
 from diapason.cli.wake_cmd import wake_listen
 from diapason.cli.workflow_cmd import workflow
 

@@ -225,7 +225,20 @@ class TestLaMesureNeSeLaissePasDeplacer:
     def test_la_garde_tient_quelle_que_soit_la_duree_du_transitoire(self):
         """Le balayage que les anciens tests ne faisaient pas."""
         trace = self._trace()
-        queue = [0.30, 0.22, 0.14, 0.09, 0.05, 0.04, 0.03, 0.025, 0.022, 0.02, 0.018, 0.016]
+        queue = [
+            0.30,
+            0.22,
+            0.14,
+            0.09,
+            0.05,
+            0.04,
+            0.03,
+            0.025,
+            0.022,
+            0.02,
+            0.018,
+            0.016,
+        ]
         for duree in range(2, 13):
             piece = self._piece(trace[: 62 - duree] + queue[:duree])
             assert piece.troublee, f"transitoire de {duree} blocs non détecté"
@@ -273,7 +286,9 @@ class TestLaMesureNeSeLaissePasDeplacer:
         from diapason.speech.clap_listener import Ecoute, reglage_calibre
 
         piece = self._piece(self._trace())
-        propre = reglage_calibre(Ecoute(piece=piece, claps=[0.44, 0.45, 0.46], ecartes=[]))
+        propre = reglage_calibre(
+            Ecoute(piece=piece, claps=[0.44, 0.45, 0.46], ecartes=[])
+        )
         avec_intrus = reglage_calibre(
             Ecoute(piece=piece, claps=[0.20, 0.45, 0.46], ecartes=[])
         )

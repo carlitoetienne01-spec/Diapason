@@ -424,9 +424,8 @@ def tick_install(intervalle: int) -> None:
         log_prefix="tick",
         interval_s=max(60, intervalle),
     )
-    console.print(
-        f"[green]Installé[/green] — un passage toutes les {max(60, intervalle) // 60} min."
-    )
+    minutes = max(60, intervalle) // 60
+    console.print(f"[green]Installé[/green] — un passage toutes les {minutes} min.")
     console.print(f"  plist   : {chemin}")
     console.print(f"  journaux: {launch_agent.log_dir()}/tick.out.log")
     console.print("[dim]Essai immédiat : diapason heartbeat tick[/dim]")

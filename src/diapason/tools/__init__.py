@@ -192,15 +192,14 @@ except ImportError:
 
 # Pas de garde ici : lire l'horloge n'a aucune dépendance optionnelle, et un
 # assistant sans horloge invente l'heure plutôt que de l'avouer.
+# Onglets du navigateur de l'utilisateur — stdlib + osascript, pas de garde.
+import diapason.tools.browser_tabs  # noqa: E402,F401
 import diapason.tools.current_time  # noqa: E402,F401
 
 # Pas de garde non plus : les gestes d'une seconde (volume, musique, presse-
 # papiers, capture, vitaux) n'importent PyObjC qu'à l'exécution — le module
 # lui-même est stdlib (24 août 2026).
 import diapason.tools.gestes  # noqa: E402,F401
-
-# Onglets du navigateur de l'utilisateur — stdlib + osascript, pas de garde.
-import diapason.tools.browser_tabs  # noqa: E402,F401
 
 # Les mains des connecteurs (Atlas, 25 août 2026) : Gmail en direct et la
 # conversation iMessage — les specs mcp_tools déclaraient, personne

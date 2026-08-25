@@ -29,11 +29,11 @@ from __future__ import annotations
 
 import logging
 import math
-from pathlib import Path
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Optional, Sequence
+from pathlib import Path
+from typing import Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -211,9 +211,7 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
     bout_pouce = _point(par_nom, "thumbTip")
     bout_index = _point(par_nom, "indexTip")
     pince = (
-        _distance(bout_pouce, bout_index) / paume
-        if bout_pouce and bout_index
-        else 9.99
+        _distance(bout_pouce, bout_index) / paume if bout_pouce and bout_index else 9.99
     )
 
     return Mesures(
@@ -263,7 +261,9 @@ class MoteurDeGestes:
         s = self.seuils
         if m.confiance < s.confiance_minimale:
             return Pose.INCONNUE
-        if m.pince < (s.pince_sortie if self._pose_stable is Pose.PINCE else s.pince_entree):
+        if m.pince < (
+            s.pince_sortie if self._pose_stable is Pose.PINCE else s.pince_entree
+        ):
             return Pose.PINCE
         # L'hystérésis : le seuil dépend de l'état où l'on est déjà.
         if self._ferme:
@@ -276,7 +276,8 @@ class MoteurDeGestes:
         if m.doigts_tendus == 1:
             return Pose.POINTE
         if m.repliement > (
-            s.ouverture_sortie if self._pose_stable is Pose.PAUME_OUVERTE
+            s.ouverture_sortie
+            if self._pose_stable is Pose.PAUME_OUVERTE
             else s.ouverture_entree
         ):
             return Pose.PAUME_OUVERTE
@@ -348,7 +349,9 @@ class MoteurDeGestes:
             self.etat = Etat.RELACHE
             self._repos_jusqua = maintenant + self.seuils.repos_ms / 1000
         if self.etat is not avant:
-            logger.debug("geste : %s → %s (%s)", avant.value, self.etat.value, pose.value)
+            logger.debug(
+                "geste : %s → %s (%s)", avant.value, self.etat.value, pose.value
+            )
         return self.etat
 
     def reinitialiser(self) -> None:
@@ -421,9 +424,7 @@ def enregistrer_seuils(seuils: Seuils) -> None:
 
     chemin = chemin_calibration()
     chemin.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    chemin.write_text(
-        json.dumps(asdict(seuils), indent=2) + "\n", encoding="utf-8"
-    )
+    chemin.write_text(json.dumps(asdict(seuils), indent=2) + "\n", encoding="utf-8")
 
 
 def oublier_la_calibration() -> None:

@@ -29,7 +29,7 @@ _APPS_MAX = 12
 
 # Une seule passe AppleScript : le premier plan, puis les processus
 # visibles, séparés par « | » — un séparateur qu'aucun nom d'app ne porte.
-_SCRIPT = '''
+_SCRIPT = """
 tell application "System Events"
     set devant to first process whose frontmost is true
     set avant to name of devant
@@ -43,7 +43,7 @@ tell application "System Events"
 end tell
 set AppleScript\'s text item delimiters to "|"
 return avant & linefeed & (liste as text) & linefeed & titre
-'''
+"""
 
 
 @dataclass(frozen=True)
@@ -80,16 +80,14 @@ def _executer(script: str) -> str:
 # connu ET déjà au premier plan (24 août 2026).
 _ONGLET_PAR_NAVIGATEUR: dict[str, str] = {
     "Safari": 'tell application "Safari" to get name of current tab of front window',
-    "Google Chrome": 'tell application "Google Chrome" to get title of active tab of front window',
-    "Brave Browser": 'tell application "Brave Browser" to get title of active tab of front window',
+    "Google Chrome": 'tell application "Google Chrome" to get title of active tab of front window',  # noqa: E501
+    "Brave Browser": 'tell application "Brave Browser" to get title of active tab of front window',  # noqa: E501
     "Arc": 'tell application "Arc" to get title of active tab of front window',
-    "Microsoft Edge": 'tell application "Microsoft Edge" to get title of active tab of front window',
+    "Microsoft Edge": 'tell application "Microsoft Edge" to get title of active tab of front window',  # noqa: E501 - un AppleScript tient sur une ligne, ou n'en est plus un
 }
 
 
-def onglet_actif(
-    app: str, runner: Optional[Callable[[str], str]] = None
-) -> str:
+def onglet_actif(app: str, runner: Optional[Callable[[str], str]] = None) -> str:
     """Le titre de l'onglet actif d'un navigateur connu — "" sinon.
 
     Rien ne s'invente : un navigateur inconnu, une fenêtre absente ou un
@@ -184,14 +182,9 @@ def decrire(etat: EtatBureau, limite: int = _APPS_MAX) -> str:
     # « Safari » ne dit rien ; « Safari — Gmail, brouillon à Julie » dit tout.
     precision = etat.onglet or etat.titre_fenetre
     devant = (
-        f"{etat.premier_plan} — {precision[:120]}"
-        if precision
-        else etat.premier_plan
+        f"{etat.premier_plan} — {precision[:120]}" if precision else etat.premier_plan
     )
-    return (
-        f"État du bureau : au premier plan, {devant}. "
-        f"Aussi en marche : {en_marche}."
-    )
+    return f"État du bureau : au premier plan, {devant}. Aussi en marche : {en_marche}."
 
 
 __all__ = [

@@ -21,9 +21,24 @@ pytest.importorskip("fastapi")
 from diapason.server.routes import _JOURS, _MOIS, _now_anchor  # noqa: E402
 
 _MOTS_ANGLAIS = (
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
-    "January", "February", "March", "April", "June", "July", "August",
-    "September", "October", "November", "December",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+    "January",
+    "February",
+    "March",
+    "April",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 )
 
 

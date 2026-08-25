@@ -41,7 +41,9 @@ def _run(cmd: list[str], *, timeout: float = 8.0) -> subprocess.CompletedProcess
     )
 
 
-def _osascript(script: str, *, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
+def _osascript(
+    script: str, *, timeout: float = 8.0
+) -> subprocess.CompletedProcess[str]:
     return _run(["osascript", "-e", script], timeout=timeout)
 
 
@@ -220,7 +222,7 @@ _ORDRES_LECTEUR = {
 
 _ETAT_LECTEUR = (
     'tell application "{app}" to (player state as string) & "\\n" & '
-    "(name of current track) & \" — \" & (artist of current track)"
+    '(name of current track) & " — " & (artist of current track)'
 )
 
 
@@ -313,8 +315,7 @@ class MediaControlTool(BaseTool):
                         tool_name="media_control",
                         success=False,
                         content=(
-                            f"{lecteur} n'a pas répondu : "
-                            f"{fait.stderr.strip()[:120]}"
+                            f"{lecteur} n'a pas répondu : {fait.stderr.strip()[:120]}"
                         ),
                         metadata={"persistence": "unchanged"},
                     )
@@ -489,8 +490,8 @@ class ScreenSnapTool(BaseTool):
 
             temporaire = capture_screen_to_temp()
             horodatage = datetime.now().strftime("%Y-%m-%d à %Hh%M.%S")
-            destination = Path.home() / "Desktop" / (
-                f"Capture Diapason {horodatage}.png"
+            destination = (
+                Path.home() / "Desktop" / (f"Capture Diapason {horodatage}.png")
             )
             shutil.move(str(temporaire), destination)
         except Exception as exc:  # noqa: BLE001 - dont le refus Screen Recording

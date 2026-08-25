@@ -17,7 +17,9 @@ from diapason.tools.browser_tabs import (
 )
 
 
-def _cp(stdout: str = "", code: int = 0, stderr: str = "") -> subprocess.CompletedProcess:
+def _cp(
+    stdout: str = "", code: int = 0, stderr: str = ""
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess([], code, stdout, stderr)
 
 
@@ -26,8 +28,18 @@ class TestInterpretation:
         sortie = "1␟1␟Gmail — Boîte␟https://mail.google.com\n1␟2␟YouTube␟https://youtube.com\n"
         onglets = interpreter_onglets(sortie)
         assert onglets == [
-            {"fenetre": 1, "onglet": 1, "titre": "Gmail — Boîte", "url": "https://mail.google.com"},
-            {"fenetre": 1, "onglet": 2, "titre": "YouTube", "url": "https://youtube.com"},
+            {
+                "fenetre": 1,
+                "onglet": 1,
+                "titre": "Gmail — Boîte",
+                "url": "https://mail.google.com",
+            },
+            {
+                "fenetre": 1,
+                "onglet": 2,
+                "titre": "YouTube",
+                "url": "https://youtube.com",
+            },
         ]
 
     def test_une_ligne_difforme_se_saute(self):
@@ -36,9 +48,13 @@ class TestInterpretation:
 
 class TestGarde:
     def test_aucun_navigateur_pointe_open_anything(self):
-        with patch("diapason.tools.browser_tabs.sys.platform", "darwin"), patch(
-            "diapason.tools.browser_tabs.navigateur_en_marche", return_value=None
-        ), patch("diapason.tools.browser_tabs._run") as run:
+        with (
+            patch("diapason.tools.browser_tabs.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.browser_tabs.navigateur_en_marche", return_value=None
+            ),
+            patch("diapason.tools.browser_tabs._run") as run,
+        ):
             r = BrowserTabsTool().execute(action="list")
         assert not r.success and "open_anything" in r.content
         run.assert_not_called()  # aucun tell ne part sans navigateur constaté
@@ -56,12 +72,16 @@ class TestGarde:
 
 class TestActions:
     def test_lister_rend_les_index_et_les_titres(self):
-        with patch("diapason.tools.browser_tabs.sys.platform", "darwin"), patch(
-            "diapason.tools.browser_tabs.navigateur_en_marche",
-            return_value="Safari",
-        ), patch(
-            "diapason.tools.browser_tabs._run",
-            return_value=_cp("1␟1␟Gmail␟https://mail.google.com\n"),
+        with (
+            patch("diapason.tools.browser_tabs.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.browser_tabs.navigateur_en_marche",
+                return_value="Safari",
+            ),
+            patch(
+                "diapason.tools.browser_tabs._run",
+                return_value=_cp("1␟1␟Gmail␟https://mail.google.com\n"),
+            ),
         ):
             r = BrowserTabsTool().execute(action="list")
         assert r.success
@@ -69,21 +89,28 @@ class TestActions:
         assert r.metadata["tabs"][0]["url"] == "https://mail.google.com"
 
     def test_activer_constate_l_onglet_devenu_actif(self):
-        with patch("diapason.tools.browser_tabs.sys.platform", "darwin"), patch(
-            "diapason.tools.browser_tabs.navigateur_en_marche",
-            return_value="Safari",
-        ), patch(
-            "diapason.tools.browser_tabs._run", return_value=_cp("Gmail — Boîte\n")
-        ) as run:
+        with (
+            patch("diapason.tools.browser_tabs.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.browser_tabs.navigateur_en_marche",
+                return_value="Safari",
+            ),
+            patch(
+                "diapason.tools.browser_tabs._run", return_value=_cp("Gmail — Boîte\n")
+            ) as run,
+        ):
             r = BrowserTabsTool().execute(action="activate", window=1, tab=2)
         assert r.success and "Gmail — Boîte" in r.content
         script = run.call_args[0][0][2]
         assert "window 1" in script and "tab 2" in script
 
     def test_activer_sans_index_renvoie_vers_list(self):
-        with patch("diapason.tools.browser_tabs.sys.platform", "darwin"), patch(
-            "diapason.tools.browser_tabs.navigateur_en_marche",
-            return_value="Safari",
+        with (
+            patch("diapason.tools.browser_tabs.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.browser_tabs.navigateur_en_marche",
+                return_value="Safari",
+            ),
         ):
             r = BrowserTabsTool().execute(action="activate")
         assert not r.success and "list" in r.content

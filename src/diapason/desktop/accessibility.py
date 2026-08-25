@@ -139,9 +139,7 @@ def replace_previous(count: int, text: str) -> bool:
             return False
 
         brut = _copied_value(
-            AXUIElementCopyAttributeValue(
-                focused, kAXSelectedTextRangeAttribute, None
-            )
+            AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute, None)
         )
         if brut is None:
             return False
@@ -159,9 +157,12 @@ def replace_previous(count: int, text: str) -> bool:
         nouvelle = AXValueCreate(kAXValueCFRangeType, (debut, count))
         if nouvelle is None:
             return False
-        if AXUIElementSetAttributeValue(
-            focused, kAXSelectedTextRangeAttribute, nouvelle
-        ) != 0:
+        if (
+            AXUIElementSetAttributeValue(
+                focused, kAXSelectedTextRangeAttribute, nouvelle
+            )
+            != 0
+        ):
             return False
         return (
             AXUIElementSetAttributeValue(focused, kAXSelectedTextAttribute, text) == 0

@@ -17,7 +17,6 @@ from diapason.desktop.gestes_main import (
     Etat,
     MoteurDeGestes,
     Point,
-    Pose,
     Seuils,
     mesurer,
 )
@@ -29,7 +28,7 @@ def _main(*, ouverture: float = 1.0, pince: float = 1.0) -> list[Point]:
     ``ouverture`` = 1.0 : doigts tendus. 0.2 : poing. La paume fait
     toujours 0,2 de large, donc tout est rapporté à une taille stable.
     """
-    points = [Point(POIGNET := "wrist", 0.5, 0.9)]
+    points = [Point("wrist", 0.5, 0.9)]
     points.append(Point("indexMCP", 0.42, 0.7))
     points.append(Point("littleMCP", 0.62, 0.7))  # paume = 0.2
     # Calibré sur des mesures RÉELLES (25 août 2026) : une main ouverte
@@ -60,8 +59,12 @@ class TestMesures:
         doivent donner les mêmes nombres : sinon aucun seuil ne tient."""
         proche = mesurer(_main(ouverture=1.0))
         # La même main, deux fois plus petite (plus loin).
-        loin = mesurer([Point(p.nom, 0.5 + (p.x - 0.5) / 2, 0.9 + (p.y - 0.9) / 2)
-                        for p in _main(ouverture=1.0)])
+        loin = mesurer(
+            [
+                Point(p.nom, 0.5 + (p.x - 0.5) / 2, 0.9 + (p.y - 0.9) / 2)
+                for p in _main(ouverture=1.0)
+            ]
+        )
         assert abs(proche.repliement - loin.repliement) < 0.05
 
     def test_une_main_incomplete_ne_se_mesure_pas(self):
@@ -205,7 +208,10 @@ class TestLatenceMesuree:
             moteur.observer(_main(ouverture=1.0), maintenant=i * 0.05)
         assert moteur.etat is Etat.PAUME_STABLE
         for i in range(30):
-            if moteur.observer(_main(ouverture=0.1), maintenant=2.0 + i * 0.05) is Etat.SAISI:
+            if (
+                moteur.observer(_main(ouverture=0.1), maintenant=2.0 + i * 0.05)
+                is Etat.SAISI
+            ):
                 return i + 1
         return 99
 

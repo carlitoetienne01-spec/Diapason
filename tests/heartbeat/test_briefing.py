@@ -132,15 +132,11 @@ class TestLongueur:
 
 class TestSections:
     def test_les_rendez_vous_paraissent_avec_leur_heure(self):
-        b = composer(
-            jour=JOUR, evenements=[{"title": "Dentiste", "start": "14:30"}]
-        )
+        b = composer(jour=JOUR, evenements=[{"title": "Dentiste", "start": "14:30"}])
         assert "14:30 Dentiste" in b.corps
 
     def test_les_habitudes_tiennent_sur_une_ligne(self):
-        b = composer(
-            jour=JOUR, habitudes_dues=[{"name": "Prier"}, {"name": "Marcher"}]
-        )
+        b = composer(jour=JOUR, habitudes_dues=[{"name": "Prier"}, {"name": "Marcher"}])
         assert "Habitudes du jour : Prier, Marcher." in b.corps
 
     def test_une_habitude_sans_nom_est_ignoree(self):

@@ -142,9 +142,7 @@ def nombre_de_morceaux(taille: int, taille_morceau: int = TAILLE_MORCEAU) -> int
     return (taille + taille_morceau - 1) // taille_morceau
 
 
-def decrire_fichier(
-    chemin: Path, *, taille_morceau: int = TAILLE_MORCEAU
-) -> Manifeste:
+def decrire_fichier(chemin: Path, *, taille_morceau: int = TAILLE_MORCEAU) -> Manifeste:
     """Le manifeste d'un fichier local — lu par blocs, jamais d'un coup."""
     chemin = Path(chemin)
     if not chemin.is_file():
@@ -191,9 +189,7 @@ def verifier_le_manifeste(
         raise RefusDeTransfert("Taille de fichier absurde.")
     if manifeste.taille > taille_max:
         gio = taille_max / (1024**3)
-        raise RefusDeTransfert(
-            f"Ce fichier dépasse la limite de {gio:.1f} Gio."
-        )
+        raise RefusDeTransfert(f"Ce fichier dépasse la limite de {gio:.1f} Gio.")
     if len(manifeste.hachage) != 64 or not re.fullmatch(
         r"[0-9a-f]{64}", manifeste.hachage
     ):

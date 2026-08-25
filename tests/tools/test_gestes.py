@@ -27,7 +27,9 @@ from diapason.tools.gestes import (
 )
 
 
-def _cp(stdout: str = "", code: int = 0, stderr: str = "") -> subprocess.CompletedProcess:
+def _cp(
+    stdout: str = "", code: int = 0, stderr: str = ""
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess([], code, stdout, stderr)
 
 
@@ -62,10 +64,13 @@ class TestInterpretes:
 class TestVolume:
     def test_monter_le_son_relit_le_volume_reel(self):
         """Constater, ne pas proclamer : la phrase vient de la RELECTURE."""
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(""), _cp("70, false")],
-        ) as run:
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp(""), _cp("70, false")],
+            ) as run,
+        ):
             resultat = VolumeControlTool().execute(action="up")
         assert resultat.success
         assert resultat.content == "Volume à 70 %."
@@ -73,18 +78,24 @@ class TestVolume:
         assert premier[:2] == ["osascript", "-e"] and "+ 10" in premier[2]
 
     def test_couper_le_son_le_dit(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(""), _cp("70, true")],
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp(""), _cp("70, true")],
+            ),
         ):
             resultat = VolumeControlTool().execute(action="mute")
         assert resultat.content == "Son coupé."
 
     def test_set_borne_le_niveau(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(""), _cp("100, false")],
-        ) as run:
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp(""), _cp("100, false")],
+            ) as run,
+        ):
             VolumeControlTool().execute(action="set", level=250)
         assert "set volume output volume 100" in run.call_args_list[0][0][0][2]
 
@@ -113,22 +124,26 @@ class TestMediaControl:
     def test_pause_puis_relecture_de_l_etat_reel(self):
         """La régression spotify_play ne se rejoue pas : l'état vient du
         lecteur, pas de la commande."""
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes.lecteur_en_marche", return_value="Spotify"
-        ), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(""), _cp("paused\nPapaoutai — Stromae")],
-        ) as run:
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.tools.gestes.lecteur_en_marche", return_value="Spotify"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp(""), _cp("paused\nPapaoutai — Stromae")],
+            ) as run,
+        ):
             resultat = MediaControlTool().execute(action="pause")
         assert resultat.content == "En pause sur Spotify."
         assert 'tell application "Spotify" to pause' in run.call_args_list[0][0][0][2]
 
     def test_la_lecture_annonce_la_piste(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes.lecteur_en_marche", return_value="Music"
-        ), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(""), _cp("playing\nKompa Love — Harmonik")],
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.tools.gestes.lecteur_en_marche", return_value="Music"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp(""), _cp("playing\nKompa Love — Harmonik")],
+            ),
         ):
             resultat = MediaControlTool().execute(action="play")
         assert resultat.content == "Lecture : Kompa Love — Harmonik (Music)."
@@ -136,8 +151,9 @@ class TestMediaControl:
 
     def test_aucun_lecteur_pointe_le_repli_exact(self):
         """Le message d'échec nomme l'appel de repli, écrit POUR le modèle."""
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes.lecteur_en_marche", return_value=None
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.tools.gestes.lecteur_en_marche", return_value=None),
         ):
             resultat = MediaControlTool().execute(action="playpause")
         assert not resultat.success
@@ -146,25 +162,29 @@ class TestMediaControl:
     def test_aucun_tell_ne_part_sans_lecteur_constate(self):
         """Un tell vers une app éteinte la LANCERAIT : sans lecteur, zéro
         osascript."""
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes.lecteur_en_marche", return_value=None
-        ), patch("diapason.tools.gestes._run") as run:
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.tools.gestes.lecteur_en_marche", return_value=None),
+            patch("diapason.tools.gestes._run") as run,
+        ):
             MediaControlTool().execute(action="next")
         run.assert_not_called()
 
 
 class TestClipboardRead:
     def test_le_texte_copie_revient_tronque_au_besoin(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.desktop.clipboard.lire_texte", return_value="x" * 1000
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.desktop.clipboard.lire_texte", return_value="x" * 1000),
         ):
             resultat = ClipboardReadTool().execute()
         assert resultat.success and resultat.metadata["truncated"]
         assert "1000 caractères" in resultat.content
 
     def test_un_presse_papiers_sans_texte_se_dit(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.desktop.clipboard.lire_texte", return_value=None
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch("diapason.desktop.clipboard.lire_texte", return_value=None),
         ):
             resultat = ClipboardReadTool().execute()
         assert resultat.success and resultat.metadata["empty"]
@@ -182,9 +202,12 @@ class TestScreenSnap:
         source.write_bytes(b"\x89PNG")
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         (tmp_path / "Desktop").mkdir()
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.desktop.screen_capture.capture_screen_to_temp",
-            return_value=str(source),
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.desktop.screen_capture.capture_screen_to_temp",
+                return_value=str(source),
+            ),
         ):
             resultat = ScreenSnapTool().execute()
         assert resultat.success
@@ -193,9 +216,12 @@ class TestScreenSnap:
         assert resultat.metadata["path"] == str(depose[0])
 
     def test_le_refus_screen_recording_remonte_au_modele(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.desktop.screen_capture.capture_screen_to_temp",
-            side_effect=RuntimeError("Grant Screen Recording to Diapason"),
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.desktop.screen_capture.capture_screen_to_temp",
+                side_effect=RuntimeError("Grant Screen Recording to Diapason"),
+            ),
         ):
             resultat = ScreenSnapTool().execute()
         assert not resultat.success and "Screen Recording" in resultat.content
@@ -203,10 +229,17 @@ class TestScreenSnap:
 
 class TestSystemVitals:
     def test_les_trois_lectures_en_une_phrase(self):
-        pmset = "Now drawing from 'Battery Power'\n -InternalBattery-0 82%; discharging; 4:20 remaining"
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp(pmset), _cp("  SSID : MaisonNet\n"), _cp("192.168.0.5\n")],
+        pmset = "Now drawing from 'Battery Power'\n -InternalBattery-0 82%; discharging; 4:20 remaining"  # noqa: E501 - sortie réelle de pmset, reproduite telle quelle
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[
+                    _cp(pmset),
+                    _cp("  SSID : MaisonNet\n"),
+                    _cp("192.168.0.5\n"),
+                ],
+            ),
         ):
             resultat = SystemVitalsTool().execute()
         assert resultat.success
@@ -216,18 +249,24 @@ class TestSystemVitals:
 
     def test_pmset_plante_se_dit_illisible_pas_absent(self):
         """None de lire_batterie confond panne et absence — pas ici."""
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp("", code=1), _cp(""), _cp("")],
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp("", code=1), _cp(""), _cp("")],
+            ),
         ):
             resultat = SystemVitalsTool().execute()
         assert "batterie illisible" in resultat.content
         assert "pas de batterie" not in resultat.content
 
     def test_un_mac_de_bureau_dit_sur_secteur(self):
-        with patch("diapason.tools.gestes.sys.platform", "darwin"), patch(
-            "diapason.tools.gestes._run",
-            side_effect=[_cp("Now drawing from 'AC Power'\n"), _cp(""), _cp("")],
+        with (
+            patch("diapason.tools.gestes.sys.platform", "darwin"),
+            patch(
+                "diapason.tools.gestes._run",
+                side_effect=[_cp("Now drawing from 'AC Power'\n"), _cp(""), _cp("")],
+            ),
         ):
             resultat = SystemVitalsTool().execute()
         assert "sur secteur (pas de batterie interne)" in resultat.content

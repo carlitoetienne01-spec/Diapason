@@ -23,7 +23,10 @@ def _ouvrir(monkeypatch, *, etat, devant_apres, run_ok=True):
     monkeypatch.setattr(eb, "premier_plan", lambda *a, **_k: devant_apres)
     ordres = []
     with patch("diapason.tools.desktop_tools._run") as run:
-        run.side_effect = lambda cmd, **_k: (ordres.append(cmd), MagicMock(returncode=0 if run_ok else 1, stderr=""))[1]
+        run.side_effect = lambda cmd, **_k: (
+            ordres.append(cmd),
+            MagicMock(returncode=0 if run_ok else 1, stderr=""),
+        )[1]
         with patch(
             "diapason.tools.desktop_tools.resolve_mac_app_name",
             lambda n: "App Store",

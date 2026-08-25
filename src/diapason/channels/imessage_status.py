@@ -21,7 +21,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 _APPLE_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
 _DEFAULT_DB_PATH = str(Path.home() / "Library" / "Messages" / "chat.db")

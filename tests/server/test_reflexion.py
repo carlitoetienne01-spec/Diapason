@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 
 from diapason.core.types import Role
 from diapason.server.reflexion import (
-    messages_de_critique,
     meriter_reflexion,
+    messages_de_critique,
     modele_de_reflexion,
     repondre_en_reflechissant,
 )
@@ -33,7 +33,9 @@ class TestMeriterReflexion:
         assert not meriter_reflexion("Ouvre Safari")
 
     def test_un_paragraphe_interrogatif_merite_reflexion(self):
-        long_texte = ("Je me demande comment organiser mon temps entre " * 8) + "qu'en dis-tu ?"
+        long_texte = (
+            "Je me demande comment organiser mon temps entre " * 8
+        ) + "qu'en dis-tu ?"
         assert meriter_reflexion(long_texte)
 
     def test_un_paragraphe_sans_question_reste_vif(self):

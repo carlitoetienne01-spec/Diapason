@@ -268,9 +268,7 @@ class MacAppIndex:
 
         candidats_flous: list[tuple[float, str]] = []
         for parle in candidats_parles:
-            sans_article = _re.sub(
-                r"^(?:le|la|les|l'|mon|ma|mes)\s+", "", parle
-            )
+            sans_article = _re.sub(r"^(?:le|la|les|l'|mon|ma|mes)\s+", "", parle)
             compact = sans_article.replace(" ", "")
             if len(compact) < 5:
                 continue
@@ -283,9 +281,7 @@ class MacAppIndex:
         if candidats_flous:
             candidats_flous.sort(reverse=True)
             meilleur = candidats_flous[0]
-            rivaux = {
-                c for score, c in candidats_flous if meilleur[0] - score < 0.03
-            }
+            rivaux = {c for score, c in candidats_flous if meilleur[0] - score < 0.03}
             if len(rivaux) == 1:
                 return meilleur[1]
         return None

@@ -636,17 +636,23 @@ def _deposer() -> dict[str, Any]:
     objet = tenu()
     if objet is None:
         _oublier_la_main()
-        return {"done": False, "reason": "NOTHING_HELD",
-                "message": "La main s'ouvre sur rien : rien n'avait été attrapé."}
+        return {
+            "done": False,
+            "reason": "NOTHING_HELD",
+            "message": "La main s'ouvre sur rien : rien n'avait été attrapé.",
+        }
 
     commande = _commande_pour(objet)
     if commande is None:
         # Aucun appareil ne l'acceptera jamais : garder l'objet en main
         # serait promettre une seconde chance qui n'existe pas.
         _oublier_la_main()
-        return {"done": False, "reason": "UNSUPPORTED",
-                "object": objet.to_dict(),
-                "message": f"{objet.titre} n'existe pas sur les autres appareils."}
+        return {
+            "done": False,
+            "reason": "UNSUPPORTED",
+            "object": objet.to_dict(),
+            "message": f"{objet.titre} n'existe pas sur les autres appareils.",
+        }
     capacite_requise = _capacite_de(commande[0])
 
     try:
@@ -665,8 +671,12 @@ def _deposer() -> dict[str, Any]:
         ]
     except Exception as exc:  # noqa: BLE001 - un registre illisible se dit
         logger.warning("flotte illisible au dépôt", exc_info=True)
-        return {"done": False, "reason": "NO_FLEET", "message": str(exc)[:120],
-                "object": objet.to_dict()}
+        return {
+            "done": False,
+            "reason": "NO_FLEET",
+            "message": str(exc)[:120],
+            "object": objet.to_dict(),
+        }
 
     if not joignables:
         noms = ", ".join(str(d.get("name") or "?") for d in flotte)
@@ -684,9 +694,7 @@ def _deposer() -> dict[str, Any]:
     # candidat : le proposer ferait poser une question dont une des
     # réponses est un refus garanti (dispatch le refuserait en UNSUPPORTED).
     capables = [
-        d
-        for d in joignables
-        if capacite_requise in set(d.get("capabilities") or [])
+        d for d in joignables if capacite_requise in set(d.get("capabilities") or [])
     ]
     if not capables:
         noms = ", ".join(str(d.get("name") or "?") for d in joignables)
@@ -837,9 +845,7 @@ def choisir_lappareil(body: ChoixDAppareil) -> dict[str, Any]:
             detail="Cet appareil ne faisait pas partie des candidats proposés.",
         )
     # Le jeton sert de clé d'idempotence : deux clics n'envoient qu'une fois.
-    resultat = _issue_terminale(
-        _envoyer(attente["objet"], cible, cle=attente["jeton"])
-    )
+    resultat = _issue_terminale(_envoyer(attente["objet"], cible, cle=attente["jeton"]))
     _session.dernier_depot = resultat
     _noter(
         "déposé" if resultat.get("done") else "dépôt refusé",

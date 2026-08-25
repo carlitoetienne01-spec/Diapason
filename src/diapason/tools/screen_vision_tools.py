@@ -198,10 +198,7 @@ def describe_screen(
 
         global _derniere_empreinte_partage, _derniere_description_partage
         empreinte = hashlib.sha256(b64.encode("ascii")).hexdigest()
-        if (
-            empreinte == _derniere_empreinte_partage
-            and _derniere_description_partage
-        ):
+        if empreinte == _derniere_empreinte_partage and _derniere_description_partage:
             return ToolResult(
                 tool_name="screen_describe",
                 content=_derniere_description_partage,
@@ -444,7 +441,6 @@ def reset_rate_limit_for_tests() -> None:
     _last_capture_monotonic = 0.0
 
 
-
 def read_screen_text(*, monitor: Optional[int] = None) -> ToolResult:
     """Le texte exact de l'écran, par l'OCR natif Apple — zéro Ollama.
 
@@ -514,7 +510,7 @@ def read_screen_text(*, monitor: Optional[int] = None) -> ToolResult:
             except OSError:
                 pass
 
-    texte = "\n".join(l["text"] for l in lignes)
+    texte = "\n".join(ligne["text"] for ligne in lignes)
     if not texte.strip():
         return ToolResult(
             tool_name="screen_read_text",
@@ -573,6 +569,7 @@ class ScreenReadTextTool(BaseTool):
     def execute(self, **params: Any) -> ToolResult:
         monitor = params.get("monitor")
         return read_screen_text(monitor=monitor if monitor is None else int(monitor))
+
 
 __all__ = [
     "ScreenReadTextTool",

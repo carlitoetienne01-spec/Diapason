@@ -25,8 +25,10 @@ def _table_rase():
 class TestAttraper:
     def test_on_attrape_ce_que_l_ecran_affiche(self):
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="Zéro à Héro",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Zéro à Héro",
         )
         objet = pp.attraper()
         assert objet.type == "project" and objet.id == "p1"
@@ -48,8 +50,10 @@ class TestAttraper:
         """§19 : une tâche n'est pas sérialisée puis renvoyée. C'est ce qui
         distingue un handoff d'une duplication."""
         ca.poser_contexte(
-            "/succes/notes", ressource_type="note",
-            ressource_id="n7", ressource_titre="Idées",
+            "/succes/notes",
+            ressource_type="note",
+            ressource_id="n7",
+            ressource_titre="Idées",
         )
         contenu = pp.attraper().to_dict()
         assert set(contenu) == {"type", "id", "title", "screen"}
@@ -59,8 +63,10 @@ class TestAttraper:
 class TestLacher:
     def test_lacher_rend_l_objet_et_ouvre_la_main(self):
         ca.poser_contexte(
-            "/succes/projects", ressource_type="project",
-            ressource_id="p1", ressource_titre="X",
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="X",
         )
         pp.attraper()
         assert pp.lacher().id == "p1"

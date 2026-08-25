@@ -573,9 +573,7 @@ class TestOperativeAgent:
         from diapason.agents.operative import OperativeAgent
 
         memory = FakeMemoryBackend()
-        memory.store(
-            '{"last_run": "2024-01-01"}', source="operator:recall_test:state"
-        )
+        memory.store('{"last_run": "2024-01-01"}', source="operator:recall_test:state")
 
         engine = FakeEngine([{"content": "State recalled."}])
         agent = OperativeAgent(

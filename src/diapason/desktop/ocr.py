@@ -14,7 +14,7 @@ l'origine est en BAS à gauche, donc y décroissant puis x croissant.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def recognize_text(
         )
     # Ordre de lecture : haut de l'écran d'abord (y décroissant), puis
     # gauche → droite.
-    lignes.sort(key=lambda l: (-l["y"], l["x"]))
+    lignes.sort(key=lambda ligne: (-ligne["y"], ligne["x"]))
     return lignes
 
 

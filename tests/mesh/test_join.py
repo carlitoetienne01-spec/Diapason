@@ -88,12 +88,16 @@ class TestAdoptionDeLaFlotte:
         """Un appareil déjà membre d'une flotte refuse d'en rejoindre une
         autre : ce serait perdre tous ses pairs d'un coup."""
         join_fleet(
-            "http://a", "j", my_address="",
+            "http://a",
+            "j",
+            my_address="",
             poster=lambda u, c: _reponse_hote("owner_" + "d" * 32),
         )
         with pytest.raises(JoinError, match="autre ensemble"):
             join_fleet(
-                "http://b", "j", my_address="",
+                "http://b",
+                "j",
+                my_address="",
                 poster=lambda u, c: _reponse_hote("owner_" + "e" * 32),
             )
 
@@ -116,8 +120,9 @@ class TestCeQuOnEnvoie:
             vus["corps"] = corps
             return _reponse_hote("owner_" + "f" * 32)
 
-        join_fleet("192.168.0.5:8000", "  mon-jeton  ", my_address="http://moi",
-                   poster=espion)
+        join_fleet(
+            "192.168.0.5:8000", "  mon-jeton  ", my_address="http://moi", poster=espion
+        )
         moi = device_identity()
         assert vus["url"] == "http://192.168.0.5:8000/v1/mesh/pairings/redeem"
         assert vus["corps"]["pairingToken"] == "mon-jeton"  # espaces retirés

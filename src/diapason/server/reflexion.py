@@ -74,9 +74,7 @@ def est_activee(config: Any) -> bool:
     return bool(getattr(section, "enabled", False))
 
 
-def messages_de_critique(
-    messages: Sequence[Message], brouillon: str
-) -> List[Message]:
+def messages_de_critique(messages: Sequence[Message], brouillon: str) -> List[Message]:
     """La conversation augmentée du brouillon et de l'ordre de relecture."""
     return [
         *messages,
@@ -135,7 +133,9 @@ async def repondre_en_reflechissant(
             yield token
         return
 
-    logger.info("réflexion : brouillon de %d caractères, relecture en cours", len(brouillon))
+    logger.info(
+        "réflexion : brouillon de %d caractères, relecture en cours", len(brouillon)
+    )
     async for token in engine.stream(
         messages_de_critique(messages, brouillon),
         model=modele,

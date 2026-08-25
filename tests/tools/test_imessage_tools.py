@@ -22,8 +22,12 @@ def _faux_chat_db(tmp_path, rangees):
             "CREATE TABLE message (ROWID INTEGER PRIMARY KEY, text TEXT, "
             "date INTEGER, is_from_me INTEGER)"
         )
-        db.execute("CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, chat_identifier TEXT)")
-        db.execute("CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER)")
+        db.execute(
+            "CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, chat_identifier TEXT)"
+        )
+        db.execute(
+            "CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER)"
+        )
         db.execute("INSERT INTO chat VALUES (1, '+50940459941')")
         for i, (texte, de_moi) in enumerate(rangees, start=1):
             db.execute(
@@ -75,15 +79,16 @@ class TestOutil:
                 {"title": "Mom💫", "phone": "+50940459941", "email": ""}
             ],
         )
-        monkeypatch.setattr(
-            "diapason.tools.imessage_tools._DB_PAR_DEFAUT", base
-        )
+        monkeypatch.setattr("diapason.tools.imessage_tools._DB_PAR_DEFAUT", base)
         with patch("diapason.tools.imessage_tools.lire_conversation") as lire:
             lire.return_value = {
                 "issue": "found",
                 "messages": [
-                    {"texte": "Tu viens dimanche ?", "de_moi": False,
-                     "quand": "2026-08-25T09:00"}
+                    {
+                        "texte": "Tu viens dimanche ?",
+                        "de_moi": False,
+                        "quand": "2026-08-25T09:00",
+                    }
                 ],
                 "sans_texte": 0,
             }

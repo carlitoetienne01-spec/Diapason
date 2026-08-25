@@ -113,8 +113,13 @@ class TestHomophonesDeCommande:
     def test_le_mais_de_tete_redevient_mets(self):
         from diapason.speech.dictate_polish import reparer_homophones_de_commande
 
-        assert reparer_homophones_de_commande("mais de la musique") == "mets de la musique"
-        assert reparer_homophones_de_commande("Mais de la musique.") == "Mets de la musique."
+        assert (
+            reparer_homophones_de_commande("mais de la musique") == "mets de la musique"
+        )
+        assert (
+            reparer_homophones_de_commande("Mais de la musique.")
+            == "Mets de la musique."
+        )
         assert (
             reparer_homophones_de_commande("Diapason, mais de la musique")
             == "Diapason, mets de la musique"

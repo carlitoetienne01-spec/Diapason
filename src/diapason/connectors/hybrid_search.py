@@ -366,7 +366,7 @@ class HybridSearch:
     ) -> List[Tuple[str, float]]:
         """Return ``[(chunk_id, bm25_score), ...]`` from FTS5."""
         # OR here on purpose: hybrid search casts a wide net and lets the
-# reranker choose. Keyword search below keeps FTS5's stricter AND.
+        # reranker choose. Keyword search below keeps FTS5's stricter AND.
         fts_query = _quote_fts(query, operator="OR")
         if not fts_query:
             return []

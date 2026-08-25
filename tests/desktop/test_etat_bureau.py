@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import diapason.desktop.etat_bureau as eb
-from diapason.desktop.etat_bureau import EtatBureau, decrire, etat_du_bureau, interpreter
+from diapason.desktop.etat_bureau import (
+    EtatBureau,
+    decrire,
+    etat_du_bureau,
+    interpreter,
+)
 
 SORTIE = "App Store\nSafari|Notes|WhatsApp|App Store\n"
 

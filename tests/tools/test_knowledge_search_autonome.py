@@ -34,7 +34,9 @@ def test_nu_il_cherche_en_hybride_et_parle_francais():
     hybride = MagicMock()
     hybride.search.return_value = [
         _touche("Plan d'apprentissage", "Étudier le CSS moderne chaque matin."),
-        _touche("Journal", "Le parcours OpenClassrooms avance bien.", source="apple_notes"),
+        _touche(
+            "Journal", "Le parcours OpenClassrooms avance bien.", source="apple_notes"
+        ),
     ]
     outil._hybride = hybride
 

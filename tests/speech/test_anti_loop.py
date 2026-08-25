@@ -121,7 +121,5 @@ class TestLePromptNEnseignePlusLaBequille:
         toutes faites. Le modèle a choisi la béquille quand il était coincé."""
         assert "Prefer natural openers" not in ORAL_VOICE_RULES
         # La phrase n'apparaît plus que dans la liste des INTERDITS.
-        ligne = next(
-            li for li in ORAL_VOICE_RULES.splitlines() if "Je t'écoute" in li
-        )
+        ligne = next(li for li in ORAL_VOICE_RULES.splitlines() if "Je t'écoute" in li)
         assert "canned" in ligne or "filler" in ligne.lower() or '"' in ligne

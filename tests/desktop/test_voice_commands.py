@@ -1,5 +1,3 @@
-
-
 class TestEnchainementParle:
     """« Maintenant, fais-moi la recherche du jeu solitaire » tombait dans le
     vide (23 août 2026) : les connecteurs d'enchaînement cassaient TOUS les

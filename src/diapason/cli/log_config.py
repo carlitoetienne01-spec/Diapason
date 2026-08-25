@@ -71,9 +71,7 @@ def setup_logging(
     # le handler laisse passer l'INFO sauf en mode quiet.
     if not quiet:
         console_handler.setLevel(min(level, logging.INFO))
-        logging.getLogger("diapason.speech.realtime.local_voice").setLevel(
-            logging.INFO
-        )
+        logging.getLogger("diapason.speech.realtime.local_voice").setLevel(logging.INFO)
 
     # File handler (verbose or explicit path)
     if verbose or log_file is not None:

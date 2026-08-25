@@ -134,7 +134,6 @@ class _FakePasteboard:
         return data.decode("utf-8") if isinstance(data, bytes) else data
 
 
-
 def test_paste_restores_the_previous_clipboard():
     pb = _FakePasteboard({"public.utf8-plain-text": "user had this copied"})
     pasted = {}

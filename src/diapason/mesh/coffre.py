@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +86,7 @@ def nouvelle_demi_cle() -> DemiCle:
 
     privee = X25519PrivateKey.generate()
     return DemiCle(
-        privee=privee.private_bytes(
-            Encoding.Raw, PrivateFormat.Raw, NoEncryption()
-        ),
+        privee=privee.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()),
         publique=privee.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw),
     )
 

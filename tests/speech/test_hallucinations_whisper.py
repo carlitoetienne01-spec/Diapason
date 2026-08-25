@@ -39,8 +39,7 @@ class TestGeneriquesRayes:
     def test_le_generique_en_fin_de_vraie_phrase_tombe_seul(self):
         """Le cas rapporté : la phrase dictée survit, le crédit meurt."""
         rendu = strip_whisper_credits(
-            "Rendez-vous demain à dix heures. "
-            "Sous-titres par la communauté d'Amara.org"
+            "Rendez-vous demain à dix heures. Sous-titres par la communauté d'Amara.org"
         )
         assert rendu == "Rendez-vous demain à dix heures."
 
@@ -82,11 +81,14 @@ class TestFiltreDeSilenceDictee:
 
         monkeypatch.setattr(backend, "_ensure_model", lambda: ModeleFactice())
         monkeypatch.setattr(backend, "_hotwords", lambda: "")
-        import wave, io
+        import io
+        import wave
 
         tampon = io.BytesIO()
         w = wave.open(tampon, "w")
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
         w.writeframes(b"\x00\x00" * 16000)
         w.close()
         backend.transcribe(tampon.getvalue(), format="wav")

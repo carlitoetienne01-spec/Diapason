@@ -52,8 +52,7 @@ def join(host: str, token: str, address: str | None) -> None:
         console.print(f"  adresse            : {resultat.host_address}")
     if resultat.granted_capabilities:
         console.print(
-            "  accordé            : "
-            + ", ".join(sorted(resultat.granted_capabilities))
+            "  accordé            : " + ", ".join(sorted(resultat.granted_capabilities))
         )
     else:
         # Ne pas laisser croire à une permission qu'on n'a pas reçue.

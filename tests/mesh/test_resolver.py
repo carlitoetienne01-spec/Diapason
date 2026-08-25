@@ -240,7 +240,7 @@ class TestLesMotsQuiNeDesignentRien:
 
     def test_le_possessif_seul_ne_designe_personne(self):
         """« mon » n'est pas un nom d'appareil : il ne doit jamais suffire."""
-        from diapason.mesh.resolver import _name_score, _fold
+        from diapason.mesh.resolver import _fold, _name_score
 
         for appareil in self.FLOTTE:
             assert _name_score(_fold("mon"), appareil) == 0

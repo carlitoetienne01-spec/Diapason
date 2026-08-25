@@ -92,9 +92,30 @@ def _fold(text: str) -> str:
 # courts et parfaitement désignants.
 _MOTS_VIDES = frozenset(
     {
-        "mon", "ma", "mes", "le", "la", "les", "un", "une", "des",
-        "du", "de", "au", "aux", "sur", "dans", "chez", "the", "my",
-        "on", "to", "at", "of", "et", "and",
+        "mon",
+        "ma",
+        "mes",
+        "le",
+        "la",
+        "les",
+        "un",
+        "une",
+        "des",
+        "du",
+        "de",
+        "au",
+        "aux",
+        "sur",
+        "dans",
+        "chez",
+        "the",
+        "my",
+        "on",
+        "to",
+        "at",
+        "of",
+        "et",
+        "and",
     }
 )
 

@@ -163,6 +163,7 @@ class TestCommandesVocales:
         assert a.kind == "open_uri"
         assert "youtube" in a.target
 
+
 class TestNomsAffiches:
     """Le nom FRANÇAIS que le Finder montre — « Échecs » est Chess.app.
 

@@ -602,7 +602,9 @@ class TestFullE2EFlow:
         picks between grounded/deferral prompts. The only tool the agent
         needs for a QUESTION is ``channel_send``.
         """
-        j = self._make_mock_diapason(["check the docs at carlitoetienne01-spec.github.io"])
+        j = self._make_mock_diapason(
+            ["check the docs at carlitoetienne01-spec.github.io"]
+        )
         tweet = DEMO_TWEETS[0]
         # mention_type is determined by _classify_mention in production; the
         # classifier itself is exercised in TestClassifyMentionDispatch. Flow

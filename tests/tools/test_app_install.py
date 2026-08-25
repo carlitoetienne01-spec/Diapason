@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import subprocess
 
-import pytest
-
 from diapason.tools import app_install as mod
 from diapason.tools.app_install import AppInstallTool, _chercher_cask
 
@@ -56,7 +54,7 @@ def test_le_cask_part_detache_avec_sa_notification(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", FauxPopen)
     r = AppInstallTool().execute(name="VLC")
     assert r.success and "arrière-plan" in r.content
-    (cmd, kw), = lances
+    ((cmd, kw),) = lances
     commande = cmd[-1]
     assert "brew install --cask vlc" in commande
     assert "display notification" in commande, "la fin doit s'annoncer"

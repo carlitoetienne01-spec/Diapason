@@ -31,9 +31,20 @@ def _run(cmd: list[str], *, timeout: float = 8.0) -> subprocess.CompletedProcess
 
 
 _JOURS_SEMAINE = {
-    "lundi": 0, "monday": 0, "mardi": 1, "tuesday": 1, "mercredi": 2,
-    "wednesday": 2, "jeudi": 3, "thursday": 3, "vendredi": 4, "friday": 4,
-    "samedi": 5, "saturday": 5, "dimanche": 6, "sunday": 6,
+    "lundi": 0,
+    "monday": 0,
+    "mardi": 1,
+    "tuesday": 1,
+    "mercredi": 2,
+    "wednesday": 2,
+    "jeudi": 3,
+    "thursday": 3,
+    "vendredi": 4,
+    "friday": 4,
+    "samedi": 5,
+    "saturday": 5,
+    "dimanche": 6,
+    "sunday": 6,
 }
 
 
@@ -79,9 +90,7 @@ def interpreter_quand(quand: str, aujourd_hui=None):
         return None
 
 
-def _calendar_events_applescript(
-    offset_days: int, span_days: int, label: str
-) -> str:
+def _calendar_events_applescript(offset_days: int, span_days: int, label: str) -> str:
     """Return AppleScript that prints event lines for the given window."""
     # Sur plusieurs jours, chaque ligne porte sa date — sinon « la semaine
     # prochaine » rendait sept jours indiscernables.
@@ -505,7 +514,10 @@ def _ne_garder_que_les_plus_exacts(
 ) -> "list[tuple[str, str]]":
     if not lignes:
         return lignes
-    rangs = [(_rang_de_correspondance(terme, titre), titre, contenu) for titre, contenu in lignes]
+    rangs = [
+        (_rang_de_correspondance(terme, titre), titre, contenu)
+        for titre, contenu in lignes
+    ]
     meilleur = min(r for r, _t, _c in rangs)
     return [(t_, c) for r, t_, c in rangs if r == meilleur]
 
@@ -620,24 +632,35 @@ def _resoudre_ou_avouer(
             if fiches and veut == "email"
             else ""
         )
-        return recipient, "", ToolResult(
+        return (
+            recipient,
+            "",
+            ToolResult(
+                tool_name=tool_name,
+                success=False,
+                content=(
+                    f"No local contact matches '{recipient}'.{detail} "
+                    "Ask the user for the exact name, a phone number, or an email."
+                ),
+                metadata={"resolved": False, "candidates": []},
+            ),
+        )
+    noms = ", ".join(f["title"] for f in utilisables[:5])
+    return (
+        recipient,
+        "",
+        ToolResult(
             tool_name=tool_name,
             success=False,
             content=(
-                f"No local contact matches '{recipient}'.{detail} "
-                "Ask the user for the exact name, a phone number, or an email."
+                f"Several contacts match '{recipient}': {noms}. "
+                "Ask the user which one, then call again with that exact name."
             ),
-            metadata={"resolved": False, "candidates": []},
-        )
-    noms = ", ".join(f["title"] for f in utilisables[:5])
-    return recipient, "", ToolResult(
-        tool_name=tool_name,
-        success=False,
-        content=(
-            f"Several contacts match '{recipient}': {noms}. "
-            "Ask the user which one, then call again with that exact name."
+            metadata={
+                "resolved": False,
+                "candidates": [f["title"] for f in utilisables[:5]],
+            },
         ),
-        metadata={"resolved": False, "candidates": [f["title"] for f in utilisables[:5]]},
     )
 
 
@@ -882,8 +905,7 @@ class MessagesComposeTool(BaseTool):
             return ToolResult(
                 tool_name="messages_compose",
                 content=(
-                    f"Draft open in Messages for {qui}. "
-                    "Not sent — user must tap Send."
+                    f"Draft open in Messages for {qui}. Not sent — user must tap Send."
                 ),
                 success=True,
                 metadata={
@@ -1177,7 +1199,6 @@ class MessagesSendTool(BaseTool):
             )
 
 
-
 @ToolRegistry.register("messages_status")
 class MessagesStatusTool(BaseTool):
     """L'état réel d'un envoi iMessage — lu dans chat.db, jamais inventé."""
@@ -1382,16 +1403,12 @@ class FileTrashTool(BaseTool):
 
         # Le Finder est toujours installé : pas le piège de compilation des
         # tell vers une app absente. Un seul script pour toute la liste.
-        elements = ", ".join(
-            f'POSIX file "{_as_escape(str(c))}"' for c in chemins
-        )
-        script = f"tell application \"Finder\" to delete {{{elements}}}"
+        elements = ", ".join(f'POSIX file "{_as_escape(str(c))}"' for c in chemins)
+        script = f'tell application "Finder" to delete {{{elements}}}'
         try:
             fait = _run(["osascript", "-e", script], timeout=20.0)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="file_trash", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="file_trash", content=str(exc), success=False)
         if fait.returncode != 0:
             return ToolResult(
                 tool_name="file_trash",
@@ -1407,8 +1424,7 @@ class FileTrashTool(BaseTool):
             return ToolResult(
                 tool_name="file_trash",
                 content=(
-                    "Finder answered but these still exist: "
-                    + ", ".join(restants)
+                    "Finder answered but these still exist: " + ", ".join(restants)
                 ),
                 success=False,
                 metadata={"remaining": restants},
@@ -1428,6 +1444,7 @@ class FileTrashTool(BaseTool):
                 "persistence": "local",
             },
         )
+
 
 __all__ = [
     "FileTrashTool",

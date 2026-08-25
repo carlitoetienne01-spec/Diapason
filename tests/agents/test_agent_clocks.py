@@ -22,7 +22,8 @@ class TestNowInDitToujoursSonVraiFuseau:
     def _outil(self):
         global now_in
         from diapason.core.utils import now_in  # noqa: F811
-        globals()['now_in'] = now_in
+
+        globals()["now_in"] = now_in
 
     def test_un_fuseau_nomme_est_respecte(self):
         paris = now_in("Europe/Paris")

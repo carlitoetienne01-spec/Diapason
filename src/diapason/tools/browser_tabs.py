@@ -51,7 +51,7 @@ _LISTER = {
         "    set nt to 0\n"
         "    repeat with t in tabs of f\n"
         "      set nt to nt + 1\n"
-        '      set sortie to sortie & nf & "␟" & nt & "␟" & (name of t) & "␟" & (URL of t) & linefeed\n'
+        '      set sortie to sortie & nf & "␟" & nt & "␟" & (name of t) & "␟" & (URL of t) & linefeed\n'  # noqa: E501 - ligne d'AppleScript, pas ligne de Python
         "    end repeat\n"
         "  end repeat\n"
         "end tell\n"
@@ -66,7 +66,7 @@ _LISTER = {
         "    set nt to 0\n"
         "    repeat with t in tabs of f\n"
         "      set nt to nt + 1\n"
-        '      set sortie to sortie & nf & "␟" & nt & "␟" & (title of t) & "␟" & (URL of t) & linefeed\n'
+        '      set sortie to sortie & nf & "␟" & nt & "␟" & (title of t) & "␟" & (URL of t) & linefeed\n'  # noqa: E501
         "    end repeat\n"
         "  end repeat\n"
         "end tell\n"
@@ -200,9 +200,7 @@ class BrowserTabsTool(BaseTool):
                     f"[{o['fenetre']}.{o['onglet']}] {o['titre'][:80]}"
                     for o in onglets[:40]
                 ]
-                suite = (
-                    f" (+{len(onglets) - 40} autres)" if len(onglets) > 40 else ""
-                )
+                suite = f" (+{len(onglets) - 40} autres)" if len(onglets) > 40 else ""
                 return ToolResult(
                     tool_name="browser_tabs",
                     content=(
@@ -229,9 +227,7 @@ class BrowserTabsTool(BaseTool):
                         ),
                         success=False,
                     )
-                script = _ACTIVER[nav].replace("{nf}", str(nf)).replace(
-                    "{nt}", str(nt)
-                )
+                script = _ACTIVER[nav].replace("{nf}", str(nf)).replace("{nt}", str(nt))
                 fait = _run(["osascript", "-e", script], timeout=15.0)
                 if fait.returncode != 0:
                     return self._echec(nav, fait.stderr)
@@ -248,9 +244,7 @@ class BrowserTabsTool(BaseTool):
                     },
                 )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return ToolResult(
-                tool_name="browser_tabs", content=str(exc), success=False
-            )
+            return ToolResult(tool_name="browser_tabs", content=str(exc), success=False)
         return ToolResult(
             tool_name="browser_tabs",
             content="Unknown action: list or activate.",

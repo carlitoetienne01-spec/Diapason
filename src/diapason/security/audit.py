@@ -45,8 +45,7 @@ class AuditLogger:
         # désormais, et l'échec est bruyant plutôt qu'écrit sur le disque.
         if not isinstance(db_path, (str, Path)):
             raise TypeError(
-                "db_path doit être un str ou un Path, pas un "
-                f"{type(db_path).__name__}."
+                f"db_path doit être un str ou un Path, pas un {type(db_path).__name__}."
             )
         self._db_path = Path(db_path)
         from diapason.security.file_utils import secure_create
