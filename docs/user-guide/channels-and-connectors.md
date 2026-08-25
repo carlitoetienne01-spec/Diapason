@@ -174,7 +174,7 @@ The fastest way is to use the App Manifest — paste this JSON to configure ever
 4. **Add yourself as a test user** (required while app is unverified):
    [Open OAuth Consent Screen →](https://console.cloud.google.com/apis/credentials/consent)
    - Scroll to "Test users" → click "+ Add Users"
-   - Add your Gmail address (e.g. `jonsaadfalcon@gmail.com`)
+   - Add your Gmail address (e.g. `you@gmail.com`)
 
 5. **Add the redirect URI:**
    [Open Credentials →](https://console.cloud.google.com/apis/credentials)

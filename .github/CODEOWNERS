@@ -8,9 +8,15 @@
 #
 # See: https://docs.github.com/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
 #
-# To add more owners, append GitHub handles (`@username`) or team slugs
-# (`@open-diapason/<team>`) to the line below. To gate specific paths
-# differently, add a more-specific pattern beneath it (later, more
-# specific rules win).
+# This file previously listed three handles inherited from the upstream fork
+# (@jonsaadfalcon, @ANarayan, @robbym-dev). None of them has access to
+# github.com/carlitoetienne01-spec/Diapason, so with the ruleset enabled no
+# pull request could ever be unblocked — the gate named reviewers who cannot
+# review. It now names the account that actually owns the repository.
+#
+# To add more owners, append GitHub handles (`@username`) to the line below.
+# Team slugs (`@org/team`) only work under an organisation; this repository
+# lives on a personal account. To gate specific paths differently, add a
+# more-specific pattern beneath it (later, more specific rules win).
 
-* @jonsaadfalcon @ANarayan @robbym-dev
+* @carlitoetienne01-spec
