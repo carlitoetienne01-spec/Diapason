@@ -38,6 +38,42 @@ export async function lireDiagnostic(): Promise<Diagnostic> {
   return reponse.json();
 }
 
+export async function mesurerPose(
+  pose: 'ouverte' | 'fermee',
+): Promise<void> {
+  await apiFetch(`/v1/gestures/calibrate/${pose}`, { method: 'POST' });
+}
+
+export async function finirLaMesure(
+  pose: 'ouverte' | 'fermee',
+): Promise<number> {
+  const reponse = await apiFetch(`/v1/gestures/calibrate/${pose}/stop`, {
+    method: 'POST',
+  });
+  const corps = await reponse.json();
+  if (!reponse.ok) throw new Error(corps?.detail ?? 'Mesure impossible.');
+  return corps.value as number;
+}
+
+export async function appliquerCalibration(
+  ouverte: number,
+  fermee: number,
+): Promise<void> {
+  const reponse = await apiFetch('/v1/gestures/calibrate/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ouverte, fermee }),
+  });
+  if (!reponse.ok) {
+    const corps = await reponse.json().catch(() => null);
+    throw new Error(corps?.detail ?? 'Calibration refusée.');
+  }
+}
+
+export async function oublierCalibration(): Promise<void> {
+  await apiFetch('/v1/gestures/calibrate/reset', { method: 'POST' });
+}
+
 export type ReponseImage = {
   state: EtatGeste;
   changed: boolean;

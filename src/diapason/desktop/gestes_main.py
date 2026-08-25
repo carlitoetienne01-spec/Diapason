@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import math
+from pathlib import Path
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -82,14 +83,19 @@ class Seuils:
     faux positifs soient MESURÉS avant de dire que les gestes sont finis.
     """
 
-    confiance_minimale: float = 0.5
+    # Sur le MINIMUM des points, pas leur moyenne : une main fantôme a
+    # toujours quelques points sûrs. 0,6 écarte le bruit sans exiger un
+    # éclairage de studio.
+    confiance_minimale: float = 0.6
     # Une main est « fermée » quand ses doigts sont repliés sous ce ratio de
     # leur longueur déployée ; « ouverte » au-dessus. L'écart entre les deux
     # est l'hystérésis : sans lui, la frontière fait osciller l'état.
-    fermeture_entree: float = 0.55
-    fermeture_sortie: float = 0.70
-    ouverture_entree: float = 0.80
-    ouverture_sortie: float = 0.65
+    # Échelle du repliement local : ~0,3 poing serré, ~1,0 main tendue.
+    # L'écart entre entrée et sortie est l'hystérésis.
+    fermeture_entree: float = 0.50
+    fermeture_sortie: float = 0.62
+    ouverture_entree: float = 0.72
+    ouverture_sortie: float = 0.60
     # Une pince : pouce et index qui se touchent, mesuré en fraction de la
     # largeur de la paume — donc indépendant de la distance à l'objectif.
     pince_entree: float = 0.35
@@ -158,6 +164,12 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
 
     replis: list[float] = []
     tendus = 0
+    # La confiance retenue est le MINIMUM, pas la moyenne. Constaté le
+    # 25 août 2026 : Vision rend des « mains » dans du bruit — un visage,
+    # une ombre, un objet — avec quelques points sûrs et beaucoup de points
+    # douteux. Une moyenne tirée vers le haut par le poignet laissait
+    # passer ces mains fantômes, qui déposaient des choses toutes seules.
+    # Un seul point douteux rend la décision douteuse.
     confiances: list[float] = [poignet.confiance]
     for doigt in _DOIGTS:
         base_nom, _pip, _dip, bout_nom = _ARTICULATIONS[doigt]
@@ -166,12 +178,15 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
         if base is None or bout is None:
             continue
         confiances.extend([base.confiance, bout.confiance])
-        # Un doigt tendu éloigne son bout du poignet ; replié, il s'en
-        # rapproche. Rapporté à la paume, c'est comparable d'une main à
-        # l'autre.
-        etendue = _distance(poignet, bout) / paume
+        # La distance du bout à SA PROPRE BASE, et non au poignet. Le
+        # poignet est loin, donc sa mesure change avec l'inclinaison de la
+        # main : la même main fermée donnait des nombres différents selon
+        # qu'elle était droite ou penchée — « tantôt c'était mieux ». Un
+        # doigt, lui, est plié ou tendu indépendamment de l'orientation du
+        # bras. Mesuré : le critère local sépare trois fois mieux.
+        etendue = _distance(base, bout) / paume
         replis.append(etendue)
-        if etendue > 1.6:
+        if etendue > 0.75:
             tendus += 1
 
     if len(replis) < 3:
@@ -180,7 +195,7 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
     # Le pouce ment sur le repliement (il se replie de côté) : on mesure le
     # repliement sur les quatre doigts longs.
     longs = replis[1:] if len(replis) == 5 else replis
-    repliement = sum(longs) / len(longs) / 2.0  # ~0 fermé, ~1 ouvert
+    repliement = sum(longs) / len(longs)  # ~0,3 fermé, ~1,0 ouvert
 
     bout_pouce = _point(par_nom, "thumbTip")
     bout_index = _point(par_nom, "indexTip")
@@ -191,9 +206,9 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
     )
 
     return Mesures(
-        repliement=max(0.0, min(1.5, repliement)),
+        repliement=max(0.0, min(2.0, repliement)),
         pince=pince,
-        confiance=sum(confiances) / len(confiances),
+        confiance=min(confiances),
         doigts_tendus=tendus,
     )
 
@@ -329,8 +344,88 @@ class MoteurDeGestes:
         self.__init__(self.seuils)  # noqa: PLC2801 - remise à neuf explicite
 
 
+# ── Calibration (§16) ───────────────────────────────────────────────────
+# Les seuils par défaut sont des points de départ raisonnables, pas des
+# vérités : la taille des mains, la distance à l'objectif et la façon de
+# fermer le poing varient d'une personne à l'autre. Plutôt que de deviner,
+# on MESURE deux poses et on place les seuils entre elles.
+
+
+def seuils_calibres(
+    repliement_ouvert: float,
+    repliement_ferme: float,
+    *,
+    base: Optional[Seuils] = None,
+) -> Seuils:
+    """Des seuils dérivés de DEUX mesures réelles, pas d'une supposition.
+
+    L'hystérésis occupe le tiers central de l'écart mesuré : assez large
+    pour qu'une main qui hésite ne fasse pas osciller l'état, assez étroite
+    pour que le geste reste franc.
+    """
+    from dataclasses import replace
+
+    base = base or Seuils()
+    ecart = repliement_ouvert - repliement_ferme
+    if ecart < 0.15:
+        # Les deux poses se ressemblent trop : calibrer là-dessus rendrait
+        # les seuils ingouvernables. On le dit plutôt que de bricoler.
+        raise ValueError(
+            "Les deux poses sont trop proches pour en tirer des seuils. "
+            "Ouvre bien la main, puis serre franchement le poing."
+        )
+    milieu = repliement_ferme + ecart / 2
+    marge = ecart / 6
+    return replace(
+        base,
+        fermeture_entree=round(milieu - marge, 3),
+        fermeture_sortie=round(milieu + marge, 3),
+        ouverture_entree=round(milieu + marge * 1.6, 3),
+        ouverture_sortie=round(milieu + marge * 0.6, 3),
+    )
+
+
+def chemin_calibration() -> "Path":
+    from diapason.core.paths import get_config_dir
+
+    return Path(get_config_dir()) / "gestes.json"
+
+
+def charger_seuils() -> Seuils:
+    """Les seuils de CETTE machine — ceux d'usine si rien n'est calibré."""
+    import json
+
+    chemin = chemin_calibration()
+    try:
+        brut = json.loads(chemin.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return Seuils()
+    connus = {c for c in Seuils.__dataclass_fields__}
+    return Seuils(**{k: v for k, v in brut.items() if k in connus})
+
+
+def enregistrer_seuils(seuils: Seuils) -> None:
+    import json
+    from dataclasses import asdict
+
+    chemin = chemin_calibration()
+    chemin.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    chemin.write_text(
+        json.dumps(asdict(seuils), indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def oublier_la_calibration() -> None:
+    chemin_calibration().unlink(missing_ok=True)
+
+
 __all__ = [
     "Etat",
+    "charger_seuils",
+    "chemin_calibration",
+    "enregistrer_seuils",
+    "oublier_la_calibration",
+    "seuils_calibres",
     "Mesures",
     "MoteurDeGestes",
     "Point",

@@ -8,6 +8,7 @@
 
 import { Hand, Video, VideoOff } from 'lucide-react';
 
+import { useCalibration } from './useCalibration';
 import { useModeGestes } from './useModeGestes';
 
 const PHRASES: Record<string, string> = {
@@ -24,6 +25,7 @@ const PHRASES: Record<string, string> = {
 
 export function PanneauGestes() {
   const { actif, etat, mainVue, erreur, diagnostic, basculer } = useModeGestes();
+  const calibration = useCalibration(actif);
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -92,6 +94,36 @@ export function PanneauGestes() {
             </dd>
           </div>
         </dl>
+      )}
+
+      {actif && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {/* La calibration (§16) : deux poses mesurées valent mieux que
+              des seuils choisis à l'aveugle pour des mains inconnues. */}
+          <button
+            type="button"
+            onClick={calibration.demarrer}
+            disabled={calibration.etape !== 'repos' && calibration.etape !== 'terminee'}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+          >
+            Calibrer sur ma main
+          </button>
+          {calibration.etape === 'terminee' && (
+            <button
+              type="button"
+              onClick={calibration.reinitialiser}
+              className="text-xs text-muted-foreground underline underline-offset-2"
+            >
+              revenir aux réglages d’usine
+            </button>
+          )}
+          {calibration.message && (
+            <span className="text-sm text-muted-foreground">{calibration.message}</span>
+          )}
+          {calibration.erreur && (
+            <span className="text-sm text-destructive">{calibration.erreur}</span>
+          )}
+        </div>
       )}
 
       {erreur && (

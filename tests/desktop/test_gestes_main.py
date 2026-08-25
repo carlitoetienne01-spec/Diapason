@@ -216,3 +216,80 @@ class TestLatenceMesuree:
     def test_un_lissage_extreme_est_visible_dans_la_mesure(self):
         """Un réglage qui rendrait les gestes inutilisables doit se voir."""
         assert self._images_pour_saisir(Seuils(lissage=0.95)) > 10
+
+
+class TestCalibration:
+    """§16 — deux poses mesurées valent mieux que des seuils devinés.
+
+    « La sensibilité n'est pas la bonne » (25 août 2026) : les valeurs
+    d'usine visaient une main moyenne à une distance moyenne. La taille des
+    mains, la distance à l'objectif et la façon de fermer le poing varient
+    trop pour qu'une seule valeur convienne à tous.
+    """
+
+    def test_les_seuils_se_placent_entre_les_deux_poses(self):
+        from diapason.desktop.gestes_main import seuils_calibres
+
+        s = seuils_calibres(repliement_ouvert=0.95, repliement_ferme=0.35)
+        assert 0.35 < s.fermeture_entree < s.fermeture_sortie < 0.95
+        assert s.ouverture_sortie < s.ouverture_entree
+
+    def test_l_hysteresis_survit_a_la_calibration(self):
+        """Sans écart entre entrée et sortie, une main qui hésite fait
+        osciller l'état — la calibration ne doit pas l'aplatir."""
+        from diapason.desktop.gestes_main import seuils_calibres
+
+        s = seuils_calibres(0.9, 0.3)
+        assert s.fermeture_sortie > s.fermeture_entree
+
+    def test_deux_poses_trop_proches_sont_refusees(self):
+        """Calibrer sur des poses identiques produirait des seuils
+        ingouvernables : mieux vaut le dire que bricoler."""
+        from diapason.desktop.gestes_main import seuils_calibres
+
+        with pytest.raises(ValueError, match="trop proches"):
+            seuils_calibres(0.60, 0.55)
+
+    def test_une_main_calibree_est_reconnue_la_ou_l_usine_echouait(self):
+        """Le cas réel : une main dont le poing ne descend qu'à 0,55 — au
+        -dessus du seuil d'usine — donc jamais reconnue comme fermée."""
+        from diapason.desktop.gestes_main import (
+            MoteurDeGestes,
+            Seuils,
+            seuils_calibres,
+        )
+
+        # Un poing « peu serré » : repliement 0,58, au-dessus de l'usine.
+        usine = MoteurDeGestes(Seuils())
+        calibre = MoteurDeGestes(seuils_calibres(0.90, 0.55))
+        for moteur in (usine, calibre):
+            for i in range(15):
+                moteur.observer(_main(ouverture=1.0), maintenant=i * 0.05)
+        vus = {}
+        for nom, moteur in (("usine", usine), ("calibré", calibre)):
+            for i in range(20):
+                moteur.observer(_main(ouverture=0.35), maintenant=2.0 + i * 0.05)
+            vus[nom] = moteur.etat
+        assert vus["calibré"] is Etat.SAISI, "une main calibrée doit être reconnue"
+
+    def test_les_seuils_se_gardent_et_se_relisent(self, tmp_path, monkeypatch):
+        from diapason.desktop import gestes_main as gm
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        assert gm.charger_seuils() == gm.Seuils(), "sans calibration, l'usine"
+        gm.enregistrer_seuils(gm.seuils_calibres(0.95, 0.35))
+        relus = gm.charger_seuils()
+        assert relus != gm.Seuils()
+        assert relus.fermeture_entree == pytest.approx(0.55, abs=0.01)
+        gm.oublier_la_calibration()
+        assert gm.charger_seuils() == gm.Seuils()
+
+    def test_un_fichier_corrompu_retombe_sur_l_usine(self, tmp_path, monkeypatch):
+        """Un réglage illisible ne doit pas empêcher les gestes de marcher."""
+        from diapason.desktop import gestes_main as gm
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        chemin = gm.chemin_calibration()
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text("{ pas du json", encoding="utf-8")
+        assert gm.charger_seuils() == gm.Seuils()

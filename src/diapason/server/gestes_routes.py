@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ class _Session:
     pertes: int = 0
     confiance_totale: float = 0.0
     confiance_mesures: int = 0
+    dernier_repliement: float = 0.0
+    calibration_en_cours: str = ""
+    echantillons: list = field(default_factory=list)
 
     @property
     def expiree(self) -> bool:
@@ -84,7 +88,7 @@ def desarmer() -> None:
 def armer() -> dict[str, Any]:
     """Armer le mode gestes. La caméra ne s'ouvre qu'après, côté interface."""
     global _session
-    from diapason.desktop.gestes_main import MoteurDeGestes
+    from diapason.desktop.gestes_main import MoteurDeGestes, charger_seuils
     from diapason.desktop.vision_mains import disponible
 
     if not disponible():
@@ -95,7 +99,8 @@ def armer() -> dict[str, Any]:
                 "uv pip install 'pyobjc-framework-Vision>=10'"
             ),
         )
-    _session = _Session(moteur=MoteurDeGestes())
+    # Les seuils de CETTE machine : calibrés s'ils l'ont été.
+    _session = _Session(moteur=MoteurDeGestes(charger_seuils()))
     logger.info("mode gestes armé")
     return {
         "armed": True,
@@ -139,6 +144,8 @@ def etat() -> dict[str, Any]:
             _session.mains_vues / _session.images if _session.images else 0.0, 2
         ),
         "confidence": round(confiance, 2),
+        "curl": round(_session.dernier_repliement, 3),
+        "calibrating": _session.calibration_en_cours,
         "recentStates": list(_session.derniers_etats),
     }
 
@@ -211,6 +218,9 @@ async def image(request: Request) -> dict[str, Any]:
         if mesures is not None:
             _session.confiance_totale += mesures.confiance
             _session.confiance_mesures += 1
+            _session.dernier_repliement = mesures.repliement
+            if _session.calibration_en_cours:
+                _session.echantillons.append(mesures.repliement)
     avant = _session.moteur.etat
     apres = _session.moteur.observer(points)
     if apres is not avant:
@@ -228,6 +238,80 @@ async def image(request: Request) -> dict[str, Any]:
         "hand": bool(points),
         "frames": _session.images,
     }
+
+
+# Les routes FIXES d'abord : « /calibrate/apply » serait sinon capturé par
+# « /calibrate/{pose} », qui répondrait « pose inconnue » à une requête
+# parfaitement formée. FastAPI essaie les routes dans l'ordre de
+# déclaration — l'ordre est donc du sens, pas de la présentation.
+class Calibration(BaseModel):
+    ouverte: float
+    fermee: float
+
+
+@router.post("/calibrate/apply")
+def appliquer(body: Calibration) -> dict[str, Any]:
+    """Poser les seuils dérivés des deux mesures, et les garder."""
+    from dataclasses import asdict
+
+    from diapason.desktop.gestes_main import enregistrer_seuils, seuils_calibres
+
+    try:
+        seuils = seuils_calibres(body.ouverte, body.fermee)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    enregistrer_seuils(seuils)
+    if _session is not None:
+        _session.moteur.seuils = seuils
+        _session.moteur.reinitialiser()
+    return {"calibrated": True, "thresholds": asdict(seuils)}
+
+
+@router.post("/calibrate/reset")
+def oublier() -> dict[str, Any]:
+    from diapason.desktop.gestes_main import oublier_la_calibration
+
+    oublier_la_calibration()
+    return {"calibrated": False}
+
+
+@router.post("/calibrate/{pose}")
+def calibrer(pose: str) -> dict[str, Any]:
+    """Mesurer une pose — « ouverte » puis « fermee ».
+
+    La calibration ne devine pas : elle enregistre ce que la main de CETTE
+    personne produit réellement, et place les seuils entre les deux poses.
+    """
+    if pose not in ("ouverte", "fermee"):
+        raise HTTPException(status_code=400, detail="Pose inconnue.")
+    if not session_active() or _session is None:
+        raise HTTPException(status_code=409, detail="Le mode gestes n'est pas armé.")
+    _session.calibration_en_cours = pose
+    _session.echantillons = []
+    return {"measuring": pose}
+
+
+@router.post("/calibrate/{pose}/stop")
+def finir_la_mesure(pose: str) -> dict[str, Any]:
+    """Clore une mesure et rendre sa moyenne — ou avouer qu'il n'y a rien."""
+    if not session_active() or _session is None:
+        raise HTTPException(status_code=409, detail="Le mode gestes n'est pas armé.")
+    echantillons = list(_session.echantillons)
+    _session.calibration_en_cours = ""
+    _session.echantillons = []
+    if len(echantillons) < 5:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Je n'ai pas assez vu ta main. Rapproche-la de la caméra, "
+                "éclaire-la, et recommence."
+            ),
+        )
+    # La médiane, pas la moyenne : une image aberrante ne doit pas
+    # déplacer un seuil que l'on gardera.
+    tries = sorted(echantillons)
+    mediane = tries[len(tries) // 2]
+    return {"pose": pose, "value": round(mediane, 3), "samples": len(echantillons)}
 
 
 __all__ = ["desarmer", "router", "session_active"]
