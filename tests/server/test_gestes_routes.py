@@ -145,3 +145,56 @@ class TestCeQuiEteint:
             gr.time, "monotonic", lambda: depart + gr._DUREE_MAX_S + 1
         )
         assert gr.session_active() is False
+
+
+class TestLesDeuxChemins:
+    """L'image arrive en binaire OU en base64 — et le second n'est pas un luxe.
+
+    WKWebView, le moteur de la fenêtre Diapason, échoue sur un corps de
+    requête binaire avec un « Load failed » opaque : ni CORS, ni le port, ni
+    le type de corps (Blob puis ArrayBuffer) n'expliquaient l'échec, alors
+    que la même requête passait en ligne de commande. Le JSON est le chemin
+    que toute l'application emprunte déjà.
+    """
+
+    def _armer(self, client):
+        client.post("/v1/gestures/arm")
+
+    def test_le_chemin_binaire_marche(self, client):
+        self._armer(client)
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+        ) as vision:
+            reponse = client.post(
+                "/v1/gestures/frame",
+                content=_image_factice(),
+                headers={"Content-Type": "image/jpeg"},
+            )
+        assert reponse.status_code == 200
+        assert vision.call_args[0][0] == _image_factice()
+
+    def test_le_chemin_base64_donne_les_memes_octets(self, client):
+        """Ce qui arrive à Vision doit être IDENTIQUE par les deux chemins :
+        sinon l'un des deux reconnaîtrait des mains que l'autre rate."""
+        import base64
+
+        self._armer(client)
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+        ) as vision:
+            reponse = client.post(
+                "/v1/gestures/frame",
+                json={"image": base64.b64encode(_image_factice()).decode("ascii")},
+            )
+        assert reponse.status_code == 200
+        assert vision.call_args[0][0] == _image_factice()
+
+    def test_un_base64_invalide_le_dit_franchement(self, client):
+        self._armer(client)
+        reponse = client.post("/v1/gestures/frame", json={"image": "pas du base64!!"})
+        assert reponse.status_code == 400
+        assert "illisible" in reponse.json()["detail"]
+
+    def test_un_json_sans_image_est_traite_comme_vide(self, client):
+        self._armer(client)
+        assert client.post("/v1/gestures/frame", json={}).status_code == 400

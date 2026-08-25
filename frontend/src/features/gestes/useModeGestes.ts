@@ -63,13 +63,14 @@ export function useModeGestes(): ModeGestes {
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(v, 0, 0, LARGEUR, hauteur);
-    const image = await new Promise<Blob | null>((resoudre) =>
-      c.toBlob(resoudre, 'image/jpeg', 0.7),
-    );
-    if (!image) return;
+    // toDataURL plutôt que toBlob : le base64 est ce qui part, autant
+    // l'obtenir directement que reconvertir un binaire qui ne voyagera pas.
+    const donnees = c.toDataURL('image/jpeg', 0.7);
+    const base64 = donnees.slice(donnees.indexOf(',') + 1);
+    if (!base64) return;
     enVol.current = true;
     try {
-      const reponse = await envoyerImage(await image.arrayBuffer());
+      const reponse = await envoyerImage(base64);
       if (reponse === null) {
         // Le serveur s'est désarmé tout seul : on suit, caméra comprise.
         eteindre();

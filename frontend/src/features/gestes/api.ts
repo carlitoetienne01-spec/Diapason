@@ -54,18 +54,21 @@ export async function desarmer(): Promise<void> {
 }
 
 export async function envoyerImage(
-  image: ArrayBuffer,
+  imageBase64: string,
 ): Promise<ReponseImage | null> {
-  // Un ArrayBuffer et non un Blob : WebKit échoue sur un corps Blob répété
-  // avec un « Load failed » opaque qui ne dit ni pourquoi ni où (constaté
-  // le 25 août 2026 dans la fenêtre Diapason, alors que la même requête
-  // passait en ligne de commande).
+  // L'image voyage en base64 dans du JSON, pas en binaire. WKWebView — le
+  // moteur de la fenêtre Diapason — échoue sur un corps de requête binaire
+  // avec un « Load failed » opaque, qu'il s'agisse d'un Blob ou d'un
+  // ArrayBuffer, alors que la même requête passe en ligne de commande et
+  // que le contrôle préalable CORS répond correctement (constaté le
+  // 25 août 2026, après avoir écarté le port, CORS et le type de corps).
+  // Le JSON est le chemin que toute l'application emprunte déjà.
   let reponse: Response;
   try {
     reponse = await apiFetch('/v1/gestures/frame', {
       method: 'POST',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: image,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64 }),
     });
   } catch (exc) {
     throw new EchecGeste(

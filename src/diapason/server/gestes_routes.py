@@ -119,6 +119,35 @@ def etat() -> dict[str, Any]:
     }
 
 
+async def _lire_image(request: Request) -> bytes:
+    """L'image, qu'elle arrive en binaire ou en base64 dans du JSON.
+
+    Deux chemins, et le second n'est pas un luxe : WKWebView — le moteur de
+    la fenêtre Diapason — échoue sur un corps de requête binaire avec un
+    « Load failed » opaque, alors que la même requête passe en ligne de
+    commande et que le contrôle préalable CORS répond correctement
+    (constaté le 25 août 2026, après avoir écarté le port, CORS, puis le
+    type Blob, puis ArrayBuffer). Le JSON est le chemin que toute
+    l'application emprunte déjà ; il coûte un tiers de volume en plus, sur
+    la boucle locale.
+    """
+    brut = await request.body()
+    if not brut:
+        return b""
+    if "application/json" not in (request.headers.get("content-type") or "").lower():
+        return brut
+    import base64
+    import json
+
+    try:
+        charge = json.loads(brut)
+        return base64.b64decode(str(charge.get("image") or ""), validate=True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400, detail=f"Charge JSON illisible : {exc}"
+        ) from exc
+
+
 @router.post("/frame")
 async def image(request: Request) -> dict[str, Any]:
     """Une image de plus. Rend l'état APRÈS cette image.
@@ -134,7 +163,7 @@ async def image(request: Request) -> dict[str, Any]:
             status_code=409,
             detail="Le mode gestes n'est pas armé.",
         )
-    octets = await request.body()
+    octets = await _lire_image(request)
     if not octets:
         raise HTTPException(status_code=400, detail="Image vide.")
     if len(octets) > 4 * 1024 * 1024:
