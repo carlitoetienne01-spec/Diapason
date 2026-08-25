@@ -34,7 +34,21 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 
 ---
 
-## 2. Vérifier — les commandes exactes de la CI
+## 2. Vérifier — et pourquoi c'est à toi de le faire
+
+> **La CI GitHub ne tourne pas.** Depuis plusieurs jours, chaque exécution
+> échoue en trois secondes sur *« The job was not started because recent
+> account payments have failed or your spending limit needs to be
+> increased »*. Aucun job ne démarre : ni lint, ni tests, ni Rust, ni
+> frontend. Ce n'est pas un défaut du code, et **rien ne le corrigera depuis
+> le dépôt** — il faut régler la facturation dans « Billing & plans » sur
+> GitHub.
+>
+> Conséquence pratique : **la vérification locale est le seul filet**. Ne
+> pousse rien que tu n'aies lancé toi-même, en entier.
+
+Les commandes ci-dessous sont exactement celles de `.github/workflows/ci.yml`
+et de `frontend.yml` :
 
 ```bash
 .venv/bin/python -m ruff check src/ tests/
