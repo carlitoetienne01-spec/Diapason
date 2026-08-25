@@ -1096,6 +1096,12 @@ def include_all_routes(app) -> None:
     from diapason.server.contexte_routes import router as contexte_router
 
     app.include_router(contexte_router)
+
+    # Le mode gestes (25/08/2026) : l'interface capture — macOS ne pose la
+    # question qu'à une application empaquetée — et poste ici ses images.
+    from diapason.server.gestes_routes import router as gestes_router
+
+    app.include_router(gestes_router)
     app.include_router(agents_router)
     app.include_router(memory_router)
     app.include_router(traces_router)

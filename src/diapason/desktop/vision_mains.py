@@ -137,9 +137,30 @@ def mains_dans_le_fichier(chemin: str, *, mains_max: int = 2) -> list[list]:
     return [_lire_points(o) for o in (requete.results() or [])]
 
 
+def mains_dans_les_octets(octets: bytes, *, mains_max: int = 2) -> list[list]:
+    """Les mains vues dans une image reçue en mémoire — rien sur le disque.
+
+    C'est le chemin de l'interface : elle capture, elle poste, on lit. Écrire
+    l'image pour la relire serait laisser une trace de ce que la caméra a vu.
+    """
+    import Vision
+    from Foundation import NSData
+
+    requete = _requete(mains_max)
+    donnees = NSData.dataWithBytes_length_(octets, len(octets))
+    gestionnaire = Vision.VNImageRequestHandler.alloc().initWithData_options_(
+        donnees, None
+    )
+    ok, erreur = gestionnaire.performRequests_error_([requete], None)
+    if not ok:
+        raise VisionIndisponible(f"Vision a échoué : {erreur}")
+    return [_lire_points(o) for o in (requete.results() or [])]
+
+
 __all__ = [
     "VisionIndisponible",
     "disponible",
     "mains_dans_le_fichier",
+    "mains_dans_les_octets",
     "mains_dans_le_tampon",
 ]

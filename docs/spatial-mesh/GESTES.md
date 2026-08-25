@@ -61,9 +61,42 @@ endroit.
 chemin, quand une application empaquetée la demandait. Ce n'est pas une
 contradiction : la permission suit le **paquet**, pas le binaire.)*
 
-## Les trois sorties possibles
+## Le mur est tombé — option A retenue et livrée
 
-Le choix appartient à Carlito ; aucune n'est faite d'office.
+**L'application capture, le serveur voit.** C'est le chemin choisi le
+25 août 2026, et il est en place :
+
+| Pièce | Où |
+|---|---|
+| `NSCameraUsageDescription` (la phrase que macOS affiche) | `frontend/src-tauri/Info.plist` |
+| `com.apple.security.device.camera` | `frontend/src-tauri/Entitlements.plist` |
+| Capture par la fenêtre (`getUserMedia`, 12 im/s, 640 px) | `frontend/src/features/gestes/useModeGestes.ts` |
+| Routes armer / image / désarmer | `server/gestes_routes.py` |
+| Panneau visible, dans la page Appareils | `frontend/src/features/gestes/PanneauGestes.tsx` |
+
+Vérifié dans l'app construite : la description et le droit sont bien dans le
+paquet signé. macOS peut donc enfin poser la question — ce qu'il refusait de
+faire au processus Python.
+
+### Ce qui éteint la caméra, et c'est le plus important
+
+Le §78 exige que rien ne guette en permanence. Quatre chemins mènent à
+l'extinction, chacun testé :
+
+1. Le bouton **Arrêter**.
+2. **Quatre-vingt-dix secondes sans image** — un mode armé qu'on oublierait
+   laisserait la caméra allumée, et le voyant vert cesserait de dire la
+   vérité.
+3. **Dix minutes** au maximum, même si la main bouge : la caméra coûte (§83).
+4. Le **démontage du composant** — page fermée, navigation ailleurs : les
+   pistes sont coupées dans tous les cas.
+
+Et quand le serveur se désarme tout seul, l'interface le suit : la prochaine
+image reçoit un refus poli, et la caméra s'éteint sans qu'on ait à y penser.
+
+## Les autres sorties, pour mémoire
+
+Le choix appartenait à Carlito ; il a pris la première.
 
 ### A. L'application Diapason capture (recommandé)
 

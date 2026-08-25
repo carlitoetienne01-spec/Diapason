@@ -32,6 +32,7 @@ import type {
   MeshPresenceState,
 } from '../features/mesh/types';
 import { useConfirm } from '../components/ConfirmDialog';
+import { PanneauGestes } from '../features/gestes/PanneauGestes';
 
 const DEVICE_ICONS: Record<MeshDeviceType, typeof Monitor> = {
   DESKTOP: Monitor,
@@ -280,6 +281,13 @@ export function DevicesPage() {
             </button>
           </div>
         </header>
+
+        {/* Les gestes de la main (25/08/2026). Ici, parce que c'est la page
+            des appareils : un geste est une manière de désigner un appareil
+            autant qu'une manière d'agir. */}
+        <div className="mb-7">
+          <PanneauGestes />
+        </div>
 
         {identity && (
           <section

@@ -22,6 +22,11 @@
          unsigned development build. -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- La caméra, pour les gestes. Même logique que l'entrée audio :
+         sans ce droit, une application sandboxée se voit refuser la caméra
+         avant d'exécuter la moindre ligne. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
     <!-- Apple Events. Every osascript path — reading the frontmost
          application, pasting into it, driving Safari or Mail — is an Apple
          Event. Without this, those tools fail with errAEEventNotPermitted

@@ -29,6 +29,14 @@
     <key>NSAppleEventsUsageDescription</key>
     <string>Diapason uses Apple Events to read which application is in front and to insert dictated text into it.</string>
 
+    <!-- Les gestes de la main (25 août 2026). Sans cette clé, macOS ne
+         REFUSE pas la caméra : il refuse de poser la question, et la demande
+         revient « refusée » sans qu'aucune boîte de dialogue n'apparaisse.
+         C'est ce mur qui interdisait la capture depuis le serveur Python,
+         qui n'est pas une application empaquetée. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Diapason regarde votre main pour reconnaître vos gestes, et seulement quand vous activez le mode gestes. Les images sont analysées sur ce Mac, ne sont jamais enregistrées, et ne quittent jamais l'ordinateur.</string>
+
     <key>NSScreenCaptureUsageDescription</key>
     <string>Diapason captures the screen only when you ask it to describe what is displayed.</string>
 
