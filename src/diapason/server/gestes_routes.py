@@ -19,6 +19,7 @@ appel à Vision, et seuls des points articulaires lui survivent.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -98,20 +99,48 @@ def desarmer() -> None:
 # défaut, et le panneau dit ce qu'elle implique.
 _ecouteur_claps: Any = None
 
+# Une calibration ne se chevauche pas : elle prend le micro pour elle seule.
+# L'utilisateur a cliqué quatre fois de suite le 25 août 2026 ; sans verrou,
+# deux mesures s'arrachent le micro et la dernière écrase la première.
+_verrou_calibration = threading.Lock()
+
+# Ce que l'utilisateur VEUT, distinct de ce qui tourne. Toute décision
+# d'ouvrir ou de fermer le micro l'incrémente. Une mesure commencée alors que
+# l'écoute était ouverte ne doit pas la rouvrir si, pendant les huit secondes
+# qu'elle dure, l'utilisateur a décoché la case.
+_intention_ecoute = 0
+
+# La pièce mesurée par la première étape, en attente de la seconde.
+_piece_mesuree: Any = None
+_PEREMPTION_PIECE_S = 30.0
+
+# Pourquoi le dernier double-clap n'a rien armé. Avalée, cette raison
+# laissait le panneau conseiller de rapprocher ses claps à quelqu'un qui
+# clapait parfaitement.
+_echec_de_clap: Optional[str] = None
+
 
 def claps_actifs() -> bool:
     """Le micro écoute-t-il vraiment ? Un objet gardé n'est pas une preuve."""
+    global _ecouteur_claps
     ecouteur = _ecouteur_claps
     if ecouteur is None:
         return False
-    ecoute = getattr(ecouteur, "ecoute", True)
-    return bool(ecoute)
+    if not bool(getattr(ecouteur, "ecoute", True)):
+        # Le fil est mort — casque débranché, micro repris par une autre
+        # application. Garder le cadavre fait répondre « déjà en écoute » à
+        # toute tentative de relance, et le micro reste fermé pour de bon
+        # sans que rien ne le dise.
+        _ecouteur_claps = None
+        return False
+    return True
 
 
-def _reglage_des_claps() -> tuple[float, bool]:
-    """Le seuil réellement en vigueur, et s'il vient d'une mesure.
+def _reglage_des_claps() -> tuple[float, bool, float]:
+    """Le seuil réellement en vigueur, s'il vient d'une mesure, et le fond
+    sonore que le détecteur a appris.
 
-    Sans ce chiffre, « ça ne déclenche pas » et « ça déclenche tout seul »
+    Sans ces chiffres, « ça ne déclenche pas » et « ça déclenche tout seul »
     se ressemblent depuis l'interface, et personne ne peut choisir entre
     calibrer et se rapprocher du micro.
     """
@@ -121,13 +150,39 @@ def _reglage_des_claps() -> tuple[float, bool]:
             chemin_reglage_claps,
         )
 
-        return charger_reglage_claps().min_rms, chemin_reglage_claps().exists()
+        mesure = chemin_reglage_claps().exists()
+        # Ce que le fil applique VRAIMENT prime sur ce que le fichier dit :
+        # un fil démarré avant la calibration garde l'ancien seuil jusqu'à
+        # ce qu'on le relance, et afficher le fichier serait proclamer.
+        ecouteur = _ecouteur_claps if claps_actifs() else None
+        vivant = float(getattr(ecouteur, "seuil", 0.0) or 0.0) if ecouteur else 0.0
+        fond = float(getattr(ecouteur, "fond_sonore", 0.0) or 0.0) if ecouteur else 0.0
+        if vivant > 0.0:
+            return vivant, mesure, fond
+        return charger_reglage_claps().min_rms, mesure, 0.0
     except Exception:  # noqa: BLE001
-        return 0.0, False
+        return 0.0, False, 0.0
+
+
+def _etat_des_claps() -> dict[str, Any]:
+    """Les chiffres qui permettent de DÉCIDER quoi corriger.
+
+    Le seuil seul ne suffit pas : c'est son rapport au fond sonore appris
+    qui dit si la marge est confortable. Et la raison d'un armement raté
+    doit remonter, sinon le panneau conseille de rapprocher ses claps à
+    quelqu'un dont les claps étaient parfaits.
+    """
+    seuil, mesure, fond = _reglage_des_claps()
+    return {
+        "clapThreshold": seuil,
+        "clapCalibrated": mesure,
+        "clapNoiseFloor": round(fond, 5),
+        "clapFailure": _echec_de_clap,
+    }
 
 
 def _claps_entendus() -> int:
-    """Ce que le micro a entendu — pour savoir si le seuil est atteignable."""
+    """Ce que le micro ENTEND, même quand aucun double ne se forme."""
     ecouteur = _ecouteur_claps
     return int(getattr(ecouteur, "claps_entendus", 0) or 0) if ecouteur else 0
 
@@ -140,9 +195,16 @@ def ecouter_les_claps() -> dict[str, Any]:
     sonore et cherche deux pics rapprochés. Aucune parole n'est analysée,
     aucun son n'est enregistré.
     """
-    global _ecouteur_claps
-    if _ecouteur_claps is not None:
+    global _ecouteur_claps, _intention_ecoute, _echec_de_clap
+    _intention_ecoute += 1
+    # CONSTATER, pas supposer : la présence d'un objet n'est pas une écoute.
+    # Tester l'objet plutôt que son état interdisait toute relance après la
+    # mort silencieuse du fil — le micro restait fermé à vie.
+    if claps_actifs():
         return {"listening": True, "already": True}
+    if _ecouteur_claps is not None:
+        ne_plus_ecouter()
+        _intention_ecoute += 1
     try:
         from diapason.speech.clap_listener import ClapListener
     except Exception as exc:  # noqa: BLE001
@@ -154,6 +216,7 @@ def ecouter_les_claps() -> dict[str, Any]:
         # Deux claps arment ; deux claps de plus désarment. Le même geste
         # dans les deux sens, parce qu'un mode qu'on ne sait pas couper
         # sans souris n'est pas vraiment mains libres.
+        global _echec_de_clap
         try:
             if session_active():
                 desarmer()
@@ -161,8 +224,10 @@ def ecouter_les_claps() -> dict[str, Any]:
             else:
                 armer()
                 logger.info("double-clap : mode gestes armé")
-        except Exception:  # noqa: BLE001 - un clap raté n'arrête pas l'écoute
-            logger.warning("double-clap non traité", exc_info=True)
+            _echec_de_clap = None
+        except Exception as exc:  # noqa: BLE001
+            _echec_de_clap = str(getattr(exc, "detail", exc))[:160]
+            logger.warning("double-clap non traité : %s", _echec_de_clap)
 
     try:
         ecouteur = ClapListener(_sur_double_clap, once=False)
@@ -186,6 +251,7 @@ def ecouter_les_claps() -> dict[str, Any]:
             status_code=503, detail=f"L'écoute n'a pas démarré : {raison}"
         )
     _ecouteur_claps = ecouteur
+    _echec_de_clap = None
     logger.info("écoute des claps démarrée")
     return {"listening": True}
 
@@ -193,7 +259,8 @@ def ecouter_les_claps() -> dict[str, Any]:
 @router.post("/clap/off")
 def ne_plus_ecouter() -> dict[str, Any]:
     """Refermer le micro. Il ne doit pas rester ouvert par oubli."""
-    global _ecouteur_claps
+    global _ecouteur_claps, _intention_ecoute
+    _intention_ecoute += 1
     ecouteur, _ecouteur_claps = _ecouteur_claps, None
     if ecouteur is not None:
         try:
@@ -203,20 +270,98 @@ def ne_plus_ecouter() -> dict[str, Any]:
     return {"listening": False}
 
 
-@router.post("/clap/calibrate")
-def calibrer_les_claps() -> dict[str, Any]:
-    """Mesurer la pièce, puis les claps de son occupant, et poser le seuil
-    entre les deux.
+# ── La mesure du seuil, en DEUX temps ───────────────────────────────────
+# En un seul appel, l'interface devait DEVINER quand le serveur passait de
+# « j'écoute la pièce » à « clape maintenant » : elle armait son minuteur
+# avant d'envoyer la requête, alors que le compte du serveur ne démarre
+# qu'une fois le micro ouvert. « Maintenant ! Clape » s'affichait donc
+# pendant que le serveur écoutait encore le silence, et celui qui obéissait
+# à l'écran polluait sa propre mesure — trois échecs sur quatre le 25 août
+# 2026. En deux temps, personne n'a plus à deviner : le serveur rend la main
+# quand la pièce est mesurée, et n'écoute les claps qu'après que l'ordre de
+# claper a été donné.
 
-    Un seuil d'usine est une supposition sur une pièce qu'on n'a jamais
-    entendue. Celle de Carlito vit à 0,005 quand le plancher d'origine
-    était à 0,003 : le silence lui-même déclenchait. On mesure.
+
+def _prendre_le_micro() -> bool:
+    """Refermer l'écoute pour libérer le micro. Rend son état d'avant."""
+    ecoutait = claps_actifs()
+    if ecoutait:
+        ne_plus_ecouter()
+    return ecoutait
+
+
+def _rendre_le_micro(ecoutait: bool, intention: int) -> None:
+    """Rouvrir l'écoute — mais seulement si personne ne l'a coupée entre
+    temps.
+
+    Sans ce garde-fou, décocher la case pendant une mesure rouvrait le micro
+    huit secondes plus tard : l'état du serveur disait « écoute active » et
+    l'interface affichait le micro éteint, jusqu'au prochain redémarrage.
     """
-    global _ecouteur_claps
+    if not ecoutait or _intention_ecoute != intention:
+        return
+    try:
+        ecouter_les_claps()
+    except HTTPException as exc:
+        logger.warning("écoute non reprise après la mesure : %s", exc.detail)
+
+
+@router.post("/clap/calibrate/room")
+def mesurer_la_piece() -> dict[str, Any]:
+    """Premier temps : écouter la pièce se taire."""
+    global _piece_mesuree
+    try:
+        from diapason.speech.clap_listener import ecouter_la_piece
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503, detail=f"Écoute indisponible : {str(exc)[:120]}"
+        ) from exc
+
+    if not _verrou_calibration.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Une mesure est déjà en cours.")
+    try:
+        # L'intention se relève APRÈS la prise du micro : refermer l'écoute
+        # l'incrémente elle-même, et la relever avant faisait échouer la
+        # comparaison à tous les coups — l'écoute n'était alors jamais
+        # reprise, ce que seul un test a révélé.
+        ecoutait = _prendre_le_micro()
+        intention = _intention_ecoute
+        try:
+            piece = ecouter_la_piece()
+        except Exception as exc:  # noqa: BLE001
+            # Un échec ne doit pas laisser sans écoute quelqu'un qui en avait.
+            _rendre_le_micro(ecoutait, intention)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}",
+            ) from exc
+        # Le micro reste fermé : le second temps le reprendra.
+        _piece_mesuree = {
+            "piece": piece,
+            "ecoutait": ecoutait,
+            "intention": intention,
+            "a": time.monotonic(),
+        }
+    finally:
+        _verrou_calibration.release()
+    return {
+        "roomLevel": round(piece.niveau, 4),
+        "roomHigh": round(piece.haute, 4),
+        "roomLoudest": round(piece.maximum, 4),
+        "disturbed": piece.troublee,
+    }
+
+
+@router.post("/clap/calibrate/claps")
+def mesurer_les_claps() -> dict[str, Any]:
+    """Second temps : écouter claper, dans la pièce qu'on vient de mesurer."""
+    global _piece_mesuree
     try:
         from diapason.speech.clap_listener import (
+            ecouter_les_claps as ecouter_des_claps,
+        )
+        from diapason.speech.clap_listener import (
             enregistrer_reglage_claps,
-            mesurer_la_piece_et_les_claps,
             reglage_calibre,
         )
     except Exception as exc:  # noqa: BLE001
@@ -224,54 +369,72 @@ def calibrer_les_claps() -> dict[str, Any]:
             status_code=503, detail=f"Écoute indisponible : {str(exc)[:120]}"
         ) from exc
 
-    # Le micro ne se partage pas : on referme l'écoute, on mesure, on la
-    # rouvre si elle tournait.
-    ecoutait = _ecouteur_claps is not None
-    if ecoutait:
-        ne_plus_ecouter()
-
+    if not _verrou_calibration.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Une mesure est déjà en cours.")
     try:
-        piece, claps = mesurer_la_piece_et_les_claps()
-        cfg = reglage_calibre(piece, claps)
-    except ValueError as exc:
-        if ecoutait:
-            ecouter_les_claps()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        if ecoutait:
-            ecouter_les_claps()
-        raise HTTPException(
-            status_code=503,
-            detail=f"Le micro n'a pas pu être ouvert : {str(exc)[:120]}",
-        ) from exc
+        attente, _piece_mesuree = _piece_mesuree, None
+        if attente is None or (time.monotonic() - attente["a"]) > _PEREMPTION_PIECE_S:
+            raise HTTPException(
+                status_code=409,
+                detail="La pièce n'a pas été mesurée juste avant. Recommence.",
+            )
+        ecoutait, intention = attente["ecoutait"], attente["intention"]
+        try:
+            ecoute = ecouter_des_claps(attente["piece"])
+            cfg = reglage_calibre(ecoute)
+            enregistrer_reglage_claps(cfg)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=503, detail=f"La mesure a échoué : {str(exc)[:120]}"
+            ) from exc
+        finally:
+            # Quoi qu'il arrive, le micro revient dans l'état où l'utilisateur
+            # l'a laissé. Hors du try, un échec d'écriture perdait l'écoute en
+            # silence ; dans le chemin du raise, un 503 de reprise écrasait le
+            # 422 qui disait quoi corriger.
+            _rendre_le_micro(ecoutait, intention)
+    finally:
+        _verrou_calibration.release()
 
-    enregistrer_reglage_claps(cfg)
-    logger.info(
-        "claps calibrés : pièce %.4f, %d claps, seuil %.4f",
-        piece,
-        len(claps),
+    piece = ecoute.piece
+    # En WARNING : une calibration est rare et c'est le seul endroit où les
+    # chiffres bruts existent. Journalisée en INFO, elle était invisible dans
+    # les journaux du service, et il a fallu la redemander.
+    logger.warning(
+        "claps calibrés : pièce %.4f (haute %.4f, max %.4f), claps %s, "
+        "écartés %s, seuil %.4f",
+        piece.niveau,
+        piece.haute,
+        piece.maximum,
+        [round(c, 3) for c in ecoute.claps],
+        [round(c, 3) for c in ecoute.ecartes],
         cfg.min_rms,
     )
-    if ecoutait:
-        ecouter_les_claps()
     return {
         "calibrated": True,
-        "roomPeak": round(piece, 4),
-        "clapPeaks": [round(c, 4) for c in claps],
+        "roomLevel": round(piece.niveau, 4),
+        "roomHigh": round(piece.haute, 4),
+        "roomLoudest": round(piece.maximum, 4),
+        "clapPeaks": [round(c, 4) for c in ecoute.claps],
+        "discarded": [round(c, 4) for c in ecoute.ecartes],
         "threshold": cfg.min_rms,
     }
 
 
 @router.post("/clap/calibrate/reset")
 def oublier_les_claps() -> dict[str, Any]:
-    """Revenir au réglage d'usine."""
-    global _ecouteur_claps
+    """Revenir au réglage d'usine. Le fil garde son seuil tant qu'il tourne :
+    il faut donc le relancer pour que l'oubli prenne effet."""
     from diapason.speech.clap_listener import oublier_le_reglage_claps
 
     oublier_le_reglage_claps()
-    if _ecouteur_claps is not None:
+    if claps_actifs():
         ne_plus_ecouter()
-        ecouter_les_claps()
+        _rendre_le_micro(True, _intention_ecoute)
     return {"calibrated": False}
 
 
@@ -316,8 +479,7 @@ def etat() -> dict[str, Any]:
             "armed": False,
             "clapListening": claps_actifs(),
             "clapsHeard": _claps_entendus(),
-            "clapThreshold": _reglage_des_claps()[0],
-            "clapCalibrated": _reglage_des_claps()[1],
+            **_etat_des_claps(),
         }
     confiance = (
         _session.confiance_totale / _session.confiance_mesures
@@ -328,8 +490,7 @@ def etat() -> dict[str, Any]:
         "armed": True,
         "clapListening": claps_actifs(),
         "clapsHeard": _claps_entendus(),
-        "clapThreshold": _reglage_des_claps()[0],
-        "clapCalibrated": _reglage_des_claps()[1],
+        **_etat_des_claps(),
         "state": _session.moteur.etat.value,
         "frames": _session.images,
         "handsSeen": _session.mains_vues,

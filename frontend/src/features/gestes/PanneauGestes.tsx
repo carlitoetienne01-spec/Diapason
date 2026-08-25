@@ -10,7 +10,7 @@ import { useState } from 'react';
 
 import { Hand, Video, VideoOff } from 'lucide-react';
 
-import { calibrerLesClaps } from './api';
+import { mesurerLaPiece, mesurerLesClaps } from './api';
 import { useCalibration } from './useCalibration';
 import { useModeGestesPartage } from './ModeGestesContexte';
 
@@ -111,16 +111,26 @@ export function PanneauGestes() {
                 <span className="tabular-nums text-foreground">
                   {diagnostic?.clapsHeard ?? 0}
                 </span>
-                {(diagnostic?.clapsHeard ?? 0) === 0
-                  ? ' — tape plus fort ou rapproche-toi du Mac.'
-                  : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
+                {/* La raison d'un armement raté prime sur le conseil
+                    générique : avalée, elle laissait conseiller de
+                    rapprocher ses claps à quelqu'un qui clapait
+                    parfaitement mais dont la caméra refusait de s'ouvrir. */}
+                {diagnostic?.clapFailure
+                  ? ` — tes claps ont été entendus, mais : ${diagnostic.clapFailure}`
+                  : (diagnostic?.clapsHeard ?? 0) === 0
+                    ? ' — tape plus fort ou rapproche-toi du Mac.'
+                    : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
               </span>
             )}
           </span>
         </span>
       </label>
 
-      {clapsEcoutent && <MesureDesClaps seuil={diagnostic?.clapThreshold} mesure={diagnostic?.clapCalibrated} />}
+      {clapsEcoutent && <MesureDesClaps
+          seuil={diagnostic?.clapThreshold}
+          mesure={diagnostic?.clapCalibrated}
+          fond={diagnostic?.clapNoiseFloor}
+        />}
 
       {actif && diagnostic?.held && (
         <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm">
@@ -220,49 +230,64 @@ export function PanneauGestes() {
   );
 }
 
-
 /**
- * Mesurer plutôt que supposer.
+ * Mesurer plutôt que supposer — en deux temps, pour ne rien deviner.
  *
  * Le seuil d'usine était réglé pour une pièce imaginaire : celle de Carlito
- * vit au-dessus, et le silence déclenchait tout seul (25 août 2026). Un
- * seuil juste se mesure dans la pièce où l'on clape, avec les mains qu'on a.
+ * vit au-dessus, et le silence déclenchait tout seul. Un seuil juste se
+ * mesure dans la pièce où l'on clape, avec les mains qu'on a.
+ *
+ * La première version enchaînait les deux phases dans un seul appel et
+ * affichait « Maintenant ! Clape » sur un minuteur armé AVANT l'envoi de la
+ * requête — donc pendant que le serveur écoutait encore le silence. Trois
+ * mesures sur quatre échouaient, et le message d'erreur accusait les claps.
+ * Ici, l'ordre de claper n'est donné qu'une fois la pièce réellement
+ * mesurée, et la seconde requête part dans la foulée.
  */
 function MesureDesClaps({
   seuil,
   mesure,
+  fond,
 }: {
   seuil?: number;
   mesure?: boolean;
+  fond?: number;
 }) {
   const [phase, setPhase] = useState<'repos' | 'piece' | 'claps'>('repos');
   const [resultat, setResultat] = useState<string | null>(null);
   const [souci, setSouci] = useState<string | null>(null);
 
-  // Le serveur écoute deux secondes la pièce, puis six secondes les claps.
-  // L'interface suit ce calendrier pour dire quoi faire QUAND il faut le
-  // faire : « clape maintenant » arrivé trop tôt ne mesure que du silence.
   async function mesurer() {
     setSouci(null);
     setResultat(null);
-    setPhase('piece');
-    const bascule = window.setTimeout(() => setPhase('claps'), 2000);
     try {
-      const vu = await calibrerLesClaps();
+      setPhase('piece');
+      await mesurerLaPiece();
+      setPhase('claps');
+      const vu = await mesurerLesClaps();
+      const n = vu.clapPeaks.length;
+      const ecartes = vu.discarded.length
+        ? ` ${vu.discarded.length} bruit${vu.discarded.length > 1 ? 's' : ''} écarté${
+            vu.discarded.length > 1 ? 's' : ''
+          }.`
+        : '';
       setResultat(
-        `${vu.clapPeaks.length} clap${vu.clapPeaks.length > 1 ? 's' : ''} entendu${
-          vu.clapPeaks.length > 1 ? 's' : ''
-        } — seuil posé à ${vu.threshold.toFixed(3)}, au-dessus de ta pièce (${vu.roomPeak.toFixed(3)}).`,
+        `${n} clap${n > 1 ? 's' : ''} entendu${n > 1 ? 's' : ''} — seuil posé à ` +
+          `${vu.threshold.toFixed(3)}, soit ${(vu.threshold / Math.max(vu.roomLoudest, 1e-6)).toFixed(
+            0,
+          )} fois le plus fort que ta pièce ait fait toute seule.${ecartes}`,
       );
     } catch (e) {
       setSouci(e instanceof Error ? e.message : 'La mesure a échoué.');
     } finally {
-      window.clearTimeout(bascule);
       setPhase('repos');
     }
   }
 
   const enCours = phase !== 'repos';
+  // La marge se lit, elle ne se devine pas : c'est le rapport du seuil au
+  // fond réellement appris qui dit si la pièce risque de déclencher seule.
+  const marge = seuil && fond ? seuil / fond : null;
   return (
     <div className="mt-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs">
       <div className="flex items-center justify-between gap-3">
@@ -272,6 +297,15 @@ function MesureDesClaps({
             {seuil ? seuil.toFixed(3) : '—'}
           </span>
           {mesure ? ' (mesuré ici)' : ' (réglage d’usine)'}
+          {marge && (
+            <>
+              {' · '}
+              <span className="tabular-nums text-foreground">
+                ×{marge.toFixed(0)}
+              </span>{' '}
+              au-dessus du bruit
+            </>
+          )}
         </span>
         <button
           type="button"
@@ -284,12 +318,13 @@ function MesureDesClaps({
       </div>
       {phase === 'piece' && (
         <p className="mt-2 text-foreground">
-          Ne bouge pas — j’écoute ta pièce (2&nbsp;s).
+          Ne bouge pas, ne clape pas encore — j’écoute ta pièce.
         </p>
       )}
       {phase === 'claps' && (
-        <p className="mt-2 text-foreground">
-          Clape trois fois, normalement, là où tu es d’habitude (6&nbsp;s).
+        <p className="mt-2 font-medium text-foreground">
+          Maintenant&nbsp;! Clape trois fois, normalement, là où tu es
+          d’habitude.
         </p>
       )}
       {resultat && <p className="mt-2 text-muted-foreground">{resultat}</p>}

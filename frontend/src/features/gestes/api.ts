@@ -51,16 +51,45 @@ export async function ecouterLesClaps(actif: boolean): Promise<boolean> {
   return Boolean(corps?.listening);
 }
 
+export type PieceMesuree = {
+  roomLevel: number;
+  roomHigh: number;
+  roomLoudest: number;
+  disturbed: boolean;
+};
+
 export type MesureDesClaps = {
   calibrated: boolean;
-  roomPeak: number;
+  roomLevel: number;
+  roomHigh: number;
+  roomLoudest: number;
   clapPeaks: number[];
+  discarded: number[];
   threshold: number;
 };
 
-/** Mesurer la pièce puis les claps : environ huit secondes de micro. */
-export async function calibrerLesClaps(): Promise<MesureDesClaps> {
-  const reponse = await apiFetch('/v1/gestures/clap/calibrate', {
+// La mesure se fait en DEUX temps, et ce n'est pas un détail d'implantation.
+// En un seul appel, l'interface devait deviner quand le serveur passait de
+// « j'écoute la pièce » à « clape maintenant » : elle armait son minuteur
+// avant même que la requête parte, alors que le compte du serveur ne démarre
+// qu'une fois le micro ouvert. L'ordre de claper s'affichait donc pendant
+// que le serveur écoutait encore le silence, et celui qui obéissait à
+// l'écran polluait sa propre mesure. En deux temps, personne ne devine.
+
+/** Premier temps : le serveur écoute la pièce se taire (~3 s). */
+export async function mesurerLaPiece(): Promise<PieceMesuree> {
+  const reponse = await apiFetch('/v1/gestures/clap/calibrate/room', {
+    method: 'POST',
+  });
+  const corps = await reponse.json().catch(() => null);
+  if (!reponse.ok) throw new Error(corps?.detail ?? 'Mesure impossible.');
+  return corps as PieceMesuree;
+}
+
+/** Second temps : le serveur écoute claper (~6 s). À n'appeler qu'APRÈS
+ *  avoir affiché l'ordre de claper. */
+export async function mesurerLesClaps(): Promise<MesureDesClaps> {
+  const reponse = await apiFetch('/v1/gestures/clap/calibrate/claps', {
     method: 'POST',
   });
   const corps = await reponse.json().catch(() => null);
@@ -81,6 +110,8 @@ export type Diagnostic = {
   clapsHeard?: number;
   clapThreshold?: number;
   clapCalibrated?: boolean;
+  clapNoiseFloor?: number;
+  clapFailure?: string | null;
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
   lastDrop?: Depot | null;

@@ -624,71 +624,197 @@ class TestLEcouteSeConstate:
         client.post("/v1/gestures/clap/off")
 
 
-class TestLeSeuilSeMesure:
-    """Un seuil d'usine est une supposition sur une pièce jamais entendue.
+def _piece(niveau=0.006, maximum=0.008, bruyants=0):
+    from diapason.speech.clap_listener import Piece
 
-    Celui d'origine valait 0,003 quand la pièce de Carlito vit à 0,005 : le
-    silence lui-même le franchissait, et « n'importe quel bruit activait la
-    caméra ». La mesure remplace la supposition.
+    return Piece(
+        niveau=niveau, dispersion=0.3, maximum=maximum, blocs_bruyants=bruyants
+    )
+
+
+class TestLeSeuilSeMesureEnDeuxTemps:
+    """En un seul appel, l'interface devait DEVINER quand le serveur passait
+    de « j'écoute la pièce » à « clape maintenant ».
+
+    Elle armait son minuteur avant d'envoyer la requête, alors que le compte
+    du serveur ne démarre qu'une fois le micro ouvert : « Maintenant ! Clape »
+    s'affichait pendant que le serveur écoutait encore le silence, et celui
+    qui obéissait à l'écran polluait sa propre mesure. Trois échecs sur
+    quatre le 25 août 2026. En deux temps, personne n'a plus à deviner.
     """
 
-    def test_la_mesure_pose_le_seuil_entre_la_piece_et_les_claps(
-        self, client, tmp_path, monkeypatch
-    ):
+    @pytest.fixture(autouse=True)
+    def _isoler(self, tmp_path, monkeypatch):
         from diapason.speech import clap_listener as cl
 
         monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
-        with patch.object(
-            cl, "mesurer_la_piece_et_les_claps", return_value=(0.02, [0.44, 0.39, 0.51])
-        ):
-            r = client.post("/v1/gestures/clap/calibrate")
+        monkeypatch.setattr(gr, "_piece_mesuree", None)
+        monkeypatch.setattr(gr, "_ecouteur_claps", None)
+        self.fichier = tmp_path / "claps.json"
+
+    def test_les_deux_temps_posent_le_seuil_entre_la_piece_et_les_claps(self, client):
+        from diapason.speech import clap_listener as cl
+
+        with patch.object(cl, "ecouter_la_piece", return_value=_piece()):
+            r = client.post("/v1/gestures/clap/calibrate/room")
+        assert r.status_code == 200, r.text
+        assert r.json()["disturbed"] is False
+
+        ecoute = cl.Ecoute(piece=_piece(), claps=[0.44, 0.45, 0.51], ecartes=[0.03])
+        with patch.object(cl, "ecouter_les_claps", return_value=ecoute):
+            r = client.post("/v1/gestures/clap/calibrate/claps")
         assert r.status_code == 200, r.text
         vu = r.json()
         assert vu["calibrated"] is True
-        assert vu["roomPeak"] == 0.02
-        assert len(vu["clapPeaks"]) == 3
-        # Entre la pièce et le plus faible des claps, jamais au-delà.
-        assert 0.02 < vu["threshold"] < 0.39
-        assert (tmp_path / "claps.json").exists()
+        assert vu["discarded"] == [0.03], "le bruit écarté doit se voir"
+        assert _piece().haute < vu["threshold"] < 0.44
+        assert self.fichier.exists()
 
-    def test_des_claps_noyes_dans_le_bruit_sont_refuses(
-        self, client, tmp_path, monkeypatch
+    def test_claper_sans_avoir_mesure_la_piece_est_refuse(self, client):
+        r = client.post("/v1/gestures/clap/calibrate/claps")
+        assert r.status_code == 409
+        assert "pas été mesurée juste avant" in r.json()["detail"]
+
+    def test_une_piece_mesuree_il_y_a_trop_longtemps_ne_sert_plus(
+        self, client, monkeypatch
     ):
-        """Poser le seuil dans le bruit ferait déclencher la pièce toute
-        seule. Mieux vaut le dire que bricoler un chiffre."""
+        """Le fond sonore d'une pièce vieille d'une minute n'est plus le sien."""
+        monkeypatch.setattr(
+            gr,
+            "_piece_mesuree",
+            {"piece": _piece(), "ecoutait": False, "intention": 0, "a": 0.0},
+        )
+        r = client.post("/v1/gestures/clap/calibrate/claps")
+        assert r.status_code == 409
+
+    def test_deux_mesures_ne_se_partagent_pas_le_micro(self, client):
+        """Il a cliqué quatre fois de suite ; sans verrou, deux mesures
+        s'arrachent le micro et la dernière écrase la première."""
+        assert gr._verrou_calibration.acquire(blocking=False)
+        try:
+            assert client.post("/v1/gestures/clap/calibrate/room").status_code == 409
+            assert client.post("/v1/gestures/clap/calibrate/claps").status_code == 409
+        finally:
+            gr._verrou_calibration.release()
+
+    def test_le_refus_dit_quoi_corriger_et_n_ecrit_rien(self, client):
         from diapason.speech import clap_listener as cl
 
-        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
-        with patch.object(
-            cl, "mesurer_la_piece_et_les_claps", return_value=(0.05, [0.06])
-        ):
-            r = client.post("/v1/gestures/clap/calibrate")
-        assert r.status_code == 422
-        assert "ne se détachent pas assez" in r.json()["detail"]
-        assert not (tmp_path / "claps.json").exists()
-
-    def test_aucun_clap_entendu_le_dit(self, client, tmp_path, monkeypatch):
-        from diapason.speech import clap_listener as cl
-
-        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
-        with patch.object(
-            cl, "mesurer_la_piece_et_les_claps", return_value=(0.01, [])
-        ):
-            r = client.post("/v1/gestures/clap/calibrate")
+        with patch.object(cl, "ecouter_la_piece", return_value=_piece()):
+            client.post("/v1/gestures/clap/calibrate/room")
+        vide = cl.Ecoute(piece=_piece(), claps=[], ecartes=[])
+        with patch.object(cl, "ecouter_les_claps", return_value=vide):
+            r = client.post("/v1/gestures/clap/calibrate/claps")
         assert r.status_code == 422
         assert "Aucun clap" in r.json()["detail"]
+        assert not self.fichier.exists()
 
-    def test_l_etat_montre_le_seuil_en_vigueur(self, client, tmp_path, monkeypatch):
-        """Sans ce chiffre, « ça ne déclenche pas » et « ça déclenche tout
-        seul » se ressemblent depuis l'interface."""
+
+class TestLaMesureRendLeMicroCommeElleLAPris:
+    """Le micro doit revenir dans l'état où l'utilisateur l'a laissé —
+    et SEULEMENT si c'est encore ce qu'il veut."""
+
+    @pytest.fixture(autouse=True)
+    def _isoler(self, tmp_path, monkeypatch):
         from diapason.speech import clap_listener as cl
 
         monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: tmp_path / "claps.json")
-        vu = client.get("/v1/gestures/state").json()
-        assert vu["clapCalibrated"] is False
-        assert vu["clapThreshold"] == cl.ClapConfig().min_rms
+        monkeypatch.setattr(gr, "_piece_mesuree", None)
 
-        cl.enregistrer_reglage_claps(cl.ClapConfig(min_rms=0.123))
+    def _ecouteur_vivant(self):
+        vivant = MagicMock()
+        vivant.ecoute = True
+        vivant.claps_entendus = 0
+        vivant.seuil = 0.05
+        vivant.fond_sonore = 0.006
+        return vivant
+
+    def test_decocher_pendant_la_mesure_ne_rouvre_pas_le_micro(
+        self, client, monkeypatch
+    ):
+        """Constaté le 25 août 2026 : la calibration rouvrait le micro huit
+        secondes après que l'utilisateur l'avait coupé. L'état du serveur
+        disait « écoute active » et l'interface affichait le micro éteint,
+        jusqu'au prochain redémarrage."""
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(gr, "_ecouteur_claps", self._ecouteur_vivant())
+        with patch.object(cl, "ecouter_la_piece", return_value=_piece()):
+            assert client.post("/v1/gestures/clap/calibrate/room").status_code == 200
+
+        # L'utilisateur décoche la case pendant que la mesure court.
+        client.post("/v1/gestures/clap/off")
+
+        ecoute = cl.Ecoute(piece=_piece(), claps=[0.44, 0.45], ecartes=[])
+        with (
+            patch.object(cl, "ecouter_les_claps", return_value=ecoute),
+            patch.object(cl, "ClapListener") as fabrique,
+        ):
+            assert client.post("/v1/gestures/clap/calibrate/claps").status_code == 200
+        fabrique.assert_not_called(), "le micro a été rouvert contre sa volonté"
+        assert client.get("/v1/gestures/state").json()["clapListening"] is False
+
+    def test_un_echec_ne_prive_pas_d_ecoute_celui_qui_en_avait(
+        self, client, monkeypatch
+    ):
+        """L'écriture du réglage était hors du try : un échec disque perdait
+        l'écoute en silence."""
+        from diapason.speech import clap_listener as cl
+
+        monkeypatch.setattr(gr, "_ecouteur_claps", self._ecouteur_vivant())
+        with patch.object(cl, "ecouter_la_piece", return_value=_piece()):
+            client.post("/v1/gestures/clap/calibrate/room")
+
+        vide = cl.Ecoute(piece=_piece(), claps=[], ecartes=[])
+        with (
+            patch.object(cl, "ecouter_les_claps", return_value=vide),
+            patch.object(cl, "ClapListener") as fabrique,
+        ):
+            fabrique.return_value = self._ecouteur_vivant()
+            r = client.post("/v1/gestures/clap/calibrate/claps")
+        assert r.status_code == 422, "le 422 doit survivre à la reprise d'écoute"
+        assert "Aucun clap" in r.json()["detail"]
+        fabrique.assert_called_once(), "l'écoute n'a pas été reprise"
+
+
+class TestUnFilMortNeBloquePasLaRelance:
+    """Tester la présence d'un objet plutôt que son état faisait répondre
+    « déjà en écoute » à toute tentative de relance : le micro restait fermé
+    à vie après la mort silencieuse du fil."""
+
+    def test_un_cadavre_est_range_puis_l_ecoute_repart(self, client, monkeypatch):
+        from diapason.speech import clap_listener as cl
+
+        mort = MagicMock()
+        mort.ecoute = False
+        monkeypatch.setattr(gr, "_ecouteur_claps", mort)
+        assert gr.claps_actifs() is False
+        assert gr._ecouteur_claps is None, "le cadavre n'a pas été rangé"
+
+        monkeypatch.setattr(gr, "_ecouteur_claps", mort)
+        neuf = MagicMock()
+        neuf.ecoute = True
+        neuf.panne = None
+        with patch.object(cl, "ClapListener", return_value=neuf):
+            r = client.post("/v1/gestures/clap/on")
+        assert r.status_code == 200
+        assert r.json() == {"listening": True}, "une relance a été refusée"
+
+    def test_l_etat_montre_le_fond_sonore_et_la_raison_d_un_echec(
+        self, client, monkeypatch
+    ):
+        """Le seuil seul ne suffit pas : c'est son rapport au fond appris qui
+        dit si la marge est confortable."""
+        vivant = MagicMock()
+        vivant.ecoute = True
+        vivant.claps_entendus = 5
+        vivant.seuil = 0.09
+        vivant.fond_sonore = 0.0061
+        monkeypatch.setattr(gr, "_ecouteur_claps", vivant)
+        monkeypatch.setattr(gr, "_echec_de_clap", "La caméra a refusé de s'ouvrir.")
+
         vu = client.get("/v1/gestures/state").json()
-        assert vu["clapCalibrated"] is True
-        assert vu["clapThreshold"] == 0.123
+        assert vu["clapThreshold"] == 0.09
+        assert vu["clapNoiseFloor"] == 0.0061
+        assert vu["clapsHeard"] == 5
+        assert vu["clapFailure"] == "La caméra a refusé de s'ouvrir."

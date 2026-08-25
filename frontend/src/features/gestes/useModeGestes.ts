@@ -165,6 +165,23 @@ export function useModeGestes(): ModeGestes {
     }
   }, [actif, allumer, eteindre]);
 
+  // Aligner la case sur ce que le serveur CONSTATE, jamais l'inverse.
+  // Le fil d'écoute peut mourir sans que personne ne l'ait demandé — casque
+  // débranché, micro repris par une autre application. La case restait
+  // cochée, le panneau affichait « le micro écoute en continu » et un
+  // compteur de claps figé, et on pouvait claper indéfiniment sans que rien
+  // ne contredise l'écran.
+  const accorder = useCallback((d: Diagnostic) => {
+    setDiagnostic(d);
+    if (d.clapListening === undefined) return;
+    setClapsEcoutent((avant) => {
+      if (avant && !d.clapListening) {
+        setErreur('Le micro s’est fermé tout seul — réactive l’écoute.');
+      }
+      return d.clapListening ?? avant;
+    });
+  }, []);
+
   // Suivre le serveur quand un DOUBLE-CLAP arme la session : la caméra
   // n'est pas ouverte, donc rien ne l'apprendrait autrement. On sonde
   // toutes les deux secondes, et seulement tant que le micro écoute — un
@@ -176,13 +193,13 @@ export function useModeGestes(): ModeGestes {
         .then((d) => {
           // Le diagnostic sert aussi caméra éteinte : c'est là qu'on voit
           // si le micro entend les claps, et donc si le seuil convient.
-          setDiagnostic(d);
+          accorder(d);
           if (d.armed) void allumer(true);
         })
         .catch(() => {});
     }, 2000);
     return () => window.clearInterval(t);
-  }, [actif, clapsEcoutent, allumer]);
+  }, [actif, clapsEcoutent, allumer, accorder]);
 
   // Le diagnostic se relit une fois par seconde : assez pour juger, trop
   // peu pour peser. Il n'est jamais dans le chemin des images.
@@ -192,10 +209,13 @@ export function useModeGestes(): ModeGestes {
       return;
     }
     const t = window.setInterval(() => {
-      void lireDiagnostic().then(setDiagnostic).catch(() => {});
+      // Caméra allumée, cette boucle est la SEULE qui tourne : sans cet
+      // accord, plus rien ne surveillait l'écoute dès que les gestes
+      // s'activaient — c'est-à-dire au moment où elle sert le plus.
+      void lireDiagnostic().then(accorder).catch(() => {});
     }, 1000);
     return () => window.clearInterval(t);
-  }, [actif]);
+  }, [actif, accorder]);
 
   // Le filet de sécurité : quoi qu'il arrive au composant, la caméra se
   // ferme. Une caméra qui survit à sa page est exactement ce que le voyant

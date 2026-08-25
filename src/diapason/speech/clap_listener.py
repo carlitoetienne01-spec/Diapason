@@ -295,50 +295,114 @@ def oublier_le_reglage_claps() -> None:
     chemin_reglage_claps().unlink(missing_ok=True)
 
 
-def reglage_calibre(
-    pic_de_la_piece: float,
-    pics_des_claps: list[float],
-    *,
-    base: ClapConfig | None = None,
-) -> ClapConfig:
-    """Un seuil posé entre DEUX mesures : la pièce, et les claps de son
-    occupant.
+def niveau_ordinaire(blocs: list[float]) -> tuple[float, float]:
+    """Le niveau habituel d'un fond sonore, et sa dispersion.
 
-    Le seuil vise la moyenne géométrique — le milieu au sens de l'oreille,
-    qui entend des rapports et non des différences. On se cale sur le clap
-    le PLUS FAIBLE, pour qu'aucun ne soit perdu, et sur le pic le plus fort
-    de la pièce, pour qu'elle ne parle jamais à sa place.
+    La médiane, pas un quantile haut ni un maximum : un transitoire ne doit
+    pas pouvoir déplacer la statistique qui sert à le juger. Un maximum brut
+    cède devant un seul bloc ; le quantile 0,95 cède devant quatre. La
+    médiane demande d'en corrompre la moitié.
+
+    Le calcul se fait sur les logarithmes, parce qu'un niveau sonore se
+    compare en RAPPORTS et non en écarts : entre 0,005 et 0,015 il y a le
+    même chemin qu'entre 0,05 et 0,15.
     """
-    from dataclasses import replace
-    from math import sqrt
+    from math import exp, log
 
-    base = base or ClapConfig()
-    if not pics_des_claps:
-        raise ValueError(
-            "Aucun clap n'a été entendu. Rapproche-toi du micro et "
-            "recommence : je dois entendre au moins un clap pour le mesurer."
-        )
-    plus_faible = min(pics_des_claps)
-    if plus_faible < pic_de_la_piece * 3.0:
-        # Calibrer là-dessus placerait le seuil dans le bruit : la pièce
-        # déclencherait toute seule. On le dit plutôt que de bricoler.
-        raise ValueError(
-            f"Tes claps ({plus_faible:.3f}) ne se détachent pas assez du "
-            f"bruit de la pièce ({pic_de_la_piece:.3f}). Clape plus fort, "
-            "plus près du micro, ou dans un endroit plus calme."
-        )
-    return replace(base, min_rms=round(sqrt(pic_de_la_piece * plus_faible), 4))
+    if not blocs:
+        return 0.0, 0.0
+    logs = sorted(log(max(b, 1e-7)) for b in blocs)
+    median = logs[len(logs) // 2]
+    ecarts = sorted(abs(x - median) for x in logs)
+    # 1,4826 : le facteur qui rend la MAD comparable à un écart-type sur une
+    # loi normale, et donc lisible par qui connaît les écarts-types.
+    dispersion = 1.4826 * ecarts[len(ecarts) // 2]
+    return exp(median), dispersion
 
 
-def mesurer_la_piece_et_les_claps(
+@dataclass
+class Piece:
+    """Ce qu'une pièce fait quand personne ne lui demande rien."""
+
+    niveau: float
+    """Son niveau habituel — médiane, insensible aux évènements isolés."""
+    dispersion: float
+    """Sa respiration, en log : de combien elle s'écarte d'ordinaire."""
+    maximum: float
+    """Le plus fort entendu, transitoire compris."""
+    blocs_bruyants: int
+    """Combien de blocs ont dépassé six fois son niveau habituel."""
+
+    @property
+    def haute(self) -> float:
+        """Sa portée haute ordinaire — le plafond de ce qu'elle fait seule.
+
+        Trois dispersions, pas cinq : calibré sur la pièce réelle de Carlito,
+        dont le maximum observé vaut deux dispersions au-dessus de la
+        médiane. Cinq donnaient 0,040 pour une pièce qui n'a jamais dépassé
+        0,0124 — une marge inventée devient un seuil que les claps doivent
+        franchir pour rien.
+        """
+        from math import exp, log
+
+        if self.niveau <= 0.0:
+            return 0.0
+        return exp(log(self.niveau) + 3.0 * self.dispersion)
+
+    @property
+    def troublee(self) -> bool:
+        """Quelque chose est arrivé pendant que la pièce devait se taire.
+
+        Un COMPTAGE, pas un rapport. Un rapport entre le maximum et une
+        statistique de la même fenêtre monte des deux côtés à la fois : dès
+        que le transitoire dure quatre blocs, il définit lui-même la
+        référence à laquelle on le compare, et la garde se tait précisément
+        quand elle devrait parler. Un clap, attaque et réverbération, dure
+        toujours plus que ça (démontré le 25 août 2026).
+        """
+        return self.blocs_bruyants >= 2
+
+
+@dataclass
+class Ecoute:
+    """Une mesure complète : la pièce, puis ce qui s'y est ajouté."""
+
+    piece: Piece
+    claps: list[float]
+    ecartes: list[float]
+    """Les bouffées écartées : trop faibles pour être les mêmes claps."""
+
+
+def _bouffees(niveaux: list[float], seuil: float) -> list[float]:
+    """Un sommet par bouffée. Un clap occupe plusieurs blocs — attaque puis
+    réverbération — et serait sinon compté plusieurs fois."""
+    pics: list[float] = []
+    en_cours = 0.0
+    for niveau in niveaux:
+        if niveau >= seuil:
+            en_cours = max(en_cours, niveau)
+        elif en_cours:
+            pics.append(en_cours)
+            en_cours = 0.0
+    if en_cours:
+        pics.append(en_cours)
+    return pics
+
+
+def ecouter_la_piece(
     *,
     cfg: ClapConfig | None = None,
     device: int | None = None,
-    silence_s: float = 2.0,
-    claps_s: float = 6.0,
-) -> tuple[float, list[float]]:
-    """Écouter la pièce, puis les claps. Rien n'est enregistré : seuls des
-    niveaux sonores sortent d'ici, jamais de son (§10)."""
+    duree_s: float = 2.5,
+    oubli_initial_s: float = 0.6,
+) -> Piece:
+    """Écouter une pièce se taire. Rien n'est enregistré : seuls des niveaux
+    sonores sortent d'ici, jamais de son (§10).
+
+    Les premières fractions de seconde sont JETÉES : la mesure est déclenchée
+    par un clic sur la machine qui tient le micro, et ce clic est un
+    transitoire net.
+    """
     import sounddevice as sd
 
     cfg = cfg or ClapConfig()
@@ -350,34 +414,148 @@ def mesurer_la_piece_et_les_claps(
         dtype="float32",
         blocksize=bloc,
     ) as flux:
+        fin = time.monotonic() + oubli_initial_s
+        while time.monotonic() < fin:
+            flux.read(bloc)
+        releves: list[float] = []
+        fin = time.monotonic() + duree_s
+        while time.monotonic() < fin:
+            donnees, _ = flux.read(bloc)
+            releves.append(rms_mono(donnees))
 
-        def _relever(duree: float) -> list[float]:
-            releves: list[float] = []
-            fin = time.monotonic() + duree
-            while time.monotonic() < fin:
-                donnees, _ = flux.read(bloc)
-                releves.append(rms_mono(donnees))
-            return releves
+    niveau, dispersion = niveau_ordinaire(releves)
+    return Piece(
+        niveau=niveau,
+        dispersion=dispersion,
+        maximum=max(releves) if releves else 0.0,
+        blocs_bruyants=sum(1 for r in releves if r > niveau * 6.0),
+    )
 
-        piece = _relever(silence_s)
-        pendant = _relever(claps_s)
 
-    pic_piece = max(piece) if piece else 0.0
-    # Un clap tient dans un ou deux blocs : on ne garde qu'un sommet par
-    # bouffée, sinon le même clap serait compté trois fois.
-    seuil = max(pic_piece * 2.5, 0.02)
-    pics: list[float] = []
-    en_cours = 0.0
-    for niveau in pendant:
-        if niveau >= seuil:
-            en_cours = max(en_cours, niveau)
-        elif en_cours:
-            pics.append(en_cours)
-            en_cours = 0.0
-    if en_cours:
-        pics.append(en_cours)
-    return pic_piece, pics
+def seuil_de_bouffee(piece: Piece) -> float:
+    """À partir de quel niveau un son mérite d'être regardé.
 
+    Dix fois le fond, au minimum : un clap vaut vingt à soixante fois le
+    niveau habituel d'une pièce. Deux fois et demie laissait entrer une
+    touche de clavier, qui devenait ensuite « le clap le plus faible » et
+    tirait tout le réglage vers le bas.
+    """
+    return max(piece.niveau * 10.0, piece.haute * 2.0, 0.02)
+
+
+def ecouter_les_claps(
+    piece: Piece,
+    *,
+    cfg: ClapConfig | None = None,
+    device: int | None = None,
+    duree_s: float = 6.0,
+    oubli_initial_s: float = 0.25,
+) -> Ecoute:
+    """Écouter quelqu'un claper, dans une pièce déjà mesurée."""
+    import sounddevice as sd
+
+    cfg = cfg or ClapConfig()
+    bloc = int(cfg.sample_rate * cfg.block_ms / 1000)
+    with sd.InputStream(
+        device=device,
+        samplerate=cfg.sample_rate,
+        channels=cfg.channels,
+        dtype="float32",
+        blocksize=bloc,
+    ) as flux:
+        fin = time.monotonic() + oubli_initial_s
+        while time.monotonic() < fin:
+            flux.read(bloc)
+        releves: list[float] = []
+        fin = time.monotonic() + duree_s
+        while time.monotonic() < fin:
+            donnees, _ = flux.read(bloc)
+            releves.append(rms_mono(donnees))
+
+    pics = _bouffees(releves, seuil_de_bouffee(piece))
+    if not pics:
+        return Ecoute(piece=piece, claps=[], ecartes=[])
+    # Une bouffée nettement plus faible que les autres n'est pas le même
+    # geste : c'est une chaise, une touche, un choc. L'écarter vaut mieux
+    # que de caler tout le réglage dessus.
+    milieu = sorted(pics)[len(pics) // 2]
+    gardes = [p for p in pics if p >= 0.4 * milieu]
+    return Ecoute(
+        piece=piece,
+        claps=gardes,
+        ecartes=[p for p in pics if p < 0.4 * milieu],
+    )
+
+
+def reglage_calibre(
+    ecoute: Ecoute,
+    *,
+    base: ClapConfig | None = None,
+) -> ClapConfig:
+    """Un seuil posé entre DEUX mesures : la pièce, et les claps de son
+    occupant.
+
+    Le seuil vise la moyenne géométrique — le milieu au sens de l'oreille,
+    qui entend des rapports et non des différences.
+    """
+    from dataclasses import replace
+    from math import sqrt
+
+    base = base or ClapConfig()
+    piece = ecoute.piece
+    plancher_usine = ClapConfig().min_rms
+
+    # Chaque refus nomme la MANŒUVRE à corriger, pas seulement le symptôme :
+    # trois causes différentes donnaient le même message, et l'utilisateur
+    # ne pouvait pas savoir laquelle le concernait.
+    if piece.troublee:
+        raise ValueError(
+            f"Un bruit fort ({piece.maximum:.3f}) est arrivé pendant que "
+            f"j'écoutais la pièce, qui vit d'ordinaire à {piece.niveau:.3f}. "
+            "Attends que je te dise de claper, puis recommence."
+        )
+    if not ecoute.claps:
+        raise ValueError(
+            f"Aucun clap n'a été entendu — la pièce est restée à "
+            f"{piece.niveau:.3f} du début à la fin. Clape plus fort, plus "
+            "près du Mac, et pendant les six secondes qui suivent le signal."
+        )
+    if len(ecoute.claps) < 2:
+        # Un seul pic ne dit pas si c'était un clap ou un choc. Deux se
+        # ressemblent ; un tout seul ne se compare à rien.
+        raise ValueError(
+            f"Je n'ai entendu qu'un seul son fort ({ecoute.claps[0]:.3f}). "
+            "Clape trois fois, bien séparément, pendant les six secondes."
+        )
+
+    # La MÉDIANE des claps retenus, jamais le plus faible : le minimum cède
+    # devant un seul intrus, et c'est justement lui qui fixerait le seuil.
+    ordonnes = sorted(ecoute.claps)
+    reference = ordonnes[len(ordonnes) // 2]
+    if reference < piece.haute * 3.0:
+        raise ValueError(
+            f"Tes claps ({reference:.3f}) ne se détachent pas assez du "
+            f"bruit de la pièce ({piece.haute:.3f}). Clape plus fort, "
+            "plus près du micro, ou dans un endroit plus calme."
+        )
+
+    seuil = sqrt(piece.haute * reference)
+    # Une mesure ne doit JAMAIS rendre le détecteur plus bavard que l'usine
+    # sans le dire : c'est ainsi qu'un plancher réglé pour un studio
+    # imaginaire avait laissé le silence déclencher.
+    # Le plancher s'appuie sur la portée HAUTE, pas sur le maximum brut :
+    # un maximum cède devant un seul bloc, et un clic isolé pendant la phase
+    # calme suffirait sinon à rendre le seuil inatteignable.
+    seuil = max(seuil, piece.haute * 3.0, plancher_usine)
+    if reference < seuil * 1.5:
+        # Le plancher a rattrapé le seuil au point de dépasser les claps :
+        # le poser quand même donnerait un mode qui ne s'arme jamais.
+        raise ValueError(
+            f"Tes claps ({reference:.3f}) sont trop faibles pour être "
+            f"distingués sans risque du bruit ambiant (il faudrait au moins "
+            f"{seuil * 1.5:.3f}). Rapproche-toi du Mac et recommence."
+        )
+    return replace(base, min_rms=round(seuil, 4))
 
 class ClapListener:
     """Background mic loop that invokes a callback on double clap."""
@@ -438,6 +616,28 @@ class ClapListener:
     def claps_entendus(self) -> int:
         """Combien de pics le micro a relevés — doubles ou non."""
         return self._detecteur.claps_entendus if self._detecteur else 0
+
+    @property
+    def seuil(self) -> float:
+        """Le seuil que ce fil applique VRAIMENT, à cet instant.
+
+        Le lire dans le fichier de réglage reviendrait à proclamer : un fil
+        démarré avant une calibration garde l'ancien seuil jusqu'à ce qu'on
+        le relance, et l'interface afficherait un chiffre auquel personne
+        n'obéit. Zéro quand rien n'écoute — il n'y a alors pas de seuil.
+        """
+        if self._detecteur is not None:
+            return self._detecteur.threshold
+        return 0.0
+
+    @property
+    def fond_sonore(self) -> float:
+        """Le fond sonore que ce fil a APPRIS de la pièce où il tourne.
+
+        Comparé au seuil, il dit d'un coup d'œil si la marge est confortable
+        ou si la pièce est montée jusqu'à frôler le déclenchement.
+        """
+        return self._detecteur.noise_floor if self._detecteur else 0.0
 
     @property
     def dernier_echec(self) -> Optional[str]:

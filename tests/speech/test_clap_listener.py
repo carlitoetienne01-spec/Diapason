@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from diapason.speech.clap_listener import ClapConfig, ClapDetector, rms_mono
 
 
@@ -181,3 +183,114 @@ class TestLaPieceNEstPasUnClap:
         assert det.process(0.35, t + 0.50) is False, "premier clap ignoré"
         det.process(0.006, t + 0.54)
         assert det.process(0.35, t + 0.70) is True, "le double clap n'a pas été vu"
+
+
+class TestLaMesureNeSeLaissePasDeplacer:
+    """Les statistiques d'une mesure ne doivent pas céder devant ce qu'elles
+    servent à juger.
+
+    Défaut confirmé le 25 août 2026 : la garde comparait le maximum au
+    quantile 0,95 de la MÊME fenêtre. Dès qu'un transitoire durait quatre
+    blocs, il définissait lui-même la référence à laquelle on le comparait,
+    et la garde se taisait précisément quand elle devait parler. Les tests
+    d'alors ne construisaient que des transitoires d'UN bloc — le seul
+    régime où elle fonctionnait. La DURÉE est donc le paramètre à balayer.
+    """
+
+    def _piece(self, blocs: list[float]):
+        from diapason.speech.clap_listener import Piece, niveau_ordinaire
+
+        niveau, dispersion = niveau_ordinaire(blocs)
+        return Piece(
+            niveau=niveau,
+            dispersion=dispersion,
+            maximum=max(blocs),
+            blocs_bruyants=sum(1 for b in blocs if b > niveau * 6.0),
+        )
+
+    def _trace(self) -> list[float]:
+        import json
+        import pathlib as pl
+
+        chemin = (
+            pl.Path(__file__).resolve().parents[1] / "fixtures" / "piece_au_repos.json"
+        )
+        return json.loads(chemin.read_text())["niveaux"][:62]
+
+    def test_une_piece_au_repos_n_est_pas_troublee(self):
+        piece = self._piece(self._trace())
+        assert not piece.troublee
+        assert piece.blocs_bruyants == 0
+
+    def test_la_garde_tient_quelle_que_soit_la_duree_du_transitoire(self):
+        """Le balayage que les anciens tests ne faisaient pas."""
+        trace = self._trace()
+        queue = [0.30, 0.22, 0.14, 0.09, 0.05, 0.04, 0.03, 0.025, 0.022, 0.02, 0.018, 0.016]
+        for duree in range(2, 13):
+            piece = self._piece(trace[: 62 - duree] + queue[:duree])
+            assert piece.troublee, f"transitoire de {duree} blocs non détecté"
+
+    def test_la_mediane_ne_bouge_pas_quand_le_maximum_explose(self):
+        """Un clap pendant la phase calme ne doit pas redéfinir la pièce."""
+        trace = self._trace()
+        pure = self._piece(trace)
+        pollue = self._piece(trace[:56] + [0.30, 0.22, 0.14, 0.09, 0.05, 0.04])
+        assert abs(pollue.niveau - pure.niveau) < pure.niveau * 0.1, (
+            "la médiane a suivi le transitoire"
+        )
+        assert pollue.maximum > pure.maximum * 20, "le maximum, lui, l'a suivi"
+
+    def test_le_bruit_de_fond_n_entre_pas_dans_les_claps(self):
+        """Une touche de clavier retenue comme « clap » devenait le plus
+        faible, et c'est lui qui fixait le seuil."""
+        from diapason.speech.clap_listener import _bouffees, seuil_de_bouffee
+
+        piece = self._piece(self._trace())
+        pendant = [0.031, 0.021] + [0.004] * 5 + [0.40, 0.30, 0.10]
+        assert _bouffees(pendant, seuil_de_bouffee(piece)) == [0.40]
+
+    def test_une_mesure_ne_rend_jamais_le_detecteur_plus_bavard_que_l_usine(self):
+        """Le plancher d'usine avait été relevé parce que le silence
+        déclenchait. Une calibration ne doit pas pouvoir le défaire."""
+        from diapason.speech.clap_listener import ClapConfig, Ecoute, reglage_calibre
+
+        piece = self._piece(self._trace())
+        # Des « claps » faibles mais réguliers : sans plancher, le seuil
+        # tomberait sous celui d'usine.
+        ecoute = Ecoute(piece=piece, claps=[0.12, 0.13, 0.14], ecartes=[])
+        assert reglage_calibre(ecoute).min_rms >= ClapConfig().min_rms
+
+    def test_un_seul_son_fort_ne_suffit_pas_a_calibrer(self):
+        from diapason.speech.clap_listener import Ecoute, reglage_calibre
+
+        piece = self._piece(self._trace())
+        with pytest.raises(ValueError, match="un seul son fort"):
+            reglage_calibre(Ecoute(piece=piece, claps=[0.45], ecartes=[]))
+
+    def test_le_plus_faible_ne_tire_plus_tout_le_reglage(self):
+        """La médiane des claps, pas leur minimum : le minimum cède devant
+        un seul intrus, et c'est justement lui qui fixerait le seuil."""
+        from diapason.speech.clap_listener import Ecoute, reglage_calibre
+
+        piece = self._piece(self._trace())
+        propre = reglage_calibre(Ecoute(piece=piece, claps=[0.44, 0.45, 0.46], ecartes=[]))
+        avec_intrus = reglage_calibre(
+            Ecoute(piece=piece, claps=[0.20, 0.45, 0.46], ecartes=[])
+        )
+        assert propre.min_rms == avec_intrus.min_rms
+
+    def test_des_claps_trop_faibles_sont_refuses_plutot_que_rendus_inaudibles(self):
+        """Planchonner le seuil au-dessus des claps donnerait un mode qui ne
+        s'arme jamais. Le dire vaut mieux que l'enregistrer."""
+        from diapason.speech.clap_listener import Ecoute, reglage_calibre
+
+        piece = self._piece(self._trace())
+        with pytest.raises(ValueError, match="trop faibles"):
+            reglage_calibre(Ecoute(piece=piece, claps=[0.06, 0.065, 0.07], ecartes=[]))
+
+    def test_un_choc_pendant_la_phase_calme_se_dit_avec_ses_chiffres(self):
+        from diapason.speech.clap_listener import Ecoute, Piece, reglage_calibre
+
+        troublee = Piece(niveau=0.006, dispersion=0.3, maximum=0.62, blocs_bruyants=5)
+        with pytest.raises(ValueError, match="Attends que je te dise de claper"):
+            reglage_calibre(Ecoute(piece=troublee, claps=[0.5, 0.5], ecartes=[]))
