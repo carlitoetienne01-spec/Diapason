@@ -199,3 +199,39 @@ def test_le_port_venu_de_la_configuration_est_verifie_aussi(monkeypatch):
     assert "No inference engine" not in sortie, (
         "le contrôle est encore placé après la recherche du moteur"
     )
+
+
+def test_le_service_windows_n_enseigne_plus_l_exposition_totale():
+    """La même règle que pour le plist macOS, du côté Windows.
+
+    `deploy/windows/diapason-service.ps1` conseillait `-ListenHost 0.0.0.0`
+    dès qu'une clé d'API était posée — c'est-à-dire toute l'application, deux
+    cent dix routes, sur le réseau. C'est exactement ce qui a été fermé côté
+    macOS le 26 août 2026, et laisser Windows l'enseigner aurait rouvert la
+    même porte sur l'autre machine.
+
+    Le besoin légitime derrière — joindre ce PC depuis un autre appareil — a
+    maintenant sa propre porte, plus étroite : `-MaillageReseau`.
+    """
+    script = (DEPLOY / "windows" / "diapason-service.ps1").read_text(encoding="utf-8")
+    assert "-MaillageReseau" in script, "la porte étroite n'existe pas"
+    assert "--lan-host 0.0.0.0" in script, "le second socket n'est pas câblé"
+    assert "then re-run with -ListenHost 0.0.0.0" not in script, (
+        "le script conseille encore d'exposer l'application entière"
+    )
+
+
+def test_l_installateur_windows_ne_promet_pas_une_url_morte():
+    """Le dépôt est privé : GitHub Pages ne publie rien, et la commande
+    d'une ligne y enverrait chercher un script inexistant — dont `iex`
+    exécuterait la page d'erreur. Vérifié 404 le 26 août 2026."""
+    lisez_moi = (DEPLOY / "windows" / "README.md").read_text(encoding="utf-8")
+    lignes_actives = [
+        ligne
+        for ligne in lisez_moi.splitlines()
+        if "github.io" in ligne and not ligne.lstrip().startswith(">")
+    ]
+    assert not lignes_actives, (
+        "le README propose encore une URL GitHub Pages hors encadré "
+        f"d'avertissement : {lignes_actives}"
+    )

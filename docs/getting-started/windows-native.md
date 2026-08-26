@@ -27,7 +27,13 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 In any PowerShell:
 
 ```powershell
-irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
+# NE FONCTIONNE PAS : le dépôt est privé, cette URL rend 404.
+# Voir deploy/windows/README.md pour la procédure à jour :
+#   gh auth login
+#   git clone https://github.com/carlitoetienne01-spec/Diapason.git `
+#     "$env:LOCALAPPDATA\Diapason\src"
+#   powershell -ExecutionPolicy Bypass `
+#     -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1"
 ```
 
 The installer will:

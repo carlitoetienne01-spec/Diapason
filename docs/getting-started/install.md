@@ -1,5 +1,24 @@
 # Installation
 
+!!! danger "Les commandes d'une ligne ci-dessous ne fonctionnent pas"
+
+    Elles vont chercher un script sur GitHub Pages. **Ce dépôt est privé** :
+    Pages ne publie rien, et ces URL rendent une page d'erreur — que `iex` ou
+    `bash` exécuteraient. Vérifié le 26 août 2026 : 404 sur `install.sh`, sur
+    `install.ps1`, et sur la racine du site.
+
+    Tant que le dépôt reste privé, **clonez d'abord, exécutez ensuite** :
+
+    ```bash
+    gh auth login
+    git clone https://github.com/carlitoetienne01-spec/Diapason.git
+    cd Diapason && make setup          # macOS, Linux, WSL2
+    ```
+
+    Sur Windows natif, voir [Native Windows install](windows-native.md), dont
+    la procédure est à jour.
+
+
 ## Platform-specific guides
 
 | Platform | One-liner | Detailed guide |

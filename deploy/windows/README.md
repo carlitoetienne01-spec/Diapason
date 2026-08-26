@@ -4,12 +4,39 @@ Phase-1 of the native-Windows-support RFC (#298). Mirrors the Linux
 (`deploy/systemd/`) and macOS (`deploy/launchd/`) deployments — but for
 PowerShell, without WSL2 or Docker.
 
-## One-liner install
+## Installation
 
-In an elevated-or-regular PowerShell:
+> **La commande d'une ligne ne fonctionne pas, et ne peut pas fonctionner.**
+> Elle allait chercher le script sur GitHub Pages :
+>
+> ```powershell
+> irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex   # 404
+> ```
+>
+> Ce dépôt est **privé** : Pages ne publie rien, et cette URL rend une page
+> d'erreur — que `iex` exécuterait comme du PowerShell. Vérifié le 26 août
+> 2026 : 404 sur le script ET sur la racine du site. Le workflow qui
+> publierait Pages est par ailleurs en sommeil, faute de runners GitHub.
+>
+> Tant que le dépôt reste privé, **clonez d'abord, exécutez ensuite**. Le
+> script détecte un dépôt déjà cloné et saute cette étape.
 
 ```powershell
-irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
+# 1. Les outils, si absents
+winget install Git.Git
+winget install Python.Python.3.13
+winget install GitHub.cli
+
+# 2. S'authentifier — le dépôt est privé
+gh auth login
+
+# 3. Cloner à l'endroit que le script attend
+git clone https://github.com/carlitoetienne01-spec/Diapason.git `
+  "$env:LOCALAPPDATA\Diapason\src"
+
+# 4. Lancer l'installateur local
+powershell -ExecutionPolicy Bypass `
+  -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1"
 ```
 
 What it does:
@@ -39,8 +66,13 @@ absent:
 
 ```powershell
 $env:DIAPASON_SKIP_SERVICE = '1'
-irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
+powershell -ExecutionPolicy Bypass `
+  -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1"
 ```
+
+(Ces variables existaient pour la commande d'une ligne, qui ne pouvait pas
+recevoir de paramètres. En exécutant le fichier directement, les drapeaux
+`-SkipService`, `-Service` et `-Force` sont plus clairs.)
 
 The available env vars: `DIAPASON_SKIP_SERVICE`, `DIAPASON_SERVICE`,
 `DIAPASON_FORCE`. If you need richer control, save the script first
@@ -111,8 +143,8 @@ uv sync --extra desktop --group desktop-native
 Or re-run the installer with `-Force`:
 
 ```powershell
-irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
-# (then re-run with the file directly, passing -Force)
+powershell -ExecutionPolicy Bypass `
+  -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1" -Force
 ```
 
 ## Uninstall

@@ -18,11 +18,26 @@
     Arguments (install only):
       -InstallRoot <path>  default: %LOCALAPPDATA%\Diapason (matches
                            install.ps1's default)
-      -ListenHost <addr>   default: 127.0.0.1 (loopback). Set to 0.0.0.0
-                           ONLY if you also set $env:DIAPASON_API_KEY
-                           — the server refuses to start unauthenticated
-                           on a non-loopback bind.
+      -ListenHost <addr>   default: 127.0.0.1 (loopback). A NON-LOOPBACK
+                           VALUE IS NOW REFUSED — see -MaillageReseau below.
       -ListenPort <int>    default: 8000
+      -MaillageReseau      open a SECOND socket carrying only the nine mesh
+                           routes, so your other devices can reach this PC.
+                           The full application stays on 127.0.0.1.
+      -LanPort <int>       default: 8001 (the mesh socket)
+
+    WHY -ListenHost 0.0.0.0 IS NO LONGER ACCEPTED
+    ---------------------------------------------
+    It put the WHOLE application — chat, voice, Succes, tools, roughly two
+    hundred and ten routes — on the network. That is how the developer's Mac
+    ended up serving all of them over Wi-Fi until 26 August 2026: protected by
+    the API key, but reachable, and one route forgetting its protection would
+    have been exposed the same day.
+
+    The legitimate need behind it — « my phone cannot reach 127.0.0.1 » — now
+    has its own, narrower door: -MaillageReseau. Nine routes, each requiring
+    an Ed25519 device signature rather than the API key. A chat request on
+    that socket returns 404, not 401: the route does not exist there.
 
     Usage:
       powershell -ExecutionPolicy Bypass -File diapason-service.ps1 install
@@ -38,7 +53,9 @@ param(
 
     [string] $InstallRoot,
     [string] $ListenHost = '127.0.0.1',
-    [int]    $ListenPort = 8000
+    [int]    $ListenPort = 8000,
+    [switch] $MaillageReseau,
+    [int]    $LanPort = 8001
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,19 +105,26 @@ function Install-Task {
         $uvPath = $uvCmd.Source
     }
 
-    # Safety: refuse to register a non-loopback bind without an API key.
-    # Mirrors deploy/systemd/diapason.service's EnvironmentFile guard.
+    # The full application never leaves this machine. The escape hatch that
+    # allowed it existed for one real need — reaching this PC from another
+    # device — and that need now has its own, narrower door.
     $isLoopback = ($ListenHost -eq '127.0.0.1' -or $ListenHost -eq 'localhost')
-    if (-not $isLoopback -and -not $env:DIAPASON_API_KEY) {
+    if (-not $isLoopback) {
         Write-Fail @"
-ListenHost is $ListenHost (non-loopback) but `$env:DIAPASON_API_KEY is
-not set. An unauthenticated non-loopback bind is refused by diapason serve
-and would also create a security hole. Set the env var first:
+-ListenHost $ListenHost is refused: it would put the WHOLE application — chat,
+voice, Succes, tools — on the network.
 
-    `$env:DIAPASON_API_KEY = (uv run diapason auth generate-key)
+For your other devices to reach this PC, keep 127.0.0.1 and add:
 
-then re-run with -ListenHost 0.0.0.0.
+    -MaillageReseau
+
+That opens a second socket carrying only the nine mesh routes, each requiring
+an Ed25519 device signature. A chat request there returns 404, not 401.
 "@
+    }
+
+    if ($MaillageReseau -and $LanPort -eq $ListenPort) {
+        Write-Fail "-LanPort and -ListenPort are both $LanPort. Two servers on one port bind silently on some systems and fail on others."
     }
 
     # CRITICAL: scheduled tasks do NOT inherit the registering session's
@@ -131,9 +155,16 @@ then re-run with -ListenHost 0.0.0.0.
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
     }
 
+    $serveArgs = "run diapason serve --host $ListenHost --port $ListenPort"
+    if ($MaillageReseau) {
+        $serveArgs = "$serveArgs --lan-host 0.0.0.0 --lan-port $LanPort"
+        Write-Info "  Maillage    : 0.0.0.0`:$LanPort (nine routes, device signature required)"
+        Write-Info "  A shared network stays a shared network — see deploy/windows/README.md."
+    }
+
     $action = New-ScheduledTaskAction `
         -Execute $uvPath `
-        -Argument "run diapason serve --host $ListenHost --port $ListenPort" `
+        -Argument $serveArgs `
         -WorkingDirectory $srcDir
 
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
