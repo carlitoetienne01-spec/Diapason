@@ -218,11 +218,37 @@ def _poster(url: str, corps: dict) -> dict:
     """Le POST réel. Séparé pour que les tests n'ouvrent aucune socket."""
     import httpx
 
-    from diapason.core.local_mode import assert_may_leave
+    from diapason.core.local_mode import LocalOnlyError, local_only
+    from diapason.mesh.transport import address_is_private
 
-    # Le jumelage sort de la machine par construction : on le dit, comme
-    # partout ailleurs, plutôt que de contourner le garde en silence.
-    assert_may_leave("the mesh pairing handshake", destination=url)
+    # LE JUMELAGE EST LE SEUL GESTE DU MAILLAGE QUI NE PEUT PAS S'APPUYER SUR
+    # LA CONFIANCE — c'est lui qui la crée.
+    #
+    # Partout ailleurs, `assert_may_reach_device` porte l'exemption étroite du
+    # maillage au mode local : un pair APPAIRÉ, joignable sur une adresse
+    # PRIVÉE, peut être commandé même sous `local_only`. Ici, la moitié
+    # « appairé » n'existe pas encore, et le code appelait donc le garde
+    # générique — celui du nuage — qui refusait tout.
+    #
+    # Conséquence constatée le 26 août 2026, sur une installation Windows
+    # neuve où `local_only` vaut `true` par défaut : impossible de jumeler
+    # deux machines du même réseau. Et le refus conseillait « Set local_only
+    # = false to allow cloud engines », c'est-à-dire d'ouvrir l'accès au nuage
+    # pour joindre un ordinateur à trois mètres. Un conseil qui affaiblit un
+    # garde-fou pour une raison qui ne le concerne pas.
+    #
+    # L'autre moitié de l'exemption, elle, s'applique pleinement : l'adresse
+    # est privée ou elle ne l'est pas. On la garde, et on garde le refus pour
+    # tout ce qui sort du réseau local — jumeler par Internet est exactement
+    # ce que `local_only` doit empêcher.
+    if local_only() and not address_is_private(url):
+        raise LocalOnlyError(
+            "Le mode local-only est actif et cette adresse n'est pas sur le "
+            f"réseau local : rien n'a été envoyé à {url}. Jumelez deux "
+            "machines du même réseau, ou mettez local_only = false dans "
+            "~/.diapason/config.toml si vous voulez vraiment jumeler par "
+            "Internet."
+        )
     try:
         reponse = httpx.post(url, json=corps, timeout=_DELAI_S)
     except httpx.HTTPError as exc:

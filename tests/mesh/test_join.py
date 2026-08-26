@@ -157,3 +157,65 @@ class TestAdressesRefusees:
 
         with pytest.raises(JoinError, match="invitation"):
             join_fleet("http://a", "   ", poster=interdit)
+
+
+class TestJumelerSousLeModeLocal:
+    """Le jumelage est le SEUL geste du maillage qui ne peut pas s'appuyer
+    sur la confiance : c'est lui qui la crée.
+
+    Partout ailleurs, `assert_may_reach_device` porte l'exemption étroite du
+    maillage au mode local — un pair appairé, sur une adresse privée, passe
+    même sous `local_only`. Ici la moitié « appairé » n'existe pas encore, et
+    le code appelait donc le garde du NUAGE, qui refusait tout.
+
+    Constaté le 26 août 2026 sur une installation Windows neuve, où
+    `local_only` vaut `true` par défaut : impossible de jumeler deux machines
+    du même réseau. Et le refus conseillait de désactiver `local_only` « to
+    allow cloud engines » — affaiblir un garde-fou pour une raison qui ne le
+    concerne pas.
+    """
+
+    def test_une_adresse_du_reseau_local_passe(self, monkeypatch):
+        from diapason.mesh import join as module
+
+        monkeypatch.setattr(module, "local_only", lambda: True, raising=False)
+        monkeypatch.setattr("diapason.core.local_mode.local_only", lambda: True)
+        vu = {}
+
+        def faux_post(url, json, timeout):
+            vu["url"] = url
+
+            class R:
+                status_code = 200
+
+                @staticmethod
+                def json():
+                    return {"host": {}, "device": {}}
+
+            return R()
+
+        monkeypatch.setattr("httpx.post", faux_post)
+        try:
+            module._poster("http://192.168.0.121:8001/v1/mesh/pairings/redeem", {})
+        except Exception as exc:  # noqa: BLE001
+            assert "local-only" not in str(exc), (
+                f"le mode local a refusé une adresse privée : {exc}"
+            )
+        assert vu.get("url"), "la requête n'est jamais partie"
+
+    def test_une_adresse_publique_reste_refusee(self, monkeypatch):
+        """Jumeler par Internet est exactement ce que `local_only` doit
+        empêcher — l'exemption ne va pas plus loin que le réseau local."""
+        import pytest
+
+        from diapason.core.local_mode import LocalOnlyError
+        from diapason.mesh import join as module
+
+        monkeypatch.setattr("diapason.core.local_mode.local_only", lambda: True)
+        with pytest.raises(LocalOnlyError) as refus:
+            module._poster("https://exemple.test/v1/mesh/pairings/redeem", {})
+        message = str(refus.value)
+        assert "réseau local" in message
+        assert "cloud engines" not in message, (
+            "le refus conseille encore d'ouvrir l'accès au nuage"
+        )
