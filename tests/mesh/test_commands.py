@@ -324,3 +324,168 @@ class TestNoUniversalTool:
         catalogue = list_remote_tools()
         assert catalogue
         assert all("name" in entry and "parameters" in entry for entry in catalogue)
+
+
+class TestLaFormeSurLeFilNeBougePas:
+    """Étape 3 du plan du 26 août 2026 — le test qui garde tout le contrat.
+
+    Un client Flutter figé est déjà déployé. Le scellement ne vaut que s'il
+    est INVISIBLE pour lui : une commande claire doit produire exactement les
+    mêmes octets qu'avant. Comparé ici à un vecteur écrit à la main depuis la
+    spécification, et non régénéré depuis le code — sans quoi le test
+    entérinerait n'importe quelle dérive au lieu de la refuser.
+    """
+
+    def _commande(self) -> RemoteCommand:
+        return RemoteCommand(
+            command_id="cmd-fige",
+            owner_id="owner-fige",
+            origin_device_id="dev_origine",
+            target_device_id="dev_cible",
+            tool="app.navigate",
+            arguments={"route": "success://projects/x"},
+            created_at_ms=1_700_000_000_000,
+            expires_at_ms=1_700_000_060_000,
+            nonce="nonce-fige",
+            idempotency_key="idem-fige",
+        )
+
+    def test_une_commande_claire_produit_le_vecteur_attendu(self):
+        assert self._commande().to_dict(with_signature=False) == {
+            "version": 1,
+            "commandId": "cmd-fige",
+            "ownerId": "owner-fige",
+            "originDeviceId": "dev_origine",
+            "targetDeviceId": "dev_cible",
+            "tool": "app.navigate",
+            "arguments": {"route": "success://projects/x"},
+            "createdAtMs": 1_700_000_000_000,
+            "expiresAtMs": 1_700_000_060_000,
+            "nonce": "nonce-fige",
+            "idempotencyKey": "idem-fige",
+            "requiresConfirmation": False,
+        }
+
+    def test_les_octets_canoniques_aussi(self):
+        """C'est sur eux que porte la signature : un octet de plus et toutes
+        les enveloppes déjà en vol deviennent invérifiables."""
+        from diapason.mesh.identity import canonical_bytes
+
+        octets = canonical_bytes(self._commande().to_dict(with_signature=False))
+        assert octets == (
+            b'{"arguments":{"route":"success://projects/x"},'
+            b'"commandId":"cmd-fige","createdAtMs":1700000000000,'
+            b'"expiresAtMs":1700000060000,"idempotencyKey":"idem-fige",'
+            b'"nonce":"nonce-fige","originDeviceId":"dev_origine",'
+            b'"ownerId":"owner-fige","requiresConfirmation":false,'
+            b'"targetDeviceId":"dev_cible","tool":"app.navigate","version":1}'
+        )
+
+    def test_une_enveloppe_venue_du_telephone_traverse_l_aller_retour(self, world):
+        """`from_dict` → `to_dict` → vérification, sur les douze clés que le
+        client Dart écrit. C'est le chemin exact d'une commande reçue."""
+        _registry, _nonces, peer_keys = world
+        envoyee = sign_as_peer(a_command(), peer_keys.private_key)
+        assert len(envoyee) == 13, "douze champs plus la signature"
+
+        relue = RemoteCommand.from_dict(envoyee)
+        assert relue.to_dict() == envoyee, (
+            "l'aller-retour a changé l'enveloppe : la signature ne vaut plus"
+        )
+
+    def test_une_commande_claire_n_est_pas_scellee(self):
+        assert self._commande().est_scelle is False
+
+
+class TestUneCommandeScelleeReemetSonSceau:
+    """L'invariant qui fait tenir tout le reste : les champs de l'objet
+    portent le CLAIR des deux côtés, et ``_extra["scelle"]`` porte ce qui a
+    été signé. ``to_dict`` réémet le scellé.
+
+    Sans cela, le récepteur rangerait dans sa file une enveloppe portant le
+    clair sous une signature calculée sur le chiffré — donc une enveloppe qui
+    ne vérifierait plus sa propre signature.
+    """
+
+    def _scellee(self) -> RemoteCommand:
+        from diapason.mesh.scellement import SENTINELLE
+
+        return RemoteCommand(
+            command_id="cmd-s",
+            owner_id="owner",
+            origin_device_id="dev_a",
+            target_device_id="dev_b",
+            tool="notifications.show",
+            arguments={"title": "Rendez-vous chez le notaire"},
+            created_at_ms=1,
+            expires_at_ms=2,
+            nonce="n",
+            idempotency_key="i",
+            _extra={
+                "scelle": {
+                    "tool": SENTINELLE,
+                    "arguments": {"s": "AAAA", "e": "BBBB", "k": "cafe1234"},
+                    "requiresConfirmation": True,
+                }
+            },
+        )
+
+    def test_les_champs_de_l_objet_portent_le_clair(self):
+        commande = self._scellee()
+        assert commande.tool == "notifications.show"
+        assert commande.arguments == {"title": "Rendez-vous chez le notaire"}
+        assert commande.est_scelle is True
+
+    def test_le_fil_ne_porte_que_le_scelle(self):
+        sur_le_fil = self._scellee().to_dict(with_signature=False)
+        assert sur_le_fil["tool"] == "mesh.sealed"
+        assert sur_le_fil["arguments"] == {"s": "AAAA", "e": "BBBB", "k": "cafe1234"}
+        assert sur_le_fil["requiresConfirmation"] is True
+        entier = str(sur_le_fil)
+        assert "notifications.show" not in entier
+        assert "notaire" not in entier
+
+    def test_le_jeu_de_cles_est_le_meme_que_pour_une_commande_claire(self):
+        """Aucun champ nouveau : c'est tout le mécanisme. Un champ ajouté au
+        niveau supérieur ne serait pas reproduit par `from_dict`, donc le
+        récepteur réémettrait une enveloppe amputée et la signature
+        tomberait."""
+        claire = RemoteCommand(
+            command_id="c",
+            owner_id="o",
+            origin_device_id="a",
+            target_device_id="b",
+            tool="app.open",
+            arguments={},
+            created_at_ms=1,
+            expires_at_ms=2,
+            nonce="n",
+            idempotency_key="i",
+        )
+        assert set(self._scellee().to_dict(with_signature=False)) == set(
+            claire.to_dict(with_signature=False)
+        )
+
+    def test_la_sentinelle_n_est_pas_un_outil_du_catalogue(self):
+        """C'est une marque de transport. Si elle entrait dans le catalogue,
+        un appareil pourrait se la voir demander comme un verbe."""
+        from diapason.mesh.scellement import SENTINELLE
+        from diapason.mesh.tools import REMOTE_TOOLS
+
+        assert SENTINELLE not in REMOTE_TOOLS
+        assert SENTINELLE not in {t["name"] for t in list_remote_tools()}
+
+    def test_signer_ne_perd_pas_le_sceau(self, tmp_path, monkeypatch):
+        """`sign_command` reconstruit l'objet depuis son `__dict__` : le
+        souligné de `_extra` y survit parce que les dataclasses le gardent
+        dans `__init__`. Toute l'étape suivante en dépend — si cela cessait
+        d'être vrai, on signerait le chiffré et on émettrait le clair.
+        """
+        from diapason.mesh.commands import sign_command
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "maison"))
+        signee = sign_command(self._scellee())
+        assert signee.est_scelle is True
+        assert signee.to_dict()["tool"] == "mesh.sealed"
+        assert signee.tool == "notifications.show", "l'objet doit garder le clair"
+        assert signee.signature, "la signature manque"

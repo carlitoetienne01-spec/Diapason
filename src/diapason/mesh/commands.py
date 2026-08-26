@@ -119,20 +119,51 @@ class RemoteCommand:
     version: int = COMMAND_VERSION
     _extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
+    @property
+    def est_scelle(self) -> bool:
+        """Le contenu de cette commande voyage-t-il chiffré ?"""
+        return bool(self._extra.get("scelle"))
+
     def to_dict(self, *, with_signature: bool = True) -> dict[str, Any]:
+        """L'enveloppe telle qu'elle part sur le fil.
+
+        INVARIANT DU SCELLEMENT, et tout en dépend : ``.tool``,
+        ``.arguments`` et ``.requires_confirmation`` portent TOUJOURS le
+        clair, des deux côtés du réseau. ``_extra["scelle"]`` porte le
+        triplet chiffré exactement tel qu'il a été signé, et c'est LUI que
+        cette méthode réémet.
+
+        Sans cette règle, le récepteur rangerait dans sa file une enveloppe
+        portant le clair sous une signature calculée sur le chiffré — donc
+        une enveloppe qui ne vérifierait plus sa propre signature. C'est le
+        bogue que la première version du plan s'annonçait comme bénéfice
+        avant de l'introduire.
+
+        Une commande CLAIRE (``_extra`` vide) produit exactement les mêmes
+        octets qu'avant le 26 août 2026. C'est ce qui protège le client
+        mobile figé, et un test le compare à un vecteur gelé plutôt que de
+        s'en remettre à la lecture.
+        """
+        scelle = self._extra.get("scelle") or {}
         payload: dict[str, Any] = {
             "version": self.version,
             "commandId": self.command_id,
             "ownerId": self.owner_id,
             "originDeviceId": self.origin_device_id,
             "targetDeviceId": self.target_device_id,
-            "tool": self.tool,
-            "arguments": self.arguments,
+            "tool": scelle.get("tool", self.tool) if scelle else self.tool,
+            "arguments": (
+                scelle.get("arguments", self.arguments) if scelle else self.arguments
+            ),
             "createdAtMs": self.created_at_ms,
             "expiresAtMs": self.expires_at_ms,
             "nonce": self.nonce,
             "idempotencyKey": self.idempotency_key,
-            "requiresConfirmation": self.requires_confirmation,
+            "requiresConfirmation": (
+                bool(scelle.get("requiresConfirmation"))
+                if scelle
+                else self.requires_confirmation
+            ),
         }
         if self.confirmation_id:
             payload["confirmationId"] = self.confirmation_id
