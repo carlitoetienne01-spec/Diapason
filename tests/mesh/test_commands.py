@@ -489,3 +489,99 @@ class TestUneCommandeScelleeReemetSonSceau:
         assert signee.to_dict()["tool"] == "mesh.sealed"
         assert signee.tool == "notifications.show", "l'objet doit garder le clair"
         assert signee.signature, "la signature manque"
+
+
+class TestOuvrirUnSceauALaReception:
+    """Étape 6 : le contrôle « 6 bis », et sa place dans l'ordre.
+
+    APRÈS la signature — un inconnu du réseau ne doit pas pouvoir nous faire
+    calculer un X25519 par paquet. AVANT le contrôle de l'outil — la
+    sentinelle n'existe pas dans le catalogue. Et AVANT le nonce, dépensé en
+    dernier : un descellement raté ne doit pas le brûler.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _chez_soi(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "maison"))
+        yield
+
+    def _scellee_vers_moi(self, **surcharges):
+        """Une commande que le pair scelle vers NOTRE clé locale."""
+        from diapason.mesh.scellement import paire_locale, sceller_commande
+
+        commande = a_command(**surcharges)
+        return sceller_commande(commande, paire_locale().publique_b64)
+
+    def test_une_commande_scellee_s_ouvre_et_s_execute(self, world):
+        _registry, _nonces, peer_keys = world
+        brute = sign_as_peer(self._scellee_vers_moi(), peer_keys.private_key)
+        assert brute["tool"] == "mesh.sealed", "le fil doit porter la sentinelle"
+
+        ouverte = check(brute, world)
+        assert ouverte.tool == "app.navigate"
+        assert ouverte.arguments == {"route": "success://projects/flashprime"}
+
+    def test_l_enveloppe_ouverte_verifie_encore_sa_signature(self, world):
+        """Le récepteur range cette enveloppe dans sa file. Si `to_dict` ne
+        réémettait pas le scellé, elle porterait le clair sous une signature
+        calculée sur le chiffré — et ne se vérifierait plus elle-même."""
+        from diapason.mesh.identity import verify_envelope
+
+        _registry, _nonces, peer_keys = world
+        brute = sign_as_peer(self._scellee_vers_moi(), peer_keys.private_key)
+        ouverte = check(brute, world)
+
+        assert verify_envelope(
+            ouverte.to_dict(with_signature=False),
+            ouverte.signature,
+            peer_keys.public_key,
+        ), "l'enveloppe rangée ne vérifie plus sa propre signature"
+        assert ouverte.to_dict() == brute
+
+    def test_un_sceau_altere_est_refuse_sans_bruler_le_nonce(self, world):
+        """LE point délicat : le nonce est dépensé en dernier. Un
+        descellement raté ne doit pas le consommer, sinon l'émetteur
+        légitime qui réessaie se ferait refuser pour rejeu — une panne dont
+        la cause serait introuvable."""
+        import base64
+
+        _registry, _nonces, peer_keys = world
+        bonne = self._scellee_vers_moi()
+
+        # L'attaquant change un octet du chiffré, puis resigne (il ne peut
+        # pas, mais supposons le pire : c'est le pair lui-même qui déraille).
+        abimee = dict(bonne._extra["scelle"])
+        brut = bytearray(base64.b64decode(abimee["arguments"]["s"]))
+        brut[0] ^= 0xFF
+        abimee["arguments"] = {
+            **abimee["arguments"],
+            "s": base64.b64encode(bytes(brut)).decode(),
+        }
+        from dataclasses import replace
+
+        cassee = replace(bonne, _extra={"scelle": abimee})
+        brute_cassee = sign_as_peer(cassee, peer_keys.private_key)
+
+        with pytest.raises(CommandRejected) as refus:
+            check(brute_cassee, world)
+        assert "scellée n'a pas pu être ouverte" in refus.value.message
+
+        # Le MÊME nonce doit encore passer : rien n'a été dépensé.
+        bonne_brute = sign_as_peer(bonne, peer_keys.private_key)
+        assert bonne_brute["nonce"] == brute_cassee["nonce"], "test mal construit"
+        ouverte = check(bonne_brute, world)
+        assert ouverte.tool == "app.navigate"
+
+    def test_un_sceau_deplace_vers_une_autre_enveloppe_est_refuse(self, world):
+        """Le blob est collé à SON en-tête de routage : le recoller ailleurs
+        casse le tag avant que la signature ait son mot à dire."""
+        from dataclasses import replace
+
+        _registry, _nonces, peer_keys = world
+        premiere = self._scellee_vers_moi()
+        seconde = a_command()
+
+        # On recolle le sceau de la première sur l'en-tête de la seconde.
+        greffee = replace(seconde, _extra={"scelle": premiere._extra["scelle"]})
+        with pytest.raises(CommandRejected, match="n'a pas pu être ouverte"):
+            check(sign_as_peer(greffee, peer_keys.private_key), world)

@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping
 
+from diapason.mesh import scellement
 from diapason.mesh.commands import (
     DEFAULT_TTL_MS,
     QUEUED_TTL_MS,
@@ -118,6 +119,29 @@ def dispatch_command(
         spec.validate(command.arguments)
     except CommandRejected as exc:
         return _refused(exc.code, exc.message, tool=tool, target=target_device_id)
+
+    # 4 bis. SCELLER, entre la validation et la signature. L'ordre n'est pas
+    #        indifférent : on valide le CLAIR — le validateur n'a jamais à
+    #        connaître le chiffrement — puis on scelle, puis on signe. La
+    #        signature couvre donc le chiffré, ce qui la laisse vérifiable
+    #        sans la clé de déchiffrement.
+    try:
+        cle_du_pair = scellement.doit_sceller(device, registry=registry)
+    except scellement.ScellementExige as exc:
+        return _refused("DENIED", str(exc), tool=tool, target=target_device_id)
+    if cle_du_pair:
+        try:
+            command = scellement.sceller_commande(command, cle_du_pair)
+        except Exception as exc:  # noqa: BLE001
+            # Un scellement qui échoue ne part PAS en clair : ce serait la
+            # panne silencieuse que tout ce chantier existe pour empêcher.
+            logger.warning("scellement impossible : %s", exc, exc_info=True)
+            return _refused(
+                "DENIED",
+                "Cette commande n'a pas pu être chiffrée, donc elle n'est pas partie.",
+                tool=tool,
+                target=target_device_id,
+            )
 
     # 5. Idempotency: the same intent, already sent, returns what we know
     #    rather than doing it twice (spec §45).

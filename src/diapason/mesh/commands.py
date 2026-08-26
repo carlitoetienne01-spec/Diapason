@@ -380,6 +380,28 @@ def verify_command(
     ):
         raise CommandRejected("DENIED", "La signature de cette commande est invalide.")
 
+    # 6 bis. OUVRIR LE SCEAU, si l'enveloppe en porte un.
+    #
+    #        L'ordre est obligatoire, pas esthétique. APRÈS la signature :
+    #        un inconnu du réseau ne doit pas pouvoir nous faire calculer un
+    #        X25519 et un AES-GCM par paquet. AVANT le contrôle 7 : la
+    #        sentinelle n'existe pas dans le catalogue, donc « l'outil
+    #        n'existe pas » serait le seul message qu'on verrait jamais.
+    #
+    #        ET AVANT LE CONTRÔLE 11 : le nonce est dépensé en dernier. Un
+    #        descellement raté ne doit pas le brûler, sinon l'émetteur
+    #        légitime qui réessaie se ferait refuser pour rejeu — une panne
+    #        dont la cause serait introuvable.
+    from diapason.mesh.scellement import SENTINELLE, desceller_commande
+
+    if command.tool == SENTINELLE:
+        try:
+            command = desceller_commande(command)
+        except Exception as exc:  # noqa: BLE001
+            raise CommandRejected(
+                "DENIED", "Cette commande scellée n'a pas pu être ouverte."
+            ) from exc
+
     # 7. tool must exist, be narrow, and be allowed remotely (spec §21)
     from diapason.mesh.tools import get_remote_tool
 

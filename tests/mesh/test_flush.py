@@ -320,3 +320,57 @@ class TestIdempotencyIsTheSendersWord:
 
         found = queue.find_by_idempotency("cle-visee", origin_device_id=LAPTOP)
         assert found is None, "un pair ne doit pas retrouver notre ligne par sa clé"
+
+
+class TestUneCommandeScelleeAttendSansPerdreSonSceau:
+    """Étape 6 du plan du 26 août 2026.
+
+    Une commande poussée vers un pair endormi attend jusqu'à six heures dans
+    la file. C'est précisément le chemin qui a fait écarter un design à clé
+    éphémère : un pair absent ne peut pas fournir sa moitié, et ce chemin
+    serait alors parti en clair, en silence.
+    """
+
+    def _sceller_dans_la_file(self, mesh, device_id):
+        """Ranger une commande scellée, comme `dispatch_command` le fait."""
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.registry import now_ms
+
+        registry, queue = mesh
+        # AVEC UN INSTANT COURANT : daté de 1970, la clé serait périmée et
+        # rien ne serait scellé. Le premier jet de ce test l'a appris à ses
+        # dépens — et c'est le contrôle de fraîcheur qui faisait son travail.
+        registry.record_seal_key(device_id, nouvelle_demi_cle().publique_b64, now_ms())
+        sleep_device(registry, device_id)
+        queued = queue_for(mesh, device_id)
+        return queue.envelope_of(queued["commandId"])
+
+    def test_elle_repart_telle_quelle_des_heures_plus_tard(self, mesh):
+        registry, queue = mesh
+        rangee = self._sceller_dans_la_file(mesh, LAPTOP)
+
+        wake_device(registry, LAPTOP)
+        partie = []
+        flush_pending(
+            registry=registry,
+            queue=queue,
+            transport=lambda c, d: partie.append(c) or {"status": "SUCCESS"},
+        )
+        assert partie, "rien n'est reparti"
+        # Verbatim : la signature couvre le chiffré, donc re-sceller
+        # produirait une enveloppe qui ne vérifie plus.
+        assert partie[0].signature == rangee.signature
+        assert partie[0].to_dict() == rangee.to_dict()
+
+    def test_ce_qui_dort_dans_la_file_est_deja_scelle(self, mesh):
+        """Ce qui attend est exactement ce qui partira. Sceller au moment de
+        l'envoi, des heures plus tard, supposerait que la clé du pair n'a pas
+        changé entre-temps — et obligerait à re-signer."""
+        from diapason.mesh.scellement import SENTINELLE
+
+        rangee = self._sceller_dans_la_file(mesh, LAPTOP)
+        sur_le_fil = rangee.to_dict()
+        assert sur_le_fil["tool"] == SENTINELLE, (
+            "la commande en file n'a pas été scellée"
+        )
+        assert set(sur_le_fil["arguments"]) == {"s", "e", "k"}

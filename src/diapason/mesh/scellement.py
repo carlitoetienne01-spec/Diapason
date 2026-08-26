@@ -464,10 +464,105 @@ def ouvrir_contenu(
     return outil, arguments, bool(charge.get("c"))
 
 
+def entete_de_routage(command: Any) -> bytes:
+    """Les octets qui collent un sceau à SON enveloppe.
+
+    Construits depuis les CHAMPS de l'objet, jamais depuis son dictionnaire :
+    ``confirmationId`` est conditionnel dans ``to_dict`` mais toujours présent
+    dans la dataclasse. Les deux côtés doivent calculer les mêmes octets, et
+    « parfois absent » n'est pas la même chose que « vide ».
+
+    Ce qui est ici est authentifié sans être chiffré : déplacer le blob vers
+    une autre commande casse le tag avant même que la signature ait son mot
+    à dire.
+    """
+    from diapason.mesh.identity import canonical_bytes
+
+    return canonical_bytes(
+        {
+            "version": command.version,
+            "commandId": command.command_id,
+            "ownerId": command.owner_id,
+            "originDeviceId": command.origin_device_id,
+            "targetDeviceId": command.target_device_id,
+            "createdAtMs": command.created_at_ms,
+            "expiresAtMs": command.expires_at_ms,
+            "nonce": command.nonce,
+            "idempotencyKey": command.idempotency_key,
+            "confirmationId": command.confirmation_id,
+        }
+    )
+
+
+def sceller_commande(command: Any, cle_pair_b64: str) -> Any:
+    """La même commande, dont le triplet part chiffré.
+
+    Les champs de l'objet gardent le CLAIR ; ``_extra["scelle"]`` porte ce
+    qui voyagera. C'est l'invariant décrit au-dessus de ``to_dict``.
+    """
+    from dataclasses import replace
+
+    scelle = contenu_scelle(
+        command.tool,
+        command.arguments,
+        command.requires_confirmation,
+        cle_pair_b64=cle_pair_b64,
+        command_id=command.command_id,
+        associe=entete_de_routage(command),
+    )
+    return replace(
+        command,
+        _extra={
+            **dict(command._extra or {}),
+            "scelle": {
+                "tool": SENTINELLE,
+                "arguments": scelle,
+                # TOUJOURS vrai sur une enveloppe scellée : sinon ce booléen
+                # désignerait `desktop.open`, le seul outil du catalogue qui
+                # l'exige — c'est-à-dire précisément celui qu'on cache.
+                "requiresConfirmation": True,
+            },
+        },
+    )
+
+
+def desceller_commande(command: Any) -> Any:
+    """La commande rouverte, ses champs portant de nouveau le clair.
+
+    ``_extra["scelle"]`` conserve ce qui a été signé, pour que ``to_dict``
+    réémette l'enveloppe exacte : celle que le récepteur range dans sa file
+    doit encore vérifier sa propre signature.
+    """
+    from dataclasses import replace
+
+    outil, arguments, confirmation = ouvrir_contenu(
+        command.arguments,
+        command_id=command.command_id,
+        associe=entete_de_routage(command),
+    )
+    return replace(
+        command,
+        tool=outil,
+        arguments=arguments,
+        requires_confirmation=confirmation,
+        _extra={
+            **dict(command._extra or {}),
+            "scelle": {
+                "tool": command.tool,
+                "arguments": command.arguments,
+                "requiresConfirmation": command.requires_confirmation,
+            },
+        },
+    )
+
+
 __all__ = [
     "FRAICHEUR_MS",
     "ScellementExige",
     "bloc_sceau",
+    "desceller_commande",
+    "entete_de_routage",
+    "sceller_commande",
     "doit_sceller",
     "mode_de_chiffrement",
     "lire_bloc_sceau",

@@ -571,3 +571,106 @@ class TestLesClesDeScellementSEchangent:
         hote_dit = reponse.get("host") or {}
         for champ in ("deviceId", "publicKey", "ownerId", "address", "capabilities"):
             assert champ in hote_dit, f"le jumelage a perdu « {champ} »"
+
+
+class TestUneCommandeScelleeTraverse:
+    """Étape 6, sur deux VRAIS processus : le maillage chiffre pour de bon.
+
+    C'est ici que le comportement change. Les étapes 1 à 5 ont posé la
+    cryptographie, le registre, la forme sur le fil et la décision ; celle-ci
+    les branche.
+    """
+
+    def _jumeler(self, hote, tmp_path, monkeypatch, nom):
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": nom}, cle=hote.cle
+        )
+        assert invitation.get("pairingToken"), f"invitation refusée : {invitation}"
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
+        from diapason.mesh.join import join_fleet
+
+        return join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+    def test_le_contenu_ne_traverse_plus_en_clair(self, hote, tmp_path, monkeypatch):
+        """Ce que verrait quelqu'un qui écoute le Wi-Fi."""
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.mesh.scellement import SENTINELLE
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "chiffreur")
+        registre = DeviceRegistry()
+        assert registre.seal_key_of(jumelage.host_device_id) is not None, (
+            "le jumelage aurait dû apporter la clé de l'hôte"
+        )
+
+        vu_sur_le_fil = {}
+
+        def espion(commande, appareil):
+            from diapason.mesh.transport import deliver
+
+            vu_sur_le_fil.update(commande.to_dict())
+            return deliver(commande, appareil)
+
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="notifications.show",
+            arguments={"title": "Rendez-vous chez le notaire", "body": "14 h"},
+            registry=registre,
+            queue=CommandQueue(),
+            transport=espion,
+        )
+        assert issue["status"] == "SUCCESS", issue
+
+        assert vu_sur_le_fil["tool"] == SENTINELLE
+        entier = str(vu_sur_le_fil)
+        assert "notifications.show" not in entier
+        assert "notaire" not in entier, "le titre a traversé en clair"
+        assert set(vu_sur_le_fil["arguments"]) == {"s", "e", "k"}
+
+    def test_le_destinataire_l_ouvre_et_l_execute(self, hote, tmp_path, monkeypatch):
+        """Le sceau ne sert à rien si le pair n'en fait rien."""
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "executeur")
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="app.navigate",
+            arguments={"route": "success://projects/secret"},
+            registry=DeviceRegistry(),
+            queue=CommandQueue(),
+        )
+        assert issue["status"] == "SUCCESS", issue
+        assert "n'existe pas" not in str(issue.get("userSafeMessage") or "")
+
+    def test_une_commande_claire_passe_toujours(self, hote, tmp_path, monkeypatch):
+        """Le chemin du téléphone : sans clé publiée, rien ne change."""
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.mesh.scellement import SENTINELLE
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "en-clair")
+        registre = DeviceRegistry()
+        registre.forget_seal_key(jumelage.host_device_id)
+
+        vu = {}
+
+        def espion(commande, appareil):
+            from diapason.mesh.transport import deliver
+
+            vu.update(commande.to_dict())
+            return deliver(commande, appareil)
+
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="app.navigate",
+            arguments={"route": "success://projects/x"},
+            registry=registre,
+            queue=CommandQueue(),
+            transport=espion,
+        )
+        assert issue["status"] == "SUCCESS", issue
+        assert vu["tool"] == "app.navigate" and vu["tool"] != SENTINELLE
