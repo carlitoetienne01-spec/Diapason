@@ -45,6 +45,51 @@ _CHAMPS_SIGNES = (
     "ephemeralPublicKey",
 )
 
+# LA RÉPONSE AUSSI SE SIGNE, et elle ne le faisait pas.
+#
+# L'offre entrante était signée ; la réponse ne l'était pas. Or elle porte
+# `ephemeralPublicKey` — la moitié de clé dont l'émetteur DÉRIVE la clé de
+# session, sur parole (`envoi_fichier.py`). Quiconque se plaçait entre les
+# deux appareils n'avait qu'à substituer sa propre moitié pour partager la
+# clé avec l'émetteur, et lire le contenu de CHAQUE fichier transféré. Tout
+# le chiffrement de `coffre.py` reposait sur un octet non authentifié.
+#
+# Inoffensif tant que la route n'écoutait que sur la loopback ; elle a été
+# ouverte au réseau le 26 août 2026, et corrigée le même jour.
+#
+# `status` en fait partie : sans lui, un intercepteur forge un
+# « ALREADY_PRESENT » et l'émetteur croit son fichier arrivé sans que rien
+# ne soit parti.
+_CHAMPS_REPONSE = (
+    "version",
+    "ownerId",
+    "deviceId",
+    "sentAtMs",
+    "status",
+    "sessionId",
+    "ephemeralPublicKey",
+)
+
+
+def _repondre(corps: dict[str, Any]) -> dict[str, Any]:
+    """Signer une réponse d'offre avec l'identité de CETTE machine."""
+    import time as _time
+
+    from diapason.mesh.identity import device_identity, owner_id
+    from diapason.mesh.signed import sign_payload
+
+    complet = {
+        "version": 1,
+        "ownerId": owner_id(),
+        "deviceId": device_identity().device_id,
+        "sentAtMs": int(_time.time() * 1000),
+        "sessionId": "",
+        "ephemeralPublicKey": "",
+        **corps,
+    }
+    return sign_payload(complet, _CHAMPS_REPONSE)
+
+
 # Une session abandonnée ne doit pas tenir le disque indéfiniment.
 _TTL_SESSION_S = 3600.0
 # Au-delà, quelqu'un essaie autre chose que de partager un fichier.
@@ -158,11 +203,15 @@ def offrir(body: Offre) -> dict[str, Any]:
     # l'annoncer coûte une réponse, le transférer coûterait le fichier.
     existant = deja_present(manifeste, dossier)
     if existant is not None:
-        return {
-            "status": "ALREADY_PRESENT",
-            "path": str(existant),
-            "userSafeMessage": f"« {existant.name} » est déjà là — rien à envoyer.",
-        }
+        return _repondre(
+            {
+                "status": "ALREADY_PRESENT",
+                "path": str(existant),
+                "userSafeMessage": (
+                    f"« {existant.name} » est déjà là — rien à envoyer."
+                ),
+            }
+        )
 
     session_id = secrets.token_urlsafe(18).replace("-", "_")[:32]
     try:
@@ -192,13 +241,15 @@ def offrir(body: Offre) -> dict[str, Any]:
         device_id,
         manifeste.taille,
     )
-    return {
-        "status": "ACCEPTED",
-        "sessionId": session_id,
-        "uploadToken": jeton,
-        "ephemeralPublicKey": demi.publique_b64,
-        "missing": reception.manquants,
-    }
+    return _repondre(
+        {
+            "status": "ACCEPTED",
+            "sessionId": session_id,
+            "uploadToken": jeton,
+            "ephemeralPublicKey": demi.publique_b64,
+            "missing": reception.manquants,
+        }
+    )
 
 
 def _session_autorisee(session_id: str, request: Request) -> _Session:

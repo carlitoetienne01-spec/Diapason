@@ -399,3 +399,85 @@ class TestUnFichierTraverse:
             raise AssertionError("un jeton inventé ne doit rien déposer")
         except urllib.error.HTTPError as exc:
             assert exc.code == 403
+
+
+class TestUnIntercepteurNeLitPasLeFichier:
+    """La réponse à l'offre porte la moitié de clé dont la session est tirée.
+
+    Elle n'était PAS signée, et l'émetteur en dérivait la clé sur parole
+    (`envoi_fichier.py`). Quiconque se plaçait entre les deux appareils —
+    un point d'accès complaisant, une usurpation ARP — n'avait qu'à
+    substituer sa propre moitié : il partageait alors la clé avec
+    l'émetteur et lisait le contenu de CHAQUE fichier transféré. Tout le
+    chiffrement de `coffre.py` reposait sur un octet que personne n'avait
+    signé.
+
+    Inoffensif tant que la route n'écoutait que sur la loopback ; elle a
+    été ouverte au réseau le 26 août 2026, et corrigée le même jour.
+    """
+
+    def _jumeler(self, hote, tmp_path, monkeypatch, nom):
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": nom}, cle=hote.cle
+        )
+        assert invitation.get("pairingToken"), f"invitation refusée : {invitation}"
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
+        from diapason.mesh.join import join_fleet
+
+        return join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+    def test_une_moitie_de_cle_substituee_est_refusee(
+        self, hote, tmp_path, monkeypatch
+    ):
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.envoi_fichier import (
+            EnvoiRefuse,
+            _poster,
+            envoyer_fichier,
+        )
+        from diapason.mesh.registry import DeviceRegistry
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "intercepte")
+        source = tmp_path / "secret.bin"
+        source.write_bytes(b"CE QUE PERSONNE D'AUTRE NE DOIT LIRE " * 500)
+
+        celle_de_l_attaquant = nouvelle_demi_cle()
+
+        def intercepter(url, corps, jeton):
+            reponse = _poster(url, corps, jeton)
+            if url.endswith("/files/offer"):
+                # L'attaquant laisse tout passer et ne change QUE la moitié
+                # de clé : c'est la substitution la plus discrète possible,
+                # et jusqu'au 26 août 2026 elle suffisait.
+                reponse = dict(reponse)
+                reponse["ephemeralPublicKey"] = celle_de_l_attaquant.publique_b64
+            return reponse
+
+        cible = DeviceRegistry().get(jumelage.host_device_id)
+        with pytest.raises(EnvoiRefuse) as refus:
+            envoyer_fichier(source, cible, poster=intercepter)
+        assert "transfert refusée" in str(refus.value), str(refus.value)
+
+    def test_une_reponse_deja_present_forgee_ne_fait_pas_croire_a_un_envoi(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """Sans signature sur `status`, un intercepteur répondait « déjà
+        là » et l'émetteur croyait son fichier arrivé sans qu'un seul octet
+        soit parti."""
+        from diapason.mesh.envoi_fichier import EnvoiRefuse, envoyer_fichier
+        from diapason.mesh.registry import DeviceRegistry
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "menteur")
+        source = tmp_path / "rapport.bin"
+        source.write_bytes(b"x" * 4096)
+
+        def mentir(url, corps, jeton):
+            return {
+                "status": "ALREADY_PRESENT",
+                "path": "/tmp/rien",
+                "userSafeMessage": "Déjà là — rien à envoyer.",
+            }
+
+        cible = DeviceRegistry().get(jumelage.host_device_id)
+        with pytest.raises(EnvoiRefuse):
+            envoyer_fichier(source, cible, poster=mentir)

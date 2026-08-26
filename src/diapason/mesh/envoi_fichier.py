@@ -81,6 +81,42 @@ def envoyer_fichier(
     envoyer = poster or _poster
     reponse = envoyer(f"{base}/v1/mesh/files/offer", offre, None)
 
+    # LA RÉPONSE SE VÉRIFIE AVANT D'EN TIRER QUOI QUE CE SOIT.
+    #
+    # Elle porte `ephemeralPublicKey`, dont la clé de session est dérivée
+    # trois lignes plus bas. Non vérifiée, n'importe qui placé entre les deux
+    # appareils substituait sa propre moitié, partageait la clé avec nous, et
+    # lisait le contenu du fichier — tout le chiffrement de `coffre.py`
+    # reposait sur un octet que personne n'avait signé.
+    #
+    # Et l'on vérifie AVANT de traiter « ALREADY_PRESENT » : sans quoi un
+    # intercepteur forge cette réponse, et nous croyons le fichier arrivé sans
+    # qu'un seul octet soit parti.
+    from diapason.mesh.files_routes import _CHAMPS_REPONSE
+    from diapason.mesh.registry import DeviceRegistry
+    from diapason.mesh.signed import SignedRejected, verify_payload
+
+    try:
+        signataire = verify_payload(
+            reponse,
+            fields=_CHAMPS_REPONSE,
+            version=1,
+            registry=DeviceRegistry(),
+            local_owner_id=owner_id(),
+            local_device_id=device_identity().device_id,
+            now_ms=int(time.time() * 1000),
+            subject="réponse de transfert",
+        )
+    except SignedRejected as exc:
+        raise EnvoiRefuse(f"Réponse de transfert refusée : {exc}") from exc
+
+    # Signée par un pair de la flotte, oui — mais par CELUI qu'on visait ?
+    # Sans ce contrôle, un autre appareil jumelé pourrait se glisser à la
+    # place du destinataire.
+    vise = str(device.get("deviceId") or "")
+    if vise and signataire != vise:
+        raise EnvoiRefuse(f"La réponse vient de {signataire}, pas de l'appareil visé.")
+
     if reponse.get("status") == "ALREADY_PRESENT":
         return Envoi(
             statut="ALREADY_PRESENT",
