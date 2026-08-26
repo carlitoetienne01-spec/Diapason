@@ -12,7 +12,23 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    # RUNNER AUTO-HEBERGE — pansement, pas solution. A retirer quand la
+    # facturation GitHub sera reglee (voir CLAUDE.md, section 2).
+    #
+    # Depuis le 24 aout 2026, aucun runner heberge par GitHub ne demarre :
+    # « recent account payments have failed ». Mesure le 26 aout : un runner
+    # AUTO-HEBERGE demarre, lui — le blocage ne porte que sur les minutes
+    # facturees. Ce job tourne donc sur le Mac de Carlito.
+    #
+    # CE QUE CELA COUTE, et il faut le savoir : ce job verifiait Ubuntu, il
+    # verifie maintenant macOS. Un defaut propre a Linux — un chemin, une
+    # locale, une permission, une dependance systeme — ne sera plus attrape.
+    # Un test qui tourne sur macOS vaut mieux qu'un test qui ne tourne pas,
+    # mais ce n'est pas le meme test.
+    #
+    # POUR REVENIR EN ARRIERE : remplacer la ligne ci-dessous par
+    #     runs-on: ubuntu-latest
+    runs-on: [self-hosted, macos-local]
     steps:
       - uses: actions/checkout@v6
 
@@ -54,7 +70,27 @@ jobs:
           GITLEAKS_VERSION: "8.30.0"
 
   test:
-    runs-on: ubuntu-latest
+    # RUNNER AUTO-HEBERGE — pansement, pas solution. A retirer quand la
+    # facturation GitHub sera reglee (voir CLAUDE.md, section 2).
+    #
+    # Depuis le 24 aout 2026, aucun runner heberge par GitHub ne demarre :
+    # « recent account payments have failed ». Mesure le 26 aout : un runner
+    # AUTO-HEBERGE demarre, lui — le blocage ne porte que sur les minutes
+    # facturees. Ce job tourne donc sur le Mac de Carlito.
+    #
+    # CE QUE CELA COUTE, et il faut le savoir : ce job verifiait Ubuntu, il
+    # verifie maintenant macOS. Un defaut propre a Linux — un chemin, une
+    # locale, une permission, une dependance systeme — ne sera plus attrape.
+    # Un test qui tourne sur macOS vaut mieux qu'un test qui ne tourne pas,
+    # mais ce n'est pas le meme test.
+    #
+    # POUR REVENIR EN ARRIERE : remplacer la ligne ci-dessous par
+    #     runs-on: ubuntu-latest
+    #
+    # Note propre a CE job : `-n auto` occupe tous les coeurs. Pendant une
+    # execution, la machine est prise. C'est le prix d'une CI qui tourne
+    # chez soi.
+    runs-on: [self-hosted, macos-local]
     steps:
       - uses: actions/checkout@v6
 
@@ -114,7 +150,14 @@ jobs:
   # the Ubuntu `test` job can never reach: GlobalMemoryStatusEx RAM detection
   # (#373) and the cp9xx -> UTF-8 stdout reconfigure (#293). Also the only CI
   # job that builds + imports the mandatory `diapason_rust` PyO3 extension
-  # on Windows. Public repo -> Windows runner minutes are free.
+  # on Windows.
+  #
+  # This used to read "Public repo -> Windows runner minutes are free".
+  # The repository is PRIVATE, so Windows minutes are billed at 2x and
+  # macOS at 10x. The sentence was not merely stale: it was the reason
+  # nobody weighed what this matrix costs. As of 25 August 2026 no CI job
+  # starts at all -- "recent account payments have failed" -- so nothing
+  # here has been verified since. See CLAUDE.md, section 2.
   #
   # All `run:` steps use static commands only (no `github.event.*`
   # interpolation), so there is no workflow-injection surface here.
