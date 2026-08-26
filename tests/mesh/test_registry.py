@@ -12,7 +12,12 @@ import sqlite3
 
 import pytest
 
-from diapason.mesh.capabilities import effective_capabilities, platform_allows
+from diapason.mesh.capabilities import (
+    ALL_CAPABILITIES,
+    PLATFORM_CAPABILITIES,
+    effective_capabilities,
+    platform_allows,
+)
 from diapason.mesh.registry import (
     PAIRING_TTL_MS,
     DeviceRegistry,
@@ -204,14 +209,18 @@ class TestCapabilityGrants:
                 "tasks.read",
                 "app.navigate",
                 "automation.approved.run",  # the lie
-                "filesystem.workspace.write",  # also impossible on iOS
+                "desktop.open",  # also impossible on iOS
             ],
         )
         # What it claimed is recorded honestly…
         assert "automation.approved.run" in device["declaredCapabilities"]
         # …and what it GETS excludes what iOS cannot honour.
         assert "automation.approved.run" not in device["capabilities"]
-        assert "filesystem.workspace.write" not in device["capabilities"]
+        # `desktop.open` and not a made-up verb: `effective_capabilities`
+        # silently DROPS an unknown one (see the test below), so asserting
+        # against a verb outside the vocabulary would pass while proving
+        # nothing. This one is in the vocabulary and outside the iOS ceiling.
+        assert "desktop.open" not in device["capabilities"]
         assert device["capabilities"] == ["app.navigate", "tasks.read"]
 
     def test_a_mac_gets_what_it_declares(self, registry):
@@ -245,7 +254,7 @@ class TestCapabilityGrants:
 
     def test_the_web_is_a_client_not_a_system_agent(self):
         assert not platform_allows("WEB", "automation.approved.run")
-        assert not platform_allows("WEB", "filesystem.workspace.read")
+        assert not platform_allows("WEB", "desktop.open")
         assert platform_allows("WEB", "app.navigate")
 
 
@@ -306,3 +315,41 @@ class TestRevocation:
         registry.revoke("dev_phone")
         with pytest.raises(MeshError, match="autorisé"):
             registry.declare_capabilities("dev_phone", ["automation.approved.run"])
+
+
+class TestAucunVerbeDeFichier:
+    """§5 — une capacité que rien n'exerce est une promesse en attente.
+
+    `filesystem.workspace.read` et `.write` ont vécu dans ce vocabulaire
+    depuis le jour où il a été écrit, sans que personne ne les déclare
+    jamais : un Diapason DÉRIVE sa déclaration du catalogue d'outils, qui
+    compte cinq verbes dont aucun ne touche un fichier ; le client Dart en
+    déclare trois ; les deux appareils réellement appairés en déclarent
+    quatre et trois.
+
+    Elles étaient pires qu'inertes : `mesh/files_routes.py` est juste à côté
+    et écrit vraiment des fichiers, si bien qu'un relecteur y voyait la garde
+    de cette route — qui ne les a jamais consultées. Retirées le 25 août
+    2026. Ce test empêche qu'un verbe de fichier revienne sans le contrôle
+    qui l'exerce.
+    """
+
+    def test_le_vocabulaire_ne_promet_aucune_ecriture_de_fichier(self):
+        fautifs = sorted(c for c in ALL_CAPABILITIES if c.startswith("filesystem."))
+        assert not fautifs, (
+            f"{fautifs} : un verbe de fichier ne se déclare qu'avec le contrôle "
+            "qui l'exerce, sinon il finit par se faire promettre."
+        )
+
+    def test_aucun_plafond_n_accorde_d_ecriture_de_fichier(self):
+        for plateforme, plafond in PLATFORM_CAPABILITIES.items():
+            fautifs = sorted(c for c in plafond if c.startswith("filesystem."))
+            assert not fautifs, f"le plafond {plateforme} accorde {fautifs}"
+
+    def test_le_plafond_android_ne_depasse_plus_celui_d_ios(self):
+        """Le seul verbe qui les distinguait était `filesystem.workspace.read`.
+
+        S'ils divergent de nouveau, que ce soit un choix écrit — pas un
+        résidu.
+        """
+        assert PLATFORM_CAPABILITIES["ANDROID"] == PLATFORM_CAPABILITIES["IOS"]

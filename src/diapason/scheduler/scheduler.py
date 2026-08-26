@@ -73,6 +73,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _describe_denials(denials: List[Dict[str, Any]]) -> str:
+    """Name what was refused, so a red "no" carries its reason.
+
+    The tool and the capability both: "denied" alone sends someone to read
+    the agent's answer looking for a fault that is not in it.
+    """
+    par_outil: Dict[str, set] = {}
+    for denial in denials:
+        outil = str(denial.get("tool") or "?")
+        par_outil.setdefault(outil, set()).add(str(denial.get("capability") or "?"))
+    details = ", ".join(
+        f"{outil} ({', '.join(sorted(caps))})"
+        for outil, caps in sorted(par_outil.items())
+    )
+    nombre = len(denials)
+    pluriel = "s" if nombre > 1 else ""
+    return (
+        f"{nombre} tool call{pluriel} denied by the capability policy: {details}. "
+        "The tick ran, but it could not do what it is configured to do."
+    )
+
+
 class TaskScheduler:
     """Scheduler that polls for due tasks and executes them.
 
@@ -216,6 +238,36 @@ class TaskScheduler:
         result_text = ""
         error_text = ""
 
+        # A tick whose tool calls were DENIED is not a successful tick.
+        #
+        # ``success = True`` used to be set on the sole ground that
+        # ``system.ask`` returned. But a denied capability does not raise: the
+        # executor turns it into a tool result reading "Capability 'x' denied",
+        # the agent reads that like any other output and carries on to a
+        # perfectly fluent answer. So an operator that was allowed to do
+        # nothing at all recorded a green "yes", every five minutes, forever —
+        # the §100 failure (never a false SUCCESS) in the one place nobody
+        # watches, an unattended log.
+        #
+        # The signal already existed: ``ToolExecutor`` publishes
+        # CAPABILITY_DENIED on the bus. Listening for the duration of the tick
+        # costs nothing and invents nothing. Denials are filtered by agent
+        # because this bus is shared — the poll loop runs tasks one at a time,
+        # so no second scheduled task can interleave, but a chat turn running
+        # under a different agent could, and its refusals are not this tick's.
+        denials: List[Dict[str, Any]] = []
+        listener = None
+        if self._bus is not None:
+            from diapason.core.events import EventType
+
+            def _note_denial(event: Any) -> None:
+                data = getattr(event, "data", None) or {}
+                if str(data.get("agent_id") or "") == str(task.agent or ""):
+                    denials.append(data)
+
+            listener = _note_denial
+            self._bus.subscribe(EventType.CAPABILITY_DENIED, listener)
+
         try:
             meta = task.metadata or {}
             kind = str(meta.get("diapason_kind") or "").strip()
@@ -266,6 +318,17 @@ class TaskScheduler:
             error_text = str(exc)
             logger.error("Task %s failed: %s", task.id, exc)
             success = False
+        finally:
+            if listener is not None and self._bus is not None:
+                from diapason.core.events import EventType
+
+                self._bus.unsubscribe(EventType.CAPABILITY_DENIED, listener)
+
+        # A crash already has its own headline; do not bury it under this one.
+        if success and denials:
+            success = False
+            error_text = _describe_denials(denials)
+            logger.warning("Task %s: %s", task.id, error_text)
 
         finished_at = _now_iso()
 

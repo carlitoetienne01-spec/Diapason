@@ -177,11 +177,28 @@ class DropboxConnector(BaseConnector):
         delete_tokens(self._credentials_path)
 
     def auth_url(self) -> str:
-        """Return a Dropbox OAuth consent URL requesting file access scopes."""
+        """Return a Dropbox OAuth consent URL requesting file access scopes.
+
+        Without a stored ``app_key``, this returns the Dropbox App Console
+        rather than a consent URL — the same rule the Google connectors
+        follow. A consent URL with an empty ``client_id`` is not degraded,
+        it is broken: Dropbox answers ``invalid_request``, and the user
+        goes looking for the fault on their own side.
+
+        Note that unlike Google, Dropbox has no entry in ``OAUTH_PROVIDERS``:
+        there is no server-side ``/oauth/start`` path for it, so this URL is
+        the only one on offer.
+        """
         from urllib.parse import urlencode
 
+        tokens = load_tokens(self._credentials_path)
+        client_id = ""
+        if tokens:
+            client_id = tokens.get("client_id", "") or tokens.get("app_key", "")
+        if not client_id:
+            return "https://www.dropbox.com/developers/apps"
         params = {
-            "client_id": "",  # placeholder — real client_id from config
+            "client_id": client_id,
             "response_type": "code",
             "token_access_type": "offline",
             "scope": " ".join(_DROPBOX_SCOPES),

@@ -353,6 +353,21 @@ def receive_command(
     nonces = nonces or NonceStore()
     identity = device_identity()
 
+    # Un refus fait ÉCHO à ce qui a été demandé ; il ne se présente pas.
+    #
+    # Ces deux chemins renvoyaient `identity.device_id` — l'identifiant
+    # permanent de cette machine. Un expéditeur légitime le connaît déjà : il
+    # vient de l'écrire dans son enveloppe, et le recevoir en retour ne lui
+    # apprend rien. Mais cette route vit hors du mur d'authentification, et
+    # le 26 août 2026 un POST au corps vide, sans la moindre créance, a
+    # obtenu « mac-73d5a8b0c742888a » depuis le Wi-Fi. Un identifiant stable
+    # est ce avec quoi on suit une machine d'un réseau à l'autre.
+    def _cible_demandee() -> str:
+        try:
+            return str(raw.get("targetDeviceId") or "")
+        except AttributeError:
+            return ""
+
     try:
         command = verify_command(
             raw,
@@ -364,7 +379,7 @@ def receive_command(
     except CommandRejected as exc:
         return {
             "commandId": str(raw.get("commandId") or ""),
-            "targetDeviceId": identity.device_id,
+            "targetDeviceId": _cible_demandee(),
             "status": exc.code,
             "errorCode": exc.code,
             "userSafeMessage": exc.message,
@@ -376,7 +391,7 @@ def receive_command(
         logger.info("commande illisible refusée : %s", type(exc).__name__)
         return {
             "commandId": "",
-            "targetDeviceId": identity.device_id,
+            "targetDeviceId": _cible_demandee(),
             "status": "DENIED",
             "errorCode": "MALFORMED",
             "userSafeMessage": "Cette commande est illisible.",

@@ -33,6 +33,12 @@ Every item carries a maturity tag:
 | **Ready** | Well-scoped, implementation path is clear | Pick it up — check [issues](https://github.com/carlitoetienne01-spec/Diapason/issues) for a spec or write one |
 | **Design Needed** | Concept is clear but needs a spec before code | Start a [design discussion](https://github.com/carlitoetienne01-spec/Diapason/discussions) or draft an RFC |
 | **Research-Stage** | Exploratory, needs investigation before designing | Read the relevant papers, prototype, share findings |
+| ~~**Done**~~ | Shipped since this page was written | Nothing to do — the row is kept, struck through, so nobody rebuilds it |
+
+A roadmap that still advertises finished work is worse than one that is out
+of date: it sends a contributor to rebuild something that already exists, and
+they only find out at review time. Struck-through rows say what landed and
+where, so the claim can be checked in one `grep`.
 
 ---
 
@@ -45,8 +51,8 @@ Operators are Diapason's key differentiator — persistent, scheduled, stateful 
 | Item | Maturity | Details |
 |------|----------|---------|
 | Operator health checks & heartbeat monitoring | **Ready** | Add liveness probes to OperatorManager; surface in `diapason operators status`. Detect stalled operators beyond the existing reconciliation loop. |
-| Metrics collection for operator manifests | **Ready** | The `metrics` field exists in `OperatorManifest` but is not collected. Wire it to telemetry. **Good first issue.** |
-| Capability policy enforcement | **Ready** | `required_capabilities` field exists in manifests but is not enforced. Connect to the existing RBAC `CapabilityPolicy` system. **Good first issue.** |
+| Metrics collection for operator manifests | **Ready** | Half-built, which is worse than untouched: `OperatorManager.collect_metrics()` exists and reads the manifest's `metrics` list, but **nothing calls it** — zero call sites in `src/` and `tests/`. The remaining work is not to write the collector, it is to wire it to a tick and to `diapason operators status`. Check the call sites before starting. |
+| ~~Capability policy enforcement~~ | **Done** | Landed as `operators/capability_guard.py`, checked in `activate()` and `run_once()`. Note that the advice in this row was wrong and would have shipped a broken feature: connecting straight to `CapabilityPolicy` refuses *every* operator on a default install, because the grants an operator runs under are the ones `ToolExecutor` gives itself at construction — which has not happened yet at activation. The guard therefore checks the vocabulary and consistency with the named tools on every install, and consults the policy only when an administrator supplied one. |
 | Rate limiting per operator | **Ready** | Prevent runaway operators from hammering inference. Add configurable rate limits to OperatorManager. |
 | Operator composition / chaining | **Design Needed** | Express dependencies between operators (operator A feeds results to operator B). Requires design for data passing and scheduling semantics. |
 | Event-driven operators | **Design Needed** | Operators that trigger on EventBus events (e.g., new file indexed, channel message received) rather than only cron/interval schedules. |
@@ -93,7 +99,7 @@ Personal AI's core tension: local models preserve privacy but lack capability; c
 | Item | Maturity | Details |
 |------|----------|---------|
 | Query complexity analyzer | **Ready** | Classify incoming queries by difficulty to decide local vs. cloud routing. Extends the existing `MultiEngine` routing logic. |
-| Cost tracking per-query | **Ready** | `CloudEngine` already has pricing data. Surface per-query cost in traces and telemetry dashboards. **Good first issue.** |
+| ~~Cost tracking per-query~~ | **Mostly done** | Wired end to end: `estimate_cost()` in `engine/cloud.py` → the response's `cost_usd` → `telemetry/instrumented_engine.py` and `wrapper.py` → the `cost_usd` column → `aggregator.py`. An unpriced model reports `$0.00` **and logs a warning**, because zero is indistinguishable from a free local run. What remains is narrower than the original item: one non-OpenAI path in `cloud.py` still hardcodes `0.0` instead of calling `estimate_cost()`. |
 | Redaction-before-cloud pipeline | **Ready** | Wire the existing `GuardrailsEngine` in REDACT mode as a mandatory pre-step before any cloud transmission. |
 | Minion protocol (sequential) | **Design Needed** | Local model extracts and summarizes long context → cloud model reasons over the compressed result. Native reimplementation of the core [Minions](https://github.com/HazyResearch/minions) idea. |
 | Minion protocol (parallel) | **Design Needed** | Local and cloud models work simultaneously on different aspects of a query; results are merged. Requires a new `HybridInferenceEngine` abstraction. |
@@ -132,7 +138,7 @@ Adding a new hardware target involves up to four components: hardware detection 
 | Item | Maturity | Details |
 |------|----------|---------|
 | AMD Ryzen AI iGPU path | **Ready** | Strix Point RDNA 3.5 iGPU handles 7-8B via Vulkan. llama.cpp Vulkan backend works today. Needs hardware detection and energy monitor. **Good first issue.** |
-| GPU specs database expansion | **Ready** | Add Intel Arc, Jetson Orin, Snapdragon specs to `GPU_SPECS` in `telemetry/gpu_monitor.py` (TFLOPS, bandwidth, TDP). **Good first issue.** |
+| ~~GPU specs database expansion~~ | **Done** | The three targets named here have landed in `GPU_SPECS` (`telemetry/gpu_monitor.py`): Arc B580/B570, Jetson Orin NX, Snapdragon X Elite/X Plus — alongside NVIDIA, AMD and Apple Silicon. Adding a *new* chip remains a good first issue; these three are no longer it. |
 | Intel Arc GPU (B580/B570) | **Design Needed** | 12GB VRAM, ~$250 consumer GPU. Viable for 7-8B models. Engine path: IPEX-LLM or llama.cpp SYCL backend. |
 | NVIDIA Jetson Orin | **Design Needed** | Best-in-class edge device. Orin NX 16GB handles 7-8B models at 15-25 tok/s. Needs hardware detection, energy monitor (tegrastats), deployment guide. |
 | Qualcomm Snapdragon X Elite NPU | **Design Needed** | 45 TOPS, Windows Arm laptops. ONNX Runtime + QNN Execution Provider is the viable path. |

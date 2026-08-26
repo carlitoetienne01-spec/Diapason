@@ -1226,6 +1226,25 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     )
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
+        # CE QUE LA MAIN TIENT, en dernier — donc au plus près du message de
+        # l'utilisateur, parce que c'est le fait le plus actionnable du lot.
+        # Sans lui, « envoie ça sur mon téléphone » n'avait aucun référent :
+        # le presse-papiers spatial n'était connu que du module des gestes,
+        # et la voix répondait sur ce que l'ÉCRAN affichait à cet instant.
+        #
+        # Main vide : on n'ajoute RIEN. Pas de « ta main est vide » — ce
+        # serait la phrase creuse du §5, présente à chaque tour de chaque
+        # session où les gestes ne sont jamais armés, et une invitation à
+        # commenter un état dont personne n'a parlé. L'OUTIL, lui, le dit
+        # franchement quand on l'appelle : parce qu'on l'a appelé.
+        try:
+            from diapason.desktop.presse_papiers_spatial import decrire, tenu
+
+            objet = tenu()
+            if objet is not None:
+                extra.append({"role": "system", "content": decrire(objet)})
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
         return hist + extra + [{"role": "user", "content": text}]
 
     @staticmethod

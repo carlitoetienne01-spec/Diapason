@@ -4,11 +4,33 @@
 <dict>
     <key>Label</key>
     <string>com.diapason.serve</string>
-    <!-- Binds loopback only: the personal-device default, reachable from this
-         Mac but not the network, so no API key is required. To expose it on
-         your LAN, change the host below to 0.0.0.0 AND uncomment the
-         EnvironmentVariables block to set an API key (an unauthenticated
-         0.0.0.0 server will refuse to start). -->
+    <!-- Deux sockets, un seul processus.
+
+         L'option « host » porte l'application COMPLÈTE sur 127.0.0.1 : chat,
+         voix, Succès, outils, interface. Elle ne quitte pas cette machine.
+
+         L'option « lan-host » expose un SECOND socket qui ne monte que neuf
+         routes du maillage : jumelage par invitation, commandes, présence et
+         transfert de fichiers. Le chat n'y existe pas — une requête vers
+         /v1/chat/completions y rend 404, pas 401. Ces neuf routes portent une
+         créance plus forte que la clé d'API : signature Ed25519 de
+         l'appareil, invitation à usage unique, ou jeton de session.
+
+         CE SECOND SOCKET N'EST PAS LIVRÉ ACTIF. Sans lui, rien n'écoute hors
+         de cette machine, et c'est le défaut. Pour l'ouvrir, ajoutez quatre
+         entrées à ProgramArguments ci-dessous : « lan-host » suivi de
+         « 0.0.0.0 », puis « lan-port » suivi de « 8001 », chaque nom d'option
+         précédé de deux tirets. Les écrire ici en toutes lettres n'est pas
+         une coquetterie — un commentaire XML ne peut pas contenir deux
+         tirets consécutifs, donc ces lignes ne PEUVENT pas être livrées
+         commentées. Elles s'ajoutent, ou elles n'existent pas.
+
+         NE METTEZ JAMAIS 0.0.0.0 sur « host ». C'était le cas sur la machine
+         de développement jusqu'au 26 août 2026, et les deux cent dix routes
+         étaient joignables depuis le Wi-Fi : protégées par la clé, mais
+         joignables — et une requête non signée y obtenait l'identifiant
+         permanent de la machine. Une seule route qui oublierait sa
+         protection aurait été exposée le jour même. -->
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/diapason</string>

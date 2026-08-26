@@ -18,6 +18,7 @@ appel à Vision, et seuls des points articulaires lui survivent.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
@@ -50,6 +51,11 @@ class _Session:
     vue_a: float = field(default_factory=time.monotonic)
     images: int = 0
     mains_vues: int = 0
+    # Quand une main a été vue pour la dernière fois — None tant qu'aucune ne
+    # l'a été. C'est le seul signal dont dépend l'état d'énergie (§83) : une
+    # session armée devant une chaise vide n'a aucune raison de filmer à
+    # douze images par seconde.
+    main_vue_a: Optional[float] = None
     derniers_etats: list = field(default_factory=list)
     # De quoi JUGER la fiabilité, comme le §141 l'exige : un geste n'est
     # fini que quand ses faux positifs sont mesurés. Le serveur ne peut pas
@@ -496,6 +502,10 @@ def etat() -> dict[str, Any]:
             "clapListening": claps_actifs(),
             "clapsHeard": _claps_entendus(),
             **_etat_des_claps(),
+            # Dire « OFF, zéro image » plutôt que d'omettre le champ : une
+            # interface qui lit `undefined` garde sa cadence précédente, et
+            # un mode désarmé continuerait de filmer.
+            **_energie(),
         }
     confiance = (
         _session.confiance_totale / _session.confiance_mesures
@@ -507,6 +517,7 @@ def etat() -> dict[str, Any]:
         "clapListening": claps_actifs(),
         "clapsHeard": _claps_entendus(),
         **_etat_des_claps(),
+        **_energie(),
         "state": _session.moteur.etat.value,
         "frames": _session.images,
         "handsSeen": _session.mains_vues,
@@ -535,6 +546,31 @@ def etat() -> dict[str, Any]:
         "journal": list(reversed(_session.journal)),
         "recentStates": list(_session.derniers_etats),
     }
+
+
+def _energie() -> dict[str, Any]:
+    """L'état d'énergie et la cadence à appliquer (§83).
+
+    Rendu par /state ET par /frame : passer par le seul sondage d'une
+    seconde ferait travailler l'interface à l'ancienne cadence pendant
+    jusqu'à une seconde après chaque changement — c'est-à-dire à chaque fois
+    qu'une main entre dans le champ, le moment où la cadence compte le plus.
+    """
+    from diapason.desktop.energie_gestes import Energie, batterie, cadence, etat_energie
+
+    if _session is None:
+        return {"energy": Energie.ETEINT.value, "fps": 0}
+    mesure = batterie()
+    depuis = (
+        None if _session.main_vue_a is None else time.monotonic() - _session.main_vue_a
+    )
+    etat = etat_energie(
+        armee=True,
+        depuis_derniere_main_s=depuis,
+        sur_batterie=bool(mesure and mesure[1]),
+        batterie_pct=mesure[0] if mesure else None,
+    )
+    return {"energy": etat.value, "fps": cadence(etat)}
 
 
 def _noter(quoi: str, detail: str, *, reussi: bool) -> None:
@@ -803,6 +839,50 @@ def _choix_public() -> Optional[dict]:
     }
 
 
+# ── Ce que la VOIX et le CHAT peuvent atteindre ─────────────────────────
+# Trois affectations, pas des alias d'import : `ruff --fix` supprime les
+# seconds en les jugeant inutilisés (CLAUDE.md §5). Elles existent pour que
+# `tools/gestes_spatiaux.py` réponde à la question posée par le geste au lieu
+# d'en ouvrir une seconde — sans quoi un clic à l'écran et une réponse à la
+# voix enverraient deux fois.
+choix_en_attente = _choix_en_attente
+
+
+def repondre_au_choix(attente: dict, cible: dict) -> dict[str, Any]:
+    """Trancher une question en attente, et rendre ce que le récepteur a dit.
+
+    Le jeton sert de clé d'idempotence : deux réponses — un clic ET une
+    phrase — n'envoient qu'une fois.
+    """
+    resultat = _issue_terminale(_envoyer(attente["objet"], cible, cle=attente["jeton"]))
+    if _session is not None:
+        _session.dernier_depot = resultat
+    _noter(
+        "déposé" if resultat.get("done") else "dépôt refusé",
+        str(resultat.get("message") or ""),
+        reussi=bool(resultat.get("done")),
+    )
+    return resultat
+
+
+def envoyer_ce_qui_est_tenu(objet: Any, cible: dict) -> dict[str, Any]:
+    """Envoyer la main vers un appareil, sans question préalable.
+
+    Le chemin de « envoie ça sur mon téléphone » quand aucune question n'est
+    en suspens. Même règle que partout : la main ne se vide que sur une issue
+    TERMINALE — un refus garde le poing fermé.
+    """
+    resultat = _issue_terminale(_envoyer(objet, cible))
+    if _session is not None:
+        _session.dernier_depot = resultat
+    _noter(
+        "déposé" if resultat.get("done") else "dépôt refusé",
+        str(resultat.get("message") or ""),
+        reussi=bool(resultat.get("done")),
+    )
+    return resultat
+
+
 class ChoixDAppareil(BaseModel):
     """La réponse à « vers lequel ? » : le jeton posé, et un appareil."""
 
@@ -844,15 +924,7 @@ def choisir_lappareil(body: ChoixDAppareil) -> dict[str, Any]:
             status_code=409,
             detail="Cet appareil ne faisait pas partie des candidats proposés.",
         )
-    # Le jeton sert de clé d'idempotence : deux clics n'envoient qu'une fois.
-    resultat = _issue_terminale(_envoyer(attente["objet"], cible, cle=attente["jeton"]))
-    _session.dernier_depot = resultat
-    _noter(
-        "déposé" if resultat.get("done") else "dépôt refusé",
-        str(resultat.get("message") or ""),
-        reussi=bool(resultat.get("done")),
-    )
-    return resultat
+    return repondre_au_choix(attente, cible)
 
 
 @router.post("/drop/cancel")
@@ -936,6 +1008,18 @@ async def image(request: Request) -> dict[str, Any]:
     _session.vue_a = time.monotonic()
     _session.images += 1
     try:
+        # UNE main, alors que Vision en lit deux — un choix, pas une limite.
+        # Le moteur n'a aucune notion d'identité de main : `observer()` reçoit
+        # une liste de points et rien d'autre. À deux mains il faudrait deux
+        # moteurs et une règle disant laquelle agit, sans quoi la seconde main
+        # de l'utilisateur — ou celle de quelqu'un qui passe — deviendrait un
+        # geste. Vision rend la plus SÛRE, ce qui est le bon défaut.
+        #
+        # La limite que ce choix ne corrige pas, et qu'il faut connaître :
+        # avec deux mains dans le champ, celle qui gagne peut CHANGER d'une
+        # image à l'autre. Le moteur verrait alors la main se téléporter, et
+        # comme une main perdue annule le geste (§12), le geste échoue —
+        # bruyamment, ce qui vaut mieux que de déposer au hasard.
         mains = mains_dans_les_octets(octets, mains_max=1)
     except Exception as exc:  # noqa: BLE001 - une image illisible n'arrête rien
         logger.debug("image de geste illisible", exc_info=True)
@@ -944,6 +1028,7 @@ async def image(request: Request) -> dict[str, Any]:
     points = mains[0] if mains else None
     if points:
         _session.mains_vues += 1
+        _session.main_vue_a = _session.vue_a
     if points:
         from diapason.desktop.gestes_main import mesurer
 
@@ -977,7 +1062,19 @@ async def image(request: Request) -> dict[str, Any]:
             )
         elif apres.value == "RELACHE":
             _session.relachements += 1
-            _session.dernier_depot = _deposer()
+            # DANS UN FIL, et ce n'est pas une précaution de style. Cette
+            # route est `async def`, donc elle s'exécute SUR la boucle
+            # d'événements — alors que `_deposer` finit dans `httpx.post`
+            # avec six secondes de délai d'attente (mesh/transport.py).
+            # Un appareil qui ne répond pas gelait donc tout : le WebSocket
+            # vocal, le flux du chat, la cloche d'approbation, et les images
+            # de geste suivantes. Six secondes de Diapason entier, pour un
+            # geste vers une machine éteinte.
+            #
+            # Les routes synchrones du module (`/drop/target`) n'ont pas ce
+            # défaut : Starlette les exécute déjà dans un fil. C'était
+            # `/frame`, et lui seul.
+            _session.dernier_depot = await asyncio.to_thread(_deposer)
             _noter(
                 "déposé" if _session.dernier_depot.get("done") else "dépôt refusé",
                 str(_session.dernier_depot.get("message") or ""),
@@ -994,6 +1091,7 @@ async def image(request: Request) -> dict[str, Any]:
         "changed": apres is not avant,
         "hand": bool(points),
         "frames": _session.images,
+        **_energie(),
     }
 
 

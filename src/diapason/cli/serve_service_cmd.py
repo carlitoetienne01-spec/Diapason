@@ -40,38 +40,80 @@ def _label():
 @click.option("--host", default=DEFAULT_HOST, show_default=True)
 @click.option("--port", default=DEFAULT_PORT, show_default=True, type=int)
 @click.option(
-    "--allow-network",
+    "--maillage-reseau",
     is_flag=True,
-    help="Autoriser une écoute au-delà du loopback (nécessaire au mesh : "
-    "un téléphone ne peut pas joindre 127.0.0.1).",
+    help="Ouvrir un SECOND socket pour que vos autres appareils atteignent "
+    "ce Mac. Neuf routes du maillage y sont exposées, signature d'appareil "
+    "exigée ; le chat, la voix et Succès restent sur la loopback.",
 )
-def install(host: str, port: int, allow_network: bool) -> None:
+@click.option(
+    "--lan-port",
+    default=8001,
+    show_default=True,
+    type=int,
+    help="Port du second socket, celui du maillage.",
+)
+@click.option("--allow-network", is_flag=True, hidden=True)
+def install(
+    host: str,
+    port: int,
+    maillage_reseau: bool,
+    lan_port: int,
+    allow_network: bool,
+) -> None:
     """Run the API server at login, in the background."""
     _require_macos()
     from diapason.desktop import launch_agent
 
-    if host not in ("127.0.0.1", "localhost", "::1") and not allow_network:
-        # Écouter au-delà du loopback expose l'API au réseau : c'est un choix
-        # délibéré, jamais un défaut. Mais le refus seul poussait à contourner
-        # — le plist installé sur cette machine portait « --host 0.0.0.0 »,
-        # écrit à la main, parce que le téléphone du mesh ne peut pas joindre
-        # 127.0.0.1. Un garde qu'on contourne ne garde rien : il vaut mieux
-        # nommer le cas légitime et le rendre explicite dans la commande.
+    if allow_network:
+        # Cette option mettait les DEUX CENT DIX routes sur le réseau. Elle
+        # existait pour un besoin légitime — « un téléphone ne peut pas
+        # joindre 127.0.0.1 » — auquel il n'y avait alors pas d'autre
+        # réponse. Il y en a une depuis : un second socket qui ne porte que
+        # neuf routes. Le besoin étant servi, l'échappatoire se referme.
+        #
+        # Elle échoue au lieu d'être un alias silencieux : la même commande
+        # ne doit pas se mettre à faire autre chose sans le dire.
         click.echo(
-            f"Refusing to bind {host!r} from a background service: it would "
-            "expose the API beyond this machine.\n"
-            "  • Pour un usage local : gardez 127.0.0.1.\n"
-            "  • Pour que votre téléphone (mesh) atteigne ce Mac : ajoutez "
-            "--allow-network, en connaissance de cause.",
+            "--allow-network n'existe plus : elle exposait l'API ENTIÈRE au "
+            "réseau, et c'est ainsi que ce Mac a servi deux cent dix routes "
+            "sur le Wi-Fi jusqu'au 26 août 2026.\n"
+            "  • Pour que vos autres appareils atteignent ce Mac : "
+            "--maillage-reseau, qui n'expose que les neuf routes du "
+            "maillage, signature d'appareil exigée.\n"
+            "  • L'application complète reste sur 127.0.0.1, toujours.",
             err=True,
         )
         sys.exit(1)
 
     if host not in ("127.0.0.1", "localhost", "::1"):
+        # Plus d'échappatoire. Le seul motif qu'on lui connaissait a
+        # désormais sa propre porte, plus étroite et mieux gardée.
         click.echo(
-            f"⚠ L'API écoutera sur {host!r} : toute machine de votre réseau "
-            "local pourra l'atteindre. Assurez-vous qu'une clé d'API est "
-            "exigée (voir `diapason config`).",
+            f"Refusing to bind {host!r} from a background service: it would "
+            "expose the API beyond this machine.\n"
+            "  • Pour un usage local : gardez 127.0.0.1.\n"
+            "  • Pour que vos autres appareils atteignent ce Mac : gardez "
+            "127.0.0.1 ET ajoutez --maillage-reseau.",
+            err=True,
+        )
+        sys.exit(1)
+
+    if maillage_reseau and lan_port == port:
+        click.echo(
+            f"--lan-port et --port valent tous deux {port} : deux serveurs "
+            "sur le même port se lient en silence sur macOS et échouent sur "
+            "Linux.",
+            err=True,
+        )
+        sys.exit(1)
+
+    if maillage_reseau:
+        click.echo(
+            f"⚠ Le maillage écoutera sur 0.0.0.0:{lan_port} : toute machine "
+            "de votre réseau local pourra l'atteindre. Neuf routes, "
+            "signature d'appareil exigée — mais un réseau partagé reste un "
+            "réseau partagé.",
             err=True,
         )
 
@@ -121,7 +163,12 @@ def install(host: str, port: int, allow_network: bool) -> None:
             host,
             "--port",
             str(port),
-        ],
+        ]
+        + (
+            ["--lan-host", "0.0.0.0", "--lan-port", str(lan_port)]
+            if maillage_reseau
+            else []
+        ),
     )
     click.echo(f"Installed LaunchAgent → {path}")
     if launch_agent.is_loaded(launch_agent.SERVE_LABEL):

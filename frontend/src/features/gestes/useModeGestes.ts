@@ -21,9 +21,14 @@ import {
   type EtatGeste,
 } from './api';
 
-// Le serveur reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle
-// locale, pas l'analyse. Douze images par seconde suffisent à un geste de
-// main et laissent la machine respirer.
+// La cadence de DÉPART, avant que le serveur ne dise la sienne. Le serveur
+// reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle locale, pas
+// l'analyse. Douze images par seconde suffisent à un geste de main.
+//
+// Elle ne reste pas à douze (§83) : le serveur rend `fps` avec chaque image,
+// et il tombe à trois quand aucune main n'a été vue depuis trois secondes.
+// Filmer une chaise vide à douze images par seconde pendant dix minutes,
+// c'était le prix que le mode armé coûtait sans rien rendre.
 const IMAGES_PAR_SECONDE = 12;
 const LARGEUR = 640;
 
@@ -55,13 +60,23 @@ export function useModeGestes(): ModeGestes {
   const boucle = useRef<number | null>(null);
   const enVol = useRef(false);
   const echecs = useRef(0);
+  // La cadence appliquée à cet instant. Un ref et non un state : la changer
+  // ne doit rien redessiner, seulement replanifier un minuteur.
+  const cadence = useRef(IMAGES_PAR_SECONDE);
+  const replanifier = useRef<((fps: number) => void) | null>(null);
 
   const eteindre = useCallback(() => {
     if (boucle.current !== null) {
       window.clearInterval(boucle.current);
       boucle.current = null;
     }
-    // Couper les pistes AVANT tout le reste : c'est ce qui éteint le voyant.
+    // L'ordre compte, deux fois. D'abord couper la replanification : une
+    // réponse d'image encore en vol appellerait `replanifier` après coup et
+    // rallumerait un minuteur sur une caméra éteinte. Ensuite couper les
+    // pistes — c'est ce qui éteint le voyant vert, et il doit s'éteindre
+    // avant tout le reste.
+    replanifier.current = null;
+    cadence.current = IMAGES_PAR_SECONDE;
     flux.current?.getTracks().forEach((piste) => piste.stop());
     flux.current = null;
     video.current = null;
@@ -99,6 +114,9 @@ export function useModeGestes(): ModeGestes {
       setEtat(reponse.state);
       setMainVue(reponse.hand);
       echecs.current = 0;
+      // §83 : le serveur décide, l'interface obéit. Elle ne devine jamais
+      // une cadence — elle ne sait pas si une main a été vue.
+      if (reponse.fps && reponse.fps > 0) replanifier.current?.(reponse.fps);
     } catch (exc) {
       // Un hoquet réseau ne doit pas tuer le mode ; trois d'affilée, si.
       echecs.current += 1;
@@ -149,10 +167,20 @@ export function useModeGestes(): ModeGestes {
     video.current = v;
     canevas.current = document.createElement('canvas');
     setActif(true);
-    boucle.current = window.setInterval(
-      () => void capturer(),
-      Math.round(1000 / IMAGES_PAR_SECONDE),
-    );
+    // Replanifier plutôt que de recréer le hook : la boucle est un minuteur,
+    // pas un état. On ne touche à rien tant que la cadence ne change pas —
+    // couper et relancer à chaque image ferait perdre des captures.
+    const poser = (fps: number) => {
+      if (fps === cadence.current && boucle.current !== null) return;
+      cadence.current = fps;
+      if (boucle.current !== null) window.clearInterval(boucle.current);
+      boucle.current = window.setInterval(
+        () => void capturer(),
+        Math.round(1000 / fps),
+      );
+    };
+    replanifier.current = poser;
+    poser(IMAGES_PAR_SECONDE);
   }, [capturer]);
 
   const basculerLesClaps = useCallback(() => {

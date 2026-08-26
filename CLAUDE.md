@@ -174,6 +174,10 @@ après. Voir `docs/succes-client-mobile.md`.
 | **Le `dblclick` n'arrive pas au WebView** | Détection maison et bouton visible ; un banc Chromium ne le reproduit pas. |
 | **L'app est signée *ad hoc*** | Le droit Accessibilité est révoqué à **chaque recompilation**. |
 | **Aucun runner macOS en CI** | Tout le code caméra / Vision / PyObjC / gestes n'est vérifié qu'à la main, sur cette machine. |
+| **Une route `async def` qui appelle du bloquant gèle TOUT** | Ce qu'une route `async` fait en ligne s'exécute **sur la boucle d'événements** : un `httpx.post` de 6 s y fige le WebSocket vocal, le flux du chat et la cloche d'approbation. Les routes `def` **synchrones**, elles, sont exécutées par Starlette dans un fil et n'ont pas ce défaut. Dans une route `async`, tout appel réseau ou disque passe par `await asyncio.to_thread(...)`. |
+| **Une restriction qu'un client peut lever est décorative** | `DEFAULT_VOICE_TOOL_IDS` était un *défaut*, pas un plafond : une trame WebSocket `tools: "mesh_send"` suffisait à obtenir l'outil que le test-fusible prétendait exclure. Toute liste venant du réseau se confronte au plafond du serveur — **restreindre, jamais élargir**. |
+| **`X = AutreClasse.methode` fige l'objet fonction** | L'emprunt est fait à la définition de la classe. Patcher `AutreClasse.methode` ensuite n'atteint pas la copie : dans un test, patche la classe qui emprunte, pas celle qui prête. |
+| **Un refus de capacité ne lève PAS d'exception** | `ToolExecutor` transforme un refus en *résultat d'outil* (« Capability 'x' denied »). Le modèle le lit comme n'importe quelle sortie et enchaîne sur une réponse parfaitement fluide. Tout code qui conclut « pas d'exception donc ça a marché » écrit un faux SUCCESS. Le signal existe : l'événement `CAPABILITY_DENIED` sur le bus. |
 | **Aucune migration SQLite** | Six bases dans `~/.diapason/` ; chacune crée son schéma à l'ouverture. |
 
 ---

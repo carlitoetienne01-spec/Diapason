@@ -323,9 +323,25 @@ class SlackConnector(BaseConnector):
         Uses ``user_scope`` (not ``scope``) so the install grants a User
         OAuth Token (``xoxp-``) — bot tokens (``xoxb-``) can't see human-
         to-human DMs and are rejected by :func:`handle_callback`.
+
+        Without a stored ``client_id``, this returns the Slack app dashboard
+        rather than a consent URL — the same rule the Google connectors
+        follow. A consent URL with an empty ``client_id`` is not degraded,
+        it is broken: Slack answers ``invalid_client_id``, and the user goes
+        looking for the fault on their own side.
+
+        Note that unlike Google, Slack has no entry in ``OAUTH_PROVIDERS``:
+        there is no server-side ``/oauth/start`` path for it, so this URL is
+        the only one on offer.
         """
+        tokens = load_tokens(self._credentials_path)
+        client_id = ""
+        if tokens:
+            client_id = tokens.get("client_id", "")
+        if not client_id:
+            return "https://api.slack.com/apps"
         params = {
-            "client_id": "",  # placeholder — real client_id from config
+            "client_id": client_id,
             "user_scope": _SLACK_USER_SCOPES,
             "redirect_uri": "http://localhost:8789/callback",
         }

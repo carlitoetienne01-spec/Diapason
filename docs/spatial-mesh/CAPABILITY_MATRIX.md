@@ -32,16 +32,24 @@ ce qu'un appareil déclare et de ce plafond — jamais l'union.
 | `notifications.show` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | `desktop.open` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `automation.approved.run` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `filesystem.workspace.read` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `filesystem.workspace.write` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `local_ai.available` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `tasks` / `projects` / `notes` / `habits` / `planning` (lecture) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | idem (écriture) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | `voice.input` / `voice.output` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-**21 capacités déclarables. Une plateforme inconnue tombe sur un plancher en
-lecture seule** — fail-closed, et c'est le bon défaut. Cardinalités :
-macOS/Windows/Linux 21, Android 17, iOS/iPadOS 16, Web 13, Inconnu 5.
+**19 capacités déclarables. Une plateforme inconnue tombe sur un plancher en
+lecture seule** — fail-closed, et c'est le bon défaut. Cardinalités recomptées
+depuis le code : macOS/Windows/Linux 19, Android/iOS/iPadOS 16, Web 13,
+Inconnu 5.
+
+Elles étaient 21 jusqu'au 25 août 2026 : `filesystem.workspace.read` et
+`.write` ont été **retirées**. Personne ne les avait jamais déclarées — un
+Diapason DÉRIVE sa déclaration du catalogue d'outils (cinq verbes, aucun qui
+touche un fichier), le client Dart en déclare trois, et les deux appareils
+réellement appairés quatre et trois. Elles laissaient pourtant croire
+qu'elles gouvernaient `/v1/mesh/files`, qui ne les a jamais consultées.
+Android et iOS ont désormais le même plafond : le seul verbe qui les
+distinguait était celui-là.
 
 **Cinq colonnes sur huit n'ont aucun producteur.** La base ne contient que
 `WINDOWS` et `ANDROID` ; aucun client `LINUX`, `IOS`, `IPADOS`, `WEB` ni
@@ -78,11 +86,11 @@ l'application. Le modèle n'a donc accès qu'à **quatre** de ces cinq verbes.
 | **Chiffrement** | ⚠️ | — | ⚠️ | — | — | **Fichiers : bout en bout** (X25519 éphémère + AES-256-GCM, `mesh/coffre.py`). **Commandes : signées, en clair** (Ed25519). La distinction est délibérée — voir §4. |
 | **Hors-ligne** | ✅ | — | ✅ | — | — | File avec deux politiques ; jamais de faux succès. |
 | **Transfert de fichiers** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré** : `mesh/transfert.py`, `coffre.py`, `files_routes.py`, `envoi_fichier.py`. Manifeste, morceaux de 1 Mio, reprise, finalisation atomique. Banc réel entre deux processus. **Diapason ↔ Diapason seulement** : le client Dart ne sait pas recevoir. |
-| **Suivi de main** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré.** Vision (21 points, 2 mains) à 4 ms/image ; entitlement caméra et `NSCameraUsageDescription` **présents** dans le paquet Tauri ; flux à 12 im/s par `getUserMedia`, images lues en mémoire, jamais écrites. |
-| **OPEN / FIST / GRAB / RELEASE** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré**, sous leurs noms français : poses `PAUME_OUVERTE`, `POING`, `PINCE`, `POINTE` ; états `SAISI` (GRAB) et `RELACHE` (RELEASE). Hystérésis, confirmation sur N images, temps de repos — chacun testé. |
+| **Suivi de main** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré.** Vision (21 points, 2 mains) à 4 ms/image ; entitlement caméra et `NSCameraUsageDescription` **présents** dans le paquet Tauri ; flux par `getUserMedia` à une cadence que le SERVEUR décide (§83 : 12 im/s une main suivie, 3 au repos, 2 sur batterie faible), images lues en mémoire, jamais écrites. |
+| **OPEN / FIST / GRAB / RELEASE** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré**, sous leurs noms français : poses `PAUME_OUVERTE` et `POING` ; états `SAISI` (GRAB) et `RELACHE` (RELEASE). Hystérésis, confirmation sur N images, temps de repos — chacun testé. `PINCE` et `POINTE` ont été retirées le 25 août 2026 : la machine à états ne les consultait pas, et `PINCE` était classée AVANT le poing — un poing serré, pouce contre l'index, ne saisissait donc rien. |
 | **Cible spatiale / direction** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucun matériel de la flotte ne mesure une direction. §34 s'applique : repli par nom, puis question explicite — et la question est désormais **répondable** (`/v1/gestures/drop/target`). |
 | **Fusion voix + geste** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucune fusion. Un armement **sonore** existe (le double-clap arme le mode gestes) mais c'est du niveau sonore, pas de la parole. |
-| **Fichiers de l'app** | ⚠️ | ❌ | ⚠️ | ❌ | ❌ | `filesystem.workspace.*` est déclarable mais **aucun outil ne l'exerce** : le transfert écrit dans `get_data_dir()/transfers` sans consulter cette capacité. |
+| **Fichiers de l'app** | ✅ | ❌ | ❌ | ❌ | ❌ | Le transfert écrit dans `~/.diapason/transfers`, en 0700, sous un nom assaini, jamais en écrasant. Ce qui le garde : une offre signée Ed25519, une clé publique qui n'existe que pour un appareil `TRUSTED` (donc la révocation le coupe), un jeton de session à usage unique, un plafond en octets et un seau de débit dédié. **Aucune capacité** — et plus aucune ne prétend le contraire. |
 | **Système de fichiers arbitraire** | ❌ | ❌ | ❌ | ❌ | ❌ | Interdit par construction (`FORBIDDEN_PARAMETER_NAMES`, 12 noms). |
 | **Arrière-plan permanent** | ⚠️ | — | ⚠️ | ❌ | ❌ | Android : sondage au premier plan seulement. iOS : interdit. |
 | **Nearby / découverte** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucun mDNS, aucun Bluetooth. Adresse LAN tapée à la main. |
@@ -124,12 +132,9 @@ expirées ; une seule avait été utilisée.
 |---|---|
 | Windows, toutes lignes | **Une application.** Le squelette Flutter de Succès n'a jamais été construit. C'est ce qui rend le MVP Mac ↔ Windows du §121 inatteignable tel qu'écrit ; le premier MVP démontrable est Mac ↔ Mac, puis Mac ↔ Android. |
 | Transfert vers un téléphone | Le client Dart n'a ni sélecteur de fichiers, ni accès au stockage, ni capacité déclarée pour recevoir. Rien ne bougera côté serveur le jour où il l'annoncera. |
-| Gestes — état d'énergie (§83) | La cadence est figée à 12 im/s. Aucun `OFF / READY / ACTIVE / LOW_POWER`, aucune adaptation sur batterie. **C'est le seul point du §83 encore ouvert** : les quatre chemins d'extinction, eux, existent et sont testés. |
-| `desktop/camera.py` | Session AVFoundation native, écrite, **importée nulle part** : du code mort. Ce n'est pas elle qui alimente les gestes — c'est la fenêtre Tauri. À supprimer ou à assumer. |
 | Découverte | Un service mDNS, et l'écoute sur autre chose que `127.0.0.1`. |
 | Chiffrement des **commandes** | Elles sont signées, pas chiffrées. Suffisant sur un LAN de confiance — savoir qui parle suffit pour « ouvre cet écran » — et insuffisant dès qu'un relais existe. Les **fichiers**, eux, sont chiffrés : un document personnel sur un Wi-Fi partagé n'est pas une commande. |
 | Fusion voix + geste | Le contexte du tour vocal est le point d'insertion prévu. Attention : `handoff_continue` repart de l'écran courant, **pas** du presse-papiers spatial — répondre « sur l'iPad » à la voix enverrait ce qui est affiché, pas ce qui est dans la main. |
-| `filesystem.workspace.*` | Une capacité que rien n'exerce est une promesse en attente. Soit un outil la consomme, soit elle sort du catalogue. |
 
 ---
 

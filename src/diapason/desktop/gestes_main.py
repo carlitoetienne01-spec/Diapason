@@ -56,8 +56,14 @@ class Pose(str, Enum):
     INCONNUE = "INCONNUE"
     PAUME_OUVERTE = "PAUME_OUVERTE"
     POING = "POING"
-    PINCE = "PINCE"
-    POINTE = "POINTE"
+    # PINCE et POINTE ont vécu ici sans que `_avancer` les consulte jamais —
+    # deux poses classées, avec seuils et hystérésis, que rien ne recevait.
+    # Elles n'étaient pas inertes pour autant : PINCE était testée AVANT le
+    # poing, et un poing serré a le pouce contre l'index. Un utilisateur dont
+    # le pouce se replie sur ses doigts — c'est-à-dire un utilisateur qui
+    # ferme le poing normalement — ne saisissait rien, et rien ne le lui
+    # disait. Retirées le 25 août 2026. Le jour où pincer ou pointer doit
+    # faire quelque chose, la pose revient AVEC son action et son test.
 
 
 class Etat(str, Enum):
@@ -105,10 +111,6 @@ class Seuils:
     fermeture_sortie: float = 1.44
     ouverture_entree: float = 1.52
     ouverture_sortie: float = 1.38
-    # Une pince : pouce et index qui se touchent, mesuré en fraction de la
-    # largeur de la paume — donc indépendant de la distance à l'objectif.
-    pince_entree: float = 0.35
-    pince_sortie: float = 0.50
     # Images consécutives à confirmer avant de croire une pose (§11).
     images_stables: int = 4
     # Au-delà, la main est perdue : mieux vaut annuler que deviner.
@@ -136,9 +138,7 @@ class Mesures:
     """Ce qu'on lit d'une main, indépendamment de sa taille et sa distance."""
 
     repliement: float  # 0 = poing serré, 1 = main grande ouverte
-    pince: float  # distance pouce-index, en largeurs de paume
     confiance: float
-    doigts_tendus: int
 
 
 def _point(points: dict[str, Point], nom: str) -> Optional[Point]:
@@ -172,7 +172,6 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
         return None
 
     replis: list[float] = []
-    tendus = 0
     # La confiance retenue est le MINIMUM, pas la moyenne. Constaté le
     # 25 août 2026 : Vision rend des « mains » dans du bruit — un visage,
     # une ombre, un objet — avec quelques points sûrs et beaucoup de points
@@ -193,12 +192,7 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
         # qu'elle était droite ou penchée — « tantôt c'était mieux ». Un
         # doigt, lui, est plié ou tendu indépendamment de l'orientation du
         # bras. Mesuré : le critère local sépare trois fois mieux.
-        etendue = _distance(base, bout) / paume
-        replis.append(etendue)
-        # Même échelle réelle : un doigt tendu dépasse 1,3 fois la largeur
-        # de paume mesurée entre les bases de l'index et de l'auriculaire.
-        if etendue > 1.3:
-            tendus += 1
+        replis.append(_distance(base, bout) / paume)
 
     if len(replis) < 3:
         return None
@@ -208,17 +202,9 @@ def mesurer(points: Sequence[Point]) -> Optional[Mesures]:
     longs = replis[1:] if len(replis) == 5 else replis
     repliement = sum(longs) / len(longs)  # ~0,3 fermé, ~1,0 ouvert
 
-    bout_pouce = _point(par_nom, "thumbTip")
-    bout_index = _point(par_nom, "indexTip")
-    pince = (
-        _distance(bout_pouce, bout_index) / paume if bout_pouce and bout_index else 9.99
-    )
-
     return Mesures(
         repliement=max(0.0, min(2.0, repliement)),
-        pince=pince,
         confiance=min(confiances),
-        doigts_tendus=tendus,
     )
 
 
@@ -249,9 +235,7 @@ class MoteurDeGestes:
         a = self.seuils.lissage
         self._lisse = Mesures(
             repliement=a * self._lisse.repliement + (1 - a) * mesures.repliement,
-            pince=a * self._lisse.pince + (1 - a) * mesures.pince,
             confiance=mesures.confiance,
-            doigts_tendus=mesures.doigts_tendus,
         )
         return self._lisse
 
@@ -261,10 +245,6 @@ class MoteurDeGestes:
         s = self.seuils
         if m.confiance < s.confiance_minimale:
             return Pose.INCONNUE
-        if m.pince < (
-            s.pince_sortie if self._pose_stable is Pose.PINCE else s.pince_entree
-        ):
-            return Pose.PINCE
         # L'hystérésis : le seuil dépend de l'état où l'on est déjà.
         if self._ferme:
             if m.repliement > s.fermeture_sortie:
@@ -273,8 +253,6 @@ class MoteurDeGestes:
             self._ferme = True
         if self._ferme:
             return Pose.POING
-        if m.doigts_tendus == 1:
-            return Pose.POINTE
         if m.repliement > (
             s.ouverture_sortie
             if self._pose_stable is Pose.PAUME_OUVERTE

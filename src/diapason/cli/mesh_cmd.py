@@ -87,6 +87,93 @@ def devices(tout: bool) -> None:
     console.print(table)
 
 
+@mesh.command("send")
+@click.argument("fichier", type=click.Path(exists=True, dir_okay=False))
+@click.argument("appareil")
+def send(fichier: str, appareil: str) -> None:
+    """Envoyer un FICHIER vers un APPAREIL de la flotte.
+
+    APPAREIL se donne par son nom (« mon PC ») ou par son identifiant. La
+    résolution est celle du maillage : une phrase qui désigne deux appareils
+    est refusée, jamais tranchée au hasard.
+
+    Cette commande est le premier appelant de ``envoyer_fichier`` : le cœur
+    du transfert existait depuis le 25 août 2026, chiffré et testé par un
+    banc à deux processus, mais aucun chemin de production ne l'atteignait.
+    Un moteur qu'on ne peut pas démarrer n'est pas un moteur.
+    """
+    from pathlib import Path
+
+    from diapason.mesh.envoi_fichier import EnvoiRefuse, envoyer_fichier
+    from diapason.mesh.identity import device_identity
+    from diapason.mesh.registry import DeviceRegistry
+    from diapason.mesh.resolver import resolve_device
+
+    registre = DeviceRegistry()
+    flotte = [d for d in registre.list_devices() if d.get("trustLevel") == "TRUSTED"]
+    if not flotte:
+        console.print(
+            "Aucun appareil appairé. Sur l'autre machine : Appareils → "
+            "Ajouter un appareil, puis ici : "
+            "[bold]diapason mesh join <adresse> <code>[/bold]"
+        )
+        raise SystemExit(1)
+
+    issue = resolve_device(
+        appareil, flotte, local_device_id=device_identity().device_id
+    )
+    cible = issue.get("device")
+    if issue.get("status") != "RESOLVED" or cible is None:
+        # §34 : on demande, on ne devine jamais. Le résolveur rend déjà une
+        # phrase prête à dire — la répéter vaut mieux que la reformuler, et
+        # elle distingue « aucun appareil », « lequel ? » et « c'est ici ».
+        console.print(str(issue.get("message") or f"« {appareil} » ?"))
+        raise SystemExit(1)
+
+    taille = Path(fichier).stat().st_size
+    console.print(
+        f"Envoi de [bold]{Path(fichier).name}[/bold] "
+        f"({_lisible(taille)}) vers [bold]{cible.get('name')}[/bold]…"
+    )
+
+    def _avance(faits: int, total: int) -> None:
+        console.print(f"  {faits}/{total} morceaux", end="\r")
+
+    try:
+        envoi = envoyer_fichier(fichier, cible, progression=_avance)
+    except EnvoiRefuse as exc:
+        # Le refus vient du destinataire ou du transport : il sait pourquoi,
+        # nous non. Le relayer tel quel vaut mieux que l'habiller.
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from exc
+
+    # Les statuts que le RÉCEPTEUR produit, et eux seuls. « RECU » a vécu ici
+    # une heure, inventé de toutes pièces : il n'existait nulle part dans le
+    # code, et un transfert parfaitement réussi s'affichait donc en jaune. Le
+    # test ne l'a pas vu parce que son double rendait « RECU » — le double
+    # était plus commode que ce qu'il doublait.
+    #
+    # ALREADY_PRESENT est un succès, pas une réserve : la déduplication par
+    # contenu a constaté que le fichier était déjà là, entier et vérifié.
+    couleur = "green" if envoi.statut in _ABOUTIS else "yellow"
+    console.print(f"[{couleur}]{envoi.message}[/{couleur}]")
+    if envoi.chemin_distant:
+        console.print(f"  chez {cible.get('name')} : {envoi.chemin_distant}")
+
+
+# Ce que le récepteur rend quand le fichier est chez lui, entier et vérifié.
+# Vérifié contre mesh/files_routes.py, pas supposé.
+_ABOUTIS = frozenset({"COMPLETE", "ALREADY_PRESENT"})
+
+
+def _lisible(octets: int) -> str:
+    """Une taille qu'un humain lit sans compter les zéros."""
+    for unite, seuil in (("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)):
+        if octets >= seuil:
+            return f"{octets / seuil:.1f} {unite}"
+    return f"{octets} o"
+
+
 @mesh.command("whoami")
 def whoami() -> None:
     """L'identité de CET appareil dans la flotte."""

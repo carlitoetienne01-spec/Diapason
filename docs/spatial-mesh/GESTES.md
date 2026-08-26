@@ -9,7 +9,8 @@ source d'images fonctionnent et sont mesurés, et quand deux appareils sont
 capables, la question « vers lequel ? » se pose — et se répond. Le mur qui
 bloquait tout était que macOS refusait la caméra au processus Python, pour
 une raison qu'aucun réglage ne corrigeait ; c'est désormais l'application qui
-capture. Reste ouvert : l'**état d'énergie** du §83.
+capture. Le §83 est tenu depuis le 25 août 2026 : la cadence suit ce que
+la caméra voit.
 
 ## Ce qui est livré et vérifié
 
@@ -20,8 +21,8 @@ capture. Reste ouvert : l'**état d'énergie** du §83.
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
 | **Trancher entre deux appareils** | ✅ | `/v1/gestures/drop/target` : la question du §81 est enfin répondable, et l'objet n'est plus perdu en la posant. 14 tests. |
-| **État d'énergie** (§83) | ❌ | Cadence figée. Aucun `OFF / READY / ACTIVE / LOW_POWER`. |
-| **`desktop/camera.py`** (session AVFoundation) | ⚠️ **code mort** | Écrit pour le chemin Python, bloqué par TCC, puis contourné par l'application. Importé nulle part. |
+| **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
+| **État d'énergie** (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER`. 12 im/s une main suivie, **3 au repos**, 2 sur batterie faible. 13 tests. |
 
 ### Ce que le moteur refuse de faire, et c'est le point
 
@@ -99,6 +100,20 @@ l'extinction, chacun testé :
 Et quand le serveur se désarme tout seul, l'interface le suit : la prochaine
 image reçoit un refus poli, et la caméra s'éteint sans qu'on ait à y penser.
 
+## Une seule main, et c'est un choix
+
+Vision en lit deux ; le serveur n'en demande qu'une. Le moteur n'a aucune
+notion d'identité de main — `observer()` reçoit une liste de points et rien
+d'autre. À deux mains il faudrait deux moteurs et une règle disant laquelle
+agit, sans quoi la seconde main de l'utilisateur, ou celle de quelqu'un qui
+passe, deviendrait un geste.
+
+Vision rend la main la plus SÛRE, ce qui est le bon défaut. La limite que ce
+choix ne corrige pas : avec deux mains dans le champ, celle qui gagne peut
+changer d'une image à l'autre. Le moteur verrait la main se téléporter, et
+comme une main perdue annule le geste (§12), le geste échoue — bruyamment,
+ce qui vaut mieux que de déposer au hasard.
+
 ## Les autres sorties, pour mémoire
 
 Le choix appartenait à Carlito ; il a pris la première.
@@ -141,3 +156,99 @@ supérieur.
   on fait le geste, ça se désarme. Le voyant vert dit la vérité.
 - **Aucune image n'est gardée ni n'est envoyée** : Vision tourne sur la
   machine, et seuls des points articulaires sortent du pont.
+
+## L'état d'énergie (§83)
+
+Le §78 empêche la caméra de guetter en permanence ; le §83 lui interdit de
+coûter le même prix qu'on s'en serve ou non. La cadence était **figée à douze
+images par seconde**, du premier instant au désarmement : armer le mode puis
+aller lire un document, c'était douze captures, douze encodages JPEG et douze
+appels à Vision par seconde, pendant dix minutes, pour filmer une chaise.
+
+| État | Quand | Cadence |
+|---|---|---|
+| `OFF` | non armé | 0 |
+| `READY` | armé, aucune main depuis 3 s | **3 im/s** |
+| `ACTIVE` | une main est suivie | 12 im/s |
+| `LOW_POWER` | sur batterie, ≤ 20 % | 2 im/s |
+
+**C'est le serveur qui décide, l'interface obéit.** Elle ne peut pas décider :
+elle ne sait pas si une main a été vue — c'est Vision qui le dit, côté
+serveur. La cadence voyage donc avec **chaque image**, et pas seulement dans
+l'état sondé chaque seconde : sans cela l'interface filmerait encore au ralenti
+pendant jusqu'à une seconde après qu'une main est entrée dans le champ,
+c'est-à-dire au moment précis où la cadence compte.
+
+Trois choses que ce module refuse de faire :
+
+- **Baisser la cadence pendant qu'une main est suivie.** Le geste se mesure en
+  IMAGES — « ≤ 10 images pour un attraper », figé par un test — donc une
+  cadence qui tombe au milieu d'un geste l'allonge en secondes sans que
+  personne l'ait demandé. On économise entre les gestes, jamais pendant.
+- **Rendre une cadence nulle tant qu'on est armé.** Zéro serait une caméra
+  éteinte qui se croit armée : le mode ne verrait plus jamais une main revenir.
+- **Lire la batterie à chaque image.** `pmset` est un sous-processus ; douze
+  fois par seconde, il coûterait bien plus que ce que l'économie rapporte. La
+  mesure est gardée trente secondes — un câble rebranché est vu au pire trente
+  secondes plus tard.
+
+## La fusion voix + geste
+
+« Envoie ça sur mon téléphone. » Le mot **ça** n'avait aucun référent : le
+presse-papiers spatial n'était connu que du module des gestes. `handoff_continue`
+repartait de l'écran courant, donc répondre « sur l'iPad » après avoir attrapé un
+projet envoyait ce qui était affiché **à cet instant**, pas ce qui était dans la
+main. Le maillon manquant n'était pas un réglage : c'était une absence totale de
+raccordement.
+
+**Deux pièces, et il fallait les deux.** Une phrase de contexte seule aurait
+laissé le modèle avec un référent qu'il n'a aucun moyen d'envoyer ; un outil seul
+lui ferait envoyer quelque chose qu'il ne sait pas nommer.
+
+| Pièce | Où |
+|---|---|
+| `Dans la main (geste) : le projet « Zéro à Héro ».` | `presse_papiers_spatial.decrire` |
+| Injection côté voix (message système, en fin de contexte) | `local_voice._turn_messages` |
+| Injection côté chat (concaténée à l'ancre, en tête) | `routes._ensure_identity_prompt` |
+| L'outil | `tools/gestes_spatiaux.py`, `geste_deposer` |
+
+### Quatre décisions, et leurs raisons
+
+**Un outil de plus, et pas `handoff_continue` élargi.** Deux référents dans un
+même outil, c'est « je ne sais plus lequel des deux tu veux ». Et aucun ne prime
+naturellement : la main peut être vide, l'écran peut avoir changé depuis la
+saisie. Un outil, un référent.
+
+**Aucun identifiant de ressource en paramètre.** Le référent est la main, pas le
+modèle. Un outil qui accepterait « envoie le projet p1 » laisserait le modèle
+inventer ce qu'il envoie — ce que le geste existe précisément pour éviter.
+
+**Répondre à la question, jamais en ouvrir une seconde.** Si le serveur attend
+déjà un choix, l'outil tranche **avec les mêmes candidats** et réutilise le jeton
+comme clé d'idempotence. Sans cela, un clic à l'écran et une réponse à la voix
+enverraient deux fois.
+
+**Main vide : le contexte se tait, l'outil parle.** La dissymétrie est voulue.
+Une phrase « ta main est vide » dans le contexte serait présente à presque tous
+les tours, n'apprendrait rien, et inviterait le modèle à commenter un état dont
+personne n'a parlé. L'outil, lui, le dit franchement — parce qu'on l'a appelé.
+
+### Pourquoi celui-ci est à la voix, alors que `mesh_send` ne l'est pas
+
+`mesh_send` choisit une action dans une énumération **ouverte** et un appareil
+d'après une phrase **transcrite**. La cloche d'approbation couvre le risque, pas
+l'ambiguïté : aucune confirmation ne dé-entend un mot mal transcrit.
+
+`geste_deposer` ne choisit ni l'objet (c'est la main) ni l'action (elle découle
+du type de l'objet), et devant une question en attente il tranche dans une liste
+**fermée** que le serveur a mesurée. Une transcription approximative ne peut donc
+pas inventer une cible : au pire elle ne correspond à aucun candidat, et la
+question se repose.
+
+### Une différence assumée avec le geste
+
+Le geste ne mesure aucune direction : il ne propose que les appareils
+**joignables**, et refuse s'il n'y en a pas. À la voix, l'utilisateur a **nommé**
+l'appareil — le mettre en file pour qu'il le récupère au réveil respecte ce qu'il
+a demandé. Dans les deux cas la phrase rendue vient du répartiteur, jamais de
+l'envoi.

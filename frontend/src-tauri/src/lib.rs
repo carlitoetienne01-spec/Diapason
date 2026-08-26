@@ -32,6 +32,48 @@ const QWEN35_MODELS: &[(&str, f64, f64)] = &[
 ];
 
 /// Get total system RAM in GB.
+/// Sur Windows, un enfant « console » ouvre SA PROPRE fenêtre noire.
+///
+/// `main.rs` rend l'APPLICATION sans console, ce qui est nécessaire mais pas
+/// suffisant : chaque `where`, `git`, `uv` ou `ollama` lancé ensuite alloue
+/// la sienne. `resolve_bin` est appelé quatre fois au démarrage — c'est une
+/// dizaine de fenêtres noires qui clignotent à chaque lancement, sur une
+/// application qui se veut discrète.
+///
+/// Sans effet ailleurs : le corps non-Windows rend la commande telle quelle,
+/// pour que les sites d'appel n'aient pas à porter de `cfg`.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(target_os = "windows")]
+fn sans_fenetre(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+// Tous ses sites d'appel vivent dans des blocs `cfg(target_os = "windows")`
+// — c'est bien le but. Sans cet `allow`, la construction macOS avertit d'un
+// code mort qui ne l'est que pour elle.
+#[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
+fn sans_fenetre(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    cmd
+}
+
+#[cfg(target_os = "windows")]
+fn sans_fenetre_async(
+    cmd: &mut tokio::process::Command,
+) -> &mut tokio::process::Command {
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn sans_fenetre_async(
+    cmd: &mut tokio::process::Command,
+) -> &mut tokio::process::Command {
+    cmd
+}
+
 fn total_ram_gb() -> f64 {
     #[cfg(target_os = "macos")]
     {
@@ -61,20 +103,48 @@ fn total_ram_gb() -> f64 {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        // wmic returns TotalVisibleMemorySize in KB
-        if let Ok(output) = Command::new("wmic")
-            .args(["OS", "get", "TotalVisibleMemorySize", "/value"])
+        // `wmic` d'abord : il est instantané là où il existe encore. Mais il
+        // est RETIRÉ PAR DÉFAUT de Windows 11 24H2 et de Server 2025 — sur
+        // une machine récente, ce chemin ne rend rien et la fonction
+        // retombait sur 8 Go inventés, qui décidaient ensuite du plan de
+        // démarrage et du modèle chargé.
+        //
+        // Le repli est `Get-CimInstance`, le successeur officiel de wmic.
+        // Il coûte le lancement d'un PowerShell (quelques centaines de
+        // millisecondes) — acceptable : `total_ram_gb` n'est appelé qu'une
+        // fois, au calcul du plan de démarrage.
+        //
+        // Pas d'appel FFI à GlobalMemoryStatusEx ici, bien qu'il soit plus
+        // propre : `windows-sys` n'est qu'une dépendance transitive, et une
+        // signature FFI écrite sans pouvoir la compiler bloquerait la
+        // construction Windows au lieu de la dégrader.
+        let mut wmic = Command::new("wmic");
+        wmic.args(["OS", "get", "TotalVisibleMemorySize", "/value"]);
+        let kilo_octets = sans_fenetre(&mut wmic)
             .output()
-        {
-            if let Ok(s) = String::from_utf8(output.stdout) {
-                for line in s.lines() {
-                    if let Some(val) = line.strip_prefix("TotalVisibleMemorySize=") {
-                        if let Ok(kb) = val.trim().parse::<u64>() {
-                            return kb as f64 / (1024.0 * 1024.0);
-                        }
-                    }
-                }
-            }
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|l| l.strip_prefix("TotalVisibleMemorySize="))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+            })
+            .or_else(|| {
+                let mut ps = Command::new("powershell");
+                ps.args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "(Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize",
+                ]);
+                sans_fenetre(&mut ps)
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+            });
+        if let Some(kb) = kilo_octets {
+            return kb as f64 / (1024.0 * 1024.0);
         }
     }
     8.0
@@ -235,7 +305,8 @@ fn resolve_bin(name: &str) -> String {
     // On Windows this uses `where.exe`, on Unix `which`.
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = std::process::Command::new("where")
+        let mut ou = std::process::Command::new("where");
+        if let Ok(output) = sans_fenetre(&mut ou)
             .arg(format!("{name}.exe"))
             .output()
         {
@@ -450,6 +521,22 @@ impl ChildHandle {
             let _ = std::process::Command::new("/bin/kill")
                 .args(["-KILL", &groupe])
                 .status();
+        }
+        // Windows n'a ni groupe de processus au sens POSIX ni signal : le
+        // `child.kill()` ci-dessous tue `uv.exe` et laisse son petit-fils
+        // `python.exe` VIVANT, tenant le port 8000. Exactement le défaut que
+        // le bloc unix ci-dessus décrit, mais sans le correctif.
+        //
+        // `taskkill /T` parcourt l'arbre depuis le PID et n'a besoin d'aucun
+        // groupe. `/F` force : on n'attend pas d'arrêt propre, parce qu'un
+        // serveur qui ignore la demande est précisément le cas qu'on traite.
+        // Sans `sans_fenetre`, cet arrêt ferait clignoter une fenêtre noire
+        // de plus, au pire moment.
+        #[cfg(target_os = "windows")]
+        if let Some(pid) = self.child.id() {
+            let mut tuer = std::process::Command::new("taskkill");
+            tuer.args(["/PID", &pid.to_string(), "/T", "/F"]);
+            let _ = sans_fenetre(&mut tuer).status();
         }
         let _ = self.child.kill().await;
     }
@@ -963,6 +1050,7 @@ async fn verify_diapason_rust_extension(
     uv_bin: &str,
 ) -> Result<(), String> {
     let mut cmd = tokio::process::Command::new(uv_bin);
+    sans_fenetre_async(&mut cmd);
     cmd.args(["run", "python", "-c", "import diapason_rust"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -1136,6 +1224,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         let ollama_child = {
             let ollama_bin = resolve_bin("ollama");
             let mut sidecar_cmd = tokio::process::Command::new(&ollama_bin);
+            sans_fenetre_async(&mut sidecar_cmd);
             sidecar_cmd
                 .arg("serve")
                 .env("OLLAMA_HOST", format!("127.0.0.1:{}", OLLAMA_PORT))
@@ -1335,7 +1424,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         // croire à une installation cassée alors que le projet est simplement
         // ailleurs sur le disque. On teste l'accès avant d'annoncer quoi que
         // ce soit, et à défaut on dit la seule chose utile : où pointer.
-        let joignable = tokio::process::Command::new(&git_bin)
+        let mut sonde = tokio::process::Command::new(&git_bin);
+        let joignable = sans_fenetre_async(&mut sonde)
             .args(["ls-remote", "--exit-code", REPO_URL, "HEAD"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -1386,7 +1476,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.detail = "Downloading Diapason (first launch)...".into();
         }
 
-        let clone_result = tokio::process::Command::new(&git_bin)
+        let mut clone = tokio::process::Command::new(&git_bin);
+        let clone_result = sans_fenetre_async(&mut clone)
             .args([
                 "clone",
                 "--depth",
@@ -1569,6 +1660,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         s.detail = "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
     }
     let mut sync_cmd = tokio::process::Command::new(&uv_bin);
+    sans_fenetre_async(&mut sync_cmd);
     sync_cmd
         .args([
             "sync",
@@ -1623,6 +1715,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     }
 
     let mut cmd = tokio::process::Command::new(&uv_bin);
+    sans_fenetre_async(&mut cmd);
     // Le serveur mène son propre groupe de processus, pour qu'on puisse
     // l'arrêter EN ENTIER. Sans cela, « uv » seul recevait le signal et le
     // serveur Python survivait, orphelin, en tenant le port.
@@ -2218,6 +2311,7 @@ async fn run_diapason_command(args: Vec<String>) -> Result<String, String> {
     cmd_args.extend(args.iter().cloned());
 
     let mut cmd = tokio::process::Command::new(&uv_bin);
+    sans_fenetre_async(&mut cmd);
     cmd.args(&cmd_args);
     // Run from the project root so `uv run diapason` resolves the Diapason
     // project regardless of the app's launch cwd. In a packaged install the
@@ -2325,15 +2419,46 @@ async fn transcribe_audio(
 /// enregistrés, fenêtre Google jamais ouverte). Une navigation OAuth doit
 /// vivre dans le vrai navigateur de toute façon : cookies du compte,
 /// gestionnaire de mots de passe, barre d'adresse lisible.
+/// L'ouvreur d'URL du système — un par plateforme, et pas un de moins.
+///
+/// Cette fonction lançait `open` SANS AUCUN `cfg`, sur les trois systèmes.
+/// Sur Windows, `open` n'existe pas : erreur propre, le frontend basculait
+/// sur `window.open`. Sur Linux, en revanche, `/usr/bin/open` existe
+/// souvent — c'est `openvt`, d'util-linux, qui ouvre une console virtuelle.
+/// Le lancement RÉUSSISSAIT, rien ne s'ouvrait, la commande rendait `Ok`,
+/// et le `catch` du frontend ne se déclenchait donc jamais. Le bouton
+/// « Connecter » d'un connecteur OAuth ne faisait rien, sans un mot.
+///
+/// Un faux succès est pire qu'une erreur : l'erreur, elle, a un chemin de
+/// repli (§100).
+fn lancer_le_navigateur(url: &str) -> std::io::Result<std::process::Child> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // `start` est une commande INTERNE de cmd.exe : il n'existe aucun
+        // `start.exe` à lancer. Et son premier argument est le TITRE de la
+        // fenêtre — sans la chaîne vide, une URL serait prise pour un titre
+        // et rien ne s'ouvrirait. C'est le piège classique de cette ligne.
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // `xdg-open`, et jamais `open` : voir la docstring ci-dessus.
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    }
+}
+
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("URL non http(s) refusée".into());
     }
-    std::process::Command::new("open")
-        .arg(&url)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    lancer_le_navigateur(&url).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -3160,18 +3285,43 @@ async fn get_overlay_conversation() -> Result<String, String> {
     Ok("[]".into())
 }
 
+/// La superposition n'existe que sur macOS — et le dire vaut mieux que
+/// rendre `Ok`.
+///
+/// Ces deux commandes rendaient `Ok(())` sur un corps VIDE partout ailleurs :
+/// l'appelant concluait que la superposition avait basculé, alors qu'aucune
+/// n'existait. C'est le §5 — ne jamais faire semblant — et le §100 — jamais
+/// de faux SUCCESS. Le motif correct est déjà dans ce fichier, deux cents
+/// lignes plus haut : `paste_to_frontmost` répond « implemented for macOS
+/// only » plutôt que de ne rien faire en silence.
+///
+/// La superposition est un NSPanel non activant construit sur trois classes
+/// Objective-C déclarées à l'exécution. Ce n'est pas une fonction qu'on
+/// porte en quelques lignes : sur Windows et Linux, elle n'existera pas
+/// tant que quelqu'un ne l'aura pas réécrite.
+#[cfg(not(target_os = "macos"))]
+const SANS_SUPERPOSITION: &str = "La superposition demande macOS : elle repose sur un NSPanel non activant, sans équivalent porté sur ce système.";
+
 #[tauri::command]
 async fn toggle_overlay() -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    on_main_thread(|| unsafe { native_overlay::toggle() });
-    Ok(())
+    {
+        on_main_thread(|| unsafe { native_overlay::toggle() });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(SANS_SUPERPOSITION.into())
 }
 
 #[tauri::command]
 async fn hide_overlay() -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    on_main_thread(|| unsafe { native_overlay::hide() });
-    Ok(())
+    {
+        on_main_thread(|| unsafe { native_overlay::hide() });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(SANS_SUPERPOSITION.into())
 }
 
 /// Ramène la fenêtre principale au premier plan, à la demande d'un autre
@@ -3359,16 +3509,27 @@ pub fn run() {
                 use tauri_plugin_global_shortcut::{
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
-                let sc = Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space);
-                if let Err(e) = app.global_shortcut().on_shortcut(sc, |_app, _sc, ev| {
-                    if ev.state == ShortcutState::Pressed {
-                        #[cfg(target_os = "macos")]
-                        unsafe {
-                            native_overlay::toggle();
+                // La superposition n'existe que sur macOS, donc son raccourci
+                // ne s'enregistre que là. Ailleurs, ce bloc réservait
+                // Cmd+Shift+Espace pour un rappel dont le corps était VIDE :
+                // la touche était saisie à l'utilisateur, et rien n'arrivait.
+                //
+                // Pire sur Windows : `Modifiers::META` s'y traduit en MOD_WIN.
+                // On confisquait donc Win+Maj+Espace — enregistré, inerte, et
+                // impossible à diagnostiquer depuis l'autre bout.
+                #[cfg(target_os = "macos")]
+                {
+                    let sc =
+                        Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space);
+                    if let Err(e) = app.global_shortcut().on_shortcut(sc, |_app, _sc, ev| {
+                        if ev.state == ShortcutState::Pressed {
+                            unsafe {
+                                native_overlay::toggle();
+                            }
                         }
+                    }) {
+                        eprintln!("Warning: could not register Cmd+Shift+Space: {e}");
                     }
-                }) {
-                    eprintln!("Warning: could not register Cmd+Shift+Space: {e}");
                 }
 
                 // Push-to-talk is DELIBERATELY not registered here.
@@ -3389,8 +3550,20 @@ pub fn run() {
                 // below and stop the agent (`diapason dictate-service uninstall`).
                 let _ = (ShortcutState::Pressed, ShortcutState::Released);
 
-                // Talk to Diapason (realtime orb): Option/Alt+Space toggle
+                // Parler à Diapason : ceci n'a rien de spécifique à macOS —
+                // le rappel montre la fenêtre et émet un événement, ce que
+                // les trois systèmes savent faire. Seul l'ACCORD change.
+                //
+                // Option+Espace est un choix libre sur macOS. Sur Windows,
+                // Alt+Espace est LE MENU SYSTÈME de la fenêtre : l'enregistrer
+                // globalement volerait à l'utilisateur un raccourci que tout
+                // son système lui a appris. On prend Ctrl+Maj+Espace, libre
+                // sur Windows comme sur Linux.
+                #[cfg(target_os = "macos")]
                 let talk = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+                #[cfg(not(target_os = "macos"))]
+                let talk =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
                 let talk_handle = app.handle().clone();
                 if let Err(e) = app
                     .global_shortcut()
@@ -3406,7 +3579,7 @@ pub fn run() {
                         let _ = talk_handle.emit("talk-toggle", ());
                     })
                 {
-                    eprintln!("Warning: could not register Alt+Space Talk: {e}");
+                    eprintln!("Warning: could not register the Talk shortcut: {e}");
                 }
             }
 

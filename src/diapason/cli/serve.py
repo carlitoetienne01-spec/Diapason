@@ -116,6 +116,38 @@ def _announce_exposure(bind_host: str, bind_port: int) -> None:
     )
 
 
+def _servir_deux_sockets(
+    app: object,
+    host: str,
+    port: int,
+    lan_app: object,
+    lan_host: str,
+    lan_port: int,
+) -> None:
+    """Deux sockets, UN SEUL PROCESSUS — et ce n'est pas un détail.
+
+    La boîte de réception des commandes (`mesh/executor.py`) et les sessions
+    de transfert (`mesh/files_routes.py`) vivent dans des globales en
+    mémoire. Deux processus, et une commande reçue sur le réseau
+    n'apparaîtrait jamais dans l'inbox lue en loopback ; un morceau de
+    fichier rendrait 404 parce que son offre a ouvert la session ailleurs.
+    """
+    import asyncio
+
+    import uvicorn
+
+    async def _les_deux() -> None:
+        principal = uvicorn.Server(
+            uvicorn.Config(app, host=host, port=port, log_level="info")
+        )
+        reseau = uvicorn.Server(
+            uvicorn.Config(lan_app, host=lan_host, port=lan_port, log_level="info")
+        )
+        await asyncio.gather(principal.serve(), reseau.serve())
+
+    asyncio.run(_les_deux())
+
+
 @click.command()
 @click.option("--host", default=None, help="Bind address (default: config).")
 @click.option(
@@ -123,6 +155,21 @@ def _announce_exposure(bind_host: str, bind_port: int) -> None:
     default=None,
     type=int,
     help="Port number (default: config).",
+)
+@click.option(
+    "--lan-host",
+    default=None,
+    help=(
+        "Adresse d'écoute du MAILLAGE seul, sur un second socket "
+        "(ex. 0.0.0.0). Neuf routes y sont exposées, pas une de plus : "
+        "le chat, la voix et Succès restent sur --host."
+    ),
+)
+@click.option(
+    "--lan-port",
+    default=8001,
+    type=int,
+    help="Port du second socket. Doit différer de --port.",
 )
 @click.option("-e", "--engine", "engine_key", default=None, help="Engine backend.")
 @click.option("-m", "--model", "model_name", default=None, help="Default model.")
@@ -138,6 +185,8 @@ def serve(
     ctx: click.Context,
     host: str | None,
     port: int | None,
+    lan_host: str | None,
+    lan_port: int,
     engine_key: str | None,
     model_name: str | None,
     agent_name: str | None,
@@ -168,6 +217,23 @@ def serve(
     # Resolve host/port from CLI args or config
     bind_host = host or config.server.host
     bind_port = port or config.server.port
+
+    # Un argument impossible se refuse ici : les valeurs sont résolues (le
+    # port peut venir de la configuration, pas seulement de la ligne de
+    # commande) et rien n'a encore démarré. Ce contrôle vivait six cents
+    # lignes plus bas, APRÈS la recherche d'un moteur d'inférence : sur une
+    # machine sans moteur il n'était jamais atteint, et le test censé le
+    # garder passait sur un tout autre échec — constaté le 26 août 2026.
+    # Une erreur d'usage n'a pas besoin d'Ollama pour être une erreur.
+    if lan_host and lan_port == bind_port:
+        # macOS lie les deux sans broncher (SO_REUSEADDR), Linux refuse, et
+        # la vérification de port unique du dépôt verrait deux auditeurs.
+        console.print(
+            "[red]--lan-port doit différer de --port : deux serveurs sur le "
+            "même port se lient en silence sur macOS et échouent sur "
+            "Linux.[/red]"
+        )
+        raise SystemExit(2)
 
     # Set up engine
     register_builtin_models()
@@ -751,8 +817,17 @@ def serve(
     # l'adresse à laquelle un téléphone ne trouvera jamais rien.
     from diapason.mesh.beacon import set_local_endpoint
 
-    set_local_endpoint(bind_host, bind_port)
+    # Quand un second socket existe, c'est LUI que les pairs joignent : le
+    # premier n'écoute que la loopback. Annoncer le premier reviendrait à
+    # donner à toute la flotte une adresse où elle ne trouvera jamais rien —
+    # et chaque livraison et chaque transfert partirait dans le vide.
+    set_local_endpoint(lan_host or bind_host, lan_port if lan_host else bind_port)
     _announce_exposure(bind_host, bind_port)
+    if lan_host:
+        console.print(
+            f"  Maillage : [cyan]http://{lan_host}:{lan_port}[/cyan] — "
+            "neuf routes, signature d'appareil exigée"
+        )
 
     # Log credential status at startup
     from diapason.core.credentials import TOOL_CREDENTIALS, get_credential_status
@@ -825,4 +900,14 @@ def serve(
 
     import uvicorn
 
-    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+    if not lan_host:
+        # Le chemin par défaut, mot pour mot comme avant. Un serveur qui
+        # tourne ne doit pas changer de forme parce qu'une option existe.
+        uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
+        return
+
+    from diapason.server.app import create_lan_app
+
+    _servir_deux_sockets(
+        app, bind_host, bind_port, create_lan_app(), lan_host, lan_port
+    )

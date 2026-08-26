@@ -72,11 +72,27 @@ def test_not_connected(connector) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_auth_url(connector) -> None:
-    """auth_url() returns a Dropbox OAuth URL."""
+def test_auth_url_without_credentials_points_at_the_app_console(connector) -> None:
+    """Without an app key, offer the page that creates one — not a dead URL.
+
+    The former assertion — « dropbox » appears in the URL — passed either
+    way, which is why a consent URL carrying an empty ``client_id`` survived
+    here: Dropbox answers ``invalid_request`` to it, and the user goes
+    looking for the fault on their own side.
+    """
     url = connector.auth_url()
-    assert isinstance(url, str)
-    assert "dropbox" in url.lower()
+    assert url == "https://www.dropbox.com/developers/apps"
+
+
+def test_auth_url_with_credentials_is_a_real_consent_url(connector) -> None:
+    """Once an app key is stored, the consent URL carries it and the scopes."""
+    from diapason.connectors.oauth import save_tokens
+
+    save_tokens(connector._credentials_path, {"app_key": "cle-appli"})
+    url = connector.auth_url()
+    assert "client_id=cle-appli" in url
+    assert "client_id=&" not in url, "un client_id vide ne doit jamais partir"
+    assert "response_type=code" in url
 
 
 # ---------------------------------------------------------------------------

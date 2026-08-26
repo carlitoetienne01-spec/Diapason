@@ -378,9 +378,23 @@ class GmailConnector(BaseConnector):
         delete_tokens(self._credentials_path)
 
     def auth_url(self) -> str:
-        """Return a Google OAuth consent URL for the shared Google scopes."""
+        """Return a Google OAuth consent URL for the shared Google scopes.
+
+        Without a stored ``client_id``, this returns the Cloud Console
+        credentials page rather than a consent URL — same behaviour as the
+        three sibling Google connectors. A consent URL carrying an empty
+        ``client_id`` is not a degraded URL, it is a broken one: Google
+        answers ``The OAuth client was not found``, and the user goes looking
+        for the fault on their own side.
+        """
+        tokens = load_tokens(self._credentials_path)
+        client_id = ""
+        if tokens:
+            client_id = tokens.get("client_id", "")
+        if not client_id:
+            return "https://console.cloud.google.com/apis/credentials"
         return build_google_auth_url(
-            client_id="",  # placeholder — real client_id from config
+            client_id=client_id,
             scopes=GOOGLE_ALL_SCOPES,
         )
 

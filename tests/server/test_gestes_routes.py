@@ -1124,3 +1124,150 @@ class TestUnFilMortNeBloquePasLaRelance:
         assert vu["clapNoiseFloor"] == 0.0061
         assert vu["clapsHeard"] == 5
         assert vu["clapFailure"] == "La caméra a refusé de s'ouvrir."
+
+
+class TestLEtatDEnergie:
+    """§83 — armée, la caméra ne coûte pas le même prix qu'on s'en serve ou non.
+
+    La cadence était figée à douze images par seconde du premier instant au
+    désarmement. Armer le mode puis aller lire un document, c'était douze
+    captures, douze encodages JPEG et douze appels à Vision par seconde
+    pendant dix minutes, pour filmer une chaise.
+    """
+
+    def _sur_secteur(self):
+        from diapason.desktop import energie_gestes as eg
+
+        eg.oublier_la_batterie()
+        return patch.object(eg, "batterie", return_value=(100, False))
+
+    def test_desarme_l_etat_est_eteint(self, client):
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["energy"] == "OFF"
+        assert etat["fps"] == 0
+
+    def test_arme_sans_main_on_veille(self, client):
+        with self._sur_secteur():
+            client.post("/v1/gestures/arm")
+            etat = client.get("/v1/gestures/state").json()
+        assert etat["energy"] == "READY"
+        assert 0 < etat["fps"] < 12, "veiller doit coûter moins qu'agir"
+
+    def test_une_main_vue_fait_monter_la_cadence(self, client):
+        from diapason.desktop.gestes_main import Point
+
+        main = [
+            Point("wrist", 0.5, 0.9),
+            Point("indexMCP", 0.42, 0.7),
+            Point("littleMCP", 0.62, 0.7),
+            Point("indexTip", 0.42, 0.2),
+            Point("middleMCP", 0.48, 0.7),
+            Point("middleTip", 0.48, 0.2),
+            Point("ringMCP", 0.55, 0.7),
+            Point("ringTip", 0.55, 0.2),
+            Point("littleTip", 0.62, 0.25),
+            Point("thumbCMC", 0.38, 0.82),
+            Point("thumbTip", 0.3, 0.5),
+        ]
+        with self._sur_secteur():
+            client.post("/v1/gestures/arm")
+            with patch(
+                "diapason.desktop.vision_mains.mains_dans_les_octets",
+                return_value=[main],
+            ):
+                corps = client.post(
+                    "/v1/gestures/frame", content=_image_factice()
+                ).json()
+        assert corps["energy"] == "ACTIVE"
+        assert corps["fps"] == 12
+
+    def test_la_cadence_voyage_avec_l_image_pas_seulement_avec_l_etat(self, client):
+        """Sinon l'interface filme à l'ancienne cadence pendant jusqu'à une
+        seconde après qu'une main est entrée — le moment où elle compte."""
+        with self._sur_secteur():
+            client.post("/v1/gestures/arm")
+            with patch(
+                "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+            ):
+                corps = client.post(
+                    "/v1/gestures/frame", content=_image_factice()
+                ).json()
+        assert "fps" in corps and "energy" in corps
+
+    def test_une_batterie_basse_bride_meme_une_main_vue(self, client):
+        from diapason.desktop import energie_gestes as eg
+
+        eg.oublier_la_batterie()
+        with patch.object(eg, "batterie", return_value=(8, True)):
+            client.post("/v1/gestures/arm")
+            etat = client.get("/v1/gestures/state").json()
+        assert etat["energy"] == "LOW_POWER"
+        assert 0 < etat["fps"] < 12
+
+    def test_la_cadence_annoncee_n_est_jamais_nulle_tant_qu_on_est_arme(self, client):
+        """Zéro serait une caméra éteinte qui se croit armée : le mode ne
+        verrait plus jamais une main revenir."""
+        with self._sur_secteur():
+            client.post("/v1/gestures/arm")
+            etat = client.get("/v1/gestures/state").json()
+        assert etat["armed"] is True
+        assert etat["fps"] > 0
+
+
+class TestLeDepotNeGelePasLeServeur:
+    """`/frame` est `async def` : ce qu'elle fait EN LIGNE tourne sur la
+    boucle d'événements.
+
+    Or déposer finit dans `httpx.post` avec six secondes de délai d'attente
+    (`mesh/transport.py`). Un appareil qui ne répond pas gelait donc tout
+    Diapason pendant six secondes : le WebSocket vocal, le flux du chat, la
+    cloche d'approbation, et les images de geste suivantes. Pour un geste
+    vers une machine éteinte.
+
+    Les routes synchrones du module — `/drop/target` — n'ont jamais eu ce
+    défaut : Starlette les exécute déjà dans un fil. C'était `/frame`, et
+    lui seul.
+    """
+
+    def test_le_depot_est_confie_a_un_fil(self, client):
+        from diapason.desktop.gestes_main import Etat
+        from diapason.server import gestes_routes as gr
+
+        confies = []
+        vrai_to_thread = gr.asyncio.to_thread
+
+        async def _espion(fonction, *args, **kwargs):
+            confies.append(getattr(fonction, "__name__", str(fonction)))
+            return await vrai_to_thread(fonction, *args, **kwargs)
+
+        client.post("/v1/gestures/arm")
+        gr._session.moteur.observer = lambda points: Etat.RELACHE
+        with (
+            patch.object(gr.asyncio, "to_thread", _espion),
+            patch(
+                "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+            ),
+        ):
+            client.post("/v1/gestures/frame", content=_image_factice())
+
+        assert "_deposer" in confies, (
+            "déposer en ligne dans une route async gèle la boucle jusqu'à six secondes"
+        )
+
+    def test_le_depot_rend_toujours_son_resultat(self, client):
+        """Passer par un fil ne doit rien perdre en chemin."""
+        from diapason.desktop.gestes_main import Etat
+        from diapason.server import gestes_routes as gr
+
+        client.post("/v1/gestures/arm")
+        gr._session.moteur.observer = lambda points: Etat.RELACHE
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets", return_value=[]
+        ):
+            client.post("/v1/gestures/frame", content=_image_factice())
+
+        dernier = client.get("/v1/gestures/state").json()["lastDrop"]
+        assert dernier is not None
+        assert dernier["reason"] == "NOTHING_HELD", (
+            "la main était vide : le résultat doit le dire, pas disparaître"
+        )

@@ -181,3 +181,81 @@ class TestLeVraiCheminDeResolution:
         resultat = outil.execute(device_phrase="mon téléphone")
         assert not resultat.success
         assert resultat.content, "un aveu lisible, jamais une trace de pile"
+
+
+class TestUnTelephoneVaCHERCHERSaCommande:
+    """« Continue ça sur mon téléphone » vise un appareil en mode « pull ».
+
+    C'est-à-dire le seul cas où `dispatch_command` rend QUEUED : le verdict
+    n'existe pas encore quand il rend la main, seulement quelques centaines
+    de millisecondes plus tard. Mesuré sur un téléphone éveillé : 1,9 s.
+
+    Sans attendre, l'outil annonçait `success=False` accompagné de « C'est
+    prêt pour Mon téléphone » — un échec et une phrase de réussite dans la
+    même réponse. `mesh_send` avait reçu le correctif ; son jumeau, non,
+    alors que c'est LUI qui vise un téléphone par construction.
+    """
+
+    def _contexte(self):
+        ca.poser_contexte(
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Zéro à Héro",
+        )
+
+    def test_une_mise_en_file_qui_aboutit_est_un_succes(self):
+        self._contexte()
+        with (
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                lambda **kw: {
+                    "status": "QUEUED",
+                    "userSafeMessage": "C'est prêt pour Mon téléphone.",
+                },
+            ),
+            patch.object(_outil().__class__, "_target", lambda self, p, moi: "dev_tel"),
+            patch.object(
+                _outil().__class__,
+                "_await_ack",
+                lambda self, issue: {
+                    "status": "SUCCESS",
+                    "userSafeMessage": "Le projet est affiché sur Succès.",
+                },
+            ),
+        ):
+            resultat = _outil().execute(device_phrase="mon téléphone")
+        assert resultat.success is True, (
+            "un échec accompagné d'une phrase de réussite fait réessayer "
+            "un agent, ou lui fait annoncer une panne qui n'a pas eu lieu"
+        )
+        assert resultat.content == "Le projet est affiché sur Succès."
+
+    def test_une_attente_qui_depasse_reste_une_attente(self):
+        """Le délai écoulé ne transforme pas « pas encore » en « refusé »."""
+        self._contexte()
+        en_file = {
+            "status": "QUEUED",
+            "userSafeMessage": "C'est prêt pour Mon téléphone.",
+        }
+        with (
+            patch(
+                "diapason.mesh.dispatch.dispatch_command",
+                lambda **kw: dict(en_file),
+            ),
+            patch.object(_outil().__class__, "_target", lambda self, p, moi: "dev_tel"),
+            patch.object(
+                _outil().__class__, "_await_ack", lambda self, issue: dict(en_file)
+            ),
+        ):
+            resultat = _outil().execute(device_phrase="mon téléphone")
+        assert resultat.success is False
+        assert "prêt" in resultat.content
+
+    def test_les_deux_jumeaux_lisent_un_QUEUED_de_la_meme_facon(self):
+        """Deux outils qui disent des choses différentes du même envoi, c'est
+        la porte ouverte à « ça marche au chat mais pas à la voix »."""
+        from diapason.tools.mesh_tools import HandoffContinueTool, MeshSendTool
+
+        assert HandoffContinueTool._await_ack is MeshSendTool._await_ack
+        assert HandoffContinueTool._target is MeshSendTool._target

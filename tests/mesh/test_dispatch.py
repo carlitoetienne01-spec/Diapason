@@ -425,3 +425,44 @@ class TestPrivacyBoundary:
         monkeypatch.setattr(local_mode, "local_only", lambda config=None: True)
         # No exception: this is the user's own other computer.
         assert_may_reach_device({"trustLevel": "TRUSTED"}, "http://192.168.1.42:8000")
+
+
+class TestUnRefusNeSePresentePas:
+    """La route d'arrivée des commandes vit hors du mur d'authentification :
+    la signature Ed25519 de l'enveloppe EST la créance.
+
+    Mais un refus répondait en donnant l'identifiant permanent de la
+    machine. Le 26 août 2026, un POST au corps vide, sans la moindre
+    créance, a obtenu « mac-73d5a8b0c742888a » depuis le Wi-Fi. Un
+    identifiant stable est ce avec quoi on suit une machine d'un réseau à
+    l'autre — il ne se donne pas à qui n'a rien prouvé.
+
+    Un expéditeur légitime, lui, ne perd rien : il vient d'écrire cet
+    identifiant dans son enveloppe, et le recevoir en retour ne lui apprend
+    rien qu'il ne sache déjà.
+    """
+
+    def test_un_corps_vide_n_obtient_pas_l_identifiant_de_la_machine(self):
+        from diapason.mesh.dispatch import receive_command
+        from diapason.mesh.identity import device_identity
+
+        reponse = receive_command({})
+        assert reponse["errorCode"] == "MALFORMED"
+        assert device_identity().device_id not in str(reponse)
+        assert reponse["targetDeviceId"] == ""
+
+    def test_une_enveloppe_illisible_non_plus(self):
+        from diapason.mesh.dispatch import receive_command
+        from diapason.mesh.identity import device_identity
+
+        reponse = receive_command({"commandId": "x", "envelope": "pas du json"})
+        assert device_identity().device_id not in str(reponse)
+
+    def test_le_champ_existe_toujours_et_fait_echo(self):
+        """Le contrat avec le client mobile ne change pas de FORME : le champ
+        reste présent, et un expéditeur retrouve ce qu'il a demandé."""
+        from diapason.mesh.dispatch import receive_command
+
+        reponse = receive_command({"targetDeviceId": "dev_ceQueJAiDemande"})
+        assert "targetDeviceId" in reponse
+        assert reponse["targetDeviceId"] == "dev_ceQueJAiDemande"

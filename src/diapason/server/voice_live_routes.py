@@ -17,6 +17,38 @@ def _parse_tools_csv(raw: str) -> Optional[list[str]]:
     return parts or None
 
 
+def outils_demandes_par_le_client(csv: str) -> Optional[list[str]]:
+    """Ce qu'un client a le droit de demander à la voix — au plus le défaut.
+
+    RESTREINDRE, jamais élargir. Cette liste vient de la trame WebSocket du
+    client ; `list_voice_tool_ids` ne la confrontait qu'au registre GLOBAL,
+    si bien qu'un client pouvait demander n'importe quel outil enregistré —
+    y compris ceux que `DEFAULT_VOICE_TOOL_IDS` tient délibérément hors du
+    chemin vocal, et qu'un test-fusible prétend garder. La restriction était
+    décorative : elle se contournait en nommant l'outil.
+
+    Ce n'est pas une élévation de privilège : le WebSocket est derrière la
+    clé d'API, et le même outil s'atteint par le chat. C'est une décision de
+    portée qui ne s'appliquait pas — ce qui est pire qu'une décision absente,
+    parce qu'un test la disait tenue.
+
+    La liste du SERVEUR (`defaults`) n'est pas bridée ici : elle vient de la
+    configuration, donc de la machine, pas du réseau.
+
+    Rend ``None`` quand il ne reste rien — même contrat que
+    ``_parse_tools_csv``, et même conséquence en aval : « aucune restriction
+    demandée », donc la liste par défaut. Un client qui ne nomme QUE des
+    outils hors portée obtient le défaut, pas le vide : refuser toute voix à
+    qui a mal demandé serait une punition, pas une garde.
+    """
+    from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
+
+    demandes = _parse_tools_csv(csv) or []
+    plafond = set(DEFAULT_VOICE_TOOL_IDS)
+    retenus = [t for t in demandes if t in plafond]
+    return retenus or None
+
+
 def _realtime_defaults(app_state: Any) -> dict[str, Any]:
     config = getattr(app_state, "config", None)
     speech = getattr(config, "speech", None) if config is not None else None
@@ -140,7 +172,7 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         if raw.get("max_tool_steps") is not None:
             max_tool_steps = int(raw["max_tool_steps"])
         if raw.get("tools"):
-            allowed_tools = _parse_tools_csv(str(raw["tools"]))
+            allowed_tools = outils_demandes_par_le_client(str(raw["tools"]))
         if raw.get("instructions"):
             instructions = str(raw["instructions"])
         elif raw.get("include_memory", True):

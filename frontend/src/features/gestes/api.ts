@@ -147,6 +147,8 @@ export type Diagnostic = {
   handRatio?: number;
   confidence?: number;
   secondsLeft?: number;
+  energy?: EtatEnergie;
+  fps?: number;
 };
 
 export async function lireDiagnostic(): Promise<Diagnostic> {
@@ -213,11 +215,20 @@ export async function oublierCalibration(): Promise<void> {
   await apiFetch('/v1/gestures/calibrate/reset', { method: 'POST' });
 }
 
+export type EtatEnergie = 'OFF' | 'READY' | 'ACTIVE' | 'LOW_POWER';
+
 export type ReponseImage = {
   state: EtatGeste;
   changed: boolean;
   hand: boolean;
   frames: number;
+  // §83 : la cadence est décidée par le SERVEUR, seul à savoir si une main a
+  // été vue. Elle voyage avec chaque image, et pas seulement dans l'état
+  // sondé chaque seconde : sans cela l'interface filmerait encore à
+  // l'ancienne cadence pendant jusqu'à une seconde après qu'une main est
+  // entrée dans le champ — précisément le moment où elle compte.
+  energy?: EtatEnergie;
+  fps?: number;
 };
 
 export class EchecGeste extends Error {

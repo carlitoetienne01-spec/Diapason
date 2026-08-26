@@ -107,12 +107,29 @@ def test_auth_type_is_oauth(connector) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_auth_url_returns_string(connector) -> None:
-    """auth_url() returns a URL pointing to Google's OAuth endpoint."""
+def test_auth_url_without_credentials_points_at_the_console(connector) -> None:
+    """Without a client_id, offer the page that creates one — not a dead URL.
+
+    A consent URL carrying ``client_id=`` empty is not a degraded URL, it is
+    a broken one: Google answers "The OAuth client was not found", and the
+    user goes looking for the fault on their own side. The three sibling
+    Google connectors already behaved this way; Gmail did not.
+    """
     url = connector.auth_url()
-    assert isinstance(url, str)
+    assert url == "https://console.cloud.google.com/apis/credentials"
+
+
+def test_auth_url_with_credentials_is_a_real_consent_url(connector) -> None:
+    """Once a client_id is stored, the consent URL carries it and the scopes."""
+    from diapason.connectors.oauth import save_tokens
+
+    identifiant = "abc.apps.googleusercontent.com"
+    save_tokens(connector._credentials_path, {"client_id": identifiant})
+    url = connector.auth_url()
     assert url.startswith("https://accounts.google.com/o/oauth2/v2/auth")
+    assert identifiant in url
     assert "gmail.modify" in url
+    assert "client_id=&" not in url, "un client_id vide ne doit jamais partir"
 
 
 # ---------------------------------------------------------------------------

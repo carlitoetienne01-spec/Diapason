@@ -206,13 +206,20 @@ def logs(operator_id: str, lines: int) -> None:
         table.add_column("Result", style="cyan", max_width=60)
 
         for run in runs:
-            success = "[green]yes[/green]" if run.get("success") else "[red]no[/red]"
-            result_text = run.get("result", "")[:60]
+            ok = bool(run.get("success"))
+            success = "[green]yes[/green]" if ok else "[red]no[/red]"
+            # On a failure, show WHY. The error column is the only place the
+            # reason exists, and it was not displayed: a red "no" with an
+            # empty Result sent the reader to look for a fault in an answer
+            # that had none — or, for a crashed tick, in no answer at all.
+            detail = run.get("result", "") or ""
+            if not ok:
+                detail = run.get("error", "") or detail
             table.add_row(
                 run.get("started_at", ""),
                 run.get("finished_at", ""),
                 success,
-                result_text,
+                detail[:60],
             )
         console.print(table)
     except Exception as exc:

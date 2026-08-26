@@ -112,4 +112,34 @@ def vider() -> None:
     _tenu = None
 
 
-__all__ = ["ObjetSpatial", "TTL_S", "attraper", "lacher", "tenu", "vider"]
+def decrire(objet: ObjetSpatial) -> str:
+    """Ce qui est dans la main, en une phrase, pour le contexte du modèle.
+
+    Miroir strict de ``contexte_app.decrire`` : même préfixe court, mêmes
+    guillemets, une seule phrase, aucun impératif. Le contexte ÉNONCE un
+    fait ; l'instruction, elle, vit dans la description de l'outil.
+
+    Le « (geste) » n'est pas décoratif. Ces deux phrases se suivent souvent
+    dans le même contexte, et « Dans la main » et « Dans Diapason » se
+    ressemblent assez pour que le modèle envoie l'un en croyant l'autre —
+    c'est exactement le défaut que ce raccordement existe pour corriger.
+    """
+    if objet.type == "screen":
+        return f"Dans la main (geste) : l'écran {objet.titre}."
+    quoi = {
+        "project": "le projet",
+        "note": "la note",
+        "task": "la tâche",
+    }.get(objet.type, "l'élément")
+    return f"Dans la main (geste) : {quoi} « {objet.titre} »."
+
+
+__all__ = [
+    "ObjetSpatial",
+    "TTL_S",
+    "attraper",
+    "decrire",
+    "lacher",
+    "tenu",
+    "vider",
+]

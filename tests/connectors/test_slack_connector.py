@@ -100,15 +100,30 @@ def test_auth_type_is_oauth(connector) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_auth_url(connector) -> None:
+def test_auth_url_without_credentials_points_at_the_dashboard(connector) -> None:
+    """Without a client_id, offer the page that creates one — not a dead URL.
+
+    Slack answers ``invalid_client_id`` to a consent URL carrying an empty
+    one, and the user goes looking for the fault on their own side. Slack has
+    no entry in ``OAUTH_PROVIDERS``, so this URL is the only one on offer.
+    """
+    url = connector.auth_url()
+    assert url == "https://api.slack.com/apps"
+
+
+def test_auth_url_with_credentials_requests_user_scopes(connector) -> None:
     """auth_url() returns a URL requesting user-token scopes (not bot scopes).
 
     The migration to user OAuth tokens means scopes go in ``user_scope``
     (not ``scope``), and DM/MPIM history scopes are mandatory.
     """
+    from diapason.connectors.oauth import save_tokens
+
+    save_tokens(connector._credentials_path, {"client_id": "123.456"})
     url = connector.auth_url()
-    assert isinstance(url, str)
     assert "slack.com" in url
+    assert "123.456" in url
+    assert "client_id=&" not in url, "un client_id vide ne doit jamais partir"
     # User-token install: scopes carried by ``user_scope``, not ``scope``.
     assert "user_scope=" in url
     # DM and MPIM history are required for Deep Research over personal DMs.

@@ -78,6 +78,14 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "clipboard_read",
     "screen_snap",
     "system_vitals",
+    # Le geste, terminé à la voix (25 août 2026) : « envoie ça sur mon
+    # téléphone », ou la réponse à la question « vers lequel ? » que le
+    # serveur a posée. Contrairement à `mesh_send` — délibérément absent
+    # d'ici — il ne choisit ni ce qu'il envoie (c'est la main) ni l'action
+    # (elle découle du type de l'objet), et quand une question est en
+    # attente il tranche dans une liste FERMÉE que le serveur a mesurée.
+    # Une transcription approximative ne peut donc pas inventer une cible.
+    "geste_deposer",
 )
 
 # (module, [(registry_key, attribute_name), ...])
@@ -99,6 +107,10 @@ FAST_ACK_TOOL_IDS = frozenset(
 )
 
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "diapason.tools.gestes_spatiaux",
+        (("geste_deposer", "GesteDeposerTool"),),
+    ),
     (
         "diapason.tools.knowledge_search",
         (

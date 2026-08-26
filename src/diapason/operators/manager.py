@@ -68,6 +68,11 @@ class OperatorManager:
         if manifest is None:
             raise KeyError(f"Operator not registered: {operator_id}")
 
+        # Before anything is scheduled — see capability_guard for why here and
+        # not at load or at tick. A refusal must be able to say truthfully
+        # that nothing will run.
+        self._refuse_if_capabilities_do_not_hold(operator_id, manifest)
+
         scheduler = self._system.scheduler
         if scheduler is None:
             raise RuntimeError(
@@ -175,6 +180,32 @@ class OperatorManager:
             results.append(info)
         return results
 
+    def _refuse_if_capabilities_do_not_hold(
+        self, operator_id: str, manifest: OperatorManifest
+    ) -> None:
+        """Raise ``OperatorRefused`` unless the manifest's claims hold up."""
+        from diapason.operators.capability_guard import (
+            OperatorRefused,
+            check_manifest,
+        )
+
+        verdict = check_manifest(manifest, policy=self._capability_policy())
+        if not verdict.ok:
+            raise OperatorRefused(operator_id, verdict)
+
+    def _capability_policy(self) -> Optional[Any]:
+        """The administrator's policy, if this installation has one.
+
+        Absent on a default install, and that is the normal case — see
+        ``capability_guard`` for why consulting a policy that does not exist
+        would refuse every operator instead of none.
+        """
+        for holder in (self._system, getattr(self._system, "security", None)):
+            policy = getattr(holder, "capability_policy", None)
+            if policy is not None:
+                return policy
+        return None
+
     def run_once(self, operator_id: str) -> str:
         """Execute a single tick of an operator immediately.
 
@@ -183,6 +214,10 @@ class OperatorManager:
         manifest = self._manifests.get(operator_id)
         if manifest is None:
             raise KeyError(f"Operator not registered: {operator_id}")
+
+        # The same gate as activate(): the two doors must say the same thing,
+        # or "it works when I run it by hand" becomes a way around the check.
+        self._refuse_if_capabilities_do_not_hold(operator_id, manifest)
 
         tools_list = manifest.tools if manifest.tools else None
         result = self._system.ask(

@@ -925,3 +925,178 @@ class TestLoadBundledOperators:
         m = load_operator(operators_dir / "system_monitor.toml")
         assert m.id == "system_monitor"
         assert m.schedule_value == "300"
+
+    def test_none_of_the_bundled_operators_declares_a_capability(self, operators_dir):
+        """They declare nothing today, and the guard is built on that fact.
+
+        `required_capabilities` empty means "no requirement" precisely because
+        every bundled manifest is empty — fail-closed would refuse all four on
+        day one. The day someone adds one, this test goes red and makes them
+        read `capability_guard.py` before shipping it.
+        """
+        from diapason.operators.loader import load_operator
+
+        for chemin in sorted(operators_dir.glob("*.toml")):
+            manifeste = load_operator(chemin)
+            assert manifeste.required_capabilities == [], (
+                f"{chemin.name} déclare {manifeste.required_capabilities} : "
+                "relis capability_guard.py, la garde va désormais le vérifier "
+                "contre ses outils."
+            )
+
+
+class TestCapabilityGuard:
+    """A declared capability that nobody checks is what §5 forbids.
+
+    `required_capabilities` was loaded from TOML by two producers and read by
+    nobody. It matters here more than most idle fields: an operator installed
+    by a third party gets *scheduled*, and runs unattended on a tick with
+    whatever tools it names.
+    """
+
+    def _manifest(self, **kwargs):
+        from diapason.operators.types import OperatorManifest
+
+        base = {"id": "researcher", "name": "Researcher"}
+        base.update(kwargs)
+        return OperatorManifest(**base)
+
+    def test_a_manifest_that_declares_nothing_is_allowed(self):
+        """Empty means "no requirement", not "refuse".
+
+        The eleven bundled operators and recipes declare nothing. Fail-closed
+        here would refuse all of them on day one, and the real authorisation
+        is not lost: ToolExecutor still filters every single tool call.
+        """
+        from diapason.operators.capability_guard import check_manifest
+
+        verdict = check_manifest(self._manifest(tools=["web_search", "think"]))
+        assert verdict.ok, "aucune déclaration ne doit rien refuser"
+
+    def test_an_unknown_capability_is_refused(self):
+        from diapason.operators.capability_guard import check_manifest
+
+        verdict = check_manifest(
+            self._manifest(required_capabilities=["memory:read", "teleport:user"])
+        )
+        assert not verdict.ok
+        assert verdict.unknown_verbs == ("teleport:user",)
+
+    def test_a_mesh_verb_is_not_an_operator_capability(self):
+        """Five vocabularies look alike in this repo; only one applies here.
+
+        `app.navigate` is a device-mesh verb. Accepting it silently is how
+        the vocabularies drift into each other.
+        """
+        from diapason.operators.capability_guard import check_manifest
+
+        verdict = check_manifest(self._manifest(required_capabilities=["app.navigate"]))
+        assert verdict.unknown_verbs == ("app.navigate",)
+
+    def test_a_skill_verb_is_not_an_operator_capability(self):
+        from diapason.operators.capability_guard import check_manifest
+
+        verdict = check_manifest(
+            self._manifest(required_capabilities=["filesystem:write"])
+        )
+        assert verdict.unknown_verbs == ("filesystem:write",)
+
+    def test_a_tool_whose_capability_is_undeclared_is_refused(self):
+        from diapason.operators.capability_guard import check_manifest
+
+        verdict = check_manifest(
+            self._manifest(tools=["shell_exec"], required_capabilities=["memory:read"])
+        )
+        assert not verdict.ok
+        assert ("shell_exec", "code:execute") in verdict.undeclared
+
+    def test_the_implied_capabilities_come_from_the_default_map(self):
+        """`memory_store` declares nothing in its own spec.
+
+        Anyone who reads `spec.required_capabilities` alone concludes it
+        requires nothing, and the guard becomes decorative. Its capability
+        lives in DEFAULT_TOOL_CAPABILITIES.
+        """
+        from diapason.operators.capability_guard import capabilities_of_tool
+
+        assert "memory:write" in capabilities_of_tool("memory_store")
+
+    def test_the_policy_is_only_consulted_when_an_administrator_supplied_one(self):
+        """The naive implementation refuses every operator on a default install.
+
+        With no policy file, CapabilityPolicy(default_deny=True) answers False
+        for 'operative' — the grants an operator really runs under are the
+        ones ToolExecutor gives itself at construction, which has not happened
+        at activation time.
+        """
+        from diapason.operators.capability_guard import check_manifest
+        from diapason.security.capabilities import CapabilityPolicy
+
+        sans_fichier = CapabilityPolicy(default_deny=True)
+        assert sans_fichier.check("operative", "memory:write", "") is False
+        verdict = check_manifest(
+            self._manifest(required_capabilities=["memory:write"]),
+            policy=sans_fichier,
+        )
+        assert verdict.ok, "sans politique explicite, on ne refuse pas"
+        assert verdict.policy_consulted is False
+
+    def test_an_explicit_policy_that_grants_nothing_refuses(self, tmp_path):
+        from diapason.operators.capability_guard import check_manifest
+        from diapason.security.capabilities import CapabilityPolicy
+
+        fichier = tmp_path / "policy.json"
+        fichier.write_text("{}", encoding="utf-8")
+        politique = CapabilityPolicy(policy_path=str(fichier), default_deny=True)
+        verdict = check_manifest(
+            self._manifest(required_capabilities=["memory:write"]),
+            policy=politique,
+        )
+        assert verdict.policy_consulted is True
+        assert verdict.denied == ("memory:write",)
+
+    def test_the_refusal_says_nothing_was_scheduled(self):
+        """The whole difference between refusing here and refusing at tick."""
+        from diapason.operators.capability_guard import check_manifest, explain
+
+        verdict = check_manifest(self._manifest(required_capabilities=["nope:nope"]))
+        message = explain("researcher", verdict)
+        assert "Nothing has been scheduled" in message
+        assert "nope:nope" in message
+
+    def test_activate_refuses_before_creating_any_task(self):
+        """A refused operator must not leave a scheduler task behind."""
+        from unittest.mock import MagicMock
+
+        from diapason.operators.capability_guard import OperatorRefused
+        from diapason.operators.manager import OperatorManager
+
+        system = MagicMock()
+        system.capability_policy = None
+        system.security = None
+        manager = OperatorManager(system)
+        manager.register(self._manifest(required_capabilities=["teleport:user"]))
+
+        with pytest.raises(OperatorRefused):
+            manager.activate("researcher")
+        (
+            system.scheduler.create_task.assert_not_called(),
+            ("un opérateur refusé ne doit laisser aucune tâche derrière lui"),
+        )
+
+    def test_run_once_refuses_the_same_manifest_as_activate(self):
+        """Otherwise "it works when I run it by hand" becomes a way around."""
+        from unittest.mock import MagicMock
+
+        from diapason.operators.capability_guard import OperatorRefused
+        from diapason.operators.manager import OperatorManager
+
+        system = MagicMock()
+        system.capability_policy = None
+        system.security = None
+        manager = OperatorManager(system)
+        manager.register(self._manifest(required_capabilities=["teleport:user"]))
+
+        with pytest.raises(OperatorRefused):
+            manager.run_once("researcher")
+        system.ask.assert_not_called()

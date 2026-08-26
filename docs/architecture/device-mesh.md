@@ -21,7 +21,9 @@ Pairing is mutual and short-lived. The host mints a single-use invitation (10 mi
 
 ### The platform ceiling
 
-`PLATFORM_CAPABILITIES` in `capabilities.py` is the answer to "what could this class of device honour even in principle". iOS and iPadOS exclude arbitrary automation and filesystem writes; `WEB` is client-only; an unrecognised platform falls to a read-only floor.
+`PLATFORM_CAPABILITIES` in `capabilities.py` is the answer to "what could this class of device honour even in principle". iOS, iPadOS and Android exclude host automation and `desktop.open`; `WEB` is client-only; an unrecognised platform falls to a read-only floor.
+
+Filesystem access is not a ceiling question. No verb in this vocabulary grants it on any platform — `filesystem.workspace.read` / `.write` were removed on 25 August 2026, having never been declared by any client — and `FORBIDDEN_PARAMETER_NAMES` in `tools.py` refuses a `path` parameter structurally. File *transfer* is a separate subsystem (`/v1/mesh/files`) with its own session, guarded by a signed offer and a session token rather than by a capability.
 
 This is enforced at every point a device could try to widen its own grant — pairing, an explicit declaration, a presence beacon, a poll — because a check that exists at only one of those is a check that will eventually be bypassed by the others.
 

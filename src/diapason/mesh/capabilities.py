@@ -58,8 +58,22 @@ ALL_CAPABILITIES: frozenset[str] = frozenset(
         "voice.output",
         "local_ai.available",
         # host
-        "filesystem.workspace.read",
-        "filesystem.workspace.write",
+        # `filesystem.workspace.read` / `.write` lived here from the day this
+        # vocabulary was written and were never declared by anyone: a Diapason
+        # DERIVES its declaration from the tool catalogue (see
+        # ``local_capabilities`` below), which has five verbs and none of them
+        # touches files; the Dart client declares three; the two real paired
+        # devices declare four and three. Removed on 25 August 2026.
+        #
+        # They were worse than merely idle. ``mesh/files_routes.py`` sits right
+        # next to them and really does write files, so a reader took them for
+        # the guard on that route — which never consulted them. What actually
+        # guards it: an Ed25519-signed offer, a TRUSTED-only public key lookup,
+        # a single-use session token, a byte ceiling, and a dedicated rate
+        # bucket. A name that claims more than the code does is the §5 failure,
+        # and wiring the transfer to this one would have enlarged the claim
+        # rather than settled it — accepting one hash-checked file into a 0700
+        # mailbox is not "write access to a workspace".
         "automation.approved.run",
     }
 )
@@ -83,8 +97,11 @@ _SURFACE = frozenset({"app.open", "app.navigate", "app.show_resource"})
 
 # Per-platform ceiling. What each OS genuinely permits an app to do — not
 # what we wish it did. iOS gets deep links and notifications; it does not get
-# OS automation or arbitrary filesystem access, and pretending otherwise
-# would only produce commands that fail on the device (spec §27).
+# OS automation, and pretending otherwise would only produce commands that
+# fail on the device (spec §27). Arbitrary filesystem access is not a ceiling
+# question at all: no verb in this vocabulary grants it, and
+# ``FORBIDDEN_PARAMETER_NAMES`` in ``mesh/tools.py`` refuses a `path`
+# parameter structurally, on every platform including this one.
 PLATFORM_CAPABILITIES: dict[str, frozenset[str]] = {
     "MACOS": ALL_CAPABILITIES,
     "WINDOWS": ALL_CAPABILITIES,
@@ -92,15 +109,19 @@ PLATFORM_CAPABILITIES: dict[str, frozenset[str]] = {
     # Mobile: navigation and notifications yes, host automation no.
     "IOS": _DATA | _SURFACE | {"notifications.show", "voice.input", "voice.output"},
     "IPADOS": _DATA | _SURFACE | {"notifications.show", "voice.input", "voice.output"},
+    # Identical to IOS/IPADOS today. Kept as its own literal rather than an
+    # alias: the platforms coincide by accident of what they currently grant,
+    # not by nature, and an alias would make the next divergence a rewrite
+    # instead of an edit. Android used to be granted
+    # `filesystem.workspace.read` on the grounds that a foreground service can
+    # hold a directory it owns — true, and irrelevant: no Android client ever
+    # declared it, and the verb is gone.
     "ANDROID": _DATA
     | _SURFACE
     | {
         "notifications.show",
         "voice.input",
         "voice.output",
-        # Android permits a foreground service to hold a workspace directory
-        # it owns; still sandboxed, still user-granted.
-        "filesystem.workspace.read",
     },
     # A browser tab is a client, not a system agent (spec §31). Notifications
     # depend on the browser and are therefore not granted by default.

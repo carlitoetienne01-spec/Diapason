@@ -55,7 +55,7 @@ serveur n'en savait rien.
 |---|---|
 | **Le cliché de l'écran courant** — volatile (3 min), jamais persisté, miroir exact d'`etat_bureau` | `desktop/contexte_app.py`, route `/v1/context/view` |
 | **L'interface le publie** — écran global, plus la ressource dans Projets et Notes | `frontend/src/features/mesh/` |
-| **Le modèle le voit** — injecté en fin de contexte, voix ET chat | `local_voice._turn_messages`, `routes._now_anchor` |
+| **Le modèle le voit** — voix ET chat, mais PAS au même endroit : message système en FIN de contexte côté voix, concaténé à l'ancre en TÊTE côté chat | `local_voice._turn_messages`, `routes._ensure_identity_prompt` |
 | **`handoff_continue`** — part de ce qu'on regarde, ne demande aucun identifiant | `tools/mesh_tools.py` |
 
 ### Ce que ce handoff refuse de faire
@@ -148,8 +148,8 @@ mesurés. Détail dans [`GESTES.md`](GESTES.md).
 | Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
 | Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé — le mur est tombé |
 | Trancher entre deux appareils | ✅ | `/v1/gestures/drop/target`, 14 tests |
-| État d'énergie (§83) | ❌ | Cadence figée à 12 im/s ; aucun `OFF / READY / ACTIVE / LOW_POWER` |
-| `desktop/camera.py` (session AVFoundation) | ⚠️ **code mort** | Écrit, importé nulle part. Ce n'est pas lui qui alimente les gestes. |
+| Fusion voix + geste | ✅ | La main se dit dans le contexte (voix ET chat) et `geste_deposer` l'envoie — 15 tests |
+| État d'énergie (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER` — 12 im/s suivi, 3 au repos, 2 sur batterie faible |
 
 ### Poser une question sans moyen d'y répondre est une impasse
 
@@ -200,25 +200,11 @@ L'ordre du §149 tient, moins ce qui est déjà fait. Les phases 2, 3 et 4 sont
 livrées ; ce qui suit est ce qu'elles ont laissé ouvert, du moins cher au
 plus cher :
 
-1. **L'état d'énergie des gestes (§83)** — la cadence est figée à 12 im/s,
-   sans `OFF / READY / ACTIVE / LOW_POWER` ni adaptation sur batterie. C'est
-   le seul point du §83 encore ouvert : les quatre chemins d'extinction, eux,
-   existent et sont testés.
-2. **`desktop/camera.py`** — une session AVFoundation écrite, importée nulle
-   part. Ce n'est pas elle qui alimente les gestes. À supprimer, ou à
-   assumer comme second chemin.
-3. **`filesystem.workspace.*`** — une capacité déclarable qu'aucun outil
-   n'exerce. Une promesse en attente est ce que le §5 interdit : soit un
-   outil la consomme, soit elle sort du catalogue.
-4. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
+1. **Handoff complet** — `app.show_resource` en fait l'essentiel ; manquent
    l'état de vue et une session nommée. Les deux attendent le Dart : il ne
    sait restaurer ni onglet, ni filtre, ni position de défilement.
-5. **Fusion voix + geste** — le contexte du tour vocal est le point
-   d'insertion. Attention : `handoff_continue` repart de l'écran courant et
-   **non** du presse-papiers spatial, donc répondre « sur l'iPad » à la voix
-   enverrait ce qui est affiché, pas ce qui est dans la main.
-6. **Découverte (mDNS)** — aujourd'hui l'adresse LAN se tape à la main.
-7. **Une application Windows** — c'est ce qui manque au MVP du §121, et
+2. **Découverte (mDNS)** — aujourd'hui l'adresse LAN se tape à la main.
+3. **Une application Windows** — c'est ce qui manque au MVP du §121, et
    c'est de loin le plus cher. Le premier MVP démontrable reste Mac ↔ Mac,
    puis Mac ↔ Android.
 

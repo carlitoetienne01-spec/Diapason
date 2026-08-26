@@ -489,4 +489,88 @@ def create_app(
     return app
 
 
-__all__ = ["create_app"]
+# Les NEUF portes qui ont le droit d'exister sur le réseau local.
+#
+# Exactement celles que `_requires_auth` exempte de la clé d'API — et ce
+# n'est pas une coïncidence : une route exempte l'est parce qu'elle porte une
+# créance PLUS FORTE que la clé (signature Ed25519 de l'appareil, invitation
+# à usage unique, jeton de session). Ce sont donc les seules qu'un pair
+# puisse honnêtement franchir, et les seules qui aient besoin du LAN.
+#
+# Les seize autres routes de `/v1/mesh` — émettre une invitation, envoyer une
+# commande, révoquer un appareil, lister la flotte — sont le plan de contrôle
+# de CE poste. Elles n'ont rien à faire sur un Wi-Fi.
+_PORTES_LAN: frozenset[str] = frozenset(
+    {
+        "/v1/mesh/pairings/redeem",
+        "/v1/mesh/commands/deliver",
+        "/v1/mesh/commands/poll",
+        "/v1/mesh/commands/ack",
+        "/v1/mesh/presence",
+        "/v1/mesh/files/offer",
+        "/v1/mesh/files/{session_id}/chunk",
+        "/v1/mesh/files/{session_id}/finish",
+        "/v1/mesh/files/{session_id}/status",
+    }
+)
+
+
+def create_lan_app() -> FastAPI:
+    """L'application exposée au réseau local — et rien d'autre.
+
+    **La garantie est structurelle, pas déclarative.** Un middleware qui
+    filtrerait par chemin serait une quatrième liste à tenir à jour à côté de
+    trois qui ont déjà dérivé (voir le commentaire de `auth_middleware` sur ce
+    que deux listes désynchronisées ont coûté), et son mode de défaillance
+    serait silencieux : un `startswith` trop large, et le rattrape-tout SPA
+    rend cent quatre-vingt-cinq routes plus l'arborescence statique.
+
+    Ici, `POST /v1/chat/completions` depuis le LAN ne rend pas 401 ni 403 : il
+    rend **404**, parce que la route N'EXISTE PAS dans cette application. Le
+    port ne sait pas ce qu'est le chat. Aucune liste ne peut se désynchroniser
+    d'un handler qui n'est pas monté.
+
+    Un seul PROCESSUS, deux sockets — impérativement. La boîte de réception
+    (`mesh/executor.py`) et les sessions de transfert (`mesh/files_routes.py`)
+    vivent dans des globales en mémoire : deux processus, et une commande
+    reçue sur le LAN n'apparaîtrait jamais dans l'inbox lue en loopback, et un
+    morceau rendrait 404 parce que l'offre a ouvert la session ailleurs.
+
+    Pas de clé d'API ici, et c'est délibéré : les neuf routes s'authentifient
+    par signature d'appareil, invitation ou jeton de session. Une clé partagée
+    prouverait MOINS — elle ne dit ni quel appareil parle, ni ce qu'il prétend.
+    """
+    from diapason.mesh.files_routes import router as files_router
+    from diapason.mesh.routes import router as mesh_router
+    from diapason.server.auth_middleware import RateLimitMiddleware
+
+    lan = FastAPI(
+        title="Diapason — maillage",
+        description="Les portes du maillage, et rien d'autre.",
+        # Ni docs ni schéma : ce port n'a personne à renseigner, et une
+        # énumération de routes est un cadeau fait au réseau.
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    # Le seau de débit vient AVEC les routes : hors du mur ne veut pas dire
+    # hors du limiteur — c'est précisément la confusion que l'invariant
+    # réciproque de tests/contract/ existe pour interdire.
+    lan.add_middleware(RateLimitMiddleware)
+    lan.include_router(mesh_router)
+    lan.include_router(files_router)
+
+    # Et on RETIRE tout ce qui n'est pas une porte. Monter puis retrancher
+    # plutôt que de découper les routeurs : les deux routeurs restent une
+    # seule vérité, et l'écart entre ce qui est monté ici et ce que le mur
+    # exempte devient une comparaison d'ensembles qu'un test lit d'un coup.
+    lan.router.routes = [
+        route
+        for route in lan.router.routes
+        if getattr(route, "path", None) in _PORTES_LAN
+        or not getattr(route, "methods", None)
+    ]
+    return lan
+
+
+__all__ = ["create_app", "create_lan_app"]

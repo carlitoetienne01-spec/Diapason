@@ -488,6 +488,16 @@ class HandoffContinueTool(BaseTool):
             tool=action,
             arguments=arguments,
         )
+        # La même attente que `mesh_send`, pour la même raison — et elle
+        # comptait ENCORE PLUS ici. « Continue ça sur mon téléphone » vise
+        # par construction un appareil en mode « pull », c'est-à-dire le seul
+        # cas où `dispatch_command` rend QUEUED. Cet outil annonçait donc
+        # `success=False` accompagné de « C'est prêt pour Mon téléphone » —
+        # le défaut exact que `_await_ack` documente avoir corrigé, appliqué
+        # à un jumeau et pas à l'autre. Un agent qui lit ce drapeau conclut à
+        # une panne et réessaie, ou annonce un échec qui n'a pas eu lieu.
+        if resultat.get("status") == "QUEUED":
+            resultat = self._await_ack(resultat)
         # La phrase vient du récepteur : lui seul sait ce qui s'est passé.
         phrase = str(resultat.get("userSafeMessage") or "").strip()
         succes = resultat.get("status") == "SUCCESS"
@@ -503,8 +513,11 @@ class HandoffContinueTool(BaseTool):
             },
         )
 
-    # _target et registry sont empruntés à MeshSendTool : la résolution
-    # « mon téléphone » → appareil doit être LA MÊME des deux côtés, sinon
-    # deux outils répondraient différemment à la même phrase.
+    # _target, registry et _await_ack sont empruntés à MeshSendTool : la
+    # résolution « mon téléphone » → appareil doit être LA MÊME des deux
+    # côtés, sinon deux outils répondraient différemment à la même phrase —
+    # et la lecture d'un QUEUED doit l'être aussi, sinon les deux outils
+    # disent des choses différentes du même envoi.
     registry = MeshSendTool.registry
     _target = MeshSendTool._target
+    _await_ack = MeshSendTool._await_ack

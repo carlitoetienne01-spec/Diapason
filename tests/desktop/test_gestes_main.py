@@ -52,7 +52,8 @@ class TestMesures:
         ouverte = mesurer(_main(ouverture=1.0))
         poing = mesurer(_main(ouverture=0.1))
         assert ouverte.repliement > poing.repliement
-        assert ouverte.doigts_tendus > poing.doigts_tendus
+        # Le comptage des doigts tendus servait cette assertion et la pose
+        # POINTE, retirée le 25 août 2026 ; le repliement dit la même chose.
 
     def test_les_mesures_ne_dependent_pas_de_la_distance(self):
         """Une main près de l'objectif et une main au fond de la pièce
@@ -71,6 +72,42 @@ class TestMesures:
         """Deviner sur une main à moitié vue produirait des gestes fantômes."""
         assert mesurer([Point("wrist", 0.5, 0.9)]) is None
         assert mesurer([]) is None
+
+
+class TestUnVraiPoingAUnPouceContreLIndex:
+    """Un poing serré a le pouce SUR les doigts — c'est ce qui le fait poing.
+
+    La main synthétique de ce fichier fixait `pince = 1.0` en toutes
+    circonstances, y compris pour un poing : elle décrivait une main dont le
+    pouce reste à une largeur de paume de l'index, ce qu'aucun poing ne fait.
+    Le double était plus commode que ce qu'il doublait, et c'est précisément
+    le régime où le classement se trompait.
+    """
+
+    def test_un_poing_serre_reste_un_poing(self):
+        moteur = MoteurDeGestes()
+        for _ in range(10):
+            moteur.observer(_main(ouverture=1.0))
+        assert moteur.etat is Etat.PAUME_STABLE
+        for _ in range(10):
+            etat = moteur.observer(_main(ouverture=0.1, pince=0.2))
+        assert etat is Etat.SAISI, (
+            "fermer le poing DOIT saisir, pouce contre l'index compris"
+        )
+
+    def test_la_saisie_ne_depend_pas_de_l_ecart_du_pouce(self):
+        """Deux poings identiques au pouce près doivent saisir tous les deux.
+
+        Sinon la reconnaissance dépend d'un détail que l'utilisateur ne
+        contrôle pas et dont personne ne lui a parlé.
+        """
+        for ecart in (0.1, 0.3, 0.6, 1.0):
+            moteur = MoteurDeGestes()
+            for _ in range(10):
+                moteur.observer(_main(ouverture=1.0))
+            for _ in range(10):
+                etat = moteur.observer(_main(ouverture=0.1, pince=ecart))
+            assert etat is Etat.SAISI, f"pince={ecart} : le poing n'a pas saisi"
 
 
 class TestUneSeuleImageNeSuffitJamais:

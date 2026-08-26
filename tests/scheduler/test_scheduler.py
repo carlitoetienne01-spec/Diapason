@@ -318,3 +318,143 @@ class TestLifecycle:
 
         logs = store.get_run_logs(task.id)
         assert len(logs) >= 1
+
+
+class TestADeniedTickIsNotASuccess:
+    """A tick that was allowed to do nothing must not log a green "yes".
+
+    A denied capability does not raise. `ToolExecutor` turns it into a tool
+    result reading "Capability 'x' denied", the agent reads that like any
+    other output and carries on to a fluent answer, and `success = True` was
+    set on the sole ground that `ask` returned. So an operator forbidden from
+    using any of its tools reported success every five minutes, forever — a
+    false SUCCESS (§100) in the one place nobody watches.
+    """
+
+    def _bus(self):
+        from diapason.core.events import EventBus
+
+        return EventBus()
+
+    def _deny(self, bus, *, agent="operative", tool="web_search", cap="network:fetch"):
+        from diapason.core.events import EventType
+
+        bus.publish(
+            EventType.CAPABILITY_DENIED,
+            {"agent_id": agent, "capability": cap, "tool": tool},
+        )
+
+    def test_a_tick_whose_tool_was_denied_is_logged_as_a_failure(self, store):
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.side_effect = lambda *a, **k: (
+            self._deny(bus) or "I could not search, but here is a summary."
+        )
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        logs = store.get_run_logs(task.id)
+        assert logs[0]["success"] == 0, (
+            "un tic dont l'outil a été refusé n'a pas fait ce qu'on lui demandait"
+        )
+
+    def test_the_refusal_says_which_tool_and_which_capability(self, store):
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.side_effect = lambda *a, **k: self._deny(bus) or "fine"
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        erreur = store.get_run_logs(task.id)[0]["error"]
+        assert "web_search" in erreur
+        assert "network:fetch" in erreur
+
+    def test_the_answer_is_kept_even_when_the_tick_is_marked_failed(self, store):
+        """The result is not the culprit; losing it would help nobody."""
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.side_effect = lambda *a, **k: self._deny(bus) or "partial answer"
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        assert store.get_run_logs(task.id)[0]["result"] == "partial answer"
+
+    def test_a_refusal_from_another_agent_is_not_this_tick_s(self, store):
+        """The bus is shared. A chat turn refused mid-tick is not our fault."""
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.side_effect = lambda *a, **k: (
+            self._deny(bus, agent="simple") or "all good"
+        )
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        assert store.get_run_logs(task.id)[0]["success"] == 1
+
+    def test_a_crash_keeps_its_own_reason(self, store):
+        """A denial must not overwrite the headline of a real failure."""
+        bus = self._bus()
+        system = MagicMock()
+
+        def _boom(*a, **k):
+            self._deny(bus)
+            raise RuntimeError("engine down")
+
+        system.ask.side_effect = _boom
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        erreur = store.get_run_logs(task.id)[0]["error"]
+        assert "engine down" in erreur
+
+    def test_the_listener_does_not_outlive_the_tick(self, store):
+        """Otherwise every later tick inherits every earlier refusal."""
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.side_effect = lambda *a, **k: self._deny(bus) or "ok"
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        premier = sched.create_task(
+            "un", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+        sched._execute_task(premier)
+
+        system.ask.side_effect = lambda *a, **k: "rien de refusé cette fois"
+        second = sched.create_task(
+            "deux", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+        sched._execute_task(second)
+
+        assert store.get_run_logs(second.id)[0]["success"] == 1
+
+    def test_a_clean_tick_is_still_a_success(self, store):
+        bus = self._bus()
+        system = MagicMock()
+        system.ask.return_value = "done"
+        sched = TaskScheduler(store, system=system, poll_interval=1, bus=bus)
+        task = sched.create_task(
+            "tick", "once", "2026-01-01T00:00:00+00:00", agent="operative"
+        )
+
+        sched._execute_task(task)
+
+        assert store.get_run_logs(task.id)[0]["success"] == 1

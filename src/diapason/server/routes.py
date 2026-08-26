@@ -99,14 +99,22 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # étaient enregistrés et distribués à personne, et la documentation
     # affirmait pourtant que « le modèle voit deux outils ». « Ouvre mes
     # tâches sur mon PC » n'avait aucun chemin. L'absence côté VOIX reste
-    # délibérée et gardée par test_voice_boundary : execute_voice_tool
-    # court-circuite l'exécuteur, donc la cloche.
+    # délibérée — mais plus pour la raison qu'on lisait ici : la voix passe
+    # par ToolExecutor depuis le 22 août, donc par la cloche. La vraie
+    # raison est que `mesh_send` choisit une action dans une énumération
+    # ouverte et un appareil d'après une phrase TRANSCRITE, et qu'aucune
+    # confirmation ne dé-entend un mot mal transcrit (test_voice_boundary).
     "mesh_devices",
     "mesh_send",
     # « Continue ce projet sur mon téléphone » (handoff, 25/08/2026) : part
     # de ce que l'interface affiche, au lieu d'exiger un identifiant que le
     # modèle n'a aucun moyen de connaître.
     "handoff_continue",
+    # Et « envoie ÇA » — ce que la main tient (25/08/2026). Celui-ci est à
+    # la voix aussi : il ne choisit ni l'objet (c'est la main) ni l'action
+    # (elle découle du type), et devant une question en attente il tranche
+    # dans une liste fermée que le serveur a mesurée.
+    "geste_deposer",
     "screen_describe",
     # Le texte EXACT (OCR natif Apple) — zéro paraphrase, zéro Ollama
     # (Atlas, 24/08/2026).
@@ -337,6 +345,25 @@ def _ensure_identity_prompt(
         vue = dernier_contexte()
         if vue is not None:
             ancre = f"{ancre}\n{decrire_app(vue)}"
+    except Exception:  # noqa: BLE001 - la perception est un bonus
+        pass
+    # Et ce que la MAIN tient, quand le mode gestes est armé. Attraper un
+    # projet puis écrire « envoie ça sur mon téléphone » n'avait aucun
+    # référent : le presse-papiers spatial n'était connu que du module des
+    # gestes. Main vide, on n'ajoute rien — une phrase qui dirait « ta main
+    # est vide » serait présente à presque tous les tours et n'apprendrait
+    # rien à personne.
+    try:
+        from diapason.desktop.presse_papiers_spatial import (
+            decrire as decrire_main,
+        )
+        from diapason.desktop.presse_papiers_spatial import (
+            tenu,
+        )
+
+        objet = tenu()
+        if objet is not None:
+            ancre = f"{ancre}\n{decrire_main(objet)}"
     except Exception:  # noqa: BLE001 - la perception est un bonus
         pass
     anchored = [Message(role=Role.SYSTEM, content=ancre), *messages]
