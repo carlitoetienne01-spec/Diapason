@@ -446,17 +446,23 @@ diapason channel status
 Start an OpenAI-compatible API server.
 
 ```bash
-diapason serve                                 # Default host/port from config
-diapason serve --port 8000                     # Custom port
-diapason serve --host 0.0.0.0 --port 9000      # Bind to all interfaces
-diapason serve --model qwen3:8b                # Specify default model
-diapason serve --agent orchestrator            # Route requests through an agent
+diapason serve                                      # Default host/port from config
+diapason serve --port 8000                          # Custom port
+diapason serve --model qwen3:8b                     # Specify default model
+diapason serve --agent orchestrator                 # Route requests through an agent
+
+# Let your other devices reach this machine — mesh routes only, on a
+# second socket. The full application stays on 127.0.0.1.
+diapason serve --lan-host 0.0.0.0                   # Mesh on 0.0.0.0:8001
+diapason serve --lan-host 0.0.0.0 --lan-port 8123   # …on another port
 ```
 
 | Option                   | Type   | Default | Description                              |
 |--------------------------|--------|---------|------------------------------------------|
-| `--host HOST`            | string | config  | Bind address                             |
+| `--host HOST`            | string | config  | Bind address for the **full** application |
 | `--port PORT`            | int    | config  | Port number                              |
+| `--lan-host HOST`        | string | none    | Listen address of the **mesh alone**, on a second socket (e.g. `0.0.0.0`). Omitted: no second socket at all |
+| `--lan-port PORT`        | int    | `8001`  | Port of that second socket. Must differ from `--port` |
 | `-e`, `--engine ENGINE`  | string | auto    | Engine backend                           |
 | `-m`, `--model MODEL`    | string | config  | Default model for inference              |
 | `-a`, `--agent AGENT`    | string | none    | Agent for non-streaming requests         |
@@ -469,6 +475,48 @@ diapason serve --agent orchestrator            # Route requests through an agent
     ```
 
     This installs FastAPI, uvicorn, and related dependencies.
+
+### Two sockets, one process
+
+`--host` carries the whole application and is meant to stay on `127.0.0.1`.
+`--lan-host` opens a *second* socket that mounts nine mesh routes and nothing
+else (`create_lan_app` in `src/diapason/server/app.py`):
+
+| Method | Path                                    | Description                       |
+|--------|-----------------------------------------|-----------------------------------|
+| POST   | `/v1/mesh/pairings/redeem`              | Redeem an invitation code         |
+| POST   | `/v1/mesh/commands/deliver`             | Deliver a command to this device  |
+| POST   | `/v1/mesh/commands/poll`                | Poll for commands addressed here  |
+| POST   | `/v1/mesh/commands/ack`                 | Acknowledge a command             |
+| POST   | `/v1/mesh/presence`                     | Presence beat from a peer         |
+| POST   | `/v1/mesh/files/offer`                  | Offer a file, open a session      |
+| POST   | `/v1/mesh/files/{session_id}/chunk`     | Push one encrypted chunk          |
+| POST   | `/v1/mesh/files/{session_id}/finish`    | Verify the digest, reveal the file |
+| POST   | `/v1/mesh/files/{session_id}/status`    | Which chunks are still missing (resume) |
+
+A few consequences worth knowing before you open that port:
+
+- `POST /v1/chat/completions` on the mesh socket answers **404**, not 401 — the
+  route is not mounted there at all. Chat, speech and Succès stay on `--host`.
+- Those nine routes authenticate by **Ed25519 device signature**, invitation or
+  session token — *not* by the local API key.
+- The second socket serves no `/docs`, `/redoc` or OpenAPI schema.
+- Both sockets run in a **single process**: the command inbox and the transfer
+  sessions live in memory, and two processes would lose them.
+- `--lan-port` equal to `--port` is refused before anything starts (exit code
+  `2`): on macOS both would bind silently, on Linux the second would fail.
+- When a second socket exists, it is the address peers are told to use — the
+  mesh beacon announces `--lan-host:--lan-port`, not the loopback pair.
+
+Startup prints the mesh line on its own line, before the `Starting Diapason API server` block:
+
+```
+  Maillage : http://0.0.0.0:8001 — neuf routes, signature d'appareil exigée
+```
+
+`--host 0.0.0.0` still exists and still puts the *entire* API on the network,
+protected only by the local API key. Prefer `--lan-host` unless you genuinely
+want every route reachable.
 
 ### API Endpoints
 
@@ -495,6 +543,152 @@ curl http://localhost:8000/v1/chat/completions \
 ```
 
 When an agent is configured (e.g., `--agent orchestrator`), non-streaming requests are routed through the agent with access to all registered tools. For tool-capable agents (`orchestrator`, `react`, `openhands`), all registered tools are automatically loaded and made available.
+
+---
+
+## `diapason serve-service`
+
+Keep the API server running at login, as a macOS LaunchAgent. All subcommands
+exit with an error on any other platform.
+
+```bash
+diapason serve-service install                    # 127.0.0.1:8000, at every login
+diapason serve-service install --maillage-reseau  # …plus the mesh on 0.0.0.0:8001
+diapason serve-service status
+diapason serve-service restart
+diapason serve-service logs --lines 100
+diapason serve-service uninstall
+```
+
+### `diapason serve-service install`
+
+| Option              | Type   | Default     | Description                                    |
+|---------------------|--------|-------------|------------------------------------------------|
+| `--host HOST`       | string | `127.0.0.1` | Bind address of the full application. A non-loopback value is **refused** |
+| `--port PORT`       | int    | `8000`      | Port of the full application                   |
+| `--maillage-reseau` | flag   | off         | Also open the mesh socket on `0.0.0.0`         |
+| `--lan-port PORT`   | int    | `8001`      | Port of that mesh socket                       |
+
+`--maillage-reseau` adds `--lan-host 0.0.0.0 --lan-port <port>` to the `serve`
+command line written into the plist — the nine mesh routes, device signature
+required. The full application stays on the loopback either way. Installing
+prints a warning first, because any machine on your network will be able to
+reach that port.
+
+!!! warning "`--allow-network` is gone"
+    The old `--allow-network` put the **entire** API on the network. It no
+    longer installs anything: the command fails, names `--maillage-reseau` as
+    its replacement, and exits non-zero. It fails rather than aliasing quietly
+    — the same command must not start doing something else without saying so.
+
+Other refusals, all before anything is installed:
+
+- `--host` anywhere but `127.0.0.1`, `localhost` or `::1`.
+- `--lan-port` equal to `--port` when `--maillage-reseau` is set.
+- `--port` already served by something that is not this agent. Installing means
+  *launching* (the plist carries `RunAtLoad`), so a second server on the same
+  port would be a silent duplicate. Re-installing over Diapason's own service
+  is allowed — launchd replaces a job of the same label.
+
+`status` reports four separate facts: whether the LaunchAgent is loaded, where its plist lives,
+whether `http://127.0.0.1:8000/health` actually answers, and where the logs
+are. Loaded is not the same as answering. See the
+[launchd deployment guide](../deployment/launchd.md) for the plist itself.
+
+---
+
+## `diapason mesh`
+
+The fleet of paired devices: join one, see who is in it, send a file to it.
+Pairing is invitation-based — the host machine shows a code under
+**Appareils → Ajouter un appareil** (the Devices page), and the guest
+redeems it here.
+
+### `diapason mesh join`
+
+Join another Diapason's fleet.
+
+```bash
+diapason mesh join 192.168.0.5:8000 ABCD-1234
+diapason mesh join 192.168.0.5:8001 ABCD-1234 --address 192.168.0.9:8001
+```
+
+| Argument  | Type   | Description                                           |
+|-----------|--------|-------------------------------------------------------|
+| `HOST`    | string | The other machine's address, e.g. `192.168.0.5:8000`  |
+| `TOKEN`   | string | The invitation code it shows in Appareils → Ajouter un appareil |
+
+| Option            | Type   | Default | Description                                          |
+|-------------------|--------|---------|------------------------------------------------------|
+| `--address ADDR`  | string | guessed | The address **this** device is reachable at          |
+
+On success it prints the host's fleet identity, its device id, its address,
+and the capabilities granted so far — or `rien pour l'instant` when none were,
+rather than letting you assume a permission you did not receive. A refused
+pairing exits `1`.
+
+`HOST` may be the mesh socket as well as the main one: `pairings/redeem` is one
+of the nine routes carried there. A device whose registry already holds at least one
+non-revoked device — whatever its trust level — refuses to join a *different*
+fleet; so does one whose registry cannot be read at all. Adopting another
+fleet identity would lose every peer it has at once, so the command stops
+and you decide.
+
+### `diapason mesh devices`
+
+List the devices of the fleet, with their presence.
+
+```bash
+diapason mesh devices
+diapason mesh devices --all   # include revoked devices
+```
+
+Columns: name, platform, trust level, presence, device id.
+
+### `diapason mesh send`
+
+Send a file to a device of the fleet.
+
+```bash
+diapason mesh send ~/Documents/rapport.pdf "mon PC"
+diapason mesh send ./photo.jpg "mon téléphone"
+```
+
+| Argument   | Type | Description                                                  |
+|------------|------|--------------------------------------------------------------|
+| `FICHIER`  | path | The file to send. Must exist and not be a directory          |
+| `APPAREIL` | string | The target, designated the way the mesh resolver reads it: by name (`"PC du bureau"`) or by kind (`"mon téléphone"`). A device id is **not** accepted — the resolver matches names, device types and platforms only |
+
+The command takes no options. What it does, in order:
+
+1. Reads the registry and keeps only `TRUSTED` devices. With none paired it
+   says so and exits `1`.
+2. Resolves `APPAREIL` through the mesh resolver. A phrase that designates two
+   devices is **refused, never settled at random**; so is one that matches
+   nothing, or that means this very machine. The resolver's own sentence is
+   printed verbatim and the command exits `1`.
+3. Prints the file name and its human-readable size, then a
+   `n/total morceaux` counter as the chunks go out.
+4. Prints the receiver's message: green when the transfer landed
+   (`COMPLETE`, or `ALREADY_PRESENT` when content-deduplication found the file
+   already there, whole and verified), yellow for any other status. When the
+   receiver reports a path, it is shown as `chez <device> : <path>`.
+
+A refusal from the recipient or the transport is relayed as it stands, in red,
+with exit code `1` — it knows why, the sender does not.
+
+This is the first production caller of the file-transfer core: the peer must
+be reachable, which on a real network means it runs `diapason serve` with
+`--lan-host` (see [Two sockets, one process](#two-sockets-one-process)).
+
+### `diapason mesh whoami`
+
+Print this device's identity in the fleet: device id and name, platform, fleet
+(owner) id, and the **public** key. The private key appears nowhere.
+
+```bash
+diapason mesh whoami
+```
 
 ---
 

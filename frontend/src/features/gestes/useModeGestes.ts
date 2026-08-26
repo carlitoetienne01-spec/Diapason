@@ -64,6 +64,20 @@ export function useModeGestes(): ModeGestes {
   // ne doit rien redessiner, seulement replanifier un minuteur.
   const cadence = useRef(IMAGES_PAR_SECONDE);
   const replanifier = useRef<((fps: number) => void) | null>(null);
+  // Un allumage EST en cours. `actif` ne suffit pas : il reste faux pendant
+  // toute la durée de l'armement — appel au serveur, puis autorisation macOS,
+  // puis démarrage de la vidéo. Deux clics sur « Activer » dans cet intervalle
+  // ouvraient DEUX caméras, et la seconde écrasait la référence à la première
+  // sans l'arrêter : plus rien ne la désignait, donc `eteindre` ne pouvait
+  // plus la couper — ni au bouton, ni au démontage. Le voyant vert de macOS
+  // restait allumé pendant que l'application affichait le mode éteint,
+  // c'est-à-dire exactement ce que le §78 interdit (constaté le 26 août 2026
+  // par un test d'interface, jamais par un test serveur : la caméra ne
+  // s'ouvre que de ce côté).
+  const allumage = useRef(false);
+  // Le numéro de la session courante. Toute extinction l'incrémente, et une
+  // réponse d'image partie AVANT ne peut alors plus rien appliquer.
+  const generation = useRef(0);
 
   const eteindre = useCallback(() => {
     if (boucle.current !== null) {
@@ -77,6 +91,11 @@ export function useModeGestes(): ModeGestes {
     // avant tout le reste.
     replanifier.current = null;
     cadence.current = IMAGES_PAR_SECONDE;
+    // Une réponse d'image encore en vol ne doit plus rien appliquer : couper
+    // `replanifier` empêchait qu'elle rallume un minuteur, mais pas qu'elle
+    // repose `etat` et `mainVue` après coup — le prochain armement démarrait
+    // alors sur un état périmé jusqu'à la première image.
+    generation.current += 1;
     flux.current?.getTracks().forEach((piste) => piste.stop());
     flux.current = null;
     video.current = null;
@@ -104,8 +123,12 @@ export function useModeGestes(): ModeGestes {
     const base64 = donnees.slice(donnees.indexOf(',') + 1);
     if (!base64) return;
     enVol.current = true;
+    const session = generation.current;
     try {
       const reponse = await envoyerImage(base64);
+      // Le mode a pu s'éteindre pendant l'aller-retour. Tout ce qui suit
+      // appartient à une session qui n'existe plus.
+      if (session !== generation.current) return;
       if (reponse === null) {
         // Le serveur s'est désarmé tout seul : on suit, caméra comprise.
         eteindre();
@@ -131,56 +154,70 @@ export function useModeGestes(): ModeGestes {
   }, [eteindre]);
 
   const allumer = useCallback(async (dejaArme = false) => {
+    // Un seul allumage à la fois. Sans ce verrou, un second clic pendant
+    // l'armement ouvre une seconde caméra dont plus rien ne tient la
+    // référence — et une caméra qu'on ne désigne plus ne s'éteint plus.
+    if (allumage.current || flux.current) return;
+    allumage.current = true;
     setErreur(null);
     echecs.current = 0;
+    // `finally` et non un relâchement à chaque sortie : ce verrou ferme la
+    // porte de la caméra, et une porte qu'un chemin d'échec oublierait de
+    // rouvrir bloquerait le mode jusqu'au rechargement de la page.
     try {
-      // `dejaArme` : la session a été ouverte par un double-clap, côté
-      // serveur. Ré-armer ici la réinitialiserait — et perdrait le geste
-      // qui vient d'être fait.
-      if (!dejaArme) await armer();
-    } catch (exc) {
-      const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
-      setErreur(`Échec à l'${etape} : ${exc instanceof Error ? exc.message : exc}`);
-      return;
+      try {
+        // `dejaArme` : la session a été ouverte par un double-clap, côté
+        // serveur. Ré-armer ici la réinitialiserait — et perdrait le geste
+        // qui vient d'être fait.
+        if (!dejaArme) await armer();
+      } catch (exc) {
+        const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
+        setErreur(
+          `Échec à l'${etape} : ${exc instanceof Error ? exc.message : exc}`,
+        );
+        return;
+      }
+      try {
+        // C'est ICI que macOS demande l'accès — à l'application, qui a le
+        // droit de poser la question.
+        flux.current = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: LARGEUR } },
+          audio: false,
+        });
+      } catch (exc) {
+        await desarmer();
+        setErreur(
+          exc instanceof Error && exc.name === 'NotAllowedError'
+            ? 'Accès à la caméra refusé. Réglages Système → Confidentialité et sécurité → Caméra.'
+            : `Échec à l'ouverture de la caméra : ${exc}`,
+        );
+        return;
+      }
+      const v = document.createElement('video');
+      v.srcObject = flux.current;
+      v.muted = true;
+      v.playsInline = true;
+      await v.play();
+      video.current = v;
+      canevas.current = document.createElement('canvas');
+      setActif(true);
+      // Replanifier plutôt que de recréer le hook : la boucle est un minuteur,
+      // pas un état. On ne touche à rien tant que la cadence ne change pas —
+      // couper et relancer à chaque image ferait perdre des captures.
+      const poser = (fps: number) => {
+        if (fps === cadence.current && boucle.current !== null) return;
+        cadence.current = fps;
+        if (boucle.current !== null) window.clearInterval(boucle.current);
+        boucle.current = window.setInterval(
+          () => void capturer(),
+          Math.round(1000 / fps),
+        );
+      };
+      replanifier.current = poser;
+      poser(IMAGES_PAR_SECONDE);
+    } finally {
+      allumage.current = false;
     }
-    try {
-      // C'est ICI que macOS demande l'accès — à l'application, qui a le
-      // droit de poser la question.
-      flux.current = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: LARGEUR } },
-        audio: false,
-      });
-    } catch (exc) {
-      await desarmer();
-      setErreur(
-        exc instanceof Error && exc.name === 'NotAllowedError'
-          ? 'Accès à la caméra refusé. Réglages Système → Confidentialité et sécurité → Caméra.'
-          : `Échec à l'ouverture de la caméra : ${exc}`,
-      );
-      return;
-    }
-    const v = document.createElement('video');
-    v.srcObject = flux.current;
-    v.muted = true;
-    v.playsInline = true;
-    await v.play();
-    video.current = v;
-    canevas.current = document.createElement('canvas');
-    setActif(true);
-    // Replanifier plutôt que de recréer le hook : la boucle est un minuteur,
-    // pas un état. On ne touche à rien tant que la cadence ne change pas —
-    // couper et relancer à chaque image ferait perdre des captures.
-    const poser = (fps: number) => {
-      if (fps === cadence.current && boucle.current !== null) return;
-      cadence.current = fps;
-      if (boucle.current !== null) window.clearInterval(boucle.current);
-      boucle.current = window.setInterval(
-        () => void capturer(),
-        Math.round(1000 / fps),
-      );
-    };
-    replanifier.current = poser;
-    poser(IMAGES_PAR_SECONDE);
   }, [capturer]);
 
   const basculerLesClaps = useCallback(() => {

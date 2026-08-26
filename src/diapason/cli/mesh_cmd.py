@@ -93,9 +93,15 @@ def devices(tout: bool) -> None:
 def send(fichier: str, appareil: str) -> None:
     """Envoyer un FICHIER vers un APPAREIL de la flotte.
 
-    APPAREIL se donne par son nom (« mon PC ») ou par son identifiant. La
-    résolution est celle du maillage : une phrase qui désigne deux appareils
-    est refusée, jamais tranchée au hasard.
+    APPAREIL se donne par son nom (« PC du bureau ») ou par son genre
+    (« mon téléphone »). PAS par son identifiant : le résolveur compare des
+    noms, des types d'appareil et des plateformes, et rend « inconnu » sur un
+    identifiant — que `mesh devices` affiche pourtant, ce qui invite à le
+    copier. La docstring promettait l'inverse jusqu'au 26 août 2026, donc
+    `--help` promettait l'inverse.
+
+    La résolution est celle du maillage : une phrase qui désigne deux
+    appareils est refusée, jamais tranchée au hasard.
 
     Cette commande est le premier appelant de ``envoyer_fichier`` : le cœur
     du transfert existait depuis le 25 août 2026, chiffré et testé par un

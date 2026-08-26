@@ -76,7 +76,7 @@ class TestSurfaceDuMaillage:
         )
 
 
-class TestLesQuatrePortesDuTelephone:
+class TestLesCinqPortesDuTelephone:
     """Celles-là ne bougent pas sans livrer d'abord une version mobile."""
 
     def test_elles_existent_toutes(self):

@@ -26,7 +26,7 @@ maintenant sur une fondation vérifiée plutôt que supposée.
 | **Adoption de l'identité de flotte** (`mesh/join.py`, `identity.adopt_owner_id`) | Deux instances jumelées pour de vrai sur la machine : l'invité adopte la flotte de l'hôte et l'inscrit à son registre. |
 | **La main de l'assistant** (`_TROUSSE_ASSISTANT`) | `mesh_devices` répond « 2 appareils appairés ». Un test garde la présence, en miroir de celui qui garde l'absence côté voix. |
 | **`desktop.open` remis à sa place** | Exige désormais une attestation (le contrôle 10 de `verify_command` devient vivant) et sort de l'énumération offerte au modèle. |
-| **Chemin invité** (`diapason mesh join / devices / whoami`) | Les trois commandes tournent sur la machine. |
+| **Chemin invité** (`diapason mesh join / devices / whoami`) | Les trois commandes tournent sur la machine. Elles sont **quatre** depuis : `diapason mesh send` s'est ajoutée avec le transfert de fichiers (`cli/mesh_cmd.py`), et `diapason mesh --help` en liste bien quatre — `devices`, `join`, `send`, `whoami`. |
 | **Documentation remise dans le vrai** | Deux affirmations fausses corrigées, trois limites bloquantes ajoutées. |
 
 ## Phase 1 bis — la fondation est désormais éprouvée
@@ -35,7 +35,7 @@ maintenant sur une fondation vérifiée plutôt que supposée.
 |---|---|
 | **Banc de bout en bout, deux processus** (`tests/mesh/test_banc_deux_processus.py`) | Deux identités Ed25519 distinctes, un vrai socket, une commande signée qui traverse et arrive dans la boîte de l'hôte. Casser volontairement l'endpoint du transport fait rougir le banc — il mord. |
 | **Anti-rejeu sur socket réel** | La même enveloppe livrée deux fois : la seconde est refusée, nonce dépensé en base. |
-| **Instantané de contrat des routes** (`tests/contract/mesh_api_surface.json`) | 21 routes figées ; renommer `commands/poll` fait rougir deux tests. Un cliquet distinct garde les **cinq portes du téléphone** et vérifie qu'elles restent exemptées du mur d'authentification. |
+| **Instantané de contrat des routes** (`tests/contract/mesh_api_surface.json`) | 25 routes figées ; renommer `commands/poll` fait rougir deux tests. Un cliquet distinct garde les **cinq portes du téléphone** et vérifie qu'elles restent exemptées du mur d'authentification. À ne pas confondre avec les **neuf portes du réseau** (`_PORTES_LAN`, `src/diapason/server/app.py`), qui sont l'ensemble monté sur le second socket : il ajoute `files/offer` et les trois routes de morceaux, gardées par un jeton de transfert plutôt que par la clé d'API. |
 | **Trou de capacités au jumelage corrigé** | La réponse du jumelage ne portait aucune capacité : un invité fraîchement jumelé se voyait refuser TOUT envoi (« ne peut pas faire cela ») jusqu'à la première balise. Découvert en préparant le banc. |
 
 Pourquoi deux processus et pas deux instances : le quatrième contrôle de

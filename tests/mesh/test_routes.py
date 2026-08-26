@@ -9,6 +9,7 @@ either direction is how a control plane becomes a liability.
 from __future__ import annotations
 
 import base64
+from unittest.mock import patch
 
 import pytest
 
@@ -238,3 +239,33 @@ class TestPresenceLadder:
         assert is_reachable(self._device(IDLE_WINDOW_MS - 1_000))
         assert not is_reachable(self._device(BACKGROUND_WINDOW_MS - 1_000))
         assert not is_reachable(self._device(BACKGROUND_WINDOW_MS + 1))
+
+
+class TestUnMessageNommeSaPropreRoute:
+    """`poll_commands` portait DEUX blocs `except` identiques.
+
+    Python n'exécute jamais le second : celui qui gagnait répondait « Cette
+    confirmation est illisible » — le texte de `/commands/ack`, recopié dans
+    la mauvaise route. Un message qui nomme une autre route qu'elle-même
+    envoie chercher la panne au mauvais endroit. Et pendant ce temps
+    `/commands/ack`, qui aurait dû porter ce filet, n'en avait aucun.
+    """
+
+    def test_la_releve_illisible_parle_de_releve(self, client):
+        # Les routes importent depuis `pull` À L'APPEL : c'est donc là qu'il
+        # faut remplacer, pas sur le module de routes.
+        with patch(
+            "diapason.mesh.pull.collect_for_device", side_effect=TypeError("boum")
+        ):
+            reponse = client.post("/v1/mesh/commands/poll", json={"x": 1})
+        assert reponse.status_code == 400
+        assert "relève" in reponse.json()["detail"]
+        assert "confirmation" not in reponse.json()["detail"]
+
+    def test_la_confirmation_illisible_ne_rend_plus_500(self, client):
+        """Une route tournée vers le réseau ne doit pas pouvoir rendre 500,
+        même à un pair jumelé qui déraille."""
+        with patch("diapason.mesh.pull.record_ack", side_effect=TypeError("boum")):
+            reponse = client.post("/v1/mesh/commands/ack", json={"x": 1})
+        assert reponse.status_code == 400, "un 500 est encore possible"
+        assert "confirmation" in reponse.json()["detail"]

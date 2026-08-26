@@ -191,3 +191,44 @@ class TestAucunStatutInvente:
         # fichier est là, entier et vérifié — il n'a simplement pas eu besoin
         # de repasser sur le fil.
         assert "ALREADY_PRESENT" in _ABOUTIS
+
+
+class TestLAideNePrometPasCeQueLeResolveurRefuse:
+    """`--help` annonçait qu'APPAREIL pouvait être un identifiant.
+
+    Le résolveur ne compare que des noms, des types d'appareil et des
+    plateformes : sur un identifiant il rend « inconnu ». Et `mesh devices`
+    AFFICHE cet identifiant, ce qui invite précisément à le copier — donc
+    l'aide envoyait vers l'échec (constaté le 26 août 2026).
+
+    Ce test lie les deux : si le résolveur se met un jour à accepter un
+    identifiant, il rougit, et la docstring redevient à écrire.
+    """
+
+    def test_le_resolveur_refuse_un_identifiant(self):
+        from diapason.mesh.resolver import resolve_device
+
+        flotte = [
+            {
+                "deviceId": "dev_abc123",
+                "name": "Mon téléphone",
+                "platform": "ANDROID",
+                "trustLevel": "TRUSTED",
+            }
+        ]
+        par_nom = resolve_device("Mon téléphone", flotte, local_device_id="moi")
+        assert par_nom["status"] == "RESOLVED"
+
+        par_id = resolve_device("dev_abc123", flotte, local_device_id="moi")
+        assert par_id["status"] != "RESOLVED", (
+            "le résolveur accepte désormais un identifiant : la docstring de "
+            "`mesh send` et docs/user-guide/cli.md disent le contraire"
+        )
+
+    def test_l_aide_ne_promet_pas_l_identifiant(self):
+        from diapason.cli.mesh_cmd import send
+
+        aide = send.__doc__ or ""
+        assert "PAS par son identifiant" in aide, (
+            "l'aide doit dire ce que le résolveur fait vraiment"
+        )

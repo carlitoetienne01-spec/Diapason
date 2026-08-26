@@ -51,7 +51,8 @@ jobs:
       # existait dans package.json, mais aucun workflow ne le lancait : cent
       # vingt-six tests s'ecrivaient sans que rien ne les execute (constate
       # le 26 aout 2026). Verifie en local avant d'etre ajoute ici :
-      # `npx vitest run` — 10 fichiers, 126 tests, sortie 0.
+      # `npx vitest run` — a l'ajout : 10 fichiers, 126 tests, sortie 0.
+      # Depuis, les tests du mode gestes s'y ajoutent : 15 fichiers, 183 tests.
       - run: npx vitest run
 
       - run: npm run build

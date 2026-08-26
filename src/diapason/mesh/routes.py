@@ -372,12 +372,12 @@ def poll_commands(body: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError, AttributeError) as exc:
         # Open to anyone who can reach the port: garbage is a refusal, never
         # a 500 with a stack trace in the log.
-        raise HTTPException(
-            status_code=400, detail="Cette confirmation est illisible."
-        ) from exc
-    except (TypeError, ValueError, AttributeError) as exc:
-        # Open to anyone who can reach the port: garbage is a refusal, never
-        # a 500 with a stack trace in the log.
+        #
+        # Ce bloc existait EN DOUBLE, et Python n'exécute jamais le second :
+        # celui qui gagnait portait « Cette confirmation est illisible » — le
+        # texte de `/commands/ack`, recopié dans la mauvaise route. Un message
+        # d'erreur qui nomme une autre route qu'elle-même envoie chercher la
+        # panne au mauvais endroit (constaté le 26 août 2026).
         raise HTTPException(
             status_code=400, detail="Cette relève est illisible."
         ) from exc
@@ -404,6 +404,20 @@ def ack_commands(body: dict[str, Any]) -> dict[str, Any]:
         )
     except PullRejected as exc:
         raise HTTPException(status_code=403, detail=exc.message) from exc
+    except (TypeError, ValueError, AttributeError) as exc:
+        # La même protection que sa route jumelle, qui la portait EN DOUBLE
+        # pendant que celle-ci n'en avait aucune.
+        #
+        # Ce qu'elle protège vraiment, et il faut être exact : `record_ack`
+        # vérifie la signature AVANT de lire le corps, et une confirmation
+        # non signée est déjà refusée en 403 — mesuré depuis le Wi-Fi. Ce
+        # filet ne couvre donc pas « n'importe qui sur le port », mais un
+        # appareil JUMELÉ dont la confirmation, signée, resterait bancale.
+        # Une route tournée vers le réseau ne doit pas pouvoir rendre 500,
+        # même à un pair légitime qui déraille.
+        raise HTTPException(
+            status_code=400, detail="Cette confirmation est illisible."
+        ) from exc
 
 
 @router.get("/inbox")
