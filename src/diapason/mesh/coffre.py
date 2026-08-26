@@ -91,11 +91,24 @@ def nouvelle_demi_cle() -> DemiCle:
     )
 
 
-def cle_de_session(demi: DemiCle, publique_pair_b64: str, session_id: str) -> bytes:
+def cle_de_session(
+    demi: DemiCle,
+    publique_pair_b64: str,
+    session_id: str,
+    *,
+    info: bytes = _INFO,
+) -> bytes:
     """La clé partagée des deux côtés, que ni l'un ni l'autre n'a choisie.
 
     L'identifiant de session sert de sel : deux transferts entre les mêmes
     appareils ne partagent jamais une clé.
+
+    ``info`` sépare les usages. Le transfert de fichiers garde
+    ``_INFO`` — donc les mêmes octets qu'avant, au bit près — et le
+    scellement des commandes passe le sien : deux clés dérivées du même
+    secret partagé mais pour des usages différents ne doivent jamais
+    coïncider, faute de quoi un chiffré d'un domaine pourrait être présenté
+    dans l'autre.
     """
     import base64
 
@@ -113,7 +126,7 @@ def cle_de_session(demi: DemiCle, publique_pair_b64: str, session_id: str) -> by
         algorithm=hashes.SHA256(),
         length=_TAILLE_CLE,
         salt=session_id.encode("utf-8"),
-        info=_INFO,
+        info=info,
     ).derive(partage)
 
 
@@ -123,17 +136,33 @@ def _nonce(index: int) -> bytes:
     return index.to_bytes(_TAILLE_NONCE, "big")
 
 
-def sceller(cle: bytes, index: int, clair: bytes) -> bytes:
-    """Chiffrer un morceau. L'index est authentifié : le réordonner casse."""
+def _authentifie(index: int, associe: bytes) -> bytes:
+    """Les données authentifiées mais non chiffrées, liées au chiffré.
+
+    Sans ``associe``, les octets sont EXACTEMENT ceux d'avant le 26 août
+    2026 : le transfert de fichiers, qui appelle sans ce mot-clé, ne change
+    pas d'un bit. Un test le vérifie plutôt que de l'espérer.
+    """
+    tete = str(index).encode("ascii")
+    return tete + b"|" + associe if associe else tete
+
+
+def sceller(cle: bytes, index: int, clair: bytes, *, associe: bytes = b"") -> bytes:
+    """Chiffrer un morceau. L'index est authentifié : le réordonner casse.
+
+    ``associe`` colle le chiffré à SON contexte : pour une commande, l'en-tête
+    de routage. Le déplacer d'une enveloppe à une autre casse le tag avant
+    même que la signature ait son mot à dire.
+    """
     _h, _priv, _pub, AESGCM, _hkdf = _primitives()
-    return AESGCM(cle).encrypt(_nonce(index), clair, str(index).encode("ascii"))
+    return AESGCM(cle).encrypt(_nonce(index), clair, _authentifie(index, associe))
 
 
-def desceller(cle: bytes, index: int, scelle: bytes) -> bytes:
-    """Déchiffrer un morceau — lève si le contenu ou l'index a bougé."""
+def desceller(cle: bytes, index: int, scelle: bytes, *, associe: bytes = b"") -> bytes:
+    """Déchiffrer un morceau — lève si le contenu, l'index ou le contexte a bougé."""
     _h, _priv, _pub, AESGCM, _hkdf = _primitives()
     try:
-        return AESGCM(cle).decrypt(_nonce(index), scelle, str(index).encode("ascii"))
+        return AESGCM(cle).decrypt(_nonce(index), scelle, _authentifie(index, associe))
     except Exception as exc:  # noqa: BLE001 - InvalidTag et le reste
         raise ValueError(
             f"Morceau {index} illisible : contenu altéré, mauvaise clé, "
