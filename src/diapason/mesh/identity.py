@@ -45,6 +45,8 @@ __all__ = [
     "canonical_bytes",
 ]
 
+from diapason.core.permissions import restreindre_au_proprietaire
+
 logger = logging.getLogger(__name__)
 
 _KEY_FILENAME = "device_key"
@@ -200,6 +202,10 @@ def _fingerprint(public_key: bytes) -> str:
     return f"dev_{digest[:24]}"
 
 
+# Le garde vit dans `core/permissions.py` : trois endroits du dépôt en
+# avaient besoin, avec trois versions différentes dont deux fausses.
+
+
 def _write_private_key(path: Path, private_key: bytes) -> None:
     """Create the key file atomically, owner-only, refusing to follow links."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -207,8 +213,7 @@ def _write_private_key(path: Path, private_key: bytes) -> None:
         flags |= os.O_NOFOLLOW
     descriptor = os.open(path, flags, 0o600)
     try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, 0o600)
+        restreindre_au_proprietaire(descriptor)
         os.write(descriptor, base64.b64encode(private_key))
     finally:
         os.close(descriptor)
@@ -227,8 +232,7 @@ def _read_private_key(path: Path) -> bytes:
         file_stat = os.fstat(descriptor)
         if not stat.S_ISREG(file_stat.st_mode):
             raise RuntimeError(f"Clé d'appareil au chemin non sûr : {path}")
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, 0o600)
+        restreindre_au_proprietaire(descriptor)
         raw = os.read(descriptor, 4096)
     finally:
         os.close(descriptor)

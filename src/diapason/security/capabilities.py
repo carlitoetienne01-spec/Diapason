@@ -12,6 +12,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from diapason.core.permissions import restreindre_au_proprietaire
+
 logger = logging.getLogger(__name__)
 
 
@@ -193,7 +195,7 @@ class CapabilityPolicy:
         )
         temporary_path = Path(temporary_name)
         try:
-            os.fchmod(descriptor, 0o600)
+            restreindre_au_proprietaire(descriptor)
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 handle.write(payload)
                 handle.flush()

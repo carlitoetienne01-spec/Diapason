@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 
 from diapason.core.env import get as _env_get
 from diapason.core.paths import get_config_dir
+from diapason.core.permissions import restreindre_au_proprietaire
 from diapason.security.rate_limiter import RateLimitConfig, RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -370,10 +371,7 @@ def _read_local_api_key(path: Path) -> str:
         file_stat = os.fstat(descriptor)
         if not stat.S_ISREG(file_stat.st_mode):
             raise RuntimeError(f"Refusing unsafe local API key path: {path}")
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, 0o600)
-        else:
-            path.chmod(0o600)
+        restreindre_au_proprietaire(descriptor)
         with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
             descriptor = -1
             return handle.read().strip()
