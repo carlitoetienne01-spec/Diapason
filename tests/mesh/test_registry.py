@@ -353,3 +353,169 @@ class TestAucunVerbeDeFichier:
         résidu.
         """
         assert PLATFORM_CAPABILITIES["ANDROID"] == PLATFORM_CAPABILITIES["IOS"]
+
+
+def _cle_de_scellement() -> str:
+    """Une clé X25519 valide — trente-deux octets, pas un de plus."""
+    from diapason.mesh.coffre import nouvelle_demi_cle
+
+    return nouvelle_demi_cle().publique_b64
+
+
+class TestLaCleDeScellementDunPair:
+    """Étape 2 du plan du 26 août 2026.
+
+    Cette clé CHIFFRE, quand `public_key` SIGNE. Une clé, un usage.
+    """
+
+    def test_elle_s_enregistre_et_se_relit_avec_son_instant(self, registry):
+        enrol(registry)
+        cle = _cle_de_scellement()
+        assert registry.record_seal_key("dev_phone", cle, 1_000) is True
+        assert registry.seal_key_of("dev_phone") == (cle, 1_000)
+
+    def test_une_publication_rejouee_ne_reinstalle_pas_une_vieille_cle(self, registry):
+        """Sans quoi un attaquant rejouerait une publication périmée dont il
+        détient, lui, la moitié privée."""
+        enrol(registry)
+        recente = _cle_de_scellement()
+        ancienne = _cle_de_scellement()
+        assert registry.record_seal_key("dev_phone", recente, 5_000) is True
+
+        assert registry.record_seal_key("dev_phone", ancienne, 4_000) is False
+        assert registry.record_seal_key("dev_phone", ancienne, 5_000) is False, (
+            "à instant égal non plus : la comparaison doit être stricte"
+        )
+        assert registry.seal_key_of("dev_phone") == (recente, 5_000)
+
+    def test_une_cle_qui_n_est_pas_une_cle_est_refusee(self, registry):
+        enrol(registry)
+        for mauvaise in (
+            "",
+            "pas du base64 !",
+            base64.b64encode(b"trop court").decode(),
+        ):
+            assert registry.record_seal_key("dev_phone", mauvaise, 1_000) is False
+        assert registry.seal_key_of("dev_phone") is None
+
+    def test_un_appareil_revoque_n_a_plus_de_cle(self, registry):
+        """Le même goulot que `public_key_of` : la révocation arrête tout au
+        même endroit, sinon elle n'arrête rien."""
+        enrol(registry)
+        registry.record_seal_key("dev_phone", _cle_de_scellement(), 1_000)
+        assert registry.seal_key_of("dev_phone") is not None
+
+        registry.revoke("dev_phone")
+        assert registry.seal_key_of("dev_phone") is None
+        assert (
+            registry.record_seal_key("dev_phone", _cle_de_scellement(), 2_000) is False
+        )
+
+    def test_un_pair_qui_n_a_jamais_publie_n_a_pas_de_cle(self, registry):
+        enrol(registry)
+        assert registry.seal_key_of("dev_phone") is None
+
+    def test_oublier_ramene_au_clair_sans_attendre(self, registry):
+        enrol(registry)
+        registry.record_seal_key("dev_phone", _cle_de_scellement(), 1_000)
+        registry.forget_seal_key("dev_phone")
+        assert registry.seal_key_of("dev_phone") is None
+
+    def test_un_re_appairage_efface_la_cle(self, registry):
+        """LE PIÈGE, trouvé par deux juges avant qu'il ne soit écrit.
+
+        Sans cette remise à zéro, une clé morte survivrait à l'appairage qui
+        devait justement tout remettre à plat : on scellerait vers une clé
+        que le pair réinstallé ne possède plus, et TOUT partirait en refus
+        sur un maillage qui a pourtant l'air appairé.
+        """
+        identite = a_key()
+        enrol(registry, key=identite)
+        registry.record_seal_key("dev_phone", _cle_de_scellement(), 1_000)
+        assert registry.seal_key_of("dev_phone") is not None
+
+        # Le MÊME appareil se ré-appaire, avec la même clé d'identité. C'est
+        # le seul ré-appairage qui atteigne la mise à jour : présenter une
+        # AUTRE clé d'identité est refusé bien avant, et c'est très bien —
+        # mais cela veut dire que ce chemin-ci sert exactement au cas qui
+        # nous occupe : un pair qui garde son identité et a perdu sa clé de
+        # scellement (réinstallation partielle, retour en arrière).
+        enrol(registry, key=identite)
+        assert registry.seal_key_of("dev_phone") is None, (
+            "la clé de scellement a survécu au ré-appairage"
+        )
+
+
+class TestUneBaseAnterieureSOuvre:
+    def test_un_registre_sans_les_colonnes_migre_tout_seul(self, tmp_path):
+        """Le registre de quelqu'un qui met à jour n'a pas ces colonnes."""
+        import sqlite3
+
+        chemin = tmp_path / "ancienne.db"
+        conn = sqlite3.connect(chemin)
+        conn.executescript(
+            """
+            CREATE TABLE mesh_devices (
+                device_id TEXT PRIMARY KEY,
+                public_key TEXT NOT NULL,
+                name TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                device_type TEXT NOT NULL,
+                trust_level TEXT NOT NULL,
+                declared_capabilities TEXT NOT NULL DEFAULT '[]',
+                app_version TEXT NOT NULL DEFAULT '',
+                created_at_ms INTEGER NOT NULL,
+                last_seen_at_ms INTEGER,
+                revoked_at_ms INTEGER
+            );
+            CREATE TABLE mesh_pairings (
+                token_hash TEXT PRIMARY KEY,
+                device_name TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                expires_at_ms INTEGER NOT NULL,
+                redeemed_at_ms INTEGER
+            );
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        ancien = DeviceRegistry(chemin)
+        enrol(ancien)
+        cle = _cle_de_scellement()
+        assert ancien.record_seal_key("dev_phone", cle, 1_000) is True
+        assert ancien.seal_key_of("dev_phone") == (cle, 1_000)
+
+    def test_l_instant_est_un_entier_et_se_compare_comme_tel(self, registry):
+        """Rangé dans une colonne TEXT — la boucle de migration n'ajoute que
+        du TEXT — « 9 » serait plus grand que « 10 »."""
+        enrol(registry)
+        assert registry.record_seal_key("dev_phone", _cle_de_scellement(), 9) is True
+        cle = _cle_de_scellement()
+        assert registry.record_seal_key("dev_phone", cle, 10) is True, (
+            "10 doit être vu comme postérieur à 9"
+        )
+        assert registry.seal_key_of("dev_phone") == (cle, 10)
+
+    def test_rejoindre_de_nouveau_un_hote_efface_aussi_sa_cle(self, registry):
+        """La SECONDE porte d'appairage — celle du côté invité.
+
+        Deux portes mènent au même piège : `redeem_pairing` quand on accueille,
+        `enrol_host` quand on est accueilli. Corriger une seule laisserait la
+        clé morte survivre par l'autre chemin.
+        """
+        identite = a_key()
+        hote = dict(
+            device_id="dev_hote",
+            public_key_b64=identite,
+            name="Le Mac du salon",
+            platform="MACOS",
+        )
+        registry.enrol_host(**hote)
+        registry.record_seal_key("dev_hote", _cle_de_scellement(), 1_000)
+        assert registry.seal_key_of("dev_hote") is not None
+
+        registry.enrol_host(**hote)
+        assert registry.seal_key_of("dev_hote") is None, (
+            "la clé a survécu au ré-enrôlement de l'hôte"
+        )

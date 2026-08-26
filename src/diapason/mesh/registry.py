@@ -121,7 +121,7 @@ class DeviceRegistry:
             row["name"]
             for row in conn.execute("PRAGMA table_info(mesh_devices)").fetchall()
         }
-        for name in ("app_state", "transport", "address"):
+        for name in ("app_state", "transport", "address", "seal_public_key"):
             if name not in columns:
                 conn.execute(f"ALTER TABLE mesh_devices ADD COLUMN {name} TEXT")
         # The watermark that makes a replayed beacon useless. Nullable, so a
@@ -130,6 +130,12 @@ class DeviceRegistry:
             conn.execute(
                 "ALTER TABLE mesh_devices ADD COLUMN last_beacon_at_ms INTEGER"
             )
+        # Quand la clé de scellement du pair a été vue. Son propre cas, et non
+        # la boucle ci-dessus, qui n'ajoute que des colonnes TEXT — un entier
+        # rangé dans une colonne TEXT se compare comme du texte, et « 9 » y
+        # serait plus grand que « 10 ».
+        if "seal_seen_at_ms" not in columns:
+            conn.execute("ALTER TABLE mesh_devices ADD COLUMN seal_seen_at_ms INTEGER")
 
     def _connect(self) -> sqlite3.Connection:
         """Ouvre une connexion NEUVE, que l'appelant doit fermer lui-même.
@@ -286,7 +292,13 @@ class DeviceRegistry:
                      trust_level=excluded.trust_level,
                      declared_capabilities=excluded.declared_capabilities,
                      app_version=excluded.app_version,
-                     last_seen_at_ms=excluded.last_seen_at_ms""",
+                     last_seen_at_ms=excluded.last_seen_at_ms,
+                     -- Un ré-appairage repart de zéro, clé de scellement
+                     -- comprise. Sans cette ligne, une clé morte survivrait à
+                     -- l'appairage qui devait tout remettre à plat, et TOUT
+                     -- partirait en refus sur un maillage qui a l'air appairé.
+                     seal_public_key=NULL,
+                     seal_seen_at_ms=NULL""",
                 (
                     device_id,
                     key,
@@ -364,7 +376,10 @@ class DeviceRegistry:
                      device_type=excluded.device_type,
                      trust_level=excluded.trust_level,
                      declared_capabilities=excluded.declared_capabilities,
-                     last_seen_at_ms=excluded.last_seen_at_ms""",
+                     last_seen_at_ms=excluded.last_seen_at_ms,
+                     -- Même raison que pour l'autre porte d'appairage.
+                     seal_public_key=NULL,
+                     seal_seen_at_ms=NULL""",
                 (
                     device_id,
                     key,
@@ -439,6 +454,80 @@ class DeviceRegistry:
         if row is None or row["trust_level"] != TRUST_TRUSTED:
             return None
         return base64.b64decode(row["public_key"])
+
+    # ── la clé de scellement d'un pair ───────────────────────────────────
+    # Distincte de `public_key` : celle-ci SIGNE, celle-là CHIFFRE. Une clé,
+    # un usage — voir l'en-tête de `mesh/scellement.py` pour le pourquoi.
+
+    def record_seal_key(self, device_id: str, key_b64: str, sent_at_ms: int) -> bool:
+        """Enregistrer la clé de scellement publiée par un pair.
+
+        Rend False quand la publication n'est pas STRICTEMENT plus récente
+        que la dernière retenue — ce à quoi ressemble un rejeu. Le contrôle et
+        l'écriture sont un seul UPDATE, exactement comme ``heartbeat_signed``
+        et pour la même raison : deux publications arrivant ensemble ne
+        peuvent pas voir toutes deux l'ancienne marque, donc une seule gagne.
+
+        Un attaquant qui rejoue une vieille publication ne peut donc pas
+        réinstaller une clé périmée dont il aurait, lui, la moitié privée.
+        """
+        propre = str(key_b64 or "").strip()
+        try:
+            if len(base64.b64decode(propre, validate=True)) != 32:
+                return False
+        except Exception:  # noqa: BLE001 - une clé illisible n'est pas une clé
+            return False
+
+        with closing(self._connect()) as conn, conn:
+            cursor = conn.execute(
+                "UPDATE mesh_devices SET seal_public_key=?, seal_seen_at_ms=? "
+                "WHERE device_id=? AND trust_level=? "
+                "  AND (seal_seen_at_ms IS NULL OR seal_seen_at_ms < ?)",
+                (propre, int(sent_at_ms), device_id, TRUST_TRUSTED, int(sent_at_ms)),
+            )
+            conn.commit()
+        return cursor.rowcount > 0
+
+    def seal_key_of(self, device_id: str) -> tuple[str, int] | None:
+        """La clé vers laquelle sceller, et QUAND elle a été vue.
+
+        Rend None pour un appareil inconnu, révoqué, ou qui n'a jamais publié
+        — comme ``public_key_of``, et pour la même raison : la révocation doit
+        arrêter un appareil au même goulot que tout le reste.
+
+        L'instant est rendu avec la clé parce que l'appelant en a besoin : une
+        clé trop ancienne ne s'emploie plus, et c'est le SEUL mécanisme de
+        repli — on ne démote jamais sur un corps de réponse.
+        """
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT seal_public_key, seal_seen_at_ms, trust_level "
+                "FROM mesh_devices WHERE device_id=?",
+                (device_id,),
+            ).fetchone()
+        if row is None or row["trust_level"] != TRUST_TRUSTED:
+            return None
+        cle = row["seal_public_key"]
+        vue = row["seal_seen_at_ms"]
+        if not cle or vue is None:
+            return None
+        return str(cle), int(vue)
+
+    def forget_seal_key(self, device_id: str) -> None:
+        """Oublier la clé d'un pair, pour repartir en clair immédiatement.
+
+        Le repli normal est l'expiration, qui prend sept jours. Ceci est la
+        sortie de secours quand on sait déjà que le pair ne sait plus ouvrir
+        ce qu'on lui scelle — une réinstallation, un retour en arrière — et
+        qu'on ne veut pas attendre.
+        """
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "UPDATE mesh_devices SET seal_public_key=NULL, seal_seen_at_ms=NULL "
+                "WHERE device_id=?",
+                (device_id,),
+            )
+            conn.commit()
 
     # ── writing ──────────────────────────────────────────────────────────
 
