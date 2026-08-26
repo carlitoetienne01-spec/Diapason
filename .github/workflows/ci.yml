@@ -237,10 +237,18 @@ jobs:
     # et le meme cout : ce job verifiait Ubuntu, il verifie maintenant macOS.
     # Un defaut propre a Linux ne sera plus attrape ici.
     #
-    # Verifie en local le 26 aout 2026 AVANT d'etre deplace, pour ne pas
-    # confier au runner un travail dont on ignore s'il passe : `cargo clippy
-    # --workspace --all-targets -- -D warnings` et `cargo test --workspace`
-    # sortent tous deux en 0 sur cette machine (cargo 1.98).
+    # Verifie en local le 26 aout 2026 avant d'etre deplace, pour ne pas
+    # confier au runner un travail dont on ignore s'il passe. LES TROIS
+    # etapes : `cargo clippy --workspace --all-targets -- -D warnings`,
+    # `cargo test --workspace`, et `cargo audit` sur LES DEUX verrous
+    # (rust/ et frontend/src-tauri/).
+    #
+    # La premiere version de ce commentaire annoncait une verification
+    # locale qui n'avait couvert que les deux premieres. La CI a alors
+    # trouve RUSTSEC-2026-0258 dans h2 — ce qu'on lui demande, mais
+    # l'affirmation etait plus large que la mesure. Et lire l'apparence de
+    # la sortie ne suffit pas : `$?` apres un tube rend le code de `tail`,
+    # pas celui de cargo.
     #
     # POUR REVENIR EN ARRIERE : runs-on: ubuntu-latest
     runs-on: [self-hosted, macos-local]
