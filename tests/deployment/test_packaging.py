@@ -52,13 +52,32 @@ def test_desktop_app_syncs_the_native_group() -> None:
 
 
 def test_windows_installer_syncs_the_native_group() -> None:
-    # The Windows source installer does not run maturin separately.
-    assert (
-        "& $uvExe sync --extra desktop --group desktop-native"
-        in WINDOWS_INSTALL_PS1.read_text()
-    ), (
-        "the Windows installer must include `--group desktop-native` so "
-        "diapason_rust is built during source install."
+    """Le groupe natif est synchronisé — QUAND Rust est là pour le bâtir.
+
+    Ce test exigeait la commande en dur, inconditionnelle. Or ce groupe tire
+    `diapason-rust`, que uv.lock déclare comme une source de RÉPERTOIRE sans
+    aucune roue : uv doit le compiler, avec rustc 1.88, les outils MSVC, CMake
+    et NASM — que l'installateur ne vérifiait ni n'installait. Sur un PC neuf
+    la commande échouait, et le script s'arrêtait là.
+
+    La dépendance était pourtant connue : ci.yml installe
+    dtolnay/rust-toolchain en étape séparée avant chaque appel à maturin.
+    Seule cette ligne l'ignorait. Constaté le 26 août 2026, avant que Carlito
+    n'y passe une soirée.
+
+    Le test garde donc l'intention — bâtir l'extension quand c'est possible —
+    au lieu d'une chaîne de caractères.
+    """
+    script = WINDOWS_INSTALL_PS1.read_text()
+    assert "--group', 'desktop-native'" in script or (
+        "--group desktop-native" in script
+    ), "l'installateur ne bâtit plus jamais l'extension native"
+    assert "Get-Command cargo" in script, (
+        "l'installateur exige Rust sans vérifier qu'il est là"
+    )
+    assert "Rustlang.Rustup" in script, (
+        "l'installateur doit dire comment obtenir Rust, pas seulement le "
+        "constater absent"
     )
 
 

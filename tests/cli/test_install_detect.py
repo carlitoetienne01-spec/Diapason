@@ -35,7 +35,16 @@ def test_editable_git_install_detected(tmp_path, monkeypatch):
     info = detect_install()
     assert info.kind == "editable-git"
     assert "git pull" in info.upgrade_command
-    assert "uv sync" in info.upgrade_command
+    # PAS « uv sync » nu, et ce test l'exigeait. La commande nue ÉLAGUE tout
+    # extra qu'elle ne nomme pas : suivre le conseil de Diapason après un
+    # `git pull` aurait emporté fastapi, uvicorn, faster-whisper et
+    # l'extension native, sans un mot. Le piège avait déjà mordu deux fois
+    # sur la machine de développement les 24 et 25 août 2026 ; il était
+    # inscrit ici dans la commande conseillée à tout le monde.
+    assert "make setup" in info.upgrade_command, (
+        f"commande élagueuse : {info.upgrade_command!r}"
+    )
+    assert "uv sync" not in info.upgrade_command
     assert info.repo_root == repo
 
 

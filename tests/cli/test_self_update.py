@@ -135,3 +135,27 @@ def test_decline_confirmation_exits_nonzero():
     assert result.exit_code == 1
     assert "Aborted" in result.output
     mock_run.assert_not_called()
+
+
+def test_la_commande_de_mise_a_jour_n_elague_jamais_le_venv():
+    """`uv sync` nu ÉLAGUE tout extra qu'il ne nomme pas.
+
+    Le piège a mordu deux fois sur la machine de développement les 24 et
+    25 août 2026 — `faster-whisper` puis `pytest`, puis `sherpa-onnx` — et
+    il était inscrit dans la commande que Diapason CONSEILLE lui-même après
+    un `git pull`. Suivre son propre conseil aurait donc cassé l'installation
+    de quiconque met à jour : plus de fastapi, plus d'uvicorn, plus
+    d'extension native, et pas un mot.
+
+    Ce test refuse que la commande redevienne nue.
+    """
+    from diapason.cli._install_detect import detect_install
+
+    info = detect_install()
+    commande = info.upgrade_command or ""
+    if "uv sync" not in commande:
+        return  # un autre mode d'installation : rien à garder ici
+
+    assert "--extra" in commande or "make setup" in commande, (
+        f"la commande de mise à jour élaguerait le venv : {commande!r}"
+    )

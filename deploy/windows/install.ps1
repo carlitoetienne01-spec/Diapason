@@ -289,10 +289,48 @@ if (Test-Path (Join-Path $srcDir '.git')) {
 # 6. uv sync --extra desktop --group desktop-native
 # ---------------------------------------------------------------------------
 
-Write-Info "Running 'uv sync --extra desktop --group desktop-native' in $srcDir (this can take a few minutes)..."
+# THE NATIVE EXTENSION NEEDS A RUST TOOLCHAIN, AND THIS SCRIPT NEVER SAID SO.
+#
+# `--group desktop-native` pulls `diapason-rust`, which uv.lock declares as a
+# DIRECTORY source with no wheel at all. uv therefore has to BUILD it: maturin,
+# then cargo, then rustc pinned to 1.88 (rust/rust-toolchain.toml), the MSVC
+# build tools, CMake and NASM for aws-lc-sys, and roughly three hundred and
+# fifty crates to compile. Fifteen to thirty minutes on a cold machine.
+#
+# The dependency was known — ci.yml installs dtolnay/rust-toolchain as its own
+# step before every maturin call, twice — but this line never checked for it.
+# On a fresh Windows box it failed, Write-Fail stopped the script, and the
+# install ended before Ollama, before the model, before anything usable.
+# Found on 26 August 2026, before Carlito spent an evening on it.
+#
+# So we DECIDE, with the facts, instead of failing after the attempt: with
+# cargo present, build the extension; without it, install everything else and
+# say plainly what is missing and how to add it later. Diapason runs without
+# the extension — the imports that use it are lazy.
+Write-Info "Checking for a Rust toolchain (needed only for the native extension)..."
+$cargoExe = (Get-Command cargo -ErrorAction SilentlyContinue).Source
+$syncArgs = @('sync', '--extra', 'desktop')
+if ($cargoExe) {
+    Write-Ok "cargo found at $cargoExe - the native extension will be built."
+    $syncArgs += @('--group', 'desktop-native')
+} else {
+    Write-Warn2 @"
+No Rust toolchain on PATH. Installing WITHOUT the native extension.
+
+What that costs: the accelerated paths that use diapason-rust fall back to
+Python. Everything else - the API server, the mesh, Succes, the CLI - works.
+
+To add it later:
+    winget install Rustlang.Rustup
+    winget install Microsoft.VisualStudio.2022.BuildTools   # MSVC + CMake
+    cd "$srcDir" ; uv sync --extra desktop --group desktop-native
+"@
+}
+
+Write-Info "Running 'uv $($syncArgs -join ' ')' in $srcDir (this can take a few minutes)..."
 Push-Location $srcDir
 try {
-    & $uvExe sync --extra desktop --group desktop-native
+    & $uvExe @syncArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "uv sync failed with exit code $LASTEXITCODE. Check the output above."
     }

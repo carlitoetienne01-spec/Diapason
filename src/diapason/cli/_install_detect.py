@@ -11,7 +11,10 @@ Three install paths are supported today:
 - **Editable git checkout** (``uv sync`` / ``pip install -e .`` from a
   cloned repo). The package's ``__file__`` is inside a working tree
   with a ``.git`` directory at the repo root. Upgrade with
-  ``git pull && uv sync`` from the checkout.
+  ``git pull && make setup`` from the checkout — **not** a bare
+  ``uv sync``, which prunes every extra it does not name and would leave
+  the install broken in silence. On Windows, where make is absent, run the
+  sync line from ``deploy/windows/install.ps1`` instead.
 
 We detect by inspecting ``diapason.__file__``. If we can't tell with
 confidence we fall back to the PyPI command — that's the most common
@@ -68,7 +71,19 @@ def detect_install() -> InstallInfo:
         if (candidate / ".git").exists() and (candidate / "pyproject.toml").exists():
             return InstallInfo(
                 kind="editable-git",
-                upgrade_command=f"cd {candidate} && git pull && uv sync",
+                # `make setup`, JAMAIS un `uv sync` nu. La commande nue
+                # ÉLAGUE tout extra qu'elle ne nomme pas : elle emporterait
+                # fastapi, uvicorn, faster-whisper, l'extension native — et
+                # la mise à jour laisserait une installation cassée sans un
+                # mot. Le piège a mordu deux fois sur la machine de
+                # développement (24 et 25 août 2026) ; l'inscrire dans la
+                # commande que Diapason CONSEILLE lui-même l'aurait fait
+                # mordre chez tout le monde.
+                #
+                # `make setup` porte la liste complète des extras, en un seul
+                # endroit. Sans make — Windows — la cible équivalente est
+                # rappelée par le message ci-dessous.
+                upgrade_command=f"cd {candidate} && git pull && make setup",
                 repo_root=candidate,
             )
         if candidate.parent == candidate:
