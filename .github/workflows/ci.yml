@@ -282,7 +282,27 @@ jobs:
       - name: Install RustSec audit tool
         run: cargo install cargo-audit --locked
 
+      # DEUX VERROUS, DEUX EXIGENCES — et l'ecart est une decision, pas un
+      # oubli.
+      #
+      # `rust/` est a nous, et il est PROPRE : zero vulnerabilite, zero
+      # avertissement (mesure le 26 aout 2026, apres le passage d'anyhow en
+      # 1.0.104 qui a leve RUSTSEC-2026-0190). Puisqu'il est propre, il tient
+      # le cliquet le plus strict : `--deny warnings`. Un avis « non
+      # maintenu » ou « unsound » y fera rougir la CI le jour ou il
+      # apparaitra, au lieu de se fondre dans un bruit de fond.
+      #
+      # `frontend/src-tauri/` porte DIX-SEPT avertissements que nous ne
+      # pouvons pas lever : seize liaisons GTK3 non maintenues et une
+      # unsoundness dans `glib`, toutes tirees par `tauri` via `tray-icon`,
+      # et toutes EXCLUSIVEMENT LINUX — `cargo tree --target
+      # aarch64-apple-darwin` n'en montre aucune. Aucune n'est une
+      # vulnerabilite : `cargo audit --json` compte zero. Elles disparaitront
+      # quand Tauri quittera GTK3, pas avant, et rien ici ne peut l'avancer.
+      # Ce verrou garde donc l'exigence par defaut : une VRAIE vulnerabilite
+      # y fait toujours echouer la CI — c'est ainsi que RUSTSEC-2026-0258 (h2)
+      # a ete trouvee le matin meme.
       - name: Audit Rust lockfiles
         run: |
-          cargo audit
+          cargo audit --deny warnings
           cargo audit --file ../frontend/src-tauri/Cargo.lock
