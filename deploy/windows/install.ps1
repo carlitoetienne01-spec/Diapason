@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Diapason native Windows installer.
 

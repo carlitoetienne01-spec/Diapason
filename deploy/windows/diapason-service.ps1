@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Register / unregister the Diapason Windows scheduled task.
 

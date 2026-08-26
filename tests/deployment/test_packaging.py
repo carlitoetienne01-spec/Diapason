@@ -129,3 +129,37 @@ def test_l_installateur_windows_cherche_un_python_qui_convient() -> None:
         "le message d'échec doit nommer la cause la plus probable — l'alias "
         "du Microsoft Store — et non se contenter de « pas trouvé »"
     )
+
+
+def test_les_scripts_powershell_non_ascii_portent_un_bom() -> None:
+    """Windows PowerShell 5.1 lit un `.ps1` SANS BOM comme du Windows-1252.
+
+    Un tiret cadratin « — », trois octets en UTF-8, y devient une séquence
+    contenant un guillemet typographique — que PowerShell accepte comme
+    délimiteur de chaîne. Les chaînes se déséquilibrent alors, et l'analyseur
+    signale une erreur des dizaines de lignes plus loin, à un endroit qui n'a
+    rien à voir.
+
+    Constaté le 26 août 2026 : après avoir ajouté des explications en français
+    à `diapason-service.ps1`, le script est devenu inanalysable —
+    « Le terminateur " est manquant dans la chaîne » ligne 232, pour une cause
+    située ligne 11. C'est un défaut que rien ne révèle sur macOS, où le
+    fichier n'est jamais lu par PowerShell 5.1.
+
+    Le BOM lève l'ambiguïté : avec lui, PowerShell lit de l'UTF-8 et les
+    accents sont des accents.
+    """
+    fautifs = []
+    for script in sorted(WINDOWS_INSTALL_PS1.parent.glob("*.ps1")):
+        octets = script.read_bytes()
+        a_un_bom = octets[:3] == b"\xef\xbb\xbf"
+        non_ascii = any(o > 127 for o in octets[3:] if a_un_bom) or (
+            not a_un_bom and any(o > 127 for o in octets)
+        )
+        if non_ascii and not a_un_bom:
+            fautifs.append(script.name)
+    assert not fautifs, (
+        f"scripts PowerShell non-ASCII sans BOM UTF-8 : {fautifs}. "
+        "PowerShell 5.1 les lira en Windows-1252 et les accents casseront "
+        "l'analyse des chaînes."
+    )
