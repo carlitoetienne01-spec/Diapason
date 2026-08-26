@@ -7,6 +7,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from diapason.succes.corps import DeleteBody
 from diapason.succes.finances import SuccesFinancesStore
 from diapason.succes.store import SuccesError
 
@@ -121,8 +122,16 @@ def register_finances_routes(
     get_store,
     domain_error,
     resolved_date,
-    DeleteBody: type[BaseModel],
 ) -> None:
+    """Poser les routes des Finances sur un routeur existant.
+
+    `DeleteBody` n'est PLUS un paramètre : il arrive par l'import du module,
+    ci-dessus. Passé en argument, il n'existait que dans les variables locales
+    de cette fonction — et FastAPI résout les annotations différées contre les
+    GLOBALES du module, jamais contre elles. `/openapi.json` rendait donc 500
+    pour tout le dépôt (constaté le 26 août 2026).
+    """
+
     def _finances() -> SuccesFinancesStore:
         store = get_store()
         if not isinstance(store, SuccesFinancesStore):

@@ -88,9 +88,11 @@ class SubtaskCreate(BaseModel):
     opId: str | None = None
 
 
-class DeleteBody(BaseModel):
-    confirmed: bool = False
-    opId: str | None = None
+# `DeleteBody` vit dans `succes/corps.py` : `finances_routes.py` en a besoin
+# AU NIVEAU DE SON MODULE, faute de quoi FastAPI ne peut pas résoudre
+# l'annotation et `/openapi.json` rend 500. Le ré-exporter ici garde les
+# importateurs existants intacts.
+from diapason.succes.corps import DeleteBody  # noqa: E402
 
 
 class LegacyImportBody(BaseModel):
@@ -972,7 +974,6 @@ register_finances_routes(
     get_store=get_store,
     domain_error=_domain_error,
     resolved_date=_resolved_date,
-    DeleteBody=DeleteBody,
 )
 
 
