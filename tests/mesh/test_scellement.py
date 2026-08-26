@@ -305,3 +305,122 @@ class TestLireUnBlocDeSceauNeLevePasEtNeCroitPas:
             }
         }
         assert scellement.lire_bloc_sceau(faux) is False
+
+
+class TestLaDecisionDeSceller:
+    """Étape 5 : le seul point de décision, éprouvé seul.
+
+    Il ne lit que trois choses — le réglage, le registre, l'horloge — et
+    JAMAIS un corps de réponse. C'est la correction la plus importante du
+    plan : la première version rendait obligatoire une rétrogradation vers
+    le clair sur une réponse HTTP non signée, c'est-à-dire un interrupteur
+    offert à l'attaquant.
+    """
+
+    @pytest.fixture
+    def flotte(self, tmp_path):
+        """Un registre avec un pair de confiance, et sa clé de scellement."""
+        import base64
+
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.security.signing import generate_keypair
+
+        registre = DeviceRegistry(tmp_path / "mesh.db")
+        invitation = registre.create_pairing("Le PC")
+        registre.redeem_pairing(
+            invitation["pairingToken"],
+            device_id="dev_pc",
+            public_key_b64=base64.b64encode(generate_keypair().public_key).decode(),
+            name="Le PC",
+            platform="WINDOWS",
+            device_type="DESKTOP",
+        )
+        cle = nouvelle_demi_cle().publique_b64
+        return registre, cle
+
+    def _pair(self, nom="Le PC", device_id="dev_pc"):
+        return {"deviceId": device_id, "name": nom}
+
+    def test_un_pair_a_jour_donne_sa_cle(self, flotte, monkeypatch):
+        registre, cle = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        registre.record_seal_key("dev_pc", cle, 1_000)
+        assert (
+            scellement.doit_sceller(
+                self._pair(), registry=registre, maintenant_ms=2_000
+            )
+            == cle
+        )
+
+    def test_un_telephone_qui_ne_publie_rien_part_en_clair(self, flotte, monkeypatch):
+        """L'exclusion est STRUCTURELLE : on ne scelle que vers un pair dont
+        on DÉTIENT une clé. Rien à respecter, rien à oublier."""
+        registre, _ = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        assert scellement.doit_sceller(self._pair(), registry=registre) is None
+
+    def test_une_cle_trop_ancienne_ne_s_emploie_plus(self, flotte, monkeypatch):
+        """LE seul mécanisme de repli, et il repose sur un fait signé."""
+        registre, cle = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        registre.record_seal_key("dev_pc", cle, 1_000)
+
+        juste_avant = 1_000 + scellement.FRAICHEUR_MS
+        assert (
+            scellement.doit_sceller(
+                self._pair(), registry=registre, maintenant_ms=juste_avant
+            )
+            == cle
+        )
+        assert (
+            scellement.doit_sceller(
+                self._pair(), registry=registre, maintenant_ms=juste_avant + 1
+            )
+            is None
+        )
+
+    def test_le_mode_jamais_ne_scelle_rien(self, flotte, monkeypatch):
+        registre, cle = flotte
+        registre.record_seal_key("dev_pc", cle, 1_000)
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "jamais")
+        assert (
+            scellement.doit_sceller(
+                self._pair(), registry=registre, maintenant_ms=2_000
+            )
+            is None
+        )
+
+    def test_le_mode_exige_refuse_bruyamment(self, flotte, monkeypatch):
+        """Sous `exige`, partir en clair serait la panne silencieuse que ce
+        réglage veut empêcher. Une exception, pas un None de plus."""
+        registre, _ = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "exige")
+        with pytest.raises(scellement.ScellementExige) as refus:
+            scellement.doit_sceller(self._pair(), registry=registre)
+        message = str(refus.value)
+        assert "Le PC" in message, "le refus doit nommer l'appareil"
+        assert "rien ne lui a été envoyé" in message
+
+    def test_un_reglage_inconnu_retombe_sur_le_defaut(self, monkeypatch):
+        """Une faute de frappe dans le fichier ne doit pas éteindre le
+        chiffrement en silence."""
+        from diapason.core.config import MeshConfig
+
+        class FausseConfig:
+            mesh = MeshConfig(chiffrement="chiffre-tout-a-fond")
+
+        monkeypatch.setattr("diapason.core.config.load_config", lambda: FausseConfig())
+        assert scellement.mode_de_chiffrement() == "opportuniste"
+
+    def test_un_pair_revoque_n_est_plus_scelle(self, flotte, monkeypatch):
+        registre, cle = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        registre.record_seal_key("dev_pc", cle, 1_000)
+        registre.revoke("dev_pc")
+        assert (
+            scellement.doit_sceller(
+                self._pair(), registry=registre, maintenant_ms=2_000
+            )
+            is None
+        )

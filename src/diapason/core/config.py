@@ -1755,6 +1755,32 @@ class DigestConfig:
 
 
 @dataclass(slots=True)
+class MeshConfig:
+    """Le maillage d'appareils, et ce qu'il chiffre.
+
+    ``chiffrement`` gouverne l'ÉMISSION seulement, et cette asymétrie est
+    voulue :
+
+    * ``opportuniste`` (défaut) — on scelle vers un pair dont on détient une
+      clé fraîche, et l'on part en clair vers les autres. C'est ce qui laisse
+      le client mobile fonctionner : il ne publie aucune clé.
+    * ``exige`` — on refuse d'envoyer à un pair sans clé fraîche. **Cela rend
+      le téléphone injoignable**, et il faut le savoir avant de le choisir.
+    * ``jamais`` — le comportement d'avant le 26 août 2026, pour revenir en
+      arrière sans rien désinstaller.
+
+    EN RÉCEPTION, le clair est accepté quel que soit ce réglage. Non par
+    négligence : ``/v1/mesh/commands/deliver`` est l'une des cinq portes du
+    téléphone, et le client figé y poste une enveloppe claire. Rendre
+    ``exige`` symétrique casserait net un appareil déjà déployé. Sans cette
+    phrase, quelqu'un croirait raisonnablement que sa machine n'accepte plus
+    de clair.
+    """
+
+    chiffrement: str = "opportuniste"
+
+
+@dataclass(slots=True)
 class PrivacyConfig:
     """The single, authoritative answer to "may this leave the machine?".
 
@@ -1798,6 +1824,7 @@ class DiapasonConfig:
     traces: TracesConfig = field(default_factory=TracesConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    mesh: MeshConfig = field(default_factory=MeshConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
@@ -2092,6 +2119,7 @@ def load_config(path: Optional[Path] = None) -> DiapasonConfig:
             "traces",
             "security",
             "privacy",
+            "mesh",
             "channel",
             "tools",
             "sandbox",

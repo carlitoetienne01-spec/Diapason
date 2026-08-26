@@ -466,3 +466,63 @@ class TestUnRefusNeSePresentePas:
         reponse = receive_command({"targetDeviceId": "dev_ceQueJAiDemande"})
         assert "targetDeviceId" in reponse
         assert reponse["targetDeviceId"] == "dev_ceQueJAiDemande"
+
+
+class TestUneReponseForgeeNeSupprimeJamaisLaCle:
+    """LE test de l'étape 5, et le plus important du lot.
+
+    La première version du plan rendait OBLIGATOIRE une rétrogradation vers
+    le clair quand le pair répondait « je ne connais pas cet outil ». Or
+    cette réponse est un corps HTTP **non signé** : un attaquant sur le
+    chemin n'avait qu'à la forger pour éteindre le chiffrement, commande
+    par commande, et durablement. Un chiffrement qu'on coupe à volonté est
+    pire que pas de chiffrement, parce qu'on croit l'avoir.
+
+    Il n'existe donc AUCUN code de rétrogradation dans ce dépôt, et ce test
+    est là pour que cela reste vrai : quelle que soit la réponse, la clé
+    enregistrée ne bouge pas.
+    """
+
+    @pytest.mark.parametrize(
+        "reponse",
+        [
+            {"status": "UNSUPPORTED", "userSafeMessage": "« mesh.sealed » inconnu."},
+            {"status": "DENIED", "errorCode": "MALFORMED"},
+            {"status": "FAILED", "userSafeMessage": "impossible d'ouvrir le sceau"},
+            {},
+            {"status": "SUCCESS"},
+        ],
+        ids=["unsupported", "denied", "failed", "vide", "succes"],
+    )
+    def test_aucune_reponse_ne_fait_oublier_la_cle(self, mesh, reponse):
+        from diapason.mesh.coffre import nouvelle_demi_cle
+
+        registry, _queue, _ = mesh
+        cle = nouvelle_demi_cle().publique_b64
+        assert registry.record_seal_key(TARGET, cle, 1_000) is True
+
+        send(mesh, transport=lambda *a, **k: dict(reponse))
+
+        assert registry.seal_key_of(TARGET) == (cle, 1_000), (
+            "une réponse non signée a modifié la clé de scellement"
+        )
+
+    def test_le_depot_ne_contient_aucun_code_de_retrogradation(self):
+        """Un cliquet sur l'intention, pas seulement sur un cas.
+
+        `forget_seal_key` est la sortie de secours manuelle. Si elle
+        apparaissait un jour dans un chemin qui lit une réponse réseau, ce
+        serait la rétrogradation revenue par la fenêtre.
+        """
+        import pathlib
+
+        racine = pathlib.Path(__file__).resolve().parents[2] / "src" / "diapason"
+        appelants = [
+            chemin.relative_to(racine).as_posix()
+            for chemin in racine.rglob("*.py")
+            if "forget_seal_key" in chemin.read_text(encoding="utf-8")
+        ]
+        assert set(appelants) <= {"mesh/registry.py"}, (
+            f"`forget_seal_key` est appelée depuis {appelants} — vérifier "
+            "qu'aucun de ces chemins ne lit une réponse réseau"
+        )

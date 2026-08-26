@@ -288,6 +288,78 @@ def lire_bloc_sceau(
         return False
 
 
+# ── faut-il sceller, et vers quelle clé ? ───────────────────────────────
+
+
+class ScellementExige(RuntimeError):
+    """Le réglage exige le chiffrement et ce pair n'a pas de clé fraîche.
+
+    Une exception plutôt qu'un ``None`` de plus : sous ``exige``, partir en
+    clair serait exactement la panne silencieuse que ce réglage veut
+    empêcher. L'appelant doit avoir à s'en occuper, pas à y penser.
+    """
+
+
+def mode_de_chiffrement() -> str:
+    """Ce que la configuration demande. « opportuniste » à défaut."""
+    try:
+        from diapason.core.config import load_config
+
+        mode = str(load_config().mesh.chiffrement or "").strip().lower()
+    except Exception:  # noqa: BLE001 - une config illisible ne casse pas le maillage
+        return "opportuniste"
+    return mode if mode in {"opportuniste", "exige", "jamais"} else "opportuniste"
+
+
+def doit_sceller(
+    device: Any, *, registry: Any = None, maintenant_ms: int | None = None
+) -> str | None:
+    """La clé vers laquelle sceller — ou None pour partir en clair.
+
+    LE point de décision, et le seul. Il ne lit QUE trois choses : le
+    réglage, le registre, et l'horloge. Jamais un corps de réponse.
+
+    C'est la correction la plus importante du plan. La première version
+    rendait obligatoire une rétrogradation vers le clair quand le pair
+    répondait « je ne connais pas cet outil » — mais cette réponse est un
+    corps HTTP NON SIGNÉ. Un paquet forgé suffisait alors à éteindre le
+    chiffrement, commande par commande, et de façon persistante. Un
+    chiffrement qu'un attaquant coupe à volonté est pire que pas de
+    chiffrement, parce qu'on croit l'avoir.
+
+    Le seul repli est donc l'expiration d'un fait SIGNÉ : la clé d'un pair
+    vue il y a plus de ``FRAICHEUR_MS`` ne s'emploie plus. Un attaquant qui
+    supprime les publications doit tenir sept jours, pas une seconde — une
+    usure, pas un interrupteur. Et le repli se voit, au lieu de se taire.
+    """
+    mode = mode_de_chiffrement()
+    if mode == "jamais":
+        return None
+
+    from diapason.mesh.registry import DeviceRegistry
+
+    registre = registry if registry is not None else DeviceRegistry()
+    device_id = str(
+        (device.get("deviceId") if isinstance(device, dict) else device) or ""
+    )
+    retenue = registre.seal_key_of(device_id) if device_id else None
+
+    if retenue is not None:
+        cle, vue_a = retenue
+        instant = _maintenant_ms() if maintenant_ms is None else int(maintenant_ms)
+        if instant - vue_a <= FRAICHEUR_MS:
+            return cle
+
+    if mode == "exige":
+        nom = device.get("name") if isinstance(device, dict) else device_id
+        raise ScellementExige(
+            f"Le chiffrement des commandes est exigé et « {nom} » ne publie "
+            "pas de clé de scellement (téléphone, ou version antérieure de "
+            "Diapason) : rien ne lui a été envoyé."
+        )
+    return None
+
+
 # ── le scellement lui-même ──────────────────────────────────────────────
 
 
@@ -394,7 +466,10 @@ def ouvrir_contenu(
 
 __all__ = [
     "FRAICHEUR_MS",
+    "ScellementExige",
     "bloc_sceau",
+    "doit_sceller",
+    "mode_de_chiffrement",
     "lire_bloc_sceau",
     "PALIER_REMBOURRAGE",
     "RETENTION_PRECEDENTE_MS",
