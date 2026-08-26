@@ -162,6 +162,21 @@ def hote(tmp_path):
     noeud.arreter()
 
 
+def _ouvrir_une_fenetre(hote) -> None:
+    """Relever la boîte de l'hôte — ce qu'une vraie fenêtre fait toutes les 2 s.
+
+    Depuis le 26 août 2026, un outil d'écran REFUSE quand personne ne relève :
+    l'hôte n'a pas d'interface, et prétendre qu'une notification s'est
+    affichée sur une machine sans écran est le faux SUCCESS que le §100
+    interdit. Ce banc lançait deux serveurs et aucune fenêtre ; il obtenait
+    donc SUCCESS d'un affichage qui n'avait jamais eu lieu, et l'ASSERTAIT.
+
+    Un appel suffit pour toute la durée d'un test : la tolérance vaut
+    quatre-vingt-dix secondes (`executor._COLLECTION_WINDOW_MS`).
+    """
+    _http(f"{hote.base}/v1/mesh/inbox", cle=hote.cle)
+
+
 class TestDeuxProcessusSeParlent:
     """Le chemin complet, sans un seul substitut."""
 
@@ -203,6 +218,8 @@ class TestDeuxProcessusSeParlent:
 
         # ── 3. une VRAIE commande signée traverse le socket ──────────────
         from diapason.mesh.dispatch import dispatch_command
+
+        _ouvrir_une_fenetre(hote)
 
         resultat = dispatch_command(
             target_device_id=jumelage.host_device_id,
@@ -254,6 +271,7 @@ class TestDeuxProcessusSeParlent:
                 arguments={"title": "Rejeu", "body": "une seule fois"},
             )
         )
+        _ouvrir_une_fenetre(hote)
         premier = deliver(commande, cible)
         second = deliver(commande, cible)
 
@@ -589,7 +607,9 @@ class TestUneCommandeScelleeTraverse:
         monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
         from diapason.mesh.join import join_fleet
 
-        return join_fleet(hote.base, invitation["pairingToken"], my_address="")
+        jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
+        _ouvrir_une_fenetre(hote)
+        return jumelage
 
     def test_le_contenu_ne_traverse_plus_en_clair(self, hote, tmp_path, monkeypatch):
         """Ce que verrait quelqu'un qui écoute le Wi-Fi."""
@@ -674,6 +694,83 @@ class TestUneCommandeScelleeTraverse:
         )
         assert issue["status"] == "SUCCESS", issue
         assert vu["tool"] == "app.navigate" and vu["tool"] != SENTINELLE
+
+
+class TestSansFenetreRienNEstAnnonce:
+    """Le défaut du 26 août 2026, reproduit sur deux vrais processus.
+
+    Mesuré sur le PC Windows de Carlito : le serveur Python tournait, aucune
+    fenêtre n'était ouverte, et les notifications envoyées depuis le Mac
+    revenaient « SUCCESS — Notification affichée. » Rien ne s'était affiché.
+    Les entrées dormaient dans `_pending` jusqu'à ce que la dix-septième
+    chasse la première, sans un mot.
+
+    Ce banc PROUVAIT le contraire — il assertait ce SUCCESS — parce qu'il
+    lançait deux serveurs et pas une seule fenêtre. C'est le seul test du
+    dépôt qui puisse constater la différence : il a deux processus, donc un
+    hôte qui a vraiment un `_pending` à lui.
+    """
+
+    def test_une_notification_sans_fenetre_est_refusee_franchement(
+        self, hote, tmp_path, monkeypatch
+    ):
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.join import join_fleet
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": "Aveugle"}, cle=hote.cle
+        )
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "aveugle"))
+        jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+        # Aucun `_ouvrir_une_fenetre` ici : c'est TOUT l'objet du test.
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="notifications.show",
+            arguments={"title": "Personne", "body": "ne verra ceci"},
+            registry=DeviceRegistry(),
+            queue=CommandQueue(),
+        )
+
+        assert issue["status"] == "FAILED", (
+            f"un hôte sans écran a annoncé un affichage : {issue}"
+        )
+        assert issue["errorCode"] == "NO_SHELL"
+        assert "affich" in issue["userSafeMessage"], (
+            "le message doit dire ce qui n'a pas eu lieu, pas « échec »"
+        )
+
+    def test_puis_la_meme_commande_passe_des_qu_une_fenetre_releve(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """L'autre sens — sans quoi le test ci-dessus passerait aussi si le
+        maillage était simplement cassé."""
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.join import join_fleet
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": "Voyant"}, cle=hote.cle
+        )
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "voyant"))
+        jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+        _ouvrir_une_fenetre(hote)
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="notifications.show",
+            arguments={"title": "Vu", "body": "par une fenêtre"},
+            registry=DeviceRegistry(),
+            queue=CommandQueue(),
+        )
+        assert issue["status"] == "SUCCESS", issue
+        assert "affichée" not in issue["userSafeMessage"], (
+            "remettre à la fenêtre n'est pas afficher : deux secondes les "
+            "séparent, et c'est un écart"
+        )
 
 
 class _Relais:
@@ -791,6 +888,7 @@ class TestCeQuiTraverseVraimentLeCable:
             # de ce que l'utilisateur a fait. Ce qu'on mesure ici est la
             # commande, pas l'annuaire.
             relais.vu.clear()
+            _ouvrir_une_fenetre(hote)
 
             issue = dispatch_command(
                 target_device_id=jumelage.host_device_id,
@@ -880,6 +978,7 @@ class TestCeQuiTraverseVraimentLeCable:
 
         jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
         monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "exige")
+        _ouvrir_une_fenetre(hote)
 
         issue = dispatch_command(
             target_device_id=jumelage.host_device_id,

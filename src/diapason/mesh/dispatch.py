@@ -30,7 +30,7 @@ from diapason.mesh.pull import device_collects_its_own
 from diapason.mesh.queue import CommandQueue
 from diapason.mesh.registry import DeviceRegistry
 from diapason.mesh.tools import get_remote_tool
-from diapason.mesh.transport import TransportError, deliver
+from diapason.mesh.transport import RemoteRefusal, TransportError, deliver
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,26 @@ def dispatch_command(
     queue.record_attempt(signed.command_id)
     try:
         response = send(signed, device)
+    except RemoteRefusal as exc:
+        # The device answered. Sending its owner to inspect the network
+        # would be sending them after a fault that does not exist.
+        if not exc.retryable:
+            return queue.mark(
+                signed.command_id,
+                "FAILED",
+                user_message=str(exc),
+                error_code=f"REFUSED_{exc.status_code}",
+            )
+        return _apply_offline_policy(
+            queue,
+            signed,
+            device,
+            spec,
+            presence_of(device),
+            reason=str(exc),
+            answered=True,
+            error_code=f"REFUSED_{exc.status_code}",
+        )
     except TransportError as exc:
         return _apply_offline_policy(
             queue, signed, device, spec, presence_of(device), reason=str(exc)
@@ -239,6 +259,27 @@ def flush_pending(
             queue.record_attempt(row["commandId"])
             try:
                 response = send(envelope, device)
+            except RemoteRefusal as exc:
+                # A refusal is not an absence. Left to the `except Exception`
+                # below, this row stayed QUEUED and was retried every fifteen
+                # seconds for its whole six-hour life — roughly 1440 times —
+                # before expiring under "la commande a expiré avant d'être
+                # livrée", which blames a delay for what was a verdict. Worse,
+                # the `break` froze the WHOLE queue for this device behind it.
+                if not exc.retryable:
+                    queue.mark(
+                        row["commandId"],
+                        "FAILED",
+                        user_message=str(exc),
+                        error_code=f"REFUSED_{exc.status_code}",
+                    )
+                    delivered += 1
+                    # Not `break`: the device is demonstrably answering, so
+                    # the next row deserves its own attempt rather than
+                    # inheriting this one's verdict.
+                    continue
+                skipped += 1
+                break
             except Exception:  # noqa: BLE001 - still away; try again next tick
                 skipped += 1
                 # Stop at the first failure for this device: the rest of its
@@ -293,6 +334,8 @@ def _apply_offline_policy(
     presence: Mapping[str, Any],
     *,
     reason: str = "",
+    answered: bool = False,
+    error_code: str = "",
 ) -> DispatchResult:
     """What an unreachable device means, per tool (spec §44).
 
@@ -305,7 +348,11 @@ def _apply_offline_policy(
     name = device.get("name") or "cet appareil"
     state = presence.get("state", "OFFLINE")
 
-    if reason:
+    if answered:
+        # It answered — badly, but it answered. "Could not be reached" would
+        # send the user to reboot a router that is perfectly fine.
+        absence = "a répondu par une erreur"
+    elif reason:
         # Presence said reachable and the wire disagreed. Saying "hors ligne"
         # here would send the user to look at a device that is in fact on.
         absence = "n'a pas pu être joint"
@@ -322,14 +369,14 @@ def _apply_offline_policy(
                 f"{name} {absence} : cette action demande un appareil actif, "
                 "elle n'a pas été effectuée."
             ),
-            error_code=_error_code(reason),
+            error_code=error_code or _error_code(reason),
         )
     if spec.offline_policy == "DROP_IF_OFFLINE":
         return queue.mark(
             command.command_id,
             "EXPIRED",
             user_message=f"{name} {absence} : la commande a été abandonnée.",
-            error_code=_error_code(reason),
+            error_code=error_code or _error_code(reason),
         )
     # QUEUE_UNTIL_EXPIRATION — the only case where waiting is useful.
     return queue.mark(
@@ -338,7 +385,7 @@ def _apply_offline_policy(
         user_message=(
             f"{name} {absence} : la commande est en attente et partira dès son retour."
         ),
-        error_code=_error_code(reason),
+        error_code=error_code or _error_code(reason),
     )
 
 
@@ -447,9 +494,44 @@ def receive_command(
             user_message="L'exécution de la commande a échoué sur cet appareil.",
             error_code=type(exc).__name__,
         )
+    # 26 August 2026: this was five lines, and it wrote "SUCCESS" without
+    # ever looking at what the executor had answered. `_desktop_open` already
+    # returned {"ok": False, "userSafeMessage": "Échec de l'ouverture."} —
+    # under a comment explaining that announcing "opened" on a failure would
+    # be exactly the defect not to commit. The field was written, nobody read
+    # it, and the screen showed "SUCCESS — Échec de l'ouverture.": the word
+    # "failure" crossed the whole mesh while the status said the opposite
+    # (§100).
+    #
+    # "ok" is REQUIRED, never assumed. A silent executor is one we know
+    # nothing about, and inferring success from silence is precisely the
+    # shape this defect took.
+    verdict: dict[str, Any] = dict(result or {})
+    if "ok" not in verdict:
+        logger.error(
+            "silent executor for %s: no 'ok' field in its result",
+            command.tool,
+        )
+        return queue.mark(
+            command.command_id,
+            "FAILED",
+            user_message="Cet appareil n'a pas su dire si l'action a abouti.",
+            error_code="EXECUTOR_SILENT",
+            result=verdict or None,
+        )
+    if not verdict["ok"]:
+        return queue.mark(
+            command.command_id,
+            "FAILED",
+            user_message=str(
+                verdict.get("userSafeMessage") or "L'action a échoué sur cet appareil."
+            ),
+            error_code=str(verdict.get("errorCode") or "EXECUTOR_FAILED"),
+            result=verdict,
+        )
     return queue.mark(
         command.command_id,
         "SUCCESS",
-        user_message=str((result or {}).get("userSafeMessage") or "C'est fait."),
-        result=result,
+        user_message=str(verdict.get("userSafeMessage") or "C'est fait."),
+        result=verdict,
     )

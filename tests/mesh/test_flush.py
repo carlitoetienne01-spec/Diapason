@@ -406,3 +406,120 @@ class TestLHistoireDitCeQuiEstPartiEnClair:
         rangee = queue_for(mesh, LAPTOP)
         assert rangee["tool"] != "mesh.sealed"
         assert rangee["scelle"] is True
+
+
+class TestUnRefusNEstPasUneAbsence:
+    """Le battement doit distinguer « il dort » de « il a dit non ».
+
+    26 août 2026. `dispatch_command` a appris à lire un refus HTTP ; le
+    battement, lui, l'attrapait toujours dans son `except Exception` — car
+    `RemoteRefusal` hérite de `TransportError`, donc de `RuntimeError`. La
+    ligne restait QUEUED et repartait toutes les quinze secondes pendant ses
+    six heures de vie, soit environ mille quatre cents fois, avant d'expirer
+    sous « la commande a expiré avant d'être livrée » : un délai invoqué pour
+    ce qui était un verdict.
+
+    Trouvé par une relecture adverse du correctif lui-même — le correctif ne
+    couvrait qu'un de ses deux chemins d'appel.
+    """
+
+    def _mettre_en_file(self, queue, combien, *, titre="x"):
+        for i in range(combien):
+            queue.enqueue(
+                sign_command(
+                    build_command(
+                        owner_id=OWNER,
+                        origin_device_id=HOST,
+                        target_device_id=LAPTOP,
+                        tool="notifications.show",
+                        arguments={"title": f"{titre}{i}", "body": "y"},
+                    )
+                ),
+                status="QUEUED",
+            )
+
+    def test_un_refus_definitif_est_reglé_pas_remis_en_file(self, mesh):
+        from diapason.mesh.transport import RemoteRefusal
+
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        self._mettre_en_file(queue, 1)
+        wake_device(registry, LAPTOP)
+
+        def refus(command, device):
+            raise RemoteRefusal("Cet appareil refuse cela.", status_code=403)
+
+        flush_pending(registry=registry, queue=queue, transport=refus)
+
+        ligne = queue.pending_for(LAPTOP, limit=10)
+        assert ligne == [], "un verdict qui reste en file sera rejoué 1440 fois"
+
+    def test_la_phrase_de_l_appareil_arrive_jusqu_a_la_ligne(self, mesh):
+        from diapason.mesh.transport import RemoteRefusal
+
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        self._mettre_en_file(queue, 1)
+        wake_device(registry, LAPTOP)
+        vues = [r["commandId"] for r in queue.pending_for(LAPTOP, limit=10)]
+
+        def refus(command, device):
+            raise RemoteRefusal("Cet appareil refuse cela.", status_code=403)
+
+        flush_pending(registry=registry, queue=queue, transport=refus)
+
+        ligne = queue.get(vues[0])
+        assert ligne["status"] == "FAILED"
+        assert ligne["errorCode"] == "REFUSED_403"
+        assert ligne["userSafeMessage"] == "Cet appareil refuse cela.", (
+            "sans elle, il ne reste qu'un code — et l'utilisateur ne saura "
+            "pas ce que son appareil a refusé"
+        )
+
+    def test_un_refus_en_tete_ne_bloque_plus_la_file_entiere(self, mesh):
+        """L'aggravation mesurée par la relecture : le `break` arrêtait le
+        drainage de l'appareil ENTIER derrière une ligne définitivement
+        refusée — les suivantes attendaient six heures sans une tentative."""
+        from diapason.mesh.transport import RemoteRefusal
+
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        self._mettre_en_file(queue, 3, titre="n")
+        wake_device(registry, LAPTOP)
+
+        vues = []
+
+        def refus_puis_ok(command, device):
+            vues.append(command.arguments.get("title"))
+            if len(vues) == 1:
+                raise RemoteRefusal("non", status_code=403)
+            return {"status": "SUCCESS", "userSafeMessage": "ok"}
+
+        flush_pending(registry=registry, queue=queue, transport=refus_puis_ok)
+
+        assert len(vues) == 3, (
+            f"l'appareil répondait pourtant : seules {len(vues)} des 3 "
+            "commandes ont eu leur chance"
+        )
+        assert queue.pending_for(LAPTOP, limit=10) == []
+
+    def test_un_contretemps_reste_un_contretemps(self, mesh):
+        """Un 503 est un serveur qui redémarre, pas un verdict : la ligne
+        doit rester en file, et le drainage s'arrêter là comme avant."""
+        from diapason.mesh.transport import RemoteRefusal
+
+        registry, queue = mesh
+        wake_device(registry, LAPTOP)
+        sleep_device(registry, LAPTOP)
+        self._mettre_en_file(queue, 2)
+        wake_device(registry, LAPTOP)
+
+        def indisponible(command, device):
+            raise RemoteRefusal("ça redémarre", status_code=503)
+
+        out = flush_pending(registry=registry, queue=queue, transport=indisponible)
+        assert out["skipped"] == 1 and out["delivered"] == 0
+        assert len(queue.pending_for(LAPTOP, limit=10)) == 2

@@ -333,7 +333,7 @@ class TestReceiving:
 
         def executor(cmd):
             runs.append(cmd.command_id)
-            return {"userSafeMessage": "Écran ouvert."}
+            return {"ok": True, "userSafeMessage": "Écran ouvert."}
 
         first = receive_command(
             raw, registry=registry, queue=queue, nonces=nonces, executor=executor
@@ -537,3 +537,148 @@ class TestUneReponseForgeeNeSupprimeJamaisLaCle:
             f"`forget_seal_key` est appelée depuis {appelants} — vérifier "
             "qu'aucun de ces chemins ne lit une réponse réseau"
         )
+
+
+def _signed_envelope(registry, identity_module, *, tool="app.navigate", **arguments):
+    """A peer we trust, signing one command addressed to us."""
+    from diapason.mesh.commands import build_command
+    from diapason.mesh.identity import canonical_bytes
+    from diapason.security.signing import sign_b64
+
+    peer_keys = generate_keypair()
+    invitation = registry.create_pairing("iPhone")
+    registry.redeem_pairing(
+        invitation["pairingToken"],
+        device_id="dev_iphone",
+        public_key_b64=base64.b64encode(peer_keys.public_key).decode(),
+        name="iPhone",
+        platform="IOS",
+        device_type="PHONE",
+        declared_capabilities=[tool],
+    )
+    command = build_command(
+        owner_id=identity_module.owner_id(),
+        origin_device_id="dev_iphone",
+        target_device_id=identity_module.device_identity().device_id,
+        tool=tool,
+        arguments=arguments or {"route": "success://today"},
+    )
+    payload = command.to_dict(with_signature=False)
+    return {
+        **payload,
+        "signature": sign_b64(canonical_bytes(payload), peer_keys.private_key),
+    }
+
+
+class TestTheExecutorVerdictIsRead:
+    """26 August 2026, §100. This branch wrote "SUCCESS" unconditionally.
+
+    `_desktop_open` already returned {"ok": False, "userSafeMessage": "Échec
+    de l'ouverture."} — nobody read the field, and the sending screen showed
+    "SUCCESS — Échec de l'ouverture.". The word "failure" crossed the whole
+    mesh while the status said the opposite.
+    """
+
+    def _receive(self, mesh, tmp_path, executor):
+        registry, queue, identity_module = mesh
+        return receive_command(
+            _signed_envelope(registry, identity_module),
+            registry=registry,
+            queue=queue,
+            nonces=NonceStore(tmp_path / "mesh.db"),
+            executor=executor,
+        )
+
+    def test_an_executor_that_failed_is_not_a_success(self, mesh, tmp_path):
+        result = self._receive(
+            mesh,
+            tmp_path,
+            lambda cmd: {"ok": False, "userSafeMessage": "Échec de l'ouverture."},
+        )
+        assert result["status"] == "FAILED", (
+            "l'exécuteur a dit non ; répéter « SUCCESS » par-dessus est le "
+            "faux SUCCESS que le §100 interdit"
+        )
+        assert result["userSafeMessage"] == "Échec de l'ouverture."
+
+    def test_the_executor_keeps_its_own_error_code(self, mesh, tmp_path):
+        result = self._receive(
+            mesh,
+            tmp_path,
+            lambda cmd: {"ok": False, "errorCode": "NO_SHELL", "userSafeMessage": "x"},
+        )
+        assert result["errorCode"] == "NO_SHELL", (
+            "l'émetteur doit pouvoir distinguer « pas de fenêtre » de « a "
+            "planté » : c'est la différence entre agir et attendre"
+        )
+
+    def test_a_silent_executor_is_a_failure_not_a_success(self, mesh, tmp_path):
+        """Deduce nothing from silence. The two mistakes do not cost the
+        same: guessing "it worked" is how this defect lived for ten days."""
+        result = self._receive(mesh, tmp_path, lambda cmd: {"userSafeMessage": "?"})
+        assert result["status"] == "FAILED"
+        assert result["errorCode"] == "EXECUTOR_SILENT"
+
+    def test_an_executor_that_succeeded_still_succeeds(self, mesh, tmp_path):
+        result = self._receive(
+            mesh, tmp_path, lambda cmd: {"ok": True, "userSafeMessage": "C'est ouvert."}
+        )
+        assert result["status"] == "SUCCESS"
+        assert result["userSafeMessage"] == "C'est ouvert."
+
+
+class TestARefusalIsNotANetworkFault:
+    """A device that ANSWERED is not a device that could not be reached.
+
+    Measured on Carlito's own PC, 26 August 2026: `desktop.open` came back
+    "SUCCES n'a pas pu être joint" while the PC was answering presence
+    beacons every fifteen seconds. Both cases raised the same exception, so
+    the caller told the same story for both — and sent its owner to look at
+    a network that was fine.
+    """
+
+    def test_a_4xx_is_final_and_repeats_what_the_device_said(self, mesh):
+        from diapason.mesh.transport import RemoteRefusal
+
+        def transport(command, device):
+            raise RemoteRefusal(
+                "Cet appareil ne sait pas ouvrir cela.", status_code=403
+            )
+
+        result = send(mesh, transport=transport)
+        assert result["status"] == "FAILED", "un verdict ne se réessaie pas"
+        assert result["errorCode"] == "REFUSED_403"
+        assert result["userSafeMessage"] == "Cet appareil ne sait pas ouvrir cela.", (
+            "la phrase du récepteur est la seule qui explique le refus ; "
+            "elle était jetée ici"
+        )
+
+    def test_the_wording_never_blames_the_network(self, mesh):
+        from diapason.mesh.transport import RemoteRefusal
+
+        def transport(command, device):
+            raise RemoteRefusal("refus", status_code=403)
+
+        message = send(mesh, transport=transport)["userSafeMessage"]
+        assert "joint" not in message and "hors ligne" not in message
+
+    def test_a_5xx_stays_retryable(self, mesh):
+        """A restarting server is a hiccup, not a verdict."""
+        from diapason.mesh.transport import RemoteRefusal
+
+        def transport(command, device):
+            raise RemoteRefusal("boum", status_code=503)
+
+        result = send(mesh, transport=transport)
+        assert result["status"] != "FAILED"
+        assert "a répondu par une erreur" in result["userSafeMessage"], (
+            "il a répondu — le dire évite de faire relancer une box qui va très bien"
+        )
+
+    def test_a_real_connection_failure_still_reads_as_unreachable(self, mesh):
+        def transport(command, device):
+            raise TransportError("Cet appareil n'a pas pu être joint.")
+
+        result = send(mesh, transport=transport)
+        assert result["errorCode"] == "TRANSPORT_FAILED"
+        assert "n'a pas pu être joint" in result["userSafeMessage"]

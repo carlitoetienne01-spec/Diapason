@@ -564,11 +564,21 @@ def create_lan_app() -> FastAPI:
     # plutôt que de découper les routeurs : les deux routeurs restent une
     # seule vérité, et l'écart entre ce qui est monté ici et ce que le mur
     # exempte devient une comparaison d'ensembles qu'un test lit d'un coup.
+    #
+    # Le filtre porte sur le CHEMIN seul. Il a porté un temps sur le chemin
+    # « ou l'absence de méthodes HTTP », et cette seconde moitié gardait
+    # silencieusement tout ce qui n'est pas une route REST : un
+    # `@router.websocket(...)` ajouté à `mesh/routes.py` par une session
+    # future se serait retrouvé exposé sur 0.0.0.0 — hors du mur (il n'y a
+    # pas d'AuthMiddleware ici) et hors du seau de débit (une poignée de main
+    # WebSocket ne traverse pas un BaseHTTPMiddleware). Elle ne gardait rien
+    # d'autre : les neuf portes sont neuf APIRoute. Une clause qui ne sert
+    # qu'aux cas qu'on n'a pas prévus n'est pas une commodité, c'est une
+    # porte dérobée en attente.
     lan.router.routes = [
         route
         for route in lan.router.routes
         if getattr(route, "path", None) in _PORTES_LAN
-        or not getattr(route, "methods", None)
     ]
     return lan
 

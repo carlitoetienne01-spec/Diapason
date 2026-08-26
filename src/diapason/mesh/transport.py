@@ -24,6 +24,7 @@ from diapason.mesh.commands import RemoteCommand
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "RemoteRefusal",
     "TransportError",
     "assert_may_reach_device",
     "address_is_private",
@@ -36,6 +37,28 @@ DELIVER_TIMEOUT_S = 6.0
 
 class TransportError(RuntimeError):
     """Delivery failed. The command is not lost — the queue still holds it."""
+
+
+class RemoteRefusal(TransportError):
+    """The device ANSWERED, and it said no. This is not a network fault.
+
+    26 August 2026. Both cases lived under one name, so the caller — which
+    could not tell them apart — said "could not be reached" for both. A
+    ``desktop.open`` refused by the Windows PC therefore sent its owner to
+    check a Wi-Fi that was working perfectly, while the PC's own sentence,
+    the ONLY one that explained the refusal, was captured into ``str(exc)``
+    and then dropped without even reaching the log.
+
+    ``retryable`` separates "it refused" from "it cannot right now": a 4xx is
+    a verdict, a 429 or a 5xx is a hiccup. Confusing them costs in both
+    directions — retrying a verdict forever, or giving up on a server that
+    was merely restarting.
+    """
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retryable = status_code == 429 or status_code >= 500
 
 
 def address_is_private(address: str) -> bool:
@@ -134,7 +157,18 @@ def deliver(
         message = ""
         if isinstance(body, Mapping):
             message = str(body.get("detail") or body.get("userSafeMessage") or "")
-        raise TransportError(message or f"L'appareil a répondu {status_code}.")
+        # Logged HERE because this is the last place that still knows the
+        # status code: further up, only a sentence survives.
+        logger.info(
+            "mesh delivery refused for %s: HTTP %s %s",
+            command.command_id,
+            status_code,
+            message,
+        )
+        raise RemoteRefusal(
+            message or f"L'appareil a répondu {status_code}.",
+            status_code=status_code,
+        )
     if not isinstance(body, Mapping):
         raise TransportError("La réponse de l'appareil est illisible.")
     return dict(body)

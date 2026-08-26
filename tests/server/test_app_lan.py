@@ -26,7 +26,14 @@ from diapason.server.auth_middleware import AuthMiddleware  # noqa: E402
 
 
 def _chemins(app) -> set[str]:
-    return {r.path for r in app.routes if getattr(r, "methods", None)}
+    """TOUTES les routes montées, quel que soit leur type.
+
+    Ce filtre écartait les routes sans méthodes HTTP — donc les WebSockets et
+    les points de montage. Il était aveugle exactement là où le plafond
+    l'était : les deux ont été corrigés le 26 août 2026, et il fallait les
+    corriger ensemble, sinon le test serait resté vert au-dessus du trou.
+    """
+    return {r.path for r in app.routes if hasattr(r, "path")}
 
 
 class TestCeQuiEstExpose:
@@ -55,6 +62,38 @@ class TestCeQuiEstExpose:
             "/v1/mesh/devices",
         ):
             assert interdit not in exposees
+
+    def test_un_websocket_ajoute_ailleurs_ne_franchit_pas_le_plafond(self):
+        """Le plafond doit tenir contre ce que personne n'a encore écrit.
+
+        Le filtre gardait toute route dépourvue de méthodes HTTP. Aucune des
+        neuf portes n'est dans ce cas, donc la clause ne gardait rien — mais
+        un `@router.websocket(...)` ajouté à `mesh/routes.py` par une session
+        future se serait retrouvé sur 0.0.0.0 sans que rien ne rougisse :
+        hors du mur (cette application n'a pas d'AuthMiddleware) et hors du
+        seau de débit (une poignée de main WebSocket ne traverse pas un
+        BaseHTTPMiddleware).
+        """
+        from diapason.mesh.routes import router as mesh_router
+
+        avant = list(mesh_router.routes)
+        try:
+
+            @mesh_router.websocket("/tunnel")
+            async def _tunnel(websocket):  # pragma: no cover - jamais appelé
+                await websocket.accept()
+
+            expose = _chemins(create_lan_app())
+        finally:
+            mesh_router.routes[:] = avant
+
+        assert "/v1/mesh/tunnel" not in expose, (
+            "un WebSocket ajouté au routeur de maillage est arrivé sur le "
+            "réseau local sans passer par _PORTES_LAN"
+        )
+        assert expose == set(_PORTES_LAN), (
+            "le plafond doit rester une liste de chemins, sans exception de type"
+        )
 
     def test_ni_documentation_ni_schema(self):
         """Une énumération de routes est un cadeau fait au réseau."""

@@ -17,11 +17,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from diapason.mesh.commands import RemoteCommand
+from diapason.mesh.commands import RemoteCommand, now_ms
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["local_executor", "pending_navigations", "push_navigation"]
+__all__ = [
+    "local_executor",
+    "pending_navigations",
+    "push_navigation",
+    "shell_is_collecting",
+]
 
 # Routes waiting for the shell to pick up. Bounded: a UI that never collects
 # them must not grow into a memory leak, and a stale route is worthless
@@ -29,23 +34,119 @@ __all__ = ["local_executor", "pending_navigations", "push_navigation"]
 _MAX_PENDING = 16
 _pending: list[dict[str, Any]] = []
 
+# When a shell last emptied this queue. `None` means never — this process has
+# been running without any window attached to it.
+_last_collection_ms: int | None = None
 
-def push_navigation(entry: dict[str, Any]) -> None:
+# How long a shell may go quiet before we stop counting it as present.
+#
+# `MeshHost.tsx` chains `setTimeout(tick, 2000)`, so a visible window collects
+# thirty times a minute. A hidden one does not: browsers and WKWebView clamp
+# background timers, and past five minutes hidden Chrome drops them to roughly
+# ONE PER MINUTE. Ninety seconds therefore covers a whole throttled cycle plus
+# jitter. It is not 2000 ms for that reason, and not ten minutes because a
+# window closed ten minutes ago will never show anything again — and saying it
+# will is the exact lie this constant exists to stop.
+_COLLECTION_WINDOW_MS = 90_000
+
+
+def push_navigation(entry: dict[str, Any]) -> bool:
+    """Queue one entry for the shell. False when the queue is full.
+
+    It used to evict the OLDEST — `del _pending[:-_MAX_PENDING]` — and say
+    nothing. Those oldest entries had already been answered SUCCESS to the
+    device that sent them, so dropping them turned a past promise into a lie
+    after the fact, and nothing anywhere recorded it.
+
+    `flush_pending` delivers up to twenty commands per device in one tick
+    (`dispatch.limit_per_device`) while this queue holds sixteen, so the case
+    is reachable the moment a peer comes back from an hour offline.
+
+    Refusing the NEWEST is the only policy under which every SUCCESS already
+    handed out stays true. The new command gets an honest failure instead,
+    which its sender can act on — the evicted ones could not.
+    """
+    if len(_pending) >= _MAX_PENDING:
+        logger.warning(
+            "shell queue full (%d): refusing a new entry rather than "
+            "dropping one already answered SUCCESS",
+            _MAX_PENDING,
+        )
+        return False
     _pending.append(entry)
-    del _pending[:-_MAX_PENDING]
+    return True
+
+
+def _queue_full() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "errorCode": "SHELL_QUEUE_FULL",
+        "userSafeMessage": (
+            "Cet appareil a trop de demandes en attente d'affichage : "
+            "celle-ci n'a pas été prise."
+        ),
+    }
 
 
 def pending_navigations(*, drain: bool = True) -> list[dict[str, Any]]:
-    """What the shell should open, oldest first."""
+    """What the shell should open, oldest first.
+
+    A draining read is the ONLY evidence this process has that a window is
+    attached: nothing registers, nothing announces itself, the shell simply
+    polls. `drain=False` is a diagnostic read and deliberately does not count
+    — looking is not collecting, and a debugging `curl` must not make the
+    machine believe someone is watching the screen.
+    """
+    global _last_collection_ms
     items = list(_pending)
     if drain:
+        _last_collection_ms = now_ms()
         _pending.clear()
     return items
 
 
+def shell_is_collecting(*, now: int | None = None) -> bool:
+    """Has a window emptied the queue recently enough to still be there?
+
+    26 August 2026. Every handler below used to push an entry onto `_pending`
+    and return a sentence in the past tense — "Notification affichée.",
+    "L'élément est affiché." — having displayed precisely nothing. The only
+    code that displays anything is the React shell polling `/v1/mesh/inbox`.
+
+    It cost a real evening: a Windows PC ran the Python server with no window
+    open at all. Notifications sent from the Mac were answered SUCCESS /
+    "Notification affichée.", recorded as such on both machines, while the
+    entries sat in `_pending` until the seventeenth pushed the first out
+    silently. Nobody saw a thing, and every screen said otherwise (§100).
+
+    This does not prove the notification WILL be shown — the shell could be
+    denied permission by the OS a second later. It proves the far more useful
+    negative: that nobody is there to show it.
+    """
+    if _last_collection_ms is None:
+        return False
+    return (now if now is not None else now_ms()) - _last_collection_ms < (
+        _COLLECTION_WINDOW_MS
+    )
+
+
+def _no_shell() -> dict[str, Any]:
+    """The honest refusal, per §5: say what is missing and what to do."""
+    return {
+        "ok": False,
+        "errorCode": "NO_SHELL",
+        "userSafeMessage": (
+            "Aucune fenêtre Diapason n'est ouverte sur cet appareil : "
+            "rien n'a pu être affiché."
+        ),
+    }
+
+
 def _navigate(command: RemoteCommand) -> dict[str, Any]:
     route = str(command.arguments.get("route") or "")
-    push_navigation(
+    if not shell_is_collecting():
+        return _no_shell()
+    place = push_navigation(
         {
             "route": route,
             "commandId": command.command_id,
@@ -53,7 +154,9 @@ def _navigate(command: RemoteCommand) -> dict[str, Any]:
             "receivedAtMs": command.created_at_ms,
         }
     )
-    return {"route": route, "userSafeMessage": f"Écran ouvert : {route}."}
+    if not place:
+        return _queue_full()
+    return {"ok": True, "route": route, "userSafeMessage": f"Écran ouvert : {route}."}
 
 
 def _show_resource(command: RemoteCommand) -> dict[str, Any]:
@@ -68,7 +171,9 @@ def _show_resource(command: RemoteCommand) -> dict[str, Any]:
         "habit": "habits",
     }
     route = f"success://{plural.get(kind, kind)}/{resource_id}"
-    push_navigation(
+    if not shell_is_collecting():
+        return _no_shell()
+    place = push_navigation(
         {
             "route": route,
             "commandId": command.command_id,
@@ -78,11 +183,15 @@ def _show_resource(command: RemoteCommand) -> dict[str, Any]:
             "receivedAtMs": command.created_at_ms,
         }
     )
-    return {"route": route, "userSafeMessage": "L'élément est affiché."}
+    if not place:
+        return _queue_full()
+    return {"ok": True, "route": route, "userSafeMessage": "L'élément est affiché."}
 
 
 def _open(command: RemoteCommand) -> dict[str, Any]:
-    push_navigation(
+    if not shell_is_collecting():
+        return _no_shell()
+    place = push_navigation(
         {
             "route": "success://today",
             "commandId": command.command_id,
@@ -91,13 +200,21 @@ def _open(command: RemoteCommand) -> dict[str, Any]:
             "receivedAtMs": command.created_at_ms,
         }
     )
-    return {"userSafeMessage": "Succès est au premier plan."}
+    if not place:
+        return _queue_full()
+    return {"ok": True, "userSafeMessage": "Succès est au premier plan."}
 
 
 def _notify(command: RemoteCommand) -> dict[str, Any]:
     title = str(command.arguments.get("title") or "")
     body = str(command.arguments.get("body") or "")
-    push_navigation(
+    # Nothing here displays anything: the entry is handed to the shell, which
+    # is the only thing on this machine that owns a screen. With no shell,
+    # pushing would be worse than refusing — the entry would surface hours
+    # later, out of context, or be dropped by `_MAX_PENDING` without a word.
+    if not shell_is_collecting():
+        return _no_shell()
+    place = push_navigation(
         {
             "notification": {"title": title, "body": body},
             "commandId": command.command_id,
@@ -105,7 +222,15 @@ def _notify(command: RemoteCommand) -> dict[str, Any]:
             "receivedAtMs": command.created_at_ms,
         }
     )
-    return {"userSafeMessage": "Notification affichée."}
+    if not place:
+        return _queue_full()
+    # Deliberately not "affichée": handing it over is what just happened,
+    # displaying it is what the shell will do next. A collecting window
+    # closes that gap in about two seconds — but `_COLLECTION_WINDOW_MS`
+    # tolerates ninety, so the honest width of this claim is up to ninety
+    # seconds, not two. Saying "two" here would be the same shape of lie the
+    # sentence itself was rewritten to remove.
+    return {"ok": True, "userSafeMessage": "Notification remise à la fenêtre ouverte."}
 
 
 def _desktop_open(command: RemoteCommand) -> dict[str, Any]:
@@ -152,14 +277,23 @@ def _desktop_open(command: RemoteCommand) -> dict[str, Any]:
     # Le verdict de l'outil est relayé tel quel. Annoncer « ouvert » sur un
     # échec serait précisément le défaut que l'audit a passé la semaine à
     # retirer d'ici.
+    if resultat.success:
+        return {
+            "ok": True,
+            "userSafeMessage": resultat.content or f"{target} est ouvert.",
+        }
+    # Le contenu de l'outil ne peut PAS tenir seul quand il a échoué.
+    # Constaté le 26 août 2026 sur le PC Windows de Carlito : pour une
+    # application inexistante, `open_anything` rend success=False avec le
+    # contenu « Started ApplicationQuiNExistePasDuTout ». Relayer cette
+    # phrase telle quelle donnerait un échec dont le message annonce un
+    # succès — le §100 exactement à l'envers.
     return {
-        "ok": bool(resultat.success),
+        "ok": False,
         "userSafeMessage": (
-            resultat.content
+            f"Échec de l'ouverture : {resultat.content}"
             if resultat.content
-            else (
-                f"{target} est ouvert." if resultat.success else "Échec de l'ouverture."
-            )
+            else "Échec de l'ouverture."
         ),
     }
 
@@ -184,4 +318,17 @@ def local_executor(command: RemoteCommand) -> dict[str, Any]:
         # tools — but a missing handler must fail loudly, not silently
         # succeed, if the catalogue and this table ever drift apart.
         raise KeyError(f"Aucun exécuteur pour « {command.tool} ».")
-    return handler(command)
+    result = handler(command)
+    if "ok" not in result:
+        # Unreachable while `test_executor.py` holds: every handler in the
+        # table above is checked to state its verdict. Kept because the cost
+        # of the two branches is not symmetric — guessing "success" here is
+        # how the whole §100 defect of 26 August 2026 began.
+        logger.error("handler for %s returned no 'ok' field", command.tool)
+        return {
+            **result,
+            "ok": False,
+            "errorCode": "EXECUTOR_SILENT",
+            "userSafeMessage": "Cet appareil n'a pas su dire si l'action a abouti.",
+        }
+    return result
