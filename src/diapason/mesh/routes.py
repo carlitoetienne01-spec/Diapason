@@ -12,6 +12,7 @@ route to unauthenticated devices silently opened it to unlimited traffic too.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -20,6 +21,8 @@ from pydantic import BaseModel, Field
 from diapason.mesh.presence import presence_of
 from diapason.mesh.queue import CommandQueue
 from diapason.mesh.registry import DeviceRegistry, MeshError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/mesh", tags=["mesh"])
 
@@ -79,6 +82,10 @@ class PairingRedeem(BaseModel):
     # still succeeds and the device is simply command-able only once it has
     # announced itself.
     address: str = Field(default="", max_length=200)
+    # La clé de scellement de l'appareil qui rejoint. OPTIONNELLE : le client
+    # mobile figé ne l'envoie pas, Pydantic met "" et rien ne change pour lui.
+    # Une clé X25519 en base64 tient en 44 caractères.
+    sealKey: str = Field(default="", max_length=64)
 
 
 class Heartbeat(BaseModel):
@@ -166,14 +173,34 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
     from diapason.mesh.capabilities import local_capabilities
     from diapason.mesh.identity import public_identity
 
-    return {
-        "device": device,
-        "host": {
-            **public_identity(),
-            "address": local_address(),
-            "capabilities": sorted(local_capabilities()),
-        },
+    # La clé de scellement de l'invité, s'il en a publié une. APRÈS
+    # `redeem_pairing`, qui remet justement cette colonne à NULL : l'inverse
+    # effacerait ce qu'on vient d'écrire.
+    if body.sealKey:
+        try:
+            import time as _time
+
+            get_registry().record_seal_key(
+                body.deviceId, body.sealKey, int(_time.time() * 1000)
+            )
+        except Exception:  # noqa: BLE001 - un jumelage ne rate pas pour cela
+            logger.debug("clé de scellement de l'invité non retenue", exc_info=True)
+
+    hote: dict[str, Any] = {
+        **public_identity(),
+        "address": local_address(),
+        "capabilities": sorted(local_capabilities()),
     }
+    # Et la nôtre, pour qu'il puisse nous sceller dès sa première commande
+    # plutôt que d'attendre notre première annonce.
+    try:
+        from diapason.mesh.scellement import paire_locale
+
+        hote["sealKey"] = paire_locale().publique_b64
+    except Exception:  # noqa: BLE001
+        logger.debug("clé de scellement non jointe au jumelage", exc_info=True)
+
+    return {"device": device, "host": hote}
 
 
 # ── the fleet ────────────────────────────────────────────────────────────
@@ -332,7 +359,26 @@ def receive_presence(body: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="Cette annonce est illisible."
         ) from exc
-    return {"ok": True, "presence": presence_of(device)}
+
+    # La clé de scellement de cette machine voyage ICI, dans un corps de
+    # réponse qui circule déjà, plutôt que par une route neuve. Les deux
+    # machines s'annoncent l'une à l'autre toutes les quinze secondes, donc
+    # la couverture est symétrique sans un seul tour de réseau ajouté.
+    #
+    # Et jamais à un inconnu : `verify_beacon` a refusé en 403 quelques
+    # lignes plus haut. Un client qui ne comprend pas ce champ l'ignore — le
+    # Dart décode un dictionnaire nu, sans modèle strict.
+    reponse: dict[str, Any] = {"ok": True, "presence": presence_of(device)}
+    try:
+        from diapason.mesh.scellement import bloc_sceau
+
+        reponse["sceau"] = bloc_sceau()
+    except Exception:  # noqa: BLE001
+        # Ne pas priver un pair de sa réponse de présence parce que notre
+        # propre clé est illisible : la présence marchait avant le
+        # scellement et doit continuer sans lui.
+        logger.debug("bloc de sceau non joint à la présence", exc_info=True)
+    return reponse
 
 
 @router.post("/announce")

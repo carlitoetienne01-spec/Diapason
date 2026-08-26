@@ -216,16 +216,43 @@ def announce_to(
 
     if post is None:
 
-        def post(url: str, body: dict) -> int:
+        def post(url: str, body: dict):
             import httpx
 
-            return httpx.post(url, json=body, timeout=timeout_s).status_code
+            reponse = httpx.post(url, json=body, timeout=timeout_s)
+            try:
+                corps = reponse.json()
+            except Exception:  # noqa: BLE001 - un corps illisible n'est pas une panne
+                corps = None
+            return reponse.status_code, corps
 
     try:
-        status = post(f"{peer_address.rstrip('/')}{PRESENCE_PATH}", beacon)
+        issue = post(f"{peer_address.rstrip('/')}{PRESENCE_PATH}", beacon)
     except Exception as exc:  # noqa: BLE001
         logger.debug("annonce échouée vers %s : %s", device.get("deviceId"), exc)
         return False
+
+    # Le `post` par défaut rend maintenant (statut, corps) ; les doublures
+    # injectées, elles, rendent souvent un simple statut. Accepter les deux
+    # évite de réécrire des appelants qui n'ont rien à voir avec le
+    # scellement — et laisse la porte ouverte à ceux qui n'en veulent pas.
+    if isinstance(issue, tuple):
+        status, corps = issue
+    else:
+        status, corps = issue, None
+
+    # La clé de scellement du pair voyage dans SA réponse. Lue ici, dans son
+    # propre `try` : cette fonction promet de ne jamais lever, et un corps
+    # malformé venu du réseau ne doit pas défaire cette promesse.
+    # `lire_bloc_sceau` est elle-même totale ; ce filet est le second.
+    if corps is not None:
+        try:
+            from diapason.mesh.scellement import lire_bloc_sceau
+
+            lire_bloc_sceau(corps, pair_attendu=str(device.get("deviceId") or ""))
+        except Exception:  # noqa: BLE001
+            logger.debug("clé de scellement non lue", exc_info=True)
+
     return 200 <= int(status) < 300
 
 

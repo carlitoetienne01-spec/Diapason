@@ -110,6 +110,18 @@ def join_fleet(
         "appVersion": _version_app(),
         "address": my_address or "",
     }
+    # Notre clé de scellement, pour que l'hôte puisse nous sceller dès la
+    # première commande plutôt que d'attendre notre première annonce. Non
+    # signée ici, exactement comme `publicKey` ne l'est pas : ce champ hérite
+    # de la confiance du jeton d'invitation, ni plus ni moins. Le jumelage
+    # lui-même passe en clair — c'est une faiblesse connue du maillage,
+    # écrite dans docs/spatial-mesh/, et ce canal en hérite.
+    try:
+        from diapason.mesh.scellement import paire_locale
+
+        corps["sealKey"] = paire_locale().publique_b64
+    except Exception:  # noqa: BLE001 - un jumelage ne doit pas échouer pour cela
+        logger.debug("clé de scellement non jointe au jumelage", exc_info=True)
 
     reponse = (poster or _poster)(f"{base}/v1/mesh/pairings/redeem", corps)
     hote = reponse.get("host") or {}
@@ -150,6 +162,24 @@ def join_fleet(
         )
     except Exception as exc:  # noqa: BLE001 - l'adoption a réussi, c'est l'essentiel
         logger.warning("hôte non enregistré localement : %s", exc, exc_info=True)
+
+    # Et la sienne, s'il en a publié une. Rangée APRÈS `enrol_host`, qui
+    # remet justement cette colonne à NULL : l'inverse effacerait ce qu'on
+    # vient d'écrire.
+    cle_hote = str(hote.get("sealKey") or "")
+    if cle_hote:
+        try:
+            import time as _time
+
+            from diapason.mesh.registry import DeviceRegistry
+
+            DeviceRegistry().record_seal_key(
+                str(hote.get("deviceId") or ""),
+                cle_hote,
+                int(_time.time() * 1000),
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("clé de scellement de l'hôte non retenue", exc_info=True)
 
     return Jumelage(
         owner_id=owner,

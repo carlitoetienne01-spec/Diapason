@@ -188,6 +188,106 @@ def oublier_locale() -> None:
     _chemin(_FICHIER_PRECEDENT).unlink(missing_ok=True)
 
 
+# ── publier sa clé, et lire celle des autres ────────────────────────────
+
+
+def bloc_sceau() -> dict[str, Any]:
+    """La clé publique de cette machine, signée par son identité.
+
+    Ce bloc s'attache à des corps de RÉPONSE qui circulent déjà — celui de
+    ``/v1/mesh/presence``, celui du jumelage — plutôt qu'à une route neuve.
+    Une route de plus coûterait une porte au mur du réseau, un seau de
+    limitation, une régénération d'instantané de contrat, et rendrait faux
+    trois commentaires qui comptent les neuf portes. Un corps de réponse ne
+    coûte rien de tout cela.
+
+    Il n'est JAMAIS servi à un inconnu : la route qui le porte refuse en 403
+    avant de répondre quoi que ce soit. Ce dépôt vient de colmater une fuite
+    d'identifiant sur une route ouverte — la remarque n'est pas théorique.
+    """
+    from diapason.mesh.identity import device_identity, owner_id
+    from diapason.mesh.signed import sign_payload
+
+    return sign_payload(
+        {
+            "version": SCEAU_VERSION,
+            "ownerId": owner_id(),
+            "deviceId": device_identity().device_id,
+            "sealKey": paire_locale().publique_b64,
+            "sentAtMs": _maintenant_ms(),
+        },
+        _CHAMPS_SCEAU,
+    )
+
+
+def _maintenant_ms() -> int:
+    import time
+
+    return int(time.time() * 1000)
+
+
+def lire_bloc_sceau(
+    corps: Any, *, registry: Any = None, pair_attendu: str = ""
+) -> bool:
+    """Enregistrer la clé qu'un pair vient de publier. NE LÈVE JAMAIS.
+
+    Appelée depuis ``announce_to``, qui promet de ne jamais lever : une
+    annonce qui n'aboutit pas n'est pas une erreur que l'utilisateur doive
+    entendre. Un corps malformé ne doit donc pas remonter d'ici.
+
+    Le contrôle qui compte : la clé est rangée sous le device_id que
+    ``verify_payload`` RETOURNE, et l'on vérifie qu'il vaut bien celui qu'on
+    interrogeait. Sans cela, un sceau capté chez A et recollé dans une
+    réponse de B écrirait la clé de A dans la ligne de B — et l'on scellerait
+    ensuite vers A ce qui était destiné à B.
+    """
+    try:
+        from diapason.mesh.identity import device_identity, owner_id
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.mesh.signed import SignedRejected, verify_payload
+
+        if not isinstance(corps, dict):
+            return False
+        bloc = corps.get("sceau")
+        if not isinstance(bloc, dict):
+            return False
+
+        registre = registry if registry is not None else DeviceRegistry()
+        try:
+            signataire = verify_payload(
+                bloc,
+                fields=_CHAMPS_SCEAU,
+                version=SCEAU_VERSION,
+                registry=registre,
+                local_owner_id=owner_id(),
+                local_device_id=device_identity().device_id,
+                now_ms=_maintenant_ms(),
+                subject="publication de clé",
+            )
+        except SignedRejected as exc:
+            logger.debug("bloc de sceau refusé : %s", exc)
+            return False
+
+        if pair_attendu and signataire != pair_attendu:
+            logger.warning(
+                "bloc de sceau signé par %s dans une réponse de %s : ignoré",
+                signataire,
+                pair_attendu,
+            )
+            return False
+
+        return bool(
+            registre.record_seal_key(
+                signataire,
+                str(bloc.get("sealKey") or ""),
+                int(bloc.get("sentAtMs") or 0),
+            )
+        )
+    except Exception:  # noqa: BLE001 - cette fonction ne lève jamais
+        logger.debug("bloc de sceau illisible", exc_info=True)
+        return False
+
+
 # ── le scellement lui-même ──────────────────────────────────────────────
 
 
@@ -294,6 +394,8 @@ def ouvrir_contenu(
 
 __all__ = [
     "FRAICHEUR_MS",
+    "bloc_sceau",
+    "lire_bloc_sceau",
     "PALIER_REMBOURRAGE",
     "RETENTION_PRECEDENTE_MS",
     "SCEAU_VERSION",

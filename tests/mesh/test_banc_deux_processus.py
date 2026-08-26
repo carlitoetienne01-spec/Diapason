@@ -55,6 +55,15 @@ def _port_libre() -> int:
         return int(s.getsockname()[1])
 
 
+def _une_cle_publique() -> str:
+    """Une clé d'identité Ed25519, pour un appareil de test."""
+    import base64
+
+    from diapason.security.signing import generate_keypair
+
+    return base64.b64encode(generate_keypair().public_key).decode("ascii")
+
+
 def _http(
     url: str, corps: dict | None = None, cle: str = "", methode: str = ""
 ) -> dict:
@@ -481,3 +490,84 @@ class TestUnIntercepteurNeLitPasLeFichier:
         cible = DeviceRegistry().get(jumelage.host_device_id)
         with pytest.raises(EnvoiRefuse):
             envoyer_fichier(source, cible, poster=mentir)
+
+
+class TestLesClesDeScellementSEchangent:
+    """Étape 4 du plan du 26 août 2026 — sur deux VRAIS processus.
+
+    La clé de scellement voyage dans des corps de réponse qui circulent
+    déjà : celui de la présence, celui du jumelage. Aucune route neuve,
+    aucun tour de réseau ajouté. Rien ne scelle encore quoi que ce soit —
+    ces tests vérifient seulement que les clés arrivent.
+    """
+
+    def _jumeler(self, hote, tmp_path, monkeypatch, nom):
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": nom}, cle=hote.cle
+        )
+        assert invitation.get("pairingToken"), f"invitation refusée : {invitation}"
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
+        from diapason.mesh.join import join_fleet
+
+        return join_fleet(hote.base, invitation["pairingToken"], my_address="")
+
+    def test_le_jumelage_transporte_les_deux_cles(self, hote, tmp_path, monkeypatch):
+        """Dès le jumelage, chacun peut sceller vers l'autre — sans attendre
+        une première annonce."""
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.mesh.scellement import paire_locale
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "invite")
+
+        # Côté invité : la clé de l'hôte est arrivée dans la réponse.
+        retenue = DeviceRegistry().seal_key_of(jumelage.host_device_id)
+        assert retenue is not None, "l'invité n'a pas retenu la clé de l'hôte"
+        cle, vue = retenue
+        assert len(cle) == 44 and vue > 0
+
+        # Et elle n'est pas la nôtre : deux machines, deux clés.
+        assert cle != paire_locale().publique_b64
+
+    def test_une_annonce_de_presence_apporte_la_cle(self, hote, tmp_path, monkeypatch):
+        """Le chemin qui compte en régime établi : les deux machines
+        s'annoncent toutes les quinze secondes, donc la couverture est
+        symétrique sans un seul tour ajouté."""
+        from diapason.mesh.beacon import announce_to
+        from diapason.mesh.registry import DeviceRegistry
+
+        jumelage = self._jumeler(hote, tmp_path, monkeypatch, "annonceur")
+        registre = DeviceRegistry()
+
+        # On oublie ce que le jumelage a apporté, pour isoler le canal.
+        registre.forget_seal_key(jumelage.host_device_id)
+        assert registre.seal_key_of(jumelage.host_device_id) is None
+
+        assert announce_to(registre.get(jumelage.host_device_id)) is True
+        assert registre.seal_key_of(jumelage.host_device_id) is not None, (
+            "la clé n'est pas venue avec la réponse de présence"
+        )
+
+    def test_un_client_qui_ne_publie_rien_s_appaire_comme_avant(self, hote):
+        """LE test qui garde le téléphone : le client figé n'envoie pas de
+        clé, et tout doit se passer exactement comme avant."""
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings",
+            {"deviceName": "Vieux client"},
+            cle=hote.cle,
+        )
+        reponse = _http(
+            f"{hote.base}/v1/mesh/pairings/redeem",
+            {
+                "pairingToken": invitation["pairingToken"],
+                "deviceId": "dev_client_fige",
+                "publicKey": _une_cle_publique(),
+                "name": "Vieux client",
+                "platform": "ANDROID",
+                "deviceType": "PHONE",
+                "capabilities": ["app.navigate"],
+            },
+        )
+        assert reponse.get("device", {}).get("deviceId") == "dev_client_fige"
+        hote_dit = reponse.get("host") or {}
+        for champ in ("deviceId", "publicKey", "ownerId", "address", "capabilities"):
+            assert champ in hote_dit, f"le jumelage a perdu « {champ} »"

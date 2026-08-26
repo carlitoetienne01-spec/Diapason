@@ -249,3 +249,59 @@ class TestLeTransfertDeFichiersNeBougePas:
         from diapason.mesh.coffre import _authentifie
 
         assert _authentifie(0, b"X") != _authentifie(0, b"")
+
+
+class TestLireUnBlocDeSceauNeLevePasEtNeCroitPas:
+    """Étape 4 : le canal de clé, sans encore rien sceller.
+
+    ``lire_bloc_sceau`` est appelée depuis ``announce_to``, qui PROMET de ne
+    jamais lever — une annonce qui n'aboutit pas n'est pas une erreur que
+    l'utilisateur doive entendre. Un corps venu du réseau ne doit donc pas
+    défaire cette promesse, quelle que soit sa forme.
+    """
+
+    @pytest.mark.parametrize(
+        "corps",
+        [
+            None,
+            "",
+            42,
+            [],
+            {},
+            {"sceau": None},
+            {"sceau": "pas un dictionnaire"},
+            {"sceau": {}},
+            {"sceau": {"version": 99}},
+            {"sceau": {"sealKey": "pas du base64 !", "signature": "x"}},
+        ],
+        ids=[
+            "rien",
+            "chaine-vide",
+            "un-nombre",
+            "une-liste",
+            "vide",
+            "sceau-nul",
+            "sceau-texte",
+            "sceau-vide",
+            "mauvaise-version",
+            "cle-illisible",
+        ],
+    )
+    def test_aucune_forme_ne_la_fait_lever(self, corps):
+        assert scellement.lire_bloc_sceau(corps) is False
+
+    def test_un_bloc_non_signe_est_ignore(self):
+        """La signature EST la créance : sans elle, n'importe qui sur le
+        réseau installerait sa propre clé et lirait tout."""
+        from diapason.mesh.coffre import nouvelle_demi_cle
+
+        faux = {
+            "sceau": {
+                "version": 1,
+                "ownerId": "o",
+                "deviceId": "dev_attaquant",
+                "sealKey": nouvelle_demi_cle().publique_b64,
+                "sentAtMs": 1_000,
+            }
+        }
+        assert scellement.lire_bloc_sceau(faux) is False
