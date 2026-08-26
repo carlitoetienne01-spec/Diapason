@@ -65,8 +65,10 @@ def devices(tout: bool) -> None:
     """Lister les appareils de la flotte, avec leur présence."""
     from diapason.mesh.presence import presence_of
     from diapason.mesh.registry import DeviceRegistry
+    from diapason.mesh.scellement import etat_de_chiffrement
 
-    liste = DeviceRegistry().list_devices(include_revoked=tout)
+    registre = DeviceRegistry()
+    liste = registre.list_devices(include_revoked=tout)
     if not liste:
         console.print(
             "Aucun appareil. Sur l'autre machine : Appareils → Ajouter un "
@@ -74,17 +76,94 @@ def devices(tout: bool) -> None:
         )
         return
     table = Table(title=f"Flotte — {len(liste)} appareil(s)")
-    for colonne in ("Nom", "Plateforme", "Confiance", "Présence", "Identifiant"):
+    for colonne in (
+        "Nom",
+        "Plateforme",
+        "Confiance",
+        "Présence",
+        "Commandes",
+        "Identifiant",
+    ):
         table.add_column(colonne)
+    _couleurs = {"SCELLE": "green", "CLAIR": "yellow", "INCONNU": "dim"}
+    _mots = {"SCELLE": "chiffrées", "CLAIR": "EN CLAIR", "INCONNU": "?"}
     for d in liste:
+        etat = etat_de_chiffrement(d, registry=registre)
         table.add_row(
             str(d.get("name") or "?"),
             str(d.get("platform") or "?"),
             str(d.get("trustLevel") or "?"),
             str((presence_of(d) or {}).get("state") or "?"),
+            f"[{_couleurs.get(etat, 'dim')}]{_mots.get(etat, etat)}[/]",
             str(d.get("deviceId") or "?"),
         )
     console.print(table)
+    # Dit une fois, sous le tableau, plutôt que répété par ligne : un pair
+    # « EN CLAIR » n'est pas une panne, c'est un pair qui ne publie pas de
+    # clé — un téléphone, ou un Diapason antérieur au 26 août 2026.
+    if any(etat_de_chiffrement(d, registry=registre) == "CLAIR" for d in liste):
+        console.print(
+            "[dim]« EN CLAIR » : cet appareil ne publie pas de clé de "
+            "scellement, donc le verbe et les arguments de ses commandes "
+            "sont lisibles par qui écoute le réseau.[/dim]"
+        )
+
+
+@mesh.command("renouveler-cle")
+def renouveler_cle() -> None:
+    """Frapper une clé de scellement neuve, en gardant la précédente.
+
+    Geste EXPLICITE, jamais automatique. Une rotation périodique n'achèterait
+    rien qu'une clé statique n'ait déjà perdu, et créerait une panne
+    différée : un identifiant de clé périmé refusé des heures après coup.
+
+    L'ancienne reste déchiffrable sept jours — plus longtemps que les six
+    heures qu'une commande peut attendre en file, sans quoi une commande
+    deviendrait indéchiffrable pendant qu'elle patiente.
+    """
+    from diapason.mesh.scellement import kid, paire_locale, renouveler
+
+    avant = kid(paire_locale().publique)
+    renouveler()
+    apres = kid(paire_locale().publique)
+    console.print(
+        f"Clé de scellement renouvelée : [dim]{avant}[/dim] → [bold]{apres}[/bold]"
+    )
+    console.print(
+        "[dim]Vos pairs l'apprendront à leur prochaine annonce, sous quinze "
+        "secondes. L'ancienne reste déchiffrable sept jours.[/dim]"
+    )
+
+
+@mesh.command("oublier-cle")
+@click.argument("appareil")
+def oublier_cle(appareil: str) -> None:
+    """Oublier la clé de scellement d'un APPAREIL, et lui reparler en clair.
+
+    Le repli normal prend sept jours — c'est délibéré : sur un corps de
+    réponse, un attaquant éteindrait le chiffrement d'un paquet forgé. Ceci
+    est la sortie de secours quand on SAIT déjà que le pair ne peut plus
+    ouvrir ce qu'on lui scelle : réinstallation, retour en arrière.
+    """
+    from diapason.mesh.identity import device_identity
+    from diapason.mesh.registry import DeviceRegistry
+    from diapason.mesh.resolver import resolve_device
+
+    registre = DeviceRegistry()
+    flotte = [d for d in registre.list_devices() if d.get("trustLevel") == "TRUSTED"]
+    issue = resolve_device(
+        appareil, flotte, local_device_id=device_identity().device_id
+    )
+    cible = issue.get("device")
+    if issue.get("status") != "RESOLVED" or cible is None:
+        console.print(str(issue.get("message") or f"« {appareil} » ?"))
+        raise SystemExit(1)
+
+    registre.forget_seal_key(str(cible.get("deviceId")))
+    console.print(
+        f"Clé de scellement de [bold]{cible.get('name')}[/bold] oubliée — "
+        "ses commandes repartent en clair jusqu'à sa prochaine publication."
+    )
 
 
 @mesh.command("send")

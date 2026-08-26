@@ -208,10 +208,23 @@ def redeem_pairing(body: PairingRedeem) -> dict[str, Any]:
 
 @router.get("/devices")
 def list_devices(includeRevoked: bool = False) -> dict[str, Any]:
+    from diapason.mesh.scellement import etat_de_chiffrement
+
     registry = get_registry()
     devices = registry.list_devices(include_revoked=includeRevoked)
     return {
-        "devices": [{**d, "presence": presence_of(d)} for d in devices],
+        # `chiffrement` est CALCULÉ ici, jamais lu d'une colonne : une valeur
+        # stockée dirait ce qui a été décidé un jour, pas ce qui arrivera à
+        # la prochaine commande. La clé publique du pair, elle, ne sort pas —
+        # `_serialize` ne l'expose pas, et rien ici ne l'ajoute.
+        "devices": [
+            {
+                **d,
+                "presence": presence_of(d),
+                "chiffrement": etat_de_chiffrement(d, registry=registry),
+            }
+            for d in devices
+        ],
         "count": len(devices),
     }
 

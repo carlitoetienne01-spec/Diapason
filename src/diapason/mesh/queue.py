@@ -85,7 +85,22 @@ class CommandQueue:
             # so it goes before the new one is created.
             conn.execute("DROP INDEX IF EXISTS mesh_commands_idem_idx")
             conn.executescript(_SCHEMA)
+            self._ensure_columns(conn)
             conn.commit()
+
+    @staticmethod
+    def _ensure_columns(conn) -> None:
+        """Migration additive pour les files créées avant le scellement."""
+        colonnes = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(mesh_commands)").fetchall()
+        }
+        # Ce que l'historique DOIT pouvoir dire après coup : cette commande
+        # est-elle partie chiffrée, ou en clair ? Sans cette colonne, un repli
+        # vers le clair serait invisible — et un repli invisible est
+        # exactement ce que ce chantier refuse.
+        if "sealed" not in colonnes:
+            conn.execute("ALTER TABLE mesh_commands ADD COLUMN sealed INTEGER")
 
     def _connect(self) -> sqlite3.Connection:
         """Une connexion neuve, que l'appelant DOIT refermer lui-même.
@@ -143,8 +158,8 @@ class CommandQueue:
                 """INSERT INTO mesh_commands
                    (command_id, idempotency_key, origin_device_id,
                     target_device_id, tool, envelope_json, status,
-                    created_at_ms, expires_at_ms, updated_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    created_at_ms, expires_at_ms, updated_at_ms, sealed)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     command.command_id,
                     command.idempotency_key,
@@ -156,6 +171,10 @@ class CommandQueue:
                     command.created_at_ms,
                     command.expires_at_ms,
                     stamp,
+                    # La colonne, PAS `tool` : celui-ci garde le verbe en
+                    # clair, pour que l'historique reste lisible au lieu
+                    # d'afficher « mesh.sealed » quarante fois.
+                    1 if command.est_scelle else 0,
                 ),
             )
             conn.commit()
@@ -330,6 +349,7 @@ class CommandQueue:
             "originDeviceId": row["origin_device_id"],
             "targetDeviceId": row["target_device_id"],
             "tool": row["tool"],
+            "scelle": bool(row["sealed"]),
             "status": row["status"],
             "result": json.loads(result) if result else None,
             "errorCode": row["error_code"],

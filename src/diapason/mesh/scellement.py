@@ -464,6 +464,35 @@ def ouvrir_contenu(
     return outil, arguments, bool(charge.get("c"))
 
 
+def etat_de_chiffrement(device: Any, *, registry: Any = None) -> str:
+    """Ce qui arrivera VRAIMENT à la prochaine commande vers ce pair.
+
+    Calculé à chaque lecture, jamais stocké : une colonne dirait ce qui a été
+    décidé un jour, pas ce qui se passera tout à l'heure. Trois réponses, et
+    aucune n'est une supposition —
+
+    * ``SCELLE`` : une clé fraîche est détenue, la commande partira chiffrée.
+    * ``CLAIR``  : aucune clé fraîche, ou le chiffrement est désactivé. La
+      commande partira lisible par quiconque écoute.
+    * ``INCONNU``: on n'a pas pu le déterminer. Dire « je ne sais pas » vaut
+      mieux que d'afficher « CLAIR » à quelqu'un dont les commandes sont
+      peut-être chiffrées, ou l'inverse.
+
+    C'est la moitié VISIBLE du repli. Un repli qu'on ne voit pas est celui
+    qu'on ne corrige jamais.
+    """
+    try:
+        if mode_de_chiffrement() == "jamais":
+            return "CLAIR"
+        return "SCELLE" if doit_sceller(device, registry=registry) else "CLAIR"
+    except ScellementExige:
+        # Le mode l'exige et ce pair n'a pas de clé : rien ne partira du
+        # tout. « CLAIR » serait faux, et rassurant à tort.
+        return "CLAIR"
+    except Exception:  # noqa: BLE001
+        return "INCONNU"
+
+
 def entete_de_routage(command: Any) -> bytes:
     """Les octets qui collent un sceau à SON enveloppe.
 
@@ -564,6 +593,7 @@ __all__ = [
     "entete_de_routage",
     "sceller_commande",
     "doit_sceller",
+    "etat_de_chiffrement",
     "mode_de_chiffrement",
     "lire_bloc_sceau",
     "PALIER_REMBOURRAGE",

@@ -424,3 +424,75 @@ class TestLaDecisionDeSceller:
             )
             is None
         )
+
+
+class TestLeRepliSeVoit:
+    """Étape 7 : un repli qu'on ne voit pas est celui qu'on ne corrige jamais.
+
+    C'était la seconde panne silencieuse relevée par les juges : la première
+    version se contentait d'un `logger.debug` quand une commande repartait en
+    clair.
+    """
+
+    @pytest.fixture
+    def flotte(self, tmp_path):
+        import base64
+
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.registry import DeviceRegistry
+        from diapason.security.signing import generate_keypair
+
+        registre = DeviceRegistry(tmp_path / "mesh.db")
+        invitation = registre.create_pairing("Le PC")
+        registre.redeem_pairing(
+            invitation["pairingToken"],
+            device_id="dev_pc",
+            public_key_b64=base64.b64encode(generate_keypair().public_key).decode(),
+            name="Le PC",
+            platform="WINDOWS",
+            device_type="DESKTOP",
+        )
+        return registre, nouvelle_demi_cle().publique_b64
+
+    def _pair(self):
+        return {"deviceId": "dev_pc", "name": "Le PC"}
+
+    def test_un_pair_sans_cle_est_annonce_en_clair(self, flotte, monkeypatch):
+        registre, _ = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        assert (
+            scellement.etat_de_chiffrement(self._pair(), registry=registre) == "CLAIR"
+        )
+
+    def test_un_pair_a_jour_est_annonce_scelle(self, flotte, monkeypatch):
+        from diapason.mesh.registry import now_ms
+
+        registre, cle = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        registre.record_seal_key("dev_pc", cle, now_ms())
+        assert (
+            scellement.etat_de_chiffrement(self._pair(), registry=registre) == "SCELLE"
+        )
+
+    def test_le_mode_jamais_l_annonce_en_clair(self, flotte, monkeypatch):
+        """Une clé détenue ne veut pas dire une commande chiffrée : le
+        réglage prime, et l'affichage doit dire ce qui ARRIVERA."""
+        from diapason.mesh.registry import now_ms
+
+        registre, cle = flotte
+        registre.record_seal_key("dev_pc", cle, now_ms())
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "jamais")
+        assert (
+            scellement.etat_de_chiffrement(self._pair(), registry=registre) == "CLAIR"
+        )
+
+    def test_ce_qu_on_ne_sait_pas_se_dit_inconnu(self, monkeypatch):
+        """« CLAIR » affiché à quelqu'un dont les commandes sont peut-être
+        chiffrées serait pire qu'un aveu d'ignorance."""
+
+        def casse(*a, **k):
+            raise RuntimeError("registre illisible")
+
+        monkeypatch.setattr(scellement, "doit_sceller", casse)
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
+        assert scellement.etat_de_chiffrement(self._pair()) == "INCONNU"

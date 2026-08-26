@@ -374,3 +374,35 @@ class TestUneCommandeScelleeAttendSansPerdreSonSceau:
             "la commande en file n'a pas été scellée"
         )
         assert set(sur_le_fil["arguments"]) == {"s", "e", "k"}
+
+
+class TestLHistoireDitCeQuiEstPartiEnClair:
+    """Étape 7 : après coup, sans avoir à croire personne."""
+
+    def test_une_commande_claire_le_dit(self, mesh):
+        _registry, queue = mesh
+        rangee = queue_for(mesh, LAPTOP)
+        assert rangee["scelle"] is False
+
+    def test_une_commande_scellee_le_dit_aussi(self, mesh):
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.registry import now_ms
+
+        registry, queue = mesh
+        registry.record_seal_key(LAPTOP, nouvelle_demi_cle().publique_b64, now_ms())
+        sleep_device(registry, LAPTOP)
+        rangee = queue_for(mesh, LAPTOP)
+        assert rangee["scelle"] is True
+
+    def test_le_verbe_reste_lisible_dans_l_historique(self, mesh):
+        """La colonne `tool` garde le clair : un historique affichant
+        « mesh.sealed » quarante fois ne servirait à personne."""
+        from diapason.mesh.coffre import nouvelle_demi_cle
+        from diapason.mesh.registry import now_ms
+
+        registry, _queue = mesh
+        registry.record_seal_key(LAPTOP, nouvelle_demi_cle().publique_b64, now_ms())
+        sleep_device(registry, LAPTOP)
+        rangee = queue_for(mesh, LAPTOP)
+        assert rangee["tool"] != "mesh.sealed"
+        assert rangee["scelle"] is True

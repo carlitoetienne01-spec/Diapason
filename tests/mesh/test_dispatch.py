@@ -522,7 +522,18 @@ class TestUneReponseForgeeNeSupprimeJamaisLaCle:
             for chemin in racine.rglob("*.py")
             if "forget_seal_key" in chemin.read_text(encoding="utf-8")
         ]
-        assert set(appelants) <= {"mesh/registry.py"}, (
+        # Les SEULS appelants légitimes, et pourquoi :
+        #   mesh/registry.py — la définition.
+        #   cli/mesh_cmd.py  — `diapason mesh oublier-cle`, tapée par un
+        #                      humain qui SAIT que le pair ne peut plus
+        #                      ouvrir ce qu'on lui scelle. Une décision
+        #                      prise devant un clavier, pas une réaction à
+        #                      un paquet.
+        #
+        # Ce test a rougi le 26 août 2026 quand cette commande a été
+        # ajoutée : c'est précisément ce qu'on lui demande — obliger à
+        # justifier chaque nouvel appelant au lieu de le laisser passer.
+        assert set(appelants) <= {"mesh/registry.py", "cli/mesh_cmd.py"}, (
             f"`forget_seal_key` est appelée depuis {appelants} — vérifier "
             "qu'aucun de ces chemins ne lit une réponse réseau"
         )
