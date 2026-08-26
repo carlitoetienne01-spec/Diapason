@@ -94,11 +94,16 @@ def _lire(nom: str):
     if not chemin.exists():
         return None
     try:
-        privee = _read_private_key(chemin)
+        # La CONVERSION est dans le try, pas seulement la lecture. Un fichier
+        # peut très bien se décoder en base64 sans être une clé : quatre
+        # octets, ou quarante-quatre zéros. La première version ne protégeait
+        # que la lecture, et ces formes-là remontaient un ValueError depuis la
+        # bibliothèque cryptographique — trouvé en écrivant le test de la clé
+        # tronquée, le 26 août 2026.
+        return _paire_depuis(_read_private_key(chemin))
     except Exception:  # noqa: BLE001 - clé illisible = clé absente
         logger.warning("clé de scellement illisible : %s", chemin.name)
         return None
-    return _paire_depuis(privee)
 
 
 def _paire_depuis(privee: bytes):
@@ -123,17 +128,36 @@ def paire_locale():
     deux copies divergent.
     """
     from diapason.mesh.coffre import nouvelle_demi_cle
-    from diapason.mesh.identity import _write_private_key, identity_dir
+    from diapason.mesh.identity import identity_dir
 
+    chemin = _chemin(_FICHIER_CLE)
     existante = _lire(_FICHIER_CLE)
     if existante is not None:
         return existante
+
+    if chemin.exists():
+        # Le fichier est là mais illisible. CONSTATÉ sur la machine de
+        # Carlito le 26 août 2026, à la toute première mise en service : un
+        # redémarrage du service a tué le serveur en pleine écriture et
+        # laissé vingt-deux octets sur quarante-quatre. La version d'avant
+        # retombait alors sur un `FileExistsError` à CHAQUE appel — le
+        # scellement était mort, définitivement et sans un mot.
+        #
+        # On remplace, et on le DIT fort. Remplacer une clé oblige les pairs
+        # à réapprendre la nouvelle ; le taire les laisserait sceller vers
+        # une clé qui n'ouvre plus rien.
+        logger.warning(
+            "clé de scellement illisible (%s) : elle est remplacée. Vos "
+            "pairs l'apprendront à leur prochaine annonce.",
+            chemin.name,
+        )
+        chemin.unlink(missing_ok=True)
 
     dossier = identity_dir()
     dossier.mkdir(mode=0o700, parents=True, exist_ok=True)
     neuve = nouvelle_demi_cle()
     try:
-        _write_private_key(_chemin(_FICHIER_CLE), neuve.privee)
+        _ecrire_atomiquement(chemin, neuve.privee)
     except FileExistsError:
         # Une autre session l'a écrite entre notre lecture et notre écriture.
         # La sienne fait foi : deux clés pour une machine, ce serait deux
@@ -145,8 +169,64 @@ def paire_locale():
     return neuve
 
 
+def _ecrire_atomiquement(chemin, privee: bytes) -> None:
+    """Écrire la clé sans jamais laisser un fichier à moitié écrit.
+
+    ``identity._write_private_key`` ouvre le fichier FINAL et y écrit : une
+    interruption au mauvais moment laisse une clé tronquée, qui a l'air
+    présente et n'ouvre rien. C'est arrivé le jour même de la mise en
+    service.
+
+    On écrit donc à côté, puis on renomme — un renommage est atomique sur le
+    même système de fichiers, donc le fichier final n'existe jamais à moitié.
+    Le durcissement (0600, ``O_EXCL``, ``O_NOFOLLOW``) reste celui
+    d'``identity`` : on ne le recopie pas, on l'emprunte.
+    """
+    import os
+
+    from diapason.mesh.identity import _write_private_key
+
+    provisoire = chemin.with_name(f"{chemin.name}.{os.getpid()}.tmp")
+    provisoire.unlink(missing_ok=True)
+    _write_private_key(provisoire, privee)
+    try:
+        os.replace(provisoire, chemin)
+    except OSError:
+        provisoire.unlink(missing_ok=True)
+        raise
+
+
 def paire_precedente():
-    """La paire d'avant un renouvellement, tant qu'elle est conservée."""
+    """La paire d'avant un renouvellement — TANT QU'ELLE EST CONSERVÉE.
+
+    Cette dernière proposition n'était qu'une phrase : ``RETENTION_PRECEDENTE_MS``
+    était déclarée, exportée, documentée comme un invariant… et lue par aucun
+    code. La clé précédente survivait en réalité jusqu'au renouvellement
+    SUIVANT — une minute ou dix ans — pendant que l'aide de la commande
+    promettait sept jours à l'utilisateur. Constaté le 26 août 2026, dans du
+    code écrit le jour même.
+
+    Et ce n'est pas qu'une question d'exactitude : ``renouveler`` existe pour
+    fermer la fenêtre de déchiffrement rétroactif. Une clé précédente qui vit
+    indéfiniment ne la ferme qu'à moitié.
+
+    La date du fichier fait foi — elle est posée par le renommage, sans
+    fichier supplémentaire à tenir d'accord avec elle.
+    """
+    chemin = _chemin(_FICHIER_PRECEDENT)
+    if not chemin.exists():
+        return None
+    try:
+        age_ms = _maintenant_ms() - int(chemin.stat().st_mtime * 1000)
+    except OSError:
+        return None
+    if age_ms > RETENTION_PRECEDENTE_MS:
+        # Périmée : on l'efface plutôt que de la laisser traîner. Garder une
+        # clé privée dont on a décidé qu'elle ne servait plus, c'est garder
+        # exactement ce que le renouvellement voulait retirer.
+        logger.info("clé de scellement précédente périmée : effacée")
+        chemin.unlink(missing_ok=True)
+        return None
     return _lire(_FICHIER_PRECEDENT)
 
 
@@ -168,18 +248,16 @@ def renouveler() -> None:
     rien qu'une clé statique n'ait déjà perdu, et créerait une panne différée —
     un ``kid`` périmé refusé des heures après coup.
     """
-    from diapason.mesh.identity import _write_private_key
+    from diapason.mesh.coffre import nouvelle_demi_cle
 
     courante = _chemin(_FICHIER_CLE)
     precedente = _chemin(_FICHIER_PRECEDENT)
     if courante.exists():
-        # DÉPLACER avant d'écrire : `_write_private_key` utilise O_EXCL et
-        # refuserait un fichier déjà là.
+        # DÉPLACER avant d'écrire : le fichier final ne doit jamais exister
+        # à moitié, et l'écriture atomique passe par un renommage.
         precedente.unlink(missing_ok=True)
         courante.replace(precedente)
-    from diapason.mesh.coffre import nouvelle_demi_cle
-
-    _write_private_key(courante, nouvelle_demi_cle().privee)
+    _ecrire_atomiquement(courante, nouvelle_demi_cle().privee)
 
 
 def oublier_locale() -> None:
@@ -468,27 +546,37 @@ def etat_de_chiffrement(device: Any, *, registry: Any = None) -> str:
     """Ce qui arrivera VRAIMENT à la prochaine commande vers ce pair.
 
     Calculé à chaque lecture, jamais stocké : une colonne dirait ce qui a été
-    décidé un jour, pas ce qui se passera tout à l'heure. Trois réponses, et
-    aucune n'est une supposition —
+    décidé un jour, pas ce qui se passera tout à l'heure.
 
-    * ``SCELLE`` : une clé fraîche est détenue, la commande partira chiffrée.
-    * ``CLAIR``  : aucune clé fraîche, ou le chiffrement est désactivé. La
-      commande partira lisible par quiconque écoute.
-    * ``INCONNU``: on n'a pas pu le déterminer. Dire « je ne sais pas » vaut
-      mieux que d'afficher « CLAIR » à quelqu'un dont les commandes sont
-      peut-être chiffrées, ou l'inverse.
+    CINQ réponses, et il en faut cinq. La première version n'en avait que
+    trois et rangeait sous « CLAIR » des situations opposées : un pair qui
+    ne publie pas de clé, un chiffrement désactivé localement, et un pair
+    auquel plus RIEN n'est envoyé. Le commentaire du code avouait lui-même
+    « CLAIR serait faux, et rassurant à tort » — deux lignes avant de rendre
+    « CLAIR ». Constaté le 26 août 2026.
+
+    * ``SCELLE``    : une clé fraîche est détenue, la commande partira chiffrée.
+    * ``CLAIR``     : aucune clé fraîche. La commande partira lisible par
+      quiconque écoute — c'est le seul état qui décrit une fuite réelle.
+    * ``DESACTIVE`` : le réglage local vaut « jamais ». Le pair publie
+      peut-être une clé ; c'est nous qui refusons de nous en servir. Envoyer
+      quelqu'un vérifier la machine d'en face serait l'envoyer au mauvais
+      endroit.
+    * ``BLOQUE``    : le réglage vaut « exige » et ce pair n'a pas de clé.
+      Rien ne lui est envoyé du tout — dire « CLAIR » décrirait un trafic
+      qui n'existe pas.
+    * ``INCONNU``   : on n'a pas pu le déterminer.
 
     C'est la moitié VISIBLE du repli. Un repli qu'on ne voit pas est celui
-    qu'on ne corrige jamais.
+    qu'on ne corrige jamais — mais un repli mal nommé envoie le chercher
+    ailleurs, ce qui n'est pas mieux.
     """
     try:
         if mode_de_chiffrement() == "jamais":
-            return "CLAIR"
+            return "DESACTIVE"
         return "SCELLE" if doit_sceller(device, registry=registry) else "CLAIR"
     except ScellementExige:
-        # Le mode l'exige et ce pair n'a pas de clé : rien ne partira du
-        # tout. « CLAIR » serait faux, et rassurant à tort.
-        return "CLAIR"
+        return "BLOQUE"
     except Exception:  # noqa: BLE001
         return "INCONNU"
 

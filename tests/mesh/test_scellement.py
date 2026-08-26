@@ -78,6 +78,49 @@ class TestLeRenouvellement:
 
         assert scellement.RETENTION_PRECEDENTE_MS > QUEUED_TTL_MS
 
+    def test_la_retention_est_APPLIQUEE_et_pas_seulement_declaree(self):
+        """La constante était déclarée, exportée, documentée comme un
+        invariant — et lue par AUCUN code. La clé précédente survivait en
+        réalité jusqu'au renouvellement suivant, une minute ou dix ans,
+        pendant que l'aide de la commande promettait sept jours.
+
+        Le test d'au-dessus ne vérifiait que l'arithmétique de la constante :
+        « un test le vérifie » était lui-même une proclamation. Celui-ci
+        vérifie le COMPORTEMENT.
+        """
+        import os
+
+        scellement.paire_locale()
+        scellement.renouveler()
+        assert scellement.paire_precedente() is not None, "test mal construit"
+
+        # On vieillit le fichier d'une seconde de plus que la rétention.
+        chemin = scellement._chemin("seal_key.prev")
+        vieux = (
+            scellement._maintenant_ms() - scellement.RETENTION_PRECEDENTE_MS - 1_000
+        ) / 1000
+        os.utime(chemin, (vieux, vieux))
+
+        assert scellement.paire_precedente() is None, (
+            "la clé précédente survit à sa propre rétention"
+        )
+        assert not chemin.exists(), (
+            "une clé privée périmée reste sur le disque : le renouvellement "
+            "ne ferme alors qu'à moitié la fenêtre qu'il vise"
+        )
+
+    def test_juste_avant_l_echeance_elle_ouvre_encore(self):
+        import os
+
+        scellement.paire_locale()
+        scellement.renouveler()
+        chemin = scellement._chemin("seal_key.prev")
+        limite = (
+            scellement._maintenant_ms() - scellement.RETENTION_PRECEDENTE_MS + 60_000
+        ) / 1000
+        os.utime(chemin, (limite, limite))
+        assert scellement.paire_precedente() is not None
+
     def test_oublier_efface_les_deux(self):
         scellement.paire_locale()
         scellement.renouveler()
@@ -474,17 +517,42 @@ class TestLeRepliSeVoit:
             scellement.etat_de_chiffrement(self._pair(), registry=registre) == "SCELLE"
         )
 
-    def test_le_mode_jamais_l_annonce_en_clair(self, flotte, monkeypatch):
-        """Une clé détenue ne veut pas dire une commande chiffrée : le
-        réglage prime, et l'affichage doit dire ce qui ARRIVERA."""
+    def test_le_mode_jamais_s_annonce_DESACTIVE_et_non_en_clair(
+        self, flotte, monkeypatch
+    ):
+        """Ce test exigeait « CLAIR », et épinglait ainsi une confusion au
+        lieu de la corriger.
+
+        Sous « jamais », le pair publie très bien une clé — le registre la
+        détient — et c'est CETTE machine qui refuse de s'en servir. Afficher
+        « cet appareil ne publie pas de clé » envoyait vérifier la version de
+        la machine d'en face au lieu de son propre config.toml.
+        """
         from diapason.mesh.registry import now_ms
 
         registre, cle = flotte
         registre.record_seal_key("dev_pc", cle, now_ms())
         monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "jamais")
         assert (
-            scellement.etat_de_chiffrement(self._pair(), registry=registre) == "CLAIR"
+            scellement.etat_de_chiffrement(self._pair(), registry=registre)
+            == "DESACTIVE"
         )
+
+    def test_le_mode_exige_sans_cle_s_annonce_BLOQUE(self, flotte, monkeypatch):
+        """Et surtout pas « CLAIR » : rien n'est envoyé du tout, donc rien
+        n'est lisible. Le code l'avouait — son commentaire disait « CLAIR
+        serait faux, et rassurant à tort » deux lignes avant de rendre
+        « CLAIR »."""
+        registre, _ = flotte
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "exige")
+        assert (
+            scellement.etat_de_chiffrement(self._pair(), registry=registre) == "BLOQUE"
+        )
+
+    def test_les_cinq_etats_sont_distincts(self):
+        """Un mot par situation. Deux situations opposées sous le même mot,
+        c'est la moitié visible du repli qui ment."""
+        assert len({"SCELLE", "CLAIR", "DESACTIVE", "BLOQUE", "INCONNU"}) == 5
 
     def test_ce_qu_on_ne_sait_pas_se_dit_inconnu(self, monkeypatch):
         """« CLAIR » affiché à quelqu'un dont les commandes sont peut-être
@@ -496,3 +564,75 @@ class TestLeRepliSeVoit:
         monkeypatch.setattr(scellement, "doit_sceller", casse)
         monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "opportuniste")
         assert scellement.etat_de_chiffrement(self._pair()) == "INCONNU"
+
+
+class TestUneCleTronqueeNeTuePasLeScellement:
+    """CONSTATÉ sur la machine de Carlito, à la première mise en service.
+
+    Un redémarrage du service a tué le serveur en pleine écriture et laissé
+    vingt-deux octets sur quarante-quatre. `paire_locale` retombait alors sur
+    un `FileExistsError` à CHAQUE appel : le fichier existe, donc on ne le
+    recrée pas ; il est illisible, donc on ne s'en sert pas. Le scellement
+    était mort, définitivement, et sans un mot.
+
+    Exactement la panne silencieuse que ce chantier existe pour empêcher —
+    trouvée non par un test, mais en lançant le code sur une vraie machine.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _chez_soi(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "maison"))
+        yield
+
+    def test_une_cle_tronquee_est_remplacee_et_le_scellement_repart(self):
+        bonne = scellement.paire_locale()
+        chemin = scellement._chemin("seal_key")
+
+        # Vingt-deux octets sur quarante-quatre : la coupure exacte observée.
+        entier = chemin.read_bytes()
+        chemin.write_bytes(entier[: len(entier) // 2])
+
+        neuve = scellement.paire_locale()
+        assert len(neuve.privee) == 32
+        assert neuve.privee != bonne.privee, "la clé aurait dû être remplacée"
+        # Et le scellement fonctionne de nouveau, tout de suite.
+        scelle = scellement.contenu_scelle(
+            "app.open",
+            {},
+            False,
+            cle_pair_b64=neuve.publique_b64,
+            command_id="c",
+            associe=b"x",
+        )
+        assert scellement.ouvrir_contenu(scelle, command_id="c", associe=b"x")[0] == (
+            "app.open"
+        )
+
+    @pytest.mark.parametrize(
+        "contenu", [b"", b"pas du base64 !", b"AAAA", b"\x00" * 44]
+    )
+    def test_aucune_forme_de_corruption_ne_la_bloque(self, contenu):
+        scellement.paire_locale()
+        scellement._chemin("seal_key").write_bytes(contenu)
+        assert len(scellement.paire_locale().privee) == 32
+
+    def test_l_ecriture_ne_laisse_jamais_de_fichier_a_moitie(self, monkeypatch):
+        """Le fichier final naît d'un renommage, donc il n'existe jamais
+        tronqué — même si l'écriture est interrompue."""
+        chemin = scellement._chemin("seal_key")
+        chemin.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+        vrai = scellement._ecrire_atomiquement
+
+        def couper(dest, privee):
+            # On simule une interruption APRÈS l'écriture du provisoire et
+            # AVANT le renommage.
+            raise KeyboardInterrupt("service redémarré")
+
+        monkeypatch.setattr(scellement, "_ecrire_atomiquement", couper)
+        with pytest.raises(KeyboardInterrupt):
+            scellement.paire_locale()
+        assert not chemin.exists(), "un fichier tronqué a été laissé derrière"
+
+        monkeypatch.setattr(scellement, "_ecrire_atomiquement", vrai)
+        assert len(scellement.paire_locale().privee) == 32

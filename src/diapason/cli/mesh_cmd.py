@@ -85,8 +85,25 @@ def devices(tout: bool) -> None:
         "Identifiant",
     ):
         table.add_column(colonne)
-    _couleurs = {"SCELLE": "green", "CLAIR": "yellow", "INCONNU": "dim"}
-    _mots = {"SCELLE": "chiffrées", "CLAIR": "EN CLAIR", "INCONNU": "?"}
+    # Un mot par état, et jamais un mot pour deux. La première version
+    # rangeait sous « EN CLAIR » trois situations opposées, puis imprimait une
+    # cause et une conséquence vraies dans une seule — envoyant chercher la
+    # panne sur la machine d'en face quand elle était dans le config.toml
+    # local, ou décrivant comme exposé un pair auquel plus rien n'est envoyé.
+    _couleurs = {
+        "SCELLE": "green",
+        "CLAIR": "yellow",
+        "DESACTIVE": "dim",
+        "BLOQUE": "red",
+        "INCONNU": "dim",
+    }
+    _mots = {
+        "SCELLE": "chiffrées",
+        "CLAIR": "EN CLAIR",
+        "DESACTIVE": "désactivé",
+        "BLOQUE": "BLOQUÉ",
+        "INCONNU": "?",
+    }
     for d in liste:
         etat = etat_de_chiffrement(d, registry=registre)
         table.add_row(
@@ -98,15 +115,32 @@ def devices(tout: bool) -> None:
             str(d.get("deviceId") or "?"),
         )
     console.print(table)
-    # Dit une fois, sous le tableau, plutôt que répété par ligne : un pair
-    # « EN CLAIR » n'est pas une panne, c'est un pair qui ne publie pas de
-    # clé — un téléphone, ou un Diapason antérieur au 26 août 2026.
-    if any(etat_de_chiffrement(d, registry=registre) == "CLAIR" for d in liste):
-        console.print(
-            "[dim]« EN CLAIR » : cet appareil ne publie pas de clé de "
-            "scellement, donc le verbe et les arguments de ses commandes "
-            "sont lisibles par qui écoute le réseau.[/dim]"
-        )
+    # Une note par état PRÉSENT, et chacune dit la vérité de CET état.
+    etats = {etat_de_chiffrement(d, registry=registre) for d in liste}
+    notes = {
+        "CLAIR": (
+            "« EN CLAIR » : cet appareil ne publie pas de clé de scellement — "
+            "un téléphone, ou un Diapason antérieur au 26 août 2026. Le verbe "
+            "et les arguments de ses commandes sont lisibles par qui écoute."
+        ),
+        "DESACTIVE": (
+            "« désactivé » : [mesh] chiffrement = « jamais » dans votre "
+            "config.toml. Ces appareils publient peut-être une clé ; c'est "
+            "cette machine-ci qui refuse de s'en servir."
+        ),
+        "BLOQUE": (
+            "« BLOQUÉ » : [mesh] chiffrement = « exige » et cet appareil ne "
+            "publie pas de clé. Rien ne lui est envoyé du tout — ses "
+            "commandes ne sont pas « en clair », elles n'existent pas."
+        ),
+        "INCONNU": (
+            "« ? » : l'état n'a pas pu être déterminé. Voir "
+            "~/.diapason/logs/serve.err.log."
+        ),
+    }
+    for etat in ("CLAIR", "DESACTIVE", "BLOQUE", "INCONNU"):
+        if etat in etats:
+            console.print(f"[dim]{notes[etat]}[/dim]")
 
 
 @mesh.command("renouveler-cle")
