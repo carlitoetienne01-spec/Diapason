@@ -19,20 +19,39 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # RUNNER AUTO-HEBERGE — meme pansement que ci.yml, meme raison, et le
+    # meme cout : ce job verifiait Ubuntu, il verifie maintenant macOS.
+    #
+    # POUR REVENIR EN ARRIERE : runs-on: ubuntu-latest, et remettre le bloc
+    # actions/setup-node retire ci-dessous.
+    runs-on: [self-hosted, macos-local]
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+      # Pas de `actions/setup-node` : comme `actions/setup-python`, il
+      # recupere sur macOS un paquet dont le script d'installation code
+      # /Users/runner/hostedtoolcache EN DUR — le chemin des machines de
+      # GitHub. Sur un runner auto-heberge il echoue avant tout le reste
+      # (« mkdir: /Users/runner: Permission denied »), et ni
+      # RUNNER_TOOL_CACHE ni AGENT_TOOLSDIRECTORY n'y changent rien.
+      #
+      # On se sert donc du Node de la machine, et on DIT lequel : un job qui
+      # tait la version qu'il a testee ne prouve pas grand-chose.
+      - name: Node de cette machine
+        run: node --version && npm --version
 
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npx tsc --noEmit
+
+      # Les tests d'interface ne tournaient NULLE PART. Le script `npm test`
+      # existait dans package.json, mais aucun workflow ne le lancait : cent
+      # vingt-six tests s'ecrivaient sans que rien ne les execute (constate
+      # le 26 aout 2026). Verifie en local avant d'etre ajoute ici :
+      # `npx vitest run` — 10 fichiers, 126 tests, sortie 0.
+      - run: npx vitest run
+
       - run: npm run build

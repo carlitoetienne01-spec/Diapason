@@ -36,26 +36,46 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 
 ## 2. Vérifier — et pourquoi c'est à toi de le faire
 
-> **La CI GitHub ne tourne pas.** Depuis plusieurs jours, chaque exécution
-> échoue en trois secondes sur *« The job was not started because recent
-> account payments have failed or your spending limit needs to be
-> increased »*. Aucun job ne démarre : ni lint, ni tests, ni Rust, ni
-> frontend. Ce n'est pas un défaut du code, et **rien ne le corrigera depuis
-> le dépôt** — il faut régler la facturation dans « Billing & plans » sur
-> GitHub.
+> **La CI tourne de nouveau — sur le Mac de Carlito, pas chez GitHub.**
+> Depuis le 24 août 2026, aucun runner hébergé par GitHub ne démarre :
+> *« recent account payments have failed »*. Un **runner auto-hébergé**
+> (`mac-de-carlito`, étiquettes `self-hosted, macos-local`) a été installé
+> le 26 août, et le blocage ne le concerne pas : il ne porte que sur les
+> minutes facturées.
 >
-> Conséquence pratique : **la vérification locale est le seul filet**. Ne
-> pousse rien que tu n'aies lancé toi-même, en entier.
+> Y tournent : `ci.yml` (`lint`, `test`, `rust`) et `frontend.yml`. **Ce qui
+> les rend verts est donc macOS, plus Ubuntu** — un défaut propre à Linux ne
+> sera plus attrapé. Un test qui tourne vaut mieux qu'un test qui ne tourne
+> pas, mais ce n'est pas le même test.
+>
+> Ce qui ne tourne plus du tout, et qui est **sauté** plutôt que rouge :
+> `test-windows`, `autotag`, `docs`. Un rouge permanent ne signale plus
+> rien ; « skipped » dit l'absence sans l'écraser. Pour tout rallumer une
+> fois la facturation réglée dans « Billing & plans » : créer la variable de
+> dépôt `RUNNERS_GITHUB = true` (Settings → Secrets and variables →
+> Actions → Variables), puis remettre les `runs-on: ubuntu-latest` indiqués
+> en commentaire dans chaque fichier.
+>
+> Conséquence pratique inchangée : **lance la vérification toi-même, en
+> entier, avant de pousser.** La CI confirme, elle ne découvre pas.
 
-Les commandes ci-dessous sont exactement celles de `.github/workflows/ci.yml`
-et de `frontend.yml` :
+Les commandes ci-dessous sont celles de `.github/workflows/ci.yml` et de
+`frontend.yml`, au seuil de couverture près — voir la note dessous :
 
 ```bash
 .venv/bin/python -m ruff check src/ tests/
 .venv/bin/python -m ruff format --check src/ tests/
 .venv/bin/python -m pytest tests/ -n auto -q -m "not live and not cloud and not hub"
-cd frontend && npx tsc --noEmit && npx vitest run
+cd frontend && npx tsc --noEmit && npx vitest run && npm run build
 ```
+
+La CI ajoute `--cov=diapason --cov-fail-under=60` à `pytest`. Le bloc
+ci-dessus l'omet volontairement : la couverture se mesure sur la suite
+entière, et l'omettre ici évite de croire qu'un sous-ensemble l'a vérifiée.
+Pour reproduire la CI au chiffre près, ajoute-le. Cette phrase existe parce
+que ce bloc s'annonçait « exactement » identique à la CI alors qu'il en
+différait sur deux points — dans le commit même qui en faisait le seul filet
+des sessions parallèles.
 
 **N'utilise pas `uv run` pour lancer un simple lint.** `uv sync` ÉLAGUE tout
 extra non listé dans `make setup` — constaté deux fois : `faster-whisper` et

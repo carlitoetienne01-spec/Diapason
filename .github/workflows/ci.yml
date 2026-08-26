@@ -165,6 +165,23 @@ jobs:
   # All `run:` steps use static commands only (no `github.event.*`
   # interpolation), so there is no workflow-injection surface here.
   test-windows:
+    # WINDOWS N'EST PLUS VERIFIE, et ce job le dit en etant SAUTE.
+    #
+    # Aucun runner auto-heberge Windows n'existe ici, et les runners GitHub
+    # ne demarrent plus depuis le 24 aout 2026. Ce job echouait donc a chaque
+    # commit. Or un rouge permanent ne signale plus rien : au bout de trois
+    # fois plus personne ne lit la fin de la liste — c'est exactement le
+    # constat qui a motive le commit « Le linteur etait rouge en permanence,
+    # donc il ne disait plus rien ».
+    #
+    # Saute, il apparait comme « skipped » : une absence VISIBLE, jamais un
+    # vert qui pretendrait avoir verifie. Meme regle que partout ici — dire
+    # ce qu'on n'a pas fait plutot que de le maquiller (§5).
+    #
+    # POUR LE RALLUMER : creer la variable de depot RUNNERS_GITHUB = true
+    # (Settings > Secrets and variables > Actions > Variables), une fois la
+    # facturation reglee.
+    if: vars.RUNNERS_GITHUB == 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -216,7 +233,17 @@ jobs:
           uv run diapason --version
 
   rust:
-    runs-on: ubuntu-latest
+    # RUNNER AUTO-HEBERGE — meme pansement que `lint` et `test`, meme raison,
+    # et le meme cout : ce job verifiait Ubuntu, il verifie maintenant macOS.
+    # Un defaut propre a Linux ne sera plus attrape ici.
+    #
+    # Verifie en local le 26 aout 2026 AVANT d'etre deplace, pour ne pas
+    # confier au runner un travail dont on ignore s'il passe : `cargo clippy
+    # --workspace --all-targets -- -D warnings` et `cargo test --workspace`
+    # sortent tous deux en 0 sur cette machine (cargo 1.98).
+    #
+    # POUR REVENIR EN ARRIERE : runs-on: ubuntu-latest
+    runs-on: [self-hosted, macos-local]
     defaults:
       run:
         working-directory: rust

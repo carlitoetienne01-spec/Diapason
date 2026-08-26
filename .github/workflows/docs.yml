@@ -26,6 +26,20 @@ concurrency:
 
 jobs:
   build:
+    # SAUTE tant que les runners GitHub ne demarrent pas (facturation
+    # bloquee depuis le 24 aout 2026). `deploy` en depend, donc les deux
+    # s'eteignent ensemble et la publication ne part pas a moitie.
+    #
+    # Ce job ne va PAS sur le runner local : il publie sur GitHub Pages, ce
+    # qui demande l'environnement `github-pages` et son jeton — un runner
+    # auto-heberge le ferait echouer au dernier moment plutot qu'au premier.
+    #
+    # CE QUE CELA COUTE : la documentation en ligne cesse d'etre mise a jour
+    # et vieillit en silence. Elle contredit deja le code par endroits (voir
+    # docs/deployment/launchd.md), donc ce silence est a surveiller.
+    #
+    # POUR LE RALLUMER : variable de depot RUNNERS_GITHUB = true.
+    if: vars.RUNNERS_GITHUB == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

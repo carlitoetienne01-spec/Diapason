@@ -11,6 +11,19 @@ permissions:
 
 jobs:
   tag:
+    # SAUTE tant que les runners GitHub ne demarrent pas (facturation
+    # bloquee depuis le 24 aout 2026). Ce job se declenche a CHAQUE push sur
+    # main : il a echoue sept fois de suite, et sept rouges d'affilee sur des
+    # commits par ailleurs verts, c'est ce qui apprend a ne plus regarder la
+    # liste. Saute, il dit la meme chose sans crier.
+    #
+    # Il n'est pas deplace vers le runner local a dessein : il POSE des
+    # etiquettes qui declenchent ensuite les builds bureau (desktop.yml),
+    # lesquels ont besoin de trois systemes. Le faire reussir ici ne ferait
+    # que deplacer le rouge d'un cran plus loin.
+    #
+    # POUR LE RALLUMER : variable de depot RUNNERS_GITHUB = true.
+    if: vars.RUNNERS_GITHUB == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
