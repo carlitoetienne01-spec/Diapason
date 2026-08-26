@@ -26,7 +26,12 @@ from diapason.server.auth_middleware import (
     RateLimitMiddleware,
 )
 
-KEY = "cle_de_test_0123456789abcdef"
+# Une fausse clé, et gitleaks ne peut pas le deviner : sa règle
+# « generic-api-key » voit une chaîne longue affectée à KEY. Exemptée
+# ICI plutôt que dans .gitleaksignore, dont les empreintes sont liées
+# au commit — la même fixture serait re-signalée à chaque push, et un
+# rouge permanent apprend à ignorer le rouge.
+KEY = "cle_de_test_0123456789abcdef"  # gitleaks:allow
 
 # Every shape a body can arrive in when nobody is being cooperative.
 RUBBISH = [

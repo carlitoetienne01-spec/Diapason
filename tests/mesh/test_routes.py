@@ -29,7 +29,12 @@ from diapason.mesh.registry import DeviceRegistry, now_ms  # noqa: E402
 from diapason.mesh.routes import router, set_registry_for_tests  # noqa: E402
 from diapason.server.auth_middleware import AuthMiddleware  # noqa: E402
 
-KEY = "diapason_sk_test_key_for_the_mesh_routes_0000"
+# Une fausse clé, et gitleaks ne peut pas le deviner : sa règle
+# « generic-api-key » voit une chaîne longue affectée à KEY. Exemptée
+# ICI plutôt que dans .gitleaksignore, dont les empreintes sont liées
+# au commit — la même fixture serait re-signalée à chaque push, et un
+# rouge permanent apprend à ignorer le rouge.
+KEY = "diapason_sk_test_key_for_the_mesh_routes_0000"  # gitleaks:allow
 
 
 @pytest.fixture
