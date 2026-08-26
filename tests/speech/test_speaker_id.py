@@ -14,7 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from diapason.speech.speaker_id import (
+# La reconnaissance du locuteur repose sur `sherpa-onnx`, qui vit dans
+# l'extra `speech`. Sans lui, ces tests levaient ModuleNotFoundError au lieu
+# de se sauter — six échecs à la première exécution de CI, le 26 août 2026.
+# (Et cette bibliothèque perd ses dylibs à chaque `uv sync` : voir le
+# Makefile, qui la réinstalle explicitement.)
+pytest.importorskip("sherpa_onnx", reason="extra `speech` requis")
+
+from diapason.speech.speaker_id import (  # noqa: E402
     ECHANTILLONS_REQUIS,
     SpeakerVerifier,
 )

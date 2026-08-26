@@ -14,6 +14,11 @@ spatial. `handoff_continue` repartait de l'écran courant, donc répondre
 
 from __future__ import annotations
 
+# Armer le mode gestes exige Vision : sans lui, /v1/gestures/arm rend 503, la
+# session n'existe pas, et chaque test qui lit son état casse en KeyError ou
+# en AttributeError. Quarante-huit échecs à la première exécution de CI, le
+# 26 août 2026 — pas des défauts du code, des tests qui exigeaient sans dire.
+import sys  # noqa: E402
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +26,20 @@ import pytest
 from diapason.desktop import contexte_app as ca
 from diapason.desktop import presse_papiers_spatial as pp
 from diapason.server import gestes_routes as gr
+
+
+def _vision_indisponible() -> bool:
+    if sys.platform != "darwin":
+        return True
+    from diapason.desktop.vision_mains import disponible
+
+    return not disponible()
+
+
+pytestmark = pytest.mark.skipif(
+    _vision_indisponible(),
+    reason="Vision indisponible : API macOS, extra `desktop` requis",
+)
 
 
 @pytest.fixture(autouse=True)

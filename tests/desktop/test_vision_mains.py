@@ -12,8 +12,26 @@ import sys
 
 import pytest
 
+
+def _vision_indisponible() -> bool:
+    """macOS ne suffit pas : encore faut-il que `pyobjc-Vision` soit installé.
+
+    Constaté le 26 août 2026, première exécution de CI depuis deux jours :
+    quatre tests d'ici ont échoué sur un runner macOS. La garde ne regardait
+    que la plateforme, or `pyobjc-framework-Vision` vit dans l'extra
+    `desktop`, que la CI n'installe pas. Un macOS sans Vision passait donc
+    la garde et cassait au premier appel.
+    """
+    if sys.platform != "darwin":
+        return True
+    from diapason.desktop.vision_mains import disponible
+
+    return not disponible()
+
+
 pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin", reason="Vision est une API macOS"
+    _vision_indisponible(),
+    reason="Vision indisponible : API macOS, extra `desktop` requis",
 )
 
 from diapason.desktop import vision_mains as vm  # noqa: E402
