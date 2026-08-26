@@ -674,3 +674,218 @@ class TestUneCommandeScelleeTraverse:
         )
         assert issue["status"] == "SUCCESS", issue
         assert vu["tool"] == "app.navigate" and vu["tool"] != SENTINELLE
+
+
+class _Relais:
+    """Un relais TCP qui garde ce qui passe — l'équivalent de tcpdump.
+
+    Étape 8 du plan du 26 août 2026. Espionner l'objet remis au transport ne
+    prouve rien : il reste à prouver que les OCTETS traversant un socket ne
+    portent pas le contenu. `tcpdump` demanderait les droits administrateur ;
+    un relais fait la même démonstration sans eux.
+    """
+
+    def __init__(self, vers: str) -> None:
+        import socket
+        from urllib.parse import urlparse
+
+        cible = urlparse(vers)
+        self.cible = (cible.hostname or "127.0.0.1", cible.port or 80)
+        self.vu = bytearray()
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind(("127.0.0.1", 0))
+        self._socket.listen(8)
+        self.base = f"http://127.0.0.1:{self._socket.getsockname()[1]}"
+        self._vivant = True
+
+    def __enter__(self):
+        import threading
+
+        self._fil = threading.Thread(target=self._servir, daemon=True)
+        self._fil.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._vivant = False
+        try:
+            self._socket.close()
+        except OSError:
+            pass
+
+    def _servir(self) -> None:
+        import socket
+        import threading
+
+        while self._vivant:
+            try:
+                client, _ = self._socket.accept()
+            except OSError:
+                return
+            try:
+                amont = socket.create_connection(self.cible, timeout=5)
+            except OSError:
+                client.close()
+                continue
+            threading.Thread(
+                target=self._pomper, args=(client, amont, True), daemon=True
+            ).start()
+            threading.Thread(
+                target=self._pomper, args=(amont, client, False), daemon=True
+            ).start()
+
+    def _pomper(self, depuis, vers, garder: bool) -> None:
+        try:
+            while True:
+                bloc = depuis.recv(65536)
+                if not bloc:
+                    break
+                if garder:
+                    self.vu.extend(bloc)
+                vers.sendall(bloc)
+        except OSError:
+            pass
+        finally:
+            for s in (depuis, vers):
+                try:
+                    s.close()
+                except OSError:
+                    pass
+
+
+class TestCeQuiTraverseVraimentLeCable:
+    """La preuve par les octets, pas par l'objet remis au transport."""
+
+    TITRE = "RendezVousChezLeNotaireAQuatorzeHeures"
+
+    def _envoyer(self, hote, tmp_path, monkeypatch, nom, *, mode):
+        from diapason.mesh import scellement
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        with _Relais(hote.base) as relais:
+            invitation = _http(
+                f"{hote.base}/v1/mesh/pairings", {"deviceName": nom}, cle=hote.cle
+            )
+            monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / nom))
+            monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: mode)
+
+            from diapason.mesh.join import join_fleet
+
+            jumelage = join_fleet(
+                relais.base, invitation["pairingToken"], my_address=""
+            )
+            registre = DeviceRegistry()
+            registre.heartbeat(
+                jumelage.host_device_id, transport="lan", address=relais.base
+            )
+
+            # On oublie le trafic de JUMELAGE avant de mesurer la commande.
+            #
+            # Ce n'est pas une commodité. Le premier jet de ce test échouait
+            # sur « notifications.show », trouvé dans la requête de
+            # jumelage — où l'appareil déclare ses CAPACITÉS. Le nom d'un
+            # verbe du catalogue y figure donc légitimement : ce catalogue
+            # est le même sur toute installation de Diapason et ne dit rien
+            # de ce que l'utilisateur a fait. Ce qu'on mesure ici est la
+            # commande, pas l'annuaire.
+            relais.vu.clear()
+
+            issue = dispatch_command(
+                target_device_id=jumelage.host_device_id,
+                tool="notifications.show",
+                arguments={"title": self.TITRE, "body": "chez le notaire"},
+                registry=registre,
+                queue=CommandQueue(),
+            )
+            return issue, bytes(relais.vu)
+
+    def test_temoin_sans_chiffrement_le_titre_est_lisible(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """LE TÉMOIN, sans lequel le test suivant ne prouverait rien : une
+        capture qui ne voit rien passer ne verra rien manquer non plus."""
+        issue, octets = self._envoyer(
+            hote, tmp_path, monkeypatch, "temoin", mode="jamais"
+        )
+        assert issue["status"] == "SUCCESS", issue
+        assert self.TITRE.encode() in octets, (
+            "la capture ne voit pas le trafic : le test suivant serait vide"
+        )
+
+    def test_avec_chiffrement_le_titre_ne_traverse_plus(
+        self, hote, tmp_path, monkeypatch
+    ):
+        issue, octets = self._envoyer(
+            hote, tmp_path, monkeypatch, "scelle", mode="opportuniste"
+        )
+        assert issue["status"] == "SUCCESS", issue
+        assert self.TITRE.encode() not in octets, (
+            "le titre de la notification a traversé le câble en clair"
+        )
+        assert b"notifications.show" not in octets, "le verbe a traversé en clair"
+        assert b"mesh.sealed" in octets, "rien n'a été scellé — test vide"
+
+    def test_le_mode_exige_refuse_un_pair_sans_cle(self, hote, tmp_path, monkeypatch):
+        """Sous `exige`, un pair qui ne publie pas de clé devient injoignable
+        — et le refus doit le DIRE, parce que c'est ce qui arrivera au
+        téléphone de l'utilisateur s'il choisit ce mode."""
+        from diapason.mesh import scellement
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": "exigeant"}, cle=hote.cle
+        )
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "exigeant"))
+        from diapason.mesh.join import join_fleet
+
+        jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
+        registre = DeviceRegistry()
+        # Le pair a publié sa clé au jumelage ; on l'oublie pour simuler un
+        # appareil qui n'en publie pas — un téléphone, ou une version
+        # antérieure.
+        registre.forget_seal_key(jumelage.host_device_id)
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "exige")
+
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="app.navigate",
+            arguments={"route": "success://projects/x"},
+            registry=registre,
+            queue=CommandQueue(),
+        )
+        assert issue["status"] == "DENIED", issue
+        message = str(issue.get("userSafeMessage") or "")
+        assert "rien ne lui a été envoyé" in message, message
+        assert "clé de scellement" in message
+
+    def test_le_mode_exige_laisse_passer_un_pair_a_jour(
+        self, hote, tmp_path, monkeypatch
+    ):
+        """Et il ne bloque pas ceux qui publient : sinon ce serait un
+        interrupteur général déguisé."""
+        from diapason.mesh import scellement
+        from diapason.mesh.dispatch import dispatch_command
+        from diapason.mesh.queue import CommandQueue
+        from diapason.mesh.registry import DeviceRegistry
+
+        invitation = _http(
+            f"{hote.base}/v1/mesh/pairings", {"deviceName": "exigeant2"}, cle=hote.cle
+        )
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "exigeant2"))
+        from diapason.mesh.join import join_fleet
+
+        jumelage = join_fleet(hote.base, invitation["pairingToken"], my_address="")
+        monkeypatch.setattr(scellement, "mode_de_chiffrement", lambda: "exige")
+
+        issue = dispatch_command(
+            target_device_id=jumelage.host_device_id,
+            tool="app.navigate",
+            arguments={"route": "success://projects/x"},
+            registry=DeviceRegistry(),
+            queue=CommandQueue(),
+        )
+        assert issue["status"] == "SUCCESS", issue
