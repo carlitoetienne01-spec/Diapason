@@ -1,6 +1,6 @@
-# CLAUDE.md — ce qu'une session doit savoir avant d'écrire une ligne
+# AGENTS.md — ce qu'une session doit savoir avant d'écrire une ligne
 
-Ce fichier est lu automatiquement au début de chaque session Claude Code dans
+Ce fichier est lu automatiquement au début de chaque session Codex dans
 ce dépôt. Plusieurs sessions travaillent souvent **en parallèle** sur cette
 machine : ce qui suit existe pour qu'elles ne se contredisent pas.
 
@@ -156,7 +156,7 @@ n'ont pas la clé ». Corps : des sections en CAPITALES, chacune racontant une
 cause et sa preuve chiffrée. Finir par :
 
 ```
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Co-Authored-By: Codex Opus 5 <noreply@anthropic.com>
 ```
 
 ---
