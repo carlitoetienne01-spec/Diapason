@@ -98,3 +98,34 @@ def test_quickstart_refuses_a_port_already_served() -> None:
     assert "port_listeners" in quickstart, "le port doit être vérifié"
     assert "lsof" in quickstart, "la question doit être posée au noyau"
     assert "already served by" in quickstart, "un port occupé doit faire échouer"
+
+
+def test_l_installateur_windows_cherche_un_python_qui_convient() -> None:
+    """Il prenait le premier `python3` du PATH et abandonnait s'il ne
+    convenait pas.
+
+    Sur Windows 11, ce premier-là est presque toujours l'alias du Microsoft
+    Store — `%LOCALAPPDATA%\\Microsoft\\WindowsApps\\python3.exe` — qui masque
+    le Python que winget vient d'installer. Le script trouvait donc un 3.14,
+    le refusait à juste titre, et s'arrêtait sans jamais regarder le 3.13 posé
+    deux minutes plus tôt.
+
+    Constaté sur la machine de Carlito le 26 août 2026, à la première
+    exécution réelle : c'est exactement le genre de défaut qu'aucune relecture
+    ne trouve et que la première tentative révèle.
+    """
+    script = WINDOWS_INSTALL_PS1.read_text()
+    assert 'py "-$v"' in script or "py -3.13" in script, (
+        "l'installateur n'interroge pas le lanceur `py`, seul moyen fiable "
+        "de trouver une version précise sur Windows"
+    )
+    assert "3.12" in script and "3.11" in script, (
+        "il doit essayer plusieurs versions, pas seulement la plus récente"
+    )
+    assert "py -0p" in script, (
+        "le message d'échec doit dire comment VOIR ce qui est installé"
+    )
+    assert "App execution aliases" in script, (
+        "le message d'échec doit nommer la cause la plus probable — l'alias "
+        "du Microsoft Store — et non se contenter de « pas trouvé »"
+    )

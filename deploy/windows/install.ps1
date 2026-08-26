@@ -152,11 +152,50 @@ Write-Ok "Windows build $build"
 # ---------------------------------------------------------------------------
 
 function Get-PythonCommand {
-    # Prefer `python3` (matches our cross-platform helper convention),
-    # fall back to `python` (the Windows store / python.org default).
+    # CHERCHER UN PYTHON QUI CONVIENT, pas seulement le premier venu.
+    #
+    # La version d'avant rendait le premier `python3` du PATH et s'arretait
+    # la. Sur Windows 11, ce premier-la est presque toujours
+    # %LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe — l'alias du
+    # Microsoft Store — qui masque le Python que winget vient d'installer.
+    # Le script trouvait donc un 3.14, le refusait a juste titre, et
+    # abandonnait sans jamais regarder le 3.13 pose deux minutes plus tot.
+    # Constate sur la machine de Carlito le 26 aout 2026, a la premiere
+    # execution reelle.
+    #
+    # Le lanceur `py` existe precisement pour cela : il sait quelles
+    # versions sont installees et sait en lancer une en particulier. On lui
+    # demande d'abord, de la plus recente prise en charge a la plus
+    # ancienne, puis on retombe sur le PATH.
+    $trouves = @()
+
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        foreach ($v in @('3.13', '3.12', '3.11', '3.10')) {
+            $chemin = & py "-$v" -c "import sys; print(sys.executable)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $chemin) {
+                return $chemin.Trim()
+            }
+        }
+    }
+
     foreach ($name in @('python3', 'python')) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd) { return $cmd.Source }
+        if (-not $cmd) { continue }
+        $brut = & $cmd.Source --version 2>&1
+        $m = [regex]::Match($brut, '(\d+)\.(\d+)\.(\d+)')
+        if ($m.Success) {
+            $trouves += "$($cmd.Source) -> $brut"
+            $mineur = [int]$m.Groups[2].Value
+            if ([int]$m.Groups[1].Value -eq 3 -and $mineur -ge 10 -and $mineur -le 13) {
+                return $cmd.Source
+            }
+        }
+    }
+
+    # Rien qui convienne : on DIT ce qu'on a vu, plutot que « pas trouve ».
+    if ($trouves.Count -gt 0) {
+        Write-Warn2 "Pythons vus, aucun entre 3.10 et 3.13 :"
+        foreach ($t in $trouves) { Write-Warn2 "  $t" }
     }
     return $null
 }
@@ -168,14 +207,22 @@ if (-not $pythonExe) {
     $pythonExe = Install-WithWinget -WingetId 'Python.Python.3.13' -CommandName 'python'
     if (-not $pythonExe) {
         Write-Fail @"
-Python 3.10 - 3.13 not found and auto-install via winget failed.
+No Python between 3.10 and 3.13 could be found, and auto-install failed.
 
-Install manually from https://python.org (check 'Add python.exe to PATH'
-during install) or via winget:
+If winget already installed 3.13, the Microsoft Store alias is probably
+shadowing it on PATH. Check what is actually installed:
+
+    py -0p
+
+If 3.13 is listed, disable the Store alias and re-run:
+    Settings > Apps > Advanced app settings > App execution aliases
+    turn OFF "python.exe" and "python3.exe"
+
+Otherwise install it:
 
     winget install Python.Python.3.13
 
-Then re-run this installer.
+Then close and reopen PowerShell, and re-run this installer.
 "@
     }
 }
