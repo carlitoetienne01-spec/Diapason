@@ -66,6 +66,15 @@ class CapabilityVerdict:
     policy_consulted: bool = False
     """False when no policy file exists, so the caller can say so."""
 
+    silently_implied: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    """``(tool, capability)`` a silent manifest uses without declaring anything.
+
+    Not a refusal — an empty field is still "no requirement". But without
+    this, declaring nothing was the way to be checked by nothing, and the
+    guard rewarded exactly the silence it exists to end. Naming what a silent
+    manifest will actually be able to do is the least it can do.
+    """
+
     @property
     def ok(self) -> bool:
         return not (self.unknown_verbs or self.undeclared or self.denied)
@@ -117,12 +126,25 @@ def check_manifest(
 ) -> CapabilityVerdict:
     """Decide whether *manifest* may be scheduled.
 
-    An empty ``required_capabilities`` means "no requirement", not "refuse".
-    Two reasons, both checkable: the eleven bundled operators and recipes
-    declare nothing, so fail-closed would refuse all of them on day one; and
-    the real authorisation is not lost — ``ToolExecutor`` still filters every
-    single tool call and fails closed without a policy. This field is a
-    declaration to be verified, not the last line of defence.
+    An empty ``required_capabilities`` means "no requirement", not "refuse" —
+    the twelve bundled operators and recipes declare nothing, so fail-closed
+    would refuse all of them on day one. Making them declare is a decision
+    that belongs to whoever maintains them, not to this function.
+
+    The earlier version of this docstring justified that leniency by claiming
+    "the real authorisation is not lost — ``ToolExecutor`` still filters every
+    single tool call and fails closed without a policy". **That is false, and
+    it was measured on 26 August 2026.** Without a policy file,
+    ``ToolExecutor._grant_selected_tools_when_unmanaged`` grants each selected
+    tool exactly the capabilities it declares, scoped to its own name — so a
+    tool is authorised by having been selected. And a tool that declares *no*
+    capability is filtered by nothing at all, anywhere. Invoking a protection
+    that does not exist to excuse the absence of another is precisely the
+    defect this guard was written to close.
+
+    So the leniency stands, but it is now named for what it is: a silent
+    manifest is not verified, and ``silently_implied`` says so out loud rather
+    than letting the caller believe a check happened.
 
     Fail-closed *does* apply to the vocabulary. ``mesh/capabilities.py`` drops
     an unknown verb silently, and that tolerance is right there — a client can
@@ -140,13 +162,19 @@ def check_manifest(
     # Only meaningful when the manifest declares something: an empty field is
     # "no requirement", and comparing it to the tools would refuse everything.
     undeclared: tuple[tuple[str, str], ...] = ()
+    silently_implied: tuple[tuple[str, str], ...] = ()
+    manquantes = tuple(
+        (outil, cap)
+        for outil, caps in sorted(par_outil.items())
+        for cap in caps
+        if cap not in declared
+    )
     if declared:
-        manquantes = []
-        for outil, caps in sorted(par_outil.items()):
-            for cap in caps:
-                if cap not in declared:
-                    manquantes.append((outil, cap))
-        undeclared = tuple(manquantes)
+        undeclared = manquantes
+    else:
+        # Le même calcul, mais il ne refuse pas : il NOMME. Déclarer un champ
+        # vide restait le moyen de n'être contrôlé par rien.
+        silently_implied = manquantes
 
     denied: tuple[str, ...] = ()
     consulted = policy is not None and bool(
@@ -161,6 +189,7 @@ def check_manifest(
         denied=denied,
         implied=implied,
         policy_consulted=consulted,
+        silently_implied=silently_implied,
     )
 
 
@@ -204,6 +233,35 @@ def explain(operator_id: str, verdict: CapabilityVerdict) -> str:
         )
 
     lignes.append("  Nothing has been scheduled; it will not run.")
+    return "\n".join(lignes)
+
+
+def avertissement(operator_id: str, verdict: CapabilityVerdict) -> Optional[str]:
+    """Ce qu'un manifeste silencieux pourra faire — ou None s'il n'y a rien.
+
+    Un verdict qui passe n'est pas un verdict qui a vérifié. Un manifeste qui
+    ne déclare rien traverse `check_manifest` sans qu'aucune cohérence soit
+    contrôlée, et déclarer un champ vide était donc le moyen de n'être
+    contrôlé par rien.
+
+    Refuser serait l'autre réponse, et elle reste ouverte : elle suppose de
+    renseigner les douze manifestes livrés, ce qui appartient à qui les
+    maintient. En attendant, nommer vaut mieux que taire — et surtout mieux
+    que d'écrire dans un champ que personne ne lit, ce que ce garde a
+    précisément été écrit pour corriger.
+    """
+    if not verdict.silently_implied:
+        return None
+    par_outil: dict[str, list[str]] = {}
+    for outil, capacite in verdict.silently_implied:
+        par_outil.setdefault(outil, []).append(capacite)
+    lignes = [
+        f"Operator '{operator_id}' declares no required_capabilities, so "
+        "nothing was verified against its tools. It will be able to:",
+    ]
+    for outil, capacites in sorted(par_outil.items()):
+        lignes.append(f"  {outil} → {', '.join(sorted(capacites))}")
+    lignes.append("  Declare them in required_capabilities to have this checked.")
     return "\n".join(lignes)
 
 

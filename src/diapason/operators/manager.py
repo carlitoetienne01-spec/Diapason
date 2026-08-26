@@ -186,12 +186,25 @@ class OperatorManager:
         """Raise ``OperatorRefused`` unless the manifest's claims hold up."""
         from diapason.operators.capability_guard import (
             OperatorRefused,
+            avertissement,
             check_manifest,
         )
 
         verdict = check_manifest(manifest, policy=self._capability_policy())
         if not verdict.ok:
             raise OperatorRefused(operator_id, verdict)
+        # Un verdict qui passe n'est pas un verdict qui a vérifié : un
+        # manifeste muet traverse sans contrôle. Le dire au journal ET à
+        # l'activation, sinon ce champ rejoindrait `required_capabilities`
+        # dans la catégorie des choses écrites que personne ne lit — le
+        # défaut même que ce garde existe pour clore.
+        note = avertissement(operator_id, verdict)
+        if note:
+            logger.warning("%s", note)
+            self._derniere_note = note
+
+    _derniere_note: Optional[str] = None
+    """Ce que la dernière activation a constaté sans pouvoir le refuser."""
 
     def _capability_policy(self) -> Optional[Any]:
         """The administrator's policy, if this installation has one.

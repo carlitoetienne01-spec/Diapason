@@ -83,9 +83,27 @@ class GesteDeposerTool(BaseTool):
                 "required": [],
             },
             category="mesh",
-            # Même risque que mesh_send : cela change ce qui s'affiche sur un
-            # écran près duquel l'utilisateur n'est peut-être pas. La cloche
-            # s'applique, au chat comme à la voix.
+            # PAS derrière la cloche de confirmation, et c'est un choix.
+            #
+            # Le commentaire précédent affirmait « Même risque que mesh_send…
+            # La cloche s'applique, au chat comme à la voix ». C'était faux
+            # deux fois : `metadata["risk"]` n'est lu par aucun code
+            # d'approbation, et mesh_send lui-même déclarait
+            # `requires_confirmation=False`. Une protection était invoquée
+            # pour justifier son absence ailleurs — le genre d'affirmation
+            # que ce projet corrige partout (constaté le 26 août 2026).
+            #
+            # Ce que cet outil peut vraiment faire est plus étroit que
+            # mesh_send, et c'est CE qui le dispense de la cloche : il
+            # n'envoie que ce que la MAIN tient, jamais ce que le modèle
+            # nomme ; et sa destination sort soit de la liste fermée que le
+            # serveur a mesurée en posant sa question, soit du registre des
+            # appareils déjà jumelés — un identifiant inconnu est refusé,
+            # plus jamais fabriqué. Le modèle ne choisit donc ni l'objet ni
+            # un destinataire qui n'existerait pas.
+            #
+            # mesh_send, lui, choisit les deux : il vient de rejoindre
+            # _MUTATING_NETWORK_TOOLS, où la cloche sonne pour de bon.
             metadata={"risk": "outward_action", "reversible": True},
         )
 
@@ -173,10 +191,27 @@ class GesteDeposerTool(BaseTool):
         except _Unresolved as exc:
             return _rendre(False, str(exc), {"status": "AMBIGUOUS"})
 
-        appareil = self.registry.find(cible_id) or {
-            "deviceId": cible_id,
-            "name": cible_id,
-        }
+        # La MÊME source que celle où `_target` vient de résoudre la phrase.
+        # Interroger `find()` en second lieu, c'était deux sources pour une
+        # question : un appareil résolu par la première pouvait manquer à la
+        # seconde, et le code retombait alors sur une fabrication.
+        appareil = next(
+            (d for d in self.registry.list_devices() if d.get("deviceId") == cible_id),
+            None,
+        )
+        if appareil is None:
+            # Ne JAMAIS fabriquer un appareil à partir d'un identifiant qu'on
+            # ne connaît pas. `_target` rend un identifiant explicite sans le
+            # valider : un modèle qui invente « dev_telephone » obtenait ici
+            # un appareil de toutes pièces, portant l'invention pour nom, et
+            # le message d'échec parlait ensuite d'un appareil inexistant
+            # comme s'il avait refusé (constaté le 26 août 2026).
+            return _rendre(
+                False,
+                f"Je ne connais pas d'appareil « {cible_id} ». "
+                "Dis-moi lequel, ou jumelle-le d'abord.",
+                {"status": "UNKNOWN_DEVICE"},
+            )
         resultat = gr.envoyer_ce_qui_est_tenu(objet, appareil)
         return _rendre(
             bool(resultat.get("done")),

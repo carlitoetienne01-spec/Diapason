@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
@@ -1100,3 +1101,84 @@ class TestCapabilityGuard:
         with pytest.raises(OperatorRefused):
             manager.run_once("researcher")
         system.ask.assert_not_called()
+
+
+class TestLeGardeNeRecompensePlusLeSilence:
+    """Un verdict qui passe n'est pas un verdict qui a vérifié.
+
+    Le contrôle de cohérence outil↔déclaration ne s'exécutait que `if
+    declared` : un manifeste tiers qui OMET `required_capabilities`
+    traversait avec ok=True quels que soient ses outils. Déclarer un champ
+    vide était donc le moyen de n'être contrôlé par rien — et le garde
+    récompensait exactement le silence qu'il existe pour finir.
+
+    La docstring justifiait cette clémence en affirmant que « ToolExecutor
+    filtre encore chaque appel d'outil et échoue en fermé sans politique ».
+    Mesuré le 26 août 2026 : c'est faux. Sans fichier de politique,
+    `_grant_selected_tools_when_unmanaged` accorde à chaque outil
+    sélectionné exactement les capacités qu'il déclare — et un outil qui n'en
+    déclare aucune n'est filtré nulle part.
+    """
+
+    def _manifeste(self, capacites, outils):
+        from diapason.operators.loader import OperatorManifest
+
+        champs = (
+            {f.name for f in dataclasses.fields(OperatorManifest)}
+            if (dataclasses.is_dataclass(OperatorManifest))
+            else set()
+        )
+        base = dict(
+            id="essai",
+            name="Essai",
+            prompt="p",
+            tools=outils,
+            required_capabilities=capacites,
+        )
+        return OperatorManifest(
+            **{k: v for k, v in base.items() if not champs or k in champs}
+        )
+
+    def test_un_manifeste_muet_est_nomme_au_lieu_d_etre_ignore(self):
+        from diapason.operators.capability_guard import avertissement, check_manifest
+
+        verdict = check_manifest(self._manifeste([], ["memory_store", "web_search"]))
+        assert verdict.ok, "un champ vide reste « aucune exigence », pas un refus"
+        assert verdict.silently_implied, "le silence n'a pas été nommé"
+        note = avertissement("essai", verdict)
+        assert note is not None
+        assert "declares no required_capabilities" in note
+        assert "memory_store" in note and "web_search" in note
+
+    def test_un_manifeste_qui_declare_n_est_pas_averti(self):
+        from diapason.operators.capability_guard import avertissement, check_manifest
+
+        verdict = check_manifest(
+            self._manifeste(
+                ["memory:write", "network:fetch"], ["memory_store", "web_search"]
+            )
+        )
+        assert verdict.silently_implied == ()
+        assert avertissement("essai", verdict) is None
+
+    def test_le_filtrage_aval_invoque_n_existe_pas_pour_un_outil_sans_capacite(self):
+        """La contre-preuve, mesurée plutôt qu'affirmée.
+
+        Si ce test venait à échouer, c'est que le filtrage aval existe enfin
+        — et la clémence du garde retrouverait alors sa justification.
+        """
+        from diapason.operators.capability_guard import capabilities_of_tool
+        from diapason.security.capabilities import CapabilityPolicy
+
+        # Sur une installation ordinaire, il n'y a pas de fichier de
+        # politique — c'est le cas normal, pas une négligence.
+        assert CapabilityPolicy().has_explicit_policy is False
+
+        # Et `mesh_send`, qui envoie hors de cette machine, ne déclare
+        # AUCUNE capacité. Il n'y a donc rien à filtrer : ni le garde des
+        # opérateurs, ni la politique RBAC n'ont de prise sur lui. C'est la
+        # contre-preuve de « ToolExecutor filtre encore chaque appel ».
+        assert capabilities_of_tool("mesh_send") == (), (
+            "mesh_send déclare enfin une capacité : la clémence du garde "
+            "retrouve sa justification, et cette docstring peut être revue"
+        )

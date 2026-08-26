@@ -281,3 +281,61 @@ class TestLesDeuxTrousses:
 
         modules = {m for m, _ in _TOOL_MODULES}
         assert "diapason.tools.gestes_spatiaux" in modules
+
+
+class TestUnAppareilInventeEstRefuse:
+    """`_target` rend un identifiant explicite SANS le valider.
+
+    Le code retombait alors sur `{"deviceId": id, "name": id}` : un modèle
+    qui inventait « dev_telephone » obtenait un appareil fabriqué de toutes
+    pièces, portant l'invention pour nom, et le message d'échec parlait
+    ensuite de cet appareil inexistant comme s'il avait refusé quelque
+    chose. Constaté le 26 août 2026.
+    """
+
+    def test_un_identifiant_inconnu_ne_fabrique_plus_d_appareil(self):
+        gr.armer()
+        _attraper_un_projet()
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[_appareil("iPad")],
+            ),
+            patch("diapason.mesh.dispatch.dispatch_command") as envoi,
+        ):
+            resultat = _outil().execute(device_id="dev_invente_par_le_modele")
+        assert resultat.success is False
+        assert resultat.metadata["status"] == "UNKNOWN_DEVICE"
+        assert "Je ne connais pas d'appareil" in resultat.content
+        envoi.assert_not_called(), "quelque chose est parti vers un appareil inventé"
+        assert pp.tenu() is not None, "un refus ne consomme pas ce qu'il refuse"
+
+
+class TestLaClocheSonneVraimentPourMeshSend:
+    """`mesh_send` portait `metadata={"risk": "outward_action"}` — une
+    étiquette qu'aucun code d'approbation ne lit — et déclarait
+    `requires_confirmation=False`.
+
+    La cloche ne sonnait donc nulle part, et `geste_deposer` invoquait cette
+    protection inexistante pour justifier l'absence de la sienne.
+    """
+
+    def test_mesh_send_demande_maintenant_confirmation(self):
+        from diapason.tools._stubs import ToolExecutor
+        from diapason.tools.mesh_tools import MeshSendTool
+
+        assert ToolExecutor._requires_confirmation(MeshSendTool(), {}, []) is True
+
+    def test_l_etiquette_seule_ne_suffit_toujours_pas(self):
+        """Le test ne doit pas se contenter de l'étiquette : c'est
+        précisément elle qui donnait l'illusion d'une protection."""
+        from diapason.tools.mesh_tools import MeshSendTool
+
+        spec = MeshSendTool().spec
+        assert spec.metadata.get("risk") == "outward_action"
+        from diapason.tools._stubs import _MUTATING_NETWORK_TOOLS
+
+        assert spec.name in _MUTATING_NETWORK_TOOLS, (
+            "la protection doit venir d'une liste que le code LIT, "
+            "pas d'une métadonnée décorative"
+        )

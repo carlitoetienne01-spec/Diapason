@@ -30,8 +30,15 @@ _CONFIRMATION_CAPABILITIES = frozenset(
         "system:admin",
     }
 )
+# Envoyer quelque chose hors de cette machine, sur un choix du modèle.
+# `mesh_send` y manquait : il déclarait `requires_confirmation=False` tout en
+# portant `metadata={"risk": "outward_action"}` — une étiquette qu'AUCUN code
+# d'approbation ne lit. La cloche ne sonnait donc pour lui nulle part, et un
+# second outil invoquait cette protection inexistante pour justifier la
+# sienne (constaté le 26 août 2026). Il n'est pas exposé à la voix, donc la
+# confirmation y trouve toujours un interlocuteur.
 _MUTATING_NETWORK_TOOLS = frozenset(
-    {"browser_click", "browser_type", "mail_send", "messages_send"}
+    {"browser_click", "browser_type", "mail_send", "messages_send", "mesh_send"}
 )
 
 # ---------------------------------------------------------------------------

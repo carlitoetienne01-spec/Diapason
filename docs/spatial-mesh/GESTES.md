@@ -22,7 +22,7 @@ la caméra voit.
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
 | **Trancher entre deux appareils** | ✅ | `/v1/gestures/drop/target` : la question du §81 est enfin répondable, et l'objet n'est plus perdu en la posant. 14 tests. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
-| **État d'énergie** (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER`. 12 im/s une main suivie, **3 au repos**, 2 sur batterie faible. 13 tests. |
+| **État d'énergie** (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER`. 12 im/s dès qu'une main est suivie — batterie faible comprise —, **3 au repos**, 2 sur batterie faible sans main. 13 tests. |
 
 ### Ce que le moteur refuse de faire, et c'est le point
 
@@ -168,9 +168,18 @@ appels à Vision par seconde, pendant dix minutes, pour filmer une chaise.
 | État | Quand | Cadence |
 |---|---|---|
 | `OFF` | non armé | 0 |
-| `READY` | armé, aucune main depuis 3 s | **3 im/s** |
 | `ACTIVE` | une main est suivie | 12 im/s |
-| `LOW_POWER` | sur batterie, ≤ 20 % | 2 im/s |
+| `LOW_POWER` | **aucune main**, sur batterie, ≤ 20 % | 2 im/s |
+| `READY` | armé, aucune main depuis 3 s | **3 im/s** |
+
+L'ordre du tableau est celui des règles : **une main suivie l'emporte sur la
+batterie faible**. Le contraire a été livré le 25 août 2026 et corrigé le 26 —
+la batterie était consultée en premier, donc à 18 % un geste en cours tombait
+à deux images par seconde. Or un geste se compte en IMAGES (« ≤ 10 images pour
+un attraper »), pas en secondes : à deux images par seconde, un attraper
+demande cinq secondes de poing fermé et échoue. Un geste qui échoue se
+recommence, à pleine cadence, autant de fois qu'il échoue — l'économie coûtait
+de l'énergie. On économise ENTRE les gestes, jamais pendant.
 
 **C'est le serveur qui décide, l'interface obéit.** Elle ne peut pas décider :
 elle ne sait pas si une main a été vue — c'est Vision qui le dit, côté

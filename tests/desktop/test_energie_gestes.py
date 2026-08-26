@@ -40,12 +40,48 @@ class TestCeQueLEtatDit:
         apres = etat_energie(armee=True, depuis_derniere_main_s=limite + 0.1)
         assert apres is Energie.PRET
 
-    def test_la_batterie_basse_l_emporte_sur_tout(self):
-        """Y compris sur une main vue à l'instant : c'est le point du §83."""
+    def test_la_batterie_basse_economise_ENTRE_les_gestes(self):
+        """Entre les gestes, pas pendant.
+
+        Ce test affirmait l'inverse — « la batterie basse l'emporte sur
+        tout, y compris sur une main vue à l'instant » — alors que l'en-tête
+        du module et GESTES.md déclarent : « Ce que ce module refuse de
+        faire : baisser la cadence pendant qu'une main est suivie. » Deux
+        moitiés du même chantier disaient le contraire l'une de l'autre, et
+        c'est la moitié exécutable qui gagnait (constaté le 26 août 2026).
+
+        C'est l'en-tête qui a raison, et pour une raison mesurable : un
+        geste se compte en IMAGES — « ≤ 10 images pour un attraper », figé
+        par un test — donc à deux images par seconde un attraper demande
+        cinq secondes de poing fermé, et échoue. Un geste qui échoue se
+        recommence, à pleine cadence, autant de fois qu'il échoue : la
+        prétendue économie coûtait de l'énergie.
+        """
+        # Une main suivie : la cadence pleine, quelle que soit la batterie.
         assert (
             etat_energie(
                 armee=True,
                 depuis_derniere_main_s=0.0,
+                sur_batterie=True,
+                batterie_pct=10,
+            )
+            is Energie.ACTIF
+        )
+        # Plus de main depuis longtemps : là, on économise.
+        assert (
+            etat_energie(
+                armee=True,
+                depuis_derniere_main_s=SANS_MAIN_AVANT_VEILLE_S + 1.0,
+                sur_batterie=True,
+                batterie_pct=10,
+            )
+            is Energie.ECONOMIE
+        )
+        # Et avant même qu'une main ait jamais été vue, également.
+        assert (
+            etat_energie(
+                armee=True,
+                depuis_derniere_main_s=None,
                 sur_batterie=True,
                 batterie_pct=10,
             )

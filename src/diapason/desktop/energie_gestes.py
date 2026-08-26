@@ -67,12 +67,29 @@ def etat_energie(
     """
     if not armee:
         return Energie.ETEINT
+
+    # UNE MAIN SUIVIE PRIME SUR TOUT, batterie faible comprise.
+    #
+    # L'en-tête de ce module déclare : « Ce que ce module refuse de faire :
+    # baisser la cadence pendant qu'une main est suivie. » La batterie était
+    # pourtant consultée EN PREMIER, donc à 18 % un geste en cours tombait de
+    # douze à deux images par seconde — et le geste casse, puisqu'il se
+    # mesure en IMAGES (« ≤ 10 images pour un attraper », figé par un test) et
+    # non en secondes. Le module faisait le contraire de ce qu'il annonçait
+    # (constaté le 26 août 2026).
+    #
+    # Ce que cela coûte est borné : un geste dure quelques secondes, pas la
+    # session. Ce que l'inverse coûtait ne l'était pas — un geste qui échoue
+    # se recommence, à pleine cadence, autant de fois qu'il échoue.
+    suivie = (
+        depuis_derniere_main_s is not None
+        and depuis_derniere_main_s <= SANS_MAIN_AVANT_VEILLE_S
+    )
+    if suivie:
+        return Energie.ACTIF
+
     if sur_batterie and batterie_pct is not None and batterie_pct <= BATTERIE_BASSE_PCT:
         return Energie.ECONOMIE
-    if depuis_derniere_main_s is None:
-        return Energie.PRET
-    if depuis_derniere_main_s <= SANS_MAIN_AVANT_VEILLE_S:
-        return Energie.ACTIF
     return Energie.PRET
 
 
