@@ -74,6 +74,8 @@ Les commandes ci-dessous sont celles de `.github/workflows/ci.yml` et de
 .venv/bin/python -m ruff check src/ tests/
 .venv/bin/python -m ruff format --check src/ tests/
 .venv/bin/python -m pytest tests/ -n auto -q -m "not live and not cloud and not hub"
+.venv/bin/python scripts/check_project_identity.py
+uv audit --locked --ignore-until-fixed GHSA-w8v5-vhqr-4h9v --ignore GHSA-h35f-9h28-mq5c
 cd frontend && npx tsc --noEmit && npx vitest run && npm run build
 ```
 
@@ -84,6 +86,14 @@ Pour reproduire la CI au chiffre près, ajoute-le. Cette phrase existe parce
 que ce bloc s'annonçait « exactement » identique à la CI alors qu'il en
 différait sur deux points — dans le commit même qui en faisait le seul filet
 des sessions parallèles.
+
+Ce qui reste hors du bloc, et pourquoi : `uv sync` (il ÉLAGUE le venv, voir
+plus bas), `maturin develop` (l'extension Rust est déjà construite ici), et le
+balayage de secrets `gitleaks`. Le contrôle d'identité et l'audit du verrou
+Python, eux, ont été AJOUTÉS le 26 août 2026 après que la CI eut refusé un
+commit sur `check_project_identity.py` — que ce bloc ne mentionnait pas. Une
+vérification locale qui ne couvre pas la CI donne une confiance qu'elle ne
+mérite pas.
 
 **N'utilise pas `uv run` pour lancer un simple lint.** `uv sync` ÉLAGUE tout
 extra non listé dans `make setup` — constaté deux fois : `faster-whisper` et

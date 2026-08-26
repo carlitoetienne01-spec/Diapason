@@ -434,10 +434,14 @@ Ou, dans un plist tenu à la main, chaque argument dans son propre `<string>` :
 
 Les variables du projet se lisent sous le préfixe `DIAPASON_`
 (`src/diapason/core/env.py`) — par exemple `DIAPASON_HOME`,
-`DIAPASON_CONFIG`, `DIAPASON_API_KEY`. Les anciens noms `OPENJARVIS_*` et
-`JARVIS_*` continuent d'être lus, en second. `OLLAMA_HOST`, en revanche, est
-lu **sans** préfixe, sous son propre nom
-(`src/diapason/server/cloud_router.py`, `src/diapason/cli/model.py`).
+`DIAPASON_CONFIG`, `DIAPASON_API_KEY`. Les préfixes d'avant le changement de
+nom continuent d'être lus, en second : voir
+[Migration vers Diapason](../getting-started/migration-to-diapason.md), la
+seule page où ces anciens noms s'écrivent — `scripts/check_project_identity.py`
+fait rougir la CI partout ailleurs, pour qu'ils ne se réinstallent pas dans la
+documentation courante. `OLLAMA_HOST`, en revanche, est lu **sans** préfixe,
+sous son propre nom (`src/diapason/server/cloud_router.py`,
+`src/diapason/cli/model.py`).
 
 !!! tip "Pas besoin de poser une clé pour un serveur loopback"
     `DIAPASON_API_KEY` n'est **pas** nécessaire ici : au démarrage, une clé
