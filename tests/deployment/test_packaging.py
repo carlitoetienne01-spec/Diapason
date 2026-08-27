@@ -275,18 +275,20 @@ def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
     produit par Actions. Le contournement doit rester borné au processus CI.
     """
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-    assert "RUNNER_WINDOWS_LOCAL == 'true'" in workflow
-    assert '["self-hosted","windows-local"]' in workflow
-    assert "System.Management.Automation.Language.Parser" in workflow
-    assert "git ls-files '*.ps1'" in workflow
-    assert "uses: actions/setup-python" not in workflow
-    assert "uv sync --python ${{ matrix.python-version }}" in workflow
-    assert "run:\n        shell: bash" in workflow
+    windows_job = workflow.split("  test-windows:", 1)[1].split("\n  rust:", 1)[0]
+    assert "RUNNER_WINDOWS_LOCAL == 'true'" in windows_job
+    assert '["self-hosted","windows-local"]' in windows_job
+    assert "System.Management.Automation.Language.Parser" in windows_job
+    assert "git ls-files '*.ps1'" in windows_job
+    assert "uses: actions/setup-python" not in windows_job
+    assert "uv sync --python ${{ matrix.python-version }}" in windows_job
+    assert "run:\n        shell: cmd" in windows_job
+    assert "shell: bash" not in windows_job
     assert (
         "shell: powershell -NoProfile -NonInteractive "
-        "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in workflow
+        "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in windows_job
     )
-    assert "shell: pwsh" not in workflow
+    assert "shell: pwsh" not in windows_job
 
 
 def test_les_scripts_powershell_non_ascii_portent_un_bom() -> None:

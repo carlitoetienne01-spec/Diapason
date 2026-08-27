@@ -189,12 +189,13 @@ jobs:
         # is exactly how the source-build failure slips in on Windows.
         python-version: ["3.12", "3.13"]
     defaults:
-      # La politique du PC bloque les `.ps1` temporaires de GitHub Actions.
-      # Git Bash est fourni avec Git for Windows et donne le meme chemin aux
-      # runners local et heberge ; le seul vrai contrôle PowerShell garde son
-      # shell explicite et son contournement borne ci-dessous.
+      # `bash` designe C:\Windows\System32\bash.exe sur ce PC, donc le lanceur
+      # WSL, et aucune distribution Linux n'y est installee. Ces commandes
+      # sont nativement Windows : cmd.exe evite une dependance WSL decorative.
+      # Le seul vrai contrôle PowerShell garde son shell explicite et son
+      # contournement borne ci-dessous.
       run:
-        shell: bash
+        shell: cmd
     steps:
       - uses: actions/checkout@v6
 
@@ -234,12 +235,10 @@ jobs:
       # Pure-Python check — runs before the Rust build so a flaky toolchain
       # install can never mask the actual RAM-detection verification.
       - name: Verify Windows RAM detection (#373)
-        shell: bash
         run: |
           uv run python -c "from diapason.core.config import _total_ram_gb; ram = _total_ram_gb(); print(f'GlobalMemoryStatusEx RAM = {ram} GB'); assert ram > 0, f'Windows RAM detection returned {ram}, expected > 0'"
 
       - name: Run Windows-specific tests (hardware + CLI)
-        shell: bash
         run: |
           uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py -v -m "not live and not cloud"
 
@@ -247,13 +246,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build + import the PyO3 extension on Windows
-        shell: bash
         run: |
           uv run maturin develop --manifest-path rust/crates/diapason-python/Cargo.toml
           uv run python -c "import diapason_rust; print('diapason_rust imports on Windows OK')"
 
       - name: Smoke-test CLI
-        shell: bash
         run: |
           uv run diapason --version
 
