@@ -216,12 +216,22 @@ def test_le_workflow_bureau_valide_sur_le_runner_local_sans_simuler_windows() ->
 
 def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
-    assert "build-windows-local:" in workflow
-    assert "runs-on: [self-hosted, windows-local]" in workflow
-    assert "vars.RUNNER_WINDOWS_LOCAL == 'true'" in workflow
-    assert "tauri.windows-validation.conf.json" in workflow
-    assert "Diapason\\artifacts" in workflow
-    assert "diapason-windows-validation-msi" in workflow
+    windows_job = workflow.split("  build-windows-local:", 1)[1].split(
+        "\n  clean-release:", 1
+    )[0]
+    assert "runs-on: [self-hosted, windows-local]" in windows_job
+    assert "vars.RUNNER_WINDOWS_LOCAL == 'true'" in windows_job
+    assert "tauri.windows-validation.conf.json" in windows_job
+    assert "diapason-windows-validation-msi" in windows_job
+    assert "run:\n        shell: cmd" in windows_job
+    assert 'echo C:\\Program Files\\Git\\bin>>"%GITHUB_PATH%"' in windows_job
+    assert "Split-Path $env:RUNNER_TEMP -Parent" in windows_job
+    assert "Join-Path $runnerRoot 'artifacts'" in windows_job
+    assert (
+        "shell: powershell -NoProfile -NonInteractive "
+        "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in windows_job
+    )
+    assert "\n        shell: powershell\n" not in windows_job
 
     config = json.loads(WINDOWS_TAURI_VALIDATION.read_text())
     bundle = config["bundle"]

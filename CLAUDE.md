@@ -66,14 +66,14 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 > Actions → Variables), puis remettre les `runs-on: ubuntu-latest` indiqués
 > en commentaire dans chaque fichier.
 >
-> Windows a aussi un chemin sans minutes facturées : installer un second
-> runner sur le PC avec les étiquettes `self-hosted, windows-local`, puis
-> créer `RUNNER_WINDOWS_LOCAL = true`. Le job `test-windows` choisit alors ce
-> runner au lieu de `windows-latest` et analyse tous les `.ps1` avec le vrai
-> parseur PowerShell avant les tests. Un lancement manuel de `desktop.yml`
-> ajoute `build-windows-local` : il produit un `.msi` de validation non publié
-> et sans updater sous `%LOCALAPPDATA%\Diapason\artifacts`. Ce n'est pas une
-> release signée.
+> Windows a aussi son chemin sans minutes facturées : `pc-bureau`, étiquettes
+> `self-hosted, windows-local`, est actif depuis le 27 août 2026 et la variable
+> `RUNNER_WINDOWS_LOCAL = true` est posée. Les matrices 3.12 et 3.13 de
+> `test-windows` sont vertes sur ce PC : parseur PowerShell 5.1, tests natifs,
+> extension PyO3 compilée/importée et fumée CLI. Un lancement manuel de
+> `desktop.yml` ajoute `build-windows-local` : il produit un `.msi` de
+> validation non publié et sans updater sous la racine du runner
+> (`C:\actions-runner\artifacts` ici). Ce n'est pas une release signée.
 >
 > Conséquence pratique inchangée : **lance la vérification toi-même, en
 > entier, avant de pousser.** La CI confirme, elle ne découvre pas.

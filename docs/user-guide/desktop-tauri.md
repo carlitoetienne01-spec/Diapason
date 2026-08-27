@@ -56,7 +56,7 @@ signée. Il n'embarque ni Ollama ni le cœur Python : le bootstrap ci-dessus doi
 avoir réussi avant son installation. Une copie reste sur le PC dans :
 
 ```text
-%LOCALAPPDATA%\Diapason\artifacts
+C:\actions-runner\artifacts
 ```
 
 Le job tente aussi de joindre le `.msi` au rapport GitHub, mais cet envoi est

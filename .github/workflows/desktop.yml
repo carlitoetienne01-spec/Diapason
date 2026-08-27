@@ -74,9 +74,18 @@ jobs:
     needs: [validate]
     if: vars.RUNNER_WINDOWS_LOCAL == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: [self-hosted, windows-local]
+    defaults:
+      # Le service du runner interdit les `.ps1` temporaires et son `bash`
+      # System32 ouvre WSL. Les commandes ordinaires sont toutes natives.
+      run:
+        shell: cmd
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Expose Git Bash to composite actions
+        # `dtolnay/rust-toolchain` possede ses propres etapes `shell: bash`.
+        run: echo C:\Program Files\Git\bin>>"%GITHUB_PATH%"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -96,21 +105,25 @@ jobs:
         run: npm ci
 
       - name: Build unsigned validation MSI
-        shell: powershell
         working-directory: frontend
         run: npx tauri build --config src-tauri/tauri.windows-validation.conf.json
 
       - name: Keep MSI on the Windows PC
         id: local-msi
-        shell: powershell
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         run: |
+          $ErrorActionPreference = 'Stop'
           $msi = Get-ChildItem 'frontend\src-tauri\target\release\bundle\msi' `
             -Filter '*.msi' -File | Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if (-not $msi) {
             throw 'Tauri reported success but produced no MSI.'
           }
-          $destination = Join-Path $env:LOCALAPPDATA 'Diapason\artifacts'
+          # Le service tourne comme NETWORK SERVICE : son LOCALAPPDATA n'est
+          # pas celui de Carlito. Deux parents au-dessus de RUNNER_TEMP donnent
+          # la racine persistante du runner, hors du `_work` nettoye entre runs.
+          $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
+          $destination = Join-Path $runnerRoot 'artifacts'
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
           $kept = Join-Path $destination $msi.Name
           Copy-Item $msi.FullName $kept -Force

@@ -45,8 +45,10 @@ automatically). Where it publishes depends on the trigger.
 
 The separate `build-windows-local` job is deliberately outside these release
 streams. It runs on `self-hosted,windows-local`, disables updater artifacts,
-and leaves an unsigned validation MSI under
-`%LOCALAPPDATA%\Diapason\artifacts`. Its purpose is physical testing while
+and leaves an unsigned validation MSI under the runner root's `artifacts`
+directory (`C:\actions-runner\artifacts` on Carlito's PC). The service runs
+as `NETWORK SERVICE`, so its `%LOCALAPPDATA%` is not Carlito's profile and
+must never be advertised as one. This MSI exists for physical testing while
 hosted minutes are unavailable; it never updates `desktop-edge` or
 `desktop-latest`.
 
