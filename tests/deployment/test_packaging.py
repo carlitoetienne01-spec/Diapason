@@ -222,6 +222,9 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     assert "runs-on: [self-hosted, windows-local]" in windows_job
     assert "vars.RUNNER_WINDOWS_LOCAL == 'true'" in windows_job
     assert "tauri.windows-validation.conf.json" in windows_job
+    assert "tauri build --verbose" in windows_job, (
+        "un echec WiX sans sa sortie detaillee ne permet pas de corriger le MSI"
+    )
     assert "diapason-windows-validation-msi" in windows_job
     assert "run:\n        shell: cmd" in windows_job
     assert 'echo C:\\Program Files\\Git\\bin>>"%GITHUB_PATH%"' in windows_job

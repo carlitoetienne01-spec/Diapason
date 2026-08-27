@@ -106,7 +106,10 @@ jobs:
 
       - name: Build unsigned validation MSI
         working-directory: frontend
-        run: npx tauri build --config src-tauri/tauri.windows-validation.conf.json
+        # WiX ne remonte sinon que « failed to run light.exe ». Le banc doit
+        # conserver la commande et la sortie du fabricant MSI : c'est la seule
+        # preuve exploitable quand un runner physique differe de windows-latest.
+        run: npx tauri build --verbose --config src-tauri/tauri.windows-validation.conf.json
 
       - name: Keep MSI on the Windows PC
         id: local-msi
