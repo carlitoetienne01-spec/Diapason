@@ -279,6 +279,9 @@ def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
     assert '["self-hosted","windows-local"]' in workflow
     assert "System.Management.Automation.Language.Parser" in workflow
     assert "git ls-files '*.ps1'" in workflow
+    assert "uses: actions/setup-python" not in workflow
+    assert "uv sync --python ${{ matrix.python-version }}" in workflow
+    assert "run:\n        shell: bash" in workflow
     assert (
         "shell: powershell -NoProfile -NonInteractive "
         "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in workflow
