@@ -171,6 +171,10 @@ jobs:
     # PowerShell Core absente et arretait les deux matrices avant le parseur.
     # `powershell` exerce aussi le lecteur UTF-8/BOM que les scripts livres
     # rencontreront vraiment sur les installations Windows prises en charge.
+    # La politique du PC interdit les `.ps1` par defaut ; le second passage
+    # s'est donc arrete sur le fichier temporaire genere par Actions avant
+    # notre code. Le contournement reste borne a ce processus CI : il ne
+    # modifie ni la politique de la machine ni celle de l'utilisateur.
     #
     # RUNNER_WINDOWS_LOCAL selectionne ce PC sans minutes facturees.
     # RUNNERS_GITHUB reste le repli pour windows-latest une fois la
@@ -188,8 +192,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Parse every PowerShell deployment script
-        shell: powershell
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         run: |
+          $ErrorActionPreference = 'Stop'
           $failed = $false
           git ls-files '*.ps1' | ForEach-Object {
             $tokens = $null
