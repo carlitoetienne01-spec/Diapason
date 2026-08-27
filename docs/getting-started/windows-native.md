@@ -7,12 +7,16 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 
 ## What you get
 
-- A PowerShell installer that probes prerequisites, installs `uv`,
-  clones the repo, and runs `uv sync --extra desktop --group desktop-native`.
+- A PowerShell installer that probes prerequisites, installs `uv`, clones the
+  repo, and installs the desktop/server dependencies without assuming Rust.
 - An optional Windows scheduled-task service equivalent to the systemd
   unit and launchd plist.
 - Loopback default — the service binds `127.0.0.1` so no API key is
   required.
+
+This is the native Python server and its browser interface. It is **not yet
+the Tauri `.msi` desktop application**; that artifact still requires a real
+Windows build and validation.
 
 ## What you need
 
@@ -44,15 +48,17 @@ The installer will:
 4. Install `uv` if absent (via the official `astral.sh/uv` PowerShell
    installer).
 5. Clone the repo to `%LOCALAPPDATA%\Diapason\src`.
-6. Run `uv sync --extra desktop --group desktop-native`.
-7. Prompt to register the scheduled-task service (skip with
+6. Run `uv sync --extra desktop`; build the native group only if Rust and the
+   Windows build tools are present.
+7. Install Ollama and the starter model when reachable.
+8. Prompt to register the scheduled-task service (skip with
    `-SkipService`).
 
 ## Run it
 
 ```powershell
 cd "$env:LOCALAPPDATA\Diapason\src"
-uv run diapason serve
+diapason serve
 ```
 
 Open `http://127.0.0.1:8000/health` to verify.
@@ -65,6 +71,9 @@ manually:
 ```powershell
 $srv = "$env:LOCALAPPDATA\Diapason\src\deploy\windows\diapason-service.ps1"
 powershell -ExecutionPolicy Bypass -File $srv install
+
+# Or keep the full API on loopback and expose only Mesh to paired devices:
+powershell -ExecutionPolicy Bypass -File $srv install -MaillageReseau
 ```
 
 State:
@@ -72,6 +81,21 @@ State:
 ```powershell
 powershell -ExecutionPolicy Bypass -File $srv status
 ```
+
+## Verify before calling it ready
+
+With the scheduled task running, execute the repository's read-only bench:
+
+```powershell
+$verify = "$env:LOCALAPPDATA\Diapason\src\deploy\windows\verify.ps1"
+powershell -ExecutionPolicy Bypass -File $verify -RequireNative -RequireMesh
+```
+
+This is stricter than checking that a process exists. It imports the Python
+package and PyO3 extension, asks `/health`, verifies that port 8000 listens on
+loopback only, and proves that port 8001 contains a Mesh door while chat,
+health and documentation all return 404. `-Json` produces a report suitable
+for attaching to the Mac↔Windows validation notes.
 
 Remove:
 

@@ -176,7 +176,7 @@ fn default_local_model(ram_gb: f64) -> &'static str {
 /// processes or touching the network.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BootPlan {
-    /// Whether to start and wait for the bundled Ollama.
+    /// Whether to start and wait for Ollama.
     launch_ollama: bool,
     /// The preferred Ollama model (None for custom endpoints).
     model_to_pull: Option<String>,
@@ -256,13 +256,45 @@ fn home_dir() -> String {
         .unwrap_or_default()
 }
 
+#[cfg(any(test, target_os = "linux"))]
+fn session_linux_accepte_les_raccourcis_globaux(
+    session_type: Option<&str>,
+    wayland_display: Option<&str>,
+) -> bool {
+    // global-hotkey 0.8 ne prend en charge que X11. Sous Wayland, XWayland
+    // permet tout de même d'ouvrir une connexion X11 : l'inscription rendait
+    // alors Ok, mais aucune touche globale n'arrivait. Ce faux succès est pire
+    // qu'une absence explicite, car l'interface promet un raccourci inerte.
+    let session_wayland = session_type
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("wayland"));
+    let socket_wayland = wayland_display
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    !(session_wayland || socket_wayland)
+}
+
+fn raccourcis_globaux_disponibles() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        return session_linux_accepte_les_raccourcis_globaux(
+            std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+            std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+        );
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 /// Resolve full path to a binary by checking common locations.
 /// macOS .app bundles don't inherit the shell PATH, so we probe manually.
 fn resolve_bin(name: &str) -> String {
     let home = home_dir();
 
     #[cfg(not(target_os = "windows"))]
-    let candidates = vec![
+    let mut candidates = vec![
         format!("/opt/homebrew/bin/{name}"),
         format!("{home}/.local/bin/{name}"),
         format!("{home}/.cargo/bin/{name}"),
@@ -271,7 +303,7 @@ fn resolve_bin(name: &str) -> String {
     ];
 
     #[cfg(target_os = "windows")]
-    let candidates = {
+    let mut candidates = {
         let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
         let programfiles = std::env::var("ProgramFiles").unwrap_or_default();
         let programfiles_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
@@ -294,6 +326,23 @@ fn resolve_bin(name: &str) -> String {
             format!("{home}\\AppData\\Roaming\\Python\\Scripts\\{name}.exe"),
         ]
     };
+
+    // An explicit `bundle.externalBin` would place a sidecar beside the
+    // packaged executable. Keep supporting that layout, but do not confuse
+    // support with distribution: Ollama's Windows archive includes more than
+    // the executable, so the release workflow no longer copies only
+    // `ollama.exe` and calls the resulting package complete.
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            #[cfg(target_os = "windows")]
+            candidates.insert(
+                0,
+                directory.join(format!("{name}.exe")).display().to_string(),
+            );
+            #[cfg(not(target_os = "windows"))]
+            candidates.insert(0, directory.join(name).display().to_string());
+        }
+    }
 
     for path in &candidates {
         if std::path::Path::new(path).exists() {
@@ -340,8 +389,8 @@ fn resolve_bin(name: &str) -> String {
 }
 
 /// Find the Diapason project root (contains pyproject.toml).
-/// Checks OPENJARVIS_ROOT env var, walks up from the executable, then
-/// probes common clone locations.
+/// Checks explicit roots, installer-owned roots, walks up from the executable,
+/// then probes common development clone locations.
 /// Où le projet a été trouvé la dernière fois.
 ///
 /// La liste de chemins connus de `locate_project_root` est une DEVINETTE. Elle
@@ -349,14 +398,6 @@ fn resolve_bin(name: &str) -> String {
 /// a suffi à faire croire à l'application qu'il fallait le retélécharger depuis
 /// GitHub — jusqu'à afficher « Repository not found » à l'utilisateur. Se
 /// souvenir d'un emplacement prouvé vaut mieux que deviner une liste.
-/// Le dépôt d'où l'application se télécharge, quand elle le peut.
-///
-/// L'ancienne valeur (carlitoetienne01-spec/Diapason) rendait 404 : le repli de
-/// premier lancement promettait un téléchargement impossible. Le dépôt réel
-/// est privé — le clone exige donc des identifiants GitHub — mais le message
-/// d'échec nomme désormais au moins la bonne adresse.
-const REPO_URL: &str = "https://github.com/carlitoetienne01-spec/Diapason.git";
-
 fn remembered_root_file() -> std::path::PathBuf {
     std::path::PathBuf::from(home_dir())
         .join(".diapason")
@@ -385,6 +426,46 @@ fn find_project_root() -> Option<std::path::PathBuf> {
     trouve
 }
 
+fn project_candidates_in_install_root(root: &std::path::Path) -> [std::path::PathBuf; 2] {
+    // Windows install.ps1 and the Unix installer both own an INSTALL root and
+    // place the checkout below `src`. A few early/manual installations pointed
+    // DIAPASON_HOME directly at the checkout, so keep that proven shape too.
+    [root.join("src"), root.to_path_buf()]
+}
+
+fn installed_project_root() -> Option<std::path::PathBuf> {
+    let mut install_roots = Vec::new();
+
+    for name in ["DIAPASON_HOME", "OPENJARVIS_HOME", "JARVIS_HOME"] {
+        if let Ok(value) = std::env::var(name) {
+            if !value.trim().is_empty() {
+                install_roots.push(std::path::PathBuf::from(value));
+            }
+        }
+    }
+
+    // Native Windows installs live here by default. Without this candidate a
+    // freshly bootstrapped PC had a valid venv and checkout, yet the MSI said
+    // the project was absent and tried to clone the private repository again.
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        if !local_app_data.trim().is_empty() {
+            install_roots.push(std::path::PathBuf::from(local_app_data).join("Diapason"));
+        }
+    }
+
+    if let Ok(xdg_data_home) = std::env::var("XDG_DATA_HOME") {
+        if !xdg_data_home.trim().is_empty() {
+            install_roots.push(std::path::PathBuf::from(xdg_data_home).join("diapason"));
+        }
+    }
+    install_roots.push(std::path::PathBuf::from(home_dir()).join(".diapason"));
+
+    install_roots
+        .iter()
+        .flat_map(|root| project_candidates_in_install_root(root))
+        .find(|candidate| candidate.join("pyproject.toml").is_file())
+}
+
 fn locate_project_root() -> Option<std::path::PathBuf> {
     // 1. Explicit env var override. DIAPASON_ROOT is the current name;
     //    OPENJARVIS_ROOT still works so an existing shell profile does not
@@ -407,6 +488,12 @@ fn locate_project_root() -> Option<std::path::PathBuf> {
         if chemin.join("pyproject.toml").exists() {
             return Some(chemin);
         }
+    }
+
+    // 1c. Installer-owned locations. These are not guesses: they are the
+    // paths written by scripts/install/install.sh and install.ps1.
+    if let Some(path) = installed_project_root() {
+        return Some(path);
     }
 
     // 2. Walk up from the running executable (works in dev and .app bundle)
@@ -1220,7 +1307,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.detail = "Starting inference engine...".into();
         }
 
-        // Try the bundled sidecar first, fall back to system ollama
+        // Try an explicitly packaged sidecar first, then system Ollama.
         let ollama_child = {
             let ollama_bin = resolve_bin("ollama");
             let mut sidecar_cmd = tokio::process::Command::new(&ollama_bin);
@@ -1412,119 +1499,29 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         return;
     }
 
-    let mut project_root = find_project_root();
+    let project_root = find_project_root();
 
     if project_root.is_none() {
-        // Auto-clone on first launch
-        let git_bin = resolve_bin("git");
-
-        // Ne promettre un téléchargement qu'après avoir VÉRIFIÉ qu'il est
-        // possible. Le dépôt visé peut être privé, renommé ou supprimé : le
-        // clone échouait alors sur « Repository not found », message qui laisse
-        // croire à une installation cassée alors que le projet est simplement
-        // ailleurs sur le disque. On teste l'accès avant d'annoncer quoi que
-        // ce soit, et à défaut on dit la seule chose utile : où pointer.
-        let mut sonde = tokio::process::Command::new(&git_bin);
-        let joignable = sans_fenetre_async(&mut sonde)
-            .args(["ls-remote", "--exit-code", REPO_URL, "HEAD"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map(|st| st.success())
-            .unwrap_or(false);
-
-        if !joignable {
-            let mut s = status.lock().await;
-            s.error = Some(format!(
-                "Diapason project not found on this Mac, and {REPO_URL} is not \
-                 reachable — so it cannot be downloaded either.\n\n\
-                 If you already have the project, point the app at it:\n\
-                 echo '/path/to/Diapason' > ~/.diapason/project_root\n\n\
-                 then relaunch. (The DIAPASON_ROOT environment variable works too.)"
-            ));
-            return;
-        }
-
-        // Check that git is installed
-        if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
-            let mut s = status.lock().await;
-            s.error = Some(
-                "Could not find 'git'. \
-                 Install it from https://git-scm.com then relaunch."
-                    .into(),
-            );
-            return;
-        }
-
-        let target_path = std::path::PathBuf::from(home_dir()).join("Diapason");
-        let clone_target = target_path.display().to_string();
-
-        // If the directory exists but is not a valid project, don't overwrite
-        if target_path.exists() && !target_path.join("pyproject.toml").exists() {
-            let mut s = status.lock().await;
-            s.error = Some(format!(
-                "{} exists but is not a valid Diapason project. \
-                 Remove it and relaunch, or set DIAPASON_ROOT to the correct path.",
-                clone_target,
-            ));
-            return;
-        }
-
-        {
-            let mut s = status.lock().await;
-            s.detail = "Downloading Diapason (first launch)...".into();
-        }
-
-        let mut clone = tokio::process::Command::new(&git_bin);
-        let clone_result = sans_fenetre_async(&mut clone)
-            .args([
-                "clone",
-                "--depth",
-                "1",
-                REPO_URL,
-                &clone_target,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
-
-        match clone_result {
-            Ok(child) => match child.wait_with_output().await {
-                Ok(output) if output.status.success() => {
-                    project_root = Some(target_path);
-                }
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let mut s = status.lock().await;
-                    s.error = Some(format!(
-                        "Failed to download Diapason: {}. \
-                         Clone manually: git clone {REPO_URL} {}",
-                        stderr.trim(),
-                        clone_target,
-                    ));
-                    return;
-                }
-                Err(e) => {
-                    let mut s = status.lock().await;
-                    s.error = Some(format!(
-                        "Failed to download Diapason: {}. \
-                         Clone manually: git clone {REPO_URL} {}",
-                        e, clone_target,
-                    ));
-                    return;
-                }
-            },
-            Err(e) => {
-                let mut s = status.lock().await;
-                s.error = Some(format!(
-                    "Could not run git: {}. \
-                     Install git from https://git-scm.com then relaunch.",
-                    e,
-                ));
-                return;
-            }
-        }
+        let mut s = status.lock().await;
+        #[cfg(target_os = "windows")]
+        let message = "Diapason's local backend is not installed. The desktop \
+                       package contains the native window, but not Ollama, \
+                       Python, or the private source repository. Run the \
+                       authenticated Windows bootstrap first, then relaunch:\n\n\
+                       deploy\\windows\\install.ps1\n\n\
+                       Expected project: %LOCALAPPDATA%\\Diapason\\src. If you \
+                       installed elsewhere, set DIAPASON_HOME to the install \
+                       root or DIAPASON_ROOT to the source directory.";
+        #[cfg(not(target_os = "windows"))]
+        let message = "Diapason's local backend is not installed. The desktop \
+                       package contains the native window, but not Ollama, \
+                       Python, or the private source repository. Run the \
+                       authenticated installer first, then relaunch. If the \
+                       project already exists, set DIAPASON_HOME to its install \
+                       root, DIAPASON_ROOT to the source directory, or write \
+                       that source path to ~/.diapason/project_root.";
+        s.error = Some(message.into());
+        return;
     }
 
     // If something is already serving on our port, decide what to do based
@@ -2442,7 +2439,8 @@ fn lancer_le_navigateur(url: &str) -> std::io::Result<std::process::Child> {
         // `start.exe` à lancer. Et son premier argument est le TITRE de la
         // fenêtre — sans la chaîne vide, une URL serait prise pour un titre
         // et rien ne s'ouvrirait. C'est le piège classique de cette ligne.
-        std::process::Command::new("cmd")
+        let mut command = std::process::Command::new("cmd");
+        sans_fenetre(&mut command)
             .args(["/C", "start", "", url])
             .spawn()
     }
@@ -3565,9 +3563,14 @@ pub fn run() {
                 let talk =
                     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
                 let talk_handle = app.handle().clone();
-                if let Err(e) = app
-                    .global_shortcut()
-                    .on_shortcut(talk, move |app, _sc, ev| {
+                if !raccourcis_globaux_disponibles() {
+                    eprintln!(
+                        "Talk global shortcut disabled: global-hotkey supports X11, \
+                         but this Linux session uses Wayland. Use the visible Talk button."
+                    );
+                } else if let Err(e) = app.global_shortcut().on_shortcut(
+                    talk,
+                    move |app, _sc, ev| {
                         if ev.state != ShortcutState::Pressed {
                             return;
                         }
@@ -3577,8 +3580,8 @@ pub fn run() {
                             let _ = window.unminimize();
                         }
                         let _ = talk_handle.emit("talk-toggle", ());
-                    })
-                {
+                    },
+                ) {
                     eprintln!("Warning: could not register the Talk shortcut: {e}");
                 }
             }
@@ -3709,10 +3712,50 @@ mod tests {
         format_missing_rust_toolchain, format_port_unavailable, format_uv_sync_failure,
         format_uv_sync_spawn_error, matching_installed_model, model_names_match, normalize_host,
         parse_inference_config, parse_ollama_model_names, preferred_installed_model,
-        should_persist_resolved_model, startup_installed_model, upsert_engine_host,
+        project_candidates_in_install_root, should_persist_resolved_model, startup_installed_model,
+        session_linux_accepte_les_raccourcis_globaux, upsert_engine_host,
         uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_COMMAND,
     };
     use std::path::Path;
+
+    #[test]
+    fn install_root_checks_the_installer_layout_before_the_legacy_layout() {
+        let candidates = project_candidates_in_install_root(Path::new(
+            r"C:\Users\Carlito\AppData\Local\Diapason",
+        ));
+        assert_eq!(
+            candidates[0],
+            Path::new(r"C:\Users\Carlito\AppData\Local\Diapason").join("src")
+        );
+        assert_eq!(
+            candidates[1],
+            Path::new(r"C:\Users\Carlito\AppData\Local\Diapason")
+        );
+    }
+
+    #[test]
+    fn les_raccourcis_linux_restent_actifs_sous_x11() {
+        assert!(session_linux_accepte_les_raccourcis_globaux(
+            Some("x11"),
+            None
+        ));
+    }
+
+    #[test]
+    fn les_raccourcis_linux_ne_promettent_rien_sous_wayland() {
+        assert!(!session_linux_accepte_les_raccourcis_globaux(
+            Some("wayland"),
+            Some("wayland-0")
+        ));
+    }
+
+    #[test]
+    fn un_socket_wayland_suffit_meme_si_le_type_de_session_manque() {
+        assert!(!session_linux_accepte_les_raccourcis_globaux(
+            None,
+            Some("wayland-1")
+        ));
+    }
 
     #[test]
     fn tail_returns_whole_string_when_shorter_than_limit() {

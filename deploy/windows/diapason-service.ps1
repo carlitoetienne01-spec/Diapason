@@ -21,7 +21,7 @@
       -ListenHost <addr>   default: 127.0.0.1 (loopback). A NON-LOOPBACK
                            VALUE IS NOW REFUSED — see -MaillageReseau below.
       -ListenPort <int>    default: 8000
-      -MaillageReseau      open a SECOND socket carrying only the nine mesh
+      -MaillageReseau      open a SECOND socket carrying only the ten mesh
                            routes, so your other devices can reach this PC.
                            The full application stays on 127.0.0.1.
       -LanPort <int>       default: 8001 (the mesh socket)
@@ -35,9 +35,10 @@
     have been exposed the same day.
 
     The legitimate need behind it — « my phone cannot reach 127.0.0.1 » — now
-    has its own, narrower door: -MaillageReseau. Nine routes, each requiring
-    an Ed25519 device signature rather than the API key. A chat request on
-    that socket returns 404, not 401: the route does not exist there.
+    has its own, narrower door: -MaillageReseau. Ten routes, each requiring
+    a device signature, invitation or scoped transfer token rather than the
+    API key. A chat request on that socket returns 404, not 401: the route
+    does not exist there.
 
     Usage:
       powershell -ExecutionPolicy Bypass -File diapason-service.ps1 install
@@ -93,16 +94,9 @@ function Install-Task {
         Write-Fail "Diapason source not found at $srcDir. Run install.ps1 first."
     }
 
-    $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
-    if (-not $uvCmd) {
-        $uvFallback = Join-Path $env:USERPROFILE '.local\bin\uv.exe'
-        if (Test-Path $uvFallback) {
-            $uvPath = $uvFallback
-        } else {
-            Write-Fail "uv.exe not found on PATH or at $uvFallback. Re-run install.ps1."
-        }
-    } else {
-        $uvPath = $uvCmd.Source
+    $diapasonPath = Join-Path $srcDir '.venv\Scripts\diapason.exe'
+    if (-not (Test-Path $diapasonPath)) {
+        Write-Fail "Diapason executable not found at $diapasonPath. Re-run install.ps1."
     }
 
     # The full application never leaves this machine. The escape hatch that
@@ -118,29 +112,13 @@ For your other devices to reach this PC, keep 127.0.0.1 and add:
 
     -MaillageReseau
 
-That opens a second socket carrying only the nine mesh routes, each requiring
-an Ed25519 device signature. A chat request there returns 404, not 401.
+That opens a second socket carrying only the ten mesh routes, each requiring
+a device credential. A chat request there returns 404, not 401.
 "@
     }
 
     if ($MaillageReseau -and $LanPort -eq $ListenPort) {
         Write-Fail "-LanPort and -ListenPort are both $LanPort. Two servers on one port bind silently on some systems and fail on others."
-    }
-
-    # CRITICAL: scheduled tasks do NOT inherit the registering session's
-    # environment. If we registered the task now and stopped here, the
-    # task would launch at logon with a clean env, find no API key, and
-    # `diapason serve` would refuse to bind 0.0.0.0 — failing silently every
-    # logon. Persist the key to the User env scope so the task's logon
-    # session picks it up. (Loopback path doesn't need the key, so this
-    # only runs for the explicit LAN-exposed case.)
-    if (-not $isLoopback) {
-        Write-Info "Persisting DIAPASON_API_KEY to User environment so the scheduled task can read it at logon."
-        [System.Environment]::SetEnvironmentVariable(
-            'DIAPASON_API_KEY',
-            $env:DIAPASON_API_KEY,
-            'User'
-        )
     }
 
     Write-Info "Registering scheduled task '$TaskName'..."
@@ -155,15 +133,19 @@ an Ed25519 device signature. A chat request there returns 404, not 401.
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
     }
 
-    $serveArgs = "run diapason serve --host $ListenHost --port $ListenPort"
+    # Do not use `uv run` at every logon. It synchronizes before launching and
+    # can remove extras that were deliberately installed (including the
+    # native extension). The installer already created this executable in the
+    # project venv; the scheduled task executes exactly that environment.
+    $serveArgs = "serve --host $ListenHost --port $ListenPort"
     if ($MaillageReseau) {
         $serveArgs = "$serveArgs --lan-host 0.0.0.0 --lan-port $LanPort"
-        Write-Info "  Maillage    : 0.0.0.0`:$LanPort (nine routes, device signature required)"
+        Write-Info "  Maillage    : 0.0.0.0`:$LanPort (ten routes, device credential required)"
         Write-Info "  A shared network stays a shared network — see deploy/windows/README.md."
     }
 
     $action = New-ScheduledTaskAction `
-        -Execute $uvPath `
+        -Execute $diapasonPath `
         -Argument $serveArgs `
         -WorkingDirectory $srcDir
 

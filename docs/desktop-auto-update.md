@@ -1,6 +1,12 @@
 # Desktop auto-update
 
-The Diapason desktop app ships with [Tauri's updater
+> **Prepared, not released.** The updater code and release channels described
+> below exist, but the repository currently has no GitHub release and therefore
+> no `desktop-latest/latest.json`. Installed development builds receive a 404
+> and no update is offered. This page is the release design, not evidence that
+> an installer has already shipped.
+
+The Diapason desktop app includes [Tauri's updater
 plugin](https://v2.tauri.app/plugin/updater/), which checks for new
 versions on launch and every 30 minutes. When a newer signed build is
 available, the app prompts the user to download and install it.
@@ -37,7 +43,14 @@ builds signed binaries plus a `latest.json` manifest with the
 `tauri-action` step (`includeUpdaterJson: true` generates the manifest
 automatically). Where it publishes depends on the trigger.
 
-Three release streams exist:
+The separate `build-windows-local` job is deliberately outside these release
+streams. It runs on `self-hosted,windows-local`, disables updater artifacts,
+and leaves an unsigned validation MSI under
+`%LOCALAPPDATA%\Diapason\artifacts`. Its purpose is physical testing while
+hosted minutes are unavailable; it never updates `desktop-edge` or
+`desktop-latest`.
+
+Three release streams are prepared:
 
 - **`desktop-latest`** (stable auto-update channel): **this is the
   channel the installed app polls.** It is *not* built directly —

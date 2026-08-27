@@ -26,22 +26,14 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-22.04
+    # La validation ne publie aucun artefact et n'a besoin que d'un système
+    # natif Tauri. Le Mac auto-hébergé la garde active même lorsque les minutes
+    # GitHub sont bloquées. Les vraies constructions Linux/Windows restent
+    # séparées ci-dessous : un Mac vert ne prétend pas valider ces plateformes.
+    runs-on: [self-hosted, macos-local]
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev \
-            libdbus-1-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -74,12 +66,79 @@ jobs:
         working-directory: frontend/src-tauri
         run: cargo test
 
+  # The first Windows milestone is an installable validation MSI, not a
+  # published release. It runs on Carlito's own PC, keeps updater artifacts
+  # disabled because no signed release is being created, and copies the MSI
+  # to a stable local directory even if GitHub artifact upload is unavailable.
+  build-windows-local:
+    needs: [validate]
+    if: vars.RUNNER_WINDOWS_LOCAL == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, windows-local]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'frontend/src-tauri -> target'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build unsigned validation MSI
+        shell: powershell
+        working-directory: frontend
+        run: npx tauri build --config src-tauri/tauri.windows-validation.conf.json
+
+      - name: Keep MSI on the Windows PC
+        id: local-msi
+        shell: powershell
+        run: |
+          $msi = Get-ChildItem 'frontend\src-tauri\target\release\bundle\msi' `
+            -Filter '*.msi' -File | Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $msi) {
+            throw 'Tauri reported success but produced no MSI.'
+          }
+          $destination = Join-Path $env:LOCALAPPDATA 'Diapason\artifacts'
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          $kept = Join-Path $destination $msi.Name
+          Copy-Item $msi.FullName $kept -Force
+          $hash = (Get-FileHash $kept -Algorithm SHA256).Hash
+          "path=$kept" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "### Windows validation MSI" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- Path on PC: ``$kept``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- SHA-256: ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host "Validation MSI: $kept"
+          Write-Host "SHA-256: $hash"
+
+      - name: Upload validation MSI
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: diapason-windows-validation-msi
+          path: frontend/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
   # Remove stale artifacts from the desktop-edge rolling pre-release so that
   # only the current build's files are available for download. (The stable
   # `desktop-latest` channel the installed app polls is never cleaned here.)
   clean-release:
     needs: [validate]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Hosted release jobs are intentionally absent while account billing keeps
+    # them from starting. Set RUNNERS_GITHUB=true to restore the original
+    # Linux/macOS/Windows publication matrix.
+    if: vars.RUNNERS_GITHUB == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Delete old assets from desktop-edge
@@ -98,7 +157,7 @@ jobs:
 
   build-and-release:
     needs: [validate, clean-release]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: vars.RUNNERS_GITHUB == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     strategy:
       fail-fast: false
@@ -152,17 +211,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
-
-      - name: Download Ollama sidecar
-        shell: bash
-        run: |
-          cd frontend/src-tauri/scripts && chmod +x download-ollama.sh
-          if [[ "${{ matrix.platform }}" == "macos-14" ]]; then
-            ./download-ollama.sh aarch64-apple-darwin
-            ./download-ollama.sh x86_64-apple-darwin
-          else
-            ./download-ollama.sh
-          fi
 
       - name: Determine release info
         id: release-info
@@ -253,7 +301,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: '{"version":"${{ steps.release-info.outputs.tauri_version }}","bundle":{"externalBin":["binaries/ollama"]}}'
+          TAURI_CONFIG: '{"version":"${{ steps.release-info.outputs.tauri_version }}"}'
         with:
           projectPath: frontend
           tauriScript: npx tauri

@@ -16,21 +16,22 @@
       4. Install uv (https://astral.sh/uv) if absent.
       5. Clone the Diapason repository to $env:LOCALAPPDATA\Diapason
          (override with $env:DIAPASON_HOME).
-      6. Run `uv sync --extra desktop --group desktop-native` so the FastAPI
-         server, speech backend, and native extension are importable.
-      7. Optionally register the scheduled-task service (see
+      6. Install the desktop/server dependencies; build the optional native
+         extension only when a complete Rust/MSVC toolchain is present.
+      7. Install Ollama and wait for its daemon.
+      8. Pull the starter model when reachable.
+      9. Install the `diapason` command shim.
+      10. Optionally register the scheduled-task service (see
          deploy/windows/diapason-service.ps1).
 
-    Usage (one-liner):
-      irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 | iex
-
-    Usage (file invocation, supports flags):
-      irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 -OutFile install.ps1
-      .\install.ps1 -SkipService
+    This repository is private and GitHub Pages is not published. Clone it
+    with an authenticated GitHub account, then invoke this local file:
+      .\deploy\windows\install.ps1 -SkipService
 
     Flags (when running the file directly):
       -SkipService    Don't prompt for / install the scheduled task.
       -Service        Install the scheduled task without prompting.
+      -MaillageReseau With -Service, expose only the Mesh socket on the LAN.
       -Force          Re-run all steps even if already done.
 
     Under `irm | iex` the param block is unreachable (Invoke-Expression
@@ -38,20 +39,21 @@
     are honored via env vars when the corresponding flag is absent:
       $env:DIAPASON_SKIP_SERVICE = '1'
       $env:DIAPASON_SERVICE      = '1'
+      $env:DIAPASON_MESH_NETWORK = '1'
       $env:DIAPASON_FORCE        = '1'
 
 .NOTES
     Loopback default: the scheduled-task service binds 127.0.0.1, so no
-    API key is needed. To expose on the LAN, edit the registered task to
-    pass `--host 0.0.0.0` AND set $env:DIAPASON_API_KEY (an
-    unauthenticated 0.0.0.0 server refuses to start). See
-    deploy/windows/README.md.
+    API key is needed. To let paired devices reach Mesh, use
+    `-Service -MaillageReseau`: the complete API remains on 127.0.0.1 and a
+    second, restricted socket listens on the LAN. See deploy/windows/README.md.
 #>
 
 [CmdletBinding()]
 param(
     [switch] $SkipService,
     [switch] $Service,
+    [switch] $MaillageReseau,
     [switch] $Force
 )
 
@@ -62,6 +64,7 @@ if (-not $env:DIAPASON_HOME -and $env:OPENJARVIS_HOME) { $env:DIAPASON_HOME = $e
 if (-not $env:DIAPASON_REPO_URL -and $env:OPENJARVIS_REPO_URL) { $env:DIAPASON_REPO_URL = $env:OPENJARVIS_REPO_URL }
 if (-not $env:DIAPASON_SKIP_SERVICE -and $env:OPENJARVIS_SKIP_SERVICE) { $env:DIAPASON_SKIP_SERVICE = $env:OPENJARVIS_SKIP_SERVICE }
 if (-not $env:DIAPASON_SERVICE -and $env:OPENJARVIS_SERVICE) { $env:DIAPASON_SERVICE = $env:OPENJARVIS_SERVICE }
+if (-not $env:DIAPASON_MESH_NETWORK -and $env:OPENJARVIS_MESH_NETWORK) { $env:DIAPASON_MESH_NETWORK = $env:OPENJARVIS_MESH_NETWORK }
 if (-not $env:DIAPASON_FORCE -and $env:OPENJARVIS_FORCE) { $env:DIAPASON_FORCE = $env:OPENJARVIS_FORCE }
 
 # Env-var fallback for the `irm | iex` path, where the param block is
@@ -69,6 +72,7 @@ if (-not $env:DIAPASON_FORCE -and $env:OPENJARVIS_FORCE) { $env:DIAPASON_FORCE =
 # only fill in the gaps.
 if (-not $SkipService -and $env:DIAPASON_SKIP_SERVICE) { $SkipService = $true }
 if (-not $Service     -and $env:DIAPASON_SERVICE)      { $Service     = $true }
+if (-not $MaillageReseau -and $env:DIAPASON_MESH_NETWORK) { $MaillageReseau = $true }
 if (-not $Force       -and $env:DIAPASON_FORCE)        { $Force       = $true }
 
 # ---------------------------------------------------------------------------
@@ -350,26 +354,49 @@ if (Test-Path (Join-Path $srcDir '.git')) {
 # install ended before Ollama, before the model, before anything usable.
 # Found on 26 August 2026, before Carlito spent an evening on it.
 #
-# So we DECIDE, with the facts, instead of failing after the attempt: with
-# cargo present, build the extension; without it, install everything else and
-# say plainly what is missing and how to add it later. Diapason runs without
-# the extension — the imports that use it are lazy.
-Write-Info "Checking for a Rust toolchain (needed only for the native extension)..."
+# So we DECIDE, with the facts, instead of failing after the attempt. Cargo
+# alone is not a Windows build toolchain: aws-lc-sys also needs CMake and NASM,
+# and rustc needs the MSVC C++ tools. Only the complete set enables the native
+# group. Without it, the server and Mesh install, while accelerated/native
+# features stay unavailable and the script says exactly what is missing.
+Write-Info "Checking the native Windows build toolchain..."
 $cargoExe = (Get-Command cargo -ErrorAction SilentlyContinue).Source
+$cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+$nasmExe = (Get-Command nasm -ErrorAction SilentlyContinue).Source
+$clExe = (Get-Command cl -ErrorAction SilentlyContinue).Source
+$programFilesX86 = [System.Environment]::GetFolderPath('ProgramFilesX86')
+$vswhere = if ($programFilesX86) {
+    Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
+} else { '' }
+$hasMsvc = [bool]$clExe
+if (-not $hasMsvc -and $vswhere -and (Test-Path $vswhere)) {
+    $vsInstall = & $vswhere -latest -products * `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath
+    $hasMsvc = [bool]$vsInstall
+}
+
+$nativeMissing = @()
+if (-not $cargoExe) { $nativeMissing += 'Rust (cargo)' }
+if (-not $hasMsvc)  { $nativeMissing += 'MSVC C++ Build Tools' }
+if (-not $cmakeExe) { $nativeMissing += 'CMake' }
+if (-not $nasmExe)  { $nativeMissing += 'NASM' }
 $syncArgs = @('sync', '--extra', 'desktop')
-if ($cargoExe) {
-    Write-Ok "cargo found at $cargoExe - the native extension will be built."
+if ($nativeMissing.Count -eq 0) {
+    Write-Ok "Rust, MSVC, CMake and NASM found - the native extension will be built."
     $syncArgs += @('--group', 'desktop-native')
 } else {
     Write-Warn2 @"
-No Rust toolchain on PATH. Installing WITHOUT the native extension.
+Native extension skipped. Missing: $($nativeMissing -join ', ').
 
-What that costs: the accelerated paths that use diapason-rust fall back to
-Python. Everything else - the API server, the mesh, Succes, the CLI - works.
+The API server, Mesh, Succes and the CLI still install. Accelerated/native
+features remain unavailable until the extension is built.
 
 To add it later:
     winget install Rustlang.Rustup
-    winget install Microsoft.VisualStudio.2022.BuildTools   # MSVC + CMake
+    winget install Microsoft.VisualStudio.2022.BuildTools
+    winget install Kitware.CMake
+    winget install NASM.NASM
     cd "$srcDir" ; uv sync --extra desktop --group desktop-native
 "@
 }
@@ -451,7 +478,8 @@ for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1
 }
 if (-not $ollamaReady) {
-    Write-Warn2 "Ollama daemon didn't become ready in 60s. Continuing - bg-orchestrator will retry later."
+    Write-Warn2 "Ollama daemon didn't become ready in 60s. No background retry exists on Windows."
+    Write-Warn2 "Start Ollama, then run: ollama pull qwen3.5:2b"
 }
 
 # ---------------------------------------------------------------------------
@@ -466,7 +494,8 @@ if ($ollamaReady) {
         $modelPullOk = $true
         Write-Ok "Starter model ready"
     } else {
-        Write-Warn2 "ollama pull failed; the bg-orchestrator will retry once Ollama is reachable."
+        Write-Warn2 "ollama pull failed. No background retry exists on Windows."
+        Write-Warn2 "Run later: ollama pull qwen3.5:2b"
     }
 } else {
     Write-Warn2 "Skipping model pull - daemon wasn't ready."
@@ -485,14 +514,14 @@ if (-not (Test-Path $binDir)) {
 
 # %~dp0 in a .cmd file resolves to the directory containing the script,
 # so the shim is self-locating - moving %LOCALAPPDATA%\Diapason won't
-# break it as long as the user moves the whole tree. `uv` is resolved
-# from PATH at runtime (astral installer adds it to User PATH); avoids
-# pinning to the install-time uv.exe path which can shift on uv updates.
+# break it as long as the user moves the whole tree. `diapason` is resolved
+# from the project venv. `uv run` would synchronize before every command and
+# can prune extras installed intentionally by this script.
 $shimContent = @"
 @echo off
 setlocal
 set "SRC=%~dp0..\src"
-uv run --project "%SRC%" diapason %*
+"%SRC%\.venv\Scripts\diapason.exe" %*
 "@
 Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
 
@@ -567,20 +596,35 @@ if ($Service) {
     }
 }
 
+if ($MaillageReseau -and -not $shouldInstallService) {
+    Write-Warn2 "-MaillageReseau has no effect because no service is being installed."
+}
+
 if ($shouldInstallService) {
     if (-not (Test-Path $serviceScript)) {
         Write-Fail "Service script not found at $serviceScript (the clone may be missing files; try -Force)."
     }
     Write-Info "Installing scheduled task..."
-    & powershell -ExecutionPolicy Bypass -File $serviceScript install -InstallRoot $installRoot
+    $serviceArgs = @(
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $serviceScript,
+        'install',
+        '-InstallRoot', $installRoot
+    )
+    if ($MaillageReseau) { $serviceArgs += '-MaillageReseau' }
+    & powershell @serviceArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Scheduled task setup failed."
     }
-    Write-Ok "Scheduled task 'Diapason' registered (loopback default)."
+    if ($MaillageReseau) {
+        Write-Ok "Scheduled task 'Diapason' registered (API loopback + Mesh LAN)."
+    } else {
+        Write-Ok "Scheduled task 'Diapason' registered (loopback only)."
+    }
 }
 
 # ---------------------------------------------------------------------------
-# 8. Final message
+# 11. Final message
 # ---------------------------------------------------------------------------
 
 Write-Host ""
@@ -607,15 +651,31 @@ if ($pathNeedsRefresh) {
 if (-not $modelPullOk) {
     Write-Host ""
     Write-Host "  NOTE: the qwen3.5:2b model didn't finish downloading." -ForegroundColor Yellow
-    Write-Host "        Chat will fail until the bg-orchestrator finishes the retry."
-    Write-Host "        'diapason doctor' shows progress."
+    Write-Host "        No Windows background retry exists. Start Ollama, then run:"
+    Write-Host "        ollama pull qwen3.5:2b"
 }
 
 if ($shouldInstallService) {
     Write-Host ""
     Write-Host "  Service: schtasks /Query /TN Diapason     (status)"
     Write-Host "           powershell -File `"$serviceScript`" uninstall    (remove)"
+
+    # The installer does not start the task: doing so would turn an
+    # installation choice into a running network service without a separate
+    # user action. Give the exact read-only proof to run after that action,
+    # and require only the components this invocation actually installed.
+    $verifyScript = Join-Path $srcDir 'deploy\windows\verify.ps1'
+    $verifyFlags = @()
+    if ($nativeMissing.Count -eq 0) { $verifyFlags += '-RequireNative' }
+    if ($MaillageReseau) { $verifyFlags += '-RequireMesh' }
+    $verifySuffix = if ($verifyFlags.Count -gt 0) {
+        ' ' + ($verifyFlags -join ' ')
+    } else { '' }
+
+    Write-Host ""
+    Write-Host "  Verify:  Start-ScheduledTask -TaskName Diapason"
+    Write-Host "           powershell -ExecutionPolicy Bypass -File `"$verifyScript`"$verifySuffix"
 }
 Write-Host ""
-Write-Host "  Docs:    https://carlitoetienne01-spec.github.io/Diapason/"
+Write-Host "  Docs:    $srcDir\deploy\windows\README.md"
 Write-Host ""

@@ -10,6 +10,7 @@ which the desktop app installs from source via
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import tomllib
@@ -18,6 +19,13 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 DESKTOP_LIB_RS = ROOT / "frontend" / "src-tauri" / "src" / "lib.rs"
 WINDOWS_INSTALL_PS1 = ROOT / "deploy" / "windows" / "install.ps1"
+WINDOWS_SERVICE_PS1 = ROOT / "deploy" / "windows" / "diapason-service.ps1"
+WINDOWS_VERIFY_PS1 = ROOT / "deploy" / "windows" / "verify.ps1"
+WINDOWS_TAURI_VALIDATION = (
+    ROOT / "frontend" / "src-tauri" / "tauri.windows-validation.conf.json"
+)
+DESKTOP_WORKFLOW = ROOT / ".github" / "workflows" / "desktop.yml"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 QUICKSTART_SH = ROOT / "scripts" / "quickstart.sh"
 
 
@@ -79,6 +87,11 @@ def test_windows_installer_syncs_the_native_group() -> None:
         "l'installateur doit dire comment obtenir Rust, pas seulement le "
         "constater absent"
     )
+    for outil in ("Get-Command cmake", "Get-Command nasm", "VC.Tools.x86.x64"):
+        assert outil in script, (
+            f"l'installateur ne vérifie pas {outil} avant de lancer la "
+            "construction native"
+        )
 
 
 def test_quickstart_installs_web_search_dependencies() -> None:
@@ -129,6 +142,118 @@ def test_l_installateur_windows_cherche_un_python_qui_convient() -> None:
         "le message d'échec doit nommer la cause la plus probable — l'alias "
         "du Microsoft Store — et non se contenter de « pas trouvé »"
     )
+
+
+def test_le_service_windows_ne_resynchronise_pas_le_venv_a_chaque_session() -> None:
+    """`uv run` au logon peut élaguer le groupe natif posé à l'installation."""
+    script = WINDOWS_SERVICE_PS1.read_text(encoding="utf-8")
+    assert ".venv\\Scripts\\diapason.exe" in script
+    assert '$serveArgs = "run diapason serve' not in script
+    assert "-Execute $diapasonPath" in script
+
+
+def test_l_installateur_peut_activer_le_mesh_sans_exposer_l_api() -> None:
+    script = WINDOWS_INSTALL_PS1.read_text(encoding="utf-8")
+    assert "[switch] $MaillageReseau" in script
+    assert "DIAPASON_MESH_NETWORK" in script
+    assert "$serviceArgs += '-MaillageReseau'" in script
+    assert 'uv run --project "%SRC%" diapason' not in script
+    assert '"%SRC%\\.venv\\Scripts\\diapason.exe" %*' in script
+    assert "deploy\\windows\\verify.ps1" in script
+    assert "$verifyFlags += '-RequireNative'" in script
+    assert "$verifyFlags += '-RequireMesh'" in script
+
+
+def test_l_installateur_windows_ne_promet_aucun_retry_inexistant() -> None:
+    script = WINDOWS_INSTALL_PS1.read_text(encoding="utf-8")
+    assert "bg-orchestrator" not in script
+    assert "No background retry exists on Windows" in script
+    assert "github.io/Diapason/" not in script
+
+
+def test_tauri_reconnait_le_repertoire_pose_par_l_installateur_windows() -> None:
+    source = DESKTOP_LIB_RS.read_text(encoding="utf-8")
+    assert 'std::env::var("LOCALAPPDATA")' in source
+    assert '.join("Diapason")' in source
+    assert 'root.join("src")' in source
+    assert 'args(["ls-remote"' not in source, (
+        "l'application ne doit pas tenter silencieusement de cloner le dépôt privé"
+    )
+
+
+def test_tauri_essaie_le_sidecar_embarque_avant_l_installation_systeme() -> None:
+    source = DESKTOP_LIB_RS.read_text(encoding="utf-8")
+    assert "std::env::current_exe()" in source
+    assert "candidates.insert(0, directory.join(name)" in source
+    assert 'directory.join(format!("{name}.exe"))' in source
+
+
+def test_le_workflow_bureau_valide_sur_le_runner_local_sans_simuler_windows() -> None:
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+    assert "runs-on: [self-hosted, macos-local]" in workflow
+    assert workflow.count("vars.RUNNERS_GITHUB == 'true'") >= 2
+    assert "platform: windows-latest" in workflow, (
+        "la matrice Windows doit rester prête à être rallumée sur un vrai runner"
+    )
+
+
+def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+    assert "build-windows-local:" in workflow
+    assert "runs-on: [self-hosted, windows-local]" in workflow
+    assert "vars.RUNNER_WINDOWS_LOCAL == 'true'" in workflow
+    assert "tauri.windows-validation.conf.json" in workflow
+    assert "Diapason\\artifacts" in workflow
+    assert "diapason-windows-validation-msi" in workflow
+
+    config = json.loads(WINDOWS_TAURI_VALIDATION.read_text())
+    bundle = config["bundle"]
+    assert bundle["targets"] == ["msi"]
+    assert bundle["createUpdaterArtifacts"] is False
+    assert "externalBin" not in bundle
+
+
+def test_le_workflow_ne_fabrique_pas_un_sidecar_ollama_incomplet() -> None:
+    """L'archive Windows porte le CLI ET ses bibliothèques GPU.
+
+    Le workflow historique extrayait uniquement ``ollama.exe`` et déclarait
+    ce fichier comme ``externalBin``. Le MSI pouvait donc réussir alors que
+    son moteur était incomplet. L'installateur de la plateforme pose Ollama ;
+    Tauri le résout ensuite dans son emplacement système.
+    """
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+    assert "download-ollama" not in workflow
+    assert '"externalBin"' not in workflow
+
+
+def test_le_banc_windows_verifie_les_frontieres_sans_les_modifier() -> None:
+    script = WINDOWS_VERIFY_PS1.read_text(encoding="utf-8")
+    assert "[switch] $RequireNative" in script
+    assert "[switch] $RequireMesh" in script
+    assert ".venv\\Scripts\\diapason.exe" in script
+    assert "import diapason_rust" in script
+    assert "Get-NetTCPConnection" in script
+    assert "/v1/chat/completions" in script
+    assert "/v1/mesh/presence" in script
+    assert "Start-ScheduledTask" not in script
+    assert "Register-ScheduledTask" not in script
+    assert "Unregister-ScheduledTask" not in script
+
+
+def test_le_banc_windows_exige_404_hors_du_mesh() -> None:
+    script = WINDOWS_VERIFY_PS1.read_text(encoding="utf-8")
+    for preuve in ("mesh.no_chat", "mesh.no_health", "mesh.no_docs"):
+        assert preuve in script
+    assert script.count("-eq 404") >= 3
+    assert "$presenceStatus -eq 403" in script
+
+
+def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert "RUNNER_WINDOWS_LOCAL == 'true'" in workflow
+    assert '["self-hosted","windows-local"]' in workflow
+    assert "System.Management.Automation.Language.Parser" in workflow
+    assert "git ls-files '*.ps1'" in workflow
 
 
 def test_les_scripts_powershell_non_ascii_portent_un_bom() -> None:
