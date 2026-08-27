@@ -276,7 +276,7 @@ def bloc_sceau() -> dict[str, Any]:
     ``/v1/mesh/presence``, celui du jumelage — plutôt qu'à une route neuve.
     Une route de plus coûterait une porte au mur du réseau, un seau de
     limitation, une régénération d'instantané de contrat, et rendrait faux
-    trois commentaires qui comptent les neuf portes. Un corps de réponse ne
+    trois commentaires qui comptent les dix portes. Un corps de réponse ne
     coûte rien de tout cela.
 
     Il n'est JAMAIS servi à un inconnu : la route qui le porte refuse en 403

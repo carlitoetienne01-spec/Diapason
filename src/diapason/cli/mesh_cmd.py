@@ -258,8 +258,16 @@ def send(fichier: str, appareil: str) -> None:
     def _avance(faits: int, total: int) -> None:
         console.print(f"  {faits}/{total} morceaux", end="\r")
 
+    def _attendre(message: str) -> None:
+        console.print(f"[yellow]{message}[/yellow]")
+
     try:
-        envoi = envoyer_fichier(fichier, cible, progression=_avance)
+        envoi = envoyer_fichier(
+            fichier,
+            cible,
+            progression=_avance,
+            attente=_attendre,
+        )
     except EnvoiRefuse as exc:
         # Le refus vient du destinataire ou du transport : il sait pourquoi,
         # nous non. Le relayer tel quel vaut mieux que l'habiller.
@@ -274,10 +282,12 @@ def send(fichier: str, appareil: str) -> None:
     #
     # ALREADY_PRESENT est un succès, pas une réserve : la déduplication par
     # contenu a constaté que le fichier était déjà là, entier et vérifié.
-    couleur = "green" if envoi.statut in _ABOUTIS else "yellow"
+    couleur = "green" if envoi.statut in _ABOUTIS else "red"
     console.print(f"[{couleur}]{envoi.message}[/{couleur}]")
     if envoi.chemin_distant:
         console.print(f"  chez {cible.get('name')} : {envoi.chemin_distant}")
+    if envoi.statut not in _ABOUTIS:
+        raise SystemExit(1)
 
 
 # Ce que le récepteur rend quand le fichier est chez lui, entier et vérifié.

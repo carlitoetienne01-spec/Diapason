@@ -140,7 +140,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # routes n'est d'ailleurs pas un débit mais un VOLUME, appliqué dans le
 # routeur : octets par session, et sessions simultanées.
 _TRANSFERT_RE = re.compile(
-    r"^/v1/mesh/files/(?:offer|[A-Za-z0-9_-]{1,64}/(?:chunk|finish|status))$"
+    r"^/v1/mesh/files/(?:offer|requests/[A-Za-z0-9_-]{1,64}/state|"
+    r"[A-Za-z0-9_-]{1,64}/(?:chunk|finish|status))$"
 )
 
 

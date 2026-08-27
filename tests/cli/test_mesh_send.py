@@ -95,7 +95,7 @@ class TestUnEnvoiQuiAboutit:
             patch(
                 "diapason.mesh.envoi_fichier.envoyer_fichier",
                 return_value=Envoi(
-                    statut="RECU",
+                    statut="COMPLETE",
                     message="rapport.pdf est arrivé.",
                     chemin_distant="~/.diapason/transfers/rapport.pdf",
                     octets=2048,

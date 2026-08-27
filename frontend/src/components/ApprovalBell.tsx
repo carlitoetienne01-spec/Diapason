@@ -166,6 +166,7 @@ export function ApprovalBell() {
                 const isExpanded = !!expanded[action.id];
                 const isLoading = !!processing[action.id];
                 const hasPayload = Object.keys(action.payload ?? {}).length > 0;
+                const isFileTransfer = action.action_type === 'file_transfer';
 
                 return (
                   <div
@@ -181,7 +182,9 @@ export function ApprovalBell() {
                         className="text-[11px] font-mono font-semibold"
                         style={{ color: 'var(--color-accent)' }}
                       >
-                        {action.action_type}
+                        {isFileTransfer
+                          ? t('agents.approvals.fileTransfer')
+                          : action.action_type}
                       </span>
                       <div className="flex items-center gap-2">
                         <span
@@ -251,7 +254,7 @@ export function ApprovalBell() {
                         }}
                       >
                         <CheckCircle size={12} />
-                        {t('common.approve')}
+                        {t(isFileTransfer ? 'agents.approvals.acceptFile' : 'common.approve')}
                       </button>
                       <button
                         onClick={() => handleDeny(action.id)}
@@ -264,7 +267,7 @@ export function ApprovalBell() {
                         }}
                       >
                         <XCircle size={12} />
-                        {t('common.deny')}
+                        {t(isFileTransfer ? 'agents.approvals.refuseFile' : 'common.deny')}
                       </button>
                     </div>
                   </div>

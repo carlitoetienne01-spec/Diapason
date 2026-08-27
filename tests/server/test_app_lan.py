@@ -37,7 +37,7 @@ def _chemins(app) -> set[str]:
 
 
 class TestCeQuiEstExpose:
-    def test_exactement_les_neuf_portes(self):
+    def test_exactement_les_dix_portes(self):
         assert _chemins(create_lan_app()) == set(_PORTES_LAN)
 
     def test_le_chat_n_existe_pas_sur_ce_port(self):
@@ -67,7 +67,7 @@ class TestCeQuiEstExpose:
         """Le plafond doit tenir contre ce que personne n'a encore écrit.
 
         Le filtre gardait toute route dépourvue de méthodes HTTP. Aucune des
-        neuf portes n'est dans ce cas, donc la clause ne gardait rien — mais
+        dix portes n'est dans ce cas, donc la clause ne gardait rien — mais
         un `@router.websocket(...)` ajouté à `mesh/routes.py` par une session
         future se serait retrouvé sur 0.0.0.0 sans que rien ne rougisse :
         hors du mur (cette application n'a pas d'AuthMiddleware) et hors du
@@ -114,7 +114,7 @@ class TestLInvariantQuiEmpecheLaDerive:
 
     def test_aucune_porte_du_lan_n_exige_la_cle_d_api(self):
         for chemin in sorted(_PORTES_LAN):
-            concret = chemin.replace("{session_id}", "s1")
+            concret = chemin.replace("{session_id}", "s1").replace("{request_id}", "r1")
             assert not AuthMiddleware._requires_auth(concret), (
                 f"{chemin} est exposée au LAN mais attend la clé d'API : "
                 "l'une des deux décisions est fausse"
@@ -135,7 +135,9 @@ class TestLInvariantQuiEmpecheLaDerive:
                 chemin = getattr(route, "path", "")
                 if not getattr(route, "methods", None):
                     continue
-                concret = chemin.replace("{session_id}", "s1")
+                concret = chemin.replace("{session_id}", "s1").replace(
+                    "{request_id}", "r1"
+                )
                 if AuthMiddleware._requires_auth(concret):
                     continue
                 assert chemin in _PORTES_LAN, (
@@ -174,7 +176,7 @@ class TestSurUnVraiSocket:
             if serveur.started:
                 break
             time.sleep(0.05)
-        return serveur, port
+        return serveur, port, fil
 
     def test_le_chat_rend_404_pas_401(self):
         """La différence dit tout : 401 signifie « il faudrait une clé »,
@@ -182,7 +184,7 @@ class TestSurUnVraiSocket:
         le chat — aucune clé volée n'y donnerait accès."""
         import httpx
 
-        serveur, port = self._servir()
+        serveur, port, fil = self._servir()
         try:
             base = f"http://127.0.0.1:{port}"
             chat = httpx.post(f"{base}/v1/chat/completions", json={}, timeout=5)
@@ -191,6 +193,8 @@ class TestSurUnVraiSocket:
             porte = httpx.post(f"{base}/v1/mesh/presence", json={}, timeout=5)
         finally:
             serveur.should_exit = True
+            fil.join(timeout=5)
+            assert not fil.is_alive(), "le serveur de banc a survécu au test"
 
         assert chat.status_code == 404, "le chat ne doit pas exister sur ce port"
         assert sante.status_code == 404, "même /health n'a rien à dire au réseau"
@@ -244,9 +248,10 @@ class TestLesDeuxSocketsDemarrent:
             pid_vu["lan"] = os.getpid()
             return {"ok": True}
 
+        arret = threading.Event()
         fil = threading.Thread(
             target=_servir_deux_sockets,
-            args=(principal, "127.0.0.1", maison, lan, "127.0.0.1", reseau),
+            args=(principal, "127.0.0.1", maison, lan, "127.0.0.1", reseau, arret),
             daemon=True,
         )
         fil.start()
@@ -257,18 +262,27 @@ class TestLesDeuxSocketsDemarrent:
             except Exception:  # noqa: BLE001 - le serveur monte encore
                 time.sleep(0.05)
 
-        assert (
-            httpx.get(f"http://127.0.0.1:{maison}/prive", timeout=5).status_code == 200
-        )
-        assert (
-            httpx.get(f"http://127.0.0.1:{reseau}/porte", timeout=5).status_code == 200
-        )
-        # Le point qui compte : la même mémoire des deux côtés.
-        assert pid_vu["principal"] == pid_vu["lan"] == os.getpid()
-        # Et l'étanchéité : chaque port ignore les routes de l'autre.
-        assert (
-            httpx.get(f"http://127.0.0.1:{reseau}/prive", timeout=5).status_code == 404
-        )
-        assert (
-            httpx.get(f"http://127.0.0.1:{maison}/porte", timeout=5).status_code == 404
-        )
+        try:
+            assert (
+                httpx.get(f"http://127.0.0.1:{maison}/prive", timeout=5).status_code
+                == 200
+            )
+            assert (
+                httpx.get(f"http://127.0.0.1:{reseau}/porte", timeout=5).status_code
+                == 200
+            )
+            # Le point qui compte : la même mémoire des deux côtés.
+            assert pid_vu["principal"] == pid_vu["lan"] == os.getpid()
+            # Et l'étanchéité : chaque port ignore les routes de l'autre.
+            assert (
+                httpx.get(f"http://127.0.0.1:{reseau}/prive", timeout=5).status_code
+                == 404
+            )
+            assert (
+                httpx.get(f"http://127.0.0.1:{maison}/porte", timeout=5).status_code
+                == 404
+            )
+        finally:
+            arret.set()
+            fil.join(timeout=5)
+            assert not fil.is_alive(), "les deux sockets ont survécu au test"

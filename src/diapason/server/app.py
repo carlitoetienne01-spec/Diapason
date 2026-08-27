@@ -492,7 +492,7 @@ def create_app(
     return app
 
 
-# Les NEUF portes qui ont le droit d'exister sur le réseau local.
+# Les DIX portes qui ont le droit d'exister sur le réseau local.
 #
 # Exactement celles que `_requires_auth` exempte de la clé d'API — et ce
 # n'est pas une coïncidence : une route exempte l'est parce qu'elle porte une
@@ -511,6 +511,7 @@ _PORTES_LAN: frozenset[str] = frozenset(
         "/v1/mesh/commands/ack",
         "/v1/mesh/presence",
         "/v1/mesh/files/offer",
+        "/v1/mesh/files/requests/{request_id}/state",
         "/v1/mesh/files/{session_id}/chunk",
         "/v1/mesh/files/{session_id}/finish",
         "/v1/mesh/files/{session_id}/status",
@@ -539,7 +540,7 @@ def create_lan_app() -> FastAPI:
     reçue sur le LAN n'apparaîtrait jamais dans l'inbox lue en loopback, et un
     morceau rendrait 404 parce que l'offre a ouvert la session ailleurs.
 
-    Pas de clé d'API ici, et c'est délibéré : les neuf routes s'authentifient
+    Pas de clé d'API ici, et c'est délibéré : les dix routes s'authentifient
     par signature d'appareil, invitation ou jeton de session. Une clé partagée
     prouverait MOINS — elle ne dit ni quel appareil parle, ni ce qu'il prétend.
     """
@@ -575,7 +576,7 @@ def create_lan_app() -> FastAPI:
     # future se serait retrouvé exposé sur 0.0.0.0 — hors du mur (il n'y a
     # pas d'AuthMiddleware ici) et hors du seau de débit (une poignée de main
     # WebSocket ne traverse pas un BaseHTTPMiddleware). Elle ne gardait rien
-    # d'autre : les neuf portes sont neuf APIRoute. Une clause qui ne sert
+    # d'autre : les dix portes sont dix APIRoute. Une clause qui ne sert
     # qu'aux cas qu'on n'a pas prévus n'est pas une commodité, c'est une
     # porte dérobée en attente.
     lan.router.routes = [

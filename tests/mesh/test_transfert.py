@@ -38,6 +38,11 @@ class TestNomsHostiles:
         assert "\x00" not in tr.assainir_nom("photo\x00.jpg")
         assert "\n" not in tr.assainir_nom("photo\n.jpg")
 
+    def test_les_controles_de_direction_ne_deguisent_pas_l_extension(self):
+        nom = tr.assainir_nom("rapport\u202egnp.exe")
+        assert "\u202e" not in nom
+        assert nom == "rapportgnp.exe"
+
     def test_un_nom_fleuve_garde_son_extension(self):
         nom = tr.assainir_nom("a" * 400 + ".pdf")
         assert len(nom) <= 120 and nom.endswith(".pdf")

@@ -60,7 +60,15 @@ def assainir_nom(brut: str) -> str:
     « ../../.ssh/authorized_keys » est un nom parfaitement valide pour
     l'émetteur : c'est au récepteur de refuser d'y croire.
     """
-    nom = unicodedata.normalize("NFC", str(brut or "")).strip()
+    nom = "".join(
+        caractere
+        for caractere in unicodedata.normalize("NFC", str(brut or ""))
+        # Les contrôles bidi et caractères invisibles ne sont pas des
+        # séparateurs, donc la regex historique les laissait traverser. Un
+        # `rapport\u202egnp.exe` pouvait alors se présenter visuellement comme
+        # une image tandis que le disque conservait un exécutable.
+        if unicodedata.category(caractere) != "Cf"
+    ).strip()
     # Le séparateur d'abord : on ne garde que le dernier segment, quelle que
     # soit la convention de l'émetteur.
     nom = nom.replace("\\", "/").split("/")[-1]

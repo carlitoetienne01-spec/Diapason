@@ -123,6 +123,7 @@ def _servir_deux_sockets(
     lan_app: object,
     lan_host: str,
     lan_port: int,
+    arret: object | None = None,
 ) -> None:
     """Deux sockets, UN SEUL PROCESSUS — et ce n'est pas un détail.
 
@@ -143,7 +144,19 @@ def _servir_deux_sockets(
         reseau = uvicorn.Server(
             uvicorn.Config(lan_app, host=lan_host, port=lan_port, log_level="info")
         )
-        await asyncio.gather(principal.serve(), reseau.serve())
+        if arret is None:
+            await asyncio.gather(principal.serve(), reseau.serve())
+            return
+        # Le banc à deux sockets survivait à pytest : les serveurs étaient
+        # enfermés ici, donc le test ne pouvait poser `should_exit` sur aucun
+        # des deux. L'événement est injecté uniquement pour rendre leur cycle
+        # de vie observable ; le service de production garde le même chemin.
+        principal_task = asyncio.create_task(principal.serve())
+        reseau_task = asyncio.create_task(reseau.serve())
+        await asyncio.to_thread(arret.wait)
+        principal.should_exit = True
+        reseau.should_exit = True
+        await asyncio.gather(principal_task, reseau_task)
 
     asyncio.run(_les_deux())
 
@@ -161,7 +174,7 @@ def _servir_deux_sockets(
     default=None,
     help=(
         "Adresse d'écoute du MAILLAGE seul, sur un second socket "
-        "(ex. 0.0.0.0). Neuf routes y sont exposées, pas une de plus : "
+        "(ex. 0.0.0.0). Dix routes y sont exposées, pas une de plus : "
         "le chat, la voix et Succès restent sur --host."
     ),
 )
@@ -826,7 +839,7 @@ def serve(
     if lan_host:
         console.print(
             f"  Maillage : [cyan]http://{lan_host}:{lan_port}[/cyan] — "
-            "neuf routes, signature d'appareil exigée"
+            "dix routes, créance d'appareil exigée"
         )
 
     # Log credential status at startup

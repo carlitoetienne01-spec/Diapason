@@ -143,7 +143,9 @@ class TestLInvariantReciproque:
         for chemin in transferts:
             # Les chemins déclarés portent {session_id} : on le remplace par
             # un identifiant plausible, comme le ferait une vraie requête.
-            concret = chemin.replace("{session_id}", "abc123")
+            concret = chemin.replace("{session_id}", "abc123").replace(
+                "{request_id}", "request123"
+            )
             assert est_route_de_transfert(concret), (
                 f"{concret} n'est pas reconnue : elle partirait derrière le "
                 "mur, et l'appareil émetteur n'a pas la clé d'API"

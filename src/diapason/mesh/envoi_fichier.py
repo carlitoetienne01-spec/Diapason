@@ -38,6 +38,9 @@ def envoyer_fichier(
     *,
     poster: Any = None,
     progression: Any = None,
+    attente: Any = None,
+    dormir: Any = time.sleep,
+    maintenant: Any = time.monotonic,
 ) -> Envoi:
     """Pousser un fichier vers un appareil déjà appairé.
 
@@ -79,20 +82,123 @@ def envoyer_fichier(
 
     base = adresse.rstrip("/")
     envoyer = poster or _poster
-    reponse = envoyer(f"{base}/v1/mesh/files/offer", offre, None)
+    reponse = _verifier_reponse(
+        envoyer(f"{base}/v1/mesh/files/offer", offre, None), device
+    )
 
-    # LA RÉPONSE SE VÉRIFIE AVANT D'EN TIRER QUOI QUE CE SOIT.
-    #
-    # Elle porte `ephemeralPublicKey`, dont la clé de session est dérivée
-    # trois lignes plus bas. Non vérifiée, n'importe qui placé entre les deux
-    # appareils substituait sa propre moitié, partageait la clé avec nous, et
-    # lisait le contenu du fichier — tout le chiffrement de `coffre.py`
-    # reposait sur un octet que personne n'avait signé.
-    #
-    # Et l'on vérifie AVANT de traiter « ALREADY_PRESENT » : sans quoi un
-    # intercepteur forge cette réponse, et nous croyons le fichier arrivé sans
-    # qu'un seul octet soit parti.
+    if reponse.get("status") == "ALREADY_PRESENT":
+        return Envoi(
+            statut="ALREADY_PRESENT",
+            message=str(reponse.get("userSafeMessage") or "Déjà présent."),
+            chemin_distant=str(reponse.get("path") or ""),
+        )
+
+    if reponse.get("status") == "PENDING":
+        request_id = str(reponse.get("requestId") or "")
+        request_token = str(reponse.get("requestToken") or "")
+        if not request_id or not request_token:
+            raise EnvoiRefuse("La demande d'accord du destinataire est incomplète.")
+        message_attente = str(
+            reponse.get("userSafeMessage")
+            or "En attente de l'accord sur l'appareil destinataire."
+        )
+        if attente is not None:
+            try:
+                attente(message_attente)
+            except Exception:  # noqa: BLE001 - l'affichage n'arrête pas l'envoi
+                pass
+
+        try:
+            delai_accord = int(reponse.get("expiresInS") or 120)
+        except (TypeError, ValueError, OverflowError):
+            delai_accord = 120
+        # La réponse est signée, mais le récepteur ne décide pas combien de
+        # temps l'émetteur garde une commande bloquée. Deux minutes est aussi
+        # le TTL côté réception : plus long ne pourrait que sonder un cadavre.
+        limite = maintenant() + min(max(delai_accord, 1), 120)
+        while reponse.get("status") == "PENDING":
+            restant = limite - maintenant()
+            if restant <= 0:
+                return Envoi(
+                    statut="EXPIRED",
+                    message="Aucune réponse n'a été donnée — rien n'a été envoyé.",
+                )
+            try:
+                pause = float(reponse.get("pollAfterMs") or 2000) / 1000
+            except (TypeError, ValueError, OverflowError):
+                pause = 2.0
+            dormir(min(max(pause, 0.25), 5.0, restant))
+            reponse = _verifier_reponse(
+                envoyer(
+                    f"{base}/v1/mesh/files/requests/{request_id}/state",
+                    {},
+                    request_token,
+                ),
+                device,
+            )
+            rendu_id = str(reponse.get("requestId") or "")
+            if rendu_id and rendu_id != request_id:
+                raise EnvoiRefuse("Le destinataire a répondu à une autre demande.")
+
+    statut = str(reponse.get("status") or "")
+    if statut in {"DENIED", "EXPIRED"}:
+        return Envoi(
+            statut=statut,
+            message=str(
+                reponse.get("userSafeMessage")
+                or "Le destinataire n'a pas accepté ce fichier."
+            ),
+        )
+    if statut != "ACCEPTED":
+        raise EnvoiRefuse(
+            f"Réponse inattendue du destinataire : {statut or 'sans statut'}."
+        )
+
+    session_id = str(reponse.get("sessionId") or "")
+    jeton = str(reponse.get("uploadToken") or "")
+    if not session_id or not jeton:
+        raise EnvoiRefuse("L'appareil n'a pas ouvert de session de transfert.")
+    cle = cle_de_session(demi, str(reponse.get("ephemeralPublicKey") or ""), session_id)
+
+    from diapason.mesh.coffre import sceller
+
+    envoyes = 0
+    for index, bloc in lire_morceaux(chemin):
+        envoyer(
+            f"{base}/v1/mesh/files/{session_id}/chunk?index={index}",
+            sceller(cle, index, bloc),
+            jeton,
+        )
+        envoyes += 1
+        if progression is not None:
+            try:
+                progression(envoyes, manifeste.morceaux)
+            except Exception:  # noqa: BLE001 - l'affichage n'arrête pas l'envoi
+                pass
+
+    fin = _verifier_reponse(
+        envoyer(f"{base}/v1/mesh/files/{session_id}/finish", {}, jeton), device
+    )
+    if str(fin.get("sessionId") or "") != session_id:
+        raise EnvoiRefuse("Le destinataire a confirmé une autre session.")
+    # La phrase vient du récepteur : lui seul a vérifié l'empreinte. Depuis le
+    # 26 août 2026, sa confirmation est signée elle aussi ; sinon un voisin
+    # pouvait forger COMPLETE après avoir jeté le dernier morceau.
+    return Envoi(
+        statut=str(fin.get("status") or "?"),
+        message=str(fin.get("userSafeMessage") or ""),
+        chemin_distant=str(fin.get("path") or ""),
+        octets=int(fin.get("bytes") or 0),
+        morceaux=envoyes,
+    )
+
+
+def _verifier_reponse(
+    reponse: dict[str, Any], device: dict[str, Any]
+) -> dict[str, Any]:
+    """Refuser toute décision de transfert qui ne vient pas de la cible."""
     from diapason.mesh.files_routes import _CHAMPS_REPONSE
+    from diapason.mesh.identity import device_identity, owner_id
     from diapason.mesh.registry import DeviceRegistry
     from diapason.mesh.signed import SignedRejected, verify_payload
 
@@ -116,44 +222,7 @@ def envoyer_fichier(
     vise = str(device.get("deviceId") or "")
     if vise and signataire != vise:
         raise EnvoiRefuse(f"La réponse vient de {signataire}, pas de l'appareil visé.")
-
-    if reponse.get("status") == "ALREADY_PRESENT":
-        return Envoi(
-            statut="ALREADY_PRESENT",
-            message=str(reponse.get("userSafeMessage") or "Déjà présent."),
-            chemin_distant=str(reponse.get("path") or ""),
-        )
-    session_id = str(reponse.get("sessionId") or "")
-    jeton = str(reponse.get("uploadToken") or "")
-    if not session_id or not jeton:
-        raise EnvoiRefuse("L'appareil n'a pas ouvert de session de transfert.")
-    cle = cle_de_session(demi, str(reponse.get("ephemeralPublicKey") or ""), session_id)
-
-    from diapason.mesh.coffre import sceller
-
-    envoyes = 0
-    for index, bloc in lire_morceaux(chemin):
-        envoyer(
-            f"{base}/v1/mesh/files/{session_id}/chunk?index={index}",
-            sceller(cle, index, bloc),
-            jeton,
-        )
-        envoyes += 1
-        if progression is not None:
-            try:
-                progression(envoyes, manifeste.morceaux)
-            except Exception:  # noqa: BLE001 - l'affichage n'arrête pas l'envoi
-                pass
-
-    fin = envoyer(f"{base}/v1/mesh/files/{session_id}/finish", {}, jeton)
-    # La phrase vient du récepteur : lui seul a vérifié l'empreinte.
-    return Envoi(
-        statut=str(fin.get("status") or "?"),
-        message=str(fin.get("userSafeMessage") or ""),
-        chemin_distant=str(fin.get("path") or ""),
-        octets=int(fin.get("bytes") or 0),
-        morceaux=envoyes,
-    )
+    return reponse
 
 
 def _champs():

@@ -65,13 +65,19 @@ def _une_cle_publique() -> str:
 
 
 def _http(
-    url: str, corps: dict | None = None, cle: str = "", methode: str = ""
+    url: str,
+    corps: dict | None = None,
+    cle: str = "",
+    methode: str = "",
+    jeton: str = "",
 ) -> dict:
     donnees = json.dumps(corps).encode() if corps is not None else None
     requete = urllib.request.Request(url, data=donnees, method=methode or None)
     requete.add_header("Content-Type", "application/json")
     if cle:
         requete.add_header("Authorization", f"Bearer {cle}")
+    if jeton:
+        requete.add_header("X-Transfer-Token", jeton)
     try:
         with urllib.request.urlopen(requete, timeout=10) as reponse:
             return json.loads(reponse.read() or b"{}")
@@ -151,6 +157,40 @@ class _Noeud:
             except Exception:  # noqa: BLE001
                 pass
         assert proc.poll() is not None, "un nœud de banc a survécu à son test"
+
+    def accepter_le_prochain_fichier(self) -> None:
+        """Jouer le clic humain dans la vraie base du processus récepteur."""
+        import sqlite3
+        import threading
+
+        def _accepter() -> None:
+            limite = time.monotonic() + 10
+            base = self.foyer / "approvals.db"
+            while time.monotonic() < limite:
+                if base.exists():
+                    try:
+                        connexion = sqlite3.connect(base, timeout=2)
+                        ligne = connexion.execute(
+                            "SELECT id FROM pending_actions "
+                            "WHERE action_type = 'file_transfer' "
+                            "AND status = 'pending' "
+                            "ORDER BY created_at DESC LIMIT 1"
+                        ).fetchone()
+                        if ligne:
+                            connexion.execute(
+                                "UPDATE pending_actions SET status = 'approved' "
+                                "WHERE id = ? AND status = 'pending'",
+                                (ligne[0],),
+                            )
+                            connexion.commit()
+                            connexion.close()
+                            return
+                        connexion.close()
+                    except sqlite3.Error:
+                        pass
+                time.sleep(0.05)
+
+        threading.Thread(target=_accepter, daemon=True).start()
 
 
 @pytest.fixture()
@@ -315,6 +355,7 @@ class TestUnFichierTraverse:
         from diapason.mesh.registry import DeviceRegistry
 
         cible = DeviceRegistry().get(jumelage.host_device_id)
+        hote.accepter_le_prochain_fichier()
         resultat = envoyer_fichier(source, cible)
 
         assert resultat.statut == "COMPLETE", resultat.message
@@ -341,6 +382,7 @@ class TestUnFichierTraverse:
         from diapason.mesh.registry import DeviceRegistry
 
         cible = DeviceRegistry().get(jumelage.host_device_id)
+        hote.accepter_le_prochain_fichier()
         premier = envoyer_fichier(source, cible)
         assert premier.statut == "COMPLETE"
 
@@ -408,9 +450,24 @@ class TestUnFichierTraverse:
             },
             _champs(),
         )
-        accord = _http(f"{hote.base}/v1/mesh/files/offer", offre)
+        hote.accepter_le_prochain_fichier()
+        proposition = _http(f"{hote.base}/v1/mesh/files/offer", offre)
+        assert proposition.get("status") == "PENDING", proposition
+        accord = _http(
+            f"{hote.base}/v1/mesh/files/requests/{proposition['requestId']}/state",
+            {},
+            jeton=proposition["requestToken"],
+        )
+        limite = time.monotonic() + 5
+        while accord.get("status") == "PENDING" and time.monotonic() < limite:
+            time.sleep(0.05)
+            accord = _http(
+                f"{hote.base}/v1/mesh/files/requests/{proposition['requestId']}/state",
+                {},
+                jeton=proposition["requestToken"],
+            )
         session = accord.get("sessionId")
-        assert session, f"offre refusée : {accord}"
+        assert session, f"offre non acceptée : {accord}"
 
         import urllib.request
 

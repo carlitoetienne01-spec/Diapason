@@ -511,7 +511,7 @@ A few consequences worth knowing before you open that port:
 Startup prints the mesh line on its own line, before the `Starting Diapason API server` block:
 
 ```
-  Maillage : http://0.0.0.0:8001 — neuf routes, signature d'appareil exigée
+  Maillage : http://0.0.0.0:8001 — dix routes, créance d'appareil exigée
 ```
 
 `--host 0.0.0.0` still exists and still puts the *entire* API on the network,

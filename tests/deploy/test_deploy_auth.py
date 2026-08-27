@@ -45,7 +45,7 @@ def test_systemd_unit_binds_public_and_requires_env_file():
 def test_launchd_plist_binds_loopback():
     """L'application complète reste sur la loopback — la règle n'a pas changé.
 
-    Ce qui a changé, le 25 août 2026 : un SECOND socket peut exposer neuf
+    Ce qui a changé, le 25 août 2026 : un SECOND socket peut exposer dix
     routes du maillage sur le réseau. La règle n'est donc plus « le mot
     0.0.0.0 n'apparaît pas », qui interdisait aussi le cas légitime, mais
     « l'option host, celle qui porte les deux cent dix routes, vaut

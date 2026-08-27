@@ -43,7 +43,7 @@ def _label():
     "--maillage-reseau",
     is_flag=True,
     help="Ouvrir un SECOND socket pour que vos autres appareils atteignent "
-    "ce Mac. Neuf routes du maillage y sont exposées, signature d'appareil "
+    "ce Mac. Dix routes du maillage y sont exposées, créance d'appareil "
     "exigée ; le chat, la voix et Succès restent sur la loopback.",
 )
 @click.option(
@@ -70,7 +70,7 @@ def install(
         # existait pour un besoin légitime — « un téléphone ne peut pas
         # joindre 127.0.0.1 » — auquel il n'y avait alors pas d'autre
         # réponse. Il y en a une depuis : un second socket qui ne porte que
-        # neuf routes. Le besoin étant servi, l'échappatoire se referme.
+        # dix routes. Le besoin étant servi, l'échappatoire se referme.
         #
         # Elle échoue au lieu d'être un alias silencieux : la même commande
         # ne doit pas se mettre à faire autre chose sans le dire.
@@ -79,8 +79,8 @@ def install(
             "réseau, et c'est ainsi que ce Mac a servi deux cent dix routes "
             "sur le Wi-Fi jusqu'au 26 août 2026.\n"
             "  • Pour que vos autres appareils atteignent ce Mac : "
-            "--maillage-reseau, qui n'expose que les neuf routes du "
-            "maillage, signature d'appareil exigée.\n"
+            "--maillage-reseau, qui n'expose que les dix routes du "
+            "maillage, créance d'appareil exigée.\n"
             "  • L'application complète reste sur 127.0.0.1, toujours.",
             err=True,
         )
@@ -111,8 +111,8 @@ def install(
     if maillage_reseau:
         click.echo(
             f"⚠ Le maillage écoutera sur 0.0.0.0:{lan_port} : toute machine "
-            "de votre réseau local pourra l'atteindre. Neuf routes, "
-            "signature d'appareil exigée — mais un réseau partagé reste un "
+            "de votre réseau local pourra l'atteindre. Dix routes, "
+            "créance d'appareil exigée — mais un réseau partagé reste un "
             "réseau partagé.",
             err=True,
         )

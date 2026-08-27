@@ -64,8 +64,8 @@ def resumer_la_demande(prompt: str) -> str:
     return propre[:110] or "Diapason demande une autorisation"
 
 
-def _annoncer_la_demande(prompt: str, *, restant_s: int | None = None) -> None:
-    """Pose la demande d'approbation dans le centre de notifications.
+def announce_approval(title: str, body: str) -> None:
+    """Poser une demande dans les notifications sans bloquer l'appelant.
 
     EN TÂCHE DE FOND, et c'est le point : notifier_macos attend osascript
     jusqu'à dix secondes (livraison.py), soit près du quart du budget vocal
@@ -73,22 +73,27 @@ def _annoncer_la_demande(prompt: str, *, restant_s: int | None = None) -> None:
     annonce. Best-effort et silencieuse : une notification ratée ne fait pas
     tomber le tour d'outil qu'elle accompagne.
     """
+
+    def _poser() -> None:
+        try:
+            from diapason.heartbeat.livraison import notifier_macos
+
+            notifier_macos(title, body)
+        except Exception:  # noqa: BLE001 - l'annonce est un bonus, jamais une porte
+            logger.debug("annonce d'approbation impossible", exc_info=True)
+
+    threading.Thread(target=_poser, daemon=True, name="annonce-approbation").start()
+
+
+def _annoncer_la_demande(prompt: str, *, restant_s: int | None = None) -> None:
+    """Pose la demande d'approbation dans le centre de notifications."""
     resume = resumer_la_demande(prompt)
     corps = (
         f"{resume} — réponds dans Diapason ({restant_s} s)"
         if restant_s is not None
         else f"{resume} — réponds dans Diapason."
     )
-
-    def _poser() -> None:
-        try:
-            from diapason.heartbeat.livraison import notifier_macos
-
-            notifier_macos("Diapason demande ton accord", corps)
-        except Exception:  # noqa: BLE001 - l'annonce est un bonus, jamais une porte
-            logger.debug("annonce d'approbation impossible", exc_info=True)
-
-    threading.Thread(target=_poser, daemon=True, name="annonce-approbation").start()
+    announce_approval("Diapason demande ton accord", corps)
 
 
 def _await_decision(prompt: str, wait_s: float) -> bool:
@@ -172,6 +177,7 @@ __all__ = [
     "DEFAULT_WAIT_S",
     "TOOL_CONFIRMATION_ACTION",
     "TOOL_CONFIRMATION_KEY",
+    "announce_approval",
     "current_mode",
     "tool_confirm_callback",
 ]

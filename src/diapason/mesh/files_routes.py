@@ -1,12 +1,14 @@
 """Les routes du transfert de fichiers : offrir, envoyer, finir.
 
-Spatial Mesh, phase 3 — 25 août 2026. Trois routes, une session, et une
+Spatial Mesh, phase 3 — 25 août 2026. Quatre routes, une session, et une
 créance qui n'est PAS la clé d'API : l'appareil qui envoie ne l'a pas.
 
 - ``POST /v1/mesh/files/offer`` — enveloppe SIGNÉE Ed25519, vérifiée par le
   même ``verify_payload`` que les balises de présence : sept contrôles, dont
   la révocation. Elle annonce le manifeste et une clé publique éphémère, et
-  rend un identifiant de session, un jeton, et la clé éphémère du récepteur.
+  rend une demande opaque. Elle ne crée encore ni dossier ni session.
+- ``POST /v1/mesh/files/requests/{id}/state`` — jeton de demande ; rend
+  PENDING, DENIED, EXPIRED, ou ouvre la session après l'accord humain.
 - ``POST /v1/mesh/files/{id}/chunk`` — un morceau chiffré, autorisé par le
   jeton de session. Le jeton n'existe que si l'offre a été acceptée : la
   signature garde la porte, le jeton garde le couloir.
@@ -66,8 +68,18 @@ _CHAMPS_REPONSE = (
     "deviceId",
     "sentAtMs",
     "status",
+    "requestId",
+    "requestToken",
     "sessionId",
+    "uploadToken",
     "ephemeralPublicKey",
+    "pollAfterMs",
+    "expiresInS",
+    "remainingS",
+    "missing",
+    "path",
+    "bytes",
+    "userSafeMessage",
 )
 
 
@@ -83,7 +95,10 @@ def _repondre(corps: dict[str, Any]) -> dict[str, Any]:
         "ownerId": owner_id(),
         "deviceId": device_identity().device_id,
         "sentAtMs": int(_time.time() * 1000),
+        "requestId": "",
+        "requestToken": "",
         "sessionId": "",
+        "uploadToken": "",
         "ephemeralPublicKey": "",
         **corps,
     }
@@ -116,6 +131,36 @@ class _Session:
 _sessions: dict[str, _Session] = {}
 
 
+@dataclass
+class _Demande:
+    """Une offre vérifiée qui attend encore le oui d'un humain."""
+
+    request_id: str
+    jeton: str
+    action_id: str
+    device_id: str
+    manifeste: Any
+    cle_emetteur: str
+    ouverte_a: float = field(default_factory=time.monotonic)
+    reponse_session: dict[str, Any] | None = None
+
+    @property
+    def perimee(self) -> bool:
+        from diapason.mesh.demande_de_reception import REQUEST_TTL_S
+
+        return (time.monotonic() - self.ouverte_a) > REQUEST_TTL_S
+
+    @property
+    def retirable(self) -> bool:
+        """Keep an expired tombstone long enough to answer the sender."""
+        from diapason.mesh.demande_de_reception import REQUEST_TTL_S
+
+        return (time.monotonic() - self.ouverte_a) > REQUEST_TTL_S * 2
+
+
+_demandes: dict[str, _Demande] = {}
+
+
 def _purger() -> None:
     for sid in [s for s, v in _sessions.items() if v.perimee]:
         try:
@@ -123,6 +168,15 @@ def _purger() -> None:
         except Exception:  # noqa: BLE001
             pass
         _sessions.pop(sid, None)
+    for demande in [d for d in _demandes.values() if d.perimee]:
+        try:
+            from diapason.mesh.demande_de_reception import expirer
+
+            expirer(demande.action_id)
+        except Exception:  # noqa: BLE001
+            pass
+    for request_id in [r for r, demande in _demandes.items() if demande.retirable]:
+        _demandes.pop(request_id, None)
 
 
 def reinitialiser_pour_tests() -> None:
@@ -133,6 +187,7 @@ def reinitialiser_pour_tests() -> None:
         except Exception:  # noqa: BLE001
             pass
     _sessions.clear()
+    _demandes.clear()
 
 
 def dossier_de_reception() -> Path:
@@ -162,8 +217,8 @@ class Offre(BaseModel):
 
 @router.post("/offer")
 def offrir(body: Offre) -> dict[str, Any]:
-    """Accepter — ou refuser — un fichier AVANT le premier octet."""
-    from diapason.mesh.coffre import cle_de_session, nouvelle_demi_cle
+    """Vérifier l'offre, puis demander — jamais accepter à la place de l'humain."""
+    from diapason.mesh.demande_de_reception import REQUESTS_MAX, poser
     from diapason.mesh.identity import device_identity, owner_id
     from diapason.mesh.registry import DeviceRegistry
     from diapason.mesh.signed import SignedRejected, verify_payload
@@ -171,7 +226,7 @@ def offrir(body: Offre) -> dict[str, Any]:
         Manifeste,
         RefusDeTransfert,
         deja_present,
-        ouvrir_reception,
+        verifier_le_manifeste,
     )
 
     _purger()
@@ -196,8 +251,21 @@ def offrir(body: Offre) -> dict[str, Any]:
     except SignedRejected as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    manifeste = Manifeste.from_dict(body.manifest or {})
+    try:
+        manifeste = Manifeste.from_dict(body.manifest or {})
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise HTTPException(
+            status_code=400, detail="Manifeste de fichier illisible."
+        ) from exc
     dossier = dossier_de_reception()
+
+    # Vérifier le manifeste ne crée ni dossier ni fichier. Avant cette
+    # séparation, `ouvrir_reception` faisait mkdir puis répondait ACCEPTED :
+    # la décision était prise et le disque touché avant le premier regard.
+    try:
+        verifier_le_manifeste(manifeste, taille_max=_taille_max())
+    except RefusDeTransfert as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
     # Déduplication AVANT tout octet (§45) : si le contenu est déjà là,
     # l'annoncer coûte une réponse, le transférer coûterait le fichier.
@@ -213,53 +281,153 @@ def offrir(body: Offre) -> dict[str, Any]:
             }
         )
 
-    session_id = secrets.token_urlsafe(18).replace("-", "_")[:32]
-    try:
-        reception = ouvrir_reception(
-            manifeste, dossier, session_id=session_id, taille_max=_taille_max()
+    pendantes = sum(
+        1
+        for demande in _demandes.values()
+        if not demande.perimee and not demande.reponse_session
+    )
+    if pendantes >= REQUESTS_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Trop de demandes attendent déjà une réponse. Réessaie dans un moment."
+            ),
         )
-    except RefusDeTransfert as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
-    demi = nouvelle_demi_cle()
-    try:
-        cle = cle_de_session(demi, body.ephemeralPublicKey, session_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from diapason.mesh.registry import DeviceRegistry
 
+    appareil = DeviceRegistry().find(device_id) or {
+        "deviceId": device_id,
+        "name": "Appareil appairé",
+    }
+    request_id = secrets.token_urlsafe(12).replace("-", "_")[:20]
     jeton = secrets.token_urlsafe(24)
-    _sessions[session_id] = _Session(
-        session_id=session_id,
+    action_id = poser(manifeste, appareil)
+    _demandes[request_id] = _Demande(
+        request_id=request_id,
         jeton=jeton,
+        action_id=action_id,
         device_id=device_id,
-        reception=reception,
-        cle=cle,
+        manifeste=manifeste,
+        cle_emetteur=body.ephemeralPublicKey,
     )
     logger.info(
-        "transfert accepté : session=%s de=%s taille=%d",
-        session_id,
+        "transfert proposé : demande=%s de=%s taille=%d",
+        request_id,
         device_id,
         manifeste.taille,
     )
     return _repondre(
         {
-            "status": "ACCEPTED",
-            "sessionId": session_id,
-            "uploadToken": jeton,
-            "ephemeralPublicKey": demi.publique_b64,
-            "missing": reception.manquants,
+            "status": "PENDING",
+            "requestId": request_id,
+            "requestToken": jeton,
+            "pollAfterMs": 2000,
+            "expiresInS": 120,
+            "userSafeMessage": "En attente de l'accord sur l'appareil destinataire.",
         }
     )
 
 
+def _demande_autorisee(request_id: str, request: Request) -> _Demande:
+    _purger()
+    demande = _demandes.get(request_id)
+    if demande is None:
+        raise HTTPException(status_code=404, detail="Demande de transfert inconnue.")
+    presente = request.headers.get("X-Transfer-Token", "")
+    if not presente or not secrets.compare_digest(
+        presente.encode("utf-8"), demande.jeton.encode("utf-8")
+    ):
+        raise HTTPException(status_code=403, detail="Jeton de demande invalide.")
+    return demande
+
+
+def _ouvrir_apres_accord(demande: _Demande) -> dict[str, Any]:
+    """Créer la réception une fois, après le oui, et jamais avant."""
+    if demande.reponse_session is not None:
+        return dict(demande.reponse_session)
+    if len(_sessions) >= _SESSIONS_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail="Trop de transferts en cours. Réessaie dans un moment.",
+        )
+    from diapason.mesh.coffre import cle_de_session, nouvelle_demi_cle
+    from diapason.mesh.transfert import ouvrir_reception
+
+    session_id = secrets.token_urlsafe(18).replace("-", "_")[:32]
+    demi = nouvelle_demi_cle()
+    try:
+        cle = cle_de_session(demi, demande.cle_emetteur, session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    reception = ouvrir_reception(
+        demande.manifeste,
+        dossier_de_reception(),
+        session_id=session_id,
+        taille_max=_taille_max(),
+    )
+    upload_token = secrets.token_urlsafe(24)
+    _sessions[session_id] = _Session(
+        session_id=session_id,
+        jeton=upload_token,
+        device_id=demande.device_id,
+        reception=reception,
+        cle=cle,
+    )
+    demande.reponse_session = {
+        "status": "ACCEPTED",
+        "requestId": demande.request_id,
+        "sessionId": session_id,
+        "uploadToken": upload_token,
+        "ephemeralPublicKey": demi.publique_b64,
+        "missing": reception.manquants,
+    }
+    return dict(demande.reponse_session)
+
+
+@router.post("/requests/{request_id}/state")
+def etat_demande(request_id: str, request: Request) -> dict[str, Any]:
+    """Sonder sans bloquer un fil serveur pendant que l'humain réfléchit."""
+    from diapason.mesh.demande_de_reception import REQUEST_TTL_S, decision
+
+    demande = _demande_autorisee(request_id, request)
+    issue = decision(demande.action_id)
+    if issue == "PENDING":
+        restant = max(0, int(REQUEST_TTL_S - (time.monotonic() - demande.ouverte_a)))
+        return _repondre(
+            {
+                "status": "PENDING",
+                "requestId": request_id,
+                "pollAfterMs": 2000,
+                "remainingS": restant,
+            }
+        )
+    if issue in {"DENIED", "EXPIRED"}:
+        return _repondre(
+            {
+                "status": issue,
+                "requestId": request_id,
+                "userSafeMessage": (
+                    "Le fichier a été refusé."
+                    if issue == "DENIED"
+                    else "Aucune réponse n'a été donnée — rien n'a été envoyé."
+                ),
+            }
+        )
+    return _repondre(_ouvrir_apres_accord(demande))
+
+
 def _session_autorisee(session_id: str, request: Request) -> _Session:
+    _purger()
     session = _sessions.get(session_id)
     if session is None or session.perimee:
         raise HTTPException(status_code=404, detail="Session de transfert inconnue.")
     presente = request.headers.get("X-Transfer-Token", "")
     # Comparaison à temps constant : un jeton ne se devine pas octet par
     # octet en mesurant les réponses.
-    if not presente or not secrets.compare_digest(presente, session.jeton):
+    if not presente or not secrets.compare_digest(
+        presente.encode("utf-8"), session.jeton.encode("utf-8")
+    ):
         raise HTTPException(status_code=403, detail="Jeton de transfert invalide.")
     return session
 
@@ -308,13 +476,16 @@ def finir(session_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     _sessions.pop(session_id, None)
     logger.info("transfert terminé : %s", cible.name)
-    return {
-        "status": "COMPLETE",
-        "path": str(cible),
-        "name": cible.name,
-        "bytes": cible.stat().st_size,
-        "userSafeMessage": f"« {cible.name} » est arrivé.",
-    }
+    return _repondre(
+        {
+            "status": "COMPLETE",
+            "sessionId": session_id,
+            "path": str(cible),
+            "name": cible.name,
+            "bytes": cible.stat().st_size,
+            "userSafeMessage": f"« {cible.name} » est arrivé.",
+        }
+    )
 
 
 @router.post("/{session_id}/status")
