@@ -1,5 +1,8 @@
 .PHONY: setup build test lint format
 
+PYTHON := .venv/bin/python
+MATURIN := .venv/bin/maturin
+
 # Mirrors .github/workflows/ci.yml so `make test` matches CI locally.
 
 # ATTENTION : `uv sync` ÉLAGUE tout extra non listé (constaté deux fois,
@@ -19,14 +22,14 @@ setup:
 	uv pip install --reinstall --quiet "sherpa-onnx>=1.10"
 
 build:
-	uv run maturin develop --manifest-path rust/crates/diapason-python/Cargo.toml
+	$(MATURIN) develop --manifest-path rust/crates/diapason-python/Cargo.toml
 
 test: build
-	uv run pytest tests/ -n auto -q --tb=short -m "not live and not cloud and not hub"
+	$(PYTHON) -m pytest tests/ -n auto -q --tb=short -m "not live and not cloud and not hub"
 
 lint:
-	uv run ruff check src/ tests/
-	uv run ruff format --check src/ tests/
+	$(PYTHON) -m ruff check src/ tests/
+	$(PYTHON) -m ruff format --check src/ tests/
 
 format:
-	uv run ruff format src/ tests/
+	$(PYTHON) -m ruff format src/ tests/

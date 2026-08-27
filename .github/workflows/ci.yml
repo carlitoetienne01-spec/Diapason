@@ -167,8 +167,8 @@ jobs:
   test-windows:
     # WINDOWS N'EST PLUS VERIFIE, et ce job le dit en etant SAUTE.
     #
-    # Aucun runner auto-heberge Windows n'existe ici, et les runners GitHub
-    # ne demarrent plus depuis le 24 aout 2026. Ce job echouait donc a chaque
+    # Aucun runner auto-heberge Windows n'existe encore ici, et les runners
+    # GitHub ne demarrent plus depuis le 24 aout 2026. Ce job echouait donc a chaque
     # commit. Or un rouge permanent ne signale plus rien : au bout de trois
     # fois plus personne ne lit la fin de la liste — c'est exactement le
     # constat qui a motive le commit « Le linteur etait rouge en permanence,
@@ -178,11 +178,12 @@ jobs:
     # vert qui pretendrait avoir verifie. Meme regle que partout ici — dire
     # ce qu'on n'a pas fait plutot que de le maquiller (§5).
     #
-    # POUR LE RALLUMER : creer la variable de depot RUNNERS_GITHUB = true
-    # (Settings > Secrets and variables > Actions > Variables), une fois la
-    # facturation reglee.
-    if: vars.RUNNERS_GITHUB == 'true'
-    runs-on: windows-latest
+    # POUR LE RALLUMER, deux chemins honnêtes :
+    # - creer RUNNER_WINDOWS_LOCAL=true apres avoir installe sur le PC un
+    #   runner portant les etiquettes self-hosted,windows-local ;
+    # - ou creer RUNNERS_GITHUB=true une fois la facturation reglee.
+    if: vars.RUNNER_WINDOWS_LOCAL == 'true' || vars.RUNNERS_GITHUB == 'true'
+    runs-on: ${{ vars.RUNNER_WINDOWS_LOCAL == 'true' && fromJSON('["self-hosted","windows-local"]') || 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -192,6 +193,27 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
+
+      - name: Parse every PowerShell deployment script
+        shell: pwsh
+        run: |
+          $failed = $false
+          git ls-files '*.ps1' | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD $_),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object {
+                Write-Error "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)"
+              }
+            }
+          }
+          if ($failed) { exit 1 }
 
       - name: Set up Python
         uses: actions/setup-python@v6

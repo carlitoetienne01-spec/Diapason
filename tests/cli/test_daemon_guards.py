@@ -35,6 +35,12 @@ from diapason.core.ports import (
 )  # noqa: F401 — importés pour lisibilité des assertions
 
 
+@pytest.fixture(autouse=True)
+def _verrou_de_demarrage_isole(monkeypatch, tmp_path):
+    """Chaque worker exerce son scénario, pas le verrou tenu par un voisin."""
+    monkeypatch.setattr("diapason.cli.daemon_cmd.DEFAULT_CONFIG_DIR", tmp_path)
+
+
 class FauxProcessus:
     """Un processus dont on décide s'il est vivant."""
 
@@ -312,7 +318,11 @@ def test_start_ne_lance_rien_quand_il_refuse(monkeypatch, tmp_path) -> None:
         subprocess, "Popen", lambda *a, **k: lances.append(a) or FauxProcessus()
     )
     CliRunner().invoke(daemon, ["start"])
-    assert lances == []
+    serveurs = [appel for appel in lances if appel and appel[0] and "serve" in appel[0]]
+    assert serveurs == [], (
+        "la détection matérielle peut lancer system_profiler ; aucun serveur "
+        "ne doit être lancé après le refus du port"
+    )
 
 
 # --- le garde ne doit jamais se bloquer lui-même -------------------------

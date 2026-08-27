@@ -6,10 +6,23 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from diapason.cli import cli
 from diapason.cli.daemon_cmd import SERVING, _read_pid, _write_pid
+
+
+@pytest.fixture(autouse=True)
+def _verrou_de_demarrage_isole(monkeypatch, tmp_path):
+    """Le vrai verrou est global ; deux tests parallèles ne le sont pas.
+
+    La CI lance pytest avec ``-n auto``. Sans ce foyer par test, un scénario
+    qui vérifie justement le refus d'un second ``start`` fait échouer un
+    voisin qui vérifie le lancement POSIX — le verrou de production marche,
+    mais le test mesure un autre worker plutôt que son propre scénario.
+    """
+    monkeypatch.setattr("diapason.cli.daemon_cmd.DEFAULT_CONFIG_DIR", tmp_path)
 
 
 class TestDaemonCommands:
