@@ -266,11 +266,19 @@ def test_le_banc_windows_exige_404_hors_du_mesh() -> None:
 
 
 def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
+    """Le runner de service ne doit pas dépendre de PowerShell Core.
+
+    Constaté sur le premier passage Windows du 27 août 2026 : le PC avait le
+    parseur Windows PowerShell 5.1 utilisé par nos installateurs, mais pas
+    `pwsh`. Les deux matrices mouraient donc avant d'analyser un seul `.ps1`.
+    """
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     assert "RUNNER_WINDOWS_LOCAL == 'true'" in workflow
     assert '["self-hosted","windows-local"]' in workflow
     assert "System.Management.Automation.Language.Parser" in workflow
     assert "git ls-files '*.ps1'" in workflow
+    assert "shell: powershell" in workflow
+    assert "shell: pwsh" not in workflow
 
 
 def test_les_scripts_powershell_non_ascii_portent_un_bom() -> None:

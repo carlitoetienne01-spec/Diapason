@@ -165,23 +165,16 @@ jobs:
   # All `run:` steps use static commands only (no `github.event.*`
   # interpolation), so there is no workflow-injection surface here.
   test-windows:
-    # WINDOWS N'EST PLUS VERIFIE, et ce job le dit en etant SAUTE.
+    # Le runner `pc-bureau` verifie Windows reel depuis le 27 aout 2026. Son
+    # service utilise l'installation native de Windows PowerShell 5.1 : le
+    # premier passage a prouve que demander `pwsh` ajoutait une dependance
+    # PowerShell Core absente et arretait les deux matrices avant le parseur.
+    # `powershell` exerce aussi le lecteur UTF-8/BOM que les scripts livres
+    # rencontreront vraiment sur les installations Windows prises en charge.
     #
-    # Aucun runner auto-heberge Windows n'existe encore ici, et les runners
-    # GitHub ne demarrent plus depuis le 24 aout 2026. Ce job echouait donc a chaque
-    # commit. Or un rouge permanent ne signale plus rien : au bout de trois
-    # fois plus personne ne lit la fin de la liste — c'est exactement le
-    # constat qui a motive le commit « Le linteur etait rouge en permanence,
-    # donc il ne disait plus rien ».
-    #
-    # Saute, il apparait comme « skipped » : une absence VISIBLE, jamais un
-    # vert qui pretendrait avoir verifie. Meme regle que partout ici — dire
-    # ce qu'on n'a pas fait plutot que de le maquiller (§5).
-    #
-    # POUR LE RALLUMER, deux chemins honnêtes :
-    # - creer RUNNER_WINDOWS_LOCAL=true apres avoir installe sur le PC un
-    #   runner portant les etiquettes self-hosted,windows-local ;
-    # - ou creer RUNNERS_GITHUB=true une fois la facturation reglee.
+    # RUNNER_WINDOWS_LOCAL selectionne ce PC sans minutes facturees.
+    # RUNNERS_GITHUB reste le repli pour windows-latest une fois la
+    # facturation reparee.
     if: vars.RUNNER_WINDOWS_LOCAL == 'true' || vars.RUNNERS_GITHUB == 'true'
     runs-on: ${{ vars.RUNNER_WINDOWS_LOCAL == 'true' && fromJSON('["self-hosted","windows-local"]') || 'windows-latest' }}
     strategy:
@@ -195,7 +188,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Parse every PowerShell deployment script
-        shell: pwsh
+        shell: powershell
         run: |
           $failed = $false
           git ls-files '*.ps1' | ForEach-Object {
