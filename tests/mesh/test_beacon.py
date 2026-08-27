@@ -238,6 +238,37 @@ class TestAnnouncing:
 
         assert announce_to(registry.get(PEER), post=broken) is False
 
+    def test_a_signed_return_beacon_is_the_only_address_proof(
+        self, registry, paired, monkeypatch
+    ):
+        """mDNS proposes an address; the peer's signature is what may retain it."""
+        registry.heartbeat(PEER, address="http://127.0.0.1:8100")
+        seen = []
+        monkeypatch.setattr(
+            "diapason.mesh.beacon.verify_beacon",
+            lambda raw, **kw: seen.append((raw, kw)) or registry.get(PEER),
+        )
+        body = {"deviceId": PEER, "signature": "proof"}
+
+        assert announce_to(
+            registry.get(PEER), post=lambda _u, _b: (200, {"peerPresence": body})
+        )
+        assert seen and seen[0][0] == body
+
+    def test_a_forged_return_beacon_never_breaks_presence(
+        self, registry, paired, monkeypatch
+    ):
+        registry.heartbeat(PEER, address="http://127.0.0.1:8100")
+
+        def forged(*_a, **_kw):
+            raise PresenceRejected("BAD_SIGNATURE", "signature invalide")
+
+        monkeypatch.setattr("diapason.mesh.beacon.verify_beacon", forged)
+        assert announce_to(
+            registry.get(PEER),
+            post=lambda _u, _b: (200, {"peerPresence": {"signature": "fake"}}),
+        )
+
     def test_a_revoked_peer_is_not_announced_to(self, registry, paired):
         registry.heartbeat(PEER, address="http://127.0.0.1:8100")
         registry.revoke(PEER)

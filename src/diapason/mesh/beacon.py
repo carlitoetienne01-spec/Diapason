@@ -34,6 +34,7 @@ __all__ = [
     "verify_beacon",
     "announce_to",
     "announce_to_fleet",
+    "local_endpoint",
 ]
 
 PRESENCE_VERSION = 1
@@ -253,6 +254,25 @@ def announce_to(
         except Exception:  # noqa: BLE001
             logger.debug("clé de scellement non lue", exc_info=True)
 
+        # Une découverte mDNS ne devient jamais une adresse de confiance par
+        # elle-même. Le candidat répond avec SA balise signée : c'est cette
+        # preuve, et elle seule, qui rafraîchit son adresse dans le registre.
+        # Un ancien client ignore ce champ ; un corps forgé échoue dans
+        # verify_beacon et ne change rien.
+        try:
+            peer_presence = corps.get("peerPresence")
+            if isinstance(peer_presence, Mapping):
+                from diapason.mesh.registry import DeviceRegistry
+
+                verify_beacon(
+                    peer_presence,
+                    registry=DeviceRegistry(),
+                    local_owner_id=owner_id(),
+                    local_device_id=identity.device_id,
+                )
+        except Exception:  # noqa: BLE001 - la présence sortante reste totale
+            logger.debug("balise de retour non retenue", exc_info=True)
+
     return 200 <= int(status) < 300
 
 
@@ -292,6 +312,16 @@ def set_local_endpoint(host: str, port: int) -> None:
     """Record the host and port uvicorn was actually given."""
     global _endpoint
     _endpoint = (str(host or "127.0.0.1"), int(port))
+
+
+def local_endpoint() -> tuple[str, int] | None:
+    """Le socket réellement promis par le processus, sans le deviner.
+
+    ``None`` avant que la commande ``serve`` ait choisi ses sockets. La
+    découverte refuse alors de publier : annoncer un port supposé serait
+    exactement la panne que ``set_local_endpoint`` a été créé pour éviter.
+    """
+    return _endpoint
 
 
 def local_address() -> str:

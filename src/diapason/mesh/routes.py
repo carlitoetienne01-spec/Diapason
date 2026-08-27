@@ -382,6 +382,24 @@ def receive_presence(body: dict[str, Any]) -> dict[str, Any]:
     # lignes plus haut. Un client qui ne comprend pas ce champ l'ignore — le
     # Dart décode un dictionnaire nu, sans modèle strict.
     reponse: dict[str, Any] = {"ok": True, "presence": presence_of(device)}
+    # Réponse symétrique : l'appelant peut avoir trouvé cette adresse par
+    # mDNS, qui n'est pas authentifié. Il ne la retient qu'après avoir vérifié
+    # CETTE balise signée avec la clé enregistrée au jumelage. Aucun nouveau
+    # chemin d'écriture du registre n'est créé.
+    try:
+        from diapason.mesh.beacon import build_beacon, local_address, sign_beacon
+        from diapason.mesh.capabilities import local_capabilities
+
+        reponse["peerPresence"] = sign_beacon(
+            build_beacon(
+                owner_id=owner_id(),
+                device_id=device_identity().device_id,
+                address=local_address(),
+                capabilities=sorted(local_capabilities()),
+            )
+        )
+    except Exception:  # noqa: BLE001 - compatible avec les anciens clients
+        logger.debug("balise de retour non jointe", exc_info=True)
     try:
         from diapason.mesh.scellement import bloc_sceau
 

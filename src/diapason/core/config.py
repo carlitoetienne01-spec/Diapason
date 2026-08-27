@@ -1778,6 +1778,9 @@ class MeshConfig:
     """
 
     chiffrement: str = "opportuniste"
+    # La découverte ne sait que se RESTREINDRE : même vraie, elle ne publie
+    # rien tant qu'aucun socket Mesh n'est réellement joignable sur le LAN.
+    discovery: bool = True
 
 
 @dataclass(slots=True)
@@ -2335,9 +2338,15 @@ enabled = true
 # viewport_height = 720
 
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 8000
 agent = "orchestrator"
+
+# La découverte ne publie rien tant que le second socket Mesh n'est pas
+# explicitement activé avec `diapason serve --lan-host ...`.
+[mesh]
+chiffrement = "opportuniste"
+discovery = true
 
 [learning]
 enabled = false

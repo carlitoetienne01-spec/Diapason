@@ -260,10 +260,13 @@ def create_app(
     async def _lifespan(application: FastAPI):
         prewarm_task = asyncio.create_task(_prewarm_local_model(application))
         heartbeat_task = asyncio.create_task(_mesh_heartbeat(application))
+        from diapason.mesh.discovery import run_discovery
+
+        discovery_task = asyncio.create_task(run_discovery())
         try:
             yield
         finally:
-            for task in (prewarm_task, heartbeat_task):
+            for task in (prewarm_task, heartbeat_task, discovery_task):
                 if not task.done():
                     task.cancel()
                 with suppress(asyncio.CancelledError):

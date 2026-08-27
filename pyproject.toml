@@ -88,12 +88,16 @@ server = [
     "uvicorn>=0.30",
     "pydantic>=2.0",
     "python-multipart>=0.0.9",
+    # Cross-platform mDNS/DNS-SD. The record carries only a rotating opaque
+    # pseudonym; pairing remains the sole source of trust.
+    "zeroconf>=0.150,<0.151",
 ]
 desktop = [
     "fastapi>=0.110",
     "uvicorn>=0.30",
     "pydantic>=2.0",
     "python-multipart>=0.0.9",
+    "zeroconf>=0.150,<0.151",
     "faster-whisper>=1.0",
     # Native frontmost-app lookup, AX text insertion and clipboard-preserving
     # paste used by the deterministic lightning path on macOS.

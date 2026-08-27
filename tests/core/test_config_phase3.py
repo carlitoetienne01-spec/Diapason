@@ -6,6 +6,7 @@ from diapason.core.config import (
     AgentConfig,
     DiapasonConfig,
     HardwareInfo,
+    MeshConfig,
     ServerConfig,
     generate_default_toml,
 )
@@ -63,6 +64,11 @@ class TestDiapasonConfig:
         assert hasattr(cfg.agent, "system_prompt")
         assert hasattr(cfg.agent, "context_from_memory")
 
+    def test_mesh_discovery_is_available_but_not_an_exposure_switch(self):
+        cfg = DiapasonConfig()
+        assert isinstance(cfg.mesh, MeshConfig)
+        assert cfg.mesh.discovery is True
+
 
 class TestGenerateDefaultToml:
     def test_includes_server_section(self):
@@ -70,6 +76,14 @@ class TestGenerateDefaultToml:
         toml_str = generate_default_toml(hw)
         assert "[server]" in toml_str
         assert "port = 8000" in toml_str
+        assert 'host = "127.0.0.1"' in toml_str, (
+            "une nouvelle configuration ne doit pas exposer toute l'API au LAN"
+        )
+
+    def test_includes_mesh_discovery_section(self):
+        toml_str = generate_default_toml(HardwareInfo())
+        assert "[mesh]" in toml_str
+        assert "discovery = true" in toml_str
 
     def test_includes_agent_section(self):
         hw = HardwareInfo()

@@ -37,6 +37,16 @@
     <key>NSCameraUsageDescription</key>
     <string>Diapason regarde votre main pour reconnaître vos gestes, et seulement quand vous activez le mode gestes. Les images sont analysées sur ce Mac, ne sont jamais enregistrées, et ne quittent jamais l'ordinateur.</string>
 
+    <!-- macOS 15+ ne montre pas la demande d'accès au réseau local si cette
+         phrase ou le type Bonjour manque. Le Mesh découvre uniquement des
+         appareils déjà appairés ; il ne publie ni nom ni identifiant. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Diapason cherche sur votre réseau local les appareils que vous avez déjà appairés, afin de leur transférer du contenu directement.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_diapason-mesh._tcp</string>
+    </array>
+
     <key>NSScreenCaptureUsageDescription</key>
     <string>Diapason captures the screen only when you ask it to describe what is displayed.</string>
 
