@@ -51,18 +51,29 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 > le 26 août, et le blocage ne le concerne pas : il ne porte que sur les
 > minutes facturées.
 >
-> Y tournent : `ci.yml` (`lint`, `test`, `rust`) et `frontend.yml`. **Ce qui
-> les rend verts est donc macOS, plus Ubuntu** — un défaut propre à Linux ne
-> sera plus attrapé. Un test qui tourne vaut mieux qu'un test qui ne tourne
-> pas, mais ce n'est pas le même test.
+> Y tournent : `ci.yml` (`lint`, `test`, `rust`), `frontend.yml` et la
+> validation de `desktop.yml` (TypeScript + tests Rust Tauri). **Ce qui les
+> rend verts est donc macOS, plus Ubuntu** — un défaut propre à Linux ou
+> Windows ne sera plus attrapé. Un test qui tourne vaut mieux qu'un test qui
+> ne tourne pas, mais ce n'est pas le même test.
 >
 > Ce qui ne tourne plus du tout, et qui est **sauté** plutôt que rouge :
-> `test-windows`, `autotag`, `docs`. Un rouge permanent ne signale plus
+> `test-windows`, `autotag`, `docs` et les publications Tauri
+> Linux/macOS/Windows de `desktop.yml`. Un rouge permanent ne signale plus
 > rien ; « skipped » dit l'absence sans l'écraser. Pour tout rallumer une
 > fois la facturation réglée dans « Billing & plans » : créer la variable de
 > dépôt `RUNNERS_GITHUB = true` (Settings → Secrets and variables →
 > Actions → Variables), puis remettre les `runs-on: ubuntu-latest` indiqués
 > en commentaire dans chaque fichier.
+>
+> Windows a aussi un chemin sans minutes facturées : installer un second
+> runner sur le PC avec les étiquettes `self-hosted, windows-local`, puis
+> créer `RUNNER_WINDOWS_LOCAL = true`. Le job `test-windows` choisit alors ce
+> runner au lieu de `windows-latest` et analyse tous les `.ps1` avec le vrai
+> parseur PowerShell avant les tests. Un lancement manuel de `desktop.yml`
+> ajoute `build-windows-local` : il produit un `.msi` de validation non publié
+> et sans updater sous `%LOCALAPPDATA%\Diapason\artifacts`. Ce n'est pas une
+> release signée.
 >
 > Conséquence pratique inchangée : **lance la vérification toi-même, en
 > entier, avant de pousser.** La CI confirme, elle ne découvre pas.
@@ -222,7 +233,9 @@ après. Voir `docs/succes-client-mobile.md`.
 
 ## 6. Où en est le chantier
 
-La branche de travail est `feat/diapason-spatial-mesh`. Le point d'entrée est
+Ne déduis jamais la branche courante de ce document : l'arbre est partagé et
+la branche change au fil des intégrations. Lis `git branch --show-current` et
+`git status` avant toute action. Le point d'entrée du chantier est
 [`docs/spatial-mesh/README.md`](docs/spatial-mesh/README.md) — il dit ce qui
 est livré, ce qui reste, et dans quel ordre. Deux compagnons :
 

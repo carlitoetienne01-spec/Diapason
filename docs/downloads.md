@@ -21,20 +21,19 @@ processing happens on your local machine — the app connects to the backend you
     ./scripts/quickstart.sh
     ```
 
-### Download
+### Release status
 
-| Platform | Download | Notes |
-|----------|----------|-------|
-| macOS (Universal) | [:material-download: **Diapason.dmg**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg) | Apple Silicon + Intel |
-| Windows (64-bit) | [:material-download: **Diapason-setup.exe**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe) | Windows 10+ |
-| Linux (DEB) | [:material-download: **Diapason.deb**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb) | Ubuntu, Debian |
-| Linux (RPM) | [:material-download: **Diapason.rpm**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm) | Fedora, RHEL |
-| Linux (AppImage) | [:material-download: **Diapason.AppImage**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.AppImage) | Any distro |
+!!! warning "No desktop installer is published yet"
+    The repository's GitHub Releases list is currently empty. The historical
+    `desktop-v1.0.2` links returned 404 and have been removed. macOS has a
+    locally validated build; Windows and Linux still require native-machine
+    validation before any installer can be offered professionally.
 
-!!! tip "All releases"
-    Browse all versions on the [GitHub Releases](https://github.com/carlitoetienne01-spec/Diapason/releases) page.
+The release workflow is prepared for `.dmg`, Windows installer, `.deb`, `.rpm`
+and AppImage outputs. Hosted release jobs remain skipped until
+`RUNNERS_GITHUB=true` is restored and signing is configured.
 
-### macOS: "app is damaged" fix
+### macOS local build: "app is damaged" fix
 
 macOS Gatekeeper quarantines apps downloaded from the internet that aren't notarized
 by Apple. If you see **"Diapason is damaged and can't be opened"**, run this in

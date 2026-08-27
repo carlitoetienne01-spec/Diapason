@@ -1,13 +1,14 @@
-"""Publish the canonical install scripts into the docs site.
+"""Prepare the canonical install scripts in the generated docs site.
 
 Serves the installers at::
 
     https://carlitoetienne01-spec.github.io/Diapason/install.sh   (Linux / macOS / WSL2)
     https://carlitoetienne01-spec.github.io/Diapason/install.ps1  (native Windows)
 
-so users have an HTTPS-valid, project-controlled install URL that does not
-depend on the externally-hosted ``diapason.ai`` domain — whose TLS config
-broke and which the project does not control (issue #337).
+These become project-controlled HTTPS install URLs only when GitHub Pages is
+actually deployed. The private repository currently publishes no Pages site,
+so product documentation must point at the files in an authenticated checkout
+until that deployment exists.
 
 Single source of truth: the scripts live under ``scripts/install/`` and
 ``deploy/windows/`` (also bundled into the wheel as ``_install_scripts/``).

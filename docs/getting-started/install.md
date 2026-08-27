@@ -21,32 +21,31 @@
 
 ## Platform-specific guides
 
-| Platform | One-liner | Detailed guide |
+| Platform | Invocation depuis le clone authentifié | Detailed guide |
 |---|---|---|
-| **macOS** | `curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh \| bash` | [macOS install](macos.md) |
-| **Linux** | `curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh \| bash` | [Linux install](linux.md) |
-| **WSL2 on Windows** | `curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh \| bash` (run inside Ubuntu) | [WSL2 install](wsl2.md) |
-| **Native Windows** | `irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 \| iex` | [Native Windows install](windows-native.md) |
-| **Desktop GUI** | Download from the [latest release](https://github.com/carlitoetienne01-spec/Diapason/releases) | — |
+| **macOS** | `bash scripts/install/install.sh` | [macOS install](macos.md) |
+| **Linux** | `bash scripts/install/install.sh` | [Linux install](linux.md) |
+| **WSL2 on Windows** | `bash scripts/install/install.sh` (dans Ubuntu) | [WSL2 install](wsl2.md) |
+| **Native Windows** | `.\deploy\windows\install.ps1` | [Native Windows install](windows-native.md) |
+| **Desktop GUI** | aucune release publiée ; construire depuis le clone | [État Tauri](../user-guide/desktop-tauri.md) |
 
 The bash and PowerShell installers do the same thing on their respective hosts. The rest of this page documents the bash installer in detail; the [native Windows guide](windows-native.md) is the equivalent reference for PowerShell.
 
 ## Bash installer
 
 ```bash
-curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
+bash scripts/install/install.sh
 ```
 
 The installer downloads everything for you — including [uv](https://docs.astral.sh/uv/)
 (the Python package manager), the Python venv, Ollama, and a small starter
 model. **You don't need to install uv or any other prerequisite first.**
 
-!!! info "Install URL"
-    This script is served straight from the project's own GitHub Pages site,
-    so HTTPS always works. You may also see `https://diapason.ai/install.sh`
-    referenced in older docs — that domain is community-operated and has had
-    intermittent TLS issues ([#337](https://github.com/carlitoetienne01-spec/Diapason/issues/337)).
-    The `carlitoetienne01-spec.github.io` URL above is the canonical one.
+!!! warning "Publication future"
+    La construction MkDocs copie toujours les scripts vers `install.sh` et
+    `install.ps1`, afin qu'ils soient prêts le jour où Pages sera réellement
+    publié. Aujourd'hui ces URL rendent 404 : le fichier local du clone est la
+    seule source exécutable annoncée.
 
 About 3 minutes on a typical broadband connection. Type `diapason` to start chatting.
 
@@ -77,7 +76,7 @@ About 3 minutes on a typical broadband connection. Type `diapason` to start chat
 
 ## Idempotent re-runs
 
-Re-running the curl line is safe. The installer reads `~/.diapason/.state/install-state.json` and skips completed steps. If your venv got nuked, re-running heals it.
+Re-running the local script is safe. The installer reads `~/.diapason/.state/install-state.json` and skips completed steps. If your venv got nuked, re-running heals it.
 
 ## Cloud quick-path
 

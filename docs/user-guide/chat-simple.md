@@ -112,9 +112,10 @@ The server is OpenAI-compatible, so any client that works with the OpenAI API ca
 
 ## Using the Desktop App
 
-1. Start the backend: `diapason serve` (or `./scripts/quickstart.sh`)
-2. Download and open the desktop app from the [releases page](https://github.com/carlitoetienne01-spec/Diapason/releases)
-3. The app connects to `http://localhost:8000` automatically
+1. Start the backend: `diapason serve` (or `./scripts/quickstart.sh`).
+2. Build the desktop app from the authenticated checkout. No release is
+   currently published; on Carlito's Mac, use `./scripts/install-desktop.sh`.
+3. The app connects to `http://localhost:8000` automatically.
 
 ## Switching Models
 

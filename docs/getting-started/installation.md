@@ -90,17 +90,23 @@ cd Diapason
 ./scripts/quickstart.sh
 ```
 
-**Step 2.** Download and open the desktop app:
+**Step 2.** Build and open the desktop app from the authenticated checkout.
 
-| Platform | Download |
-|----------|----------|
-| macOS (Universal) | [:material-download: **Diapason.dmg**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_universal.dmg) |
-| Windows (64-bit) | [:material-download: **Diapason-setup.exe**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_x64-setup.exe) |
-| Linux (DEB) | [:material-download: **Diapason.deb**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.deb) |
-| Linux (RPM) | [:material-download: **Diapason.rpm**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason-1.0.1-1.x86_64.rpm) |
-| Linux (AppImage) | [:material-download: **Diapason.AppImage**](https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-v1.0.2/Diapason_1.0.1_amd64.AppImage) |
+There is currently no published installer: the GitHub Releases list is empty,
+and the former `desktop-v1.0.2` links did not exist. On macOS, use the validated
+local installer:
 
-The app connects to `http://localhost:8000` automatically.
+```bash
+./scripts/install-desktop.sh
+```
+
+On Windows, run `deploy/windows/install.ps1` first. It prepares the backend at
+`%LOCALAPPDATA%\Diapason\src`; the Tauri application now detects that exact
+location. A distributable `.msi` will only be advertised after a build and
+end-to-end run on the real Windows PC.
+
+The app connects to an existing `http://localhost:8000` server or starts the
+backend from the installed project.
 
 !!! warning "macOS: \"app is damaged\""
     If macOS says the app is damaged, clear the Gatekeeper quarantine flag:
@@ -108,9 +114,6 @@ The app connects to `http://localhost:8000` automatically.
     xattr -cr /Applications/Diapason.app
     ```
     This is normal for open-source apps distributed outside the App Store.
-
-!!! tip "All releases"
-    Browse all versions on the [GitHub Releases](https://github.com/carlitoetienne01-spec/Diapason/releases) page.
 
 ### Build from source
 

@@ -1,4 +1,4 @@
-# Matrice des capacités — état réel au 25 août 2026, 17 h
+# Matrice des capacités — état réel au 26 août 2026
 
 *Engendrée depuis le code (`mesh/capabilities.py`, `mesh/tools.py`) et depuis
 l'état constaté de la flotte (`~/.diapason/mesh.db`, lu en lecture seule), pas
@@ -80,20 +80,20 @@ l'application. Le modèle n'a donc accès qu'à **quatre** de ces cinq verbes.
 
 | Fonction demandée | macOS | Windows | Android | iOS/iPadOS | Web | Note |
 |---|:--:|:--:|:--:|:--:|:--:|---|
-| **Jumelage** | ✅ | ❌ | ✅ | ⚠️ | ❌ | Windows : aucune app. Android : constaté, 2 appareils en base. |
+| **Jumelage** | ✅ | ❌ | ✅ | ⚠️ | ❌ | Windows : bootstrap, Tauri et banc de vérification préparés, mais rien d'installé ni validé sur le vrai PC. Android : constaté, 2 appareils en base. |
 | **Présence** | ✅ | ❌ | ✅ | ⚠️ | ❌ | Dérivée d'un horodatage, pas d'une connexion tenue. |
 | **Handoff interne** (`success://`) | ✅ | ❌ | ✅ | ⚠️ | ❌ | 11 commandes réellement abouties. |
 | **Chiffrement** | ⚠️ | — | ⚠️ | — | — | **Fichiers : bout en bout** (X25519 éphémère + AES-256-GCM, `mesh/coffre.py`). **Commandes : signées, en clair** (Ed25519). La distinction est délibérée — voir §4. |
 | **Hors-ligne** | ✅ | — | ✅ | — | — | File avec deux politiques ; jamais de faux succès. |
-| **Transfert de fichiers** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré** : `mesh/transfert.py`, `coffre.py`, `files_routes.py`, `envoi_fichier.py`. Manifeste, morceaux de 1 Mio, reprise, finalisation atomique. Banc réel entre deux processus. **Diapason ↔ Diapason seulement** : le client Dart ne sait pas recevoir. |
+| **Transfert de fichiers** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré** : manifeste, morceaux de 1 Mio, chiffrement, reprise, consentement explicite et finalisation atomique. L'offre reste `PENDING` jusqu'à « Accepter » dans la cloche ; aucun octet ne part sur refus ou expiration. Banc réel entre deux processus. **Diapason ↔ Diapason seulement** : le client Dart ne sait pas recevoir. |
 | **Suivi de main** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré.** Vision (21 points, 2 mains) à 4 ms/image ; entitlement caméra et `NSCameraUsageDescription` **présents** dans le paquet Tauri ; flux par `getUserMedia` à une cadence que le SERVEUR décide (§83 : 12 im/s une main suivie, 3 au repos, 2 sur batterie faible), images lues en mémoire, jamais écrites. |
 | **OPEN / FIST / GRAB / RELEASE** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré**, sous leurs noms français : poses `PAUME_OUVERTE` et `POING` ; états `SAISI` (GRAB) et `RELACHE` (RELEASE). Hystérésis, confirmation sur N images, temps de repos — chacun testé. `PINCE` et `POINTE` ont été retirées le 25 août 2026 : la machine à états ne les consultait pas, et `PINCE` était classée AVANT le poing — un poing serré, pouce contre l'index, ne saisissait donc rien. |
 | **Cible spatiale / direction** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucun matériel de la flotte ne mesure une direction. §34 s'applique : repli par nom, puis question explicite — et la question est désormais **répondable** (`/v1/gestures/drop/target`). |
 | **Fusion voix + geste** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livrée** : `geste_deposer` (`tools/gestes_spatiaux.py`) envoie ce que la MAIN tient — jamais ce que le modèle nomme — et répond à la question « vers lequel ? ». La main se dit dans le contexte, voix ET chat. Banc : `tests/tools/test_geste_deposer.py`, **18 tests** — les 15 de la fusion que compte [`GESTES.md`](GESTES.md), plus trois qui gardent le refus d'un appareil inventé et la cloche de `mesh_send`. L'outil n'est **pas** derrière cette cloche, délibérément ; `mesh_send`, qui choisit et l'objet et la cible, l'est désormais. L'armement, lui, reste **sonore** (le double-clap arme le mode gestes) : du niveau sonore, pas de la parole. |
-| **Fichiers de l'app** | ✅ | ❌ | ❌ | ❌ | ❌ | Le transfert écrit dans `~/.diapason/transfers`, en 0700, sous un nom assaini, jamais en écrasant. Ce qui le garde : une offre signée Ed25519, une clé publique qui n'existe que pour un appareil `TRUSTED` (donc la révocation le coupe), un jeton de session à usage unique, un plafond en octets et un seau de débit dédié. **Aucune capacité** — et plus aucune ne prétend le contraire. |
+| **Fichiers de l'app** | ✅ | ❌ | ❌ | ❌ | ❌ | Le transfert écrit dans `~/.diapason/transfers`, en 0700, sous un nom assaini, jamais en écrasant. Ce qui le garde : offre signée Ed25519, accord humain obligatoire et non mémorisé, jetons distincts de décision et de session, plafond en octets et seau dédié. La confirmation finale est signée. **Aucune capacité** — et plus aucune ne prétend le contraire. |
 | **Système de fichiers arbitraire** | ❌ | ❌ | ❌ | ❌ | ❌ | Interdit par construction (`FORBIDDEN_PARAMETER_NAMES`, 12 noms). |
 | **Arrière-plan permanent** | ⚠️ | — | ⚠️ | ❌ | ❌ | Android : sondage au premier plan seulement. iOS : interdit. |
-| **Nearby / découverte** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucun mDNS, aucun Bluetooth. Adresse LAN tapée à la main. |
+| **Nearby / découverte** | ⚠️ | 🚧 | ❌ | ❌ | ❌ | mDNS livré en Python multiplateforme : pseudonyme opaque tournant, aucun nom ni identifiant diffusé, et l'adresse n'est retenue qu'après une balise Ed25519 du pair. Tests unitaires verts ; pas encore validé entre deux machines physiques. Le bootstrap Windows sait activer le second socket et son banc sait en vérifier la frontière, mais aucun des deux n'a encore tourné sur le PC. Aucun Bluetooth. |
 | **Assistant → maillage** | ✅ | — | — | — | — | `mesh_devices`, `mesh_send` et `handoff_continue` sont dans `_TROUSSE_ASSISTANT`. L'abstention côté **voix** reste délibérée et gardée par un test. |
 
 ---
@@ -130,9 +130,9 @@ expirées ; une seule avait été utilisée.
 
 | Case | Ce qui manque exactement |
 |---|---|
-| Windows, toutes lignes | **Une application.** Le squelette Flutter de Succès n'a jamais été construit. C'est ce qui rend le MVP Mac ↔ Windows du §121 inatteignable tel qu'écrit ; le premier MVP démontrable est Mac ↔ Mac, puis Mac ↔ Android. |
+| Windows, toutes lignes | Le bootstrap PowerShell, la fenêtre Tauri et `deploy/windows/verify.ps1` sont raccordés sur `%LOCALAPPDATA%\Diapason\src`, mais ce n'est pas encore une application livrée. Les jobs `test-windows` et `build-windows-local` sont prêts pour un runner `self-hosted,windows-local` ; le second garde son `.msi` de validation sous `%LOCALAPPDATA%\Diapason\artifacts`. Il faut encore les exécuter sur le vrai PC, construire `diapason_rust` avec MSVC, puis faire le banc Mac ↔ Windows. Le squelette Flutter de Succès n'est pas ce client de bureau. |
 | Transfert vers un téléphone | Le client Dart n'a ni sélecteur de fichiers, ni accès au stockage, ni capacité déclarée pour recevoir. Rien ne bougera côté serveur le jour où il l'annoncera. |
-| Découverte | Un service mDNS : il n'en existe aucun (aucun `zeroconf` dans le code ni dans les dépendances). L'écoute hors de `127.0.0.1` est, elle, **à moitié livrée** : un SECOND socket existe (`create_lan_app` et `_PORTES_LAN`, `server/app.py`) et ne monte que **neuf** routes du maillage — une requête de chat y rend 404, pas 401, parce que la route n'y est pas montée. **Il n'est pas actif par défaut** : `diapason serve --lan-host` n'a aucune valeur par défaut, le drapeau `diapason serve-service install --maillage-reseau` est éteint (`--lan-port` vaut 8001 dans les deux cas), et le plist livré (`deploy/launchd/com.diapason.serve.plist`) n'ajoute aucun de ces arguments — il explique comment le faire, sans le faire. Sans mDNS, l'adresse se tape de toute façon à la main. |
+| Découverte | Le service mDNS existe désormais (`mesh/discovery.py`, `zeroconf`). Il ne publie qu'un pseudonyme tournant et `v=1`, puis exige une balise signée avant de retenir l'adresse. **Il ne tourne que si le second socket LAN est réellement activé** : `diapason serve --lan-host` n'a toujours aucune valeur par défaut, le drapeau `diapason serve-service install --maillage-reseau` reste un choix explicite, et le plist livré ne l'impose pas. Validation réelle Mac ↔ Windows encore impossible tant que l'application Windows n'est pas installée. |
 | Chiffrement des **commandes** | Elles sont signées, pas chiffrées. Suffisant sur un LAN de confiance — savoir qui parle suffit pour « ouvre cet écran » — et insuffisant dès qu'un relais existe. Les **fichiers**, eux, sont chiffrés : un document personnel sur un Wi-Fi partagé n'est pas une commande. |
 
 ---

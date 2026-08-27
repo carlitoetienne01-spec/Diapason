@@ -37,19 +37,23 @@ Personal AI agents are exploding in popularity, but nearly all of them still rou
 
 Diapason is that stack. It is a framework for local-first personal AI, built around three core ideas: shared primitives for building on-device agents; evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy; and a learning loop that improves models using local trace data. The goal is simple: make it possible to build personal AI agents that run locally by default, calling the cloud only when truly necessary. Diapason aims to be both a research platform and a production foundation for local AI, in the spirit of PyTorch.
 
-## Installation
+## Installation status
 
-Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
+This repository is currently private, its GitHub Pages installer URLs are not
+published, and its GitHub Releases list is empty. There is therefore no honest
+public one-liner or downloadable `.msi`/AppImage yet.
 
-| Platform | One-liner |
-|---|---|
-| **macOS · Linux · WSL2** | `curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh \| bash` |
-| **Native Windows** | `irm https://carlitoetienne01-spec.github.io/Diapason/install.ps1 \| iex` |
-| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/carlitoetienne01-spec/Diapason/releases) |
+- **macOS:** the working desktop build is installed locally with
+  `./scripts/install-desktop.sh` from an authenticated checkout.
+- **Native Windows:** clone with an authorized GitHub account, then run
+  `deploy/windows/install.ps1`. This installs the Python server and browser UI;
+  the Tauri `.msi` still needs validation on a real Windows machine.
+- **Linux / WSL2:** use the authenticated checkout and the Unix installer;
+  packaged desktop artifacts are not released yet.
 
-Then `diapason` to start. The Rust extension and larger models continue downloading in the background; `diapason doctor` shows status.
-
-Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://carlitoetienne01-spec.github.io/Diapason/getting-started/install/).
+The prepared Tauri release workflow will publish Windows, macOS and Linux
+artifacts after hosted runners and signing are restored. Until then, see the
+in-repository installation docs rather than the unavailable GitHub Pages site.
 
 ## Quick Start
 
