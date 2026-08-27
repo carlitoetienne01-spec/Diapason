@@ -283,7 +283,8 @@ def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
     assert "uses: actions/setup-python" not in windows_job
     assert "uv sync --python ${{ matrix.python-version }}" in windows_job
     assert "run:\n        shell: cmd" in windows_job
-    assert "shell: bash" not in windows_job
+    assert 'echo C:\\Program Files\\Git\\bin>>"%GITHUB_PATH%"' in windows_job
+    assert "\n        shell: bash\n" not in windows_job
     assert (
         "shell: powershell -NoProfile -NonInteractive "
         "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in windows_job

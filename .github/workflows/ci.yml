@@ -199,6 +199,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Expose Git Bash to composite actions
+        # `dtolnay/rust-toolchain` possede des etapes internes `shell: bash`
+        # que le workflow appelant ne peut pas remplacer. Sans cette priorite,
+        # le runner choisit le lanceur WSL de System32 et exige un Linux absent.
+        run: echo C:\Program Files\Git\bin>>"%GITHUB_PATH%"
+
       - name: Parse every PowerShell deployment script
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         run: |
