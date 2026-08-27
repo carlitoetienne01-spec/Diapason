@@ -144,6 +144,23 @@ def test_l_installateur_windows_cherche_un_python_qui_convient() -> None:
     )
 
 
+def test_le_banc_windows_ne_confond_pas_un_ecouteur_et_aucun() -> None:
+    """Un unique résultat PowerShell est déroulé en objet scalaire.
+
+    Sur le premier PC réel, le banc affichait ``listeners=127.0.0.1`` puis
+    déclarait la frontière loopback en échec : ``.Count`` ne comptait pas
+    l'objet unique rendu par la fonction. Les deux sockets doivent être
+    enveloppés au point d'appel, avant que leur cardinalité soit consultée.
+    """
+    script = WINDOWS_VERIFY_PS1.read_text()
+    assert "$apiListeners = @(Get-Listeners $ListenPort)" in script, (
+        "un seul écouteur API redevient un scalaire et son Count ment"
+    )
+    assert "$meshListeners = @(Get-Listeners $LanPort)" in script, (
+        "un seul écouteur Mesh redevient un scalaire et son Count ment"
+    )
+
+
 def test_le_service_windows_ne_resynchronise_pas_le_venv_a_chaque_session() -> None:
     """`uv run` au logon peut élaguer le groupe natif posé à l'installation."""
     script = WINDOWS_SERVICE_PS1.read_text(encoding="utf-8")

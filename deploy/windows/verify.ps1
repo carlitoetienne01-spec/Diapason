@@ -128,7 +128,13 @@ $apiBase = "http://127.0.0.1:$ListenPort"
 $apiHealth = Get-HttpStatus "$apiBase/health"
 Add-Check 'api.health' ($apiHealth -eq 200) "HTTP $apiHealth from $apiBase/health"
 
-$apiListeners = Get-Listeners $ListenPort
+# PowerShell déroule la sortie d'une fonction : zéro écouteur devient $null
+# et UN écouteur devient un objet scalaire. Sur le premier vrai PC, le détail
+# affichait donc bien `listeners=127.0.0.1`, mais `.Count` sur l'objet scalaire
+# faisait quand même échouer `api.loopback_only`. La frontière était juste ;
+# son témoin mentait. L'enveloppe extérieure garde les trois cardinalités sous
+# la même forme avant toute comparaison.
+$apiListeners = @(Get-Listeners $ListenPort)
 $foreignApiListeners = @(
     $apiListeners | Where-Object {
         $_.LocalAddress -notin @('127.0.0.1', '::1')
@@ -138,7 +144,7 @@ Add-Check 'api.loopback_only' (
     $apiListeners.Count -gt 0 -and $foreignApiListeners.Count -eq 0
 ) "listeners=$($apiListeners.LocalAddress -join ',')"
 
-$meshListeners = Get-Listeners $LanPort
+$meshListeners = @(Get-Listeners $LanPort)
 $meshDetected = $meshListeners.Count -gt 0
 if ($RequireMesh -or $meshDetected) {
     $publicMeshListeners = @(
