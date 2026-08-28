@@ -42,6 +42,13 @@ _DUREE_MAX_S = 600.0
 # ne doit jamais survivre à l'objet qu'il désigne, sinon on répondrait à une
 # question dont la réponse est déjà partie en fumée.
 _CHOIX_MAX_S = 45.0
+# Onze pour cent de l'image : assez loin pour qu'un poing immobile ne fasse
+# pas défiler la flotte avec le bruit de Vision, assez près pour parcourir
+# quatre appareils sans sortir du champ.
+_PAS_SELECTEUR = 0.11
+# Deux changements à 12 im/s sans pause sautent visuellement un appareil. Un
+# quart de seconde laisse le surlignage arriver avant d'accepter un autre pas.
+_PAUSE_SELECTEUR_S = 0.24
 
 
 @dataclass
@@ -81,10 +88,20 @@ class _Session:
     # MESURÉS : le client renvoie un identifiant, il ne l'invente pas.
     # {"jeton", "objet", "candidats", "a"}
     depot_en_attente: Any = None
+    # Un clic ou une phrase peut répondre pendant que le poing est encore
+    # fermé. L'ouverture qui suit ne doit alors pas produire un second dépôt
+    # « main vide » et écraser le vrai résultat.
+    depot_effectue_pendant_saisie: bool = False
+    # Un gros fichier peut attendre jusqu'à 120 s l'accord du récepteur. Les
+    # images s'arrêtent pendant la requête de relâchement, donc l'horloge
+    # d'inactivité ne doit pas tuer la session au milieu d'un transfert vivant.
+    transfert_en_cours: bool = False
 
     @property
     def expiree(self) -> bool:
         maintenant = time.monotonic()
+        if self.transfert_en_cours:
+            return False
         return (
             maintenant - self.vue_a > _INACTIVITE_MAX_S
             or maintenant - self.armee_a > _DUREE_MAX_S
@@ -494,6 +511,49 @@ def desarmer_route() -> dict[str, Any]:
     return {"armed": False, "was": etait}
 
 
+class FichierPourGeste(BaseModel):
+    """Le chemin rendu par le dialogue natif — jamais un contenu encodé."""
+
+    path: str
+
+
+@router.post("/file")
+def preparer_un_fichier(body: FichierPourGeste) -> dict[str, Any]:
+    """Préparer le fichier que le prochain poing attrapera.
+
+    Cette porte reste derrière l'authentification locale de l'application.
+    Elle ne téléverse rien et ne renvoie jamais le chemin : le navigateur ne
+    reçoit que le nom, le type et la taille qu'il doit afficher.
+    """
+    from diapason.desktop.presse_papiers_spatial import preparer_fichier, tenu
+
+    if not session_active() or _session is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Active d'abord les gestes, puis choisis le fichier.",
+        )
+    if tenu() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ta main tient déjà quelque chose. Dépose-le ou laisse tomber.",
+        )
+    try:
+        objet = preparer_fichier(body.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _noter("fichier prêt", objet.titre, reussi=True)
+    return {"preparedFile": objet.to_dict()}
+
+
+@router.post("/file/cancel")
+def oublier_le_fichier_prepare() -> dict[str, Any]:
+    """Retirer le fichier préparé sans toucher à ce qui est déjà tenu."""
+    from diapason.desktop.presse_papiers_spatial import oublier_fichier_prepare
+
+    oublier_fichier_prepare()
+    return {"cancelled": True}
+
+
 @router.get("/state")
 def etat() -> dict[str, Any]:
     if not session_active() or _session is None:
@@ -512,6 +572,9 @@ def etat() -> dict[str, Any]:
         if _session.confiance_mesures
         else 0.0
     )
+    from diapason.desktop.presse_papiers_spatial import fichier_prepare
+
+    prepare = fichier_prepare()
     return {
         "armed": True,
         "clapListening": claps_actifs(),
@@ -538,6 +601,7 @@ def etat() -> dict[str, Any]:
         "held": _session.dernier_attrape.to_dict()
         if _session.dernier_attrape is not None
         else None,
+        "preparedFile": prepare.to_dict() if prepare is not None else None,
         "lastDrop": _session.dernier_depot,
         # La question « vers lequel ? » voyage par le sondage qui existe
         # déjà : elle est posée par un geste, mais elle se répond à l'écran,
@@ -610,6 +674,11 @@ def _commande_pour(objet: Any) -> tuple[str, dict[str, Any]] | None:
     appareil ne l'acceptera jamais, donc ce n'est pas la peine d'aller
     interroger la flotte, ni de garder l'objet en main.
     """
+    if objet.type == "file":
+        # Un fichier passe par sa session chiffrée, jamais dans une enveloppe
+        # de commande : elle est courte, sans état, et le client mobile en
+        # signe une liste de champs figée.
+        return None
     if objet.type != "screen":
         return (
             "app.show_resource",
@@ -623,8 +692,209 @@ def _commande_pour(objet: Any) -> tuple[str, dict[str, Any]] | None:
     return "app.navigate", {"route": f"success://{route}"}
 
 
+def _candidats_pour(objet: Any) -> tuple[list[dict], Optional[dict[str, Any]]]:
+    """Les appareils réellement utilisables pour CET objet, ou la raison.
+
+    « Disponible » ne veut pas seulement dire inscrit : il faut être de
+    confiance, joignable maintenant, puis capable de recevoir ce que la main
+    tient. Un téléphone en `pull`, sans adresse LAN, ne peut pas recevoir les
+    morceaux d'un fichier et ne doit donc pas apparaître dans le sélecteur.
+    """
+    try:
+        from diapason.mesh.presence import presence_of
+        from diapason.mesh.registry import DeviceRegistry
+
+        flotte = [
+            d
+            for d in DeviceRegistry().list_devices()
+            if d.get("trustLevel") == "TRUSTED"
+        ]
+        joignables = [
+            d
+            for d in flotte
+            if (presence_of(d) or {}).get("state") in ("ONLINE", "IDLE")
+        ]
+    except Exception as exc:  # noqa: BLE001 - un registre illisible se dit
+        logger.warning("flotte illisible au dépôt", exc_info=True)
+        return [], {
+            "done": False,
+            "reason": "NO_FLEET",
+            "message": str(exc)[:120],
+            "object": objet.to_dict(),
+        }
+
+    if not joignables:
+        noms = ", ".join(str(d.get("name") or "?") for d in flotte)
+        return [], {
+            "done": False,
+            "reason": "ALL_OFFLINE",
+            "object": objet.to_dict(),
+            "message": (
+                f"« {objet.titre} » est prêt, mais aucun appareil n'est "
+                f"joignable{' (' + noms + ')' if noms else ''}."
+            ),
+        }
+
+    if objet.type == "file":
+        capables = [
+            d
+            for d in joignables
+            if str(d.get("transport") or "").lower() == "lan"
+            and bool(str(d.get("address") or "").strip())
+        ]
+        verbe = "recevoir ce fichier"
+    else:
+        commande = _commande_pour(objet)
+        if commande is None:
+            return [], {
+                "done": False,
+                "reason": "UNSUPPORTED",
+                "object": objet.to_dict(),
+                "message": f"{objet.titre} n'existe pas sur les autres appareils.",
+            }
+        capacite_requise = _capacite_de(commande[0])
+        capables = [
+            d
+            for d in joignables
+            if capacite_requise in set(d.get("capabilities") or [])
+        ]
+        verbe = "l'afficher"
+
+    if not capables:
+        noms = ", ".join(str(d.get("name") or "?") for d in joignables)
+        return [], {
+            "done": False,
+            "reason": "INCAPABLE",
+            "object": objet.to_dict(),
+            "message": (
+                f"« {objet.titre} » est prêt, mais aucun appareil joignable "
+                f"ne sait {verbe}{' (' + noms + ')' if noms else ''}."
+            ),
+        }
+    return capables, None
+
+
+def _publier_transfert(
+    objet: Any,
+    cible: dict,
+    *,
+    session: Optional[_Session],
+    raison: str,
+    message: str,
+    progression: int = 0,
+    envoyes: int = 0,
+    total: int = 0,
+) -> dict[str, Any]:
+    """Publier un état intermédiaire honnête pendant un gros transfert."""
+    resultat = {
+        "done": False,
+        "reason": raison,
+        "object": objet.to_dict(),
+        "target": str(cible.get("name") or "?"),
+        "message": message,
+        "progress": max(0, min(100, int(progression))),
+        "sentChunks": max(0, int(envoyes)),
+        "totalChunks": max(0, int(total)),
+    }
+    if _session is session and session is not None:
+        session.dernier_depot = resultat
+    return resultat
+
+
+def _envoyer_fichier_spatial(objet: Any, cible: dict) -> dict[str, Any]:
+    """Le transfert chiffré existant, raccordé au geste et à son diagnostic."""
+    from diapason.mesh.envoi_fichier import EnvoiRefuse, envoyer_fichier
+
+    appareil = cible.get("_device") or cible
+    session = _session
+    if session is not None:
+        session.transfert_en_cours = True
+    _publier_transfert(
+        objet,
+        cible,
+        session=session,
+        raison="PREPARING",
+        message=f"Préparation de « {objet.titre} »…",
+    )
+
+    def _attendre(message: str) -> None:
+        _publier_transfert(
+            objet,
+            cible,
+            session=session,
+            raison="WAITING_APPROVAL",
+            message=message,
+        )
+
+    def _progresser(envoyes: int, total: int) -> None:
+        pourcentage = round((envoyes / total) * 100) if total else 100
+        _publier_transfert(
+            objet,
+            cible,
+            session=session,
+            raison="TRANSFERRING",
+            message=(
+                f"Envoi de « {objet.titre} » vers "
+                f"{str(cible.get('name') or '?')} — {pourcentage} %."
+            ),
+            progression=pourcentage,
+            envoyes=envoyes,
+            total=total,
+        )
+
+    try:
+        envoi = envoyer_fichier(
+            objet.chemin,
+            appareil,
+            attente=_attendre,
+            progression=_progresser,
+        )
+    except EnvoiRefuse as exc:
+        return {
+            "done": False,
+            "reason": "TRANSFER_REFUSED",
+            "object": objet.to_dict(),
+            "target": str(cible.get("name") or "?"),
+            "message": str(exc),
+        }
+    except Exception as exc:  # noqa: BLE001 - l'échec doit atteindre l'écran
+        logger.warning("transfert gestuel échoué", exc_info=True)
+        return {
+            "done": False,
+            "reason": "TRANSFER_ERROR",
+            "object": objet.to_dict(),
+            "target": str(cible.get("name") or "?"),
+            "message": f"Le transfert a échoué : {str(exc)[:140]}",
+        }
+    finally:
+        if _session is session and session is not None:
+            # La dernière image attendait cette requête : sans remettre son
+            # horloge ici, le premier sondage après 120 s de consentement
+            # désarmerait la session avant même d'afficher le résultat.
+            session.vue_a = time.monotonic()
+            session.transfert_en_cours = False
+
+    termine = envoi.statut in {"COMPLETE", "ALREADY_PRESENT"}
+    return {
+        "done": termine,
+        "reason": envoi.statut,
+        "object": objet.to_dict(),
+        "target": str(cible.get("name") or "?"),
+        # La phrase vient du récepteur : lui seul a vérifié l'empreinte.
+        "message": envoi.message,
+        "progress": 100 if termine else 0,
+        "sentChunks": envoi.morceaux,
+        "totalChunks": envoi.morceaux,
+        "bytes": envoi.octets,
+        "remotePath": envoi.chemin_distant,
+    }
+
+
 def _envoyer(objet: Any, cible: dict, *, cle: str = "") -> dict[str, Any]:
     """Envoyer pour de bon, et rendre ce que le RÉCEPTEUR en a dit."""
+    if objet.type == "file":
+        return _envoyer_fichier_spatial(objet, cible)
+
     from diapason.mesh.dispatch import dispatch_command
 
     commande = _commande_pour(objet)
@@ -650,6 +920,20 @@ def _envoyer(objet: Any, cible: dict, *, cle: str = "") -> dict[str, Any]:
         "target": str(cible.get("name") or "?"),
         "message": str(resultat.get("userSafeMessage") or ""),
     }
+
+
+def _envoyer_et_consommer(objet: Any, cible: dict, *, cle: str = "") -> dict[str, Any]:
+    """Ouvrir la main au bon moment, puis exécuter l'intention.
+
+    Un fichier peut attendre deux minutes l'accord du récepteur. Le garder
+    affiché « dans ta main » pendant ce temps serait faux : la paume est déjà
+    ouverte. On consomme donc la main AVANT ce réseau long. Une commande de
+    handoff, elle, reste sur le chemin historique très court.
+    """
+    if objet.type == "file":
+        _oublier_la_main()
+        return _envoyer(objet, cible, cle=cle)
+    return _issue_terminale(_envoyer(objet, cible, cle=cle))
 
 
 def _deposer() -> dict[str, Any]:
@@ -678,78 +962,34 @@ def _deposer() -> dict[str, Any]:
             "message": "La main s'ouvre sur rien : rien n'avait été attrapé.",
         }
 
-    commande = _commande_pour(objet)
-    if commande is None:
-        # Aucun appareil ne l'acceptera jamais : garder l'objet en main
-        # serait promettre une seconde chance qui n'existe pas.
-        _oublier_la_main()
-        return {
-            "done": False,
-            "reason": "UNSUPPORTED",
-            "object": objet.to_dict(),
-            "message": f"{objet.titre} n'existe pas sur les autres appareils.",
-        }
-    capacite_requise = _capacite_de(commande[0])
+    # Quand le poing a déjà ouvert le sélecteur, la paume ouverte confirme
+    # l'appareil actuellement surligné. Ce n'est pas une direction supposée :
+    # le mouvement a déplacé un choix VISIBLE, dont l'identifiant vient de la
+    # liste fermée du serveur.
+    attente = _choix_en_attente()
+    if attente is not None and attente.get("controle_gestuel"):
+        candidats = list(attente["candidats"])
+        index = max(0, min(int(attente.get("selection") or 0), len(candidats) - 1))
+        return _envoyer_et_consommer(
+            objet,
+            candidats[index],
+            cle=str(attente.get("jeton") or ""),
+        )
 
-    try:
-        from diapason.mesh.presence import presence_of
-        from diapason.mesh.registry import DeviceRegistry
-
-        flotte = [
-            d
-            for d in DeviceRegistry().list_devices()
-            if d.get("trustLevel") == "TRUSTED"
-        ]
-        joignables = [
-            d
-            for d in flotte
-            if (presence_of(d) or {}).get("state") in ("ONLINE", "IDLE")
-        ]
-    except Exception as exc:  # noqa: BLE001 - un registre illisible se dit
-        logger.warning("flotte illisible au dépôt", exc_info=True)
-        return {
-            "done": False,
-            "reason": "NO_FLEET",
-            "message": str(exc)[:120],
-            "object": objet.to_dict(),
-        }
-
-    if not joignables:
-        noms = ", ".join(str(d.get("name") or "?") for d in flotte)
-        return {
-            "done": False,
-            "reason": "ALL_OFFLINE",
-            "object": objet.to_dict(),
-            "message": (
-                f"« {objet.titre} » est prêt, mais aucun appareil n'est "
-                f"joignable{' (' + noms + ')' if noms else ''}."
-            ),
-        }
-
-    # Un appareil joignable qui ne sait pas afficher cela n'est pas un
-    # candidat : le proposer ferait poser une question dont une des
-    # réponses est un refus garanti (dispatch le refuserait en UNSUPPORTED).
-    capables = [
-        d for d in joignables if capacite_requise in set(d.get("capabilities") or [])
-    ]
-    if not capables:
-        noms = ", ".join(str(d.get("name") or "?") for d in joignables)
-        return {
-            "done": False,
-            "reason": "INCAPABLE",
-            "object": objet.to_dict(),
-            "message": (
-                f"« {objet.titre} » est prêt, mais aucun appareil joignable "
-                f"ne sait l'afficher{' (' + noms + ')' if noms else ''}."
-            ),
-        }
+    capables, refus = _candidats_pour(objet)
+    if refus is not None:
+        if refus.get("reason") == "UNSUPPORTED":
+            # Aucun appareil ne l'acceptera jamais : garder l'objet en main
+            # serait promettre une seconde chance qui n'existe pas.
+            _oublier_la_main()
+        return refus
 
     if len(capables) > 1:
         # §81 : deux candidats, aucune direction mesurée — on demande. Et on
         # garde la main fermée le temps de la réponse.
         return _demander_vers_lequel(objet, capables)
 
-    return _issue_terminale(_envoyer(objet, capables[0]))
+    return _envoyer_et_consommer(objet, capables[0])
 
 
 def _capacite_de(outil: str) -> str:
@@ -771,24 +1011,45 @@ def _issue_terminale(resultat: dict[str, Any]) -> dict[str, Any]:
     return resultat
 
 
-def _demander_vers_lequel(objet: Any, capables: list[dict]) -> dict[str, Any]:
-    """Poser la question, et retenir de quoi accepter la réponse."""
+def _demander_vers_lequel(
+    objet: Any,
+    capables: list[dict],
+    *,
+    position: Optional[tuple[float, float]] = None,
+) -> dict[str, Any]:
+    """Poser la question, et retenir de quoi accepter la réponse.
+
+    Avec une position, le poing vient de se fermer : la question devient un
+    sélecteur pilotable. Sans position, on conserve le chemin historique
+    clic/voix, utile aux appels directs et comme repli accessible.
+    """
     import secrets
 
     candidats = [
         {
             "deviceId": str(d.get("deviceId") or ""),
             "name": str(d.get("name") or "?"),
+            "platform": str(d.get("platform") or "UNKNOWN"),
+            "deviceType": str(d.get("deviceType") or "UNKNOWN"),
+            # Interne uniquement. Un transfert de fichier a besoin de
+            # l'adresse et du transport ; `_choix_public` retire cette ligne.
+            "_device": d,
         }
         for d in capables
     ]
     jeton = secrets.token_urlsafe(8)
+    controle_gestuel = position is not None
     if _session is not None:
         _session.depot_en_attente = {
             "jeton": jeton,
             "objet": objet,
             "candidats": candidats,
             "a": time.monotonic(),
+            "controle_gestuel": controle_gestuel,
+            "selection": 0,
+            "ancre": position,
+            "position": position,
+            "deplace_a": 0.0,
         }
     return {
         "done": False,
@@ -797,9 +1058,12 @@ def _demander_vers_lequel(objet: Any, capables: list[dict]) -> dict[str, Any]:
         "candidates": [c["name"] for c in candidats],
         "token": jeton,
         "message": (
-            f"« {objet.titre} » est prêt. Vers lequel : "
-            + ", ".join(c["name"] for c in candidats)
-            + " ?"
+            f"« {objet.titre} » est prêt. "
+            + (
+                "Déplace ton poing pour choisir, puis ouvre la main."
+                if controle_gestuel
+                else "Vers lequel : " + ", ".join(c["name"] for c in candidats) + " ?"
+            )
         ),
     }
 
@@ -824,15 +1088,108 @@ def _choix_en_attente() -> Optional[dict]:
     return attente
 
 
+def _position_de_la_main(points: Any) -> Optional[tuple[float, float]]:
+    """Le centre stable de la paume, en coordonnées d'écran normalisées.
+
+    La caméra regarde l'utilisateur : son image est donc inversée comme un
+    miroir sur l'axe horizontal, afin que déplacer SON poing vers la droite
+    déplace aussi le sélecteur vers la droite. Le poignet seul oscille avec
+    l'avant-bras ; la moyenne poignet + bases des doigts est plus stable.
+    """
+    if not points:
+        return None
+    noms = {"wrist", "indexMCP", "middleMCP", "ringMCP", "littleMCP"}
+    retenus = [
+        p
+        for p in points
+        if getattr(p, "nom", "") in noms and float(getattr(p, "confiance", 0.0)) >= 0.5
+    ]
+    if len(retenus) < 3:
+        return None
+    x_camera = sum(float(p.x) for p in retenus) / len(retenus)
+    y = sum(float(p.y) for p in retenus) / len(retenus)
+    return (
+        max(0.0, min(1.0, 1.0 - x_camera)),
+        max(0.0, min(1.0, y)),
+    )
+
+
+def _preparer_selecteur(objet: Any, position: Optional[tuple[float, float]]) -> None:
+    """Afficher les appareils dès que le poing a réellement attrapé."""
+    if _session is None or objet is None or position is None:
+        return
+    capables, refus = _candidats_pour(objet)
+    if refus is not None:
+        _session.dernier_depot = refus
+        return
+    # Même un seul appareil s'affiche : l'ouverture confirme alors un choix
+    # visible, au lieu d'envoyer vers une cible que l'utilisateur n'a jamais
+    # vue. Le clic et la voix restent disponibles sur cette même liste.
+    _session.dernier_depot = _demander_vers_lequel(
+        objet,
+        capables,
+        position=position,
+    )
+
+
+def _deplacer_selecteur(position: Optional[tuple[float, float]]) -> None:
+    """Transformer un déplacement franc du poing en UN pas de sélection."""
+    attente = _choix_en_attente()
+    if position is None or attente is None or not attente.get("controle_gestuel"):
+        return
+    candidats = list(attente.get("candidats") or [])
+    if not candidats:
+        return
+    attente["position"] = position
+    ancre = attente.get("ancre")
+    if ancre is None:
+        attente["ancre"] = position
+        return
+    maintenant = time.monotonic()
+    if maintenant - float(attente.get("deplace_a") or 0.0) < _PAUSE_SELECTEUR_S:
+        return
+    dx, dy = position[0] - float(ancre[0]), position[1] - float(ancre[1])
+    horizontal = abs(dx) >= abs(dy)
+    amplitude = dx if horizontal else dy
+    if abs(amplitude) < _PAS_SELECTEUR:
+        return
+    direction = 1 if amplitude > 0 else -1
+    avant = int(attente.get("selection") or 0)
+    attente["selection"] = max(0, min(len(candidats) - 1, avant + direction))
+    # Même au bord, repartir d'ici. Sinon un poing resté à droite pendant une
+    # seconde accumule une dette et saute dès qu'un appareil est ajouté.
+    attente["ancre"] = position
+    attente["deplace_a"] = maintenant
+
+
 def _choix_public() -> Optional[dict]:
     """Ce que l'interface doit savoir pour afficher la question."""
     attente = _choix_en_attente()
     if attente is None:
         return None
+    candidats = [
+        {
+            "deviceId": c["deviceId"],
+            "name": c["name"],
+            "platform": c.get("platform") or "UNKNOWN",
+            "deviceType": c.get("deviceType") or "UNKNOWN",
+        }
+        for c in attente["candidats"]
+    ]
+    index = max(0, min(int(attente.get("selection") or 0), len(candidats) - 1))
+    position = attente.get("position")
     return {
         "token": attente["jeton"],
         "object": attente["objet"].to_dict(),
-        "candidates": list(attente["candidats"]),
+        "candidates": candidats,
+        "gestureControlled": bool(attente.get("controle_gestuel")),
+        "selectedIndex": index,
+        "selectedDeviceId": candidats[index]["deviceId"] if candidats else "",
+        "handPosition": (
+            {"x": round(float(position[0]), 3), "y": round(float(position[1]), 3)}
+            if position is not None
+            else None
+        ),
         "secondsLeft": round(
             max(0.0, _CHOIX_MAX_S - (time.monotonic() - float(attente["a"]))), 1
         ),
@@ -854,9 +1211,12 @@ def repondre_au_choix(attente: dict, cible: dict) -> dict[str, Any]:
     Le jeton sert de clé d'idempotence : deux réponses — un clic ET une
     phrase — n'envoient qu'une fois.
     """
-    resultat = _issue_terminale(_envoyer(attente["objet"], cible, cle=attente["jeton"]))
+    session = _session
+    pendant_saisie = bool(session is not None and session.moteur.etat.value == "SAISI")
+    resultat = _envoyer_et_consommer(attente["objet"], cible, cle=attente["jeton"])
     if _session is not None:
         _session.dernier_depot = resultat
+        _session.depot_effectue_pendant_saisie = pendant_saisie
     _noter(
         "déposé" if resultat.get("done") else "dépôt refusé",
         str(resultat.get("message") or ""),
@@ -869,12 +1229,17 @@ def envoyer_ce_qui_est_tenu(objet: Any, cible: dict) -> dict[str, Any]:
     """Envoyer la main vers un appareil, sans question préalable.
 
     Le chemin de « envoie ça sur mon téléphone » quand aucune question n'est
-    en suspens. Même règle que partout : la main ne se vide que sur une issue
-    TERMINALE — un refus garde le poing fermé.
+    en suspens. L'appel est une issue terminale : succès, refus ou erreur
+    viennent du destinataire et consomment l'intention ; recommencer sera un
+    nouveau geste visible, jamais une reprise silencieuse.
     """
-    resultat = _issue_terminale(_envoyer(objet, cible))
+    pendant_saisie = bool(
+        _session is not None and _session.moteur.etat.value == "SAISI"
+    )
+    resultat = _envoyer_et_consommer(objet, cible)
     if _session is not None:
         _session.dernier_depot = resultat
+        _session.depot_effectue_pendant_saisie = pendant_saisie
     _noter(
         "déposé" if resultat.get("done") else "dépôt refusé",
         str(resultat.get("message") or ""),
@@ -1039,13 +1404,23 @@ async def image(request: Request) -> dict[str, Any]:
             _session.dernier_repliement = mesures.repliement
             if _session.calibration_en_cours:
                 _session.echantillons.append(mesures.repliement)
+    position = _position_de_la_main(points)
     avant = _session.moteur.etat
     apres = _session.moteur.observer(points)
+    # Une fois le poing saisi, chaque image déplace le surlignage. Cette
+    # lecture reste séparée de la reconnaissance de pose : bouger ne peut ni
+    # fabriquer un poing ni ouvrir une main.
+    if apres.value == "SAISI" and apres is avant:
+        if _session.depot_en_attente is None and _session.dernier_attrape is not None:
+            _preparer_selecteur(_session.dernier_attrape, position)
+        else:
+            _deplacer_selecteur(position)
     if apres is not avant:
         _session.derniers_etats.append(apres.value)
         del _session.derniers_etats[:-10]
         if apres.value == "SAISI":
             _session.saisies += 1
+            _session.depot_effectue_pendant_saisie = False
             # Refermer le poing, c'est RECOMMENCER : une question restée sans
             # réponse tombe avec l'objet qu'elle désignait. Sans cela, le
             # jeton survivrait à son objet et désignerait la saisie suivante.
@@ -1060,26 +1435,28 @@ async def image(request: Request) -> dict[str, Any]:
                 else "rien — aucun écran de Diapason n'était ouvert",
                 reussi=_session.dernier_attrape is not None,
             )
+            _preparer_selecteur(_session.dernier_attrape, position)
         elif apres.value == "RELACHE":
             _session.relachements += 1
-            # DANS UN FIL, et ce n'est pas une précaution de style. Cette
-            # route est `async def`, donc elle s'exécute SUR la boucle
-            # d'événements — alors que `_deposer` finit dans `httpx.post`
-            # avec six secondes de délai d'attente (mesh/transport.py).
-            # Un appareil qui ne répond pas gelait donc tout : le WebSocket
-            # vocal, le flux du chat, la cloche d'approbation, et les images
-            # de geste suivantes. Six secondes de Diapason entier, pour un
-            # geste vers une machine éteinte.
-            #
-            # Les routes synchrones du module (`/drop/target`) n'ont pas ce
-            # défaut : Starlette les exécute déjà dans un fil. C'était
-            # `/frame`, et lui seul.
-            _session.dernier_depot = await asyncio.to_thread(_deposer)
-            _noter(
-                "déposé" if _session.dernier_depot.get("done") else "dépôt refusé",
-                str(_session.dernier_depot.get("message") or ""),
-                reussi=bool(_session.dernier_depot.get("done")),
-            )
+            if _session.depot_effectue_pendant_saisie:
+                # Le clic ou la voix a déjà envoyé pendant que le poing était
+                # fermé. L'ouverture termine seulement le geste physique ; le
+                # vrai résultat reste visible et n'est pas écrasé par « rien ».
+                _session.depot_effectue_pendant_saisie = False
+            else:
+                # DANS UN FIL, et ce n'est pas une précaution de style. Cette
+                # route est `async def`, donc elle s'exécute SUR la boucle
+                # d'événements — et un fichier peut attendre deux minutes le
+                # consentement de l'autre appareil.
+                session = _session
+                resultat = await asyncio.to_thread(_deposer)
+                if _session is session:
+                    session.dernier_depot = resultat
+                    _noter(
+                        "déposé" if resultat.get("done") else "dépôt refusé",
+                        str(resultat.get("message") or ""),
+                        reussi=bool(resultat.get("done")),
+                    )
         elif apres.value in ("PERDU", "ANNULE"):
             _session.pertes += 1
             # Une main perdue au milieu d'un geste ne laisse pas un objet
@@ -1090,7 +1467,11 @@ async def image(request: Request) -> dict[str, Any]:
         "state": apres.value,
         "changed": apres is not avant,
         "hand": bool(points),
-        "frames": _session.images,
+        "frames": _session.images if _session is not None else 0,
+        # Le sondage reste le filet lent ; la réponse d'image transporte le
+        # surlignage à 12 im/s pour qu'il colle réellement au poing.
+        "pendingDrop": _choix_public(),
+        "lastDrop": _session.dernier_depot if _session is not None else None,
         **_energie(),
     }
 

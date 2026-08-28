@@ -60,6 +60,62 @@ class TestAttraper:
         assert "body" not in contenu and "content" not in contenu
 
 
+class TestAttraperUnVraiFichier:
+    """§41 et §82 : le geste peut désigner un fichier, sans avaler ses octets."""
+
+    def test_le_fichier_prepare_prime_sur_l_ecran(self, tmp_path):
+        fichier = tmp_path / "photo été.jpg"
+        fichier.write_bytes(b"jpeg-factice")
+        ca.poser_contexte("/succes/projects")
+
+        prepare = pp.preparer_fichier(fichier)
+        objet = pp.attraper()
+
+        assert prepare.type == "file" and objet.type == "file"
+        assert objet.titre == "photo été.jpg"
+        assert objet.taille == len(b"jpeg-factice")
+        assert objet.type_mime == "image/jpeg"
+        assert objet.chemin == str(fichier.resolve())
+        assert pp.fichier_prepare() is None, (
+            "une préparation consommée ne doit pas se faire réattraper en boucle"
+        )
+
+    def test_le_chemin_local_ne_passe_jamais_dans_le_json(self, tmp_path):
+        fichier = tmp_path / "secret.mp4"
+        fichier.write_bytes(b"video")
+        public = pp.preparer_fichier(fichier).to_dict()
+
+        assert public["type"] == "file"
+        assert public["sizeBytes"] == 5
+        assert public["mimeType"] == "video/mp4"
+        assert "chemin" not in public and "path" not in public
+        assert str(tmp_path) not in str(public)
+
+    def test_un_dossier_est_refuse_avant_d_etre_affiche(self, tmp_path):
+        with pytest.raises(ValueError, match="pas un dossier"):
+            pp.preparer_fichier(tmp_path)
+        assert pp.fichier_prepare() is None
+
+    def test_un_fichier_disparu_n_est_plus_promis(self, tmp_path):
+        fichier = tmp_path / "éphémère.txt"
+        fichier.write_text("ici", encoding="utf-8")
+        pp.preparer_fichier(fichier)
+        fichier.unlink()
+        assert pp.fichier_prepare() is None
+
+    def test_une_preparation_expire_sans_etre_attrapee(self, tmp_path, monkeypatch):
+        fichier = tmp_path / "attente.mov"
+        fichier.write_bytes(b"video")
+        pp.preparer_fichier(fichier)
+        depart = pp._prepare.quand
+        monkeypatch.setattr(
+            pp.time,
+            "monotonic",
+            lambda: depart + pp.PREPARATION_TTL_S + 1,
+        )
+        assert pp.fichier_prepare() is None
+
+
 class TestLacher:
     def test_lacher_rend_l_objet_et_ouvre_la_main(self):
         ca.poser_contexte(

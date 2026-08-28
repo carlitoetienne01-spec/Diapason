@@ -22,7 +22,10 @@ const api = vi.hoisted(() => ({
   ecouterLesClaps: vi.fn(),
   choisirLAppareil: vi.fn(),
   renoncerAuDepot: vi.fn(),
+  preparerFichierPourGeste: vi.fn(),
+  oublierFichierPrepare: vi.fn(),
 }));
+const dialogue = vi.hoisted(() => ({ open: vi.fn() }));
 
 vi.mock('./api', () => ({
   ...api,
@@ -37,6 +40,7 @@ vi.mock('./api', () => ({
 }));
 
 vi.mock('react', async () => await import('./__banc__/miniReact'));
+vi.mock('@tauri-apps/plugin-dialog', () => dialogue);
 
 import { monterCrochet, type Monture } from './__banc__/miniReact';
 import {
@@ -71,6 +75,16 @@ beforeEach(() => {
   api.ecouterLesClaps.mockResolvedValue(true);
   api.choisirLAppareil.mockResolvedValue({ done: true });
   api.renoncerAuDepot.mockResolvedValue(undefined);
+  api.preparerFichierPourGeste.mockResolvedValue({
+    type: 'file',
+    id: 'file-42',
+    title: 'vacances.mp4',
+    sizeBytes: 8192,
+    mimeType: 'video/mp4',
+  });
+  api.oublierFichierPrepare.mockResolvedValue(undefined);
+  dialogue.open.mockReset();
+  dialogue.open.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -386,5 +400,46 @@ describe('répondre à « vers lequel ? »', () => {
     m.valeur().choisir('iphone-poche');
     await vider();
     expect(api.choisirLAppareil).not.toHaveBeenCalled();
+  });
+});
+
+describe('préparer un fichier réel', () => {
+  it('refuse de promettre un sélecteur dans le navigateur', async () => {
+    const m = monter();
+    m.valeur().preparerUnFichier();
+    await vider();
+    expect(dialogue.open).not.toHaveBeenCalled();
+    expect(api.preparerFichierPourGeste).not.toHaveBeenCalled();
+    expect(m.valeur().erreur).toContain('application de bureau');
+  });
+
+  it('fait choisir le chemin par Tauri puis le prépare côté serveur local', async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    dialogue.open.mockResolvedValue('C:\\Photos\\vacances.mp4');
+    // Le produit charge le dialogue à la demande pour que le navigateur
+    // ordinaire ne paie pas ce module. Le banc attend donc l'import asynchrone
+    // au lieu de supposer qu'il tient dans deux tours de microtâches.
+    await import('@tauri-apps/plugin-dialog');
+    const m = monter();
+    m.valeur().preparerUnFichier();
+    await vi.waitFor(() =>
+      expect(dialogue.open).toHaveBeenCalledWith({
+        directory: false,
+        multiple: false,
+        title: 'Choisir le fichier à attraper',
+      }),
+    );
+    expect(api.preparerFichierPourGeste).toHaveBeenCalledWith(
+      'C:\\Photos\\vacances.mp4',
+    );
+  });
+
+  it('retire le fichier préparé sans désarmer les gestes', async () => {
+    const m = await armerParLeBouton();
+    m.valeur().annulerFichierPrepare();
+    await vider();
+    expect(api.oublierFichierPrepare).toHaveBeenCalledTimes(1);
+    expect(api.desarmer).not.toHaveBeenCalled();
+    expect(m.valeur().actif).toBe(true);
   });
 });

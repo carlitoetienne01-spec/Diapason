@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 
-import { Hand, Video, VideoOff } from 'lucide-react';
+import { FileUp, Hand, Video, VideoOff } from 'lucide-react';
 
 import { mesurerLaPiece, mesurerLesClaps } from './api';
 import { useCalibration } from './useCalibration';
@@ -41,6 +41,8 @@ export function PanneauGestes() {
     basculer,
     choisir,
     renoncer,
+    preparerUnFichier,
+    annulerFichierPrepare,
   } = useModeGestesPartage();
   const calibration = useCalibration(actif);
 
@@ -85,6 +87,36 @@ export function PanneauGestes() {
           <span className="text-sm">
             {etat ? (PHRASES[etat] ?? etat) : 'En attente d’une première image…'}
           </span>
+        </div>
+      )}
+
+      {actif && !diagnostic?.held && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={preparerUnFichier}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent"
+          >
+            <FileUp className="h-4 w-4" aria-hidden />
+            Choisir un fichier, une photo ou une vidéo
+          </button>
+          {diagnostic?.preparedFile && (
+            <>
+              <span className="text-sm text-muted-foreground">
+                Prêt à attraper&nbsp;:{' '}
+                <span className="font-medium text-foreground">
+                  {diagnostic.preparedFile.title}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={annulerFichierPrepare}
+                className="text-xs text-muted-foreground underline underline-offset-2"
+              >
+                retirer
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -152,13 +184,28 @@ export function PanneauGestes() {
             «&nbsp;{diagnostic.pendingDrop.object.title}&nbsp;» — vers
             lequel&nbsp;?
           </p>
+          {diagnostic.pendingDrop.gestureControlled && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Déplace le poing à gauche, à droite, en haut ou en bas. Ouvre la
+              main quand le bon appareil est surligné.
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {diagnostic.pendingDrop.candidates.map((candidat) => (
+            {diagnostic.pendingDrop.candidates.map((candidat, index) => (
               <button
                 key={candidat.deviceId}
                 type="button"
                 onClick={() => choisir(candidat.deviceId)}
-                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent"
+                aria-current={
+                  diagnostic.pendingDrop?.selectedIndex === index
+                    ? 'true'
+                    : undefined
+                }
+                className={`rounded-md border px-2.5 py-1 text-xs hover:bg-accent ${
+                  diagnostic.pendingDrop?.selectedIndex === index
+                    ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
+                    : 'border-border'
+                }`}
               >
                 {candidat.name}
               </button>

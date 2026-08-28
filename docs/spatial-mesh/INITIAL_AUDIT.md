@@ -341,6 +341,9 @@ réécrit cesse d'être un constat.*
 - **Direction spatiale / UWB (§35-36)** : aucun matériel de la flotte ne
   mesure une direction. Le §34 l'anticipe correctement — le repli par nom,
   proximité et choix explicite est déjà ce que fait `resolver.py`.
+  **Alternative livrée le 28 août** : le poing déplace un sélecteur visible
+  d'appareils, sans prétendre mesurer où ils se trouvent ; la paume ouverte
+  confirme la carte surlignée.
 - **Caméra en arrière-plan permanente** : interdite sur iOS, coûteuse
   ailleurs. Le §83 (`OFF / READY / ACTIVE / LOW_POWER`) est la bonne réponse.
 

@@ -4,13 +4,13 @@
 
 ## En une phrase
 
-Le geste **attrape et dépose pour de vrai** : le moteur, la détection et la
-source d'images fonctionnent et sont mesurés, et quand deux appareils sont
-capables, la question « vers lequel ? » se pose — et se répond. Le mur qui
-bloquait tout était que macOS refusait la caméra au processus Python, pour
-une raison qu'aucun réglage ne corrigeait ; c'est désormais l'application qui
-capture. Le §83 est tenu depuis le 25 août 2026 : la cadence suit ce que
-la caméra voit.
+Le geste **attrape et dépose pour de vrai** : projet, note, écran ou fichier
+local. Les appareils disponibles apparaissent dès que le poing se ferme ; le
+déplacement du poing déplace leur surlignage, puis la paume ouverte confirme
+et déclenche le vrai transfert. Le mur qui bloquait tout était que macOS
+refusait la caméra au processus Python ; c'est désormais l'application qui
+capture. Le §83 est tenu depuis le 25 août 2026 : la cadence suit ce que la
+caméra voit.
 
 ## Ce qui est livré et vérifié
 
@@ -20,7 +20,8 @@ la caméra voit.
 | **Moteur de gestes** (`desktop/gestes_main.py`) | ✅ | 16 tests. Machine à états, hystérésis, temps de repos, seuils centralisés. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
-| **Trancher entre deux appareils** | ✅ | `/v1/gestures/drop/target` : la question du §81 est enfin répondable, et l'objet n'est plus perdu en la posant. 14 tests. |
+| **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
+| **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, consentement sur le récepteur, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
 | **État d'énergie** (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER`. 12 im/s dès qu'une main est suivie — batterie faible comprise —, **3 au repos**, 2 sur batterie faible sans main. 13 tests. |
 
@@ -92,7 +93,8 @@ l'extinction, chacun testé :
 1. Le bouton **Arrêter**.
 2. **Quatre-vingt-dix secondes sans image** — un mode armé qu'on oublierait
    laisserait la caméra allumée, et le voyant vert cesserait de dire la
-   vérité.
+   vérité. Cette horloge se suspend pendant un transfert explicitement lancé,
+   puis repart à sa fin ; elle ne tue pas une demande d'accord en cours.
 3. **Dix minutes** au maximum, même si la main bouge : la caméra coûte (§83).
 4. Le **démontage du composant** — page fermée, navigation ailleurs : les
    pistes sont coupées dans tous les cas.
@@ -113,6 +115,48 @@ choix ne corrige pas : avec deux mains dans le champ, celle qui gagne peut
 changer d'une image à l'autre. Le moteur verrait la main se téléporter, et
 comme une main perdue annule le geste (§12), le geste échoue — bruyamment,
 ce qui vaut mieux que de déposer au hasard.
+
+## Choisir l'appareil avec le poing
+
+Le système ne transforme pas le poing en pointeur spatial. Aucun capteur ne
+mesure où l'utilisateur vise (§34), et une direction inventée serait plus
+dangereuse qu'une question. Le mouvement agit sur un **sélecteur visible** :
+
+1. La fermeture confirmée attrape l'objet et affiche les appareils de
+   confiance `ONLINE` ou `IDLE` qui savent réellement le recevoir.
+2. Le centre de la paume — poignet plus bases des quatre doigts — devient un
+   point normalisé. L'axe horizontal est rendu comme un miroir : la droite de
+   l'utilisateur reste la droite à l'écran.
+3. Un déplacement de **11 %** vers la droite ou le bas avance d'un appareil ;
+   vers la gauche ou le haut, il recule. Une pause de **240 ms** empêche de
+   sauter deux cartes avant d'avoir vu la première bouger.
+4. Ouvrir la main envoie vers la carte surlignée. Cliquer cette carte ou la
+   nommer à la voix produit la même réponse fermée ; « laisse tomber » reste
+   disponible.
+
+Le sélecteur a ses preuves automatisées côté serveur et côté React. Il reste
+à effectuer le banc physique du mouvement dans l'application reconstruite :
+la documentation ne transforme pas un test de coordonnées en essai caméra.
+
+## Attraper un fichier, une photo ou une vidéo
+
+Un écran web ne peut pas promettre un chemin local exploitable par le serveur.
+Le bouton **Choisir un fichier, une photo ou une vidéo** ouvre donc le dialogue
+natif Tauri. Il prépare **un fichier à la fois**, pendant dix minutes au plus ;
+le prochain poing l'attrape avant le contexte de la page affichée.
+
+Le presse-papiers spatial garde le chemin uniquement dans le processus Python.
+React ne reçoit que `type`, un identifiant opaque, le nom, la taille et le type
+MIME. À l'ouverture de la main, seuls les pairs de bureau joignables en LAN et
+portant une adresse vérifiée sont proposés. Le transfert n'est pas réinventé :
+il emprunte la phase 3, attend l'accord du destinataire jusqu'à 120 secondes,
+chiffre chaque morceau, affiche la progression entière et ne rend un succès
+qu'après la confirmation signée et la vérification d'empreinte du récepteur.
+
+Le plafond est **2 Gio**, tous types confondus. Le client Flutter ne sait pas
+encore recevoir ; un téléphone en transport `pull` n'apparaît donc pas dans ce
+sélecteur de fichiers. Un refus, une expiration ou une erreur sont affichés
+comme tels — jamais convertis en succès.
 
 ## Les autres sorties, pour mémoire
 

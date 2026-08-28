@@ -40,6 +40,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _foyer_de_test(tmp_path, monkeypatch):
+    """Aucun constructeur de registre ne doit ouvrir la vraie flotte.
+
+    Les tests remplaçaient `list_devices`, mais `DeviceRegistry()` ouvre la
+    base et active WAL AVANT cet appel. Ils semblaient isolés tout en touchant
+    réellement `~/.diapason/mesh.db` ; le bac à sable a enfin rendu le défaut
+    visible. Un foyer jetable garde aussi les futures routes de fichier.
+    """
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+
+
 @pytest.fixture()
 def client():
     app = FastAPI()
@@ -754,6 +766,220 @@ class TestTrancherEntreDeuxAppareils:
         self._poser_la_question(client)
         client.post("/v1/gestures/disarm")
         assert pp.tenu() is None
+
+
+class TestLeSelecteurPiloteParLePoing:
+    """§34 : on ne devine pas une direction, on déplace un choix visible."""
+
+    @staticmethod
+    def _appareil(nom: str) -> dict:
+        return {
+            "deviceId": f"dev_{nom}",
+            "name": nom,
+            "platform": "WINDOWS",
+            "deviceType": "DESKTOP",
+            "trustLevel": "TRUSTED",
+            "capabilities": ["app.show_resource"],
+            "transport": "lan",
+            "address": "http://192.168.0.20:8001",
+        }
+
+    def _objet_tenu(self, client):
+        from diapason.desktop import contexte_app as ca
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        client.post("/v1/gestures/arm")
+        ca.poser_contexte(
+            "/succes/projects",
+            ressource_type="project",
+            ressource_id="p1",
+            ressource_titre="Projet réel",
+        )
+        objet = pp.attraper()
+        gr._session.dernier_attrape = objet
+        return objet
+
+    def test_la_position_est_miroir_et_prend_toute_la_paume(self):
+        from diapason.desktop.gestes_main import Point
+
+        points = [
+            Point("wrist", 0.2, 0.7),
+            Point("indexMCP", 0.2, 0.5),
+            Point("middleMCP", 0.2, 0.5),
+            Point("ringMCP", 0.2, 0.5),
+            Point("littleMCP", 0.2, 0.5),
+        ]
+        x, y = gr._position_de_la_main(points)
+        assert x == pytest.approx(0.8), "la droite de l'utilisateur reste la droite"
+        assert y == pytest.approx(0.54), "le poignet seul ne doit pas piloter"
+
+    def test_droite_et_bas_avancent_gauche_et_haut_reculent(self, client):
+        objet = self._objet_tenu(client)
+        gr._demander_vers_lequel(
+            objet,
+            [self._appareil("Mac"), self._appareil("PC"), self._appareil("Salon")],
+            position=(0.5, 0.5),
+        )
+
+        gr._deplacer_selecteur((0.7, 0.5))
+        assert gr._session.depot_en_attente["selection"] == 1
+        gr._session.depot_en_attente["deplace_a"] -= gr._PAUSE_SELECTEUR_S + 1
+        gr._deplacer_selecteur((0.7, 0.7))
+        assert gr._session.depot_en_attente["selection"] == 2
+        gr._session.depot_en_attente["deplace_a"] -= gr._PAUSE_SELECTEUR_S + 1
+        gr._deplacer_selecteur((0.7, 0.5))
+        assert gr._session.depot_en_attente["selection"] == 1
+
+    def test_un_tremblement_ne_change_pas_d_appareil(self, client):
+        objet = self._objet_tenu(client)
+        gr._demander_vers_lequel(
+            objet,
+            [self._appareil("Mac"), self._appareil("PC")],
+            position=(0.5, 0.5),
+        )
+        gr._deplacer_selecteur((0.5 + gr._PAS_SELECTEUR / 2, 0.48))
+        assert gr._session.depot_en_attente["selection"] == 0
+
+    def test_l_etat_public_surligne_sans_divulguer_l_adresse(self, client):
+        objet = self._objet_tenu(client)
+        gr._demander_vers_lequel(
+            objet,
+            [self._appareil("Mac"), self._appareil("PC")],
+            position=(0.4, 0.6),
+        )
+        gr._deplacer_selecteur((0.6, 0.6))
+        public = client.get("/v1/gestures/state").json()["pendingDrop"]
+        assert public["gestureControlled"] is True
+        assert public["selectedIndex"] == 1
+        assert public["selectedDeviceId"] == "dev_PC"
+        assert public["handPosition"] == {"x": 0.6, "y": 0.6}
+        assert "address" not in str(public) and "_device" not in str(public)
+
+    def test_ouvrir_envoie_a_l_appareil_surligne(self, client):
+        objet = self._objet_tenu(client)
+        gr._demander_vers_lequel(
+            objet,
+            [self._appareil("Mac"), self._appareil("PC")],
+            position=(0.4, 0.5),
+        )
+        gr._deplacer_selecteur((0.6, 0.5))
+        with patch(
+            "diapason.mesh.dispatch.dispatch_command",
+            return_value={"status": "SUCCESS", "userSafeMessage": "Affiché."},
+        ) as envoyer:
+            resultat = gr._deposer()
+        assert resultat["done"] is True and resultat["target"] == "PC"
+        assert envoyer.call_args.kwargs["target_device_id"] == "dev_PC"
+
+
+class TestLesFichiersDansLaMain:
+    """§41 : photo, vidéo ou document empruntent le vrai transfert chiffré."""
+
+    @staticmethod
+    def _pc() -> dict:
+        return {
+            "deviceId": "dev_pc",
+            "name": "PC bureau",
+            "platform": "WINDOWS",
+            "deviceType": "DESKTOP",
+            "trustLevel": "TRUSTED",
+            "capabilities": [],
+            "transport": "lan",
+            "address": "http://192.168.0.198:8001",
+        }
+
+    def test_preparer_exige_un_mode_explicitement_arme(self, client, tmp_path):
+        fichier = tmp_path / "photo.jpg"
+        fichier.write_bytes(b"photo")
+        reponse = client.post("/v1/gestures/file", json={"path": str(fichier)})
+        assert reponse.status_code == 409
+        assert "Active" in reponse.json()["detail"]
+
+    def test_preparer_publie_nom_type_taille_jamais_le_chemin(self, client, tmp_path):
+        fichier = tmp_path / "vacances.mp4"
+        fichier.write_bytes(b"video-reelle")
+        client.post("/v1/gestures/arm")
+        reponse = client.post("/v1/gestures/file", json={"path": str(fichier)})
+        assert reponse.status_code == 200
+        public = reponse.json()["preparedFile"]
+        assert public["title"] == "vacances.mp4"
+        assert public["mimeType"] == "video/mp4"
+        assert public["sizeBytes"] == len(b"video-reelle")
+        assert str(tmp_path) not in str(public)
+        assert client.get("/v1/gestures/state").json()["preparedFile"] == public
+
+    def test_un_telephone_sans_adresse_n_est_pas_propose(self, client, tmp_path):
+        from diapason.desktop import presse_papiers_spatial as pp
+
+        fichier = tmp_path / "portrait.png"
+        fichier.write_bytes(b"png")
+        objet = pp.preparer_fichier(fichier)
+        telephone = {
+            **self._pc(),
+            "deviceId": "dev_tel",
+            "name": "Téléphone",
+            "transport": "pull",
+            "address": None,
+        }
+        with (
+            patch(
+                "diapason.mesh.registry.DeviceRegistry.list_devices",
+                return_value=[telephone, self._pc()],
+            ),
+            patch(
+                "diapason.mesh.presence.presence_of", return_value={"state": "ONLINE"}
+            ),
+        ):
+            candidats, refus = gr._candidats_pour(objet)
+        assert refus is None
+        assert [d["deviceId"] for d in candidats] == ["dev_pc"]
+
+    def test_ouvrir_lance_le_transfert_existant_et_rend_sa_vraie_reponse(
+        self, client, tmp_path
+    ):
+        from diapason.desktop import presse_papiers_spatial as pp
+        from diapason.mesh.envoi_fichier import Envoi
+
+        fichier = tmp_path / "film.mov"
+        fichier.write_bytes(b"video")
+        client.post("/v1/gestures/arm")
+        objet = pp.preparer_fichier(fichier)
+        objet = pp.attraper()
+        gr._session.dernier_attrape = objet
+        cible = {**self._pc(), "_device": self._pc()}
+
+        def faux_envoi(chemin, appareil, *, attente, progression):
+            assert chemin == str(fichier.resolve())
+            assert appareil["deviceId"] == "dev_pc"
+            attente("Accepte le fichier sur PC bureau.")
+            progression(1, 2)
+            progression(2, 2)
+            return Envoi(
+                statut="COMPLETE",
+                message="film.mov est arrivé.",
+                chemin_distant="transfers/film.mov",
+                octets=5,
+                morceaux=2,
+            )
+
+        with patch("diapason.mesh.envoi_fichier.envoyer_fichier", faux_envoi):
+            resultat = gr._envoyer_et_consommer(objet, cible)
+
+        assert resultat["done"] is True and resultat["reason"] == "COMPLETE"
+        assert resultat["message"] == "film.mov est arrivé."
+        assert resultat["progress"] == 100 and resultat["bytes"] == 5
+        assert pp.tenu() is None, "la paume ouverte ne garde pas un fichier fantôme"
+
+    def test_l_horloge_ne_tue_pas_une_acceptation_en_cours(self, client):
+        """§78 : le plafond éteint une caméra oubliée, pas un transfert que
+        le destinataire est précisément en train d'accepter."""
+        client.post("/v1/gestures/arm")
+        gr._session.vue_a -= gr._INACTIVITE_MAX_S + 1
+        gr._session.armee_a -= gr._DUREE_MAX_S + 1
+        gr._session.transfert_en_cours = True
+        assert gr._session.expiree is False
+        gr._session.transfert_en_cours = False
+        assert gr._session.expiree is True
 
 
 class TestLeJournalDesGestes:

@@ -15,7 +15,7 @@ vi.mock(
   'react/jsx-dev-runtime',
   async () => await import('./__banc__/miniReact'),
 );
-vi.mock('lucide-react', () => ({ Hand: () => null }));
+vi.mock('lucide-react', () => ({ FileUp: () => null, Hand: () => null }));
 vi.mock('./ModeGestesContexte', () => ({
   useModeGestesPartage: () => contexte.valeur,
 }));
@@ -61,6 +61,8 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
     basculer,
     choisir,
     renoncer,
+    preparerUnFichier: vi.fn(),
+    annulerFichierPrepare: vi.fn(),
     ...supplement,
   };
 }
@@ -145,14 +147,49 @@ describe('la carte « vers lequel ? »', () => {
   it('n’affiche aucun bouton de candidat quand rien n’attend', () => {
     poserLeContexte({ diagnostic: { armed: true } });
     const boutons = elements(monter().arbre(), 'button');
-    expect(boutons.map((b) => texte(b))).toEqual(['arrêter']);
-    cliquer(boutons[0]);
+    expect(boutons.map((b) => texte(b))).toEqual(['fichier', 'arrêter']);
+    cliquer(boutons[1]);
     expect(basculer).toHaveBeenCalledTimes(1);
   });
 
   it('ne rend rien du tout quand le mode est éteint', () => {
     poserLeContexte({ actif: false, diagnostic: null });
     expect(elements(monter().arbre(), 'button')).toHaveLength(0);
+  });
+});
+
+describe('le sélecteur piloté par le poing', () => {
+  it('surligne exactement l’appareil désigné par le serveur', () => {
+    poserLeContexte({
+      diagnostic: {
+        armed: true,
+        pendingDrop: {
+          token: 'jeton-geste',
+          object: {
+            type: 'file',
+            id: 'file-1',
+            title: 'vacances.mp4',
+            sizeBytes: 12_582_912,
+          },
+          candidates: CANDIDATS,
+          secondsLeft: 18,
+          gestureControlled: true,
+          selectedIndex: 1,
+          selectedDeviceId: 'iphone-poche',
+          handPosition: { x: 0.72, y: 0.41 },
+        },
+      },
+    });
+
+    const m = monter();
+    const boutons = elements(m.arbre(), 'button');
+    const iphone = boutons.find((b) => texte(b).includes('iPhone'));
+    const mac = boutons.find((b) => texte(b).includes('Mac de l’atelier'));
+    expect(iphone?.props['aria-current']).toBe('true');
+    expect(mac?.props['aria-current']).toBeUndefined();
+    expect(texte(m.arbre())).toContain('Ouvre la main pour envoyer');
+    expect(texte(m.arbre())).toContain('droite / bas : suivant');
+    expect(texte(m.arbre())).toContain('12.0 Mio');
   });
 });
 

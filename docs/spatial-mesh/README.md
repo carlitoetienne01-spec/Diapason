@@ -98,6 +98,7 @@ propres routes, son propre seau de limitation.
 | **Les routes** — offre signée, consentement explicite, morceaux authentifiés par jeton de session, plafond en octets | `mesh/files_routes.py` |
 | **La demande visible** — notification native et cloche Accepter/Refuser ; aucun droit permanent mémorisé | `mesh/demande_de_reception.py`, `ApprovalBell.tsx` |
 | **L'émetteur** | `mesh/envoi_fichier.py` |
+| **Le chemin de bureau** — dialogue natif, un fichier préparé puis attrapé, sélecteur d'appareils au poing et progression réelle | `presse_papiers_spatial.py`, `gestes_routes.py`, `useModeGestes.ts`, `VoyantGestes.tsx` |
 | **Le banc réel** — 2 Mo en trois morceaux entre deux processus, plus deux tentatives d'intrusion refusées | `tests/mesh/test_banc_deux_processus.py` |
 | **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre `MacBookAir-de-Carlito` et `SUCCES` ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001, consentement humain sur chaque récepteur |
 
@@ -144,10 +145,12 @@ propres routes, son propre seau de limitation.
 
 ### Ce qui n'est pas fait
 
-Le client Flutter ne peut pas recevoir de fichier : il n'a ni sélecteur de
-fichiers, ni accès au stockage, ni capacité déclarée pour cela. Le transfert
-est donc **Diapason ↔ Diapason** aujourd'hui. Le jour où le Dart saura
-recevoir, il l'annoncera par une capacité — et rien côté serveur ne bougera.
+L'application Tauri sait désormais **choisir** un fichier, une photo ou une
+vidéo et l'envoyer par le geste depuis le Mac. Le client Flutter ne peut
+toujours pas en recevoir : il n'a ni accès au stockage, ni porte de transfert.
+Le transfert reste donc **Diapason de bureau ↔ Diapason de bureau** aujourd'hui.
+Le jour où le Dart saura recevoir, il l'annoncera par une capacité — et rien
+côté serveur ne bougera.
 
 ## Phase 4 — les gestes
 
@@ -160,7 +163,8 @@ mesurés. Détail dans [`GESTES.md`](GESTES.md).
 | Moteur de gestes (`desktop/gestes_main.py`) | ✅ | 16 tests : machine à états, hystérésis, temps de repos, seuils centralisés |
 | Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
 | Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé — le mur est tombé |
-| Trancher entre deux appareils | ✅ | `/v1/gestures/drop/target`, 14 tests |
+| Trancher entre plusieurs appareils | ✅ automatisé | Le poing déplace un sélecteur visible ; gauche/haut recule, droite/bas avance, la paume ouverte confirme. Le clic et la voix restent des replis. |
+| Fichier, photo ou vidéo réel | ✅ automatisé | Dialogue natif Tauri, chemin gardé côté serveur, transfert chiffré existant et progression issue de ses morceaux. Un essai physique du nouveau mouvement reste à faire après reconstruction de l'app. |
 | Fusion voix + geste | ✅ | La main se dit dans le contexte (voix ET chat) et `geste_deposer` l'envoie — 15 tests |
 | État d'énergie (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER` — 12 im/s suivi, 3 au repos, 2 sur batterie faible |
 
@@ -189,6 +193,16 @@ Quatre corrections, chacune testée :
   `pendingDrop` dans `/state`, et se rend dans le **voyant**, seul élément du
   mode monté sur toutes les pages. Le panneau ne vit que dans la page
   Appareils — c'est-à-dire jamais là où l'on attrape un projet.
+- **Le poing pilote la réponse visible.** Dès la saisie, tous les appareils
+  de confiance réellement joignables et capables apparaissent. Un déplacement
+  franc de 11 % de l'image change d'un appareil, avec 240 ms de repos entre
+  deux pas ; un tremblement ne fait rien. Le mouvement ne prétend pas mesurer
+  où l'utilisateur pointe : il déplace explicitement un surlignage à l'écran.
+- **Un vrai fichier entre dans la main sans entrer dans le JSON.** Le dialogue
+  natif prépare un seul chemin local pendant dix minutes ; le prochain poing
+  le consomme. Seuls le nom, la taille, le type MIME et un identifiant opaque
+  atteignent React. Photos, vidéos et autres fichiers suivent ensuite la
+  session chiffrée de phase 3, dans la limite de 2 Gio.
 - **Le fantôme est mort** : `held` venait de la session, le presse-papiers de
   son module, et les deux pouvaient se contredire. Le voyant annonçait « dans
   ta main : Zéro à Héro » sur une main vide. Vider l'un vide désormais

@@ -16,7 +16,9 @@ import {
   EchecGeste,
   envoyerImage,
   ecouterLesClaps,
+  oublierFichierPrepare,
   lireDiagnostic,
+  preparerFichierPourGeste,
   renoncerAuDepot,
   type EtatGeste,
 } from './api';
@@ -45,6 +47,10 @@ export type ModeGestes = {
   choisir: (deviceId: string) => void;
   /** Renoncer au dépôt en attente sans rien envoyer. */
   renoncer: () => void;
+  /** Choisir un fichier réel que le prochain poing attrapera. */
+  preparerUnFichier: () => void;
+  /** Retirer le fichier préparé sans couper la caméra. */
+  annulerFichierPrepare: () => void;
 };
 
 export function useModeGestes(): ModeGestes {
@@ -136,6 +142,17 @@ export function useModeGestes(): ModeGestes {
       }
       setEtat(reponse.state);
       setMainVue(reponse.hand);
+      // Le sélecteur doit suivre le poing à la cadence des images, pas au
+      // sondage d'une seconde. On ne remplace que les champs que `/frame`
+      // porte ; compteurs et journal restent ceux du dernier diagnostic.
+      setDiagnostic((avant) => ({
+        ...(avant ?? { armed: true }),
+        armed: true,
+        ...(reponse.pendingDrop !== undefined
+          ? { pendingDrop: reponse.pendingDrop }
+          : {}),
+        ...(reponse.lastDrop !== undefined ? { lastDrop: reponse.lastDrop } : {}),
+      }));
       echecs.current = 0;
       // §83 : le serveur décide, l'interface obéit. Elle ne devine jamais
       // une cadence — elle ne sait pas si une main a été vue.
@@ -279,6 +296,36 @@ export function useModeGestes(): ModeGestes {
       .finally(rafraichir);
   }, [rafraichir]);
 
+  const preparerUnFichier = useCallback(() => {
+    setErreur(null);
+    if (!window.__TAURI_INTERNALS__) {
+      setErreur(
+        'Le choix d’un fichier local est disponible dans l’application de bureau Diapason.',
+      );
+      return;
+    }
+    void import('@tauri-apps/plugin-dialog')
+      .then(({ open }) =>
+        open({
+          directory: false,
+          multiple: false,
+          title: 'Choisir le fichier à attraper',
+        }),
+      )
+      .then(async (selection) => {
+        if (typeof selection !== 'string' || !selection) return;
+        await preparerFichierPourGeste(selection);
+        rafraichir();
+      })
+      .catch((exc) => setErreur(String(exc?.message ?? exc)));
+  }, [rafraichir]);
+
+  const annulerFichierPrepare = useCallback(() => {
+    void oublierFichierPrepare()
+      .catch((exc) => setErreur(String(exc?.message ?? exc)))
+      .finally(rafraichir);
+  }, [rafraichir]);
+
   // Suivre le serveur quand un DOUBLE-CLAP arme la session : la caméra
   // n'est pas ouverte, donc rien ne l'apprendrait autrement. On sonde
   // toutes les deux secondes, et seulement tant que le micro écoute — un
@@ -330,5 +377,7 @@ export function useModeGestes(): ModeGestes {
     basculer,
     choisir,
     renoncer,
+    preparerUnFichier,
+    annulerFichierPrepare,
   };
 }

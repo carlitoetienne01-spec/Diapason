@@ -24,6 +24,8 @@ export type ObjetTenu = {
   id: string;
   title: string;
   screen?: string;
+  sizeBytes?: number;
+  mimeType?: string;
 };
 
 export type Depot = {
@@ -34,12 +36,21 @@ export type Depot = {
   candidates?: string[];
   token?: string;
   object?: ObjetTenu;
+  progress?: number;
+  sentChunks?: number;
+  totalChunks?: number;
+  bytes?: number;
+  remotePath?: string;
 };
 
 export type CandidatDepot = {
   deviceId: string;
   name: string;
+  platform?: string;
+  deviceType?: string;
 };
+
+export type PositionMain = { x: number; y: number };
 
 /**
  * Un dépôt qui attend qu'on tranche (§81).
@@ -55,6 +66,10 @@ export type DepotEnAttente = {
   object: ObjetTenu;
   candidates: CandidatDepot[];
   secondsLeft: number;
+  gestureControlled?: boolean;
+  selectedIndex?: number;
+  selectedDeviceId?: string;
+  handPosition?: PositionMain | null;
 };
 
 export type EntreeJournal = {
@@ -136,6 +151,7 @@ export type Diagnostic = {
   clapFailure?: string | null;
   journal?: EntreeJournal[];
   held?: ObjetTenu | null;
+  preparedFile?: ObjetTenu | null;
   lastDrop?: Depot | null;
   pendingDrop?: DepotEnAttente | null;
   state?: EtatGeste;
@@ -177,6 +193,27 @@ export async function choisirLAppareil(
 /** « Laisse tomber » : la main s'ouvre sur rien, et c'est un choix. */
 export async function renoncerAuDepot(): Promise<void> {
   await apiFetch('/v1/gestures/drop/cancel', { method: 'POST' });
+}
+
+/** Préparer le chemin choisi par le dialogue natif — jamais ses octets. */
+export async function preparerFichierPourGeste(
+  path: string,
+): Promise<ObjetTenu> {
+  const reponse = await apiFetch('/v1/gestures/file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  const corps = await reponse.json().catch(() => null);
+  if (!reponse.ok) {
+    throw new Error(corps?.detail ?? "Ce fichier n'a pas pu être préparé.");
+  }
+  return corps.preparedFile as ObjetTenu;
+}
+
+export async function oublierFichierPrepare(): Promise<void> {
+  const reponse = await apiFetch('/v1/gestures/file/cancel', { method: 'POST' });
+  if (!reponse.ok) throw new Error("Le fichier préparé n'a pas pu être retiré.");
 }
 
 export async function mesurerPose(
@@ -229,6 +266,8 @@ export type ReponseImage = {
   // entrée dans le champ — précisément le moment où elle compte.
   energy?: EtatEnergie;
   fps?: number;
+  pendingDrop?: DepotEnAttente | null;
+  lastDrop?: Depot | null;
 };
 
 export class EchecGeste extends Error {

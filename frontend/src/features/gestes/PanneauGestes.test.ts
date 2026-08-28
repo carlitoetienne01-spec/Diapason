@@ -20,6 +20,7 @@ vi.mock(
   async () => await import('./__banc__/miniReact'),
 );
 vi.mock('lucide-react', () => ({
+  FileUp: () => null,
   Hand: () => null,
   Video: () => null,
   VideoOff: () => null,
@@ -61,11 +62,15 @@ let monture: MontureArbre | null = null;
 let choisir: ReturnType<typeof vi.fn>;
 let renoncer: ReturnType<typeof vi.fn>;
 let basculerLesClaps: ReturnType<typeof vi.fn>;
+let preparerUnFichier: ReturnType<typeof vi.fn>;
+let annulerFichierPrepare: ReturnType<typeof vi.fn>;
 
 function poserLeContexte(supplement: Record<string, unknown>): void {
   choisir = vi.fn();
   renoncer = vi.fn();
   basculerLesClaps = vi.fn();
+  preparerUnFichier = vi.fn();
+  annulerFichierPrepare = vi.fn();
   contexte.valeur = {
     actif: true,
     etat: 'SAISI',
@@ -77,6 +82,8 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
     basculer: vi.fn(),
     choisir,
     renoncer,
+    preparerUnFichier,
+    annulerFichierPrepare,
     ...supplement,
   };
 }
@@ -236,6 +243,52 @@ describe('ce que le panneau montre du geste', () => {
       },
     });
     expect(texte(monter().arbre())).toContain('Dans ta main : Zéro à Héro');
+  });
+
+  it('nomme le fichier préparé et permet de le retirer', () => {
+    poserLeContexte({
+      diagnostic: {
+        armed: true,
+        preparedFile: {
+          type: 'file',
+          id: 'file-1',
+          title: 'portrait.jpg',
+          sizeBytes: 2048,
+          mimeType: 'image/jpeg',
+        },
+      },
+    });
+    const m = monter();
+    expect(texte(m.arbre())).toContain('Prêt à attraper : portrait.jpg');
+    const retirer = elements(m.arbre(), 'button').find(
+      (bouton) => texte(bouton) === 'retirer',
+    );
+    expect(retirer).toBeDefined();
+    cliquer(retirer!);
+    expect(annulerFichierPrepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('montre quel appareil le poing a surligné', () => {
+    poserLeContexte({
+      diagnostic: {
+        armed: true,
+        pendingDrop: {
+          token: 'jeton-geste',
+          object: { type: 'file', id: 'file-1', title: 'portrait.jpg' },
+          candidates: CANDIDATS,
+          secondsLeft: 10,
+          gestureControlled: true,
+          selectedIndex: 1,
+          selectedDeviceId: 'iphone-poche',
+        },
+      },
+    });
+    const m = monter();
+    const iphone = elements(m.arbre(), 'button').find(
+      (bouton) => texte(bouton) === 'iPhone',
+    );
+    expect(iphone?.props['aria-current']).toBe('true');
+    expect(texte(m.arbre())).toContain('Déplace le poing à gauche');
   });
 
   it('ne montre ni état ni compteurs quand le mode est éteint', () => {

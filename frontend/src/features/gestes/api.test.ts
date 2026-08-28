@@ -22,6 +22,8 @@ import {
   ecouterLesClaps,
   envoyerImage,
   lireDiagnostic,
+  oublierFichierPrepare,
+  preparerFichierPourGeste,
   renoncerAuDepot,
 } from './api';
 
@@ -119,6 +121,38 @@ describe('choisirLAppareil', () => {
     apiFetch.mockResolvedValue(repondre({}));
     await renoncerAuDepot();
     expect(apiFetch).toHaveBeenCalledWith('/v1/gestures/drop/cancel', {
+      method: 'POST',
+    });
+  });
+});
+
+describe('préparer un vrai fichier', () => {
+  it('envoie seulement son chemin au serveur local et rend les métadonnées', async () => {
+    apiFetch.mockResolvedValue(
+      repondre({
+        preparedFile: {
+          type: 'file',
+          id: 'file-42',
+          title: 'vacances.mp4',
+          sizeBytes: 8192,
+          mimeType: 'video/mp4',
+        },
+      }),
+    );
+    await expect(
+      preparerFichierPourGeste('C:\\Photos\\vacances.mp4'),
+    ).resolves.toMatchObject({ id: 'file-42', sizeBytes: 8192 });
+    expect(apiFetch).toHaveBeenCalledWith('/v1/gestures/file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: 'C:\\Photos\\vacances.mp4' }),
+    });
+  });
+
+  it('retire le fichier préparé sans envoyer de corps', async () => {
+    apiFetch.mockResolvedValue(repondre({ preparedFile: null }));
+    await oublierFichierPrepare();
+    expect(apiFetch).toHaveBeenCalledWith('/v1/gestures/file/cancel', {
       method: 'POST',
     });
   });
