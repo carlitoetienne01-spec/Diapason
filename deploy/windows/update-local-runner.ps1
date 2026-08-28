@@ -125,9 +125,15 @@ if (-not $env:GITHUB_WORKSPACE -or -not (Test-Path (Join-Path $env:GITHUB_WORKSP
 }
 
 $source = Find-InstalledSource
-$expectedRemote = 'carlitoetienne01-spec/Diapason'
-$remote = (& git -C $source remote get-url origin 2>$null | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0 -or $remote -notlike "*$expectedRemote*") {
+$remote = [string](& git -C $source remote get-url origin 2>$null | Select-Object -First 1)
+$remote = $remote.Trim()
+$allowedRemotes = @(
+    'https://github.com/carlitoetienne01-spec/Diapason.git',
+    'https://github.com/carlitoetienne01-spec/Diapason',
+    'git@github.com:carlitoetienne01-spec/Diapason.git',
+    'ssh://git@github.com/carlitoetienne01-spec/Diapason.git'
+)
+if ($LASTEXITCODE -ne 0 -or $remote -notin $allowedRemotes) {
     Fail "installed checkout has an unexpected origin: $remote"
 }
 

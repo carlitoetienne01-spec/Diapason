@@ -259,6 +259,11 @@ def test_le_deploiement_windows_local_reste_manuel_et_refuse_d_ecraser() -> None
     assert "install.ps1 -Force" in script
     assert "Test-IsAdministrator" in script
     assert "[void] $candidates.Add" in script
+    assert "$remote = $remote.Trim()" in script
+    assert "$remote -notin $allowedRemotes" in script
+    assert "*$expectedRemote*" not in script, (
+        "une URL Git ne doit pas être validée par un motif partiel"
+    )
     assert "'/fvomus'" in script
     assert "-RequireNative -RequireMesh" in script
     assert "Wait-ApiHealthy 8000" in script
