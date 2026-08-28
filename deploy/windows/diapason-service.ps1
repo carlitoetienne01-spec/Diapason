@@ -140,7 +140,7 @@ a device credential. A chat request there returns 404, not 401.
     $serveArgs = "serve --host $ListenHost --port $ListenPort"
     if ($MaillageReseau) {
         $serveArgs = "$serveArgs --lan-host 0.0.0.0 --lan-port $LanPort"
-        Write-Info "  Maillage    : 0.0.0.0`:$LanPort (ten routes, device credential required)"
+        Write-Info "  Maillage    : 0.0.0.0`:$LanPort (nine routes, device credential required)"
         Write-Info "  A shared network stays a shared network — see deploy/windows/README.md."
     }
 

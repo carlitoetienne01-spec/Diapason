@@ -37,7 +37,7 @@ def _chemins(app) -> set[str]:
 
 
 class TestCeQuiEstExpose:
-    def test_exactement_les_dix_portes(self):
+    def test_exactement_les_neuf_portes(self):
         assert _chemins(create_lan_app()) == set(_PORTES_LAN)
 
     def test_le_chat_n_existe_pas_sur_ce_port(self):
@@ -67,7 +67,7 @@ class TestCeQuiEstExpose:
         """Le plafond doit tenir contre ce que personne n'a encore écrit.
 
         Le filtre gardait toute route dépourvue de méthodes HTTP. Aucune des
-        dix portes n'est dans ce cas, donc la clause ne gardait rien — mais
+        neuf portes n'est dans ce cas, donc la clause ne gardait rien — mais
         un `@router.websocket(...)` ajouté à `mesh/routes.py` par une session
         future se serait retrouvé sur 0.0.0.0 sans que rien ne rougisse :
         hors du mur (cette application n'a pas d'AuthMiddleware) et hors du
@@ -114,7 +114,7 @@ class TestLInvariantQuiEmpecheLaDerive:
 
     def test_aucune_porte_du_lan_n_exige_la_cle_d_api(self):
         for chemin in sorted(_PORTES_LAN):
-            concret = chemin.replace("{session_id}", "s1").replace("{request_id}", "r1")
+            concret = chemin.replace("{session_id}", "s1")
             assert not AuthMiddleware._requires_auth(concret), (
                 f"{chemin} est exposée au LAN mais attend la clé d'API : "
                 "l'une des deux décisions est fausse"
@@ -135,9 +135,7 @@ class TestLInvariantQuiEmpecheLaDerive:
                 chemin = getattr(route, "path", "")
                 if not getattr(route, "methods", None):
                     continue
-                concret = chemin.replace("{session_id}", "s1").replace(
-                    "{request_id}", "r1"
-                )
+                concret = chemin.replace("{session_id}", "s1")
                 if AuthMiddleware._requires_auth(concret):
                     continue
                 assert chemin in _PORTES_LAN, (

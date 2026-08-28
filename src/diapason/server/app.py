@@ -492,7 +492,7 @@ def create_app(
     return app
 
 
-# Les DIX portes qui ont le droit d'exister sur le réseau local.
+# Les NEUF portes qui ont le droit d'exister sur le réseau local.
 #
 # Exactement celles que `_requires_auth` exempte de la clé d'API — et ce
 # n'est pas une coïncidence : une route exempte l'est parce qu'elle porte une
@@ -511,7 +511,6 @@ _PORTES_LAN: frozenset[str] = frozenset(
         "/v1/mesh/commands/ack",
         "/v1/mesh/presence",
         "/v1/mesh/files/offer",
-        "/v1/mesh/files/requests/{request_id}/state",
         "/v1/mesh/files/{session_id}/chunk",
         "/v1/mesh/files/{session_id}/finish",
         "/v1/mesh/files/{session_id}/status",
@@ -540,7 +539,7 @@ def create_lan_app() -> FastAPI:
     reçue sur le LAN n'apparaîtrait jamais dans l'inbox lue en loopback, et un
     morceau rendrait 404 parce que l'offre a ouvert la session ailleurs.
 
-    Pas de clé d'API ici, et c'est délibéré : les dix routes s'authentifient
+    Pas de clé d'API ici, et c'est délibéré : les neuf routes s'authentifient
     par signature d'appareil, invitation ou jeton de session. Une clé partagée
     prouverait MOINS — elle ne dit ni quel appareil parle, ni ce qu'il prétend.
     """

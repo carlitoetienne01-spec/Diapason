@@ -1,8 +1,8 @@
 """Envoyer un fichier à un appareil de la flotte — le côté qui pousse.
 
 Spatial Mesh, phase 3 — 25 août 2026. Le pendant de ``files_routes``. Il
-annonce, attend l'accord, chiffre morceau par morceau, et ne dit « arrivé »
-que quand le RÉCEPTEUR l'a dit.
+annonce, négocie une session, chiffre morceau par morceau, et ne dit
+« arrivé » que quand le RÉCEPTEUR l'a dit.
 """
 
 from __future__ import annotations
@@ -93,6 +93,10 @@ def envoyer_fichier(
             chemin_distant=str(reponse.get("path") or ""),
         )
 
+    # Rolling-upgrade compatibility for receivers older than 28 August 2026.
+    # Current versions answer ACCEPTED immediately to a trusted peer, but
+    # removing this path would require every device in a fleet to update at
+    # exactly the same time.
     if reponse.get("status") == "PENDING":
         request_id = str(reponse.get("requestId") or "")
         request_token = str(reponse.get("requestToken") or "")

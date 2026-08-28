@@ -1446,8 +1446,97 @@
   animation: diapason-caption-in 180ms ease-out;
   text-wrap: balance;
 }
+
+/* A received file is announced only after the receiver has recomputed its
+   hash. The motion reads left-to-right like the transfer, then leaves before
+   it can become permanent chrome. */
+@keyframes diapason-file-arrival-in {
+  from { opacity: 0; transform: translate3d(22px, -8px, 0) scale(0.97); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes diapason-file-arrival-out {
+  to { opacity: 0; transform: translate3d(14px, 0, 0) scale(0.985); }
+}
+@keyframes diapason-file-arrival-beam {
+  0% { transform: translateX(-8px); opacity: 0; }
+  30%, 65% { opacity: 1; }
+  100% { transform: translateX(15px); opacity: 0; }
+}
+@keyframes diapason-file-arrival-life {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.file-arrival-card {
+  border-color: color-mix(in srgb, var(--color-success) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  box-shadow:
+    0 18px 55px -24px rgb(0 0 0 / 0.45),
+    0 0 0 1px color-mix(in srgb, var(--color-success) 7%, transparent);
+  backdrop-filter: blur(22px) saturate(1.2);
+  animation:
+    diapason-file-arrival-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    diapason-file-arrival-out 340ms ease-in 5.86s forwards;
+}
+.file-arrival-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 82% -20%, color-mix(in srgb, var(--color-success) 16%, transparent), transparent 48%),
+    linear-gradient(105deg, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 45%);
+}
+.file-arrival-route {
+  display: flex;
+  align-items: center;
+  color: var(--color-success);
+}
+.file-arrival-device,
+.file-arrival-file {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--color-success) 22%, var(--color-border));
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-success) 9%, var(--color-surface));
+}
+.file-arrival-device {
+  color: var(--color-text-secondary);
+}
+.file-arrival-beam {
+  position: relative;
+  width: 1.1rem;
+  height: 1px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-success) 22%, transparent);
+}
+.file-arrival-beam > span {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 7px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 72%, transparent);
+  animation: diapason-file-arrival-beam 1.15s ease-in-out 220ms 2;
+}
+.file-arrival-lifetime {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--color-success), var(--color-accent));
+  opacity: 0.55;
+  animation: diapason-file-arrival-life 5.9s linear forwards;
+}
 @media (prefers-reduced-motion: reduce) {
-  .talk-caption {
+  .talk-caption,
+  .file-arrival-card,
+  .file-arrival-beam > span,
+  .file-arrival-lifetime {
     animation: none;
   }
 }

@@ -1,7 +1,8 @@
-"""Une offre de fichier attend un oui réel avant de toucher le disque."""
+"""Un pair jumelé reçoit sans second clic, jamais sans preuve."""
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,7 @@ def _requete(jeton: str) -> Request:
 
 @pytest.fixture()
 def offre(tmp_path, monkeypatch):
-    """Une offre signée déjà vérifiée ; le test porte sur le consentement."""
+    """Une offre signée déjà vérifiée ; le test porte sur la confiance."""
     monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "maison"))
     routes.reinitialiser_pour_tests()
     monkeypatch.setattr(
@@ -32,10 +33,11 @@ def offre(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         "diapason.mesh.registry.DeviceRegistry.find",
-        lambda _self, _id: {"deviceId": "pair-1", "name": "PC du bureau"},
-    )
-    monkeypatch.setattr(
-        "diapason.mesh.demande_de_reception.poser", lambda *_a, **_k: "action-1"
+        lambda _self, _id: {
+            "deviceId": "pair-1",
+            "name": "PC du bureau",
+            "trustLevel": "TRUSTED",
+        },
     )
     monkeypatch.setattr(routes, "_repondre", lambda corps: dict(corps))
     dossier = tmp_path / "reçus"
@@ -53,7 +55,7 @@ def offre(tmp_path, monkeypatch):
         manifest={
             "name": "rapport.pdf",
             "size": 4,
-            "sha256": "a" * 64,
+            "sha256": hashlib.sha256(b"test").hexdigest(),
             "mimeType": "application/pdf",
             "chunks": 1,
         },
@@ -64,135 +66,133 @@ def offre(tmp_path, monkeypatch):
     routes.reinitialiser_pour_tests()
 
 
-class TestLaDecisionPrecedeLeDisque:
-    """§5 et §100 — PENDING n'est ni accepté, ni commencé."""
+class TestLeJumelageVautAutorisation:
+    """§5 — TRUSTED est la décision durable, pas une question par fichier."""
 
-    def test_l_offre_ne_cree_ni_dossier_ni_session(self, offre):
+    def test_le_nom_affiche_ne_peut_pas_inverser_la_carte(self):
+        nom = routes._display_name("  PC\u202eexe.jpg\n bureau  ")
+        assert nom == "PCexe.jpg bureau"
+
+    def test_l_offre_ouvre_la_session_sans_demande(self, offre):
         body, dossier = offre
 
         reponse = routes.offrir(body)
 
-        assert reponse["status"] == "PENDING"
-        assert reponse["requestId"]
-        assert reponse["requestToken"]
-        assert not dossier.exists(), "demander n'est pas encore recevoir"
-        assert not routes._sessions, "aucune clé d'envoi ne doit exister avant le oui"
-
-    def test_accepter_ouvre_une_seule_session(self, offre, monkeypatch):
-        body, dossier = offre
-        proposition = routes.offrir(body)
-        monkeypatch.setattr(
-            "diapason.mesh.demande_de_reception.decision",
-            lambda _id: "ACCEPTED",
-        )
-
-        premiere = routes.etat_demande(
-            proposition["requestId"], _requete(proposition["requestToken"])
-        )
-        seconde = routes.etat_demande(
-            proposition["requestId"], _requete(proposition["requestToken"])
-        )
-
-        assert premiere["status"] == "ACCEPTED"
-        assert premiere["sessionId"] == seconde["sessionId"]
-        assert premiere["uploadToken"] == seconde["uploadToken"]
+        assert reponse["status"] == "ACCEPTED"
+        assert reponse["sessionId"]
+        assert reponse["uploadToken"]
+        assert "requestId" not in reponse
+        assert "requestToken" not in reponse
         assert dossier.is_dir()
-        assert len(routes._sessions) == 1, "deux sondages ne créent pas deux sessions"
+        assert len(routes._sessions) == 1, "l'offre doit ouvrir une seule session"
 
-    def test_refuser_ne_touche_jamais_le_disque(self, offre, monkeypatch):
+    def test_un_appareil_qui_n_est_plus_trusted_est_refuse(self, offre, monkeypatch):
         body, dossier = offre
-        proposition = routes.offrir(body)
         monkeypatch.setattr(
-            "diapason.mesh.demande_de_reception.decision", lambda _id: "DENIED"
+            "diapason.mesh.registry.DeviceRegistry.find",
+            lambda _self, _id: {
+                "deviceId": "pair-1",
+                "name": "PC révoqué",
+                "trustLevel": "REVOKED",
+            },
+        )
+        monkeypatch.setattr(
+            "diapason.mesh.transfert.deja_present",
+            lambda *_a, **_k: pytest.fail(
+                "un pair révoqué ne doit pas apprendre qu'un fichier existe"
+            ),
         )
 
-        reponse = routes.etat_demande(
-            proposition["requestId"], _requete(proposition["requestToken"])
-        )
+        with pytest.raises(HTTPException) as refus:
+            routes.offrir(body)
 
-        assert reponse["status"] == "DENIED"
-        assert not dossier.exists()
-        assert not routes._sessions
+        assert refus.value.status_code == 403
+        assert not dossier.exists(), "un pair révoqué ne doit rien créer"
+        assert not routes._sessions, "un pair révoqué n'obtient aucun jeton"
 
-    def test_un_jeton_invente_ne_lit_pas_la_decision(self, offre):
-        body, _dossier = offre
+    def test_un_jeton_invente_ne_depose_rien(self, offre):
+        body, dossier = offre
         proposition = routes.offrir(body)
 
         with pytest.raises(HTTPException) as refus:
-            routes.etat_demande(proposition["requestId"], _requete("inventé"))
+            routes.finir(proposition["sessionId"], _requete("inventé"))
 
         assert refus.value.status_code == 403
+        assert not list(dossier.glob("rapport.pdf"))
 
 
-class TestLaClochePorteLaVraieDemande:
-    def test_nom_taille_et_appareil_sont_visibles(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "cloche"))
-        annonces: list[tuple[str, str]] = []
+class TestLArriveeVisibleDitLaVerite:
+    """§100 — l'animation ne naît qu'après l'empreinte finale vérifiée."""
+
+    def test_la_fin_publie_le_fichier_et_l_appareil(self, offre, monkeypatch):
+        body, _dossier = offre
+        evenements: list[dict] = []
+        monkeypatch.setattr("diapason.mesh.executor.shell_is_collecting", lambda: True)
         monkeypatch.setattr(
-            "diapason.server.approval_bridge.announce_approval",
-            lambda titre, corps: annonces.append((titre, corps)),
+            "diapason.mesh.executor.push_shell_event",
+            lambda entree: evenements.append(entree) or True,
         )
-        from diapason.mesh.demande_de_reception import poser
-        from diapason.mesh.transfert import Manifeste
-        from diapason.tools.approval_store import ApprovalStore
+        proposition = routes.offrir(body)
+        session = routes._sessions[proposition["sessionId"]]
+        session.reception.ecrire(0, b"test")
 
-        action_id = poser(
-            Manifeste(
-                nom="rapport\u202egnp.exe",
-                taille=2 * (1 << 20),
-                hachage="a" * 64,
-                type_mime="application/octet-stream",
-                morceaux=2,
+        reponse = routes.finir(
+            proposition["sessionId"], _requete(proposition["uploadToken"])
+        )
+
+        assert reponse["status"] == "COMPLETE"
+        assert len(evenements) == 1
+        arrivee = evenements[0]["fileReceived"]
+        assert arrivee == {
+            "fileName": "rapport.pdf",
+            "sizeBytes": 4,
+            "mimeType": "application/pdf",
+            "sourceDeviceId": "pair-1",
+            "sourceDeviceName": "PC du bureau",
+        }
+
+    def test_une_fenetre_fermee_n_empeche_pas_le_transfert(self, offre, monkeypatch):
+        body, dossier = offre
+        monkeypatch.setattr("diapason.mesh.executor.shell_is_collecting", lambda: False)
+        monkeypatch.setattr(
+            "diapason.mesh.executor.push_shell_event",
+            lambda _entree: pytest.fail(
+                "aucun événement ne doit attendre sans fenêtre"
             ),
-            {"deviceId": "pair-1", "name": "PC\u202e du bureau"},
+        )
+        proposition = routes.offrir(body)
+        session = routes._sessions[proposition["sessionId"]]
+        session.reception.ecrire(0, b"test")
+
+        reponse = routes.finir(
+            proposition["sessionId"], _requete(proposition["uploadToken"])
         )
 
-        store = ApprovalStore()
-        try:
-            action = store.get_action(action_id)
-        finally:
-            store.close()
-        assert action is not None
-        assert action.action_type == "file_transfer"
-        assert action.payload["fileName"] == "rapportgnp.exe"
-        assert action.payload["deviceName"] == "PC du bureau"
-        assert "2.0 Mo" in action.description
-        assert annonces and "accepte ou refuse" in annonces[0][1]
+        assert reponse["status"] == "COMPLETE"
+        assert (dossier / "rapport.pdf").read_bytes() == b"test"
 
-    def test_le_oui_est_consomme_une_seule_fois(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "decision"))
+    def test_une_empreinte_fausse_ne_declenche_aucune_animation(
+        self, offre, monkeypatch
+    ):
+        body, _dossier = offre
+        evenements: list[dict] = []
+        monkeypatch.setattr("diapason.mesh.executor.shell_is_collecting", lambda: True)
         monkeypatch.setattr(
-            "diapason.server.approval_bridge.announce_approval",
-            lambda *_a: None,
+            "diapason.mesh.executor.push_shell_event",
+            lambda entree: evenements.append(entree) or True,
         )
-        from diapason.mesh.demande_de_reception import decision, poser
-        from diapason.mesh.transfert import Manifeste
-        from diapason.tools.approval_store import (
-            STATUS_APPROVED,
-            STATUS_EXECUTED,
-            ApprovalStore,
-        )
+        proposition = routes.offrir(body)
+        session = routes._sessions[proposition["sessionId"]]
+        session.reception.ecrire(0, b"faux")
 
-        action_id = poser(
-            Manifeste("note.txt", 1, "a" * 64, "text/plain", 1),
-            {"deviceId": "pair-1", "name": "PC"},
-        )
-        store = ApprovalStore()
-        try:
-            store.update_status(action_id, STATUS_APPROVED)
-        finally:
-            store.close()
+        with pytest.raises(HTTPException) as refus:
+            routes.finir(proposition["sessionId"], _requete(proposition["uploadToken"]))
 
-        assert decision(action_id) == "ACCEPTED"
-        store = ApprovalStore()
-        try:
-            assert store.get_action(action_id).status == STATUS_EXECUTED
-        finally:
-            store.close()
-        assert decision(action_id) == "ACCEPTED"
+        assert refus.value.status_code == 422
+        assert evenements == [], "un fichier rejeté n'est jamais annoncé comme arrivé"
 
 
-class TestLEmetteurAttendLaReponse:
+class TestLEmetteurResteCompatibleAvecUnAncienRecepteur:
     def _fichier(self, tmp_path: Path) -> Path:
         source = tmp_path / "note.txt"
         source.write_bytes(b"quatre octets de confiance")

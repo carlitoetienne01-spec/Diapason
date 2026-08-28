@@ -839,7 +839,7 @@ def serve(
     if lan_host:
         console.print(
             f"  Maillage : [cyan]http://{lan_host}:{lan_port}[/cyan] — "
-            "dix routes, créance d'appareil exigée"
+            "neuf routes, créance d'appareil exigée"
         )
 
     # Log credential status at startup

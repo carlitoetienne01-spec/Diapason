@@ -70,9 +70,18 @@ export interface MeshPairingInvitation {
   expiresInSeconds: number;
 }
 
+export interface MeshFileReceived {
+  fileName: string;
+  sizeBytes: number;
+  mimeType: string;
+  sourceDeviceId: string;
+  sourceDeviceName: string;
+}
+
 /**
- * One thing another device asked this one to do. Four shapes, distinguished
- * by which optional key is present — `notification` entries carry no route.
+ * One thing another device caused this one to show. The shapes are
+ * distinguished by their optional payload — notifications and verified file
+ * arrivals carry no route.
  */
 export interface MeshInboxEntry {
   commandId: string;
@@ -83,6 +92,7 @@ export interface MeshInboxEntry {
   resourceType?: string;
   resourceId?: string;
   notification?: { title: string; body: string };
+  fileReceived?: MeshFileReceived;
 }
 
 export interface MeshAnnounceResult {

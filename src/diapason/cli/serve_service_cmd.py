@@ -70,7 +70,7 @@ def install(
         # existait pour un besoin légitime — « un téléphone ne peut pas
         # joindre 127.0.0.1 » — auquel il n'y avait alors pas d'autre
         # réponse. Il y en a une depuis : un second socket qui ne porte que
-        # dix routes. Le besoin étant servi, l'échappatoire se referme.
+        # neuf routes. Le besoin étant servi, l'échappatoire se referme.
         #
         # Elle échoue au lieu d'être un alias silencieux : la même commande
         # ne doit pas se mettre à faire autre chose sans le dire.
@@ -79,7 +79,7 @@ def install(
             "réseau, et c'est ainsi que ce Mac a servi deux cent dix routes "
             "sur le Wi-Fi jusqu'au 26 août 2026.\n"
             "  • Pour que vos autres appareils atteignent ce Mac : "
-            "--maillage-reseau, qui n'expose que les dix routes du "
+            "--maillage-reseau, qui n'expose que les neuf routes du "
             "maillage, créance d'appareil exigée.\n"
             "  • L'application complète reste sur 127.0.0.1, toujours.",
             err=True,

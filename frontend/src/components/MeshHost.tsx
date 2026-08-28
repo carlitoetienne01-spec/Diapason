@@ -1,32 +1,81 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { fetchMeshInbox } from '../features/mesh/api';
+import { playFileArrivalChime } from '../features/mesh/fileArrival';
 import { resolveSuccessRoute } from '../features/mesh/routes';
-import type { MeshInboxEntry } from '../features/mesh/types';
+import type { MeshFileReceived, MeshInboxEntry } from '../features/mesh/types';
+import { useTranslation } from '../i18n/useTranslation';
 import { isTauri } from '../lib/api';
 import { useAppStore } from '../lib/store';
+import { FileArrivalNotice } from './FileArrivalNotice';
+
+type VisibleReceipt = MeshFileReceived & { eventId: string };
 
 /**
  * The hand at the end of the mesh: what another device asked for actually
  * happens here.
  *
- * Renders nothing. It polls the backend's inbox — filled only by commands
- * that already survived every check of the signed command bus — and turns
- * each entry into a screen, a selection, or a notification.
+ * It polls the backend's inbox — filled only by commands and transfers that
+ * already survived their cryptographic checks — and turns each entry into a
+ * screen, a selection, a notification, or a brief verified-arrival card.
  *
  * Exactly one of these may be mounted. `GET /v1/mesh/inbox` drains on read,
  * so a second poller would not duplicate work: it would make navigations
  * vanish at random into whichever poller won the race.
  */
 export function MeshHost() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const addLogEntry = useAppStore((s) => s.addLogEntry);
   const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
+  const [receivedFiles, setReceivedFiles] = useState<VisibleReceipt[]>([]);
+  const dismissReceivedFile = useCallback((eventId: string) => {
+    setReceivedFiles((current) =>
+      current.filter((item) => item.eventId !== eventId),
+    );
+  }, []);
+
+  const announceReceivedFile = useCallback(
+    async (entry: MeshInboxEntry) => {
+      const receipt = entry.fileReceived;
+      if (!receipt) return;
+      const eventId = entry.commandId || `${receipt.sourceDeviceId}:${entry.receivedAtMs}`;
+      setReceivedFiles((current) => {
+        if (current.some((item) => item.eventId === eventId)) return current;
+        return [...current, { ...receipt, eventId }].slice(-3);
+      });
+      void playFileArrivalChime();
+      addLogEntry({
+        timestamp: Date.now(),
+        level: 'info',
+        category: 'mesh',
+        message: `${receipt.fileName} reçu depuis ${receipt.sourceDeviceName}.`,
+      });
+
+      const windowIsVisible =
+        document.visibilityState === 'visible' &&
+        (typeof document.hasFocus !== 'function' || document.hasFocus());
+      if (!windowIsVisible) {
+        await showNotification(
+          t('mesh.fileArrival.title'),
+          t('mesh.fileArrival.notificationBody', {
+            file: receipt.fileName,
+            device: receipt.sourceDeviceName,
+          }),
+        );
+      }
+    },
+    [addLogEntry, t],
+  );
 
   const handleEntry = useCallback(
     async (entry: MeshInboxEntry) => {
+      if (entry.fileReceived) {
+        await announceReceivedFile(entry);
+        return;
+      }
       if (entry.notification) {
         await showNotification(entry.notification.title, entry.notification.body);
         return;
@@ -56,7 +105,7 @@ export function MeshHost() {
       // never sees — which is indistinguishable from one that failed.
       await focusMainWindow();
     },
-    [addLogEntry, navigate, setPendingMeshSelection],
+    [addLogEntry, announceReceivedFile, navigate, setPendingMeshSelection],
   );
 
   useEffect(() => {
@@ -106,7 +155,22 @@ export function MeshHost() {
     };
   }, [handleEntry, addLogEntry]);
 
-  return null;
+  return (
+    <div
+      className="pointer-events-none fixed right-5 top-5 z-[120] flex flex-col items-end gap-2.5"
+      aria-live="polite"
+      aria-atomic="false"
+    >
+      {receivedFiles.map((receipt) => (
+        <FileArrivalNotice
+          key={receipt.eventId}
+          eventId={receipt.eventId}
+          receipt={receipt}
+          onDismiss={dismissReceivedFile}
+        />
+      ))}
+    </div>
+  );
 }
 
 /** Bring this window forward. Silently a no-op outside the desktop app. */

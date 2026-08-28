@@ -33,7 +33,7 @@ Un seul processus, deux applications FastAPI distinctes, deux sockets
 
 |                        | `--host` / `--port`                                   | `--lan-host` / `--lan-port`                                   |
 |------------------------|-------------------------------------------------------|---------------------------------------------------------------|
-| Ce qui est monté       | l'application **complète** : chat, voix, Succès, outils, interface | **dix routes** du maillage, pas une de plus             |
+| Ce qui est monté       | l'application **complète** : chat, voix, Succès, outils, interface | **neuf routes** du maillage, pas une de plus             |
 | Valeur par défaut      | `127.0.0.1` et `8000` (config `server.host` / `server.port`) | `--lan-host` : aucune — sans elle, **ce socket n'existe pas**. `--lan-port` : `8001`   |
 | Doit rester            | sur la loopback, toujours                             | `0.0.0.0` si vos autres appareils doivent l'atteindre          |
 | Créance exigée         | la clé d'API locale                                   | signature Ed25519 d'appareil, invitation à usage unique, ou jeton de session |
@@ -57,7 +57,7 @@ appareils appairés : `serve` enregistre `lan_host:lan_port` comme adresse
 locale (`set_local_endpoint`, `src/diapason/cli/serve.py`). Annoncer le
 premier socket reviendrait à donner à toute la flotte une adresse où elle ne
 trouverait jamais rien. Au démarrage, le serveur affiche la ligne
-« Maillage : http://… — dix routes, créance d'appareil exigée ».
+« Maillage : http://… — neuf routes, créance d'appareil exigée ».
 
 !!! warning "Un seul processus, impérativement"
     Les deux sockets doivent vivre dans le **même processus**. La boîte de
@@ -107,7 +107,7 @@ Ce que cette option fait exactement (`src/diapason/cli/serve_service_cmd.py`) :
 
 - l'application complète **reste** sur `127.0.0.1:8000` ;
 - un **second** socket s'ouvre sur `0.0.0.0:8001` (défaut de `--lan-port`) et
-  ne porte que les dix routes du maillage ;
+  ne porte que les neuf routes du maillage ;
 - la commande affiche un avertissement explicite : « toute machine de votre
   réseau local pourra l'atteindre » ;
 - `--lan-port` égal à `--port` est **refusé** (macOS lie les deux en silence
@@ -128,7 +128,7 @@ beyond this machine.
 $ diapason serve-service install --allow-network
 --allow-network n'existe plus : elle exposait l'API ENTIÈRE au réseau […]
   • Pour que vos autres appareils atteignent ce Mac : --maillage-reseau,
-    qui n'expose que les dix routes du maillage, créance d'appareil exigée.
+    qui n'expose que les neuf routes du maillage, créance d'appareil exigée.
   • L'application complète reste sur 127.0.0.1, toujours.
 ```
 
@@ -147,7 +147,7 @@ doit pas se mettre à faire autre chose sans le dire.
 
 ## Ce que le maillage expose — et ce qu'il n'expose pas
 
-Les dix routes, telles qu'elles sont listées dans `_PORTES_LAN`
+Les neuf routes, telles qu'elles sont listées dans `_PORTES_LAN`
 (`src/diapason/server/app.py`), avec la créance que chacune vérifie :
 
 | Route                                    | Ce qu'elle prouve                                                        |
@@ -158,7 +158,6 @@ Les dix routes, telles qu'elles sont listées dans `_PORTES_LAN`
 | `POST /v1/mesh/commands/ack`             | signature Ed25519 de l'appareil                                           |
 | `POST /v1/mesh/presence`                 | signature Ed25519 de la balise, horodatage à ±30 s                        |
 | `POST /v1/mesh/files/offer`              | signature Ed25519 sur le manifeste et la clé éphémère                     |
-| `POST /v1/mesh/files/requests/{request_id}/state` | jeton opaque de demande ; la session n'est créée qu'après l'accord humain |
 | `POST /v1/mesh/files/{session_id}/chunk`         | jeton de session (`X-Transfer-Token`), comparé à temps constant           |
 | `POST /v1/mesh/files/{session_id}/finish`        | jeton de session                                                          |
 | `POST /v1/mesh/files/{session_id}/status`        | jeton de session                                                          |

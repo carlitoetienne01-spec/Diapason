@@ -8,7 +8,7 @@ dès qu'on ajoutait `--allow-network`.
 
 Le motif de cette échappatoire était réel : « un téléphone ne peut pas
 joindre 127.0.0.1 ». Il n'y avait alors pas d'autre réponse. Il y en a une
-depuis — un second socket qui ne porte que dix routes du maillage — donc
+depuis — un second socket qui ne porte que neuf routes du maillage — donc
 l'échappatoire n'a plus de raison d'être, et ces tests l'empêchent de
 revenir.
 """
@@ -108,7 +108,7 @@ class TestLeMaillagePasseParSaProprePorte:
         assert "même port" in resultat.output
 
     def test_ouvrir_le_maillage_se_dit_a_voix_haute(self):
-        """Un réseau partagé reste un réseau partagé, même pour dix routes."""
+        """Un réseau partagé reste un réseau partagé, même pour neuf routes."""
         resultat = _invoquer("--host", "127.0.0.1", "--maillage-reseau")
         assert "0.0.0.0" in resultat.output
         assert "réseau local pourra l'atteindre" in resultat.output

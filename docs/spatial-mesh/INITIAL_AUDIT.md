@@ -316,7 +316,8 @@ réécrit cesse d'être un constat.*
   plus un échange de clés de session (X25519) qui n'existe pas : aujourd'hui
   les enveloppes sont **signées, pas chiffrées**, et le transport est en
   clair sur le LAN.~~ **Traité** : session dédiée, X25519 + AES-256-GCM,
-  consentement et banc physique Mac ↔ Windows validés au 28 août 2026.
+  banc physique Mac ↔ Windows validé au 28 août 2026, puis réception
+  automatique limitée aux pairs `TRUSTED` et annonce visuelle après empreinte.
 - ~~**Gestes** : le framework est là, l'entitlement caméra et le flux ne le
   sont pas. Et la CI ne pourra jamais les vérifier.~~ **Traité** : entitlement,
   flux Tauri et moteur sont livrés ; la caméra reste vérifiée localement sur

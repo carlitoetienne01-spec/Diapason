@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "local_executor",
     "pending_navigations",
+    "push_shell_event",
     "push_navigation",
     "shell_is_collecting",
 ]
@@ -50,8 +51,8 @@ _last_collection_ms: int | None = None
 _COLLECTION_WINDOW_MS = 90_000
 
 
-def push_navigation(entry: dict[str, Any]) -> bool:
-    """Queue one entry for the shell. False when the queue is full.
+def push_shell_event(entry: dict[str, Any]) -> bool:
+    """Queue one verified event for the shell. False when the queue is full.
 
     It used to evict the OLDEST — `del _pending[:-_MAX_PENDING]` — and say
     nothing. Those oldest entries had already been answered SUCCESS to the
@@ -75,6 +76,11 @@ def push_navigation(entry: dict[str, Any]) -> bool:
         return False
     _pending.append(entry)
     return True
+
+
+def push_navigation(entry: dict[str, Any]) -> bool:
+    """Backward-compatible name for screen and notification events."""
+    return push_shell_event(entry)
 
 
 def _queue_full() -> dict[str, Any]:

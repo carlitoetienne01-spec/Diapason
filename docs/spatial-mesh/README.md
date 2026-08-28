@@ -36,7 +36,7 @@ maintenant sur une fondation vérifiée plutôt que supposée.
 |---|---|
 | **Banc de bout en bout, deux processus** (`tests/mesh/test_banc_deux_processus.py`) | Deux identités Ed25519 distinctes, un vrai socket, une commande signée qui traverse et arrive dans la boîte de l'hôte. Casser volontairement l'endpoint du transport fait rougir le banc — il mord. |
 | **Anti-rejeu sur socket réel** | La même enveloppe livrée deux fois : la seconde est refusée, nonce dépensé en base. |
-| **Instantané de contrat des routes** (`tests/contract/mesh_api_surface.json`) | 26 routes figées ; renommer `commands/poll` fait rougir deux tests. Un cliquet distinct garde les **cinq portes du téléphone** et vérifie qu'elles restent exemptées du mur d'authentification. À ne pas confondre avec les **dix portes du réseau** (`_PORTES_LAN`, `src/diapason/server/app.py`) : l'offre, la décision humaine et les trois routes de session portent leur propre créance plutôt que la clé d'API. |
+| **Instantané de contrat des routes** (`tests/contract/mesh_api_surface.json`) | 25 routes figées ; renommer `commands/poll` fait rougir deux tests. Un cliquet distinct garde les **cinq portes du téléphone** et vérifie qu'elles restent exemptées du mur d'authentification. À ne pas confondre avec les **neuf portes du réseau** (`_PORTES_LAN`, `src/diapason/server/app.py`) : l'offre automatique et les trois routes de session portent leur propre créance plutôt que la clé d'API. |
 | **Trou de capacités au jumelage corrigé** | La réponse du jumelage ne portait aucune capacité : un invité fraîchement jumelé se voyait refuser TOUT envoi (« ne peut pas faire cela ») jusqu'à la première balise. Découvert en préparant le banc. |
 
 Pourquoi deux processus et pas deux instances : le quatrième contrôle de
@@ -95,12 +95,12 @@ propres routes, son propre seau de limitation.
 |---|---|
 | **Le cœur** — manifeste, découpage, reprise, intégrité, déduplication par contenu, finalisation atomique | `mesh/transfert.py` |
 | **Le chiffrement de session** — X25519 éphémère signé Ed25519, HKDF, AES-256-GCM par morceau | `mesh/coffre.py` |
-| **Les routes** — offre signée, consentement explicite, morceaux authentifiés par jeton de session, plafond en octets | `mesh/files_routes.py` |
-| **La demande visible** — notification native et cloche Accepter/Refuser ; aucun droit permanent mémorisé | `mesh/demande_de_reception.py`, `ApprovalBell.tsx` |
+| **Les routes** — offre signée d'un pair `TRUSTED`, session automatique, morceaux authentifiés par jeton de session, plafond en octets | `mesh/files_routes.py` |
+| **L'arrivée visible** — carte globale animée après empreinte vérifiée, appareil source nommé, carillon local et notification système en arrière-plan | `MeshHost.tsx`, `FileArrivalNotice.tsx` |
 | **L'émetteur** | `mesh/envoi_fichier.py` |
 | **Le chemin de bureau** — dialogue natif, un fichier préparé puis attrapé, sélecteur d'appareils au poing et progression réelle | `presse_papiers_spatial.py`, `gestes_routes.py`, `useModeGestes.ts`, `VoyantGestes.tsx` |
 | **Le banc réel** — 2 Mo en trois morceaux entre deux processus, plus deux tentatives d'intrusion refusées | `tests/mesh/test_banc_deux_processus.py` |
-| **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre `MacBookAir-de-Carlito` et `SUCCES` ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001, consentement humain sur chaque récepteur |
+| **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre `MacBookAir-de-Carlito` et `SUCCES` ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001. Ce banc précédait la réception automatique ; le transport reste prouvé, la nouvelle expérience physique attend le déploiement de ce lot sur les deux machines. |
 
 ### Les décisions, et pourquoi
 
@@ -108,10 +108,13 @@ propres routes, son propre seau de limitation.
   un nom de fichier valide pour celui qui l'envoie. Les contrôles de
   direction Unicode sont retirés eux aussi : une extension ne peut pas se
   déguiser visuellement.
-- **Recevoir demande toujours.** Une offre vérifiée rend `PENDING` et pose
-  une demande dans la cloche. Avant « Accepter », aucun dossier, fichier,
-  jeton d'envoi ou clé de session n'existe. « Refuser » et l'absence de
-  réponse pendant 120 secondes n'envoient aucun morceau.
+- **Le jumelage vaut autorisation durable.** Une offre dont la signature vient
+  d'un pair `TRUSTED` ouvre immédiatement une session : aucun second clic à
+  chaque photo ou vidéo. Un appareil inconnu, non fiable ou révoqué est refusé
+  avant la session ; révoquer le pair coupe donc aussi les transferts suivants.
+  Cette confiance a un prix explicite : une machine jumelée puis compromise
+  peut remplir le dossier de réception, dans les plafonds de 2 Gio par fichier
+  et huit sessions simultanées. La révocation est le coupe-circuit.
 - **Rien n'est visible avant d'être entier.** Les morceaux vont dans un
   `.partiel` anonyme ; un `os.replace` atomique fait apparaître le fichier
   d'un coup. Un partiel qui porterait déjà son nom final serait ouvert par
@@ -129,11 +132,11 @@ propres routes, son propre seau de limitation.
   déplacé devient illisible plutôt que silencieusement faux.
 - **La signature garde la porte, le jeton garde le couloir.** L'offre est
   vérifiée par le même `verify_payload` que les balises — sept contrôles,
-  révocation comprise. Un jeton opaque permet de sonder la décision ; le
-  jeton d'envoi à usage unique n'est créé qu'après le oui. Les réponses
-  `PENDING`, `ACCEPTED`, `DENIED`, `ALREADY_PRESENT` et `COMPLETE` sont
-  signées par le destinataire : l'émetteur ne transforme jamais une réponse
-  réseau fabriquée en succès.
+  révocation comprise. Le jeton d'envoi à usage unique est créé avec la
+  session automatique. `ACCEPTED`, `ALREADY_PRESENT` et `COMPLETE` sont
+  signés par le destinataire ; l'émetteur sait encore lire `PENDING`,
+  `DENIED` et `EXPIRED` pour mettre à jour progressivement une flotte dont
+  un ancien récepteur demanderait toujours un accord.
 - **Le transfert a son propre seau.** Partager celui du maillage était le
   piège : un fichier en mille morceaux aurait vidé le seau commun et fait
   échouer présence et relèves des autres appareils. Et le vrai plafond n'est
@@ -234,17 +237,18 @@ plus cher :
    **Livrée dans le code le 26 août 2026**, avec pseudonyme tournant et sans
    publier d'identité. Il reste la validation entre deux machines physiques :
    un banc unitaire ne prétend pas reproduire le multicast d'un vrai Wi-Fi.
-3. ~~**Consentement avant réception** — demander sur l'appareil destinataire
-   avant de créer une session.~~ **Livré le 26 août 2026** : notification,
-   cloche Accepter/Refuser, expiration fermée après 120 s et banc réel à deux
-   processus. Le dossier de destination reste encore fixe.
+3. ~~**Réception de confiance** — ne pas reposer à chaque fichier la décision
+   déjà prise au jumelage.~~ **Livrée le 28 août 2026** : session automatique
+   réservée aux pairs `TRUSTED`, révocation toujours terminale, animation et
+   carillon seulement après l'empreinte finale. Le dossier de destination
+   reste encore fixe.
 4. ~~**Une application Windows de validation**~~ — **livrée et éprouvée le
    28 août 2026.** Le bootstrap PowerShell a construit l'extension native,
    installé le service local sur 8000 et le socket Mesh restreint sur 8001.
    Le runner `self-hosted,windows-local` a produit un `.msi`, installé sur le
    vrai PC, puis la fenêtre Tauri a navigué dans Diapason. Le banc physique a
-   transféré `NOTICE` dans les deux sens avec consentement et empreinte
-   identique. Ce paquet reste un **artefact de validation** : la signature de
+   transféré `NOTICE` dans les deux sens avec une empreinte identique. Ce
+   paquet reste un **artefact de validation** : la signature de
    publication, l'updater et une release Windows reproductible ne sont pas
    encore livrés.
 

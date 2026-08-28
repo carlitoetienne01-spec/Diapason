@@ -21,7 +21,7 @@ caméra voit.
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
 | **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
-| **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, consentement sur le récepteur, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
+| **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, réception automatique par un pair `TRUSTED`, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
 | **État d'énergie** (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER`. 12 im/s dès qu'une main est suivie — batterie faible comprise —, **3 au repos**, 2 sur batterie faible sans main. 13 tests. |
 
@@ -94,7 +94,7 @@ l'extinction, chacun testé :
 2. **Quatre-vingt-dix secondes sans image** — un mode armé qu'on oublierait
    laisserait la caméra allumée, et le voyant vert cesserait de dire la
    vérité. Cette horloge se suspend pendant un transfert explicitement lancé,
-   puis repart à sa fin ; elle ne tue pas une demande d'accord en cours.
+   puis repart à sa fin ; elle ne tue pas un envoi chiffré en cours.
 3. **Dix minutes** au maximum, même si la main bouge : la caméra coûte (§83).
 4. Le **démontage du composant** — page fermée, navigation ailleurs : les
    pistes sont coupées dans tous les cas.
