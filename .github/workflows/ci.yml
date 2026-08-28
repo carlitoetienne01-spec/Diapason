@@ -210,7 +210,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $failed = $false
-          git ls-files '*.ps1' | ForEach-Object {
+          # Le 28 aout 2026, `_work` appartenait encore a NETWORK SERVICE
+          # apres le passage du runner en mode interactif sous Utilisateur.
+          # Git refusait le depot avant le parseur. L'exception reste bornee a
+          # cette invocation : aucune safe.directory globale n'est persistee.
+          git -c "safe.directory=$env:GITHUB_WORKSPACE" ls-files '*.ps1' |
+          ForEach-Object {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile(

@@ -355,7 +355,8 @@ def test_le_job_windows_accepte_un_runner_local_et_parse_powershell() -> None:
     assert "RUNNER_WINDOWS_LOCAL == 'true'" in windows_job
     assert '["self-hosted","windows-local"]' in windows_job
     assert "System.Management.Automation.Language.Parser" in windows_job
-    assert "git ls-files '*.ps1'" in windows_job
+    assert 'git -c "safe.directory=$env:GITHUB_WORKSPACE" ls-files' in windows_job
+    assert "git config --global" not in windows_job
     assert "uses: actions/setup-python" not in windows_job
     assert "uv sync --python ${{ matrix.python-version }}" in windows_job
     assert "run:\n        shell: cmd" in windows_job
