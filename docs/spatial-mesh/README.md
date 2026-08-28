@@ -99,6 +99,7 @@ propres routes, son propre seau de limitation.
 | **La demande visible** — notification native et cloche Accepter/Refuser ; aucun droit permanent mémorisé | `mesh/demande_de_reception.py`, `ApprovalBell.tsx` |
 | **L'émetteur** | `mesh/envoi_fichier.py` |
 | **Le banc réel** — 2 Mo en trois morceaux entre deux processus, plus deux tentatives d'intrusion refusées | `tests/mesh/test_banc_deux_processus.py` |
+| **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre `MacBookAir-de-Carlito` et `SUCCES` ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001, consentement humain sur chaque récepteur |
 
 ### Les décisions, et pourquoi
 
@@ -223,16 +224,15 @@ plus cher :
    avant de créer une session.~~ **Livré le 26 août 2026** : notification,
    cloche Accepter/Refuser, expiration fermée après 120 s et banc réel à deux
    processus. Le dossier de destination reste encore fixe.
-4. **Une application Windows** — le bootstrap PowerShell, le service Mesh
-   restreint et la détection de `%LOCALAPPDATA%\Diapason\src` par Tauri sont
-   désormais préparés. Le banc en lecture seule
-   (`deploy/windows/verify.ps1`) vérifie le venv, l'extension native, le
-   confinement de l'API et la barrière signée du port Mesh ; les jobs Windows
-   acceptent aussi un runner `self-hosted,windows-local` pour les tests et la
-   construction d'un `.msi` de validation. Il reste ce qu'un Mac ne peut pas
-   attester : exécuter l'installation et la construction sur le vrai PC, puis
-   faire le banc Mac ↔ Windows. Tant que ces preuves manquent, la documentation
-   n'annonce aucun installateur livré.
+4. ~~**Une application Windows de validation**~~ — **livrée et éprouvée le
+   28 août 2026.** Le bootstrap PowerShell a construit l'extension native,
+   installé le service local sur 8000 et le socket Mesh restreint sur 8001.
+   Le runner `self-hosted,windows-local` a produit un `.msi`, installé sur le
+   vrai PC, puis la fenêtre Tauri a navigué dans Diapason. Le banc physique a
+   transféré `NOTICE` dans les deux sens avec consentement et empreinte
+   identique. Ce paquet reste un **artefact de validation** : la signature de
+   publication, l'updater et une release Windows reproductible ne sont pas
+   encore livrés.
 
 ## Trois règles qui ne se négocient pas
 

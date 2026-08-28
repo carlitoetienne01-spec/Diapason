@@ -309,26 +309,31 @@ réécrit cesse d'être un constat.*
 
 ## Fonctionnalités nécessitant des adaptations
 
-- **Transfert de fichiers** (§41-46) : rien n'existe. Le maillage actuel est
+- ~~**Transfert de fichiers** (§41-46) : rien n'existe. Le maillage actuel est
   un maillage de *commandes*, sans état, avec des enveloppes qui expirent.
   Une session de transfert reprenable demande un cycle de vie que ni
   `commands.py` ni `queue.py` ne portent. Chiffrer le contenu demande en
   plus un échange de clés de session (X25519) qui n'existe pas : aujourd'hui
   les enveloppes sont **signées, pas chiffrées**, et le transport est en
-  clair sur le LAN.
-- **Gestes** : le framework est là, l'entitlement caméra et le flux ne le
-  sont pas. Et la CI ne pourra jamais les vérifier.
+  clair sur le LAN.~~ **Traité** : session dédiée, X25519 + AES-256-GCM,
+  consentement et banc physique Mac ↔ Windows validés au 28 août 2026.
+- ~~**Gestes** : le framework est là, l'entitlement caméra et le flux ne le
+  sont pas. Et la CI ne pourra jamais les vérifier.~~ **Traité** : entitlement,
+  flux Tauri et moteur sont livrés ; la caméra reste vérifiée localement sur
+  le Mac, pas par le runner.
 - **Handoff** (§68) : `app.show_resource` en fait déjà l'essentiel. Ce qui
   manque est l'état de vue (`viewState`) et une session nommée.
 
 ## Fonctionnalités impossibles telles qu'imaginées
 
-- **Le MVP Mac ↔ Windows (§121)** : il n'y a pas d'application Windows. Le
+- ~~**Le MVP Mac ↔ Windows (§121)** : il n'y a pas d'application Windows. Le
   squelette Flutter de Succès n'a jamais été construit, et le portage
   demanderait au minimum un magasin sécurisé Windows et une campagne de
   tests. **Alternative** : le premier MVP démontrable est **Mac ↔ Mac**
   (deux instances), puis **Mac ↔ Android**, qui est déjà appairé et a déjà
-  exécuté onze commandes.
+  exécuté onze commandes.~~ **Traité le 28 août 2026** : un `.msi` Tauri de
+  validation a été construit et installé sur le vrai PC, puis un fichier a
+  traversé dans les deux sens avec une empreinte identique.
 - **Relais Internet (§39)** : suppose un serveur que l'architecture n'a pas
   et que la promesse de confidentialité de ce projet écarte. **Alternative** :
   rester en LAN direct + sondage, et n'ouvrir la question que si un besoin
@@ -344,7 +349,8 @@ réécrit cesse d'être un constat.*
 1. **Réparer avant d'étendre.** Les trois défauts bloquants coûtent moins
    d'une journée et rendent vivantes 4 250 lignes déjà écrites. Aucune
    fonctionnalité neuve n'a autant de valeur par ligne.
-2. **MVP Mac ↔ Mac puis Mac ↔ Android**, au lieu de Mac ↔ Windows.
+2. ~~**MVP Mac ↔ Mac puis Mac ↔ Android**, au lieu de Mac ↔ Windows.~~ Le MVP
+   physique Mac ↔ Windows est désormais la preuve obtenue.
 3. **Le transfert de fichiers ne passe pas par l'enveloppe de commande** :
    une session dédiée, avec son propre cycle de vie, et la commande ne porte
    que l'*offre*. Cela évite de toucher aux champs signés — ce qui casserait

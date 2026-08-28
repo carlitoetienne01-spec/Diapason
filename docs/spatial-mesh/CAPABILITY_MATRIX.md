@@ -1,9 +1,9 @@
-# Matrice des capacités — état réel au 26 août 2026
+# Matrice des capacités — état réel au 28 août 2026
 
 *Engendrée depuis le code (`mesh/capabilities.py`, `mesh/tools.py`) et depuis
-l'état constaté de la flotte (`~/.diapason/mesh.db`, lu en lecture seule), pas
-depuis une intention. Le §28 du cahier des charges demande que cette matrice
-« provienne des capacités réelles » : elle en provient.*
+l'état constaté de la flotte par l'API locale, pas depuis une intention. Le
+§28 du cahier des charges demande que cette matrice « provienne des capacités
+réelles » : elle en provient.*
 
 > **Pourquoi cette page a été refaite.** La version précédente datait du même
 > jour, à 1 h 14 — avant les phases 3 et 4. Onze commits l'ont périmée en
@@ -80,43 +80,44 @@ l'application. Le modèle n'a donc accès qu'à **quatre** de ces cinq verbes.
 
 | Fonction demandée | macOS | Windows | Android | iOS/iPadOS | Web | Note |
 |---|:--:|:--:|:--:|:--:|:--:|---|
-| **Jumelage** | ✅ | ❌ | ✅ | ⚠️ | ❌ | Windows : bootstrap, Tauri et banc de vérification préparés, mais rien d'installé ni validé sur le vrai PC. Android : constaté, 2 appareils en base. |
-| **Présence** | ✅ | ❌ | ✅ | ⚠️ | ❌ | Dérivée d'un horodatage, pas d'une connexion tenue. |
-| **Handoff interne** (`success://`) | ✅ | ❌ | ✅ | ⚠️ | ❌ | 11 commandes réellement abouties. |
-| **Chiffrement** | ⚠️ | — | ⚠️ | — | — | **Fichiers : bout en bout** (X25519 éphémère + AES-256-GCM, `mesh/coffre.py`). **Commandes : signées, en clair** (Ed25519). La distinction est délibérée — voir §4. |
+| **Jumelage** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le vrai PC Windows `SUCCES` et le Mac sont appairés, chacun avec l'identité et la clé publique actuelles de l'autre. Android : constaté, 2 appareils en base. |
+| **Présence** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le 28 août, le Mac voyait `SUCCES` `ONLINE` à `192.168.0.198:8001`. Présence dérivée d'un horodatage, pas d'une connexion tenue. |
+| **Handoff interne** (`success://`) | ✅ | ⚠️ | ✅ | ⚠️ | ❌ | Windows déclare les verbes requis, mais aucun handoff de ressource n'a encore été vérifié sur le PC physique. |
+| **Chiffrement** | ⚠️ | ⚠️ | ⚠️ | — | — | **Fichiers : bout en bout**, éprouvé Mac ↔ Windows (X25519 éphémère + AES-256-GCM, `mesh/coffre.py`). **Commandes : signées, en clair** (Ed25519). La distinction est délibérée — voir §4. |
 | **Hors-ligne** | ✅ | — | ✅ | — | — | File avec deux politiques ; jamais de faux succès. |
-| **Transfert de fichiers** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré** : manifeste, morceaux de 1 Mio, chiffrement, reprise, consentement explicite et finalisation atomique. L'offre reste `PENDING` jusqu'à « Accepter » dans la cloche ; aucun octet ne part sur refus ou expiration. Banc réel entre deux processus. **Diapason ↔ Diapason seulement** : le client Dart ne sait pas recevoir. |
+| **Transfert de fichiers** | ✅ | ✅ | ❌ | ❌ | ❌ | **Livré et éprouvé sur deux machines physiques** : le 28 août, `NOTICE` (479 octets) a traversé Mac → Windows puis Windows → Mac ; les deux copies ont l'empreinte SHA-256 `0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`. Manifeste, chiffrement, reprise, consentement explicite et finalisation atomique. **Diapason ↔ Diapason seulement** : le client Dart ne sait pas recevoir. |
 | **Suivi de main** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré.** Vision (21 points, 2 mains) à 4 ms/image ; entitlement caméra et `NSCameraUsageDescription` **présents** dans le paquet Tauri ; flux par `getUserMedia` à une cadence que le SERVEUR décide (§83 : 12 im/s une main suivie, 3 au repos, 2 sur batterie faible), images lues en mémoire, jamais écrites. |
 | **OPEN / FIST / GRAB / RELEASE** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livré**, sous leurs noms français : poses `PAUME_OUVERTE` et `POING` ; états `SAISI` (GRAB) et `RELACHE` (RELEASE). Hystérésis, confirmation sur N images, temps de repos — chacun testé. `PINCE` et `POINTE` ont été retirées le 25 août 2026 : la machine à états ne les consultait pas, et `PINCE` était classée AVANT le poing — un poing serré, pouce contre l'index, ne saisissait donc rien. |
 | **Cible spatiale / direction** | ❌ | ❌ | ❌ | ❌ | ❌ | Aucun matériel de la flotte ne mesure une direction. §34 s'applique : repli par nom, puis question explicite — et la question est désormais **répondable** (`/v1/gestures/drop/target`). |
 | **Fusion voix + geste** | ✅ | ❌ | ❌ | ❌ | ❌ | **Livrée** : `geste_deposer` (`tools/gestes_spatiaux.py`) envoie ce que la MAIN tient — jamais ce que le modèle nomme — et répond à la question « vers lequel ? ». La main se dit dans le contexte, voix ET chat. Banc : `tests/tools/test_geste_deposer.py`, **18 tests** — les 15 de la fusion que compte [`GESTES.md`](GESTES.md), plus trois qui gardent le refus d'un appareil inventé et la cloche de `mesh_send`. L'outil n'est **pas** derrière cette cloche, délibérément ; `mesh_send`, qui choisit et l'objet et la cible, l'est désormais. L'armement, lui, reste **sonore** (le double-clap arme le mode gestes) : du niveau sonore, pas de la parole. |
-| **Fichiers de l'app** | ✅ | ❌ | ❌ | ❌ | ❌ | Le transfert écrit dans `~/.diapason/transfers`, en 0700, sous un nom assaini, jamais en écrasant. Ce qui le garde : offre signée Ed25519, accord humain obligatoire et non mémorisé, jetons distincts de décision et de session, plafond en octets et seau dédié. La confirmation finale est signée. **Aucune capacité** — et plus aucune ne prétend le contraire. |
+| **Fichiers de l'app** | ✅ | ✅ | ❌ | ❌ | ❌ | Le transfert écrit dans le dossier privé `.diapason/transfers` de chaque système, sous un nom assaini, jamais en écrasant. Ce qui le garde : offre signée Ed25519, accord humain obligatoire et non mémorisé, jetons distincts de décision et de session, plafond en octets et seau dédié. La confirmation finale est signée. **Aucune capacité** — et plus aucune ne prétend le contraire. |
 | **Système de fichiers arbitraire** | ❌ | ❌ | ❌ | ❌ | ❌ | Interdit par construction (`FORBIDDEN_PARAMETER_NAMES`, 12 noms). |
 | **Arrière-plan permanent** | ⚠️ | — | ⚠️ | ❌ | ❌ | Android : sondage au premier plan seulement. iOS : interdit. |
-| **Nearby / découverte** | ⚠️ | 🚧 | ❌ | ❌ | ❌ | mDNS livré en Python multiplateforme : pseudonyme opaque tournant, aucun nom ni identifiant diffusé, et l'adresse n'est retenue qu'après une balise Ed25519 du pair. Tests unitaires verts ; pas encore validé entre deux machines physiques. Le bootstrap Windows sait activer le second socket et son banc sait en vérifier la frontière, mais aucun des deux n'a encore tourné sur le PC. Aucun Bluetooth. |
+| **Nearby / découverte** | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | mDNS livré en Python multiplateforme : pseudonyme opaque tournant, aucun nom ni identifiant diffusé, et l'adresse n'est retenue qu'après une balise Ed25519 du pair. Le socket LAN et les échanges entre deux machines physiques sont validés ; il reste à isoler la preuve que l'adresse est retrouvée par multicast plutôt que conservée du jumelage. Aucun Bluetooth. |
 | **Assistant → maillage** | ✅ | — | — | — | — | `mesh_devices`, `mesh_send` et `handoff_continue` sont dans `_TROUSSE_ASSISTANT`. L'abstention côté **voix** reste délibérée et gardée par un test. |
 
 ---
 
 ## 3. L'état réel de la flotte
 
-Lu dans `~/.diapason/mesh.db`, le 25 août 2026 à 17 h.
+Lu par l'API locale du Mac le 28 août 2026 à 1 h 59.
 
 | Appareil | Plateforme | Transport | Confiance | Dernier contact (heure locale) |
 |---|---|---|---|---|
 | Cette machine | macOS / laptop | — | soi (jamais dans son propre registre) | permanent |
-| « PC du bureau » | Windows / desktop | `lan` (`127.0.0.1:8100`) | TRUSTED | **16 août 2026, 22 h 34** |
-| « Mon téléphone » | Android / phone | `pull` | TRUSTED | 18 août 2026, 15 h 29 |
+| `SUCCES` | Windows / laptop | `lan` (`192.168.0.198:8001`) | TRUSTED, `SCELLE`, ONLINE | **28 août 2026, 1 h 59** |
+| « Mon téléphone » | Android / phone | `pull` | TRUSTED, OFFLINE | 18 août 2026, 15 h 29 |
 
 **16 commandes émises : 11 SUCCESS, 3 EXPIRED, 2 OFFLINE.**
 
 Trois précisions que la version précédente taisait :
 
-- Le « PC du bureau » pointe vers une **seconde instance sur cette machine**,
-  pas vers un vrai second ordinateur. Le seul pair réellement distant est le
-  téléphone.
-- **Cinq des onze SUCCESS visaient des appareils de banc effacés depuis.** Vers
-  des pairs encore inscrits : 4 vers le PC, 2 vers le téléphone.
+- L'ancien « PC du bureau » de banc a été remplacé par `SUCCES`, le vrai PC
+  Windows. Son adresse LAN, sa présence et son application Diapason 1.0.0 ont
+  été constatées depuis le Mac.
+- L'historique des commandes précède ce PC physique : ses anciens SUCCESS ne
+  prouvent donc aucun handoff vers `SUCCES`. C'est pourquoi la case Windows du
+  handoff reste ⚠️ malgré les capacités qu'il déclare.
 - Deux `app.show_resource` créées le 25 août à 5 h ont **expiré** — le banc du
   handoff. Le maillage n'a donc pas dormi sept jours sans rien tenter ; il a
   tenté, et personne n'écoutait.
@@ -130,9 +131,9 @@ expirées ; une seule avait été utilisée.
 
 | Case | Ce qui manque exactement |
 |---|---|
-| Windows, toutes lignes | Le bootstrap PowerShell, le service Mesh et `deploy/windows/verify.ps1` sont verts sur le PC réel. Le 27 août 2026, `test-windows` a aussi passé ses deux matrices 3.12/3.13 : parseur PowerShell 5.1, 28 tests, RAM native, compilation/import de `diapason_rust` avec MSVC et fumée CLI. La fenêtre Tauri n'est pas encore une application livrée : `build-windows-local` doit produire puis faire installer son `.msi` de validation, conservé sous la racine du runner (`C:\actions-runner\artifacts` ici), avant le banc Mac ↔ Windows. Le squelette Flutter de Succès n'est pas ce client de bureau. |
+| Distribution Windows | Le bootstrap, le service, l'extension native, le runner, le `.msi` de validation, la fenêtre Tauri et le banc Mac ↔ Windows sont verts sur le PC réel. Il manque encore une release signée, son updater et une procédure de publication reproductible ; l'artefact installé n'est pas présenté comme un installateur public. |
 | Transfert vers un téléphone | Le client Dart n'a ni sélecteur de fichiers, ni accès au stockage, ni capacité déclarée pour recevoir. Rien ne bougera côté serveur le jour où il l'annoncera. |
-| Découverte | Le service mDNS existe désormais (`mesh/discovery.py`, `zeroconf`). Il ne publie qu'un pseudonyme tournant et `v=1`, puis exige une balise signée avant de retenir l'adresse. **Il ne tourne que si le second socket LAN est réellement activé** : `diapason serve --lan-host` n'a toujours aucune valeur par défaut, le drapeau `diapason serve-service install --maillage-reseau` reste un choix explicite, et le plist livré ne l'impose pas. Validation réelle Mac ↔ Windows encore impossible tant que l'application Windows n'est pas installée. |
+| Découverte | Le service mDNS existe désormais (`mesh/discovery.py`, `zeroconf`). Il ne publie qu'un pseudonyme tournant et `v=1`, puis exige une balise signée avant de retenir l'adresse. Les deux sockets LAN et le trafic entre machines physiques sont validés. Il reste un banc ciblé qui efface une adresse connue et prouve que mDNS seul la rétablit ; sans lui, le succès du transfert ne distingue pas découverte et adresse conservée au jumelage. |
 | Chiffrement des **commandes** | Elles sont signées, pas chiffrées. Suffisant sur un LAN de confiance — savoir qui parle suffit pour « ouvre cet écran » — et insuffisant dès qu'un relais existe. Les **fichiers**, eux, sont chiffrés : un document personnel sur un Wi-Fi partagé n'est pas une commande. |
 
 ---
