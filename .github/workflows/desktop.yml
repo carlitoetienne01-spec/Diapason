@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - 'deploy/windows/update-local-runner.ps1'
       - '.github/workflows/desktop.yml'
   workflow_dispatch:
     inputs:
@@ -16,6 +17,11 @@ on:
         description: 'Tag to build (e.g. v1.0.2.dev500). If set, autotag dispatches use this. github.ref still controls the checkout.'
         required: false
         type: string
+      deploy_windows:
+        description: 'Update the installed Windows PC after its validation MSI succeeds.'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-${{ inputs.tag || github.ref }}
@@ -137,6 +143,16 @@ jobs:
           "- SHA-256: ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           Write-Host "Validation MSI: $kept"
           Write-Host "SHA-256: $hash"
+
+      - name: Update the installed Windows PC
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy_windows == true
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        env:
+          DIAPASON_VALIDATION_MSI: ${{ steps.local-msi.outputs.path }}
+        run: |
+          & "$env:GITHUB_WORKSPACE\deploy\windows\update-local-runner.ps1" `
+            -CheckoutSha "$env:GITHUB_SHA" `
+            -MsiPath "$env:DIAPASON_VALIDATION_MSI"
 
       - name: Upload validation MSI
         continue-on-error: true

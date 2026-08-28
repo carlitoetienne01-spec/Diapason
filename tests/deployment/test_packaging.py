@@ -21,6 +21,7 @@ DESKTOP_LIB_RS = ROOT / "frontend" / "src-tauri" / "src" / "lib.rs"
 WINDOWS_INSTALL_PS1 = ROOT / "deploy" / "windows" / "install.ps1"
 WINDOWS_SERVICE_PS1 = ROOT / "deploy" / "windows" / "diapason-service.ps1"
 WINDOWS_VERIFY_PS1 = ROOT / "deploy" / "windows" / "verify.ps1"
+WINDOWS_LOCAL_UPDATE_PS1 = ROOT / "deploy" / "windows" / "update-local-runner.ps1"
 WINDOWS_TAURI_VALIDATION = (
     ROOT / "frontend" / "src-tauri" / "tauri.windows-validation.conf.json"
 )
@@ -230,6 +231,8 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     assert 'echo C:\\Program Files\\Git\\bin>>"%GITHUB_PATH%"' in windows_job
     assert "Split-Path $env:RUNNER_TEMP -Parent" in windows_job
     assert "Join-Path $runnerRoot 'artifacts'" in windows_job
+    assert "inputs.deploy_windows == true" in windows_job
+    assert "update-local-runner.ps1" in windows_job
     assert (
         "shell: powershell -NoProfile -NonInteractive "
         "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in windows_job
@@ -241,6 +244,27 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     assert bundle["targets"] == ["msi"]
     assert bundle["createUpdaterArtifacts"] is False
     assert "externalBin" not in bundle
+
+
+def test_le_deploiement_windows_local_reste_manuel_et_refuse_d_ecraser() -> None:
+    script = WINDOWS_LOCAL_UPDATE_PS1.read_text(encoding="utf-8")
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "default: false" in workflow
+    assert "inputs.deploy_windows == true" in workflow
+    assert "status --porcelain --untracked-files=no" in script
+    assert "merge-base --is-ancestor" in script
+    assert "merge', '--ff-only'" in script
+    assert "pyproject.toml uv.lock" in script
+    assert "install.ps1 -Force" in script
+    assert "Test-IsAdministrator" in script
+    assert "[void] $candidates.Add" in script
+    assert "'/fvomus'" in script
+    assert "-RequireNative -RequireMesh" in script
+    assert "Wait-ApiHealthy 8000" in script
+    assert "Utilisateur" not in script, (
+        "le déploiement ne doit pas coder le nom du compte de cette machine"
+    )
 
 
 def test_le_workflow_ne_fabrique_pas_un_sidecar_ollama_incomplet() -> None:

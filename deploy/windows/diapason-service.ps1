@@ -112,7 +112,7 @@ For your other devices to reach this PC, keep 127.0.0.1 and add:
 
     -MaillageReseau
 
-That opens a second socket carrying only the ten mesh routes, each requiring
+That opens a second socket carrying only the nine mesh routes, each requiring
 a device credential. A chat request there returns 404, not 401.
 "@
     }

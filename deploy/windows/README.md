@@ -168,6 +168,14 @@ here, even if GitHub artifact upload is unavailable:
 %LOCALAPPDATA%\Diapason\artifacts
 ```
 
+For a deliberate in-place update of the real test PC, manually dispatch the
+same workflow with **deploy_windows** enabled. This option is never enabled by
+a push or a tag. It requires the runner to have been started from an elevated
+PowerShell, refuses a dirty or non-fast-forward installed checkout, repairs
+the same-version MSI, restarts the `Diapason` scheduled task, then runs
+`verify.ps1 -RequireNative -RequireMesh`. If dependencies changed, it stops
+and asks for `install.ps1 -Force` instead of pruning the environment silently.
+
 This artifact disables updater generation and is for the Mac↔Windows bench.
 It contains the native window, not a second incomplete copy of Ollama: run the
 bootstrap first so system Ollama and the Python backend are present. It is not
