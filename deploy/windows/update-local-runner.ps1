@@ -151,7 +151,12 @@ $allowedRemotes = @(
     'git@github.com:carlitoetienne01-spec/Diapason.git',
     'ssh://git@github.com/carlitoetienne01-spec/Diapason.git'
 )
-if ($LASTEXITCODE -ne 0 -or $remote -notin $allowedRemotes) {
+# The two first physical deployments printed an exact allowed URL and still
+# failed here: Windows PowerShell kept an unrelated native exit code across
+# the pipeline. The exact allow-list already rejects an empty git result, so
+# consulting the ambient LASTEXITCODE adds no security and creates a false
+# refusal.
+if ($remote -notin $allowedRemotes) {
     Fail "installed checkout has an unexpected origin: $remote"
 }
 

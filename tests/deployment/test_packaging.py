@@ -295,6 +295,7 @@ def test_le_deploiement_windows_local_reste_manuel_et_refuse_d_ecraser() -> None
     assert "[void] $candidates.Add" in script
     assert "$remote = $remote.Trim()" in script
     assert "$remote -notin $allowedRemotes" in script
+    assert "$LASTEXITCODE -ne 0 -or $remote -notin" not in script
     assert "*$expectedRemote*" not in script, (
         "une URL Git ne doit pas être validée par un motif partiel"
     )
