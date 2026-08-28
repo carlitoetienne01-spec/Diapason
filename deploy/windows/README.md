@@ -210,6 +210,12 @@ powershell -ExecutionPolicy Bypass `
   -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1" -Force
 ```
 
+The manual `desktop.yml` deployment can apply a change limited to `uv.lock`.
+It first synchronizes the complete locked desktop and local-voice plan in the
+runner checkout, then repeats that exact plan in the installed environment.
+It still refuses a `pyproject.toml` change: rerun `install.ps1 -Force` when the
+set of declared dependencies or installation requirements changes.
+
 ## Uninstall
 
 ```powershell

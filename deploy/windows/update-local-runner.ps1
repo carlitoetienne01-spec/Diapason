@@ -43,6 +43,24 @@ function Invoke-Git([string[]] $Arguments) {
     }
 }
 
+function Invoke-DependencySync(
+    [string] $UvExe,
+    [string[]] $Arguments,
+    [string] $ProjectRoot,
+    [string] $Purpose
+) {
+    Write-Step "$Purpose in $ProjectRoot"
+    Push-Location $ProjectRoot
+    try {
+        & $UvExe @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            Fail "uv sync failed during $Purpose (exit $LASTEXITCODE)"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Find-InstalledSource {
     $candidates = New-Object System.Collections.Generic.List[string]
     if ($env:LOCALAPPDATA) {
@@ -162,8 +180,35 @@ $dependencyChanges = @(
     & git -C $source diff --name-only "$oldHead..$CheckoutSha" -- pyproject.toml uv.lock
 )
 if ($LASTEXITCODE -ne 0) { Fail 'could not inspect dependency changes' }
-if ($dependencyChanges.Count -gt 0) {
-    Fail 'pyproject.toml or uv.lock changed; rerun install.ps1 -Force instead'
+$projectChanged = $dependencyChanges -contains 'pyproject.toml'
+$lockChanged = $dependencyChanges -contains 'uv.lock'
+if ($projectChanged) {
+    Fail 'pyproject.toml changed; rerun install.ps1 -Force instead'
+}
+
+$uvExe = ''
+$syncArgs = @(
+    'sync',
+    '--locked',
+    '--extra', 'desktop',
+    '--extra', 'dictation',
+    '--extra', 'voice-local',
+    '--extra', 'inference-cloud',
+    '--extra', 'inference-google',
+    '--group', 'desktop-native'
+)
+if ($lockChanged) {
+    $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+    if (-not $uvCommand) {
+        Fail 'uv.lock changed but uv is not available on the runner'
+    }
+    $uvExe = $uvCommand.Source
+    # On 28 August 2026, Python 3.13 compiled the old tokenizer because no
+    # wheel existed and left the real environment partially synchronized. The
+    # runner checkout is disposable: the same locked plan must succeed there
+    # BEFORE Carlito's service or environment is touched.
+    Invoke-DependencySync $uvExe $syncArgs $env:GITHUB_WORKSPACE `
+        'preflighting the locked desktop dependencies'
 }
 
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -191,6 +236,11 @@ try {
     $installedHead = (& git -C $source rev-parse HEAD).Trim()
     if ($installedHead -ne $CheckoutSha) {
         Fail "checkout stopped at $installedHead instead of $CheckoutSha"
+    }
+
+    if ($lockChanged) {
+        Invoke-DependencySync $uvExe $syncArgs $source `
+            'synchronizing the installed desktop dependencies'
     }
 
     $logPath = Join-Path $env:RUNNER_TEMP 'Diapason-local-update-msi.log'

@@ -17,6 +17,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
+UV_LOCK = ROOT / "uv.lock"
 DESKTOP_LIB_RS = ROOT / "frontend" / "src-tauri" / "src" / "lib.rs"
 WINDOWS_INSTALL_PS1 = ROOT / "deploy" / "windows" / "install.ps1"
 WINDOWS_SERVICE_PS1 = ROOT / "deploy" / "windows" / "diapason-service.ps1"
@@ -32,6 +33,11 @@ QUICKSTART_SH = ROOT / "scripts" / "quickstart.sh"
 
 def _pyproject() -> dict:
     return tomllib.loads(PYPROJECT.read_text())
+
+
+def _locked_package(name: str) -> dict:
+    packages = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))["package"]
+    return next(package for package in packages if package["name"] == name)
 
 
 def test_diapason_rust_not_in_published_desktop_extra() -> None:
@@ -50,6 +56,20 @@ def test_diapason_rust_lives_in_uv_dependency_group() -> None:
 def test_diapason_rust_has_local_uv_path_source() -> None:
     src = _pyproject()["tool"]["uv"]["sources"]["diapason-rust"]
     assert src["path"] == "rust/crates/diapason-python"
+
+
+def test_la_voix_locale_a_une_roue_windows_python_313() -> None:
+    """Le PC réel ne doit jamais compiler le tokenizer Cython au démarrage.
+
+    `curated-tokenizers` 0.0.9 ne publiait aucune roue CPython 3.13. Le
+    28 août 2026, Tauri a donc tenté son sdist sur Windows et `uv sync` est
+    mort dans `_bbpe.pyx` avant que Diapason puisse s'ouvrir.
+    """
+    package = _locked_package("curated-tokenizers")
+    wheels = [wheel["url"] for wheel in package.get("wheels", [])]
+    assert any(url.endswith("cp313-cp313-win_amd64.whl") for url in wheels), (
+        "la voix locale retombera sur une compilation Cython sous Windows 3.13"
+    )
 
 
 def test_desktop_app_syncs_the_native_group() -> None:
@@ -256,7 +276,21 @@ def test_le_deploiement_windows_local_reste_manuel_et_refuse_d_ecraser() -> None
     assert "merge-base --is-ancestor" in script
     assert "merge', '--ff-only'" in script
     assert "pyproject.toml uv.lock" in script
-    assert "install.ps1 -Force" in script
+    assert "pyproject.toml changed; rerun install.ps1 -Force" in script
+    assert "$lockChanged = $dependencyChanges -contains 'uv.lock'" in script
+    assert "preflighting the locked desktop dependencies" in script
+    assert "synchronizing the installed desktop dependencies" in script
+    assert script.count("Invoke-DependencySync $uvExe $syncArgs") == 2
+    for extra in (
+        "desktop",
+        "dictation",
+        "voice-local",
+        "inference-cloud",
+        "inference-google",
+    ):
+        assert f"'--extra', '{extra}'" in script
+    assert "'--locked'" in script
+    assert "'--group', 'desktop-native'" in script
     assert "Test-IsAdministrator" in script
     assert "[void] $candidates.Add" in script
     assert "$remote = $remote.Trim()" in script

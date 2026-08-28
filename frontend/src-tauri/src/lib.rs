@@ -10,8 +10,26 @@ mod live_speech;
 
 const OLLAMA_PORT: u16 = 11434;
 const DIAPASON_PORT: u16 = 8000;
+const DESKTOP_UV_SYNC_ARGS: &[&str] = &[
+    "sync",
+    "--locked",
+    "--extra",
+    "desktop",
+    "--extra",
+    "dictation",
+    "--extra",
+    "voice-local",
+    "--extra",
+    "inference-cloud",
+    "--extra",
+    "inference-google",
+    // diapason_rust lives in a uv dependency group (not the published
+    // `desktop` extra) so pip installs from PyPI do not require it (#584).
+    "--group",
+    "desktop-native",
+];
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --extra desktop --extra dictation --extra voice-local --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --locked --extra desktop --extra dictation --extra voice-local --extra inference-cloud --extra inference-google --group desktop-native";
 
 /// Small, fast model used when startup needs a default Ollama tag.
 const STARTUP_MODEL: &str = "qwen3.5:4b";
@@ -1658,22 +1676,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     }
     let mut sync_cmd = tokio::process::Command::new(&uv_bin);
     sans_fenetre_async(&mut sync_cmd);
+    // Le 28 août 2026, le diagnostic annonçait `dictation` tandis que cette
+    // liste l'omettait. Une commande affichée qui ne reproduit pas le chemin
+    // réel transforme chaque incident de démarrage en fausse piste.
     sync_cmd
-        .args([
-            "sync",
-            "--extra",
-            "desktop",
-            "--extra",
-            "voice-local",
-            "--extra",
-            "inference-cloud",
-            "--extra",
-            "inference-google",
-            // diapason_rust lives in a uv dependency group (not the published
-            // `desktop` extra) so pip installs from PyPI don't require it (#584).
-            "--group",
-            "desktop-native",
-        ])
+        .args(DESKTOP_UV_SYNC_ARGS)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .current_dir(root);
@@ -3712,9 +3719,10 @@ mod tests {
         format_missing_rust_toolchain, format_port_unavailable, format_uv_sync_failure,
         format_uv_sync_spawn_error, matching_installed_model, model_names_match, normalize_host,
         parse_inference_config, parse_ollama_model_names, preferred_installed_model,
-        project_candidates_in_install_root, should_persist_resolved_model, startup_installed_model,
-        session_linux_accepte_les_raccourcis_globaux, upsert_engine_host,
-        uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_COMMAND,
+        project_candidates_in_install_root, session_linux_accepte_les_raccourcis_globaux,
+        should_persist_resolved_model, startup_installed_model, upsert_engine_host,
+        uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_ARGS,
+        DESKTOP_UV_SYNC_COMMAND,
     };
     use std::path::Path;
 
@@ -3760,6 +3768,14 @@ mod tests {
     #[test]
     fn tail_returns_whole_string_when_shorter_than_limit() {
         assert_eq!(uv_sync_stderr_tail("short error", 800), "short error");
+    }
+
+    #[test]
+    fn la_commande_affichee_est_celle_qui_est_executee() {
+        assert_eq!(
+            DESKTOP_UV_SYNC_COMMAND,
+            format!("uv {}", DESKTOP_UV_SYNC_ARGS.join(" "))
+        );
     }
 
     #[test]
