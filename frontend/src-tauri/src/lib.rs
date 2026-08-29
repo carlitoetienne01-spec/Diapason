@@ -723,8 +723,43 @@ type SharedStatus = Arc<Mutex<SetupStatus>>;
 // Health-check helpers
 // ---------------------------------------------------------------------------
 
+fn url_est_locale(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| {
+            host == "localhost"
+                || host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        })
+}
+
+fn constructeur_client_http(url: &str) -> reqwest::ClientBuilder {
+    let constructeur = reqwest::Client::builder();
+    if url_est_locale(url) {
+        // Un VPN ou un proxy Windows peut annoncer une route globale que
+        // reqwest applique aussi à 127.0.0.1. Le serveur répond alors bien à
+        // curl, mais l'application le croit absent et tente d'en lancer un
+        // second, qui échoue sur le port déjà occupé. Une adresse de boucle
+        // ne quitte jamais la machine : son client ne doit consulter aucun
+        // proxy système.
+        constructeur.no_proxy()
+    } else {
+        constructeur
+    }
+}
+
+fn client_http(url: &str) -> Result<reqwest::Client, String> {
+    constructeur_client_http(url)
+        .build()
+        .map_err(|err| format!("HTTP client creation failed: {err}"))
+}
+
 async fn wait_for_url(url: &str, timeout: Duration) -> bool {
-    let client = reqwest::Client::builder()
+    let client = constructeur_client_http(url)
         .timeout(Duration::from_secs(2))
         .build()
         .unwrap();
@@ -744,14 +779,14 @@ async fn wait_for_url(url: &str, timeout: Duration) -> bool {
 /// status counts — even a 404 proves the server is up). `host` is the bare
 /// base URL; we probe `<host>/v1/models`.
 async fn endpoint_reachable(host: &str, timeout: Duration) -> bool {
-    let client = match reqwest::Client::builder()
+    let url = format!("{}/v1/models", host.trim_end_matches('/'));
+    let client = match constructeur_client_http(&url)
         .timeout(Duration::from_secs(3))
         .build()
     {
         Ok(c) => c,
         Err(_) => return false,
     };
-    let url = format!("{}/v1/models", host.trim_end_matches('/'));
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
         if client.get(&url).send().await.is_ok() {
@@ -832,7 +867,7 @@ async fn wait_for_diapason_health(
     timeout: Duration,
     backend: &SharedBackend,
 ) -> DiapasonStartResult {
-    let client = match reqwest::Client::builder()
+    let client = match constructeur_client_http(url)
         .timeout(Duration::from_secs(2))
         .build()
     {
@@ -964,7 +999,7 @@ fn should_persist_resolved_model(cfg: &InferenceConfig) -> bool {
 
 async fn ollama_model_names() -> Vec<String> {
     let url = format!("http://127.0.0.1:{}/api/tags", OLLAMA_PORT);
-    let client = reqwest::Client::builder()
+    let client = constructeur_client_http(&url)
         .timeout(Duration::from_secs(5))
         .build()
         .unwrap();
@@ -978,7 +1013,7 @@ async fn ollama_model_names() -> Vec<String> {
 
 async fn pull_model(model: &str) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{}/api/pull", OLLAMA_PORT);
-    let client = reqwest::Client::builder()
+    let client = constructeur_client_http(&url)
         .timeout(Duration::from_secs(600))
         .build()
         .map_err(|e| e.to_string())?;
@@ -1566,15 +1601,12 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // so a multi-user host can't trivially spoof us. Also accept a port
     // override from config instead of hard-coding DIAPASON_PORT.
     {
-        let client = reqwest::Client::builder()
+        let health_url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
+        let client = constructeur_client_http(&health_url)
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
-        match client
-            .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
-            .send()
-            .await
-        {
+        match client.get(&health_url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 // Confirm with a second probe — the first might have caught
                 // a flickering server (engine half-loaded, dying mid-stop,
@@ -1582,7 +1614,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 // snapshot. Small sleep between to give the server room.
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 let confirm = client
-                    .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
+                    .get(&health_url)
                     .send()
                     .await
                     .map(|r| r.status().is_success())
@@ -1767,13 +1799,14 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // l'application — n'était pas vu, et on en démarrait un deuxième. Vérifier
     // au plus près du lancement réduit la fenêtre à ce qu'elle peut être.
     if let Some(raison) = port_conflict(DIAPASON_PORT) {
-        let sonde = reqwest::Client::builder()
+        let health_url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
+        let sonde = constructeur_client_http(&health_url)
             .timeout(Duration::from_secs(3))
             .build()
             .ok();
         let sain = match sonde {
             Some(client) => client
-                .get(format!("http://127.0.0.1:{}/health", DIAPASON_PORT))
+                .get(&health_url)
                 .send()
                 .await
                 .map(|r| r.status().is_success())
@@ -1989,13 +2022,7 @@ fn authenticated(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     let is_loopback = request
         .try_clone()
         .and_then(|clone| clone.build().ok())
-        .and_then(|request| request.url().host_str().map(str::to_owned))
-        .map(|host| {
-            host == "localhost"
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback())
-        })
+        .map(|request| url_est_locale(request.url().as_str()))
         .unwrap_or(false);
     if !is_loopback {
         return request;
@@ -2098,7 +2125,9 @@ async fn check_health(api_url: String) -> Result<serde_json::Value, String> {
             api_url
         }
     );
-    let resp = reqwest::get(&url)
+    let resp = client_http(&url)?
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
@@ -2114,7 +2143,7 @@ async fn check_health(api_url: String) -> Result<serde_json::Value, String> {
 async fn get_voice_live_health() -> Result<serde_json::Value, String> {
     let url = format!("{}/v1/voice/live/health", api_base());
     let response = authenticated(
-        reqwest::Client::new()
+        client_http(&url)?
             .get(&url)
             .timeout(std::time::Duration::from_secs(5)),
     )
@@ -2139,7 +2168,8 @@ async fn fetch_energy(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/telemetry/energy", base)))
+    let url = format!("{}/v1/telemetry/energy", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2155,7 +2185,8 @@ async fn fetch_telemetry(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/telemetry/stats", base)))
+    let url = format!("{}/v1/telemetry/stats", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2171,11 +2202,11 @@ async fn fetch_traces(api_url: String, limit: u32) -> Result<serde_json::Value, 
     } else {
         api_url
     };
-    let resp =
-        authenticated(reqwest::Client::new().get(format!("{}/v1/traces?limit={}", base, limit)))
-            .send()
-            .await
-            .map_err(|e| format!("Connection failed: {}", e))?;
+    let url = format!("{}/v1/traces?limit={}", base, limit);
+    let resp = authenticated(client_http(&url)?.get(&url))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
@@ -2188,11 +2219,11 @@ async fn fetch_trace(api_url: String, trace_id: String) -> Result<serde_json::Va
     } else {
         api_url
     };
-    let resp =
-        authenticated(reqwest::Client::new().get(format!("{}/v1/traces/{}", base, trace_id)))
-            .send()
-            .await
-            .map_err(|e| format!("Connection failed: {}", e))?;
+    let url = format!("{}/v1/traces/{}", base, trace_id);
+    let resp = authenticated(client_http(&url)?.get(&url))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
     resp.json()
         .await
         .map_err(|e| format!("Invalid response: {}", e))
@@ -2205,7 +2236,8 @@ async fn fetch_learning_stats(api_url: String) -> Result<serde_json::Value, Stri
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/learning/stats", base)))
+    let url = format!("{}/v1/learning/stats", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2221,7 +2253,8 @@ async fn fetch_learning_policy(api_url: String) -> Result<serde_json::Value, Str
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/learning/policy", base)))
+    let url = format!("{}/v1/learning/policy", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2237,7 +2270,8 @@ async fn fetch_memory_stats(api_url: String) -> Result<serde_json::Value, String
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/memory/stats", base)))
+    let url = format!("{}/v1/memory/stats", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2257,8 +2291,8 @@ async fn search_memory(
     } else {
         api_url
     };
-    let client = reqwest::Client::new();
-    let resp = authenticated(client.post(format!("{}/v1/memory/search", base)))
+    let url = format!("{}/v1/memory/search", base);
+    let resp = authenticated(client_http(&url)?.post(&url))
         .json(&serde_json::json!({"query": query, "top_k": top_k}))
         .send()
         .await
@@ -2275,7 +2309,8 @@ async fn fetch_agents(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/agents", base)))
+    let url = format!("{}/v1/agents", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2294,9 +2329,10 @@ async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
     // Bounded: reqwest has no default request timeout, so a backend that
     // accepts the connection and then stalls used to hang this call forever,
     // and with it anything awaiting the model list.
+    let url = format!("{}/v1/models", base);
     let resp = authenticated(
-        reqwest::Client::new()
-            .get(format!("{}/v1/models", base))
+        client_http(&url)?
+            .get(&url)
             .timeout(Duration::from_secs(15)),
     )
     .send()
@@ -2359,7 +2395,8 @@ async fn fetch_savings(api_url: String) -> Result<serde_json::Value, String> {
     } else {
         api_url
     };
-    let resp = authenticated(reqwest::Client::new().get(format!("{}/v1/savings", base)))
+    let url = format!("{}/v1/savings", base);
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -2376,7 +2413,7 @@ async fn transcribe_audio(
     filename: String,
 ) -> Result<serde_json::Value, String> {
     let url = format!("{}/v1/speech/transcribe", api_url);
-    let client = reqwest::Client::new();
+    let client = client_http(&url)?;
 
     let part = reqwest::multipart::Part::bytes(audio_data)
         .file_name(filename)
@@ -2692,11 +2729,13 @@ async fn reload_cloud_keys(keys: Vec<(String, String)>) {
         .into_iter()
         .map(|(key, value)| (key, serde_json::Value::String(value)))
         .collect();
-    let _ = authenticated(reqwest::Client::new().post(&reload_url))
-        .json(&serde_json::json!({ "keys": key_map }))
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await;
+    if let Ok(client) = client_http(&reload_url) {
+        let _ = authenticated(client.post(&reload_url))
+            .json(&serde_json::json!({ "keys": key_map }))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await;
+    }
 }
 
 /// Save a single cloud API key to secure desktop storage.
@@ -2791,7 +2830,7 @@ async fn pull_ollama_model(model_name: String) -> Result<serde_json::Value, Stri
 #[tauri::command]
 async fn delete_ollama_model(model_name: String) -> Result<serde_json::Value, String> {
     let url = format!("http://127.0.0.1:{}/api/delete", OLLAMA_PORT);
-    let client = reqwest::Client::builder()
+    let client = constructeur_client_http(&url)
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
@@ -2904,7 +2943,7 @@ fn normalize_host(raw: &str) -> String {
 #[tauri::command]
 async fn speech_health(api_url: String) -> Result<serde_json::Value, String> {
     let url = format!("{}/v1/speech/health", api_url);
-    let resp = authenticated(reqwest::Client::new().get(&url))
+    let resp = authenticated(client_http(&url)?.get(&url))
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
@@ -3459,7 +3498,13 @@ pub fn run() {
                 let health_item = health.clone();
                 tauri::async_runtime::spawn(async move {
                     let url = format!("{}/health", api_base());
-                    let client = reqwest::Client::new();
+                    let client = match client_http(&url) {
+                        Ok(client) => client,
+                        Err(_) => {
+                            let _ = health_item.set_text("Backend: client error");
+                            return;
+                        }
+                    };
                     loop {
                         let label = match client
                             .get(&url)
@@ -3720,11 +3765,25 @@ mod tests {
         format_uv_sync_spawn_error, matching_installed_model, model_names_match, normalize_host,
         parse_inference_config, parse_ollama_model_names, preferred_installed_model,
         project_candidates_in_install_root, session_linux_accepte_les_raccourcis_globaux,
-        should_persist_resolved_model, startup_installed_model, upsert_engine_host,
+        should_persist_resolved_model, startup_installed_model, upsert_engine_host, url_est_locale,
         uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_ARGS,
         DESKTOP_UV_SYNC_COMMAND,
     };
     use std::path::Path;
+
+    #[test]
+    fn le_loopback_ne_passe_jamais_par_le_proxy_systeme() {
+        assert!(url_est_locale("http://127.0.0.1:8000/health"));
+        assert!(url_est_locale("http://localhost:11434/api/tags"));
+        assert!(url_est_locale("http://[::1]:8000/health"));
+    }
+
+    #[test]
+    fn un_endpoint_distant_conserve_la_configuration_reseau() {
+        assert!(!url_est_locale("https://api.openai.com/v1/models"));
+        assert!(!url_est_locale("http://192.168.0.198:8001/v1/mesh/me"));
+        assert!(!url_est_locale("pas une url"));
+    }
 
     #[test]
     fn install_root_checks_the_installer_layout_before_the_legacy_layout() {
