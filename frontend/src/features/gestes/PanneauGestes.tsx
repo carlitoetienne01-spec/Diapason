@@ -32,6 +32,7 @@ export function PanneauGestes() {
   // attraper.
   const {
     actif,
+    mode,
     etat,
     mainVue,
     erreur,
@@ -39,6 +40,7 @@ export function PanneauGestes() {
     clapsEcoutent,
     basculerLesClaps,
     basculer,
+    changerMode,
     choisir,
     renoncer,
     preparerUnFichier,
@@ -74,9 +76,44 @@ export function PanneauGestes() {
 
       <p className="mt-2 text-sm text-muted-foreground">
         {actif
-          ? 'La caméra est allumée et le reste quand tu changes de page — va ouvrir un projet, puis ferme le poing. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
+          ? mode === 'POINTER'
+            ? 'La caméra suit uniquement ton index sur ce Mac. Les images ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
+            : 'La caméra est allumée et le reste quand tu changes de page — va ouvrir un projet, puis ferme le poing. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
           : 'La caméra reste éteinte tant que tu n’actives pas ce mode.'}
       </p>
+
+      <div
+        className="mt-3 grid grid-cols-2 gap-2"
+        role="group"
+        aria-label="Fonction des gestes"
+      >
+        <button
+          type="button"
+          aria-pressed={mode === 'TRANSFER'}
+          onClick={() => changerMode('TRANSFER')}
+          className={`rounded-lg border px-3 py-2 text-left text-sm ${
+            mode === 'TRANSFER'
+              ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
+              : 'border-border text-muted-foreground hover:bg-accent'
+          }`}
+        >
+          <span className="block font-medium">Transférer</span>
+          <span className="block text-xs">poing, choix, paume ouverte</span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={mode === 'POINTER'}
+          onClick={() => changerMode('POINTER')}
+          className={`rounded-lg border px-3 py-2 text-left text-sm ${
+            mode === 'POINTER'
+              ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
+              : 'border-border text-muted-foreground hover:bg-accent'
+          }`}
+        >
+          <span className="block font-medium">Contrôler le curseur</span>
+          <span className="block text-xs">index, pincement, défilement</span>
+        </button>
+      </div>
 
       {actif && (
         <div className="mt-3 flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2">
@@ -85,12 +122,33 @@ export function PanneauGestes() {
             className={`h-2 w-2 rounded-full ${mainVue ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`}
           />
           <span className="text-sm">
-            {etat ? (PHRASES[etat] ?? etat) : 'En attente d’une première image…'}
+            {mode === 'POINTER'
+              ? diagnostic?.pointer?.active
+                ? diagnostic.pointer.pinching
+                  ? 'Pincement reconnu — relâche pour cliquer ou maintiens pour défiler.'
+                  : 'Index suivi — le curseur te suit.'
+                : mainVue
+                  ? 'Garde seulement l’index tendu.'
+                  : 'Montre ta main puis tends seulement l’index.'
+              : etat
+                ? (PHRASES[etat] ?? etat)
+                : 'En attente d’une première image…'}
           </span>
         </div>
       )}
 
-      {actif && !diagnostic?.held && (
+      {actif && mode === 'POINTER' && (
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm">
+          <p className="font-medium text-foreground">Commandes du pointeur</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Index tendu&nbsp;: déplacer · pincement bref&nbsp;: cliquer · deux
+            pincements&nbsp;: ouvrir · pincement maintenu puis mouvement vertical&nbsp;:
+            défiler. Ferme le poing ou retire la main pour figer le curseur.
+          </p>
+        </div>
+      )}
+
+      {actif && mode === 'TRANSFER' && !diagnostic?.held && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -120,53 +178,57 @@ export function PanneauGestes() {
         </div>
       )}
 
-      <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
-        {/* §78 : une quatrième voie d'armement, au coût explicite. Le
-            bouton n'ouvre rien tant qu'on ne clique pas ; entendre un clap
-            suppose un micro OUVERT, et cela se choisit. */}
-        <input
-          type="checkbox"
-          checked={clapsEcoutent}
-          onChange={basculerLesClaps}
-          className="mt-0.5"
-        />
-        <span>
-          <span className="text-foreground">Activer par un double clap</span>
-          <span className="block text-xs text-muted-foreground">
-            {clapsEcoutent
-              ? 'Le micro écoute en continu, uniquement le niveau sonore : deux claps activent les gestes, deux autres les arrêtent. Rien n’est transcrit ni enregistré.'
-              : 'Demande d’ouvrir le micro en continu pour entendre deux claps. Rien n’est transcrit ni enregistré.'}
-            {clapsEcoutent && (
-              <span className="mt-1 block">
-                {/* Sans ce compte, on peut claper une heure sans savoir si
-                    le micro entend, si le seuil est trop haut, ou si c'est
-                    l'écart entre les deux claps qui ne convient pas. */}
-                Claps entendus&nbsp;:{' '}
-                <span className="tabular-nums text-foreground">
-                  {diagnostic?.clapsHeard ?? 0}
+      {mode === 'TRANSFER' && (
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+          {/* §78 : une quatrième voie d'armement, au coût explicite. Le
+              bouton n'ouvre rien tant qu'on ne clique pas ; entendre un clap
+              suppose un micro OUVERT, et cela se choisit. */}
+          <input
+            type="checkbox"
+            checked={clapsEcoutent}
+            onChange={basculerLesClaps}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="text-foreground">Activer par un double clap</span>
+            <span className="block text-xs text-muted-foreground">
+              {clapsEcoutent
+                ? 'Le micro écoute en continu, uniquement le niveau sonore : deux claps activent les gestes, deux autres les arrêtent. Rien n’est transcrit ni enregistré.'
+                : 'Demande d’ouvrir le micro en continu pour entendre deux claps. Rien n’est transcrit ni enregistré.'}
+              {clapsEcoutent && (
+                <span className="mt-1 block">
+                  {/* Sans ce compte, on peut claper une heure sans savoir si
+                      le micro entend, si le seuil est trop haut, ou si c'est
+                      l'écart entre les deux claps qui ne convient pas. */}
+                  Claps entendus&nbsp;:{' '}
+                  <span className="tabular-nums text-foreground">
+                    {diagnostic?.clapsHeard ?? 0}
+                  </span>
+                  {/* La raison d'un armement raté prime sur le conseil
+                      générique : avalée, elle laissait conseiller de
+                      rapprocher ses claps à quelqu'un qui clapait
+                      parfaitement mais dont la caméra refusait de s'ouvrir. */}
+                  {diagnostic?.clapFailure
+                    ? ` — tes claps ont été entendus, mais : ${diagnostic.clapFailure}`
+                    : (diagnostic?.clapsHeard ?? 0) === 0
+                      ? ' — tape plus fort ou rapproche-toi du Mac.'
+                      : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
                 </span>
-                {/* La raison d'un armement raté prime sur le conseil
-                    générique : avalée, elle laissait conseiller de
-                    rapprocher ses claps à quelqu'un qui clapait
-                    parfaitement mais dont la caméra refusait de s'ouvrir. */}
-                {diagnostic?.clapFailure
-                  ? ` — tes claps ont été entendus, mais : ${diagnostic.clapFailure}`
-                  : (diagnostic?.clapsHeard ?? 0) === 0
-                    ? ' — tape plus fort ou rapproche-toi du Mac.'
-                    : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
-              </span>
-            )}
+              )}
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      )}
 
-      {clapsEcoutent && <MesureDesClaps
+      {mode === 'TRANSFER' && clapsEcoutent && (
+        <MesureDesClaps
           seuil={diagnostic?.clapThreshold}
           mesure={diagnostic?.clapCalibrated}
           fond={diagnostic?.clapNoiseFloor}
-        />}
+        />
+      )}
 
-      {actif && diagnostic?.held && (
+      {actif && mode === 'TRANSFER' && diagnostic?.held && (
         <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-sm">
           {/* Le retour visuel (§47) : ce que la main tient doit se VOIR,
               sinon le geste est un pari. */}
@@ -175,7 +237,7 @@ export function PanneauGestes() {
         </div>
       )}
 
-      {actif && diagnostic?.pendingDrop && (
+      {actif && mode === 'TRANSFER' && diagnostic?.pendingDrop && (
         <div className="mt-3 rounded-lg border border-border px-3 py-2 text-sm">
           {/* §34 et §81 : aucune direction n'est mesurée, donc rien n'est
               tiré au sort. La question posée par le serveur se répond ici —
@@ -225,15 +287,18 @@ export function PanneauGestes() {
         </div>
       )}
 
-      {actif && !diagnostic?.pendingDrop && diagnostic?.lastDrop?.message && (
-        <p
-          className={`mt-2 text-sm ${diagnostic.lastDrop.done ? 'text-emerald-500' : 'text-muted-foreground'}`}
-        >
-          {diagnostic.lastDrop.message}
-        </p>
-      )}
+      {actif &&
+        mode === 'TRANSFER' &&
+        !diagnostic?.pendingDrop &&
+        diagnostic?.lastDrop?.message && (
+          <p
+            className={`mt-2 text-sm ${diagnostic.lastDrop.done ? 'text-emerald-500' : 'text-muted-foreground'}`}
+          >
+            {diagnostic.lastDrop.message}
+          </p>
+        )}
 
-      {actif && diagnostic?.armed && (
+      {actif && mode === 'TRANSFER' && diagnostic?.armed && (
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
           {/* Ce qui permet de JUGER la fiabilité (§141) : le serveur compte
               ce qui s'est produit, c'est toi qui sais ce que tu voulais. */}
@@ -258,7 +323,7 @@ export function PanneauGestes() {
         </dl>
       )}
 
-      {actif && (
+      {actif && mode === 'TRANSFER' && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {/* La calibration (§16) : deux poses mesurées valent mieux que
               des seuils choisis à l'aveugle pour des mains inconnues. */}
@@ -288,7 +353,7 @@ export function PanneauGestes() {
         </div>
       )}
 
-      {actif && (diagnostic?.journal?.length ?? 0) > 0 && (
+      {actif && mode === 'TRANSFER' && (diagnostic?.journal?.length ?? 0) > 0 && (
         <ol className="mt-3 space-y-1 border-t border-border pt-3 text-xs">
           {/* Ce qui s'est VRAIMENT passé. Sans cette trace, un geste réussi
               dont le message disparaît laisse dire « je pense que ça a

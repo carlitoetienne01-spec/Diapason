@@ -62,6 +62,7 @@ let monture: MontureArbre | null = null;
 let choisir: ReturnType<typeof vi.fn>;
 let renoncer: ReturnType<typeof vi.fn>;
 let basculerLesClaps: ReturnType<typeof vi.fn>;
+let changerMode: ReturnType<typeof vi.fn>;
 let preparerUnFichier: ReturnType<typeof vi.fn>;
 let annulerFichierPrepare: ReturnType<typeof vi.fn>;
 
@@ -69,10 +70,12 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
   choisir = vi.fn();
   renoncer = vi.fn();
   basculerLesClaps = vi.fn();
+  changerMode = vi.fn();
   preparerUnFichier = vi.fn();
   annulerFichierPrepare = vi.fn();
   contexte.valeur = {
     actif: true,
+    mode: 'TRANSFER',
     etat: 'SAISI',
     mainVue: true,
     erreur: null,
@@ -80,6 +83,7 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
     clapsEcoutent: false,
     basculerLesClaps,
     basculer: vi.fn(),
+    changerMode,
     choisir,
     renoncer,
     preparerUnFichier,
@@ -296,9 +300,12 @@ describe('ce que le panneau montre du geste', () => {
     const lu = texte(monter().arbre());
     expect(lu).toContain('La caméra reste éteinte');
     expect(lu).not.toContain('Saisies');
-    expect(elements(monture!.arbre(), 'button').map((b) => texte(b))).toEqual([
-      'Activer',
-    ]);
+    const boutons = elements(monture!.arbre(), 'button').map((b) => texte(b));
+    expect(boutons).toContain('Activer');
+    expect(boutons.some((libelle) => libelle.includes('Transférer'))).toBe(true);
+    expect(
+      boutons.some((libelle) => libelle.includes('Contrôler le curseur')),
+    ).toBe(true);
   });
 
   it('compte ce que le serveur a constaté, sans arrondir en sa faveur', () => {
@@ -310,5 +317,33 @@ describe('ce que le panneau montre du geste', () => {
     expect(lu).toContain('Dépôts : 2');
     expect(lu).toContain('Pertes : 1');
     expect(lu).toContain('Main vue : 42 %');
+  });
+});
+
+describe('le mode pointeur explicite', () => {
+  it('explique les gestes sans montrer les commandes de transfert', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      diagnostic: {
+        armed: true,
+        mode: 'POINTER',
+        pointer: { active: true, action: 'MOVE', pinching: false },
+      },
+    });
+    const lu = texte(monter().arbre());
+    expect(lu).toContain('Index suivi — le curseur te suit');
+    expect(lu).toContain('pincement bref : cliquer');
+    expect(lu).not.toContain('Choisir un fichier');
+    expect(lu).not.toContain('Activer par un double clap');
+  });
+
+  it('laisse revenir au transfert par un bouton visible', () => {
+    poserLeContexte({ mode: 'POINTER' });
+    const transfert = elements(monter().arbre(), 'button').find((bouton) =>
+      texte(bouton).includes('Transférer'),
+    );
+    expect(transfert).toBeDefined();
+    cliquer(transfert!);
+    expect(changerMode).toHaveBeenCalledWith('TRANSFER');
   });
 });

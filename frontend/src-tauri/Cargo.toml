@@ -36,6 +36,7 @@ objc2-foundation = "0.3.2"
 objc2-speech = "0.3.2"
 objc2-avf-audio = "0.3.2"
 block2 = "0.6.2"
+core-graphics = { version = "0.25", features = ["highsierra"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }

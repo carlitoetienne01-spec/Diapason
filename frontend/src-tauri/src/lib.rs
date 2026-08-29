@@ -2548,6 +2548,153 @@ fn paste_to_frontmost(text: String) -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Pointeur piloté par la main
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EvenementPointeur {
+    #[serde(default)]
+    active: bool,
+    action: String,
+    x: Option<f64>,
+    y: Option<f64>,
+    #[serde(default)]
+    scroll_y: i32,
+}
+
+#[derive(Debug, PartialEq)]
+enum CommandePointeur {
+    Aucune,
+    Deplacer { x: f64, y: f64 },
+    Cliquer { x: f64, y: f64, double: bool },
+    Defiler { lignes: i32 },
+}
+
+fn coordonnee_pointeur(nom: &str, valeur: Option<f64>) -> Result<f64, String> {
+    let valeur = valeur.ok_or_else(|| format!("coordonnée {nom} absente"))?;
+    if !valeur.is_finite() || !(0.0..=1.0).contains(&valeur) {
+        return Err(format!("coordonnée {nom} hors de l'écran : {valeur}"));
+    }
+    Ok(valeur)
+}
+
+fn valider_evenement_pointeur(
+    evenement: EvenementPointeur,
+) -> Result<CommandePointeur, String> {
+    if !evenement.active || evenement.action == "NONE" {
+        return Ok(CommandePointeur::Aucune);
+    }
+    match evenement.action.as_str() {
+        "MOVE" => Ok(CommandePointeur::Deplacer {
+            x: coordonnee_pointeur("x", evenement.x)?,
+            y: coordonnee_pointeur("y", evenement.y)?,
+        }),
+        "CLICK" | "DOUBLE_CLICK" => Ok(CommandePointeur::Cliquer {
+            x: coordonnee_pointeur("x", evenement.x)?,
+            y: coordonnee_pointeur("y", evenement.y)?,
+            double: evenement.action == "DOUBLE_CLICK",
+        }),
+        "SCROLL" if evenement.scroll_y != 0 => Ok(CommandePointeur::Defiler {
+            lignes: evenement.scroll_y.clamp(-10, 10),
+        }),
+        "SCROLL" => Ok(CommandePointeur::Aucune),
+        autre => Err(format!("action de pointeur inconnue : {autre}")),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String> {
+    use core_graphics::display::CGDisplay;
+    use core_graphics::event::{
+        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+    };
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    use core_graphics::geometry::CGPoint;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn CGPreflightPostEventAccess() -> bool;
+        fn CGRequestPostEventAccess() -> bool;
+    }
+
+    if commande == CommandePointeur::Aucune {
+        return Ok(());
+    }
+    if !unsafe { CGPreflightPostEventAccess() } {
+        // Cette fonction ouvre la vraie demande macOS. Rendre Ok ici serait
+        // promettre un mouvement que le système vient précisément de refuser.
+        unsafe { CGRequestPostEventAccess() };
+        return Err(
+            "Autorise Diapason dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réactive le mode pointeur."
+                .into(),
+        );
+    }
+
+    let source = || {
+        CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+            .map_err(|_| "Core Graphics n'a pas créé la source du pointeur".to_string())
+    };
+    let position = |x: f64, y: f64| {
+        let cadre = CGDisplay::main().bounds();
+        CGPoint::new(
+            cadre.origin.x + x * cadre.size.width,
+            cadre.origin.y + y * cadre.size.height,
+        )
+    };
+    let poster_souris = |kind: CGEventType, point: CGPoint, etat_clic: i64| {
+        let evenement = CGEvent::new_mouse_event(source()?, kind, point, CGMouseButton::Left)
+            .map_err(|_| "Core Graphics n'a pas créé l'événement de souris".to_string())?;
+        if etat_clic > 0 {
+            evenement.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, etat_clic);
+        }
+        evenement.post(CGEventTapLocation::HID);
+        Ok::<(), String>(())
+    };
+
+    match commande {
+        CommandePointeur::Aucune => Ok(()),
+        CommandePointeur::Deplacer { x, y } => {
+            poster_souris(CGEventType::MouseMoved, position(x, y), 0)
+        }
+        CommandePointeur::Cliquer { x, y, double } => {
+            let point = position(x, y);
+            let etat = if double { 2 } else { 1 };
+            poster_souris(CGEventType::MouseMoved, point, 0)?;
+            poster_souris(CGEventType::LeftMouseDown, point, etat)?;
+            poster_souris(CGEventType::LeftMouseUp, point, etat)
+        }
+        CommandePointeur::Defiler { lignes } => {
+            let evenement = CGEvent::new_scroll_event(
+                source()?,
+                ScrollEventUnit::LINE,
+                1,
+                lignes,
+                0,
+                0,
+            )
+            .map_err(|_| "Core Graphics n'a pas créé le défilement".to_string())?;
+            evenement.post(CGEventTapLocation::HID);
+            Ok(())
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String> {
+    if commande == CommandePointeur::Aucune {
+        Ok(())
+    } else {
+        Err("Le pointeur par la main est disponible sur macOS dans cette première version.".into())
+    }
+}
+
+#[tauri::command]
+fn apply_pointer_event(event: EvenementPointeur) -> Result<(), String> {
+    appliquer_commande_pointeur(valider_evenement_pointeur(event)?)
+}
+
+// ---------------------------------------------------------------------------
 // Cloud API key management
 // ---------------------------------------------------------------------------
 
@@ -3667,6 +3814,7 @@ pub fn run() {
             open_external_url,
             transcribe_audio,
             paste_to_frontmost,
+            apply_pointer_event,
             speech_health,
             pull_ollama_model,
             delete_ollama_model,
@@ -3767,9 +3915,60 @@ mod tests {
         project_candidates_in_install_root, session_linux_accepte_les_raccourcis_globaux,
         should_persist_resolved_model, startup_installed_model, upsert_engine_host, url_est_locale,
         uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_ARGS,
-        DESKTOP_UV_SYNC_COMMAND,
+        DESKTOP_UV_SYNC_COMMAND, CommandePointeur, EvenementPointeur,
+        valider_evenement_pointeur,
     };
     use std::path::Path;
+
+    fn evenement_pointeur(action: &str) -> EvenementPointeur {
+        EvenementPointeur {
+            active: true,
+            action: action.into(),
+            x: Some(0.25),
+            y: Some(0.75),
+            scroll_y: 0,
+        }
+    }
+
+    #[test]
+    fn une_commande_inactive_ne_touche_jamais_le_curseur() {
+        let mut evenement = evenement_pointeur("CLICK");
+        evenement.active = false;
+        assert_eq!(
+            valider_evenement_pointeur(evenement).unwrap(),
+            CommandePointeur::Aucune
+        );
+    }
+
+    #[test]
+    fn une_coordonnee_hors_ecran_est_refusee() {
+        let mut evenement = evenement_pointeur("MOVE");
+        evenement.x = Some(1.2);
+        let erreur = valider_evenement_pointeur(evenement).unwrap_err();
+        assert!(erreur.contains("hors de l'écran"));
+    }
+
+    #[test]
+    fn le_double_clic_conserve_sa_nature() {
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("DOUBLE_CLICK")).unwrap(),
+            CommandePointeur::Cliquer {
+                x: 0.25,
+                y: 0.75,
+                double: true,
+            }
+        );
+    }
+
+    #[test]
+    fn un_defilement_est_borne_avant_core_graphics() {
+        let mut evenement = evenement_pointeur("SCROLL");
+        evenement.scroll_y = 500;
+        assert_eq!(
+            valider_evenement_pointeur(evenement).unwrap(),
+            CommandePointeur::Defiler { lignes: 10 }
+        );
+    }
 
     #[test]
     fn le_loopback_ne_passe_jamais_par_le_proxy_systeme() {

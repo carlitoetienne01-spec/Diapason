@@ -831,6 +831,7 @@ name = "diapason-desktop"
 version = "1.0.0"
 dependencies = [
  "block2",
+ "core-graphics",
  "dispatch",
  "keyring",
  "objc",

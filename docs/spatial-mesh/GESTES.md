@@ -4,22 +4,25 @@
 
 ## En une phrase
 
-Le geste **attrape et dépose pour de vrai** : projet, note, écran ou fichier
-local. Les appareils disponibles apparaissent dès que le poing se ferme ; le
-déplacement du poing déplace leur surlignage, puis la paume ouverte confirme
-et déclenche le vrai transfert. Le mur qui bloquait tout était que macOS
-refusait la caméra au processus Python ; c'est désormais l'application qui
-capture. Le §83 est tenu depuis le 25 août 2026 : la cadence suit ce que la
-caméra voit.
+Deux modes explicites partagent la caméra sans partager leurs actions. Le
+geste de transfert **attrape et dépose pour de vrai** : projet, note, écran ou
+fichier local. Le mode pointeur macOS suit l'index, clique par pincement,
+double-clique pour ouvrir et défile après un pincement maintenu. Dans ce mode,
+le moteur de transfert n'est jamais appelé : cliquer ne peut pas envoyer. Le
+mur qui bloquait tout était que macOS refusait la caméra au processus Python ;
+c'est désormais l'application qui capture. Le §83 est tenu depuis le 25 août
+2026 : la cadence suit ce que la caméra voit et monte à 24 im/s uniquement
+pendant le suivi du pointeur.
 
 ## Ce qui est livré et vérifié
 
 | Pièce | État | Mesure |
 |---|---|---|
 | **Détection de main** (`desktop/vision_mains.py`) | ✅ | **4 ms par image** en taille caméra, soit 230 images/s possibles. Sur le Neural Engine : le créneau Ollama n'est pas touché. |
-| **Moteur de gestes** (`desktop/gestes_main.py`) | ✅ | 16 tests. Machine à états, hystérésis, temps de repos, seuils centralisés. |
+| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 9 tests sur la pose, le clic, le double-clic, le défilement et les annulations. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
-| **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé. Le mur est tombé — voir ci-dessous. |
+| **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s pendant un transfert, 24 pendant un pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé. |
+| **Curseur, clic, ouverture, défilement** | ⚠️ automatisé | Mode séparé macOS : Core Graphics, demande Accessibilité réelle, 9 tests Python, 4 tests Rust et bancs frontend. Reste le banc physique après reconstruction. |
 | **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
 | **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, réception automatique par un pair `TRUSTED`, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
@@ -138,6 +141,33 @@ Le sélecteur a ses preuves automatisées côté serveur et côté React. Il res
 à effectuer le banc physique du mouvement dans l'application reconstruite :
 la documentation ne transforme pas un test de coordonnées en essai caméra.
 
+## Contrôler le curseur avec l'index
+
+Le pointage n'est pas une nouvelle pose ajoutée au moteur de transfert. C'est
+un **mode explicite** choisi dans le panneau Gestes. Cette séparation est la
+protection principale : quand `mode = POINTER`, `/frame` rend avant toute
+ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
+
+1. L'index seul tendu pendant trois images active le pointeur. Les trois
+   autres doigts doivent rester repliés ; une paume ouverte ne bouge rien.
+2. La position de l'index est lissée et ramenée sur l'écran principal. Les
+   marges de la caméra permettent d'atteindre les bords sans sortir la main du
+   champ.
+3. Un pincement pouce-index confirmé sur deux images clique à sa libération.
+   Deux pincements rapprochés portent un état de double-clic natif : Finder
+   ouvre alors le fichier ou le dossier comme avec la souris.
+4. Après 380 ms de pincement, le même mouvement devient un défilement ; la
+   libération ne clique pas. Perdre la main ou fermer le poing fige le curseur
+   et annule le pincement en cours.
+
+L'application Tauri applique l'intention avec Core Graphics. Elle vérifie
+`CGPreflightPostEventAccess` avant le premier mouvement et ouvre la demande
+macOS si nécessaire ; un refus coupe le mode et affiche le chemin exact vers
+Réglages Système, jamais un faux succès. Cette première livraison vise
+**macOS et l'écran principal**. Windows n'a pas encore de suivi de main et les
+écrans secondaires ne sont pas encore mappés. Le clic, le clavier et la souris
+restent disponibles conformément au §82.
+
 ## Attraper un fichier, une photo ou une vidéo
 
 Un écran web ne peut pas promettre un chemin local exploitable par le serveur.
@@ -212,7 +242,8 @@ appels à Vision par seconde, pendant dix minutes, pour filmer une chaise.
 | État | Quand | Cadence |
 |---|---|---|
 | `OFF` | non armé | 0 |
-| `ACTIVE` | une main est suivie | 12 im/s |
+| `ACTIVE` | une main est suivie en transfert | 12 im/s |
+| `ACTIVE` pointeur | un index est suivi | **24 im/s** |
 | `LOW_POWER` | **aucune main**, sur batterie, ≤ 20 % | 2 im/s |
 | `READY` | armé, aucune main depuis 3 s | **3 im/s** |
 

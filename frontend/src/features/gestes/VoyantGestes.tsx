@@ -47,7 +47,9 @@ function tailleLisible(octets?: number): string {
 export function VoyantGestes() {
   const {
     actif,
+    mode,
     etat,
+    mainVue,
     diagnostic,
     basculer,
     choisir,
@@ -82,6 +84,38 @@ export function VoyantGestes() {
   const tenu = diagnostic?.held?.title;
   const prepare = diagnostic?.preparedFile ?? null;
   const indice = etat ? PHRASES[etat] : undefined;
+
+  if (mode === 'POINTER') {
+    const pointeur = diagnostic?.pointer;
+    const texte = pointeur?.active
+      ? pointeur.pinching
+        ? 'pincement reconnu'
+        : 'index suivi — curseur actif'
+      : mainVue
+        ? 'garde seulement l’index tendu'
+        : 'montre ta main pour contrôler le curseur';
+    return (
+      <div className="fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
+        <span
+          aria-hidden
+          className={`h-2 w-2 rounded-full ${
+            pointeur?.active ? 'animate-pulse bg-emerald-500' : 'bg-amber-400'
+          }`}
+        />
+        <Hand className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        <span className="text-muted-foreground" aria-live="polite">
+          {texte}
+        </span>
+        <button
+          type="button"
+          onClick={basculer}
+          className="ml-1 rounded-full px-2 py-0.5 text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          arrêter
+        </button>
+      </div>
+    );
+  }
 
   if (attente?.gestureControlled) {
     const selection = Math.max(

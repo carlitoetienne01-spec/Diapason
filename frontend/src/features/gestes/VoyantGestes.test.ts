@@ -52,6 +52,7 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
   basculer = vi.fn();
   contexte.valeur = {
     actif: true,
+    mode: 'TRANSFER',
     etat: null,
     mainVue: false,
     erreur: null,
@@ -59,6 +60,7 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
     clapsEcoutent: false,
     basculerLesClaps: vi.fn(),
     basculer,
+    changerMode: vi.fn(),
     choisir,
     renoncer,
     preparerUnFichier: vi.fn(),
@@ -206,5 +208,26 @@ describe('l’annonce du dernier dépôt', () => {
     // Six secondes : assez pour lire, trop peu pour devenir un décor.
     await env.horloge.avancer(6000);
     expect(texte(m.arbre())).not.toContain('Envoyé au Mac de l’atelier.');
+  });
+});
+
+describe('le voyant du pointeur', () => {
+  it('annonce seulement ce que le serveur suit réellement', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      mainVue: true,
+      diagnostic: {
+        armed: true,
+        pointer: { active: true, action: 'MOVE', pinching: false },
+      },
+    });
+    const m = monter();
+    expect(texte(m.arbre())).toContain('index suivi — curseur actif');
+    expect(texte(m.arbre())).not.toContain('fichier');
+    const arreter = elements(m.arbre(), 'button').find(
+      (bouton) => texte(bouton) === 'arrêter',
+    );
+    cliquer(arreter!);
+    expect(basculer).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,11 +21,14 @@ import {
   preparerFichierPourGeste,
   renoncerAuDepot,
   type EtatGeste,
+  type ModeGeste,
 } from './api';
+import { appliquerPointeur, pointeurNatifDisponible } from './pointeurNatif';
 
 // La cadence de DÉPART, avant que le serveur ne dise la sienne. Le serveur
 // reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle locale, pas
-// l'analyse. Douze images par seconde suffisent à un geste de main.
+// l'analyse. Douze images par seconde suffisent aux poses de transfert ; le
+// serveur monte à vingt-quatre quand un index pilote réellement le curseur.
 //
 // Elle ne reste pas à douze (§83) : le serveur rend `fps` avec chaque image,
 // et il tombe à trois quand aucune main n'a été vue depuis trois secondes.
@@ -36,6 +39,7 @@ const LARGEUR = 640;
 
 export type ModeGestes = {
   actif: boolean;
+  mode: ModeGeste;
   etat: EtatGeste | null;
   mainVue: boolean;
   erreur: string | null;
@@ -43,6 +47,8 @@ export type ModeGestes = {
   clapsEcoutent: boolean;
   basculerLesClaps: () => void;
   basculer: () => void;
+  /** Choisir le vocabulaire avant ou pendant la session. */
+  changerMode: (mode: ModeGeste) => void;
   /** Répondre à « vers lequel ? » — l'appareil vient de `pendingDrop`. */
   choisir: (deviceId: string) => void;
   /** Renoncer au dépôt en attente sans rien envoyer. */
@@ -55,6 +61,7 @@ export type ModeGestes = {
 
 export function useModeGestes(): ModeGestes {
   const [actif, setActif] = useState(false);
+  const [mode, setMode] = useState<ModeGeste>('TRANSFER');
   const [etat, setEtat] = useState<EtatGeste | null>(null);
   const [mainVue, setMainVue] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -84,6 +91,10 @@ export function useModeGestes(): ModeGestes {
   // Le numéro de la session courante. Toute extinction l'incrémente, et une
   // réponse d'image partie AVANT ne peut alors plus rien appliquer.
   const generation = useRef(0);
+  // Une réponse d'image arrive dans une fermeture créée avant le dernier
+  // rendu React. Cette référence dit quel vocabulaire est actif à l'instant
+  // où elle revient, sans laisser une ancienne fermeture appliquer un clic.
+  const modeCourant = useRef<ModeGeste>('TRANSFER');
 
   const eteindre = useCallback(() => {
     if (boucle.current !== null) {
@@ -142,6 +153,18 @@ export function useModeGestes(): ModeGestes {
       }
       setEtat(reponse.state);
       setMainVue(reponse.hand);
+      if (modeCourant.current === 'POINTER') {
+        try {
+          await appliquerPointeur(reponse.pointer);
+        } catch (exc) {
+          setErreur(
+            `Le pointeur n’a pas pu agir : ${exc instanceof Error ? exc.message : exc}`,
+          );
+          void desarmer();
+          eteindre();
+          return;
+        }
+      }
       // Le sélecteur doit suivre le poing à la cadence des images, pas au
       // sondage d'une seconde. On ne remplace que les champs que `/frame`
       // porte ; compteurs et journal restent ceux du dernier diagnostic.
@@ -152,6 +175,7 @@ export function useModeGestes(): ModeGestes {
           ? { pendingDrop: reponse.pendingDrop }
           : {}),
         ...(reponse.lastDrop !== undefined ? { lastDrop: reponse.lastDrop } : {}),
+        ...(reponse.pointer !== undefined ? { pointer: reponse.pointer } : {}),
       }));
       echecs.current = 0;
       // §83 : le serveur décide, l'interface obéit. Elle ne devine jamais
@@ -170,7 +194,10 @@ export function useModeGestes(): ModeGestes {
     }
   }, [eteindre]);
 
-  const allumer = useCallback(async (dejaArme = false) => {
+  const allumer = useCallback(async (
+    dejaArme = false,
+    modeDemande: ModeGeste = modeCourant.current,
+  ) => {
     // Un seul allumage à la fois. Sans ce verrou, un second clic pendant
     // l'armement ouvre une seconde caméra dont plus rien ne tient la
     // référence — et une caméra qu'on ne désigne plus ne s'éteint plus.
@@ -182,11 +209,17 @@ export function useModeGestes(): ModeGestes {
     // porte de la caméra, et une porte qu'un chemin d'échec oublierait de
     // rouvrir bloquerait le mode jusqu'au rechargement de la page.
     try {
+      if (modeDemande === 'POINTER' && !pointeurNatifDisponible()) {
+        setErreur(
+          'Le contrôle du curseur est disponible dans l’application de bureau Diapason.',
+        );
+        return;
+      }
       try {
         // `dejaArme` : la session a été ouverte par un double-clap, côté
         // serveur. Ré-armer ici la réinitialiserait — et perdrait le geste
         // qui vient d'être fait.
-        if (!dejaArme) await armer();
+        if (!dejaArme) await armer(modeDemande);
       } catch (exc) {
         const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
         setErreur(
@@ -217,6 +250,8 @@ export function useModeGestes(): ModeGestes {
       await v.play();
       video.current = v;
       canevas.current = document.createElement('canvas');
+      modeCourant.current = modeDemande;
+      setMode(modeDemande);
       setActif(true);
       // Replanifier plutôt que de recréer le hook : la boucle est un minuteur,
       // pas un état. On ne touche à rien tant que la cadence ne change pas —
@@ -236,6 +271,40 @@ export function useModeGestes(): ModeGestes {
       allumage.current = false;
     }
   }, [capturer]);
+
+  const changerMode = useCallback((prochain: ModeGeste) => {
+    if (prochain === modeCourant.current) return;
+    setErreur(null);
+    if (prochain === 'POINTER' && !pointeurNatifDisponible()) {
+      setErreur(
+        'Le contrôle du curseur est disponible dans l’application de bureau Diapason.',
+      );
+      return;
+    }
+    if (!actif) {
+      modeCourant.current = prochain;
+      setMode(prochain);
+      return;
+    }
+    if (allumage.current) return;
+    allumage.current = true;
+    void armer(prochain)
+      .then(() => {
+        modeCourant.current = prochain;
+        setMode(prochain);
+        setEtat(null);
+        setMainVue(false);
+        setDiagnostic({ armed: true, mode: prochain });
+      })
+      .catch((exc) =>
+        setErreur(
+          `Le mode n’a pas changé : ${exc instanceof Error ? exc.message : exc}`,
+        ),
+      )
+      .finally(() => {
+        allumage.current = false;
+      });
+  }, [actif]);
 
   const basculerLesClaps = useCallback(() => {
     const voulu = !clapsEcoutent;
@@ -261,6 +330,10 @@ export function useModeGestes(): ModeGestes {
   // ne contredise l'écran.
   const accorder = useCallback((d: Diagnostic) => {
     setDiagnostic(d);
+    if (d.mode) {
+      modeCourant.current = d.mode;
+      setMode(d.mode);
+    }
     if (d.clapListening === undefined) return;
     setClapsEcoutent((avant) => {
       if (avant && !d.clapListening) {
@@ -338,7 +411,7 @@ export function useModeGestes(): ModeGestes {
           // Le diagnostic sert aussi caméra éteinte : c'est là qu'on voit
           // si le micro entend les claps, et donc si le seuil convient.
           accorder(d);
-          if (d.armed) void allumer(true);
+          if (d.armed) void allumer(true, d.mode ?? 'TRANSFER');
         })
         .catch(() => {});
     }, 2000);
@@ -368,6 +441,7 @@ export function useModeGestes(): ModeGestes {
 
   return {
     actif,
+    mode,
     etat,
     mainVue,
     erreur,
@@ -375,6 +449,7 @@ export function useModeGestes(): ModeGestes {
     clapsEcoutent,
     basculerLesClaps,
     basculer,
+    changerMode,
     choisir,
     renoncer,
     preparerUnFichier,

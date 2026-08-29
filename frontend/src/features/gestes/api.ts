@@ -19,6 +19,24 @@ export type EtatGeste =
   | 'PERDU'
   | 'ANNULE';
 
+export type ModeGeste = 'TRANSFER' | 'POINTER';
+
+export type ActionPointeur =
+  | 'NONE'
+  | 'MOVE'
+  | 'CLICK'
+  | 'DOUBLE_CLICK'
+  | 'SCROLL';
+
+export type LecturePointeur = {
+  active: boolean;
+  action: ActionPointeur;
+  x?: number | null;
+  y?: number | null;
+  scrollY?: number;
+  pinching?: boolean;
+};
+
 export type ObjetTenu = {
   type: string;
   id: string;
@@ -143,6 +161,8 @@ export async function oublierLaMesureDesClaps(): Promise<void> {
 
 export type Diagnostic = {
   armed: boolean;
+  mode?: ModeGeste;
+  pointer?: LecturePointeur | null;
   clapListening?: boolean;
   clapsHeard?: number;
   clapThreshold?: number;
@@ -268,6 +288,7 @@ export type ReponseImage = {
   fps?: number;
   pendingDrop?: DepotEnAttente | null;
   lastDrop?: Depot | null;
+  pointer?: LecturePointeur | null;
 };
 
 export class EchecGeste extends Error {
@@ -279,10 +300,16 @@ export class EchecGeste extends Error {
   }
 }
 
-export async function armer(): Promise<{ armed: boolean }> {
+export async function armer(
+  mode: ModeGeste = 'TRANSFER',
+): Promise<{ armed: boolean; mode?: ModeGeste }> {
   let reponse: Response;
   try {
-    reponse = await apiFetch('/v1/gestures/arm', { method: 'POST' });
+    reponse = await apiFetch('/v1/gestures/arm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
   } catch (exc) {
     throw new EchecGeste(
       'armement',

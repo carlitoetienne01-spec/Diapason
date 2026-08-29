@@ -163,13 +163,14 @@ mesurés. Détail dans [`GESTES.md`](GESTES.md).
 | Pièce | État | Mesure |
 |---|---|---|
 | Détection de main (`desktop/vision_mains.py`) | ✅ | **4 ms/image** en taille caméra — 230 im/s possibles, sur le Neural Engine, sans toucher au créneau Ollama |
-| Moteur de gestes (`desktop/gestes_main.py`) | ✅ | 16 tests : machine à états, hystérésis, temps de repos, seuils centralisés |
+| Moteurs de gestes (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 9 tests, machine indépendante pour qu'un clic ne puisse pas déposer. |
 | Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
-| Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s, 640 px, `getUserMedia` depuis un paquet signé — le mur est tombé |
+| Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s en transfert, 24 en pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé |
+| Curseur, clic, ouverture et défilement | ⚠️ automatisé | Mode macOS séparé, injection Core Graphics et demande Accessibilité réelle. Tests Python/Rust/frontend verts ; banc physique après reconstruction encore requis. |
 | Trancher entre plusieurs appareils | ✅ automatisé | Le poing déplace un sélecteur visible ; gauche/haut recule, droite/bas avance, la paume ouverte confirme. Le clic et la voix restent des replis. |
 | Fichier, photo ou vidéo réel | ✅ automatisé | Dialogue natif Tauri, chemin gardé côté serveur, transfert chiffré existant et progression issue de ses morceaux. Un essai physique du nouveau mouvement reste à faire après reconstruction de l'app. |
 | Fusion voix + geste | ✅ | La main se dit dans le contexte (voix ET chat) et `geste_deposer` l'envoie — 15 tests |
-| État d'énergie (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER` — 12 im/s suivi, 3 au repos, 2 sur batterie faible |
+| État d'énergie (§83) | ✅ | `OFF / READY / ACTIVE / LOW_POWER` — 12 im/s transfert, 24 pointeur, 3 au repos, 2 sur batterie faible |
 
 ### Poser une question sans moyen d'y répondre est une impasse
 

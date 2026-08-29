@@ -26,6 +26,10 @@ const api = vi.hoisted(() => ({
   oublierFichierPrepare: vi.fn(),
 }));
 const dialogue = vi.hoisted(() => ({ open: vi.fn() }));
+const pointeur = vi.hoisted(() => ({
+  appliquerPointeur: vi.fn(),
+  pointeurNatifDisponible: vi.fn(),
+}));
 
 vi.mock('./api', () => ({
   ...api,
@@ -41,6 +45,7 @@ vi.mock('./api', () => ({
 
 vi.mock('react', async () => await import('./__banc__/miniReact'));
 vi.mock('@tauri-apps/plugin-dialog', () => dialogue);
+vi.mock('./pointeurNatif', () => pointeur);
 
 import { monterCrochet, type Monture } from './__banc__/miniReact';
 import {
@@ -85,6 +90,10 @@ beforeEach(() => {
   api.oublierFichierPrepare.mockResolvedValue(undefined);
   dialogue.open.mockReset();
   dialogue.open.mockResolvedValue(null);
+  pointeur.appliquerPointeur.mockReset();
+  pointeur.appliquerPointeur.mockResolvedValue(undefined);
+  pointeur.pointeurNatifDisponible.mockReset();
+  pointeur.pointeurNatifDisponible.mockReturnValue(false);
 });
 
 afterEach(() => {
@@ -164,6 +173,63 @@ describe('la cadence vient du serveur', () => {
     await armerParLeBouton();
     await env.horloge.avancer(PERIODE_DOUZE);
     expect(env.horloge.periodes()).toContain(PERIODE_DOUZE);
+  });
+});
+
+describe('le mode pointeur reste distinct du transfert', () => {
+  it('arme POINTER et applique chaque intention dans Tauri', async () => {
+    pointeur.pointeurNatifDisponible.mockReturnValue(true);
+    api.envoyerImage.mockResolvedValue({
+      ...IMAGE_SANS_MAIN,
+      hand: true,
+      fps: 24,
+      pointer: { active: true, action: 'MOVE', x: 0.2, y: 0.4 },
+    });
+    const m = monter();
+    m.valeur().changerMode('POINTER');
+    await vider();
+    expect(m.valeur().mode).toBe('POINTER');
+    m.valeur().basculer();
+    await vider();
+    expect(api.armer).toHaveBeenCalledWith('POINTER');
+
+    await env.horloge.avancer(PERIODE_DOUZE);
+    expect(pointeur.appliquerPointeur).toHaveBeenCalledWith({
+      active: true,
+      action: 'MOVE',
+      x: 0.2,
+      y: 0.4,
+    });
+    expect(env.horloge.periodes()).toContain(42);
+  });
+
+  it('refuse le pointeur dans un navigateur sans ouvrir la caméra', async () => {
+    const m = monter();
+    m.valeur().changerMode('POINTER');
+    await vider();
+    expect(m.valeur().mode).toBe('TRANSFER');
+    expect(m.valeur().erreur).toContain('application de bureau');
+    expect(env.camerasOuvertes()).toBe(0);
+  });
+
+  it('coupe la caméra si macOS refuse réellement Accessibilité', async () => {
+    pointeur.pointeurNatifDisponible.mockReturnValue(true);
+    pointeur.appliquerPointeur.mockRejectedValue(
+      new Error('Autorise Diapason dans Accessibilité'),
+    );
+    api.envoyerImage.mockResolvedValue({
+      ...IMAGE_SANS_MAIN,
+      hand: true,
+      pointer: { active: true, action: 'CLICK', x: 0.2, y: 0.4 },
+    });
+    const m = monter();
+    m.valeur().changerMode('POINTER');
+    m.valeur().basculer();
+    await vider();
+    await env.horloge.avancer(PERIODE_DOUZE);
+    expect(m.valeur().actif).toBe(false);
+    expect(m.valeur().erreur).toContain('Accessibilité');
+    expect(env.pistesArretees()).toBe(1);
   });
 });
 

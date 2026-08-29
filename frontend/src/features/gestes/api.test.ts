@@ -78,6 +78,16 @@ describe('envoyerImage', () => {
 });
 
 describe('armer / désarmer', () => {
+  it('nomme le mode pointeur dans le corps signé par l’API locale', async () => {
+    apiFetch.mockResolvedValue(repondre({ armed: true, mode: 'POINTER' }));
+    await armer('POINTER');
+    expect(apiFetch).toHaveBeenCalledWith('/v1/gestures/arm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'POINTER' }),
+    });
+  });
+
   it('nomme l’armement quand le serveur ne répond pas', async () => {
     apiFetch.mockRejectedValue(new Error('ECONNREFUSED'));
     await expect(armer()).rejects.toMatchObject({ etape: 'armement' });
