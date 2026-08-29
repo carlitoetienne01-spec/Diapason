@@ -230,4 +230,23 @@ describe('le voyant du pointeur', () => {
     cliquer(arreter!);
     expect(basculer).toHaveBeenCalledTimes(1);
   });
+
+  it('guide le contact avant de promettre un pincement', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      mainVue: true,
+      diagnostic: {
+        armed: true,
+        pointer: {
+          active: true,
+          action: 'MOVE',
+          pinching: false,
+          pinchProgress: 0.55,
+        },
+      },
+    });
+    expect(texte(monter().arbre())).toContain(
+      'rapproche encore le pouce et l’index',
+    );
+  });
 });

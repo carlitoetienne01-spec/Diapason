@@ -337,6 +337,26 @@ describe('le mode pointeur explicite', () => {
     expect(lu).not.toContain('Activer par un double clap');
   });
 
+  it('montre si les doigts approchent réellement du seuil de contact', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      diagnostic: {
+        armed: true,
+        mode: 'POINTER',
+        pointer: {
+          active: true,
+          action: 'MOVE',
+          pinching: false,
+          pinchProgress: 0.62,
+        },
+      },
+    });
+    const lu = texte(monter().arbre());
+    expect(lu).toContain('Rapproche encore le pouce et l’index');
+    expect(lu).toContain('Contact pouce-index');
+    expect(lu).toContain('62%');
+  });
+
   it('laisse revenir au transfert par un bouton visible', () => {
     poserLeContexte({ mode: 'POINTER' });
     const transfert = elements(monter().arbre(), 'button').find((bouton) =>

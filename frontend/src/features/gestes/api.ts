@@ -35,6 +35,7 @@ export type LecturePointeur = {
   y?: number | null;
   scrollY?: number;
   pinching?: boolean;
+  pinchProgress?: number;
 };
 
 export type ObjetTenu = {

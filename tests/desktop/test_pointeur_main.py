@@ -4,7 +4,13 @@ from diapason.desktop.gestes_main import Point
 from diapason.desktop.pointeur_main import ActionPointeur, MoteurDePointeur
 
 
-def _index(*, x: float = 0.42, y: float = 0.25, pince: bool = False) -> list[Point]:
+def _index(
+    *,
+    x: float = 0.42,
+    y: float = 0.25,
+    pince: bool = False,
+    ecart_pince: float = 0.02,
+) -> list[Point]:
     points = [
         Point("wrist", 0.5, 0.9),
         Point("indexMCP", 0.42, 0.7),
@@ -15,7 +21,7 @@ def _index(*, x: float = 0.42, y: float = 0.25, pince: bool = False) -> list[Poi
         Point("ringTip", 0.56, 0.58),
         Point("littleMCP", 0.62, 0.7),
         Point("littleTip", 0.62, 0.58),
-        Point("thumbTip", x + (0.02 if pince else -0.18), y),
+        Point("thumbTip", x + (ecart_pince if pince else -0.18), y),
     ]
     return points
 
@@ -32,6 +38,16 @@ def _confiance(points: list[Point], noms: set[str], valeur: float) -> list[Point
         Point(p.nom, p.x, p.y, confiance=valeur if p.nom in noms else p.confiance)
         for p in points
     ]
+
+
+def _relacher(
+    moteur: MoteurDePointeur,
+    *,
+    maintenant: float,
+    main: list[Point] | None = None,
+):
+    moteur.observer(main or _index(), maintenant=maintenant)
+    return moteur.observer(main or _index(), maintenant=maintenant + 0.05)
 
 
 class TestPointerEstUnePoseDistincte:
@@ -128,7 +144,7 @@ class TestLePincement:
         _stabiliser(moteur)
         moteur.observer(_index(pince=True), maintenant=0.20)
         moteur.observer(_index(pince=True), maintenant=0.25)
-        lecture = moteur.observer(_index(), maintenant=0.30)
+        lecture = _relacher(moteur, maintenant=0.30)
         assert lecture.action is ActionPointeur.CLIQUER
 
     def test_deux_pincements_rapides_ouvrent_par_double_clic(self):
@@ -136,11 +152,11 @@ class TestLePincement:
         _stabiliser(moteur)
         for instant in (0.20, 0.25):
             moteur.observer(_index(pince=True), maintenant=instant)
-        premier = moteur.observer(_index(), maintenant=0.30)
+        premier = _relacher(moteur, maintenant=0.30)
         assert premier.action is ActionPointeur.CLIQUER
-        for instant in (0.45, 0.50):
+        for instant in (0.50, 0.55):
             moteur.observer(_index(pince=True), maintenant=instant)
-        lecture = moteur.observer(_index(), maintenant=0.55)
+        lecture = _relacher(moteur, maintenant=0.60)
         assert lecture.action is ActionPointeur.DOUBLE_CLIQUER
 
     def test_un_index_un_peu_plie_pendant_la_pince_reste_suivi(self):
@@ -151,7 +167,7 @@ class TestLePincement:
         lecture = moteur.observer(_index(y=0.46, pince=True), maintenant=0.25)
         assert lecture.actif is True
         assert lecture.pince is True
-        relache = moteur.observer(_index(), maintenant=0.30)
+        relache = _relacher(moteur, maintenant=0.30)
         assert relache.action is ActionPointeur.CLIQUER
 
     def test_une_perte_pendant_la_pince_annule_le_clic(self):
@@ -162,6 +178,39 @@ class TestLePincement:
         moteur.observer(None, maintenant=0.30)
         relache = moteur.observer(_index(), maintenant=0.35)
         assert relache.action is ActionPointeur.DEPLACER
+
+    def test_le_contact_reel_n_exige_plus_des_bouts_superposes(self):
+        """Le seuil mesuré au banc reconnaît 0,55 largeur de paume."""
+        moteur = MoteurDePointeur()
+        _stabiliser(moteur)
+        for instant in (0.20, 0.25):
+            lecture = moteur.observer(
+                _index(pince=True, ecart_pince=0.11),
+                maintenant=instant,
+            )
+        assert lecture.pince is True
+        assert _relacher(moteur, maintenant=0.30).action is ActionPointeur.CLIQUER
+
+    def test_le_pouce_masque_cent_quarante_ms_ne_casse_pas_le_contact(self):
+        moteur = MoteurDePointeur()
+        _stabiliser(moteur)
+        moteur.observer(_index(pince=True), maintenant=0.20)
+        moteur.observer(_index(pince=True), maintenant=0.25)
+        masque = _confiance(_index(pince=True), {"thumbTip"}, 0.05)
+        lecture = moteur.observer(masque, maintenant=0.32)
+        assert lecture.pince is True
+        moteur.observer(_index(pince=True), maintenant=0.36)
+        assert _relacher(moteur, maintenant=0.40).action is ActionPointeur.CLIQUER
+
+    def test_la_proximite_guide_avant_le_contact(self):
+        moteur = MoteurDePointeur()
+        _stabiliser(moteur)
+        loin = moteur.observer(_index(), maintenant=0.20)
+        proche = moteur.observer(
+            _index(pince=True, ecart_pince=0.14),
+            maintenant=0.25,
+        )
+        assert proche.proximite_pince > loin.proximite_pince
 
 
 class TestLeDefilement:
@@ -198,3 +247,18 @@ class TestLesCoordonnees:
         assert gauche.x < droite.x, (
             "la droite de la main doit rester la droite à l'écran"
         )
+
+    def test_le_tremblement_est_reduit_sans_figer_le_curseur(self):
+        moteur = MoteurDePointeur()
+        _stabiliser(moteur)
+        sorties = []
+        for image, x in enumerate((0.414, 0.426) * 5, start=3):
+            lecture = moteur.observer(_index(x=x), maintenant=image * 0.05)
+            sorties.append(lecture.x)
+        assert max(sorties) - min(sorties) < 0.012
+
+    def test_un_grand_mouvement_ouvre_le_filtre_adaptatif(self):
+        moteur = MoteurDePointeur()
+        avant = _stabiliser(moteur)
+        apres = moteur.observer(_index(x=0.20), maintenant=0.15)
+        assert apres.x - avant.x > 0.12, "le lissage ne doit pas poursuivre la main"

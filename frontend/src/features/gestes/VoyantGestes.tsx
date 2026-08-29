@@ -90,7 +90,9 @@ export function VoyantGestes() {
     const texte = pointeur?.active
       ? pointeur.pinching
         ? 'pincement reconnu'
-        : 'index suivi — curseur actif'
+        : (pointeur.pinchProgress ?? 0) >= 0.4
+          ? 'rapproche encore le pouce et l’index'
+          : 'index suivi — curseur actif'
       : mainVue
         ? 'garde seulement l’index tendu'
         : 'montre ta main pour contrôler le curseur';

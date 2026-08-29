@@ -19,10 +19,10 @@ pendant le suivi du pointeur.
 | Pièce | État | Mesure |
 |---|---|---|
 | **Détection de main** (`desktop/vision_mains.py`) | ✅ | **4 ms par image** en taille caméra, soit 230 images/s possibles. Sur le Neural Engine : le créneau Ollama n'est pas touché. |
-| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 16 tests sur la pose, les pertes brèves, le clic, le double-clic, le défilement et les annulations. |
+| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 21 tests sur la pose, les pertes brèves, le filtre adaptatif, le clic, le double-clic, le défilement et les annulations. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s pendant un transfert, 24 pendant un pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé. |
-| **Curseur, clic, ouverture, défilement** | ⚠️ premier banc physique | Mode séparé macOS : Core Graphics et demande Accessibilité confirmés sur la machine réelle, 16 tests Python, 4 tests Rust et bancs frontend. La correction de continuité du suivi reste à confirmer par un second essai physique. |
+| **Curseur, clic, ouverture, défilement** | ⚠️ banc physique en cours | Mode séparé macOS : Core Graphics et demande Accessibilité confirmés sur la machine réelle, 21 tests Python, 4 tests Rust et bancs frontend. Les seuils de pincement et le filtre adaptatif issus du deuxième essai restent à confirmer physiquement. |
 | **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
 | **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, réception automatique par un pair `TRUSTED`, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
@@ -154,10 +154,14 @@ ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
    ouverte nette ne bouge rien.
 2. La position de l'index est lissée et ramenée sur l'écran principal. Les
    marges de la caméra permettent d'atteindre les bords sans sortir la main du
-   champ.
-3. Un pincement pouce-index confirmé sur deux images clique à sa libération.
-   Deux pincements rapprochés portent un état de double-clic natif : Finder
-   ouvre alors le fichier ou le dossier comme avec la souris.
+   champ. Le filtre adaptatif absorbe le tremblement à l'arrêt et réduit son
+   lissage quand le doigt accélère, au lieu d'ajouter le même retard partout.
+3. Un pincement pouce-index confirmé sur deux images clique après deux images
+   de relâchement. Le seuil tient compte de l'écart que Vision conserve entre
+   deux doigts réellement en contact et tolère 140 ms d'occlusion du pouce.
+   Une jauge visible montre l'approche avant de promettre un clic. Deux
+   pincements rapprochés portent un état de double-clic natif : Finder ouvre
+   alors le fichier ou le dossier comme avec la souris.
 4. Après 380 ms de pincement, le même mouvement devient un défilement ; la
    libération ne clique pas. Une occlusion brève fige le curseur et reprend
    dès l'image suivante, sans trois nouvelles confirmations. Après 280 ms, la

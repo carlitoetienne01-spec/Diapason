@@ -47,6 +47,10 @@ export function PanneauGestes() {
     annulerFichierPrepare,
   } = useModeGestesPartage();
   const calibration = useCalibration(actif);
+  const progressionPince = Math.max(
+    0,
+    Math.min(1, diagnostic?.pointer?.pinchProgress ?? 0),
+  );
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -125,8 +129,10 @@ export function PanneauGestes() {
             {mode === 'POINTER'
               ? diagnostic?.pointer?.active
                 ? diagnostic.pointer.pinching
-                  ? 'Pincement reconnu — relâche pour cliquer ou maintiens pour défiler.'
-                  : 'Index suivi — le curseur te suit.'
+                  ? 'Contact reconnu — relâche pour cliquer ou maintiens pour défiler.'
+                  : progressionPince >= 0.4
+                    ? 'Rapproche encore le pouce et l’index.'
+                    : 'Index suivi — le curseur te suit.'
                 : mainVue
                   ? 'Garde seulement l’index tendu.'
                   : 'Montre ta main puis tends seulement l’index.'
@@ -145,6 +151,31 @@ export function PanneauGestes() {
             pincements&nbsp;: ouvrir · pincement maintenu puis mouvement vertical&nbsp;:
             défiler. Ferme le poing ou retire la main pour figer le curseur.
           </p>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="shrink-0 text-xs text-muted-foreground">
+              Contact pouce-index
+            </span>
+            <div
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Proximité entre le pouce et l’index"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressionPince * 100)}
+            >
+              <div
+                className={`h-full rounded-full transition-[width,background-color] duration-75 ${
+                  diagnostic?.pointer?.pinching
+                    ? 'bg-emerald-400'
+                    : 'bg-amber-400'
+                }`}
+                style={{ width: `${Math.round(progressionPince * 100)}%` }}
+              />
+            </div>
+            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
+              {Math.round(progressionPince * 100)}%
+            </span>
+          </div>
         </div>
       )}
 

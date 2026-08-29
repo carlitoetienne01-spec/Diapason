@@ -163,7 +163,7 @@ mesurés. Détail dans [`GESTES.md`](GESTES.md).
 | Pièce | État | Mesure |
 |---|---|---|
 | Détection de main (`desktop/vision_mains.py`) | ✅ | **4 ms/image** en taille caméra — 230 im/s possibles, sur le Neural Engine, sans toucher au créneau Ollama |
-| Moteurs de gestes (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 16 tests, machine indépendante pour qu'un clic ne puisse pas déposer. |
+| Moteurs de gestes (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 21 tests, machine indépendante pour qu'un clic ne puisse pas déposer. |
 | Latence de reconnaissance | ✅ mesurée | ≤ 10 images pour un « attraper », figée par un test |
 | Flux caméra (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s en transfert, 24 en pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé |
 | Curseur, clic, ouverture et défilement | ⚠️ automatisé | Mode macOS séparé, injection Core Graphics et demande Accessibilité réelle. Tests Python/Rust/frontend verts ; banc physique après reconstruction encore requis. |
