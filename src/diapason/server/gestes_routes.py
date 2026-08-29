@@ -23,7 +23,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -54,6 +54,12 @@ _PAUSE_SELECTEUR_S = 0.24
 @dataclass
 class _Session:
     moteur: Any
+    # Deux vocabulaires qui ne se chevauchent jamais. En mode POINTER, le
+    # moteur de poing/paume n'est pas appelé : un pincement destiné à cliquer
+    # ne peut donc ni attraper ni envoyer un fichier.
+    mode: str = "TRANSFER"
+    pointeur: Any = None
+    derniere_lecture_pointeur: Any = None
     armee_a: float = field(default_factory=time.monotonic)
     vue_a: float = field(default_factory=time.monotonic)
     images: int = 0
@@ -477,11 +483,16 @@ def oublier_les_claps() -> dict[str, Any]:
     return {"calibrated": False}
 
 
+class Armement(BaseModel):
+    mode: Literal["TRANSFER", "POINTER"] = "TRANSFER"
+
+
 @router.post("/arm")
-def armer() -> dict[str, Any]:
+def armer(body: Optional[Armement] = None) -> dict[str, Any]:
     """Armer le mode gestes. La caméra ne s'ouvre qu'après, côté interface."""
     global _session
     from diapason.desktop.gestes_main import MoteurDeGestes, charger_seuils
+    from diapason.desktop.pointeur_main import MoteurDePointeur
     from diapason.desktop.vision_mains import disponible
 
     if not disponible():
@@ -493,10 +504,16 @@ def armer() -> dict[str, Any]:
             ),
         )
     # Les seuils de CETTE machine : calibrés s'ils l'ont été.
-    _session = _Session(moteur=MoteurDeGestes(charger_seuils()))
-    logger.info("mode gestes armé")
+    mode = body.mode if body is not None else "TRANSFER"
+    _session = _Session(
+        moteur=MoteurDeGestes(charger_seuils()),
+        mode=mode,
+        pointeur=MoteurDePointeur() if mode == "POINTER" else None,
+    )
+    logger.info("mode gestes armé : %s", mode.lower())
     return {
         "armed": True,
+        "mode": mode,
         "inactivityTimeoutS": _INACTIVITE_MAX_S,
         "maxDurationS": _DUREE_MAX_S,
     }
@@ -531,6 +548,11 @@ def preparer_un_fichier(body: FichierPourGeste) -> dict[str, Any]:
         raise HTTPException(
             status_code=409,
             detail="Active d'abord les gestes, puis choisis le fichier.",
+        )
+    if _session.mode != "TRANSFER":
+        raise HTTPException(
+            status_code=409,
+            detail="Passe en mode transfert avant de préparer un fichier.",
         )
     if tenu() is not None:
         raise HTTPException(
@@ -577,6 +599,7 @@ def etat() -> dict[str, Any]:
     prepare = fichier_prepare()
     return {
         "armed": True,
+        "mode": _session.mode,
         "clapListening": claps_actifs(),
         "clapsHeard": _claps_entendus(),
         **_etat_des_claps(),
@@ -609,6 +632,11 @@ def etat() -> dict[str, Any]:
         "pendingDrop": _choix_public(),
         "journal": list(reversed(_session.journal)),
         "recentStates": list(_session.derniers_etats),
+        "pointer": (
+            _session.derniere_lecture_pointeur.to_dict()
+            if _session.derniere_lecture_pointeur is not None
+            else None
+        ),
     }
 
 
@@ -634,7 +662,10 @@ def _energie() -> dict[str, Any]:
         sur_batterie=bool(mesure and mesure[1]),
         batterie_pct=mesure[0] if mesure else None,
     )
-    return {"energy": etat.value, "fps": cadence(etat)}
+    return {
+        "energy": etat.value,
+        "fps": cadence(etat, pointeur=_session.mode == "POINTER"),
+    }
 
 
 def _noter(quoi: str, detail: str, *, reussi: bool) -> None:
@@ -1404,6 +1435,24 @@ async def image(request: Request) -> dict[str, Any]:
             _session.dernier_repliement = mesures.repliement
             if _session.calibration_en_cours:
                 _session.echantillons.append(mesures.repliement)
+
+    if _session.mode == "POINTER":
+        # Cette bifurcation est la frontière de sécurité : aucune ligne du
+        # transfert située dessous n'est atteinte. Le serveur rend seulement
+        # une intention ; l'application Tauri, titulaire de l'autorisation
+        # Accessibilité, décidera si elle peut réellement l'appliquer.
+        lecture = _session.pointeur.observer(points)
+        _session.derniere_lecture_pointeur = lecture
+        return {
+            "state": _session.moteur.etat.value,
+            "changed": False,
+            "hand": bool(points),
+            "frames": _session.images,
+            "pointer": lecture.to_dict(),
+            "pendingDrop": None,
+            "lastDrop": None,
+            **_energie(),
+        }
     position = _position_de_la_main(points)
     avant = _session.moteur.etat
     apres = _session.moteur.observer(points)

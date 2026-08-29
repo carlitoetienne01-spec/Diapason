@@ -40,6 +40,13 @@ class Energie(str, Enum):
 # La cadence de travail : mesurée, pas choisie. Le serveur reconnaît en ~4 ms ;
 # la limite est le codage JPEG et la boucle locale.
 CADENCE_ACTIVE = 12
+# Un pointeur se juge en déplacement continu, pas seulement en poses. À douze
+# images par seconde, chaque position tient 83 ms : le curseur avance par
+# marches visibles et un pincement bref peut ne vivre que sur une image. Vingt-
+# quatre réduit cette marche à 42 ms tout en restant très loin des 230 im/s que
+# Vision mesure sur cette machine. Cette cadence ne s'applique QUE lorsqu'une
+# main est déjà suivie en mode pointeur.
+CADENCE_POINTEUR = 24
 # Assez pour voir une main ENTRER dans le champ — un tiers de seconde — et
 # quatre fois moins cher. Dès la première main vue on repasse à la cadence
 # pleine, donc cette lenteur ne se paie jamais pendant un geste.
@@ -93,8 +100,10 @@ def etat_energie(
     return Energie.PRET
 
 
-def cadence(etat: Energie) -> int:
+def cadence(etat: Energie, *, pointeur: bool = False) -> int:
     """Les images par seconde que l'interface doit appliquer."""
+    if pointeur and etat is Energie.ACTIF:
+        return CADENCE_POINTEUR
     return {
         Energie.ETEINT: 0,
         Energie.PRET: CADENCE_PRETE,
@@ -141,6 +150,7 @@ __all__ = [
     "BATTERIE_BASSE_PCT",
     "CADENCE_ACTIVE",
     "CADENCE_ECONOMIE",
+    "CADENCE_POINTEUR",
     "CADENCE_PRETE",
     "SANS_MAIN_AVANT_VEILLE_S",
     "Energie",

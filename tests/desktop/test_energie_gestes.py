@@ -12,6 +12,7 @@ from __future__ import annotations
 from diapason.desktop.energie_gestes import (
     CADENCE_ACTIVE,
     CADENCE_ECONOMIE,
+    CADENCE_POINTEUR,
     CADENCE_PRETE,
     SANS_MAIN_AVANT_VEILLE_S,
     Energie,
@@ -128,6 +129,12 @@ class TestLaCadenceQuiEnDecoule:
     def test_aucun_etat_allume_ne_rend_une_cadence_nulle(self):
         for etat in (Energie.PRET, Energie.ACTIF, Energie.ECONOMIE):
             assert cadence(etat) > 0, f"{etat} filmerait sans jamais capturer"
+
+    def test_le_pointeur_double_seulement_la_cadence_active(self):
+        """Veiller reste économe ; seule une main suivie exige 24 im/s."""
+        assert cadence(Energie.ACTIF, pointeur=True) == CADENCE_POINTEUR
+        assert CADENCE_POINTEUR == CADENCE_ACTIVE * 2
+        assert cadence(Energie.PRET, pointeur=True) == cadence(Energie.PRET)
 
 
 class TestLaBatterieNeSeLitPasDouzeFoisParSeconde:

@@ -97,6 +97,68 @@ class TestArmement:
         assert "pyobjc-framework-Vision" in reponse.json()["detail"]
 
 
+class TestLeModePointeurEstSepareDuTransfert:
+    @staticmethod
+    def _index():
+        from diapason.desktop.gestes_main import Point
+
+        return [
+            Point("wrist", 0.5, 0.9),
+            Point("indexMCP", 0.42, 0.7),
+            Point("indexTip", 0.42, 0.25),
+            Point("middleMCP", 0.49, 0.7),
+            Point("middleTip", 0.49, 0.58),
+            Point("ringMCP", 0.56, 0.7),
+            Point("ringTip", 0.56, 0.58),
+            Point("littleMCP", 0.62, 0.7),
+            Point("littleTip", 0.62, 0.58),
+            Point("thumbTip", 0.24, 0.25),
+        ]
+
+    def test_l_armement_nomme_le_mode_reel(self, client):
+        corps = client.post("/v1/gestures/arm", json={"mode": "POINTER"}).json()
+        assert corps["mode"] == "POINTER"
+        assert client.get("/v1/gestures/state").json()["mode"] == "POINTER"
+
+    def test_un_mode_invente_est_refuse(self, client):
+        reponse = client.post("/v1/gestures/arm", json={"mode": "MAGIC"})
+        assert reponse.status_code == 422
+
+    def test_pointer_ne_peut_pas_appeler_le_moteur_de_depot(self, client):
+        """Un pincement ne doit jamais emprunter le chemin qui envoie."""
+        client.post("/v1/gestures/arm", json={"mode": "POINTER"})
+        gr._session.moteur.observer = MagicMock(
+            side_effect=AssertionError("le moteur de transfert a été appelé")
+        )
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._index()],
+        ):
+            for _ in range(3):
+                reponse = client.post("/v1/gestures/frame", content=_image_factice())
+        assert reponse.status_code == 200
+        assert reponse.json()["pointer"]["action"] == "MOVE"
+        assert gr._session.moteur.observer.call_count == 0
+
+    def test_une_main_suivie_monte_a_vingt_quatre_images(self, client):
+        client.post("/v1/gestures/arm", json={"mode": "POINTER"})
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._index()],
+        ):
+            corps = client.post("/v1/gestures/frame", content=_image_factice()).json()
+        assert corps["energy"] == "ACTIVE"
+        assert corps["fps"] == 24
+
+    def test_preparer_un_fichier_exige_le_mode_transfert(self, client, tmp_path):
+        fichier = tmp_path / "photo.jpg"
+        fichier.write_bytes(b"image")
+        client.post("/v1/gestures/arm", json={"mode": "POINTER"})
+        reponse = client.post("/v1/gestures/file", json={"path": str(fichier)})
+        assert reponse.status_code == 409
+        assert "mode transfert" in reponse.json()["detail"]
+
+
 class TestLesImages:
     def test_une_image_fait_avancer_l_etat(self, client):
         client.post("/v1/gestures/arm")
