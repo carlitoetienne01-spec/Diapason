@@ -242,6 +242,9 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     )[0]
     assert "runs-on: [self-hosted, windows-local]" in windows_job
     assert "vars.RUNNER_WINDOWS_LOCAL == 'true'" in windows_job
+    assert "fetch-depth: 0" in windows_job, (
+        "le déployeur local doit disposer de l'ascendance complète du commit"
+    )
     assert "tauri.windows-validation.conf.json" in windows_job
     assert "tauri build --verbose" in windows_job, (
         "un echec WiX sans sa sortie detaillee ne permet pas de corriger le MSI"

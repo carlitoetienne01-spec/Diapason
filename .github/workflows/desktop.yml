@@ -88,6 +88,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Le déployeur transfère le commit depuis ce checkout local vers
+          # l'installation de Carlito. Avec la profondeur 1 par défaut, Git
+          # refuse ce fetch : « shallow roots are not allowed to be updated ».
+          # L'historique complet rend aussi vérifiable le fast-forward avant
+          # que le service et le MSI installés soient touchés.
+          fetch-depth: 0
 
       - name: Expose Git Bash to composite actions
         # `dtolnay/rust-toolchain` possede ses propres etapes `shell: bash`.
