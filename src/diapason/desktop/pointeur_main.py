@@ -36,13 +36,34 @@ class ActionPointeur(str, Enum):
 class SeuilsPointeur:
     """Les nombres qui distinguent pointer, pincer et faire défiler."""
 
-    confiance_minimale: float = 0.6
+    # Vision baisse souvent la confiance des doigts REPLIÉS parce qu'ils se
+    # cachent les uns les autres. Exiger 0,6 sur leurs neuf points faisait
+    # perdre un index net dès qu'une phalange disparaissait. La position ne
+    # dépend donc que de l'index et des deux bases qui mesurent la paume ; les
+    # doigts secondaires ne servent qu'à confirmer la pose quand ils sont
+    # assez sûrs.
+    confiance_index_minimale: float = 0.45
+    confiance_pose_minimale: float = 0.25
+    confiance_pince_minimale: float = 0.40
     # Sur une vraie main, un doigt replié est autour de 0,85 largeur de
-    # paume et un doigt tendu autour de 1,73. L'intervalle entre les deux ne
-    # décide rien : mieux vaut figer le curseur qu'inventer un index.
-    index_tendu_min: float = 1.45
-    autres_replies_max: float = 1.25
+    # paume et un doigt tendu autour de 1,73. Pour acquérir le pointeur,
+    # l'index doit dépasser au moins deux autres doigts : cette différence
+    # refuse une paume ouverte sans imposer trois doigts parfaitement pliés.
+    index_tendu_min: float = 1.30
+    index_maintenu_min: float = 1.05
+    # Une valeur absolue sur les doigts repliés cassait dès que la main se
+    # tournait : la largeur APPARENTE de la paume rétrécit alors que les
+    # longueurs mesurées augmentent toutes. Leur différence avec l'index
+    # résiste à cette perspective ; 0,18 sépare encore une paume ouverte,
+    # où seul l'auriculaire est franchement plus court.
+    avantage_index_min: float = 0.18
+    autres_replies_requises: int = 2
+    autres_ouvertes_min: float = 1.50
     images_pointeur_stable: int = 3
+    # Sept images à 24 im/s. Une occlusion plus longue ne ressemble plus à
+    # un hoquet de Vision : le verrou est alors réellement abandonné et les
+    # trois images d'acquisition redeviennent obligatoires.
+    trou_de_suivi_s: float = 0.28
     images_pince_stable: int = 2
     pince_entree: float = 0.38
     pince_sortie: float = 0.55
@@ -90,7 +111,9 @@ class _MesurePointeur:
     pince: float
     index: float
     autres: tuple[float, float, float]
-    confiance: float
+    confiances_autres: tuple[float, float, float]
+    confiance_index: float
+    confiance_pince: float
 
 
 def _distance(a: Point, b: Point) -> float:
@@ -99,18 +122,8 @@ def _distance(a: Point, b: Point) -> float:
 
 def _mesurer(points: Sequence[Point]) -> Optional[_MesurePointeur]:
     par_nom = {point.nom: point for point in points}
-    noms = (
-        "indexMCP",
-        "indexTip",
-        "middleMCP",
-        "middleTip",
-        "ringMCP",
-        "ringTip",
-        "littleMCP",
-        "littleTip",
-        "thumbTip",
-    )
-    if any(nom not in par_nom for nom in noms):
+    noms_position = ("indexMCP", "indexTip", "littleMCP")
+    if any(nom not in par_nom for nom in noms_position):
         return None
     index_base = par_nom["indexMCP"]
     auriculaire_base = par_nom["littleMCP"]
@@ -118,17 +131,33 @@ def _mesurer(points: Sequence[Point]) -> Optional[_MesurePointeur]:
     if paume <= 1e-6:
         return None
     index = par_nom["indexTip"]
-    autres = tuple(
-        _distance(par_nom[f"{doigt}MCP"], par_nom[f"{doigt}Tip"]) / paume
-        for doigt in ("middle", "ring", "little")
-    )
+    autres: list[float] = []
+    confiances_autres: list[float] = []
+    for doigt in ("middle", "ring", "little"):
+        base = par_nom.get(f"{doigt}MCP")
+        bout = par_nom.get(f"{doigt}Tip")
+        if base is None or bout is None:
+            autres.append(float("inf"))
+            confiances_autres.append(0.0)
+            continue
+        autres.append(_distance(base, bout) / paume)
+        confiances_autres.append(min(base.confiance, bout.confiance))
+    pouce = par_nom.get("thumbTip")
     return _MesurePointeur(
         x=index.x,
         y=index.y,
-        pince=_distance(par_nom["thumbTip"], index) / paume,
+        pince=_distance(pouce, index) / paume if pouce is not None else float("inf"),
         index=_distance(index_base, index) / paume,
-        autres=autres,
-        confiance=min(par_nom[nom].confiance for nom in noms),
+        autres=tuple(autres),
+        confiances_autres=tuple(confiances_autres),
+        confiance_index=min(
+            index_base.confiance,
+            index.confiance,
+            auriculaire_base.confiance,
+        ),
+        confiance_pince=(
+            min(index.confiance, pouce.confiance) if pouce is not None else 0.0
+        ),
     )
 
 
@@ -152,6 +181,7 @@ class MoteurDePointeur:
         self._defile = False
         self._dernier_y_defilement: Optional[float] = None
         self._dernier_clic_a: Optional[float] = None
+        self._perdu_depuis: Optional[float] = None
 
     def reinitialiser(self) -> None:
         """Oublier une main perdue sans transformer sa disparition en clic."""
@@ -163,6 +193,71 @@ class MoteurDePointeur:
         self._pince_a = 0.0
         self._defile = False
         self._dernier_y_defilement = None
+        self._dernier_clic_a = None
+        self._perdu_depuis = None
+
+    def _annuler_pincement(self) -> None:
+        """Une mesure douteuse interrompt l'action sans simuler un relâchement."""
+        self._pince = False
+        self._images_pince = 0
+        self._pince_a = 0.0
+        self._defile = False
+        self._dernier_y_defilement = None
+
+    def _pose_d_acquisition(self, mesure: _MesurePointeur) -> bool:
+        """Exiger un index dominant avant de prendre le contrôle."""
+        s = self.seuils
+        if (
+            mesure.confiance_index < s.confiance_index_minimale
+            or mesure.index < s.index_tendu_min
+        ):
+            return False
+        replies = sum(
+            confiance >= s.confiance_pose_minimale
+            and mesure.index - ratio >= s.avantage_index_min
+            for ratio, confiance in zip(
+                mesure.autres, mesure.confiances_autres, strict=True
+            )
+        )
+        return replies >= s.autres_replies_requises
+
+    def _pose_de_maintien(self, mesure: _MesurePointeur) -> bool:
+        """Tolérer un doigt secondaire incertain, mais jamais une paume nette."""
+        s = self.seuils
+        if (
+            mesure.confiance_index < s.confiance_index_minimale * 0.7
+            or mesure.index < s.index_maintenu_min
+        ):
+            return False
+        autres_ouverts = sum(
+            confiance >= s.confiance_pose_minimale
+            and ratio >= s.autres_ouvertes_min
+            and ratio >= mesure.index - s.avantage_index_min
+            for ratio, confiance in zip(
+                mesure.autres, mesure.confiances_autres, strict=True
+            )
+        )
+        return autres_ouverts < 2
+
+    def _sans_pointeur(self, maintenant: float) -> LecturePointeur:
+        """Traverser une brève occlusion sans garder une action armée."""
+        acquis = self._images_pointeur >= self.seuils.images_pointeur_stable
+        self._annuler_pincement()
+        # Une discontinuité visuelle sépare aussi deux clics : le second ne
+        # doit jamais devenir un double-clic sur la base d'une main perdue.
+        self._dernier_clic_a = None
+        if not acquis:
+            self.reinitialiser()
+        else:
+            if self._perdu_depuis is None:
+                self._perdu_depuis = maintenant
+            elif maintenant - self._perdu_depuis >= self.seuils.trou_de_suivi_s:
+                self.reinitialiser()
+        return LecturePointeur(
+            actif=False,
+            x=self._x_lisse,
+            y=self._y_lisse,
+        )
 
     def _position(self, mesure: _MesurePointeur) -> tuple[float, float]:
         s = self.seuils
@@ -189,20 +284,31 @@ class MoteurDePointeur:
         maintenant = time.monotonic() if maintenant is None else maintenant
         mesure = _mesurer(points or ())
         s = self.seuils
-        pointe = bool(
-            mesure is not None
-            and mesure.confiance >= s.confiance_minimale
-            and mesure.index >= s.index_tendu_min
-            and all(repli <= s.autres_replies_max for repli in mesure.autres)
+        acquis = self._images_pointeur >= s.images_pointeur_stable
+        pointe = mesure is not None and (
+            self._pose_d_acquisition(mesure)
+            or (acquis and self._pose_de_maintien(mesure))
         )
         if not pointe or mesure is None:
-            self.reinitialiser()
-            return LecturePointeur(actif=False)
+            return self._sans_pointeur(maintenant)
 
-        self._images_pointeur += 1
+        self._perdu_depuis = None
+        if not acquis:
+            self._images_pointeur += 1
         x, y = self._position(mesure)
         if self._images_pointeur < s.images_pointeur_stable:
             return LecturePointeur(actif=False, x=x, y=y)
+
+        if mesure.confiance_pince < s.confiance_pince_minimale:
+            # Une disparition du pouce n'est ni un contact ni un relâchement.
+            # Annuler évite qu'il réapparaisse en déclenchant un clic fantôme.
+            self._annuler_pincement()
+            return LecturePointeur(
+                actif=True,
+                action=ActionPointeur.DEPLACER,
+                x=x,
+                y=y,
+            )
 
         pince_maintenant = mesure.pince <= (
             s.pince_sortie if self._pince else s.pince_entree

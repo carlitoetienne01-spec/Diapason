@@ -19,10 +19,10 @@ pendant le suivi du pointeur.
 | Pièce | État | Mesure |
 |---|---|---|
 | **Détection de main** (`desktop/vision_mains.py`) | ✅ | **4 ms par image** en taille caméra, soit 230 images/s possibles. Sur le Neural Engine : le créneau Ollama n'est pas touché. |
-| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 9 tests sur la pose, le clic, le double-clic, le défilement et les annulations. |
+| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 16 tests sur la pose, les pertes brèves, le clic, le double-clic, le défilement et les annulations. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s pendant un transfert, 24 pendant un pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé. |
-| **Curseur, clic, ouverture, défilement** | ⚠️ automatisé | Mode séparé macOS : Core Graphics, demande Accessibilité réelle, 9 tests Python, 4 tests Rust et bancs frontend. Reste le banc physique après reconstruction. |
+| **Curseur, clic, ouverture, défilement** | ⚠️ premier banc physique | Mode séparé macOS : Core Graphics et demande Accessibilité confirmés sur la machine réelle, 16 tests Python, 4 tests Rust et bancs frontend. La correction de continuité du suivi reste à confirmer par un second essai physique. |
 | **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
 | **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, réception automatique par un pair `TRUSTED`, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
@@ -148,8 +148,10 @@ un **mode explicite** choisi dans le panneau Gestes. Cette séparation est la
 protection principale : quand `mode = POINTER`, `/frame` rend avant toute
 ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
 
-1. L'index seul tendu pendant trois images active le pointeur. Les trois
-   autres doigts doivent rester repliés ; une paume ouverte ne bouge rien.
+1. Un index qui dépasse au moins deux autres doigts pendant trois images
+   active le pointeur. Les doigts repliés se cachent souvent dans Vision : un
+   seul point incertain ne casse donc plus la pose, tandis qu'une paume
+   ouverte nette ne bouge rien.
 2. La position de l'index est lissée et ramenée sur l'écran principal. Les
    marges de la caméra permettent d'atteindre les bords sans sortir la main du
    champ.
@@ -157,8 +159,10 @@ ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
    Deux pincements rapprochés portent un état de double-clic natif : Finder
    ouvre alors le fichier ou le dossier comme avec la souris.
 4. Après 380 ms de pincement, le même mouvement devient un défilement ; la
-   libération ne clique pas. Perdre la main ou fermer le poing fige le curseur
-   et annule le pincement en cours.
+   libération ne clique pas. Une occlusion brève fige le curseur et reprend
+   dès l'image suivante, sans trois nouvelles confirmations. Après 280 ms, la
+   main est réellement déclarée perdue et doit être acquise de nouveau. Dans
+   les deux cas, tout pincement en cours est annulé sans produire de clic.
 
 L'application Tauri applique l'intention avec Core Graphics. Elle vérifie
 `CGPreflightPostEventAccess` avant le premier mouvement et ouvre la demande
