@@ -482,15 +482,105 @@ export function RichNoteEditor({
     [],
   );
 
+  /**
+   * Où se trouve le caret, dans un repère qui survit à la pose des cales.
+   *
+   * Ni le nœud ni le décalage ne survivent : poser une cale insère un élément
+   * DANS un paragraphe et scinde ses nœuds texte. On enregistre donc l'INDEX
+   * du bloc de premier niveau et le rang du caractère dans le texte de ce
+   * bloc — deux nombres, qui ne dépendent d'aucun nœud.
+   *
+   * Signalé par Carlito le 30 août 2026 : « si je change de format de page, le
+   * curseur bogue, il reste entremêlé avec du texte ». Changer de format
+   * repagine, donc retire et repose toutes les cales sous le caret.
+   */
+  const ouEstLeCaret = (editor: HTMLElement): { bloc: number; rang: number } | null => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const plage = selection.getRangeAt(0);
+    if (!editor.contains(plage.startContainer)) return null;
+    const blocs = Array.from(editor.children).filter(
+      (e) => !e.classList.contains(OVERFLOW_GAP_CLASS),
+    );
+    for (let i = 0; i < blocs.length; i++) {
+      if (!blocs[i].contains(plage.startContainer)) continue;
+      const avant = plage.cloneRange();
+      avant.selectNodeContents(blocs[i]);
+      avant.setEnd(plage.startContainer, plage.startOffset);
+      return { bloc: i, rang: avant.toString().length };
+    }
+    return null;
+  };
+
+  const remettreLeCaret = (
+    editor: HTMLElement,
+    place: { bloc: number; rang: number } | null,
+  ) => {
+    if (!place) return;
+    const blocs = Array.from(editor.children).filter(
+      (e) => !e.classList.contains(OVERFLOW_GAP_CLASS),
+    );
+    const bloc = blocs[place.bloc];
+    if (!bloc) return;
+    const marcheur = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
+    let reste = place.rang;
+    let noeud = marcheur.nextNode() as Text | null;
+    while (noeud) {
+      // Le texte d'une cale ne compte pas : elle est vide, mais un futur
+      // contenu décalerait le rang sans que personne ne s'en aperçoive.
+      const dansUneCale = (noeud.parentElement as HTMLElement | null)?.closest(
+        `.${OVERFLOW_GAP_CLASS}`,
+      );
+      if (!dansUneCale) {
+        if (reste <= noeud.data.length) {
+          const plage = document.createRange();
+          plage.setStart(noeud, reste);
+          plage.collapse(true);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(plage);
+          return;
+        }
+        reste -= noeud.data.length;
+      }
+      noeud = marcheur.nextNode() as Text | null;
+    }
+  };
+
+  /**
+   * Réserver dans le layout la hauteur RÉELLEMENT occupée par la feuille.
+   *
+   * `transform: scale()` ne change pas la boîte de layout : sans cette
+   * hauteur écrite à la main, le bureau défilerait sur la hauteur NON mise à
+   * l'échelle et laisserait un grand vide sous la dernière page. Mesuré :
+   * 61 385 px réservés pour 39 878 réels.
+   *
+   * Appelée depuis les DEUX endroits qui la rendent fausse — la pagination,
+   * qui change la hauteur, et le zoom, qui change le facteur. La première
+   * version n'était appelée que par la pagination, et écrivait donc la
+   * hauteur d'un zoom de 1 avant que le zoom ne soit calculé.
+   */
+  const reserverLaHauteur = () => {
+    const frame = frameRef.current;
+    const scale = pageRef.current?.parentElement;
+    if (!frame || !scale) return;
+    frame.style.height = `${scale.offsetHeight * zoomRef.current}px`;
+  };
+
   const paginate = () => {
     const page = pageRef.current;
     const editor = editorRef.current;
     if (!page || !editor) return;
+    // Le caret n'est remis que s'il était DANS l'éditeur : le replacer alors
+    // qu'on tape ailleurs volerait le focus à un champ de la barre.
+    const place = editor.contains(document.activeElement) ? ouEstLeCaret(editor) : null;
     applyingGaps.current = true;
     suppressObserverUntil.current = Date.now() + 150;
     try {
       const feuilles = applyOverflowGaps(editor, page, zoomRef.current);
       onPageCount?.(feuilles);
+      reserverLaHauteur();
+      remettreLeCaret(editor, place);
     } finally {
       applyingGaps.current = false;
     }
@@ -574,6 +664,7 @@ export function RichNoteEditor({
       if (Math.abs(zoom - zoomRef.current) < 0.001) return;
       zoomRef.current = zoom;
       frame.style.setProperty('--note-zoom', String(zoom));
+      reserverLaHauteur();
       // La pagination se mesure en unités de LAYOUT, que le zoom ne touche
       // pas : elle n'a donc pas à être refaite. Seuls les rectangles de ligne
       // en dépendent, et ils sont relus au prochain passage.
@@ -590,6 +681,11 @@ export function RichNoteEditor({
     const page = pageRef.current;
     if (!page || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
+      // La hauteur réservée suit TOUJOURS, même quand on ne repagine pas :
+      // c'est elle qui borne le défilement du bureau, et la laisser en retard
+      // ajoute du vide sous la dernière page (mesuré : 1 250 px, soit une
+      // page et quart).
+      reserverLaHauteur();
       if (Date.now() < suppressObserverUntil.current) return;
       paginate();
     });
@@ -1052,15 +1148,18 @@ export function RichNoteEditor({
         {/* Le cadre réserve la place réellement occupée : `transform: scale()`
             ne change pas la boîte de layout, donc sans lui le bureau ne
             défilerait pas quand la page dépasse. */}
-        <div ref={frameRef} className="succes-note-frame">
-          <div className="succes-note-scale">
         <div
-          ref={pageRef}
-          className={`succes-note-page succes-note-bg-${pageBackground}`}
+          ref={frameRef}
+          className="succes-note-frame"
           data-size={mise.size}
           data-orientation={mise.orientation}
           data-margins={mise.margins}
           data-font={fontFamily}
+        >
+          <div className="succes-note-scale">
+        <div
+          ref={pageRef}
+          className={`succes-note-page succes-note-bg-${pageBackground}`}
         >
           <div
             ref={editorRef}
