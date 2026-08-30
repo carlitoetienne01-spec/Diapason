@@ -11,8 +11,10 @@ def _cfg(**kwargs) -> ClapConfig:
     base = dict(
         spike_ratio=5.0,
         cooldown_s=0.2,
-        min_double_gap_s=0.05,
+        min_double_gap_s=0.12,
         max_double_gap_s=0.35,
+        similarite_min=0.45,
+        similarite_max=2.2,
         retrigger_ratio=0.55,
         descente_alpha=0.90,
         min_rms=0.01,
@@ -53,7 +55,30 @@ def test_gap_too_large_starts_new_pair():
     t = _feed_quiet(det, 0.0)
     assert _clap_pulse(det, t + 0.1) is False
     assert _clap_pulse(det, t + 0.1 + 0.50) is False
-    assert _clap_pulse(det, t + 0.1 + 0.50 + 0.12) is True
+    # 150 ms > min (120 ms) : marge pour les erreurs de flottant sur
+    # l'horloge de test (0,12 pile se lisait 0,1199… et était refusé).
+    assert _clap_pulse(det, t + 0.1 + 0.50 + 0.15) is True
+
+
+def test_la_queue_d_un_seul_son_ne_fait_pas_un_double():
+    """Attaque + réverbération d'UN choc ouvraient la caméra (29 août 2026)."""
+    det = ClapDetector(cfg=_cfg(), noise_floor=0.002)
+    t = _feed_quiet(det, 0.0)
+    assert _clap_pulse(det, t + 0.1, peak=0.25) is False
+    # 80 ms : encore la queue du même son, sous le minimum d'écart.
+    assert det.process(0.18, t + 0.1 + 0.08) is False
+    assert "gap_too_small" in (det.last_miss_reason or "")
+    det.process(0.001, t + 0.1 + 0.10)
+    assert det.process(0.001, t + 0.1 + 0.40) is False
+
+
+def test_deux_bruits_de_niveaux_trop_differents_sont_refuses():
+    """Un clavier puis une chaise dans la fenêtre n'est pas un double-clap."""
+    det = ClapDetector(cfg=_cfg(), noise_floor=0.002)
+    t = _feed_quiet(det, 0.0)
+    assert _clap_pulse(det, t + 0.1, peak=0.40) is False
+    assert det.process(0.08, t + 0.1 + 0.18) is False
+    assert "amplitude_mismatch" in (det.last_miss_reason or "")
 
 
 def test_local_trigger_emit(tmp_path):
@@ -272,6 +297,36 @@ class TestLaMesureNeSeLaissePasDeplacer:
         # tomberait sous celui d'usine.
         ecoute = Ecoute(piece=piece, claps=[0.12, 0.13, 0.14], ecartes=[])
         assert reglage_calibre(ecoute).min_rms >= ClapConfig().min_rms
+
+    def test_un_vieux_json_ne_restaure_pas_les_ecarts_trop_larges(
+        self, tmp_path, monkeypatch
+    ):
+        """Un claps.json du 25 août gardait 40 ms / 800 ms et réouvrait
+        le défaut dès le redémarrage (29 août 2026)."""
+        import json
+
+        from diapason.speech import clap_listener as cl
+
+        fichier = tmp_path / "claps.json"
+        fichier.write_text(
+            json.dumps(
+                {
+                    "min_rms": 0.1352,
+                    "min_double_gap_s": 0.04,
+                    "max_double_gap_s": 0.8,
+                    "spike_ratio": 8.0,
+                    "retrigger_ratio": 0.8,
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(cl, "chemin_reglage_claps", lambda: fichier)
+        cfg = cl.charger_reglage_claps()
+        assert cfg.min_rms == 0.1352, "le plancher calibré doit rester"
+        assert cfg.min_double_gap_s == ClapConfig().min_double_gap_s
+        assert cfg.max_double_gap_s == ClapConfig().max_double_gap_s
+        assert cfg.spike_ratio == ClapConfig().spike_ratio
+        assert cfg.similarite_min == ClapConfig().similarite_min
 
     def test_un_seul_son_fort_ne_suffit_pas_a_calibrer(self):
         from diapason.speech.clap_listener import Ecoute, reglage_calibre

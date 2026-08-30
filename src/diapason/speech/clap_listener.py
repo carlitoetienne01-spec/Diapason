@@ -22,12 +22,22 @@ class ClapConfig:
     # le 25 août 2026, la pièce de Carlito au repos vit entre 0,005 et 0,015,
     # soit AU-DESSUS de ce plancher. Le silence lui-même franchissait le
     # seuil — cinq « claps » en huit secondes sans que personne ne bouge.
-    spike_ratio: float = 8.0
-    min_rms: float = 0.05
-    cooldown_s: float = 0.35
-    min_double_gap_s: float = 0.04
-    max_double_gap_s: float = 0.80
-    retrigger_ratio: float = 0.80
+    spike_ratio: float = 10.0
+    min_rms: float = 0.08
+    cooldown_s: float = 0.45
+    # 40 ms laissait l'attaque et la queue d'UN seul son compter pour deux
+    # claps (29 août 2026) : n'importe quel choc ouvrait la caméra. 120 ms
+    # sépare deux gestes ; 450 ms refuse deux bruits fortuits trop éloignés
+    # pour être un double-clap volontaire (l'ancien plafond à 800 ms les
+    # acceptait).
+    min_double_gap_s: float = 0.12
+    max_double_gap_s: float = 0.45
+    # Deux claps de la même main se ressemblent. Un clavier puis une chaise
+    # n'ont aucune raison d'avoir le même niveau — exiger un rapport borné
+    # écarte ces couples sans empêcher un double-clap un peu irrégulier.
+    similarite_min: float = 0.45
+    similarite_max: float = 2.2
+    retrigger_ratio: float = 0.65
     # Le fond sonore retombe vite et ne monte que lentement : un clap dure
     # un bloc et ne doit pas soulever le plancher qu'il vient de franchir.
     descente_alpha: float = 0.90
@@ -46,6 +56,7 @@ class ClapDetector:
     noise_floor: float = 1e-4
     last_logged_double: float = 0.0
     first_clap_time: float | None = None
+    first_clap_peak: float = 0.0
     spike_armed: bool = True
     last_miss_reason: str | None = None
     # Ce que le micro ENTEND, même quand aucun double ne se forme.
@@ -99,20 +110,34 @@ class ClapDetector:
         self.dernier_clap_a = now
         if self.first_clap_time is None:
             self.first_clap_time = now
+            self.first_clap_peak = level
             return False
 
         gap = now - self.first_clap_time
         if gap < cfg.min_double_gap_s:
+            # Trop tôt : c'est encore la queue du premier son, pas un second
+            # clap. On garde le premier et on attend la vraie reprise.
             self.last_miss_reason = f"gap_too_small={gap:.3f}s"
             return False
-        if gap <= cfg.max_double_gap_s:
-            self.first_clap_time = None
-            self.last_logged_double = now
-            return True
+        if gap > cfg.max_double_gap_s:
+            self.last_miss_reason = f"gap_too_large={gap:.3f}s_new_first"
+            self.first_clap_time = now
+            self.first_clap_peak = level
+            return False
 
-        self.last_miss_reason = f"gap_too_large={gap:.3f}s_new_first"
-        self.first_clap_time = now
-        return False
+        rapport = level / max(self.first_clap_peak, 1e-7)
+        if not (cfg.similarite_min <= rapport <= cfg.similarite_max):
+            # Deux bruits différents dans la fenêtre, pas deux claps de la
+            # même main. Le second devient le nouveau premier.
+            self.last_miss_reason = f"amplitude_mismatch={rapport:.2f}"
+            self.first_clap_time = now
+            self.first_clap_peak = level
+            return False
+
+        self.first_clap_time = None
+        self.first_clap_peak = 0.0
+        self.last_logged_double = now
+        return True
 
     @property
     def threshold(self) -> float:
@@ -269,15 +294,37 @@ def chemin_reglage_claps() -> "Path":
 
 
 def charger_reglage_claps() -> ClapConfig:
-    """Le réglage de CETTE pièce — celui d'usine si rien n'est calibré."""
-    import json
+    """Le réglage de CETTE pièce — celui d'usine si rien n'est calibré.
 
+    Le ``min_rms`` calibré est conservé. Les écarts et la similarité, eux,
+    sont ceux d'usine à chaque lecture : un ``claps.json`` du 25 août 2026
+    gardait ``max_double_gap_s=0.80`` et ``min_double_gap_s=0.04``, et deux
+    bruits fortuits — ou l'attaque et la queue d'UN seul choc — ouvraient
+    la caméra (29 août 2026).
+    """
+    import json
+    from dataclasses import replace
+
+    usine = ClapConfig()
     try:
         brut = json.loads(chemin_reglage_claps().read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return ClapConfig()
+        return usine
     connus = set(ClapConfig.__dataclass_fields__)
-    return ClapConfig(**{k: v for k, v in brut.items() if k in connus})
+    charges = {k: v for k, v in brut.items() if k in connus}
+    # Ces champs ne se calibrent pas au micro : les laisser venir du fichier
+    # réintroduisait le défaut dès qu'un vieux JSON survivait.
+    for cle in (
+        "min_double_gap_s",
+        "max_double_gap_s",
+        "similarite_min",
+        "similarite_max",
+        "spike_ratio",
+        "retrigger_ratio",
+        "cooldown_s",
+    ):
+        charges.pop(cle, None)
+    return replace(usine, **charges)
 
 
 def enregistrer_reglage_claps(cfg: ClapConfig) -> None:
