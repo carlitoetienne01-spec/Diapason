@@ -86,6 +86,7 @@ export function SuccesNotesPage() {
   const [view, setView] = useState<'list' | 'editor'>('list');
   const [activeId, setActiveId] = useState<string | null>(null);
 
+
   // Le référent de « cette note » (handoff, 25/08/2026).
   const noteOuverte = notes.find((note) => note.id === activeId) ?? null;
   useContexteVue(
@@ -403,7 +404,21 @@ export function SuccesNotesPage() {
   };
 
   const wordCount = countNoteWords(draftContent);
-  const draftPages = countNotePages(draftContent, meta.pageFormat);
+  // Le compte que l'ÉDITEUR remonte après avoir posé ses cales. `null` tant
+  // qu'il n'a pas encore mesuré — au premier rendu, et pour une note vide.
+  // `countNotePages` ne sert alors que de valeur d'attente : il compte des
+  // caractères, et affichait « 20 pages » sous un éditeur qui en dessinait 43.
+  const [feuillesMesurees, setFeuillesMesurees] = useState<number | null>(null);
+  // PAS de remise à zéro par `useEffect` sur `activeId` : `useLayoutEffect`
+  // — donc la pagination de l'éditeur, donc `onPageCount` — s'exécute AVANT
+  // les `useEffect`. Une remise à zéro écrite là efface le compte à l'instant
+  // même où il arrive, et le pied de page reste éternellement sur
+  // l'estimation. Constaté ici : 20 pages affichées pour 43 feuilles, malgré
+  // un câblage par ailleurs correct.
+  //
+  // L'éditeur remonte son compte à chaque pagination, montage compris : la
+  // valeur se corrige d'elle-même dans la même passe de rendu.
+  const draftPages = feuillesMesurees ?? countNotePages(draftContent, meta.pageFormat);
   const langLabel = NOTE_DOC_LANGS.find((item) => item.id === meta.docLang)?.label ?? 'Français (France)';
 
   if (view === 'editor') {
@@ -480,6 +495,7 @@ export function SuccesNotesPage() {
             fontFamily={meta.fontFamily}
             docLang={meta.docLang}
             color={meta.color}
+            onPageCount={setFeuillesMesurees}
             onContentChange={(html) => {
               setDraftContent(html);
               scheduleAutoSave();

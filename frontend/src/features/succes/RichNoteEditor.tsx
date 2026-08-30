@@ -76,6 +76,14 @@ type Props = {
     color?: string;
   }) => void;
   editorKey: string;
+  /**
+   * Le nombre RÉEL de feuilles dessinées, remonté après chaque pagination.
+   *
+   * Le pied de page affichait jusqu'ici une estimation par volume de texte,
+   * juste sous un éditeur qui, lui, mesure : « 20 pages » sous 43 feuilles,
+   * relevé sur une vraie note. Seul l'éditeur sait combien il en a dessiné.
+   */
+  onPageCount?: (feuilles: number) => void;
 };
 
 function runCommand(command: string, value?: string) {
@@ -291,7 +299,12 @@ function offsetDepuis(el: HTMLElement, editor: HTMLElement): number {
   return total;
 }
 
-function applyOverflowGaps(editor: HTMLElement, page: HTMLElement, zoom: number) {
+/** Combien de feuilles la pose de cales vient de dessiner. */
+function applyOverflowGaps(
+  editor: HTMLElement,
+  page: HTMLElement,
+  zoom: number,
+): number {
   const style = getComputedStyle(page);
   const pageHeight = cssLengthToPx(
     style.getPropertyValue('--note-page-height'),
@@ -304,7 +317,7 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement, zoom: number)
   const margeBas = cssLengthToPx(style.getPropertyValue('--note-m-b'), 96);
   const margin = margeBas;
   const contentHeight = pageHeight - margeHaut - margeBas;
-  if (contentHeight < 80) return;
+  if (contentHeight < 80) return 1;
   editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((node) => node.remove());
   const collected = measuredBlocks(editor, zoom);
   // `lines` DOIT traverser : sans lui, `peutSeCouper` rend toujours faux et
@@ -342,6 +355,9 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement, zoom: number)
     range.collapse(true);
     range.insertNode(makeInlineGap(hauteur, gap.fill, margin));
   }
+  // Chaque cale est une frontière de page ; il y a toujours une feuille de
+  // plus que de frontières.
+  return plan.length + 1;
 }
 
 export function RichNoteEditor({
@@ -356,6 +372,7 @@ export function RichNoteEditor({
   color,
   onContentChange,
   onMetaChange,
+  onPageCount,
   editorKey,
 }: Props) {
   // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
@@ -446,7 +463,8 @@ export function RichNoteEditor({
     applyingGaps.current = true;
     suppressObserverUntil.current = Date.now() + 150;
     try {
-      applyOverflowGaps(editor, page, zoomRef.current);
+      const feuilles = applyOverflowGaps(editor, page, zoomRef.current);
+      onPageCount?.(feuilles);
     } finally {
       applyingGaps.current = false;
     }

@@ -29,8 +29,14 @@ const PAGE_CAPACITY: Record<SuccesNotePageFormat, number> = {
 const BREAK_SPLIT = /<hr[^>]*class=["'][^"']*succes-page-break[^"']*["'][^>]*>/gi;
 
 /**
- * Estimate how many pages a note fills. Manual page breaks always start a new
- * page; within each chunk the text volume decides how many pages it spills onto.
+ * Une ESTIMATION du nombre de pages, à partir du volume de texte.
+ *
+ * Réservée à la LISTE des notes, où rien n'est monté et où l'on ne peut donc
+ * rien mesurer. Le pied de page de l'éditeur, lui, doit prendre le compte
+ * RÉEL que l'éditeur remonte : les deux ne coïncident pas, et le 30 août 2026
+ * une note affichait « 20 pages » sous un éditeur qui en dessinait 43. Un
+ * compte de caractères ne sait rien des titres, des tableaux, des images ni
+ * des sauts que la mise en page impose (§100).
  */
 export function countNotePages(
   content: string,
@@ -44,14 +50,6 @@ export function countNotePages(
     pages += Math.max(1, Math.ceil(length / capacity));
   }
   return Math.max(1, pages);
-}
-
-/** Sheets drawn inside the folder: one per page, capped at three. */
-export function noteSheetCount(
-  content: string,
-  pageFormat: SuccesNotePageFormat = 'a4',
-): 1 | 2 | 3 {
-  return Math.min(3, countNotePages(content, pageFormat)) as 1 | 2 | 3;
 }
 
 export function cssLengthToPx(value: string, fallback: number): number {

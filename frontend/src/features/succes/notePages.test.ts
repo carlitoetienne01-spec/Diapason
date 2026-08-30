@@ -189,6 +189,37 @@ describe('overflowGapPlan', () => {
   });
 });
 
+describe('le compte de feuilles suit le plan de coupe', () => {
+  it('une feuille de plus que de coupes — toujours', () => {
+    // Le pied de page comptait des CARACTÈRES, juste sous un éditeur qui
+    // mesure : « 20 pages » relevé sous 43 feuilles réellement dessinées, sur
+    // une vraie note. Le seul compte juste est celui du plan (§100).
+    for (const lignes of [40, 80, 200, 400]) {
+      const blocs = Array.from({ length: lignes }, (_, i) => para(i * LIGNE, 1));
+      const plan = overflowGapPlan(blocs, A4, GUTTER, MARGIN);
+      const feuilles = plan.length + 1;
+      const attendu = Math.ceil((lignes * LIGNE) / A4);
+      // Une feuille près : une grappe solidaire peut en ajouter une.
+      expect(Math.abs(feuilles - attendu)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('un document qui tient sur une page ne compte qu’une feuille', () => {
+    const blocs = Array.from({ length: 37 }, (_, i) => para(i * LIGNE, 1));
+    expect(overflowGapPlan(blocs, A4, GUTTER, MARGIN).length + 1).toBe(1);
+  });
+
+  it('un saut manuel compte comme une feuille de plus', () => {
+    const plan = overflowGapPlan(
+      [para(0, 2), { top: 2 * LIGNE, height: 28, kind: 'break' }, para(3 * LIGNE, 2)],
+      A4,
+      GUTTER,
+      MARGIN,
+    );
+    expect(plan.length + 1).toBe(2);
+  });
+});
+
 describe('countNotePages', () => {
   it('compte un saut de page comme une nouvelle feuille', () => {
     expect(countNotePages(`abc${PAGE_BREAK_HTML}def`)).toBe(2);
