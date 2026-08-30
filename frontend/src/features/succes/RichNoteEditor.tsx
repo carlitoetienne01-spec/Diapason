@@ -5,16 +5,22 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Code,
+  Eraser,
   Heading1,
   Heading2,
   Heading3,
   Highlighter,
   Italic,
   List,
+  Link2,
   ListOrdered,
   Minus,
+  Quote,
   Redo2,
   Scissors,
+  Strikethrough,
+  Table,
   Underline,
   Undo2,
 } from 'lucide-react';
@@ -456,6 +462,26 @@ export function RichNoteEditor({
     emitContent();
   };
 
+  const paginationEnAttente = useRef<number | null>(null);
+
+  /** Repaginer à la prochaine image, une seule fois pour toute une rafale. */
+  const paginerBientot = () => {
+    if (paginationEnAttente.current !== null) return;
+    paginationEnAttente.current = requestAnimationFrame(() => {
+      paginationEnAttente.current = null;
+      paginate();
+    });
+  };
+
+  useEffect(
+    () => () => {
+      if (paginationEnAttente.current !== null) {
+        cancelAnimationFrame(paginationEnAttente.current);
+      }
+    },
+    [],
+  );
+
   const paginate = () => {
     const page = pageRef.current;
     const editor = editorRef.current;
@@ -470,6 +496,13 @@ export function RichNoteEditor({
     }
   };
 
+  // Remonter le CONTENU : seulement au changement de note.
+  //
+  // Cet effet dépendait aussi du format et de la police, et il réaffecte
+  // `editor.innerHTML`. Changer de police effaçait donc tout l'historique
+  // d'annulation du navigateur — alors que ni le format ni la police
+  // n'entrent dans le HTML : ils ne passent que par des variables CSS et un
+  // attribut. Il n'y avait aucune raison de réécrire le document.
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -478,7 +511,12 @@ export function RichNoteEditor({
       editor.innerHTML = sanitized;
     }
     paginate();
-  }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+  }, [editorKey]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+
+  // Repaginer quand la mise en page change — sans toucher au HTML.
+  useLayoutEffect(() => {
+    paginate();
+  }, [pageFormat, pageSize, pageOrientation, pageMargins, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- la géométrie change, le document non
 
   // L'encre du papier courant. Sans cette lecture, la pastille de couleur
   // proposerait toujours #1A2232 — la couleur exacte du papier du fond
@@ -559,12 +597,59 @@ export function RichNoteEditor({
     return () => observer.disconnect();
   }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins]);
 
+  /**
+   * Publier le contenu, SANS repaginer dans la foulée.
+   *
+   * `paginate()` était appelé ici, donc à CHAQUE caractère frappé. Il fait des
+   * `insertBefore` et des `remove` directement dans le DOM — et MDN est
+   * explicite : `execCommand` préserve la pile d'annulation « contrairement à
+   * la manipulation directe du DOM ». Les boutons Annuler et Rétablir
+   * opéraient donc sur une pile détruite en permanence, et une cale insérée
+   * devant le bloc du caret le déplaçait en pleine frappe.
+   *
+   * La pagination est désormais différée à la prochaine image : elle ne se
+   * produit qu'une fois la rafale de frappe retombée.
+   */
   const emitContent = () => {
     if (applyingGaps.current) return;
     const editor = editorRef.current;
     if (!editor) return;
     onContentChange(sanitizeNoteHtml(editor.innerHTML));
-    paginate();
+    paginerBientot();
+  };
+
+  /**
+   * Six outils manquaient pour des balises que le nettoyeur accepte DÉJÀ.
+   *
+   * `noteSanitize.ts` autorise `A`, `TABLE`, `BLOCKQUOTE`, `PRE`, `CODE`,
+   * `S`/`STRIKE`/`DEL` — parce qu'un collage depuis une autre application en
+   * produit. Mais la barre n'offrait aucun bouton pour les créer : on pouvait
+   * les recevoir, jamais les écrire. §5, dans sa forme la plus littérale.
+   */
+  const insererUnLien = () => {
+    rendreLaSelection();
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const url = window.prompt('Adresse du lien');
+    if (!url) return;
+    // Refuser tout ce qui n'est pas http(s) : `javascript:` dans un
+    // contenteditable est une exécution de script à un clic.
+    if (!/^https?:\/\//i.test(url.trim())) {
+      window.alert("Seules les adresses http:// et https:// sont acceptées.");
+      return;
+    }
+    runCommand('createLink', url.trim());
+    emitContent();
+  };
+
+  const insererUnTableau = () => {
+    rendreLaSelection();
+    const lignes = 3;
+    const colonnes = 3;
+    const cellule = '<td><br></td>'.repeat(colonnes);
+    const corps = `<tr>${cellule}</tr>`.repeat(lignes);
+    runCommand('insertHTML', `<table><tbody>${corps}</tbody></table><p><br></p>`);
+    emitContent();
   };
 
   /** Forces a new page in the folder icon's sheet count. */
@@ -573,6 +658,66 @@ export function RichNoteEditor({
     runCommand('insertHTML', PAGE_BREAK_HTML);
     emitContent();
   };
+
+  // ─── L'état de la barre : ce que Word dit et que nous ne disions pas ────
+  //
+  // Aucun `queryCommandState` n'existait dans toute cette fonctionnalité : la
+  // barre ne montrait jamais si le gras, l'italique ou une liste étaient en
+  // cours. On ne pouvait le savoir qu'en regardant le texte.
+  const [etats, setEtats] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const COMMANDES = [
+      'bold',
+      'italic',
+      'underline',
+      'strikeThrough',
+      'justifyLeft',
+      'justifyCenter',
+      'justifyRight',
+      'justifyFull',
+      'insertUnorderedList',
+      'insertOrderedList',
+    ];
+    const relire = () => {
+      const editor = editorRef.current;
+      const selection = window.getSelection();
+      // Ne rien dire quand la sélection est ailleurs : une barre qui décrit
+      // l'état d'un autre champ est pire qu'une barre muette.
+      if (
+        !editor ||
+        !selection ||
+        selection.rangeCount === 0 ||
+        !editor.contains(selection.getRangeAt(0).commonAncestorContainer)
+      ) {
+        setEtats({});
+        return;
+      }
+      const suivant: Record<string, boolean> = {};
+      for (const commande of COMMANDES) {
+        try {
+          suivant[commande] = document.queryCommandState(commande);
+        } catch {
+          // `queryCommandState` est déprécié comme `execCommand` : une
+          // commande refusée ne doit pas emporter les neuf autres.
+          suivant[commande] = false;
+        }
+      }
+      setEtats(suivant);
+    };
+    document.addEventListener('selectionchange', relire);
+    return () => document.removeEventListener('selectionchange', relire);
+  }, []);
+
+  /** Le style d'un bouton, teinté quand la commande est active. */
+  const styleBouton = (commande?: string) =>
+    commande && etats[commande]
+      ? {
+          ...toolbarBtnStyle,
+          background: 'var(--color-accent)',
+          color: 'var(--color-bg)',
+        }
+      : toolbarBtnStyle;
 
   const toolbarBtn =
     'size-8 rounded-lg flex items-center justify-center cursor-pointer shrink-0';
@@ -587,30 +732,96 @@ export function RichNoteEditor({
         className="flex flex-wrap items-center gap-1 rounded-xl p-2"
         style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
       >
-        <button type="button" title="Annuler" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('undo')}>
+        <button type="button" title="Annuler" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => { runCommand('undo'); emitContent(); }}>
           <Undo2 size={14} />
         </button>
-        <button type="button" title="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('redo')}>
+        <button type="button" title="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => { runCommand('redo'); emitContent(); }}>
           <Redo2 size={14} />
         </button>
         <Sep />
-        <button type="button" title="Gras" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('bold')}>
+        <button type="button" title="Gras" aria-pressed={Boolean(etats['bold'])} className={toolbarBtn} style={styleBouton('bold')} onClick={() => runCommand('bold')}>
           <Bold size={14} />
         </button>
-        <button type="button" title="Italique" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('italic')}>
+        <button type="button" title="Italique" aria-pressed={Boolean(etats['italic'])} className={toolbarBtn} style={styleBouton('italic')} onClick={() => runCommand('italic')}>
           <Italic size={14} />
         </button>
-        <button type="button" title="Souligné" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('underline')}>
+        <button type="button" title="Souligné" aria-pressed={Boolean(etats['underline'])} className={toolbarBtn} style={styleBouton('underline')} onClick={() => runCommand('underline')}>
           <Underline size={14} />
         </button>
+        <button
+          type="button"
+          title="Barré"
+          aria-pressed={Boolean(etats['strikeThrough'])}
+          className={toolbarBtn}
+          style={styleBouton('strikeThrough')}
+          onClick={() => runCommand('strikeThrough')}
+        >
+          <Strikethrough size={14} />
+        </button>
+        <button
+          type="button"
+          title="Lien"
+          className={toolbarBtn}
+          style={toolbarBtnStyle}
+          onMouseDown={garderLaSelection}
+          onClick={insererUnLien}
+        >
+          <Link2 size={14} />
+        </button>
+        <button
+          type="button"
+          title="Citation"
+          className={toolbarBtn}
+          style={toolbarBtnStyle}
+          onClick={() => {
+            runCommand('formatBlock', 'blockquote');
+            emitContent();
+          }}
+        >
+          <Quote size={14} />
+        </button>
+        <button
+          type="button"
+          title="Code"
+          className={toolbarBtn}
+          style={toolbarBtnStyle}
+          onClick={() => {
+            runCommand('formatBlock', 'pre');
+            emitContent();
+          }}
+        >
+          <Code size={14} />
+        </button>
+        <button
+          type="button"
+          title="Tableau"
+          className={toolbarBtn}
+          style={toolbarBtnStyle}
+          onMouseDown={garderLaSelection}
+          onClick={insererUnTableau}
+        >
+          <Table size={14} />
+        </button>
+        <button
+          type="button"
+          title="Effacer la mise en forme"
+          className={toolbarBtn}
+          style={toolbarBtnStyle}
+          onClick={() => {
+            runCommand('removeFormat');
+            emitContent();
+          }}
+        >
+          <Eraser size={14} />
+        </button>
         <Sep />
-        <button type="button" title="Aligner à gauche" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('justifyLeft')}>
+        <button type="button" title="Aligner à gauche" aria-pressed={Boolean(etats['justifyLeft'])} className={toolbarBtn} style={styleBouton('justifyLeft')} onClick={() => runCommand('justifyLeft')}>
           <AlignLeft size={14} />
         </button>
-        <button type="button" title="Centrer" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('justifyCenter')}>
+        <button type="button" title="Centrer" aria-pressed={Boolean(etats['justifyCenter'])} className={toolbarBtn} style={styleBouton('justifyCenter')} onClick={() => runCommand('justifyCenter')}>
           <AlignCenter size={14} />
         </button>
-        <button type="button" title="Aligner à droite" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('justifyRight')}>
+        <button type="button" title="Aligner à droite" aria-pressed={Boolean(etats['justifyRight'])} className={toolbarBtn} style={styleBouton('justifyRight')} onClick={() => runCommand('justifyRight')}>
           <AlignRight size={14} />
         </button>
         <button type="button" title="Justifier" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('justifyFull')}>
