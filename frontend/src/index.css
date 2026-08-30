@@ -1525,6 +1525,15 @@
   pointer-events: none;
   user-select: none;
   background: transparent;
+  /* `flow-root` ouvre un contexte de formatage, donc empêche la marge haute
+     de la bande de S'ÉCHAPPER de la cale.
+     Sans lui, cette marge s'effondrait avec celle du conteneur : la bande se
+     retrouvait collée en HAUT de la cale et poussait la cale entière vers le
+     bas. Mesuré sur une cale de 236 px : 0 px avant la bande, 208 après —
+     exactement l'inverse de ce qu'il faut. Tout le blanc passait donc au
+     DÉBUT de la page suivante au lieu de finir la précédente, ce que Carlito
+     a vu le 30 août 2026 : « pour le début d'une page y'a trop d'espace ». */
+  display: flow-root;
 }
 .succes-note-editor .succes-overflow-gap td {
   border: none;

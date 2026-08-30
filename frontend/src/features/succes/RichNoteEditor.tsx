@@ -249,6 +249,7 @@ function couperLaLigne(
   hauteur: number,
   fill: number,
   margin: number,
+  zoom: number,
 ): void {
   const cellules = Array.from(ligne.children) as HTMLElement[];
   if (cellules.length === 0) return;
@@ -268,25 +269,50 @@ function couperLaLigne(
       cellule.appendChild(cale);
     }
   }
-  // La bande, une seule, par-dessus le tableau.
+  // La bande, une seule, par-dessus le tableau — POSITIONNÉE PLUS TARD.
+  //
+  // Les cales sont posées de bas en haut : au moment où celle-ci est créée,
+  // celles qui la surplombent n'existent pas encore et la pousseront ensuite.
+  // Une bande en position absolue, elle, ne suit pas. Mesuré : posée à
+  // 45 131 px alors que sa cale finissait à 58 650 — un grand vide au milieu
+  // d'un bloc, sans la moindre séparation pour l'expliquer.
+  //
+  // On note donc seulement À QUI elle appartient ; `placerLesBandesFlottantes`
+  // fait le calcul une fois que plus rien ne bouge.
+  const premiere = cellules[0].querySelector(`.${OVERFLOW_GAP_CLASS}`);
+  const page = ligne.closest('.succes-note-page') as HTMLElement | null;
+  if (!premiere || !page) return;
+  const cle = `gap-${Date.now().toString(36)}-${Math.round(y)}`;
+  premiere.setAttribute('data-bande', cle);
   const bande = document.createElement('div');
   bande.className = `${OVERFLOW_GAP_CLASS} succes-overflow-gutter-flottant`;
   bande.contentEditable = 'false';
   bande.setAttribute('aria-hidden', 'true');
-  const premiere = cellules[0].querySelector(`.${OVERFLOW_GAP_CLASS}`);
-  const page = ligne.closest('.succes-note-page') as HTMLElement | null;
-  if (!premiere || !page) return;
-  const hautDeLaCale =
-    premiere.getBoundingClientRect().top - page.getBoundingClientRect().top;
-  bande.style.cssText = [
-    'position:absolute',
-    'left:0',
-    'right:0',
-    `top:${hautDeLaCale + fill + margin}px`,
-    'user-select:none',
-    'pointer-events:none',
-  ].join(';');
+  bande.setAttribute('data-pour', cle);
+  bande.setAttribute('data-decalage', String(fill + margin));
+  bande.style.cssText = 'position:absolute;left:0;right:0;top:-9999px';
   page.appendChild(bande);
+}
+
+/** Poser les bandes des lignes fractionnées, une fois toutes les cales en place. */
+function placerLesBandesFlottantes(page: HTMLElement, zoom: number): void {
+  const hautPage = page.getBoundingClientRect().top;
+  for (const bande of Array.from(
+    page.querySelectorAll<HTMLElement>(':scope > .succes-overflow-gutter-flottant'),
+  )) {
+    const cle = bande.getAttribute('data-pour');
+    const cale = cle
+      ? page.querySelector<HTMLElement>(`[data-bande="${cle}"]`)
+      : null;
+    if (!cale) {
+      bande.remove();
+      continue;
+    }
+    const decalage = Number(bande.getAttribute('data-decalage')) || 0;
+    // Écran → layout : `top` en CSS ne connaît pas le zoom.
+    const haut = (cale.getBoundingClientRect().top - hautPage) / zoom;
+    bande.style.top = `${Math.round(haut + decalage)}px`;
+  }
 }
 
 /** La cale posée DANS un paragraphe, entre deux de ses lignes. */
@@ -471,6 +497,7 @@ function applyOverflowGaps(
         hauteur,
         gap.fill,
         margin,
+        zoom,
       );
       continue;
     }
@@ -483,22 +510,34 @@ function applyOverflowGaps(
     range.collapse(true);
     range.insertNode(makeInlineGap(hauteur, gap.fill, margin));
   }
+  // Les bandes des lignes fractionnées se posent MAINTENANT : toutes les
+  // cales sont en place, donc plus rien ne les poussera.
+  placerLesBandesFlottantes(page, zoom);
+
   // LA DERNIÈRE FEUILLE DOIT ÊTRE UNE FEUILLE.
   //
   // Sans cela elle s'arrête sur le dernier mot : la page finale est plus
   // courte que les autres, ce qui n'arrive jamais dans Word et se voit
   // immédiatement. On complète avec le papier qui reste.
-  const derniere = collected[collected.length - 1]?.el;
   let queue = 0;
-  if (derniere) {
-    const finContenu = derniere.offsetTop + derniere.offsetHeight;
-    const debutDerniere = plan.length
-      ? (() => {
-          const cales = editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`);
-          const bas = cales[cales.length - 1] as HTMLElement | undefined;
-          return bas ? bas.offsetTop + bas.offsetHeight : 0;
-        })()
-      : 0;
+  {
+    // La hauteur RÉELLE du contenu, queue remise à zéro : reconstituer la fin
+    // à partir du dernier bloc rate sa marge basse — `offsetHeight` ne la
+    // compte pas — et la dernière feuille restait courte de 65 px.
+    page.style.setProperty('--note-tail', '0px');
+    const finContenu = editor.offsetHeight;
+    // La cale la plus BASSE, et non la dernière du DOM : une cale posée dans
+    // une cellule de tableau a un `offsetTop` relatif à sa CELLULE, et arrive
+    // après des cales situées plus bas dans la page. Prendre la dernière du
+    // document donnait une origine trop haute, une queue négative, donc zéro —
+    // et la dernière feuille retombait à 95 px au lieu de 931.
+    let debutDerniere = 0;
+    for (const cale of Array.from(
+      editor.querySelectorAll<HTMLElement>(`.${OVERFLOW_GAP_CLASS}`),
+    )) {
+      const bas = offsetDepuis(cale, editor) + cale.offsetHeight;
+      if (bas > debutDerniere) debutDerniere = bas;
+    }
     queue = Math.max(0, contentHeight - (finContenu - debutDerniere));
   }
   page.style.setProperty('--note-tail', `${Math.round(queue)}px`);
