@@ -152,18 +152,34 @@ function makeOverflowGap(
 function lignesDuBloc(el: HTMLElement, editorTop: number, zoom: number): number[] {
   const range = document.createRange();
   range.selectNodeContents(el);
-  const tops: number[] = [];
+  // TRIER avant de fusionner.
+  //
+  // `getClientRects` rend les rectangles dans l'ordre du DOCUMENT, pas dans
+  // l'ordre visuel. Pour une LIGNE DE TABLEAU, cela veut dire : toutes les
+  // lignes de la première cellule, puis toutes celles de la deuxième, qui
+  // repartent du haut. Sans tri, la fusion « garder ce qui descend » rejetait
+  // en bloc la deuxième colonne — la ligne se croyait donc plus courte
+  // qu'elle n'est, et la coupe ne couvrait pas toute sa hauteur.
+  //
+  // Constaté le 30 août 2026 sur une ligne de 1 964 px : 71 lignes mesurées
+  // ne s'étalaient que sur 1 729 px, et une seule coupure était posée là où
+  // il en fallait deux.
+  const bruts: Array<{ top: number; hauteur: number }> = [];
   for (const rect of Array.from(range.getClientRects())) {
     if (rect.height <= 0) continue;
     // Ces rectangles sont en pixels ÉCRAN : `transform: scale()` les réduit.
     // Les hauteurs de bloc, elles, viennent de `offsetTop`/`offsetHeight`,
     // des unités de LAYOUT que le zoom ne touche pas. Mélanger les deux
-    // ferait bouger la pagination à chaque redimensionnement de fenêtre —
-    // exactement ce qu'on est en train de supprimer.
-    const top = (rect.top - editorTop) / zoom;
-    const hauteur = rect.height / zoom;
-    if (tops.length === 0 || top - tops[tops.length - 1] > hauteur / 2) {
-      tops.push(top);
+    // ferait bouger la pagination à chaque redimensionnement de fenêtre.
+    bruts.push({ top: (rect.top - editorTop) / zoom, hauteur: rect.height / zoom });
+  }
+  bruts.sort((a, b) => a.top - b.top);
+  const tops: number[] = [];
+  for (const r of bruts) {
+    // Deux fragments d'une même ligne — un mot en gras, deux colonnes côte à
+    // côte — partagent leur haut : on les fusionne à un demi-interligne près.
+    if (tops.length === 0 || r.top - tops[tops.length - 1] > r.hauteur / 2) {
+      tops.push(r.top);
     }
   }
   return tops;
@@ -467,6 +483,27 @@ function applyOverflowGaps(
     range.collapse(true);
     range.insertNode(makeInlineGap(hauteur, gap.fill, margin));
   }
+  // LA DERNIÈRE FEUILLE DOIT ÊTRE UNE FEUILLE.
+  //
+  // Sans cela elle s'arrête sur le dernier mot : la page finale est plus
+  // courte que les autres, ce qui n'arrive jamais dans Word et se voit
+  // immédiatement. On complète avec le papier qui reste.
+  const derniere = collected[collected.length - 1]?.el;
+  let queue = 0;
+  if (derniere) {
+    const finContenu = derniere.offsetTop + derniere.offsetHeight;
+    const debutDerniere = plan.length
+      ? (() => {
+          const cales = editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`);
+          const bas = cales[cales.length - 1] as HTMLElement | undefined;
+          return bas ? bas.offsetTop + bas.offsetHeight : 0;
+        })()
+      : 0;
+    queue = Math.max(0, contentHeight - (finContenu - debutDerniere));
+  }
+  page.style.setProperty('--note-tail', `${Math.round(queue)}px`);
+
+
   // Chaque cale est une frontière de page ; il y a toujours une feuille de
   // plus que de frontières.
   return plan.length + 1;

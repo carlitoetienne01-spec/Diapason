@@ -1395,6 +1395,14 @@
 .succes-note-frame[data-font="VT323"] { --note-ligne: 27px; }
 .succes-note-editor[data-font="Press Start 2P"] { font-size: 12px; }
 .succes-note-editor[data-font="VT323"] { font-size: 20px; }
+/* Le papier qui reste sous le dernier mot. Sans lui, la dernière feuille
+   s'arrête sur le texte et se voit aussitôt : elle est plus courte que
+   toutes les autres, ce qui n'arrive jamais dans Word. */
+.succes-note-editor::after {
+  content: '';
+  display: block;
+  height: var(--note-tail, 0px);
+}
 .succes-note-editor:empty::before {
   content: attr(data-placeholder);
   color: #64748b;
