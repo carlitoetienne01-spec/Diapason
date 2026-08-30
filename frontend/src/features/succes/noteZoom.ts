@@ -34,16 +34,37 @@ const RESPIRATION_PX = 32;
  * `0.6613756613756614` à chaque pixel de redimensionnement relancerait une
  * pagination complète à chaque image.
  */
+/**
+ * L'AJUSTEMENT automatique, plafonné à 100 %.
+ *
+ * Ce plafond ne concerne que l'ajustement : « Largeur de page » ne doit pas
+ * gonfler le papier sur un grand écran, Word ne le fait pas non plus. Le
+ * curseur manuel, lui, monte jusqu'à `ZOOM_MAX` — ce sont deux gestes
+ * différents, et les confondre bridait un agrandissement voulu.
+ */
 export function fitZoom(largeurDisponible: number, largeurPapierPx: number): number {
   if (!(largeurPapierPx > 0) || !(largeurDisponible > 0)) return 1;
   const brut = Math.min(1, (largeurDisponible - RESPIRATION_PX) / largeurPapierPx);
   return Math.max(0.25, Math.round(brut * 100) / 100);
 }
 
-/** Les crans du menu de zoom, comme celui de Word. */
-export const NOTE_ZOOMS: Array<{ id: string; label: string; valeur: number | null }> = [
-  { id: 'ajuste', label: 'Largeur de page', valeur: null },
-  { id: '50', label: '50 %', valeur: 0.5 },
-  { id: '75', label: '75 %', valeur: 0.75 },
-  { id: '100', label: '100 %', valeur: 1 },
-];
+/**
+ * Les bornes du curseur de zoom, comme la réglette de Word en bas à droite.
+ *
+ * Word descend à 10 % et monte à 500 % ; Carlito a demandé 200 %, et c'est un
+ * plafond plus honnête pour une note : au-delà, on ne lit plus une page, on
+ * inspecte des pixels.
+ *
+ * Le plancher reste 25 % — celui de `fitZoom` — pour qu'ajuster et régler à la
+ * main ne puissent pas donner deux minimums différents.
+ */
+export const ZOOM_MIN = 0.25;
+export const ZOOM_MAX = 2;
+export const ZOOM_PAS = 0.05;
+
+/** Ramener une valeur dans les bornes, arrondie au pour cent. */
+export function bornerZoom(valeur: number): number {
+  if (!Number.isFinite(valeur)) return 1;
+  const borne = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, valeur));
+  return Math.round(borne * 100) / 100;
+}

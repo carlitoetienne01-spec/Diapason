@@ -19,6 +19,12 @@ import {
   updateSuccesNote,
 } from '../features/succes/api';
 import { NOTE_DOC_LANGS, miseEnPageDeLaNote } from '../features/succes/noteFormats';
+import {
+  bornerZoom,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_PAS,
+} from '../features/succes/noteZoom';
 import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { countNotePages } from '../features/succes/notePages';
 import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
@@ -409,6 +415,10 @@ export function SuccesNotesPage() {
   // `countNotePages` ne sert alors que de valeur d'attente : il compte des
   // caractères, et affichait « 20 pages » sous un éditeur qui en dessinait 43.
   const [feuillesMesurees, setFeuillesMesurees] = useState<number | null>(null);
+  // `null` = « Largeur de page ». La réglette écrit ici, l'éditeur renvoie le
+  // zoom réellement appliqué pour que le pour cent affiché ne mente pas.
+  const [zoomVoulu, setZoomVoulu] = useState<number | null>(null);
+  const [zoomEffectif, setZoomEffectif] = useState(1);
   // PAS de remise à zéro par `useEffect` sur `activeId` : `useLayoutEffect`
   // — donc la pagination de l'éditeur, donc `onPageCount` — s'exécute AVANT
   // les `useEffect`. Une remise à zéro écrite là efface le compte à l'instant
@@ -419,7 +429,6 @@ export function SuccesNotesPage() {
   // L'éditeur remonte son compte à chaque pagination, montage compris : la
   // valeur se corrige d'elle-même dans la même passe de rendu.
   const draftPages = feuillesMesurees ?? countNotePages(draftContent, meta.pageFormat);
-  const langLabel = NOTE_DOC_LANGS.find((item) => item.id === meta.docLang)?.label ?? 'Français (France)';
 
   if (view === 'editor') {
     return (
@@ -496,6 +505,8 @@ export function SuccesNotesPage() {
             docLang={meta.docLang}
             color={meta.color}
             onPageCount={setFeuillesMesurees}
+            zoom={zoomVoulu}
+            onZoomEffectif={setZoomEffectif}
             onContentChange={(html) => {
               setDraftContent(html);
               scheduleAutoSave();
@@ -506,15 +517,91 @@ export function SuccesNotesPage() {
             }}
           />
 
+          {/* La barre d'état, disposée comme celle de Word : le décompte et
+              la langue à GAUCHE, la réglette de zoom à DROITE. Les trois
+              contrôles vivaient dans la barre d'outils du haut, où l'on ne
+              les cherche pas. */}
           <div
-            className="flex flex-wrap justify-between gap-2 pt-3 text-[11px] shrink-0"
+            className="flex flex-wrap items-center justify-between gap-3 pt-3 text-[11px] shrink-0"
             style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
           >
-            <span>
-              {draftPages} page{draftPages === 1 ? '' : 's'} — {wordCount.toLocaleString('fr-CA')} mot
-              {wordCount === 1 ? '' : 's'} — {langLabel}
+            <span className="flex items-center gap-2">
+              <span>
+                {draftPages} page{draftPages === 1 ? '' : 's'} —{' '}
+                {wordCount.toLocaleString('fr-CA')} mot{wordCount === 1 ? '' : 's'}
+              </span>
+              <span aria-hidden="true">—</span>
+              <select
+                aria-label="Langue du document"
+                title="Langue du document"
+                value={meta.docLang}
+                onChange={(event) => {
+                  setMeta((m) => ({
+                    ...m,
+                    docLang: event.target.value as SuccesNoteDocLang,
+                  }));
+                  setDirty(true);
+                  scheduleAutoSave();
+                }}
+                className="bg-transparent outline-none cursor-pointer text-[11px]"
+                style={{ color: 'inherit', border: 'none' }}
+              >
+                {NOTE_DOC_LANGS.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
             </span>
-            <span>{dirty ? 'Modifications non enregistrées…' : activeId ? 'Synchronisé localement' : 'Nouvelle note locale'}</span>
+            <span className="flex items-center gap-2">
+              <span className="hidden sm:inline">
+                {dirty
+                  ? 'Modifications non enregistrées…'
+                  : activeId
+                    ? 'Synchronisé localement'
+                    : 'Nouvelle note locale'}
+              </span>
+              <button
+                type="button"
+                title="Largeur de page"
+                onClick={() => setZoomVoulu(null)}
+                className="px-1.5 rounded cursor-pointer"
+                style={{ border: '1px solid var(--color-border)', color: 'inherit' }}
+              >
+                Ajuster
+              </button>
+              <button
+                type="button"
+                aria-label="Réduire le zoom"
+                onClick={() => setZoomVoulu(bornerZoom(zoomEffectif - ZOOM_PAS))}
+                className="px-1.5 cursor-pointer"
+                style={{ color: 'inherit' }}
+              >
+                −
+              </button>
+              <input
+                type="range"
+                aria-label="Zoom"
+                min={ZOOM_MIN * 100}
+                max={ZOOM_MAX * 100}
+                step={ZOOM_PAS * 100}
+                value={Math.round(zoomEffectif * 100)}
+                onChange={(event) => setZoomVoulu(bornerZoom(Number(event.target.value) / 100))}
+                className="w-24 sm:w-32 cursor-pointer"
+              />
+              <button
+                type="button"
+                aria-label="Augmenter le zoom"
+                onClick={() => setZoomVoulu(bornerZoom(zoomEffectif + ZOOM_PAS))}
+                className="px-1.5 cursor-pointer"
+                style={{ color: 'inherit' }}
+              >
+                +
+              </button>
+              <span className="tabular-nums w-11 text-right">
+                {Math.round(zoomEffectif * 100)} %
+              </span>
+            </span>
           </div>
         </main>
       </div>

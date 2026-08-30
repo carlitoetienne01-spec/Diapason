@@ -50,7 +50,7 @@ import {
   type PageBlock,
 } from './notePages';
 import { sanitizeNoteHtml } from './noteSanitize';
-import { fitZoom, NOTE_ZOOMS } from './noteZoom';
+import { fitZoom } from './noteZoom';
 import type {
   SuccesNoteDocLang,
   SuccesNotePageBackground,
@@ -90,6 +90,15 @@ type Props = {
    * relevé sur une vraie note. Seul l'éditeur sait combien il en a dessiné.
    */
   onPageCount?: (feuilles: number) => void;
+  /**
+   * Le zoom voulu, ou `null` pour « Largeur de page ».
+   *
+   * Il vit dans la BARRE D'ÉTAT, en bas à droite, comme la réglette de Word —
+   * et non dans la barre d'outils du haut, où Carlito ne l'attendait pas.
+   */
+  zoom?: number | null;
+  /** Le zoom RÉELLEMENT appliqué, pour que la réglette affiche le vrai chiffre. */
+  onZoomEffectif?: (zoom: number) => void;
 };
 
 function runCommand(command: string, value?: string) {
@@ -379,6 +388,8 @@ export function RichNoteEditor({
   onContentChange,
   onMetaChange,
   onPageCount,
+  zoom: zoomVoulu = null,
+  onZoomEffectif,
   editorKey,
 }: Props) {
   // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
@@ -397,8 +408,6 @@ export function RichNoteEditor({
   const frameRef = useRef<HTMLDivElement>(null);
   const applyingGaps = useRef(false);
   const suppressObserverUntil = useRef(0);
-  // `null` = « Largeur de page », le réglage par défaut de Word.
-  const [zoomChoisi, setZoomChoisi] = useState<number | null>(null);
   // L'encre du papier courant, et non une constante : #1A2232 est exactement
   // la couleur du papier du fond Sombre — contraste 1,00 sur 1.
   const [encreCourante, setEncreCourante] = useState('#1a2232');
@@ -720,11 +729,12 @@ export function RichNoteEditor({
         getComputedStyle(page).getPropertyValue('--note-page-width'),
         793.7,
       );
-      const zoom = zoomChoisi ?? fitZoom(desk.clientWidth, papier);
+      const zoom = zoomVoulu ?? fitZoom(desk.clientWidth, papier);
       if (Math.abs(zoom - zoomRef.current) < 0.001) return;
       zoomRef.current = zoom;
       frame.style.setProperty('--note-zoom', String(zoom));
       reserverLaHauteur();
+      onZoomEffectif?.(zoom);
       // La pagination se mesure en unités de LAYOUT, que le zoom ne touche
       // pas : elle n'a donc pas à être refaite. Seuls les rectangles de ligne
       // en dépendent, et ils sont relus au prochain passage.
@@ -735,7 +745,7 @@ export function RichNoteEditor({
     const observer = new ResizeObserver(ajuster);
     observer.observe(desk);
     return () => observer.disconnect();
-  }, [zoomChoisi, pageFormat, pageSize, pageOrientation, pageMargins]);
+  }, [zoomVoulu, pageFormat, pageSize, pageOrientation, pageMargins]); // eslint-disable-line react-hooks/exhaustive-deps -- onZoomEffectif est stable
 
   useEffect(() => {
     const page = pageRef.current;
@@ -1133,22 +1143,6 @@ export function RichNoteEditor({
           ))}
         </select>
         <select
-          aria-label="Zoom"
-          value={zoomChoisi === null ? 'ajuste' : String(Math.round(zoomChoisi * 100))}
-          onChange={(event) => {
-            const cran = NOTE_ZOOMS.find((z) => z.id === event.target.value);
-            setZoomChoisi(cran ? cran.valeur : null);
-          }}
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
-          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-        >
-          {NOTE_ZOOMS.map((cran) => (
-            <option key={cran.id} value={cran.id}>
-              {cran.label}
-            </option>
-          ))}
-        </select>
-        <select
           aria-label="Fond de page"
           value={pageBackground}
           onChange={(event) =>
@@ -1162,40 +1156,6 @@ export function RichNoteEditor({
           {NOTE_PAGE_BACKGROUNDS.map((bg) => (
             <option key={bg.id} value={bg.id}>
               {bg.label}
-            </option>
-          ))}
-        </select>
-        <label
-          className="h-8 flex items-center gap-1.5 rounded-lg px-2 cursor-pointer"
-          title="Couleur du cartable"
-          style={{ border: '1px solid var(--color-border)' }}
-        >
-          <span
-            className="size-4 rounded-full"
-            style={{ background: color, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.2)' }}
-          />
-          <span className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
-            Cartable
-          </span>
-          <input
-            type="color"
-            value={color}
-            className="absolute opacity-0 size-0"
-            onChange={(event) => onMetaChange({ color: event.target.value })}
-          />
-        </label>
-        <select
-          aria-label="Langue du document"
-          value={docLang}
-          onChange={(event) =>
-            onMetaChange({ docLang: event.target.value as SuccesNoteDocLang })
-          }
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
-          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-        >
-          {NOTE_DOC_LANGS.map((lang) => (
-            <option key={lang.id} value={lang.id}>
-              {lang.label}
             </option>
           ))}
         </select>

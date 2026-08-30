@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fitZoom, NOTE_ZOOMS } from './noteZoom';
+import { bornerZoom, fitZoom, ZOOM_MAX, ZOOM_MIN } from './noteZoom';
 
 const A4_PX = 793.7;
 
@@ -51,8 +51,35 @@ describe('fitZoom', () => {
     expect(fitZoom(940, 0)).toBe(1);
   });
 
-  it('le menu propose « Largeur de page » en premier', () => {
-    expect(NOTE_ZOOMS[0].valeur).toBeNull();
-    expect(NOTE_ZOOMS.map((z) => z.valeur)).toEqual([null, 0.5, 0.75, 1]);
+  it("l'ajustement reste plafonné à 100 %, le réglage manuel non", () => {
+    // Deux gestes différents : « Largeur de page » ne doit pas gonfler le
+    // papier, mais agrandir volontairement doit être possible.
+    expect(fitZoom(4000, A4_PX)).toBe(1);
+    expect(bornerZoom(2)).toBe(2);
+  });
+});
+
+describe('bornerZoom', () => {
+  it('monte jusqu’à 200 %, comme demandé', () => {
+    expect(ZOOM_MAX).toBe(2);
+    expect(bornerZoom(2)).toBe(2);
+    expect(bornerZoom(5)).toBe(2);
+  });
+
+  it('ne descend pas sous 25 %, le même plancher que l’ajustement', () => {
+    // Deux minimums différents selon le geste seraient un piège.
+    expect(ZOOM_MIN).toBe(0.25);
+    expect(bornerZoom(0.1)).toBe(0.25);
+    expect(bornerZoom(-3)).toBe(0.25);
+  });
+
+  it('arrondit au pour cent', () => {
+    expect(bornerZoom(0.666666)).toBe(0.67);
+    expect((bornerZoom(1.234567) * 100) % 1).toBe(0);
+  });
+
+  it('rend 1 sur une valeur absurde plutôt que NaN', () => {
+    expect(bornerZoom(NaN)).toBe(1);
+    expect(bornerZoom(Infinity)).toBe(1);
   });
 });
