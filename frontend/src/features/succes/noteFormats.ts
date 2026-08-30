@@ -232,6 +232,39 @@ export function styleDeTaille(points: number): string {
   return `font-size:${points}pt`;
 }
 
+/**
+ * Les points d'une longueur CSS lue en pixels.
+ *
+ * `getComputedStyle` rend toujours des PIXELS, jamais l'unité écrite. La barre
+ * d'outils, elle, parle en points comme Word. 1 pt = 1/72 po et 1 px = 1/96 po,
+ * donc pt = px × 0,75 — et il faut arrondir : 11 pt vaut 14,6667 px, dont le
+ * retour donne 11,000025.
+ *
+ * Une décimale est gardée : Word affiche « 10,5 », et arrondir à l'entier
+ * ferait dire à la barre une taille que le texte n'a pas.
+ */
+export function pointsDepuisPx(px: number): number | null {
+  if (!Number.isFinite(px) || px <= 0) return null;
+  return Math.round(px * 0.75 * 10) / 10;
+}
+
+/**
+ * Ce que la liste doit afficher pour une sélection.
+ *
+ * Une seule taille : on la dit. Plusieurs : on ne dit RIEN — c'est ce que fait
+ * Word, et c'est la seule réponse honnête. Afficher la première, ou la plus
+ * fréquente, serait annoncer une taille que le reste de la sélection n'a pas.
+ */
+export function tailleAffichee(tailles: readonly (number | null)[]): number | null {
+  const vues = new Set<number>();
+  for (const t of tailles) {
+    if (t === null) return null;
+    vues.add(t);
+    if (vues.size > 1) return null;
+  }
+  return vues.size === 1 ? [...vues][0] : null;
+}
+
 export function noteFontCss(fontFamily: string) {
   const name = fontFamily.replace(/'/g, "\\'");
   const stacks: Record<string, string> = {

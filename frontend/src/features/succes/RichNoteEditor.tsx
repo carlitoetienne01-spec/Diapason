@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlignCenter,
   AlignJustify,
@@ -29,7 +29,9 @@ import {
   NOTE_DOC_LANGS,
   NOTE_FONTS,
   NOTE_FONT_SIZES,
+  pointsDepuisPx,
   styleDeTaille,
+  tailleAffichee,
   NOTE_PAGE_BACKGROUNDS,
   NOTE_PAGE_MARGINS,
   NOTE_PAGE_ORIENTATIONS,
@@ -1121,6 +1123,71 @@ export function RichNoteEditor({
   // barre ne montrait jamais si le gras, l'italique ou une liste étaient en
   // cours. On ne pouvait le savoir qu'en regardant le texte.
   const [etats, setEtats] = useState<Record<string, boolean>>({});
+  // La taille du texte sous le curseur, en points. `null` = on ne la dit pas.
+  const [tailleCourante, setTailleCourante] = useState<number | null>(null);
+
+  /**
+   * Lire la taille du texte sous le curseur.
+   *
+   * La liste affichait « Taille » en permanence : elle ne lisait jamais le
+   * document. Pour connaître la taille d'un paragraphe il fallait lui en
+   * appliquer une et regarder si quelque chose bougeait.
+   *
+   * `getComputedStyle` rend la taille de MISE EN PAGE, pas celle de l'écran :
+   * le zoom de la feuille est un `transform: scale()`, qui ne la touche pas.
+   * Aucune correction de zoom n'est donc à faire ici — et en faire une
+   * afficherait 9 pt sur du 12 pt à 78 %.
+   */
+  const lireLaTaille = useCallback(() => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0) {
+      setTailleCourante(null);
+      return;
+    }
+    const plage = selection.getRangeAt(0);
+    // Une barre qui décrit l'état d'un autre champ est pire qu'une barre muette.
+    if (!editor.contains(plage.commonAncestorContainer)) {
+      setTailleCourante(null);
+      return;
+    }
+    const tailleDe = (noeud: Node | null): number | null => {
+      const el =
+        noeud === null
+          ? null
+          : noeud.nodeType === Node.ELEMENT_NODE
+            ? (noeud as HTMLElement)
+            : noeud.parentElement;
+      if (!el) return null;
+      return pointsDepuisPx(parseFloat(getComputedStyle(el).fontSize));
+    };
+    if (plage.collapsed) {
+      setTailleCourante(tailleDe(plage.startContainer));
+      return;
+    }
+    const racine = plage.commonAncestorContainer;
+    if (racine.nodeType === Node.TEXT_NODE) {
+      setTailleCourante(tailleDe(racine));
+      return;
+    }
+    // Au-delà de ce plafond, on ne répond plus : parcourir soixante mille
+    // pixels de document à chaque mouvement de souris ferait ramer la
+    // sélection, et une réponse tirée d'un échantillon serait une taille
+    // affirmée sans avoir été vue.
+    const PLAFOND_NOEUDS = 400;
+    const marcheur = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT);
+    const tailles: (number | null)[] = [];
+    for (let noeud = marcheur.nextNode(); noeud; noeud = marcheur.nextNode()) {
+      if (!plage.intersectsNode(noeud)) continue;
+      if (!(noeud.textContent || '').trim()) continue;
+      tailles.push(tailleDe(noeud));
+      if (tailles.length > PLAFOND_NOEUDS) {
+        setTailleCourante(null);
+        return;
+      }
+    }
+    setTailleCourante(tailleAffichee(tailles));
+  }, []);
 
   useEffect(() => {
     const COMMANDES = [
@@ -1136,6 +1203,11 @@ export function RichNoteEditor({
       'insertOrderedList',
     ];
     const relire = () => {
+      // AVANT le garde-fou, pas après : le retour anticipé plus bas laissait
+      // la taille figée sur le dernier texte lu, et la barre annonçait « 13 pt »
+      // alors que le curseur était parti dans un autre champ. `lireLaTaille`
+      // porte son propre garde-fou et rend `null` dans ce cas.
+      lireLaTaille();
       const editor = editorRef.current;
       const selection = window.getSelection();
       // Ne rien dire quand la sélection est ailleurs : une barre qui décrit
@@ -1163,7 +1235,7 @@ export function RichNoteEditor({
     };
     document.addEventListener('selectionchange', relire);
     return () => document.removeEventListener('selectionchange', relire);
-  }, []);
+  }, [lireLaTaille]);
 
   /** Le style d'un bouton, teinté quand la commande est active. */
   const styleBouton = (commande?: string) =>
@@ -1336,17 +1408,31 @@ export function RichNoteEditor({
         </select>
         <select
           aria-label="Taille"
-          value=""
+          title={
+            tailleCourante === null
+              ? 'Taille du texte'
+              : `Le texte sous le curseur est en ${tailleCourante} pt`
+          }
+          value={tailleCourante === null ? '' : String(tailleCourante)}
           onMouseDown={garderLaSelection}
           onChange={(event) => {
             const points = Number(event.target.value);
             if (points) appliquerStyle(styleDeTaille(points));
-            event.target.value = '';
+            // Relire plutôt que supposer : si la sélection était vide,
+            // `appliquerStyle` sort sans rien faire et la liste doit
+            // continuer à dire la taille RÉELLE, pas celle qu'on a cliquée.
+            lireLaTaille();
           }}
           className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           <option value="">Taille</option>
+          {/* Une taille hors de la liste — un collage depuis Word en 10,5 pt —
+              doit s'afficher telle quelle. L'arrondir au voisin le plus proche
+              ferait dire à la barre une taille que le texte n'a pas. */}
+          {tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? (
+            <option value={tailleCourante}>{tailleCourante} pt</option>
+          ) : null}
           {NOTE_FONT_SIZES.map((points) => (
             <option key={points} value={points}>
               {points} pt
