@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Bookmark,
   Copy,
   FilePlus2,
   Loader2,
@@ -9,6 +10,7 @@ import {
   Save,
   Search,
   Trash2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -82,6 +84,7 @@ const emptyMeta = () => ({
   fontFamily: 'Special Elite',
   docLang: 'fr' as SuccesNoteDocLang,
   color: FOLDER_COLORS[0],
+  readingMark: 0,
 });
 
 export function SuccesNotesPage() {
@@ -171,6 +174,7 @@ export function SuccesNotesPage() {
       fontFamily: note.fontFamily || 'Special Elite',
       docLang: note.docLang || 'fr',
       color: note.color || FOLDER_COLORS[0],
+      readingMark: note.readingMark || 0,
     });
     setDirty(false);
     setView('editor');
@@ -315,6 +319,7 @@ export function SuccesNotesPage() {
         fontFamily: saved.fontFamily || 'Special Elite',
         docLang: saved.docLang || 'fr',
         color: saved.color || FOLDER_COLORS[0],
+        readingMark: saved.readingMark || 0,
       });
       setDirty(false);
       setNotes((prev) => {
@@ -421,6 +426,32 @@ export function SuccesNotesPage() {
   const [zoomEffectif, setZoomEffectif] = useState(1);
   const [pageCourante, setPageCourante] = useState(1);
   const [navigationOuverte, setNavigationOuverte] = useState(false);
+  // Le jeton change à chaque demande de saut, y compris vers la même page :
+  // sans lui, cliquer deux fois sur « Reprendre p. 12 » ne ferait rien la
+  // seconde fois, la valeur n'ayant pas changé.
+  const [saut, setSaut] = useState<{ page: number; jeton: number } | null>(null);
+  const jetonDeSaut = useRef(0);
+
+  /**
+   * Poser, atteindre ou retirer le signet de lecture.
+   *
+   * Enregistré TOUT DE SUITE, sans attendre la sauvegarde différée : on pose
+   * un signet précisément quand on s'apprête à fermer, et un signet perdu à la
+   * fermeture ne sert à rien.
+   */
+  const poserLeSignet = async (page: number) => {
+    setMeta((m) => ({ ...m, readingMark: page }));
+    if (!activeId) return;
+    try {
+      const saved = await updateSuccesNote(activeId, { readingMark: page });
+      setNotes((liste) =>
+        liste.map((n) => (n.id === saved.id ? { ...n, readingMark: saved.readingMark } : n)),
+      );
+    } catch {
+      // Le serveur n'a pas pris : on ne ment pas sur l'état enregistré.
+      setMeta((m) => ({ ...m, readingMark: noteOuverte?.readingMark || 0 }));
+    }
+  };
   // PAS de remise à zéro par `useEffect` sur `activeId` : `useLayoutEffect`
   // — donc la pagination de l'éditeur, donc `onPageCount` — s'exécute AVANT
   // les `useEffect`. Une remise à zéro écrite là efface le compte à l'instant
@@ -512,6 +543,8 @@ export function SuccesNotesPage() {
             onPageCourante={setPageCourante}
             navigation={navigationOuverte}
             onFermerNavigation={() => setNavigationOuverte(false)}
+            marqueur={meta.readingMark}
+            saut={saut}
             onContentChange={(html) => {
               setDraftContent(html);
               scheduleAutoSave();
@@ -548,6 +581,54 @@ export function SuccesNotesPage() {
               >
                 Page {Math.min(pageCourante, draftPages)} sur {draftPages}
               </button>
+              {/* LE SIGNET DE LECTURE.
+                  Un document de soixante et une pages se lit en plusieurs
+                  fois. Rien ne retenait l'endroit : rouvrir ramenait en haut,
+                  et retrouver sa place se faisait à la molette et de mémoire. */}
+              {meta.readingMark > 0 ? (
+                <span
+                  className="inline-flex items-center rounded overflow-hidden"
+                  style={{ border: '1px solid var(--color-accent)' }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      jetonDeSaut.current += 1;
+                      setSaut({ page: meta.readingMark, jeton: jetonDeSaut.current });
+                    }}
+                    title={`Reprendre la lecture page ${meta.readingMark}`}
+                    className="tabular-nums px-1.5 flex items-center gap-1 cursor-pointer"
+                    style={{ color: 'var(--color-accent)' }}
+                  >
+                    <Bookmark size={11} fill="currentColor" />
+                    Reprendre p. {meta.readingMark}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void poserLeSignet(0)}
+                    aria-label="Retirer le signet"
+                    title="Retirer le signet"
+                    className="px-1 cursor-pointer"
+                    style={{
+                      color: 'var(--color-text-tertiary)',
+                      borderLeft: '1px solid var(--color-border)',
+                    }}
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void poserLeSignet(Math.min(pageCourante, draftPages))}
+                  title="Marquer cette page pour reprendre la lecture plus tard"
+                  className="px-1.5 rounded flex items-center gap-1 cursor-pointer"
+                  style={{ border: '1px solid var(--color-border)' }}
+                >
+                  <Bookmark size={11} />
+                  Marquer ma page
+                </button>
+              )}
               <span aria-hidden="true">—</span>
               <span className="tabular-nums">
                 {wordCount.toLocaleString('fr-CA')} mot{wordCount === 1 ? '' : 's'}

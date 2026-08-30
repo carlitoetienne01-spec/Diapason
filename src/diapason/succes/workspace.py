@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     page_background TEXT NOT NULL DEFAULT 'default',
     font_family TEXT NOT NULL DEFAULT 'Special Elite',
     doc_lang TEXT NOT NULL DEFAULT 'fr',
-    color TEXT NOT NULL DEFAULT '#6366f1'
+    color TEXT NOT NULL DEFAULT '#6366f1',
+    reading_mark INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS succes_notes_active_idx
     ON succes_notes(deleted_at_ms, updated_at_ms DESC);
@@ -231,6 +232,10 @@ class SuccesWorkspaceStore(SuccesStore):
             ("font_family", "TEXT NOT NULL DEFAULT 'Special Elite'"),
             ("doc_lang", "TEXT NOT NULL DEFAULT 'fr'"),
             ("color", "TEXT NOT NULL DEFAULT '#6366f1'"),
+            # 30 août 2026 : la page où l'on s'est arrêté de lire. Zéro veut
+            # dire « aucun marqueur », et c'est un défaut honnête — une note
+            # jamais lue n'a pas de page 1 marquée, elle n'a rien.
+            ("reading_mark", "INTEGER NOT NULL DEFAULT 0"),
         )
         neuves = [name for name, _ in additions if name not in columns]
         for name, declaration in additions:
@@ -1285,6 +1290,9 @@ class SuccesWorkspaceStore(SuccesStore):
             ),
             "docLang": row["doc_lang"] if "doc_lang" in keys else "fr",
             "color": row["color"] if "color" in keys else "#6366f1",
+            "readingMark": (
+                int(row["reading_mark"] or 0) if "reading_mark" in keys else 0
+            ),
         }
 
     def _load_note(
@@ -1345,6 +1353,15 @@ class SuccesWorkspaceStore(SuccesStore):
         doc_lang = str(data.get("docLang") or "fr").strip().lower()
         if doc_lang not in NOTE_DOC_LANGS:
             raise SuccesError("La langue du document doit être fr ou ht.")
+        # La page marquée. Bornée à zéro : un marqueur négatif ou illisible
+        # vaut « pas de marqueur », il ne vaut pas une exception — on ne perd
+        # pas une note parce que sa page marquée est absurde. Le plafond, lui,
+        # ne peut pas être appliqué ici : le nombre de pages dépend du format
+        # d'affichage et de la police, que le serveur ne rend pas.
+        try:
+            reading_mark = max(0, int(data.get("readingMark") or 0))
+        except (TypeError, ValueError):
+            reading_mark = 0
         return {
             "pageFormat": page_format,
             "pageSize": page_size,
@@ -1354,6 +1371,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "fontFamily": font_family,
             "docLang": doc_lang,
             "color": _color(data.get("color")),
+            "readingMark": reading_mark,
         }
 
     @classmethod
@@ -1390,8 +1408,8 @@ class SuccesWorkspaceStore(SuccesStore):
                 """INSERT INTO succes_notes
                    (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                     page_format,page_size,page_orientation,page_margins,
-                    page_background,font_family,doc_lang,color)
-                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)""",
+                    page_background,font_family,doc_lang,color,reading_mark)
+                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)""",
                 (
                     note_id,
                     title,
@@ -1407,6 +1425,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     meta["fontFamily"],
                     meta["docLang"],
                     meta["color"],
+                    meta["readingMark"],
                 ),
             )
             note = self._load_note(conn, note_id)
@@ -1441,7 +1460,7 @@ class SuccesWorkspaceStore(SuccesStore):
                 """UPDATE succes_notes SET title=?,content=?,updated_at=?,
                    updated_at_ms=?,page_format=?,page_size=?,page_orientation=?,
                    page_margins=?,page_background=?,font_family=?,
-                   doc_lang=?,color=? WHERE id=?""",
+                   doc_lang=?,color=?,reading_mark=? WHERE id=?""",
                 (
                     title,
                     content,
@@ -1455,6 +1474,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     meta["fontFamily"],
                     meta["docLang"],
                     meta["color"],
+                    meta["readingMark"],
                     note_id,
                 ),
             )
@@ -1622,8 +1642,8 @@ class SuccesWorkspaceStore(SuccesStore):
                     """INSERT INTO succes_notes
                        (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                         page_format,page_size,page_orientation,page_margins,
-                        page_background,font_family,doc_lang,color)
-                       VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)
+                        page_background,font_family,doc_lang,color,reading_mark)
+                       VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET
                        title=excluded.title,content=excluded.content,
                        created_at=excluded.created_at,updated_at=excluded.updated_at,
@@ -1634,7 +1654,7 @@ class SuccesWorkspaceStore(SuccesStore):
                        page_margins=excluded.page_margins,
                        page_background=excluded.page_background,
                        font_family=excluded.font_family,doc_lang=excluded.doc_lang,
-                       color=excluded.color""",
+                       color=excluded.color,reading_mark=excluded.reading_mark""",
                     (
                         note_id,
                         title,
@@ -1650,6 +1670,7 @@ class SuccesWorkspaceStore(SuccesStore):
                         meta["fontFamily"],
                         meta["docLang"],
                         meta["color"],
+                        meta["readingMark"],
                     ),
                 )
                 summary["notesImported"] += 1

@@ -509,6 +509,7 @@ export async function createSuccesNote(input: {
   fontFamily?: string;
   docLang?: SuccesNote['docLang'];
   color?: string;
+  readingMark?: number;
 }): Promise<SuccesNote> {
   const payload = await request<{ note: SuccesNote }>('/v1/succes/notes', {
     method: 'POST',
@@ -532,6 +533,7 @@ export async function updateSuccesNote(
       | 'fontFamily'
       | 'docLang'
       | 'color'
+      | 'readingMark'
     >
   >,
 ): Promise<SuccesNote> {

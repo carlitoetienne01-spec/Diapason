@@ -107,6 +107,14 @@ type Props = {
   /** Le volet de navigation — pages en miniature et plan des titres. */
   navigation?: boolean;
   onFermerNavigation?: () => void;
+  /** La page marquée, où la lecture s'était arrêtée. 0 : aucune. */
+  marqueur?: number;
+  /**
+   * Sauter à une page. Le JETON change à chaque demande, y compris pour la
+   * même page : sans lui, redemander deux fois « page 12 » ne ferait rien la
+   * seconde fois, puisque la valeur n'aurait pas changé.
+   */
+  saut?: { page: number; jeton: number } | null;
 };
 
 function runCommand(command: string, value?: string) {
@@ -632,6 +640,8 @@ export function RichNoteEditor({
   onPageCourante,
   navigation = false,
   onFermerNavigation,
+  marqueur = 0,
+  saut = null,
   editorKey,
 }: Props) {
   // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
@@ -942,6 +952,12 @@ export function RichNoteEditor({
     }
     setPageAffichee(passees + 1);
     onPageCourante?.(passees + 1);
+    // Le signet suit le défilement, parce que c'est le seul moment où les
+    // bornes sont sûres. Posé à la fin de la pagination, il tombait 2 676 px
+    // trop bas : la police VT323 est une police WEB, et tant qu'elle n'est
+    // pas chargée le document est plus long. La pagination qui suit son
+    // arrivée ne repasse pas toujours par ici.
+    poserLeSignet();
   };
 
   useEffect(() => {
@@ -977,6 +993,7 @@ export function RichNoteEditor({
       const feuilles = applyOverflowGaps(editor, page, zoomRef.current);
       onPageCount?.(feuilles);
       setSignaturePagination((n) => n + 1);
+      poserLeSignet();
       recalculerLaPage();
       reserverLaHauteur();
       remettreLeCaret(editor, place);
@@ -1162,6 +1179,99 @@ export function RichNoteEditor({
     runCommand('insertHTML', PAGE_BREAK_HTML);
     emitContent();
   };
+
+  /** Les bas de cale, dans l'ordre : la fin de chaque feuille. */
+  const bornesDePage = () => {
+    const editor = editorRef.current;
+    if (!editor) return [] as number[];
+    const haut = editor.getBoundingClientRect().top;
+    const z = zoomRef.current || 1;
+    // TOUTES les cales, pas seulement celles de premier niveau : une coupure
+    // de page peut vivre DANS un paragraphe ou dans une ligne de tableau.
+    // N'en compter que les enfants directs faisait tomber « Reprendre p. 19 »
+    // sur la page 28 — neuf coupures internes manquaient à l'appel.
+    return Array.from(
+      editor.querySelectorAll<HTMLElement>(`.${OVERFLOW_GAP_CLASS}`),
+    )
+      .map((c) => (c.getBoundingClientRect().bottom - haut) / z)
+      .sort((a, b) => a - b)
+      // Une ligne de tableau fractionnée pose une cale par CELLULE, à la même
+      // hauteur : des doublons, pas des pages.
+      .filter((v, i, t) => i === 0 || v - t[i - 1] > 2);
+  };
+
+  /** Amener le haut d'une page sous les yeux. */
+  const allerALaPage = (numero: number) => {
+    const desk = deskRef.current;
+    const editor = editorRef.current;
+    if (!desk || !editor || numero < 1) return;
+    const bornes = bornesDePage();
+    const depart = numero === 1 ? 0 : (bornes[numero - 2] ?? 0);
+    const z = zoomRef.current || 1;
+    const dejaVu =
+      editor.getBoundingClientRect().top - desk.getBoundingClientRect().top;
+    desk.scrollTo({
+      top: desk.scrollTop + dejaVu + depart * z,
+      behavior: 'smooth',
+    });
+  };
+
+  // Le saut demandé de l'extérieur — le marqueur de lecture, pour l'instant.
+  useEffect(() => {
+    if (!saut || saut.page < 1) return;
+    // Après la pagination, pas avant : les bornes n'existent pas tant que les
+    // cales ne sont pas posées.
+    const t = window.setTimeout(() => allerALaPage(saut.page), 60);
+    return () => window.clearTimeout(t);
+  }, [saut?.jeton]); // eslint-disable-line react-hooks/exhaustive-deps -- le jeton EST la demande
+
+  // La bande du marqueur, posée sur la feuille comme celles des coupures.
+  //
+  // Sur la FEUILLE et non dans l'éditeur : elle doit déborder dans la marge,
+  // là où l'on attend un signet, et l'éditeur s'arrête au bord du texte.
+  // Le marqueur lu par la pose du signet. Une réf et non la valeur capturée :
+  // `poserLeSignet` est appelé depuis la PAGINATION, dont la fonction est
+  // recréée à chaque rendu — la lire au moment de l'appel évite de poser le
+  // signet d'un rendu périmé.
+  const marqueurRef = useRef(marqueur);
+  marqueurRef.current = marqueur;
+
+  /**
+   * Poser le signet de lecture sur la feuille.
+   *
+   * Appelé DEPUIS la pagination, quand les cales sont définitives. Un effet
+   * React réagissant à la signature de pagination ne suffisait pas : la
+   * pagination pose ses cales en plusieurs temps, et le signet lisait des
+   * bornes intermédiaires — mesuré 2 676 px sous sa page.
+   */
+  const poserLeSignet = () => {
+    const page = pageRef.current;
+    const editor = editorRef.current;
+    if (!page || !editor) return;
+    page.querySelectorAll(':scope > .succes-note-signet').forEach((e) => e.remove());
+    const numero = marqueurRef.current;
+    if (!numero || numero < 1) return;
+    const bornes = bornesDePage();
+    const depart = numero === 1 ? 0 : bornes[numero - 2];
+    if (depart === undefined) return;
+    // L'ÉDITEUR N'EST PAS LA FEUILLE. `top: 0` sur un enfant absolu de la
+    // feuille désigne le bord du papier ; le texte commence une marge plus
+    // bas. Sans ce report, le signet monte de toute la marge haute.
+    const z = zoomRef.current || 1;
+    const report =
+      (editor.getBoundingClientRect().top - page.getBoundingClientRect().top) / z;
+    const signet = document.createElement('div');
+    signet.className = 'succes-note-signet';
+    signet.setAttribute('aria-hidden', 'true');
+    signet.title = `Vous vous étiez arrêté ici, page ${numero}`;
+    signet.style.top = `${Math.round(depart + report)}px`;
+    page.appendChild(signet);
+  };
+
+  // Poser ou retirer le signet quand la page marquée change, sans repaginer.
+  useEffect(() => {
+    poserLeSignet();
+  }, [marqueur]); // eslint-disable-line react-hooks/exhaustive-deps -- la pagination le repose elle-même
 
   // ─── L'état de la barre : ce que Word dit et que nous ne disions pas ────
   //

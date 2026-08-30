@@ -188,6 +188,8 @@ class NoteCreate(BaseModel):
     fontFamily: str = "Special Elite"
     docLang: str = "fr"
     color: str = "#6366f1"
+    # La page où l'on s'est arrêté de lire. Zéro : aucun marqueur.
+    readingMark: int = Field(default=0, ge=0, le=100_000)
     opId: str | None = None
 
 
@@ -202,6 +204,9 @@ class NotePatch(BaseModel):
     fontFamily: str | None = None
     docLang: str | None = None
     color: str | None = None
+    # `exclude_none` laisse passer 0 : effacer le marqueur est une action, et
+    # elle doit pouvoir se dire. Seul `null` veut dire « ne touche pas ».
+    readingMark: int | None = Field(default=None, ge=0, le=100_000)
     opId: str | None = None
 
 

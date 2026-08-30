@@ -234,6 +234,13 @@ export interface SuccesNote {
   fontFamily: string;
   docLang: SuccesNoteDocLang;
   color: string;
+  /**
+   * La page où l'on s'est arrêté de lire. Zéro : aucun marqueur.
+   *
+   * Une DONNÉE de la note, pas un état d'affichage : il doit survivre à la
+   * fermeture de l'application et suivre la note, pas la machine.
+   */
+  readingMark?: number;
 }
 
 export interface SuccesDashboard {

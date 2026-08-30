@@ -414,3 +414,78 @@ def test_une_base_ancienne_est_remplie_a_l_ouverture(tmp_path) -> None:
         "la migration doit écrire dans les colonnes, sinon un changement "
         "ultérieur ne pourra jamais contredire la valeur héritée"
     )
+
+
+class TestLeMarqueurDeLecture:
+    """« Si je prends une pause, savoir où je suis arrivé. »
+
+    30 août 2026. Un document de soixante et une pages se lit en plusieurs
+    fois. Rien ne retenait l'endroit : rouvrir la note ramenait en haut, et
+    retrouver sa place se faisait à la molette et de mémoire.
+
+    Le marqueur est une DONNÉE de la note, pas un état d'affichage : il doit
+    survivre à la fermeture de l'application, et suivre la note plutôt que la
+    machine qui l'a lue.
+    """
+
+    def test_une_note_neuve_n_a_pas_de_marqueur(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Guide"})
+        assert note["readingMark"] == 0, (
+            "zéro veut dire « aucun marqueur » ; une note jamais lue n'a pas "
+            "sa page 1 marquée, elle n'a rien"
+        )
+
+    def test_le_marqueur_survit_a_la_fermeture(self, tmp_path) -> None:
+        chemin = tmp_path / "notes.db"
+        note = SuccesWorkspaceStore(chemin).create_note({"title": "Guide"})
+        SuccesWorkspaceStore(chemin).update_note(note["id"], {"readingMark": 42})
+
+        # Une troisième ouverture : c'est le disque qui répond, pas un cache.
+        relue = SuccesWorkspaceStore(chemin).get_note(note["id"])
+        assert relue["readingMark"] == 42, (
+            "un marqueur qui ne survit pas au redémarrage ne sert à rien — "
+            "c'est précisément entre deux séances qu'on en a besoin"
+        )
+
+    def test_effacer_le_marqueur_est_une_action_qui_passe(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Guide", "readingMark": 12})
+        efface = store.update_note(note["id"], {"readingMark": 0})
+        assert efface["readingMark"] == 0, (
+            "remettre à zéro doit effacer ; si `exclude_none` avalait le zéro, "
+            "le marqueur serait impossible à retirer"
+        )
+
+    def test_modifier_la_note_ne_perd_pas_le_marqueur(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Guide", "readingMark": 7})
+        apres = store.update_note(note["id"], {"title": "Guide relu"})
+        assert apres["readingMark"] == 7, (
+            "une modification qui ne parle pas du marqueur ne doit pas "
+            "l'effacer : sinon renommer une note ferait perdre sa place"
+        )
+
+    def test_un_marqueur_absurde_vaut_pas_de_marqueur(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        for valeur in (-3, "douze", None, ""):
+            note = store.create_note({"title": "Guide", "readingMark": valeur})
+            assert note["readingMark"] == 0, (
+                f"readingMark={valeur!r} doit valoir « aucun marqueur » et non "
+                "faire échouer la création : on ne perd pas une note pour ça"
+            )
+
+    def test_une_base_ancienne_gagne_la_colonne_sans_perdre_ses_notes(
+        self, tmp_path
+    ) -> None:
+        # Aucune migration n'existe dans ce dépôt : chaque base crée son schéma
+        # à l'ouverture. Une note écrite AVANT la colonne doit se relire.
+        chemin = tmp_path / "notes.db"
+        SuccesWorkspaceStore(chemin).create_note({"title": "Écrite avant"})
+        with sqlite3.connect(chemin) as conn:
+            conn.execute("ALTER TABLE succes_notes DROP COLUMN reading_mark")
+
+        store = SuccesWorkspaceStore(chemin)
+        notes = store.list_notes()
+        assert len(notes) == 1, "la note d'avant la colonne doit survivre"
+        assert notes[0]["readingMark"] == 0

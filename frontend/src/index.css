@@ -1378,6 +1378,34 @@
   background-origin: content-box;
   background-clip: content-box;
 }
+/* LE SIGNET DE LECTURE.
+   Posé sur la FEUILLE et non dans l'éditeur : il déborde dans la marge, là où
+   l'on attend un signet, et l'éditeur s'arrête au bord du texte. `left: 0` sur
+   un enfant absolu de la feuille désigne le bord du papier, marge comprise —
+   c'est la boîte de remplissage qui sert de référence. */
+.succes-note-signet {
+  position: absolute;
+  left: 0;
+  width: 5px;
+  height: var(--note-page-height);
+  background: var(--color-accent, #38bdf8);
+  z-index: 3;
+  pointer-events: auto;
+  border-radius: 0 3px 3px 0;
+  opacity: 0.85;
+}
+.succes-note-signet::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 34px;
+  background: var(--color-accent, #38bdf8);
+  /* La pointe d'un signet de livre : deux coins hauts droits, une encoche en
+     bas. Un simple rectangle se lirait comme un défaut d'affichage. */
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
 .succes-note-bg-sepia { --note-paper: #f4ecd8; color: #3c3028; }
 .succes-note-bg-dark { --note-paper: #1a2232; color: #e8eef8; }
 .succes-note-editor {
