@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     updated_at_ms INTEGER NOT NULL,
     deleted_at_ms INTEGER,
     page_format TEXT NOT NULL DEFAULT 'a4',
+    page_size TEXT NOT NULL DEFAULT 'a4',
+    page_orientation TEXT NOT NULL DEFAULT 'portrait',
+    page_margins TEXT NOT NULL DEFAULT 'normales',
     page_background TEXT NOT NULL DEFAULT 'default',
     font_family TEXT NOT NULL DEFAULT 'Special Elite',
     doc_lang TEXT NOT NULL DEFAULT 'fr',
@@ -89,6 +92,52 @@ PRAGMA user_version = 3;
 NOTE_PAGE_FORMATS = frozenset(
     {"a4", "letter", "a5", "wide", "narrow", "full", "reading"}
 )
+# Les trois axes de « Mise en page » de Word, que la liste ci-dessus
+# mélangeait : « A4 » est un papier, « Marges minimales » un réglage de
+# marges, « A4 paysage » une orientation. On ne pouvait donc ni mettre une A5
+# en paysage, ni savoir sur quel papier « marges minimales » s'appliquait.
+NOTE_PAGE_SIZES = frozenset({"a4", "letter", "legal", "a5", "executive"})
+NOTE_PAGE_ORIENTATIONS = frozenset({"portrait", "paysage"})
+NOTE_PAGE_MARGINS = frozenset({"normales", "etroites", "moderees", "larges"})
+
+# Comment se relit une note écrite avant la séparation. Deux des sept valeurs
+# n'existaient chez Word sous aucune forme — « A5 » portait 15 mm de marges et
+# « Lecture » 32 mm — et deviennent le préréglage le plus proche.
+_FORMAT_HERITE: dict[str, tuple[str, str, str]] = {
+    "a4": ("a4", "portrait", "normales"),
+    "letter": ("letter", "portrait", "normales"),
+    "a5": ("a5", "portrait", "normales"),
+    "wide": ("a4", "paysage", "normales"),
+    "narrow": ("executive", "portrait", "moderees"),
+    "full": ("a4", "portrait", "etroites"),
+    "reading": ("a4", "portrait", "larges"),
+}
+
+
+def _axes_de_page(row: Any, keys: Any) -> dict[str, str]:
+    """Les quatre champs de mise en page d'une note.
+
+    Les colonnes disent la vérité : la migration les a remplies depuis la
+    valeur héritée. La décomposition ne sert plus qu'au cas où le schéma est
+    plus ancien que ce code — une base ouverte par une version antérieure,
+    ou un enregistrement venu de la synchronisation.
+    """
+    herite = str(row["page_format"] if "page_format" in keys else "a4")
+    taille, sens, marges = _FORMAT_HERITE.get(herite, _FORMAT_HERITE["a4"])
+    if "page_size" in keys and row["page_size"]:
+        taille = str(row["page_size"])
+    if "page_orientation" in keys and row["page_orientation"]:
+        sens = str(row["page_orientation"])
+    if "page_margins" in keys and row["page_margins"]:
+        marges = str(row["page_margins"])
+    return {
+        "pageFormat": herite,
+        "pageSize": taille,
+        "pageOrientation": sens,
+        "pageMargins": marges,
+    }
+
+
 # 29 août 2026 : 100 000 caractères refusaient un guide riche (HTML de
 # mise en forme + gouttières de pagination). Ce n'est pas un plafond
 # métier — c'est une garde-fou. Un million laisse un manuel entier.
@@ -172,15 +221,37 @@ class SuccesWorkspaceStore(SuccesStore):
         }
         additions = (
             ("page_format", "TEXT NOT NULL DEFAULT 'a4'"),
+            # 30 août 2026 : les trois axes de « Mise en page » de Word, que
+            # `page_format` mélangeait. Les notes déjà écrites sont REMPLIES
+            # depuis leur valeur héritée juste après l'ajout — voir plus bas.
+            ("page_size", "TEXT NOT NULL DEFAULT 'a4'"),
+            ("page_orientation", "TEXT NOT NULL DEFAULT 'portrait'"),
+            ("page_margins", "TEXT NOT NULL DEFAULT 'normales'"),
             ("page_background", "TEXT NOT NULL DEFAULT 'default'"),
             ("font_family", "TEXT NOT NULL DEFAULT 'Special Elite'"),
             ("doc_lang", "TEXT NOT NULL DEFAULT 'fr'"),
             ("color", "TEXT NOT NULL DEFAULT '#6366f1'"),
         )
+        neuves = [name for name, _ in additions if name not in columns]
         for name, declaration in additions:
             if name not in columns:
                 conn.execute(
                     f"ALTER TABLE succes_notes ADD COLUMN {name} {declaration}"
+                )
+        if "page_size" in neuves and "page_format" in columns:
+            # REMPLIR, et non déduire à la lecture. `ALTER TABLE` donne à
+            # chaque note existante le défaut des colonnes neuves, ce qui rend
+            # « jamais renseigné » indiscernable de « choisi exprès » : une
+            # note héritée « A4 paysage » qu'on remettrait ensuite en portrait
+            # serait éternellement rendue en paysage par une lecture qui
+            # préfère la valeur non-défaut. Une seule écriture, ici, et les
+            # colonnes deviennent la vérité.
+            for herite, (taille, sens, marges) in _FORMAT_HERITE.items():
+                conn.execute(
+                    """UPDATE succes_notes
+                       SET page_size=?, page_orientation=?, page_margins=?
+                       WHERE page_format=?""",
+                    (taille, sens, marges, herite),
                 )
 
     @staticmethod
@@ -1205,7 +1276,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "updatedAt": row["updated_at"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
-            "pageFormat": row["page_format"] if "page_format" in keys else "a4",
+            **_axes_de_page(row, keys),
             "pageBackground": (
                 row["page_background"] if "page_background" in keys else "default"
             ),
@@ -1248,6 +1319,23 @@ class SuccesWorkspaceStore(SuccesStore):
         page_format = str(data.get("pageFormat") or "a4").strip().lower()
         if page_format not in NOTE_PAGE_FORMATS:
             raise SuccesError("Le format de page de la note est invalide.")
+        # Le défaut des trois axes vient de la valeur HÉRITÉE, pas d'une
+        # constante : un appelant qui n'envoie que `pageFormat: "wide"` — le
+        # client mobile, la synchronisation, une note importée — doit obtenir
+        # A4 paysage, et non A4 portrait parce que « portrait » se trouve être
+        # le défaut de la colonne.
+        taille_h, sens_h, marges_h = _FORMAT_HERITE.get(
+            page_format, _FORMAT_HERITE["a4"]
+        )
+        page_size = str(data.get("pageSize") or taille_h).strip().lower()
+        if page_size not in NOTE_PAGE_SIZES:
+            raise SuccesError("La taille de papier de la note est invalide.")
+        page_orientation = str(data.get("pageOrientation") or sens_h).strip().lower()
+        if page_orientation not in NOTE_PAGE_ORIENTATIONS:
+            raise SuccesError("L'orientation de la note est invalide.")
+        page_margins = str(data.get("pageMargins") or marges_h).strip().lower()
+        if page_margins not in NOTE_PAGE_MARGINS:
+            raise SuccesError("Les marges de la note sont invalides.")
         page_background = str(data.get("pageBackground") or "default").strip().lower()
         if page_background not in NOTE_PAGE_BACKGROUNDS:
             raise SuccesError("Le fond de page de la note est invalide.")
@@ -1259,6 +1347,9 @@ class SuccesWorkspaceStore(SuccesStore):
             raise SuccesError("La langue du document doit être fr ou ht.")
         return {
             "pageFormat": page_format,
+            "pageSize": page_size,
+            "pageOrientation": page_orientation,
+            "pageMargins": page_margins,
             "pageBackground": page_background,
             "fontFamily": font_family,
             "docLang": doc_lang,
@@ -1298,8 +1389,9 @@ class SuccesWorkspaceStore(SuccesStore):
             conn.execute(
                 """INSERT INTO succes_notes
                    (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
-                    page_format,page_background,font_family,doc_lang,color)
-                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?)""",
+                    page_format,page_size,page_orientation,page_margins,
+                    page_background,font_family,doc_lang,color)
+                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)""",
                 (
                     note_id,
                     title,
@@ -1308,6 +1400,9 @@ class SuccesWorkspaceStore(SuccesStore):
                     iso_time,
                     timestamp,
                     meta["pageFormat"],
+                    meta["pageSize"],
+                    meta["pageOrientation"],
+                    meta["pageMargins"],
                     meta["pageBackground"],
                     meta["fontFamily"],
                     meta["docLang"],
@@ -1344,7 +1439,8 @@ class SuccesWorkspaceStore(SuccesStore):
                 raise SuccesNotFound("Cette note n'existe pas ou a été supprimée.")
             conn.execute(
                 """UPDATE succes_notes SET title=?,content=?,updated_at=?,
-                   updated_at_ms=?,page_format=?,page_background=?,font_family=?,
+                   updated_at_ms=?,page_format=?,page_size=?,page_orientation=?,
+                   page_margins=?,page_background=?,font_family=?,
                    doc_lang=?,color=? WHERE id=?""",
                 (
                     title,
@@ -1352,6 +1448,9 @@ class SuccesWorkspaceStore(SuccesStore):
                     iso_time,
                     timestamp,
                     meta["pageFormat"],
+                    meta["pageSize"],
+                    meta["pageOrientation"],
+                    meta["pageMargins"],
                     meta["pageBackground"],
                     meta["fontFamily"],
                     meta["docLang"],
@@ -1522,12 +1621,17 @@ class SuccesWorkspaceStore(SuccesStore):
                 conn.execute(
                     """INSERT INTO succes_notes
                        (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
-                        page_format,page_background,font_family,doc_lang,color)
-                       VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+                        page_format,page_size,page_orientation,page_margins,
+                        page_background,font_family,doc_lang,color)
+                       VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(id) DO UPDATE SET
                        title=excluded.title,content=excluded.content,
                        created_at=excluded.created_at,updated_at=excluded.updated_at,
                        updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
                        page_format=excluded.page_format,
+                       page_size=excluded.page_size,
+                       page_orientation=excluded.page_orientation,
+                       page_margins=excluded.page_margins,
                        page_background=excluded.page_background,
                        font_family=excluded.font_family,doc_lang=excluded.doc_lang,
                        color=excluded.color""",
@@ -1539,6 +1643,9 @@ class SuccesWorkspaceStore(SuccesStore):
                         str(raw.get("updatedAt") or ""),
                         timestamp,
                         meta["pageFormat"],
+                        meta["pageSize"],
+                        meta["pageOrientation"],
+                        meta["pageMargins"],
                         meta["pageBackground"],
                         meta["fontFamily"],
                         meta["docLang"],

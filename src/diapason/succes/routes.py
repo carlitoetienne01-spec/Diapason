@@ -18,6 +18,9 @@ from diapason.succes.workspace import (
     NOTE_FONTS,
     NOTE_PAGE_BACKGROUNDS,
     NOTE_PAGE_FORMATS,
+    NOTE_PAGE_MARGINS,
+    NOTE_PAGE_ORIENTATIONS,
+    NOTE_PAGE_SIZES,
     SuccesWorkspaceStore,
 )
 
@@ -178,6 +181,9 @@ class NoteCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=NOTE_CONTENT_MAX)
     pageFormat: str = "a4"
+    pageSize: str = "a4"
+    pageOrientation: str = "portrait"
+    pageMargins: str = "normales"
     pageBackground: str = "default"
     fontFamily: str = "Special Elite"
     docLang: str = "fr"
@@ -189,6 +195,9 @@ class NotePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=NOTE_CONTENT_MAX)
     pageFormat: str | None = None
+    pageSize: str | None = None
+    pageOrientation: str | None = None
+    pageMargins: str | None = None
     pageBackground: str | None = None
     fontFamily: str | None = None
     docLang: str | None = None
@@ -701,6 +710,9 @@ async def list_notes(
         "notes": notes,
         "count": len(notes),
         "pageFormats": sorted(NOTE_PAGE_FORMATS),
+        "pageSizes": sorted(NOTE_PAGE_SIZES),
+        "pageOrientations": sorted(NOTE_PAGE_ORIENTATIONS),
+        "pageMargins": sorted(NOTE_PAGE_MARGINS),
         "pageBackgrounds": sorted(NOTE_PAGE_BACKGROUNDS),
         "fonts": sorted(NOTE_FONTS),
         "docLangs": sorted(NOTE_DOC_LANGS),

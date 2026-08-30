@@ -265,3 +265,152 @@ def test_voice_exposes_routine_workspace_but_not_sensitive_delete() -> None:
     tool_ids = list_voice_tool_ids()
     assert "succes_workspace" in tool_ids
     assert "succes_delete_item" not in tool_ids
+
+
+class TestLesTroisAxesDeMiseEnPage:
+    """« Mise en page » de Word a trois menus ; nous en avions un seul.
+
+    30 août 2026. « A4 » est un papier, « Marges minimales » un réglage de
+    marges, « A4 paysage » une orientation — tout cela dans une même liste.
+    On ne pouvait donc ni mettre une A5 en paysage, ni savoir sur quel papier
+    « marges minimales » s'appliquait. Ces tests tiennent la séparation, et
+    surtout la compatibilité : une note écrite avant ne doit pas changer
+    d'allure en silence.
+    """
+
+    def test_une_note_heritee_se_relit_dans_les_trois_axes(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Ancienne", "pageFormat": "wide"})
+
+        assert note["pageSize"] == "a4"
+        assert note["pageOrientation"] == "paysage", (
+            "« A4 paysage » était une ORIENTATION déguisée en format : la "
+            "perdre remettrait la note en portrait sans prévenir"
+        )
+        assert note["pageMargins"] == "normales"
+
+    def test_marges_minimales_rouvre_en_etroites_pas_en_normales(
+        self, tmp_path
+    ) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Dense", "pageFormat": "full"})
+        assert note["pageMargins"] == "etroites"
+
+    def test_page_etroite_etait_un_papier_executive(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note({"title": "Étroite", "pageFormat": "narrow"})
+        assert note["pageSize"] == "executive"
+        assert note["pageMargins"] == "moderees"
+
+    def test_les_trois_axes_neufs_sont_acceptes_et_relus(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note(
+            {
+                "title": "Neuve",
+                "pageSize": "legal",
+                "pageOrientation": "paysage",
+                "pageMargins": "larges",
+            }
+        )
+        relue = store.get_note(note["id"])
+        assert (relue["pageSize"], relue["pageOrientation"], relue["pageMargins"]) == (
+            "legal",
+            "paysage",
+            "larges",
+        )
+
+    def test_une_a5_peut_enfin_etre_en_paysage(self, tmp_path) -> None:
+        """Ce que l'ancienne liste rendait littéralement impossible."""
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note(
+            {"title": "A5 couchée", "pageSize": "a5", "pageOrientation": "paysage"}
+        )
+        assert (note["pageSize"], note["pageOrientation"]) == ("a5", "paysage")
+
+    def test_un_papier_inconnu_est_refuse(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        for champ, valeur in (
+            ("pageSize", "papyrus"),
+            ("pageOrientation", "diagonale"),
+            ("pageMargins", "aucune"),
+        ):
+            try:
+                store.create_note({"title": "x", champ: valeur})
+            except SuccesError:
+                continue
+            raise AssertionError(f"{champ}={valeur} aurait dû être refusé")
+
+    def test_la_mise_en_page_survit_a_une_modification(self, tmp_path) -> None:
+        store = SuccesWorkspaceStore(tmp_path / "notes.db")
+        note = store.create_note(
+            {"title": "Suivi", "pageSize": "a5", "pageMargins": "larges"}
+        )
+        modifiee = store.update_note(note["id"], {"content": "<p>texte</p>"})
+        assert (modifiee["pageSize"], modifiee["pageMargins"]) == ("a5", "larges"), (
+            "une simple frappe ne doit pas ramener la note à A4 marges normales"
+        )
+
+
+def test_une_base_ancienne_est_remplie_a_l_ouverture(tmp_path) -> None:
+    """La migration doit REMPLIR, pas laisser deviner.
+
+    `ALTER TABLE` donne à chaque note existante le défaut des colonnes neuves.
+    Sans remplissage, « jamais renseigné » devient indiscernable de « choisi
+    exprès » : une note héritée « A4 paysage » qu'on remettrait ensuite en
+    portrait serait éternellement rendue en paysage par une lecture qui
+    préfère la valeur non-défaut. C'est le piège que ce test ferme.
+    """
+    chemin = tmp_path / "ancienne.db"
+    conn = sqlite3.connect(chemin)
+    conn.executescript(
+        """
+        CREATE TABLE succes_notes (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            updated_at_ms INTEGER NOT NULL,
+            deleted_at_ms INTEGER,
+            page_format TEXT NOT NULL DEFAULT 'a4',
+            page_background TEXT NOT NULL DEFAULT 'default',
+            font_family TEXT NOT NULL DEFAULT 'Special Elite',
+            doc_lang TEXT NOT NULL DEFAULT 'fr',
+            color TEXT NOT NULL DEFAULT '#6366f1'
+        );
+        """
+    )
+    for note_id, page_format in (
+        ("n-wide", "wide"),
+        ("n-full", "full"),
+        ("n-narrow", "narrow"),
+        ("n-reading", "reading"),
+    ):
+        conn.execute(
+            """INSERT INTO succes_notes
+               (id,title,content,created_at,updated_at,updated_at_ms,page_format)
+               VALUES (?,?,'',?,?,?,?)""",
+            (note_id, note_id, "2026-08-01", "2026-08-01", 1, page_format),
+        )
+    conn.commit()
+    conn.close()
+
+    store = SuccesWorkspaceStore(chemin)
+
+    assert store.get_note("n-wide")["pageOrientation"] == "paysage"
+    assert store.get_note("n-full")["pageMargins"] == "etroites"
+    assert store.get_note("n-narrow")["pageSize"] == "executive"
+    assert store.get_note("n-reading")["pageMargins"] == "larges"
+
+    # Et les colonnes portent VRAIMENT ces valeurs — ce n'est pas la lecture
+    # qui les recalcule à chaque fois.
+    verif = sqlite3.connect(chemin)
+    ligne = verif.execute(
+        "SELECT page_size,page_orientation,page_margins"
+        " FROM succes_notes WHERE id='n-narrow'"
+    ).fetchone()
+    verif.close()
+    assert ligne == ("executive", "portrait", "moderees"), (
+        "la migration doit écrire dans les colonnes, sinon un changement "
+        "ultérieur ne pourra jamais contredire la valeur héritée"
+    )

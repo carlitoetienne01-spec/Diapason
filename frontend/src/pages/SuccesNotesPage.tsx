@@ -18,7 +18,7 @@ import {
   listSuccesNotes,
   updateSuccesNote,
 } from '../features/succes/api';
-import { NOTE_DOC_LANGS } from '../features/succes/noteFormats';
+import { NOTE_DOC_LANGS, miseEnPageDeLaNote } from '../features/succes/noteFormats';
 import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { countNotePages } from '../features/succes/notePages';
 import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
@@ -28,6 +28,9 @@ import type {
   SuccesNoteDocLang,
   SuccesNotePageBackground,
   SuccesNotePageFormat,
+  SuccesNotePageMargins,
+  SuccesNotePageOrientation,
+  SuccesNotePageSize,
 } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
@@ -47,8 +50,28 @@ const FOLDER_COLORS = [
   '#64748b',
 ];
 
+/** Les trois axes d'une note, hérités décomposés si elle ne les porte pas. */
+function axesDeLaNote(note: {
+  pageFormat?: SuccesNotePageFormat;
+  pageSize?: SuccesNotePageSize;
+  pageOrientation?: SuccesNotePageOrientation;
+  pageMargins?: SuccesNotePageMargins;
+}) {
+  const mise = miseEnPageDeLaNote(note);
+  return {
+    pageSize: mise.size,
+    pageOrientation: mise.orientation,
+    pageMargins: mise.margins,
+  };
+}
+
 const emptyMeta = () => ({
+  // `pageFormat` reste écrit pour qu'une note neuve reste lisible par une
+  // version antérieure de l'app ; les trois axes sont la vérité.
   pageFormat: 'a4' as SuccesNotePageFormat,
+  pageSize: 'a4' as SuccesNotePageSize,
+  pageOrientation: 'portrait' as SuccesNotePageOrientation,
+  pageMargins: 'normales' as SuccesNotePageMargins,
   pageBackground: 'default' as SuccesNotePageBackground,
   fontFamily: 'Special Elite',
   docLang: 'fr' as SuccesNoteDocLang,
@@ -136,6 +159,7 @@ export function SuccesNotesPage() {
     setDraftContent(note.content);
     setMeta({
       pageFormat: note.pageFormat || 'a4',
+      ...axesDeLaNote(note),
       pageBackground: note.pageBackground || 'default',
       fontFamily: note.fontFamily || 'Special Elite',
       docLang: note.docLang || 'fr',
@@ -279,6 +303,7 @@ export function SuccesNotesPage() {
       setDraftContent(saved.content);
       setMeta({
         pageFormat: saved.pageFormat || 'a4',
+        ...axesDeLaNote(saved),
         pageBackground: saved.pageBackground || 'default',
         fontFamily: saved.fontFamily || 'Special Elite',
         docLang: saved.docLang || 'fr',
@@ -357,6 +382,9 @@ export function SuccesNotesPage() {
         title: `${(source?.title || draftTitle).trim() || 'Sans titre'} (copie)`,
         content: source?.content ?? draftContent,
         pageFormat: source?.pageFormat ?? meta.pageFormat,
+        pageSize: source?.pageSize ?? meta.pageSize,
+        pageOrientation: source?.pageOrientation ?? meta.pageOrientation,
+        pageMargins: source?.pageMargins ?? meta.pageMargins,
         pageBackground: source?.pageBackground ?? meta.pageBackground,
         fontFamily: source?.fontFamily ?? meta.fontFamily,
         docLang: source?.docLang ?? meta.docLang,
@@ -445,6 +473,9 @@ export function SuccesNotesPage() {
             editorKey={activeId ?? 'new'}
             content={draftContent}
             pageFormat={meta.pageFormat}
+            pageSize={meta.pageSize}
+            pageOrientation={meta.pageOrientation}
+            pageMargins={meta.pageMargins}
             pageBackground={meta.pageBackground}
             fontFamily={meta.fontFamily}
             docLang={meta.docLang}

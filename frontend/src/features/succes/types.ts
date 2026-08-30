@@ -193,6 +193,23 @@ export type SuccesNotePageFormat =
   | 'full'
   | 'reading';
 
+/**
+ * Les trois axes de « Mise en page » de Word, séparés comme chez lui.
+ *
+ * `SuccesNotePageFormat` ci-dessus reste : c'est la colonne héritée, et les
+ * notes déjà enregistrées la portent. Elle se décompose en ces trois-ci à la
+ * lecture — voir `decomposeLegacyFormat` dans `noteFormats.ts`.
+ *
+ * Les CHAMPS voyagent en anglais camelCase (`pageSize`, `pageOrientation`,
+ * `pageMargins`) ; les VALEURS sont des libellés produit, donc en français,
+ * comme `pageBackground: 'sepia'` l'est déjà.
+ */
+export type SuccesNotePageSize = 'a4' | 'letter' | 'legal' | 'a5' | 'executive';
+
+export type SuccesNotePageOrientation = 'portrait' | 'paysage';
+
+export type SuccesNotePageMargins = 'normales' | 'etroites' | 'moderees' | 'larges';
+
 export type SuccesNotePageBackground =
   | 'default'
   | 'lined'
@@ -210,6 +227,9 @@ export interface SuccesNote {
   updatedAt: string;
   updatedAtMs: number;
   pageFormat: SuccesNotePageFormat;
+  pageSize?: SuccesNotePageSize;
+  pageOrientation?: SuccesNotePageOrientation;
+  pageMargins?: SuccesNotePageMargins;
   pageBackground: SuccesNotePageBackground;
   fontFamily: string;
   docLang: SuccesNoteDocLang;

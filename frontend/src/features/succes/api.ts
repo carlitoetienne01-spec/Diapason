@@ -502,6 +502,9 @@ export async function createSuccesNote(input: {
   title: string;
   content?: string;
   pageFormat?: SuccesNote['pageFormat'];
+  pageSize?: SuccesNote['pageSize'];
+  pageOrientation?: SuccesNote['pageOrientation'];
+  pageMargins?: SuccesNote['pageMargins'];
   pageBackground?: SuccesNote['pageBackground'];
   fontFamily?: string;
   docLang?: SuccesNote['docLang'];
@@ -522,6 +525,9 @@ export async function updateSuccesNote(
       | 'title'
       | 'content'
       | 'pageFormat'
+      | 'pageSize'
+      | 'pageOrientation'
+      | 'pageMargins'
       | 'pageBackground'
       | 'fontFamily'
       | 'docLang'

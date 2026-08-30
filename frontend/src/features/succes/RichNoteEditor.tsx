@@ -24,7 +24,10 @@ import {
   NOTE_FONTS,
   NOTE_FONT_SIZE_COMMANDS,
   NOTE_PAGE_BACKGROUNDS,
-  NOTE_PAGE_FORMATS,
+  NOTE_PAGE_MARGINS,
+  NOTE_PAGE_ORIENTATIONS,
+  NOTE_PAGE_SIZES,
+  miseEnPageDeLaNote,
   noteFontCss,
 } from './noteFormats';
 import {
@@ -43,11 +46,17 @@ import type {
   SuccesNoteDocLang,
   SuccesNotePageBackground,
   SuccesNotePageFormat,
+  SuccesNotePageMargins,
+  SuccesNotePageOrientation,
+  SuccesNotePageSize,
 } from './types';
 
 type Props = {
   content: string;
   pageFormat: SuccesNotePageFormat;
+  pageSize?: SuccesNotePageSize;
+  pageOrientation?: SuccesNotePageOrientation;
+  pageMargins?: SuccesNotePageMargins;
   pageBackground: SuccesNotePageBackground;
   fontFamily: string;
   docLang: SuccesNoteDocLang;
@@ -55,6 +64,9 @@ type Props = {
   onContentChange: (html: string) => void;
   onMetaChange: (patch: {
     pageFormat?: SuccesNotePageFormat;
+    pageSize?: SuccesNotePageSize;
+    pageOrientation?: SuccesNotePageOrientation;
+    pageMargins?: SuccesNotePageMargins;
     pageBackground?: SuccesNotePageBackground;
     fontFamily?: string;
     docLang?: SuccesNoteDocLang;
@@ -256,8 +268,13 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
     style.getPropertyValue('--note-page-height'),
     page.offsetHeight || 1,
   );
-  const margin = cssLengthToPx(style.getPropertyValue('--note-margin'), 32);
-  const contentHeight = pageHeight - 2 * margin;
+  // Les marges ne sont plus symétriques : « Modérées » vaut 2,54 cm en haut et
+  // en bas, 1,91 cm sur les côtés. La pagination ne s'intéresse qu'aux marges
+  // VERTICALES — ce sont elles qui bornent la hauteur utile.
+  const margeHaut = cssLengthToPx(style.getPropertyValue('--note-m-t'), 96);
+  const margeBas = cssLengthToPx(style.getPropertyValue('--note-m-b'), 96);
+  const margin = margeBas;
+  const contentHeight = pageHeight - margeHaut - margeBas;
   if (contentHeight < 80) return;
   editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((node) => node.remove());
   const collected = measuredBlocks(editor);
@@ -294,6 +311,9 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
 export function RichNoteEditor({
   content,
   pageFormat,
+  pageSize,
+  pageOrientation,
+  pageMargins,
   pageBackground,
   fontFamily,
   docLang,
@@ -302,6 +322,16 @@ export function RichNoteEditor({
   onMetaChange,
   editorKey,
 }: Props) {
+  // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
+  // se décompose en trois axes à la lecture, et les trois champs neufs gagnent
+  // dès qu'ils existent.
+  const mise = miseEnPageDeLaNote({
+    pageFormat,
+    pageSize,
+    pageOrientation,
+    pageMargins,
+  });
+
   const editorRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const applyingGaps = useRef(false);
@@ -328,7 +358,7 @@ export function RichNoteEditor({
       editor.innerHTML = sanitized;
     }
     paginate();
-  }, [editorKey, pageFormat, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+  }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
 
   useEffect(() => {
     const page = pageRef.current;
@@ -339,7 +369,7 @@ export function RichNoteEditor({
     });
     observer.observe(page);
     return () => observer.disconnect();
-  }, [editorKey, pageFormat]);
+  }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins]);
 
   const emitContent = () => {
     if (applyingGaps.current) return;
@@ -482,17 +512,49 @@ export function RichNoteEditor({
         </label>
         <Sep />
         <select
-          aria-label="Format de page"
-          value={pageFormat}
+          aria-label="Taille du papier"
+          value={mise.size}
           onChange={(event) =>
-            onMetaChange({ pageFormat: event.target.value as SuccesNotePageFormat })
+            onMetaChange({ pageSize: event.target.value as SuccesNotePageSize })
           }
           className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
-          {NOTE_PAGE_FORMATS.map((format) => (
-            <option key={format.id} value={format.id}>
-              {format.label}
+          {NOTE_PAGE_SIZES.map((taille) => (
+            <option key={taille.id} value={taille.id}>
+              {taille.label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Orientation"
+          value={mise.orientation}
+          onChange={(event) =>
+            onMetaChange({
+              pageOrientation: event.target.value as SuccesNotePageOrientation,
+            })
+          }
+          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          {NOTE_PAGE_ORIENTATIONS.map((sens) => (
+            <option key={sens.id} value={sens.id}>
+              {sens.label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Marges"
+          value={mise.margins}
+          onChange={(event) =>
+            onMetaChange({ pageMargins: event.target.value as SuccesNotePageMargins })
+          }
+          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          {NOTE_PAGE_MARGINS.map((marge) => (
+            <option key={marge.id} value={marge.id}>
+              {marge.label}
             </option>
           ))}
         </select>
@@ -552,7 +614,10 @@ export function RichNoteEditor({
       <div className="succes-note-desk min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3">
         <div
           ref={pageRef}
-          className={`succes-note-page succes-note-format-${pageFormat} succes-note-bg-${pageBackground}`}
+          className={`succes-note-page succes-note-bg-${pageBackground}`}
+          data-size={mise.size}
+          data-orientation={mise.orientation}
+          data-margins={mise.margins}
         >
           <div
             ref={editorRef}

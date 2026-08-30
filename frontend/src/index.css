@@ -1277,25 +1277,55 @@
   --note-paper: #fff;
   position: relative;
   margin: 0 auto;
-  width: var(--note-page-width, 210mm);
-  min-height: var(--note-page-height, 297mm);
+  /* Trois axes, comme « Mise en page » de Word : la taille du papier, son
+     orientation, et le préréglage de marges. Ils étaient mélangés dans une
+     seule liste, où « Marges minimales » ne disait pas sur quel papier il
+     s'appliquait et où une A5 ne pouvait pas être en paysage. */
+  --note-paper-w: 210mm;
+  --note-paper-h: 297mm;
+  --note-m-t: 1in;
+  --note-m-r: 1in;
+  --note-m-b: 1in;
+  --note-m-l: 1in;
+  --note-page-width: var(--note-paper-w);
+  --note-page-height: var(--note-paper-h);
+  width: var(--note-page-width);
+  min-height: var(--note-page-height);
   max-width: 100%;
-  padding: var(--note-margin, 25.4mm);
+  padding: var(--note-m-t) var(--note-m-r) var(--note-m-b) var(--note-m-l);
   box-sizing: border-box;
   overflow: visible;
   background-color: var(--note-paper, #fff);
   color: #1a2232;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
-/* Word : Papier A4 / Lettre / A5, marges Normal 2,54 cm, Narrow 1,27 cm. */
-.succes-note-format-a4 { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 25.4mm; }
-.succes-note-format-letter { --note-page-width: 8.5in; --note-page-height: 11in; --note-margin: 1in; }
-.succes-note-format-a5 { --note-page-width: 148mm; --note-page-height: 210mm; --note-margin: 15mm; }
-.succes-note-format-wide { --note-page-width: 297mm; --note-page-height: 210mm; --note-margin: 25.4mm; }
-.succes-note-format-narrow { --note-page-width: 7.25in; --note-page-height: 10.5in; --note-margin: 0.75in; }
-.succes-note-format-full { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 12.7mm; }
-.succes-note-format-reading { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 32mm; }
-.succes-note-format-reading .succes-note-editor { font-size: 18px; line-height: 1.75; }
+/* Axe 1 — la taille du papier (menu « Taille » de Word). */
+.succes-note-page[data-size="a4"] { --note-paper-w: 210mm; --note-paper-h: 297mm; }
+.succes-note-page[data-size="letter"] { --note-paper-w: 8.5in; --note-paper-h: 11in; }
+.succes-note-page[data-size="legal"] { --note-paper-w: 8.5in; --note-paper-h: 14in; }
+.succes-note-page[data-size="a5"] { --note-paper-w: 148mm; --note-paper-h: 210mm; }
+.succes-note-page[data-size="executive"] { --note-paper-w: 7.25in; --note-paper-h: 10.5in; }
+
+/* Axe 2 — l'orientation. Elle échange les DEUX dimensions ; ne changer que la
+   largeur donnerait une feuille qui n'est plus un format de papier. */
+.succes-note-page[data-orientation="portrait"] {
+  --note-page-width: var(--note-paper-w);
+  --note-page-height: var(--note-paper-h);
+}
+.succes-note-page[data-orientation="paysage"] {
+  --note-page-width: var(--note-paper-h);
+  --note-page-height: var(--note-paper-w);
+}
+
+/* Axe 3 — les marges, aux valeurs exactes de Word. Écrites en pouces parce
+   que ses préréglages en sont : 1 / 0,5 / 0,75 / 2 po tombent sur 96 / 48 /
+   72 / 192 px entiers à 96 dpi. En centimètres, « Modérées » dériverait de
+   0,19 px. Et il en faut QUATRE : l'ancienne variable unique rendait un
+   préréglage asymétrique inexprimable. */
+.succes-note-page[data-margins="normales"] { --note-m-t: 1in; --note-m-r: 1in; --note-m-b: 1in; --note-m-l: 1in; }
+.succes-note-page[data-margins="etroites"] { --note-m-t: .5in; --note-m-r: .5in; --note-m-b: .5in; --note-m-l: .5in; }
+.succes-note-page[data-margins="moderees"] { --note-m-t: 1in; --note-m-r: .75in; --note-m-b: 1in; --note-m-l: .75in; }
+.succes-note-page[data-margins="larges"] { --note-m-t: 1in; --note-m-r: 2in; --note-m-b: 1in; --note-m-l: 2in; }
 .succes-note-bg-lined {
   background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(100, 116, 139, 0.18) 28px);
   background-size: 100% 28px;
@@ -1311,7 +1341,7 @@
 .succes-note-editor {
   position: relative;
   z-index: 1;
-  min-height: calc(var(--note-page-height, 297mm) - 2 * var(--note-margin, 25.4mm));
+  min-height: calc(var(--note-page-height) - var(--note-m-t) - var(--note-m-b));
   font-size: 15px;
   line-height: 1.65;
   word-break: break-word;
@@ -1354,8 +1384,8 @@
 .succes-note-editor hr.succes-page-break {
   border: none;
   height: var(--note-gutter, 28px);
-  margin: 0 calc(-1 * var(--note-margin, 25.4mm)) var(--note-margin, 25.4mm);
-  width: calc(100% + 2 * var(--note-margin, 25.4mm));
+  margin: 0 calc(-1 * var(--note-m-r)) var(--note-m-b) calc(-1 * var(--note-m-l));
+  width: calc(100% + var(--note-m-l) + var(--note-m-r));
   max-width: none;
   background: var(--note-desk, var(--color-bg-secondary));
   position: relative;
@@ -1376,8 +1406,8 @@
 }
 .succes-note-editor .succes-overflow-gutter {
   height: var(--note-gutter, 28px);
-  margin-left: calc(-1 * var(--note-margin, 25.4mm));
-  width: calc(100% + 2 * var(--note-margin, 25.4mm));
+  margin-left: calc(-1 * var(--note-m-l));
+  width: calc(100% + var(--note-m-l) + var(--note-m-r));
   max-width: none;
   background: var(--note-desk, var(--color-bg-secondary));
 }
