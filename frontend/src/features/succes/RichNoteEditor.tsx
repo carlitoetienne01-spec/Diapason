@@ -702,18 +702,56 @@ export function RichNoteEditor({
    * lève sur une sélection partielle, et un découpage maison réimplémenterait
    * ce que le navigateur sait déjà faire.
    */
-  const appliquerStyle = (declaration: string) => {
-    rendreLaSelection();
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection || selection.isCollapsed) return;
-    document.execCommand('fontSize', false, '7');
+  /**
+   * La déclaration à poser sur ce qui sera tapé ENSUITE.
+   *
+   * `execCommand('fontSize')` sur un curseur vide ne change rien tout de
+   * suite : WebKit retient un « style de frappe » et l'applique au premier
+   * caractère tapé, sous la forme d'un <font size="7">. Vérifié sur un banc
+   * jetable : « avant » + curseur + fontSize(7) + frappe rend
+   * `avant<font size="7">APRES</font>`. C'est ce marqueur que l'on convertit,
+   * au moment où il apparaît.
+   *
+   * Rien ne purge cette attente, et c'est délibéré : WebKit OUBLIE son style
+   * de frappe dès que le curseur bouge. Vérifié sur le même banc — armer la
+   * taille dans un paragraphe, poser le curseur dans un autre, taper : zéro
+   * marque produite. Le marqueur ne peut donc pas apparaître ailleurs, et une
+   * purge sur `selectionchange` s'effacerait elle-même juste après l'armement,
+   * `execCommand` déclenchant l'événement.
+   */
+  const styleEnAttente = useRef<string | null>(null);
+
+  /** Remplacer les marques <font size="7"> par la déclaration voulue. */
+  const convertirLesMarques = (editor: HTMLElement, declaration: string) => {
+    let vues = 0;
     for (const marque of Array.from(editor.querySelectorAll('font[size="7"]'))) {
       const span = document.createElement('span');
       span.setAttribute('style', declaration);
       while (marque.firstChild) span.appendChild(marque.firstChild);
       marque.replaceWith(span);
+      vues += 1;
     }
+    return vues;
+  };
+
+  const appliquerStyle = (declaration: string) => {
+    rendreLaSelection();
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection) return;
+    // CURSEUR VIDE : Word applique la taille à ce qu'on va TAPER. Ici, la
+    // liste ne faisait rien du tout — il fallait d'abord écrire, puis
+    // sélectionner, puis choisir. On retient la déclaration et on la pose au
+    // premier caractère.
+    if (selection.isCollapsed) {
+      if (!editor.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+      document.execCommand('fontSize', false, '7');
+      styleEnAttente.current = declaration;
+      return;
+    }
+    document.execCommand('fontSize', false, '7');
+    convertirLesMarques(editor, declaration);
+    styleEnAttente.current = null;
     emitContent();
   };
 
@@ -1072,6 +1110,14 @@ export function RichNoteEditor({
     if (applyingGaps.current) return;
     const editor = editorRef.current;
     if (!editor) return;
+    // Le premier caractère tapé après un choix de taille sur curseur vide
+    // arrive marqué <font size="7"> : c'est ici qu'on lui donne sa taille.
+    // Une seule fois — la marque consommée, l'attente s'éteint, sinon toute
+    // la suite de la frappe hériterait d'une taille qu'on n'a plus demandée.
+    if (styleEnAttente.current) {
+      const posees = convertirLesMarques(editor, styleEnAttente.current);
+      if (posees > 0) styleEnAttente.current = null;
+    }
     onContentChange(sanitizeNoteHtml(editor.innerHTML));
     paginerBientot();
   };

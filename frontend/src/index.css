@@ -1434,8 +1434,20 @@
 .succes-note-editor hr { border: none; border-top: 1px solid rgba(0,0,0,0.15); margin: 1em 0; }
 .succes-note-editor table {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   border-collapse: collapse;
   margin: 0.6em 0;
+  /* `!important` À CONTRECŒUR, ET POUR UNE RAISON PRÉCISE.
+     Chaque tableau collé depuis Word porte `margin-left: 6pt` EN LIGNE, et un
+     style en ligne bat n'importe quel sélecteur. Or la largeur, elle, est déjà
+     imposée ici à 100 % de la colonne : les deux additionnés font sortir le
+     tableau de 8 px hors du papier. Invisible sur fond uni, criant sur fond
+     ligné ou quadrillé — ces fonds sont tracés en `content-box`, donc ils
+     dessinent le bord exact de la zone de texte, et le tableau le franchit.
+     Mesuré le 30 août 2026 : 25 tableaux à droite de la colonne, 8 px chacun.
+     Puisque nous décidons déjà de la largeur, nous décidons de la marge. */
+  margin-inline: 0 !important;
 }
 .succes-note-editor th,
 .succes-note-editor td {
