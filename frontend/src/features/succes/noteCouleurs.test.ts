@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  assurerUneEncreLisible,
   contrasteSurBlanc,
   nettoyerCouleursIllisibles,
   sanitizeNoteHtml,
@@ -87,5 +88,43 @@ describe('le cas réel du 30 août 2026', () => {
     expect(propre).toContain('background: rgb(232, 238, 245)');
     expect(propre).not.toMatch(/(^|;|")\s*color:\s*rgb\(255, 255, 255\)/);
     expect(propre).toContain('Pour devenir fortement opérationnel');
+  });
+});
+
+describe('un fond déclaré déclare son encre', () => {
+  it('un fond clair reçoit une encre sombre', () => {
+    // Sans cela, le bloc hérite de l'encre du PAPIER : lisible sur le papier
+    // blanc, invisible sur le papier sombre — 79 éléments à 1,00 de contraste
+    // mesurés sur une vraie note.
+    const nettoye = nettoyerCouleursIllisibles('background: rgb(232, 238, 245)');
+    expect(assurerUneEncreLisible(nettoye)).toContain('color:#1a2232');
+  });
+
+  it('un fond sombre reçoit une encre claire', () => {
+    expect(assurerUneEncreLisible('background: rgb(26, 34, 50)')).toContain(
+      'color:#e8eef8',
+    );
+  });
+
+  it('ne touche pas un style qui porte déjà sa couleur', () => {
+    // C'est un choix de l'auteur, et il a survécu au filtre de contraste.
+    const style = 'background: rgb(232, 238, 245); color: rgb(46, 116, 181)';
+    expect(assurerUneEncreLisible(style)).toBe(style);
+  });
+
+  it('ne touche pas un style sans fond', () => {
+    expect(assurerUneEncreLisible('font-weight: 700')).toBe('font-weight: 700');
+  });
+
+  it("le cas réel : fond clair + texte blanc redevient lisible partout", () => {
+    // Dans son tableau : un <td> isolé est déballé par le nettoyeur, à juste
+    // titre — le premier jet de ce test l'avait oublié.
+    const propre = sanitizeNoteHtml(
+      '<table><tbody><tr><td style="background: rgb(232, 238, 245); ' +
+        'color: rgb(255, 255, 255);">Langage</td></tr></tbody></table>',
+    );
+    expect(propre).toContain('background: rgb(232, 238, 245)');
+    expect(propre).toContain('color:#1a2232');
+    expect(propre).not.toContain('rgb(255, 255, 255)');
   });
 });

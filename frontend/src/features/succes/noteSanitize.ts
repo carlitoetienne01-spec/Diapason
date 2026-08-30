@@ -96,9 +96,52 @@ export function nettoyerCouleursIllisibles(style: string): string {
     .join(';');
 }
 
+/** L'encre de la feuille claire, et celle de la feuille sombre. */
+const ENCRE_SOMBRE = '#1a2232';
+const ENCRE_CLAIRE = '#e8eef8';
+
+/** Le fond déclaré par un `style`, s'il en déclare un de lisible. */
+function fondDeclare(style: string): string | null {
+  const m = style.match(
+    /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i,
+  );
+  if (!m) return null;
+  const couleur = m[1].match(/#[0-9a-f]{3,6}|rgba?\([^)]*\)|\b(?:white|black)\b/i);
+  return couleur ? couleur[0] : null;
+}
+
+/**
+ * Un fond déclaré doit déclarer son encre.
+ *
+ * 30 août 2026, second acte. Le collage depuis un thème sombre portait du
+ * texte BLANC ; on l'a retiré, et le texte a repris l'encre du papier — noire
+ * sur le papier blanc, donc lisible. Mais sur le papier SOMBRE l'encre du
+ * papier est claire, et ces mêmes blocs gardaient leur fond clair venu du
+ * collage : 79 éléments à un contraste de 1,00 sur 1, mesurés sur une vraie
+ * note. Le même texte, invisible pour la raison opposée.
+ *
+ * La cause est structurelle : une couleur de fond sans couleur de texte n'est
+ * pas une paire, c'est la moitié d'une paire — et l'autre moitié vient du
+ * papier, qui change. On complète donc la paire ici, une fois pour toutes :
+ * un fond clair reçoit l'encre sombre, un fond sombre reçoit l'encre claire.
+ * Le bloc devient lisible sur les cinq papiers.
+ *
+ * Rien n'est ajouté si le style porte déjà une couleur de texte : c'est un
+ * choix de l'auteur, et il a survécu au filtre de contraste.
+ */
+export function assurerUneEncreLisible(style: string): string {
+  if (/(^|;)\s*color\s*:/i.test(style)) return style;
+  const fond = fondDeclare(style);
+  if (!fond) return style;
+  const l = luminance(fond);
+  if (l === null) return style;
+  const encre = l > 0.4 ? ENCRE_SOMBRE : ENCRE_CLAIRE;
+  return `${style.replace(/;\s*$/, '')};color:${encre}`;
+}
+
 function cleanStyle(value: string) {
   if (/url\s*\(|expression\s*\(|javascript:|@import|behavior\s*:/i.test(value)) return '';
-  return nettoyerCouleursIllisibles(value);
+  return assurerUneEncreLisible(nettoyerCouleursIllisibles(value));
 }
 
 /** Sanitize note HTML before injecting into contentEditable (whitelist, no on*). */
