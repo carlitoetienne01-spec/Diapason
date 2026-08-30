@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import {
   AlignCenter,
   AlignJustify,
@@ -27,7 +27,17 @@ import {
   NOTE_PAGE_FORMATS,
   noteFontCss,
 } from './noteFormats';
-import { PAGE_BREAK_HTML } from './notePages';
+import {
+  OVERFLOW_GAP_CLASS,
+  PAGE_BREAK_CLASS,
+  PAGE_BREAK_HTML,
+  PAGE_GUTTER_PX,
+  cssLengthToPx,
+  overflowGapHeight,
+  overflowGapPlan,
+  type OverflowGap,
+  type PageBlock,
+} from './notePages';
 import { sanitizeNoteHtml } from './noteSanitize';
 import type {
   SuccesNoteDocLang,
@@ -57,6 +67,96 @@ function runCommand(command: string, value?: string) {
   document.execCommand(command, false, value);
 }
 
+function makeOverflowGap(
+  gap: OverflowGap,
+  gutter: number,
+  margin: number,
+  before: HTMLElement,
+): HTMLElement {
+  const inner = document.createElement('div');
+  inner.className = 'succes-overflow-gap-inner';
+  inner.style.height = `${overflowGapHeight(gap, gutter, margin)}px`;
+  if (gap.mode === 'sheet') {
+    const band = document.createElement('div');
+    band.className = 'succes-overflow-gutter';
+    band.style.marginTop = `${gap.fill + margin}px`;
+    inner.appendChild(band);
+  }
+  if (before.tagName === 'TR') {
+    const row = document.createElement('tr');
+    row.className = OVERFLOW_GAP_CLASS;
+    row.contentEditable = 'false';
+    row.setAttribute('aria-hidden', 'true');
+    const cell = document.createElement('td');
+    cell.colSpan = 50;
+    cell.appendChild(inner);
+    row.appendChild(cell);
+    return row;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = OVERFLOW_GAP_CLASS;
+  wrap.contentEditable = 'false';
+  wrap.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+function collectBlockNodes(editor: HTMLElement): HTMLElement[] {
+  const nodes: HTMLElement[] = [];
+  for (const child of Array.from(editor.children) as HTMLElement[]) {
+    if (child.classList.contains(OVERFLOW_GAP_CLASS)) continue;
+    if (child.tagName === 'TABLE') {
+      const rows = child.querySelectorAll(
+        ':scope > tr, :scope > tbody > tr, :scope > thead > tr, :scope > tfoot > tr',
+      );
+      for (const row of Array.from(rows) as HTMLElement[]) {
+        if (!row.classList.contains(OVERFLOW_GAP_CLASS)) nodes.push(row);
+      }
+      continue;
+    }
+    nodes.push(child);
+  }
+  return nodes;
+}
+
+function measuredBlocks(editor: HTMLElement): Array<PageBlock & { el: HTMLElement }> {
+  const editorTop = editor.getBoundingClientRect().top;
+  return collectBlockNodes(editor).map((el) => {
+    const rect = el.getBoundingClientRect();
+    const kind: PageBlock['kind'] =
+      el.tagName === 'HR' && el.classList.contains(PAGE_BREAK_CLASS)
+        ? 'break'
+        : /^H[1-6]$/.test(el.tagName)
+          ? 'heading'
+          : 'block';
+    return { el, top: rect.top - editorTop, height: Math.max(rect.height, 1), kind };
+  });
+}
+
+function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
+  const style = getComputedStyle(page);
+  const pageHeight = cssLengthToPx(
+    style.getPropertyValue('--note-page-height'),
+    page.offsetHeight || 1,
+  );
+  const margin = cssLengthToPx(style.getPropertyValue('--note-margin'), 32);
+  const contentHeight = pageHeight - 2 * margin;
+  if (contentHeight < 80) return;
+  editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((node) => node.remove());
+  const collected = measuredBlocks(editor);
+  const plan = overflowGapPlan(
+    collected.map(({ top, height, kind }) => ({ top, height, kind })),
+    contentHeight,
+    PAGE_GUTTER_PX,
+    margin,
+  );
+  for (const gap of [...plan].reverse()) {
+    const target = collected[gap.beforeIndex]?.el;
+    if (!target?.parentNode) continue;
+    target.parentNode.insertBefore(makeOverflowGap(gap, PAGE_GUTTER_PX, margin, target), target);
+  }
+}
+
 export function RichNoteEditor({
   content,
   pageFormat,
@@ -69,20 +169,50 @@ export function RichNoteEditor({
   editorKey,
 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const applyingGaps = useRef(false);
+  const suppressObserverUntil = useRef(0);
 
-  useEffect(() => {
+  const paginate = () => {
+    const page = pageRef.current;
+    const editor = editorRef.current;
+    if (!page || !editor) return;
+    applyingGaps.current = true;
+    suppressObserverUntil.current = Date.now() + 150;
+    try {
+      applyOverflowGaps(editor, page);
+    } finally {
+      applyingGaps.current = false;
+    }
+  };
+
+  useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     const sanitized = sanitizeNoteHtml(content);
-    if (editor.innerHTML !== sanitized) {
+    if (sanitizeNoteHtml(editor.innerHTML) !== sanitized) {
       editor.innerHTML = sanitized;
     }
-  }, [editorKey]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+    paginate();
+  }, [editorKey, pageFormat, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (Date.now() < suppressObserverUntil.current) return;
+      paginate();
+    });
+    observer.observe(page);
+    return () => observer.disconnect();
+  }, [editorKey, pageFormat]);
 
   const emitContent = () => {
+    if (applyingGaps.current) return;
     const editor = editorRef.current;
     if (!editor) return;
     onContentChange(sanitizeNoteHtml(editor.innerHTML));
+    paginate();
   };
 
   /** Forces a new page in the folder icon's sheet count. */
@@ -285,8 +415,9 @@ export function RichNoteEditor({
         </select>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3" style={{ background: 'var(--color-bg-secondary)' }}>
+      <div className="succes-note-desk min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3">
         <div
+          ref={pageRef}
           className={`succes-note-page succes-note-format-${pageFormat} succes-note-bg-${pageBackground}`}
         >
           <div

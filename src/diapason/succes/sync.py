@@ -31,6 +31,7 @@ from diapason.succes.store import (
 )
 from diapason.succes.workspace import (
     HABIT_FREQUENCIES,
+    NOTE_CONTENT_MAX,
     _color,
     _month_slots,
     _weekly_days,
@@ -1169,7 +1170,7 @@ class SuccesSyncStore(SuccesFinancesStore):
         self, conn: sqlite3.Connection, note_id: str, data: Mapping[str, Any], ts: int
     ) -> None:
         content = str(data.get("content") or "")
-        if len(content) > 100_000:
+        if len(content) > NOTE_CONTENT_MAX:
             raise SuccesError("La note synchronisée est trop longue.")
         title, _, meta = self._note_fields(
             {**data, "title": data.get("title") or "Note"}

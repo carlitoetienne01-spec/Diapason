@@ -13,6 +13,7 @@ from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
 from diapason.succes.sync import MAX_SYNC_BATCH, SuccesSyncStore
 from diapason.succes.workspace import (
     HABIT_FREQUENCIES,
+    NOTE_CONTENT_MAX,
     NOTE_DOC_LANGS,
     NOTE_FONTS,
     NOTE_PAGE_BACKGROUNDS,
@@ -175,7 +176,7 @@ class HabitLogBody(BaseModel):
 
 class NoteCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    content: str = Field(default="", max_length=100_000)
+    content: str = Field(default="", max_length=NOTE_CONTENT_MAX)
     pageFormat: str = "a4"
     pageBackground: str = "default"
     fontFamily: str = "Special Elite"
@@ -186,7 +187,7 @@ class NoteCreate(BaseModel):
 
 class NotePatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    content: str | None = Field(default=None, max_length=100_000)
+    content: str | None = Field(default=None, max_length=NOTE_CONTENT_MAX)
     pageFormat: str | None = None
     pageBackground: str | None = None
     fontFamily: str | None = None

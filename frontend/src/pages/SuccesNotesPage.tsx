@@ -21,7 +21,7 @@ import {
 import { NOTE_DOC_LANGS } from '../features/succes/noteFormats';
 import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { countNotePages } from '../features/succes/notePages';
-import { countNoteWords } from '../features/succes/noteSanitize';
+import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
 import { RichNoteEditor } from '../features/succes/RichNoteEditor';
 import type {
   SuccesNote,
@@ -268,7 +268,7 @@ export function SuccesNotesPage() {
     try {
       const payload = {
         title,
-        content: snapshot.content,
+        content: sanitizeNoteHtml(snapshot.content),
         ...snapshot.meta,
       };
       const saved = snapshot.activeId

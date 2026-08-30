@@ -4,13 +4,14 @@ import type {
   SuccesNotePageFormat,
 } from './types';
 
+/** Formats calqués sur Mise en page de Word (Papier + préréglages de marges). */
 export const NOTE_PAGE_FORMATS: Array<{ id: SuccesNotePageFormat; label: string }> = [
   { id: 'a4', label: 'A4' },
   { id: 'letter', label: 'Lettre US' },
   { id: 'a5', label: 'A5' },
-  { id: 'wide', label: 'Page large' },
+  { id: 'wide', label: 'A4 paysage' },
   { id: 'narrow', label: 'Page étroite' },
-  { id: 'full', label: 'Sans marge' },
+  { id: 'full', label: 'Marges minimales' },
   { id: 'reading', label: 'Lecture' },
 ];
 

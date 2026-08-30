@@ -2,6 +2,7 @@ const ALLOWED_TAGS = new Set([
   'P', 'BR', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL',
   'MARK', 'SMALL', 'SUB', 'SUP', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
   'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'IMG', 'FONT',
+  'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TD', 'TH',
 ]);
 
 const DROP_TAGS = new Set([
@@ -34,6 +35,8 @@ export function sanitizeNoteHtml(html: string) {
       const element = child as HTMLElement;
       const tag = element.tagName;
       if (DROP_TAGS.has(tag)) continue;
+      // Gouttières de pagination : elles n'existent que dans l'éditeur.
+      if (/\bsucces-overflow-gap\b/.test(element.getAttribute('class') || '')) continue;
       if (!ALLOWED_TAGS.has(tag)) {
         walk(element, dst);
         continue;
@@ -60,6 +63,13 @@ export function sanitizeNoteHtml(html: string) {
           if (/^\s*data:image\//i.test(value)) next.setAttribute('src', value);
           continue;
         }
+        if (name === 'colspan' || name === 'rowspan') {
+          const span = Number(value);
+          if (Number.isInteger(span) && span >= 1 && span <= 50) {
+            next.setAttribute(name, String(span));
+          }
+          continue;
+        }
         if (
           name === 'alt' ||
           name === 'title' ||
@@ -67,7 +77,8 @@ export function sanitizeNoteHtml(html: string) {
           name === 'height' ||
           name === 'class' ||
           name === 'color' ||
-          name === 'face'
+          name === 'face' ||
+          name === 'scope'
         ) {
           next.setAttribute(name, value);
         }

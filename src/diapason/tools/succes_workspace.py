@@ -9,7 +9,7 @@ from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.succes.dates import resolve_date_expression
 from diapason.succes.store import SuccesError
-from diapason.succes.workspace import SuccesWorkspaceStore
+from diapason.succes.workspace import NOTE_CONTENT_MAX, SuccesWorkspaceStore
 from diapason.tools._stubs import BaseTool, ToolSpec
 
 
@@ -83,7 +83,7 @@ class SuccesWorkspaceTool(BaseTool):
                     "name": {"type": "string", "maxLength": 200},
                     "title": {"type": "string", "maxLength": 200},
                     "description": {"type": "string", "maxLength": 4000},
-                    "content": {"type": "string", "maxLength": 100000},
+                    "content": {"type": "string", "maxLength": NOTE_CONTENT_MAX},
                     "date": {"type": "string"},
                     "start_date": {"type": "string"},
                     "end_date": {"type": "string"},

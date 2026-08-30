@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from diapason.succes.routes import router, set_store_for_tests
-from diapason.succes.store import SuccesStore
-from diapason.succes.workspace import SuccesWorkspaceStore
+from diapason.succes.store import SuccesError, SuccesStore
+from diapason.succes.workspace import NOTE_CONTENT_MAX, SuccesWorkspaceStore
 from diapason.tools.succes_workspace import (
     SuccesDeleteItemTool,
     SuccesWorkspaceTool,
@@ -116,6 +116,22 @@ def test_notes_support_page_formats_and_fonts(tmp_path) -> None:
     )
     assert updated["pageFormat"] == "reading"
     assert updated["fontFamily"] == "Inter"
+
+
+def test_une_note_riche_passe_le_plafond_de_cent_mille(tmp_path) -> None:
+    """§5 — 29 août 2026 : un guide HTML se faisait refuser à 100 000."""
+    store = SuccesWorkspaceStore(tmp_path / "long-note.db")
+    content = "<p>" + ("mot " * 40_000) + "</p>"
+    assert len(content) > 100_000
+    assert len(content) < NOTE_CONTENT_MAX
+    note = store.create_note({"title": "Guide", "content": content})
+    assert note["content"] == content
+    try:
+        store.create_note({"title": "Trop", "content": "x" * (NOTE_CONTENT_MAX + 1)})
+    except SuccesError as error:
+        assert "1 000 000" in str(error), "le plafond doit rester lisible en français"
+    else:
+        raise AssertionError("une note au-delà du plafond doit être refusée")
 
 
 def test_notes_are_versioned_and_deleted_with_tombstones(tmp_path) -> None:

@@ -89,6 +89,10 @@ PRAGMA user_version = 3;
 NOTE_PAGE_FORMATS = frozenset(
     {"a4", "letter", "a5", "wide", "narrow", "full", "reading"}
 )
+# 29 août 2026 : 100 000 caractères refusaient un guide riche (HTML de
+# mise en forme + gouttières de pagination). Ce n'est pas un plafond
+# métier — c'est une garde-fou. Un million laisse un manuel entier.
+NOTE_CONTENT_MAX = 1_000_000
 NOTE_PAGE_BACKGROUNDS = frozenset({"default", "lined", "grid", "sepia", "dark"})
 NOTE_DOC_LANGS = frozenset({"fr", "ht"})
 NOTE_FONTS = frozenset(
@@ -1267,9 +1271,10 @@ class SuccesWorkspaceStore(SuccesStore):
             data.get("title"), field="Le titre de la note", maximum=200, required=True
         )
         content = str(data.get("content") or "")
-        if len(content) > 100_000:
+        if len(content) > NOTE_CONTENT_MAX:
             raise SuccesError(
-                "Le contenu de la note ne peut pas dépasser 100 000 caractères."
+                "Le contenu de la note ne peut pas dépasser "
+                f"{NOTE_CONTENT_MAX:,} caractères.".replace(",", " ")
             )
         return title, content, cls._note_meta(data)
 
