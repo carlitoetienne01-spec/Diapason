@@ -22,7 +22,8 @@ import {
 import {
   NOTE_DOC_LANGS,
   NOTE_FONTS,
-  NOTE_FONT_SIZE_COMMANDS,
+  NOTE_FONT_SIZES,
+  styleDeTaille,
   NOTE_PAGE_BACKGROUNDS,
   NOTE_PAGE_MARGINS,
   NOTE_PAGE_ORIENTATIONS,
@@ -375,7 +376,68 @@ export function RichNoteEditor({
   const suppressObserverUntil = useRef(0);
   // `null` = « Largeur de page », le réglage par défaut de Word.
   const [zoomChoisi, setZoomChoisi] = useState<number | null>(null);
+  // L'encre du papier courant, et non une constante : #1A2232 est exactement
+  // la couleur du papier du fond Sombre — contraste 1,00 sur 1.
+  const [encreCourante, setEncreCourante] = useState('#1a2232');
   const zoomRef = useRef(1);
+
+  // ─── La sélection, que les contrôles de la barre faisaient perdre ────────
+  //
+  // Un <select> et un <input type=color> prennent NÉCESSAIREMENT le focus au
+  // clic. `onBlur={emitContent}` tirait donc avant la commande, et
+  // `emitContent` repagine, ce qui mute le DOM sous la sélection. Résultat :
+  // la taille ou la couleur choisie n'était jamais appliquée, et n'était
+  // jamais enregistrée tant qu'on ne retapait pas — §100.
+  //
+  // `preventDefault` sur le `mousedown` empêche le vol de focus, et la plage
+  // est sauvegardée avant d'ouvrir le contrôle, restaurée avant la commande.
+  const selectionGardee = useRef<Range | null>(null);
+
+  const garderLaSelection = (event: React.MouseEvent) => {
+    const selection = window.getSelection();
+    const editor = editorRef.current;
+    if (selection && selection.rangeCount > 0 && editor) {
+      const plage = selection.getRangeAt(0);
+      if (editor.contains(plage.commonAncestorContainer)) {
+        selectionGardee.current = plage.cloneRange();
+      }
+    }
+    // Sur un <select>, empêcher le défaut empêcherait aussi le menu de
+    // s'ouvrir : on ne le fait que pour les boutons et les pastilles.
+    if (event.currentTarget.tagName !== 'SELECT') event.preventDefault();
+  };
+
+  const rendreLaSelection = () => {
+    const plage = selectionGardee.current;
+    const selection = window.getSelection();
+    if (!plage || !selection) return;
+    selection.removeAllRanges();
+    selection.addRange(plage);
+  };
+
+  /**
+   * Envelopper la sélection dans un <span> portant `declaration`.
+   *
+   * On passe par `execCommand('fontSize', '7')` pour poser des balises
+   * repères, puis on les convertit. C'est le seul moyen fiable d'envelopper
+   * une sélection qui TRAVERSE plusieurs éléments : `Range.surroundContents`
+   * lève sur une sélection partielle, et un découpage maison réimplémenterait
+   * ce que le navigateur sait déjà faire.
+   */
+  const appliquerStyle = (declaration: string) => {
+    rendreLaSelection();
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.isCollapsed) return;
+    document.execCommand('fontSize', false, '7');
+    for (const marque of Array.from(editor.querySelectorAll('font[size="7"]'))) {
+      const span = document.createElement('span');
+      span.setAttribute('style', declaration);
+      while (marque.firstChild) span.appendChild(marque.firstChild);
+      marque.replaceWith(span);
+    }
+    emitContent();
+  };
 
   const paginate = () => {
     const page = pageRef.current;
@@ -399,6 +461,25 @@ export function RichNoteEditor({
     }
     paginate();
   }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+
+  // L'encre du papier courant. Sans cette lecture, la pastille de couleur
+  // proposerait toujours #1A2232 — la couleur exacte du papier du fond
+  // Sombre, soit un contraste de 1,00 sur 1 : du texte invisible, proposé par
+  // défaut.
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page) return;
+    const couleur = getComputedStyle(page).color;
+    const rgb = couleur.match(/\d+/g);
+    if (!rgb || rgb.length < 3) return;
+    const hex =
+      '#' +
+      rgb
+        .slice(0, 3)
+        .map((n) => Number(n).toString(16).padStart(2, '0'))
+        .join('');
+    setEncreCourante(hex);
+  }, [pageBackground]);
 
   // `@page` n'accepte pas de propriété personnalisée : la taille et les marges
   // du papier doivent y être écrites en dur. On régénère donc une balise
@@ -570,23 +651,37 @@ export function RichNoteEditor({
         </select>
         <select
           aria-label="Taille"
-          defaultValue="3"
-          onChange={(event) => runCommand('fontSize', event.target.value)}
+          value=""
+          onMouseDown={garderLaSelection}
+          onChange={(event) => {
+            const points = Number(event.target.value);
+            if (points) appliquerStyle(styleDeTaille(points));
+            event.target.value = '';
+          }}
           className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
-          {NOTE_FONT_SIZE_COMMANDS.map((size) => (
-            <option key={size.id} value={size.id}>
-              {size.label}
+          <option value="">Taille</option>
+          {NOTE_FONT_SIZES.map((points) => (
+            <option key={points} value={points}>
+              {points} pt
             </option>
           ))}
         </select>
         <label className="size-8 rounded-lg flex items-center justify-center cursor-pointer" title="Couleur du texte" style={toolbarBtnStyle}>
           <input
             type="color"
-            defaultValue="#1A2232"
+            // L'ancienne constante était #1A2232 — EXACTEMENT le papier du
+            // fond Sombre : contraste 1,00 sur 1. On lit l'encre courante.
+            value={encreCourante}
             className="absolute opacity-0 size-0"
-            onChange={(event) => runCommand('foreColor', event.target.value)}
+            onMouseDown={garderLaSelection}
+            onChange={(event) => {
+              setEncreCourante(event.target.value);
+              rendreLaSelection();
+              runCommand('foreColor', event.target.value);
+              emitContent();
+            }}
           />
           <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)' }}>A</span>
         </label>
@@ -595,7 +690,12 @@ export function RichNoteEditor({
             type="color"
             defaultValue="#fef08a"
             className="absolute opacity-0 size-0"
-            onChange={(event) => runCommand('hiliteColor', event.target.value)}
+            onMouseDown={garderLaSelection}
+            onChange={(event) => {
+              rendreLaSelection();
+              runCommand('hiliteColor', event.target.value);
+              emitContent();
+            }}
           />
           <Highlighter size={14} />
         </label>
@@ -731,6 +831,7 @@ export function RichNoteEditor({
           data-size={mise.size}
           data-orientation={mise.orientation}
           data-margins={mise.margins}
+          data-font={fontFamily}
         >
           <div
             ref={editorRef}

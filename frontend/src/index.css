@@ -1300,6 +1300,8 @@
   --note-m-l: 1in;
   --note-page-width: var(--note-paper-w);
   --note-page-height: var(--note-paper-h);
+  /* L'interligne, défini UNE fois et partagé par le texte et le papier. */
+  --note-ligne: 24.75px;
   width: var(--note-page-width);
   min-height: var(--note-page-height);
   /* PLUS de `max-width: 100%`. Il ne cédait que sur la LARGEUR : une A4
@@ -1343,15 +1345,32 @@
 .succes-note-page[data-margins="etroites"] { --note-m-t: .5in; --note-m-r: .5in; --note-m-b: .5in; --note-m-l: .5in; }
 .succes-note-page[data-margins="moderees"] { --note-m-t: 1in; --note-m-r: .75in; --note-m-b: 1in; --note-m-l: .75in; }
 .succes-note-page[data-margins="larges"] { --note-m-t: 1in; --note-m-r: 2in; --note-m-b: 1in; --note-m-l: 2in; }
+/* Les lignes du papier suivent celles du TEXTE.
+   Elles étaient tracées tous les 28 px pour un texte à 24,75 px d'interligne
+   (15 px × 1,65) : 3,25 px d'écart par ligne. Au bout de quatre lignes le
+   décalage dépasse une demi-ligne, au bout de huit une ligne entière — le
+   texte se met à flotter entre les traits, ce qu'aucun cahier ne fait.
+   Le quadrillage avait le même défaut avec 24 px.
+   `background-origin: content-box` fait partir la première ligne du haut de
+   la zone de texte, et non du bord de la feuille : sans elle, le décalage
+   serait constant au lieu d'être croissant, ce qui n'est pas mieux. */
 .succes-note-bg-lined {
-  background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(100, 116, 139, 0.18) 28px);
-  background-size: 100% 28px;
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent calc(var(--note-ligne) - 1px),
+    rgba(100, 116, 139, 0.18) var(--note-ligne)
+  );
+  background-size: 100% var(--note-ligne);
+  background-origin: content-box;
+  background-clip: content-box;
 }
 .succes-note-bg-grid {
   background-image:
     linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
     linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px);
-  background-size: 24px 24px, 24px 24px;
+  background-size: var(--note-ligne) var(--note-ligne), var(--note-ligne) var(--note-ligne);
+  background-origin: content-box;
+  background-clip: content-box;
 }
 .succes-note-bg-sepia { --note-paper: #f4ecd8; color: #3c3028; }
 .succes-note-bg-dark { --note-paper: #1a2232; color: #e8eef8; }
@@ -1360,12 +1379,16 @@
   z-index: 1;
   min-height: calc(var(--note-page-height) - var(--note-m-t) - var(--note-m-b));
   font-size: 15px;
-  line-height: 1.65;
+  line-height: var(--note-ligne);
   word-break: break-word;
 }
-/* Pixel fonts carry a tall em box, so they need their own metrics to stay legible. */
-.succes-note-editor[data-font="Press Start 2P"] { font-size: 12px; line-height: 2.1; }
-.succes-note-editor[data-font="VT323"] { font-size: 20px; line-height: 1.35; }
+/* Pixel fonts carry a tall em box, so they need their own metrics to stay
+   legible. L'interligne se pose sur la FEUILLE, pas sur l'éditeur : c'est
+   elle qui porte le papier ligné, et les deux doivent lire la même valeur. */
+.succes-note-page[data-font="Press Start 2P"] { --note-ligne: 25.2px; }
+.succes-note-page[data-font="VT323"] { --note-ligne: 27px; }
+.succes-note-editor[data-font="Press Start 2P"] { font-size: 12px; }
+.succes-note-editor[data-font="VT323"] { font-size: 20px; }
 .succes-note-editor:empty::before {
   content: attr(data-placeholder);
   color: #64748b;

@@ -207,15 +207,30 @@ export const NOTE_DOC_LANGS: Array<{ id: SuccesNoteDocLang; label: string }> = [
   { id: 'ht', label: 'Kreyòl Ayisyen' },
 ];
 
-export const NOTE_FONT_SIZE_COMMANDS = [
-  { id: '1', label: 'Très petit' },
-  { id: '2', label: 'Petit' },
-  { id: '3', label: 'Normal' },
-  { id: '4', label: 'Grand' },
-  { id: '5', label: 'Très grand' },
-  { id: '6', label: 'Énorme' },
-  { id: '7', label: 'Max' },
-] as const;
+/**
+ * Les tailles de Word, en POINTS.
+ *
+ * Ce menu proposait sept crans nommés « Très petit » à « Max », qui étaient
+ * les valeurs 1 à 7 de `execCommand('fontSize')`. Il était mort de bout en
+ * bout, pour deux raisons indépendantes :
+ *
+ * 1. `fontSize` émet `<font size="N">`, et `size` n'est PAS dans la liste
+ *    d'attributs autorisés de `noteSanitize.ts` — la balise survivait à
+ *    l'affichage et perdait son attribut à la première sauvegarde.
+ * 2. L'échelle 1-7 se résout sur la racine à 16 px : « Normal » (3) valait
+ *    donc 16 px alors que le corps de la note est à 15 px. Aucun des sept
+ *    crans ne rendait la taille courante.
+ *
+ * Les points sont ce que Word affiche, et un style inline les exprime
+ * exactement. `style` est déjà autorisé par le nettoyeur : aucune ouverture
+ * de la liste blanche n'est nécessaire.
+ */
+export const NOTE_FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
+
+/** La déclaration à poser, séparée pour être testable sans DOM. */
+export function styleDeTaille(points: number): string {
+  return `font-size:${points}pt`;
+}
 
 export function noteFontCss(fontFamily: string) {
   const name = fontFamily.replace(/'/g, "\\'");

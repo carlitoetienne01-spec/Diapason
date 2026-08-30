@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
+import { estDansUneZoneDeSaisie } from './lib/saisie';
 import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
@@ -190,6 +191,11 @@ export default function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ne jamais confisquer un raccourci à quelqu'un qui écrit. Cmd+I est
+      // l'italique de toute zone de texte : sans cette garde, il ouvrait le
+      // panneau système et l'italique natif ne marchait nulle part dans une
+      // note. Cmd+K avait le même défaut.
+      if (estDansUneZoneDeSaisie(e.target)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);

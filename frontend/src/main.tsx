@@ -7,8 +7,45 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
 import { initApiBase } from './lib/api';
 import { initAnalytics } from './lib/analytics';
+// Les treize polices du menu des notes, embarquées EN LOCAL.
+//
+// 30 août 2026 : deux seulement étaient installées, les deux polices pixel.
+// Les onze autres n'existaient nulle part — ni `@font-face`, ni lien Google
+// Fonts — et la CSP de Tauri (`default-src 'self'`, sans `font-src`) interdit
+// de toute façon un CDN. Le menu en promettait donc treize et en rendait
+// deux : §5, une capacité que rien n'exerce.
+//
+// Le défaut de toute note neuve est `Special Elite`, dont la pile de secours
+// est `'Courier New', ui-monospace`. Mesuré dans le navigateur par la largeur
+// du rendu — `document.fonts.check` rend `true` même pour une police absente,
+// c'est une sonde qui ment : les huit notes de cette machine s'écrivaient en
+// COURIER NEW pendant que le menu affichait « Special Elite ».
+//
+// Poids 400 et 700 : le gras de la barre d'outils a besoin du second, sans
+// quoi le navigateur le fabrique en épaississant les traits (« faux gras »).
 import '@fontsource/press-start-2p';
 import '@fontsource/vt323';
+import '@fontsource/special-elite';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/700.css';
+import '@fontsource/roboto/400.css';
+import '@fontsource/roboto/700.css';
+import '@fontsource/lato/400.css';
+import '@fontsource/lato/700.css';
+import '@fontsource/open-sans/400.css';
+import '@fontsource/open-sans/700.css';
+import '@fontsource/merriweather/400.css';
+import '@fontsource/merriweather/700.css';
+import '@fontsource/montserrat/400.css';
+import '@fontsource/montserrat/700.css';
+import '@fontsource/source-serif-4/400.css';
+import '@fontsource/source-serif-4/700.css';
+import '@fontsource/nunito/400.css';
+import '@fontsource/nunito/700.css';
+import '@fontsource/playfair-display/400.css';
+import '@fontsource/playfair-display/700.css';
 import './index.css';
 
 function applyTheme() {
