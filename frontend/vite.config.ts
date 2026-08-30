@@ -69,6 +69,15 @@ export default defineConfig({
       },
     },
   },
+  // Vitest tournait sans bloc `test`, donc en environnement `node`, donc SANS
+  // `DOMParser`. `sanitizeNoteHtml` partait alors dans son `catch` et rendait
+  // du texte nu : `<p><b>gras</b></p>` ressortait « gras ». Ses onze tests
+  // passaient en deux millisecondes sans jamais exécuter la liste blanche —
+  // y compris celui qui garantit que les gouttières de pagination ne sont
+  // jamais enregistrées dans une note. Un filet qui ne touchait pas le sol.
+  test: {
+    environment: 'jsdom',
+  },
   server: {
     port: 5173,
     proxy: {

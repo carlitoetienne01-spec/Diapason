@@ -117,20 +117,41 @@ describe('countNotePages', () => {
 });
 
 describe('sanitizeNoteHtml', () => {
+  it('le banc exécute vraiment le nettoyeur, et non son filet de secours', () => {
+    // 30 août 2026. `vite.config.ts` ne déclarait aucun environnement de test :
+    // vitest tournait donc en `node`, où `DOMParser` n'existe pas.
+    // `sanitizeNoteHtml` partait dans son `catch` et rendait du TEXTE NU —
+    // « <p><b>gras</b></p> » ressortait « gras ». Les deux tests ci-dessous
+    // passaient sans jamais exécuter la liste blanche : « ne contient pas
+    // succes-overflow-gap » est trivialement vrai quand TOUTES les balises
+    // ont disparu, et « contient Rust » l'est tout autant.
+    //
+    // Cette assertion est la seule qui distingue les deux mondes : elle exige
+    // que des balises SURVIVENT. Elle rougit sans jsdom (§100).
+    expect(sanitizeNoteHtml('<p><b>gras</b></p>')).toBe('<p><b>gras</b></p>');
+  });
+
   it("n'enregistre pas les gouttières de pagination", () => {
     const html =
       '<p>a</p><div class="succes-overflow-gap"><div class="succes-overflow-gutter"></div></div><h2>b</h2>';
     const cleaned = sanitizeNoteHtml(html);
     expect(cleaned).not.toContain('succes-overflow-gap');
-    expect(cleaned).toContain('a');
-    expect(cleaned).toContain('b');
+    // Et le voisinage doit être INTACT : sans ces deux-là, un nettoyeur qui
+    // jette tout passerait le test qui garde la note.
+    expect(cleaned).toContain('<p>a</p>');
+    expect(cleaned).toContain('<h2>b</h2>');
   });
 
-  it('conserve le texte d’un tableau collé', () => {
+  it('conserve la structure d’un tableau collé, pas seulement son texte', () => {
     const html =
       '<table><tbody><tr><th>Langage</th></tr><tr><td>Rust</td></tr></tbody></table>';
     const cleaned = sanitizeNoteHtml(html);
-    expect(cleaned).toContain('Rust');
-    expect(cleaned).toContain('Langage');
+    expect(cleaned).toContain('<table>');
+    expect(cleaned).toContain('<td>Rust</td>');
+    expect(cleaned).toContain('<th>Langage</th>');
+  });
+
+  it('jette ce qui doit être jeté, sans emporter le reste', () => {
+    expect(sanitizeNoteHtml('<p>ok</p><script>alert(1)</script>')).toBe('<p>ok</p>');
   });
 });

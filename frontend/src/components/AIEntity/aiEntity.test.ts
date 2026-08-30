@@ -1,3 +1,11 @@
+// @vitest-environment node
+//
+// Ce banc LIT ses propres fichiers source (`new URL('./scene.ts',
+// import.meta.url)`) pour confronter les uniformes déclarés dans le shader à
+// ceux que la scène fournit. Sous jsdom — devenu l'environnement par défaut le
+// 30 août 2026 pour que `DOMParser` existe enfin — `import.meta.url` est une
+// URL http, et `fileURLToPath` refuse tout ce qui n'est pas `file:`. Ce test
+// ne touche aucun DOM : node est exactement ce qu'il lui faut.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
