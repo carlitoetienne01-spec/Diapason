@@ -265,3 +265,24 @@ describe('sanitizeNoteHtml', () => {
     expect(sanitizeNoteHtml('<p>ok</p><script>alert(1)</script>')).toBe('<p>ok</p>');
   });
 });
+
+describe('un bloc de plusieurs pages se coupe autant de fois qu’il faut', () => {
+  // C'est la propriété qui a manqué le 30 août 2026 : le premier jet ne
+  // coupait qu'une fois, laissant le reste traverser le bureau.
+  it.each([
+    [40, 1],
+    [80, 2],
+    [120, 3],
+  ])('%i lignes → %i coupure(s)', (lignes, attendu) => {
+    const plan = overflowGapPlan([para(0, lignes)], A4, GUTTER, MARGIN);
+    expect(plan).toHaveLength(attendu);
+  });
+
+  it('coupe toujours en laissant au moins deux lignes de chaque côté', () => {
+    const plan = overflowGapPlan([para(0, 120)], A4, GUTTER, MARGIN);
+    for (const gap of plan) {
+      expect(gap.atLine).toBeGreaterThanOrEqual(2);
+      expect(gap.atLine).toBeLessThanOrEqual(118);
+    }
+  });
+});

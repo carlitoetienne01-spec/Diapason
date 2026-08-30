@@ -1522,6 +1522,14 @@
   border: none;
   padding: 0;
 }
+/* La bande d'une ligne de tableau fractionnée : posée en absolu SUR la
+   feuille, au-dessus des bordures des cellules. Dans une cellule,
+   `width: 100%` désignerait la cellule et non la page. */
+.succes-note-page > .succes-overflow-gutter-flottant {
+  height: var(--note-gutter, 28px);
+  background: var(--note-desk, var(--color-bg-secondary));
+  z-index: 2;
+}
 .succes-note-editor .succes-overflow-gutter {
   height: var(--note-gutter, 28px);
   margin-left: calc(-1 * var(--note-m-l));

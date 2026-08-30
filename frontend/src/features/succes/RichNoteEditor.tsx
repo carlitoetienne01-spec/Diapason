@@ -211,6 +211,68 @@ function positionDeLigne(
   return null;
 }
 
+/**
+ * Fractionner une LIGNE de tableau à la hauteur `y`.
+ *
+ * Une ligne n'est pas un bloc : c'est plusieurs cellules côte à côte. La
+ * couper veut dire poser la même cale dans CHACUNE, à la même hauteur —
+ * sinon les colonnes se désalignent et le tableau se disloque.
+ *
+ * Une cellule dont le contenu s'arrête avant la coupure reçoit la cale en
+ * fin : elle doit descendre comme les autres, sans quoi sa bordure s'arrête
+ * au milieu de la page.
+ *
+ * La bande grise ne peut pas vivre dans une cellule : `width: 100%` y
+ * désigne la cellule, pas la feuille. Elle est donc posée en absolu sur la
+ * feuille, au-dessus des bordures — ce qu'un saut de page fait dans Word.
+ */
+function couperLaLigne(
+  ligne: HTMLElement,
+  y: number,
+  editorTop: number,
+  hauteur: number,
+  fill: number,
+  margin: number,
+): void {
+  const cellules = Array.from(ligne.children) as HTMLElement[];
+  if (cellules.length === 0) return;
+  for (const cellule of cellules) {
+    const cale = document.createElement('div');
+    cale.className = OVERFLOW_GAP_CLASS;
+    cale.contentEditable = 'false';
+    cale.setAttribute('aria-hidden', 'true');
+    cale.style.cssText = `height:${hauteur}px;width:100%;user-select:none`;
+    const point = positionDeLigne(cellule, y, editorTop);
+    if (point) {
+      const plage = document.createRange();
+      plage.setStart(point.node, point.offset);
+      plage.collapse(true);
+      plage.insertNode(cale);
+    } else {
+      cellule.appendChild(cale);
+    }
+  }
+  // La bande, une seule, par-dessus le tableau.
+  const bande = document.createElement('div');
+  bande.className = `${OVERFLOW_GAP_CLASS} succes-overflow-gutter-flottant`;
+  bande.contentEditable = 'false';
+  bande.setAttribute('aria-hidden', 'true');
+  const premiere = cellules[0].querySelector(`.${OVERFLOW_GAP_CLASS}`);
+  const page = ligne.closest('.succes-note-page') as HTMLElement | null;
+  if (!premiere || !page) return;
+  const hautDeLaCale =
+    premiere.getBoundingClientRect().top - page.getBoundingClientRect().top;
+  bande.style.cssText = [
+    'position:absolute',
+    'left:0',
+    'right:0',
+    `top:${hautDeLaCale + fill + margin}px`,
+    'user-select:none',
+    'pointer-events:none',
+  ].join(';');
+  page.appendChild(bande);
+}
+
 /** La cale posée DANS un paragraphe, entre deux de ses lignes. */
 function makeInlineGap(hauteur: number, fill: number, margin: number): HTMLElement {
   const cale = document.createElement('span');
@@ -284,10 +346,14 @@ function measuredBlocks(
         : /^H[1-6]$/.test(el.tagName)
           ? 'heading'
           : 'block';
-    // Les lignes ne se mesurent que là où une coupe est permise : un titre,
-    // une ligne de tableau et un saut manuel partent entiers, et appeler
-    // `getClientRects` sur chacun coûterait sans rien apporter.
-    const coupable = kind === 'block' && el.tagName !== 'TR' && el.tagName !== 'IMG';
+    // Une ligne de tableau SE COUPE, comme dans Word : « Autoriser le
+    // fractionnement des lignes sur plusieurs pages » y est coché par défaut.
+    // Le refuser faisait partir une ligne haute d'un seul tenant et perdait
+    // le reste de la page précédente — parfois presque une feuille blanche.
+    // Un titre, lui, ne se coupe jamais, et une image ne se coupe pas non
+    // plus : on ne fractionne pas ce qui n'a pas de lignes.
+    const coupable =
+      (kind === 'block' || el.tagName === 'TR') && el.tagName !== 'IMG';
     const top = offsetDepuis(el, editor);
     return {
       el,
@@ -348,6 +414,11 @@ function applyOverflowGaps(
   const contentHeight = pageHeight - margeHaut - margeBas;
   if (contentHeight < 80) return 1;
   editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((node) => node.remove());
+  // Les bandes des lignes fractionnées vivent sur la FEUILLE, pas dans
+  // l'éditeur : sans cette ligne, chaque pagination en empilerait une de plus.
+  page
+    .querySelectorAll(`:scope > .${OVERFLOW_GAP_CLASS}`)
+    .forEach((node) => node.remove());
   const collected = measuredBlocks(editor, zoom);
   // `lines` DOIT traverser : sans lui, `peutSeCouper` rend toujours faux et
   // l'on retombe sur « déplacer des blocs entiers », c'est-à-dire le défaut
@@ -375,6 +446,18 @@ function applyOverflowGaps(
     // Coupe INTERNE : on va chercher le premier caractère de la ligne visée.
     const y = bloc.lines?.[gap.atLine];
     if (y === undefined) continue;
+    // Une LIGNE de tableau se coupe dans toutes ses cellules à la fois.
+    if (target.tagName === 'TR') {
+      couperLaLigne(
+        target,
+        y * zoom,
+        editor.getBoundingClientRect().top,
+        hauteur,
+        gap.fill,
+        margin,
+      );
+      continue;
+    }
     // `y` est en unités de layout ; `positionDeLigne` compare des rectangles
     // d'écran. Le zoom fait le pont entre les deux.
     const point = positionDeLigne(target, y * zoom, editor.getBoundingClientRect().top);
