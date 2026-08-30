@@ -567,6 +567,66 @@ export function RichNoteEditor({
     frame.style.height = `${scale.offsetHeight * zoomRef.current}px`;
   };
 
+  /**
+   * Chasser le caret des cales de pagination.
+   *
+   * Signalé par Carlito le 30 août 2026 : un curseur GÉANT, haut de plusieurs
+   * centaines de pixels. Mesuré : `caretRangeFromPoint` au milieu d'une cale
+   * de 526 px rend une position DONT L'HÔTE EST LA CALE. Le navigateur dessine
+   * alors le caret à la hauteur du bloc qui l'accueille.
+   *
+   * `contenteditable="false"`, `user-select: none` et `pointer-events: none`
+   * ne suffisent pas : ils empêchent de sélectionner le contenu de la cale,
+   * pas d'y POSER un caret — la cale occupe une place réelle dans le flux, et
+   * un clic dans ce vide y résout.
+   *
+   * On le déplace donc nous-mêmes, vers le dernier texte AVANT la cale — le
+   * geste naturel étant de cliquer sous ce qu'on vient d'écrire — et à défaut
+   * vers le premier texte après.
+   */
+  const chasserLeCaretDesCales = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0) return;
+    const plage = selection.getRangeAt(0);
+    if (!plage.collapsed) return;
+    const depart =
+      plage.startContainer.nodeType === Node.TEXT_NODE
+        ? plage.startContainer.parentElement
+        : (plage.startContainer as HTMLElement);
+    const cale = depart?.closest?.(`.${OVERFLOW_GAP_CLASS}`);
+    if (!cale || !editor.contains(cale)) return;
+
+    const marcheur = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let avant: Text | null = null;
+    let apres: Text | null = null;
+    let noeud = marcheur.nextNode() as Text | null;
+    while (noeud) {
+      if (!noeud.parentElement?.closest(`.${OVERFLOW_GAP_CLASS}`)) {
+        const position = cale.compareDocumentPosition(noeud);
+        if (position & Node.DOCUMENT_POSITION_PRECEDING) avant = noeud;
+        else if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+          apres = noeud;
+          break;
+        }
+      }
+      noeud = marcheur.nextNode() as Text | null;
+    }
+    const cible = avant ?? apres;
+    if (!cible) return;
+    const nouvelle = document.createRange();
+    nouvelle.setStart(cible, avant ? cible.data.length : 0);
+    nouvelle.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(nouvelle);
+  };
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', chasserLeCaretDesCales);
+    return () =>
+      document.removeEventListener('selectionchange', chasserLeCaretDesCales);
+  }, []);
+
   const paginate = () => {
     const page = pageRef.current;
     const editor = editorRef.current;
