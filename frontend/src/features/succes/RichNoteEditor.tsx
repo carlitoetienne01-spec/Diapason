@@ -101,10 +101,117 @@ function makeOverflowGap(
   return wrap;
 }
 
+/**
+ * Le haut de chaque ligne d'un bloc, dans le repère de l'éditeur.
+ *
+ * `Range.getClientRects()` rend un rectangle par ligne d'un contenu en ligne.
+ * Deux fragments d'une même ligne (un mot en gras, un lien) partagent leur
+ * `top` : on les fusionne à un demi-interligne près, sinon chaque mot mis en
+ * forme compterait pour une ligne et la coupe tomberait n'importe où.
+ */
+function lignesDuBloc(el: HTMLElement, editorTop: number): number[] {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const tops: number[] = [];
+  for (const rect of Array.from(range.getClientRects())) {
+    if (rect.height <= 0) continue;
+    const top = rect.top - editorTop;
+    if (tops.length === 0 || top - tops[tops.length - 1] > rect.height / 2) {
+      tops.push(top);
+    }
+  }
+  return tops;
+}
+
+/**
+ * Le premier caractère dont le rendu commence à la hauteur `y`.
+ *
+ * Recherche binaire sur les nœuds texte, avec un `Range` d'un seul caractère :
+ * O(log n) rectangles par coupe, contre O(n) pour un balayage.
+ */
+function positionDeLigne(
+  el: HTMLElement,
+  y: number,
+  editorTop: number,
+): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    const len = node.data.length;
+    if (len > 0) {
+      range.setStart(node, len - 1);
+      range.setEnd(node, len);
+      if (range.getBoundingClientRect().top - editorTop >= y - 1) {
+        let bas = 0;
+        let haut = len - 1;
+        let trouve = -1;
+        while (bas <= haut) {
+          const milieu = (bas + haut) >> 1;
+          range.setStart(node, milieu);
+          range.setEnd(node, milieu + 1);
+          if (range.getBoundingClientRect().top - editorTop >= y - 1) {
+            trouve = milieu;
+            haut = milieu - 1;
+          } else {
+            bas = milieu + 1;
+          }
+        }
+        if (trouve >= 0) return { node, offset: trouve };
+      }
+    }
+    node = walker.nextNode() as Text | null;
+  }
+  return null;
+}
+
+/** La cale posée DANS un paragraphe, entre deux de ses lignes. */
+function makeInlineGap(hauteur: number, fill: number, margin: number): HTMLElement {
+  const cale = document.createElement('span');
+  cale.className = OVERFLOW_GAP_CLASS;
+  cale.contentEditable = 'false';
+  cale.setAttribute('aria-hidden', 'true');
+  // `width: 100%` force le retour à la ligne : la queue du paragraphe passe
+  // sous la cale sans que le paragraphe soit scindé. Alignement, justification
+  // et numérotation de liste survivent, ce qu'une scission en deux <p> aurait
+  // perdu.
+  cale.style.cssText = [
+    'display:inline-block',
+    'width:100%',
+    `height:${hauteur}px`,
+    'vertical-align:top',
+    'position:relative',
+    'user-select:none',
+  ].join(';');
+  const band = document.createElement('span');
+  band.className = 'succes-overflow-gutter';
+  band.style.cssText = `position:absolute;left:0;right:0;top:${fill + margin}px`;
+  cale.appendChild(band);
+  return cale;
+}
+
 function collectBlockNodes(editor: HTMLElement): HTMLElement[] {
   const nodes: HTMLElement[] = [];
   for (const child of Array.from(editor.children) as HTMLElement[]) {
     if (child.classList.contains(OVERFLOW_GAP_CLASS)) continue;
+    // Une liste ou une citation est un CONTENEUR, pas un bloc. Une <ul> de
+    // quarante puces mesurait 990 px d'un seul tenant : plus haute qu'une
+    // page, elle tombait dans le trou du « bloc géant » et traversait le
+    // bureau sans une seule coupe.
+    if (child.tagName === 'UL' || child.tagName === 'OL') {
+      for (const li of Array.from(child.children) as HTMLElement[]) {
+        if (!li.classList.contains(OVERFLOW_GAP_CLASS)) nodes.push(li);
+      }
+      continue;
+    }
+    if (child.tagName === 'BLOCKQUOTE') {
+      const enfants = Array.from(child.children) as HTMLElement[];
+      for (const bloc of enfants) {
+        if (!bloc.classList.contains(OVERFLOW_GAP_CLASS)) nodes.push(bloc);
+      }
+      if (enfants.length === 0) nodes.push(child);
+      continue;
+    }
     if (child.tagName === 'TABLE') {
       const rows = child.querySelectorAll(
         ':scope > tr, :scope > tbody > tr, :scope > thead > tr, :scope > tfoot > tr',
@@ -129,7 +236,17 @@ function measuredBlocks(editor: HTMLElement): Array<PageBlock & { el: HTMLElemen
         : /^H[1-6]$/.test(el.tagName)
           ? 'heading'
           : 'block';
-    return { el, top: rect.top - editorTop, height: Math.max(rect.height, 1), kind };
+    // Les lignes ne se mesurent que là où une coupe est permise : un titre,
+    // une ligne de tableau et un saut manuel partent entiers, et appeler
+    // `getClientRects` sur chacun coûterait sans rien apporter.
+    const coupable = kind === 'block' && el.tagName !== 'TR' && el.tagName !== 'IMG';
+    return {
+      el,
+      top: rect.top - editorTop,
+      height: Math.max(rect.height, 1),
+      kind,
+      lines: coupable ? lignesDuBloc(el, editorTop) : undefined,
+    };
   });
 }
 
@@ -151,9 +268,26 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
     margin,
   );
   for (const gap of [...plan].reverse()) {
-    const target = collected[gap.beforeIndex]?.el;
+    const bloc = collected[gap.beforeIndex];
+    const target = bloc?.el;
     if (!target?.parentNode) continue;
-    target.parentNode.insertBefore(makeOverflowGap(gap, PAGE_GUTTER_PX, margin, target), target);
+    const hauteur = overflowGapHeight(gap, PAGE_GUTTER_PX, margin);
+    if (gap.atLine === undefined) {
+      target.parentNode.insertBefore(
+        makeOverflowGap(gap, PAGE_GUTTER_PX, margin, target),
+        target,
+      );
+      continue;
+    }
+    // Coupe INTERNE : on va chercher le premier caractère de la ligne visée.
+    const y = bloc.lines?.[gap.atLine];
+    if (y === undefined) continue;
+    const point = positionDeLigne(target, y, editor.getBoundingClientRect().top);
+    if (!point) continue;
+    const range = document.createRange();
+    range.setStart(point.node, point.offset);
+    range.collapse(true);
+    range.insertNode(makeInlineGap(hauteur, gap.fill, margin));
   }
 }
 

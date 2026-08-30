@@ -13,6 +13,24 @@ const GUTTER = PAGE_GUTTER_PX;
 const MARGIN = 32;
 const CONTENT = 200;
 
+/**
+ * Les vraies mesures d'une page A4 à marges normales, pour que les seuils
+ * testés soient ceux que Carlito rencontre : 297 mm − 2 × 1 po = 930,52 px de
+ * contenu, et une ligne de 24,75 px (15 px × 1,65).
+ */
+const A4 = 930.52;
+const LIGNE = 24.75;
+
+/** Un paragraphe de `n` lignes, avec le haut de chacune. */
+function para(top: number, n: number, kind: 'block' | 'heading' = 'block') {
+  return {
+    top,
+    height: n * LIGNE,
+    kind,
+    lines: Array.from({ length: n }, (_, i) => top + i * LIGNE),
+  };
+}
+
 describe('overflowGapPlan', () => {
   it('ne coupe pas une feuille trop courte', () => {
     expect(
@@ -29,53 +47,114 @@ describe('overflowGapPlan', () => {
     expect(overflowGapPlan(blocks, 1, GUTTER, MARGIN)).toEqual([]);
   });
 
-  it('pousse un bloc entier à la page suivante au lieu de le trancher', () => {
+  it('trente-sept lignes courtes tiennent sur UNE feuille', () => {
+    // Le seuil exact du défaut du 30 août 2026 : 37 × 24,75 = 915,75 px pour
+    // 930,52 px utiles — cela TIENT. L'ancien code posait pourtant une feuille
+    // blanche entière avant le premier mot, parce que tout bloc de moins de
+    // 52 px était pris pour un titre à ne pas laisser seul en bas de page.
+    const blocs = Array.from({ length: 37 }, (_, i) => para(i * LIGNE, 1));
+    expect(overflowGapPlan(blocs, A4, GUTTER, MARGIN)).toEqual([]);
+  });
+
+  it('quatre cents lignes courtes ne mettent aucune feuille blanche devant le premier mot', () => {
+    // Mesuré sur l'ancien code : 25 cales, dont 14 devant le bloc 0 — le
+    // premier mot de la note commençait à la feuille 68,8.
+    const blocs = Array.from({ length: 400 }, (_, i) => para(i * LIGNE, 1));
+    const plan = overflowGapPlan(blocs, A4, GUTTER, MARGIN);
+    expect(plan.filter((gap) => gap.beforeIndex === 0)).toHaveLength(0);
+    // Et le nombre de coupes doit ressembler au nombre de pages : 9 900 px de
+    // texte sur 930,52 px utiles font 11 feuilles, donc 10 coupes.
+    expect(plan.length).toBeLessThanOrEqual(12);
+  });
+
+  it('un paragraphe de trois lignes ne se coupe jamais', () => {
+    // 1+2 et 2+1 laissent une ligne seule : Word refuse les deux.
     const plan = overflowGapPlan(
-      [
-        { top: 0, height: 180, kind: 'block' },
-        { top: 180, height: 50, kind: 'heading' },
-      ],
-      CONTENT,
+      [para(0, 36), para(36 * LIGNE, 3)],
+      A4,
       GUTTER,
       MARGIN,
     );
-    expect(plan).toEqual([{ beforeIndex: 1, fill: 20, mode: 'sheet' }]);
-    expect(overflowGapHeight(plan[0], GUTTER, MARGIN)).toBe(20 + MARGIN + GUTTER + MARGIN);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].beforeIndex).toBe(1);
+    expect(plan[0].atLine).toBeUndefined();
   });
 
-  it('emmène les lignes courtes (N2 + titre) avec le paragraphe qui suit', () => {
+  it('un paragraphe de quatre lignes se coupe en 2+2, jamais en 1+3', () => {
+    // 35 lignes remplies, il reste de la place pour 2 lignes : la coupe
+    // naturelle serait à k=2, et elle est admissible.
     const plan = overflowGapPlan(
-      [
-        { top: 0, height: 160, kind: 'block' },
-        { top: 160, height: 22, kind: 'block' },
-        { top: 182, height: 24, kind: 'block' },
-        { top: 206, height: 40, kind: 'block' },
-      ],
-      CONTENT,
+      [para(0, 35), para(35 * LIGNE, 4)],
+      A4,
       GUTTER,
       MARGIN,
     );
-    expect(plan).toEqual([{ beforeIndex: 1, fill: 40, mode: 'sheet' }]);
+    const coupe = plan.find((gap) => gap.beforeIndex === 1);
+    expect(coupe?.atLine).toBe(2);
   });
 
-  it('emmène le titre avec le paragraphe qui ne tient pas en bas de page', () => {
+  it('un bloc de soixante lignes se coupe au lieu de traverser le bureau', () => {
+    // Remplace le test qui exigeait l'inverse. 60 × 24,75 = 1 485 px, soit une
+    // page et demie : l'ancien code ne posait AUCUNE cale et laissait le
+    // paragraphe peint en travers de la gouttière.
+    const plan = overflowGapPlan([para(0, 60)], A4, GUTTER, MARGIN);
+    expect(plan.length).toBeGreaterThanOrEqual(1);
+    expect(plan[0].atLine).toBeGreaterThanOrEqual(2);
+  });
+
+  it('un titre part avec le paragraphe qui ne tient pas', () => {
+    // « Paragraphe solidaire » exige que le titre soit sur la page de la
+    // PREMIÈRE LIGNE du paragraphe suivant — pas du paragraphe entier. Il faut
+    // donc que ce paragraphe n'obtienne AUCUNE ligne admissible ici : avec le
+    // titre à 891 px, sa deuxième ligne tomberait à 940,5 px pour 930,52 px
+    // utiles, donc une seule ligne — refusée par la règle des orphelines.
+    // (Un premier jet de ce test plaçait le titre à 866 px : deux lignes
+    // tenaient encore, la contrainte était satisfaite, et couper était le bon
+    // comportement. Le test avait tort, pas le code.)
     const plan = overflowGapPlan(
-      [
-        { top: 0, height: 170, kind: 'block' },
-        { top: 170, height: 25, kind: 'heading' },
-        { top: 195, height: 40, kind: 'block' },
-      ],
-      CONTENT,
+      [para(0, 36), para(36 * LIGNE, 1, 'heading'), para(37 * LIGNE, 6)],
+      A4,
       GUTTER,
       MARGIN,
     );
-    expect(plan).toEqual([{ beforeIndex: 1, fill: 30, mode: 'sheet' }]);
+    expect(plan[0].beforeIndex).toBe(1);
+    expect(plan[0].atLine).toBeUndefined();
   });
 
-  it('laisse un bloc plus haut que la page entier (pas de tranchage)', () => {
-    expect(
-      overflowGapPlan([{ top: 0, height: 500, kind: 'block' }], CONTENT, GUTTER, MARGIN),
-    ).toEqual([]);
+  it("un titre n'emmène rien si la grappe ne tient pas dans une page", () => {
+    // Le garde-fou absent de l'ancien code : un H2 suivi d'un paragraphe de
+    // cinquante lignes. Emmener le titre ne sauverait rien — le paragraphe
+    // déborde de toute façon — et l'ancienne remontée sans borne posait des
+    // cales en cascade.
+    const plan = overflowGapPlan(
+      [para(0, 35), para(35 * LIGNE, 1, 'heading'), para(36 * LIGNE, 50)],
+      A4,
+      GUTTER,
+      MARGIN,
+    );
+    expect(plan.some((gap) => gap.beforeIndex === 2 && gap.atLine !== undefined)).toBe(
+      true,
+    );
+  });
+
+  it('aucune cale ne dépasse la hauteur d’une feuille entière', () => {
+    // L'emballement mesuré valait 462 968 px pour une seule série. Une cale
+    // légitime vaut au plus une page vide plus les marges et la gouttière.
+    const blocs = Array.from({ length: 300 }, (_, i) => para(i * LIGNE, 1));
+    const plafond = A4 + MARGIN + GUTTER + MARGIN;
+    for (const gap of overflowGapPlan(blocs, A4, GUTTER, MARGIN)) {
+      expect(overflowGapHeight(gap, GUTTER, MARGIN)).toBeLessThanOrEqual(plafond + 1);
+    }
+  });
+
+  it('un titre insécable part entier plutôt que d’être coupé', () => {
+    const plan = overflowGapPlan(
+      [para(0, 36), para(36 * LIGNE, 4, 'heading')],
+      A4,
+      GUTTER,
+      MARGIN,
+    );
+    expect(plan[0].atLine).toBeUndefined();
   });
 
   it('reprend le compte après un saut manuel', () => {
