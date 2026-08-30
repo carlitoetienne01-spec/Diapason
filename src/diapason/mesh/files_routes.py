@@ -19,6 +19,7 @@ request-rate limiter says nothing about body size.
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import time
@@ -108,6 +109,27 @@ _TTL_SESSION_S = 3600.0
 # Au-delà, quelqu'un essaie autre chose que de partager un fichier.
 _SESSIONS_MAX = 8
 
+# How much the reception folder may hold, all files together.
+#
+# 28 August 2026 removed the per-file consent: a paired peer no longer has to
+# ask. That was the right call for daily use — being asked for every file is
+# how a safeguard turns into a reflex — but it took away the ONLY bound that
+# existed, and nothing replaced it. An audit reproduced the consequence on
+# this very code: three hundred files dropped in a row with the window shut,
+# no approval and no event; and twenty manifests announcing two gibibytes
+# each accepted without anything ever adding them up.
+#
+# Five gibibytes, and not less: one legitimate file may weigh
+# TAILLE_MAX_DEFAUT (2 GiB), so a lower ceiling would refuse a normal send.
+# And not more: past that, a folder nobody empties becomes a disk nobody
+# understands.
+_VOLUME_MAX_RECEPTION = 5 * 1024 * 1024 * 1024
+
+# What we refuse to eat of someone else's disk. A folder ceiling does not
+# protect a machine that is ALREADY nearly full: the two guards answer two
+# different questions, and one does not imply the other.
+_ESPACE_LIBRE_MINIMUM = 2 * 1024 * 1024 * 1024
+
 
 @dataclass
 class _Session:
@@ -153,6 +175,68 @@ def dossier_de_reception() -> Path:
     from diapason.core.paths import get_data_dir
 
     return Path(get_data_dir()) / "transfers"
+
+
+def _volume_recu() -> int:
+    """What the reception folder already holds — partial files included.
+
+    Partials count: they occupy the disk exactly like finished files, and a
+    peer that opens sessions without ever finishing them would otherwise slip
+    under the ceiling forever.
+    """
+    dossier = dossier_de_reception()
+    total = 0
+    try:
+        enfants = list(dossier.iterdir())
+    except OSError:
+        return 0
+    for enfant in enfants:
+        try:
+            if enfant.is_file():
+                total += enfant.stat().st_size
+        except OSError:
+            # A file that vanished mid-scan is a file that costs nothing.
+            continue
+    return total
+
+
+def _espace_libre() -> int | None:
+    """Free bytes on the volume that holds the folder, or None if unknowable.
+
+    None is not zero. A filesystem that will not answer must not be treated
+    as full — refusing every transfer because a call failed would be the same
+    class of lie as accepting every one.
+    """
+    import shutil
+
+    dossier = dossier_de_reception()
+    sonde = dossier if dossier.exists() else dossier.parent
+    try:
+        return shutil.disk_usage(sonde).free
+    except OSError:
+        return None
+
+
+def _refus_de_volume(taille: int) -> str | None:
+    """The sentence to refuse with, or None when there is room.
+
+    Returns the user-facing reason rather than a boolean: a refusal the user
+    cannot act on is barely better than a silent one.
+    """
+    dossier = dossier_de_reception()
+    if _volume_recu() + taille > _VOLUME_MAX_RECEPTION:
+        return (
+            "Le dossier de réception est plein "
+            f"({_VOLUME_MAX_RECEPTION // (1024 * 1024 * 1024)} Gio) : ce fichier "
+            f"n'a pas été accepté. Vide « {dossier} » pour en recevoir d'autres."
+        )
+    libre = _espace_libre()
+    if libre is not None and libre - taille < _ESPACE_LIBRE_MINIMUM:
+        return (
+            "Il ne reste pas assez de place sur le disque de cet appareil : "
+            "ce fichier n'a pas été accepté."
+        )
+    return None
 
 
 def _taille_max() -> int:
@@ -261,6 +345,21 @@ def offrir(body: Offre) -> dict[str, Any]:
             }
         )
 
+    # A paired peer no longer has to ask (28 August 2026), and that is
+    # deliberate. But "no longer asks" must not mean "without limit": these
+    # two guards are the whole of what now stands between a paired device
+    # gone hostile and a full disk. Checked AFTER deduplication on purpose —
+    # a file already present costs no bytes, and refusing it for lack of room
+    # would be refusing something we were not going to store.
+    refus = _refus_de_volume(manifeste.taille)
+    if refus is not None:
+        logger.warning(
+            "file transfer refused for lack of room: from=%s size=%d",
+            device_id,
+            manifeste.taille,
+        )
+        raise HTTPException(status_code=507, detail=refus)
+
     reponse = _open_session(
         device_id=device_id,
         device_name=_display_name(appareil.get("name")),
@@ -320,6 +419,48 @@ def _open_session(
         "missing": reception.manquants,
         "userSafeMessage": "Appareil jumelé — transfert autorisé.",
     }
+
+
+def journal_des_receptions() -> Path:
+    from diapason.core.paths import get_data_dir
+
+    return Path(get_data_dir()) / "receptions.jsonl"
+
+
+def _record_arrival(session: _Session, target: Path, size: int) -> None:
+    """Write the arrival down, whether or not anyone is watching.
+
+    Until now the only trace of a received file was the shell animation, and
+    `_publish_received_file` drops that when no window is collecting. With
+    consent gone, a file could therefore arrive on this machine leaving
+    nothing behind but a `logger.info` line in a file nobody reads — and the
+    user had no way to find out who had sent what, or when.
+
+    A line of JSON, appended, never rewritten. Not a database: this must
+    survive a corrupt tail, be readable with `tail`, and cost nothing to
+    write on a path that is already doing disk work.
+    """
+    entree = {
+        "receivedAtMs": int(time.time() * 1000),
+        "fileName": target.name,
+        "path": str(target),
+        "sizeBytes": size,
+        "mimeType": session.reception.manifeste.type_mime,
+        "sourceDeviceId": session.device_id,
+        "sourceDeviceName": session.device_name,
+        "sessionId": session.session_id,
+    }
+    chemin = journal_des_receptions()
+    try:
+        from diapason.security.file_utils import secure_create
+
+        secure_create(chemin)
+        with chemin.open("a", encoding="utf-8") as fichier:
+            fichier.write(json.dumps(entree, ensure_ascii=False) + "\n")
+    except OSError:
+        # The file HAS arrived. Losing its journal line must not undo that,
+        # nor turn a completed transfer into an error for the sender.
+        logger.exception("could not record the arrival of %s", target.name)
 
 
 def _publish_received_file(session: _Session, target: Path, size: int) -> None:
@@ -411,6 +552,9 @@ def finir(session_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     _sessions.pop(session_id, None)
     taille = cible.stat().st_size
+    # Recorded BEFORE the shell is told: the journal is what makes the
+    # arrival true, the animation is only what makes it visible.
+    _record_arrival(session, cible, taille)
     _publish_received_file(session, cible, taille)
     logger.info("file transfer complete: %s", cible.name)
     return _repondre(

@@ -303,3 +303,171 @@ class TestLEmetteurResteCompatibleAvecUnAncienRecepteur:
 
         assert resultat.statut == "DENIED"
         assert not any("/chunk" in url for url in appels)
+
+
+class TestNePlusDemanderNEstPasSansLimite:
+    """Ce que le retrait du consentement, le 28 août 2026, a laissé ouvert.
+
+    Un pair jumelé n'a plus à demander : c'est le bon choix pour l'usage —
+    être questionné à chaque fichier transforme une garde en réflexe. Mais ce
+    choix a emporté la SEULE borne qui existait, et rien ne l'a remplacée. Un
+    audit l'a reproduit sur ce code : trois cents fichiers déposés d'affilée,
+    fenêtre fermée, sans un accord ni un événement ; et vingt manifestes
+    annonçant deux gibioctets chacun acceptés sans que rien ne les additionne.
+
+    Ces tests tiennent les deux bornes qui remplacent la question.
+    """
+
+    def test_un_dossier_plein_refuse_le_fichier_suivant(self, offre, monkeypatch):
+        body, dossier = offre
+        monkeypatch.setattr(
+            routes, "_volume_recu", lambda: routes._VOLUME_MAX_RECEPTION
+        )
+
+        with pytest.raises(HTTPException) as capture:
+            routes.offrir(body)
+
+        assert capture.value.status_code == 507, (
+            "un disque plein n'est ni un refus d'autorisation (403) ni un "
+            "contretemps (429) : le distinguer change ce que l'émetteur fait"
+        )
+        assert "plein" in str(capture.value.detail)
+        assert str(dossier) in str(capture.value.detail), (
+            "un refus que l'utilisateur ne peut pas lever vaut à peine mieux "
+            "qu'un silence : le message doit dire QUEL dossier vider"
+        )
+
+    def test_le_cumul_est_compte_et_pas_seulement_le_fichier(self, offre, monkeypatch):
+        """La faille exacte : chaque fichier passait sous le plafond
+        individuel, et personne n'additionnait."""
+        body, _ = offre
+        monkeypatch.setattr(
+            routes, "_volume_recu", lambda: routes._VOLUME_MAX_RECEPTION - 2
+        )
+        # Le manifeste ne pèse que 4 octets — largement sous TAILLE_MAX_DEFAUT.
+        with pytest.raises(HTTPException) as capture:
+            routes.offrir(body)
+        assert capture.value.status_code == 507
+
+    def test_un_disque_presque_plein_refuse_meme_un_dossier_vide(
+        self, offre, monkeypatch
+    ):
+        """Deux gardes, deux questions. Un plafond de dossier ne protège pas
+        une machine dont le disque est déjà pris par autre chose."""
+        body, _ = offre
+        monkeypatch.setattr(routes, "_volume_recu", lambda: 0)
+        monkeypatch.setattr(
+            routes, "_espace_libre", lambda: routes._ESPACE_LIBRE_MINIMUM
+        )
+
+        with pytest.raises(HTTPException) as capture:
+            routes.offrir(body)
+        assert capture.value.status_code == 507
+        assert "place" in str(capture.value.detail)
+
+    def test_un_disque_muet_n_est_pas_un_disque_plein(self, offre, monkeypatch):
+        """None n'est pas zéro. Refuser tout parce qu'un appel a échoué
+        serait la même famille de mensonge qu'accepter tout."""
+        body, _ = offre
+        monkeypatch.setattr(routes, "_volume_recu", lambda: 0)
+        monkeypatch.setattr(routes, "_espace_libre", lambda: None)
+
+        reponse = routes.offrir(body)
+        assert reponse["status"] == "ACCEPTED"
+
+    def test_les_partiels_comptent_dans_le_cumul(self, offre, tmp_path, monkeypatch):
+        """Un pair qui ouvre des sessions sans jamais les finir passerait
+        sous le plafond éternellement si seuls les fichiers finis comptaient."""
+        _, dossier = offre
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / ".abc.partiel").write_bytes(b"x" * 4096)
+
+        assert routes._volume_recu() >= 4096
+
+    def test_de_la_place_laisse_passer(self, offre, monkeypatch):
+        """L'autre sens — sans quoi les tests ci-dessus passeraient aussi si
+        le transfert était simplement cassé."""
+        body, _ = offre
+        monkeypatch.setattr(routes, "_volume_recu", lambda: 0)
+        monkeypatch.setattr(routes, "_espace_libre", lambda: 100 * 1024**3)
+
+        assert routes.offrir(body)["status"] == "ACCEPTED"
+
+
+class TestUneArriveeLaisseUneTrace:
+    """L'autre moitié du choix du 28 août.
+
+    La seule trace d'un fichier reçu était l'animation de la fenêtre, et
+    `_publish_received_file` la jette quand aucune fenêtre ne relève. Un
+    fichier pouvait donc arriver en ne laissant qu'une ligne de `logger.info`
+    dans un fichier que personne ne lit : impossible de savoir qui avait
+    envoyé quoi, ni quand.
+    """
+
+    def _session(self, dossier):
+        class FauxManifeste:
+            type_mime = "application/pdf"
+
+        class FausseReception:
+            manifeste = FauxManifeste()
+
+        return routes._Session(
+            session_id="s1",
+            jeton="j",
+            device_id="pair-1",
+            device_name="PC du bureau",
+            reception=FausseReception(),
+            cle=b"0" * 32,
+        )
+
+    def test_la_trace_est_ecrite_meme_sans_fenetre(self, offre, tmp_path, monkeypatch):
+        _, dossier = offre
+        monkeypatch.setattr(
+            "diapason.mesh.executor.shell_is_collecting", lambda **_k: False
+        )
+        cible = tmp_path / "rapport.pdf"
+        cible.write_bytes(b"test")
+
+        routes._record_arrival(self._session(dossier), cible, 4)
+
+        import json
+
+        journal = routes.journal_des_receptions()
+        assert journal.exists(), "sans fenêtre, il ne restait RIEN"
+        entree = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
+        assert entree["fileName"] == "rapport.pdf"
+        assert entree["sourceDeviceName"] == "PC du bureau"
+        assert entree["sizeBytes"] == 4
+
+    def test_le_journal_s_ajoute_et_ne_se_reecrit_pas(self, offre, tmp_path):
+        _, dossier = offre
+        cible = tmp_path / "a.pdf"
+        cible.write_bytes(b"test")
+
+        for _ in range(3):
+            routes._record_arrival(self._session(dossier), cible, 4)
+
+        lignes = (
+            routes.journal_des_receptions().read_text(encoding="utf-8").splitlines()
+        )
+        assert len(lignes) == 3, "un journal qui se réécrit n'est pas un journal"
+
+    def test_un_journal_illisible_ne_perd_pas_le_fichier(
+        self, offre, tmp_path, monkeypatch
+    ):
+        """Le fichier EST arrivé. Perdre sa ligne ne doit pas défaire cela,
+        ni transformer un transfert réussi en erreur pour l'émetteur."""
+        _, dossier = offre
+        cible = tmp_path / "a.pdf"
+        cible.write_bytes(b"test")
+        monkeypatch.setattr(
+            routes,
+            "journal_des_receptions",
+            lambda: tmp_path / "nulle-part" / "x.jsonl",
+        )
+        monkeypatch.setattr(
+            "diapason.security.file_utils.secure_create",
+            lambda _p: (_ for _ in ()).throw(OSError("disque en lecture seule")),
+        )
+
+        routes._record_arrival(self._session(dossier), cible, 4)  # ne lève pas

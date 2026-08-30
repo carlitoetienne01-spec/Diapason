@@ -11,6 +11,8 @@ Cette commande est le chemin invité qui manquait.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -314,6 +316,73 @@ def whoami() -> None:
     console.print(f"flotte   : {moi['ownerId']}")
     # La clé publique est publiable ; la privée n'apparaît nulle part.
     console.print(f"clé publique : {moi['publicKey']}")
+
+
+@mesh.command("recus")
+@click.option(
+    "--tout", is_flag=True, help="Tout le journal, et non les vingt derniers."
+)
+def recus(tout: bool) -> None:
+    """Les fichiers reçus des autres appareils, du plus récent au plus ancien.
+
+    Depuis le 28 août 2026, un appareil jumelé n'a plus à demander la
+    permission avant d'envoyer. C'était le bon choix — être questionné pour
+    chaque fichier transforme une garde en réflexe — mais il ne laissait plus
+    aucune trace consultable : la seule chose qu'une arrivée produisait était
+    une animation, et cette animation disparaît quand aucune fenêtre n'est
+    ouverte. Cette commande est l'autre moitié de ce choix.
+    """
+    import json
+
+    from diapason.mesh.files_routes import journal_des_receptions
+
+    chemin = journal_des_receptions()
+    if not chemin.exists():
+        console.print("Aucun fichier reçu pour l'instant.")
+        console.print(f"Le journal apparaîtra ici : [dim]{chemin}[/dim]")
+        return
+
+    lignes: list[dict] = []
+    illisibles = 0
+    for ligne in chemin.read_text(encoding="utf-8").splitlines():
+        ligne = ligne.strip()
+        if not ligne:
+            continue
+        try:
+            lignes.append(json.loads(ligne))
+        except ValueError:
+            # Un journal en append peut finir sur une ligne coupée par un
+            # arrêt brutal. La compter et continuer vaut mieux que de refuser
+            # tout l'historique pour son dernier octet.
+            illisibles += 1
+
+    if not lignes:
+        console.print("Le journal des réceptions est vide.")
+        return
+
+    lignes.reverse()
+    montrees = lignes if tout else lignes[:20]
+    table = Table(title=f"Fichiers reçus — {len(lignes)} au total")
+    for colonne in ("Reçu le", "Fichier", "Taille", "De"):
+        table.add_column(colonne)
+    for entree in montrees:
+        horodatage = datetime.fromtimestamp(
+            int(entree.get("receivedAtMs") or 0) / 1000
+        ).strftime("%d/%m %H:%M")
+        table.add_row(
+            horodatage,
+            str(entree.get("fileName") or "?"),
+            _lisible(int(entree.get("sizeBytes") or 0)),
+            str(entree.get("sourceDeviceName") or entree.get("sourceDeviceId") or "?"),
+        )
+    console.print(table)
+    if len(lignes) > len(montrees):
+        console.print(f"[dim]… et {len(lignes) - len(montrees)} de plus (--tout)[/dim]")
+    if illisibles:
+        console.print(
+            f"[yellow]{illisibles} ligne(s) illisible(s) ignorée(s).[/yellow]"
+        )
+    console.print(f"[dim]Les fichiers eux-mêmes : {chemin.parent / 'transfers'}[/dim]")
 
 
 __all__ = ["mesh"]
