@@ -51,6 +51,7 @@ import {
 } from './notePages';
 import { sanitizeNoteHtml } from './noteSanitize';
 import { fitZoom } from './noteZoom';
+import { PanneauNavigation } from './PanneauNavigation';
 import type {
   SuccesNoteDocLang,
   SuccesNotePageBackground,
@@ -101,6 +102,9 @@ type Props = {
   onZoomEffectif?: (zoom: number) => void;
   /** La page actuellement sous les yeux, mise à jour au défilement. */
   onPageCourante?: (page: number) => void;
+  /** Le volet de navigation — pages en miniature et plan des titres. */
+  navigation?: boolean;
+  onFermerNavigation?: () => void;
 };
 
 function runCommand(command: string, value?: string) {
@@ -564,6 +568,8 @@ export function RichNoteEditor({
   zoom: zoomVoulu = null,
   onZoomEffectif,
   onPageCourante,
+  navigation = false,
+  onFermerNavigation,
   editorKey,
 }: Props) {
   // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
@@ -585,6 +591,10 @@ export function RichNoteEditor({
   // L'encre du papier courant, et non une constante : #1A2232 est exactement
   // la couleur du papier du fond Sombre — contraste 1,00 sur 1.
   const [encreCourante, setEncreCourante] = useState('#1a2232');
+  // Change à chaque pagination : c'est le signal qui fait relire le document
+  // au volet de navigation, sans qu'il ait à observer le DOM lui-même.
+  const [signaturePagination, setSignaturePagination] = useState(0);
+  const [pageAffichee, setPageAffichee] = useState(1);
   const zoomRef = useRef(1);
 
   // ─── La sélection, que les contrôles de la barre faisaient perdre ────────
@@ -824,18 +834,19 @@ export function RichNoteEditor({
   const recalculerLaPage = () => {
     const desk = deskRef.current;
     const editor = editorRef.current;
-    if (!desk || !editor || !onPageCourante) return;
+    if (!desk || !editor) return;
     const repere = desk.getBoundingClientRect().top + desk.clientHeight / 3;
     let passees = 0;
     for (const cale of editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`)) {
       if (cale.getBoundingClientRect().bottom <= repere) passees += 1;
     }
-    onPageCourante(passees + 1);
+    setPageAffichee(passees + 1);
+    onPageCourante?.(passees + 1);
   };
 
   useEffect(() => {
     const desk = deskRef.current;
-    if (!desk || !onPageCourante) return;
+    if (!desk) return;
     let enAttente = false;
     const auDefilement = () => {
       // Une image par rafale : un `scroll` tire des dizaines de fois par
@@ -865,6 +876,7 @@ export function RichNoteEditor({
     try {
       const feuilles = applyOverflowGaps(editor, page, zoomRef.current);
       onPageCount?.(feuilles);
+      setSignaturePagination((n) => n + 1);
       recalculerLaPage();
       reserverLaHauteur();
       remettreLeCaret(editor, place);
@@ -1379,6 +1391,17 @@ export function RichNoteEditor({
         </select>
       </div>
 
+      <div className="min-h-0 flex-1 flex gap-2">
+        {navigation ? (
+          <PanneauNavigation
+            editeur={editorRef.current}
+            bureau={deskRef.current}
+            zoom={zoomRef.current}
+            pageCourante={pageAffichee}
+            cle={`${editorKey}-${signaturePagination}`}
+            onFermer={() => onFermerNavigation?.()}
+          />
+        ) : null}
       <div
         ref={deskRef}
         className="succes-note-desk min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3"
@@ -1414,6 +1437,7 @@ export function RichNoteEditor({
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -1398,6 +1398,23 @@
 /* Le papier qui reste sous le dernier mot. Sans lui, la dernière feuille
    s'arrête sur le texte et se voit aussitôt : elle est plus courte que
    toutes les autres, ce qui n'arrive jamais dans Word. */
+/* Le volet de navigation : miniatures des pages et plan des titres.
+   Une vignette est une FENÊTRE sur les blocs d'une page, réduits par
+   `transform`. Le rapport 1:1,414 est celui d'une A4 ; il n'a pas besoin
+   d'être exact pour choisir une page d'un coup d'œil. */
+.succes-note-miniature {
+  overflow: hidden;
+  border-radius: 3px;
+  position: relative;
+}
+.succes-note-mini {
+  transform-origin: top left;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.succes-note-mini * {
+  max-width: 100%;
+}
 .succes-note-editor::after {
   content: '';
   display: block;

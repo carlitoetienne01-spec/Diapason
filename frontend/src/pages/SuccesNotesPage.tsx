@@ -420,6 +420,7 @@ export function SuccesNotesPage() {
   const [zoomVoulu, setZoomVoulu] = useState<number | null>(null);
   const [zoomEffectif, setZoomEffectif] = useState(1);
   const [pageCourante, setPageCourante] = useState(1);
+  const [navigationOuverte, setNavigationOuverte] = useState(false);
   // PAS de remise à zéro par `useEffect` sur `activeId` : `useLayoutEffect`
   // — donc la pagination de l'éditeur, donc `onPageCount` — s'exécute AVANT
   // les `useEffect`. Une remise à zéro écrite là efface le compte à l'instant
@@ -509,6 +510,8 @@ export function SuccesNotesPage() {
             zoom={zoomVoulu}
             onZoomEffectif={setZoomEffectif}
             onPageCourante={setPageCourante}
+            navigation={navigationOuverte}
+            onFermerNavigation={() => setNavigationOuverte(false)}
             onContentChange={(html) => {
               setDraftContent(html);
               scheduleAutoSave();
@@ -528,11 +531,23 @@ export function SuccesNotesPage() {
             style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
           >
             <span className="flex items-center gap-2">
-              {/* « Page 3 sur 47 », comme Word : le total seul ne dit pas
-                  où l'on se trouve dans un long document. */}
-              <span className="tabular-nums">
+              {/* « Page 3 sur 47 », comme Word : le total seul ne dit pas où
+                  l'on se trouve. Et comme dans Word, cliquer dessus ouvre le
+                  volet de navigation — miniatures des pages et plan des
+                  titres. */}
+              <button
+                type="button"
+                onClick={() => setNavigationOuverte((v) => !v)}
+                aria-pressed={navigationOuverte}
+                title="Numéro de la page actuelle. Cliquez pour ouvrir le volet de navigation."
+                className="tabular-nums px-1.5 rounded cursor-pointer"
+                style={{
+                  border: '1px solid var(--color-border)',
+                  color: navigationOuverte ? 'var(--color-accent)' : 'inherit',
+                }}
+              >
                 Page {Math.min(pageCourante, draftPages)} sur {draftPages}
-              </span>
+              </button>
               <span aria-hidden="true">—</span>
               <span className="tabular-nums">
                 {wordCount.toLocaleString('fr-CA')} mot{wordCount === 1 ? '' : 's'}
