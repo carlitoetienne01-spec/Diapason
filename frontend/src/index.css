@@ -1484,7 +1484,11 @@
     padding: 0;
     box-shadow: none;
   }
-  .succes-note-editor .succes-overflow-gap {
+  /* Les cales ET les bandes. Une bande de ligne fractionnée vit sur la
+     FEUILLE, pas dans l'éditeur : la règle qui ne visait que l'éditeur la
+     laissait s'imprimer, une barre grise en travers du papier. */
+  .succes-note-editor .succes-overflow-gap,
+  .succes-note-page > .succes-overflow-gap {
     display: none;
   }
   .succes-note-editor {
@@ -1551,6 +1555,19 @@
      DÉBUT de la page suivante au lieu de finir la précédente, ce que Carlito
      a vu le 30 août 2026 : « pour le début d'une page y'a trop d'espace ». */
   display: flow-root;
+}
+/* UNE CALE DE TABLEAU EST UNE LIGNE, PAS UN BLOC.
+   `flow-root` ci-dessus vise les cales qui sont des blocs. Posé sur un `<tr>`,
+   il cesse d'en être une ligne : la cellule `colspan` retombe à ZÉRO de large,
+   et la bande de séparation — dont la largeur vaut `100% + marges` — ne peint
+   plus que 192 px sur une feuille de 816. Mesuré le 30 août 2026 sur
+   « 1.1 Budget d'heures par langage » : la cale mesurait 100 px quand la ligne
+   voisine en mesurait 623, et les deux pages paraissaient collées, avec un
+   petit rectangle sombre pour toute séparation.
+   La marge de la bande reste contenue par `.succes-overflow-gap-inner`, qui
+   est un vrai bloc à l'intérieur de la cellule. */
+.succes-note-editor tr.succes-overflow-gap {
+  display: table-row;
 }
 .succes-note-editor .succes-overflow-gap td {
   border: none;

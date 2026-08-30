@@ -120,13 +120,14 @@ function makeOverflowGap(
   const inner = document.createElement('div');
   inner.className = 'succes-overflow-gap-inner';
   inner.style.height = `${overflowGapHeight(gap, gutter, margin)}px`;
-  if (gap.mode === 'sheet') {
+  const estLigne = before.tagName === 'TR';
+  if (gap.mode === 'sheet' && !estLigne) {
     const band = document.createElement('div');
     band.className = 'succes-overflow-gutter';
     band.style.marginTop = `${gap.fill + margin}px`;
     inner.appendChild(band);
   }
-  if (before.tagName === 'TR') {
+  if (estLigne) {
     const row = document.createElement('tr');
     row.className = OVERFLOW_GAP_CLASS;
     row.contentEditable = 'false';
@@ -135,6 +136,24 @@ function makeOverflowGap(
     cell.colSpan = 50;
     cell.appendChild(inner);
     row.appendChild(cell);
+    // La bande d'une cale de TABLEAU se pose sur la FEUILLE, comme celle
+    // d'une ligne fractionnée.
+    //
+    // Dans la cellule, sa largeur vaut `100% + marges` où 100 % désigne le
+    // TABLEAU, pas la page — et un tableau collé depuis Word porte souvent
+    // son propre `margin-left`. Mesuré ici : 815 px de bande pour 816 px de
+    // feuille, mais décalés de 9 px, ce qui laisse une lisière de papier
+    // visible à gauche de la séparation. En absolu sur la feuille, la bande
+    // couvre la boîte de remplissage — c'est-à-dire la feuille entière —
+    // sans arithmétique.
+    if (gap.mode === 'sheet') {
+      bandeSurLaFeuille(
+        inner,
+        before.closest('.succes-note-page'),
+        `gap-${Date.now().toString(36)}-r${gap.beforeIndex}`,
+        gap.fill + margin,
+      );
+    }
     return row;
   }
   const wrap = document.createElement('div');
@@ -283,19 +302,49 @@ function couperLaLigne(
   //
   // On note donc seulement À QUI elle appartient ; `placerLesBandesFlottantes`
   // fait le calcul une fois que plus rien ne bouge.
-  const premiere = cellules[0].querySelector(`.${OVERFLOW_GAP_CLASS}`);
-  const page = ligne.closest('.succes-note-page') as HTMLElement | null;
-  if (!premiere || !page) return;
-  const cle = `gap-${Date.now().toString(36)}-${Math.round(y)}`;
-  premiere.setAttribute('data-bande', cle);
+  const premiere = cellules[0].querySelector<HTMLElement>(`.${OVERFLOW_GAP_CLASS}`);
+  if (!premiere) return;
+  bandeSurLaFeuille(
+    premiere,
+    ligne.closest('.succes-note-page'),
+    `gap-${Date.now().toString(36)}-${Math.round(y)}`,
+    fill + margin,
+  );
+}
+
+/**
+ * Rattacher une bande de séparation à la FEUILLE plutôt qu'à la cale.
+ *
+ * Une bande vit à l'intérieur du bloc qu'elle coupe, et sa largeur y vaut
+ * `100 % + marges` — où 100 % désigne CE BLOC. Pour un bloc pleine largeur
+ * cela tombe juste ; pour un tableau qui porte son propre `margin-left`, ou
+ * pour un paragraphe indenté, cela ne tombe plus. Mesuré le 30 août 2026 sur
+ * « Guide/Programmation » : 8 bandes sur 54 mesuraient 608 px pour une feuille
+ * de 636, décalées de 28 — une lisière de papier restait visible à gauche de
+ * la séparation, et la cale de tableau, elle, tombait à 192 px sur 816.
+ *
+ * Posée en absolu sur la feuille, la bande couvre la boîte de remplissage,
+ * c'est-à-dire la feuille entière, sans aucune arithmétique de marges.
+ * La position verticale, elle, ne peut pas être calculée ici : les cales sont
+ * posées de bas en haut, et celles qui surplombent celle-ci n'existent pas
+ * encore. `placerLesBandesFlottantes` s'en charge quand plus rien ne bouge.
+ */
+function bandeSurLaFeuille(
+  cale: HTMLElement,
+  feuille: HTMLElement | null,
+  cle: string,
+  decalage: number,
+): void {
+  if (!feuille) return;
+  cale.setAttribute('data-bande', cle);
   const bande = document.createElement('div');
   bande.className = `${OVERFLOW_GAP_CLASS} succes-overflow-gutter-flottant`;
   bande.contentEditable = 'false';
   bande.setAttribute('aria-hidden', 'true');
   bande.setAttribute('data-pour', cle);
-  bande.setAttribute('data-decalage', String(fill + margin));
+  bande.setAttribute('data-decalage', String(decalage));
   bande.style.cssText = 'position:absolute;left:0;right:0;top:-9999px';
-  page.appendChild(bande);
+  feuille.appendChild(bande);
 }
 
 /** Poser les bandes des lignes fractionnées, une fois toutes les cales en place. */
@@ -320,7 +369,13 @@ function placerLesBandesFlottantes(page: HTMLElement, zoom: number): void {
 }
 
 /** La cale posée DANS un paragraphe, entre deux de ses lignes. */
-function makeInlineGap(hauteur: number, fill: number, margin: number): HTMLElement {
+function makeInlineGap(
+  hauteur: number,
+  fill: number,
+  margin: number,
+  feuille: HTMLElement | null,
+  cle: string,
+): HTMLElement {
   const cale = document.createElement('span');
   cale.className = OVERFLOW_GAP_CLASS;
   cale.contentEditable = 'false';
@@ -337,10 +392,7 @@ function makeInlineGap(hauteur: number, fill: number, margin: number): HTMLEleme
     'position:relative',
     'user-select:none',
   ].join(';');
-  const band = document.createElement('span');
-  band.className = 'succes-overflow-gutter';
-  band.style.cssText = `position:absolute;left:0;right:0;top:${fill + margin}px`;
-  cale.appendChild(band);
+  bandeSurLaFeuille(cale, feuille, cle, fill + margin);
   return cale;
 }
 
@@ -512,7 +564,15 @@ function applyOverflowGaps(
     const range = document.createRange();
     range.setStart(point.node, point.offset);
     range.collapse(true);
-    range.insertNode(makeInlineGap(hauteur, gap.fill, margin));
+    range.insertNode(
+      makeInlineGap(
+        hauteur,
+        gap.fill,
+        margin,
+        target.closest('.succes-note-page'),
+        `gap-${Date.now().toString(36)}-i${gap.beforeIndex}-${gap.atLine}`,
+      ),
+    );
   }
   // Les bandes des lignes fractionnées se posent MAINTENANT : toutes les
   // cales sont en place, donc plus rien ne les poussera.
