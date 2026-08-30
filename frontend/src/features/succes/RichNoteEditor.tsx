@@ -958,6 +958,7 @@ export function RichNoteEditor({
     // pas chargée le document est plus long. La pagination qui suit son
     // arrivée ne repasse pas toujours par ici.
     poserLeSignet();
+    placerLesNumerosDePage();
   };
 
   useEffect(() => {
@@ -1244,6 +1245,70 @@ export function RichNoteEditor({
    * pagination pose ses cales en plusieurs temps, et le signet lisait des
    * bornes intermédiaires — mesuré 2 676 px sous sa page.
    */
+  /**
+   * Le numéro dans le pied de chaque feuille, comme Word.
+   *
+   * Les feuilles ne sont pas des éléments : c'est UN fond répété sur toute la
+   * hauteur du document. Il n'y a donc rien où écrire « Page 3 » — il faut le
+   * poser en absolu, à la hauteur calculée de chaque pied.
+   *
+   * La hauteur d'un pied : le haut de la feuille, plus la marge haute, plus la
+   * zone de texte, plus la moitié de la marge basse. Le numéro se trouve alors
+   * dans la marge, jamais sur le texte.
+   *
+   * Reconstruit seulement quand la pagination a VRAIMENT changé : appelé à
+   * chaque image de défilement, refabriquer soixante et un éléments serait
+   * payé soixante fois par seconde pour rien.
+   */
+  const signatureDesNumeros = useRef('');
+  const placerLesNumerosDePage = () => {
+    const page = pageRef.current;
+    const editor = editorRef.current;
+    if (!page || !editor) return;
+    const cs = getComputedStyle(page);
+    const margeBas = cssLengthToPx(cs.getPropertyValue('--note-m-b'), 96);
+    const z = zoomRef.current || 1;
+    const hautPage = page.getBoundingClientRect().top;
+    // LE BAS D'UNE FEUILLE EST LÀ OÙ SA BANDE EST PEINTE, et non à une hauteur
+    // calculée. Les feuilles ne sont pas des éléments : c'est un fond continu
+    // que les bandes découpent. Mesuré : les bornes de page se suivent à 1049,
+    // 972, 894, 948 px — jamais au pas régulier qu'on croirait. Déduire le
+    // pied d'une hauteur de papier posait donc les numéros de plus en plus
+    // haut, page après page.
+    const bandes = [
+      ...Array.from(editor.querySelectorAll<HTMLElement>('.succes-overflow-gutter')),
+      ...Array.from(
+        page.querySelectorAll<HTMLElement>(':scope > .succes-overflow-gutter-flottant'),
+      ),
+    ]
+      .map((b) => (b.getBoundingClientRect().top - hautPage) / z)
+      .sort((a, b) => a - b)
+      // Une ligne de tableau fractionnée pose une bande par cellule.
+      .filter((v, i, t) => i === 0 || v - t[i - 1] > 2);
+    // La dernière feuille n'a pas de bande : son pied se déduit du bas du
+    // papier réservé.
+    const finDuPapier = (page.getBoundingClientRect().height - hautPage + hautPage) / z;
+    const pieds = [...bandes, finDuPapier];
+    const signature = `${pieds.length}:${Math.round(pieds[0] ?? 0)}:${Math.round(
+      pieds[pieds.length - 1] ?? 0,
+    )}`;
+    if (signature === signatureDesNumeros.current) return;
+    signatureDesNumeros.current = signature;
+    page.querySelectorAll(':scope > .succes-note-numero').forEach((e) => e.remove());
+    // « Page 01 » et non « Page 1 » : les numéros s'alignent quand ils ont
+    // tous la même largeur, et un document de plus de cent pages en prend
+    // trois sans que rien ne bouge.
+    const chiffres = Math.max(2, String(pieds.length).length);
+    pieds.forEach((bas, i) => {
+      const numero = document.createElement('div');
+      numero.className = 'succes-note-numero';
+      numero.setAttribute('aria-hidden', 'true');
+      numero.textContent = `Page ${String(i + 1).padStart(chiffres, '0')}`;
+      numero.style.top = `${Math.round(bas - margeBas / 2)}px`;
+      page.appendChild(numero);
+    });
+  };
+
   const poserLeSignet = () => {
     const page = pageRef.current;
     const editor = editorRef.current;

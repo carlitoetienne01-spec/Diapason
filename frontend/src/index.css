@@ -1378,6 +1378,27 @@
   background-origin: content-box;
   background-clip: content-box;
 }
+/* LE NUMÉRO DE PAGE, dans le pied de chaque feuille.
+   Posé en absolu sur la feuille : les pages ne sont pas des éléments, c'est un
+   fond répété, et il n'y a donc rien où l'écrire. `left: 0; right: 0` couvre
+   la boîte de remplissage — la feuille entière, marges comprises — ce qui
+   centre le numéro sur le papier et non sur la colonne de texte. */
+.succes-note-numero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: currentColor;
+  opacity: 0.42;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
 /* LE SIGNET DE LECTURE.
    Posé sur la FEUILLE et non dans l'éditeur : il déborde dans la marge, là où
    l'on attend un signet, et l'éditeur s'arrête au bord du texte. `left: 0` sur
@@ -1528,7 +1549,12 @@
      FEUILLE, pas dans l'éditeur : la règle qui ne visait que l'éditeur la
      laissait s'imprimer, une barre grise en travers du papier. */
   .succes-note-editor .succes-overflow-gap,
-  .succes-note-page > .succes-overflow-gap {
+  .succes-note-page > .succes-overflow-gap,
+  /* Les numéros et le signet sont posés aux hauteurs de l'ÉCRAN. À
+     l'impression, c'est le navigateur qui pagine : ils tomberaient n'importe
+     où sur le papier. Mieux vaut ne rien imprimer qu'un numéro faux. */
+  .succes-note-page > .succes-note-numero,
+  .succes-note-page > .succes-note-signet {
     display: none;
   }
   .succes-note-editor {
