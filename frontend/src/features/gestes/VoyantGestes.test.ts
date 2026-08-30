@@ -53,6 +53,7 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
   contexte.valeur = {
     actif: true,
     mode: 'TRANSFER',
+    modeLock: 'AUTO',
     etat: null,
     mainVue: false,
     erreur: null,

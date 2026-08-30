@@ -76,6 +76,7 @@ function poserLeContexte(supplement: Record<string, unknown>): void {
   contexte.valeur = {
     actif: true,
     mode: 'TRANSFER',
+    modeLock: 'AUTO',
     etat: 'SAISI',
     mainVue: true,
     erreur: null,
@@ -234,7 +235,7 @@ describe('la case « Activer par un double clap »', () => {
     });
     const lu = texte(monter().arbre());
     expect(lu).toContain('la caméra a refusé de s’ouvrir');
-    expect(lu).not.toContain('rapproche tes deux claps');
+    expect(lu).not.toContain('deux claps de force comparable');
   });
 });
 
@@ -299,13 +300,17 @@ describe('ce que le panneau montre du geste', () => {
     poserLeContexte({ actif: false, diagnostic: null, etat: null });
     const lu = texte(monter().arbre());
     expect(lu).toContain('La caméra reste éteinte');
+    expect(lu).toContain('reconnaît toute seule');
     expect(lu).not.toContain('Saisies');
     const boutons = elements(monture!.arbre(), 'button').map((b) => texte(b));
     expect(boutons).toContain('Activer');
-    expect(boutons.some((libelle) => libelle.includes('Transférer'))).toBe(true);
-    expect(
-      boutons.some((libelle) => libelle.includes('Contrôler le curseur')),
-    ).toBe(true);
+    expect(boutons.some((libelle) => libelle.includes('Auto'))).toBe(true);
+    expect(boutons.some((libelle) => libelle.includes('Forcer transfert'))).toBe(
+      true,
+    );
+    expect(boutons.some((libelle) => libelle.includes('Forcer curseur'))).toBe(
+      true,
+    );
   });
 
   it('compte ce que le serveur a constaté, sans arrondir en sa faveur', () => {
@@ -324,15 +329,24 @@ describe('le mode pointeur explicite', () => {
   it('explique les gestes sans montrer les commandes de transfert', () => {
     poserLeContexte({
       mode: 'POINTER',
+      modeLock: 'POINTER',
       diagnostic: {
         armed: true,
         mode: 'POINTER',
+        modeLock: 'POINTER',
         pointer: { active: true, action: 'MOVE', pinching: false },
       },
     });
     const lu = texte(monter().arbre());
     expect(lu).toContain('Index suivi — le curseur te suit');
-    expect(lu).toContain('pincement bref : cliquer');
+    // Le vocabulaire a grandi avec les gestes : « pince puis relâche » ne
+    // distinguait pas le clic du double-clic ni du défilement, que le mode
+    // POINTER sait faire depuis le 29 août 2026. Un panneau qui n'énumère
+    // qu'une partie des gestes laisse chercher les autres (§82 : chacun doit
+    // rester atteignable, encore faut-il savoir qu'il existe).
+    expect(lu).toContain('pince courte : cliquer');
+    expect(lu).toContain('deux pinces : double-clic');
+    expect(lu).toContain('défiler');
     expect(lu).not.toContain('Choisir un fichier');
     expect(lu).not.toContain('Activer par un double clap');
   });
@@ -340,9 +354,11 @@ describe('le mode pointeur explicite', () => {
   it('montre si les doigts approchent réellement du seuil de contact', () => {
     poserLeContexte({
       mode: 'POINTER',
+      modeLock: 'POINTER',
       diagnostic: {
         armed: true,
         mode: 'POINTER',
+        modeLock: 'POINTER',
         pointer: {
           active: true,
           action: 'MOVE',
@@ -357,13 +373,42 @@ describe('le mode pointeur explicite', () => {
     expect(lu).toContain('62%');
   });
 
+  it('nomme le retrait quand Accessibilité est refusée', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      modeLock: 'POINTER',
+      erreur:
+        'Le pointeur n’a pas pu agir : Autorise Diapason dans Accessibilité',
+    });
+    const lu = texte(monter().arbre());
+    expect(lu).toContain('bouton −');
+    expect(lu).toContain('Ouvrir Accessibilité');
+  });
+
   it('laisse revenir au transfert par un bouton visible', () => {
-    poserLeContexte({ mode: 'POINTER' });
+    poserLeContexte({ mode: 'POINTER', modeLock: 'POINTER' });
     const transfert = elements(monter().arbre(), 'button').find((bouton) =>
-      texte(bouton).includes('Transférer'),
+      texte(bouton).includes('Forcer transfert'),
     );
     expect(transfert).toBeDefined();
     cliquer(transfert!);
     expect(changerMode).toHaveBeenCalledWith('TRANSFER');
+  });
+
+  it('montre le vocabulaire détecté sous Auto', () => {
+    poserLeContexte({
+      mode: 'POINTER',
+      modeLock: 'AUTO',
+      diagnostic: {
+        armed: true,
+        mode: 'POINTER',
+        modeLock: 'AUTO',
+        pointer: { active: true, action: 'MOVE', pinching: false },
+      },
+    });
+    const lu = texte(monter().arbre());
+    expect(lu).toContain('Vocabulaire');
+    expect(lu).toContain('détecté');
+    expect(lu).toContain('contrôler le curseur');
   });
 });

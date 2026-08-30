@@ -2551,6 +2551,124 @@ fn paste_to_frontmost(text: String) -> Result<String, String> {
 // Pointeur piloté par la main
 // ---------------------------------------------------------------------------
 
+/// Déplace le curseur une frame vision à la fois — pas de fil à 60 Hz qui
+/// relit NSEvent en boucle : ça faisait trembler le curseur et le doubler
+/// visuellement (30 août 2026, 00 h 15).
+#[cfg(target_os = "macos")]
+mod curseur_gestes {
+    use core_graphics::display::CGDisplay;
+    use core_graphics::event::{
+        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton,
+    };
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    use core_graphics::geometry::CGPoint;
+    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    static SESSION: AtomicBool = AtomicBool::new(false);
+    static DERNIER_X: AtomicU64 = AtomicU64::new(f64::NAN.to_bits());
+    static DERNIER_Y: AtomicU64 = AtomicU64::new(f64::NAN.to_bits());
+
+    // ~2 px sur un écran 2K : absorbe le bruit Vision sans figer le curseur.
+    const ZONE_MORTE: f64 = 0.0012;
+    // Une image en retard ne téléporte pas : on rattrape sur les suivantes.
+    const PAS_MAX: f64 = 0.10;
+
+    thread_local! {
+        static SOURCE: RefCell<Option<CGEventSource>> = const { RefCell::new(None) };
+    }
+
+    pub fn set_session(active: bool) {
+        SESSION.store(active, Ordering::Release);
+        reinitialiser();
+    }
+
+    pub fn session_active() -> bool {
+        SESSION.load(Ordering::Acquire)
+    }
+
+    pub fn reinitialiser() {
+        DERNIER_X.store(f64::NAN.to_bits(), Ordering::Release);
+        DERNIER_Y.store(f64::NAN.to_bits(), Ordering::Release);
+    }
+
+    pub fn fixer(x: f64, y: f64) {
+        DERNIER_X.store(x.to_bits(), Ordering::Release);
+        DERNIER_Y.store(y.to_bits(), Ordering::Release);
+    }
+
+    pub fn deplacer(x: f64, y: f64) -> Result<(), String> {
+        let lx = f64::from_bits(DERNIER_X.load(Ordering::Acquire));
+        let ly = f64::from_bits(DERNIER_Y.load(Ordering::Acquire));
+        let (nx, ny) = if lx.is_finite() && ly.is_finite() {
+            let dx = x - lx;
+            let dy = y - ly;
+            if dx.abs() < ZONE_MORTE && dy.abs() < ZONE_MORTE {
+                return Ok(());
+            }
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist > PAS_MAX {
+                (
+                    lx + dx * PAS_MAX / dist,
+                    ly + dy * PAS_MAX / dist,
+                )
+            } else {
+                (x, y)
+            }
+        } else {
+            (x, y)
+        };
+        poster(nx, ny)?;
+        DERNIER_X.store(nx.to_bits(), Ordering::Release);
+        DERNIER_Y.store(ny.to_bits(), Ordering::Release);
+        Ok(())
+    }
+
+    fn position(x: f64, y: f64) -> CGPoint {
+        let cadre = CGDisplay::main().bounds();
+        CGPoint::new(
+            cadre.origin.x + x * cadre.size.width,
+            cadre.origin.y + y * cadre.size.height,
+        )
+    }
+
+    fn source() -> Result<CGEventSource, String> {
+        SOURCE.with(|cell| {
+            let mut opt = cell.borrow_mut();
+            if opt.is_none() {
+                *opt = Some(
+                    CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| {
+                        "Core Graphics n'a pas créé la source du curseur".to_string()
+                    })?,
+                );
+            }
+            Ok(opt.as_ref().unwrap().clone())
+        })
+    }
+
+    fn poster(x: f64, y: f64) -> Result<(), String> {
+        let src = source()?;
+        let point = position(x, y);
+        let evenement = CGEvent::new_mouse_event(src, CGEventType::MouseMoved, point, CGMouseButton::Left)
+            .map_err(|_| "Core Graphics n'a pas créé le déplacement".to_string())?;
+        evenement.post(CGEventTapLocation::HID);
+        Ok(())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod curseur_gestes {
+    pub fn set_session(_active: bool) {}
+    pub fn session_active() -> bool {
+        false
+    }
+    pub fn reinitialiser() {}
+    pub fn fixer(_x: f64, _y: f64) {}
+    pub fn deplacer(_x: f64, _y: f64) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EvenementPointeur {
@@ -2569,6 +2687,10 @@ enum CommandePointeur {
     Deplacer { x: f64, y: f64 },
     Cliquer { x: f64, y: f64, double: bool },
     Defiler { lignes: i32 },
+    /// Accords clavier macOS (⌘W, ⌘M, ⌘Tab, ⌃←/→) — jamais ⌘Q.
+    AccordBureau { nom: &'static str },
+    /// Capture d'une zone choisie via `screencapture -is` (sélection à la souris).
+    CaptureEcran,
 }
 
 fn coordonnee_pointeur(nom: &str, valeur: Option<f64>) -> Result<f64, String> {
@@ -2578,6 +2700,12 @@ fn coordonnee_pointeur(nom: &str, valeur: Option<f64>) -> Result<f64, String> {
     }
     Ok(valeur)
 }
+
+// La case cochée dans Accessibilité peut rester allumée après une
+// recompilation *ad hoc* : TCC affiche le nom, et refuse le nouveau
+// cdhash. Demander seulement de « cocher » renvoie à la même impasse
+// — constaté le 29 août 2026.
+const MESSAGE_ACCESSIBILITE_POINTEUR: &str = "Le droit Accessibilité de cette copie est mort — la case cochée peut mentir après une recompilation. Retire Diapason de Réglages Système → Confidentialité et sécurité → Accessibilité (bouton −), ajoute /Applications/Diapason.app, quitte l’app, relance-la, puis réactive le mode pointeur.";
 
 fn valider_evenement_pointeur(
     evenement: EvenementPointeur,
@@ -2599,6 +2727,15 @@ fn valider_evenement_pointeur(
             lignes: evenement.scroll_y.clamp(-10, 10),
         }),
         "SCROLL" => Ok(CommandePointeur::Aucune),
+        "CLOSE_FRONT" => Ok(CommandePointeur::AccordBureau { nom: "CLOSE_FRONT" }),
+        "MINIMIZE_FRONT" => Ok(CommandePointeur::AccordBureau {
+            nom: "MINIMIZE_FRONT",
+        }),
+        "APP_PREV" => Ok(CommandePointeur::AccordBureau { nom: "APP_PREV" }),
+        "APP_NEXT" => Ok(CommandePointeur::AccordBureau { nom: "APP_NEXT" }),
+        "SPACE_PREV" => Ok(CommandePointeur::AccordBureau { nom: "SPACE_PREV" }),
+        "SPACE_NEXT" => Ok(CommandePointeur::AccordBureau { nom: "SPACE_NEXT" }),
+        "SCREENSHOT" => Ok(CommandePointeur::CaptureEcran),
         autre => Err(format!("action de pointeur inconnue : {autre}")),
     }
 }
@@ -2607,10 +2744,12 @@ fn valider_evenement_pointeur(
 fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String> {
     use core_graphics::display::CGDisplay;
     use core_graphics::event::{
-        CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
+        KeyCode, ScrollEventUnit,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use core_graphics::geometry::CGPoint;
+    use std::cell::RefCell;
 
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
@@ -2618,23 +2757,44 @@ fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String>
         fn CGRequestPostEventAccess() -> bool;
     }
 
+    thread_local! {
+        static SOURCE_SOURIS: RefCell<Option<CGEventSource>> = const { RefCell::new(None) };
+        static ACCESSIBILITE_OK: RefCell<bool> = const { RefCell::new(false) };
+    }
+
     if commande == CommandePointeur::Aucune {
         return Ok(());
     }
-    if !unsafe { CGPreflightPostEventAccess() } {
-        // Cette fonction ouvre la vraie demande macOS. Rendre Ok ici serait
-        // promettre un mouvement que le système vient précisément de refuser.
+
+    let access_ok = ACCESSIBILITE_OK.with(|cell| {
+        let mut ok = cell.borrow_mut();
+        if *ok {
+            return true;
+        }
+        if unsafe { CGPreflightPostEventAccess() } {
+            *ok = true;
+            true
+        } else {
+            false
+        }
+    });
+    if !access_ok {
         unsafe { CGRequestPostEventAccess() };
-        return Err(
-            "Autorise Diapason dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réactive le mode pointeur."
-                .into(),
-        );
+        return Err(MESSAGE_ACCESSIBILITE_POINTEUR.into());
     }
 
-    let source = || {
-        CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|_| "Core Graphics n'a pas créé la source du pointeur".to_string())
-    };
+    SOURCE_SOURIS.with(|cell| {
+        let mut opt = cell.borrow_mut();
+        if opt.is_none() {
+            *opt = Some(
+                CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| {
+                    "Core Graphics n'a pas créé la source du pointeur".to_string()
+                })?,
+            );
+        }
+        Ok::<(), String>(())
+    })?;
+
     let position = |x: f64, y: f64| {
         let cadre = CGDisplay::main().bounds();
         CGPoint::new(
@@ -2643,30 +2803,54 @@ fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String>
         )
     };
     let poster_souris = |kind: CGEventType, point: CGPoint, etat_clic: i64| {
-        let evenement = CGEvent::new_mouse_event(source()?, kind, point, CGMouseButton::Left)
-            .map_err(|_| "Core Graphics n'a pas créé l'événement de souris".to_string())?;
-        if etat_clic > 0 {
-            evenement.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, etat_clic);
-        }
-        evenement.post(CGEventTapLocation::HID);
-        Ok::<(), String>(())
+        SOURCE_SOURIS.with(|cell| {
+            let garde = cell.borrow();
+            let src = garde
+                .as_ref()
+                .ok_or_else(|| "source du pointeur absente".to_string())?
+                .clone();
+            let evenement = CGEvent::new_mouse_event(src, kind, point, CGMouseButton::Left)
+                .map_err(|_| "Core Graphics n'a pas créé l'événement de souris".to_string())?;
+            if etat_clic > 0 {
+                evenement.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, etat_clic);
+            }
+            evenement.post(CGEventTapLocation::HID);
+            Ok::<(), String>(())
+        })
     };
 
     match commande {
         CommandePointeur::Aucune => Ok(()),
         CommandePointeur::Deplacer { x, y } => {
-            poster_souris(CGEventType::MouseMoved, position(x, y), 0)
+            if curseur_gestes::session_active() {
+                curseur_gestes::deplacer(x, y)
+            } else {
+                poster_souris(CGEventType::MouseMoved, position(x, y), 0)
+            }
         }
         CommandePointeur::Cliquer { x, y, double } => {
             let point = position(x, y);
             let etat = if double { 2 } else { 1 };
             poster_souris(CGEventType::MouseMoved, point, 0)?;
             poster_souris(CGEventType::LeftMouseDown, point, etat)?;
-            poster_souris(CGEventType::LeftMouseUp, point, etat)
+            // Down+up dans le même tour de boucle : AppKit les fusionne et
+            // le bouton visé ne reçoit rien — 29 août 2026. 25 ms, c'est
+            // une image à 40 Hz, assez pour que l'événement descende.
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            poster_souris(CGEventType::LeftMouseUp, point, etat)?;
+            if curseur_gestes::session_active() {
+                curseur_gestes::fixer(x, y);
+            }
+            Ok(())
         }
-        CommandePointeur::Defiler { lignes } => {
+        CommandePointeur::Defiler { lignes } => SOURCE_SOURIS.with(|cell| {
+            let garde = cell.borrow();
+            let src = garde
+                .as_ref()
+                .ok_or_else(|| "source du pointeur absente".to_string())?
+                .clone();
             let evenement = CGEvent::new_scroll_event(
-                source()?,
+                src,
                 ScrollEventUnit::LINE,
                 1,
                 lignes,
@@ -2676,8 +2860,234 @@ fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String>
             .map_err(|_| "Core Graphics n'a pas créé le défilement".to_string())?;
             evenement.post(CGEventTapLocation::HID);
             Ok(())
+        }),
+        CommandePointeur::AccordBureau { nom } => {
+            match nom {
+                "APP_NEXT" => return activer_app_voisine(true),
+                "APP_PREV" => return activer_app_voisine(false),
+                _ => {}
+            }
+            // Si Diapason est au premier plan, ⌘W le ferme lui-même — constaté
+            // dès que la caméra gestes a le focus (29 août soir). On bascule
+            // d'abord vers une autre app visible.
+            ceder_le_premier_plan_si_diapason()?;
+            let (keycode, flags) = match nom {
+                "CLOSE_FRONT" => (KeyCode::ANSI_W, CGEventFlags::CGEventFlagCommand),
+                "MINIMIZE_FRONT" => (KeyCode::ANSI_M, CGEventFlags::CGEventFlagCommand),
+                "SPACE_PREV" => (KeyCode::LEFT_ARROW, CGEventFlags::CGEventFlagControl),
+                "SPACE_NEXT" => (KeyCode::RIGHT_ARROW, CGEventFlags::CGEventFlagControl),
+                autre => return Err(format!("accord bureau inconnu : {autre}")),
+            };
+            SOURCE_SOURIS.with(|cell| {
+                let garde = cell.borrow();
+                let src = garde
+                    .as_ref()
+                    .ok_or_else(|| "source du pointeur absente".to_string())?
+                    .clone();
+                let bas = CGEvent::new_keyboard_event(src.clone(), keycode, true)
+                    .map_err(|_| "Core Graphics n'a pas créé le key-down".to_string())?;
+                bas.set_flags(flags);
+                bas.post(CGEventTapLocation::HID);
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                let haut = CGEvent::new_keyboard_event(src, keycode, false)
+                    .map_err(|_| "Core Graphics n'a pas créé le key-up".to_string())?;
+                haut.set_flags(flags);
+                haut.post(CGEventTapLocation::HID);
+                Ok(())
+            })
         }
+        CommandePointeur::CaptureEcran => capturer_ecran_bureau(),
     }
+}
+
+/// Bascule hors de Diapason pour que ⌘W / ⌘M frappent l'app utile.
+#[cfg(target_os = "macos")]
+fn ceder_le_premier_plan_si_diapason() -> Result<(), String> {
+    let statut = std::process::Command::new("osascript")
+        .args([
+            "-e",
+            r#"tell application "System Events"
+  set frontProc to first application process whose frontmost is true
+  if name of frontProc is "Diapason" then
+    set autres to application processes whose visible is true and name is not "Diapason"
+    if (count of autres) > 0 then
+      set frontmost of item 1 of autres to true
+      delay 0.08
+    end if
+  end if
+end tell"#,
+        ])
+        .status()
+        .map_err(|e| format!("osascript (premier plan) : {e}"))?;
+    if !statut.success() {
+        return Err("impossible de céder le premier plan hors de Diapason".into());
+    }
+    Ok(())
+}
+
+/// Met au premier plan l'app visible suivante (ou précédente), sans ⌘Tab.
+#[cfg(target_os = "macos")]
+fn activer_app_voisine_osascript(suivante: bool) -> Result<(), String> {
+    let sens = if suivante { "1" } else { "-1" };
+    let script = format!(
+        r#"tell application "System Events"
+  set noms to name of every application process whose visible is true and background only is false and name is not "Diapason"
+  if (count of noms) < 1 then return
+  set devant to name of first application process whose frontmost is true
+  set idx to 0
+  repeat with i from 1 to count of noms
+    if item i of noms is devant then set idx to i
+  end repeat
+  set n to count of noms
+  if idx is 0 then
+    set cible to item 1 of noms
+  else
+    set j to idx + ({sens})
+    if j > n then set j to 1
+    if j < 1 then set j to n
+    set cible to item j of noms
+  end if
+  set frontmost of process cible to true
+end tell"#
+    );
+    let statut = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .status()
+        .map_err(|e| format!("osascript (app voisine) : {e}"))?;
+    if !statut.success() {
+        return Err(
+            "impossible d'activer l'application voisine — vérifie Automatisation pour Diapason dans Réglages Système".into(),
+        );
+    }
+    Ok(())
+}
+
+/// NSWorkspace d'abord ; osascript en secours si activateWithOptions ment.
+///
+/// NSWorkspace renvoyait false alors que System Events activait bien l'app
+/// (29 août 2026, 23 h 55 — bannière rouge, gestes coupés).
+#[cfg(target_os = "macos")]
+fn activer_app_voisine(suivante: bool) -> Result<(), String> {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const POLITIQUE_REGULIERE: i64 = 0;
+    // Toutes les fenêtres + ignorer l'app courante : seul « ignorer » suffisait
+    // parfois à faire échouer activateWithOptions sans lever d'exception.
+    const ACTIVER: u64 = (1 << 0) | (1 << 1);
+    const DIAPASON: &str = "com.diapason.desktop";
+    static PROCHAIN_IDX: AtomicUsize = AtomicUsize::new(0);
+
+    let ns_ok = unsafe {
+        let ws: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let front: *mut Object = msg_send![ws, frontmostApplication];
+        let all: *mut Object = msg_send![ws, runningApplications];
+        let n: usize = msg_send![all, count];
+
+        let mut eligible: Vec<usize> = Vec::new();
+        let mut front_eligible: Option<usize> = None;
+
+        for i in 0..n {
+            let app: *mut Object = msg_send![all, objectAtIndex: i];
+            let policy: i64 = msg_send![app, activationPolicy];
+            if policy != POLITIQUE_REGULIERE {
+                continue;
+            }
+            let hidden: bool = msg_send![app, isHidden];
+            if hidden {
+                continue;
+            }
+            let bundle: *mut Object = msg_send![app, bundleIdentifier];
+            if !bundle.is_null() {
+                let cstr: *const std::os::raw::c_char = msg_send![bundle, UTF8String];
+                if !cstr.is_null() {
+                    let id = std::ffi::CStr::from_ptr(cstr).to_string_lossy();
+                    if id == DIAPASON {
+                        continue;
+                    }
+                }
+            }
+            if !front.is_null() {
+                let same: bool = msg_send![app, isEqual: front];
+                if same {
+                    front_eligible = Some(eligible.len());
+                }
+            }
+            eligible.push(i);
+        }
+
+        if eligible.is_empty() {
+            false
+        } else {
+            let liste_idx = if let Some(fi) = front_eligible {
+                PROCHAIN_IDX.store(fi, Ordering::Relaxed);
+                let delta = if suivante { 1 } else { eligible.len() - 1 };
+                (fi + delta) % eligible.len()
+            } else {
+                // Diapason au premier plan : l'index mémorisé continue le cycle.
+                let idx = PROCHAIN_IDX.load(Ordering::Relaxed) % eligible.len();
+                let prochain = if suivante {
+                    (idx + 1) % eligible.len()
+                } else {
+                    (idx + eligible.len() - 1) % eligible.len()
+                };
+                PROCHAIN_IDX.store(prochain, Ordering::Relaxed);
+                prochain
+            };
+
+            let cible: *mut Object = msg_send![all, objectAtIndex: eligible[liste_idx]];
+            msg_send![cible, activateWithOptions: ACTIVER]
+        }
+    };
+
+    if ns_ok {
+        curseur_gestes::reinitialiser();
+        return Ok(());
+    }
+    activer_app_voisine_osascript(suivante)?;
+    curseur_gestes::reinitialiser();
+    Ok(())
+}
+
+/// Capture interactive : l'utilisateur trace un rectangle, l'image va sur le Bureau.
+/// `-i` = interactif, `-s` = sélection uniquement (pas mode fenêtre), `-x` = sans son.
+/// Code 1 = Échap / annulation — pas une erreur (30 août 2026).
+#[cfg(target_os = "macos")]
+fn capturer_ecran_bureau() -> Result<(), String> {
+    let bureau = dirs_desktop().ok_or_else(|| "Bureau introuvable".to_string())?;
+    let nom = format!("Diapason-{}.png", chrono_like_stamp());
+    let chemin = bureau.join(nom);
+    let statut = std::process::Command::new("/usr/sbin/screencapture")
+        .args([
+            "-i",
+            "-s",
+            "-x",
+            chemin.to_str().ok_or("chemin capture invalide")?,
+        ])
+        .status()
+        .map_err(|e| format!("screencapture : {e}"))?;
+    match statut.code() {
+        Some(0) => Ok(()),
+        Some(1) => Ok(()),
+        _ => Err("screencapture a échoué".into()),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn dirs_desktop() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(std::path::PathBuf::from(home).join("Desktop"))
+}
+
+#[cfg(target_os = "macos")]
+fn chrono_like_stamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2692,6 +3102,77 @@ fn appliquer_commande_pointeur(commande: CommandePointeur) -> Result<(), String>
 #[tauri::command]
 fn apply_pointer_event(event: EvenementPointeur) -> Result<(), String> {
     appliquer_commande_pointeur(valider_evenement_pointeur(event)?)
+}
+
+/// Empêche App Nap et la suspension WebKit pendant le mode gestes. Sans cela,
+/// dès qu'une autre app prend le premier plan, les minuteurs JS tombent à ~1/s
+/// et le curseur « bogue » — constaté le 30 août 2026.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn gestes_session_active(active: bool) -> Result<(), String> {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::cell::RefCell;
+
+    thread_local! {
+        static ACTIVITE_GESTES: RefCell<Option<*mut Object>> = const { RefCell::new(None) };
+    }
+
+    unsafe fn nsstring(s: &str) -> *mut Object {
+        let obj: *mut Object = msg_send![class!(NSString), alloc];
+        msg_send![obj, initWithUTF8String: s.as_ptr()]
+    }
+
+    ACTIVITE_GESTES.with(|cell| {
+        let mut garde = cell.borrow_mut();
+        if let Some(ancienne) = garde.take() {
+            unsafe {
+                let _: () = msg_send![ancienne, end];
+            }
+        }
+        if active {
+            unsafe {
+                let pi: *mut Object = msg_send![class!(NSProcessInfo), processInfo];
+                // NSActivityUserInitiated | NSActivityIdleDisplaySleepDisabled
+                let options: u64 = 0x00FFFFFF | (1 << 20);
+                let raison = nsstring("Mode gestes — caméra et curseur actifs");
+                let token: *mut Object =
+                    msg_send![pi, beginActivityWithOptions: options reason: raison];
+                if token.is_null() {
+                    return Err("NSProcessInfo n'a pas retenu l'activité gestes".into());
+                }
+                *garde = Some(token);
+            }
+            curseur_gestes::set_session(true);
+        } else {
+            curseur_gestes::set_session(false);
+        }
+        Ok(())
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn gestes_session_active(_active: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+fn ouvrir_reglage_accessibilite() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Même URL que `desktop/permissions.py` : un http(s) ouvrirait
+        // le navigateur, pas la liste où le droit se décide.
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Ce réglage n’existe que sur macOS.".into())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3815,6 +4296,8 @@ pub fn run() {
             transcribe_audio,
             paste_to_frontmost,
             apply_pointer_event,
+            gestes_session_active,
+            ouvrir_reglage_accessibilite,
             speech_health,
             pull_ollama_model,
             delete_ollama_model,
@@ -3916,7 +4399,7 @@ mod tests {
         should_persist_resolved_model, startup_installed_model, upsert_engine_host, url_est_locale,
         uv_sync_stderr_tail, InferenceConfig, SourceKind, DESKTOP_UV_SYNC_ARGS,
         DESKTOP_UV_SYNC_COMMAND, CommandePointeur, EvenementPointeur,
-        valider_evenement_pointeur,
+        valider_evenement_pointeur, MESSAGE_ACCESSIBILITE_POINTEUR,
     };
     use std::path::Path;
 
@@ -3967,6 +4450,44 @@ mod tests {
         assert_eq!(
             valider_evenement_pointeur(evenement).unwrap(),
             CommandePointeur::Defiler { lignes: 10 }
+        );
+    }
+
+    #[test]
+    fn les_accords_bureau_ne_exigent_pas_de_coordonnees() {
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("CLOSE_FRONT")).unwrap(),
+            CommandePointeur::AccordBureau { nom: "CLOSE_FRONT" }
+        );
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("MINIMIZE_FRONT")).unwrap(),
+            CommandePointeur::AccordBureau {
+                nom: "MINIMIZE_FRONT"
+            }
+        );
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("APP_NEXT")).unwrap(),
+            CommandePointeur::AccordBureau { nom: "APP_NEXT" }
+        );
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("SPACE_PREV")).unwrap(),
+            CommandePointeur::AccordBureau { nom: "SPACE_PREV" }
+        );
+        assert_eq!(
+            valider_evenement_pointeur(evenement_pointeur("SCREENSHOT")).unwrap(),
+            CommandePointeur::CaptureEcran
+        );
+    }
+
+    #[test]
+    fn le_refus_accessibilite_nomme_l_entree_fantome() {
+        assert!(
+            MESSAGE_ACCESSIBILITE_POINTEUR.contains("Accessibilité"),
+            "le test frontend cherche ce mot dans l'erreur"
+        );
+        assert!(
+            MESSAGE_ACCESSIBILITE_POINTEUR.contains("bouton −"),
+            "cocher la case d'une entrée morte est l'impasse du 29 août"
         );
     }
 

@@ -156,7 +156,107 @@ class TestLeModePointeurEstSepareDuTransfert:
         client.post("/v1/gestures/arm", json={"mode": "POINTER"})
         reponse = client.post("/v1/gestures/file", json={"path": str(fichier)})
         assert reponse.status_code == 409
-        assert "mode transfert" in reponse.json()["detail"]
+        assert "curseur" in reponse.json()["detail"].lower()
+
+
+class TestLeVerrouAutoChoisitLeVocabulaire:
+    @staticmethod
+    def _index():
+        return TestLeModePointeurEstSepareDuTransfert._index()
+
+    @staticmethod
+    def _poing():
+        from diapason.desktop.gestes_main import Point
+
+        return [
+            Point("wrist", 0.5, 0.9),
+            Point("indexMCP", 0.42, 0.7),
+            Point("indexTip", 0.42, 0.62),
+            Point("middleMCP", 0.49, 0.7),
+            Point("middleTip", 0.49, 0.62),
+            Point("ringMCP", 0.56, 0.7),
+            Point("ringTip", 0.56, 0.62),
+            Point("littleMCP", 0.62, 0.7),
+            Point("littleTip", 0.62, 0.62),
+            Point("thumbTip", 0.40, 0.64),
+        ]
+
+    def test_l_armement_auto_annonce_le_verrou(self, client):
+        corps = client.post("/v1/gestures/arm", json={"mode": "AUTO"}).json()
+        assert corps["modeLock"] == "AUTO"
+        assert corps["mode"] == "TRANSFER"
+        etat = client.get("/v1/gestures/state").json()
+        assert etat["modeLock"] == "AUTO"
+        assert etat["mode"] == "TRANSFER"
+
+    def test_trois_images_d_index_passent_au_pointeur(self, client):
+        client.post("/v1/gestures/arm", json={"mode": "AUTO"})
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._index()],
+        ):
+            for _ in range(2):
+                corps = client.post(
+                    "/v1/gestures/frame", content=_image_factice()
+                ).json()
+                assert corps["mode"] == "TRANSFER"
+                assert corps["modeLock"] == "AUTO"
+            # Une fois le pointeur confirmé, le transfert ne doit plus avancer.
+            # L'acquisition du curseur, elle, recommence à zéro : trois images
+            # de plus avant le premier MOVE.
+            gr._session.moteur.observer = MagicMock(
+                side_effect=AssertionError("le moteur de transfert a été appelé")
+            )
+            for _ in range(2):
+                corps = client.post(
+                    "/v1/gestures/frame", content=_image_factice()
+                ).json()
+                assert corps["mode"] == "POINTER"
+            corps = client.post("/v1/gestures/frame", content=_image_factice()).json()
+        assert corps["mode"] == "POINTER"
+        assert corps["pointer"]["action"] == "MOVE"
+        assert gr._session.moteur.observer.call_count == 0
+
+    def test_un_poing_reste_au_transfert(self, client):
+        client.post("/v1/gestures/arm", json={"mode": "AUTO"})
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._poing()],
+        ):
+            for _ in range(4):
+                corps = client.post(
+                    "/v1/gestures/frame", content=_image_factice()
+                ).json()
+        assert corps["mode"] == "TRANSFER"
+        assert corps["modeLock"] == "AUTO"
+        assert "pointer" not in corps or corps.get("pointer") is None
+
+    def test_un_objet_tenu_interdit_le_pointeur(self, client):
+        client.post("/v1/gestures/arm", json={"mode": "AUTO"})
+        with patch(
+            "diapason.desktop.vision_mains.mains_dans_les_octets",
+            return_value=[self._index()],
+        ):
+            for _ in range(3):
+                client.post("/v1/gestures/frame", content=_image_factice())
+            assert (
+                client.post("/v1/gestures/frame", content=_image_factice()).json()[
+                    "mode"
+                ]
+                == "POINTER"
+            )
+        with (
+            patch(
+                "diapason.desktop.vision_mains.mains_dans_les_octets",
+                return_value=[self._index()],
+            ),
+            patch(
+                "diapason.desktop.presse_papiers_spatial.tenu",
+                return_value=object(),
+            ),
+        ):
+            corps = client.post("/v1/gestures/frame", content=_image_factice()).json()
+        assert corps["mode"] == "TRANSFER", "la main pleine reste au transfert"
 
 
 class TestLesImages:

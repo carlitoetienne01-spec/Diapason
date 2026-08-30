@@ -4,25 +4,25 @@
 
 ## En une phrase
 
-Deux modes explicites partagent la caméra sans partager leurs actions. Le
-geste de transfert **attrape et dépose pour de vrai** : projet, note, écran ou
-fichier local. Le mode pointeur macOS suit l'index, clique par pincement,
-double-clique pour ouvrir et défile après un pincement maintenu. Dans ce mode,
-le moteur de transfert n'est jamais appelé : cliquer ne peut pas envoyer. Le
-mur qui bloquait tout était que macOS refusait la caméra au processus Python ;
-c'est désormais l'application qui capture. Le §83 est tenu depuis le 25 août
-2026 : la cadence suit ce que la caméra voit et monte à 24 im/s uniquement
-pendant le suivi du pointeur.
+Deux **vocabulaires** partagent la caméra sans partager leurs actions. Par
+défaut le verrou est **Auto** : `ArbitreDeGeste` choisit d’après la pose
+(index → curseur, poing/paume → transfert) après confirmation sur trois
+images. On peut encore forcer transfert ou curseur. Dans tous les cas un
+seul moteur avance par image : un pincement ne peut pas envoyer, un poing ne
+peut pas cliquer. Le mur qui bloquait tout était que macOS refusait la
+caméra au processus Python ; c’est désormais l’application qui capture. Le
+§83 est tenu depuis le 25 août 2026 : la cadence suit ce que la caméra voit
+et monte à 24 im/s uniquement pendant le suivi du pointeur.
 
 ## Ce qui est livré et vérifié
 
 | Pièce | État | Mesure |
 |---|---|---|
 | **Détection de main** (`desktop/vision_mains.py`) | ✅ | **4 ms par image** en taille caméra, soit 230 images/s possibles. Sur le Neural Engine : le créneau Ollama n'est pas touché. |
-| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 21 tests sur la pose, les pertes brèves, le filtre adaptatif, le clic, le double-clic, le défilement et les annulations. |
+| **Moteurs de gestes** (`gestes_main.py`, `pointeur_main.py`) | ✅ automatisé | Transfert : 16 tests. Pointeur : 24 tests sur la pose, les pertes brèves, le filtre adaptatif, le clic, le double-clic, le défilement et les annulations. |
 | **Latence de reconnaissance** | ✅ mesurée | ≤ 10 images pour un « attraper », soit ~0,4 s à 15 im/s. Figée par un test. |
 | **Flux caméra** (la fenêtre Tauri, `useModeGestes.ts`) | ✅ | 12 im/s pendant un transfert, 24 pendant un pointage suivi, 3 en veille ; 640 px, `getUserMedia` depuis un paquet signé. |
-| **Curseur, clic, ouverture, défilement** | ⚠️ banc physique en cours | Mode séparé macOS : Core Graphics et demande Accessibilité confirmés sur la machine réelle, 21 tests Python, 4 tests Rust et bancs frontend. Les seuils de pincement et le filtre adaptatif issus du deuxième essai restent à confirmer physiquement. |
+| **Curseur, clic, ouverture, défilement** | ⚠️ banc physique | Mode séparé macOS : Core Graphics et Accessibilité. Curseur figé pendant la pince ; scroll vertical dominant ≥ 500 ms. Coins hauts minimisent/ferment ; paume + balayage change d'app ou de Space (29 août soir). 32 tests Python. |
 | **Trancher entre plusieurs appareils** | ✅ automatisé | Sélecteur global à la cadence des images : gauche/haut = précédent, droite/bas = suivant, ouverture = envoyer. Clic et voix conservés (§82). |
 | **Fichier, photo ou vidéo réel** | ✅ automatisé | Dialogue natif Tauri, plafond 2 Gio, réception automatique par un pair `TRUSTED`, X25519 + AES-256-GCM et progression par morceaux. Aucun chemin local ne passe dans le JSON. |
 | **Fusion voix + geste** | ✅ | La main se dit dans le contexte (voix ET chat) ; `geste_deposer` l'envoie et répond à la question posée. 15 tests. |
@@ -144,9 +144,11 @@ la documentation ne transforme pas un test de coordonnées en essai caméra.
 ## Contrôler le curseur avec l'index
 
 Le pointage n'est pas une nouvelle pose ajoutée au moteur de transfert. C'est
-un **mode explicite** choisi dans le panneau Gestes. Cette séparation est la
-protection principale : quand `mode = POINTER`, `/frame` rend avant toute
-ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
+un **vocabulaire distinct**, choisi automatiquement (Auto) ou verrouillé dans
+le panneau. Cette séparation est la protection principale : quand le mode
+effectif est `POINTER`, `/frame` rend avant toute ligne d'attraper/déposer et
+le moteur poing/paume n'est pas appelé. Un objet déjà tenu ou un dépôt en
+attente force le transfert ; une pince confirmée reste au pointeur.
 
 1. Un index qui dépasse au moins deux autres doigts pendant trois images
    active le pointeur. Les doigts repliés se cachent souvent dans Vision : un
@@ -157,16 +159,34 @@ ligne d'attraper/déposer et le moteur poing/paume n'est pas appelé.
    champ. Le filtre adaptatif absorbe le tremblement à l'arrêt et réduit son
    lissage quand le doigt accélère, au lieu d'ajouter le même retard partout.
 3. Un pincement pouce-index confirmé sur deux images clique après deux images
-   de relâchement. Le seuil tient compte de l'écart que Vision conserve entre
-   deux doigts réellement en contact et tolère 140 ms d'occlusion du pouce.
-   Une jauge visible montre l'approche avant de promettre un clic. Deux
-   pincements rapprochés portent un état de double-clic natif : Finder ouvre
-   alors le fichier ou le dossier comme avec la souris.
-4. Après 380 ms de pincement, le même mouvement devient un défilement ; la
-   libération ne clique pas. Une occlusion brève fige le curseur et reprend
-   dès l'image suivante, sans trois nouvelles confirmations. Après 280 ms, la
-   main est réellement déclarée perdue et doit être acquise de nouveau. Dans
-   les deux cas, tout pincement en cours est annulé sans produire de clic.
+   de relâchement, **sans plafond de durée** : viser un bouton n'est pas un
+   abandon. Pendant la pince, le curseur **reste à l'ancre** du contact — il
+   ne suit plus le tremblement (29 août 2026 : dérive + scroll trop facile
+   rataient les onglets). Le clic reste à cet endroit. Le seuil tient compte
+   de l'écart que Vision conserve entre deux doigts réellement en contact et
+   tolère 140 ms d'occlusion du pouce. Une jauge visible montre l'approche
+   avant de promettre un clic. Deux pincements rapprochés portent un état de
+   double-clic natif : Finder ouvre alors le fichier ou le dossier comme avec
+   la souris.
+4. Le défilement exige **500 ms** de pince **et** un déplacement vertical
+   dominant d'au moins ~5,5 % d'écran ; un micro-mouvement en visant un onglet
+   ne l'arme plus. La libération après défilement ne clique pas.
+5. **Bureau** : **paume ouverte** face caméra, puis **retournement** pour
+   montrer le dos → l'app visible **suivante passe au premier plan**
+   (activation directe, pas ⌘Tab / pas de sélecteur) ; dos → paume → app
+   précédente. L'arbitre Auto garde le pointeur sur une paume déjà en mode
+   curseur. Pendant la paume, le curseur **continue de suivre** la main.
+   Pince + glissement **horizontal depuis un bord** → Spaces. Pince
+   **tenue ~0,85 s sans bouger** en bande **basse** : gauche → minimiser
+   (⌘M), droite → fermer (⌘W). **Geste 🤙** (pouce + auriculaire tendus,
+   maintenu ~0,35 s) → tu **traces la zone** à capturer (`screencapture -is`,
+   PNG sur le Bureau ; Échap annule). Les coins hauts restent des clics (onglets). Avant un
+   raccourci, Diapason cède le premier plan s'il l'occupe. Clavier et souris
+   restent disponibles (§82).
+6. Après 280 ms sans main, le suivi est réellement déclaré perdu et doit être
+   acquis de nouveau. Une occlusion brève fige le curseur et reprend dès
+   l'image suivante. Dans les deux cas, tout pincement en cours est annulé
+   sans produire de clic.
 
 L'application Tauri applique l'intention avec Core Graphics. Elle vérifie
 `CGPreflightPostEventAccess` avant le premier mouvement et ouvre la demande

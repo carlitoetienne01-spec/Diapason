@@ -21,9 +21,10 @@ import {
   preparerFichierPourGeste,
   renoncerAuDepot,
   type EtatGeste,
+  type ModeEffectif,
   type ModeGeste,
 } from './api';
-import { appliquerPointeur, pointeurNatifDisponible } from './pointeurNatif';
+import { appliquerPointeur, notifierSessionGestes, pointeurNatifDisponible } from './pointeurNatif';
 
 // La cadence de DÉPART, avant que le serveur ne dise la sienne. Le serveur
 // reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle locale, pas
@@ -39,7 +40,10 @@ const LARGEUR = 640;
 
 export type ModeGestes = {
   actif: boolean;
-  mode: ModeGeste;
+  /** Vocabulaire effectif (transfert ou curseur) — jamais AUTO. */
+  mode: ModeEffectif;
+  /** Verrou choisi : Auto laisse la caméra trancher. */
+  modeLock: ModeGeste;
   etat: EtatGeste | null;
   mainVue: boolean;
   erreur: string | null;
@@ -47,7 +51,7 @@ export type ModeGestes = {
   clapsEcoutent: boolean;
   basculerLesClaps: () => void;
   basculer: () => void;
-  /** Choisir le vocabulaire avant ou pendant la session. */
+  /** Choisir le verrou avant ou pendant la session. */
   changerMode: (mode: ModeGeste) => void;
   /** Répondre à « vers lequel ? » — l'appareil vient de `pendingDrop`. */
   choisir: (deviceId: string) => void;
@@ -61,7 +65,8 @@ export type ModeGestes = {
 
 export function useModeGestes(): ModeGestes {
   const [actif, setActif] = useState(false);
-  const [mode, setMode] = useState<ModeGeste>('TRANSFER');
+  const [mode, setMode] = useState<ModeEffectif>('TRANSFER');
+  const [modeLock, setModeLock] = useState<ModeGeste>('AUTO');
   const [etat, setEtat] = useState<EtatGeste | null>(null);
   const [mainVue, setMainVue] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -70,7 +75,9 @@ export function useModeGestes(): ModeGestes {
   const flux = useRef<MediaStream | null>(null);
   const video = useRef<HTMLVideoElement | null>(null);
   const canevas = useRef<HTMLCanvasElement | null>(null);
-  const boucle = useRef<number | null>(null);
+  const boucleInterval = useRef<number | null>(null);
+  const boucleVfc = useRef<number | null>(null);
+  const modeBoucle = useRef<'interval' | 'vfc'>('interval');
   const enVol = useRef(false);
   const echecs = useRef(0);
   // La cadence appliquée à cet instant. Un ref et non un state : la changer
@@ -91,16 +98,21 @@ export function useModeGestes(): ModeGestes {
   // Le numéro de la session courante. Toute extinction l'incrémente, et une
   // réponse d'image partie AVANT ne peut alors plus rien appliquer.
   const generation = useRef(0);
-  // Une réponse d'image arrive dans une fermeture créée avant le dernier
-  // rendu React. Cette référence dit quel vocabulaire est actif à l'instant
-  // où elle revient, sans laisser une ancienne fermeture appliquer un clic.
-  const modeCourant = useRef<ModeGeste>('TRANSFER');
+  // Vocabulaire effectif à l'instant où la réponse d'image revient — pas le
+  // verrou AUTO, qui ne pilote jamais le curseur directement.
+  const modeCourant = useRef<ModeEffectif>('TRANSFER');
+  const verrouCourant = useRef<ModeGeste>('AUTO');
 
   const eteindre = useCallback(() => {
-    if (boucle.current !== null) {
-      window.clearInterval(boucle.current);
-      boucle.current = null;
+    if (boucleInterval.current !== null) {
+      window.clearInterval(boucleInterval.current);
+      boucleInterval.current = null;
     }
+    if (boucleVfc.current !== null && video.current) {
+      video.current.cancelVideoFrameCallback(boucleVfc.current);
+      boucleVfc.current = null;
+    }
+    modeBoucle.current = 'interval';
     // L'ordre compte, deux fois. D'abord couper la replanification : une
     // réponse d'image encore en vol appellerait `replanifier` après coup et
     // rallumerait un minuteur sur une caméra éteinte. Ensuite couper les
@@ -116,6 +128,7 @@ export function useModeGestes(): ModeGestes {
     flux.current?.getTracks().forEach((piste) => piste.stop());
     flux.current = null;
     video.current = null;
+    void notifierSessionGestes(false);
     setActif(false);
     setEtat(null);
     setMainVue(false);
@@ -153,16 +166,48 @@ export function useModeGestes(): ModeGestes {
       }
       setEtat(reponse.state);
       setMainVue(reponse.hand);
-      if (modeCourant.current === 'POINTER') {
+      if (reponse.mode === 'POINTER' || reponse.mode === 'TRANSFER') {
+        modeCourant.current = reponse.mode;
+        setMode(reponse.mode);
+      }
+      if (
+        reponse.modeLock === 'AUTO' ||
+        reponse.modeLock === 'TRANSFER' ||
+        reponse.modeLock === 'POINTER'
+      ) {
+        verrouCourant.current = reponse.modeLock;
+        setModeLock(reponse.modeLock);
+      }
+      if (modeCourant.current === 'POINTER' && reponse.pointer) {
+        const action = reponse.pointer.action;
+        const basculeApp = action === 'APP_NEXT' || action === 'APP_PREV';
+        const critique =
+          action !== 'NONE' &&
+          action !== 'MOVE' &&
+          reponse.pointer.active;
         try {
-          await appliquerPointeur(reponse.pointer);
+          if (critique) {
+            await appliquerPointeur(reponse.pointer);
+          } else {
+            void appliquerPointeur(reponse.pointer).catch((exc) => {
+              setErreur(
+                `Le pointeur n’a pas pu agir : ${exc instanceof Error ? exc.message : exc}`,
+              );
+              void desarmer();
+              eteindre();
+            });
+          }
         } catch (exc) {
           setErreur(
             `Le pointeur n’a pas pu agir : ${exc instanceof Error ? exc.message : exc}`,
           );
-          void desarmer();
-          eteindre();
-          return;
+          // Un échec de bascule d'app ne doit pas couper la caméra : l'utilisateur
+          // retente le geste sans ré-armement (29 août 2026, 23 h 55).
+          if (!basculeApp) {
+            void desarmer();
+            eteindre();
+            return;
+          }
         }
       }
       // Le sélecteur doit suivre le poing à la cadence des images, pas au
@@ -171,6 +216,8 @@ export function useModeGestes(): ModeGestes {
       setDiagnostic((avant) => ({
         ...(avant ?? { armed: true }),
         armed: true,
+        mode: modeCourant.current,
+        modeLock: verrouCourant.current,
         ...(reponse.pendingDrop !== undefined
           ? { pendingDrop: reponse.pendingDrop }
           : {}),
@@ -196,7 +243,7 @@ export function useModeGestes(): ModeGestes {
 
   const allumer = useCallback(async (
     dejaArme = false,
-    modeDemande: ModeGeste = modeCourant.current,
+    verrouDemande: ModeGeste = verrouCourant.current,
   ) => {
     // Un seul allumage à la fois. Sans ce verrou, un second clic pendant
     // l'armement ouvre une seconde caméra dont plus rien ne tient la
@@ -209,7 +256,7 @@ export function useModeGestes(): ModeGestes {
     // porte de la caméra, et une porte qu'un chemin d'échec oublierait de
     // rouvrir bloquerait le mode jusqu'au rechargement de la page.
     try {
-      if (modeDemande === 'POINTER' && !pointeurNatifDisponible()) {
+      if (verrouDemande === 'POINTER' && !pointeurNatifDisponible()) {
         setErreur(
           'Le contrôle du curseur est disponible dans l’application de bureau Diapason.',
         );
@@ -219,7 +266,7 @@ export function useModeGestes(): ModeGestes {
         // `dejaArme` : la session a été ouverte par un double-clap, côté
         // serveur. Ré-armer ici la réinitialiserait — et perdrait le geste
         // qui vient d'être fait.
-        if (!dejaArme) await armer(modeDemande);
+        if (!dejaArme) await armer(verrouDemande);
       } catch (exc) {
         const etape = exc instanceof EchecGeste ? exc.etape : 'armement';
         setErreur(
@@ -250,17 +297,82 @@ export function useModeGestes(): ModeGestes {
       await v.play();
       video.current = v;
       canevas.current = document.createElement('canvas');
-      modeCourant.current = modeDemande;
-      setMode(modeDemande);
+      verrouCourant.current = verrouDemande;
+      setModeLock(verrouDemande);
+      // AUTO et TRANSFER démarrent au transfert ; seul un verrou POINTER
+      // force le curseur dès la première image.
+      const effectif: ModeEffectif =
+        verrouDemande === 'POINTER' ? 'POINTER' : 'TRANSFER';
+      modeCourant.current = effectif;
+      setMode(effectif);
+      void notifierSessionGestes(true);
       setActif(true);
       // Replanifier plutôt que de recréer le hook : la boucle est un minuteur,
       // pas un état. On ne touche à rien tant que la cadence ne change pas —
       // couper et relancer à chaque image ferait perdre des captures.
+      //
+      // En mode pointeur, `requestVideoFrameCallback` suit la caméra même
+      // quand Diapason n'est plus visible — `setInterval` est bridé par
+      // WebKit en arrière-plan (30 août 2026).
+      const arreterCaptures = () => {
+        if (boucleInterval.current !== null) {
+          window.clearInterval(boucleInterval.current);
+          boucleInterval.current = null;
+        }
+        if (boucleVfc.current !== null && video.current) {
+          video.current.cancelVideoFrameCallback(boucleVfc.current);
+          boucleVfc.current = null;
+        }
+      };
+      const vfcDisponible = (v: HTMLVideoElement): v is HTMLVideoElement & {
+        requestVideoFrameCallback: (
+          cb: (now: number, meta: VideoFrameCallbackMetadata) => void,
+        ) => number;
+      } => typeof v.requestVideoFrameCallback === 'function';
+      const poserVfc = () => {
+        const v = video.current;
+        if (!v || !vfcDisponible(v)) {
+          modeBoucle.current = 'interval';
+          boucleInterval.current = window.setInterval(
+            () => void capturer(),
+            Math.round(1000 / Math.max(cadence.current, 1)),
+          );
+          return;
+        }
+        if (modeBoucle.current === 'vfc' && boucleVfc.current !== null) return;
+        arreterCaptures();
+        modeBoucle.current = 'vfc';
+        const planifier = () => {
+          const courante = video.current;
+          if (!courante || modeBoucle.current !== 'vfc' || !vfcDisponible(courante)) {
+            return;
+          }
+          boucleVfc.current = courante.requestVideoFrameCallback(() => {
+            boucleVfc.current = null;
+            void capturer().finally(() => {
+              if (modeBoucle.current === 'vfc') planifier();
+            });
+          });
+        };
+        planifier();
+      };
       const poser = (fps: number) => {
-        if (fps === cadence.current && boucle.current !== null) return;
+        if (modeCourant.current === 'POINTER') {
+          cadence.current = fps;
+          poserVfc();
+          return;
+        }
+        if (
+          fps === cadence.current &&
+          boucleInterval.current !== null &&
+          modeBoucle.current === 'interval'
+        ) {
+          return;
+        }
+        arreterCaptures();
+        modeBoucle.current = 'interval';
         cadence.current = fps;
-        if (boucle.current !== null) window.clearInterval(boucle.current);
-        boucle.current = window.setInterval(
+        boucleInterval.current = window.setInterval(
           () => void capturer(),
           Math.round(1000 / fps),
         );
@@ -273,7 +385,7 @@ export function useModeGestes(): ModeGestes {
   }, [capturer]);
 
   const changerMode = useCallback((prochain: ModeGeste) => {
-    if (prochain === modeCourant.current) return;
+    if (prochain === verrouCourant.current) return;
     setErreur(null);
     if (prochain === 'POINTER' && !pointeurNatifDisponible()) {
       setErreur(
@@ -282,19 +394,29 @@ export function useModeGestes(): ModeGestes {
       return;
     }
     if (!actif) {
-      modeCourant.current = prochain;
-      setMode(prochain);
+      verrouCourant.current = prochain;
+      setModeLock(prochain);
+      if (prochain !== 'AUTO') {
+        modeCourant.current = prochain;
+        setMode(prochain);
+      }
       return;
     }
     if (allumage.current) return;
     allumage.current = true;
     void armer(prochain)
-      .then(() => {
-        modeCourant.current = prochain;
-        setMode(prochain);
+      .then((corps) => {
+        verrouCourant.current = prochain;
+        setModeLock(prochain);
+        const effectif: ModeEffectif =
+          corps.mode === 'POINTER' || prochain === 'POINTER'
+            ? 'POINTER'
+            : 'TRANSFER';
+        modeCourant.current = effectif;
+        setMode(effectif);
         setEtat(null);
         setMainVue(false);
-        setDiagnostic({ armed: true, mode: prochain });
+        setDiagnostic({ armed: true, mode: effectif, modeLock: prochain });
       })
       .catch((exc) =>
         setErreur(
@@ -330,9 +452,17 @@ export function useModeGestes(): ModeGestes {
   // ne contredise l'écran.
   const accorder = useCallback((d: Diagnostic) => {
     setDiagnostic(d);
-    if (d.mode) {
+    if (d.mode === 'POINTER' || d.mode === 'TRANSFER') {
       modeCourant.current = d.mode;
       setMode(d.mode);
+    }
+    if (
+      d.modeLock === 'AUTO' ||
+      d.modeLock === 'TRANSFER' ||
+      d.modeLock === 'POINTER'
+    ) {
+      verrouCourant.current = d.modeLock;
+      setModeLock(d.modeLock);
     }
     if (d.clapListening === undefined) return;
     setClapsEcoutent((avant) => {
@@ -411,7 +541,7 @@ export function useModeGestes(): ModeGestes {
           // Le diagnostic sert aussi caméra éteinte : c'est là qu'on voit
           // si le micro entend les claps, et donc si le seuil convient.
           accorder(d);
-          if (d.armed) void allumer(true, d.mode ?? 'TRANSFER');
+          if (d.armed) void allumer(true, d.modeLock ?? 'AUTO');
         })
         .catch(() => {});
     }, 2000);
@@ -442,6 +572,7 @@ export function useModeGestes(): ModeGestes {
   return {
     actif,
     mode,
+    modeLock,
     etat,
     mainVue,
     erreur,

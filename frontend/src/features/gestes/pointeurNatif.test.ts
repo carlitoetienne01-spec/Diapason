@@ -20,6 +20,24 @@ describe('le pont natif du pointeur', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('suit quand même le curseur pendant un NONE avec coordonnées', async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    await appliquerPointeur({
+      active: true,
+      action: 'NONE',
+      x: 0.4,
+      y: 0.5,
+    });
+    expect(invoke).toHaveBeenCalledWith('apply_pointer_event', {
+      event: {
+        active: true,
+        action: 'MOVE',
+        x: 0.4,
+        y: 0.5,
+      },
+    });
+  });
+
   it('refuse de promettre un curseur dans le navigateur', async () => {
     await expect(
       appliquerPointeur({ active: true, action: 'CLICK', x: 0.2, y: 0.3 }),

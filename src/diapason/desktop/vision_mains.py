@@ -19,6 +19,7 @@ disque, à aucun moment.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,18 @@ _NOMS = {
     "VNHLKPDIP": "littleDIP",
     "VNHLKPTIP": "littleTip",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class MainDetectee:
+    """Une main lue par Vision, avec sa latéralité.
+
+    La latéralité sert au retournement paume/dos : sans elle, le sens du
+    parcours des bases serait ambigu (main gauche vs droite).
+    """
+
+    points: list
+    lateralite: str  # "left" | "right" | "unknown"
 
 
 class VisionIndisponible(RuntimeError):
@@ -113,7 +126,30 @@ def _lire_points(observation: Any) -> list:
     return sortie
 
 
-def mains_dans_le_tampon(pixels: Any, *, mains_max: int = 2) -> list[list]:
+def _lateralite(observation: Any) -> str:
+    import Vision
+
+    # chirality() existe depuis les SDK récents ; sans elle le retournement
+    # paume/dos refuse plutôt que de deviner (§34).
+    lire = getattr(observation, "chirality", None)
+    if lire is None:
+        return "unknown"
+    cote = lire()
+    if cote == Vision.VNChiralityLeft:
+        return "left"
+    if cote == Vision.VNChiralityRight:
+        return "right"
+    return "unknown"
+
+
+def _lire_main(observation: Any) -> MainDetectee:
+    return MainDetectee(
+        points=_lire_points(observation),
+        lateralite=_lateralite(observation),
+    )
+
+
+def mains_dans_le_tampon(pixels: Any, *, mains_max: int = 2) -> list[MainDetectee]:
     """Les mains vues dans un tampon de pixels — [] si aucune.
 
     Le tampon vient directement de la caméra : pas de fichier intermédiaire,
@@ -128,10 +164,10 @@ def mains_dans_le_tampon(pixels: Any, *, mains_max: int = 2) -> list[list]:
     ok, erreur = gestionnaire.performRequests_error_([requete], None)
     if not ok:
         raise VisionIndisponible(f"Vision a échoué : {erreur}")
-    return [_lire_points(o) for o in (requete.results() or [])]
+    return [_lire_main(o) for o in (requete.results() or [])]
 
 
-def mains_dans_le_fichier(chemin: str, *, mains_max: int = 2) -> list[list]:
+def mains_dans_le_fichier(chemin: str, *, mains_max: int = 2) -> list[MainDetectee]:
     """Les mains vues dans une image sur disque — pour les bancs d'essai."""
     import Vision
     from Foundation import NSURL
@@ -143,10 +179,10 @@ def mains_dans_le_fichier(chemin: str, *, mains_max: int = 2) -> list[list]:
     ok, erreur = gestionnaire.performRequests_error_([requete], None)
     if not ok:
         raise VisionIndisponible(f"Vision a échoué : {erreur}")
-    return [_lire_points(o) for o in (requete.results() or [])]
+    return [_lire_main(o) for o in (requete.results() or [])]
 
 
-def mains_dans_les_octets(octets: bytes, *, mains_max: int = 2) -> list[list]:
+def mains_dans_les_octets(octets: bytes, *, mains_max: int = 2) -> list[MainDetectee]:
     """Les mains vues dans une image reçue en mémoire — rien sur le disque.
 
     C'est le chemin de l'interface : elle capture, elle poste, on lit. Écrire
@@ -163,13 +199,31 @@ def mains_dans_les_octets(octets: bytes, *, mains_max: int = 2) -> list[list]:
     ok, erreur = gestionnaire.performRequests_error_([requete], None)
     if not ok:
         raise VisionIndisponible(f"Vision a échoué : {erreur}")
-    return [_lire_points(o) for o in (requete.results() or [])]
+    return [_lire_main(o) for o in (requete.results() or [])]
+
+
+def points_de_main(main: Any) -> list:
+    """Compatibilité tests : une MainDetectee ou une ancienne liste de points."""
+    if main is None:
+        return []
+    if isinstance(main, MainDetectee):
+        return list(main.points)
+    return list(main)
+
+
+def lateralite_de_main(main: Any) -> str:
+    if isinstance(main, MainDetectee):
+        return main.lateralite
+    return "unknown"
 
 
 __all__ = [
+    "MainDetectee",
     "VisionIndisponible",
     "disponible",
+    "lateralite_de_main",
     "mains_dans_le_fichier",
     "mains_dans_les_octets",
     "mains_dans_le_tampon",
+    "points_de_main",
 ]

@@ -19,14 +19,24 @@ export type EtatGeste =
   | 'PERDU'
   | 'ANNULE';
 
-export type ModeGeste = 'TRANSFER' | 'POINTER';
+export type ModeGeste = 'AUTO' | 'TRANSFER' | 'POINTER';
+
+/** Vocabulaire réellement en vigueur sur cette image — jamais AUTO. */
+export type ModeEffectif = 'TRANSFER' | 'POINTER';
 
 export type ActionPointeur =
   | 'NONE'
   | 'MOVE'
   | 'CLICK'
   | 'DOUBLE_CLICK'
-  | 'SCROLL';
+  | 'SCROLL'
+  | 'CLOSE_FRONT'
+  | 'MINIMIZE_FRONT'
+  | 'APP_PREV'
+  | 'APP_NEXT'
+  | 'SPACE_PREV'
+  | 'SPACE_NEXT'
+  | 'SCREENSHOT';
 
 export type LecturePointeur = {
   active: boolean;
@@ -36,6 +46,8 @@ export type LecturePointeur = {
   scrollY?: number;
   pinching?: boolean;
   pinchProgress?: number;
+  shaka?: boolean;
+  shakaHold?: number;
 };
 
 export type ObjetTenu = {
@@ -162,7 +174,8 @@ export async function oublierLaMesureDesClaps(): Promise<void> {
 
 export type Diagnostic = {
   armed: boolean;
-  mode?: ModeGeste;
+  mode?: ModeEffectif;
+  modeLock?: ModeGeste;
   pointer?: LecturePointeur | null;
   clapListening?: boolean;
   clapsHeard?: number;
@@ -280,6 +293,8 @@ export type ReponseImage = {
   changed: boolean;
   hand: boolean;
   frames: number;
+  mode?: ModeEffectif;
+  modeLock?: ModeGeste;
   // §83 : la cadence est décidée par le SERVEUR, seul à savoir si une main a
   // été vue. Elle voyage avec chaque image, et pas seulement dans l'état
   // sondé chaque seconde : sans cela l'interface filmerait encore à
@@ -302,8 +317,8 @@ export class EchecGeste extends Error {
 }
 
 export async function armer(
-  mode: ModeGeste = 'TRANSFER',
-): Promise<{ armed: boolean; mode?: ModeGeste }> {
+  mode: ModeGeste = 'AUTO',
+): Promise<{ armed: boolean; mode?: ModeEffectif; modeLock?: ModeGeste }> {
   let reponse: Response;
   try {
     reponse = await apiFetch('/v1/gestures/arm', {

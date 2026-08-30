@@ -19,7 +19,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Sequence
 
+from diapason.desktop.face_main import face_paume_vers_camera
 from diapason.desktop.gestes_main import Point
+from diapason.desktop.shaka_main import shaka_geste
 
 
 class ActionPointeur(str, Enum):
@@ -30,6 +32,15 @@ class ActionPointeur(str, Enum):
     CLIQUER = "CLICK"
     DOUBLE_CLIQUER = "DOUBLE_CLICK"
     DEFILER = "SCROLL"
+    # Accords bureau — jamais ⌘Q. La capture passe par screencapture, pas
+    # par un faux ⌘⇧3 qui frapperait Diapason au premier plan.
+    FERMER_DEVANT = "CLOSE_FRONT"
+    MINIMISER_DEVANT = "MINIMIZE_FRONT"
+    APP_PRECEDENTE = "APP_PREV"
+    APP_SUIVANTE = "APP_NEXT"
+    SPACE_PRECEDENT = "SPACE_PREV"
+    SPACE_SUIVANT = "SPACE_NEXT"
+    CAPTURE_ECRAN = "SCREENSHOT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,13 +86,44 @@ class SeuilsPointeur:
     pince_sortie: float = 0.78
     pince_lointaine: float = 1.10
     trou_de_pince_s: float = 0.14
-    clic_max_s: float = 0.48
+    # Plus de plafond de durée : viser un bouton prend souvent plus de
+    # 480 ms, et ce plafond transformait alors le relâchement en rien —
+    # constaté le 29 août 2026, pincement reconnu, aucun clic. Le
+    # défilement se distingue par un mouvement, pas par un chronomètre.
     double_clic_max_s: float = 0.52
-    maintien_defilement_s: float = 0.38
+    # 380 ms + 2,4 % d'écran armaient le scroll dès qu'on visait un onglet
+    # (29 août 2026) : le clic disparaissait. 500 ms et ~5,5 % avec dominance
+    # verticale exigent un vrai geste de lecture.
+    maintien_defilement_s: float = 0.50
+    seuil_armement_defilement: float = 0.055
+    dominance_defilement: float = 2.0
     zone_gauche: float = 0.14
     zone_droite: float = 0.86
     zone_haute: float = 0.10
     zone_basse: float = 0.86
+    # Les coins HAUTS étaient en conflit avec les onglets Safari (29 août
+    # soir) : un clic d'onglet à gauche minimisait. Les actions bureau
+    # vivent en BAS, où il n'y a presque jamais de chrome cliquable, et
+    # seulement après un maintien immobile — jamais sur un relâchement court.
+    bande_basse_bureau: float = 0.86
+    bande_coin_bureau: float = 0.28
+    maintien_bureau_s: float = 0.85
+    # Pince + glissement horizontal depuis un BORD → Spaces. Changer d'app
+    # se fait par retournement paume→dos (pas par glissade) : la paume ouverte
+    # reste en pointeur grâce à l'arbitre (29 août 2026 soir).
+    seuil_armement_apps: float = 0.08
+    bord_space: float = 0.14
+    repos_bureau_s: float = 0.55
+    # Le flip apps doit répondre au geste, pas au repos des coins bas
+    # (0,55 s). 180 ms évite le double-tir sans forcer à attendre (29 août
+    # 2026 : « trop lent »).
+    repos_apps_s: float = 0.18
+    # Une seule image décidable suffit : deux images + le profil de
+    # transition (indécidable) faisaient rater un retournement net.
+    images_face_stables: int = 1
+    # 🤙 : ~350 ms de maintien — perceptible, mais sans exiger une pose figée
+    # (30 août 2026 : deux images seules ne partaient jamais en conditions réelles).
+    maintien_shaka_s: float = 0.35
     # Filtre « One Euro » : à l'arrêt, la coupure basse absorbe les deux ou
     # trois pixels de tremblement de Vision ; quand la main accélère, bêta
     # ouvre le filtre et retire le retard que produisait l'ancienne moyenne
@@ -106,6 +148,8 @@ class LecturePointeur:
     defilement_y: int = 0
     pince: bool = False
     proximite_pince: float = 0.0
+    shaka: bool = False
+    shaka_hold: float = 0.0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -116,6 +160,8 @@ class LecturePointeur:
             "scrollY": self.defilement_y,
             "pinching": self.pince,
             "pinchProgress": round(self.proximite_pince, 3),
+            "shaka": self.shaka,
+            "shakaHold": round(self.shaka_hold, 3),
         }
 
 
@@ -240,10 +286,20 @@ class MoteurDePointeur:
         self._pince_a = 0.0
         self._pince_vue_a = 0.0
         self._defile = False
+        self._apps = False
+        self._ancre_x_pince: Optional[float] = None
         self._ancre_y_pince: Optional[float] = None
         self._dernier_y_defilement: Optional[float] = None
         self._dernier_clic_a: Optional[float] = None
         self._perdu_depuis: Optional[float] = None
+        self._dernier_bureau_a: float = float("-inf")
+        self._face: Optional[bool] = None
+        self._face_candidat: Optional[bool] = None
+        self._face_images: int = 0
+        self._shaka_depuis: Optional[float] = None
+        self._visee_x: Optional[float] = None
+        self._visee_y: Optional[float] = None
+        self._pince_ancre_verrouillee = False
 
     def reinitialiser(self) -> None:
         """Oublier une main perdue sans transformer sa disparition en clic."""
@@ -258,10 +314,16 @@ class MoteurDePointeur:
         self._pince_a = 0.0
         self._pince_vue_a = 0.0
         self._defile = False
+        self._apps = False
+        self._ancre_x_pince = None
         self._ancre_y_pince = None
         self._dernier_y_defilement = None
+        self._visee_x = None
+        self._visee_y = None
+        self._pince_ancre_verrouillee = False
         self._dernier_clic_a = None
         self._perdu_depuis = None
+        self._oublier_la_face()
 
     def _annuler_pincement(self) -> None:
         """Une mesure douteuse interrompt l'action sans simuler un relâchement."""
@@ -271,8 +333,94 @@ class MoteurDePointeur:
         self._pince_a = 0.0
         self._pince_vue_a = 0.0
         self._defile = False
+        self._apps = False
+        self._ancre_x_pince = None
         self._ancre_y_pince = None
         self._dernier_y_defilement = None
+        self._pince_ancre_verrouillee = False
+
+    def _reinitialiser_filtres(self) -> None:
+        """Après un retournement, le filtre One Euro gardait du retard accumulé.
+
+        Trois changements d'app d'affilée et le curseur « bogue » : la main
+        tourne vite, bêta ouvre le filtre, et il ne rattrape plus (29 août
+        2026).
+        """
+        self._filtre_x = _FiltreAdaptatif()
+        self._filtre_y = _FiltreAdaptatif()
+        self._x_lisse = None
+        self._y_lisse = None
+
+    def _lecture_pince_figee(
+        self,
+        *,
+        proximite: float = 1.0,
+        action: ActionPointeur = ActionPointeur.AUCUNE,
+        defilement_y: int = 0,
+    ) -> LecturePointeur:
+        """Pendant la pince, le curseur reste à l'ancre — viser un onglet
+        ne doit pas faire dériver la cible (29 août 2026)."""
+        return LecturePointeur(
+            actif=True,
+            action=action,
+            x=self._ancre_x_pince,
+            y=self._ancre_y_pince,
+            defilement_y=defilement_y,
+            pince=True,
+            proximite_pince=proximite,
+        )
+
+    def _action_bureau(
+        self,
+        action: ActionPointeur,
+        maintenant: float,
+        *,
+        x: Optional[float] = None,
+        y: Optional[float] = None,
+    ) -> LecturePointeur:
+        self._dernier_bureau_a = maintenant
+        self._annuler_pincement()
+        if action in (ActionPointeur.APP_SUIVANTE, ActionPointeur.APP_PRECEDENTE):
+            self._reinitialiser_filtres()
+        return LecturePointeur(
+            actif=True,
+            action=action,
+            x=x if x is not None else self._x_lisse,
+            y=y if y is not None else self._y_lisse,
+        )
+
+    def _bureau_bas_imobile(
+        self, *, x: float, y: float, maintenant: float
+    ) -> Optional[LecturePointeur]:
+        """Maintien immobile en bande basse : minimiser ou fermer.
+
+        La capture plein écran passe par le geste 🤙 (``shaka_main``), pas par
+        le centre — trop facile à déclencher par erreur (30 août 2026).
+        """
+        s = self.seuils
+        if maintenant - self._dernier_bureau_a < s.repos_bureau_s:
+            return None
+        if self._ancre_y_pince is None or self._ancre_x_pince is None:
+            return None
+        if self._ancre_y_pince < s.bande_basse_bureau:
+            return None
+        if maintenant - self._pince_a < s.maintien_bureau_s:
+            return None
+        dx = abs(x - self._ancre_x_pince)
+        dy = abs(y - self._ancre_y_pince)
+        if max(dx, dy) >= s.seuil_armement_defilement:
+            return None
+        ax = self._ancre_x_pince
+        ay = self._ancre_y_pince
+        if ax <= s.bande_coin_bureau:
+            return self._action_bureau(
+                ActionPointeur.MINIMISER_DEVANT, maintenant, x=ax, y=ay
+            )
+        if ax >= 1.0 - s.bande_coin_bureau:
+            return self._action_bureau(
+                ActionPointeur.FERMER_DEVANT, maintenant, x=ax, y=ay
+            )
+        return None
 
     def _pose_d_acquisition(self, mesure: _MesurePointeur) -> bool:
         """Exiger un index dominant avant de prendre le contrôle."""
@@ -294,9 +442,12 @@ class MoteurDePointeur:
     def _pose_de_maintien(self, mesure: _MesurePointeur) -> bool:
         """Tolérer un doigt secondaire incertain, mais jamais une paume nette."""
         s = self.seuils
+        # Le seuil de CONTACT (0,60 / 0,78) confirme le clic. S'en servir
+        # ici perdait le pointeur dès que l'index se pliait pour approcher
+        # le pouce — le pincement commençait, puis plus rien.
         pince_possible = bool(
             mesure.confiance_pince >= s.confiance_pince_minimale * 0.7
-            and mesure.pince <= s.pince_sortie
+            and mesure.pince <= s.pince_lointaine
         )
         index_minimum = (
             s.index_pince_maintenu_min if pince_possible else s.index_maintenu_min
@@ -315,6 +466,140 @@ class MoteurDePointeur:
             )
         )
         return autres_ouverts < 2
+
+    def _pose_de_retournement(self, mesure: _MesurePointeur) -> bool:
+        """Paume ouverte — doigts tendus — pour lire le flip paume/dos."""
+        s = self.seuils
+        if (
+            mesure.confiance_index < s.confiance_index_minimale * 0.7
+            or mesure.index < s.index_maintenu_min
+        ):
+            return False
+        ouverts = sum(
+            confiance >= s.confiance_pose_minimale and ratio >= s.autres_ouvertes_min
+            for ratio, confiance in zip(
+                mesure.autres, mesure.confiances_autres, strict=True
+            )
+        )
+        return ouverts >= 2
+
+    def _suivre_retournement(
+        self,
+        points: Sequence[Point],
+        *,
+        lateralite: str,
+        maintenant: float,
+        x: float,
+        y: float,
+    ) -> Optional[LecturePointeur]:
+        """Paume → dos = app suivante ; dos → paume = précédente."""
+        s = self.seuils
+        if maintenant - self._dernier_bureau_a < s.repos_apps_s:
+            return None
+        face = face_paume_vers_camera(points, lateralite)
+        if face is None:
+            return None
+        if face is self._face_candidat:
+            self._face_images += 1
+        else:
+            self._face_candidat = face
+            self._face_images = 1
+        if self._face_images < s.images_face_stables:
+            return None
+        if self._face is None:
+            self._face = face
+            return None
+        if face is self._face:
+            return None
+        # True = paume, False = dos.
+        action = (
+            ActionPointeur.APP_SUIVANTE
+            if self._face and not face
+            else ActionPointeur.APP_PRECEDENTE
+        )
+        self._face = face
+        self._face_candidat = face
+        self._face_images = 0
+        return self._action_bureau(action, maintenant, x=x, y=y)
+
+    def _oublier_la_face(self) -> None:
+        self._face = None
+        self._face_candidat = None
+        self._face_images = 0
+        self._shaka_depuis = None
+
+    def _progression_shaka(self, maintenant: float) -> float:
+        s = self.seuils
+        if self._shaka_depuis is None or s.maintien_shaka_s <= 0:
+            return 0.0
+        return min(1.0, (maintenant - self._shaka_depuis) / s.maintien_shaka_s)
+
+    def _lire_shaka_capture(
+        self,
+        points: Sequence[Point],
+        maintenant: float,
+        x: float,
+        y: float,
+    ) -> Optional[LecturePointeur]:
+        """🤙 maintenu ≈350 ms = ouvrir la sélection de zone macOS."""
+        s = self.seuils
+        if maintenant - self._dernier_bureau_a < s.repos_bureau_s:
+            return None
+        if not shaka_geste(points):
+            self._shaka_depuis = None
+            return None
+        if self._shaka_depuis is None:
+            self._shaka_depuis = maintenant
+        ecoule = maintenant - self._shaka_depuis
+        if ecoule + 1e-6 < s.maintien_shaka_s:
+            return None
+        self._shaka_depuis = None
+        return self._action_bureau(ActionPointeur.CAPTURE_ECRAN, maintenant, x=x, y=y)
+
+    def _lire_flip_apps(
+        self,
+        points: Sequence[Point],
+        mesure: _MesurePointeur,
+        *,
+        retournement: bool,
+        lateralite: str,
+        maintenant: float,
+        x: float,
+        y: float,
+        proximite: float,
+    ) -> Optional[LecturePointeur]:
+        """Suivre le flip y compris pendant le profil (paume ni nette ni index).
+
+        Sans ça, le milieu du retournement effaçait la face mémorisée et
+        forçait à recommencer — ressenti « trop lent » (29 août 2026).
+        """
+        if self._pince:
+            return None
+        if (
+            not retournement
+            and self._face is not None
+            and self._pose_de_maintien(mesure)
+        ):
+            self._oublier_la_face()
+            return None
+        if not retournement and self._face is None:
+            return None
+        flip = self._suivre_retournement(
+            points,
+            lateralite=lateralite,
+            maintenant=maintenant,
+            x=x,
+            y=y,
+        )
+        if flip is not None:
+            return flip
+        return LecturePointeur(
+            actif=True,
+            action=ActionPointeur.DEPLACER,
+            x=x,
+            y=y,
+            proximite_pince=proximite,
+        )
 
     def _sans_pointeur(self, maintenant: float) -> LecturePointeur:
         """Traverser une brève occlusion sans garder une action armée."""
@@ -335,6 +620,31 @@ class MoteurDePointeur:
             x=self._x_lisse,
             y=self._y_lisse,
         )
+
+    def _position_brute(self, mesure: _MesurePointeur) -> tuple[float, float]:
+        s = self.seuils
+        x = _ramener(1.0 - mesure.x, s.zone_gauche, s.zone_droite)
+        y = _ramener(mesure.y, s.zone_haute, s.zone_basse)
+        return x, y
+
+    def _enregistrer_visee(
+        self,
+        brut_x: float,
+        brut_y: float,
+        _filtre_x: float,
+        _filtre_y: float,
+        _proximite: float,
+    ) -> None:
+        # Le clic se décide sur l'index brut : le filtre One Euro retarde la
+        # position où l'utilisateur croit viser (30 août 2026).
+        self._visee_x = brut_x
+        self._visee_y = brut_y
+
+    def _verrouiller_ancre_pince(self) -> None:
+        if self._visee_x is not None and self._visee_y is not None:
+            self._ancre_x_pince = self._visee_x
+            self._ancre_y_pince = self._visee_y
+        self._pince_ancre_verrouillee = True
 
     def _position(
         self, mesure: _MesurePointeur, maintenant: float
@@ -365,24 +675,47 @@ class MoteurDePointeur:
         points: Optional[Sequence[Point]],
         *,
         maintenant: Optional[float] = None,
+        lateralite: str = "unknown",
     ) -> LecturePointeur:
         """Rendre l'intention de cette image après confirmation temporelle."""
         maintenant = time.monotonic() if maintenant is None else maintenant
         mesure = _mesurer(points or ())
         s = self.seuils
         acquis = self._images_pointeur >= s.images_pointeur_stable
+        retournement = mesure is not None and self._pose_de_retournement(mesure)
+        shaka = mesure is not None and shaka_geste(points or ())
         pointe = mesure is not None and (
             self._pose_d_acquisition(mesure)
             or (acquis and self._pose_de_maintien(mesure))
+            or (acquis and retournement)
+            or shaka
         )
         if not pointe or mesure is None:
-            return self._sans_pointeur(maintenant)
+            # Pendant un pincement déjà confirmé, une pose « index tendu »
+            # qui flanche 140 ms ne doit pas annuler le clic en cours.
+            if (
+                self._pince
+                and mesure is not None
+                and maintenant - self._pince_vue_a <= s.trou_de_pince_s
+            ):
+                pointe = True
+            else:
+                self._oublier_la_face()
+                return self._sans_pointeur(maintenant)
 
         self._perdu_depuis = None
         if not acquis:
             self._images_pointeur += 1
         x, y = self._position(mesure, maintenant)
         proximite = self._proximite_pince(mesure)
+        brut_x, brut_y = self._position_brute(mesure)
+        entree_pince = (
+            not self._pince
+            and mesure.confiance_pince >= s.confiance_pince_minimale
+            and mesure.pince <= s.pince_entree
+        )
+        if not self._pince and not entree_pince:
+            self._enregistrer_visee(brut_x, brut_y, x, y, proximite)
         if self._images_pointeur < s.images_pointeur_stable:
             return LecturePointeur(
                 actif=False,
@@ -391,19 +724,40 @@ class MoteurDePointeur:
                 proximite_pince=proximite,
             )
 
+        flip = self._lire_flip_apps(
+            points or (),
+            mesure,
+            retournement=retournement,
+            lateralite=lateralite,
+            maintenant=maintenant,
+            x=x,
+            y=y,
+            proximite=proximite,
+        )
+        if flip is not None:
+            return flip
+
+        if not self._pince and shaka:
+            capture = self._lire_shaka_capture(points or (), maintenant, x=x, y=y)
+            hold = self._progression_shaka(maintenant)
+            if capture is not None:
+                return capture
+            return LecturePointeur(
+                actif=True,
+                action=ActionPointeur.AUCUNE,
+                x=self._x_lisse,
+                y=self._y_lisse,
+                proximite_pince=proximite,
+                shaka=True,
+                shaka_hold=hold,
+            )
+
         if mesure.confiance_pince < s.confiance_pince_minimale:
             # Au contact, le pouce masque précisément le bout de l'index que
             # Vision doit lire. Une baisse de confiance de 140 ms conserve le
             # contact confirmé, mais ne peut ni le créer ni le relâcher.
             if self._pince and maintenant - self._pince_vue_a <= s.trou_de_pince_s:
-                return LecturePointeur(
-                    actif=True,
-                    action=ActionPointeur.DEPLACER,
-                    x=x,
-                    y=y,
-                    pince=True,
-                    proximite_pince=1.0,
-                )
+                return self._lecture_pince_figee(proximite=1.0)
             self._annuler_pincement()
             return LecturePointeur(
                 actif=True,
@@ -423,32 +777,78 @@ class MoteurDePointeur:
                 self._pince_a = maintenant
                 self._pince_vue_a = maintenant
                 self._images_relache = 0
-                self._ancre_y_pince = y
+                self._pince_ancre_verrouillee = False
+                self._ancre_x_pince = self._visee_x if self._visee_x is not None else x
+                self._ancre_y_pince = self._visee_y if self._visee_y is not None else y
                 self._dernier_y_defilement = y
             else:
                 self._images_pince += 1
                 self._pince_vue_a = maintenant
                 self._images_relache = 0
 
+            if not self._pince_ancre_verrouillee:
+                if self._images_pince >= s.images_pince_stable:
+                    self._verrouiller_ancre_pince()
+                else:
+                    return LecturePointeur(
+                        actif=True,
+                        action=ActionPointeur.DEPLACER,
+                        x=x,
+                        y=y,
+                        pince=True,
+                        proximite_pince=proximite,
+                    )
+
+            if self._apps:
+                return self._lecture_pince_figee()
+
+            bureau = self._bureau_bas_imobile(x=x, y=y, maintenant=maintenant)
+            if bureau is not None:
+                return bureau
+
             if maintenant - self._pince_a >= s.maintien_defilement_s:
                 if (
                     not self._defile
+                    and self._ancre_x_pince is not None
                     and self._ancre_y_pince is not None
-                    and abs(y - self._ancre_y_pince) >= s.seuil_defilement * 2
                 ):
-                    self._defile = True
-                    self._dernier_y_defilement = self._ancre_y_pince
+                    dx = x - self._ancre_x_pince
+                    dy = y - self._ancre_y_pince
+                    # Horizontal dominant depuis un bord → Spaces. Le centre
+                    # n'arme plus les apps : c'est le retournement paume/dos.
+                    au_bord = (
+                        self._ancre_x_pince <= s.bord_space
+                        or self._ancre_x_pince >= 1.0 - s.bord_space
+                    )
+                    if (
+                        au_bord
+                        and abs(dx) >= s.seuil_armement_apps
+                        and abs(dx) >= s.dominance_defilement * abs(dy)
+                        and maintenant - self._dernier_bureau_a >= s.repos_bureau_s
+                    ):
+                        self._apps = True
+                        vers_droite = dx > 0
+                        action = (
+                            ActionPointeur.SPACE_SUIVANT
+                            if vers_droite
+                            else ActionPointeur.SPACE_PRECEDENT
+                        )
+                        return self._action_bureau(
+                            action,
+                            maintenant,
+                            x=self._ancre_x_pince,
+                            y=self._ancre_y_pince,
+                        )
+                    if abs(dy) >= s.seuil_armement_defilement and abs(
+                        dy
+                    ) >= s.dominance_defilement * abs(dx):
+                        self._defile = True
+                        self._dernier_y_defilement = self._ancre_y_pince
                 if self._defile:
                     ancien_y = self._dernier_y_defilement
                     self._dernier_y_defilement = y
                     if ancien_y is None:
-                        return LecturePointeur(
-                            actif=True,
-                            x=x,
-                            y=y,
-                            pince=True,
-                            proximite_pince=1.0,
-                        )
+                        return self._lecture_pince_figee()
                     deplacement = y - ancien_y
                     if abs(deplacement) >= s.seuil_defilement:
                         lignes = round(-deplacement * s.lignes_par_image)
@@ -458,21 +858,15 @@ class MoteurDePointeur:
                         return LecturePointeur(
                             actif=True,
                             action=ActionPointeur.DEFILER,
-                            x=x,
+                            x=self._ancre_x_pince,
                             y=y,
                             defilement_y=lignes,
                             pince=True,
                             proximite_pince=1.0,
                         )
 
-            return LecturePointeur(
-                actif=True,
-                action=ActionPointeur.DEPLACER,
-                x=x,
-                y=y,
-                pince=True,
-                proximite_pince=1.0,
-            )
+            # Tant que le scroll n'est pas armé : curseur figé à l'ancre.
+            return self._lecture_pince_figee()
 
         if self._pince:
             if self._images_pince < s.images_pince_stable:
@@ -486,23 +880,13 @@ class MoteurDePointeur:
                 )
             self._images_relache += 1
             if self._images_relache < s.images_relache_stable:
-                return LecturePointeur(
-                    actif=True,
-                    action=ActionPointeur.DEPLACER,
-                    x=x,
-                    y=y,
-                    pince=True,
-                    proximite_pince=max(0.5, proximite),
-                )
-            duree = maintenant - self._pince_a
+                return self._lecture_pince_figee(proximite=max(0.5, proximite))
             images = self._images_pince
-            defilait = self._defile
+            defilait = self._defile or self._apps
+            clic_x = self._ancre_x_pince if self._ancre_x_pince is not None else x
+            clic_y = self._ancre_y_pince if self._ancre_y_pince is not None else y
             self._annuler_pincement()
-            if (
-                not defilait
-                and images >= s.images_pince_stable
-                and duree <= s.clic_max_s
-            ):
+            if not defilait and images >= s.images_pince_stable:
                 double = bool(
                     self._dernier_clic_a is not None
                     and maintenant - self._dernier_clic_a <= s.double_clic_max_s
@@ -515,8 +899,8 @@ class MoteurDePointeur:
                         if double
                         else ActionPointeur.CLIQUER
                     ),
-                    x=x,
-                    y=y,
+                    x=clic_x,
+                    y=clic_y,
                     proximite_pince=proximite,
                 )
 

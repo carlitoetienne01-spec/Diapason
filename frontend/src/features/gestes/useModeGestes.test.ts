@@ -28,6 +28,7 @@ const api = vi.hoisted(() => ({
 const dialogue = vi.hoisted(() => ({ open: vi.fn() }));
 const pointeur = vi.hoisted(() => ({
   appliquerPointeur: vi.fn(),
+  notifierSessionGestes: vi.fn().mockResolvedValue(undefined),
   pointeurNatifDisponible: vi.fn(),
 }));
 
@@ -183,12 +184,15 @@ describe('le mode pointeur reste distinct du transfert', () => {
       ...IMAGE_SANS_MAIN,
       hand: true,
       fps: 24,
+      mode: 'POINTER',
+      modeLock: 'POINTER',
       pointer: { active: true, action: 'MOVE', x: 0.2, y: 0.4 },
     });
     const m = monter();
     m.valeur().changerMode('POINTER');
     await vider();
     expect(m.valeur().mode).toBe('POINTER');
+    expect(m.valeur().modeLock).toBe('POINTER');
     m.valeur().basculer();
     await vider();
     expect(api.armer).toHaveBeenCalledWith('POINTER');
@@ -203,11 +207,30 @@ describe('le mode pointeur reste distinct du transfert', () => {
     expect(env.horloge.periodes()).toContain(42);
   });
 
+  it('sous Auto, suit le mode effectif renvoyé par chaque image', async () => {
+    pointeur.pointeurNatifDisponible.mockReturnValue(true);
+    api.envoyerImage.mockResolvedValue({
+      ...IMAGE_SANS_MAIN,
+      hand: true,
+      fps: 24,
+      mode: 'POINTER',
+      modeLock: 'AUTO',
+      pointer: { active: true, action: 'MOVE', x: 0.3, y: 0.5 },
+    });
+    const m = await armerParLeBouton();
+    expect(api.armer).toHaveBeenCalledWith('AUTO');
+    expect(m.valeur().modeLock).toBe('AUTO');
+    await env.horloge.avancer(PERIODE_DOUZE);
+    expect(m.valeur().mode).toBe('POINTER');
+    expect(pointeur.appliquerPointeur).toHaveBeenCalled();
+  });
+
   it('refuse le pointeur dans un navigateur sans ouvrir la caméra', async () => {
     const m = monter();
     m.valeur().changerMode('POINTER');
     await vider();
     expect(m.valeur().mode).toBe('TRANSFER');
+    expect(m.valeur().modeLock).toBe('AUTO');
     expect(m.valeur().erreur).toContain('application de bureau');
     expect(env.camerasOuvertes()).toBe(0);
   });
@@ -220,6 +243,8 @@ describe('le mode pointeur reste distinct du transfert', () => {
     api.envoyerImage.mockResolvedValue({
       ...IMAGE_SANS_MAIN,
       hand: true,
+      mode: 'POINTER',
+      modeLock: 'POINTER',
       pointer: { active: true, action: 'CLICK', x: 0.2, y: 0.4 },
     });
     const m = monter();

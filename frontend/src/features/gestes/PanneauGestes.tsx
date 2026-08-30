@@ -10,6 +10,10 @@ import { useState } from 'react';
 
 import { FileUp, Hand, Video, VideoOff } from 'lucide-react';
 
+import {
+  aideDroitAccessibilite,
+  ouvrirReglageAccessibilite,
+} from './accessibilite';
 import { mesurerLaPiece, mesurerLesClaps } from './api';
 import { useCalibration } from './useCalibration';
 import { useModeGestesPartage } from './ModeGestesContexte';
@@ -33,6 +37,7 @@ export function PanneauGestes() {
   const {
     actif,
     mode,
+    modeLock,
     etat,
     mainVue,
     erreur,
@@ -51,6 +56,13 @@ export function PanneauGestes() {
     0,
     Math.min(1, diagnostic?.pointer?.pinchProgress ?? 0),
   );
+  const progressionShaka = Math.max(
+    0,
+    Math.min(1, diagnostic?.pointer?.shakaHold ?? 0),
+  );
+  const shakaDetecte = Boolean(diagnostic?.pointer?.shaka);
+  const vocabulaire =
+    mode === 'POINTER' ? 'curseur' : 'transfert';
 
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -80,42 +92,67 @@ export function PanneauGestes() {
 
       <p className="mt-2 text-sm text-muted-foreground">
         {actif
-          ? mode === 'POINTER'
-            ? 'La caméra suit uniquement ton index sur ce Mac. Les images ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
-            : 'La caméra est allumée et le reste quand tu changes de page — va ouvrir un projet, puis ferme le poing. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
-          : 'La caméra reste éteinte tant que tu n’actives pas ce mode.'}
+          ? modeLock === 'AUTO'
+            ? `La caméra choisit le vocabulaire d’après ta pose — maintenant : ${vocabulaire}. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.`
+            : mode === 'POINTER'
+              ? 'La caméra suit uniquement ton index sur ce Mac. Les images ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
+              : 'La caméra est allumée et le reste quand tu changes de page — va ouvrir un projet, puis ferme le poing. Les images sont analysées sur ce Mac, ne sont jamais enregistrées et ne quittent pas l’ordinateur.'
+          : 'La caméra reste éteinte tant que tu n’actives pas ce mode. Par défaut, elle reconnaît toute seule si tu pointes ou si tu transfères.'}
       </p>
 
+      {actif && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Vocabulaire&nbsp;:{' '}
+          <span className="font-medium text-foreground">
+            {mode === 'POINTER' ? 'contrôler le curseur' : 'transférer'}
+          </span>
+          {modeLock === 'AUTO' ? ' (détecté)' : ' (verrouillé)'}
+        </p>
+      )}
+
       <div
-        className="mt-3 grid grid-cols-2 gap-2"
+        className="mt-3 grid grid-cols-3 gap-2"
         role="group"
-        aria-label="Fonction des gestes"
+        aria-label="Verrouillage des gestes"
       >
         <button
           type="button"
-          aria-pressed={mode === 'TRANSFER'}
-          onClick={() => changerMode('TRANSFER')}
+          aria-pressed={modeLock === 'AUTO'}
+          onClick={() => changerMode('AUTO')}
           className={`rounded-lg border px-3 py-2 text-left text-sm ${
-            mode === 'TRANSFER'
+            modeLock === 'AUTO'
               ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
               : 'border-border text-muted-foreground hover:bg-accent'
           }`}
         >
-          <span className="block font-medium">Transférer</span>
-          <span className="block text-xs">poing, choix, paume ouverte</span>
+          <span className="block font-medium">Auto</span>
+          <span className="block text-xs">la pose décide</span>
         </button>
         <button
           type="button"
-          aria-pressed={mode === 'POINTER'}
-          onClick={() => changerMode('POINTER')}
+          aria-pressed={modeLock === 'TRANSFER'}
+          onClick={() => changerMode('TRANSFER')}
           className={`rounded-lg border px-3 py-2 text-left text-sm ${
-            mode === 'POINTER'
+            modeLock === 'TRANSFER'
               ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
               : 'border-border text-muted-foreground hover:bg-accent'
           }`}
         >
-          <span className="block font-medium">Contrôler le curseur</span>
-          <span className="block text-xs">index, pincement, défilement</span>
+          <span className="block font-medium">Forcer transfert</span>
+          <span className="block text-xs">poing, choix, paume</span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={modeLock === 'POINTER'}
+          onClick={() => changerMode('POINTER')}
+          className={`rounded-lg border px-3 py-2 text-left text-sm ${
+            modeLock === 'POINTER'
+              ? 'border-emerald-400 bg-emerald-500/10 text-foreground'
+              : 'border-border text-muted-foreground hover:bg-accent'
+          }`}
+        >
+          <span className="block font-medium">Forcer curseur</span>
+          <span className="block text-xs">index, pincement</span>
         </button>
       </div>
 
@@ -129,7 +166,7 @@ export function PanneauGestes() {
             {mode === 'POINTER'
               ? diagnostic?.pointer?.active
                 ? diagnostic.pointer.pinching
-                  ? 'Contact reconnu — relâche pour cliquer ou maintiens pour défiler.'
+                  ? 'Contact reconnu — relâche pour cliquer (un vrai geste vertical défile).'
                   : progressionPince >= 0.4
                     ? 'Rapproche encore le pouce et l’index.'
                     : 'Index suivi — le curseur te suit.'
@@ -147,9 +184,15 @@ export function PanneauGestes() {
         <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm">
           <p className="font-medium text-foreground">Commandes du pointeur</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Index tendu&nbsp;: déplacer · pincement bref&nbsp;: cliquer · deux
-            pincements&nbsp;: ouvrir · pincement maintenu puis mouvement vertical&nbsp;:
-            défiler. Ferme le poing ou retire la main pour figer le curseur.
+            Index&nbsp;: déplacer · pince courte&nbsp;: cliquer · deux pinces&nbsp;:
+            double-clic · pince + glisser vertical&nbsp;: défiler · paume puis
+            retournement (dos de la main)&nbsp;: passe automatiquement à
+            l’app suivante · dos puis paume&nbsp;: app précédente (sans
+            ouvrir le sélecteur ⌘Tab) · pince depuis un bord&nbsp;: Spaces ·
+            geste 🤙 (pouce + auriculaire tendus, ~&nbsp;0,35&nbsp;s)&nbsp;: tu traces
+            ensuite la zone à capturer (PNG sur le Bureau). En bas de l’écran, pince
+            tenue ~1&nbsp;s sans bouger&nbsp;: gauche = minimiser, droite = fermer
+            (⌘W). Clavier et souris restent disponibles.
           </p>
           <div className="mt-3 flex items-center gap-3">
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -176,10 +219,33 @@ export function PanneauGestes() {
               {Math.round(progressionPince * 100)}%
             </span>
           </div>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="shrink-0 text-xs text-muted-foreground">
+              Geste 🤙
+            </span>
+            <div
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Maintien du geste shaka pour capture"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressionShaka * 100)}
+            >
+              <div
+                className={`h-full rounded-full transition-[width,background-color] duration-75 ${
+                  shakaDetecte ? 'bg-sky-400' : 'bg-muted-foreground/30'
+                }`}
+                style={{ width: `${Math.round(progressionShaka * 100)}%` }}
+              />
+            </div>
+            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
+              {shakaDetecte ? `${Math.round(progressionShaka * 100)}%` : '—'}
+            </span>
+          </div>
         </div>
       )}
 
-      {actif && mode === 'TRANSFER' && !diagnostic?.held && (
+      {actif && modeLock !== 'POINTER' && !diagnostic?.held && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -209,7 +275,7 @@ export function PanneauGestes() {
         </div>
       )}
 
-      {mode === 'TRANSFER' && (
+      {modeLock !== 'POINTER' && (
         <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
           {/* §78 : une quatrième voie d'armement, au coût explicite. Le
               bouton n'ouvre rien tant qu'on ne clique pas ; entendre un clap
@@ -243,7 +309,7 @@ export function PanneauGestes() {
                     ? ` — tes claps ont été entendus, mais : ${diagnostic.clapFailure}`
                     : (diagnostic?.clapsHeard ?? 0) === 0
                       ? ' — tape plus fort ou rapproche-toi du Mac.'
-                      : ' — si les gestes ne s’activent pas, rapproche tes deux claps (moins d’une demi-seconde).'}
+                      : ' — si les gestes ne s’activent pas, deux claps de force comparable à moins d’une demi-seconde.'}
                 </span>
               )}
             </span>
@@ -251,7 +317,7 @@ export function PanneauGestes() {
         </label>
       )}
 
-      {mode === 'TRANSFER' && clapsEcoutent && (
+      {modeLock !== 'POINTER' && clapsEcoutent && (
         <MesureDesClaps
           seuil={diagnostic?.clapThreshold}
           mesure={diagnostic?.clapCalibrated}
@@ -402,9 +468,23 @@ export function PanneauGestes() {
       )}
 
       {erreur && (
-        <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {erreur}
-        </p>
+        <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p>{erreur}</p>
+          {aideDroitAccessibilite(erreur) && (
+            <>
+              <p className="mt-2">{aideDroitAccessibilite(erreur)}</p>
+              <button
+                type="button"
+                className="mt-2 underline"
+                onClick={() => {
+                  void ouvrirReglageAccessibilite();
+                }}
+              >
+                Ouvrir Accessibilité
+              </button>
+            </>
+          )}
+        </div>
       )}
     </section>
   );

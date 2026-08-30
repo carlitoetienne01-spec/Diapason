@@ -54,11 +54,14 @@ _PAUSE_SELECTEUR_S = 0.24
 @dataclass
 class _Session:
     moteur: Any
-    # Deux vocabulaires qui ne se chevauchent jamais. En mode POINTER, le
-    # moteur de poing/paume n'est pas appelé : un pincement destiné à cliquer
-    # ne peut donc ni attraper ni envoyer un fichier.
+    # Deux vocabulaires qui ne se chevauchent jamais. Le verrou AUTO laisse
+    # l'arbitre choisir d'après la pose ; TRANSFER et POINTER figent le
+    # choix. Dans tous les cas un seul moteur avance par image : un
+    # pincement ne peut ni attraper ni envoyer.
+    verrou: str = "AUTO"
     mode: str = "TRANSFER"
     pointeur: Any = None
+    arbitre: Any = None
     derniere_lecture_pointeur: Any = None
     armee_a: float = field(default_factory=time.monotonic)
     vue_a: float = field(default_factory=time.monotonic)
@@ -484,13 +487,14 @@ def oublier_les_claps() -> dict[str, Any]:
 
 
 class Armement(BaseModel):
-    mode: Literal["TRANSFER", "POINTER"] = "TRANSFER"
+    mode: Literal["AUTO", "TRANSFER", "POINTER"] = "AUTO"
 
 
 @router.post("/arm")
 def armer(body: Optional[Armement] = None) -> dict[str, Any]:
     """Armer le mode gestes. La caméra ne s'ouvre qu'après, côté interface."""
     global _session
+    from diapason.desktop.arbitre_geste import ArbitreDeGeste
     from diapason.desktop.gestes_main import MoteurDeGestes, charger_seuils
     from diapason.desktop.pointeur_main import MoteurDePointeur
     from diapason.desktop.vision_mains import disponible
@@ -504,16 +508,22 @@ def armer(body: Optional[Armement] = None) -> dict[str, Any]:
             ),
         )
     # Les seuils de CETTE machine : calibrés s'ils l'ont été.
-    mode = body.mode if body is not None else "TRANSFER"
+    verrou = body.mode if body is not None else "AUTO"
+    # AUTO démarre au transfert jusqu'à ce que l'arbitre confirme un index
+    # (trois images) : une silhouette d'index ne doit pas cliquer tout de suite.
+    mode = "POINTER" if verrou == "POINTER" else "TRANSFER"
     _session = _Session(
         moteur=MoteurDeGestes(charger_seuils()),
+        verrou=verrou,
         mode=mode,
-        pointeur=MoteurDePointeur() if mode == "POINTER" else None,
+        pointeur=MoteurDePointeur(),
+        arbitre=ArbitreDeGeste(),
     )
-    logger.info("mode gestes armé : %s", mode.lower())
+    logger.info("mode gestes armé : verrou %s", verrou.lower())
     return {
         "armed": True,
         "mode": mode,
+        "modeLock": verrou,
         "inactivityTimeoutS": _INACTIVITE_MAX_S,
         "maxDurationS": _DUREE_MAX_S,
     }
@@ -549,10 +559,10 @@ def preparer_un_fichier(body: FichierPourGeste) -> dict[str, Any]:
             status_code=409,
             detail="Active d'abord les gestes, puis choisis le fichier.",
         )
-    if _session.mode != "TRANSFER":
+    if _session.verrou == "POINTER":
         raise HTTPException(
             status_code=409,
-            detail="Passe en mode transfert avant de préparer un fichier.",
+            detail="Le curseur est verrouillé : un poing n'attrapera rien ici.",
         )
     if tenu() is not None:
         raise HTTPException(
@@ -600,6 +610,7 @@ def etat() -> dict[str, Any]:
     return {
         "armed": True,
         "mode": _session.mode,
+        "modeLock": _session.verrou,
         "clapListening": claps_actifs(),
         "clapsHeard": _claps_entendus(),
         **_etat_des_claps(),
@@ -1388,7 +1399,11 @@ async def image(request: Request) -> dict[str, Any]:
     sortent.
     """
     from diapason.desktop.presse_papiers_spatial import attraper
-    from diapason.desktop.vision_mains import mains_dans_les_octets
+    from diapason.desktop.vision_mains import (
+        lateralite_de_main,
+        mains_dans_les_octets,
+        points_de_main,
+    )
 
     if not session_active() or _session is None:
         raise HTTPException(
@@ -1421,7 +1436,9 @@ async def image(request: Request) -> dict[str, Any]:
         logger.debug("image de geste illisible", exc_info=True)
         raise HTTPException(status_code=400, detail=f"Image illisible : {exc}") from exc
 
-    points = mains[0] if mains else None
+    main = mains[0] if mains else None
+    points = points_de_main(main) if main is not None else None
+    lateralite = lateralite_de_main(main) if main is not None else "unknown"
     if points:
         _session.mains_vues += 1
         _session.main_vue_a = _session.vue_a
@@ -1436,18 +1453,22 @@ async def image(request: Request) -> dict[str, Any]:
             if _session.calibration_en_cours:
                 _session.echantillons.append(mesures.repliement)
 
+    _appliquer_vocabulaire(points)
+
     if _session.mode == "POINTER":
         # Cette bifurcation est la frontière de sécurité : aucune ligne du
         # transfert située dessous n'est atteinte. Le serveur rend seulement
         # une intention ; l'application Tauri, titulaire de l'autorisation
         # Accessibilité, décidera si elle peut réellement l'appliquer.
-        lecture = _session.pointeur.observer(points)
+        lecture = _session.pointeur.observer(points, lateralite=lateralite)
         _session.derniere_lecture_pointeur = lecture
         return {
             "state": _session.moteur.etat.value,
             "changed": False,
             "hand": bool(points),
             "frames": _session.images,
+            "mode": _session.mode,
+            "modeLock": _session.verrou,
             "pointer": lecture.to_dict(),
             "pendingDrop": None,
             "lastDrop": None,
@@ -1517,12 +1538,53 @@ async def image(request: Request) -> dict[str, Any]:
         "changed": apres is not avant,
         "hand": bool(points),
         "frames": _session.images if _session is not None else 0,
+        "mode": _session.mode if _session is not None else "TRANSFER",
+        "modeLock": _session.verrou if _session is not None else "AUTO",
         # Le sondage reste le filet lent ; la réponse d'image transporte le
         # surlignage à 12 im/s pour qu'il colle réellement au poing.
         "pendingDrop": _choix_public(),
         "lastDrop": _session.dernier_depot if _session is not None else None,
         **_energie(),
     }
+
+
+def _appliquer_vocabulaire(points: Any) -> None:
+    """Quand le verrou est AUTO, l'arbitre choisit lequel des deux moteurs avance.
+
+    Un seul vocabulaire par image. Changer de vocabulaire réinitialise le
+    moteur qui n'a plus la main : un poing à moitié fermé ne doit pas
+    survivre à trois images d'index, ni un pincement à une paume ouverte.
+    """
+    if _session is None:
+        return
+    if _session.verrou != "AUTO":
+        voulu = _session.verrou
+    else:
+        from diapason.desktop.presse_papiers_spatial import tenu
+
+        lecture = _session.derniere_lecture_pointeur
+        pince = bool(lecture is not None and getattr(lecture, "pince", False))
+        vocabulaire = _session.arbitre.observer(
+            points,
+            tenu=tenu() is not None or _session.dernier_attrape is not None,
+            depot_en_attente=_session.depot_en_attente is not None,
+            pince_confirmee=pince,
+        )
+        voulu = vocabulaire.value
+    if voulu == _session.mode:
+        return
+    avant = _session.mode
+    _session.mode = voulu
+    if voulu == "POINTER":
+        _session.moteur.reinitialiser()
+        _session.depot_en_attente = None
+    else:
+        if _session.pointeur is not None:
+            _session.pointeur.reinitialiser()
+        _session.derniere_lecture_pointeur = None
+    logger.debug(
+        "vocabulaire gestes : %s → %s (verrou %s)", avant, voulu, _session.verrou
+    )
 
 
 # Les routes FIXES d'abord : « /calibrate/apply » serait sinon capturé par

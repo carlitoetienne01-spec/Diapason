@@ -88,6 +88,18 @@ describe('armer / désarmer', () => {
     });
   });
 
+  it('arme en Auto par défaut', async () => {
+    apiFetch.mockResolvedValue(
+      repondre({ armed: true, mode: 'TRANSFER', modeLock: 'AUTO' }),
+    );
+    await armer();
+    expect(apiFetch).toHaveBeenCalledWith('/v1/gestures/arm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'AUTO' }),
+    });
+  });
+
   it('nomme l’armement quand le serveur ne répond pas', async () => {
     apiFetch.mockRejectedValue(new Error('ECONNREFUSED'));
     await expect(armer()).rejects.toMatchObject({ etape: 'armement' });
