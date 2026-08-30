@@ -82,6 +82,40 @@ fi
 echo "→ installation"
 cp -R "$BUNDLE" "$CIBLE"
 
+# Tauri signe *ad hoc* (`signingIdentity: "-"`). Le droit Accessibilité
+# s'ancre alors sur le cdhash du binaire : chaque rebuild le change,
+# Réglages Système continue d'afficher Diapason coché, et
+# CGPreflightPostEventAccess reste faux — constaté le 29 août 2026, case
+# cochée, même erreur. Une identité Apple Development ancre le droit sur
+# le certificat. Absent du trousseau, on le dit : installer l'ad hoc
+# sans prévenir recréerait le piège.
+identite="${DIAPASON_SIGNING_IDENTITY:-}"
+if [ -z "$identite" ]; then
+  identite="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -F'"' '/Apple Development|Developer ID Application/ { print $2; exit }')"
+fi
+if [ -n "$identite" ]; then
+  echo "→ signature stable ($identite)"
+  codesign --force --deep --options runtime \
+    --entitlements "$RACINE/frontend/src-tauri/Entitlements.plist" \
+    --sign "$identite" \
+    "$CIBLE"
+  exigence="$(codesign -d -r- "$CIBLE" 2>&1 || true)"
+  if ! echo "$exigence" | grep -Eq 'certificate leaf|anchor apple|anchor trusted'; then
+    echo "✗ la signature est encore ancrée sur le cdhash — Accessibilité ne survivra pas" >&2
+    echo "$exigence" >&2
+    # Le nouveau paquet est DÉJÀ en place à ce point : cette sortie laissait
+    # l'utilisateur devant une application installée, un droit condamné, et
+    # aucune façon affichée de revenir — la ligne de restauration n'existait
+    # que dans la branche « n'a pas démarré », vingt lignes plus bas. Un
+    # script qui abandonne doit dire comment défaire ce qu'il a déjà fait.
+    echo "  Restaurer :  rm -rf '$CIBLE' && cp -R '$SAUVEGARDE' '$CIBLE'" >&2
+    exit 1
+  fi
+else
+  echo "⚠ aucune identité de signature dans le trousseau : le droit Accessibilité mourra au prochain rebuild" >&2
+fi
+
 echo "→ relance"
 open -a "$CIBLE"
 sleep 5

@@ -43,6 +43,14 @@ rm -rf /Applications/Diapason.app
 cp -R ~/.diapason/backups/Diapason.app.precedente /Applications/Diapason.app
 ```
 
+## Signature et Accessibilité
+
+Tauri produit encore un bundle *ad hoc*. Le script le re-signe ensuite avec
+une identité Apple Development du trousseau, pour que le droit Accessibilité
+survie aux rebuilds. Sans cette identité, Réglages Système peut afficher
+Diapason coché alors que le pointeur est refusé : retirer l'entrée, ajouter
+`/Applications/Diapason.app`, quitter et relancer.
+
 ## Ce que le script ne fait pas
 
 Il ne redémarre pas le serveur Python : celui-ci tourne comme agent launchd

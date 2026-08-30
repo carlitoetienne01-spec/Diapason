@@ -58,8 +58,11 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 > ne tourne pas, mais ce n'est pas le même test.
 >
 > Ce qui ne tourne plus du tout, et qui est **sauté** plutôt que rouge :
-> `test-windows`, `autotag`, `docs` et les publications Tauri
-> Linux/macOS/Windows de `desktop.yml`. Un rouge permanent ne signale plus
+> `autotag`, `docs` et les publications Tauri Linux/macOS/Windows de
+> `desktop.yml`. (`test-windows` y a figuré jusqu'au 30 août 2026, dix lignes
+> au-dessus du paragraphe qui le dit vert sur `pc-bureau` : une session
+> parallèle pouvait lire l'un ou l'autre et en tirer deux conduites
+> opposées.) Un rouge permanent ne signale plus
 > rien ; « skipped » dit l'absence sans l'écraser. Pour tout rallumer une
 > fois la facturation réglée dans « Billing & plans » : créer la variable de
 > dépôt `RUNNERS_GITHUB = true` (Settings → Secrets and variables →
@@ -88,7 +91,15 @@ Les commandes ci-dessous sont celles de `.github/workflows/ci.yml` et de
 .venv/bin/python scripts/check_project_identity.py
 uv audit --locked --ignore-until-fixed GHSA-w8v5-vhqr-4h9v --ignore GHSA-h35f-9h28-mq5c
 cd frontend && npx tsc --noEmit && npx vitest run && npm run build
+cd rust && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+cd frontend/src-tauri && cargo check && cargo test
 ```
+
+Les deux dernières lignes ont été AJOUTÉES le 30 août 2026. Le bloc n'avait
+jamais porté une seule commande `cargo` alors que le job `rust` en lance
+quatre — et il servait de seul filet à un chantier de 569 lignes de Rust dans
+`src-tauri`. Le job `rust` de la CI ne couvre d'ailleurs que `rust/` : la
+caisse Tauri n'est vérifiée que par `desktop.yml`, d'où la seconde ligne.
 
 La CI ajoute `--cov=diapason --cov-fail-under=60` à `pytest`. Le bloc
 ci-dessus l'omet volontairement : la couverture se mesure sur la suite
@@ -221,7 +232,7 @@ après. Voir `docs/succes-client-mobile.md`.
 | **`Path(MagicMock())` écrit sur le disque** | `__fspath__` rend « MagicMock/<nom>/<id> ». 42 vraies bases SQLite ont dormi à la racine. Un code qui écrit doit valider son chemin. |
 | **WKWebView refuse les corps binaires** | La fenêtre Tauri échoue sur un `Blob` ou un `ArrayBuffer` avec un « Load failed » opaque. Passe par du JSON base64. |
 | **Le `dblclick` n'arrive pas au WebView** | Détection maison et bouton visible ; un banc Chromium ne le reproduit pas. |
-| **L'app est signée *ad hoc*** | Le droit Accessibilité est révoqué à **chaque recompilation**. |
+| **L'app Tauri sort *ad hoc*** | TCC ancre Accessibilité sur le cdhash. `install-desktop.sh` re-signe avec une identité Apple Development du trousseau, sinon le droit meurt encore et la case cochée ment. Après un changement d'identité : retirer l'entrée, ajouter `/Applications/Diapason.app`, relancer. |
 | **Aucun runner macOS en CI** | Tout le code caméra / Vision / PyObjC / gestes n'est vérifié qu'à la main, sur cette machine. |
 | **Une route `async def` qui appelle du bloquant gèle TOUT** | Ce qu'une route `async` fait en ligne s'exécute **sur la boucle d'événements** : un `httpx.post` de 6 s y fige le WebSocket vocal, le flux du chat et la cloche d'approbation. Les routes `def` **synchrones**, elles, sont exécutées par Starlette dans un fil et n'ont pas ce défaut. Dans une route `async`, tout appel réseau ou disque passe par `await asyncio.to_thread(...)`. |
 | **Une restriction qu'un client peut lever est décorative** | `DEFAULT_VOICE_TOOL_IDS` était un *défaut*, pas un plafond : une trame WebSocket `tools: "mesh_send"` suffisait à obtenir l'outil que le test-fusible prétendait exclure. Toute liste venant du réseau se confronte au plafond du serveur — **restreindre, jamais élargir**. |
