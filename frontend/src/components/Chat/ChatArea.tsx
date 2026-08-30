@@ -5,7 +5,6 @@ import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
 import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X } from 'lucide-react';
-import { DiaMascot } from './DiaMascot';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -155,7 +154,6 @@ export function ChatArea() {
         >
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center h-full px-4">
-              <DiaMascot label={t('chat.empty.greetDia')} />
               <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
                 {t(greetingKey())}
               </h2>

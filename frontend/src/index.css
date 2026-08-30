@@ -784,308 +784,6 @@
     .logo-spin { animation: none; }
   }
 
-  /* DIA — the approved 3D illustration as an articulated sprite rig. Every
-     limb is a separately clipped layer of the same source artwork. */
-  @keyframes dia-rig-left-step {
-    from { transform: rotate(20deg) translateY(-1px); }
-    to { transform: rotate(-20deg) translateY(2px); }
-  }
-  @keyframes dia-rig-right-step {
-    from { transform: rotate(-20deg) translateY(2px); }
-    to { transform: rotate(20deg) translateY(-1px); }
-  }
-  @keyframes dia-rig-left-arm-swing {
-    from { transform: rotate(-17deg); }
-    to { transform: rotate(17deg); }
-  }
-  @keyframes dia-rig-right-arm-swing {
-    from { transform: rotate(17deg); }
-    to { transform: rotate(-17deg); }
-  }
-  @keyframes dia-rig-walk-bob {
-    0%, 100% { transform: translateY(1px) rotate(-0.5deg); }
-    50% { transform: translateY(-5px) rotate(0.5deg); }
-  }
-  @keyframes dia-rig-shadow-step {
-    0%, 100% { transform: scaleX(0.86); opacity: 0.16; }
-    50% { transform: scaleX(1); opacity: 0.23; }
-  }
-  @keyframes dia-rig-breathe {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-3px) scale(1.006); }
-  }
-  @keyframes dia-rig-head-idle {
-    0%, 100% { transform: rotate(-1deg) translateY(0); }
-    50% { transform: rotate(1deg) translateY(-2px); }
-  }
-  @keyframes dia-rig-observe {
-    0%, 100% { transform: rotate(-8deg) translate(-2px, 1px); }
-    50% { transform: rotate(-3deg) translate(1px, -2px); }
-  }
-  @keyframes dia-rig-celebrate-hop {
-    0%, 100% { transform: translateY(0) scale(1); }
-    35% { transform: translateY(-12px) scale(1.015, 0.985); }
-    65% { transform: translateY(-7px) scale(0.992, 1.012); }
-  }
-  @keyframes dia-rig-greeting-hop {
-    0%, 100% { transform: translateY(0) rotate(0); }
-    28% { transform: translateY(-10px) rotate(-2deg); }
-    62% { transform: translateY(-5px) rotate(2deg); }
-  }
-  @keyframes dia-rig-wave {
-    0%, 100% { transform: rotate(-112deg); }
-    30% { transform: rotate(-145deg); }
-    58% { transform: rotate(-105deg); }
-    82% { transform: rotate(-136deg); }
-  }
-  @keyframes dia-face-flow {
-    to { stroke-dashoffset: -36; }
-  }
-  @keyframes dia-face-breathe {
-    0%, 100% { transform: translateY(1px) scaleY(0.9); }
-    50% { transform: translateY(-1px) scaleY(1.08); }
-  }
-  @keyframes dia-sound-ring {
-    0%, 100% { opacity: 0.12; transform: scale(0.72); }
-    48% { opacity: 0.86; transform: scale(1.12); }
-    78% { opacity: 0.2; transform: scale(1.42); }
-  }
-  @keyframes dia-rig-light-up {
-    0%, 100% { opacity: 0.08; transform: scale(0.82); }
-    45% { opacity: 0.82; transform: scale(1.18); }
-  }
-  .dia-rig-stage {
-    position: relative;
-    display: block;
-    width: clamp(19rem, 38vw, 25rem);
-    height: clamp(13rem, 28vh, 15.5rem);
-    margin: 0 0 0.25rem;
-    padding: 0;
-    border: 0;
-    outline-offset: 3px;
-    background: transparent;
-    cursor: pointer;
-    isolation: isolate;
-  }
-  .dia-rig-stage::before {
-    content: '';
-    position: absolute;
-    left: 19%;
-    right: 19%;
-    bottom: 1%;
-    height: 34%;
-    z-index: -1;
-    border-radius: 999px;
-    background: radial-gradient(
-      ellipse,
-      color-mix(in srgb, var(--color-accent) 19%, transparent),
-      transparent 72%
-    );
-    filter: blur(17px);
-  }
-  .dia-rig-actor {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    display: block;
-    width: clamp(11rem, 23vh, 13.5rem);
-    aspect-ratio: 1;
-    transition: transform var(--dia-travel-duration) linear;
-    will-change: transform;
-  }
-  .dia-position-center .dia-rig-actor { transform: translate3d(-50%, 0, 0); }
-  .dia-position-left .dia-rig-actor { transform: translate3d(calc(-50% - 74px), 0, 0); }
-  .dia-position-right .dia-rig-actor { transform: translate3d(calc(-50% + 74px), 0, 0); }
-  .dia-rig-body-bob,
-  .dia-sprite-layer,
-  .dia-head-group {
-    position: absolute;
-    inset: 0;
-    display: block;
-    pointer-events: none;
-    transform-origin: 50% 68%;
-    will-change: transform;
-  }
-  .dia-sprite-layer img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    user-select: none;
-    pointer-events: none;
-  }
-  .dia-sprite-head {
-    clip-path: polygon(9% 2%, 91% 2%, 91% 61.5%, 9% 61.5%);
-  }
-  .dia-sprite-torso {
-    clip-path: polygon(31% 58%, 69% 58%, 70% 87%, 30% 87%);
-    transform-origin: 50% 65%;
-  }
-  .dia-sprite-arm-left {
-    clip-path: polygon(23% 60%, 40% 60%, 40% 83%, 23% 83%);
-    transform-origin: 36% 64.5%;
-  }
-  .dia-sprite-arm-right {
-    clip-path: polygon(60% 60%, 77% 60%, 77% 83%, 60% 83%);
-    transform-origin: 64% 64.5%;
-  }
-  .dia-sprite-leg-left {
-    clip-path: polygon(28% 78%, 51% 78%, 51% 96%, 27% 96%);
-    transform-origin: 44% 81%;
-  }
-  .dia-sprite-leg-right {
-    clip-path: polygon(49% 78%, 73% 78%, 73% 96%, 49% 96%);
-    transform-origin: 56% 81%;
-  }
-  .dia-head-group { transform-origin: 50% 60%; }
-  .dia-rig-ground-shadow {
-    position: absolute;
-    left: 25%;
-    right: 25%;
-    bottom: 5%;
-    height: 7%;
-    border-radius: 50%;
-    background: rgba(14, 38, 96, 0.28);
-    filter: blur(5px);
-    transform-origin: center;
-    animation: dia-rig-shadow-step 1.8s ease-in-out infinite;
-  }
-  .dia-face-screen {
-    position: absolute;
-    left: 27.5%;
-    top: 31.6%;
-    width: 45%;
-    height: 21.8%;
-    overflow: hidden;
-    border-radius: 38%;
-    background: radial-gradient(ellipse at 48% 40%, #142a73, #061544 70%, #020925);
-    box-shadow: inset 0 0 15px rgba(4, 10, 42, 0.82), 0 0 8px rgba(75, 222, 255, 0.16);
-    pointer-events: none;
-  }
-  .dia-face-screen svg {
-    display: block;
-    width: 100%;
-    height: 100%;
-    overflow: visible;
-  }
-  .dia-face-expression {
-    fill: none;
-    stroke: #83f7ff;
-    stroke-width: 5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    opacity: 0;
-    transition: opacity 180ms ease;
-    transform-origin: center;
-  }
-  .dia-face-wave {
-    stroke-dasharray: 12 4;
-    animation: dia-face-flow 1.45s linear infinite, dia-face-breathe 1.8s ease-in-out infinite;
-  }
-  .dia-sound-pulse {
-    position: absolute;
-    top: 34%;
-    width: 5.5%;
-    height: 15%;
-    border: 2px solid rgba(80, 235, 255, 0.82);
-    border-radius: 999px;
-    opacity: 0;
-    filter: drop-shadow(0 0 4px rgba(49, 212, 255, 0.85));
-    animation: dia-sound-ring 2.15s ease-out infinite;
-  }
-  .dia-sound-pulse-left { left: 13.5%; }
-  .dia-sound-pulse-right { right: 13.5%; animation-delay: -1.08s; }
-  .dia-chest-light {
-    position: absolute;
-    left: 38.5%;
-    top: 62.5%;
-    width: 23%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(108, 248, 255, 0.52), rgba(42, 166, 255, 0.12) 45%, transparent 72%);
-    opacity: 0.05;
-    mix-blend-mode: screen;
-    transform-origin: center;
-    pointer-events: none;
-  }
-  .dia-rig-stage:hover .dia-rig-actor { filter: brightness(1.045); }
-  .dia-rig-stage:focus-visible {
-    outline: none;
-  }
-  .dia-rig-stage:focus-visible .dia-rig-actor {
-    filter: brightness(1.045) drop-shadow(0 0 7px color-mix(in srgb, var(--color-accent) 38%, transparent));
-  }
-
-  .dia-action-idle .dia-rig-body-bob {
-    animation: dia-rig-breathe 3.4s ease-in-out infinite;
-  }
-  .dia-action-idle .dia-head-group {
-    animation: dia-rig-head-idle 4.2s ease-in-out infinite;
-  }
-  .dia-action-walk .dia-rig-body-bob {
-    animation: dia-rig-walk-bob 0.31s ease-in-out infinite;
-  }
-  .dia-action-walk .dia-sprite-leg-left {
-    animation: dia-rig-left-step 0.62s ease-in-out infinite alternate;
-  }
-  .dia-action-walk .dia-sprite-leg-right {
-    animation: dia-rig-right-step 0.62s ease-in-out infinite alternate;
-  }
-  .dia-action-walk .dia-sprite-arm-left {
-    animation: dia-rig-left-arm-swing 0.62s ease-in-out infinite alternate;
-  }
-  .dia-action-walk .dia-sprite-arm-right {
-    animation: dia-rig-right-arm-swing 0.62s ease-in-out infinite alternate;
-  }
-  .dia-action-observe .dia-head-group {
-    animation: dia-rig-observe 1.65s ease-in-out infinite;
-  }
-  .dia-action-observe .dia-sprite-arm-right { transform: rotate(-34deg); }
-  .dia-action-celebrate .dia-rig-body-bob {
-    animation: dia-rig-celebrate-hop 0.95s cubic-bezier(0.2, 0.75, 0.25, 1) infinite;
-  }
-  .dia-action-celebrate .dia-sprite-arm-left { transform: rotate(108deg); }
-  .dia-action-celebrate .dia-sprite-arm-right { transform: rotate(-108deg); }
-  .dia-action-celebrate .dia-chest-light,
-  .dia-rig-is-greeting .dia-chest-light {
-    animation: dia-rig-light-up 0.72s ease-in-out infinite;
-  }
-  .dia-expression-wave .dia-face-wave,
-  .dia-expression-curious .dia-face-curious,
-  .dia-expression-happy .dia-face-happy,
-  .dia-expression-surprised .dia-face-surprised {
-    opacity: 1;
-  }
-  .dia-rig-is-greeting .dia-face-expression { opacity: 0; }
-  .dia-rig-is-greeting .dia-face-happy { opacity: 1; }
-  .dia-rig-is-greeting .dia-rig-body-bob {
-    animation: dia-rig-greeting-hop 0.95s cubic-bezier(0.2, 0.75, 0.25, 1) 2;
-  }
-  .dia-rig-is-greeting .dia-sprite-arm-left {
-    animation: none;
-    transform: rotate(24deg);
-  }
-  .dia-rig-is-greeting .dia-sprite-arm-right {
-    animation: dia-rig-wave 0.6s ease-in-out 3;
-  }
-  .dia-rig-is-greeting .dia-sound-pulse { animation-duration: 0.55s; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .dia-rig-actor {
-      transform: translate3d(-50%, 0, 0) !important;
-      transition: none;
-    }
-    .dia-rig-body-bob,
-    .dia-head-group,
-    .dia-sprite-layer,
-    .dia-rig-ground-shadow,
-    .dia-chest-light,
-    .dia-face-expression,
-    .dia-sound-pulse {
-      animation: none !important;
-    }
-  }
-
   /* System Pulse animations */
   @keyframes pulse-glow {
     0%, 100% { opacity: 0.7; }
@@ -1568,52 +1266,52 @@
   text-decoration: none;
 }
 
-/* Succès notes — simulated page formats */
+/* Succès notes — Mise en page Word : une feuille = un format papier, pas un bandeau. */
+.succes-note-desk {
+  --note-desk: var(--color-bg-secondary);
+  --note-gutter: 28px;
+  background: var(--note-desk);
+}
 .succes-note-page {
+  --note-desk: var(--color-bg-secondary);
+  --note-paper: #fff;
+  position: relative;
   margin: 0 auto;
   width: var(--note-page-width, 210mm);
   min-height: var(--note-page-height, 297mm);
   max-width: 100%;
-  padding: var(--note-margin, 32px);
+  padding: var(--note-margin, 25.4mm);
   box-sizing: border-box;
-  border-radius: 4px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
-  background-color: #fff;
+  overflow: visible;
+  background-color: var(--note-paper, #fff);
   color: #1a2232;
-  background-image: linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--note-page-height) - 1px),
-    rgba(0, 0, 0, 0.05) calc(var(--note-page-height) - 1px),
-    rgba(0, 0, 0, 0.05) var(--note-page-height)
-  );
-  background-size: 100% var(--note-page-height);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
-.succes-note-format-a4 { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 32px; }
-.succes-note-format-letter { --note-page-width: 216mm; --note-page-height: 279mm; --note-margin: 32px; }
-.succes-note-format-a5 { --note-page-width: 148mm; --note-page-height: 210mm; --note-margin: 24px; }
-.succes-note-format-wide { --note-page-width: 900px; --note-page-height: 400px; --note-margin: 40px; }
-.succes-note-format-narrow { --note-page-width: 400px; --note-page-height: 360px; --note-margin: 24px; }
-.succes-note-format-full { --note-page-width: 100%; --note-page-height: 280px; --note-margin: 16px; }
-.succes-note-format-reading { --note-page-width: 720px; --note-page-height: 360px; --note-margin: 48px; }
+/* Word : Papier A4 / Lettre / A5, marges Normal 2,54 cm, Narrow 1,27 cm. */
+.succes-note-format-a4 { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 25.4mm; }
+.succes-note-format-letter { --note-page-width: 8.5in; --note-page-height: 11in; --note-margin: 1in; }
+.succes-note-format-a5 { --note-page-width: 148mm; --note-page-height: 210mm; --note-margin: 15mm; }
+.succes-note-format-wide { --note-page-width: 297mm; --note-page-height: 210mm; --note-margin: 25.4mm; }
+.succes-note-format-narrow { --note-page-width: 7.25in; --note-page-height: 10.5in; --note-margin: 0.75in; }
+.succes-note-format-full { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 12.7mm; }
+.succes-note-format-reading { --note-page-width: 210mm; --note-page-height: 297mm; --note-margin: 32mm; }
 .succes-note-format-reading .succes-note-editor { font-size: 18px; line-height: 1.75; }
 .succes-note-bg-lined {
-  background-image:
-    repeating-linear-gradient(transparent, transparent 27px, rgba(100, 116, 139, 0.18) 28px),
-    linear-gradient(to bottom, transparent 0, transparent calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) var(--note-page-height));
-  background-size: 100% 28px, 100% var(--note-page-height);
+  background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(100, 116, 139, 0.18) 28px);
+  background-size: 100% 28px;
 }
 .succes-note-bg-grid {
   background-image:
     linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px),
-    linear-gradient(to bottom, transparent 0, transparent calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) calc(var(--note-page-height) - 1px), rgba(0,0,0,0.05) var(--note-page-height));
-  background-size: 24px 24px, 24px 24px, 100% var(--note-page-height);
+    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
 }
-.succes-note-bg-sepia { background-color: #f4ecd8; color: #3c3028; }
-.succes-note-bg-dark { background-color: #1a2232; color: #e8eef8; }
+.succes-note-bg-sepia { --note-paper: #f4ecd8; color: #3c3028; }
+.succes-note-bg-dark { --note-paper: #1a2232; color: #e8eef8; }
 .succes-note-editor {
-  min-height: calc(var(--note-page-height, 297mm) - 2 * var(--note-margin, 32px));
+  position: relative;
+  z-index: 1;
+  min-height: calc(var(--note-page-height, 297mm) - 2 * var(--note-margin, 25.4mm));
   font-size: 15px;
   line-height: 1.65;
   word-break: break-word;
@@ -1633,24 +1331,55 @@
 .succes-note-editor ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
 .succes-note-editor ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
 .succes-note-editor hr { border: none; border-top: 1px solid rgba(0,0,0,0.15); margin: 1em 0; }
-/* Manual page break: forces a new sheet in the note's folder icon. */
+.succes-note-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+}
+.succes-note-editor th,
+.succes-note-editor td {
+  border: 1px solid rgba(26, 34, 50, 0.18);
+  padding: 0.35em 0.55em;
+  vertical-align: top;
+}
+.succes-note-editor tr { break-inside: avoid; }
+.succes-note-editor h1,
+.succes-note-editor h2,
+.succes-note-editor h3,
+.succes-note-editor p,
+.succes-note-editor li {
+  break-inside: avoid;
+}
+/* Saut de page : le reste de la feuille reste du papier, pas un vide noir. */
 .succes-note-editor hr.succes-page-break {
-  border-top: 2px dashed rgba(99, 102, 241, 0.55);
-  margin: 1.6em 0;
+  border: none;
+  height: var(--note-gutter, 28px);
+  margin: 0 calc(-1 * var(--note-margin, 25.4mm)) var(--note-margin, 25.4mm);
+  width: calc(100% + 2 * var(--note-margin, 25.4mm));
+  max-width: none;
+  background: var(--note-desk, var(--color-bg-secondary));
   position: relative;
+  overflow: visible;
 }
 .succes-note-editor hr.succes-page-break::after {
-  content: 'Saut de page';
-  position: absolute;
-  top: -0.75em;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0 0.5em;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(99, 102, 241, 0.9);
-  background: inherit;
+  content: none;
+}
+.succes-note-editor .succes-overflow-gap,
+.succes-note-editor .succes-overflow-gap-inner {
+  pointer-events: none;
+  user-select: none;
+  background: transparent;
+}
+.succes-note-editor .succes-overflow-gap td {
+  border: none;
+  padding: 0;
+}
+.succes-note-editor .succes-overflow-gutter {
+  height: var(--note-gutter, 28px);
+  margin-left: calc(-1 * var(--note-margin, 25.4mm));
+  width: calc(100% + 2 * var(--note-margin, 25.4mm));
+  max-width: none;
+  background: var(--note-desk, var(--color-bg-secondary));
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
