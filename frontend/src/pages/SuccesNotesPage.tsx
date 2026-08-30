@@ -419,6 +419,7 @@ export function SuccesNotesPage() {
   // zoom réellement appliqué pour que le pour cent affiché ne mente pas.
   const [zoomVoulu, setZoomVoulu] = useState<number | null>(null);
   const [zoomEffectif, setZoomEffectif] = useState(1);
+  const [pageCourante, setPageCourante] = useState(1);
   // PAS de remise à zéro par `useEffect` sur `activeId` : `useLayoutEffect`
   // — donc la pagination de l'éditeur, donc `onPageCount` — s'exécute AVANT
   // les `useEffect`. Une remise à zéro écrite là efface le compte à l'instant
@@ -507,6 +508,7 @@ export function SuccesNotesPage() {
             onPageCount={setFeuillesMesurees}
             zoom={zoomVoulu}
             onZoomEffectif={setZoomEffectif}
+            onPageCourante={setPageCourante}
             onContentChange={(html) => {
               setDraftContent(html);
               scheduleAutoSave();
@@ -526,8 +528,13 @@ export function SuccesNotesPage() {
             style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
           >
             <span className="flex items-center gap-2">
-              <span>
-                {draftPages} page{draftPages === 1 ? '' : 's'} —{' '}
+              {/* « Page 3 sur 47 », comme Word : le total seul ne dit pas
+                  où l'on se trouve dans un long document. */}
+              <span className="tabular-nums">
+                Page {Math.min(pageCourante, draftPages)} sur {draftPages}
+              </span>
+              <span aria-hidden="true">—</span>
+              <span className="tabular-nums">
                 {wordCount.toLocaleString('fr-CA')} mot{wordCount === 1 ? '' : 's'}
               </span>
               <span aria-hidden="true">—</span>

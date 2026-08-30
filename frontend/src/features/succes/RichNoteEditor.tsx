@@ -99,6 +99,8 @@ type Props = {
   zoom?: number | null;
   /** Le zoom RÉELLEMENT appliqué, pour que la réglette affiche le vrai chiffre. */
   onZoomEffectif?: (zoom: number) => void;
+  /** La page actuellement sous les yeux, mise à jour au défilement. */
+  onPageCourante?: (page: number) => void;
 };
 
 function runCommand(command: string, value?: string) {
@@ -275,7 +277,6 @@ function measuredBlocks(
   zoom: number,
 ): Array<PageBlock & { el: HTMLElement }> {
   const editorTop = editor.getBoundingClientRect().top;
-  const editorLayoutTop = editor.offsetTop;
   return collectBlockNodes(editor).map((el) => {
     const kind: PageBlock['kind'] =
       el.tagName === 'HR' && el.classList.contains(PAGE_BREAK_CLASS)
@@ -287,10 +288,7 @@ function measuredBlocks(
     // une ligne de tableau et un saut manuel partent entiers, et appeler
     // `getClientRects` sur chacun coûterait sans rien apporter.
     const coupable = kind === 'block' && el.tagName !== 'TR' && el.tagName !== 'IMG';
-    // `offsetTop` est relatif au premier ancêtre positionné — la feuille —
-    // et non à l'éditeur : on retranche celui de l'éditeur pour rester dans
-    // son repère, comme le faisait `getBoundingClientRect`.
-    const top = offsetDepuis(el, editor) - editorLayoutTop;
+    const top = offsetDepuis(el, editor);
     return {
       el,
       top,
@@ -301,15 +299,31 @@ function measuredBlocks(
   });
 }
 
-/** Le haut d'un élément dans le repère de layout de la feuille. */
+/**
+ * Le haut d'un élément dans le repère de l'ÉDITEUR.
+ *
+ * `offsetTop` est relatif à `offsetParent`. Une puce vit dans un `<ul>`, une
+ * ligne dans un `<table>` : il faut remonter la chaîne et additionner. Mais
+ * `.succes-note-editor` porte `position: relative`, il EST donc
+ * l'`offsetParent` de ses enfants directs — leur `offsetTop` est déjà dans
+ * son repère, et il ne faut rien lui retrancher.
+ *
+ * La première version retranchait `editor.offsetTop` — 96 px, la marge haute
+ * de la feuille — à des positions déjà relatives à l'éditeur. Tous les blocs
+ * se croyaient 96 px plus haut, chaque page avalait donc 96 px de contenu de
+ * trop, et l'erreur se répétait page après page : mesuré sur une note réelle,
+ * 44 pages sur 47 trop pleines, jusqu'à 156 px de dépassement, et une
+ * distance entre deux bandes de 1192 à 1307 px là où une feuille en fait
+ * 1151. Une feuille dont la hauteur varie n'est plus une feuille.
+ */
 function offsetDepuis(el: HTMLElement, editor: HTMLElement): number {
   let total = 0;
   let noeud: HTMLElement | null = el;
-  // Une puce vit dans un <ul>, une ligne dans un <table> : leur `offsetTop`
-  // est relatif à ce parent, pas à la feuille.
-  while (noeud && noeud !== editor.offsetParent && noeud !== editor) {
+  while (noeud && noeud !== editor) {
     total += noeud.offsetTop;
-    noeud = noeud.offsetParent as HTMLElement | null;
+    const parent = noeud.offsetParent as HTMLElement | null;
+    if (!parent || parent === editor || !editor.contains(parent)) return total;
+    noeud = parent;
   }
   return total;
 }
@@ -390,6 +404,7 @@ export function RichNoteEditor({
   onPageCount,
   zoom: zoomVoulu = null,
   onZoomEffectif,
+  onPageCourante,
   editorKey,
 }: Props) {
   // Une note enregistrée avant le 30 août 2026 ne porte que `pageFormat` : il
@@ -636,6 +651,49 @@ export function RichNoteEditor({
       document.removeEventListener('selectionchange', chasserLeCaretDesCales);
   }, []);
 
+  /**
+   * Quelle page est sous les yeux.
+   *
+   * Word l'affiche en permanence dans sa barre d'état — « Page 3 sur 47 » —
+   * et c'est la seule façon de se situer dans un long document : le nombre
+   * total, seul, ne dit pas où l'on est.
+   *
+   * On compte les cales entièrement passées au-dessus du tiers haut du
+   * bureau. Le tiers, et non le bord : une feuille dont il reste un doigt en
+   * haut de l'écran n'est plus celle qu'on lit.
+   */
+  const recalculerLaPage = () => {
+    const desk = deskRef.current;
+    const editor = editorRef.current;
+    if (!desk || !editor || !onPageCourante) return;
+    const repere = desk.getBoundingClientRect().top + desk.clientHeight / 3;
+    let passees = 0;
+    for (const cale of editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`)) {
+      if (cale.getBoundingClientRect().bottom <= repere) passees += 1;
+    }
+    onPageCourante(passees + 1);
+  };
+
+  useEffect(() => {
+    const desk = deskRef.current;
+    if (!desk || !onPageCourante) return;
+    let enAttente = false;
+    const auDefilement = () => {
+      // Une image par rafale : un `scroll` tire des dizaines de fois par
+      // seconde, et compter cinquante cales à chaque fois ferait ramer la
+      // molette sur un document de cinquante pages.
+      if (enAttente) return;
+      enAttente = true;
+      requestAnimationFrame(() => {
+        enAttente = false;
+        recalculerLaPage();
+      });
+    };
+    desk.addEventListener('scroll', auDefilement, { passive: true });
+    recalculerLaPage();
+    return () => desk.removeEventListener('scroll', auDefilement);
+  }, [editorKey, onPageCourante]); // eslint-disable-line react-hooks/exhaustive-deps -- recalculerLaPage lit des refs
+
   const paginate = () => {
     const page = pageRef.current;
     const editor = editorRef.current;
@@ -648,6 +706,7 @@ export function RichNoteEditor({
     try {
       const feuilles = applyOverflowGaps(editor, page, zoomRef.current);
       onPageCount?.(feuilles);
+      recalculerLaPage();
       reserverLaHauteur();
       remettreLeCaret(editor, place);
     } finally {
