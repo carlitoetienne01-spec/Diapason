@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlignCenter,
   AlignJustify,
@@ -27,6 +27,7 @@ import {
   NOTE_PAGE_MARGINS,
   NOTE_PAGE_ORIENTATIONS,
   NOTE_PAGE_SIZES,
+  boitePage,
   miseEnPageDeLaNote,
   noteFontCss,
 } from './noteFormats';
@@ -42,6 +43,7 @@ import {
   type PageBlock,
 } from './notePages';
 import { sanitizeNoteHtml } from './noteSanitize';
+import { fitZoom, NOTE_ZOOMS } from './noteZoom';
 import type {
   SuccesNoteDocLang,
   SuccesNotePageBackground,
@@ -121,14 +123,20 @@ function makeOverflowGap(
  * `top` : on les fusionne à un demi-interligne près, sinon chaque mot mis en
  * forme compterait pour une ligne et la coupe tomberait n'importe où.
  */
-function lignesDuBloc(el: HTMLElement, editorTop: number): number[] {
+function lignesDuBloc(el: HTMLElement, editorTop: number, zoom: number): number[] {
   const range = document.createRange();
   range.selectNodeContents(el);
   const tops: number[] = [];
   for (const rect of Array.from(range.getClientRects())) {
     if (rect.height <= 0) continue;
-    const top = rect.top - editorTop;
-    if (tops.length === 0 || top - tops[tops.length - 1] > rect.height / 2) {
+    // Ces rectangles sont en pixels ÉCRAN : `transform: scale()` les réduit.
+    // Les hauteurs de bloc, elles, viennent de `offsetTop`/`offsetHeight`,
+    // des unités de LAYOUT que le zoom ne touche pas. Mélanger les deux
+    // ferait bouger la pagination à chaque redimensionnement de fenêtre —
+    // exactement ce qu'on est en train de supprimer.
+    const top = (rect.top - editorTop) / zoom;
+    const hauteur = rect.height / zoom;
+    if (tops.length === 0 || top - tops[tops.length - 1] > hauteur / 2) {
       tops.push(top);
     }
   }
@@ -238,10 +246,13 @@ function collectBlockNodes(editor: HTMLElement): HTMLElement[] {
   return nodes;
 }
 
-function measuredBlocks(editor: HTMLElement): Array<PageBlock & { el: HTMLElement }> {
+function measuredBlocks(
+  editor: HTMLElement,
+  zoom: number,
+): Array<PageBlock & { el: HTMLElement }> {
   const editorTop = editor.getBoundingClientRect().top;
+  const editorLayoutTop = editor.offsetTop;
   return collectBlockNodes(editor).map((el) => {
-    const rect = el.getBoundingClientRect();
     const kind: PageBlock['kind'] =
       el.tagName === 'HR' && el.classList.contains(PAGE_BREAK_CLASS)
         ? 'break'
@@ -252,17 +263,34 @@ function measuredBlocks(editor: HTMLElement): Array<PageBlock & { el: HTMLElemen
     // une ligne de tableau et un saut manuel partent entiers, et appeler
     // `getClientRects` sur chacun coûterait sans rien apporter.
     const coupable = kind === 'block' && el.tagName !== 'TR' && el.tagName !== 'IMG';
+    // `offsetTop` est relatif au premier ancêtre positionné — la feuille —
+    // et non à l'éditeur : on retranche celui de l'éditeur pour rester dans
+    // son repère, comme le faisait `getBoundingClientRect`.
+    const top = offsetDepuis(el, editor) - editorLayoutTop;
     return {
       el,
-      top: rect.top - editorTop,
-      height: Math.max(rect.height, 1),
+      top,
+      height: Math.max(el.offsetHeight, 1),
       kind,
-      lines: coupable ? lignesDuBloc(el, editorTop) : undefined,
+      lines: coupable ? lignesDuBloc(el, editorTop, zoom) : undefined,
     };
   });
 }
 
-function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
+/** Le haut d'un élément dans le repère de layout de la feuille. */
+function offsetDepuis(el: HTMLElement, editor: HTMLElement): number {
+  let total = 0;
+  let noeud: HTMLElement | null = el;
+  // Une puce vit dans un <ul>, une ligne dans un <table> : leur `offsetTop`
+  // est relatif à ce parent, pas à la feuille.
+  while (noeud && noeud !== editor.offsetParent && noeud !== editor) {
+    total += noeud.offsetTop;
+    noeud = noeud.offsetParent as HTMLElement | null;
+  }
+  return total;
+}
+
+function applyOverflowGaps(editor: HTMLElement, page: HTMLElement, zoom: number) {
   const style = getComputedStyle(page);
   const pageHeight = cssLengthToPx(
     style.getPropertyValue('--note-page-height'),
@@ -277,9 +305,14 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
   const contentHeight = pageHeight - margeHaut - margeBas;
   if (contentHeight < 80) return;
   editor.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((node) => node.remove());
-  const collected = measuredBlocks(editor);
+  const collected = measuredBlocks(editor, zoom);
+  // `lines` DOIT traverser : sans lui, `peutSeCouper` rend toujours faux et
+  // l'on retombe sur « déplacer des blocs entiers », c'est-à-dire le défaut
+  // qu'on vient de corriger. Ce champ a été oublié ici une première fois, et
+  // la coupe interne n'a alors jamais eu lieu — zéro cale interne mesurée sur
+  // une note de vingt pages.
   const plan = overflowGapPlan(
-    collected.map(({ top, height, kind }) => ({ top, height, kind })),
+    collected.map(({ top, height, kind, lines }) => ({ top, height, kind, lines })),
     contentHeight,
     PAGE_GUTTER_PX,
     margin,
@@ -299,7 +332,9 @@ function applyOverflowGaps(editor: HTMLElement, page: HTMLElement) {
     // Coupe INTERNE : on va chercher le premier caractère de la ligne visée.
     const y = bloc.lines?.[gap.atLine];
     if (y === undefined) continue;
-    const point = positionDeLigne(target, y, editor.getBoundingClientRect().top);
+    // `y` est en unités de layout ; `positionDeLigne` compare des rectangles
+    // d'écran. Le zoom fait le pont entre les deux.
+    const point = positionDeLigne(target, y * zoom, editor.getBoundingClientRect().top);
     if (!point) continue;
     const range = document.createRange();
     range.setStart(point.node, point.offset);
@@ -334,8 +369,13 @@ export function RichNoteEditor({
 
   const editorRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
+  const deskRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const applyingGaps = useRef(false);
   const suppressObserverUntil = useRef(0);
+  // `null` = « Largeur de page », le réglage par défaut de Word.
+  const [zoomChoisi, setZoomChoisi] = useState<number | null>(null);
+  const zoomRef = useRef(1);
 
   const paginate = () => {
     const page = pageRef.current;
@@ -344,7 +384,7 @@ export function RichNoteEditor({
     applyingGaps.current = true;
     suppressObserverUntil.current = Date.now() + 150;
     try {
-      applyOverflowGaps(editor, page);
+      applyOverflowGaps(editor, page, zoomRef.current);
     } finally {
       applyingGaps.current = false;
     }
@@ -359,6 +399,55 @@ export function RichNoteEditor({
     }
     paginate();
   }, [editorKey, pageFormat, pageSize, pageOrientation, pageMargins, fontFamily]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
+
+  // `@page` n'accepte pas de propriété personnalisée : la taille et les marges
+  // du papier doivent y être écrites en dur. On régénère donc une balise
+  // <style> à chaque changement de mise en page, sans quoi l'aperçu
+  // d'impression rendrait toujours du Lettre US (le défaut du navigateur) quel
+  // que soit le format choisi à l'écran.
+  useEffect(() => {
+    const boite = boitePage(mise);
+    const id = 'succes-note-print';
+    let balise = document.getElementById(id) as HTMLStyleElement | null;
+    if (!balise) {
+      balise = document.createElement('style');
+      balise.id = id;
+      document.head.appendChild(balise);
+    }
+    balise.textContent =
+      `@page { size: ${boite.w} ${boite.h};` +
+      ` margin: ${boite.t} ${boite.r} ${boite.b} ${boite.l}; }`;
+  }, [mise.size, mise.orientation, mise.margins]); // eslint-disable-line react-hooks/exhaustive-deps -- `mise` est reconstruit à chaque rendu
+
+  // Mettre la feuille à l'échelle plutôt que la laisser se comprimer. La
+  // largeur du papier se lit dans le CSS, donc les cinq formats et les deux
+  // orientations sont couverts sans que ce code les connaisse.
+  useLayoutEffect(() => {
+    const desk = deskRef.current;
+    const frame = frameRef.current;
+    const page = pageRef.current;
+    if (!desk || !frame || !page) return;
+
+    const ajuster = () => {
+      const papier = cssLengthToPx(
+        getComputedStyle(page).getPropertyValue('--note-page-width'),
+        793.7,
+      );
+      const zoom = zoomChoisi ?? fitZoom(desk.clientWidth, papier);
+      if (Math.abs(zoom - zoomRef.current) < 0.001) return;
+      zoomRef.current = zoom;
+      frame.style.setProperty('--note-zoom', String(zoom));
+      // La pagination se mesure en unités de LAYOUT, que le zoom ne touche
+      // pas : elle n'a donc pas à être refaite. Seuls les rectangles de ligne
+      // en dépendent, et ils sont relus au prochain passage.
+    };
+
+    ajuster();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(ajuster);
+    observer.observe(desk);
+    return () => observer.disconnect();
+  }, [zoomChoisi, pageFormat, pageSize, pageOrientation, pageMargins]);
 
   useEffect(() => {
     const page = pageRef.current;
@@ -559,6 +648,22 @@ export function RichNoteEditor({
           ))}
         </select>
         <select
+          aria-label="Zoom"
+          value={zoomChoisi === null ? 'ajuste' : String(Math.round(zoomChoisi * 100))}
+          onChange={(event) => {
+            const cran = NOTE_ZOOMS.find((z) => z.id === event.target.value);
+            setZoomChoisi(cran ? cran.valeur : null);
+          }}
+          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          {NOTE_ZOOMS.map((cran) => (
+            <option key={cran.id} value={cran.id}>
+              {cran.label}
+            </option>
+          ))}
+        </select>
+        <select
           aria-label="Fond de page"
           value={pageBackground}
           onChange={(event) =>
@@ -611,7 +716,15 @@ export function RichNoteEditor({
         </select>
       </div>
 
-      <div className="succes-note-desk min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3">
+      <div
+        ref={deskRef}
+        className="succes-note-desk min-h-0 flex-1 overflow-auto rounded-xl px-2 py-3"
+      >
+        {/* Le cadre réserve la place réellement occupée : `transform: scale()`
+            ne change pas la boîte de layout, donc sans lui le bureau ne
+            défilerait pas quand la page dépasse. */}
+        <div ref={frameRef} className="succes-note-frame">
+          <div className="succes-note-scale">
         <div
           ref={pageRef}
           className={`succes-note-page succes-note-bg-${pageBackground}`}
@@ -631,6 +744,8 @@ export function RichNoteEditor({
             onInput={emitContent}
             onBlur={emitContent}
           />
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -1272,11 +1272,22 @@
   --note-gutter: 28px;
   background: var(--note-desk);
 }
+/* Le cadre réserve la place RÉELLEMENT occupée par la feuille mise à
+   l'échelle. `transform: scale()` ne change pas la boîte de layout : sans ce
+   cadre, le bureau ne défilerait pas quand la page dépasse. */
+.succes-note-frame {
+  width: calc(var(--note-page-width) * var(--note-zoom, 1));
+  margin: 0 auto;
+}
+.succes-note-scale {
+  transform: scale(var(--note-zoom, 1));
+  transform-origin: top left;
+  width: var(--note-page-width);
+}
 .succes-note-page {
   --note-desk: var(--color-bg-secondary);
   --note-paper: #fff;
   position: relative;
-  margin: 0 auto;
   /* Trois axes, comme « Mise en page » de Word : la taille du papier, son
      orientation, et le préréglage de marges. Ils étaient mélangés dans une
      seule liste, où « Marges minimales » ne disait pas sur quel papier il
@@ -1291,7 +1302,13 @@
   --note-page-height: var(--note-paper-h);
   width: var(--note-page-width);
   min-height: var(--note-page-height);
-  max-width: 100%;
+  /* PLUS de `max-width: 100%`. Il ne cédait que sur la LARGEUR : une A4
+     mesurait 398 px de large pour 297 mm de haut sur une fenêtre étroite —
+     la largeur d'une A5 avec la hauteur d'une A4. Le texte refluait alors sur
+     bien plus de lignes que la page n'en contient, pendant que la pagination
+     lisait `--note-page-height`, une constante. Les feuilles peintes ne
+     correspondaient plus à rien, et l'impression donnait un troisième
+     découpage. Word ne reflue jamais : il met à l'échelle. */
   padding: var(--note-m-t) var(--note-m-r) var(--note-m-b) var(--note-m-l);
   box-sizing: border-box;
   overflow: visible;
@@ -1379,6 +1396,78 @@
 .succes-note-editor p,
 .succes-note-editor li {
   break-inside: avoid;
+}
+/* L'IMPRESSION DOIT RENDRE LES MÊMES PAGES QUE L'ÉCRAN.
+   Il n'existait AUCUNE règle d'impression : ni `@media print`, ni `@page`.
+   Trois conséquences, toutes vérifiables avec Cmd+P avant ce bloc :
+   — un saut de page manuel ne sautait pas de page, faute de `break-after` ;
+   — les cales de pagination s'imprimaient comme du papier blanc, alors
+     qu'elles sont un artefact d'écran ;
+   — `break-inside: avoid` sur `p` et `li` ci-dessus est le réglage « Lignes
+     solidaires » de Word, qui est DÉSACTIVÉ dans le style Normal. Le garder
+     à l'impression ferait diverger les deux paginations, maintenant que
+     l'écran coupe à l'intérieur des paragraphes.
+   Réserve connue, écrite plutôt que cachée : `widows` et `orphans` ne sont
+   pas implémentés par Firefox (Chrome 25+, Safari 7+). Le bundle est aussi
+   servi par le serveur Python à un navigateur ordinaire : sous Firefox,
+   l'impression coupera un peu autrement. */
+@media print {
+  .succes-note-desk {
+    overflow: visible;
+    background: none;
+    padding: 0;
+  }
+  .succes-note-frame,
+  .succes-note-scale {
+    width: auto;
+    height: auto;
+    margin: 0;
+    transform: none;
+  }
+  .succes-note-page {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+  .succes-note-editor .succes-overflow-gap {
+    display: none;
+  }
+  .succes-note-editor {
+    min-height: 0;
+    orphans: 2;
+    widows: 2;
+  }
+  .succes-note-editor h1,
+  .succes-note-editor h2,
+  .succes-note-editor h3,
+  .succes-note-editor h4,
+  .succes-note-editor h5,
+  .succes-note-editor h6 {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+  .succes-note-editor tr {
+    break-inside: avoid;
+  }
+  .succes-note-editor p,
+  .succes-note-editor li {
+    break-inside: auto;
+  }
+  .succes-note-editor hr.succes-page-break {
+    break-after: page;
+    height: 0;
+    margin: 0;
+    background: none;
+    visibility: hidden;
+  }
+  .succes-note-bg-lined,
+  .succes-note-bg-grid,
+  .succes-note-bg-sepia,
+  .succes-note-bg-dark {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 /* Saut de page : le reste de la feuille reste du papier, pas un vide noir. */
 .succes-note-editor hr.succes-page-break {
