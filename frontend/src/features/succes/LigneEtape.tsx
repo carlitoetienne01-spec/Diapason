@@ -274,7 +274,7 @@ export function LigneEtape({
                   <div
                     key={tache.id}
                     ref={courante ? couranteRef : undefined}
-                    className="relative flex gap-3"
+                    className="relative flex gap-3 group/station"
                     style={{ paddingLeft: profondeur ? 26 : 0 }}
                   >
                     {/* la station */}
@@ -474,12 +474,34 @@ export function LigneEtape({
                                   ? 'Carnet — des notes vous attendent'
                                   : 'Carnet — prendre des notes sur cette tâche'
                               }
-                              className="mt-[1px] size-5 shrink-0 rounded-md flex items-center justify-center cursor-pointer"
+                              className={[
+                                'mt-[1px] size-5 shrink-0 rounded-md flex items-center',
+                                'justify-center cursor-pointer transition-opacity',
+                                carnetRempli(tache.journal)
+                                  ? // ÉCRIT : toujours visible. C'est le repère
+                                    // « j'ai noté ici » ; le cacher au repos
+                                    // obligerait à survoler onze lignes pour
+                                    // retrouver où l'on a écrit.
+                                    'opacity-100'
+                                  : // VIDE : au survol seulement. Onze icônes
+                                    // en colonne le long du bord droit faisaient
+                                    // du bruit pour un geste qu'on ne fait pas
+                                    // à chaque ligne.
+                                    //
+                                    // `opacity-0` et non `hidden` : le bouton
+                                    // garde sa place, donc les titres ne
+                                    // sautent pas quand la souris passe.
+                                    //
+                                    // `focus-visible` est INDISPENSABLE : un
+                                    // bouton invisible reste atteignable au
+                                    // clavier, et sans cette règle on tabulerait
+                                    // sur une cible qu'on ne voit pas.
+                                    'opacity-0 group-hover/station:opacity-60 focus-visible:opacity-100',
+                              ].join(' ')}
                               style={{
                                 color: carnetRempli(tache.journal)
                                   ? 'var(--color-accent)'
                                   : 'var(--color-text-tertiary)',
-                                opacity: carnetRempli(tache.journal) ? 1 : 0.45,
                               }}
                             >
                               <NotebookPen size={13} />
