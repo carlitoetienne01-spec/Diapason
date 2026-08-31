@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, NotebookPen, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, NotebookPen, X } from 'lucide-react';
 
 import { ouvrirLienExterne } from '../../lib/lienExterne';
 import { linkifier } from './ligne';
@@ -32,18 +32,24 @@ export function lignesDuCarnet(journal: string | undefined | null): number {
     .filter((l) => l.trim().length > 0).length;
 }
 
+/** Le délai avant d'enregistrer, après la dernière frappe. */
+const REPOS_MS = 700;
+
 interface Props {
   tache: SuccesTask;
-  saving: boolean;
   onFermer: () => void;
   onEnregistrer: (journal: string) => Promise<void>;
 }
 
-export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props) {
+export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
   const [texte, setTexte] = useState(tache.journal || '');
-  const [enCours, setEnCours] = useState(false);
+  const [etat, setEtat] = useState<'a-jour' | 'en-cours' | 'echec'>('a-jour');
   const zone = useRef<HTMLTextAreaElement>(null);
-  const initial = useRef(tache.journal || '');
+  /** Ce qui est RÉELLEMENT sur le disque — pas ce qu'on a tapé. */
+  const enregistre = useRef(tache.journal || '');
+  const minuteur = useRef<number | null>(null);
+  const dernier = useRef(tache.journal || '');
+  dernier.current = texte;
 
   useEffect(() => {
     // Le curseur À LA FIN, pas au début : on ouvre un carnet pour ajouter une
@@ -54,20 +60,59 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
     el.setSelectionRange(el.value.length, el.value.length);
   }, []);
 
-  const modifie = texte !== initial.current;
+  /**
+   * Enregistrer, et ne dire « à jour » que si ça a marché.
+   *
+   * `enregistre` ne bouge qu'APRÈS le retour du serveur : c'est ce qui
+   * distingue « écrit sur le disque » de « tapé au clavier ». Sans cette
+   * distinction, un échec réseau laisserait la fenêtre annoncer « Enregistré »
+   * sur un texte que personne n'a reçu.
+   */
+  const sauver = async (valeur: string) => {
+    if (valeur === enregistre.current) return;
+    setEtat('en-cours');
+    try {
+      await onEnregistrer(valeur);
+      enregistre.current = valeur;
+      // Une frappe arrivée pendant l'aller-retour : on ne dit pas « à jour »
+      // pour un texte qui a déjà changé depuis.
+      setEtat(dernier.current === valeur ? 'a-jour' : 'en-cours');
+    } catch {
+      setEtat('echec');
+    }
+  };
 
-  const enregistrer = async () => {
-    if (!modifie) {
-      onFermer();
+  // Enregistrer tout seul, une fois la frappe retombée.
+  useEffect(() => {
+    if (texte === enregistre.current) {
+      setEtat('a-jour');
       return;
     }
-    setEnCours(true);
-    try {
-      await onEnregistrer(texte);
-      onFermer();
-    } finally {
-      setEnCours(false);
+    setEtat('en-cours');
+    if (minuteur.current) window.clearTimeout(minuteur.current);
+    minuteur.current = window.setTimeout(() => {
+      minuteur.current = null;
+      void sauver(texte);
+    }, REPOS_MS);
+    return () => {
+      if (minuteur.current) window.clearTimeout(minuteur.current);
+    };
+  }, [texte]); // eslint-disable-line react-hooks/exhaustive-deps -- `sauver` lit ses refs
+
+  /**
+   * Fermer, mais pas avant d'avoir écrit.
+   *
+   * On ferme un carnet dans la seconde qui suit la dernière lettre : sans ce
+   * vidage, les sept cents millisecondes d'attente emporteraient la fin de ce
+   * qu'on vient d'écrire.
+   */
+  const fermer = () => {
+    if (minuteur.current) {
+      window.clearTimeout(minuteur.current);
+      minuteur.current = null;
     }
+    if (dernier.current !== enregistre.current) void sauver(dernier.current);
+    onFermer();
   };
 
   // MONTÉ SUR `document.body`, PAS LÀ OÙ IL EST ÉCRIT.
@@ -92,7 +137,7 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.55)' }}
-      onClick={onFermer}
+      onClick={fermer}
       role="presentation"
     >
       <div
@@ -107,15 +152,12 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
         }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          // Échap ferme SANS enregistrer — c'est ce qu'on attend d'Échap.
-          // Cmd/Ctrl+Entrée enregistre, comme partout ailleurs dans l'app.
+          // Échap ferme, et écrit d'abord. Il n'y a plus de bouton Annuler :
+          // ce qui est tapé est gardé, donc Échap ne peut plus vouloir dire
+          // « jette ». Le faire jeter en silence serait le pire des deux.
           if (e.key === 'Escape') {
             e.stopPropagation();
-            onFermer();
-          }
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void enregistrer();
+            fermer();
           }
         }}
       >
@@ -134,7 +176,7 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
           </div>
           <button
             type="button"
-            onClick={onFermer}
+            onClick={fermer}
             aria-label="Fermer le carnet"
             className="size-7 rounded-lg flex items-center justify-center cursor-pointer shrink-0"
             style={{ color: 'var(--color-text-secondary)' }}
@@ -181,33 +223,34 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
           );
         })()}
 
+        {/* Plus de boutons : le carnet s'écrit tout seul. Ce qui reste est le
+            SEUL endroit qui dise si c'est vraiment sur le disque — et il doit
+            le dire honnêtement, y compris quand ça rate. */}
         <div
-          className="flex items-center justify-between gap-3 px-4 py-2.5 shrink-0"
-          style={{ borderTop: '1px solid var(--color-border)' }}
+          className="flex items-center gap-2 px-4 py-2.5 shrink-0 text-[11px]"
+          style={{
+            borderTop: '1px solid var(--color-border)',
+            color:
+              etat === 'echec' ? 'var(--color-danger, #f87171)' : 'var(--color-text-tertiary)',
+          }}
         >
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-            {modifie ? 'Non enregistré' : 'À jour'} · Échap ferme · ⌘↵ enregistre
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onFermer}
-              className="h-8 px-3 rounded-lg text-xs cursor-pointer"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              Annuler
-            </button>
-            <button
-              type="button"
-              onClick={() => void enregistrer()}
-              disabled={enCours || saving}
-              className="h-8 px-3 rounded-lg text-xs flex items-center gap-1.5 cursor-pointer"
-              style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}
-            >
-              {enCours ? <Loader2 size={13} className="animate-spin" /> : null}
-              Enregistrer
-            </button>
-          </div>
+          {etat === 'en-cours' ? (
+            <>
+              <Loader2 size={12} className="animate-spin" />
+              Enregistrement…
+            </>
+          ) : etat === 'echec' ? (
+            <>
+              <AlertTriangle size={12} />
+              Pas enregistré — votre texte est encore là, il repartira à la
+              prochaine frappe
+            </>
+          ) : (
+            <>
+              <Check size={12} />
+              Enregistré · Échap ferme
+            </>
+          )}
         </div>
       </div>
     </div>,

@@ -856,12 +856,25 @@ export function SuccesProjectsPage() {
     }
   }, []);
 
-  const refreshAfter = async (action: () => Promise<unknown>, success: string) => {
+  /**
+  * `success` à `null` : on ne dit rien QUAND ÇA MARCHE.
+  *
+  * Le carnet d'une tâche s'enregistre tout seul pendant qu'on écrit. Une bulle
+  * par sauvegarde ferait défiler « Étape mise à jour » toutes les secondes.
+  * L'échec, lui, garde sa bulle : une sauvegarde qui rate en silence est
+  * exactement ce qu'il ne faut pas.
+  */
+  const refreshAfter = async (
+    action: () => Promise<unknown>,
+    success: string | null,
+  ) => {
     setSaving(true);
     try {
       await action();
       await loadTasks();
-      toast.success(success, { description: 'Enregistré localement sur ce Mac.' });
+      if (success) {
+        toast.success(success, { description: 'Enregistré localement sur ce Mac.' });
+      }
     } catch (error) {
       toast.error("L'action n'a pas été enregistrée.", {
         description: error instanceof Error ? error.message : String(error),
@@ -1244,10 +1257,10 @@ export function SuccesProjectsPage() {
                     task.done ? 'Station rouverte' : 'Station franchie',
                   );
                 }}
-                onUpdate={async (taskId, patch) => {
+                onUpdate={async (taskId, patch, options) => {
                   await refreshAfter(
                     () => updateSuccesTask(taskId, patch),
-                    'Étape mise à jour',
+                    options?.silencieux ? null : 'Étape mise à jour',
                   );
                 }}
                 onCreate={async ({ title, parentTaskId }) => {

@@ -43,6 +43,8 @@ interface Props {
   onUpdate: (
     taskId: string,
     patch: { title?: string; notes?: string; date?: string; journal?: string },
+    /** `silencieux` : enregistrer sans le dire. Le carnet sauvegarde tout seul. */
+    options?: { silencieux?: boolean },
   ) => Promise<void>;
   onCreate: (input: { title: string; parentTaskId: string }) => Promise<void>;
 }
@@ -585,9 +587,10 @@ export function LigneEtape({
             return (
               <CarnetDeTache
                 tache={cible}
-                saving={saving}
                 onFermer={() => setCarnetDe(null)}
-                onEnregistrer={(journal) => onUpdate(cible.id, { journal })}
+                onEnregistrer={(journal) =>
+                  onUpdate(cible.id, { journal }, { silencieux: true })
+                }
               />
             );
           })()
