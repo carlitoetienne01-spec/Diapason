@@ -427,14 +427,37 @@ export function LigneEtape({
                         </div>
                       ) : (
                         <>
-                          {/* LE CARNET, DANS la carte, en haut à gauche.
-                              Il était posé À CÔTÉ d'elle, à droite : on le
+                          {/* LE CARNET, DANS la carte, en haut à DROITE.
+                              Il a d'abord été posé à côté de la carte : on le
                               cherchait au bout d'une ligne dont la longueur
-                              change à chaque station. En tête du titre, il est
-                              toujours au même endroit — et sur chaque station,
-                              dépliée ou non, pour qu'écrire une note ne coûte
-                              pas deux clics. */}
+                              change à chaque station. Puis à gauche du titre,
+                              où il repoussait chaque titre de vingt-huit
+                              pixels. À droite de la carte, il est aligné à la
+                              verticale sur toutes les stations ET les titres
+                              repartent du même bord qu'avant.
+                              Sur chaque station, dépliée ou non : écrire une
+                              note ne doit pas coûter deux clics. */}
                           <div className="flex items-start gap-2 py-0.5">
+                            <div
+                              className="text-sm leading-snug flex-1 min-w-0"
+                              style={{
+                                color: tache.done
+                                  ? 'var(--color-text-tertiary)'
+                                  : 'var(--color-text)',
+                                textDecoration: tache.done ? 'line-through' : 'none',
+                                fontWeight: courante ? 600 : 400,
+                              }}
+                            >
+                              {tache.title}
+                              {tache.date ? (
+                                <span
+                                  className="ml-2 text-[11px] font-normal"
+                                  style={{ color: 'var(--color-accent)' }}
+                                >
+                                  {tache.date}
+                                </span>
+                              ) : null}
+                            </div>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -461,26 +484,6 @@ export function LigneEtape({
                             >
                               <NotebookPen size={13} />
                             </button>
-                            <div
-                              className="text-sm leading-snug flex-1 min-w-0"
-                              style={{
-                                color: tache.done
-                                  ? 'var(--color-text-tertiary)'
-                                  : 'var(--color-text)',
-                                textDecoration: tache.done ? 'line-through' : 'none',
-                                fontWeight: courante ? 600 : 400,
-                              }}
-                            >
-                              {tache.title}
-                              {tache.date ? (
-                                <span
-                                  className="ml-2 text-[11px] font-normal"
-                                  style={{ color: 'var(--color-accent)' }}
-                                >
-                                  {tache.date}
-                                </span>
-                              ) : null}
-                            </div>
                           </div>
                           {ouverte && (
                             <div className="pb-2 flex flex-col gap-2">
