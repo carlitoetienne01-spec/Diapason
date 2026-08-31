@@ -10,9 +10,18 @@
 // sans changer d'écran. Échap annule l'édition, puis ferme la ligne.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  NotebookPen,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
 
 import { ouvrirLienExterne } from '../../lib/lienExterne';
+import { CarnetDeTache, carnetRempli } from './CarnetDeTache';
 
 import type { SuccesTask } from './types';
 import {
@@ -33,7 +42,7 @@ interface Props {
   onToggle: (task: SuccesTask) => Promise<void>;
   onUpdate: (
     taskId: string,
-    patch: { title?: string; notes?: string; date?: string },
+    patch: { title?: string; notes?: string; date?: string; journal?: string },
   ) => Promise<void>;
   onCreate: (input: { title: string; parentTaskId: string }) => Promise<void>;
 }
@@ -92,6 +101,8 @@ export function LigneEtape({
 
   const [deplie, setDeplie] = useState<string | null>(couranteId);
   const [enEdition, setEnEdition] = useState<string | null>(null);
+  /** La tâche dont le carnet est ouvert. */
+  const [carnetDe, setCarnetDe] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState({ title: '', notes: '', date: '' });
   const [ajoutSous, setAjoutSous] = useState<string | null>(null);
   const [titreSous, setTitreSous] = useState('');
@@ -312,6 +323,37 @@ export function LigneEtape({
                         />
                       ) : null}
                     </button>
+                    {/* LE CARNET, sur chaque station et non seulement sur
+                        celle qu'on a dépliée : écrire une note ne doit pas
+                        coûter deux clics. L'icône s'allume dès que la tâche
+                        porte quelque chose, pour qu'on voie où l'on a écrit
+                        sans ouvrir onze carnets. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCarnetDe(tache.id);
+                      }}
+                      aria-label={
+                        carnetRempli(tache.journal)
+                          ? `Carnet de « ${tache.title} » — écrit`
+                          : `Carnet de « ${tache.title} » — vide`
+                      }
+                      title={
+                        carnetRempli(tache.journal)
+                          ? 'Carnet — des notes vous attendent'
+                          : 'Carnet — prendre des notes sur cette tâche'
+                      }
+                      className="mt-[3px] size-6 shrink-0 rounded-md flex items-center justify-center cursor-pointer order-last"
+                      style={{
+                        color: carnetRempli(tache.journal)
+                          ? 'var(--color-accent)'
+                          : 'var(--color-text-tertiary)',
+                        opacity: carnetRempli(tache.journal) ? 1 : 0.45,
+                      }}
+                    >
+                      <NotebookPen size={14} />
+                    </button>
                     {/* le contenu */}
                     <div
                       className="flex-1 min-w-0 rounded-lg px-3 py-1.5 cursor-pointer"
@@ -508,6 +550,23 @@ export function LigneEtape({
           </div>
         </div>
       </div>
+      {/* Le carnet, par-dessus la Ligne. Monté seulement quand il est ouvert :
+          onze carnets montés en permanence garderaient onze textes en mémoire
+          pour un seul qu'on regarde. */}
+      {carnetDe
+        ? (() => {
+            const cible = stations.find((st) => st.tache.id === carnetDe)?.tache;
+            if (!cible) return null;
+            return (
+              <CarnetDeTache
+                tache={cible}
+                saving={saving}
+                onFermer={() => setCarnetDe(null)}
+                onEnregistrer={(journal) => onUpdate(cible.id, { journal })}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }

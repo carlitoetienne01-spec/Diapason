@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS succes_tasks (
     project_id TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
+    journal TEXT NOT NULL DEFAULT '',
     emoji TEXT NOT NULL DEFAULT '',
     template_id TEXT NOT NULL DEFAULT '',
     group_id TEXT NOT NULL DEFAULT '',
@@ -220,6 +221,17 @@ class SuccesStore:
         if "cadence" not in columns:
             conn.execute(
                 "ALTER TABLE succes_tasks ADD COLUMN cadence TEXT NOT NULL DEFAULT ''"
+            )
+        # Le CARNET de la tâche (30 août 2026), distinct de `notes`.
+        #
+        # `notes` décrit l'étape : objectif, lien, ce qui vient ensuite. C'est
+        # ce qu'on lit AVANT de commencer, et c'est affiché sous le titre. Le
+        # carnet, lui, s'écrit PENDANT : ce qu'on a compris, où l'on bloque, ce
+        # qu'on a essayé. Les mélanger obligerait à effacer la consigne pour
+        # noter un doute.
+        if "journal" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_tasks ADD COLUMN journal TEXT NOT NULL DEFAULT ''"
             )
 
     @staticmethod
@@ -368,6 +380,7 @@ class SuccesStore:
             "parentTaskId": row["parent_task_id"] if "parent_task_id" in keys else "",
             "category": row["category"],
             "notes": row["notes"],
+            "journal": row["journal"] if "journal" in keys else "",
             "emoji": row["emoji"],
             "templateId": row["template_id"],
             "groupId": row["group_id"],
@@ -633,6 +646,9 @@ class SuccesStore:
             str(data.get("completedDate") or ""), "completedDate"
         )
         notes = _clean_text(data.get("notes"), field="Les notes", maximum=2000)
+        # Le carnet est plus long que la consigne : c'est là qu'on écrit ce
+        # qu'on a compris et où l'on bloque, séance après séance.
+        journal = _clean_text(data.get("journal"), field="Le carnet", maximum=20000)
         project_id = str(data.get("projectId") or "")
         with self._transaction() as conn:
             replayed = self._replayed_task(conn, op_id, request)
@@ -696,6 +712,7 @@ class SuccesStore:
                 parent_task_id,
                 str(data.get("category") or "")[:100],
                 notes,
+                journal,
                 str(data.get("emoji") or "")[:16],
                 str(data.get("templateId") or ""),
                 str(data.get("groupId") or ""),
@@ -710,10 +727,10 @@ class SuccesStore:
             conn.execute(
                 """INSERT INTO succes_tasks
                    (id,title,done,priority,scheduled_date,scheduled_time,project_id,
-                    parent_task_id,category,notes,emoji,template_id,group_id,order_index,
-                    created_date,completed_date,postponed_count,stage,cadence,
-                    updated_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    parent_task_id,category,notes,journal,emoji,template_id,group_id,
+                    order_index,created_date,completed_date,postponed_count,stage,
+                    cadence,updated_at_ms)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 values,
             )
             task = self._load_task(conn, task_id)
@@ -753,6 +770,10 @@ class SuccesStore:
             "notes": (
                 "notes",
                 lambda value: _clean_text(value, field="Les notes", maximum=2000),
+            ),
+            "journal": (
+                "journal",
+                lambda value: _clean_text(value, field="Le carnet", maximum=20000),
             ),
             "emoji": ("emoji", lambda value: str(value or "")[:16]),
             "order": ("order_index", int),

@@ -56,7 +56,14 @@ export interface SuccesTask {
   projectId: string;
   parentTaskId: string;
   category: string;
+  /** La consigne de l'étape : objectif, lien, ce qui vient ensuite. Lue AVANT. */
   notes: string;
+  /**
+   * Le CARNET de la tâche, distinct de `notes`. Écrit PENDANT : ce qu'on a
+   * compris, où l'on bloque, ce qu'on a essayé. Les mélanger obligerait à
+   * effacer la consigne pour noter un doute.
+   */
+  journal?: string;
   emoji: string;
   templateId: string;
   groupId: string;

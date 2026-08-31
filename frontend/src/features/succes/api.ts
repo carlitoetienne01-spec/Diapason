@@ -138,6 +138,7 @@ export async function createSuccesTask(input: {
   time?: string;
   priority?: SuccesPriority;
   notes?: string;
+  journal?: string;
   projectId?: string;
   parentTaskId?: string;
   category?: string;
@@ -162,6 +163,7 @@ export async function updateSuccesTask(
       | 'time'
       | 'priority'
       | 'notes'
+      | 'journal'
       | 'projectId'
       | 'parentTaskId'
       | 'category'

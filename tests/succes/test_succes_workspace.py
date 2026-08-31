@@ -489,3 +489,72 @@ class TestLeMarqueurDeLecture:
         notes = store.list_notes()
         assert len(notes) == 1, "la note d'avant la colonne doit survivre"
         assert notes[0]["readingMark"] == 0
+
+
+class TestLeCarnetDeTache:
+    """« Je pourrais prendre des notes pour chaque tâche. »
+
+    30 août 2026. `notes` décrit l'étape — objectif, lien, ce qui vient
+    ensuite — et s'affiche sous son titre. C'est ce qu'on lit AVANT de
+    commencer. Le carnet, lui, s'écrit PENDANT : ce qu'on a compris, où l'on
+    bloque, ce qu'on a essayé.
+
+    Les mélanger obligerait à effacer la consigne pour noter un doute. Ces
+    tests tiennent la séparation, et surtout le fait qu'écrire dans l'un
+    n'efface jamais l'autre.
+    """
+
+    def test_une_tache_neuve_a_un_carnet_vide(self, tmp_path) -> None:
+        store = SuccesStore(tmp_path / "succes.db")
+        tache = store.create_task({"title": "Apprenez à apprendre"})
+        assert tache["journal"] == ""
+
+    def test_le_carnet_et_la_consigne_ne_se_marchent_pas_dessus(self, tmp_path) -> None:
+        store = SuccesStore(tmp_path / "succes.db")
+        tache = store.create_task(
+            {"title": "Apprenez à apprendre", "notes": "Objectif : plan de travail"}
+        )
+        apres = store.update_task(
+            tache["id"], {"journal": "Bloqué sur la mémorisation"}
+        )
+        assert apres["notes"] == "Objectif : plan de travail", (
+            "écrire dans le carnet ne doit pas toucher à la consigne, sinon il "
+            "faudrait effacer l'objectif pour noter un doute"
+        )
+        assert apres["journal"] == "Bloqué sur la mémorisation"
+
+        encore = store.update_task(tache["id"], {"notes": "Objectif : revu"})
+        assert encore["journal"] == "Bloqué sur la mémorisation", (
+            "et modifier la consigne ne doit pas effacer le carnet"
+        )
+
+    def test_le_carnet_survit_a_la_fermeture(self, tmp_path) -> None:
+        chemin = tmp_path / "succes.db"
+        tache = SuccesStore(chemin).create_task({"title": "Comprendre le Web"})
+        SuccesStore(chemin).update_task(tache["id"], {"journal": "séance 1 : DNS"})
+        relue = SuccesStore(chemin).get_task(tache["id"])
+        assert relue["journal"] == "séance 1 : DNS"
+
+    def test_le_carnet_tient_plus_long_que_la_consigne(self, tmp_path) -> None:
+        # Un carnet s'accumule séance après séance ; une consigne, non.
+        store = SuccesStore(tmp_path / "succes.db")
+        tache = store.create_task({"title": "Linux"})
+        long_texte = "x" * 5000
+        apres = store.update_task(tache["id"], {"journal": long_texte})
+        assert len(apres["journal"]) == 5000, (
+            "le plafond de 2 000 caractères des notes rendrait le carnet "
+            "inutilisable au bout de quelques séances"
+        )
+
+    def test_une_base_ancienne_gagne_la_colonne_sans_perdre_ses_taches(
+        self, tmp_path
+    ) -> None:
+        chemin = tmp_path / "succes.db"
+        SuccesStore(chemin).create_task({"title": "Écrite avant le carnet"})
+        with sqlite3.connect(chemin) as conn:
+            conn.execute("ALTER TABLE succes_tasks DROP COLUMN journal")
+
+        store = SuccesStore(chemin)
+        taches = store.list_tasks()
+        assert len(taches) == 1, "la tâche d'avant la colonne doit survivre"
+        assert taches[0]["journal"] == ""

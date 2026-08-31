@@ -49,6 +49,9 @@ class TaskCreate(BaseModel):
     parentTaskId: str = ""
     category: str = Field(default="", max_length=100)
     notes: str = Field(default="", max_length=2000)
+    # Le CARNET de la tâche, distinct de `notes` : la consigne se lit avant,
+    # le carnet s'écrit pendant. Plus long, parce qu'il s'accumule.
+    journal: str = Field(default="", max_length=20000)
     emoji: str = Field(default="", max_length=16)
     # L'étape (pipeline) et la cadence (cycle) ; validées contre le projet.
     stage: str = Field(default="", max_length=40)
@@ -69,6 +72,7 @@ class TaskPatch(BaseModel):
     parentTaskId: str | None = None
     category: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    journal: str | None = Field(default=None, max_length=20000)
     emoji: str | None = Field(default=None, max_length=16)
     order: int | None = None
     stage: str | None = Field(default=None, max_length=40)
