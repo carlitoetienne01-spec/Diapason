@@ -7,6 +7,7 @@
 // mélanger obligerait à effacer la consigne pour noter un doute.
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, NotebookPen, X } from 'lucide-react';
 
 import { ouvrirLienExterne } from '../../lib/lienExterne';
@@ -69,7 +70,25 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
     }
   };
 
-  return (
+  // MONTÉ SUR `document.body`, PAS LÀ OÙ IL EST ÉCRIT.
+  //
+  // La Ligne vit dans un `div` en `z-index: 2`, lui-même dans un `z-index: 10`.
+  // Un `z-50` posé là-dedans ne vaut pas 50 face au reste de la page : il vaut
+  // 2, celui de la boîte qui l'enferme. La barre latérale, elle, est en
+  // `z-index: 30` dans le même contexte — elle passait donc PAR-DESSUS le
+  // carnet. Mesuré sur une fenêtre de 1 100 px : barre large de 260 px,
+  // carnet commençant à 214, soit 46 px de recouvrement ; sur une fenêtre plus
+  // étroite, tout le côté gauche disparaissait derrière elle.
+  //
+  // Un portail sort le carnet de cette boîte : son `z-50` se compare alors à
+  // la racine du document, où il gagne.
+  //
+  // Cela règle du même coup un second piège, latent : l'ancêtre porte un
+  // `backdrop-filter: blur(3px)`, et un filtre suffit à faire d'un élément le
+  // référent des `position: fixed` qu'il contient. Le carnet aurait cessé
+  // d'être calé sur l'écran le jour où cet ancêtre n'aurait plus couvert
+  // exactement l'écran.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.55)' }}
@@ -191,6 +210,7 @@ export function CarnetDeTache({ tache, saving, onFermer, onEnregistrer }: Props)
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
