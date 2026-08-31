@@ -323,37 +323,6 @@ export function LigneEtape({
                         />
                       ) : null}
                     </button>
-                    {/* LE CARNET, sur chaque station et non seulement sur
-                        celle qu'on a dépliée : écrire une note ne doit pas
-                        coûter deux clics. L'icône s'allume dès que la tâche
-                        porte quelque chose, pour qu'on voie où l'on a écrit
-                        sans ouvrir onze carnets. */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCarnetDe(tache.id);
-                      }}
-                      aria-label={
-                        carnetRempli(tache.journal)
-                          ? `Carnet de « ${tache.title} » — écrit`
-                          : `Carnet de « ${tache.title} » — vide`
-                      }
-                      title={
-                        carnetRempli(tache.journal)
-                          ? 'Carnet — des notes vous attendent'
-                          : 'Carnet — prendre des notes sur cette tâche'
-                      }
-                      className="mt-[3px] size-6 shrink-0 rounded-md flex items-center justify-center cursor-pointer order-last"
-                      style={{
-                        color: carnetRempli(tache.journal)
-                          ? 'var(--color-accent)'
-                          : 'var(--color-text-tertiary)',
-                        opacity: carnetRempli(tache.journal) ? 1 : 0.45,
-                      }}
-                    >
-                      <NotebookPen size={14} />
-                    </button>
                     {/* le contenu */}
                     <div
                       className="flex-1 min-w-0 rounded-lg px-3 py-1.5 cursor-pointer"
@@ -458,25 +427,60 @@ export function LigneEtape({
                         </div>
                       ) : (
                         <>
-                          <div
-                            className="text-sm leading-snug py-0.5"
-                            style={{
-                              color: tache.done
-                                ? 'var(--color-text-tertiary)'
-                                : 'var(--color-text)',
-                              textDecoration: tache.done ? 'line-through' : 'none',
-                              fontWeight: courante ? 600 : 400,
-                            }}
-                          >
-                            {tache.title}
-                            {tache.date ? (
-                              <span
-                                className="ml-2 text-[11px] font-normal"
-                                style={{ color: 'var(--color-accent)' }}
-                              >
-                                {tache.date}
-                              </span>
-                            ) : null}
+                          {/* LE CARNET, DANS la carte, en haut à gauche.
+                              Il était posé À CÔTÉ d'elle, à droite : on le
+                              cherchait au bout d'une ligne dont la longueur
+                              change à chaque station. En tête du titre, il est
+                              toujours au même endroit — et sur chaque station,
+                              dépliée ou non, pour qu'écrire une note ne coûte
+                              pas deux clics. */}
+                          <div className="flex items-start gap-2 py-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCarnetDe(tache.id);
+                              }}
+                              aria-label={
+                                carnetRempli(tache.journal)
+                                  ? `Carnet de « ${tache.title} » — écrit`
+                                  : `Carnet de « ${tache.title} » — vide`
+                              }
+                              title={
+                                carnetRempli(tache.journal)
+                                  ? 'Carnet — des notes vous attendent'
+                                  : 'Carnet — prendre des notes sur cette tâche'
+                              }
+                              className="mt-[1px] size-5 shrink-0 rounded-md flex items-center justify-center cursor-pointer"
+                              style={{
+                                color: carnetRempli(tache.journal)
+                                  ? 'var(--color-accent)'
+                                  : 'var(--color-text-tertiary)',
+                                opacity: carnetRempli(tache.journal) ? 1 : 0.45,
+                              }}
+                            >
+                              <NotebookPen size={13} />
+                            </button>
+                            <div
+                              className="text-sm leading-snug flex-1 min-w-0"
+                              style={{
+                                color: tache.done
+                                  ? 'var(--color-text-tertiary)'
+                                  : 'var(--color-text)',
+                                textDecoration: tache.done ? 'line-through' : 'none',
+                                fontWeight: courante ? 600 : 400,
+                              }}
+                            >
+                              {tache.title}
+                              {tache.date ? (
+                                <span
+                                  className="ml-2 text-[11px] font-normal"
+                                  style={{ color: 'var(--color-accent)' }}
+                                >
+                                  {tache.date}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                           {ouverte && (
                             <div className="pb-2 flex flex-col gap-2">
