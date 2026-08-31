@@ -274,7 +274,7 @@ export function LigneEtape({
                   <div
                     key={tache.id}
                     ref={courante ? couranteRef : undefined}
-                    className="relative flex gap-3 group/station"
+                    className="relative flex gap-3"
                     style={{ paddingLeft: profondeur ? 26 : 0 }}
                   >
                     {/* la station */}
@@ -458,54 +458,50 @@ export function LigneEtape({
                                 </span>
                               ) : null}
                             </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCarnetDe(tache.id);
-                              }}
-                              aria-label={
-                                carnetRempli(tache.journal)
-                                  ? `Carnet de « ${tache.title} » — écrit`
-                                  : `Carnet de « ${tache.title} » — vide`
-                              }
-                              title={
-                                carnetRempli(tache.journal)
-                                  ? 'Carnet — des notes vous attendent'
-                                  : 'Carnet — prendre des notes sur cette tâche'
-                              }
-                              className={[
-                                'mt-[1px] size-5 shrink-0 rounded-md flex items-center',
-                                'justify-center cursor-pointer transition-opacity',
-                                carnetRempli(tache.journal)
-                                  ? // ÉCRIT : toujours visible. C'est le repère
-                                    // « j'ai noté ici » ; le cacher au repos
-                                    // obligerait à survoler onze lignes pour
-                                    // retrouver où l'on a écrit.
-                                    'opacity-100'
-                                  : // VIDE : au survol seulement. Onze icônes
-                                    // en colonne le long du bord droit faisaient
-                                    // du bruit pour un geste qu'on ne fait pas
-                                    // à chaque ligne.
-                                    //
-                                    // `opacity-0` et non `hidden` : le bouton
-                                    // garde sa place, donc les titres ne
-                                    // sautent pas quand la souris passe.
-                                    //
-                                    // `focus-visible` est INDISPENSABLE : un
-                                    // bouton invisible reste atteignable au
-                                    // clavier, et sans cette règle on tabulerait
-                                    // sur une cible qu'on ne voit pas.
-                                    'opacity-0 group-hover/station:opacity-60 focus-visible:opacity-100',
-                              ].join(' ')}
-                              style={{
-                                color: carnetRempli(tache.journal)
-                                  ? 'var(--color-accent)'
-                                  : 'var(--color-text-tertiary)',
-                              }}
-                            >
-                              <NotebookPen size={13} />
-                            </button>
+                            {/* SEULEMENT SUR LA CARTE DÉPLIÉE.
+                                Trois états essayés : partout (onze icônes en
+                                colonne le long du bord droit — « pourquoi je
+                                les vois quand la carte est fermée ? »), puis
+                                au survol (l'icône d'un carnet vide
+                                n'apparaissait qu'en passant dessus). Ici :
+                                elle n'existe que quand on a ouvert la carte
+                                pour en voir le détail.
+                                Conséquence assumée : sur une ligne fermée,
+                                rien ne dit plus qu'un carnet est écrit. Le
+                                repère se paie d'un dépliage.
+                                Rien n'est rendu du tout — pas un bouton
+                                transparent : une cible invisible reste
+                                atteignable au clavier, et l'on tabulerait sur
+                                ce qu'on ne voit pas. */}
+                            {ouverte ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCarnetDe(tache.id);
+                                }}
+                                aria-label={
+                                  carnetRempli(tache.journal)
+                                    ? `Carnet de « ${tache.title} » — écrit`
+                                    : `Carnet de « ${tache.title} » — vide`
+                                }
+                                title={
+                                  carnetRempli(tache.journal)
+                                    ? 'Carnet — des notes vous attendent'
+                                    : 'Carnet — prendre des notes sur cette tâche'
+                                }
+                                className="mt-[1px] size-5 shrink-0 rounded-md flex items-center justify-center cursor-pointer"
+                                style={{
+                                  // La couleur dit encore s'il y a quelque
+                                  // chose dedans, une fois la carte ouverte.
+                                  color: carnetRempli(tache.journal)
+                                    ? 'var(--color-accent)'
+                                    : 'var(--color-text-tertiary)',
+                                }}
+                              >
+                                <NotebookPen size={13} />
+                              </button>
+                            ) : null}
                           </div>
                           {ouverte && (
                             <div className="pb-2 flex flex-col gap-2">
