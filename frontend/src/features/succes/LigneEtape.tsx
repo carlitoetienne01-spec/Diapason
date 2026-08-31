@@ -10,7 +10,9 @@
 // sans changer d'écran. Échap annule l'édition, puis ferme la ligne.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
+
+import { ouvrirLienExterne } from '../../lib/lienExterne';
 
 import type { SuccesTask } from './types';
 import {
@@ -49,9 +51,17 @@ function Note({ texte }: { texte: string }) {
             href={seg.valeur}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 break-all"
+            className="underline underline-offset-2 break-all cursor-pointer"
             style={{ color: 'var(--color-accent)' }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              // `target="_blank"` ne fait RIEN dans la fenêtre de bureau :
+              // WKWebView n'ouvre pas de seconde fenêtre, et le clic tombe
+              // dans le vide sans un message. Le lien était souligné, en
+              // couleur d'accent, et mort. On passe par le greffon.
+              e.preventDefault();
+              e.stopPropagation();
+              void ouvrirLienExterne(seg.valeur);
+            }}
           >
             {seg.valeur}
           </a>
@@ -265,11 +275,15 @@ export function LigneEtape({
                         void onToggle(tache);
                       }}
                       aria-label={tache.done ? 'Rouvrir' : 'Terminer'}
-                      className="relative z-10 mt-[7px] shrink-0 rounded-full cursor-pointer"
+                      className="relative z-10 mt-[5px] shrink-0 rounded-full cursor-pointer flex items-center justify-center"
                       style={{
-                        width: profondeur ? 10 : 14,
-                        height: profondeur ? 10 : 14,
-                        marginLeft: profondeur ? 0 : 5,
+                        // Élargies de 14 à 18 px pour loger le crochet. Les
+                        // marges compensent au pixel près : le centre reste à
+                        // 12 px (racine) et 5 px (sous-étape), sinon la station
+                        // sortirait du rail qui la traverse.
+                        width: profondeur ? 14 : 18,
+                        height: profondeur ? 14 : 18,
+                        marginLeft: profondeur ? -2 : 3,
                         background: tache.done
                           ? 'var(--color-accent)'
                           : 'var(--color-bg-secondary)',
@@ -283,7 +297,21 @@ export function LigneEtape({
                           : 'none',
                         animation: courante ? 'pulse 2s infinite' : undefined,
                       }}
-                    />
+                    >
+                      {/* LE CROCHET, au milieu de la station.
+                          Une station pleine et une station courante se
+                          ressemblaient à un halo près : il fallait comparer
+                          deux points pour savoir lequel était fait. Un crochet
+                          se lit sans comparer. Trait épais : à neuf pixels, un
+                          trait fin disparaît. */}
+                      {tache.done ? (
+                        <Check
+                          size={profondeur ? 9 : 12}
+                          strokeWidth={3.5}
+                          style={{ color: 'var(--color-bg)' }}
+                        />
+                      ) : null}
+                    </button>
                     {/* le contenu */}
                     <div
                       className="flex-1 min-w-0 rounded-lg px-3 py-1.5 cursor-pointer"
