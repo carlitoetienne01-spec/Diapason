@@ -1,4 +1,4 @@
-import { authHeaders } from '../../lib/api';
+import { apiFetch } from '../../lib/api';
 
 /** Les champs qui passent sur le fil sont en anglais camelCase, comme partout. */
 export interface EtatLoterie {
@@ -73,16 +73,25 @@ export interface ResultatSimulation {
   ticketPrice: number;
 }
 
+/**
+ * Passer par `apiFetch`, jamais par `fetch` nu.
+ *
+ * Un `fetch('/v1/…')` relatif marche dans le navigateur, où la page EST servie
+ * par le serveur. Dans la fenêtre de bureau, la page vient d'un autre schéma :
+ * le chemin relatif ne désigne plus rien, et WebKit rend son erreur la plus
+ * opaque — « The string did not match the expected pattern. » C'est
+ * exactement ce que Carlito a vu le 1er septembre 2026, avec « 0 tirage »
+ * affiché alors que la base en contenait mille trente.
+ *
+ * `apiFetch` connaît la base, y ajoute la clé, et traduit cette erreur-là.
+ */
 async function demander<T>(
   chemin: string,
   init?: Omit<RequestInit, 'headers'>,
 ): Promise<T> {
-  // `RequestInit['headers']` accepte un tableau ou un `Headers` ; `authHeaders`
-  // veut un objet plat. On ne prend donc pas d'en-têtes de l'appelant plutôt
-  // que d'accepter un type qu'on ne saurait pas fusionner.
-  const reponse = await fetch(chemin, {
+  const reponse = await apiFetch(chemin, {
     ...init,
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
   });
   if (!reponse.ok) {
     const detail = await reponse.text().catch(() => '');
