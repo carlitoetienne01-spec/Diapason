@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from diapason.speech.realtime.tools import list_voice_tool_ids
+from diapason.succes import store as magasin_taches
 from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.routes import router, set_store_for_tests
 from diapason.tools.succes_continuity import (
@@ -16,6 +17,39 @@ from diapason.tools.succes_continuity import (
 
 def store(tmp_path) -> SuccesContinuityStore:
     return SuccesContinuityStore(tmp_path / "succes.db")
+
+
+#: Le jour où ce test se place. Tout ce qu'il coche est coché CE jour-là.
+_LE_JOUR = date(2026, 8, 15)
+
+
+class _HorlogeFigee(date):
+    """Une horloge arrêtée au 15 août 2026."""
+
+    @classmethod
+    def today(cls) -> date:
+        return _LE_JOUR
+
+
+def _figer_le_temps(monkeypatch) -> None:
+    """Arrêter les deux horloges du magasin, pas une seule.
+
+    Ce test cochait une tâche puis demandait le bilan d'AOÛT. Il ne disait donc
+    la vérité que pendant le mois d'août : vert d'octobre 2026 au 31 août 2026,
+    rouge à minuit le 1er septembre, sans qu'une ligne de code ait changé.
+
+    Il faut figer DEUX choses, et la seconde se laisse oublier :
+
+      `date.today()`  — ce que `set_task_done` écrit dans `completedDate`.
+      `now_ms()`      — ce qu'il écrit dans `updatedAtMs`, et c'est CELUI-LÀ
+                        que le bilan annuel consulte pour compter une tâche
+                        achevée (`continuity.year_review`). Figer le calendrier
+                        sans figer l'horodatage laissait le test rouge, avec
+                        une `completedDate` pourtant juste au 15 août.
+    """
+    midi = datetime(_LE_JOUR.year, _LE_JOUR.month, _LE_JOUR.day, 12, 0)
+    monkeypatch.setattr(magasin_taches, "date", _HorlogeFigee)
+    monkeypatch.setattr(magasin_taches, "now_ms", lambda: int(midi.timestamp() * 1000))
 
 
 def test_weekly_materialization_is_deterministic_and_respects_tombstone(tmp_path):
@@ -103,7 +137,8 @@ def test_quotes_are_stable_per_day_and_exported(tmp_path):
     assert [quote["id"] for quote in db.list_quotes()] == ["b"]
 
 
-def test_dashboard_and_year_review_use_business_dates(tmp_path):
+def test_dashboard_and_year_review_use_business_dates(tmp_path, monkeypatch):
+    _figer_le_temps(monkeypatch)
     db = store(tmp_path)
     project = db.create_project(
         {"id": "project", "name": "Projet", "createdAt": "2026-08-01"}
