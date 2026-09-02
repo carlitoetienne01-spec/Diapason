@@ -289,6 +289,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # and unthrottled. Those keep their bucket.
         if path.startswith("/v1/succes") and not path.startswith("/v1/succes/sync/"):
             return await call_next(request)
+        # La loterie, même raison, avec UNE exception (31/08/2026).
+        #
+        # Lire l'état, les fréquences, ou lancer une simulation sont des gestes
+        # de produit : un clic sur « Jouer 5 200 tirages » refusé en 429 parce
+        # que la cloche d'approbation a consommé le seau est une panne du point
+        # de vue de celui qui clique. Constaté à la première vérification.
+        #
+        # `/moisson` reste DANS le seau, et c'est le seul point de cette liste
+        # qui le mérite : c'est la seule route qui sorte sur le réseau, vers un
+        # site tiers. Le repos d'une seconde entre deux pages protège la source ;
+        # le seau protège contre le fait de relancer la moisson en boucle.
+        if path.startswith("/v1/loterie") and not path.startswith(
+            "/v1/loterie/moisson"
+        ):
+            return await call_next(request)
         if path == "/v1/voice/live/health":
             return await call_next(request)
         # Same shape, same reason, for the two mesh surfaces the local UI
