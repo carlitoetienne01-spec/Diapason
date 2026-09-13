@@ -24,6 +24,14 @@ import {
 
 import { ouvrirLienExterne } from '../../lib/lienExterne';
 import { CarnetDeTache, carnetRempli } from './CarnetDeTache';
+import {
+  ECHELLE_MAX,
+  ECHELLE_MIN,
+  echelleSuivante,
+  libelleEchelle,
+  taillesDe,
+} from './echelleTexte';
+import { loadLigneEchelle, saveLigneEchelle } from './uiPrefs';
 
 import type { SuccesTask } from './types';
 import {
@@ -63,11 +71,11 @@ interface Props {
   onCreate: (input: { title: string; parentTaskId: string }) => Promise<void>;
 }
 
-function Note({ texte }: { texte: string }) {
+function Note({ texte, taille }: { texte: string; taille: number }) {
   return (
     <div
-      className="text-[13px] leading-relaxed whitespace-pre-wrap"
-      style={{ color: 'var(--color-text-secondary)' }}
+      className="leading-relaxed whitespace-pre-wrap"
+      style={{ color: 'var(--color-text-secondary)', fontSize: taille }}
     >
       {linkifier(texte).map((seg, i) =>
         seg.type === 'lien' ? (
@@ -122,6 +130,17 @@ export function LigneEtape({
   const [enEdition, setEnEdition] = useState<string | null>(null);
   /** La tâche dont le carnet est ouvert. */
   const [carnetDe, setCarnetDe] = useState<string | null>(null);
+  // L'échelle du texte : réglée ici, retenue d'une ouverture à l'autre.
+  // Lue paresseusement — `localStorage` ne doit pas être touché à chaque
+  // rendu, et un accès qui lève (navigation privée) est déjà avalé par
+  // `uiPrefs`.
+  const [echelle, setEchelle] = useState<number>(() => loadLigneEchelle());
+  const tailles = taillesDe(echelle);
+  const changerEchelle = (sens: 1 | -1) => {
+    const suivant = echelleSuivante(echelle, sens);
+    setEchelle(suivant);
+    saveLigneEchelle(suivant);
+  };
   const [brouillon, setBrouillon] = useState({ title: '', notes: '', date: '' });
   const [ajoutSous, setAjoutSous] = useState<string | null>(null);
   const [titreSous, setTitreSous] = useState('');
@@ -251,6 +270,43 @@ export function LigneEtape({
           >
             <ChevronRight size={18} />
           </button>
+          {/* Agrandir les lettres. Demandé le 6 septembre 2026 : les tailles
+              étaient figées dans les classes, et rien ne permettait de les
+              changer. Le réglage se souvient d'une ouverture à l'autre. */}
+          <div
+            className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 shrink-0"
+            style={{ border: '1px solid var(--color-border)' }}
+          >
+            <button
+              type="button"
+              disabled={echelle <= ECHELLE_MIN}
+              onClick={() => changerEchelle(-1)}
+              className="px-1.5 leading-none cursor-pointer disabled:opacity-30 disabled:cursor-default"
+              style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}
+              aria-label="Réduire la taille du texte"
+              title="Réduire la taille du texte"
+            >
+              A
+            </button>
+            <span
+              className="tabular-nums select-none"
+              style={{ color: 'var(--color-text-tertiary)', fontSize: 10 }}
+              aria-live="polite"
+            >
+              {libelleEchelle(echelle)}
+            </span>
+            <button
+              type="button"
+              disabled={echelle >= ECHELLE_MAX}
+              onClick={() => changerEchelle(1)}
+              className="px-1.5 leading-none cursor-pointer disabled:opacity-30 disabled:cursor-default"
+              style={{ color: 'var(--color-text-secondary)', fontSize: 18 }}
+              aria-label="Agrandir la taille du texte"
+              title="Agrandir la taille du texte"
+            >
+              A
+            </button>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -266,12 +322,17 @@ export function LigneEtape({
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
           {etape.notes ? (
             <div className="mb-5 pl-9">
-              <Note texte={etape.notes} />
+              <Note texte={etape.notes} taille={tailles.note} />
             </div>
           ) : null}
           {stations.length === 0 && (
             <div className="py-6 flex flex-col items-center gap-3">
-              <p className="text-[13px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <p
+                style={{
+                  color: 'var(--color-text-tertiary)',
+                  fontSize: tailles.note,
+                }}
+              >
                 Cette étape n'a pas encore de stations.
               </p>
               <input
@@ -495,11 +556,13 @@ export function LigneEtape({
                               note ne doit pas coûter deux clics. */}
                           <div className="flex items-start gap-2 py-0.5">
                             <div
-                              className="text-sm leading-snug flex-1 min-w-0"
+                              className="leading-snug flex-1 min-w-0"
                               style={{
-                                color: tache.done
-                                  ? 'var(--color-text-tertiary)'
-                                  : 'var(--color-text)',
+                                fontSize: tailles.titre,
+                                color:
+                                  tache.done || verrouille
+                                    ? 'var(--color-text-tertiary)'
+                                    : 'var(--color-text)',
                                 textDecoration: tache.done ? 'line-through' : 'none',
                                 fontWeight: courante ? 600 : 400,
                               }}
@@ -507,8 +570,11 @@ export function LigneEtape({
                               {tache.title}
                               {tache.date ? (
                                 <span
-                                  className="ml-2 text-[11px] font-normal"
-                                  style={{ color: 'var(--color-accent)' }}
+                                  className="ml-2 font-normal"
+                                  style={{
+                                    color: 'var(--color-accent)',
+                                    fontSize: tailles.badge,
+                                  }}
                                 >
                                   {tache.date}
                                 </span>
@@ -558,10 +624,49 @@ export function LigneEtape({
                                 <NotebookPen size={13} />
                               </button>
                             ) : null}
+                            {/* Le repère des photos, aux mêmes conditions
+                                que le carnet : carte ouverte seulement, et
+                                seulement s'il y en a — un appareil photo
+                                gris sur chaque station n'aurait rien dit. */}
+                            {ouverte && onVoirPhotos && (photosParTache?.[tache.id] ?? 0) > 0 ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onVoirPhotos(tache.id);
+                                }}
+                                aria-label={`${photosParTache?.[tache.id]} photo(s) liée(s) à « ${tache.title} »`}
+                                title={`${photosParTache?.[tache.id]} photo(s) — voir la pile`}
+                                className="mt-[1px] h-5 shrink-0 rounded-md flex items-center gap-0.5 px-1 cursor-pointer text-[10px]"
+                                style={{ color: 'var(--color-accent)' }}
+                              >
+                                <Camera size={13} />
+                                {photosParTache?.[tache.id]}
+                              </button>
+                            ) : null}
                           </div>
+                          {/* Le contenu d'une station fermée n'est pas rendu
+                              du tout — ni notes, ni liens, ni carnet. Le
+                              masquer en CSS le laisserait dans le HTML, donc
+                              lisible par qui sait ouvrir l'inspecteur : ce
+                              serait un rideau, pas un verrou. */}
+                          {verrouille ? (
+                            <div
+                              className="pb-1.5 flex items-center gap-1.5"
+                              style={{
+                                color: 'var(--color-text-tertiary)',
+                                fontSize: tailles.mention,
+                              }}
+                            >
+                              <Lock size={11} />
+                              <span>Termine d'abord « {verrouille} »</span>
+                            </div>
+                          ) : null}
                           {ouverte && (
                             <div className="pb-2 flex flex-col gap-2">
-                              {tache.notes ? <Note texte={tache.notes} /> : null}
+                              {tache.notes ? (
+                                <Note texte={tache.notes} taille={tailles.note} />
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={(e) => {

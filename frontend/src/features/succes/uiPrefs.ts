@@ -1,11 +1,15 @@
 /** Local UI preferences for Succès (view modes, collapsed trees). */
 
+import { normaliserEchelle } from './echelleTexte';
+
 const STORAGE_KEY = 'diapason-succes-ui-prefs';
 
 export type SuccesTasksViewMode = 'list' | 'week' | 'month';
 
 type Prefs = {
   tasksViewMode?: SuccesTasksViewMode;
+  /** L'échelle du texte de la Ligne — voir `echelleTexte.ts`. */
+  ligneEchelle?: number;
   /** taskId → whether its subtask list is expanded */
   taskSubtasksOpen?: Record<string, boolean>;
   /** subtaskId → whether its children are expanded */
@@ -61,4 +65,13 @@ export function loadSubtaskExpanded(subtaskId: string, fallback = true): boolean
 export function saveSubtaskExpanded(subtaskId: string, expanded: boolean) {
   const map = { ...(readPrefs().subtaskExpanded || {}), [subtaskId]: expanded };
   writePrefs({ subtaskExpanded: map });
+}
+
+/** L'échelle du texte de la Ligne, telle qu'elle a été réglée la dernière fois. */
+export function loadLigneEchelle(): number {
+  return normaliserEchelle(readPrefs().ligneEchelle);
+}
+
+export function saveLigneEchelle(echelle: number) {
+  writePrefs({ ligneEchelle: normaliserEchelle(echelle) });
 }
