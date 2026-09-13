@@ -83,10 +83,16 @@ export function SystemPanel() {
         borderLeft: '1px solid var(--color-border)',
       }}
     >
-      {/* Header */}
+      {/* Header. La cloche des validations est fixée en haut à droite de la
+          FENÊTRE (Layout), au pixel près où ce bouton × se dessine : on
+          voyait « une croix dans la cloche » (13 septembre 2026). Le × se
+          range à gauche du groupe fixe, dont Layout publie la largeur. */}
       <div
-        className="flex items-center justify-between px-4 py-3 shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border)' }}
+        className="flex items-center justify-between pl-4 py-3 shrink-0"
+        style={{
+          borderBottom: '1px solid var(--color-border)',
+          paddingRight: 'calc(var(--top-right-cluster, 33px) + 22px)',
+        }}
       >
         <span className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--color-text-secondary)' }}>
           {t('chat.system.title')}
