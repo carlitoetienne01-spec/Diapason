@@ -214,6 +214,8 @@ async function tauriInvoke<T>(command: string, args: Record<string, unknown> = {
 export interface SetupStatus {
   phase: string;
   detail: string;
+  /** uv, Ollama, le code Python et l'extension native sont en place. */
+  backend_ready?: boolean;
   ollama_ready: boolean;
   server_ready: boolean;
   model_ready: boolean;

@@ -50,6 +50,10 @@ keyring = { version = "3", features = ["windows-native"] }
 # call from the tokio-driven Tauri commands). Needs libdbus-1-dev at build time.
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 
+[dev-dependencies]
+# Les tests de l'amorçage extraient de vraies archives dans un dossier jetable.
+tempfile = "3"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { isMessageKey, type MessageKey } from '../i18n/translate';
 
 import { useTranslation } from '../i18n/useTranslation';
-import { Loader2, CheckCircle2, XCircle, Cpu, Server, Database } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Cpu, Server, Database, PackageOpen } from 'lucide-react';
 import {
   getSetupStatus,
   fetchModels,
@@ -11,7 +11,12 @@ import {
 } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
+// La première étape est l'amorçage : ce que la fenêtre ne contient pas
+// (uv, Ollama, le code Python, l'extension native) et que l'app télécharge
+// elle-même quand il manque. Sur une machine déjà équipée, elle passe en un
+// instant.
 const STEPS = [
+  { key: 'backend_ready', label: 'setup.step.backend' as MessageKey, icon: PackageOpen, detail: 'setup.detail.backend' },
   { key: 'ollama_ready', label: 'setup.step.inferenceEngine' as MessageKey, icon: Cpu, detail: 'setup.detail.startingOllama' },
   { key: 'model_ready', label: 'setup.step.aiModel', icon: Database, detail: 'setup.detail.loadingModel' },
   { key: 'server_ready', label: 'setup.step.apiServer' as MessageKey, icon: Server, detail: 'setup.detail.startingServer' },
@@ -136,7 +141,9 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
   }, [poll]);
 
   const activeStep: StepKey | null =
-    status && !status.ollama_ready
+    status && !status.backend_ready
+      ? 'backend_ready'
+      : status && !status.ollama_ready
       ? 'ollama_ready'
       : status && !status.model_ready
         ? 'model_ready'
@@ -173,6 +180,7 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
         <div className="flex flex-col gap-2 mb-8">
           {(status?.source === 'custom'
             ? [
+                { key: 'backend_ready' as const, label: 'setup.step.backend' as MessageKey, icon: PackageOpen, detail: 'setup.detail.backend' },
                 { key: 'ollama_ready' as const, label: 'setup.step.inferenceEngine' as MessageKey, icon: Cpu, detail: 'setup.detail.connecting' },
                 { key: 'model_ready' as const, label: 'setup.step.endpoint' as MessageKey, icon: Database, detail: 'setup.detail.checkingEndpoint' },
                 { key: 'server_ready' as const, label: 'setup.step.apiServer' as MessageKey, icon: Server, detail: 'setup.detail.startingServer' },
@@ -220,10 +228,11 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
               style={{
                 background: 'var(--color-accent)',
                 width: `${
-                  ((status?.ollama_ready ? 1 : 0) +
+                  ((status?.backend_ready ? 1 : 0) +
+                    (status?.ollama_ready ? 1 : 0) +
                     (status?.model_ready ? 1 : 0) +
                     (status?.server_ready ? 1 : 0)) *
-                  33.33
+                  25
                 }%`,
               }}
             />

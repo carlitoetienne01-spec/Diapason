@@ -6,6 +6,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 
+mod amorcage;
 mod live_speech;
 
 const OLLAMA_PORT: u16 = 11434;
@@ -313,6 +314,9 @@ fn resolve_bin(name: &str) -> String {
 
     #[cfg(not(target_os = "windows"))]
     let mut candidates = vec![
+        // Ce que l'amorçage a installé lui-même passe avant tout : c'est la
+        // version que l'app a choisie, pas celle d'un Homebrew plus ancien.
+        amorcage::executable_gere(name).display().to_string(),
         format!("/opt/homebrew/bin/{name}"),
         format!("{home}/.local/bin/{name}"),
         format!("{home}/.cargo/bin/{name}"),
@@ -326,6 +330,7 @@ fn resolve_bin(name: &str) -> String {
         let programfiles = std::env::var("ProgramFiles").unwrap_or_default();
         let programfiles_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
         vec![
+            amorcage::executable_gere(name).display().to_string(),
             // Git for Windows — standard install paths
             format!("{programfiles}\\Git\\cmd\\{name}.exe"),
             format!("{programfiles_x86}\\Git\\cmd\\{name}.exe"),
@@ -695,6 +700,9 @@ type SharedBackend = Arc<Mutex<BackendManager>>;
 struct SetupStatus {
     phase: String,
     detail: String,
+    /// Les composants locaux (uv, Ollama, le code Python, l'extension) sont
+    /// en place — téléchargés par l'amorçage ou déjà présents.
+    backend_ready: bool,
     ollama_ready: bool,
     server_ready: bool,
     model_ready: bool,
@@ -708,6 +716,7 @@ impl Default for SetupStatus {
         Self {
             phase: "starting".into(),
             detail: "Initializing...".into(),
+            backend_ready: false,
             ollama_ready: false,
             server_ready: false,
             model_ready: false,
@@ -1211,6 +1220,84 @@ async fn verify_diapason_rust_extension(
     }
 }
 
+/// Les arguments de `uv sync` selon la racine. Sur une racine gérée par
+/// l'amorçage, le groupe `desktop-native` (qui compile l'extension depuis
+/// `rust/`) est laissé de côté — la wheel précompilée prend sa place — et
+/// `--inexact` empêche `uv sync` de retirer cette wheel au démarrage suivant :
+/// sans lui, uv élague tout paquet absent du verrou, et l'extension
+/// disparaissait après chaque relance.
+pub(crate) fn args_uv_sync(racine_geree: bool) -> Vec<&'static str> {
+    if !racine_geree {
+        return DESKTOP_UV_SYNC_ARGS.to_vec();
+    }
+    let mut args: Vec<&'static str> = Vec::new();
+    let mut i = 0;
+    while i < DESKTOP_UV_SYNC_ARGS.len() {
+        if DESKTOP_UV_SYNC_ARGS[i] == "--group" {
+            i += 2;
+            continue;
+        }
+        args.push(DESKTOP_UV_SYNC_ARGS[i]);
+        i += 1;
+    }
+    args.push("--inexact");
+    args
+}
+
+/// Pose la wheel de `diapason_rust` dans le venv de `root`.
+async fn installer_roue(
+    root: &std::path::Path,
+    uv_bin: &str,
+    roue: &std::path::Path,
+) -> Result<(), String> {
+    let mut cmd = tokio::process::Command::new(uv_bin);
+    sans_fenetre_async(&mut cmd);
+    cmd.args(["pip", "install", "--python", ".venv", "--reinstall-package", "diapason-rust"])
+        .arg(roue)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .current_dir(root);
+    prepare_subprocess_for_appimage(&mut cmd);
+    match cmd.output().await {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(format!(
+            "L'extension native n'a pas pu être installée depuis {} :\n\n{}",
+            roue.display(),
+            uv_sync_stderr_tail(&String::from_utf8_lossy(&out.stderr), 2000)
+        )),
+        Err(e) => Err(format!("`uv pip install` impossible : {e}")),
+    }
+}
+
+/// L'amorçage complet : uv, Ollama (si le plan le lance), puis le code et la
+/// wheel — sauf si un dépôt de développement est déjà là.
+async fn amorcer(
+    lancer_ollama: bool,
+    mut signaler: impl FnMut(String),
+) -> Result<amorcage::Amorcage, String> {
+    let uv_present = {
+        let b = resolve_bin("uv");
+        b != "uv" && std::path::Path::new(&b).exists()
+    };
+    amorcage::assurer_uv(uv_present, &mut signaler).await?;
+    if lancer_ollama {
+        let ollama_present = {
+            let b = resolve_bin("ollama");
+            b != "ollama" && std::path::Path::new(&b).exists()
+        };
+        amorcage::assurer_ollama(ollama_present, &mut signaler).await?;
+    }
+    // Un dépôt trouvé ailleurs que dans `src/` est celui de quelqu'un qui
+    // développe : on ne télécharge rien par-dessus.
+    let geree = amorcage::dossier_source();
+    if let Some(racine) = find_project_root() {
+        if racine != geree {
+            return Ok(amorcage::Amorcage::default());
+        }
+    }
+    amorcage::assurer_source(amorcage::VERSION_APP, &mut signaler).await
+}
+
 fn port_owner_hint() -> String {
     if cfg!(target_os = "windows") {
         format!("netstat -ano | findstr :{}", DIAPASON_PORT)
@@ -1345,6 +1432,40 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             SourceKind::Custom => "custom",
         }
         .into();
+    }
+
+    // Phase 0 : l'amorçage. Ce que la fenêtre ne contient pas (uv, Ollama, le
+    // code Python, l'extension native) est téléchargé s'il manque — voir
+    // `amorcage.rs`. Avant le 13 septembre 2026, un Mac vierge s'arrêtait ici
+    // sur « install Ollama from ollama.com » puis « run the installer ».
+    let amorcage = {
+        {
+            let mut s = status.lock().await;
+            s.phase = "backend".into();
+            s.detail = "Vérification des composants locaux…".into();
+        }
+        // Le rapport d'avancement est synchrone ; un `try_lock` qui échoue
+        // parce que l'écran interroge l'état au même instant perd un
+        // pourcentage, pas le téléchargement.
+        let statut = status.clone();
+        let signaler = move |texte: String| {
+            if let Ok(mut s) = statut.try_lock() {
+                s.detail = texte;
+            }
+        };
+        match amorcer(plan.launch_ollama, signaler).await {
+            Ok(a) => a,
+            Err(e) => {
+                let mut s = status.lock().await;
+                s.error = Some(e);
+                return;
+            }
+        }
+    };
+    {
+        let mut s = status.lock().await;
+        s.backend_ready = true;
+        s.detail = "Composants locaux en place.".into();
     }
 
     // For the Ollama path, model resolution may fall back to FALLBACK_MODEL; we
@@ -1681,11 +1802,20 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
 
     let root = project_root.as_ref().unwrap();
 
-    let cargo_bin = resolve_bin("cargo");
-    if !std::path::Path::new(&cargo_bin).exists() && cargo_bin == "cargo" {
-        let mut s = status.lock().await;
-        s.error = Some(format_missing_rust_toolchain());
-        return;
+    // Une racine gérée par l'amorçage reçoit l'extension native en wheel
+    // précompilée : `cargo` n'y est pas requis, et l'exiger renverrait
+    // l'utilisateur vers un terminal — exactement ce que l'amorçage évite.
+    let racine_geree = amorcage
+        .racine_geree
+        .as_ref()
+        .is_some_and(|r| r == root);
+    if !racine_geree {
+        let cargo_bin = resolve_bin("cargo");
+        if !std::path::Path::new(&cargo_bin).exists() && cargo_bin == "cargo" {
+            let mut s = status.lock().await;
+            s.error = Some(format_missing_rust_toolchain());
+            return;
+        }
     }
 
     // Install dependencies automatically (handles fresh clones).
@@ -1712,7 +1842,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // liste l'omettait. Une commande affichée qui ne reproduit pas le chemin
     // réel transforme chaque incident de démarrage en fausse piste.
     sync_cmd
-        .args(DESKTOP_UV_SYNC_ARGS)
+        .args(args_uv_sync(racine_geree))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .current_dir(root);
@@ -1740,9 +1870,29 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         s.detail = "Verifying Rust extension (diapason_rust)...".into();
     }
     if let Err(err) = verify_diapason_rust_extension(root, &uv_bin).await {
-        let mut s = status.lock().await;
-        s.error = Some(err);
-        return;
+        // Sur une racine gérée, l'import échoue tant que la wheel n'est pas
+        // posée dans le venv que `uv sync` vient de créer : on l'installe,
+        // puis on revérifie. Sans wheel, l'erreur d'origine reste la bonne.
+        let roue = if racine_geree { amorcage.roue.clone() } else { None };
+        let Some(roue) = roue else {
+            let mut s = status.lock().await;
+            s.error = Some(err);
+            return;
+        };
+        {
+            let mut s = status.lock().await;
+            s.detail = "Installation de l'extension native (diapason_rust)…".into();
+        }
+        if let Err(e) = installer_roue(root, &uv_bin, &roue).await {
+            let mut s = status.lock().await;
+            s.error = Some(e);
+            return;
+        }
+        if let Err(err) = verify_diapason_rust_extension(root, &uv_bin).await {
+            let mut s = status.lock().await;
+            s.error = Some(err);
+            return;
+        }
     }
 
     {
@@ -4331,6 +4481,20 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::args_uv_sync;
+
+    #[test]
+    fn la_racine_geree_ne_compile_pas_l_extension_et_garde_la_wheel() {
+        // Sans racine gérée : la commande historique, mot pour mot.
+        assert_eq!(args_uv_sync(false), super::DESKTOP_UV_SYNC_ARGS.to_vec());
+        // Avec : plus de `--group desktop-native` (sinon cargo est exigé),
+        // et `--inexact` (sinon uv élague la wheel au démarrage suivant).
+        let args = args_uv_sync(true);
+        assert!(!args.contains(&"--group"), "{args:?}");
+        assert!(!args.contains(&"desktop-native"), "{args:?}");
+        assert_eq!(args.last(), Some(&"--inexact"));
+        assert!(args.contains(&"--locked") && args.contains(&"dictation"), "{args:?}");
+    }
 
     /// Un port libre doit être annoncé libre.
     ///
