@@ -152,12 +152,17 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
       <div className="w-full max-w-md px-6">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}
-          >
-            <Cpu size={32} />
-          </div>
+          {/* L'icône de l'app — le diapason — et non une puce générique :
+              demandé le 13 septembre 2026. C'est la même image que celle du
+              Dock (`src-tauri/icons/icon.png`), servie depuis `public/`. */}
+          <img
+            src="/pwa-192x192.png"
+            alt=""
+            width={64}
+            height={64}
+            draggable={false}
+            className="w-16 h-16 rounded-2xl mx-auto mb-4 select-none"
+          />
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
             Diapason
           </h1>
