@@ -117,7 +117,17 @@ def test_filter_by_source(store: KnowledgeStore) -> None:
 
 
 def test_registered() -> None:
+    """L'outil est dans le registre — que l'import l'y ait mis ou non.
+
+    Le décorateur enregistre à l'import ; ce test réenregistrait ensuite sans
+    regarder, et `register_value` refuse un doublon. Selon le fil que
+    `pytest -n auto` lui donne — un fil où un autre module a vidé le registre
+    après l'import, ou un fil vierge — il passait ou levait « already has an
+    entry » (CI rouge le 13 septembre 2026, vert au commit d'avant).
+    """
     from diapason.tools.knowledge_sql import KnowledgeSQLTool
 
-    ToolRegistry.register_value("knowledge_sql", KnowledgeSQLTool)
-    assert ToolRegistry.contains("knowledge_sql")
+    if not ToolRegistry.contains("knowledge_sql"):
+        ToolRegistry.register_value("knowledge_sql", KnowledgeSQLTool)
+    assert ToolRegistry.contains("knowledge_sql"), "l'outil doit être enregistré"
+    assert ToolRegistry.get("knowledge_sql") is KnowledgeSQLTool
