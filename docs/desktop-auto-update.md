@@ -37,6 +37,49 @@ The frontend code lives in
 [`frontend/src-tauri/tauri.conf.json`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/frontend/src-tauri/tauri.conf.json)
 under `plugins.updater`.
 
+## Publier une version (depuis le 13 septembre 2026)
+
+Les runners GitHub ne démarrent plus (facturation) : la matrice
+`build-and-release` ci-dessous est en sommeil. La seule voie réelle est le
+job **`publish-macos-local`** de `desktop.yml`, sur le Mac de Carlito
+(`self-hosted, macos-local`). Il publie, à la même version, tout ce que
+l'app installée attend :
+
+| Fichier | Qui le lit |
+|---|---|
+| `Diapason_<v>_aarch64.dmg` | l'utilisateur, depuis la page de release |
+| `Diapason.app.tar.gz` + `.sig` | l'updater (signature minisign) |
+| `latest.json` | l'updater, via le miroir `desktop-latest` |
+| `backend.json`, `diapason-src-<v>.tar.gz`, `diapason_rust-….whl` | l'amorçage au premier lancement — [`premier-lancement.md`](premier-lancement.md) |
+
+Apple Silicon seulement (le seul constructeur est ce Mac ; la wheel n'existe
+que pour lui). Signature Apple « - » (ad hoc) tant qu'aucun compte Developer
+n'existe.
+
+La procédure, en trois commandes :
+
+```bash
+scripts/bump-desktop-version.sh 1.0.1        # tauri.conf.json, Cargo.toml, package.json
+git commit -am "Version 1.0.1 de l'app de bureau" && git push
+git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
+```
+
+Le job refuse un tag dont la version n'est pas celle de `tauri.conf.json` :
+l'app cherche son backend et ses mises à jour **sous sa propre version**, un
+tag qui dirait autre chose publierait des fichiers introuvables.
+
+Pour répéter la construction sans rien publier : *Actions → Desktop Build &
+Release → Run workflow → « dry_run_macos »* (ou
+`gh workflow run desktop.yml -f dry_run_macos=true`). Les fichiers sortent
+en artefact de workflow.
+
+Si le dépôt reste privé, les assets ne se téléchargent pas sans jeton — et
+l'app installée n'en a aucun. Deux issues : rendre le dépôt public, ou poser
+la variable de dépôt `DIAPASON_RELEASES_REPO=<owner>/<repo-public>` avec le
+secret `RELEASES_TOKEN` (PAT, `contents: write` sur ce dépôt-là), puis
+changer l'URL dans `tauri.conf.json` (`plugins.updater.endpoints`) et
+`DEPOT_RELEASES` dans `amorcage.rs`.
+
 ## How releases reach the update endpoint
 
 The `Desktop Build & Release` GitHub Action

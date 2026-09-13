@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      dry_run_macos:
+        description: 'Build the macOS release (dmg, updater bundle, backend assets) on the Mac runner and keep it as a workflow artifact — no GitHub release is created or touched.'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-${{ inputs.tag || github.ref }}
@@ -168,6 +173,220 @@ jobs:
           name: diapason-windows-validation-msi
           path: frontend/src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
+
+  # La publication macOS, sur le Mac de Carlito. Les runners GitHub sont
+  # bloqués (facturation) : la matrice `build-and-release` ci-dessous ne
+  # démarre plus. Ce job est la seule voie réelle vers une release, et il
+  # publie TOUT ce que l'app installée attend, à la même version :
+  #
+  #   Diapason_<v>_aarch64.dmg        ce que l'utilisateur télécharge
+  #   Diapason.app.tar.gz + .sig      ce que l'updater installe (minisign)
+  #   latest.json                     le manifeste de l'updater, miroité
+  #                                   ensuite dans `desktop-latest`
+  #   backend.json, diapason-src-<v>.tar.gz, diapason_rust-….whl
+  #                                   ce que l'amorçage télécharge au premier
+  #                                   lancement (docs/premier-lancement.md)
+  #
+  # Apple Silicon seulement : ce Mac est le seul constructeur, et la wheel
+  # de l'extension native n'existe que pour lui. Un Intel recevrait un dmg
+  # qui ne s'ouvre pas et un amorçage qui exige cargo — mieux vaut ne rien
+  # promettre. La signature Apple reste « - » (ad hoc) tant qu'aucun compte
+  # Developer n'existe : Gatekeeper dira « endommagé » au premier clic.
+  publish-macos-local:
+    needs: [validate]
+    if: >-
+      startsWith(github.ref, 'refs/tags/desktop-v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.dry_run_macos == true)
+    runs-on: [self-hosted, macos-local]
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Où publier. Par défaut ce dépôt ; une variable `DIAPASON_RELEASES_REPO`
+      # (owner/nom) redirige vers un dépôt public de releases si celui-ci reste
+      # privé — les assets d'un dépôt privé ne se téléchargent pas sans jeton,
+      # et l'app installée n'en a aucun. Un autre dépôt exige aussi le secret
+      # `RELEASES_TOKEN` (PAT avec `contents: write` dessus).
+      RELEASES_REPO: ${{ vars.DIAPASON_RELEASES_REPO || github.repository }}
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run_macos == true }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: La version du tag est celle de l'app
+        id: version
+        run: |
+          set -euo pipefail
+          CONF="$(python3 -c "import json;print(json.load(open('frontend/src-tauri/tauri.conf.json'))['version'])")"
+          CARGO="$(sed -n 's/^version = "\(.*\)"/\1/p' frontend/src-tauri/Cargo.toml | head -1)"
+          if [[ "$CONF" != "$CARGO" ]]; then
+            echo "::error::tauri.conf.json dit $CONF, Cargo.toml dit $CARGO — lance scripts/bump-desktop-version.sh"
+            exit 1
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/desktop-v* ]]; then
+            TAG="${{ github.ref_name }}"
+            if [[ "${TAG#desktop-v}" != "$CONF" ]]; then
+              # L'app cherche son backend et ses mises à jour sous SA version :
+              # un tag qui dit autre chose publierait des fichiers introuvables.
+              echo "::error::le tag $TAG ne correspond pas à la version de l'app ($CONF)"
+              exit 1
+            fi
+          else
+            TAG="desktop-v${CONF}"
+          fi
+          echo "version=${CONF}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Version ${CONF}, tag ${TAG}"
+
+      - name: La clé de signature de l'updater est là
+        if: env.DRY_RUN != 'true'
+        env:
+          CLE: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$CLE" ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY manque — sans elle, aucune app installée n'acceptera cette version (docs/desktop-auto-update.md)"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            frontend/src-tauri -> target
+            rust -> target
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: uv
+        run: |
+          set -euo pipefail
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv --version
+
+      - name: Backend assets (code, wheel, manifeste)
+        run: |
+          set -euo pipefail
+          # Un venv jetable avec le Python de la wheel : le runner n'a pas le
+          # .venv du dépôt, et il ne doit pas en dépendre.
+          uv venv --python 3.13 .venv-assets
+          uv pip install --python .venv-assets maturin
+          PYTHON="$PWD/.venv-assets/bin/python" MATURIN="$PWD/.venv-assets/bin/maturin" \
+            ./scripts/build-backend-assets.sh "$PWD/dist/release"
+
+      - name: Tauri build (dmg + bundle updater signé)
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          npx tauri build --target aarch64-apple-darwin --bundles app,dmg
+
+      - name: Rassembler la release et écrire latest.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          B="frontend/src-tauri/target/aarch64-apple-darwin/release/bundle"
+          OUT="$PWD/dist/release"
+          DMG="$(ls "$B"/dmg/Diapason_*_aarch64.dmg | head -1)"
+          APP_TGZ="$B/macos/Diapason.app.tar.gz"
+          SIG="$APP_TGZ.sig"
+          for f in "$DMG" "$APP_TGZ"; do
+            [[ -s "$f" ]] || { echo "::error::manque $f"; exit 1; }
+          done
+          if [[ "$DRY_RUN" != "true" && ! -s "$SIG" ]]; then
+            echo "::error::pas de signature $SIG — la clé n'a pas été prise en compte"
+            exit 1
+          fi
+          cp "$DMG" "$APP_TGZ" "$OUT/"
+          [[ -s "$SIG" ]] && cp "$SIG" "$OUT/"
+          # latest.json, à la main : tauri-action le faisait, mais il n'y a
+          # plus de runner GitHub pour le lancer. Le champ `platforms` est
+          # indexé par `<os>-<arch>` de la cible Tauri.
+          python3 - "$OUT" "$VERSION" "$TAG" "$RELEASES_REPO" <<'PY'
+          import datetime, json, os, sys
+          out, version, tag, repo = sys.argv[1:]
+          sig_path = os.path.join(out, "Diapason.app.tar.gz.sig")
+          signature = open(sig_path).read().strip() if os.path.exists(sig_path) else ""
+          manifest = {
+            "version": version,
+            "notes": f"Diapason {version}",
+            "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "platforms": {
+                "darwin-aarch64": {
+                    "signature": signature,
+                    "url": f"https://github.com/{repo}/releases/download/{tag}/Diapason.app.tar.gz",
+                }
+            },
+          }
+          json.dump(manifest, open(os.path.join(out, "latest.json"), "w"), indent=2)
+          print(json.dumps(manifest, indent=2))
+          PY
+          ls -la "$OUT"
+          {
+            echo "### macOS ${VERSION} (${TAG})"
+            echo '```'
+            (cd "$OUT" && shasum -a 256 ./*)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Garder la release comme artefact (dry run)
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diapason-macos-release-${{ steps.version.outputs.version }}
+          path: dist/release/*
+          if-no-files-found: error
+
+      - name: Publier la release ${{ steps.version.outputs.tag }}
+        if: env.DRY_RUN != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$RELEASES_REPO" \
+              --title "Diapason ${VERSION}" \
+              --notes "Diapason ${VERSION} pour macOS (Apple Silicon). Télécharge le .dmg ; l'app installe le reste au premier lancement." \
+              --latest
+          fi
+          gh release upload "$TAG" dist/release/* --repo "$RELEASES_REPO" --clobber
+          echo "Publié : https://github.com/${RELEASES_REPO}/releases/tag/${TAG}"
+
+      - name: Pointer le canal desktop-latest sur cette version
+        if: env.DRY_RUN != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # C'est ce `latest.json` que l'app installée interroge toutes les
+          # 30 minutes (tauri.conf.json → plugins.updater.endpoints).
+          if ! gh release view desktop-latest --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            gh release create desktop-latest --repo "$RELEASES_REPO" \
+              --prerelease \
+              --title "Desktop Auto-Update Channel" \
+              --notes "Canal de mise à jour de l'app de bureau : miroir du dernier \`desktop-v*\` stable. Télécharge l'app depuis la dernière release stable, pas ici."
+          fi
+          gh release upload desktop-latest dist/release/latest.json --repo "$RELEASES_REPO" --clobber
+          echo "desktop-latest → ${TAG}"
 
   # Remove stale artifacts from the desktop-edge rolling pre-release so that
   # only the current build's files are available for download. (The stable
