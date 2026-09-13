@@ -190,7 +190,9 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
           value={texte}
           onChange={(e) => setTexte(e.target.value)}
           placeholder="Séance du… — ce qui est acquis, ce qui résiste, la prochaine chose à essayer."
-          className="flex-1 min-h-[220px] w-full resize-none px-4 py-3 text-[13px] leading-relaxed outline-none bg-transparent"
+          // 13 px figés : « c'est petit et j'ai du mal à comprendre » (13 septembre
+          // 2026). 1rem suit le réglage Taille du texte, et le zoom fait le reste.
+          className="flex-1 min-h-[220px] w-full resize-none px-4 py-3 text-base leading-relaxed outline-none bg-transparent"
           style={{ color: 'var(--color-text)' }}
         />
 

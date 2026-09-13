@@ -18,6 +18,8 @@ import {
   Search,
   Brain,
   RefreshCw,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import {
   useAppStore,
@@ -44,6 +46,7 @@ import {
   type ServerConfigSnippet,
 } from '../lib/api';
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/miseAJour';
+import { ZOOM_MAX, ZOOM_MIN, normaliserZoom, zoomEnPourcent, zoomSuivant } from '../lib/zoom';
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 import { useTranslation } from '../i18n/useTranslation';
@@ -613,6 +616,47 @@ export function SettingsPage() {
                 <option value="large">{t('settings.fontSize.large')}</option>
               </select>
             </SettingRow>
+            {/* Le zoom agrandit TOUT, pixels compris — la taille du texte
+                ci-dessus ne touche que les unités relatives. Réservé à l'app
+                de bureau : un navigateur a déjà le sien (⌘ +). */}
+            {isTauri() && (
+              <SettingRow label={t('settings.zoom.label')} description={t('settings.zoom.hint')}>
+                <div className="flex items-center gap-1">
+                  {(['moins', 'plus'] as const).map((sens, i) => {
+                    const zoom = normaliserZoom(settings.zoom);
+                    const bloque = sens === 'moins' ? zoom <= ZOOM_MIN : zoom >= ZOOM_MAX;
+                    const bouton = (
+                      <button
+                        key={sens}
+                        type="button"
+                        onClick={() => { updateSettings({ zoom: zoomSuivant(zoom, sens) }); showSaved(); }}
+                        disabled={bloque}
+                        aria-label={sens === 'moins' ? t('settings.zoom.out') : t('settings.zoom.in')}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                        style={{
+                          background: 'var(--color-bg-secondary)',
+                          color: 'var(--color-text)',
+                          border: '1px solid var(--color-border)',
+                        }}
+                      >
+                        {sens === 'moins' ? <Minus size={14} /> : <Plus size={14} />}
+                      </button>
+                    );
+                    return i === 0 ? (
+                      [bouton, (
+                        <span
+                          key="valeur"
+                          className="w-14 text-center text-sm tabular-nums"
+                          style={{ color: 'var(--color-text)' }}
+                        >
+                          {zoomEnPourcent(zoom)}
+                        </span>
+                      )]
+                    ) : bouton;
+                  })}
+                </div>
+              </SettingRow>
+            )}
           </Section>
 
           {/* Connection */}

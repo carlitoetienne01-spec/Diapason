@@ -16,6 +16,7 @@ import { MeshHost } from './components/MeshHost';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
+import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -84,6 +85,7 @@ export default function App() {
   const setServerInfo = useAppStore((s) => s.setServerInfo);
   const setSavings = useAppStore((s) => s.setSavings);
   const settings = useAppStore((s) => s.settings);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
 
@@ -187,9 +189,28 @@ export default function App() {
 
   const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
 
+  // Le zoom de l'interface — appliqué au webview, donc à TOUT, pixels
+  // compris (voir lib/zoom.ts). Hors de l'app de bureau, le navigateur a le
+  // sien ; on ne fait rien.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const zoom = normaliserZoom(settings.zoom);
+    import('@tauri-apps/api/webview')
+      .then(({ getCurrentWebview }) => getCurrentWebview().setZoom(zoom))
+      .catch(() => {});
+  }, [settings.zoom]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Le zoom passe AVANT la garde de saisie : c'est en écrivant qu'on a
+      // besoin de mieux voir, et aucun éditeur n'utilise ⌘ +, ⌘ −, ⌘ 0.
+      const sens = raccourciZoom(e);
+      if (sens && isTauri()) {
+        e.preventDefault();
+        updateSettings({ zoom: zoomSuivant(normaliserZoom(useAppStore.getState().settings.zoom), sens) });
+        return;
+      }
       // Ne jamais confisquer un raccourci à quelqu'un qui écrit. Cmd+I est
       // l'italique de toute zone de texte : sans cette garde, il ouvrait le
       // panneau système et l'italique natif ne marchait nulle part dans une
@@ -206,7 +227,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [commandPaletteOpen, setCommandPaletteOpen, toggleSystemPanel]);
+  }, [commandPaletteOpen, setCommandPaletteOpen, toggleSystemPanel, updateSettings]);
 
 
   if (!setupDone) {

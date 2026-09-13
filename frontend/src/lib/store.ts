@@ -131,6 +131,9 @@ interface Settings {
   // frontend. It is kept in sessionStorage, never persisted in this object.
   apiKey: string;
   fontSize: 'small' | 'default' | 'large';
+  /** Le zoom du webview (1 = 100 %), voir lib/zoom.ts. Il agrandit tout,
+   *  pixels compris — là où fontSize ne touche que les unités relatives. */
+  zoom: number;
   defaultModel: string;
   defaultAgent: string;
   temperature: number;
@@ -145,6 +148,7 @@ function loadSettings(): Settings {
     apiUrl: '',
     apiKey: '',
     fontSize: 'default',
+    zoom: 1,
     defaultModel: '',
     defaultAgent: '',
     temperature: 0.7,
