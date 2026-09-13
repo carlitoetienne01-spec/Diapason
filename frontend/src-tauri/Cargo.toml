@@ -1,6 +1,6 @@
 [package]
 name = "diapason-desktop"
-version = "1.0.0"
+version = "1.0.1"
 description = "Diapason Desktop — Native AI assistant with energy monitoring, trace debugging, and learning visualization"
 edition = "2021"
 license = "Apache-2.0"
