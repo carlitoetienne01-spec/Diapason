@@ -61,7 +61,7 @@
   "plugins": {
     "updater": {
       "active": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNzUzMzhEOEY2MjNEMDMKUldRRFBXS1BqVE4xSG8vK0lkUWN4WnZQYVIrbmc4RmpoOGlJWTBLTE15RlIya3JvQisvdUR3a0QK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4MTZBQUUwRTBDNzFBNkYKUldSdkdzZmc0S29XR0tsbVQzRUZMemdVK29BSVRKNzVWdzJIejNtUDBmbWE3SFBxZkJ3WFgxVmMK",
       "endpoints": [
         "https://github.com/carlitoetienne01-spec/Diapason/releases/download/desktop-latest/latest.json"
       ]

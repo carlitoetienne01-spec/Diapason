@@ -87,6 +87,25 @@ referenced via these GitHub Actions secrets:
 | `TAURI_SIGNING_PRIVATE_KEY` | Private key (PEM-formatted minisign) |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Passphrase for the private key |
 
+The current key pair (`minisign 1816AAE0E0C71A6F`) was generated on
+13 September 2026 with `tauri signer generate --ci` (no passphrase, so
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` stays empty). The private key lives
+**only** on Carlito's Mac, at `~/.diapason/updater/diapason.key` (mode
+600), and in the GitHub secret — nowhere in the repository. Back it up
+with the rest of `~/.diapason`: a lost private key means every installed
+app rejects future updates, and the only way out is a manual reinstall
+of a build carrying a new public key.
+
+The previous public key (`1E75338D8F623D03`) had no surviving private
+half — nothing could ever have been signed against it — which is why it
+was replaced rather than reused.
+
+To (re)load the secret from the local file:
+
+```bash
+gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.diapason/updater/diapason.key
+```
+
 The matching public key is baked into the app at
 `tauri.conf.json:plugins.updater.pubkey`. If you ever need to rotate
 the key, replace the public key in the JSON file *and* update both
