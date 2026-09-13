@@ -14,30 +14,28 @@ Diapason runs entirely on your hardware. Choose the interface that fits your wor
 The desktop app is a native window for the Diapason chat UI. All inference and backend
 processing happens on your local machine — the app connects to the backend you start locally.
 
-!!! info "Backend required"
-    Start the backend before opening the desktop app. The quickstart script handles everything:
-    ```bash
-    git clone https://github.com/carlitoetienne01-spec/Diapason.git && cd Diapason
-    ./scripts/quickstart.sh
-    ```
+### macOS (Apple Silicon)
 
-### Release status
+**[Download the latest release](https://github.com/carlitoetienne01-spec/Diapason/releases/latest)** —
+the `Diapason_<version>_aarch64.dmg` file. Open it, drag Diapason to
+Applications, launch it.
 
-!!! warning "No desktop installer is published yet"
-    The repository's GitHub Releases list is currently empty. The historical
-    `desktop-v1.0.2` links returned 404 and have been removed. macOS has a
-    locally validated build; Windows and Linux still require native-machine
-    validation before any installer can be offered professionally.
+The app installs everything else itself on first launch — `uv`, Ollama, the
+Python backend and the native extension — with a progress screen and no
+terminal. Details: [premier-lancement.md](premier-lancement.md) (French).
+Once installed, new versions show up in the sidebar with a one-click
+**Installer** button.
 
-The release workflow is prepared for `.dmg`, Windows installer, `.deb`, `.rpm`
-and AppImage outputs. Hosted release jobs remain skipped until
-`RUNNERS_GITHUB=true` is restored and signing is configured.
+!!! note "Apple Silicon only, for now"
+    Releases are built on a single Apple Silicon Mac. There is no Intel
+    build and no Windows or Linux installer yet; the workflow is prepared
+    for them but nothing is published.
 
-### macOS local build: "app is damaged" fix
+### "Diapason is damaged and can't be opened"
 
-macOS Gatekeeper quarantines apps downloaded from the internet that aren't notarized
-by Apple. If you see **"Diapason is damaged and can't be opened"**, run this in
-Terminal to clear the quarantine flag:
+The release is not yet notarized by Apple (no Developer account), so macOS
+Gatekeeper quarantines the downloaded app. If you see that message, run this
+once in Terminal to clear the quarantine flag:
 
 ```bash
 xattr -cr /Applications/Diapason.app
@@ -63,7 +61,8 @@ The desktop app provides:
 - **Telemetry dashboard** — token throughput, latency, and cost comparison vs. cloud models
 - **System tray** — quick access without keeping a terminal open
 
-The backend (Ollama, Python API server, inference) runs separately on your machine.
+The backend (Ollama, Python API server, inference) runs on your machine, installed
+by the app itself on first launch.
 
 ### Build from source
 
