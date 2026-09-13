@@ -507,7 +507,7 @@ export interface SuccesPhotoPile {
   coverPhotoId: string;
   tint: string;
   count: number;
-  /** La couverture d'abord, puis les plus récentes — au plus trois. */
+  /** La couverture d'abord, puis les premières de l'ordre — au plus trois. */
   apercus: SuccesPhoto[];
   createdAtMs: number;
   updatedAtMs: number;

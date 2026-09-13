@@ -6,15 +6,18 @@ import {
   boiteDe,
   bornerZoom,
   cadreDepuisCoins,
+  celluleLaPlusProche,
   chargeUtile,
   composerCadres,
   deRecadrerAnnotations,
+  debuterGlisserPhoto,
   deplacerVers,
   dimensionsReduites,
   dispositionPile,
   distanceCirculaire,
   estGlisserDePhoto,
   facteurMolette,
+  finirGlisserPhoto,
   idAnnotation,
   indexSuivant,
   libelleTaille,
@@ -344,6 +347,27 @@ describe('estGlisserDePhoto', () => {
     expect(estGlisserDePhoto(['text/x-diapason-photo'])).toBe(true);
     expect(estGlisserDePhoto(['Files'])).toBe(false);
     expect(estGlisserDePhoto(null)).toBe(false);
+  });
+
+  it('se fie au drapeau quand le moteur ne liste pas le type', () => {
+    debuterGlisserPhoto();
+    expect(estGlisserDePhoto(['text/plain'])).toBe(true);
+    finirGlisserPhoto();
+    expect(estGlisserDePhoto(['text/plain'])).toBe(false);
+  });
+});
+
+describe('celluleLaPlusProche', () => {
+  const rects: Array<[string, { left: number; top: number; width: number; height: number }]> = [
+    ['a', { left: 0, top: 0, width: 100, height: 100 }],
+    ['b', { left: 120, top: 0, width: 100, height: 100 }],
+    ['c', { left: 0, top: 120, width: 100, height: 100 }],
+  ];
+  it('trouve la case sous le point, et la plus proche dans un interstice', () => {
+    expect(celluleLaPlusProche(rects, 50, 50)).toBe('a');
+    expect(celluleLaPlusProche(rects, 112, 40)).toBe('b');
+    expect(celluleLaPlusProche(rects, 30, 111)).toBe('c');
+    expect(celluleLaPlusProche([], 10, 10)).toBeNull();
   });
 });
 

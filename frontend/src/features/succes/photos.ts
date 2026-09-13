@@ -245,9 +245,45 @@ export function deplacerVers(ids: string[], source: string, cible: string): stri
   return suite;
 }
 
+// Le glisser interne se signale AUSSI par un drapeau de module : pendant un
+// `dragover`, WebKit ne garantit pas que `dataTransfer.types` liste un type
+// personnalisé, et le rangement ne marchait alors qu'une fois sur deux
+// selon le moteur (constaté le 13 septembre 2026 dans l'app de bureau).
+let glisserPhotoEnCours = false;
+export function debuterGlisserPhoto(): void {
+  glisserPhotoEnCours = true;
+}
+export function finirGlisserPhoto(): void {
+  glisserPhotoEnCours = false;
+}
+
 /** Vrai si le glisser en cours transporte une photo de la grille, pas des fichiers. */
 export function estGlisserDePhoto(types: ArrayLike<string> | null | undefined): boolean {
+  if (glisserPhotoEnCours) return true;
   return !!types && Array.from(types).includes(TYPE_GLISSER_PHOTO);
+}
+
+/**
+ * La case la plus proche d'un point — pour qu'un dépôt entre deux cases, ou
+ * un peu à côté, tombe quand même sur une photo au lieu de ne rien faire.
+ */
+export function celluleLaPlusProche(
+  rects: Iterable<[string, { left: number; top: number; width: number; height: number }]>,
+  x: number,
+  y: number,
+): string | null {
+  let meilleure: string | null = null;
+  let distance = Infinity;
+  for (const [id, r] of rects) {
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const d = (cx - x) ** 2 + (cy - y) ** 2;
+    if (d < distance) {
+      distance = d;
+      meilleure = id;
+    }
+  }
+  return meilleure;
 }
 
 // ── Le zoom en plein cadre ─────────────────────────────────────────────

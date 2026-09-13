@@ -344,12 +344,14 @@ class SuccesPhotosStore(SuccesFinancesStore):
     def _photos_de_pile(
         self, conn: sqlite3.Connection, pile_id: str, *, limite: int | None = None
     ) -> list[sqlite3.Row]:
-        # La position d'abord — celle qu'on a rangée à la main — puis la plus
-        # récente. Une photo jamais rangée vaut 0 ; une photo ajoutée après un
-        # rangement prend `min - 1` et passe devant, comme avant.
+        # La position d'abord — celle qu'on a rangée à la main — puis l'ordre
+        # d'arrivée. Une photo ajoutée prend `max + 1` et se met À LA FIN :
+        # demandé le 13 septembre 2026, « ça doit garder ma préférence et les
+        # images récentes doivent s'ajouter à la fin ». Avant, la nouvelle
+        # passait devant et décalait tout ce qu'on avait rangé.
         sql = (
             "SELECT * FROM succes_photos WHERE pile_id=? AND deleted_at_ms IS NULL "
-            "ORDER BY position ASC, created_at_ms DESC, id DESC"
+            "ORDER BY position ASC, created_at_ms ASC, id ASC"
         )
         if limite is not None:
             sql += f" LIMIT {int(limite)}"
@@ -361,7 +363,7 @@ class SuccesPhotosStore(SuccesFinancesStore):
             "AND deleted_at_ms IS NULL",
             (row["id"],),
         ).fetchone()["n"]
-        # La couverture d'abord, puis les plus récentes : ce sont les trois
+        # La couverture d'abord, puis les premières de l'ordre : ce sont les trois
         # photos visibles sur la pile fermée.
         apercus: list[sqlite3.Row] = []
         cover_id = row["cover_photo_id"]
@@ -600,7 +602,7 @@ class SuccesPhotosStore(SuccesFinancesStore):
             file_path.write_bytes(contenu)
             thumb_path.write_bytes(apercu)
             position = conn.execute(
-                "SELECT COALESCE(MIN(position), 1) - 1 AS p FROM succes_photos "
+                "SELECT COALESCE(MAX(position), -1) + 1 AS p FROM succes_photos "
                 "WHERE pile_id=? AND deleted_at_ms IS NULL",
                 (pile_id,),
             ).fetchone()["p"]

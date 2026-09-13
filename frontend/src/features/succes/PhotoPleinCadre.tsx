@@ -368,7 +368,10 @@ export function PhotoPleinCadre({
       if (e.key === 'Escape') {
         e.stopPropagation();
         if (dansChamp) cible.blur();
-        else if (choixNote) setChoixNote(false);
+        else if (choixNote || texteLu) {
+          setChoixNote(false);
+          setTexteLu(false);
+        }
         else if (mode !== 'vue') {
           setMode('vue');
           poserDessin(null);
@@ -532,6 +535,11 @@ export function PhotoPleinCadre({
   };
 
   const ouvrirChoixNote = async () => {
+    if (choixNote) {
+      setChoixNote(false);
+      return;
+    }
+    setTexteLu(false);
     setChoixNote(true);
     if (notes === null) {
       try {
@@ -581,7 +589,17 @@ export function PhotoPleinCadre({
       aria-label={photo.caption || photo.fileName}
       className="fixed inset-0 z-[60] flex flex-col outline-none"
       style={{ background: 'rgba(0,0,0,0.94)' }}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        // Un clic hors d'un panneau (texte lu, choix de note) le referme.
+        // Ils ne se fermaient que par leur bouton ou Échap : « je clique
+        // n'importe où pour fermer et ça refuse » (13 septembre 2026).
+        const cible = e.target as HTMLElement;
+        if ((choixNote || texteLu) && !cible.closest('[data-panneau]')) {
+          setChoixNote(false);
+          setTexteLu(false);
+        }
+      }}
     >
       {/* ── En-tête ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -646,12 +664,17 @@ export function PhotoPleinCadre({
           <Bouton titre={diaporama ? 'Arrêter le diaporama (Espace)' : 'Diaporama (Espace)'} onClick={() => setDiaporama((d) => !d)} actif={diaporama} disabled={total < 2}>
             {diaporama ? <Pause size={16} /> : <Play size={16} />}
           </Bouton>
-          <Bouton titre="Mettre dans une note" onClick={() => void ouvrirChoixNote()} actif={choixNote} disabled={occupe}>
-            <NotebookPen size={16} />
-          </Bouton>
-          <Bouton titre={photo.ocrText ? 'Texte lu dans la photo' : 'Aucun texte lu'} onClick={() => setTexteLu((t) => !t)} actif={texteLu} disabled={!photo.ocrText}>
-            <FileText size={16} />
-          </Bouton>
+          {/* Les deux boutons portent le marqueur des panneaux : le clic qui
+              ouvre l'un ne doit pas être pris pour un clic « ailleurs » qui
+              le refermerait aussitôt. */}
+          <span data-panneau="boutons" className="contents">
+            <Bouton titre="Mettre dans une note" onClick={() => void ouvrirChoixNote()} actif={choixNote} disabled={occupe}>
+              <NotebookPen size={16} />
+            </Bouton>
+            <Bouton titre={photo.ocrText ? 'Texte lu dans la photo' : 'Aucun texte lu'} onClick={() => { setChoixNote(false); setTexteLu((t) => !t); }} actif={texteLu} disabled={!photo.ocrText}>
+              <FileText size={16} />
+            </Bouton>
+          </span>
           {pile && (
             <Bouton titre={estCouverture ? 'Déjà la couverture' : 'Mettre en couverture de la pile'} onClick={() => void mettreEnCouverture()} disabled={estCouverture || occupe} couleur={estCouverture ? '#ffd166' : undefined}>
               <Star size={16} />
@@ -826,14 +849,14 @@ export function PhotoPleinCadre({
         )}
 
         {texteLu && photo.ocrText && (
-          <div className="absolute right-4 top-3 z-30 max-w-sm max-h-[70%] overflow-y-auto rounded-xl p-3 text-xs whitespace-pre-wrap" style={{ background: 'rgba(0,0,0,0.85)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <div data-panneau="texte-lu" className="absolute right-4 top-3 z-30 max-w-sm max-h-[70%] overflow-y-auto rounded-xl p-3 text-xs whitespace-pre-wrap" style={{ background: 'rgba(0,0,0,0.85)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.15)' }}>
             <div className="mb-1 font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>Texte lu par Vision</div>
             {photo.ocrText}
           </div>
         )}
 
         {choixNote && (
-          <div className="absolute right-4 top-3 z-30 w-80 max-h-[70%] overflow-y-auto rounded-xl p-2 text-sm" style={{ background: 'rgba(0,0,0,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <div data-panneau="note" className="absolute right-4 top-3 z-30 w-80 max-h-[70%] overflow-y-auto rounded-xl p-2 text-sm" style={{ background: 'rgba(0,0,0,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
             <div className="px-2 py-1 text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Mettre cette photo à la fin de…</div>
             {notes === null ? (
               <div className="px-2 py-3"><Loader2 size={14} className="animate-spin" /></div>

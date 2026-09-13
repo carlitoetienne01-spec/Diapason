@@ -56,9 +56,12 @@ import {
 import { PhotoPleinCadre } from './PhotoPleinCadre';
 import {
   TYPE_GLISSER_PHOTO,
+  celluleLaPlusProche,
+  debuterGlisserPhoto,
   deplacerVers,
   dispositionPile,
   estGlisserDePhoto,
+  finirGlisserPhoto,
   nomFichierPdf,
   teinteAvecAlpha,
 } from './photos';
@@ -302,6 +305,8 @@ export function PilesPhotos({
 
   const deposer = (pileId: string | null) => (e: DragEvent) => {
     e.preventDefault();
+    // Sinon le pop-up, qui accepte aussi les dépôts, rangerait une seconde fois.
+    e.stopPropagation();
     setSurvolee(null);
     const fichiers = fichiersImages(e.dataTransfer);
     if (fichiers.length === 0) {
@@ -319,6 +324,7 @@ export function PilesPhotos({
 
   const enSurvol = (cle: string | null) => (e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (survolee !== cle) setSurvolee(cle);
   };
 
@@ -385,6 +391,21 @@ export function PilesPhotos({
                 maxHeight: 'min(88vh, 860px)',
               }}
               onClick={(e) => e.stopPropagation()}
+              // Un dépôt n'importe où dans le pop-up (pas sur une pile
+              // précise) est accepté : les photos attendent qu'on choisisse
+              // leur pile. Avant, lâcher entre deux piles ne faisait rien.
+              onDragOver={(e) => {
+                if (estGlisserDePhoto(e.dataTransfer.types)) return;
+                e.preventDefault();
+              }}
+              onDrop={(e) => {
+                if (estGlisserDePhoto(e.dataTransfer.types)) return;
+                e.preventDefault();
+                const fichiers = fichiersImages(e.dataTransfer);
+                if (fichiers.length === 0) return;
+                setFichiersEnAttente(fichiers);
+                if (piles.length === 0) setNouvelleEnCours(true);
+              }}
             >
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0 flex-wrap" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -944,6 +965,8 @@ function PileOuverte({
   /** Les photos cochées (⇧-clic, ⌘-clic ou la case), pour agir sur plusieurs. */
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [action, setAction] = useState<{ nom: string; fait: number; total: number } | null>(null);
+  /** La puce d'une autre pile survolée par une photo qu'on tient. */
+  const [puceCible, setPuceCible] = useState<string | null>(null);
   const cellules = useRef<Map<string, HTMLElement>>(new Map());
   const entree = useRef<HTMLInputElement>(null);
   const boite = useRef<HTMLDivElement>(null);
@@ -1299,11 +1322,45 @@ function PileOuverte({
                   onClick={() => {
                     if (!active) onChoisir(p.id);
                   }}
+                  // Une photo tenue au curseur, lâchée sur la puce d'une autre
+                  // pile, y déménage. C'est le geste qu'on fait spontanément
+                  // — « glisser la photo dans Git Hub » — et il ne faisait
+                  // rien (13 septembre 2026).
+                  onDragOver={(e) => {
+                    if (active || !estGlisserDePhoto(e.dataTransfer.types)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (puceCible !== p.id) setPuceCible(p.id);
+                  }}
+                  onDragLeave={() => setPuceCible((c) => (c === p.id ? null : c))}
+                  onDrop={(e) => {
+                    if (active || !estGlisserDePhoto(e.dataTransfer.types)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setPuceCible(null);
+                    const source = e.dataTransfer.getData(TYPE_GLISSER_PHOTO) || tenue;
+                    setTenue(null);
+                    setCible(null);
+                    finirGlisserPhoto();
+                    if (!source) return;
+                    // Toute la sélection suit si la photo tenue en fait partie.
+                    const ids = selection.has(source) ? [...selection] : [source];
+                    const cibles = (photos ?? []).filter((ph) => ids.includes(ph.id));
+                    void surChacune(
+                      'Déplacement',
+                      cibles,
+                      (ph) => updateSuccesPhoto(ph.id, { pileId: p.id }),
+                      cibles.length === 1 ? `Déplacée vers « ${p.name} »` : `Déplacées vers « ${p.name} »`,
+                    );
+                  }}
                   className="text-xs rounded-full px-3 py-1 cursor-pointer max-w-[200px] truncate"
                   style={{
-                    background: active ? 'var(--color-accent)' : 'var(--color-surface)',
-                    color: active ? '#fff' : 'var(--color-text-secondary)',
-                    border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    background: active ? 'var(--color-accent)' : puceCible === p.id ? 'var(--color-bg-secondary)' : 'var(--color-surface)',
+                    color: active ? '#fff' : puceCible === p.id ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    border: `1px solid ${active || puceCible === p.id ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    transform: puceCible === p.id ? 'scale(1.08)' : undefined,
+                    transition: 'transform 120ms ease, border-color 120ms ease',
                   }}
                   aria-pressed={active}
                 >
@@ -1480,6 +1537,36 @@ function PileOuverte({
             <div
               className="grid gap-2.5"
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+              // Lâcher ENTRE deux cases, ou un peu à côté, tombait dans le
+              // vide : rien ne se passait, et « des fois ça marche, des fois
+              // non ». La grille entière accepte le dépôt, sur la case la
+              // plus proche du curseur.
+              onDragOver={(e) => {
+                if (!estGlisserDePhoto(e.dataTransfer.types)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const proche = celluleLaPlusProche(
+                  [...cellules.current].map(([id, el]) => [id, el.getBoundingClientRect()] as const),
+                  e.clientX,
+                  e.clientY,
+                );
+                if (proche && proche !== cible) setCible(proche);
+              }}
+              onDrop={(e) => {
+                if (!estGlisserDePhoto(e.dataTransfer.types)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const source = e.dataTransfer.getData(TYPE_GLISSER_PHOTO) || tenue;
+                const proche = celluleLaPlusProche(
+                  [...cellules.current].map(([id, el]) => [id, el.getBoundingClientRect()] as const),
+                  e.clientX,
+                  e.clientY,
+                );
+                setTenue(null);
+                setCible(null);
+                finirGlisserPhoto();
+                if (source && proche) void ranger(source, proche);
+              }}
             >
               {visibles.map((photo, index) => {
                 // Toutes les cases ont la même taille, carrées : demandé le
@@ -1488,19 +1575,31 @@ function PileOuverte({
                 const estTenue = tenue === photo.id;
                 const estCible = cible === photo.id && tenue !== photo.id;
                 const cochee = selection.has(photo.id);
+                const activer = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+                  // ⇧ ou ⌘ : on coche au lieu d'ouvrir ; une sélection
+                  // en cours se poursuit au simple clic.
+                  if (e.shiftKey || e.metaKey || e.ctrlKey || selection.size > 0) basculer(photo.id);
+                  else setCourante(index);
+                };
                 return (
-                  <button
+                  // Un <div role="button"> et non un <button> : WebKit (la
+                  // fenêtre Tauri) ne démarre pas de glisser HTML5 sur un
+                  // bouton — ça marchait dans le navigateur de test, pas
+                  // dans l'app (13 septembre 2026).
+                  <div
                     key={photo.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     ref={(el) => {
                       if (el) cellules.current.set(photo.id, el);
                       else cellules.current.delete(photo.id);
                     }}
-                    onClick={(e) => {
-                      // ⇧ ou ⌘ : on coche au lieu d'ouvrir ; une sélection
-                      // en cours se poursuit au simple clic.
-                      if (e.shiftKey || e.metaKey || e.ctrlKey || selection.size > 0) basculer(photo.id);
-                      else setCourante(index);
+                    onClick={activer}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activer(e);
+                      }
                     }}
                     aria-pressed={cochee}
                     aria-label={photo.caption || photo.fileName}
@@ -1510,12 +1609,20 @@ function PileOuverte({
                     // deviné.
                     draggable={!filtreTache}
                     onDragStart={(e) => {
-                      if (filtreTache) return;
+                      if (filtreTache) {
+                        e.preventDefault();
+                        return;
+                      }
                       e.dataTransfer.setData(TYPE_GLISSER_PHOTO, photo.id);
+                      // `text/plain` en plus : le seul type que tout moteur
+                      // accepte de poser au départ d'un glisser.
+                      e.dataTransfer.setData('text/plain', `diapason-photo:${photo.id}`);
                       e.dataTransfer.effectAllowed = 'move';
+                      debuterGlisserPhoto();
                       setTenue(photo.id);
                     }}
                     onDragEnd={() => {
+                      finirGlisserPhoto();
                       setTenue(null);
                       setCible(null);
                     }}
@@ -1533,10 +1640,15 @@ function PileOuverte({
                       const source = e.dataTransfer.getData(TYPE_GLISSER_PHOTO) || tenue;
                       setTenue(null);
                       setCible(null);
+                      finirGlisserPhoto();
                       if (source) void ranger(source, photo.id);
                     }}
-                    className="relative rounded-lg overflow-hidden cursor-pointer group"
+                    className="relative rounded-lg overflow-hidden cursor-pointer group outline-none focus-visible:ring-2"
                     style={{
+                      // `-webkit-user-drag` n'est pas dans les types React ;
+                      // WebKit le lit quand même, et c'est lui qui fait
+                      // glisser l'élément entier plutôt que son image.
+                      ...({ WebkitUserDrag: filtreTache ? 'none' : 'element' } as Record<string, string>),
                       aspectRatio: '1',
                       background: 'var(--color-surface)',
                       border: `2px solid ${estCible || cochee ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -1577,7 +1689,7 @@ function PileOuverte({
                         {photo.caption}
                       </span>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -1590,7 +1702,10 @@ function PileOuverte({
             {pile.count !== visibles.length ? ` sur ${pile.count}` : ''}
           </span>
           <span>
-            {filtreTache ? 'Clic pour agrandir' : 'Clic pour agrandir · glisse pour ranger · ⇧-clic pour sélectionner'} · Échap
+            {filtreTache
+              ? 'Clic pour agrandir · le rangement au curseur est désactivé pendant le filtre (« Tout voir » pour ranger)'
+              : 'Clic pour agrandir · glisse pour ranger, ou sur une puce pour changer de pile · ⇧-clic pour sélectionner'}{' '}
+            · Échap
           </span>
         </div>
       </div>

@@ -178,7 +178,7 @@ class TestLesPhotos:
         )
         assert photo["tint"] == "", "du texte libre n'entre jamais dans un style"
 
-    def test_la_pile_montre_la_couverture_puis_les_plus_recentes(
+    def test_la_pile_montre_la_couverture_puis_les_premieres(
         self, magasin: SuccesPhotosStore, projet: dict
     ) -> None:
         pile = magasin.create_photo_pile(projet["id"], "Python")
@@ -202,18 +202,20 @@ class TestLesPhotos:
             ids.append(photo["id"])
         liste = magasin.list_photo_piles(projet["id"])["piles"][0]
         assert liste["count"] == 5
-        assert [a["id"] for a in liste["apercus"]] == [ids[4], ids[3], ids[2]]
+        # La pile fermée montre les trois premières de l'ordre — le même
+        # que la grille, celui qu'on a rangé.
+        assert [a["id"] for a in liste["apercus"]] == [ids[0], ids[1], ids[2]]
 
-        magasin.update_photo_pile(pile["id"], {"coverPhotoId": ids[0]})
+        magasin.update_photo_pile(pile["id"], {"coverPhotoId": ids[4]})
         liste = magasin.list_photo_piles(projet["id"])["piles"][0]
-        assert [a["id"] for a in liste["apercus"]] == [ids[0], ids[4], ids[3]]
-        assert liste["coverPhotoId"] == ids[0]
+        assert [a["id"] for a in liste["apercus"]] == [ids[4], ids[0], ids[1]]
+        assert liste["coverPhotoId"] == ids[4]
 
-        # La couverture supprimée : la pile retombe sur la plus récente.
-        magasin.delete_photo(ids[0])
+        # La couverture supprimée : la pile retombe sur la première.
+        magasin.delete_photo(ids[4])
         liste = magasin.list_photo_piles(projet["id"])["piles"][0]
         assert liste["coverPhotoId"] == ""
-        assert [a["id"] for a in liste["apercus"]] == [ids[4], ids[3], ids[2]]
+        assert [a["id"] for a in liste["apercus"]] == [ids[0], ids[1], ids[2]]
 
     def test_la_couverture_vient_de_la_pile_elle_meme(
         self, magasin: SuccesPhotosStore, projet: dict
@@ -416,12 +418,12 @@ class TestLeRangement:
             ids.append(photo["id"])
         return pile, ids
 
-    def test_sans_rangement_la_plus_recente_est_devant(
+    def test_sans_rangement_l_ordre_d_arrivee_tient(
         self, magasin: SuccesPhotosStore, projet: dict
     ) -> None:
         pile, ids = self._trois(magasin, projet)
-        # Chaque ajout prend `min - 1` : la dernière ajoutée est devant.
-        assert [p["id"] for p in magasin.list_photos(pile["id"])["photos"]] == ids[::-1]
+        # Chaque ajout prend `max + 1` : la dernière ajoutée est à la fin.
+        assert [p["id"] for p in magasin.list_photos(pile["id"])["photos"]] == ids
 
     def test_l_ordre_donne_s_applique_et_le_reste_suit(
         self, magasin: SuccesPhotosStore, projet: dict
@@ -436,17 +438,19 @@ class TestLeRangement:
         apercus = magasin.list_photo_piles(projet["id"])["piles"][0]["apercus"]
         assert [a["id"] for a in apercus] == [ids[0], ids[2], ids[1]]
 
-    def test_une_photo_ajoutee_apres_un_rangement_passe_devant(
+    def test_une_photo_ajoutee_apres_un_rangement_se_met_a_la_fin(
         self, magasin: SuccesPhotosStore, projet: dict
     ) -> None:
         pile, ids = self._trois(magasin, projet)
-        magasin.reorder_photos(pile["id"], [ids[0], ids[1], ids[2]])
+        magasin.reorder_photos(pile["id"], [ids[2], ids[0], ids[1]])
         nouvelle = magasin.add_photo(
             pile["id"], {"dataBase64": b64(JPEG), "thumbBase64": b64(JPEG)}
         )
-        assert nouvelle["position"] == -1
+        assert nouvelle["position"] == 3
         liste = [p["id"] for p in magasin.list_photos(pile["id"])["photos"]]
-        assert liste == [nouvelle["id"], ids[0], ids[1], ids[2]]
+        assert liste == [ids[2], ids[0], ids[1], nouvelle["id"]], (
+            "le rangement à la main tient ; la nouvelle arrive après"
+        )
 
     def test_une_photo_d_une_autre_pile_est_refusee(
         self, magasin: SuccesPhotosStore, projet: dict
@@ -619,10 +623,10 @@ class TestLaRetoucheEtLesAnnotations:
         magasin.set_photo_ocr(a["id"], "  TypeError: unsupported   operand type(s)  ")
         assert magasin.search_photos(projet["id"], "typeerror")[0]["id"] == a["id"]
         assert magasin.search_photos(projet["id"], "Décorateurs")[0]["id"] == b["id"]
-        # Dans l'ordre de la pile : b, ajoutée après, est devant.
+        # Dans l'ordre de la pile : a, ajoutée la première, est devant.
         assert [p["id"] for p in magasin.search_photos(projet["id"], "png")] == [
-            b["id"],
             a["id"],
+            b["id"],
         ], "chaque mot compte, dans le nom aussi"
         assert magasin.search_photos(projet["id"], "operand typeerror") == [
             magasin.search_photos(projet["id"], "typeerror")[0]
