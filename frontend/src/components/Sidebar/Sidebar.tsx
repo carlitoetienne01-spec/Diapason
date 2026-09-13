@@ -22,7 +22,6 @@ import {
   Wallet,
   Repeat2,
   NotebookPen,
-  Dices,
   Trophy,
   MonitorSmartphone,
   RefreshCw,
@@ -171,7 +170,6 @@ export function Sidebar() {
     { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
     { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
     { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
-    { path: '/loterie', icon: Dices, label: t('nav.loterie') },
   ];
 
   // Réglages is administration, not a workspace: its tabs are grouped by what

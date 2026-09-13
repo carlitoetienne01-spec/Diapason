@@ -53,9 +53,6 @@ const SuccesHabitsPage = lazy(() =>
 const SuccesFinancesPage = lazy(() =>
   import('./pages/SuccesFinancesPage').then((module) => ({ default: module.SuccesFinancesPage })),
 );
-const LoteriePage = lazy(() =>
-  import('./pages/LoteriePage').then((module) => ({ default: module.LoteriePage })),
-);
 const SuccesNotesPage = lazy(() =>
   import('./pages/SuccesNotesPage').then((module) => ({ default: module.SuccesNotesPage })),
 );
@@ -239,7 +236,6 @@ export default function App() {
             <Route path="succes/templates" element={<Navigate to="/succes/tasks" replace />} />
             <Route path="succes/year-review" element={<SuccesYearReviewPage />} />
             <Route path="succes/sync" element={<SuccesSyncPage />} />
-            <Route path="loterie" element={<LoteriePage />} />
             <Route path="devices" element={<DevicesPage />} />
           </Route>
         </Routes>

@@ -1085,14 +1085,6 @@ def include_all_routes(app) -> None:
     app.include_router(succes_router)
     app.include_router(mesh_router)
 
-    # La loterie (31/08/2026) : demandée pour savoir s'il existe des « chiffres
-    # fiables ». Le module répond non, et le DÉMONTRE — il moissonne
-    # l'historique, le confronte aux statistiques publiées par Loto-Québec,
-    # puis teste l'équité du tirage. Il ne recommande aucun numéro.
-    from diapason.loterie.routes import router as loterie_router  # noqa: PLC0415
-
-    app.include_router(loterie_router)
-
     # Le transfert de fichiers (Spatial Mesh, 25/08/2026) : routes à part,
     # session à part, seau de limitation à part.
     from diapason.mesh.files_routes import router as mesh_files_router

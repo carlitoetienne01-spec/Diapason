@@ -74,16 +74,6 @@ engine/cloud.py
 engine/ollama.py
 learning/spec_search/student_runner.py
 
-# loterie/moisson.py — ajouté le 31 août 2026, en connaissance de cause.
-#   Va chercher l'historique public des tirages de la Grande Vie sur une
-#   archive tierce, en HTTP simple. C'est un appel SORTANT dans un projet
-#   qui se veut local d'abord : il est donc déclaré ici, pas glissé.
-#   Ce qui part : rien. La requête est un GET sans paramètre personnel, sans
-#   témoin, sans identifiant — l'en-tête dit seulement « Diapason ». Aucune
-#   donnée de Carlito ne quitte la machine ; il n'entre que des numéros
-#   publics. Une seconde de repos entre deux pages, et la moisson est le
-#   seul point de tout ce module qui sorte sur le réseau.
-loterie/moisson.py
 mcp/transport.py
 mesh/beacon.py
 mesh/envoi_fichier.py

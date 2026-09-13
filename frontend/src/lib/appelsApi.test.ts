@@ -5,9 +5,9 @@
 // le chemin ne désigne plus rien, et WebKit rend son erreur la plus opaque —
 // « The string did not match the expected pattern. »
 //
-// Constaté le 1er septembre 2026 sur l'écran Loterie : l'erreur s'affichait et
-// « 0 tirage » avec, alors que la base en contenait mille trente. Rien dans les
-// tests ni dans le navigateur ne pouvait le montrer.
+// Constaté le 1er septembre 2026 sur un écran depuis retiré : l'erreur
+// s'affichait et « 0 » avec, alors que la base contenait mille trente lignes.
+// Rien dans les tests ni dans le navigateur ne pouvait le montrer.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
