@@ -449,3 +449,91 @@ export interface FinanceCsvImportSummary {
   skipped: number;
   errors: string[];
 }
+
+/** Une photo d'une pile, telle que le serveur la décrit. `thumb` est une URL de données JPEG. */
+export interface SuccesPhoto {
+  id: string;
+  pileId: string;
+  projectId: string;
+  fileName: string;
+  mime: string;
+  bytes: number;
+  width: number;
+  height: number;
+  /** `#rrggbb` extrait de l'image par le navigateur à l'import, ou vide. */
+  tint: string;
+  caption: string;
+  /** La tâche du projet vers laquelle la photo pointe, ou vide. */
+  taskId: string;
+  /** Le rang rangé à la main ; 0 si jamais rangée, négatif si ajoutée après. */
+  position: number;
+  /** Retouche non destructive : rotation (0/90/180/270) puis cadre, en fractions. */
+  rotation: number;
+  crop: SuccesCadre | null;
+  /** Le calque d'annotations, coordonnées en fractions de l'image retouchée. */
+  annotations: SuccesAnnotation[];
+  /** Le texte lu par Vision, ou vide. */
+  ocrText: string;
+  thumb: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+/** Un cadre de recadrage en fractions [0,1] de l'image (après rotation). */
+export interface SuccesCadre {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type SuccesAnnotationType = 'arrow' | 'rect' | 'ellipse' | 'text' | 'highlight' | 'pen';
+
+/** Une forme posée sur la photo ; `points` en fractions de l'image affichée. */
+export interface SuccesAnnotation {
+  id: string;
+  type: SuccesAnnotationType;
+  color: string;
+  points: Array<[number, number]>;
+  text?: string;
+  width: number;
+}
+
+/** Une catégorie de photos : la pile fermée, avec ses trois aperçus. */
+export interface SuccesPhotoPile {
+  id: string;
+  projectId: string;
+  name: string;
+  coverPhotoId: string;
+  tint: string;
+  count: number;
+  /** La couverture d'abord, puis les plus récentes — au plus trois. */
+  apercus: SuccesPhoto[];
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface SuccesPhotoPiles {
+  piles: SuccesPhotoPile[];
+  /** Combien de photos pointent vers chaque tâche du projet. */
+  parTache: Record<string, number>;
+}
+
+/** Ce que le navigateur prépare avant l'envoi : l'original et son aperçu. */
+export interface SuccesPhotoEnvoi {
+  fileName: string;
+  dataBase64: string;
+  thumbBase64: string;
+  width: number;
+  height: number;
+  tint: string;
+  caption?: string;
+  taskId?: string;
+}
+
+export interface SuccesPhotoContenu {
+  id: string;
+  mime: string;
+  fileName: string;
+  dataBase64: string;
+}

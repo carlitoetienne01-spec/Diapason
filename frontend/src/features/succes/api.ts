@@ -36,6 +36,13 @@ import type {
   SuccesStructureConfig,
   SuccesStructureInfo,
   SuccesTaskEdge,
+  SuccesAnnotation,
+  SuccesCadre,
+  SuccesPhoto,
+  SuccesPhotoContenu,
+  SuccesPhotoEnvoi,
+  SuccesPhotoPile,
+  SuccesPhotoPiles,
 } from './types';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -924,4 +931,138 @@ export async function importFinanceCsv(input: {
     { method: 'POST', body: JSON.stringify(input) },
   );
   return payload.summary;
+}
+
+// ── Piles de photos ──────────────────────────────────────────────────
+// Tout passe en JSON base64 : la fenêtre Tauri refuse les corps binaires.
+
+export async function listSuccesPhotoPiles(projectId: string): Promise<SuccesPhotoPiles> {
+  const payload = await request<SuccesPhotoPiles>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/photo-piles`,
+  );
+  return { piles: payload.piles, parTache: payload.parTache ?? {} };
+}
+
+export async function createSuccesPhotoPile(
+  projectId: string,
+  name: string,
+): Promise<SuccesPhotoPile> {
+  const payload = await request<{ pile: SuccesPhotoPile }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/photo-piles`,
+    { method: 'POST', body: JSON.stringify({ name }) },
+  );
+  return payload.pile;
+}
+
+export async function updateSuccesPhotoPile(
+  pileId: string,
+  patch: { name?: string; coverPhotoId?: string },
+): Promise<SuccesPhotoPile> {
+  const payload = await request<{ pile: SuccesPhotoPile }>(
+    `/v1/succes/photo-piles/${encodeURIComponent(pileId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.pile;
+}
+
+export async function deleteSuccesPhotoPile(pileId: string): Promise<number> {
+  const payload = await request<{ photos: number }>(
+    `/v1/succes/photo-piles/${encodeURIComponent(pileId)}`,
+    { method: 'DELETE', body: JSON.stringify({ confirmed: true }) },
+  );
+  return payload.photos;
+}
+
+export async function listSuccesPhotos(
+  pileId: string,
+): Promise<{ pile: SuccesPhotoPile; photos: SuccesPhoto[] }> {
+  return request(`/v1/succes/photo-piles/${encodeURIComponent(pileId)}/photos`);
+}
+
+export async function addSuccesPhoto(
+  pileId: string,
+  envoi: SuccesPhotoEnvoi,
+): Promise<SuccesPhoto> {
+  const payload = await request<{ photo: SuccesPhoto }>(
+    `/v1/succes/photo-piles/${encodeURIComponent(pileId)}/photos`,
+    { method: 'POST', body: JSON.stringify(envoi) },
+  );
+  return payload.photo;
+}
+
+/** Ranger les photos d'une pile dans cet ordre ; les absentes suivent. */
+export async function reorderSuccesPhotos(
+  pileId: string,
+  photoIds: string[],
+): Promise<SuccesPhoto[]> {
+  const payload = await request<{ photos: SuccesPhoto[] }>(
+    `/v1/succes/photo-piles/${encodeURIComponent(pileId)}/ordre`,
+    { method: 'PUT', body: JSON.stringify({ photoIds }) },
+  );
+  return payload.photos;
+}
+
+export async function getSuccesPhotoContenu(photoId: string): Promise<SuccesPhotoContenu> {
+  return request(`/v1/succes/photos/${encodeURIComponent(photoId)}/contenu`);
+}
+
+export interface SuccesPhotoPatch {
+  caption?: string;
+  taskId?: string;
+  pileId?: string;
+  rotation?: number;
+  crop?: SuccesCadre;
+  /** Effacer le cadre : un `crop: null` se perdrait dans le JSON. */
+  effacerCadre?: boolean;
+  annotations?: SuccesAnnotation[];
+  /** L'aperçu redessiné après une retouche, en JPEG base64. */
+  thumbBase64?: string;
+}
+
+export async function updateSuccesPhoto(
+  photoId: string,
+  patch: SuccesPhotoPatch,
+): Promise<SuccesPhoto> {
+  const payload = await request<{ photo: SuccesPhoto }>(
+    `/v1/succes/photos/${encodeURIComponent(photoId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  );
+  return payload.photo;
+}
+
+/** Lire le texte de la photo avec Vision et le garder (macOS seulement). */
+export async function ocrSuccesPhoto(photoId: string): Promise<SuccesPhoto> {
+  const payload = await request<{ photo: SuccesPhoto }>(
+    `/v1/succes/photos/${encodeURIComponent(photoId)}/ocr`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return payload.photo;
+}
+
+export async function rechercherSuccesPhotos(
+  projectId: string,
+  q: string,
+): Promise<Array<SuccesPhoto & { pileName: string }>> {
+  const payload = await request<{ photos: Array<SuccesPhoto & { pileName: string }> }>(
+    `/v1/succes/projects/${encodeURIComponent(projectId)}/photos/recherche?q=${encodeURIComponent(q)}`,
+  );
+  return payload.photos;
+}
+
+/** Écrire un export (PDF) à l'emplacement choisi dans le dialogue de l'app. */
+export async function exporterSuccesFichier(
+  path: string,
+  dataBase64: string,
+): Promise<{ path: string; bytes: number }> {
+  return request('/v1/succes/photos/exporter', {
+    method: 'POST',
+    body: JSON.stringify({ path, dataBase64 }),
+  });
+}
+
+export async function deleteSuccesPhoto(photoId: string): Promise<void> {
+  await request(`/v1/succes/photos/${encodeURIComponent(photoId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmed: true }),
+  });
 }

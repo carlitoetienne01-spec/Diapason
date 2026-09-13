@@ -43,6 +43,7 @@ import { MindMapView } from '../features/succes/MindMapView';
 import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
 import { CycleWheel } from '../features/succes/CycleWheel';
+import { PilesPhotos } from '../features/succes/PilesPhotos';
 import { StructureGlyph } from '../features/succes/StructureGlyph';
 import {
   progressionSequentielle,
@@ -639,6 +640,14 @@ export function SuccesProjectsPage() {
   // cours en stations de métro. On garde l'id, pas l'objet — après chaque
   // enregistrement, l'étape affichée se relit dans les tâches fraîches.
   const [etapeLigneId, setEtapeLigneId] = useState<string | null>(null);
+  // Les piles de photos : la tâche dont la Ligne veut voir les photos, et
+  // combien de photos pointent vers chaque tâche (pour le repère en Ligne).
+  const [photosDeTache, setPhotosDeTache] = useState<string | null>(null);
+  const [photosParTache, setPhotosParTache] = useState<Record<string, number>>({});
+  const surPhotosParTache = useCallback((parTache: Record<string, number>) => {
+    setPhotosParTache(parTache);
+  }, []);
+  const surTacheOuverte = useCallback(() => setPhotosDeTache(null), []);
   // La famille arbre (arbre, carte) garde un onglet « Édition » : la vue
   // spécialisée montre et crée, l'édition renomme et supprime.
   const [treeEditMode, setTreeEditMode] = useState(false);
@@ -966,7 +975,19 @@ export function SuccesProjectsPage() {
           </button>
 
           <header className="grid gap-5 sm:grid-cols-[200px_1fr] mb-7 items-start">
-            <ProjectFolderVisual color={selected.color || FALLBACK_COLOR} height="h-44" />
+            <div>
+              <ProjectFolderVisual color={selected.color || FALLBACK_COLOR} height="h-44" />
+              {/* Les photos, sous le dossier : une seule pile, toutes les
+                  catégories empilées derrière. Choix du 13 septembre 2026,
+                  contre une section pleine largeur avant l'arbre. */}
+              <PilesPhotos
+                projectId={selected.id}
+                tasks={projectTasks}
+                tacheAOuvrir={photosDeTache}
+                onTacheOuverte={surTacheOuverte}
+                onParTache={surPhotosParTache}
+              />
+            </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
@@ -1299,6 +1320,14 @@ export function SuccesProjectsPage() {
                 etape={etapeLigne}
                 tasks={projectTasks}
                 saving={saving}
+                verrous={verrous}
+                photosParTache={photosParTache}
+                onVoirPhotos={(taskId) => {
+                  // La Ligne se referme : la pile s'ouvre par-dessus la
+                  // fiche, pas par-dessus la Ligne.
+                  setEtapeLigneId(null);
+                  setPhotosDeTache(taskId);
+                }}
                 onClose={() => setEtapeLigneId(null)}
                 onNavigate={setEtapeLigneId}
                 onToggle={async (task) => {

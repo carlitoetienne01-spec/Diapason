@@ -18,7 +18,7 @@ from typing import Any, Mapping, Sequence
 
 from diapason.succes.continuity import QUOTE_CATEGORIES
 from diapason.succes.dates import normalize_time
-from diapason.succes.finances import SuccesFinancesStore
+from diapason.succes.photos import SuccesPhotosStore
 from diapason.succes.relay import normalize_relay_url, relay_post
 from diapason.succes.store import (
     MAX_SUBTASK_DEPTH,
@@ -152,7 +152,7 @@ def _clock_wins(timestamp_ms: int, op_id: str, current: sqlite3.Row | None) -> b
     return (timestamp_ms, op_id) > current_clock
 
 
-class SuccesSyncStore(SuccesFinancesStore):
+class SuccesSyncStore(SuccesPhotosStore):
     """Continuity store extended with authenticated operation replication."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:

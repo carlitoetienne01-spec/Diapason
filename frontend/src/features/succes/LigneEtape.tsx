@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,10 @@ interface Props {
    * le clic, au lieu de laisser partir une requête qui sera rejetée.
    */
   verrous?: Verrous;
+  /** Combien de photos du projet pointent vers chaque tâche. */
+  photosParTache?: Record<string, number>;
+  /** Ouvrir la pile de photos filtrée sur cette tâche. */
+  onVoirPhotos?: (taskId: string) => void;
   onClose: () => void;
   onNavigate: (etapeId: string) => void;
   onToggle: (task: SuccesTask) => Promise<void>;
@@ -98,6 +103,8 @@ export function LigneEtape({
   tasks,
   saving,
   verrous,
+  photosParTache,
+  onVoirPhotos,
   onClose,
   onNavigate,
   onToggle,
@@ -216,6 +223,22 @@ export function LigneEtape({
               style={{ color: 'var(--color-text-tertiary)' }}
             >
               {faites}/{stations.length} · cliquer déplie · double-clic édite
+              {/* Les photos liées à l'étape elle-même, pas à une station. */}
+              {onVoirPhotos && (photosParTache?.[etape.id] ?? 0) > 0 ? (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={() => onVoirPhotos(etape.id)}
+                    className="inline-flex items-center gap-0.5 cursor-pointer align-middle"
+                    style={{ color: 'var(--color-accent)' }}
+                    aria-label={`${photosParTache?.[etape.id]} photo(s) liée(s) à cette étape`}
+                  >
+                    <Camera size={11} />
+                    {photosParTache?.[etape.id]} photo(s)
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
           <button

@@ -998,5 +998,9 @@ register_finances_routes(
     resolved_date=_resolved_date,
 )
 
+from diapason.succes.photos_routes import register_photos_routes  # noqa: E402
+
+register_photos_routes(router, get_store=get_store, domain_error=_domain_error)
+
 
 __all__ = ["get_store", "router", "set_store_for_tests"]
