@@ -12,7 +12,6 @@ import { ModeGestesProvider } from './features/gestes/ModeGestesContexte';
 import { VoyantGestes } from './features/gestes/VoyantGestes';
 import { fetchModels, fetchServerInfo, fetchSavings, isTauri } from './lib/api';
 import { ConfirmProvider } from './components/ConfirmDialog';
-import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { MeshHost } from './components/MeshHost';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
@@ -220,7 +219,6 @@ export default function App() {
   return (
     <ModeGestesProvider>
     <ConfirmProvider>
-      <UpdateChecker />
       <Suspense fallback={<div role="status" className="p-6">Chargement…</div>}>
         <Routes>
           <Route element={<Layout />}>

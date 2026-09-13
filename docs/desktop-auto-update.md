@@ -30,8 +30,10 @@ If manifest.version > installed_version:
 ```
 
 The frontend code lives in
-[`frontend/src/components/Desktop/UpdateChecker.tsx`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/frontend/src/components/Desktop/UpdateChecker.tsx);
-the Tauri wiring is in
+[`frontend/src/components/Desktop/BandeauMiseAJour.tsx`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/frontend/src/components/Desktop/BandeauMiseAJour.tsx)
+(the banner, shown in the sidebar just above *Réglages* / *Parler*) and
+[`frontend/src/components/Desktop/miseAJour.ts`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/frontend/src/components/Desktop/miseAJour.ts)
+(the pure logic, unit-tested); the Tauri wiring is in
 [`frontend/src-tauri/tauri.conf.json`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/frontend/src-tauri/tauri.conf.json)
 under `plugins.updater`.
 
@@ -97,7 +99,11 @@ reinstall.
 For frontend development, set `VITE_DIAPASON_NO_UPDATER=1` in your
 shell before running `npm run tauri dev`. Vite injects any
 `VITE_`-prefixed env var into `import.meta.env`, and the
-`UpdateChecker.tsx` component honors it to skip the 30-minute poll.
+`miseAJour.ts` (`doitVerifier`) honors it to skip the 30-minute poll.
+
+To see the banner without a published release, set
+`localStorage['diapason-simuler-maj'] = '1.2.3'` in the browser preview
+(ignored inside the real desktop app).
 
 ```bash
 export VITE_DIAPASON_NO_UPDATER=1

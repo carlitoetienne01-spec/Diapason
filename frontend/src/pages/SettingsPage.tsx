@@ -43,7 +43,7 @@ import {
   type InferenceSource,
   type ServerConfigSnippet,
 } from '../lib/api';
-import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/UpdateChecker';
+import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/miseAJour';
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 import { useTranslation } from '../i18n/useTranslation';

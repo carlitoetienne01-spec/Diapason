@@ -1107,6 +1107,13 @@ export const MESSAGES = {
     'update.installed': 'Update installed.',
     'update.relaunch': 'Relaunch now',
     'update.restartManually': 'Please restart the application manually',
+    'update.sidebar.title': 'New version {version}',
+    'update.sidebar.install': 'Install',
+    'update.sidebar.installing': 'Installing… {progress}%',
+    'update.sidebar.ready': 'Version {version} is installed',
+    'update.sidebar.relaunch': 'Restart',
+    'update.sidebar.dismiss': 'Not now',
+    'update.sidebar.failed': 'Update failed',
   },
 
   fr: {
@@ -2199,5 +2206,12 @@ export const MESSAGES = {
     'update.installed': 'Mise à jour installée.',
     'update.relaunch': 'Relancer maintenant',
     'update.restartManually': 'Veuillez redémarrer l’application manuellement',
+    'update.sidebar.title': 'Nouvelle version {version}',
+    'update.sidebar.install': 'Installer',
+    'update.sidebar.installing': 'Installation… {progress} %',
+    'update.sidebar.ready': 'Version {version} installée',
+    'update.sidebar.relaunch': 'Redémarrer',
+    'update.sidebar.dismiss': 'Pas maintenant',
+    'update.sidebar.failed': 'La mise à jour a échoué',
   },
 } as const;

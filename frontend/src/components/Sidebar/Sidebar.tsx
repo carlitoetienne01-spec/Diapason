@@ -31,6 +31,7 @@ import {
 import { ConversationList } from './ConversationList';
 import { GlassNav } from './GlassNav';
 import { TalkButton } from '../TalkButton';
+import { BandeauMiseAJour } from '../Desktop/BandeauMiseAJour';
 import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
 import { useTranslation } from '../../i18n/useTranslation';
 
@@ -380,6 +381,11 @@ export function Sidebar() {
               </div>
             </>
           )}
+
+          {/* Une nouvelle version se signale ici, juste au-dessus du pied de
+              page, dans les couleurs de la barre — et non plus en
+              surimpression en haut de la fenêtre. Rien à installer : rien. */}
+          <BandeauMiseAJour />
 
           {/* Réglages left, Parler to its right — one quiet footer so neither
               floats over the workspace. Talk stays reachable while the
