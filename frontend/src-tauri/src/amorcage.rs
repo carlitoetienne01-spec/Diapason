@@ -85,13 +85,14 @@ fn home() -> PathBuf {
 }
 
 /// Le dossier d'installation — le même que celui que `lib.rs` sonde dans
-/// `installed_project_root`, pour que ce qu'on y pose soit retrouvé.
+/// `installed_project_root`, pour que ce qu'on y pose soit retrouvé. Seul
+/// `DIAPASON_HOME` est lu ici : les noms d'avant la migration ne vivent que
+/// dans le code de compatibilité de `lib.rs`, et le contrôle d'identité du
+/// projet refuse qu'ils s'étendent (CI rouge le 13 septembre 2026).
 pub fn dossier_installation() -> PathBuf {
-    for nom in ["DIAPASON_HOME", "OPENJARVIS_HOME", "JARVIS_HOME"] {
-        if let Ok(v) = std::env::var(nom) {
-            if !v.trim().is_empty() {
-                return PathBuf::from(v);
-            }
+    if let Ok(v) = std::env::var("DIAPASON_HOME") {
+        if !v.trim().is_empty() {
+            return PathBuf::from(v);
         }
     }
     #[cfg(target_os = "windows")]
