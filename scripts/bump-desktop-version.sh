@@ -46,11 +46,49 @@ sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" "${FRONTEND_DIR}/src-
 rm -f "${FRONTEND_DIR}/src-tauri/Cargo.toml.bak"
 echo "Updated frontend/src-tauri/Cargo.toml -> ${VERSION}"
 
+# 4. Ce que le contrôle d'identité compare aussi — sans quoi un bump suivi
+#    d'un tag mettait la CI en rouge (« version mismatch », 13 septembre
+#    2026) : le paquet Python, le verrou npm (généré, mais versionné), la
+#    constante du contrôle lui-même, et le verrou Cargo de l'app.
+RACINE="$(cd "${FRONTEND_DIR}/.." && pwd)"
+# (python3 plutôt que sed : la première occurrence seulement, et le sed de
+#  macOS ne connaît pas l'adresse « 0,/re/ » de GNU.)
+python3 - "${RACINE}/pyproject.toml" "${VERSION}" <<'PY'
+import re, sys
+chemin, version = sys.argv[1:]
+texte = open(chemin).read()
+texte, n = re.subn(r'^version = "[^"]*"', f'version = "{version}"', texte, count=1, flags=re.M)
+assert n == 1, "pas de ligne version dans pyproject.toml"
+open(chemin, "w").write(texte)
+PY
+echo "Updated pyproject.toml -> ${VERSION}"
+
+node -e "
+  const fs = require('fs');
+  const path = '${FRONTEND_DIR}/package-lock.json';
+  const lock = JSON.parse(fs.readFileSync(path, 'utf8'));
+  lock.version = '${VERSION}';
+  if (lock.packages && lock.packages['']) lock.packages[''].version = '${VERSION}';
+  fs.writeFileSync(path, JSON.stringify(lock, null, 2) + '\n');
+"
+echo "Updated frontend/package-lock.json -> ${VERSION}"
+
+sed -i.bak -E "s/^EXPECTED_VERSION = \".*\"/EXPECTED_VERSION = \"${VERSION}\"/" "${RACINE}/scripts/check_project_identity.py"
+rm -f "${RACINE}/scripts/check_project_identity.py.bak"
+echo "Updated scripts/check_project_identity.py -> ${VERSION}"
+
+# Le verrou Cargo porte la version de la caisse : sans ce pas, le premier
+# `cargo build` de la CI le réécrit, et un `--locked` refuserait.
+(cd "${FRONTEND_DIR}/src-tauri" && cargo update -q --offline -p diapason-desktop 2>/dev/null || cargo update -q -p diapason-desktop)
+echo "Updated frontend/src-tauri/Cargo.lock -> ${VERSION}"
+
+"${RACINE}/.venv/bin/python" "${RACINE}/scripts/check_project_identity.py"
+
 echo ""
-echo "Version bumped to ${VERSION} in all 3 files."
+echo "Version bumped to ${VERSION} everywhere the identity check looks."
 echo ""
 echo "Next steps:"
-echo "  git add frontend/package.json frontend/src-tauri/tauri.conf.json frontend/src-tauri/Cargo.toml"
-echo "  git commit -m \"chore(desktop): bump version to ${VERSION}\""
-echo "  git tag desktop-v${VERSION}"
-echo "  git push origin main --tags"
+echo "  git add -A pyproject.toml scripts/check_project_identity.py frontend/package.json frontend/package-lock.json frontend/src-tauri/tauri.conf.json frontend/src-tauri/Cargo.toml frontend/src-tauri/Cargo.lock"
+echo "  git commit -m \"Version ${VERSION} de l'app de bureau\""
+echo "  git push origin main"
+echo "  git tag desktop-v${VERSION} && git push origin desktop-v${VERSION}"
