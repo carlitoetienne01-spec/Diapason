@@ -65,6 +65,10 @@
     --radius-full: 9999px;
 
     --sidebar-width: 260px;
+    /* Ce que la barre latérale occupe à gauche de l'espace de travail : 0 quand
+       elle est fermée ou flottante (mobile), sa largeur quand elle est en
+       flux. Posé par Sidebar.tsx via data-barre, lu par .voile-modal. */
+    --decalage-barre: 0px;
     --chat-max-width: 720px;
 
     --font-display: 'Chakra Petch', 'Space Grotesk', system-ui, sans-serif;
@@ -411,6 +415,24 @@
 
   /* Text size preference. Everything else is sized in rem, so moving the
      root size scales the interface with the text rather than around it. */
+  /* Le voile d'une fenêtre modale : tout l'espace de TRAVAIL, pas toute la
+     fenêtre. Un `fixed inset-0` se centrait sur la fenêtre entière, et la
+     barre latérale (260 px, au-dessus par son z-index) mangeait le bord
+     gauche du pop-up : « il se met plus du côté gauche et il y a des choses
+     qui se cachent » (13 septembre 2026). */
+  .voile-modal {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--decalage-barre, 0px);
+  }
+  @media (min-width: 768px) {
+    :root[data-barre='ouverte'] {
+      --decalage-barre: var(--sidebar-width);
+    }
+  }
+
   html { font-size: 16px; }
   html[data-font-size='small'] { font-size: 14px; }
   html[data-font-size='large'] { font-size: 18px; }

@@ -66,7 +66,7 @@ function ConfirmModal({
       aria-labelledby="confirm-dialog-title"
       aria-describedby={options.description ? 'confirm-dialog-desc' : undefined}
       onClick={() => onResolve(false)}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-5 backdrop-blur-md"
+      className="voile-modal z-[100] flex items-center justify-center p-5 backdrop-blur-md"
       style={{ background: 'color-mix(in srgb, #000 55%, transparent)' }}
     >
       <div

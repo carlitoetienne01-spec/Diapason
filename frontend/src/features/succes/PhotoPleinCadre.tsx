@@ -587,7 +587,7 @@ export function PhotoPleinCadre({
       role="dialog"
       aria-modal="true"
       aria-label={photo.caption || photo.fileName}
-      className="fixed inset-0 z-[60] flex flex-col outline-none"
+      className="voile-modal z-[60] flex flex-col outline-none"
       style={{ background: 'rgba(0,0,0,0.94)' }}
       onClick={(e) => {
         e.stopPropagation();

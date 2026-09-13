@@ -861,7 +861,7 @@ function LaunchWizard({
   // ── Step 1: Template Selection ──
   if (wizard.step === 1) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="voile-modal z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
         <div className="rounded-xl p-6 w-full max-w-lg" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>{t('agents.wizard.chooseTemplate')}</h2>
@@ -915,7 +915,7 @@ function LaunchWizard({
 
   // ── Step 2: Configuration ──
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+    <div className="voile-modal z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">

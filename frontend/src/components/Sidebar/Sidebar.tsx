@@ -64,6 +64,13 @@ export function Sidebar() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
 
+  // Les fenêtres modales se centrent dans ce qui reste à droite de la barre
+  // (`.voile-modal`, index.css) : elles doivent savoir si elle est ouverte.
+  useEffect(() => {
+    if (sidebarOpen) document.documentElement.dataset.barre = 'ouverte';
+    else delete document.documentElement.dataset.barre;
+  }, [sidebarOpen]);
+
   // Each terminal screen is its own stop, so the shortcut walks all seven
   // looks rather than treating Terminal as a single destination.
   const THEME_CYCLE: { theme: ThemeMode; skin?: TerminalSkin }[] = [

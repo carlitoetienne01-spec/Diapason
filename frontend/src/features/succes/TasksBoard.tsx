@@ -279,7 +279,7 @@ function DayTasksModal({
       aria-modal="true"
       aria-label={formatDayTitle(date)}
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-5 backdrop-blur-md"
+      className="voile-modal z-50 flex items-center justify-center p-5 backdrop-blur-md"
       style={{ background: 'color-mix(in srgb, #000 55%, transparent)' }}
     >
       <div
@@ -516,7 +516,7 @@ function DropChoiceDialog({
       aria-modal="true"
       aria-label="Déplacer la tâche récurrente"
       onClick={onCancel}
-      className="fixed inset-0 z-50 flex items-center justify-center p-5 backdrop-blur-md"
+      className="voile-modal z-50 flex items-center justify-center p-5 backdrop-blur-md"
       style={{ background: 'color-mix(in srgb, #000 55%, transparent)' }}
     >
       <div

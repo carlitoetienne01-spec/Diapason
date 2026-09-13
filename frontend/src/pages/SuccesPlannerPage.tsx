@@ -470,7 +470,7 @@ export function SuccesPlannerPage() {
                 aria-modal="true"
                 aria-labelledby="quote-modal-title"
                 onClick={() => void closeQuoteModal()}
-                className="fixed inset-0 z-[100] flex items-center justify-center p-5 backdrop-blur-md"
+                className="voile-modal z-[100] flex items-center justify-center p-5 backdrop-blur-md"
                 style={{ background: 'color-mix(in srgb, #000 55%, transparent)' }}
               >
                 <div

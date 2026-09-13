@@ -208,7 +208,7 @@ function LaunchWizard({
   }
 
   const overlayStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0, zIndex: 50,
+    position: 'fixed', top: 0, right: 0, bottom: 0, left: 'var(--decalage-barre, 0px)', zIndex: 50,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'rgba(0,0,0,0.6)',
   };
