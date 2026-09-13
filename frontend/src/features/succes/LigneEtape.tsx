@@ -14,6 +14,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Lock,
   NotebookPen,
   Pencil,
   Plus,
@@ -32,11 +33,19 @@ import {
   stationCourante,
   type ClicPrecedent,
 } from './ligne';
+import type { Verrous } from './verrou';
 
 interface Props {
   etape: SuccesTask;
   tasks: SuccesTask[];
   saving: boolean;
+  /**
+   * Les stations encore fermées, chacune avec le titre de celle qui les
+   * débloque. Vide quand le projet n'a pas la progression séquentielle.
+   * Le magasin refuse aussi de les cocher : ceci ne fait que le dire avant
+   * le clic, au lieu de laisser partir une requête qui sera rejetée.
+   */
+  verrous?: Verrous;
   onClose: () => void;
   onNavigate: (etapeId: string) => void;
   onToggle: (task: SuccesTask) => Promise<void>;
@@ -88,6 +97,7 @@ export function LigneEtape({
   etape,
   tasks,
   saving,
+  verrous,
   onClose,
   onNavigate,
   onToggle,
@@ -271,7 +281,11 @@ export function LigneEtape({
             <div className="flex flex-col gap-1">
               {stations.map(({ tache, profondeur }) => {
                 const courante = tache.id === couranteId;
-                const ouverte = deplie === tache.id || enEdition === tache.id;
+                const verrouille = verrous?.get(tache.id);
+                // Une station fermée ne se déplie pas : son contenu EST ce
+                // qu'on vient chercher trop tôt.
+                const ouverte =
+                  !verrouille && (deplie === tache.id || enEdition === tache.id);
                 return (
                   <div
                     key={tache.id}
@@ -282,12 +296,23 @@ export function LigneEtape({
                     {/* la station */}
                     <button
                       type="button"
-                      disabled={saving}
+                      disabled={saving || !!verrouille}
                       onClick={(e) => {
                         e.stopPropagation();
                         void onToggle(tache);
                       }}
-                      aria-label={tache.done ? 'Rouvrir' : 'Terminer'}
+                      aria-label={
+                        verrouille
+                          ? `Verrouillée — termine d'abord « ${verrouille} »`
+                          : tache.done
+                            ? 'Rouvrir'
+                            : 'Terminer'
+                      }
+                      title={
+                        verrouille
+                          ? `Termine d'abord « ${verrouille} »`
+                          : undefined
+                      }
                       className="relative z-10 mt-[5px] shrink-0 rounded-full cursor-pointer flex items-center justify-center"
                       style={{
                         // Élargies de 14 à 18 px pour loger le crochet. Les
@@ -323,6 +348,12 @@ export function LigneEtape({
                           strokeWidth={3.5}
                           style={{ color: 'var(--color-bg)' }}
                         />
+                      ) : verrouille ? (
+                        <Lock
+                          size={profondeur ? 8 : 10}
+                          strokeWidth={2.5}
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        />
                       ) : null}
                     </button>
                     {/* le contenu */}
@@ -332,7 +363,7 @@ export function LigneEtape({
                         background: ouverte ? 'var(--color-bg-tertiary)' : 'transparent',
                       }}
                       onClick={() => {
-                        if (enEdition === tache.id) return;
+                        if (verrouille || enEdition === tache.id) return;
                         if (clicEnAttente.current)
                           window.clearTimeout(clicEnAttente.current);
                         const maintenant = performance.now();
@@ -352,7 +383,7 @@ export function LigneEtape({
                       }}
                       onDoubleClick={() => {
                         // Filet natif — quand le moteur veut bien l'envoyer.
-                        if (enEdition === tache.id) return;
+                        if (verrouille || enEdition === tache.id) return;
                         if (clicEnAttente.current) {
                           window.clearTimeout(clicEnAttente.current);
                           clicEnAttente.current = null;

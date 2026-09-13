@@ -5,11 +5,13 @@ import {
   ChevronRight,
   CirclePlus,
   Loader2,
+  Lock,
   Plus,
   Trash2,
 } from 'lucide-react';
 
 import type { SuccesTask } from './types';
+import type { Verrous } from './verrou';
 
 export type ProjectTreeNode = SuccesTask & { children: ProjectTreeNode[] };
 
@@ -25,11 +27,18 @@ export function buildProjectTaskTree(tasks: SuccesTask[]): ProjectTreeNode[] {
     if (parent) parent.children.push(node);
     else roots.push(node);
   }
+  // Le rang d'abord, et RIEN d'autre. L'ancien tri rangeait par titre puis
+  // poussait les tâches faites en fin de fratrie : dans une généalogie où
+  // l'ordre EST l'information, la première branche d'un parcours se
+  // retrouvait au milieu de l'alphabet, et cocher une station la déplaçait
+  // sous les yeux. Le titre ne sert plus que de départage à rang égal, pour
+  // que deux tâches créées dans la même seconde ne dansent pas d'un rendu à
+  // l'autre.
   const sortNodes = (items: ProjectTreeNode[]) => {
-    items.sort((a, b) => {
-      if (a.done !== b.done) return a.done ? 1 : -1;
-      return a.title.localeCompare(b.title, 'fr');
-    });
+    items.sort(
+      (a, b) =>
+        (a.order ?? 0) - (b.order ?? 0) || a.title.localeCompare(b.title, 'fr'),
+    );
     for (const item of items) sortNodes(item.children);
   };
   sortNodes(roots);
@@ -39,6 +48,8 @@ export function buildProjectTaskTree(tasks: SuccesTask[]): ProjectTreeNode[] {
 type Props = {
   tasks: SuccesTask[];
   saving?: boolean;
+  /** Les branches encore fermées, avec ce qui les débloque. Voir `verrou.ts`. */
+  verrous?: Verrous;
   onCreate: (input: { title: string; notes?: string; parentTaskId?: string }) => Promise<void>;
   onToggle: (task: SuccesTask) => Promise<void>;
   onUpdate: (task: SuccesTask, patch: { title?: string; notes?: string }) => Promise<void>;
@@ -48,6 +59,7 @@ type Props = {
 export function ProjectTreeView({
   tasks,
   saving = false,
+  verrous,
   onCreate,
   onToggle,
   onUpdate,
@@ -134,6 +146,7 @@ export function ProjectTreeView({
               depth={0}
               expanded={isExpanded(node.id)}
               saving={saving}
+              verrous={verrous}
               onToggleExpand={() =>
                 setExpanded((prev) => ({ ...prev, [node.id]: !isExpanded(node.id) }))
               }
@@ -156,6 +169,7 @@ function TreeNodeRow({
   depth,
   expanded,
   saving,
+  verrous,
   onToggleExpand,
   isExpanded,
   setExpanded,
@@ -168,6 +182,7 @@ function TreeNodeRow({
   depth: number;
   expanded: boolean;
   saving: boolean;
+  verrous: Verrous | undefined;
   onToggleExpand: () => void;
   isExpanded: (id: string) => boolean;
   setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
@@ -183,6 +198,11 @@ function TreeNodeRow({
   const [childTitle, setChildTitle] = useState('');
   const [childNotes, setChildNotes] = useState('');
   const hasChildren = node.children.length > 0;
+  // Le mode « Éditer les branches » n'est PAS un contournement du verrou : le
+  // magasin refuserait la coche de toute façon, et un bouton qui déclenche un
+  // refus est pire qu'un bouton éteint. Le texte, lui, reste visible ici —
+  // c'est l'atelier du projet, on doit pouvoir réparer ce qu'on a écrit.
+  const verrouillePar = verrous?.get(node.id);
 
   const saveEdit = async () => {
     const nextTitle = title.trim();
@@ -234,16 +254,27 @@ function TreeNodeRow({
           <button
             type="button"
             onClick={() => void onToggle(node)}
-            disabled={saving}
-            className="mt-0.5 size-5 rounded-full border flex items-center justify-center cursor-pointer shrink-0"
+            disabled={saving || Boolean(verrouillePar)}
+            className="mt-0.5 size-5 rounded-full border flex items-center justify-center cursor-pointer shrink-0 disabled:cursor-default"
             style={{
               borderColor: node.done ? 'var(--color-accent)' : 'var(--color-border)',
               background: node.done ? 'var(--color-accent)' : 'transparent',
               color: '#fff',
             }}
-            aria-label={node.done ? 'Rouvrir' : 'Terminer'}
+            aria-label={
+              verrouillePar
+                ? `Verrouillée — termine d'abord « ${verrouillePar} »`
+                : node.done
+                  ? 'Rouvrir'
+                  : 'Terminer'
+            }
+            title={verrouillePar ? `Termine d'abord « ${verrouillePar} »` : undefined}
           >
-            {node.done ? <Check size={12} /> : null}
+            {node.done ? (
+              <Check size={12} />
+            ) : verrouillePar ? (
+              <Lock size={10} style={{ color: 'var(--color-text-tertiary)' }} />
+            ) : null}
           </button>
           <div className="flex-1 min-w-0 grid gap-1">
             {editing ? (
@@ -393,6 +424,7 @@ function TreeNodeRow({
             depth={depth + 1}
             expanded={isExpanded(child.id)}
             saving={saving}
+            verrous={verrous}
             onToggleExpand={() =>
               setExpanded((prev) => ({ ...prev, [child.id]: !isExpanded(child.id) }))
             }

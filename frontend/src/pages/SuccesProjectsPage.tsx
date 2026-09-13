@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useState, type PointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type PointerEvent,
+} from 'react';
 import {
   BriefcaseBusiness,
   ChevronLeft,
@@ -37,6 +44,10 @@ import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
 import { CycleWheel } from '../features/succes/CycleWheel';
 import { StructureGlyph } from '../features/succes/StructureGlyph';
+import {
+  progressionSequentielle,
+  tachesVerrouillees,
+} from '../features/succes/verrou';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import type {
@@ -67,6 +78,11 @@ const emptyDraft = {
   endDate: '',
   structure: 'flat' as SuccesProjectStructure,
   kitId: '',
+  /** Arbre et carte : les tâches d'une fratrie s'ouvrent une par une. */
+  sequential: false,
+  /** Les étages nommés du projet, conservés tels quels pour ne pas les perdre
+   *  en enregistrant un simple changement de nom. */
+  levelLabels: [] as string[],
 };
 
 /** Les cinq formes + la liste, plus l'entrée Kit. Le même catalogue vit côté
@@ -756,7 +772,8 @@ export function SuccesProjectsPage() {
         draft.startDate ||
         draft.endDate ||
         draft.structure !== 'flat' ||
-        draft.kitId,
+        draft.kitId ||
+        draft.sequential,
     );
     if (dirty || editingId) {
       const confirmed = await confirm({
@@ -781,6 +798,10 @@ export function SuccesProjectsPage() {
       endDate: project.endDate,
       structure: project.structure || 'flat',
       kitId: '',
+      sequential: project.structureConfig?.sequential === true,
+      // Sans cette reprise, enregistrer le formulaire écraserait les étages
+      // nommés du projet : `structureConfig` part en entier, pas en morceaux.
+      levelLabels: project.structureConfig?.levelLabels ?? [],
     });
     setEditingId(project.id);
     setShowForm(true);
@@ -799,6 +820,15 @@ export function SuccesProjectsPage() {
           startDate: draft.startDate,
           endDate: draft.endDate,
           structure: draft.structure,
+          structureConfig:
+            draft.structure === 'tree' || draft.structure === 'mindmap'
+              ? {
+                  ...(draft.levelLabels.length
+                    ? { levelLabels: draft.levelLabels }
+                    : {}),
+                  ...(draft.sequential ? { sequential: true } : {}),
+                }
+              : undefined,
         });
       } else {
         await createSuccesProject({
@@ -811,6 +841,13 @@ export function SuccesProjectsPage() {
           // Avec un kit, la forme vient du kit (un kit pipeline crée un
           // pipeline) : on n'envoie pas celle du brouillon par-dessus.
           structure: draft.kitId ? undefined : draft.structure,
+          // Le kit apporte sa propre configuration : la nôtre l'écraserait.
+          structureConfig:
+            !draft.kitId &&
+            draft.sequential &&
+            (draft.structure === 'tree' || draft.structure === 'mindmap')
+              ? { sequential: true }
+              : undefined,
           kitId: draft.kitId || undefined,
         });
       }
@@ -902,6 +939,17 @@ export function SuccesProjectsPage() {
       ? selected.structureConfig.stages
       : ['À faire', 'En cours', 'Fait'];
   const levelLabels: string[] = selected?.structureConfig?.levelLabels ?? [];
+  // Les branches encore fermées, recalculées à chaque coche. Le magasin
+  // refuse déjà de les terminer ; ceci ne fait que le dire AVANT le clic,
+  // au lieu d'envoyer une requête dont on connaît la réponse.
+  const sequentiel = progressionSequentielle(
+    selected?.structure,
+    selected?.structureConfig,
+  );
+  const verrous = useMemo(
+    () => tachesVerrouillees(projectTasks, sequentiel),
+    [projectTasks, sequentiel],
+  );
 
   if (selected) {
     return (
@@ -1002,6 +1050,7 @@ export function SuccesProjectsPage() {
               }}
               tasks={projectTasks}
               levelLabels={levelLabels}
+              verrous={verrous}
               saving={saving}
               onToggle={async (task) => {
                 await refreshAfter(
@@ -1136,6 +1185,7 @@ export function SuccesProjectsPage() {
             <ProjectTreeView
               tasks={projectTasks}
               saving={saving}
+              verrous={verrous}
               onCreate={async ({ title, notes, parentTaskId }) => {
                 await refreshAfter(
                   () =>
@@ -1472,6 +1522,46 @@ export function SuccesProjectsPage() {
                     })}
                   </div>
                 )}
+                {/* Demandé le 6 septembre 2026 : « si je n'ai pas accédé à la
+                    tâche avant, je ne peux pas accéder aux autres ». Le
+                    réglage vit sur le PROJET et pas dans les préférences de
+                    l'application : un parcours d'apprentissage se fait pas à
+                    pas, un projet de déménagement non. Et il s'éteint — un
+                    verrou dont on ne peut pas sortir enferme au premier faux
+                    pas, par exemple en attendant une réponse qui ne vient
+                    pas. */}
+                {(draft.structure === 'tree' || draft.structure === 'mindmap') &&
+                  !draft.kitId && (
+                    <label
+                      className="flex items-start gap-3 rounded-xl px-3 py-2.5 cursor-pointer"
+                      style={{ border: '1px solid var(--color-border)' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.sequential}
+                        onChange={(event) =>
+                          setDraft({ ...draft, sequential: event.target.checked })
+                        }
+                        className="mt-0.5 cursor-pointer"
+                      />
+                      <span className="grid gap-0.5">
+                        <span
+                          className="text-sm font-medium"
+                          style={{ color: 'var(--color-text)' }}
+                        >
+                          Progression séquentielle
+                        </span>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        >
+                          Dans une même liste, une tâche attend que celle qui la
+                          précède soit cochée ; son contenu reste fermé jusque-là.
+                          Les branches racines, elles, restent toutes ouvertes.
+                        </span>
+                      </span>
+                    </label>
+                  )}
               </div>
             )}
             <div className="grid sm:grid-cols-2 gap-3">

@@ -554,3 +554,105 @@ class TestLeTourDeCycleEstComplet:
         rejeu = store.reset_cycle(projet["id"], op_id="tour-1")
         assert rejeu["reopened"] == 0
         assert store.get_task(tache["id"])["done"] is True
+
+
+# ── l'arbre séquentiel : une tâche attend celle qui la précède ────────────
+
+
+class TestLArbreSequentiel:
+    """Demandé le 6 septembre 2026 : « si je n'ai pas accédé à la tâche avant,
+    je ne peux pas accéder aux autres ». Le verrou vit dans le magasin : une
+    restriction que seule l'interface applique se lève en rejouant la requête,
+    et l'outil `succes_tasks` coche par le même chemin.
+    """
+
+    def _arbre(self, store: SuccesSyncStore) -> tuple[dict, dict, dict, dict, dict]:
+        projet = store.create_project(
+            {
+                "name": "Parcours",
+                "structure": "tree",
+                "structureConfig": {"sequential": True},
+            }
+        )
+        pid = projet["id"]
+        etape = store.create_task({"title": "Étape 1", "projectId": pid})
+        autre = store.create_task({"title": "Étape 2", "projectId": pid})
+        un = store.create_task(
+            {"title": "Un", "projectId": pid, "parentTaskId": etape["id"]}
+        )
+        deux = store.create_task(
+            {"title": "Deux", "projectId": pid, "parentTaskId": etape["id"]}
+        )
+        return projet, etape, autre, un, deux
+
+    def test_le_reglage_survit_a_l_aller_retour(self, store: SuccesSyncStore) -> None:
+        projet, *_ = self._arbre(store)
+        relu = store.get_project(projet["id"])
+        assert relu["structureConfig"]["sequential"] is True, (
+            "un réglage effacé à la relecture déverrouillerait le projet en silence"
+        )
+
+    def test_une_tache_attend_celle_qui_la_precede(
+        self, store: SuccesSyncStore
+    ) -> None:
+        _, _, _, un, deux = self._arbre(store)
+        with pytest.raises(SuccesError, match="Un"):
+            store.set_task_done(deux["id"], True)
+        store.set_task_done(un["id"], True)
+        assert store.set_task_done(deux["id"], True)["done"] is True
+
+    def test_les_racines_ne_se_verrouillent_jamais(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Sinon une tâche administrative en attente gèlerait tout le reste."""
+        _, _, autre, _, _ = self._arbre(store)
+        assert store.set_task_done(autre["id"], True)["done"] is True
+
+    def test_le_verrou_se_propage_aux_stations_du_dessous(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Sans propagation, un cours fermé s'atteindrait par ses enfants."""
+        projet, _, _, _, deux = self._arbre(store)
+        station = store.create_task(
+            {
+                "title": "Station",
+                "projectId": projet["id"],
+                "parentTaskId": deux["id"],
+            }
+        )
+        with pytest.raises(SuccesError, match="Un"):
+            store.set_task_done(station["id"], True)
+
+    def test_decocher_reste_toujours_permis(self, store: SuccesSyncStore) -> None:
+        """Un verrou dont on ne peut pas sortir enferme au premier faux pas."""
+        _, _, _, un, deux = self._arbre(store)
+        store.set_task_done(un["id"], True)
+        store.set_task_done(deux["id"], True)
+        store.set_task_done(un["id"], False)
+        assert store.set_task_done(deux["id"], False)["done"] is False
+
+    def test_sans_le_reglage_rien_n_est_verrouille(
+        self, store: SuccesSyncStore
+    ) -> None:
+        projet = store.create_project({"name": "Libre", "structure": "tree"})
+        racine = store.create_task({"title": "R", "projectId": projet["id"]})
+        store.create_task(
+            {"title": "X", "projectId": projet["id"], "parentTaskId": racine["id"]}
+        )
+        y = store.create_task(
+            {"title": "Y", "projectId": projet["id"], "parentTaskId": racine["id"]}
+        )
+        assert store.set_task_done(y["id"], True)["done"] is True
+
+    def test_le_reglage_ne_survit_pas_a_un_changement_de_forme(
+        self, store: SuccesSyncStore
+    ) -> None:
+        """Un réglage mort se re-synchroniserait à jamais chez le client mobile."""
+        projet, *_ = self._arbre(store)
+        mute = store.update_project(projet["id"], {"structure": "network"})
+        assert "sequential" not in mute["structureConfig"]
+
+    def test_une_valeur_qui_n_est_pas_un_booleen_est_refusee(self) -> None:
+        """« "false" » vaut vrai pour bool() : ce serait un verrou surprise."""
+        with pytest.raises(SuccesError, match="sequential"):
+            normalize_structure_config("tree", {"sequential": "oui"})

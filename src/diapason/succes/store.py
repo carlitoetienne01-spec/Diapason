@@ -424,6 +424,70 @@ class SuccesStore:
         )
         return structure, stages_of(structure, config)
 
+    def _verrou_sequentiel(
+        self, conn: sqlite3.Connection, task: Mapping[str, Any]
+    ) -> str | None:
+        """Le titre de la tâche qui barre la route, ou None si la voie est libre.
+
+        Demandé le 6 septembre 2026 : « si je n'ai pas accédé à la tâche
+        avant, je ne peux pas accéder aux autres ». Le calcul vit ICI et pas
+        seulement dans l'interface — une restriction qu'un client peut lever
+        est décorative, et l'outil `succes_tasks` coche par le même chemin.
+
+        Trois règles, dans cet ordre :
+        - les RACINES ne se verrouillent jamais : les grandes branches d'un
+          projet avancent en parallèle, sinon une seule tâche administrative
+          en attente gèlerait tout l'apprentissage ;
+        - dans une fratrie, une tâche attend que TOUTES celles de rang
+          inférieur soient cochées ;
+        - le verrou se propage vers le bas : les stations d'un cours encore
+          fermé restent fermées, sans quoi on l'atteindrait par un détour.
+        """
+        projet = str(task.get("projectId") or "")
+        if not projet:
+            return None
+        structure, _ = self._project_form(conn, projet)
+        from diapason.succes.structures import TREE_FAMILY, decode_structure_config
+
+        if structure not in TREE_FAMILY:
+            return None
+        row = conn.execute(
+            "SELECT structure_config FROM succes_projects "
+            "WHERE id=? AND deleted_at_ms IS NULL",
+            (projet,),
+        ).fetchone()
+        if row is None:
+            return None
+        config = decode_structure_config(row["structure_config"] or "")
+        if config.get("sequential") is not True:
+            return None
+
+        noeud: Mapping[str, Any] | None = task
+        vus: set[str] = set()
+        while noeud is not None:
+            parent = str(noeud.get("parentTaskId") or "")
+            identifiant = str(noeud.get("id") or "")
+            if not parent or identifiant in vus:
+                return None
+            vus.add(identifiant)
+            precedente = conn.execute(
+                "SELECT title FROM succes_tasks WHERE project_id=? AND "
+                "parent_task_id=? AND deleted_at_ms IS NULL AND done=0 AND "
+                "(order_index < ? OR (order_index = ? AND id < ?)) "
+                "ORDER BY order_index ASC, id ASC LIMIT 1",
+                (
+                    projet,
+                    parent,
+                    int(noeud.get("order") or 0),
+                    int(noeud.get("order") or 0),
+                    identifiant,
+                ),
+            ).fetchone()
+            if precedente is not None:
+                return str(precedente["title"])
+            noeud = self._load_task(conn, parent)
+        return None
+
     def _resolve_stage(
         self,
         conn: sqlite3.Connection,
@@ -906,6 +970,12 @@ class SuccesStore:
                     "WHERE task_id=? AND deleted_at_ms IS NULL",
                     (int(done), ts, task_id),
                 )
+            if done and not task["done"]:
+                barrage = self._verrou_sequentiel(conn, task)
+                if barrage is not None:
+                    raise SuccesError(
+                        f"Cette tâche est verrouillée : termine d'abord « {barrage} »."
+                    )
             completed = date.today().isoformat() if done else ""
             # Dans un pipeline, la dernière étape EST l'achèvement — c'est le
             # contrat que _resolve_stage tient à l'écriture d'une étape. Mais

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Check, CirclePlus, Loader2, Plus } from 'lucide-react';
+import { Check, CirclePlus, Loader2, Lock, Plus } from 'lucide-react';
 
 import { buildProjectTaskTree, type ProjectTreeNode } from './ProjectTreeView';
 import {
@@ -16,6 +16,7 @@ import {
   type Impulsion,
 } from './synapses';
 import type { SuccesTask } from './types';
+import type { Verrous } from './verrou';
 
 /** Nombre maximal d'étages affichés ; au-delà, un compteur « +N » sur le dernier étage. */
 const MAX_VISIBLE_LEVELS = 6;
@@ -25,6 +26,8 @@ type GenealogyViewProps = {
   tasks: SuccesTask[];
   levelLabels: string[];
   saving?: boolean;
+  /** Les branches encore fermées, avec ce qui les débloque. Voir `verrou.ts`. */
+  verrous?: Verrous;
   onToggle: (task: SuccesTask) => Promise<void>;
   onCreate: (input: { title: string; parentTaskId?: string }) => Promise<void>;
   onSelect?: (task: SuccesTask) => void;
@@ -83,6 +86,7 @@ export function GenealogyView({
   tasks,
   levelLabels,
   saving = false,
+  verrous,
   onToggle,
   onCreate,
   onSelect,
@@ -384,6 +388,7 @@ export function GenealogyView({
                 <GenealogyNodeCard
                   key={item.node.id}
                   item={item}
+                  verrouillePar={verrous?.get(item.node.id)}
                   halo={halos.has(item.node.id)}
                   saving={saving}
                   adding={addingFor === item.node.id}
@@ -413,6 +418,8 @@ export function GenealogyView({
 
 type NodeCardProps = {
   item: LevelItem;
+  /** Le titre de la tâche à finir avant celle-ci, si elle est verrouillée. */
+  verrouillePar: string | undefined;
   /** La carte vient de recevoir une impulsion — elle s'illumine un instant. */
   halo: boolean;
   saving: boolean;
@@ -429,6 +436,7 @@ type NodeCardProps = {
 
 function GenealogyNodeCard({
   item,
+  verrouillePar,
   halo,
   saving,
   adding,
@@ -443,6 +451,7 @@ function GenealogyNodeCard({
 }: NodeCardProps) {
   const { node, stats, hiddenCount, atDepthLimit } = item;
   const hasDescendants = stats.total > 0;
+  const verrouille = Boolean(verrouillePar);
   const pct = hasDescendants ? Math.round((stats.done / stats.total) * 100) : 0;
 
   return (
@@ -457,32 +466,50 @@ function GenealogyNodeCard({
             ? '0 0 14px color-mix(in srgb, var(--color-accent) 30%, transparent)'
             : '0 0 0 transparent',
           transition: 'box-shadow 320ms ease, border-color 320ms ease',
-          opacity: node.done ? 0.72 : 1,
+          opacity: node.done || verrouille ? 0.72 : 1,
         }}
       >
         <div className="flex items-start gap-2">
           <button
             type="button"
             onClick={() => void onToggle(node)}
-            disabled={saving}
+            disabled={saving || verrouille}
             className="mt-0.5 size-5 rounded-full border flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-50"
             style={{
               borderColor: node.done ? 'var(--color-accent)' : 'var(--color-border)',
               background: node.done ? 'var(--color-accent)' : 'transparent',
               color: '#fff',
             }}
-            aria-label={node.done ? `Rouvrir « ${node.title} »` : `Terminer « ${node.title} »`}
+            aria-label={
+              verrouillePar
+                ? `Verrouillée — termine d'abord « ${verrouillePar} »`
+                : node.done
+                  ? `Rouvrir « ${node.title} »`
+                  : `Terminer « ${node.title} »`
+            }
+            title={verrouillePar ? `Termine d'abord « ${verrouillePar} »` : undefined}
           >
-            {node.done ? <Check size={12} /> : null}
+            {node.done ? (
+              <Check size={12} />
+            ) : verrouille ? (
+              <Lock size={10} style={{ color: 'var(--color-text-tertiary)' }} />
+            ) : null}
           </button>
           <button
             type="button"
-            onClick={() => onSelect?.(node)}
-            className="flex-1 min-w-0 text-left text-sm font-medium cursor-pointer break-words"
+            onClick={() => {
+              // Une branche fermée n'ouvre pas son aperçu : c'est justement
+              // son contenu qu'on vient chercher trop tôt.
+              if (verrouille) return;
+              onSelect?.(node);
+            }}
+            disabled={verrouille}
+            className="flex-1 min-w-0 text-left text-sm font-medium cursor-pointer break-words disabled:cursor-default"
             style={{
-              color: 'var(--color-text)',
+              color: verrouille ? 'var(--color-text-tertiary)' : 'var(--color-text)',
               textDecoration: node.done ? 'line-through' : undefined,
             }}
+            title={verrouillePar ? `Termine d'abord « ${verrouillePar} »` : undefined}
           >
             {node.title}
           </button>

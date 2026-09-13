@@ -111,6 +111,19 @@ def normalize_structure(value: Any, *, kit_id: str = "") -> str:
     return raw
 
 
+def _drapeau(raw: Any, *, field: str) -> bool:
+    """Un booléen, ou un refus qui dit lequel.
+
+    Accepter « "false" » comme vrai — ce que fait ``bool()`` sur une chaîne —
+    verrouillerait un projet que personne n'a demandé à verrouiller.
+    """
+    if raw is None or raw is False:
+        return False
+    if raw is True:
+        return True
+    raise SuccesError(f"{field} doit valoir vrai ou faux.")
+
+
 def _clean_labels(
     raw: Any, *, field: str, maximum: int, allow_empty: bool
 ) -> list[str]:
@@ -155,7 +168,16 @@ def normalize_structure_config(structure: str, raw: Any) -> dict[str, Any]:
             maximum=_MAX_LEVEL_LABELS,
             allow_empty=True,
         )
-        return {"levelLabels": labels} if labels else {}
+        config: dict[str, Any] = {}
+        if labels:
+            config["levelLabels"] = labels
+        # La progression séquentielle : dans une même fratrie, une tâche
+        # attend que celle qui la précède soit cochée. Absente par défaut —
+        # une clé toujours présente ferait diverger l'instantané de contrat
+        # et les projets déjà en base.
+        if _drapeau(data.get("sequential"), field="sequential"):
+            config["sequential"] = True
+        return config
 
     if structure == "pipeline":
         stages = _clean_labels(

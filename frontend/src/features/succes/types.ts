@@ -13,6 +13,12 @@ export type SuccesProjectStructure =
 export interface SuccesStructureConfig {
   levelLabels?: string[];
   stages?: string[];
+  /**
+   * Arbre et carte : les tâches d'une même fratrie s'ouvrent une par une.
+   * Le magasin refuse de cocher une tâche verrouillée ; ce drapeau ne sert
+   * qu'à l'afficher avant le clic (voir `verrou.ts`).
+   */
+  sequential?: boolean;
 }
 
 /** La cadence d'une tâche de cycle : jour = 0..6 (semaine) ou 1..28 (mois). */
