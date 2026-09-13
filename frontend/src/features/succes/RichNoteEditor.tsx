@@ -51,6 +51,16 @@ import {
   type OverflowGap,
   type PageBlock,
 } from './notePages';
+import {
+  basculerCitation,
+  basculerCode,
+  basculerListe,
+  envelopperLeTexteNu,
+  insererSeparateur,
+  insererTableau,
+  toucheDansLaNote,
+} from './noteEdition';
+import { Historique, type Instantane } from './noteHistorique';
 import { sanitizeNoteHtml } from './noteSanitize';
 import { fitZoom } from './noteZoom';
 import { PanneauNavigation } from './PanneauNavigation';
@@ -749,6 +759,7 @@ export function RichNoteEditor({
     const editor = editorRef.current;
     const selection = window.getSelection();
     if (!editor || !selection) return;
+    noterUnGeste();
     // CURSEUR VIDE : Word applique la taille à ce qu'on va TAPER. Ici, la
     // liste ne faisait rien du tout — il fallait d'abord écrire, puis
     // sélectionner, puis choisir. On retient la déclaration et on la pose au
@@ -1017,6 +1028,8 @@ export function RichNoteEditor({
     if (sanitizeNoteHtml(editor.innerHTML) !== sanitized) {
       editor.innerHTML = sanitized;
     }
+    historique.current.vider();
+    etatConnu.current = { html: sanitized, place: null };
     paginate();
   }, [editorKey]); // eslint-disable-line react-hooks/exhaustive-deps -- remount content on note switch
 
@@ -1124,6 +1137,61 @@ export function RichNoteEditor({
    * La pagination est désormais différée à la prochaine image : elle ne se
    * produit qu'une fois la rafale de frappe retombée.
    */
+  /**
+   * L'historique — Annuler / Rétablir, à nous (voir noteHistorique.ts pour
+   * ce que la pile du navigateur valait ici). `etatConnu` est le dernier
+   * instantané publié : c'est LUI qui entre dans la pile quand une frappe ou
+   * un geste le remplace.
+   */
+  const historique = useRef(new Historique());
+  const etatConnu = useRef<Instantane | null>(null);
+  /** Un geste vient d'être noté : sa publication n'est pas une frappe. */
+  const gesteEnCours = useRef(false);
+  const instantane = (editor: HTMLElement): Instantane => {
+    const clone = editor.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll(`.${OVERFLOW_GAP_CLASS}`).forEach((n) => n.remove());
+    return { html: clone.innerHTML, place: ouEstLeCaret(editor) };
+  };
+  /** Un geste distinct (bouton) : un pas d'annulation, avant d'agir. */
+  const noterUnGeste = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    historique.current.noterGeste(etatConnu.current ?? instantane(editor));
+    gesteEnCours.current = true;
+  };
+  const restaurer = (cible: Instantane) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    applyingGaps.current = true;
+    try {
+      editor.innerHTML = cible.html;
+    } finally {
+      applyingGaps.current = false;
+    }
+    editor.focus();
+    remettreLeCaret(editor, cible.place);
+    etatConnu.current = cible;
+    onContentChange(sanitizeNoteHtml(editor.innerHTML));
+    paginerBientot();
+  };
+  const annuler = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const cible = historique.current.annuler(instantane(editor));
+    if (cible) restaurer(cible);
+  };
+  const retablir = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const cible = historique.current.retablir(instantane(editor));
+    if (cible) restaurer(cible);
+  };
+  /** Une commande de mise en forme : un pas d'annulation, puis `execCommand`. */
+  const commande = (command: string, value?: string) => {
+    noterUnGeste();
+    runCommand(command, value);
+  };
+
   const emitContent = () => {
     if (applyingGaps.current) return;
     const editor = editorRef.current;
@@ -1136,6 +1204,19 @@ export function RichNoteEditor({
       const posees = convertirLesMarques(editor, styleEnAttente.current);
       if (posees > 0) styleEnAttente.current = null;
     }
+    // Du texte tapé entre deux blocs (WebKit y pose le caret après une
+    // flèche autour d'un trait) devient un paragraphe, sans bouger le caret.
+    envelopperLeTexteNu(editor);
+    // Une frappe : l'état d'AVANT entre dans la pile (regroupé par rafale).
+    // La publication d'un geste, elle, ne fait que couper : la frappe qui
+    // suivra ouvrira son propre pas.
+    if (gesteEnCours.current) {
+      gesteEnCours.current = false;
+      historique.current.couper();
+    } else if (etatConnu.current) {
+      historique.current.noterFrappe(etatConnu.current, Date.now());
+    }
+    etatConnu.current = instantane(editor);
     onContentChange(sanitizeNoteHtml(editor.innerHTML));
     paginerBientot();
   };
@@ -1160,24 +1241,30 @@ export function RichNoteEditor({
       window.alert("Seules les adresses http:// et https:// sont acceptées.");
       return;
     }
-    runCommand('createLink', url.trim());
+    commande('createLink', url.trim());
     emitContent();
   };
 
-  const insererUnTableau = () => {
+  /**
+   * Les gestes de BLOC (listes, séparateur, citation, code, tableau) ne
+   * passent plus par `execCommand` : voir `noteEdition.ts` pour ce que WebKit
+   * en faisait. Le DOM est manipulé, puis le contenu publié.
+   */
+  const gesteDeBloc = (geste: (racine: HTMLElement) => boolean) => {
+    const editor = editorRef.current;
+    if (!editor) return;
     rendreLaSelection();
-    const lignes = 3;
-    const colonnes = 3;
-    const cellule = '<td><br></td>'.repeat(colonnes);
-    const corps = `<tr>${cellule}</tr>`.repeat(lignes);
-    runCommand('insertHTML', `<table><tbody>${corps}</tbody></table><p><br></p>`);
-    emitContent();
+    editor.focus();
+    noterUnGeste();
+    if (geste(editor)) emitContent();
   };
+
+  const insererUnTableau = () => gesteDeBloc((racine) => insererTableau(racine, 3, 3));
 
   /** Forces a new page in the folder icon's sheet count. */
   const insertPageBreak = () => {
     editorRef.current?.focus();
-    runCommand('insertHTML', PAGE_BREAK_HTML);
+    commande('insertHTML', PAGE_BREAK_HTML);
     emitContent();
   };
 
@@ -1481,20 +1568,20 @@ export function RichNoteEditor({
         className="flex flex-wrap items-center gap-1 rounded-xl p-2"
         style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
       >
-        <button type="button" title="Annuler" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => { runCommand('undo'); emitContent(); }}>
+        <button type="button" title="Annuler" className={toolbarBtn} style={toolbarBtnStyle} onClick={annuler}>
           <Undo2 size={14} />
         </button>
-        <button type="button" title="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => { runCommand('redo'); emitContent(); }}>
+        <button type="button" title="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onClick={retablir}>
           <Redo2 size={14} />
         </button>
         <Sep />
-        <button type="button" title="Gras" aria-pressed={Boolean(etats['bold'])} className={toolbarBtn} style={styleBouton('bold')} onClick={() => runCommand('bold')}>
+        <button type="button" title="Gras" aria-pressed={Boolean(etats['bold'])} className={toolbarBtn} style={styleBouton('bold')} onClick={() => commande('bold')}>
           <Bold size={14} />
         </button>
-        <button type="button" title="Italique" aria-pressed={Boolean(etats['italic'])} className={toolbarBtn} style={styleBouton('italic')} onClick={() => runCommand('italic')}>
+        <button type="button" title="Italique" aria-pressed={Boolean(etats['italic'])} className={toolbarBtn} style={styleBouton('italic')} onClick={() => commande('italic')}>
           <Italic size={14} />
         </button>
-        <button type="button" title="Souligné" aria-pressed={Boolean(etats['underline'])} className={toolbarBtn} style={styleBouton('underline')} onClick={() => runCommand('underline')}>
+        <button type="button" title="Souligné" aria-pressed={Boolean(etats['underline'])} className={toolbarBtn} style={styleBouton('underline')} onClick={() => commande('underline')}>
           <Underline size={14} />
         </button>
         <button
@@ -1503,7 +1590,7 @@ export function RichNoteEditor({
           aria-pressed={Boolean(etats['strikeThrough'])}
           className={toolbarBtn}
           style={styleBouton('strikeThrough')}
-          onClick={() => runCommand('strikeThrough')}
+          onClick={() => commande('strikeThrough')}
         >
           <Strikethrough size={14} />
         </button>
@@ -1522,10 +1609,7 @@ export function RichNoteEditor({
           title="Citation"
           className={toolbarBtn}
           style={toolbarBtnStyle}
-          onClick={() => {
-            runCommand('formatBlock', 'blockquote');
-            emitContent();
-          }}
+          onClick={() => gesteDeBloc(basculerCitation)}
         >
           <Quote size={14} />
         </button>
@@ -1534,10 +1618,7 @@ export function RichNoteEditor({
           title="Code"
           className={toolbarBtn}
           style={toolbarBtnStyle}
-          onClick={() => {
-            runCommand('formatBlock', 'pre');
-            emitContent();
-          }}
+          onClick={() => gesteDeBloc(basculerCode)}
         >
           <Code size={14} />
         </button>
@@ -1557,46 +1638,46 @@ export function RichNoteEditor({
           className={toolbarBtn}
           style={toolbarBtnStyle}
           onClick={() => {
-            runCommand('removeFormat');
+            commande('removeFormat');
             emitContent();
           }}
         >
           <Eraser size={14} />
         </button>
         <Sep />
-        <button type="button" title="Aligner à gauche" aria-pressed={Boolean(etats['justifyLeft'])} className={toolbarBtn} style={styleBouton('justifyLeft')} onClick={() => runCommand('justifyLeft')}>
+        <button type="button" title="Aligner à gauche" aria-pressed={Boolean(etats['justifyLeft'])} className={toolbarBtn} style={styleBouton('justifyLeft')} onClick={() => commande('justifyLeft')}>
           <AlignLeft size={14} />
         </button>
-        <button type="button" title="Centrer" aria-pressed={Boolean(etats['justifyCenter'])} className={toolbarBtn} style={styleBouton('justifyCenter')} onClick={() => runCommand('justifyCenter')}>
+        <button type="button" title="Centrer" aria-pressed={Boolean(etats['justifyCenter'])} className={toolbarBtn} style={styleBouton('justifyCenter')} onClick={() => commande('justifyCenter')}>
           <AlignCenter size={14} />
         </button>
-        <button type="button" title="Aligner à droite" aria-pressed={Boolean(etats['justifyRight'])} className={toolbarBtn} style={styleBouton('justifyRight')} onClick={() => runCommand('justifyRight')}>
+        <button type="button" title="Aligner à droite" aria-pressed={Boolean(etats['justifyRight'])} className={toolbarBtn} style={styleBouton('justifyRight')} onClick={() => commande('justifyRight')}>
           <AlignRight size={14} />
         </button>
-        <button type="button" title="Justifier" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('justifyFull')}>
+        <button type="button" title="Justifier" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('justifyFull')}>
           <AlignJustify size={14} />
         </button>
         <Sep />
-        <button type="button" title="Liste à puces" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('insertUnorderedList')}>
+        <button type="button" title="Liste à puces" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc((r) => basculerListe(r, 'UL'))}>
           <List size={14} />
         </button>
-        <button type="button" title="Liste numérotée" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('insertOrderedList')}>
+        <button type="button" title="Liste numérotée" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc((r) => basculerListe(r, 'OL'))}>
           <ListOrdered size={14} />
         </button>
         <Sep />
-        <button type="button" title="Titre 1" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('formatBlock', 'H1')}>
+        <button type="button" title="Titre 1" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H1')}>
           <Heading1 size={14} />
         </button>
-        <button type="button" title="Titre 2" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('formatBlock', 'H2')}>
+        <button type="button" title="Titre 2" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H2')}>
           <Heading2 size={14} />
         </button>
-        <button type="button" title="Titre 3" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('formatBlock', 'H3')}>
+        <button type="button" title="Titre 3" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H3')}>
           <Heading3 size={14} />
         </button>
-        <button type="button" title="Paragraphe" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('formatBlock', 'P')}>
+        <button type="button" title="Paragraphe" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'P')}>
           <span className="text-[10px] font-semibold">P</span>
         </button>
-        <button type="button" title="Séparateur" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => runCommand('insertHorizontalRule')}>
+        <button type="button" title="Séparateur" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc(insererSeparateur)}>
           <Minus size={14} />
         </button>
         <button
@@ -1615,7 +1696,7 @@ export function RichNoteEditor({
           onChange={(event) => {
             const next = event.target.value;
             onMetaChange({ fontFamily: next });
-            runCommand('fontName', next);
+            commande('fontName', next);
             emitContent();
           }}
           className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none max-w-[140px]"
@@ -1671,7 +1752,7 @@ export function RichNoteEditor({
             onChange={(event) => {
               setEncreCourante(event.target.value);
               rendreLaSelection();
-              runCommand('foreColor', event.target.value);
+              commande('foreColor', event.target.value);
               emitContent();
             }}
           />
@@ -1685,7 +1766,7 @@ export function RichNoteEditor({
             onMouseDown={garderLaSelection}
             onChange={(event) => {
               rendreLaSelection();
-              runCommand('hiliteColor', event.target.value);
+              commande('hiliteColor', event.target.value);
               emitContent();
             }}
           />
@@ -1800,6 +1881,23 @@ export function RichNoteEditor({
             style={{ fontFamily: noteFontCss(fontFamily) }}
             onInput={emitContent}
             onBlur={emitContent}
+            onKeyDown={(e) => {
+              // Entrée dans une liste, un titre, une citation, un code ; Tab
+              // dans un tableau : à nous, pas au navigateur (noteEdition.ts).
+              const editor = editorRef.current;
+              if (!editor) return;
+              // ⌘Z / ⌘⇧Z (ou ⌘Y) : notre pile, pas celle du navigateur.
+              if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+                e.preventDefault();
+                if (e.shiftKey || e.key === 'y') retablir();
+                else annuler();
+                return;
+              }
+              if (toucheDansLaNote(editor, e)) {
+                e.preventDefault();
+                emitContent();
+              }
+            }}
           />
             </div>
           </div>

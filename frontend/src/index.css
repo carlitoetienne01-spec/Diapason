@@ -1458,6 +1458,13 @@
   font-size: 15px;
   line-height: var(--note-ligne);
   word-break: break-word;
+  /* `normal`, et non l'interlettrage hérité du <body> : WebKit, quand il
+     déplace un bloc (liste, Entrée), enveloppe le texte d'un
+     <span style="letter-spacing: -0.01em"> pour « préserver » une valeur
+     héritée qui ne diffère de rien. Vu au banc le 13 septembre 2026 : un
+     span par ligne de liste, qui restait dans la note. Une valeur normale
+     ne donne rien à préserver. */
+  letter-spacing: normal;
 }
 /* Pixel fonts carry a tall em box, so they need their own metrics to stay
    legible. L'interligne se pose sur la FEUILLE, pas sur l'éditeur : c'est
