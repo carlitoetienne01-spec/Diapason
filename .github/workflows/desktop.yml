@@ -251,7 +251,7 @@ jobs:
           # Ce que l'amorcage lira dans backend.json, et l'updater dans latest.json.
           $roue = (Get-ChildItem dist\release -Filter 'diapason_rust-*.whl' | Select-Object -First 1).Name
           @{ cible = 'x86_64-pc-windows-msvc'; roue = $roue; installateur = $exe.Name; signature = (Get-Content $sig -Raw).Trim() } |
-            ConvertTo-Json | Out-File dist\release\windows.json -Encoding utf8
+            ConvertTo-Json | Out-File dist\release\windows.json -Encoding ascii
           # Une copie hors du `_work` nettoye entre les runs - le service tourne
           # comme NETWORK SERVICE, son LOCALAPPDATA n'est pas celui de Carlito.
           $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
@@ -296,13 +296,18 @@ jobs:
           # backend.json et latest.json du job macOS, completes par Windows.
           $backend = Invoke-RestMethod "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/backend.json"
           $backend.wheels | Add-Member -NotePropertyName $meta.cible -NotePropertyValue $meta.roue -Force
-          $backend | ConvertTo-Json -Depth 5 | Out-File dist\release\backend.json -Encoding utf8
+          $backend | ConvertTo-Json -Depth 5 | Out-File dist\release\backend.json -Encoding ascii
           $latest = Invoke-RestMethod "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/latest.json"
           $latest.platforms | Add-Member -NotePropertyName 'windows-x86_64' -NotePropertyValue @{
             signature = $meta.signature
             url = "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/$($meta.installateur)"
           } -Force
-          $latest | ConvertTo-Json -Depth 5 | Out-File dist\release\latest.json -Encoding utf8
+          # ascii, jamais utf8 : sous PowerShell 5.1, `utf8` pose un BOM, et
+          # serde_json (l'updater de l'app, l'amorcage) refuse un JSON qui
+          # commence par un BOM - la release 1.0.3 a du etre reparee a la
+          # main le 14 septembre 2026. Le contenu est pur ASCII (URLs,
+          # base64) ; ascii echoue franchement si cela cessait d'etre vrai.
+          $latest | ConvertTo-Json -Depth 5 | Out-File dist\release\latest.json -Encoding ascii
           foreach ($f in @($meta.installateur, "$($meta.installateur).sig", $meta.roue, 'backend.json', 'latest.json')) {
             Upload-Asset $release (Resolve-Path "dist\release\$f").Path
           }

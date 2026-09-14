@@ -271,6 +271,12 @@ def test_le_runner_windows_local_publie_l_installateur_nsis() -> None:
         "-ExecutionPolicy Bypass -Command \"& '{0}'\"" in windows_job
     )
     assert "\n        shell: powershell\n" not in windows_job
+    # Sous PowerShell 5.1, `-Encoding utf8` pose un BOM, et serde_json
+    # (updater, amorçage) refuse un JSON qui commence par un BOM : la
+    # release 1.0.3 a dû être réparée à la main le 14 septembre 2026.
+    for ligne in windows_job.splitlines():
+        if ".json" in ligne and "Out-File" in ligne:
+            assert "-Encoding ascii" in ligne, ligne
 
     # NSIS, pas MSI : WiX exigeait le service Windows Installer, injoignable
     # depuis le compte du runner. Et les artefacts d'updater restent actifs :

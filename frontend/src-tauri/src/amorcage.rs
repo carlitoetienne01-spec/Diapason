@@ -179,6 +179,10 @@ pub fn archive_ollama(cible: &str) -> Option<String> {
 }
 
 pub fn analyser_manifeste(texte: &str) -> Result<Manifeste, String> {
+    // Un BOM UTF-8 en tête fait refuser tout le fichier à serde_json — et un
+    // `Out-File -Encoding utf8` de PowerShell 5.1 en pose un (release 1.0.3,
+    // réparée à la main le 14 septembre 2026). On le tolère ici.
+    let texte = texte.trim_start_matches('\u{feff}');
     let m: Manifeste =
         serde_json::from_str(texte).map_err(|e| format!("backend.json illisible : {e}"))?;
     if m.version.trim().is_empty() || m.source.trim().is_empty() || m.python.trim().is_empty() {
@@ -576,6 +580,8 @@ mod tests {
         assert_eq!(m.python, "3.13");
         assert_eq!(m.wheels.len(), 1);
         assert!(analyser_manifeste(r#"{"version":"1.0.0"}"#).is_err(), "source et python manquent");
+        let avec_bom = "\u{feff}{\"version\":\"1\",\"python\":\"3.13\",\"source\":\"s.tgz\"}";
+        assert!(analyser_manifeste(avec_bom).is_ok(), "le BOM d'un Out-File utf8 ne doit pas tout casser");
         assert!(analyser_manifeste("pas du json").is_err());
         // Sans `wheels` : valide, on compilera.
         assert!(analyser_manifeste(r#"{"version":"1","python":"3.13","source":"s.tgz"}"#).is_ok());
