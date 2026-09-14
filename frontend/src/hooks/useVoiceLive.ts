@@ -9,6 +9,8 @@ import {
   type VoiceLiveHealth,
 } from '../lib/voiceLive';
 import { refreshLocalApiKey } from '../lib/api';
+import { LectureVocale } from '../lib/lectureVocale';
+import { creerCaptureVocale, type CaptureVocale } from '../lib/captureVocale';
 
 export type VoiceLiveState =
   | 'idle'
@@ -34,16 +36,6 @@ export interface ToolEventLine {
   detail: string;
 }
 
-function floatTo16BitPCM(float32: Float32Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(float32.length * 2);
-  const view = new DataView(buffer);
-  for (let i = 0; i < float32.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32[i]));
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
-  return buffer;
-}
-
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -52,14 +44,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
-}
-
-function base64ToInt16(b64: string): Int16Array {
-  const binary = atob(b64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return new Int16Array(bytes.buffer);
 }
 
 export function useVoiceLive() {
@@ -79,19 +63,25 @@ export function useVoiceLive() {
   const [statusLabel, setStatusLabel] = useState('Idle');
 
   const wsRef = useRef<WebSocket | null>(null);
+  const generationRef = useRef(0);
+  const demarrageRef = useRef(false);
   const captureCtxRef = useRef<AudioContext | null>(null);
-  const playbackCtxRef = useRef<AudioContext | null>(null);
-  // The assistant's own voice, exposed so the UI can visualise it.
-  const outputNodeRef = useRef<GainNode | null>(null);
   const [outputNode, setOutputNode] = useState<GainNode | null>(null);
   // The microphone, teed for the orb's visual analyser — silent, never
   // routed to the speakers.
   const [micNode, setMicNode] = useState<AudioNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const nextPlayTimeRef = useRef(0);
-  const speakingRef = useRef(false);
+  const processorRef = useRef<CaptureVocale | null>(null);
   const serviceErrorRef = useRef<string | null>(null);
+  const lectureRef = useRef<LectureVocale | null>(null);
+  if (!lectureRef.current) {
+    lectureRef.current = new LectureVocale((sortie, parle) => {
+      setOutputNode(sortie);
+      if (!wsRef.current) return;
+      setState((precedent) => precedent === 'error' ? precedent : parle ? 'speaking' : 'listening');
+      setStatusLabel(parle ? 'Speaking' : 'Listening · speak');
+    });
+  }
 
   const checkService = useCallback(async (showLoading = false) => {
     if (showLoading) setCheckingService(true);
@@ -135,56 +125,19 @@ export function useVoiceLive() {
   }, [checkService]);
 
   const stopPlayback = useCallback(() => {
-    speakingRef.current = false;
-    nextPlayTimeRef.current = 0;
-    outputNodeRef.current = null;
-    setMicNode(null);
-    setOutputNode(null);
-    const ctx = playbackCtxRef.current;
-    if (ctx) {
-      playbackCtxRef.current = null;
-      void ctx.close();
-    }
+    lectureRef.current?.arreter();
   }, []);
 
   const enqueuePcm = useCallback((b64: string, sampleRate: number) => {
-    const samples = base64ToInt16(b64);
-    if (!samples.length) return;
-
-    let ctx = playbackCtxRef.current;
-    if (!ctx || ctx.state === 'closed') {
-      ctx = new AudioContext({ sampleRate });
-      playbackCtxRef.current = ctx;
-      nextPlayTimeRef.current = ctx.currentTime;
-      // Everything is played through one node so the visualiser has a single
-      // place to listen. Tapping each buffer source instead would miss the
-      // gaps between them, and the field would stutter between syllables.
-      const output = ctx.createGain();
-      output.connect(ctx.destination);
-      outputNodeRef.current = output;
-      setOutputNode(output);
-    }
-
-    const float = new Float32Array(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-      float[i] = samples[i] / 0x8000;
-    }
-    const buffer = ctx.createBuffer(1, float.length, sampleRate);
-    buffer.copyToChannel(float, 0);
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(outputNodeRef.current ?? ctx.destination);
-    const startAt = Math.max(ctx.currentTime, nextPlayTimeRef.current);
-    src.start(startAt);
-    nextPlayTimeRef.current = startAt + buffer.duration;
-    speakingRef.current = true;
-    setState('speaking');
-    setStatusLabel('Speaking');
+    lectureRef.current?.ajouter(b64, sampleRate);
   }, []);
 
   const cleanupCapture = useCallback(() => {
-    processorRef.current?.disconnect();
+    processorRef.current?.arreter();
     processorRef.current = null;
+    // Seul l'arrêt de CAPTURE retire le micro de la forme. Interrompre
+    // Diapason ne doit pas rendre invisible la voix qui le remplace.
+    setMicNode(null);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (captureCtxRef.current) {
@@ -194,11 +147,14 @@ export function useVoiceLive() {
   }, []);
 
   const stop = useCallback(() => {
-    try {
-      wsRef.current?.send(JSON.stringify({ type: 'stop' }));
-    } catch {}
-    wsRef.current?.close();
+    generationRef.current++;
+    demarrageRef.current = false;
+    const ws = wsRef.current;
     wsRef.current = null;
+    try {
+      ws?.send(JSON.stringify({ type: 'stop' }));
+    } catch {}
+    ws?.close();
     cleanupCapture();
     stopPlayback();
     setState('idle');
@@ -206,6 +162,7 @@ export function useVoiceLive() {
   }, [cleanupCapture, stopPlayback]);
 
   const interrupt = useCallback(() => {
+    if (!wsRef.current) return;
     stopPlayback();
     try {
       wsRef.current?.send(JSON.stringify({ type: 'interrupt' }));
@@ -216,6 +173,9 @@ export function useVoiceLive() {
 
   const start = useCallback(
     async (opts?: { provider?: VoiceLiveProvider; voice?: string }) => {
+      if (wsRef.current || demarrageRef.current) return;
+      const generation = ++generationRef.current;
+      demarrageRef.current = true;
       setError(null);
       setTranscripts([]);
       setToolEvents([]);
@@ -226,7 +186,9 @@ export function useVoiceLive() {
       // startup race, apiFetch refreshes the desktop key after a 401 so the
       // synchronous URL builder below sees the current credential.
       const current = await checkService(true);
+      if (generation !== generationRef.current) return;
       if (!canStartVoiceSession(current, chosen)) {
+        demarrageRef.current = false;
         setState('idle');
         setStatusLabel('Idle');
         setError(
@@ -243,17 +205,30 @@ export function useVoiceLive() {
 
       setState('connecting');
       setStatusLabel('Connecting…');
-      await refreshLocalApiKey();
-      const socketUrl = voiceLiveWsUrl({ provider: chosen });
-      console.info('[voice-live] opening WebSocket', {
-        provider: chosen,
-        url: voiceLiveDiagnosticUrl(socketUrl),
-      });
-      const ws = new WebSocket(socketUrl, voiceLiveProtocols());
+      let ws: WebSocket;
+      let socketUrl: string;
+      try {
+        await refreshLocalApiKey();
+        if (generation !== generationRef.current) return;
+        socketUrl = voiceLiveWsUrl({ provider: chosen });
+        ws = new WebSocket(socketUrl, voiceLiveProtocols());
+      } catch (err) {
+        if (generation !== generationRef.current) return;
+        demarrageRef.current = false;
+        console.error('[voice-live] initialization failed', err);
+        setError('voice-connection-failed');
+        setState('error');
+        setStatusLabel('Error');
+        return;
+      }
+      console.info('[voice-live] opening WebSocket', { provider: chosen, url: voiceLiveDiagnosticUrl(socketUrl) });
       let socketFailed = false;
       wsRef.current = ws;
+      demarrageRef.current = false;
+      const actuelle = () => wsRef.current === ws && generationRef.current === generation;
 
       ws.onopen = async () => {
+        if (!actuelle()) return;
         ws.send(
           JSON.stringify({
             type: 'start',
@@ -271,6 +246,12 @@ export function useVoiceLive() {
               channelCount: 1,
             },
           });
+          // Une permission micro peut rester ouverte après « Terminer ».
+          // Son résultat tardif ne doit jamais rallumer une session fermée.
+          if (!actuelle()) {
+            stream.getTracks().forEach((piste) => piste.stop());
+            return;
+          }
           streamRef.current = stream;
           const ctx = new AudioContext({ sampleRate: 16000 });
           captureCtxRef.current = ctx;
@@ -279,29 +260,25 @@ export function useVoiceLive() {
           micTap.gain.value = 1;
           source.connect(micTap);
           setMicNode(micTap);
-          const processor = ctx.createScriptProcessor(4096, 1, 1);
-          processorRef.current = processor;
-          processor.onaudioprocess = (ev) => {
-            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-            const input = ev.inputBuffer.getChannelData(0);
-            const pcm = floatTo16BitPCM(input);
-            wsRef.current.send(
+          const processor = await creerCaptureVocale(ctx, source, (pcm) => {
+            if (!actuelle() || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(
               JSON.stringify({
                 type: 'audio',
                 data: arrayBufferToBase64(pcm),
-                sample_rate: 16000,
+                sample_rate: ctx.sampleRate,
               }),
             );
-          };
-          // Keep the processor graph alive without audible mic monitor.
-          const mute = ctx.createGain();
-          mute.gain.value = 0;
-          source.connect(processor);
-          processor.connect(mute);
-          mute.connect(ctx.destination);
+          });
+          if (!actuelle()) { processor.arreter(); return; }
+          processorRef.current = processor;
+          if (ctx.state === 'suspended') await ctx.resume();
         } catch (err) {
+          if (!actuelle()) return;
           console.error('[voice-live] microphone initialization failed', err);
           socketFailed = true;
+          cleanupCapture();
+          stopPlayback();
           setError('microphone-denied');
           setState('error');
           setStatusLabel('Error');
@@ -310,6 +287,7 @@ export function useVoiceLive() {
       };
 
       ws.onmessage = (ev) => {
+        if (!actuelle() || socketFailed) return;
         try {
           const msg = JSON.parse(ev.data as string);
           switch (msg.type) {
@@ -379,6 +357,8 @@ export function useVoiceLive() {
                 detail: msg.detail || 'unknown error',
               });
               socketFailed = true;
+              cleanupCapture();
+              stopPlayback();
               setError(
                 chosen === 'local' && /ollama/i.test(String(msg.detail || ''))
                   ? 'local-not-ready'
@@ -399,7 +379,10 @@ export function useVoiceLive() {
       };
 
       ws.onerror = (event) => {
+        if (!actuelle()) return;
         socketFailed = true;
+        cleanupCapture();
+        stopPlayback();
         console.error('[voice-live] WebSocket connection failed', {
           provider: chosen,
           url: voiceLiveDiagnosticUrl(socketUrl),
@@ -412,15 +395,16 @@ export function useVoiceLive() {
       };
 
       ws.onclose = (event) => {
+        if (!actuelle()) return;
         console.info('[voice-live] WebSocket closed', {
           provider: chosen,
           code: event.code,
           reason: event.reason || '(none)',
           clean: event.wasClean,
         });
+        wsRef.current = null;
         cleanupCapture();
         stopPlayback();
-        if (wsRef.current === ws) wsRef.current = null;
         if (socketFailed) {
           setState('error');
           setStatusLabel('Error');

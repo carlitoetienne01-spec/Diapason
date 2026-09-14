@@ -1,0 +1,104 @@
+/* La scène garde son identité lumineuse, y compris sous le thème terminal.
+   Aucun sélecteur ne modifie le chat ou les autres visualiseurs de Diapason. */
+.resonance-rideau {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
+  padding: 24px; background: color-mix(in srgb, var(--color-bg) 76%, transparent);
+}
+.composer-glass.carte-vitree.resonance-dialogue {
+  --res-texte: var(--color-text);
+  --res-secondaire: color-mix(in srgb, var(--color-text) 78%, var(--color-bg));
+  --res-accent: color-mix(in srgb, #b29adf 32%, var(--color-text));
+  --res-erreur: color-mix(in srgb, #e85971 65%, var(--color-text));
+  --res-bord: color-mix(in srgb, var(--color-text) 15%, transparent);
+  --carte-verre-rayon: 24px;
+  --carte-verre-reflet-largeur: 380px;
+  --carte-verre-reflet-hauteur: 150px;
+  width: min(920px, 100%); max-height: calc(100dvh - 48px); display: flex;
+  height: auto; flex-direction: column; overflow: hidden;
+  color: var(--res-texte);
+  box-shadow: inset 0 1px 0 var(--composer-rim), inset 0 -1px 0 var(--composer-reflet), 0 24px 80px -28px var(--composer-ombre), 0 3px 8px -4px var(--composer-ombre);
+  font-family: 'Geist Variable', system-ui, sans-serif; font-size: 14px;
+  line-height: 1.5; outline: none;
+}
+/* 12 septembre 2026 — le rideau noir à 76 % puis flouté à 14 px annulait
+   toute transparence de la vitre. Seule l'atténuation du contenu reste,
+   sans filtre global ; centre et tranche viennent de CarteVitree. */
+.resonance-dialogue button { font: inherit; cursor: pointer; transition: background 150ms, color 150ms; }
+.resonance-dialogue button:disabled { opacity: 0.45; cursor: not-allowed; }
+.resonance-dialogue :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+.resonance-entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 24px 28px 16px; flex: none; }
+.resonance-identite { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 17px; letter-spacing: -0.35px; }
+.resonance-identite > svg { color: var(--res-accent); }
+.resonance-identite .resonance-sous-titre { margin-left: 8px; color: var(--res-secondaire); font-weight: 400; font-size: 12px; letter-spacing: 0; }
+.resonance-actions-entete { display: flex; align-items: center; gap: 8px; }
+.resonance-icone, .resonance-copie { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: var(--res-secondaire); }
+.resonance-icone:hover, .resonance-copie:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--res-texte); }
+.resonance-partage { display: flex; align-items: center; gap: 7px; color: var(--res-accent); font-size: 11px; }
+.resonance-details { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 28px; background: color-mix(in srgb, var(--color-bg) 40%, transparent); color: var(--res-secondaire); font-size: 12px; }
+.resonance-corps { display: flex; flex: 1; min-height: 0; overflow: auto; }
+.resonance-presence { display: flex; flex-direction: column; align-items: center; width: 100%; min-width: 0; padding: 0 24px 30px; }
+.resonance-scene { position: relative; width: 100%; height: clamp(220px, 43vh, 410px); flex: none; }
+.resonance-volume { position: absolute; inset: 0; }
+.resonance-volume canvas { display: block; width: 100%; height: 100%; mask-image: radial-gradient(ellipse closest-side, #000 76%, transparent 100%); -webkit-mask-image: radial-gradient(ellipse closest-side, #000 76%, transparent 100%); }
+.resonance-repli { position: absolute; width: 52%; aspect-ratio: 1; max-height: 80%; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 48% 52% 57% 43%; background: radial-gradient(ellipse at 36% 30%, #f2ebff99, #da75ee66 24%, #7555ff66 55%, #a4e9ff22 70%, transparent 73%); box-shadow: inset -8px 2px 32px #a4e9ff66, 0 0 65px #7555ff33; }
+.resonance-parole { text-align: center; max-width: 480px; }
+.resonance-dialogue .resonance-titre { margin: 0; color: var(--res-texte); font: 400 clamp(25px, 3vw, 32px)/1.25 'Geist Variable', system-ui, sans-serif; letter-spacing: -1px; text-transform: none; }
+.resonance-aide { color: var(--res-secondaire); margin: 12px auto 0; max-width: 400px; font-size: 13px; line-height: 1.6; }
+.resonance-caption { color: var(--res-texte); margin-top: 14px; font-size: 15px; max-height: 70px; overflow: auto; }
+.resonance-commandes { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.resonance-principal, .resonance-terminer { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; padding: 11px 22px; border-radius: 28px; border: 1px solid transparent; }
+.resonance-principal { background: linear-gradient(155deg, #f8fcff26, #f8fcff04), color-mix(in srgb, var(--color-bg) 24%, transparent); color: var(--res-texte); border-color: var(--res-bord); border-top-color: var(--composer-rim); box-shadow: inset 0 1px 0 var(--composer-reflet), 0 3px 8px -4px var(--composer-ombre); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.resonance-principal:hover:not(:disabled) { background-color: color-mix(in srgb, var(--color-bg) 50%, transparent); }
+.resonance-terminer { color: var(--res-texte); background: color-mix(in srgb, var(--color-bg) 24%, transparent); border-color: var(--res-bord); }
+.resonance-terminer:hover { background: color-mix(in srgb, var(--color-bg) 50%, transparent); }
+.resonance-erreur { color: var(--res-erreur); margin-top: 18px; max-width: 60ch; font-size: 13px; overflow-wrap: anywhere; }
+.resonance-pied { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 28px 20px; color: var(--res-secondaire); font-size: 11px; }
+.resonance-source { display: flex; align-items: center; gap: 8px; }
+.resonance-temoin { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--res-secondaire); }
+[data-state='listening'] .resonance-temoin { background: #a4e9ff; box-shadow: 0 0 10px #a4e9ff55; }
+[data-state='speaking'] .resonance-temoin { background: #da75ee; }
+[data-state='error'] .resonance-temoin { background: #ffb5bd; }
+.resonance-duree { font-variant-numeric: tabular-nums; }
+.composer-glass.carte-vitree.resonance-dialogue[data-conversation='true'] { width: min(1040px, 100%); }
+[data-conversation='true'] .resonance-presence { width: 55%; flex-shrink: 0; }
+[data-conversation='true'] .resonance-scene { height: clamp(190px, 38vh, 360px); }
+.resonance-conversation { display: flex; flex-direction: column; width: 45%; border-left: 1px solid var(--res-bord); margin: 16px 0 24px; min-height: 0; background: color-mix(in srgb, var(--color-bg) 36%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.resonance-fil-titre { color: var(--res-secondaire); font-size: 12px; padding: 0 28px 20px; }
+.resonance-fil { padding: 0 28px 16px; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 100px; scrollbar-width: thin; }
+.resonance-message + .resonance-message, .resonance-outil + .resonance-message { margin-top: 28px; }
+.resonance-auteur { display: flex; align-items: center; justify-content: space-between; color: var(--res-accent); font-size: 12px; margin-bottom: 8px; }
+[data-role='user'] .resonance-auteur { color: var(--res-secondaire); }
+.resonance-message p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; font-size: 14px; margin: 0; }
+.resonance-message[data-role='user'] p { color: var(--res-secondaire); }
+.resonance-copie { width: 24px; height: 24px; }
+.resonance-outil { display: flex; gap: 8px; align-items: baseline; margin-top: 22px; color: var(--res-accent); font-size: 12px; overflow-wrap: anywhere; }
+.resonance-outil svg { flex: none; }
+.resonance-outil[data-ok='false'] { color: var(--res-erreur); }
+.resonance-en-cours { color: var(--res-accent); }
+@media (max-width: 680px) {
+  .resonance-rideau { padding: 10px; }
+  .composer-glass.carte-vitree.resonance-dialogue { max-height: calc(100dvh - 20px); --carte-verre-rayon: 20px; }
+  .resonance-entete { padding: 16px 18px 8px; }
+  .resonance-identite .resonance-sous-titre { display: none; }
+  .resonance-corps { flex-direction: column; }
+  .resonance-presence, [data-conversation='true'] .resonance-presence { width: 100%; padding: 0 20px 22px; }
+  .resonance-scene { height: clamp(200px, 40vh, 350px); }
+  [data-conversation='true'] .resonance-scene { height: 185px; }
+  .resonance-commandes { margin-top: 20px; }
+  .resonance-conversation { width: 100%; border-left: 0; border-top: 1px solid var(--res-bord); padding-top: 18px; margin: 0; flex-shrink: 0; }
+  .resonance-fil { min-height: 120px; max-height: 280px; }
+  .resonance-fil-titre { padding-bottom: 12px; }
+  .resonance-pied { padding: 16px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resonance-dialogue *, .resonance-dialogue *::before { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .resonance-principal, .resonance-conversation { background: var(--color-input-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+  .composer-glass.carte-vitree.resonance-dialogue { color: CanvasText; box-shadow: none; --res-texte: CanvasText; --res-secondaire: CanvasText; --res-accent: LinkText; --res-erreur: CanvasText; --res-bord: CanvasText; }
+  .resonance-scene { visibility: hidden; }
+  .resonance-dialogue button { border: 1px solid ButtonText; background: ButtonFace; color: ButtonText; box-shadow: none; }
+  .resonance-dialogue :focus-visible { outline-color: Highlight; }
+}

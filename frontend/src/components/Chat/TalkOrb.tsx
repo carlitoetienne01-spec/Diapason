@@ -1,37 +1,20 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { Check, Copy, X } from 'lucide-react';
+import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react';
+import { AudioLines, Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
+import '@fontsource-variable/geist';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useLiveDictation } from '../../hooks/useLiveDictation';
-import type { AIState } from '../AIEntity/types';
-
-// Three.js is half a megabyte and is needed only once this panel opens, so it
-// is fetched then rather than on every cold start of the app.
-const VoiceTerrain = lazy(() =>
-  import('../VoiceTerrain/VoiceTerrain').then((m) => ({ default: m.VoiceTerrain })),
-);
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
 import { useAppStore } from '../../lib/store';
-import { TalkHud } from './TalkHud';
-import type { TerrainTelemetry } from '../VoiceTerrain/VoiceTerrain';
+import { useSurfaceVitree } from './useSurfaceVitree';
+import './ComposerGlass.css';
+import '../Glass/CarteVitree.css';
+import './TalkOrb.css';
 
-/**
- * The session has five states; the entity has four. `connecting` is the one
- * moment the assistant is working without hearing or answering, which is
- * exactly what "thinking" depicts, and an error should stop the field acting
- * as though a conversation were still running.
- */
-function entityState(state: VoiceLiveState): AIState {
-  switch (state) {
-    case 'listening':
-      return 'listening';
-    case 'speaking':
-      return 'speaking';
-    case 'connecting':
-      return 'thinking';
-    default:
-      return 'idle';
-  }
-}
+// Three reste hors du chargement initial : la présence ne coûte rien tant
+// que la conversation n'est pas ouverte.
+const VoiceResonance = lazy(() =>
+  import('../VoiceResonance/VoiceResonance').then((m) => ({ default: m.VoiceResonance })),
+);
 
 interface TalkOrbProps {
   open: boolean;
@@ -44,10 +27,7 @@ interface TalkOrbProps {
   transcripts: TranscriptLine[];
   toolEvents?: ToolEventLine[];
   screenSharing?: boolean;
-  /** The assistant's own voice, so SPEAKING is driven by what is actually
-   * heard rather than by a timer. Optional: the entity is fully alive without it. */
   audioSource?: AudioNode | null;
-  /** The user's microphone: LISTENING vibrates with their voice. */
   micSource?: AudioNode | null;
   onProviderChange: (p: VoiceLiveProvider) => void;
   onStart: () => void;
@@ -56,416 +36,202 @@ interface TalkOrbProps {
   onClose: () => void;
 }
 
+const ERREURS = {
+  'missing-key-gemini': 'talk.missingKeyGemini',
+  'missing-key-openai': 'talk.missingKeyOpenai',
+  'local-not-ready': 'talk.localNotReady',
+  'local-components-missing': 'talk.localComponentsMissing',
+  'voice-auth-unavailable': 'talk.authUnavailable',
+  'voice-service-unavailable': 'talk.serviceUnavailable',
+  'voice-connection-failed': 'talk.connectionFailed',
+  'microphone-denied': 'talk.microphoneDenied',
+  'voice-session-failed': 'talk.sessionFailed',
+} as const;
+
 function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: string }) {
   const [copie, setCopie] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard.writeText(texte);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return <button type="button" className="resonance-copie" title={etiquette} aria-label={etiquette}
+    onClick={() => {
+      void navigator.clipboard.writeText(texte).then(() => {
         setCopie(true);
-        window.setTimeout(() => setCopie(false), 2000);
-      }}
-      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
-      style={{ color: 'var(--color-text-tertiary)' }}
-      title={etiquette}
-      aria-label={etiquette}
-    >
-      {copie ? <Check size={13} /> : <Copy size={13} />}
-    </button>
-  );
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopie(false), 2000);
+      }).catch(() => setCopie(false));
+    }}>
+    {copie ? <Check size={14} /> : <Copy size={14} />}
+  </button>;
 }
 
 export function TalkOrb({
-  open,
-  state,
-  statusLabel,
-  error,
-  serviceReady,
-  checkingService,
-  provider,
-  transcripts,
-  toolEvents = [],
-  screenSharing = false,
-  audioSource = null,
-  micSource = null,
-  onProviderChange,
-  onStart,
-  onStop,
-  onInterrupt,
-  onClose,
+  open, state, statusLabel, error, serviceReady, checkingService, provider,
+  transcripts, toolEvents = [], screenSharing = false, audioSource = null,
+  micSource = null, onStart, onStop, onInterrupt, onClose,
 }: TalkOrbProps) {
   const { t, locale } = useTranslation();
-
-  // Le FIL : paroles et outils fusionnés par rang d'arrivée — l'ordre vécu,
-  // pas deux listes empilées.
+  const titreId = useId();
+  const detailsId = useId();
+  const fenetre = useSurfaceVitree(true, open);
+  const [details, setDetails] = useState(false);
+  const filRef = useRef<HTMLDivElement>(null);
+  const suiviRef = useRef(true);
   const fil = [
     ...transcripts.map((l) => ({ kind: 'msg' as const, ...l })),
     ...toolEvents.map((e) => ({ kind: 'tool' as const, ...e })),
   ].sort((a, b) => a.at - b.at);
-
-  // Suivre la conversation sans arracher la main : on ne défile
-  // automatiquement que si le lecteur était déjà en bas. Remonter relire
-  // détache le suivi ; revenir en bas le raccroche.
-  const feedRef = useRef<HTMLDivElement | null>(null);
-  const suiviRef = useRef(true);
-  const surDefilement = () => {
-    const el = feedRef.current;
-    if (!el) return;
-    suiviRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  };
   const derniere = fil[fil.length - 1];
-  const dernierTexte = derniere
-    ? `${fil.length}:${derniere.kind === 'msg' ? derniere.text : derniere.name}`
-    : '';
+  const dernierTexte = derniere ? `${fil.length}:${derniere.kind === 'msg' ? derniere.text : derniere.name}` : '';
   useEffect(() => {
-    const el = feedRef.current;
-    if (el && suiviRef.current) el.scrollTop = el.scrollHeight;
+    if (filRef.current && suiviRef.current) filRef.current.scrollTop = filRef.current.scrollHeight;
   }, [dernierTexte]);
 
+  // Le panneau est modal aussi au clavier. Le focus revient au bouton qui
+  // l'a ouvert ; ni une tabulation ni Échap ne doivent agir sur le chat dessous.
+  useEffect(() => {
+    if (!open) return;
+    const precedent = document.activeElement;
+    fenetre.current?.focus();
+    return () => { if (precedent instanceof HTMLElement) precedent.focus(); };
+  }, [open]);
+
   const active = state === 'listening' || state === 'speaking' || state === 'connecting';
-
-  // Captions come from Apple's on-device recogniser rather than from the voice
-  // session, because the local provider only reports a transcript once the
-  // turn is over — too late to read along with. This listens in parallel and
-  // costs nothing but a second tap on the same microphone.
-  const {
-    supported: captionsSupported,
-    transcript: heard,
-    start: startCaptions,
-    stop: stopCaptions,
-  } = useLiveDictation(locale);
+  const { supported, transcript: heard, start: startCaptions, stop: stopCaptions } = useLiveDictation(locale);
   const [caption, setCaption] = useState('');
-
   useEffect(() => {
-    if (!captionsSupported) return;
-    if (!open || state !== 'listening') return;
+    if (!supported || !open || state !== 'listening') return;
     void startCaptions();
-    return () => {
-      void stopCaptions();
-    };
-  }, [captionsSupported, open, state, startCaptions, stopCaptions]);
+    return () => { void stopCaptions(); };
+  }, [supported, open, state, startCaptions, stopCaptions]);
+  useEffect(() => { if (heard) setCaption(heard); }, [heard]);
+  useEffect(() => { if (!active) setCaption(''); }, [active]);
 
-  // Held after the user stops talking so their last sentence stays readable
-  // while Diapason answers, instead of blinking out mid-thought.
-  useEffect(() => {
-    if (heard) setCaption(heard);
-  }, [heard]);
-  useEffect(() => {
-    if (!active) setCaption('');
-  }, [active]);
-
-  // Readouts, kept deliberately few: the loudness driving the relief, and how
-  // long the session has been open. Both are measured, never decorative.
-  // Le modèle en service : une ligne du cadran qui affiche « — » en
-  // permanence est une ligne morte, et une ligne morte dans un instrument
-  // apprend à ne plus lire les autres.
   const selectedModel = useAppStore((s) => s.selectedModel);
-
-  // La télémétrie arrive à ~8 Hz depuis la boucle de rendu : assez pour que
-  // les cadrans vivent, assez peu pour ne pas coûter plus que le relief.
-  const [telemetry, setTelemetry] = useState<TerrainTelemetry | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef<number | null>(null);
-
   useEffect(() => {
-    if (!active) {
-      startedAt.current = null;
-      setElapsed(0);
-      return;
-    }
+    if (!active) { startedAt.current = null; setElapsed(0); return; }
     startedAt.current ??= Date.now();
     const timer = window.setInterval(() => {
-      if (startedAt.current) {
-        setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
-      }
+      if (startedAt.current) setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
     }, 1000);
     return () => window.clearInterval(timer);
   }, [active]);
 
   if (!open) return null;
+  const fournisseur = provider === 'local' ? t('talk.resonance.local')
+    : provider === 'gemini' ? 'Gemini Live' : 'OpenAI Realtime';
+  const titres = {
+    idle: 'talk.resonance.idle', connecting: 'talk.resonance.connecting',
+    listening: 'talk.resonance.listening', speaking: 'talk.resonance.speaking',
+    error: 'talk.resonance.error',
+  } as const;
+  const aide = checkingService ? t('talk.checkingService')
+    : !active && !serviceReady ? t('talk.serviceUnavailable')
+    : state === 'listening' ? t('talk.resonance.listeningHint')
+    : state === 'speaking' ? t('talk.resonance.speakingHint')
+    : state === 'connecting' ? t('talk.resonance.connectingHint')
+    : t('talk.resonance.micOff');
+  const agir = (action: () => void) => {
+    // Reprendre la parole remplace son propre bouton. Sans ce déplacement,
+    // le focus retombait sur le document derrière la fenêtre modale.
+    fenetre.current?.focus();
+    action();
+  };
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.72)' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden flex flex-col max-h-[92vh]"
-        style={{
-          background: 'var(--color-bg-secondary, #12141a)',
-          border: '1px solid var(--color-border, #2a2d36)',
-        }}
-      >
-        <div className="flex items-center justify-between px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="text-xs tracking-widest uppercase" style={{ color: 'var(--color-text-tertiary)' }}>
-              {statusLabel}
-            </div>
-            {screenSharing && (
-              <span
-                className="text-[10px] tracking-wide uppercase px-2 py-0.5 rounded"
-                style={{
-                  background: 'rgba(220, 80, 60, 0.2)',
-                  color: '#e8a090',
-                  border: '1px solid rgba(220, 80, 60, 0.35)',
-                }}
-                title={t('chat.talk.screenShareTooltip')}
-              >
-                {t('chat.talk.sharingScreen')}
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-md cursor-pointer"
-            style={{ color: 'var(--color-text-tertiary)' }}
-            title={t('chat.talk.close')}
-            aria-label={t('chat.talk.close')}
-          >
-            <X size={16} />
+  return <div className="resonance-rideau" onClick={(event) => {
+    if (event.target === event.currentTarget) onClose();
+  }}>
+    <div ref={fenetre} className="composer-glass carte-vitree resonance-dialogue" role="dialog" aria-modal="true"
+      aria-labelledby={titreId} tabIndex={-1} data-conversation={fil.length > 0} data-state={state}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
+        // Le raccourci global Espace du moteur vocal ne doit pas voler
+        // l'activation clavier de Terminer, Copier ou Détails.
+        if (event.code === 'Space' && (event.target as HTMLElement).closest('button')) event.stopPropagation();
+        if (event.key !== 'Tab') return;
+        const boutons = Array.from(fenetre.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex="0"]') ?? []);
+        const premier = boutons[0], dernier = boutons[boutons.length - 1];
+        if (event.shiftKey && (document.activeElement === premier || document.activeElement === fenetre.current)) {
+          event.preventDefault(); dernier?.focus();
+        } else if (!event.shiftKey && document.activeElement === dernier) {
+          event.preventDefault(); premier?.focus();
+        }
+      }}>
+      <header className="resonance-entete">
+        <div className="resonance-identite"><AudioLines size={22} strokeWidth={1.5} aria-hidden="true" />
+          <span id={titreId}>Diapason</span><span className="resonance-sous-titre">{t('talk.resonance.voice')}</span>
+        </div>
+        <div className="resonance-actions-entete">
+          {screenSharing && <span className="resonance-partage" title={t('chat.talk.screenShareTooltip')}>
+            <Monitor size={14} />{t('chat.talk.sharingScreen')}
+          </span>}
+          <button type="button" className="resonance-icone" onClick={() => setDetails(!details)}
+            aria-expanded={details} aria-controls={detailsId} aria-label={t('talk.resonance.details')} title={t('talk.resonance.details')}>
+            <Info size={18} />
+          </button>
+          <button type="button" className="resonance-icone" onClick={onClose} title={t('chat.talk.close')} aria-label={t('chat.talk.close')}>
+            <X size={20} />
           </button>
         </div>
-
-        <div className="flex flex-col items-center px-6 pb-3 pt-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              if (active) onInterrupt();
-              else void onStart();
-            }}
-            className="relative w-full cursor-pointer overflow-hidden"
-            style={{
-              // The summit needs headroom: too flat a frame and a loud syllable
-              // throws the spire straight off the top edge.
-              //
-              // Dès qu'une conversation existe, la scène se retire : 62 vh de
-              // relief plus les commandes plus le fil dépassaient l'écran, et
-              // overflow-hidden COUPAIT la dernière réponse — invisible même
-              // en défilant, c'est le défaut rapporté. La conversation est ce
-              // qu'on vient lire ; la montagne l'accompagne.
-              height: fil.length
-                ? 'clamp(180px, 30vh, 340px)'
-                : 'clamp(380px, 62vh, 620px)',
-              transition: 'height 320ms ease',
-              // Deliberately dark in BOTH themes, like a video player: the
-              // luminous relief and its survey grid are additive light and
-              // would vanish on a pale surface. Not #000 but the palette's
-              // deep blue, so the stage belongs to the product rather than
-              // punching a raw black hole through a light interface.
-              background: 'var(--color-stage, #05070d)',
-              border: 'none',
-              borderRadius: 8,
-              padding: 0,
-            }}
-            title={active ? t('chat.talk.interruptHint') : t('chat.talk.startHint')}
-          >
-            {/* Survey grid: a faint horizon behind the relief, so the massif
-                reads as standing on something. */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                backgroundImage:
-                  'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),' +
-                  'linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
-                backgroundSize: '48px 48px',
-                maskImage: 'radial-gradient(ellipse at 50% 60%, #000 30%, transparent 78%)',
-                WebkitMaskImage:
-                  'radial-gradient(ellipse at 50% 60%, #000 30%, transparent 78%)',
-              }}
-            />
-
-            {/* No fallback: an empty box for a few hundred milliseconds reads
-                as loading, a placeholder shape reads as a glitch. */}
-            <Suspense fallback={null}>
-              <VoiceTerrain
-                state={entityState(state)}
-                // Dimmer when there is nothing to say: present, not performing.
-                intensity={active ? 1 : 0.9}
-                audioSource={audioSource}
-                micSource={micSource}
-                onTelemetry={setTelemetry}
-                style={{ position: 'absolute', inset: 0 }}
-              />
+      </header>
+      {details && <div id={detailsId} className="resonance-details">
+        <span>{fournisseur}{provider === 'local' && selectedModel ? ` / ${selectedModel}` : ''}</span>
+        <span>{statusLabel}</span>
+      </div>}
+      <div className="resonance-corps">
+        <section className="resonance-presence">
+          <div className="resonance-scene">
+            <Suspense fallback={<div className="resonance-repli" aria-hidden="true" />}>
+              <VoiceResonance state={state} audioSource={audioSource} micSource={micSource} />
             </Suspense>
-
-            <TalkHud
-              telemetry={telemetry}
-              state={statusLabel}
-              elapsed={elapsed}
-              provider={provider}
-              model={selectedModel}
-            />
-
-          </button>
-
-          {caption ? (
-            <p
-              className="mt-3 text-lg font-medium text-center max-w-md talk-caption"
-              style={{
-                // Dimmed once the user has stopped: still legible, but plainly
-                // no longer the live line.
-                color: state === 'listening' ? 'var(--color-text)' : 'var(--color-text-secondary)',
-              }}
-              aria-live="polite"
-            >
-              {caption}
-            </p>
-          ) : fil.length === 0 ? (
-            <>
-              <p className="mt-3 text-lg font-medium" style={{ color: 'var(--color-text)' }}>
-                {t('chat.talk.justSpeak')}
-              </p>
-              <p className="mt-1 text-sm text-center max-w-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                {t('chat.talk.shortcuts')}
-              </p>
-            </>
-          ) : null}
-
-          {/* Le choix du fournisseur vit dans Réglages → Parole : un panneau
-              de conversation n'est pas un panneau de configuration. Demandé
-              le 23 août 2026. Le pied de page continue d'afficher le
-              fournisseur actif — on doit toujours SAVOIR où va sa voix. */}
-          <div className="mt-3 flex items-center gap-2">
-            {active ? (
-              <button
-                type="button"
-                onClick={onStop}
-                className="text-xs px-3 py-1.5 rounded-md cursor-pointer"
-                style={{ background: 'var(--color-error)', color: '#fff' }}
-              >
-                {t('chat.talk.end')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void onStart()}
-                disabled={!serviceReady || checkingService}
-                className="text-xs px-3 py-1.5 rounded-md disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                style={{ background: 'var(--color-accent)', color: '#fff' }}
-              >
-                {checkingService ? t('talk.checkingService') : t('chat.talk.start')}
-              </button>
-            )}
           </div>
-
-          {error && (
-            <p className="mt-3 text-xs text-center" style={{ color: 'var(--color-error)' }}>
-              {error === 'missing-key-gemini'
-                ? t('talk.missingKeyGemini')
-                : error === 'missing-key-openai'
-                  ? t('talk.missingKeyOpenai')
-                  : error === 'local-not-ready'
-                    ? t('talk.localNotReady')
-                    : error === 'local-components-missing'
-                      ? t('talk.localComponentsMissing')
-                    : error === 'voice-auth-unavailable'
-                      ? t('talk.authUnavailable')
-                      : error === 'voice-service-unavailable'
-                        ? t('talk.serviceUnavailable')
-                        : error === 'voice-connection-failed'
-                          ? t('talk.connectionFailed')
-                          : error === 'microphone-denied'
-                            ? t('talk.microphoneDenied')
-                            : error === 'voice-session-failed'
-                              ? t('talk.sessionFailed')
-                              : error}
-            </p>
-          )}
-        </div>
-
-        {(transcripts.length > 0 || toolEvents.length > 0) && (
-          <div
-            ref={feedRef}
-            onScroll={surDefilement}
-            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 text-sm space-y-3"
-            style={{
-              borderTop: '1px solid var(--color-border)',
-              color: 'var(--color-text-secondary)',
-              scrollBehavior: 'smooth',
-            }}
-          >
-            {fil.map((entree) =>
-              entree.kind === 'tool' ? (
-                <div key={`t-${entree.at}`} className="flex justify-center">
-                  <span
-                    className="px-2.5 py-0.5 rounded-full text-[11px] tracking-wide"
-                    style={{
-                      border: '1px solid var(--color-border)',
-                      color: entree.ok
-                        ? 'var(--color-success)'
-                        : 'var(--color-error)',
-                      background: 'var(--color-surface)',
-                    }}
-                  >
-                    {entree.ok ? '✓' : '✗'} {entree.name}
-                    {entree.detail ? ` — ${entree.detail}` : ''}
-                  </span>
-                </div>
-              ) : (
-                <div
-                  key={`m-${entree.at}`}
-                  className={`group flex flex-col gap-1 ${
-                    entree.role === 'user' ? 'items-end' : 'items-start'
-                  }`}
-                >
-                  <span
-                    className="text-[10px] uppercase tracking-[0.14em]"
-                    style={{ color: 'var(--color-text-tertiary)' }}
-                  >
-                    {entree.role === 'user' ? t('common.you') : 'Diapason'}
-                  </span>
-                  {/* Ce qui s'est dit se copie aussi (23 août 2026) : le
-                      bouton vit du côté opposé à l'alignement de la bulle. */}
-                  <div
-                    className={`flex items-end gap-1.5 max-w-[85%] ${
-                      entree.role === 'user' ? 'flex-row' : 'flex-row-reverse'
-                    }`}
-                  >
-                    <CopieTranscript texte={entree.text} etiquette={t('chat.message.copy')} />
-                    <div
-                      className="rounded-md px-3 py-2 leading-relaxed"
-                      style={
-                        entree.role === 'user'
-                          ? {
-                              background: 'var(--color-surface)',
-                              border: '1px solid var(--color-border)',
-                              color: 'var(--color-text)',
-                            }
-                          : {
-                              borderLeft: '2px solid var(--color-accent)',
-                              paddingLeft: '10px',
-                              color: 'var(--color-text)',
-                              opacity: entree.final ? 1 : 0.65,
-                            }
-                      }
-                    >
-                      {entree.text}
-                      {!entree.final && <span className="animate-pulse">▍</span>}
-                    </div>
-                  </div>
-                </div>
-              ),
-            )}
+          <div className="resonance-parole">
+            <h2 className="resonance-titre" aria-live="polite">{t(titres[state])}</h2>
+            <p className="resonance-aide">{aide}</p>
+            {caption && <p className="resonance-caption" aria-live="polite">{caption}</p>}
           </div>
-        )}
-
-        <div
-          className="px-4 py-2 text-[11px] text-center shrink-0"
-          style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
-        >
-          {provider === 'local'
-            ? t('talk.footerLocal')
-            : t('chat.talk.footer', {
-                provider: provider === 'gemini' ? 'Gemini Live' : 'gpt-realtime',
-              })}
-        </div>
+          <div className="resonance-commandes">
+            {active ? <>
+              {state === 'speaking' && <button type="button" className="resonance-principal" onClick={() => agir(onInterrupt)}>
+                <Mic size={17} />{t('talk.resonance.interrupt')}
+              </button>}
+              <button type="button" className="resonance-terminer" onClick={() => agir(onStop)}>
+                <Square size={12} fill="currentColor" />{t('chat.talk.end')}
+              </button>
+            </> : <button type="button" className="resonance-principal" onClick={() => agir(onStart)}
+              disabled={!serviceReady || checkingService}>
+              <Mic size={18} />{t('chat.talk.startHint')}
+            </button>}
+          </div>
+          {error && <p className="resonance-erreur" role="alert">
+            {error in ERREURS ? t(ERREURS[error as keyof typeof ERREURS]) : error}
+          </p>}
+        </section>
+        {fil.length > 0 && <section className="resonance-conversation" aria-label={t('talk.resonance.transcript')}>
+          <div className="resonance-fil-titre">{t('talk.resonance.transcript')}</div>
+          <div ref={filRef} className="resonance-fil" tabIndex={0} onScroll={() => {
+            const el = filRef.current;
+            if (el) suiviRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+          }}>
+            {fil.map((entree) => entree.kind === 'tool' ? <div key={`t-${entree.at}`} className="resonance-outil" data-ok={entree.ok}>
+              {entree.ok ? <Check size={14} /> : <X size={14} />}
+              <span>{entree.name}{entree.detail ? ` — ${entree.detail}` : ''}</span>
+            </div> : <div key={`m-${entree.at}`} className="resonance-message" data-role={entree.role}>
+              <div className="resonance-auteur"><span>{entree.role === 'user' ? t('common.you') : 'Diapason'}</span>
+                <CopieTranscript texte={entree.text} etiquette={t('chat.message.copy')} />
+              </div>
+              <p>{entree.text}{!entree.final && <span className="resonance-en-cours"> ▍</span>}</p>
+            </div>)}
+          </div>
+        </section>}
       </div>
+      <footer className="resonance-pied">
+        <span className="resonance-source"><span className="resonance-temoin" />{fournisseur}</span>
+        {active ? <span className="resonance-duree" aria-label={t('talk.resonance.duration')}>
+          {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+        </span> : <span>{t('talk.resonance.escape')}</span>}
+      </footer>
     </div>
-  );
+  </div>;
 }

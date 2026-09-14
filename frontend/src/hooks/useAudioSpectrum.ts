@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { AI_ENTITY_CONFIG as C } from '../components/AIEntity/config';
 import type { AIAudioSource } from '../components/AIEntity/types';
+import { NiveauVocal } from '../lib/niveauVocal';
 
 /** Number of log-spaced bands handed to the terrain. One band is one ridge. */
 export const SPECTRUM_BINS = 64;
@@ -103,26 +104,28 @@ export function useAudioSpectrum(source: AIAudioSource, enabled: boolean): Analy
     }
 
     const analyser = context.createAnalyser();
-    analyser.fftSize = 2048;
+    // 1024/16000 = 64 ms de fenêtre au micro, contre 128 ms auparavant.
+    analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.7;
     input.connect(analyser);
 
     const spectrum = new Uint8Array(analyser.frequencyBinCount);
+    const pcm = new Float32Array(analyser.fftSize);
+    const niveau = new NiveauVocal();
     const edges = bandEdges();
     const smoothed = new Float32Array(SPECTRUM_BINS);
     const output = new Float32Array(SPECTRUM_BINS);
-    let level = 0;
     let peak: number = C.audio.peakFloor;
 
     readRef.current = () => {
       if (context.state === 'suspended') void context.resume().catch(() => {});
       analyser.getByteFrequencyData(spectrum);
+      analyser.getFloatTimeDomainData(pcm);
 
       const nyquist = context.sampleRate / 2;
       const binHz = nyquist / analyser.frequencyBinCount;
 
       let loudest = 0;
-      let sum = 0;
       for (let i = 0; i < SPECTRUM_BINS; i++) {
         const from = Math.max(0, Math.floor(edges[i] / binHz));
         const to = Math.min(spectrum.length - 1, Math.ceil(edges[i + 1] / binHz));
@@ -134,11 +137,7 @@ export function useAudioSpectrum(source: AIAudioSource, enabled: boolean): Analy
         const rate = energy > smoothed[i] ? C.audio.attack : C.audio.release;
         smoothed[i] += (energy - smoothed[i]) * rate;
         loudest = Math.max(loudest, smoothed[i]);
-        sum += smoothed[i];
       }
-
-      const rms = sum / SPECTRUM_BINS;
-      level += (rms - level) * (rms > level ? C.audio.attack : C.audio.release);
 
       peak = Math.max(loudest, peak * C.audio.peakDecay, C.audio.peakFloor);
       const norm = 1 / peak;
@@ -146,7 +145,9 @@ export function useAudioSpectrum(source: AIAudioSource, enabled: boolean): Analy
         output[i] = Math.min(1, smoothed[i] * norm);
       }
 
-      frameRef.current = { level: Math.min(1, level * norm), bins: output };
+      // La moyenne des bandes FFT n'était pas un RMS : les bandes vides
+      // diluaient la voix. Le mouvement suit désormais le signal temporel.
+      frameRef.current = { level: niveau.lire(pcm, performance.now()), bins: output };
       return frameRef.current;
     };
 
@@ -154,7 +155,9 @@ export function useAudioSpectrum(source: AIAudioSource, enabled: boolean): Analy
       frameRef.current = silentFrame();
       readRef.current = () => frameRef.current;
       try {
-        input?.disconnect();
+        // 12 septembre 2026 : sans destination, disconnect() coupait aussi
+        // le haut-parleur du moteur vocal dont nous empruntons le nœud.
+        input?.disconnect(analyser);
         analyser.disconnect();
       } catch {
         /* already torn down with the context */
