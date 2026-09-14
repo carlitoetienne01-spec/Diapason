@@ -143,10 +143,14 @@ export function ChatArea() {
           </button>
         </div>
       )}
-      {/* The rain is a sibling of the scroller, not a child: inside it the
-          canvas would slide away with the messages. */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* 12 septembre 2026 : la pluie s'arrêtait avant le compositeur ; une
+          vitre sur un fond uni ressemblait donc à une plaque beige. Le même
+          canevas passe maintenant derrière les deux, sans suivre le scroll. */}
+      <div className="relative isolate flex flex-1 min-h-0 flex-col">
+      <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
         <MatrixRain />
+      </div>
+      <div className="flex-1 relative overflow-hidden">
         <div
           ref={listRef}
           onScroll={handleScroll}
@@ -223,6 +227,7 @@ export function ChatArea() {
         </div>
       </div>
       <InputArea />
+      </div>
     </div>
   );
 }

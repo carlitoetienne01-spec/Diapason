@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../../lib/store';
+import { lireSurfacesVitrees } from './verreTexture';
+import { refractionDuBiseau } from './cristal';
 
 /** Digits are over-represented so the field reads as machine output rather
  * than as scrambled words. */
@@ -144,6 +146,8 @@ export function MatrixRain() {
     if (!context) return;
 
     const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const transparencyQuery = window.matchMedia?.('(prefers-reduced-transparency: reduce)');
+    const contrastQuery = window.matchMedia?.('(forced-colors: active)');
 
     let columns: Column[] = [];
     let width = 0;
@@ -156,6 +160,7 @@ export function MatrixRain() {
     let headAtlas: HTMLCanvasElement | null = null;
     let frame = 0;
     let last = 0;
+    let origine = { x: 0, y: 0 };
 
     const measure = () => {
       context.font = `${FONT_SIZE}px 'VT323', ui-monospace, monospace`;
@@ -176,6 +181,8 @@ export function MatrixRain() {
       ratio = Math.min(window.devicePixelRatio || 1, 2);
       width = host.clientWidth;
       height = host.clientHeight;
+      const rect = host.getBoundingClientRect();
+      origine = { x: rect.left, y: rect.top };
       if (width === 0 || height === 0) return;
 
       canvas.width = Math.max(1, Math.round(width * ratio));
@@ -218,6 +225,7 @@ export function MatrixRain() {
 
       const sourceWidth = cellWidth * ratio;
       const sourceHeight = cellHeight * ratio;
+      const vitres = transparencyQuery?.matches || contrastQuery?.matches ? [] : lireSurfacesVitrees();
 
       for (let c = 0; c < columns.length; c += 1) {
         const column = columns[c];
@@ -257,16 +265,26 @@ export function MatrixRain() {
           const atlas = i === 0 ? headAtlas : trailAtlas;
 
           context.globalAlpha = i === 0 ? Math.min(1, column.bright + 0.35) : alpha;
+          let biseau: ReturnType<typeof refractionDuBiseau> = null;
+          for (let v = vitres.length - 1; v >= 0 && !biseau; v -= 1) {
+            biseau = refractionDuBiseau(
+              origine.x + x + cellWidth / 2,
+              origine.y + row * cellHeight + cellHeight / 2,
+              vitres[v],
+            );
+          }
+          const largeurGlyphe = cellWidth * (biseau?.echelleX ?? 1);
+          const hauteurGlyphe = cellHeight * (biseau?.echelleY ?? 1);
           context.drawImage(
             atlas,
             column.glyphs[slot] * sourceWidth,
             0,
             sourceWidth,
             sourceHeight,
-            x,
-            row * cellHeight,
-            cellWidth,
-            cellHeight,
+            x + (biseau?.dx ?? 0) + (cellWidth - largeurGlyphe) / 2,
+            row * cellHeight + (biseau?.dy ?? 0) + (cellHeight - hauteurGlyphe) / 2,
+            largeurGlyphe,
+            hauteurGlyphe,
           );
         }
 

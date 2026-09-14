@@ -1,0 +1,88 @@
+/* 12 septembre 2026 — la matière validée sur le panneau système est partagée
+   avec Habitudes. Un seul réglage de transparence, pas une copie qui repart
+   vers le verre opaque au prochain ajustement. */
+.carte-vitree-support {
+  position: relative;
+  min-width: 0;
+  border-radius: var(--carte-verre-rayon, 12px);
+}
+
+/* Le CRT global est au-dessus du texte, donc hors de portée du flou.
+   Son même motif est placé SOUS chaque vitre ; la découpe partagée enlève
+   celui du dessus. Pas de nouveau canevas ni de fausse donnée derrière. */
+.terminal .carte-vitree-support {
+  background-image: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.064) 0 1px, transparent 1px 3px);
+  background-attachment: fixed;
+}
+:root.terminal[data-terminal-skin='oxblood'] .carte-vitree-support {
+  background-image: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 0 1px, transparent 1px 3px);
+}
+:root.terminal[data-terminal-skin='ardechine'] .carte-vitree-support {
+  background-image:
+    linear-gradient(to right, rgba(20, 18, 14, 0.0675) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 18, 14, 0.0675) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+:root.terminal[data-terminal-skin='sage'] .carte-vitree-support {
+  background-image:
+    linear-gradient(to right, rgba(144, 164, 129, 0.049) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(144, 164, 129, 0.049) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.composer-glass.carte-vitree {
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--carte-verre-rayon, 12px);
+  border-color: color-mix(in srgb, var(--color-text) 12%, transparent);
+  border-top-color: color-mix(in srgb, var(--composer-rim) 60%, transparent);
+  border-left-color: color-mix(in srgb, var(--composer-rim) 40%, transparent);
+  box-shadow:
+    inset 0 0.5px 0 var(--composer-reflet),
+    inset -0.5px -0.5px 0 rgba(37, 50, 57, 0.12),
+    0 4px 8px -6px var(--composer-ombre),
+    0 1px 2px -1px var(--composer-ombre);
+}
+
+/* Retour de Carlito, 12 septembre : 1,2 px de flou effaçait presque toute
+   la grille de 3 px, malgré un remplissage de seulement 3 %. Réduire encore
+   la teinte seule n'aurait rien changé. Le centre laisse désormais voir
+   le motif, sans voile beige ; seule la tranche reste légèrement diffusée. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .composer-glass.carte-vitree {
+    background: linear-gradient(155deg, rgba(248, 252, 255, 0.055), transparent 25%, transparent 78%, rgba(248, 252, 255, 0.025));
+    -webkit-backdrop-filter: blur(0.18px) saturate(104%);
+    backdrop-filter: blur(0.18px) saturate(104%);
+  }
+}
+
+/* 1 px de tranche sur 36 à 60 px : le bord n'est plus un cadre blanc. */
+.composer-glass.carte-vitree::before {
+  padding: 1px;
+  background: linear-gradient(138deg, var(--composer-rim), transparent 18%, transparent 48%, var(--composer-reflet) 62%, transparent 78%, var(--composer-rim));
+  -webkit-backdrop-filter: blur(1.2px);
+  backdrop-filter: blur(1.2px);
+}
+.composer-glass.carte-vitree::after {
+  background: radial-gradient(ellipse var(--carte-verre-reflet-largeur, 100px) var(--carte-verre-reflet-hauteur, 45px) at var(--composer-reflet-x, 30%) var(--composer-reflet-y, 10%), rgba(248, 252, 255, 0.13), rgba(248, 252, 255, 0.025) 42%, transparent 75%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .composer-glass.carte-vitree {
+    background: var(--color-input-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :root.terminal .carte-vitree-support,
+  :root.terminal[data-terminal-skin] .carte-vitree-support { background: none; }
+  .composer-glass.carte-vitree {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

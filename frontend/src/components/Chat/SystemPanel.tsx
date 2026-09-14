@@ -3,7 +3,6 @@ import {
   Zap,
   Activity,
   Thermometer,
-  DollarSign,
   TrendingDown,
   Cloud,
   HardDrive,
@@ -13,6 +12,7 @@ import {
 import { useAppStore } from '../../lib/store';
 import { getBase } from '../../lib/api';
 import { useTranslation } from '../../i18n/useTranslation';
+import { CarteVitree } from '../Glass/CarteVitree';
 
 interface EnergyData {
   total_energy_j?: number;
@@ -76,6 +76,7 @@ export function SystemPanel() {
   return (
     <div
       className="flex flex-col h-full overflow-y-auto"
+      data-verre-defilement
       style={{
         width: 280,
         minWidth: 280,
@@ -157,10 +158,7 @@ export function SystemPanel() {
           </h4>
 
           {/* Local */}
-          <div
-            className="flex items-center gap-2 rounded-lg px-3 py-2 mb-2"
-            style={{ background: 'var(--color-accent-subtle)', border: '1px solid var(--color-accent)' }}
-          >
+          <CarteVitree className="mb-2" contenuClassName="flex items-center gap-2 px-3 py-2">
             <HardDrive size={14} style={{ color: 'var(--color-accent)' }} />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium truncate" style={{ color: 'var(--color-text)' }}>{t('chat.system.local')}</div>
@@ -168,7 +166,7 @@ export function SystemPanel() {
             <div className="text-sm font-semibold" style={{ color: 'var(--color-success)' }}>
               ${(savings?.local_cost ?? 0).toFixed(4)}
             </div>
-          </div>
+          </CarteVitree>
 
           {/* Cloud providers */}
           <div className="flex flex-col gap-1.5">
@@ -176,13 +174,9 @@ export function SystemPanel() {
               const cost = (promptK * provider.input) / 1000 + (completionK * provider.output) / 1000;
               const saved = cost - (savings?.local_cost ?? 0);
               return (
-                <div
+                <CarteVitree
                   key={provider.name}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2"
-                  style={{
-                    background: provider.primary ? 'var(--color-bg-secondary)' : 'var(--color-bg-secondary)',
-                    border: provider.primary ? '1px solid var(--color-border-accent, var(--color-accent))' : '1px solid transparent',
-                  }}
+                  contenuClassName="flex items-center gap-2 px-3 py-2"
                 >
                   <Cloud size={14} style={{ color: 'var(--color-text-tertiary)' }} />
                   <div className="flex-1 min-w-0">
@@ -207,7 +201,7 @@ export function SystemPanel() {
                       </div>
                     )}
                   </div>
-                </div>
+                </CarteVitree>
               );
             })}
           </div>
@@ -231,10 +225,7 @@ function MiniStat({
   unit?: string;
 }) {
   return (
-    <div
-      className="rounded-lg px-2.5 py-2"
-      style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-    >
+    <CarteVitree contenuClassName="px-2.5 py-2">
       <div className="flex items-center gap-1 mb-0.5">
         <Icon size={10} style={{ color: 'var(--color-accent)' }} />
         <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -249,7 +240,7 @@ function MiniStat({
           </span>
         )}
       </div>
-    </div>
+    </CarteVitree>
   );
 }
 

@@ -5,6 +5,7 @@ import { useAppStore } from '../../lib/store';
 import { fetchServerConfig, preloadModel, setServerConfigKey } from '../../lib/api';
 import { isCloudModel } from '../../lib/cloud-models';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useSurfaceVitree } from './useSurfaceVitree';
 
 /* The composer's bottom toolbar: tool-permission mode on the left, the
  * active model and a context-window ring on the right. Everything here
@@ -31,7 +32,7 @@ interface MenuProps {
 }
 
 function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: MenuProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
+  const ref = useSurfaceVitree();
   // Latest-ref: the parent re-renders on every keystroke, and a raw
   // [onClose] dep would tear the document listeners down each time.
   const onCloseRef = useRef(onClose);
@@ -61,22 +62,20 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
 
   // The composer sits at the bottom of the screen: menus open UPWARD,
   // anchored to the chip, and never off the horizontal edges.
-  const left = Math.min(Math.max(8, anchor.rect.left), window.innerWidth - width - 8);
+  const menuWidth = Math.min(width, Math.max(0, window.innerWidth - 16));
+  const left = Math.min(Math.max(8, anchor.rect.left), window.innerWidth - menuWidth - 8);
   const bottom = window.innerHeight - anchor.rect.top + 6;
 
   return createPortal(
     <div
       ref={ref}
       role={role}
-      className="fixed z-50 py-1.5 px-1.5 rounded-xl overflow-y-auto"
+      className="composer-glass-menu fixed z-50 py-1.5 px-1.5 overflow-y-auto"
       style={{
         left,
         bottom,
-        width,
+        width: menuWidth,
         maxHeight: '50vh',
-        background: 'var(--color-bg-secondary)',
-        border: '1px solid var(--color-border)',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
       }}
     >
       {children}
@@ -86,13 +85,7 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
 }
 
 const chipClass =
-  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50';
-
-const chipStyle = (active: boolean): React.CSSProperties => ({
-  background: active ? 'var(--color-accent-subtle)' : 'transparent',
-  border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
-  color: active ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
-});
+  'composer-glass-chip inline-flex items-center gap-1.5 px-2.5 py-1 text-xs cursor-pointer disabled:cursor-default disabled:opacity-50';
 
 // ---------------------------------------------------------------------------
 // Mode chip — Auto / Ask, backed by agent.tool_approval
@@ -139,9 +132,7 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
   const item = (value: 'auto' | 'ask', title: string, desc: string) => (
     <button
       role="menuitem"
-      className="flex w-full items-start gap-2.5 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer"
-      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      className="composer-glass-menu-item flex w-full items-start gap-2.5 px-3 py-2 text-left cursor-pointer"
       onClick={() => choose(value)}
     >
       <div className="flex-1 min-w-0">
@@ -164,10 +155,11 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
         type="button"
         disabled={disabled || mode === null}
         className={chipClass}
+        data-active={mode === 'ask' && !writeFailed}
         style={
           writeFailed
-            ? { ...chipStyle(false), borderColor: 'var(--color-error)', color: 'var(--color-error)' }
-            : chipStyle(mode === 'ask')
+            ? { borderColor: 'var(--color-error)', color: 'var(--color-error)' }
+            : undefined
         }
         onClick={(e) =>
           setAnchor(
@@ -235,7 +227,7 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
         type="button"
         disabled={disabled}
         className={chipClass}
-        style={{ ...chipStyle(false), maxWidth: 220 }}
+        style={{ maxWidth: 220 }}
         onClick={(e) =>
           setAnchor(
             anchor
@@ -259,10 +251,8 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
             <button
               key={m.id}
               role="menuitem"
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 rounded-lg text-left text-[13px] transition-colors cursor-pointer"
+              className="composer-glass-menu-item flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] cursor-pointer"
               style={{ color: 'var(--color-text)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               onClick={() => pick(m.id)}
             >
               <span className="flex-1 truncate">{m.id}</span>
@@ -274,10 +264,8 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
           <div className="my-1 mx-2" style={{ borderTop: '1px solid var(--color-border)' }} />
           <button
             role="menuitem"
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 rounded-lg text-left text-[13px] transition-colors cursor-pointer"
+            className="composer-glass-menu-item flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] cursor-pointer"
             style={{ color: 'var(--color-text-secondary)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             onClick={() => {
               setAnchor(null);
               setCommandPaletteOpen(true);
@@ -367,10 +355,7 @@ export function ContextRing({ draftLength }: { draftLength: number }) {
     <>
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 px-1.5 py-1 rounded-full transition-colors cursor-pointer"
-        style={{ color: 'var(--color-text-tertiary)' }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        className="composer-glass-context inline-flex items-center gap-1.5 px-1.5 py-1 cursor-pointer"
         onClick={(e) =>
           setAnchor(
             anchor

@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Loader2, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
@@ -63,7 +64,7 @@ export function SuccesYearReviewPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
@@ -80,7 +81,7 @@ export function SuccesYearReviewPage() {
           </button>
         </header>
 
-        <section className="rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+        <CadreVitre as="section" className="rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <div className="flex items-center justify-center gap-4 mb-5">
             <button type="button" disabled={year <= 1970} onClick={() => { setYear((value) => value - 1); setMonth(undefined); }} className="size-9 rounded-lg flex items-center justify-center disabled:opacity-30 cursor-pointer" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }} aria-label="Année précédente"><ChevronLeft size={17} /></button>
             <p className="min-w-24 text-center text-xl font-semibold" style={{ color: 'var(--color-text)' }}>{year}</p>
@@ -93,36 +94,36 @@ export function SuccesYearReviewPage() {
                 const selected = month === index + 1;
                 const ratio = value / maxActivity;
                 return (
-                  <button key={MONTHS[index]} type="button" aria-pressed={selected} onClick={() => setMonth(selected ? undefined : index + 1)} className="rounded-xl px-1 py-2 flex flex-col items-center gap-2 cursor-pointer" style={{ background: selected ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)', border: selected ? '1px solid var(--color-accent)' : '1px solid transparent' }}>
+                  <CadreVitre as="button" compact key={MONTHS[index]} type="button" aria-pressed={selected} onClick={() => setMonth(selected ? undefined : index + 1)} className="rounded-xl px-1 py-2 flex flex-col items-center gap-2 cursor-pointer" style={{ background: selected ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)', border: selected ? '1px solid var(--color-accent)' : '1px solid transparent' }}>
                     <span className="h-24 w-3 rounded-full flex items-end overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}><span className="block w-full rounded-full transition-all" style={{ height: `${Math.max(value ? 8 : 0, Math.round(ratio * 100))}%`, background: `hsl(${Math.round(index * 360 / 12)} 82% 48%)` }} /></span>
                     <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{MONTHS[index]}</span>
                     <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{value}</span>
-                  </button>
+                  </CadreVitre>
                 );
               })}
             </div>
           )}
-        </section>
+        </CadreVitre>
 
         <section className="grid md:grid-cols-[1.1fr_0.9fr] gap-5">
-          <div className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <CadreVitre className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <h2 className="font-medium mb-4" style={{ color: 'var(--color-text)' }}>
               {month ? `Résumé mensuel — ${MONTH_NAMES[month - 1]} ${year}` : 'Résumé annuel'}
             </h2>
             <div className="grid gap-2">
-              {metrics.map(([icon, label, value]) => <div key={label} className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-bg-secondary)' }}><span>{icon}</span><span className="flex-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{label}</span><strong style={{ color: 'var(--color-text)' }}>{value}</strong></div>)}
+              {metrics.map(([icon, label, value]) => <CadreVitre compact key={label} className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-bg-secondary)' }}><span>{icon}</span><span className="flex-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{label}</span><strong style={{ color: 'var(--color-text)' }}>{value}</strong></CadreVitre>)}
             </div>
-          </div>
+          </CadreVitre>
 
-          <div className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <CadreVitre className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="flex items-center gap-2 mb-4"><Trophy size={18} style={{ color: 'var(--color-accent)' }} /><h2 className="font-medium" style={{ color: 'var(--color-text)' }}>Top accomplissements</h2></div>
             <p className="text-xs mb-4 capitalize" style={{ color: 'var(--color-text-tertiary)' }}>{month ? `${MONTH_NAMES[month - 1]} ${year}` : `Année ${year}`}</p>
             <div className="grid gap-3">
-              <div className="rounded-xl p-4" style={{ background: 'var(--color-bg-secondary)' }}><p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>🎯 Tâches complétées</p><p className="text-2xl font-semibold mt-1" style={{ color: 'var(--color-text)' }}>{review?.summary.tasksCompleted ?? 0}</p></div>
-              <div className="rounded-xl p-4" style={{ background: 'var(--color-bg-secondary)' }}><p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>🏁 Projets terminés</p><p className="text-2xl font-semibold mt-1" style={{ color: 'var(--color-text)' }}>{review?.summary.projectsCompleted ?? 0}</p></div>
+              <CadreVitre compact className="rounded-xl p-4" style={{ background: 'var(--color-bg-secondary)' }}><p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>🎯 Tâches complétées</p><p className="text-2xl font-semibold mt-1" style={{ color: 'var(--color-text)' }}>{review?.summary.tasksCompleted ?? 0}</p></CadreVitre>
+              <CadreVitre compact className="rounded-xl p-4" style={{ background: 'var(--color-bg-secondary)' }}><p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>🏁 Projets terminés</p><p className="text-2xl font-semibold mt-1" style={{ color: 'var(--color-text)' }}>{review?.summary.projectsCompleted ?? 0}</p></CadreVitre>
               {!month && (review?.catalog.longestHabitStreak ?? 0) >= 1 && <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>🔥 Plus long streak : {review?.catalog.longestHabitStreak} j.</p>}
             </div>
-          </div>
+          </CadreVitre>
         </section>
       </main>
     </div>

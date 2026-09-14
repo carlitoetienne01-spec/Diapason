@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, CirclePlus, HardDrive, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -296,7 +297,7 @@ export function SuccesTasksPage() {
   });
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
       <main className={`mx-auto w-full ${viewMode === 'list' ? 'max-w-5xl' : 'max-w-7xl'}`}>
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
@@ -310,7 +311,7 @@ export function SuccesTasksPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <div
+            <CadreVitre compact
               className="flex rounded-xl p-1"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
               role="tablist"
@@ -339,7 +340,7 @@ export function SuccesTasksPage() {
                   {option.label}
                 </button>
               ))}
-            </div>
+            </CadreVitre>
             <button
               type="button"
               onClick={() => setShowCreate((value) => !value)}
@@ -351,7 +352,7 @@ export function SuccesTasksPage() {
           </div>
         </header>
 
-        <section
+        <CadreVitre as="section"
           className="flex flex-col md:flex-row md:items-center gap-3 rounded-2xl p-3 mb-4"
           style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
         >
@@ -382,7 +383,7 @@ export function SuccesTasksPage() {
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
           </select>
-        </section>
+        </CadreVitre>
 
         {syncStatus && (
           <div className="flex items-start gap-2 mb-5 px-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -392,7 +393,7 @@ export function SuccesTasksPage() {
         )}
 
         {showCreate && (
-          <section
+          <CadreVitre as="section"
             className="grid gap-3 rounded-2xl p-4 mb-5"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
           >
@@ -477,11 +478,11 @@ export function SuccesTasksPage() {
               <button type="button" disabled={!title.trim() || saving} onClick={() => void handleCreate()} className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>Enregistrer localement</button>
             </div>
             <RecurrencesPanel kind="task" embedded />
-          </section>
+          </CadreVitre>
         )}
 
         {!loading && jalonsQuiAttendent.length > 0 && (
-          <section
+          <CadreVitre as="section"
             className="mb-5 rounded-2xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
             style={{
               background: 'var(--color-bg-secondary)',
@@ -506,7 +507,7 @@ export function SuccesTasksPage() {
             <span className="text-[11px] flex-1 min-w-[12rem]" style={{ color: 'var(--color-text-tertiary)' }}>
               Ces étapes attendent dans Projets. Donnez-en une à une date pour la voir ici.
             </span>
-          </section>
+          </CadreVitre>
         )}
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -526,16 +527,17 @@ export function SuccesTasksPage() {
             onQuickAdd={openCreateForDate}
           />
         ) : visibleTasks.length === 0 ? (
-          <div className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <CadreVitre className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <CheckCircle2 size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} />
             <p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucune tâche ici</p>
             <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez-en une, ou demandez simplement à DIA.</p>
-          </div>
+          </CadreVitre>
         ) : (
           <div className="grid gap-3">
             {visibleTasks.map((task) => (
               <TaskCard
                 key={task.id}
+                vitre
                 task={task}
                 projects={projects}
                 onToggleTask={toggleTask}

@@ -1,3 +1,4 @@
+import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { useEffect, useState } from 'react';
 import {
   BriefcaseBusiness,
@@ -63,6 +64,7 @@ interface Props {
   onAssignProject?: (task: SuccesTask, projectId: string) => Promise<void>;
   onDelete?: (task: SuccesTask) => Promise<void>;
   compact?: boolean;
+  vitre?: boolean;
 }
 
 function SubtaskRow({
@@ -235,6 +237,7 @@ export function TaskCard({
   onAssignProject,
   onDelete,
   compact,
+  vitre = false,
 }: Props) {
   const confirm = useConfirm();
   const [adding, setAdding] = useState(false);
@@ -349,7 +352,7 @@ export function TaskCard({
 
   if (editing && onUpdate) {
     return (
-      <article
+      <CadreVitre as="article" actif={vitre}
         className="rounded-2xl p-4 grid gap-3"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
       >
@@ -455,12 +458,12 @@ export function TaskCard({
             Enregistrer
           </button>
         </div>
-      </article>
+      </CadreVitre>
     );
   }
 
   return (
-    <article
+    <CadreVitre as="article" actif={vitre}
       className={`rounded-2xl ${compact ? 'p-3' : 'p-4'} transition-colors`}
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
@@ -516,7 +519,7 @@ export function TaskCard({
             {task.notes && <span className="truncate max-w-[420px]">{task.notes}</span>}
           </div>
           {rescheduling && onReschedule && (
-            <div
+            <CadreVitre compact actif={vitre}
               className="mt-3 grid gap-2 rounded-xl p-3"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
             >
@@ -570,7 +573,7 @@ export function TaskCard({
                   Annuler
                 </button>
               </div>
-            </div>
+            </CadreVitre>
           )}
           {!onUpdate && onAssignProject && projects.length > 0 && (
             <select
@@ -693,6 +696,6 @@ export function TaskCard({
           <Plus size={13} /> Ajouter une sous-tâche
         </button>
       )}
-    </article>
+    </CadreVitre>
   );
 }

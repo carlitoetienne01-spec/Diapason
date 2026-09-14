@@ -1,0 +1,8 @@
+/* Même verre clair que les petites cartes système. Les arrondis de 16 px
+   restent ceux d'Habitudes ; le reflet s'étend à ses cartes plus grandes,
+   sans élargir le flou ni recouvrir les états colorés du calendrier. */
+.habitudes-verre {
+  --carte-verre-rayon: 16px;
+  --carte-verre-reflet-largeur: 180px;
+  --carte-verre-reflet-hauteur: 85px;
+}

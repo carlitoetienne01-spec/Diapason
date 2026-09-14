@@ -1,0 +1,75 @@
+/* 12 septembre 2026 — Bilan, Tableau de bord, Finances, Planificateur et
+   Tâches : plus de volume, sans remettre le voile opaque rejeté par Carlito.
+   Palette conservée : cristal #f8fcff, givre #d9e8ed, ombre #253239 ; les
+   encres, la grille Ardéchine #beb3a1 et les accents métier restent au thème. */
+.composer-glass.carte-vitree.cadre-vitre {
+  --carte-verre-rayon: 16px;
+  --carte-verre-reflet-largeur: 190px;
+  --carte-verre-reflet-hauteur: 80px;
+  --cadre-verre-texture: linear-gradient(transparent, transparent);
+  --cadre-verre-maille: auto;
+  min-width: 0;
+  height: auto;
+  border-color: color-mix(in srgb, var(--color-text) 12%, transparent);
+  border-top-color: var(--composer-rim);
+  border-left-color: color-mix(in srgb, var(--composer-rim) 65%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--composer-reflet),
+    inset 1px 0 1px var(--composer-reflet-doux),
+    inset -1px -1px 1px rgba(37, 50, 57, 0.14),
+    0 3px 0 -1px color-mix(in srgb, var(--color-text) 8%, transparent),
+    0 9px 16px -10px var(--composer-ombre),
+    0 2px 4px -2px var(--composer-ombre);
+}
+.composer-glass.carte-vitree.cadre-vitre[data-verre-densite='compact'] {
+  --carte-verre-rayon: 12px;
+  --carte-verre-reflet-largeur: 110px;
+  --carte-verre-reflet-hauteur: 45px;
+}
+.composer-glass.carte-vitree.cadre-vitre::before { padding: 1.5px; }
+
+/* Pas de wrapper sur les cases déplaçables : le motif retiré du CRT global
+   est peint dans leur fond, derrière le contenu, avec son ancrage fenêtre.
+   Il n'y a ni deuxième canevas, ni animation de profondeur permanente. */
+:root.terminal .cadre-vitre {
+  --cadre-verre-texture: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.064) 0 1px, transparent 1px 3px);
+}
+:root.terminal[data-terminal-skin='oxblood'] .cadre-vitre {
+  --cadre-verre-texture: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 0 1px, transparent 1px 3px);
+}
+:root.terminal[data-terminal-skin='ardechine'] .cadre-vitre {
+  --cadre-verre-texture: linear-gradient(to right, rgba(20, 18, 14, 0.0675) 1px, transparent 1px), linear-gradient(to bottom, rgba(20, 18, 14, 0.0675) 1px, transparent 1px);
+  --cadre-verre-maille: 3px 3px;
+}
+:root.terminal[data-terminal-skin='sage'] .cadre-vitre {
+  --cadre-verre-texture: linear-gradient(to right, rgba(144, 164, 129, 0.049) 1px, transparent 1px), linear-gradient(to bottom, rgba(144, 164, 129, 0.049) 1px, transparent 1px);
+  --cadre-verre-maille: 3px 3px;
+}
+:root.terminal .cadre-vitre .cadre-vitre {
+  --cadre-verre-texture: linear-gradient(transparent, transparent);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .composer-glass.carte-vitree.cadre-vitre {
+    background-image: linear-gradient(155deg, rgba(248, 252, 255, 0.055), transparent 25%, transparent 78%, rgba(248, 252, 255, 0.025)), var(--cadre-verre-texture);
+    background-size: auto, var(--cadre-verre-maille), var(--cadre-verre-maille);
+    background-attachment: scroll, fixed, fixed;
+  }
+}
+.cadre-vitre:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+@media (prefers-reduced-transparency: reduce) {
+  .composer-glass.carte-vitree.cadre-vitre {
+    background: var(--color-input-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (forced-colors: active) {
+  .composer-glass.carte-vitree.cadre-vitre {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .cadre-vitre:focus-visible { outline-color: Highlight; }
+}

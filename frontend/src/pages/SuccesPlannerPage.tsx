@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarCheck2,
@@ -397,7 +398,7 @@ export function SuccesPlannerPage() {
           : 'Cette journée est libre';
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
         <header className="mb-7">
           <div className="flex items-center gap-2 mb-2">
@@ -417,16 +418,16 @@ export function SuccesPlannerPage() {
         <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
           {/* Left column: clock + quote + calendar */}
           <aside className="grid gap-4 content-start">
-            <section
+            <CadreVitre as="section"
               className="rounded-2xl p-5"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
               <AnalogClock />
-            </section>
+            </CadreVitre>
 
             {/* Rendered even with nothing saved yet: hiding the card would hide
                 the only way to open the quote library. */}
-            <section
+            <CadreVitre as="section"
               className="group rounded-2xl px-4 py-4"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               aria-label="Les mots du jour"
@@ -462,7 +463,7 @@ export function SuccesPlannerPage() {
                   <Plus size={14} />
                 </button>
               </div>
-            </section>
+            </CadreVitre>
 
             {quoteModalOpen && (
               <div
@@ -583,7 +584,7 @@ export function SuccesPlannerPage() {
               </div>
             )}
 
-            <section
+            <CadreVitre as="section"
               className="rounded-2xl p-4"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
@@ -694,12 +695,12 @@ export function SuccesPlannerPage() {
               >
                 Aujourd’hui
               </button>
-            </section>
+            </CadreVitre>
           </aside>
 
           {/* Right column: filters + tasks */}
           <section className="min-w-0 grid gap-4 content-start">
-            <div
+            <CadreVitre
               className="rounded-2xl p-4"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
@@ -756,13 +757,13 @@ export function SuccesPlannerPage() {
                   ['À faire', planner?.summary.open ?? 0],
                   ['Terminées', planner?.summary.completed ?? 0],
                 ].map(([label, value]) => (
-                  <div key={String(label)} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-bg-secondary)' }}>
+                  <CadreVitre compact key={String(label)} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-bg-secondary)' }}>
                     <p className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>{value}</p>
                     <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{label}</p>
-                  </div>
+                  </CadreVitre>
                 ))}
               </div>
-            </div>
+            </CadreVitre>
 
             <div className="flex gap-2">
               <input
@@ -796,7 +797,7 @@ export function SuccesPlannerPage() {
                 <Loader2 size={17} className="animate-spin" /> Chargement du plan…
               </div>
             ) : !visibleTasks.length ? (
-              <div
+              <CadreVitre
                 className="rounded-2xl py-16 text-center"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
@@ -804,7 +805,7 @@ export function SuccesPlannerPage() {
                 <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   Ajoutez une tâche ici ou demandez à DIA de la planifier.
                 </p>
-              </div>
+              </CadreVitre>
             ) : (
               <div className="grid gap-3">
                 {visibleTasks.map((task) => (
@@ -819,6 +820,7 @@ export function SuccesPlannerPage() {
                   >
                     <TaskCard
                       task={task}
+                      vitre
                       compact
                       onToggleTask={toggleTask}
                       onToggleSubtask={toggleSubtask}

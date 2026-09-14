@@ -12,6 +12,8 @@ import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
+import './ComposerGlass.css';
+import { useSurfaceVitree } from './useSurfaceVitree';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -83,6 +85,7 @@ function useResearchCorpusSync(enabled: boolean): {
 }
 
 export function InputArea() {
+  const surfaceVitree = useSurfaceVitree(true);
   const { t, locale } = useTranslation();
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -817,14 +820,7 @@ export function InputArea() {
           {t('chat.input.searchingOverSuffix', { count: corpusSync.itemsSynced })}
         </div>
       )}
-      <div
-        className="flex flex-col rounded-2xl px-4 py-3 transition-shadow"
-        style={{
-          background: 'var(--color-input-bg)',
-          border: '1px solid var(--color-input-border)',
-          boxShadow: 'var(--shadow-sm)',
-        }}
-      >
+      <div ref={surfaceVitree} className="composer-glass flex flex-col px-4 py-3">
         <div className="flex items-center gap-2">
         <textarea
           ref={textareaRef}
@@ -835,14 +831,14 @@ export function InputArea() {
             selectedModel ? t('chat.input.placeholder') : t('chat.input.placeholderNoModel')
           }
           rows={1}
-          className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
+          className="composer-glass-input flex-1 min-w-0 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
           disabled={streamState.isStreaming || modelLoading}
         />
         {streamState.isStreaming ? (
           <button
             onClick={stopStreaming}
-            className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer"
+            className="composer-glass-stop p-2 shrink-0 cursor-pointer"
             style={{ background: 'var(--color-error)', color: 'var(--color-on-accent)' }}
             title={t('chat.input.stopGenerating')}
             aria-label={t('chat.input.stopGenerating')}
@@ -850,7 +846,7 @@ export function InputArea() {
             <Square size={16} />
           </button>
         ) : (
-          <div className="flex items-center gap-1">
+          <div className="composer-glass-actions flex items-center gap-2">
             <MicButton
               state={liveMode ? (liveListening ? 'recording' : 'idle') : speechState}
               onClick={handleMicClick}
@@ -867,11 +863,7 @@ export function InputArea() {
               disabled={!input.trim() || modelLoading || !selectedModel}
               title={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
               aria-label={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
-              className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-default"
-              style={{
-                background: input.trim() ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
-                color: input.trim() ? 'white' : 'var(--color-text-tertiary)',
-              }}
+              className="composer-glass-send p-2 shrink-0 cursor-pointer disabled:cursor-default"
             >
               <Send size={16} />
             </button>
@@ -882,27 +874,26 @@ export function InputArea() {
         {/* Toolbar — permission mode and deep research on the left; the
             context ring and active model on the right. Claude-Code grammar,
             Diapason wiring. */}
-        <div className="flex items-center gap-1.5 mt-2">
-          <ModeChip disabled={streamState.isStreaming} />
-          <button
-            type="button"
-            onClick={() => setDeepResearch(!deepResearch)}
-            disabled={streamState.isStreaming}
-            aria-pressed={deepResearch}
-            aria-label={t('common.deepResearch')}
-            className="inline-flex items-center justify-center size-7 rounded-full transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
-            style={{
-              background: deepResearch ? 'var(--color-accent-subtle)' : 'transparent',
-              border: `1px solid ${deepResearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              color: deepResearch ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
-            }}
-            title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
-          >
-            <Brain size={15} strokeWidth={1.75} />
-          </button>
-          <div className="flex-1" />
-          <ContextRing draftLength={input.length} />
-          <ModelChip disabled={streamState.isStreaming} />
+        <div className="composer-glass-toolbar">
+          <div className="composer-glass-tools">
+            <ModeChip disabled={streamState.isStreaming} />
+            <button
+              type="button"
+              onClick={() => setDeepResearch(!deepResearch)}
+              disabled={streamState.isStreaming}
+              aria-pressed={deepResearch}
+              aria-label={t('common.deepResearch')}
+              className="composer-glass-chip composer-glass-research inline-flex items-center justify-center cursor-pointer disabled:cursor-default disabled:opacity-50"
+              data-active={deepResearch}
+              title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
+            >
+              <Brain size={15} strokeWidth={1.75} />
+            </button>
+          </div>
+          <div className="composer-glass-models">
+            <ContextRing draftLength={input.length} />
+            <ModelChip disabled={streamState.isStreaming} />
+          </div>
         </div>
       </div>
       <div className="flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>

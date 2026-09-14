@@ -1,3 +1,4 @@
+import { CadreVitre } from '../../components/Glass/CadreVitre';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   Area,
@@ -45,7 +46,7 @@ function shortDate(iso: string) {
 
 function ChartShell({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div
+    <CadreVitre
       className="rounded-2xl p-4 flex flex-col min-h-[260px]"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
@@ -55,7 +56,7 @@ function ChartShell({ title, children }: { title: string; children: ReactNode })
       <div className="flex-1 w-full" style={chartPerspective}>
         {children}
       </div>
-    </div>
+    </CadreVitre>
   );
 }
 

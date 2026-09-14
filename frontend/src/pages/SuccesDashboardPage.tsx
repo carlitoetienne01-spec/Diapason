@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -81,7 +82,7 @@ export function SuccesDashboardPage() {
   );
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-7">
           <div>
@@ -117,7 +118,7 @@ export function SuccesDashboardPage() {
         ) : data ? (
           <div className="grid gap-5">
             {data.quote && (
-              <section
+              <CadreVitre as="section"
                 className="rounded-2xl px-5 py-4 flex items-start gap-3"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
@@ -132,7 +133,7 @@ export function SuccesDashboardPage() {
                     </p>
                   )}
                 </div>
-              </section>
+              </CadreVitre>
             )}
 
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -171,7 +172,7 @@ export function SuccesDashboardPage() {
             </section>
 
             <section className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
-              <article
+              <CadreVitre as="article"
                 className="rounded-2xl p-5"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
@@ -201,9 +202,9 @@ export function SuccesDashboardPage() {
                     </div>
                   ))}
                 </div>
-              </article>
+              </CadreVitre>
 
-              <article
+              <CadreVitre as="article"
                 className="rounded-2xl p-5"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
@@ -217,7 +218,7 @@ export function SuccesDashboardPage() {
                 ) : (
                   <div className="grid gap-2">
                     {data.habits.items.map((habit) => (
-                      <button
+                      <CadreVitre as="button" compact
                         key={habit.id}
                         type="button"
                         disabled={saving}
@@ -249,14 +250,14 @@ export function SuccesDashboardPage() {
                             <Flame size={11} /> {habit.streak}
                           </span>
                         )}
-                      </button>
+                      </CadreVitre>
                     ))}
                   </div>
                 )}
-              </article>
+              </CadreVitre>
             </section>
 
-            <article
+            <CadreVitre as="article"
               className="rounded-2xl p-5"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
@@ -284,7 +285,7 @@ export function SuccesDashboardPage() {
                       ? Math.round((project.taskCompleted / project.taskTotal) * 100)
                       : 0;
                     return (
-                      <button
+                      <CadreVitre as="button" compact
                         key={project.id}
                         type="button"
                         onClick={() => navigate('/succes/projects')}
@@ -311,12 +312,12 @@ export function SuccesDashboardPage() {
                         <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
                           {project.taskCompleted}/{project.taskTotal} tâches
                         </p>
-                      </button>
+                      </CadreVitre>
                     );
                   })}
                 </div>
               )}
-            </article>
+            </CadreVitre>
           </div>
         ) : null}
       </main>
@@ -340,7 +341,7 @@ function KpiCard({
   onClick: () => void;
 }) {
   return (
-    <button
+    <CadreVitre as="button"
       type="button"
       onClick={onClick}
       className="rounded-2xl p-4 text-left cursor-pointer transition-opacity hover:opacity-90"
@@ -361,6 +362,6 @@ function KpiCard({
       <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
         {hint}
       </p>
-    </button>
+    </CadreVitre>
   );
 }

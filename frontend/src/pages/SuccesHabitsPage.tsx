@@ -39,9 +39,11 @@ import {
 } from '../features/succes/habitReminders';
 import type { SuccesHabit, SuccesHabitFrequency } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
+import { CarteVitree } from '../components/Glass/CarteVitree';
 import { isTauri } from '../lib/api';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import './SuccesHabitsGlass.css';
 
 const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 const monthLabels = [
@@ -299,7 +301,7 @@ export function SuccesHabitsPage() {
   const dayCount = daysInMonth(viewYear, viewMonth);
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div className="habitudes-verre flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10" data-verre-defilement>
       <main className="max-w-6xl mx-auto w-full">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
@@ -358,10 +360,7 @@ export function SuccesHabitsPage() {
         </section>
 
         {showForm && (
-          <section
-            className="grid gap-3 rounded-2xl p-4 mb-5"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
-          >
+          <CarteVitree as="section" className="mb-5" contenuClassName="grid gap-3 p-4">
             <div className="grid grid-cols-[56px_1fr_54px] gap-3">
               <EmojiPicker
                 value={draft.icon}
@@ -507,7 +506,7 @@ export function SuccesHabitsPage() {
               </button>
             </div>
             <RecurrencesPanel kind="habit" embedded />
-          </section>
+          </CarteVitree>
         )}
 
         {loading && !habits.length ? (
@@ -516,10 +515,7 @@ export function SuccesHabitsPage() {
           </div>
         ) : (
           <>
-            <section
-              className="rounded-2xl p-4 mb-5"
-              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-            >
+            <CarteVitree as="section" className="mb-5" contenuClassName="p-4">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                   Vue annuelle
@@ -582,7 +578,7 @@ export function SuccesHabitsPage() {
                 ))}
                 Plus
               </div>
-            </section>
+            </CarteVitree>
 
             <section className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-sm font-medium capitalize" style={{ color: 'var(--color-text)' }}>
@@ -623,10 +619,7 @@ export function SuccesHabitsPage() {
             </section>
 
             {!habits.length ? (
-              <div
-                className="rounded-2xl py-16 text-center"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-              >
+              <CarteVitree contenuClassName="py-16 text-center">
                 <Repeat2 size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} />
                 <p className="font-medium" style={{ color: 'var(--color-text)' }}>
                   Aucune habitude
@@ -634,7 +627,7 @@ export function SuccesHabitsPage() {
                 <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   Commencez petit et laissez DIA vous accompagner.
                 </p>
-              </div>
+              </CarteVitree>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {habits.map((habit) => (
@@ -662,10 +655,7 @@ export function SuccesHabitsPage() {
 
 function SummaryCard({ icon, value, label }: { icon: string; value: string; label: string }) {
   return (
-    <div
-      className="rounded-2xl px-4 py-3 flex items-center gap-3"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-    >
+    <CarteVitree contenuClassName="px-4 py-3 flex items-center gap-3">
       <span className="text-xl" aria-hidden>
         {icon}
       </span>
@@ -677,7 +667,7 @@ function SummaryCard({ icon, value, label }: { icon: string; value: string; labe
           {label}
         </p>
       </div>
-    </div>
+    </CarteVitree>
   );
 }
 
@@ -703,10 +693,7 @@ function HabitMonthCard({
   onRemove: () => void;
 }) {
   return (
-    <article
-      className="rounded-2xl p-4"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-    >
+    <CarteVitree as="article" contenuClassName="p-4">
       <div className="flex items-center gap-2 mb-3">
         <span
           className="size-9 rounded-xl flex items-center justify-center text-base shrink-0"
@@ -771,7 +758,7 @@ function HabitMonthCard({
           );
         })}
       </div>
-    </article>
+    </CarteVitree>
   );
 }
 

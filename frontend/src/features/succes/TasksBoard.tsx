@@ -1,3 +1,4 @@
+import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import type { SuccesSubtask, SuccesTask } from './types';
@@ -160,7 +161,7 @@ function BoardCard({
   const hasSubtasks = countSubtasks(task.subtasks) > 0;
 
   return (
-    <div
+    <CadreVitre compact
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData(MIME, task.id);
@@ -233,7 +234,7 @@ function BoardCard({
           </span>
         )}
       </div>
-    </div>
+    </CadreVitre>
   );
 }
 
@@ -328,7 +329,7 @@ function DayTasksModal({
 
         <div className="grid gap-3">
           {tasks.map((task) => (
-            <article
+            <CadreVitre as="article" compact
               key={task.id}
               className="rounded-xl p-3"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
@@ -373,7 +374,7 @@ function DayTasksModal({
                   ))}
                 </div>
               )}
-            </article>
+            </CadreVitre>
           ))}
           {!tasks.length && (
             <p className="text-sm py-6 text-center" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -413,7 +414,7 @@ function DayColumn({
   const hidden = tasks.length - visible.length;
 
   return (
-    <section
+    <CadreVitre as="section"
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
@@ -485,7 +486,7 @@ function DayColumn({
           {tasks.length} tâche{tasks.length > 1 ? 's' : ''}
         </button>
       )}
-    </section>
+    </CadreVitre>
   );
 }
 
@@ -713,7 +714,7 @@ export function TasksBoard({
         ))}
       </div>
 
-      <section
+      <CadreVitre as="section"
         className="rounded-2xl p-3 transition-colors"
         style={{
           background: undatedOver
@@ -774,7 +775,7 @@ export function TasksBoard({
             Glissez une tâche sur un jour pour la planifier, ou ici pour la remettre sans date.
           </p>
         )}
-      </section>
+      </CadreVitre>
 
       {pendingDrop && (
         <DropChoiceDialog

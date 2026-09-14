@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CirclePlus,
@@ -566,7 +567,7 @@ export function SuccesFinancesPage() {
     txnDraft.type === 'income' ? incomeCategories : expenseCategories;
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
@@ -1524,7 +1525,7 @@ function KpiCard({
         ? 'var(--color-error)'
         : 'var(--color-text)';
   return (
-    <div className="rounded-2xl px-4 py-3" style={surfaceStyle()}>
+    <CadreVitre className="rounded-2xl px-4 py-3" style={surfaceStyle()}>
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base" aria-hidden style={{ color: 'var(--color-accent)' }}>
           {icon}
@@ -1541,29 +1542,29 @@ function KpiCard({
           {hint}
         </p>
       ) : null}
-    </div>
+    </CadreVitre>
   );
 }
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl p-4" style={surfaceStyle()}>
+    <CadreVitre className="rounded-2xl p-4" style={surfaceStyle()}>
       <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--color-text-secondary)' }}>
         {title}
       </h3>
       {children}
-    </div>
+    </CadreVitre>
   );
 }
 
 function FormCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl p-4 grid gap-3 h-fit" style={surfaceStyle({ borderColor: 'var(--color-accent)' })}>
+    <CadreVitre className="rounded-2xl p-4 grid gap-3 h-fit" style={surfaceStyle({ borderColor: 'var(--color-accent)' })}>
       <h3 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
         {title}
       </h3>
       {children}
-    </div>
+    </CadreVitre>
   );
 }
 
