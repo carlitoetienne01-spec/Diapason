@@ -784,12 +784,21 @@ export function RichNoteEditor({
       styleEnAttente.current = declaration;
       return;
     }
+    // La conversion des marques remplace les nœuds que la sélection
+    // tenait : elle s'effondrait AVANT le texte stylé, et Entrée descendait
+    // ce texte au lieu d'ouvrir une ligne dans le même style (13 septembre
+    // 2026, espion sur la sélection). On la mesure avant, on la repose après.
+    const etendue = etendueDeLaSelection(editor);
     applyingGaps.current = true;
     try {
       document.execCommand('fontSize', false, '7');
       convertirLesMarques(editor, declaration);
     } finally {
       applyingGaps.current = false;
+    }
+    if (etendue) {
+      selectionnerEtendue(editor, etendue);
+      selectionGardee.current = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
     }
     styleEnAttente.current = null;
     emitContent();
@@ -850,12 +859,17 @@ export function RichNoteEditor({
       apercu.current = null;
     }
     if (choix) {
-      choix();
-      // Le texte reste sélectionné après le choix, comme dans Word : on
-      // peut enchaîner gras, couleur, ou une autre taille.
       const editor = editorRef.current;
-      if (editor && etendue) {
-        selectionnerEtendue(editor, etendue);
+      // Sans survol préalable, l'étendue vient de la sélection elle-même.
+      const cible = etendue ?? (editor ? etendueDeLaSelection(editor) : null);
+      choix();
+      // Après le choix, le caret se pose À LA FIN du texte modifié. Le
+      // laisser sélectionné (comme Word) faisait qu'Entrée, tapée aussitôt
+      // pour continuer, REMPLAÇAIT le texte au lieu d'ouvrir une ligne dans
+      // le même style — le geste attendu est « je choisis, je vais à la
+      // ligne, j'écris » (13 septembre 2026).
+      if (editor && cible) {
+        selectionnerEtendue(editor, { debut: cible.fin, fin: cible.fin });
         selectionGardee.current = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
       }
     }
@@ -1077,13 +1091,23 @@ export function RichNoteEditor({
     if (!page || !editor) return;
     // Le caret n'est remis que s'il était DANS l'éditeur : le replacer alors
     // qu'on tape ailleurs volerait le focus à un champ de la barre.
-    const dansLEditeur = editor.contains(document.activeElement);
+    // La sélection est-elle DANS l'éditeur ? C'est elle qu'on regarde, pas
+    // le focus : après un clic dans un menu de la barre, le focus est sur
+    // le bouton, mais la sélection — celle qu'on vient de mettre en 24 pt —
+    // est toujours dans la note, et la pagination la laissait s'effondrer
+    // au début du texte (13 septembre 2026 : « Entrée, et la taille ne suit
+    // pas » — le caret était AVANT le texte agrandi). Quand on tape dans un
+    // champ de la barre, la sélection y est aussi : on ne touche à rien.
+    const selectionCourante = window.getSelection();
+    const dansLEditeur =
+      !!selectionCourante &&
+      selectionCourante.rangeCount > 0 &&
+      editor.contains(selectionCourante.anchorNode);
     const place = dansLEditeur ? ouEstLeCaret(editor) : null;
     // Une SÉLECTION (pas un simple caret) doit survivre aussi : reposer le
     // seul caret la réduisait à rien après chaque mise en forme — le texte
     // qu'on venait de mettre en gras ou en 14 pt n'était plus sélectionné.
-    const etendue =
-      dansLEditeur && window.getSelection()?.isCollapsed === false ? etendueDeLaSelection(editor) : null;
+    const etendue = dansLEditeur && selectionCourante.isCollapsed === false ? etendueDeLaSelection(editor) : null;
     applyingGaps.current = true;
     suppressObserverUntil.current = Date.now() + 150;
     try {
