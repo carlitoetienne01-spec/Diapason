@@ -136,7 +136,7 @@ jobs:
           $ref = "${{ github.ref }}"
           if ($ref -like 'refs/tags/desktop-v*') {
             $tag = "${{ github.ref_name }}"
-            if ($tag.Substring(9) -ne $conf) { throw "le tag $tag ne correspond pas à la version de l'app ($conf)" }
+            if ($tag.Substring(9) -ne $conf) { throw "le tag $tag ne correspond pas a la version de l'app ($conf)" }
           } else { $tag = "desktop-v$conf" }
           "version=$conf" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -176,7 +176,7 @@ jobs:
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         run: |
           $ErrorActionPreference = 'Stop'
-          # Un venv jetable avec le Python de la wheel — le même que
+          # Un venv jetable avec le Python de la wheel - le meme que
           # `backend.json` annonce (3.13) : pyo3 n'est pas abi3.
           uv venv --python 3.13 .venv-assets
           uv pip install --python .venv-assets maturin
@@ -189,14 +189,14 @@ jobs:
           if (-not $roue) { throw 'aucune wheel produite' }
           Write-Host "wheel : $($roue.Name)"
 
-      - name: Tauri build (installateur NSIS signé)
+      - name: Tauri build (installateur NSIS signe)
         working-directory: frontend
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         # `--verbose` : le banc doit conserver la commande et la sortie du
-        # fabricant d'installateur — c'est la seule preuve exploitable quand
-        # un runner physique diffère de windows-latest.
+        # fabricant d'installateur - c'est la seule preuve exploitable quand
+        # un runner physique differe de windows-latest.
         run: npx tauri build --verbose --config src-tauri\tauri.windows.conf.json
 
       - name: Rassembler la release Windows
@@ -211,14 +211,14 @@ jobs:
           $exe = Get-ChildItem $bundle -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) { throw 'Tauri reported success but produced no NSIS installer.' }
           $sig = "$($exe.FullName).sig"
-          if (-not (Test-Path $sig)) { throw "pas de signature $sig — la clé n'a pas été prise en compte" }
+          if (-not (Test-Path $sig)) { throw "pas de signature $sig - la cle n'a pas ete prise en compte" }
           Copy-Item $exe.FullName dist\release\
           Copy-Item $sig dist\release\
-          # Ce que l'amorçage lira dans backend.json, et l'updater dans latest.json.
+          # Ce que l'amorcage lira dans backend.json, et l'updater dans latest.json.
           $roue = (Get-ChildItem dist\release -Filter 'diapason_rust-*.whl' | Select-Object -First 1).Name
           @{ cible = 'x86_64-pc-windows-msvc'; roue = $roue; installateur = $exe.Name; signature = (Get-Content $sig -Raw).Trim() } |
             ConvertTo-Json | Out-File dist\release\windows.json -Encoding utf8
-          # Une copie hors du `_work` nettoyé entre les runs — le service tourne
+          # Une copie hors du `_work` nettoye entre les runs - le service tourne
           # comme NETWORK SERVICE, son LOCALAPPDATA n'est pas celui de Carlito.
           $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
           $destination = Join-Path $runnerRoot 'artifacts'
@@ -227,7 +227,7 @@ jobs:
           "path=$(Join-Path $destination $exe.Name)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
           "### Windows ${env:VERSION} (${env:TAG})" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "- $($exe.Name) — SHA-256 ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- $($exe.Name) - SHA-256 ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           "- $roue" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           Get-ChildItem dist\release
 
@@ -255,11 +255,11 @@ jobs:
             if ($existing) { Invoke-RestMethod -Method Delete -Headers $h "$api/releases/assets/$($existing.id)" | Out-Null }
             $upload = $release.upload_url -replace '\{\?name,label\}', "?name=$([uri]::EscapeDataString($name))"
             Invoke-RestMethod -Method Post -Headers ($h + @{ 'Content-Type' = 'application/octet-stream' }) -InFile $path $upload | Out-Null
-            Write-Host "envoyé : $name"
+            Write-Host "envoye : $name"
           }
           $release = Get-Release $env:TAG
           $meta = Get-Content dist\release\windows.json -Raw | ConvertFrom-Json
-          # backend.json et latest.json du job macOS, complétés par Windows.
+          # backend.json et latest.json du job macOS, completes par Windows.
           $backend = Invoke-RestMethod "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/backend.json"
           $backend.wheels | Add-Member -NotePropertyName $meta.cible -NotePropertyValue $meta.roue -Force
           $backend | ConvertTo-Json -Depth 5 | Out-File dist\release\backend.json -Encoding utf8
@@ -272,9 +272,9 @@ jobs:
           foreach ($f in @($meta.installateur, "$($meta.installateur).sig", $meta.roue, 'backend.json', 'latest.json')) {
             Upload-Asset $release (Resolve-Path "dist\release\$f").Path
           }
-          # Le canal que l'app interroge : le même latest.json, désormais à deux plateformes.
+          # Le canal que l'app interroge : le meme latest.json, desormais a deux plateformes.
           Upload-Asset (Get-Release 'desktop-latest') (Resolve-Path 'dist\release\latest.json').Path
-          Write-Host "Publié : https://github.com/$env:RELEASES_REPO/releases/tag/$env:TAG"
+          Write-Host "Publie : https://github.com/$env:RELEASES_REPO/releases/tag/$env:TAG"
 
       - name: Update the installed Windows PC
         if: github.event_name == 'workflow_dispatch' && inputs.deploy_windows == true
