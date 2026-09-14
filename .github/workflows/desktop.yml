@@ -18,12 +18,12 @@ on:
         required: false
         type: string
       deploy_windows:
-        description: 'Update the installed Windows PC after its validation MSI succeeds.'
+        description: 'Update the installed Windows PC after its NSIS installer builds.'
         required: false
         default: false
         type: boolean
       dry_run_macos:
-        description: 'Build the macOS release (dmg, updater bundle, backend assets) on the Mac runner and keep it as a workflow artifact — no GitHub release is created or touched.'
+        description: 'Build the macOS release (dmg, updater bundle, backend assets) on the Mac runner and keep it as a workflow artifact — no GitHub release is created or touched. (Windows always builds in dry run on a dispatch.)'
         required: false
         default: false
         type: boolean
@@ -77,19 +77,41 @@ jobs:
         working-directory: frontend/src-tauri
         run: cargo test
 
-  # The first Windows milestone is an installable validation MSI, not a
-  # published release. It runs on Carlito's own PC, keeps updater artifacts
-  # disabled because no signed release is being created, and copies the MSI
-  # to a stable local directory even if GitHub artifact upload is unavailable.
-  build-windows-local:
-    needs: [validate]
-    if: vars.RUNNER_WINDOWS_LOCAL == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+  # Windows, sur le PC de bureau de Carlito. Deux modes, comme le job macOS :
+  # un tag `desktop-v*` publie dans la release ; un `workflow_dispatch` garde
+  # tout en artefact (et, si `deploy_windows`, met à jour le PC lui-même).
+  #
+  # NSIS, et non plus MSI (13 septembre 2026) : WiX vérifie le .msi en
+  # passant par le service Windows Installer, injoignable depuis le compte du
+  # runner — « The Windows Installer Service could not be accessed », job
+  # rouge depuis le 13 septembre. NSIS s'en passe, et c'est le format que
+  # Tauri recommande pour l'updater : le `-setup.exe` signé EST l'artefact
+  # de mise à jour.
+  #
+  # Le job publie ce que l'amorçage attend sur Windows : la wheel
+  # `win_amd64` de diapason_rust (sans elle, l'app exigerait Rust), et
+  # complète `backend.json` et `latest.json` — écrits par le job macOS, qui
+  # passe donc AVANT sur un tag.
+  publish-windows-local:
+    needs: [validate, publish-macos-local]
+    if: >-
+      always() && vars.RUNNER_WINDOWS_LOCAL == 'true' &&
+      needs.validate.result == 'success' &&
+      (
+        (startsWith(github.ref, 'refs/tags/desktop-v') && needs.publish-macos-local.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && needs.publish-macos-local.result != 'failure')
+      )
     runs-on: [self-hosted, windows-local]
     defaults:
       # Le service du runner interdit les `.ps1` temporaires et son `bash`
       # System32 ouvre WSL. Les commandes ordinaires sont toutes natives.
       run:
         shell: cmd
+    env:
+      RELEASES_REPO: ${{ vars.DIAPASON_RELEASES_REPO || github.repository }}
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+      PS: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
 
     steps:
       - uses: actions/checkout@v6
@@ -98,12 +120,27 @@ jobs:
           # l'installation de Carlito. Avec la profondeur 1 par défaut, Git
           # refuse ce fetch : « shallow roots are not allowed to be updated ».
           # L'historique complet rend aussi vérifiable le fast-forward avant
-          # que le service et le MSI installés soient touchés.
+          # que le service et l'installateur installés soient touchés.
           fetch-depth: 0
 
       - name: Expose Git Bash to composite actions
         # `dtolnay/rust-toolchain` possede ses propres etapes `shell: bash`.
         run: echo C:\Program Files\Git\bin>>"%GITHUB_PATH%"
+
+      - name: La version du tag est celle de l'app
+        id: version
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $conf = (Get-Content frontend\src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).version
+          $ref = "${{ github.ref }}"
+          if ($ref -like 'refs/tags/desktop-v*') {
+            $tag = "${{ github.ref_name }}"
+            if ($tag.Substring(9) -ne $conf) { throw "le tag $tag ne correspond pas à la version de l'app ($conf)" }
+          } else { $tag = "desktop-v$conf" }
+          "version=$conf" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Version $conf, tag $tag"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -111,7 +148,9 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: 'frontend/src-tauri -> target'
+          workspaces: |
+            frontend/src-tauri -> target
+            rust -> target
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -122,57 +161,130 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build unsigned validation MSI
-        working-directory: frontend
-        # WiX ne remonte sinon que « failed to run light.exe ». Le banc doit
-        # conserver la commande et la sortie du fabricant MSI : c'est la seule
-        # preuve exploitable quand un runner physique differe de windows-latest.
-        run: npx tauri build --verbose --config src-tauri/tauri.windows-validation.conf.json
-
-      - name: Keep MSI on the Windows PC
-        id: local-msi
+      - name: uv (archive officielle, sans installation)
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         run: |
           $ErrorActionPreference = 'Stop'
-          $msi = Get-ChildItem 'frontend\src-tauri\target\release\bundle\msi' `
-            -Filter '*.msi' -File | Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-          if (-not $msi) {
-            throw 'Tauri reported success but produced no MSI.'
-          }
-          # Le service tourne comme NETWORK SERVICE : son LOCALAPPDATA n'est
-          # pas celui de Carlito. Deux parents au-dessus de RUNNER_TEMP donnent
-          # la racine persistante du runner, hors du `_work` nettoye entre runs.
+          $dir = Join-Path $env:RUNNER_TEMP 'uv'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          Invoke-WebRequest 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip' -OutFile "$dir\uv.zip"
+          Expand-Archive "$dir\uv.zip" -DestinationPath $dir -Force
+          $dir | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          & "$dir\uv.exe" --version
+
+      - name: Wheel Windows de diapason_rust
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Un venv jetable avec le Python de la wheel — le même que
+          # `backend.json` annonce (3.13) : pyo3 n'est pas abi3.
+          uv venv --python 3.13 .venv-assets
+          uv pip install --python .venv-assets maturin
+          New-Item -ItemType Directory -Path dist\release -Force | Out-Null
+          & .venv-assets\Scripts\maturin.exe build --release `
+            --manifest-path rust\crates\diapason-python\Cargo.toml `
+            --interpreter (Resolve-Path .venv-assets\Scripts\python.exe).Path `
+            --out dist\release
+          $roue = Get-ChildItem dist\release -Filter 'diapason_rust-*.whl' | Select-Object -First 1
+          if (-not $roue) { throw 'aucune wheel produite' }
+          Write-Host "wheel : $($roue.Name)"
+
+      - name: Tauri build (installateur NSIS signé)
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # `--verbose` : le banc doit conserver la commande et la sortie du
+        # fabricant d'installateur — c'est la seule preuve exploitable quand
+        # un runner physique diffère de windows-latest.
+        run: npx tauri build --verbose --config src-tauri\tauri.windows.conf.json
+
+      - name: Rassembler la release Windows
+        id: local-release
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = 'frontend\src-tauri\target\release\bundle\nsis'
+          $exe = Get-ChildItem $bundle -Filter '*-setup.exe' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw 'Tauri reported success but produced no NSIS installer.' }
+          $sig = "$($exe.FullName).sig"
+          if (-not (Test-Path $sig)) { throw "pas de signature $sig — la clé n'a pas été prise en compte" }
+          Copy-Item $exe.FullName dist\release\
+          Copy-Item $sig dist\release\
+          # Ce que l'amorçage lira dans backend.json, et l'updater dans latest.json.
+          $roue = (Get-ChildItem dist\release -Filter 'diapason_rust-*.whl' | Select-Object -First 1).Name
+          @{ cible = 'x86_64-pc-windows-msvc'; roue = $roue; installateur = $exe.Name; signature = (Get-Content $sig -Raw).Trim() } |
+            ConvertTo-Json | Out-File dist\release\windows.json -Encoding utf8
+          # Une copie hors du `_work` nettoyé entre les runs — le service tourne
+          # comme NETWORK SERVICE, son LOCALAPPDATA n'est pas celui de Carlito.
           $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
           $destination = Join-Path $runnerRoot 'artifacts'
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
-          $kept = Join-Path $destination $msi.Name
-          Copy-Item $msi.FullName $kept -Force
-          $hash = (Get-FileHash $kept -Algorithm SHA256).Hash
-          "path=$kept" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "### Windows validation MSI" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "- Path on PC: ``$kept``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "- SHA-256: ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          Write-Host "Validation MSI: $kept"
-          Write-Host "SHA-256: $hash"
+          Copy-Item $exe.FullName (Join-Path $destination $exe.Name) -Force
+          "path=$(Join-Path $destination $exe.Name)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          "### Windows ${env:VERSION} (${env:TAG})" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- $($exe.Name) — SHA-256 ``$hash``" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- $roue" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Get-ChildItem dist\release
+
+      - name: Garder la release comme artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: diapason-windows-release-${{ steps.version.outputs.version }}
+          path: dist/release/*
+          if-no-files-found: error
+
+      - name: Publier dans la release ${{ steps.version.outputs.tag }}
+        if: env.DRY_RUN != 'true'
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $api = "https://api.github.com/repos/$env:RELEASES_REPO"
+          $h = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+          function Get-Release($tag) { Invoke-RestMethod -Headers $h "$api/releases/tags/$tag" }
+          function Upload-Asset($release, $path) {
+            $name = Split-Path $path -Leaf
+            $existing = $release.assets | Where-Object { $_.name -eq $name }
+            if ($existing) { Invoke-RestMethod -Method Delete -Headers $h "$api/releases/assets/$($existing.id)" | Out-Null }
+            $upload = $release.upload_url -replace '\{\?name,label\}', "?name=$([uri]::EscapeDataString($name))"
+            Invoke-RestMethod -Method Post -Headers ($h + @{ 'Content-Type' = 'application/octet-stream' }) -InFile $path $upload | Out-Null
+            Write-Host "envoyé : $name"
+          }
+          $release = Get-Release $env:TAG
+          $meta = Get-Content dist\release\windows.json -Raw | ConvertFrom-Json
+          # backend.json et latest.json du job macOS, complétés par Windows.
+          $backend = Invoke-RestMethod "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/backend.json"
+          $backend.wheels | Add-Member -NotePropertyName $meta.cible -NotePropertyValue $meta.roue -Force
+          $backend | ConvertTo-Json -Depth 5 | Out-File dist\release\backend.json -Encoding utf8
+          $latest = Invoke-RestMethod "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/latest.json"
+          $latest.platforms | Add-Member -NotePropertyName 'windows-x86_64' -NotePropertyValue @{
+            signature = $meta.signature
+            url = "https://github.com/$env:RELEASES_REPO/releases/download/$env:TAG/$($meta.installateur)"
+          } -Force
+          $latest | ConvertTo-Json -Depth 5 | Out-File dist\release\latest.json -Encoding utf8
+          foreach ($f in @($meta.installateur, "$($meta.installateur).sig", $meta.roue, 'backend.json', 'latest.json')) {
+            Upload-Asset $release (Resolve-Path "dist\release\$f").Path
+          }
+          # Le canal que l'app interroge : le même latest.json, désormais à deux plateformes.
+          Upload-Asset (Get-Release 'desktop-latest') (Resolve-Path 'dist\release\latest.json').Path
+          Write-Host "Publié : https://github.com/$env:RELEASES_REPO/releases/tag/$env:TAG"
 
       - name: Update the installed Windows PC
         if: github.event_name == 'workflow_dispatch' && inputs.deploy_windows == true
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
         env:
-          DIAPASON_VALIDATION_MSI: ${{ steps.local-msi.outputs.path }}
+          DIAPASON_INSTALLER: ${{ steps.local-release.outputs.path }}
         run: |
           & "$env:GITHUB_WORKSPACE\deploy\windows\update-local-runner.ps1" `
             -CheckoutSha "$env:GITHUB_SHA" `
-            -MsiPath "$env:DIAPASON_VALIDATION_MSI"
-
-      - name: Upload validation MSI
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: diapason-windows-validation-msi
-          path: frontend/src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: error
+            -MsiPath "$env:DIAPASON_INSTALLER"
 
   # La publication macOS, sur le Mac de Carlito. Les runners GitHub sont
   # bloqués (facturation) : la matrice `build-and-release` ci-dessous ne

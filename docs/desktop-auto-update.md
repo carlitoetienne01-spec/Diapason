@@ -47,8 +47,8 @@ l'app installée attend :
 
 | Fichier | Qui le lit |
 |---|---|
-| `Diapason_<v>_aarch64.dmg` | l'utilisateur, depuis la page de release |
-| `Diapason.app.tar.gz` + `.sig` | l'updater (signature minisign) |
+| `Diapason_<v>_aarch64.dmg`, `Diapason_<v>_x64-setup.exe` | l'utilisateur, depuis la page de release |
+| `Diapason.app.tar.gz` + `.sig`, `-setup.exe` + `.sig` | l'updater (signature minisign) |
 | `latest.json` | l'updater, via le miroir `desktop-latest` |
 | `backend.json`, `diapason-src-<v>.tar.gz`, `diapason_rust-….whl` | l'amorçage au premier lancement — [`premier-lancement.md`](premier-lancement.md) |
 
@@ -88,14 +88,12 @@ builds signed binaries plus a `latest.json` manifest with the
 `tauri-action` step (`includeUpdaterJson: true` generates the manifest
 automatically). Where it publishes depends on the trigger.
 
-The separate `build-windows-local` job is deliberately outside these release
-streams. It runs on `self-hosted,windows-local`, disables updater artifacts,
-and leaves an unsigned validation MSI under the runner root's `artifacts`
-directory (`C:\actions-runner\artifacts` on Carlito's PC). The service runs
-as `NETWORK SERVICE`, so its `%LOCALAPPDATA%` is not Carlito's profile and
-must never be advertised as one. This MSI exists for physical testing while
-hosted minutes are unavailable; it never updates `desktop-edge` or
-`desktop-latest`.
+Windows is published by `publish-windows-local` on Carlito's PC
+(`self-hosted, windows-local`), after the macOS job: an NSIS `-setup.exe`
+(signed — the installer itself is the updater artifact), the `win_amd64`
+wheel of the native extension, and `backend.json` / `latest.json` completed
+with the `windows-x86_64` platform. A `workflow_dispatch` only keeps these
+as an artifact; `deploy_windows` additionally updates the PC itself.
 
 Three release streams are prepared:
 

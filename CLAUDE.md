@@ -74,9 +74,13 @@ serveur Python et par Tauri), l'app Tauri, le workspace Rust, le cœur Python.
 > `RUNNER_WINDOWS_LOCAL = true` est posée. Les matrices 3.12 et 3.13 de
 > `test-windows` sont vertes sur ce PC : parseur PowerShell 5.1, tests natifs,
 > extension PyO3 compilée/importée et fumée CLI. Un lancement manuel de
-> `desktop.yml` ajoute `build-windows-local` : il produit un `.msi` de
-> validation non publié et sans updater sous la racine du runner
-> (`C:\actions-runner\artifacts` ici). Ce n'est pas une release signée.
+> `desktop.yml` ajoute `publish-windows-local` : sur un `workflow_dispatch`
+> il produit un installateur **NSIS** (`-setup.exe`, signé pour l'updater) et
+> la wheel `win_amd64` de l'extension, gardés en artefact ; sur un tag
+> `desktop-v*` il les publie dans la release, après le job macOS, et
+> complète `backend.json` / `latest.json` pour Windows. (MSI abandonné le
+> 13 septembre 2026 : WiX exigeait le service Windows Installer, injoignable
+> depuis le runner.)
 >
 > Conséquence pratique inchangée : **lance la vérification toi-même, en
 > entier, avant de pousser.** La CI confirme, elle ne découvre pas.

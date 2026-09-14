@@ -156,13 +156,16 @@ Omit `-RequireMesh` only when the service was deliberately installed without
 installation, but that reduced result is not sufficient to call the Tauri
 desktop ready.
 
-## Build the validation MSI on this PC
+## Build the Windows installer on this PC
 
 After the GitHub Actions runner on this PC has the labels
 `self-hosted,windows-local`, set the repository variable
 `RUNNER_WINDOWS_LOCAL=true` and manually run **Desktop Build & Release**. Its
-`build-windows-local` job builds an unsigned validation MSI and keeps a copy
-here, even if GitHub artifact upload is unavailable:
+`publish-windows-local` job builds an NSIS `-setup.exe` (signed for the
+updater; MSI was dropped on 13 September 2026 because WiX needs the Windows
+Installer service, unreachable from the runner account) plus the `win_amd64`
+wheel of the native extension, and keeps a copy of the installer here, even
+if GitHub artifact upload is unavailable:
 
 ```text
 %LOCALAPPDATA%\Diapason\artifacts

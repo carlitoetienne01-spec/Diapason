@@ -136,7 +136,7 @@ if (-not (Test-IsAdministrator)) {
     Fail 'the runner is not elevated; restart run.cmd from an Administrator PowerShell'
 }
 if (-not (Test-Path $MsiPath -PathType Leaf)) {
-    Fail "validation MSI not found at $MsiPath"
+    Fail "installer not found at $MsiPath"
 }
 if (-not $env:GITHUB_WORKSPACE -or -not (Test-Path (Join-Path $env:GITHUB_WORKSPACE '.git'))) {
     Fail 'GITHUB_WORKSPACE is not a Git checkout'
@@ -248,18 +248,30 @@ try {
             'synchronizing the installed desktop dependencies'
     }
 
-    $logPath = Join-Path $env:RUNNER_TEMP 'Diapason-local-update-msi.log'
-    Write-Step "repairing the installed MSI: $MsiPath"
-    $msi = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
-        '/fvomus',
-        "`"$MsiPath`"",
-        '/qn',
-        '/norestart',
-        '/L*v',
-        "`"$logPath`""
-    )
-    if ($msi.ExitCode -notin @(0, 3010)) {
-        Fail "msiexec exited $($msi.ExitCode); log: $logPath"
+    if ([IO.Path]::GetExtension($MsiPath) -ieq '.exe') {
+        # NSIS (depuis le 13 septembre 2026) : le `-setup.exe` s'installe en
+        # silence avec /S, par-dessus la version en place. Un ancien
+        # `.msi` installé reste un programme distinct dans Windows : le
+        # désinstaller une fois, à la main, après ce premier passage.
+        Write-Step "installing the NSIS setup silently: $MsiPath"
+        $setup = Start-Process $MsiPath -Wait -PassThru -ArgumentList @('/S')
+        if ($setup.ExitCode -ne 0) {
+            Fail "the NSIS installer exited $($setup.ExitCode)"
+        }
+    } else {
+        $logPath = Join-Path $env:RUNNER_TEMP 'Diapason-local-update-msi.log'
+        Write-Step "repairing the installed MSI: $MsiPath"
+        $msi = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+            '/fvomus',
+            "`"$MsiPath`"",
+            '/qn',
+            '/norestart',
+            '/L*v',
+            "`"$logPath`""
+        )
+        if ($msi.ExitCode -notin @(0, 3010)) {
+            Fail "msiexec exited $($msi.ExitCode); log: $logPath"
+        }
     }
 
     if ($taskWasRunning) {

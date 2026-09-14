@@ -50,10 +50,13 @@ ne tente plus de le cloner silencieusement au premier lancement.
 
 Une fois le runner du PC étiqueté `self-hosted,windows-local` et la variable
 de dépôt `RUNNER_WINDOWS_LOCAL=true`, un lancement manuel de **Desktop Build
-& Release** exécute le job `build-windows-local`. Il produit uniquement un
-`.msi` de validation, sans artefact de mise à jour ni prétention de release
-signée. Il n'embarque ni Ollama ni le cœur Python : le bootstrap ci-dessus doit
-avoir réussi avant son installation. Une copie reste sur le PC dans :
+& Release** exécute le job `publish-windows-local`. Il produit un
+installateur NSIS (`Diapason_<version>_x64-setup.exe`, signé pour l'updater)
+et la wheel Windows de l'extension native, gardés en artefact ; sur un tag
+`desktop-v*`, il les publie dans la release. Depuis le 13 septembre 2026,
+l'app installe elle-même Ollama et le cœur Python au premier lancement
+(`docs/premier-lancement.md`). Une copie de l'installateur reste sur le PC
+dans :
 
 ```text
 C:\actions-runner\artifacts
