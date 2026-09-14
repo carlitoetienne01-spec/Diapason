@@ -7,6 +7,8 @@
 // n'existent plus, seuls des rangs de caractères survivent. Le HTML remis
 // est EXACTEMENT celui mesuré, cales comprises : les rangs y valent.
 
+import { dansLeStyle } from './noteCaret';
+
 export interface Etendue {
   debut: number;
   fin: number;
@@ -42,7 +44,7 @@ function pointAuRang(racine: HTMLElement, rang: number): [Node, number] {
     dernier = noeud;
     noeud = marcheur.nextNode() as Text | null;
   }
-  return dernier ? [dernier, dernier.data.length] : [racine, 0];
+  return dernier ? [dernier, dernier.data.length] : [dansLeStyle(racine), 0];
 }
 
 /** Resélectionne `etendue` dans `racine` (après un remplacement du HTML). */

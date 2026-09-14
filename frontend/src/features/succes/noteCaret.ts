@@ -91,8 +91,23 @@ export function remettreLeCaret(editor: HTMLElement, place: PlaceDuCaret | null,
     }
     noeud = marcheur.nextNode() as Text | null;
   }
-  // Pas de texte (une puce vide, « <li><br></li> ») ou rang au-delà : au
-  // début de la feuille, ou après son dernier texte.
+  // Pas de texte (une puce vide, « <li><br></li> ») ou rang au-delà : après
+  // le dernier texte, ou au début de la feuille — DANS ses balises de mise
+  // en forme s'il en a (« <p><span style="font-size:24pt"><br></span></p> »,
+  // ce qu'Entrée laisse après un texte agrandi). Posé devant le span, le
+  // caret faisait naître la frappe hors du style, et la barre annonçait la
+  // taille du paragraphe (13 septembre 2026).
   if (dernier) poser(dernier, dernier.data.length);
-  else poser(repere, 0);
+  else poser(dansLeStyle(repere), 0);
+}
+
+const EN_LIGNE = new Set(['SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'MARK', 'SUB', 'SUP', 'CODE']);
+
+/** Le plus profond des enfants de tête en ligne (span, b, font…) de `noeud`. */
+export function dansLeStyle(noeud: Node): Node {
+  let courant = noeud;
+  while (courant.firstChild instanceof HTMLElement && EN_LIGNE.has(courant.firstChild.tagName)) {
+    courant = courant.firstChild;
+  }
+  return courant;
 }

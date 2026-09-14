@@ -100,3 +100,16 @@ describe('le repère du caret', () => {
     expect(ouEstLeCaret(racine, CALE)).toBeNull();
   });
 });
+
+describe('une feuille vide mais stylée', () => {
+  it('le caret est reposé DANS le span vide, pas devant', () => {
+    racine.innerHTML = '<p>un</p><p><span style="font-size:24pt"><br></span></p>';
+    const span = racine.querySelector('span')!;
+    caretDans(span, 0);
+    const place = ouEstLeCaret(racine, CALE);
+    expect(place).toEqual({ bloc: 1, feuille: -1, rang: 0 });
+    caretDans(racine, 0);
+    remettreLeCaret(racine, place, CALE);
+    expect(lire()).toBe('<p>un</p><p><span style="font-size:24pt">|<br></span></p>');
+  });
+});
