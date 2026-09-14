@@ -199,6 +199,40 @@ jobs:
         # un runner physique differe de windows-latest.
         run: npx tauri build --verbose --config src-tauri\tauri.windows.conf.json
 
+      # L'amorçage, joué pour de vrai sur ce PC : les vraies archives d'Astral
+      # (18 Mo) et d'Ollama (1,5 Go, avec ses bibliothèques CUDA/ROCm), le
+      # code et la wheel de CE run servis par un petit serveur local, puis
+      # `uv sync` à froid (Python 3.13 téléchargé par uv) et l'import de
+      # l'extension. Jamais joué sur Windows avant le 14 septembre 2026 : le
+      # code de `amorcage.rs` pour ce système (archives .zip, tar intégré,
+      # %LOCALAPPDATA%) n'avait de preuve que sur macOS.
+      # (Après le build Tauri : `cargo test` compile la caisse avec
+      # `frontendDist`, qui n'existe qu'une fois Vite passé.)
+      - name: Essai a froid de l'amorcage (amorcage_reel)
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $roue = (Get-ChildItem dist\release -Filter 'diapason_rust-*.whl' | Select-Object -First 1).Name
+          $archive = "diapason-src-$env:VERSION.tar.gz"
+          & git archive --format=tar.gz "--prefix=diapason-src-$env:VERSION/" -o "dist\release\$archive" HEAD
+          @{ version = $env:VERSION; python = '3.13'; source = $archive; wheels = @{ 'x86_64-pc-windows-msvc' = $roue } } |
+            ConvertTo-Json -Depth 3 | Out-File dist\release\backend.json -Encoding ascii
+          $python = (Resolve-Path .venv-assets\Scripts\python.exe).Path
+          $serveur = Start-Process $python -ArgumentList @('-m', 'http.server', '8765', '--bind', '127.0.0.1') -WorkingDirectory (Resolve-Path dist\release).Path -PassThru -WindowStyle Hidden
+          try {
+            Start-Sleep -Seconds 2
+            $env:DIAPASON_BACKEND_URL = 'http://127.0.0.1:8765'
+            Push-Location frontend\src-tauri
+            & cargo test --release amorcage_reel -- --ignored --nocapture
+            if ($LASTEXITCODE -ne 0) { throw "amorcage_reel a echoue ($LASTEXITCODE)" }
+            Pop-Location
+          } finally {
+            Stop-Process -Id $serveur.Id -Force -ErrorAction SilentlyContinue
+            Remove-Item dist\release\backend.json, "dist\release\$archive" -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Rassembler la release Windows
         id: local-release
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
