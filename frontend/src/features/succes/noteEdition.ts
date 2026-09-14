@@ -58,14 +58,40 @@ function selectionDans(racine: HTMLElement): Range | null {
   return racine.contains(r.startContainer) ? r : null;
 }
 
-/** Pose le caret au début (ou à la fin) d'un nœud. */
+/** Les balises en ligne qui portent une mise en forme : on entre dedans, on n'en sort pas. */
+const EN_LIGNE = new Set(['SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'MARK', 'SUB', 'SUP', 'CODE']);
+
+/**
+ * Le nœud le plus profond où poser le caret au début (ou à la fin) de
+ * `noeud` : on descend dans les balises de mise en forme, pour que ce qu'on
+ * tape ensuite en hérite. « Je choisis la taille, je vais à la ligne, je
+ * n'ai plus la même taille » (13 septembre 2026) : le caret se posait DANS
+ * le bloc, à côté du <span> de taille, et la frappe naissait sans style.
+ */
+function descendreDansLeStyle(noeud: Node, fin: boolean): Node {
+  let courant = noeud;
+  for (;;) {
+    const enfant = fin ? courant.lastChild : courant.firstChild;
+    if (enfant instanceof HTMLElement && EN_LIGNE.has(enfant.tagName)) {
+      courant = enfant;
+      continue;
+    }
+    return courant;
+  }
+}
+
+/** Pose le caret au début (ou à la fin) d'un nœud, dans sa mise en forme. */
 export function placerCaret(noeud: Node, fin = false): void {
   const doc = noeud.ownerDocument ?? document;
   const r = doc.createRange();
+  if (noeud.nodeType !== Node.TEXT_NODE) noeud = descendreDansLeStyle(noeud, fin);
   if (noeud.nodeType === Node.TEXT_NODE) {
     r.setStart(noeud, fin ? (noeud.textContent ?? '').length : 0);
   } else if (noeud.firstChild && noeud.firstChild.nodeName === 'BR' && !fin) {
     r.setStart(noeud, 0);
+  } else if (fin && noeud.lastChild && noeud.lastChild.nodeName === 'BR') {
+    // Après le dernier texte, avant le <br> de fin de ligne.
+    r.setStart(noeud, noeud.childNodes.length - 1);
   } else {
     r.selectNodeContents(noeud);
     r.collapse(!fin);
@@ -100,11 +126,36 @@ export function couperLeBloc(bloc: HTMLElement, caret: Range): HTMLElement {
   const nouveau = doc.createElement(bloc.tagName);
   nouveau.appendChild(reste);
   // Un <br> de fin de ligne laissé derrière par le navigateur ne compte pas
-  // comme contenu ; un bloc sans rien dedans n'a pas de hauteur, d'où le <br>.
-  if (estVide(nouveau) && !nouveau.querySelector('br')) nouveau.appendChild(doc.createElement('br'));
+  // comme contenu ; un bloc sans rien dedans n'a pas de hauteur, d'où le
+  // <br> — posé au plus profond des balises de mise en forme que la coupe a
+  // emportées (vides), pour que la frappe suivante y naisse avec le style.
+  if (estVide(nouveau) && !nouveau.querySelector('br')) {
+    descendreDansLeStyle(nouveau, false).appendChild(doc.createElement('br'));
+  }
   if (estVide(bloc) && !bloc.querySelector('br')) bloc.appendChild(doc.createElement('br'));
   bloc.after(nouveau);
   return nouveau;
+}
+
+/**
+ * Avant une frappe ou une Entrée : si le caret est posé dans le bloc juste
+ * APRÈS une balise de mise en forme (cliquer en fin de ligne le met là), on
+ * le rentre à la fin de cette balise — la frappe en héritera, comme dans
+ * Word. Rend `true` si le caret a bougé.
+ */
+export function entrerDansLeStyleVoisin(racine: HTMLElement): boolean {
+  const caret = selectionDans(racine);
+  if (!caret || !caret.collapsed) return false;
+  const conteneur = caret.startContainer;
+  if (conteneur.nodeType === Node.TEXT_NODE) return false;
+  const precedent = conteneur.childNodes[caret.startOffset - 1] ?? null;
+  const suivant = conteneur.childNodes[caret.startOffset] ?? null;
+  // Entre deux textes, ou avant du texte : rien à faire. Seulement quand la
+  // balise précédente est une mise en forme et que rien de visible ne suit.
+  if (!(precedent instanceof HTMLElement) || !EN_LIGNE.has(precedent.tagName)) return false;
+  if (suivant && suivant.nodeName !== 'BR') return false;
+  placerCaret(precedent, true);
+  return true;
 }
 
 /** Le caret est-il à la toute fin de `bloc` (rien de visible après lui) ? */
@@ -678,6 +729,9 @@ export function toucheDansLaNote(
 ): boolean {
   if (touche.metaKey || touche.ctrlKey || touche.altKey) return false;
   if (touche.key === 'Tab') return tabDansTableau(racine, touche.shiftKey);
+  // Une touche qui écrit (ou Entrée) : d'abord rentrer le caret dans la
+  // mise en forme voisine, sans consommer la touche.
+  if (touche.key === 'Enter' || touche.key.length === 1) entrerDansLeStyleVoisin(racine);
   if (touche.key === 'Enter' && !touche.shiftKey) {
     return entreeDansCode(racine) || entreeDansListe(racine) || entreeDansCitation(racine) || entreeDansTitre(racine);
   }

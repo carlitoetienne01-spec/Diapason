@@ -283,3 +283,32 @@ describe('l’adresse d’un lien', () => {
     expect(adresseDeLien('pas une adresse')).toEqual({ erreur: "Cette adresse n'a pas l'air complète." });
   });
 });
+
+describe('la mise en forme survit à la ligne', () => {
+  it('Entrée dans une puce en fin de <span> de taille : la nouvelle puce naît dans le même span', () => {
+    racine.innerHTML = '<ol><li><span style="font-size:24pt">mot</span></li></ol>';
+    const t = racine.querySelector('span')!.firstChild!;
+    const r = document.createRange();
+    r.setStart(t, 3);
+    r.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(r);
+    entreeDansListe(racine);
+    expect(lire()).toBe('<ol><li><span style="font-size:24pt">mot</span></li><li><span style="font-size:24pt">|<br></span></li></ol>');
+  });
+  it('un caret posé juste après une balise de style y rentre avant la frappe', async () => {
+    const { entrerDansLeStyleVoisin } = await import('./noteEdition');
+    racine.innerHTML = '<p>un <span style="font-size:24pt">mot</span></p>';
+    const p = racine.querySelector('p')!;
+    const r = document.createRange();
+    r.setStart(p, 2);
+    r.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(r);
+    expect(entrerDansLeStyleVoisin(racine)).toBe(true);
+    expect(lire()).toBe('<p>un <span style="font-size:24pt">mot|</span></p>');
+    // Entre deux textes, il ne bouge pas.
+    poser('<p>un| deux</p>');
+    expect(entrerDansLeStyleVoisin(racine)).toBe(false);
+  });
+});

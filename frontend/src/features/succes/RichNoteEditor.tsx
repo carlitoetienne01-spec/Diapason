@@ -806,51 +806,51 @@ export function RichNoteEditor({
    * il ne publie rien (`applyingGaps` fait taire l'événement input), n'entre
    * pas dans l'historique, et retient la pagination le temps du survol.
    */
-  const apercuTaille = useRef<{ html: string; etendue: Etendue } | null>(null);
+  const apercu = useRef<{ html: string; etendue: Etendue } | null>(null);
   const remettreLApercu = () => {
     const editor = editorRef.current;
-    const memo = apercuTaille.current;
+    const memo = apercu.current;
     if (!editor || !memo) return;
     editor.innerHTML = memo.html;
     selectionnerEtendue(editor, memo.etendue);
     selectionGardee.current = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
   };
-  const previsualiserTaille = (points: number) => {
+  /** Applique `poser` à la sélection, pour voir — rien n'est publié. */
+  const previsualiser = (poser: (editor: HTMLElement) => void) => {
     const editor = editorRef.current;
     if (!editor) return;
     // Un aperçu déjà posé : on remet d'abord le HTML d'avant — c'est lui
     // qui porte la sélection, celle gardée au clic pointe vers des nœuds
     // que le premier aperçu a remplacés.
-    if (apercuTaille.current) remettreLApercu();
+    if (apercu.current) remettreLApercu();
     else rendreLaSelection();
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
-    if (!apercuTaille.current) {
+    if (!apercu.current) {
       const etendue = etendueDeLaSelection(editor);
       if (!etendue) return;
-      apercuTaille.current = { html: editor.innerHTML, etendue };
+      apercu.current = { html: editor.innerHTML, etendue };
     }
     suppressObserverUntil.current = Date.now() + 1500;
     applyingGaps.current = true;
     try {
-      document.execCommand('fontSize', false, '7');
-      convertirLesMarques(editor, styleDeTaille(points));
+      poser(editor);
     } finally {
       applyingGaps.current = false;
     }
-    // La conversion remplace les nœuds et perd la sélection : on la repose,
-    // pour que le texte reste surligné pendant qu'on survole.
-    selectionnerEtendue(editor, apercuTaille.current.etendue);
+    // La pose remplace des nœuds et perd la sélection : on la repose, pour
+    // que le texte reste surligné pendant qu'on survole.
+    selectionnerEtendue(editor, apercu.current.etendue);
   };
-  /** Fin du survol : tout remis, puis la taille choisie posée pour de bon s'il y en a une. */
-  const finirLApercu = (choisie: number | null) => {
-    const etendue = apercuTaille.current?.etendue ?? null;
-    if (apercuTaille.current) {
+  /** Fin du survol : tout remis, puis `choix` posé pour de bon s'il y en a un. */
+  const finirLApercu = (choix: (() => void) | null) => {
+    const etendue = apercu.current?.etendue ?? null;
+    if (apercu.current) {
       remettreLApercu();
-      apercuTaille.current = null;
+      apercu.current = null;
     }
-    if (choisie) {
-      appliquerStyle(styleDeTaille(choisie));
+    if (choix) {
+      choix();
       // Le texte reste sélectionné après le choix, comme dans Word : on
       // peut enchaîner gras, couleur, ou une autre taille.
       const editor = editorRef.current;
@@ -862,20 +862,25 @@ export function RichNoteEditor({
     lireLaTaille();
     paginerBientot();
   };
-  const [menuTaille, setMenuTaille] = useState(false);
+  const previsualiserTaille = (points: number) =>
+    previsualiser((editor) => {
+      document.execCommand('fontSize', false, '7');
+      convertirLesMarques(editor, styleDeTaille(points));
+    });
+  /** Un seul menu ouvert à la fois : taille, police, encre ou surligneur. */
+  const [menu, setMenu] = useState<null | 'taille' | 'police' | 'encre' | 'surligneur'>(null);
+  const menuTaille = menu === 'taille';
+  const fermerLeMenu = () => {
+    finirLApercu(null);
+    setMenu(null);
+  };
   useEffect(() => {
-    if (!menuTaille) return;
+    if (!menu) return;
     const fermer = (e: MouseEvent) => {
-      if (!(e.target instanceof Element) || !e.target.closest('[data-panneau="taille"]')) {
-        finirLApercu(null);
-        setMenuTaille(false);
-      }
+      if (!(e.target instanceof Element) || !e.target.closest(`[data-panneau="${menu}"]`)) fermerLeMenu();
     };
     const echap = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        finirLApercu(null);
-        setMenuTaille(false);
-      }
+      if (e.key === 'Escape') fermerLeMenu();
     };
     document.addEventListener('mousedown', fermer, true);
     document.addEventListener('keydown', echap, true);
@@ -883,7 +888,28 @@ export function RichNoteEditor({
       document.removeEventListener('mousedown', fermer, true);
       document.removeEventListener('keydown', echap, true);
     };
-  }, [menuTaille]); // eslint-disable-line react-hooks/exhaustive-deps -- ouverture/fermeture seulement
+  }, [menu]); // eslint-disable-line react-hooks/exhaustive-deps -- ouverture/fermeture seulement
+
+  /** Sorti du menu sans choisir : le texte reprend son aspect. */
+  const quitterSansChoisir = () => {
+    if (apercu.current) {
+      remettreLApercu();
+      apercu.current = null;
+    }
+  };
+  const styleOption = (actif: boolean) => ({
+    color: actif ? 'var(--color-accent)' : 'var(--color-text)',
+    background: 'transparent',
+  });
+  const survolOption = {
+    onMouseOver: (e: React.MouseEvent<HTMLElement>) => {
+      e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+    },
+    onMouseOut: (e: React.MouseEvent<HTMLElement>) => {
+      e.currentTarget.style.background = 'transparent';
+    },
+    onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+  };
 
   const paginationEnAttente = useRef<number | null>(null);
 
@@ -1867,123 +1893,172 @@ export function RichNoteEditor({
           <Scissors size={14} />
         </button>
         <Sep />
-        <select
-          aria-label="Police"
-          value={fontFamily}
-          onChange={(event) => {
-            const next = event.target.value;
-            onMetaChange({ fontFamily: next });
-            commande('fontName', next);
-            emitContent();
-          }}
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none max-w-[140px]"
-          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+        <MenuBarre
+          id="police"
+          ouvert={menu === 'police'}
+          onQuitter={quitterSansChoisir}
+          largeur="w-56"
+          declencheur={
+            <button
+              type="button"
+              aria-label="Police"
+              aria-haspopup="listbox"
+              aria-expanded={menu === 'police'}
+              title="Police du texte"
+              onMouseDown={garderLaSelection}
+              onClick={() => (menu === 'police' ? fermerLeMenu() : setMenu('police'))}
+              className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none cursor-pointer flex items-center gap-1 max-w-[140px]"
+              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+            >
+              <span className="truncate" style={{ fontFamily: noteFontCss(fontFamily) }}>{fontFamily}</span>
+              <span aria-hidden="true" className="text-[9px] opacity-70">⌃</span>
+            </button>
+          }
         >
           {NOTE_FONTS.map((font) => (
-            <option key={font} value={font} style={{ fontFamily: noteFontCss(font) }}>
-              {font}
-            </option>
-          ))}
-        </select>
-        <span className="relative shrink-0" data-panneau="taille">
-          <button
-            type="button"
-            aria-label="Taille"
-            aria-haspopup="listbox"
-            aria-expanded={menuTaille}
-            title={
-              tailleCourante === null
-                ? 'Taille du texte'
-                : `Le texte sous le curseur est en ${tailleCourante} pt`
-            }
-            onMouseDown={garderLaSelection}
-            onClick={() => {
-              if (menuTaille) finirLApercu(null);
-              setMenuTaille((v) => !v);
-            }}
-            className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none cursor-pointer flex items-center gap-1 tabular-nums"
-            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-          >
-            {tailleCourante === null ? 'Taille' : `${tailleCourante} pt`}
-            <span aria-hidden="true" className="text-[9px] opacity-70">⌃</span>
-          </button>
-          {menuTaille && (
-            <ul
-              role="listbox"
-              aria-label="Taille du texte"
-              className="absolute left-0 top-full mt-1 z-50 max-h-72 overflow-y-auto rounded-xl py-1 shadow-xl min-w-[6rem]"
-              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-              onMouseLeave={() => {
-                // Sorti du menu sans choisir : le texte reprend sa taille.
-                if (apercuTaille.current) {
-                  remettreLApercu();
-                  apercuTaille.current = null;
-                }
+            <div
+              key={font}
+              role="option"
+              aria-selected={font === fontFamily}
+              onMouseEnter={() => previsualiser(() => document.execCommand('fontName', false, font))}
+              onClick={() => {
+                finirLApercu(() => {
+                  onMetaChange({ fontFamily: font });
+                  commande('fontName', font);
+                  emitContent();
+                });
+                setMenu(null);
               }}
+              className="px-3 py-1 text-sm cursor-pointer flex items-center gap-2"
+              style={{ ...styleOption(font === fontFamily), fontFamily: noteFontCss(font) }}
+              {...survolOption}
             >
-              {/* Une taille hors de la liste — un collage depuis Word en 10,5 pt —
-                  doit s'afficher telle quelle. L'arrondir au voisin le plus proche
-                  ferait dire à la barre une taille que le texte n'a pas. */}
-              {[
-                ...(tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? [tailleCourante] : []),
-                ...NOTE_FONT_SIZES,
-              ].map((points) => (
-                <li
-                  key={points}
-                  role="option"
-                  aria-selected={tailleCourante === points}
-                  onMouseEnter={() => previsualiserTaille(points)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    finirLApercu(points);
-                    setMenuTaille(false);
-                  }}
-                  className="px-3 py-1 text-xs cursor-pointer tabular-nums flex items-center gap-2"
-                  style={{
-                    color: tailleCourante === points ? 'var(--color-accent)' : 'var(--color-text)',
-                    background: 'transparent',
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                  onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <span className="w-3 text-center">{tailleCourante === points ? '✓' : ''}</span>
-                  {points} pt
-                </li>
-              ))}
-            </ul>
-          )}
-        </span>
-        <label className="size-8 rounded-lg flex items-center justify-center cursor-pointer" title="Couleur du texte" style={toolbarBtnStyle}>
-          <input
-            type="color"
-            // L'ancienne constante était #1A2232 — EXACTEMENT le papier du
-            // fond Sombre : contraste 1,00 sur 1. On lit l'encre courante.
-            value={encreCourante}
-            className="absolute opacity-0 size-0"
-            onMouseDown={garderLaSelection}
-            onChange={(event) => {
-              setEncreCourante(event.target.value);
-              rendreLaSelection();
-              commande('foreColor', event.target.value);
-              emitContent();
+              <span className="w-3 text-center text-xs">{font === fontFamily ? '✓' : ''}</span>
+              {font}
+            </div>
+          ))}
+        </MenuBarre>
+        <MenuBarre
+          id="taille"
+          ouvert={menuTaille}
+          onQuitter={quitterSansChoisir}
+          declencheur={
+            <button
+              type="button"
+              aria-label="Taille"
+              aria-haspopup="listbox"
+              aria-expanded={menuTaille}
+              title={
+                tailleCourante === null
+                  ? 'Taille du texte'
+                  : `Le texte sous le curseur est en ${tailleCourante} pt`
+              }
+              onMouseDown={garderLaSelection}
+              onClick={() => (menuTaille ? fermerLeMenu() : setMenu('taille'))}
+              className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none cursor-pointer flex items-center gap-1 tabular-nums"
+              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+            >
+              {tailleCourante === null ? 'Taille' : `${tailleCourante} pt`}
+              <span aria-hidden="true" className="text-[9px] opacity-70">⌃</span>
+            </button>
+          }
+        >
+          {/* Une taille hors de la liste — un collage depuis Word en 10,5 pt —
+              doit s'afficher telle quelle. L'arrondir au voisin le plus proche
+              ferait dire à la barre une taille que le texte n'a pas. */}
+          {[
+            ...(tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? [tailleCourante] : []),
+            ...NOTE_FONT_SIZES,
+          ].map((points) => (
+            <div
+              key={points}
+              role="option"
+              aria-selected={tailleCourante === points}
+              onMouseEnter={() => previsualiserTaille(points)}
+              onClick={() => {
+                finirLApercu(() => appliquerStyle(styleDeTaille(points)));
+                setMenu(null);
+              }}
+              className="px-3 py-1 text-xs cursor-pointer tabular-nums flex items-center gap-2"
+              style={styleOption(tailleCourante === points)}
+              {...survolOption}
+            >
+              <span className="w-3 text-center">{tailleCourante === points ? '✓' : ''}</span>
+              {points} pt
+            </div>
+          ))}
+        </MenuBarre>
+        <MenuBarre
+          id="encre"
+          ouvert={menu === 'encre'}
+          onQuitter={quitterSansChoisir}
+          largeur="w-56"
+          declencheur={
+            <button
+              type="button"
+              title="Couleur du texte"
+              aria-label="Couleur du texte"
+              aria-haspopup="listbox"
+              aria-expanded={menu === 'encre'}
+              className={toolbarBtn}
+              style={toolbarBtnStyle}
+              onMouseDown={garderLaSelection}
+              onClick={() => (menu === 'encre' ? fermerLeMenu() : setMenu('encre'))}
+            >
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)', borderBottom: `3px solid ${encreCourante}` }}>A</span>
+            </button>
+          }
+        >
+          <Palette
+            couleurs={ENCRES}
+            courante={encreCourante}
+            onSurvol={(hex) => hex && previsualiser(() => document.execCommand('foreColor', false, hex))}
+            onChoix={(hex) => {
+              if (!hex) return;
+              finirLApercu(() => {
+                setEncreCourante(hex);
+                commande('foreColor', hex);
+                emitContent();
+              });
+              setMenu(null);
             }}
           />
-          <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)' }}>A</span>
-        </label>
-        <label className="size-8 rounded-lg flex items-center justify-center cursor-pointer" title="Surlignage" style={toolbarBtnStyle}>
-          <input
-            type="color"
-            defaultValue="#fef08a"
-            className="absolute opacity-0 size-0"
-            onMouseDown={garderLaSelection}
-            onChange={(event) => {
-              rendreLaSelection();
-              commande('hiliteColor', event.target.value);
-              emitContent();
+        </MenuBarre>
+        <MenuBarre
+          id="surligneur"
+          ouvert={menu === 'surligneur'}
+          onQuitter={quitterSansChoisir}
+          largeur="w-56"
+          declencheur={
+            <button
+              type="button"
+              title="Surlignage"
+              aria-label="Surlignage"
+              aria-haspopup="listbox"
+              aria-expanded={menu === 'surligneur'}
+              className={toolbarBtn}
+              style={toolbarBtnStyle}
+              onMouseDown={garderLaSelection}
+              onClick={() => (menu === 'surligneur' ? fermerLeMenu() : setMenu('surligneur'))}
+            >
+              <Highlighter size={14} />
+            </button>
+          }
+        >
+          <Palette
+            couleurs={SURLIGNAGES}
+            courante={null}
+            aucune="Aucun surlignage"
+            onSurvol={(hex) => previsualiser(() => document.execCommand('hiliteColor', false, hex ?? 'transparent'))}
+            onChoix={(hex) => {
+              finirLApercu(() => {
+                commande('hiliteColor', hex ?? 'transparent');
+                emitContent();
+              });
+              setMenu(null);
             }}
           />
-          <Highlighter size={14} />
-        </label>
+        </MenuBarre>
         <Sep />
         <select
           aria-label="Taille du papier"
@@ -2122,4 +2197,123 @@ export function RichNoteEditor({
 
 function Sep() {
   return <span className="w-px h-5 mx-0.5 shrink-0" style={{ background: 'var(--color-border)' }} />;
+}
+
+/** Les encres : des couleurs qui se lisent sur papier blanc comme sur fond sombre. */
+const ENCRES = [
+  '#1a2232', '#475569', '#94a3b8', '#ffffff',
+  '#dc2626', '#ea580c', '#ca8a04', '#16a34a',
+  '#0d9488', '#2563eb', '#4f46e5', '#9333ea',
+  '#db2777', '#92400e', '#365314', '#0e7490',
+];
+/** Les surligneurs : des pastels, comme les vrais. */
+const SURLIGNAGES = ['#fef08a', '#bbf7d0', '#a5f3fc', '#fbcfe8', '#fed7aa', '#ddd6fe', '#e5e7eb', '#fecaca'];
+
+/**
+ * Une palette : des pastilles, survolées (aperçu) puis cliquées (choix), et
+ * une couleur libre par le sélecteur du système. Le sélecteur natif ne
+ * prévient de rien pendant qu'on y navigue : c'est pour cela que les
+ * pastilles existent.
+ */
+function Palette({
+  couleurs,
+  courante,
+  aucune,
+  onSurvol,
+  onChoix,
+}: {
+  couleurs: string[];
+  courante: string | null;
+  aucune?: string;
+  onSurvol: (hex: string | null) => void;
+  onChoix: (hex: string | null) => void;
+}) {
+  return (
+    <div className="px-2 py-1 flex flex-col gap-2">
+      <div className="grid grid-cols-8 gap-1.5">
+        {couleurs.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            role="option"
+            aria-selected={courante?.toLowerCase() === hex}
+            aria-label={hex}
+            title={hex}
+            onMouseEnter={() => onSurvol(hex)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onChoix(hex)}
+            className="size-5 rounded-md cursor-pointer"
+            style={{
+              background: hex,
+              border: courante?.toLowerCase() === hex ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
+            }}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+        {aucune ? (
+          <button
+            type="button"
+            onMouseEnter={() => onSurvol(null)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onChoix(null)}
+            className="px-1.5 py-0.5 rounded cursor-pointer"
+            style={{ border: '1px solid var(--color-border)' }}
+          >
+            {aucune}
+          </button>
+        ) : (
+          <span />
+        )}
+        <label className="flex items-center gap-1 cursor-pointer">
+          Autre…
+          <input
+            type="color"
+            aria-label="Couleur libre"
+            defaultValue={courante ?? '#000000'}
+            className="size-5 rounded cursor-pointer bg-transparent border-0 p-0"
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => onChoix(e.target.value)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Un menu de la barre : le déclencheur, puis la liste sous lui. Défini hors
+ * de l'éditeur — un composant créé à chaque rendu serait remonté à chaque
+ * rendu, et perdrait son défilement en plein survol.
+ */
+function MenuBarre({
+  id,
+  ouvert,
+  declencheur,
+  children,
+  largeur = 'min-w-[6rem]',
+  onQuitter,
+}: {
+  id: string;
+  ouvert: boolean;
+  declencheur: React.ReactNode;
+  children: React.ReactNode;
+  largeur?: string;
+  onQuitter: () => void;
+}) {
+  return (
+    <span className="relative shrink-0" data-panneau={id}>
+      {declencheur}
+      {ouvert && (
+        <div
+          role="listbox"
+          className={`absolute left-0 top-full mt-1 z-50 max-h-72 overflow-y-auto rounded-xl py-1 shadow-xl ${largeur}`}
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+          onMouseLeave={onQuitter}
+        >
+          {children}
+        </div>
+      )}
+    </span>
+  );
 }
