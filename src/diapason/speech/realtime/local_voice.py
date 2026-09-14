@@ -211,11 +211,16 @@ class _SpecTurn:
         # La file productrice d'origine : c'est elle qu'abort() doit tuer —
         # annuler le drainer seul laissait le flux Ollama courir en zombie.
         self.source: Optional[Any] = None
+        self._rediffusions: set[asyncio.Task] = set()
 
     def abort(self) -> None:
         """Abandonner la spéculation ET son producteur — le créneau se libère."""
         if self.drainer is not None:
             self.drainer.cancel()
+        if self.first_audio is not None:
+            self.first_audio.cancel()
+        for rediffusion in tuple(self._rediffusions):
+            rediffusion.cancel()
         arret = getattr(self.source, "abort", None)
         if arret is not None:
             arret()
@@ -227,7 +232,7 @@ class _SpecTurn:
         au fil de l'eau, réveillée à chaque arrivée, et se termine sur le
         ``None`` que le draineur aura relayé.
         """
-        q: "asyncio.Queue[Any]" = asyncio.Queue()
+        q = _AbortableQueue()
 
         async def pump() -> None:
             i = 0
@@ -246,7 +251,9 @@ class _SpecTurn:
                         continue
                     await self.grew.wait()
 
-        asyncio.get_running_loop().create_task(pump())
+        q.producer = asyncio.get_running_loop().create_task(pump())
+        self._rediffusions.add(q.producer)
+        q.producer.add_done_callback(self._rediffusions.discard)
         return q
 
 
@@ -1536,6 +1543,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         except Exception as exc:  # noqa: BLE001 - the UI must hear about it
             logger.exception("local voice turn failed")
             await self._queue.put(SessionEvent(kind="error", detail=str(exc)))
+        finally:
+            # 12 septembre 2026 : un tour vide, ignoré ou interrompu AVANT
+            # le modèle échappait au finally de _respond_to_text. Son calcul
+            # spéculatif continuait alors à occuper l'unique créneau Ollama.
+            if spec_llm is not None:
+                spec_llm.abort()
 
     def _voice_lock_actif(self) -> bool:
         if self._voice_lock is None:
@@ -1811,6 +1824,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._first_audio_logged = False
         tokens: Optional["asyncio.Queue[Any]"] = None
         try:
+            if spec_llm is not None and spec_llm.text != text:
+                # 12 septembre 2026 : une transcription révisée lançait la
+                # bonne réponse sans arrêter la mauvaise avant la FIN du
+                # tour. Avec un seul créneau, la bonne attendait la mauvaise.
+                spec_llm.abort()
+                spec_llm = None
+                logger.info("local voice timing: stage=spec_llm outcome=mismatch")
             await self._wait_warm()
             assert self._llm is not None and self._tts is not None
             if not already_queued:
@@ -1838,10 +1858,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 if _round == 0 and spec_llm is not None and spec_llm.text == text:
                     # La génération a démarré pendant le silence de fin de
                     # tour ; ses premiers jetons sont déjà dans la file. Le
-                    # texte est comparé par défense : quand les deux existent
-                    # ils sortent de la même tâche STT, donc l'écart est
-                    # impossible — mais un raté ici parlerait d'un autre
-                    # énoncé, et mieux vaut régénérer que répondre à côté.
+                    # texte doit correspondre exactement : la transcription
+                    # peut être révisée avant la confirmation du tour.
                     tokens = spec_llm.replay_queue()
                     if spec_llm.first_sentence and spec_llm.first_audio:
                         self._spec_audio = (

@@ -1022,6 +1022,15 @@ class TestToolNote:
 
 
 class TestPreRoll:
+    @pytest.fixture(autouse=True)
+    def _moteur_de_banc(self, monkeypatch):
+        # 12 septembre 2026 : ces trois tests injectent STT/LLM/TTS, mais
+        # connect() sondait encore un vrai Ollama. Un réseau interdit faisait
+        # échouer le pré-roll avant même que le premier échantillon arrive.
+        monkeypatch.setattr(
+            "diapason.speech.realtime.local_voice.ollama_reachable", lambda: True
+        )
+
     """Word onsets live BELOW the speech threshold; the ring saves them.
 
     Without it, « App Store » reached Whisper as « …Store » — the gate only
