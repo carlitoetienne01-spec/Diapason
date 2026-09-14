@@ -683,3 +683,43 @@ export function toucheDansLaNote(
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Lien
+// ---------------------------------------------------------------------------
+
+/**
+ * L'adresse saisie pour un lien, ou la raison du refus. Un nom de domaine
+ * tapé sans schéma (« openclassrooms.com/cours ») reçoit https:// ; tout ce
+ * qui n'est pas http(s) est refusé — `javascript:` dans un contenteditable
+ * est une exécution de script à un clic.
+ */
+export function adresseDeLien(saisie: string): { url: string } | { erreur: string } {
+  const texte = saisie.trim();
+  if (!texte) return { erreur: 'Indique une adresse.' };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(texte) && !/^https?:\/\//i.test(texte)) {
+    return { erreur: 'Seules les adresses http:// et https:// sont acceptées.' };
+  }
+  const complete = /^https?:\/\//i.test(texte) ? texte : `https://${texte}`;
+  try {
+    const u = new URL(complete);
+    if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.') && u.hostname !== 'localhost') {
+      return { erreur: "Cette adresse n'a pas l'air complète." };
+    }
+    return { url: u.href };
+  } catch {
+    return { erreur: "Cette adresse n'a pas l'air complète." };
+  }
+}
+
+/** Le <a> qui contient la sélection, s'il y en a un. */
+export function lienSousLaSelection(racine: HTMLElement): HTMLAnchorElement | null {
+  const caret = selectionDans(racine);
+  if (!caret) return null;
+  let courant: Node | null = caret.startContainer;
+  while (courant && courant !== racine) {
+    if (courant instanceof HTMLAnchorElement) return courant;
+    courant = courant.parentNode;
+  }
+  return null;
+}

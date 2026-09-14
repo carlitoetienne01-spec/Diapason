@@ -54,8 +54,10 @@ import {
 import {
   basculerCitation,
   basculerCode,
+  adresseDeLien,
   basculerListe,
   envelopperLeTexteNu,
+  lienSousLaSelection,
   insererSeparateur,
   insererTableau,
   toucheDansLaNote,
@@ -1229,21 +1231,76 @@ export function RichNoteEditor({
    * produit. Mais la barre n'offrait aucun bouton pour les créer : on pouvait
    * les recevoir, jamais les écrire. §5, dans sa forme la plus littérale.
    */
+  /**
+   * La boîte du lien. `window.prompt` ne s'ouvre pas dans la fenêtre de
+   * bureau (constaté le 13 septembre 2026 : le bouton ne faisait rien) ;
+   * l'adresse se saisit dans une petite boîte sous le bouton. Sur un lien
+   * existant, la boîte s'ouvre pré-remplie et propose de le retirer.
+   */
+  const [lien, setLien] = useState<{ url: string; erreur: string | null; existant: boolean } | null>(null);
+  const champLien = useRef<HTMLInputElement>(null);
   const insererUnLien = () => {
     rendreLaSelection();
+    const editor = editorRef.current;
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-    const url = window.prompt('Adresse du lien');
-    if (!url) return;
-    // Refuser tout ce qui n'est pas http(s) : `javascript:` dans un
-    // contenteditable est une exécution de script à un clic.
-    if (!/^https?:\/\//i.test(url.trim())) {
-      window.alert("Seules les adresses http:// et https:// sont acceptées.");
+    if (!editor || !selection) return;
+    const existant = lienSousLaSelection(editor);
+    if (existant) {
+      // Sélectionner tout le lien : c'est lui qu'on modifie ou retire.
+      const plage = document.createRange();
+      plage.selectNodeContents(existant);
+      selection.removeAllRanges();
+      selection.addRange(plage);
+      selectionGardee.current = plage.cloneRange();
+      setLien({ url: existant.getAttribute('href') ?? '', erreur: null, existant: true });
       return;
     }
-    commande('createLink', url.trim());
-    emitContent();
+    if (selection.isCollapsed) {
+      setLien({ url: '', erreur: 'Sélectionne d’abord le texte à lier.', existant: false });
+      return;
+    }
+    setLien({ url: '', erreur: null, existant: false });
   };
+  const validerLeLien = () => {
+    if (!lien) return;
+    const resultat = adresseDeLien(lien.url);
+    if ('erreur' in resultat) {
+      setLien({ ...lien, erreur: resultat.erreur });
+      return;
+    }
+    rendreLaSelection();
+    editorRef.current?.focus();
+    rendreLaSelection();
+    commande('createLink', resultat.url);
+    emitContent();
+    setLien(null);
+  };
+  const retirerLeLien = () => {
+    rendreLaSelection();
+    editorRef.current?.focus();
+    rendreLaSelection();
+    commande('unlink');
+    emitContent();
+    setLien(null);
+  };
+  useEffect(() => {
+    if (!lien) return;
+    champLien.current?.focus();
+    // Un clic n'importe où ailleurs ferme la boîte — comme tout panneau.
+    const fermer = (e: MouseEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('[data-panneau="lien"]')) setLien(null);
+    };
+    // Échap aussi — y compris quand la boîte n'a qu'un message et pas de champ.
+    const echap = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLien(null);
+    };
+    document.addEventListener('mousedown', fermer, true);
+    document.addEventListener('keydown', echap, true);
+    return () => {
+      document.removeEventListener('mousedown', fermer, true);
+      document.removeEventListener('keydown', echap, true);
+    };
+  }, [lien !== null]); // eslint-disable-line react-hooks/exhaustive-deps -- ouverture/fermeture seulement
 
   /**
    * Les gestes de BLOC (listes, séparateur, citation, code, tableau) ne
@@ -1594,16 +1651,78 @@ export function RichNoteEditor({
         >
           <Strikethrough size={14} />
         </button>
-        <button
-          type="button"
-          title="Lien"
-          className={toolbarBtn}
-          style={toolbarBtnStyle}
-          onMouseDown={garderLaSelection}
-          onClick={insererUnLien}
-        >
-          <Link2 size={14} />
-        </button>
+        <span className="relative shrink-0" data-panneau="lien">
+          <button
+            type="button"
+            title="Lien"
+            className={toolbarBtn}
+            style={lien ? { ...toolbarBtnStyle, background: 'var(--color-bg-tertiary)' } : toolbarBtnStyle}
+            onMouseDown={garderLaSelection}
+            onClick={() => (lien ? setLien(null) : insererUnLien())}
+          >
+            <Link2 size={14} />
+          </button>
+          {lien && (
+            <div
+              role="dialog"
+              aria-label="Adresse du lien"
+              className="absolute left-0 top-full mt-1 z-50 w-72 rounded-xl p-3 flex flex-col gap-2 shadow-xl"
+              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+            >
+              {lien.erreur === 'Sélectionne d’abord le texte à lier.' ? (
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{lien.erreur}</div>
+              ) : (
+                <>
+                  <input
+                    ref={champLien}
+                    type="url"
+                    value={lien.url}
+                    placeholder="https://…"
+                    aria-label="Adresse du lien"
+                    onChange={(e) => setLien({ ...lien, url: e.target.value, erreur: null })}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        validerLeLien();
+                      }
+                      if (e.key === 'Escape') setLien(null);
+                    }}
+                    className="w-full text-sm px-2.5 py-1.5 rounded-lg outline-none"
+                    style={{
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text)',
+                      border: `1px solid ${lien.erreur ? 'var(--color-error)' : 'var(--color-border)'}`,
+                    }}
+                  />
+                  {lien.erreur && (
+                    <div className="text-xs" style={{ color: 'var(--color-error)' }}>{lien.erreur}</div>
+                  )}
+                  <div className="flex items-center gap-2 justify-end">
+                    {lien.existant && (
+                      <button
+                        type="button"
+                        onClick={retirerLeLien}
+                        className="text-xs px-2.5 py-1 rounded-lg cursor-pointer"
+                        style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                      >
+                        Retirer le lien
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={validerLeLien}
+                      className="text-xs px-2.5 py-1 rounded-lg cursor-pointer font-medium"
+                      style={{ background: 'var(--color-accent)', color: 'var(--color-text-inverse, #fff)' }}
+                    >
+                      {lien.existant ? 'Modifier' : 'Lier'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </span>
         <button
           type="button"
           title="Citation"

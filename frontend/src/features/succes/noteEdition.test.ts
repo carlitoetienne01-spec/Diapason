@@ -271,3 +271,15 @@ describe('le caret à la racine', () => {
     expect(envelopperLeTexteNu(racine)).toBe(0);
   });
 });
+
+describe('l’adresse d’un lien', () => {
+  it('accepte http(s), complète un domaine nu, refuse le reste', async () => {
+    const { adresseDeLien } = await import('./noteEdition');
+    expect(adresseDeLien('https://ex.org/a')).toEqual({ url: 'https://ex.org/a' });
+    expect(adresseDeLien('  openclassrooms.com/cours ')).toEqual({ url: 'https://openclassrooms.com/cours' });
+    expect(adresseDeLien('javascript:alert(1)')).toEqual({ erreur: 'Seules les adresses http:// et https:// sont acceptées.' });
+    expect(adresseDeLien('mailto:x@y.z')).toEqual({ erreur: 'Seules les adresses http:// et https:// sont acceptées.' });
+    expect(adresseDeLien('')).toEqual({ erreur: 'Indique une adresse.' });
+    expect(adresseDeLien('pas une adresse')).toEqual({ erreur: "Cette adresse n'a pas l'air complète." });
+  });
+});
