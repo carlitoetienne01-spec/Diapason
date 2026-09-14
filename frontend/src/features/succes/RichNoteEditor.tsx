@@ -63,6 +63,7 @@ import {
   toucheDansLaNote,
 } from './noteEdition';
 import { ouEstLeCaret as reperer, remettreLeCaret as reposer, type PlaceDuCaret } from './noteCaret';
+import { etendueDeLaSelection, selectionnerEtendue, type Etendue } from './noteSelection';
 import { Historique, type Instantane } from './noteHistorique';
 import { sanitizeNoteHtml } from './noteSanitize';
 import { fitZoom } from './noteZoom';
@@ -767,17 +768,122 @@ export function RichNoteEditor({
     // liste ne faisait rien du tout — il fallait d'abord écrire, puis
     // sélectionner, puis choisir. On retient la déclaration et on la pose au
     // premier caractère.
+    // `execCommand` déclenche `input`, donc `emitContent`, AVANT la
+    // conversion des marques : l'historique gardait alors un état avec
+    // « <font size="7"> », et Annuler le restituait tel quel (vu au banc le
+    // 13 septembre 2026). On fait taire cet événement ; une seule
+    // publication, une fois les marques converties.
     if (selection.isCollapsed) {
       if (!editor.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
-      document.execCommand('fontSize', false, '7');
+      applyingGaps.current = true;
+      try {
+        document.execCommand('fontSize', false, '7');
+      } finally {
+        applyingGaps.current = false;
+      }
       styleEnAttente.current = declaration;
       return;
     }
-    document.execCommand('fontSize', false, '7');
-    convertirLesMarques(editor, declaration);
+    applyingGaps.current = true;
+    try {
+      document.execCommand('fontSize', false, '7');
+      convertirLesMarques(editor, declaration);
+    } finally {
+      applyingGaps.current = false;
+    }
     styleEnAttente.current = null;
     emitContent();
   };
+
+  /**
+   * L'APERÇU d'une taille — le texte sélectionné prend la taille survolée
+   * dans le menu, et la reprend quand on passe à une autre ou qu'on sort.
+   * « Quand je sélectionne du texte et que je passe le curseur sur une
+   * taille, le texte doit me donner un aperçu » (13 septembre 2026). Un
+   * <select> natif ne dit rien de ce qu'on survole : le menu est à nous.
+   *
+   * L'aperçu applique la taille pour de vrai, puis remet le HTML d'avant ;
+   * il ne publie rien (`applyingGaps` fait taire l'événement input), n'entre
+   * pas dans l'historique, et retient la pagination le temps du survol.
+   */
+  const apercuTaille = useRef<{ html: string; etendue: Etendue } | null>(null);
+  const remettreLApercu = () => {
+    const editor = editorRef.current;
+    const memo = apercuTaille.current;
+    if (!editor || !memo) return;
+    editor.innerHTML = memo.html;
+    selectionnerEtendue(editor, memo.etendue);
+    selectionGardee.current = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
+  };
+  const previsualiserTaille = (points: number) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    // Un aperçu déjà posé : on remet d'abord le HTML d'avant — c'est lui
+    // qui porte la sélection, celle gardée au clic pointe vers des nœuds
+    // que le premier aperçu a remplacés.
+    if (apercuTaille.current) remettreLApercu();
+    else rendreLaSelection();
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    if (!apercuTaille.current) {
+      const etendue = etendueDeLaSelection(editor);
+      if (!etendue) return;
+      apercuTaille.current = { html: editor.innerHTML, etendue };
+    }
+    suppressObserverUntil.current = Date.now() + 1500;
+    applyingGaps.current = true;
+    try {
+      document.execCommand('fontSize', false, '7');
+      convertirLesMarques(editor, styleDeTaille(points));
+    } finally {
+      applyingGaps.current = false;
+    }
+    // La conversion remplace les nœuds et perd la sélection : on la repose,
+    // pour que le texte reste surligné pendant qu'on survole.
+    selectionnerEtendue(editor, apercuTaille.current.etendue);
+  };
+  /** Fin du survol : tout remis, puis la taille choisie posée pour de bon s'il y en a une. */
+  const finirLApercu = (choisie: number | null) => {
+    const etendue = apercuTaille.current?.etendue ?? null;
+    if (apercuTaille.current) {
+      remettreLApercu();
+      apercuTaille.current = null;
+    }
+    if (choisie) {
+      appliquerStyle(styleDeTaille(choisie));
+      // Le texte reste sélectionné après le choix, comme dans Word : on
+      // peut enchaîner gras, couleur, ou une autre taille.
+      const editor = editorRef.current;
+      if (editor && etendue) {
+        selectionnerEtendue(editor, etendue);
+        selectionGardee.current = window.getSelection()?.getRangeAt(0).cloneRange() ?? null;
+      }
+    }
+    lireLaTaille();
+    paginerBientot();
+  };
+  const [menuTaille, setMenuTaille] = useState(false);
+  useEffect(() => {
+    if (!menuTaille) return;
+    const fermer = (e: MouseEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('[data-panneau="taille"]')) {
+        finirLApercu(null);
+        setMenuTaille(false);
+      }
+    };
+    const echap = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        finirLApercu(null);
+        setMenuTaille(false);
+      }
+    };
+    document.addEventListener('mousedown', fermer, true);
+    document.addEventListener('keydown', echap, true);
+    return () => {
+      document.removeEventListener('mousedown', fermer, true);
+      document.removeEventListener('keydown', echap, true);
+    };
+  }, [menuTaille]); // eslint-disable-line react-hooks/exhaustive-deps -- ouverture/fermeture seulement
 
   const paginationEnAttente = useRef<number | null>(null);
 
@@ -945,7 +1051,13 @@ export function RichNoteEditor({
     if (!page || !editor) return;
     // Le caret n'est remis que s'il était DANS l'éditeur : le replacer alors
     // qu'on tape ailleurs volerait le focus à un champ de la barre.
-    const place = editor.contains(document.activeElement) ? ouEstLeCaret(editor) : null;
+    const dansLEditeur = editor.contains(document.activeElement);
+    const place = dansLEditeur ? ouEstLeCaret(editor) : null;
+    // Une SÉLECTION (pas un simple caret) doit survivre aussi : reposer le
+    // seul caret la réduisait à rien après chaque mise en forme — le texte
+    // qu'on venait de mettre en gras ou en 14 pt n'était plus sélectionné.
+    const etendue =
+      dansLEditeur && window.getSelection()?.isCollapsed === false ? etendueDeLaSelection(editor) : null;
     applyingGaps.current = true;
     suppressObserverUntil.current = Date.now() + 150;
     try {
@@ -955,7 +1067,8 @@ export function RichNoteEditor({
       poserLeSignet();
       recalculerLaPage();
       reserverLaHauteur();
-      remettreLeCaret(editor, place);
+      if (etendue) selectionnerEtendue(editor, etendue);
+      else remettreLeCaret(editor, place);
     } finally {
       applyingGaps.current = false;
     }
@@ -1772,39 +1885,74 @@ export function RichNoteEditor({
             </option>
           ))}
         </select>
-        <select
-          aria-label="Taille"
-          title={
-            tailleCourante === null
-              ? 'Taille du texte'
-              : `Le texte sous le curseur est en ${tailleCourante} pt`
-          }
-          value={tailleCourante === null ? '' : String(tailleCourante)}
-          onMouseDown={garderLaSelection}
-          onChange={(event) => {
-            const points = Number(event.target.value);
-            if (points) appliquerStyle(styleDeTaille(points));
-            // Relire plutôt que supposer : si la sélection était vide,
-            // `appliquerStyle` sort sans rien faire et la liste doit
-            // continuer à dire la taille RÉELLE, pas celle qu'on a cliquée.
-            lireLaTaille();
-          }}
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
-          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-        >
-          <option value="">Taille</option>
-          {/* Une taille hors de la liste — un collage depuis Word en 10,5 pt —
-              doit s'afficher telle quelle. L'arrondir au voisin le plus proche
-              ferait dire à la barre une taille que le texte n'a pas. */}
-          {tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? (
-            <option value={tailleCourante}>{tailleCourante} pt</option>
-          ) : null}
-          {NOTE_FONT_SIZES.map((points) => (
-            <option key={points} value={points}>
-              {points} pt
-            </option>
-          ))}
-        </select>
+        <span className="relative shrink-0" data-panneau="taille">
+          <button
+            type="button"
+            aria-label="Taille"
+            aria-haspopup="listbox"
+            aria-expanded={menuTaille}
+            title={
+              tailleCourante === null
+                ? 'Taille du texte'
+                : `Le texte sous le curseur est en ${tailleCourante} pt`
+            }
+            onMouseDown={garderLaSelection}
+            onClick={() => {
+              if (menuTaille) finirLApercu(null);
+              setMenuTaille((v) => !v);
+            }}
+            className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none cursor-pointer flex items-center gap-1 tabular-nums"
+            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+          >
+            {tailleCourante === null ? 'Taille' : `${tailleCourante} pt`}
+            <span aria-hidden="true" className="text-[9px] opacity-70">⌃</span>
+          </button>
+          {menuTaille && (
+            <ul
+              role="listbox"
+              aria-label="Taille du texte"
+              className="absolute left-0 top-full mt-1 z-50 max-h-72 overflow-y-auto rounded-xl py-1 shadow-xl min-w-[6rem]"
+              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+              onMouseLeave={() => {
+                // Sorti du menu sans choisir : le texte reprend sa taille.
+                if (apercuTaille.current) {
+                  remettreLApercu();
+                  apercuTaille.current = null;
+                }
+              }}
+            >
+              {/* Une taille hors de la liste — un collage depuis Word en 10,5 pt —
+                  doit s'afficher telle quelle. L'arrondir au voisin le plus proche
+                  ferait dire à la barre une taille que le texte n'a pas. */}
+              {[
+                ...(tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? [tailleCourante] : []),
+                ...NOTE_FONT_SIZES,
+              ].map((points) => (
+                <li
+                  key={points}
+                  role="option"
+                  aria-selected={tailleCourante === points}
+                  onMouseEnter={() => previsualiserTaille(points)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    finirLApercu(points);
+                    setMenuTaille(false);
+                  }}
+                  className="px-3 py-1 text-xs cursor-pointer tabular-nums flex items-center gap-2"
+                  style={{
+                    color: tailleCourante === points ? 'var(--color-accent)' : 'var(--color-text)',
+                    background: 'transparent',
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+                  onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span className="w-3 text-center">{tailleCourante === points ? '✓' : ''}</span>
+                  {points} pt
+                </li>
+              ))}
+            </ul>
+          )}
+        </span>
         <label className="size-8 rounded-lg flex items-center justify-center cursor-pointer" title="Couleur du texte" style={toolbarBtnStyle}>
           <input
             type="color"
