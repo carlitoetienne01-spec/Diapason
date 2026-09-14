@@ -9,11 +9,13 @@
 // liste. Ici : des instantanés du contenu (sans les cales) et du caret,
 // regroupés pour que la frappe ne fasse pas un pas par caractère.
 
+import type { PlaceDuCaret } from './noteCaret';
+
 export interface Instantane {
   /** Le HTML de la note, cales de pagination retirées. */
   html: string;
   /** Où était le caret — bloc de premier niveau et rang du caractère. */
-  place: { bloc: number; rang: number } | null;
+  place: PlaceDuCaret | null;
 }
 
 /** Deux frappes séparées de moins que ça sont un seul pas d'annulation. */

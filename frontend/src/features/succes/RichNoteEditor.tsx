@@ -62,6 +62,7 @@ import {
   insererTableau,
   toucheDansLaNote,
 } from './noteEdition';
+import { ouEstLeCaret as reperer, remettreLeCaret as reposer, type PlaceDuCaret } from './noteCaret';
 import { Historique, type Instantane } from './noteHistorique';
 import { sanitizeNoteHtml } from './noteSanitize';
 import { fitZoom } from './noteZoom';
@@ -799,69 +800,13 @@ export function RichNoteEditor({
   );
 
   /**
-   * Où se trouve le caret, dans un repère qui survit à la pose des cales.
-   *
-   * Ni le nœud ni le décalage ne survivent : poser une cale insère un élément
-   * DANS un paragraphe et scinde ses nœuds texte. On enregistre donc l'INDEX
-   * du bloc de premier niveau et le rang du caractère dans le texte de ce
-   * bloc — deux nombres, qui ne dépendent d'aucun nœud.
-   *
-   * Signalé par Carlito le 30 août 2026 : « si je change de format de page, le
-   * curseur bogue, il reste entremêlé avec du texte ». Changer de format
-   * repagine, donc retire et repose toutes les cales sous le caret.
+   * Où se trouve le caret, dans un repère qui survit à la pose des cales —
+   * voir noteCaret.ts, et pourquoi le rang seul confondait la fin d'une
+   * puce avec le début de la suivante (13 septembre 2026).
    */
-  const ouEstLeCaret = (editor: HTMLElement): { bloc: number; rang: number } | null => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return null;
-    const plage = selection.getRangeAt(0);
-    if (!editor.contains(plage.startContainer)) return null;
-    const blocs = Array.from(editor.children).filter(
-      (e) => !e.classList.contains(OVERFLOW_GAP_CLASS),
-    );
-    for (let i = 0; i < blocs.length; i++) {
-      if (!blocs[i].contains(plage.startContainer)) continue;
-      const avant = plage.cloneRange();
-      avant.selectNodeContents(blocs[i]);
-      avant.setEnd(plage.startContainer, plage.startOffset);
-      return { bloc: i, rang: avant.toString().length };
-    }
-    return null;
-  };
-
-  const remettreLeCaret = (
-    editor: HTMLElement,
-    place: { bloc: number; rang: number } | null,
-  ) => {
-    if (!place) return;
-    const blocs = Array.from(editor.children).filter(
-      (e) => !e.classList.contains(OVERFLOW_GAP_CLASS),
-    );
-    const bloc = blocs[place.bloc];
-    if (!bloc) return;
-    const marcheur = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
-    let reste = place.rang;
-    let noeud = marcheur.nextNode() as Text | null;
-    while (noeud) {
-      // Le texte d'une cale ne compte pas : elle est vide, mais un futur
-      // contenu décalerait le rang sans que personne ne s'en aperçoive.
-      const dansUneCale = (noeud.parentElement as HTMLElement | null)?.closest(
-        `.${OVERFLOW_GAP_CLASS}`,
-      );
-      if (!dansUneCale) {
-        if (reste <= noeud.data.length) {
-          const plage = document.createRange();
-          plage.setStart(noeud, reste);
-          plage.collapse(true);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(plage);
-          return;
-        }
-        reste -= noeud.data.length;
-      }
-      noeud = marcheur.nextNode() as Text | null;
-    }
-  };
+  const ouEstLeCaret = (editor: HTMLElement) => reperer(editor, OVERFLOW_GAP_CLASS);
+  const remettreLeCaret = (editor: HTMLElement, place: PlaceDuCaret | null) =>
+    reposer(editor, place, OVERFLOW_GAP_CLASS);
 
   /**
    * Réserver dans le layout la hauteur RÉELLEMENT occupée par la feuille.
