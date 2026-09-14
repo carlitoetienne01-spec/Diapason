@@ -23,9 +23,7 @@ WINDOWS_INSTALL_PS1 = ROOT / "deploy" / "windows" / "install.ps1"
 WINDOWS_SERVICE_PS1 = ROOT / "deploy" / "windows" / "diapason-service.ps1"
 WINDOWS_VERIFY_PS1 = ROOT / "deploy" / "windows" / "verify.ps1"
 WINDOWS_LOCAL_UPDATE_PS1 = ROOT / "deploy" / "windows" / "update-local-runner.ps1"
-WINDOWS_TAURI_VALIDATION = (
-    ROOT / "frontend" / "src-tauri" / "tauri.windows-validation.conf.json"
-)
+WINDOWS_TAURI_CONF = ROOT / "frontend" / "src-tauri" / "tauri.windows.conf.json"
 DESKTOP_WORKFLOW = ROOT / ".github" / "workflows" / "desktop.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 QUICKSTART_SH = ROOT / "scripts" / "quickstart.sh"
@@ -235,9 +233,16 @@ def test_le_workflow_bureau_valide_sur_le_runner_local_sans_simuler_windows() ->
     )
 
 
-def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
+def test_le_runner_windows_local_publie_l_installateur_nsis() -> None:
+    """§5 — le job Windows publie ce que l'amorçage attend, ou ne prétend rien.
+
+    Jusqu'au 13 septembre 2026 le job construisait un .msi de validation via
+    WiX, dont la vérification passe par le service Windows Installer —
+    injoignable depuis le compte du runner : job rouge, et rien de publiable.
+    NSIS s'en passe, et l'installateur signé est l'artefact de mise à jour.
+    """
     workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
-    windows_job = workflow.split("  build-windows-local:", 1)[1].split(
+    windows_job = workflow.split("  publish-windows-local:", 1)[1].split(
         "\n  clean-release:", 1
     )[0]
     assert "runs-on: [self-hosted, windows-local]" in windows_job
@@ -245,11 +250,16 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     assert "fetch-depth: 0" in windows_job, (
         "le déployeur local doit disposer de l'ascendance complète du commit"
     )
-    assert "tauri.windows-validation.conf.json" in windows_job
+    assert "tauri.windows.conf.json" in windows_job
     assert "tauri build --verbose" in windows_job, (
-        "un echec WiX sans sa sortie detaillee ne permet pas de corriger le MSI"
+        "un echec NSIS sans sa sortie detaillee ne permet pas de corriger"
     )
-    assert "diapason-windows-validation-msi" in windows_job
+    # La wheel win_amd64 : sans elle, l'app exigerait Rust au premier
+    # lancement ; et l'amorçage est joué à froid sur ce PC, pas supposé.
+    assert "maturin.exe build --release" in windows_job
+    assert "amorcage_reel" in windows_job
+    assert "TAURI_SIGNING_PRIVATE_KEY" in windows_job
+    assert "diapason-windows-release-" in windows_job
     assert "run:\n        shell: cmd" in windows_job
     assert 'echo C:\\Program Files\\Git\\bin>>"%GITHUB_PATH%"' in windows_job
     assert "Split-Path $env:RUNNER_TEMP -Parent" in windows_job
@@ -262,10 +272,12 @@ def test_le_runner_windows_local_construit_un_msi_de_validation() -> None:
     )
     assert "\n        shell: powershell\n" not in windows_job
 
-    config = json.loads(WINDOWS_TAURI_VALIDATION.read_text())
+    # NSIS, pas MSI : WiX exigeait le service Windows Installer, injoignable
+    # depuis le compte du runner. Et les artefacts d'updater restent actifs :
+    # le `-setup.exe` signé est lui-même l'artefact de mise à jour.
+    config = json.loads(WINDOWS_TAURI_CONF.read_text())
     bundle = config["bundle"]
-    assert bundle["targets"] == ["msi"]
-    assert bundle["createUpdaterArtifacts"] is False
+    assert bundle["targets"] == ["nsis"]
     assert "externalBin" not in bundle
 
 

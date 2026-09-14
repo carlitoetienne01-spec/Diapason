@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Update the real Windows installation from its self-hosted runner.
 
