@@ -559,11 +559,16 @@ export function SuccesNotesPage() {
               la langue à GAUCHE, la réglette de zoom à DROITE. Les trois
               contrôles vivaient dans la barre d'outils du haut, où l'on ne
               les cherche pas. */}
+          {/* Le pied s'adapte à SA largeur (container queries), pas à celle
+              de la fenêtre : en fenêtre réduite, ses deux groupes se
+              chevauchaient sur deux rangées (13 septembre 2026). Les mots
+              cèdent avant les commandes — l'état, puis l'étiquette du signet,
+              puis les tirets — et le curseur de zoom raccourcit. */}
           <div
-            className="flex flex-wrap items-center justify-between gap-3 pt-3 text-[11px] shrink-0"
+            className="@container flex flex-nowrap items-center justify-between gap-x-3 pt-3 text-[11px] shrink-0 min-w-0"
             style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
           >
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2 min-w-0 shrink">
               {/* « Page 3 sur 47 », comme Word : le total seul ne dit pas où
                   l'on se trouve. Et comme dans Word, cliquer dessus ouvre le
                   volet de navigation — miniatures des pages et plan des
@@ -626,14 +631,14 @@ export function SuccesNotesPage() {
                   style={{ border: '1px solid var(--color-border)' }}
                 >
                   <Bookmark size={11} />
-                  Marquer ma page
+                  <span className="hidden @2xl:inline">Marquer ma page</span>
                 </button>
               )}
-              <span aria-hidden="true">—</span>
-              <span className="tabular-nums">
+              <span aria-hidden="true" className="hidden @2xl:inline">—</span>
+              <span className="tabular-nums whitespace-nowrap">
                 {wordCount.toLocaleString('fr-CA')} mot{wordCount === 1 ? '' : 's'}
               </span>
-              <span aria-hidden="true">—</span>
+              <span aria-hidden="true" className="hidden @2xl:inline">—</span>
               <select
                 aria-label="Langue du document"
                 title="Langue du document"
@@ -656,8 +661,8 @@ export function SuccesNotesPage() {
                 ))}
               </select>
             </span>
-            <span className="flex items-center gap-2">
-              <span className="hidden sm:inline">
+            <span className="flex items-center gap-2 shrink-0 ml-auto">
+              <span className="hidden @3xl:inline whitespace-nowrap">
                 {dirty
                   ? 'Modifications non enregistrées…'
                   : activeId
@@ -690,7 +695,7 @@ export function SuccesNotesPage() {
                 step={ZOOM_PAS * 100}
                 value={Math.round(zoomEffectif * 100)}
                 onChange={(event) => setZoomVoulu(bornerZoom(Number(event.target.value) / 100))}
-                className="w-24 sm:w-32 cursor-pointer"
+                className="w-14 @2xl:w-24 @4xl:w-32 cursor-pointer"
               />
               <button
                 type="button"
