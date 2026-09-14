@@ -90,6 +90,7 @@ Les commandes ci-dessous sont celles de `.github/workflows/ci.yml` et de
 .venv/bin/python -m pytest tests/ -n auto -q -m "not live and not cloud and not hub"
 .venv/bin/python scripts/check_project_identity.py
 uv audit --locked --ignore-until-fixed GHSA-w8v5-vhqr-4h9v --ignore GHSA-h35f-9h28-mq5c
+uv lock --check
 cd frontend && npx tsc --noEmit && npx vitest run && npm run build
 cd rust && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 cd frontend/src-tauri && cargo check && cargo test

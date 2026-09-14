@@ -77,6 +77,13 @@ sed -i.bak -E "s/^EXPECTED_VERSION = \".*\"/EXPECTED_VERSION = \"${VERSION}\"/" 
 rm -f "${RACINE}/scripts/check_project_identity.py.bak"
 echo "Updated scripts/check_project_identity.py -> ${VERSION}"
 
+# Le verrou uv porte la version du paquet Python : sans ce pas, l'app
+# (qui installe avec `uv sync --locked`) refusait de s'installer sur un Mac
+# vierge — « The lockfile needs to be updated » — constaté à l'essai de la
+# 1.0.1, le 13 septembre 2026. `uv lock` ne touche pas au venv.
+(cd "${RACINE}" && uv lock -q)
+echo "Updated uv.lock -> ${VERSION}"
+
 # Le verrou Cargo porte la version de la caisse : sans ce pas, le premier
 # `cargo build` de la CI le réécrit, et un `--locked` refuserait.
 (cd "${FRONTEND_DIR}/src-tauri" && cargo update -q --offline -p diapason-desktop 2>/dev/null || cargo update -q -p diapason-desktop)
@@ -88,7 +95,7 @@ echo ""
 echo "Version bumped to ${VERSION} everywhere the identity check looks."
 echo ""
 echo "Next steps:"
-echo "  git add -A pyproject.toml scripts/check_project_identity.py frontend/package.json frontend/package-lock.json frontend/src-tauri/tauri.conf.json frontend/src-tauri/Cargo.toml frontend/src-tauri/Cargo.lock"
+echo "  git add -A pyproject.toml uv.lock scripts/check_project_identity.py frontend/package.json frontend/package-lock.json frontend/src-tauri/tauri.conf.json frontend/src-tauri/Cargo.toml frontend/src-tauri/Cargo.lock"
 echo "  git commit -m \"Version ${VERSION} de l'app de bureau\""
 echo "  git push origin main"
 echo "  git tag desktop-v${VERSION} && git push origin desktop-v${VERSION}"

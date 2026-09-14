@@ -59,6 +59,14 @@ jobs:
       - name: Verify Diapason identity and version alignment
         run: uv run python scripts/check_project_identity.py
 
+      # L'app de bureau installe le backend avec `uv sync --locked` : un
+      # verrou en retard sur pyproject.toml (version bumpée, verrou oublié)
+      # la bloque sur un Mac vierge — « The lockfile needs to be updated ».
+      # Constaté sur la release 1.0.1, le 13 septembre 2026 : ce job était
+      # vert, parce que `uv sync` sans `--locked` re-verrouille en silence.
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
+
       - name: Audit complete Python dependency lock
         run: |
           uv audit --locked \
