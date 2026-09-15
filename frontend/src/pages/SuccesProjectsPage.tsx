@@ -60,6 +60,11 @@ import type {
   SuccesTaskEdge,
 } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useNavigate } from 'react-router';
+
+import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
+import { listSuccesNotes } from '../features/succes/api';
+import type { SuccesNote } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
@@ -618,6 +623,71 @@ function ProjectFolderVisual({
   );
 }
 
+/**
+ * Les notes rattachées au projet — de petits cartables sous la pile de
+ * photos, même langage visuel. Un clic ouvre la note dans le module Notes
+ * (le chemin qu'emprunte déjà « montre-moi cette note » du maillage).
+ * Demandé le 15 septembre 2026.
+ */
+function NotesDuProjet({ projectId }: { projectId: string }) {
+  const [notes, setNotes] = useState<SuccesNote[]>([]);
+  const navigate = useNavigate();
+  const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
+
+  useEffect(() => {
+    let visible = true;
+    listSuccesNotes('')
+      .then((toutes) => {
+        if (visible) setNotes(toutes.filter((note) => note.projectId === projectId));
+      })
+      .catch(() => {
+        // La section reste simplement vide : la page projet vaut mieux
+        // sans ses notes qu'en erreur.
+      });
+    return () => {
+      visible = false;
+    };
+  }, [projectId]);
+
+  if (!notes.length) return null;
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <h3
+          className="text-[11px] font-semibold tracking-[0.14em] uppercase shrink-0"
+          style={{ color: 'var(--color-text-tertiary)' }}
+        >
+          Notes
+        </h3>
+        <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {notes.map((note) => (
+          <button
+            key={note.id}
+            type="button"
+            onClick={() => {
+              setPendingMeshSelection({ kind: 'note', id: note.id });
+              void navigate('/succes/notes');
+            }}
+            className="cursor-pointer bg-transparent border-0 p-0 text-inherit"
+            aria-label={`Ouvrir la note ${note.title}`}
+            title={note.title}
+          >
+            <NoteFolderVisual color={note.color || '#6366f1'} sheets={2} height="h-20" />
+            <p
+              className="max-w-full truncate text-[11px] text-center px-1 pt-0.5"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              {note.title}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SuccesProjectsPage() {
   const confirm = useConfirm();
   const [projects, setProjects] = useState<SuccesProject[]>([]);
@@ -987,6 +1057,7 @@ export function SuccesProjectsPage() {
                 onTacheOuverte={surTacheOuverte}
                 onParTache={surPhotosParTache}
               />
+              <NotesDuProjet projectId={selected.id} />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">

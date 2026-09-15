@@ -254,6 +254,10 @@ export interface SuccesNote {
    * fermeture de l'application et suivre la note, pas la machine.
    */
   readingMark?: number;
+  /** Le classement choisi par l'utilisateur ; vide : « sans catégorie ». */
+  category?: string;
+  /** Le projet auquel la note est rattachée ; vide : aucun. */
+  projectId?: string;
 }
 
 export interface SuccesDashboard {

@@ -532,6 +532,8 @@ export async function createSuccesNote(input: {
   docLang?: SuccesNote['docLang'];
   color?: string;
   readingMark?: number;
+  category?: string;
+  projectId?: string;
 }): Promise<SuccesNote> {
   const payload = await request<{ note: SuccesNote }>('/v1/succes/notes', {
     method: 'POST',
@@ -556,6 +558,8 @@ export async function updateSuccesNote(
       | 'docLang'
       | 'color'
       | 'readingMark'
+      | 'category'
+      | 'projectId'
     >
   >,
 ): Promise<SuccesNote> {
@@ -564,6 +568,29 @@ export async function updateSuccesNote(
     { method: 'PATCH', body: JSON.stringify(patch) },
   );
   return payload.note;
+}
+
+/** Les catégories vivantes, dans l'ordre choisi par glisser. */
+export async function listNoteCategories(): Promise<string[]> {
+  const payload = await request<{ categories: string[] }>('/v1/succes/notes/categories');
+  return payload.categories;
+}
+
+export async function orderNoteCategories(names: string[]): Promise<string[]> {
+  const payload = await request<{ categories: string[] }>('/v1/succes/notes/categories/ordre', {
+    method: 'PUT',
+    body: JSON.stringify({ names }),
+  });
+  return payload.categories;
+}
+
+/** `nouveau` vide dissout la catégorie : ses notes redeviennent « sans catégorie ». */
+export async function renameNoteCategory(ancien: string, nouveau: string): Promise<string[]> {
+  const payload = await request<{ categories: string[] }>(
+    '/v1/succes/notes/categories/renommer',
+    { method: 'POST', body: JSON.stringify({ ancien, nouveau }) },
+  );
+  return payload.categories;
 }
 
 export async function deleteSuccesNote(noteId: string): Promise<void> {

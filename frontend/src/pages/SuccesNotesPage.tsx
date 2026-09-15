@@ -16,6 +16,10 @@ import { toast } from 'sonner';
 
 import {
   createSuccesNote,
+  listNoteCategories,
+  listSuccesProjects,
+  orderNoteCategories,
+  renameNoteCategory,
   deleteSuccesNote,
   listSuccesNotes,
   updateSuccesNote,
@@ -31,7 +35,9 @@ import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { countNotePages } from '../features/succes/notePages';
 import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
 import { RichNoteEditor } from '../features/succes/RichNoteEditor';
+import { deplacerCategorie, grouperEnSections } from '../features/succes/notesSections';
 import type {
+  SuccesProject,
   SuccesNote,
   SuccesNoteDocLang,
   SuccesNotePageBackground,
@@ -111,7 +117,18 @@ export function SuccesNotesPage() {
   const [dirty, setDirty] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [formNoteId, setFormNoteId] = useState<string | null>(null);
-  const [formDraft, setFormDraft] = useState({ title: '', color: FOLDER_COLORS[0] });
+  const [formDraft, setFormDraft] = useState({
+    title: '',
+    color: FOLDER_COLORS[0],
+    category: '',
+    projectId: '',
+  });
+  /** L'ordre des sections, celui du serveur — le glisser de l'utilisateur. */
+  const [categories, setCategories] = useState<string[]>([]);
+  const [projects, setProjects] = useState<SuccesProject[]>([]);
+  /** La catégorie en cours de renommage dans son en-tête, et son brouillon. */
+  const [renommage, setRenommage] = useState<{ nom: string; brouillon: string } | null>(null);
+  const [cibleSection, setCibleSection] = useState<string | null>(null);
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
 
@@ -120,6 +137,10 @@ export function SuccesNotesPage() {
     try {
       const next = await listSuccesNotes(search);
       setNotes(next);
+      // L'ordre des sections et les projets (pour la pastille et le menu).
+      // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
+      void listNoteCategories().then(setCategories).catch(() => {});
+      void listSuccesProjects().then(setProjects).catch(() => {});
       if (activeId && !next.some((note) => note.id === activeId)) {
         setActiveId(null);
         setView('list');
@@ -197,28 +218,38 @@ export function SuccesNotesPage() {
 
   const openCreateForm = () => {
     setFormNoteId(null);
-    setFormDraft({ title: '', color: FOLDER_COLORS[0] });
+    setFormDraft({ title: '', color: FOLDER_COLORS[0], category: '', projectId: '' });
     setFormOpen(true);
   };
 
   const openEditForm = (note: SuccesNote) => {
     setFormNoteId(note.id);
-    setFormDraft({ title: note.title, color: note.color || FOLDER_COLORS[0] });
+    setFormDraft({
+      title: note.title,
+      color: note.color || FOLDER_COLORS[0],
+      category: note.category || '',
+      projectId: note.projectId || '',
+    });
     setFormOpen(true);
   };
 
   const closeFormNow = () => {
     setFormOpen(false);
     setFormNoteId(null);
-    setFormDraft({ title: '', color: FOLDER_COLORS[0] });
+    setFormDraft({ title: '', color: FOLDER_COLORS[0], category: '', projectId: '' });
   };
 
   const closeForm = async () => {
     const source = formNoteId ? notes.find((note) => note.id === formNoteId) : null;
     const dirtyForm = formNoteId
       ? formDraft.title !== (source?.title ?? '') ||
-        formDraft.color !== (source?.color ?? FOLDER_COLORS[0])
-      : Boolean(formDraft.title.trim()) || formDraft.color !== FOLDER_COLORS[0];
+        formDraft.color !== (source?.color ?? FOLDER_COLORS[0]) ||
+        formDraft.category !== (source?.category ?? '') ||
+        formDraft.projectId !== (source?.projectId ?? '')
+      : Boolean(formDraft.title.trim()) ||
+        formDraft.color !== FOLDER_COLORS[0] ||
+        Boolean(formDraft.category) ||
+        Boolean(formDraft.projectId);
     if (dirtyForm) {
       const confirmed = await confirm({
         title: formNoteId ? 'Annuler les modifications ?' : 'Annuler la création ?',
@@ -240,6 +271,8 @@ export function SuccesNotesPage() {
         const saved = await updateSuccesNote(formNoteId, {
           title,
           color: formDraft.color,
+          category: formDraft.category.trim(),
+          projectId: formDraft.projectId,
         });
         setNotes((prev) => prev.map((note) => (note.id === saved.id ? saved : note)));
         toast.success('Note mise à jour');
@@ -250,6 +283,8 @@ export function SuccesNotesPage() {
           content: '',
           ...emptyMeta(),
           color: formDraft.color,
+          category: formDraft.category.trim(),
+          projectId: formDraft.projectId,
         });
         setNotes((prev) => [saved, ...prev]);
         toast.success('Note créée', { description: 'Enregistrée localement sur ce Mac.' });
@@ -282,6 +317,83 @@ export function SuccesNotesPage() {
       await load();
     } catch (error) {
       toast.error('La suppression a échoué.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Glisser un cartable sur une section : la note change de catégorie. */
+  const deposerNoteSurSection = async (noteId: string, nomSection: string) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (!note || (note.category || '') === nomSection) return;
+    setSaving(true);
+    try {
+      const saved = await updateSuccesNote(noteId, { category: nomSection });
+      setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
+      void listNoteCategories().then(setCategories).catch(() => {});
+      toast.success(nomSection ? `Classée dans « ${nomSection} »` : 'Sortie de sa catégorie');
+    } catch (error) {
+      toast.error('Le classement a échoué.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Glisser un en-tête de section avant un autre : l'ordre est mémorisé. */
+  const deposerCategorieAvant = async (nom: string, avant: string) => {
+    const suivant = deplacerCategorie(categories, nom, avant);
+    if (suivant.join('\u0000') === categories.join('\u0000')) return;
+    setCategories(suivant);
+    try {
+      setCategories(await orderNoteCategories(suivant));
+    } catch (error) {
+      toast.error("L'ordre n'a pas été enregistré.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      void listNoteCategories().then(setCategories).catch(() => {});
+    }
+  };
+
+  const validerRenommage = async () => {
+    if (!renommage) return;
+    const nouveau = renommage.brouillon.trim();
+    const ancien = renommage.nom;
+    setRenommage(null);
+    if (!nouveau || nouveau === ancien) return;
+    setSaving(true);
+    try {
+      setCategories(await renameNoteCategory(ancien, nouveau));
+      await load();
+      toast.success(`« ${ancien} » devient « ${nouveau} »`);
+    } catch (error) {
+      toast.error('Le renommage a échoué.', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dissoudreCategorie = async (nom: string) => {
+    const confirmed = await confirm({
+      title: `Dissoudre « ${nom} » ?`,
+      description: 'Ses notes redeviennent « sans catégorie ». Aucune note n’est supprimée.',
+      confirmLabel: 'Dissoudre',
+      keepLabel: 'Garder',
+      tone: 'warning',
+    });
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      setCategories(await renameNoteCategory(nom, ''));
+      await load();
+      toast.success(`Catégorie « ${nom} » dissoute`);
+    } catch (error) {
+      toast.error('La dissolution a échoué.', {
         description: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -791,6 +903,45 @@ export function SuccesNotesPage() {
                 style={{ border: '1px solid var(--color-border)' }}
               />
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Catégorie
+                <input
+                  value={formDraft.category}
+                  onChange={(event) => setFormDraft({ ...formDraft, category: event.target.value })}
+                  maxLength={60}
+                  list="notes-categories"
+                  placeholder="Aucune — tapez pour en créer une"
+                  className="rounded-xl px-3 py-2 bg-transparent outline-none text-sm"
+                  style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <datalist id="notes-categories">
+                  {categories.map((nom) => (
+                    <option key={nom} value={nom} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="grid gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Projet
+                <select
+                  value={formDraft.projectId}
+                  onChange={(event) => setFormDraft({ ...formDraft, projectId: event.target.value })}
+                  className="rounded-xl px-3 py-2 outline-none text-sm h-[38px]"
+                  style={{
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)',
+                    background: 'var(--color-surface)',
+                  }}
+                >
+                  <option value="">Aucun</option>
+                  {projects.map((projet) => (
+                    <option key={projet.id} value={projet.id}>
+                      {projet.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
               Format de page, fond, police et langue se règlent ensuite dans l’éditeur.
             </p>
@@ -862,11 +1013,129 @@ export function SuccesNotesPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
-            {sortedNotes.map((note) => {
+          <div className="grid gap-1">
+            {grouperEnSections(sortedNotes, categories).map((section) => (
+              <section
+                key={section.nom || '\u2205'}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes('application/x-diapason-note')) return;
+                  event.preventDefault();
+                  setCibleSection(section.nom);
+                }}
+                onDragLeave={() =>
+                  setCibleSection((c) => (c === section.nom ? null : c))
+                }
+                onDrop={(event) => {
+                  const id = event.dataTransfer.getData('application/x-diapason-note');
+                  setCibleSection(null);
+                  if (!id) return;
+                  event.preventDefault();
+                  void deposerNoteSurSection(id, section.nom);
+                }}
+                className="rounded-2xl px-2 pb-1 transition-colors"
+                style={{
+                  background:
+                    cibleSection === section.nom
+                      ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)'
+                      : 'transparent',
+                }}
+                aria-label={section.nom || 'Sans catégorie'}
+              >
+                {(section.nom !== '' || categories.length > 0) && (
+                  <div
+                    className="group/section flex items-center gap-3 pt-4 pb-3"
+                    draggable={section.nom !== ''}
+                    onDragStart={(event) => {
+                      if (!section.nom) return;
+                      event.dataTransfer.setData('application/x-diapason-categorie', section.nom);
+                      event.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(event) => {
+                      if (!event.dataTransfer.types.includes('application/x-diapason-categorie'))
+                        return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onDrop={(event) => {
+                      const nom = event.dataTransfer.getData('application/x-diapason-categorie');
+                      if (!nom) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void deposerCategorieAvant(nom, section.nom);
+                    }}
+                    style={{ cursor: section.nom ? 'grab' : undefined, WebkitUserDrag: section.nom ? 'element' : undefined } as React.CSSProperties}
+                  >
+                    {renommage && renommage.nom === section.nom ? (
+                      <input
+                        autoFocus
+                        value={renommage.brouillon}
+                        maxLength={60}
+                        onChange={(event) =>
+                          setRenommage({ nom: section.nom, brouillon: event.target.value })
+                        }
+                        onBlur={() => void validerRenommage()}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                          if (event.key === 'Enter') void validerRenommage();
+                          if (event.key === 'Escape') setRenommage(null);
+                        }}
+                        className="text-xs font-semibold tracking-[0.14em] uppercase bg-transparent outline-none rounded px-1"
+                        style={{ color: 'var(--color-text)', border: '1px solid var(--color-accent)' }}
+                        aria-label="Renommer la catégorie"
+                      />
+                    ) : (
+                      <h2
+                        className="text-xs font-semibold tracking-[0.14em] uppercase shrink-0"
+                        style={{ color: section.nom ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}
+                      >
+                        {section.nom || 'Sans catégorie'}
+                      </h2>
+                    )}
+                    <span className="text-[11px] tabular-nums shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {section.notes.length}
+                    </span>
+                    {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
+                    <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
+                    {section.nom && (
+                      <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
+                          className="rounded-md p-1 cursor-pointer"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          title="Renommer la catégorie"
+                          aria-label={`Renommer ${section.nom}`}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void dissoudreCategorie(section.nom)}
+                          className="rounded-md p-1 cursor-pointer"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          title="Dissoudre la catégorie (les notes restent)"
+                          aria-label={`Dissoudre ${section.nom}`}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
+            {section.notes.map((note) => {
               const pages = countNotePages(note.content, note.pageFormat);
               return (
-                <article key={note.id} className="group relative flex flex-col items-center">
+                <article
+                  key={note.id}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('application/x-diapason-note', note.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  className="group relative flex flex-col items-center"
+                  style={{ WebkitUserDrag: 'element' } as React.CSSProperties}
+                >
                   <button
                     type="button"
                     onClick={() => openNote(note)}
@@ -884,7 +1153,26 @@ export function SuccesNotesPage() {
                     >
                       {note.title}
                     </h2>
-                    <p className="text-[11px] pb-4" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <p className="text-[11px] pb-4 flex items-center justify-center gap-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {(() => {
+                        const projet = note.projectId
+                          ? projects.find((item) => item.id === note.projectId)
+                          : null;
+                        return projet ? (
+                          <span
+                            className="inline-flex items-center gap-1 max-w-[9rem] truncate"
+                            title={`Rattachée au projet ${projet.name}`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="size-1.5 rounded-full shrink-0"
+                              style={{ background: projet.color || 'var(--color-accent)' }}
+                            />
+                            {projet.name}
+                            <span aria-hidden="true">·</span>
+                          </span>
+                        ) : null;
+                      })()}
                       {note.updatedAt
                         ? new Date(`${note.updatedAt}T12:00:00`).toLocaleDateString('fr-CA', {
                             day: 'numeric',
@@ -925,6 +1213,9 @@ export function SuccesNotesPage() {
                 </article>
               );
             })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </main>
