@@ -140,7 +140,8 @@ CREATE TABLE IF NOT EXISTS succes_projects (
     end_date TEXT NOT NULL DEFAULT '',
     created_date TEXT NOT NULL DEFAULT '',
     updated_at_ms INTEGER NOT NULL,
-    deleted_at_ms INTEGER
+    deleted_at_ms INTEGER,
+    order_index INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS succes_operations (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,6 +246,26 @@ class SuccesStore:
                 "ALTER TABLE succes_projects ADD COLUMN "
                 "structure TEXT NOT NULL DEFAULT 'flat'"
             )
+        # 15 septembre 2026 : l'ordre manuel des projets (order_index,
+        # camelCase `order`). DEFAULT 0 mettrait tous les projets ex æquo et
+        # ferait sauter l'ordre visible ; on SÈME depuis l'ordre actuel
+        # (récence décroissante) au premier passage, pour que rien ne bouge
+        # tant que Carlito n'a pas glissé.
+        if "order_index" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_projects ADD COLUMN "
+                "order_index INTEGER NOT NULL DEFAULT 0"
+            )
+            for index, row in enumerate(
+                conn.execute(
+                    "SELECT id FROM succes_projects WHERE deleted_at_ms IS NULL"
+                    " ORDER BY updated_at_ms DESC"
+                ).fetchall()
+            ):
+                conn.execute(
+                    "UPDATE succes_projects SET order_index=? WHERE id=?",
+                    (index, row["id"]),
+                )
         # Réglages propres à la forme (levelLabels, stages…), en JSON : une
         # colonne par réglage condamnerait le schéma à suivre chaque idée.
         if "structure_config" not in columns:

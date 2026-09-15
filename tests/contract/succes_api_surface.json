@@ -93,6 +93,8 @@
  "POST /v1/succes/templates",
  "POST /v1/succes/templates/materialize",
  "PUT /v1/succes/notes/categories/ordre",
+ "PUT /v1/succes/notes/ordre",
  "PUT /v1/succes/photo-piles/{pile_id}/ordre",
+ "PUT /v1/succes/projects/ordre",
  "PUT /v1/succes/sync/relay"
 ]

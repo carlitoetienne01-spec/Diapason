@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     color TEXT NOT NULL DEFAULT '#6366f1',
     reading_mark INTEGER NOT NULL DEFAULT 0,
     category TEXT NOT NULL DEFAULT '',
-    project_id TEXT NOT NULL DEFAULT ''
+    project_id TEXT NOT NULL DEFAULT '',
+    order_index INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS succes_notes_active_idx
     ON succes_notes(deleted_at_ms, updated_at_ms DESC);
@@ -248,6 +249,12 @@ class SuccesWorkspaceStore(SuccesStore):
             # que l'égalité SQL reste simple.
             ("category", "TEXT NOT NULL DEFAULT ''"),
             ("project_id", "TEXT NOT NULL DEFAULT ''"),
+            # 15 septembre 2026 : l'ordre manuel demandé par Carlito, le
+            # patron des tâches (order_index, camelCase `order` sur le fil).
+            # DEFAULT 0 met les notes existantes ex æquo ; le mode « Mon
+            # ordre » les départage par updatedAtMs tant qu'aucun glisser
+            # n'a réécrit un rang.
+            ("order_index", "INTEGER NOT NULL DEFAULT 0"),
         )
         neuves = [name for name, _ in additions if name not in columns]
         for name, declaration in additions:
@@ -329,6 +336,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "createdAt": row["created_date"],
             "updatedAtMs": row["updated_at_ms"],
             "deletedAtMs": row["deleted_at_ms"],
+            "order": int(row["order_index"]) if "order_index" in keys else 0,
             "taskTotal": task_total,
             "taskCompleted": task_done,
         }
@@ -364,7 +372,7 @@ class SuccesWorkspaceStore(SuccesStore):
                 for row in conn.execute(
                     """SELECT id FROM succes_projects
                        WHERE deleted_at_ms IS NULL AND lower(name) LIKE ?
-                       ORDER BY updated_at_ms DESC""",
+                       ORDER BY order_index ASC, updated_at_ms DESC""",
                     (query,),
                 ).fetchall()
             ]
@@ -426,8 +434,8 @@ class SuccesWorkspaceStore(SuccesStore):
             conn.execute(
                 """INSERT INTO succes_projects
                    (id,name,description,color,icon,start_date,end_date,created_date,
-                    updated_at_ms,deleted_at_ms,structure,structure_config)
-                   VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)""",
+                    updated_at_ms,deleted_at_ms,structure,structure_config,order_index)
+                   VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?,?)""",
                 (
                     project_id,
                     name,
@@ -440,6 +448,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     timestamp,
                     structure,
                     encode_structure_config(structure_config),
+                    self._prochain_ordre_projet(conn),
                 ),
             )
             project = self._load_project(conn, project_id)
@@ -830,6 +839,57 @@ class SuccesWorkspaceStore(SuccesStore):
                 op_id=op_id,
             )
             return project
+
+    @staticmethod
+    def _prochain_ordre_projet(conn: sqlite3.Connection) -> int:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM succes_projects"
+        ).fetchone()
+        return int(row["n"])
+
+    def reorder_projects(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Fixe l'ordre manuel des projets : order_index = rang dans `ids`.
+        Seuls les projets dont le rang change sont réécrits et journalisés,
+        pour que le maillage voie le nouvel ordre sans inonder la relève."""
+        propres: list[str] = []
+        for project_id in ids:
+            pid = str(project_id or "").strip()
+            if pid and pid not in propres:
+                propres.append(pid)
+        timestamp = now_ms()
+        changes: list[dict[str, Any]] = []
+        with self._transaction() as conn:
+            rang = 0
+            for project_id in propres:
+                row = conn.execute(
+                    "SELECT order_index FROM succes_projects"
+                    " WHERE id=? AND deleted_at_ms IS NULL",
+                    (project_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                index = rang
+                rang += 1
+                if int(row["order_index"]) == index:
+                    continue
+                conn.execute(
+                    "UPDATE succes_projects SET order_index=?,updated_at_ms=?"
+                    " WHERE id=?",
+                    (index, timestamp, project_id),
+                )
+                project = self._load_project(conn, project_id)
+                if project is not None:
+                    self._record_op(
+                        conn,
+                        entity="projects",
+                        entity_id=project_id,
+                        kind="upsert",
+                        payload=project,
+                        request={"action": "reorder_project", "order": index},
+                        timestamp_ms=timestamp,
+                    )
+                    changes.append(project)
+        return changes
 
     def delete_project(self, project_id: str, *, op_id: str | None = None) -> None:
         timestamp = now_ms()
@@ -1339,6 +1399,7 @@ class SuccesWorkspaceStore(SuccesStore):
             ),
             "category": row["category"] if "category" in keys else "",
             "projectId": row["project_id"] if "project_id" in keys else "",
+            "order": int(row["order_index"]) if "order_index" in keys else 0,
         }
 
     def _load_note(
@@ -1363,7 +1424,7 @@ class SuccesWorkspaceStore(SuccesStore):
             rows = conn.execute(
                 """SELECT * FROM succes_notes WHERE deleted_at_ms IS NULL
                    AND (lower(title) LIKE ? OR lower(content) LIKE ?)
-                   ORDER BY updated_at_ms DESC""",
+                   ORDER BY order_index ASC, updated_at_ms DESC""",
                 (query, query),
             ).fetchall()
         return [self._note_dict(row) for row in rows]
@@ -1461,8 +1522,8 @@ class SuccesWorkspaceStore(SuccesStore):
                    (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                     page_format,page_size,page_orientation,page_margins,
                     page_background,font_family,doc_lang,color,reading_mark,
-                    category,project_id)
-                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,?,?)""",
+                    category,project_id,order_index)
+                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     note_id,
                     title,
@@ -1481,6 +1542,7 @@ class SuccesWorkspaceStore(SuccesStore):
                     meta["readingMark"],
                     meta["category"],
                     meta["projectId"],
+                    self._prochain_ordre_note(conn),
                 ),
             )
             pid = meta["projectId"]
@@ -1555,6 +1617,63 @@ class SuccesWorkspaceStore(SuccesStore):
                 op_id=op_id,
             )
             return note
+
+    @staticmethod
+    def _prochain_ordre_note(conn: sqlite3.Connection) -> int:
+        """Le rang de la prochaine note : à la FIN. Les tombes comptent, pour
+        qu'un pair qui resynchronise une note supprimée ne retombe pas sur un
+        rang déjà pris (le patron des tâches, pas celui des photos)."""
+        row = conn.execute(
+            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM succes_notes"
+        ).fetchone()
+        return int(row["n"])
+
+    def reorder_notes(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Fixe l'ordre manuel des notes citées : order_index = leur rang dans
+        `ids`. Seules les notes DONT le rang change sont réécrites et
+        journalisées — un glisser parmi dix ne doit pas inonder le journal de
+        relève (§5). Une note absente garde son rang ; un id inconnu est ignoré
+        en silence (la liste vient du réseau, elle n'est pas de confiance)."""
+        propres: list[str] = []
+        for note_id in ids:
+            nid = str(note_id or "").strip()
+            if nid and nid not in propres:
+                propres.append(nid)
+        timestamp = now_ms()
+        changees: list[dict[str, Any]] = []
+        with self._transaction() as conn:
+            # Un id inconnu ne consomme PAS de rang : il ne pousserait pas les
+            # notes réelles d'un cran. Le rang ne compte que les existantes.
+            rang = 0
+            for note_id in propres:
+                row = conn.execute(
+                    "SELECT order_index FROM succes_notes"
+                    " WHERE id=? AND deleted_at_ms IS NULL",
+                    (note_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                index = rang
+                rang += 1
+                if int(row["order_index"]) == index:
+                    continue
+                conn.execute(
+                    "UPDATE succes_notes SET order_index=?,updated_at_ms=? WHERE id=?",
+                    (index, timestamp, note_id),
+                )
+                note = self._load_note(conn, note_id)
+                if note is not None:
+                    self._record_op(
+                        conn,
+                        entity="notes",
+                        entity_id=note_id,
+                        kind="upsert",
+                        payload=note,
+                        request={"action": "reorder_note", "order": index},
+                        timestamp_ms=timestamp,
+                    )
+                    changees.append(note)
+        return changees
 
     def list_note_categories(self) -> list[str]:
         """Les catégories vivantes, dans l'ordre choisi par l'utilisateur.

@@ -536,6 +536,17 @@ def _continuity_store() -> SuccesContinuityStore:
     return store
 
 
+class OrdreParIds(BaseModel):
+    ids: list[str] = Field(max_length=5000)
+
+
+@router.put("/projects/ordre")
+def reorder_projects(body: OrdreParIds) -> dict[str, Any]:
+    """Fixe l'ordre manuel des projets (leur rang dans `ids`)."""
+    changed = _workspace_store().reorder_projects(body.ids)
+    return {"reordered": len(changed)}
+
+
 @router.get("/projects")
 async def list_projects(
     search: str = Query(default="", max_length=200),
@@ -757,6 +768,13 @@ def order_note_categories(body: CategoriesOrdre) -> dict[str, Any]:
 def rename_note_category(body: CategorieRenommage) -> dict[str, Any]:
     count = _workspace_store().rename_note_category(body.ancien, body.nouveau)
     return {"renamed": count, "categories": _workspace_store().list_note_categories()}
+
+
+@router.put("/notes/ordre")
+def reorder_notes(body: OrdreParIds) -> dict[str, Any]:
+    """Fixe l'ordre manuel des notes citées (leur rang dans `ids`)."""
+    changed = _workspace_store().reorder_notes(body.ids)
+    return {"reordered": len(changed)}
 
 
 @router.get("/notes")
