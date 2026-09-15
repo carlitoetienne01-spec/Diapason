@@ -15,47 +15,47 @@
  */
 *{margin:0;padding:0;box-sizing:border-box}
 
-/* --- Palettes de thème (mêmes valeurs que src/index.css) -------------- */
+/* --- Palettes de thème : EXACTEMENT les valeurs de src/index.css --------
+ * Le verre reprend --color-bg de l'app (celui que montre le mini-panneau) en
+ * quasi-opaque : constaté le 15 sept. 2026, un verre trop translucide sur un
+ * fond d'écran coloré donnait à l'onglet une teinte différente du
+ * mini-panneau — incohérent à l'œil. Encres/bordures/accents : les tokens
+ * exacts (--color-text, --color-text-secondary, --color-border,
+ * --color-accent) de chaque thème/skin. */
 :root, :root.light{
-  --glass:rgba(255,255,255,0.66);
-  --ink:#1a1a1f; --ink-doux:#6b6b73;
+  --glass:rgba(249,249,249,0.94);
+  --ink:#09090b; --ink-doux:#71717a;
   --line:rgba(0,0,0,0.08);
-  --accent:#0891b2; --accent-doux:rgba(8,145,178,0.12);
-  --logo:#0e7f93; --logo-glow:rgba(8,145,178,0.35);
+  --accent:#0891b2; --accent-doux:rgba(8,145,178,0.10);
   --rim:rgba(255,255,255,0.92); --reflet:rgba(255,255,255,0.55);
   --ombre:rgba(20,22,30,0.20);
 }
 :root.dark{
-  --glass:rgba(20,21,24,0.60);
-  --ink:#ededef; --ink-doux:#9a9aa2;
-  --line:rgba(255,255,255,0.10);
-  --accent:#22d3ee; --accent-doux:rgba(34,211,238,0.14);
-  --logo:#dbe9ec; --logo-glow:rgba(34,211,238,0.40);
-  --rim:rgba(255,255,255,0.22); --reflet:rgba(255,255,255,0.14);
+  --glass:rgba(10,10,11,0.93);
+  --ink:#ededef; --ink-doux:#8d8d93;
+  --line:rgba(255,255,255,0.09);
+  --accent:#22d3ee; --accent-doux:rgba(34,211,238,0.12);
+  --rim:rgba(255,255,255,0.20); --reflet:rgba(255,255,255,0.12);
   --ombre:rgba(0,0,0,0.46);
 }
 :root.terminal[data-terminal-skin='phosphor']{
-  --glass:rgba(6,16,6,0.66); --ink:#b6ff6a; --ink-doux:#86e04a;
-  --line:rgba(122,240,70,0.30); --accent:#7af046; --accent-doux:rgba(122,240,70,0.16);
-  --logo:#b6ff6a; --logo-glow:rgba(122,240,70,0.45);
-  --rim:rgba(122,240,70,0.22); --reflet:rgba(122,240,70,0.10); --ombre:rgba(0,0,0,0.55);
+  --glass:rgba(3,7,3,0.93); --ink:#b6ff6a; --ink-doux:#86e04a;
+  --line:rgba(122,240,70,0.32); --accent:#7af046; --accent-doux:rgba(122,240,70,0.14);
+  --rim:rgba(122,240,70,0.22); --reflet:rgba(122,240,70,0.09); --ombre:rgba(0,0,0,0.55);
 }
 :root.terminal[data-terminal-skin='oxblood']{
-  --glass:rgba(38,18,17,0.68); --ink:#c1afa5; --ink-doux:#9c8880;
-  --line:rgba(193,175,165,0.26); --accent:#cf5346; --accent-doux:rgba(207,83,70,0.16);
-  --logo:#e6cfc8; --logo-glow:rgba(207,83,70,0.40);
-  --rim:rgba(255,220,210,0.18); --reflet:rgba(255,220,210,0.10); --ombre:rgba(0,0,0,0.55);
+  --glass:rgba(21,10,9,0.93); --ink:#c1afa5; --ink-doux:#9c8880;
+  --line:rgba(193,175,165,0.26); --accent:#cf5346; --accent-doux:rgba(207,83,70,0.14);
+  --rim:rgba(255,220,210,0.18); --reflet:rgba(255,220,210,0.09); --ombre:rgba(0,0,0,0.55);
 }
 :root.terminal[data-terminal-skin='sage']{
-  --glass:rgba(10,15,9,0.66); --ink:#90a481; --ink-doux:#778a66;
-  --line:rgba(144,164,129,0.30); --accent:#90a481; --accent-doux:rgba(144,164,129,0.16);
-  --logo:#b8cca8; --logo-glow:rgba(144,164,129,0.40);
+  --glass:rgba(0,0,0,0.92); --ink:#90a481; --ink-doux:#778a66;
+  --line:rgba(144,164,129,0.30); --accent:#90a481; --accent-doux:rgba(144,164,129,0.14);
   --rim:rgba(144,164,129,0.20); --reflet:rgba(144,164,129,0.08); --ombre:rgba(0,0,0,0.55);
 }
 :root.terminal[data-terminal-skin='ardechine']{
-  --glass:rgba(197,187,170,0.82); --ink:#14120e; --ink-doux:#3b362d;
-  --line:rgba(20,18,14,0.28); --accent:#3b362d; --accent-doux:rgba(20,18,14,0.10);
-  --logo:#14120e; --logo-glow:rgba(37,50,57,0.30);
+  --glass:rgba(190,179,161,0.95); --ink:#14120e; --ink-doux:#3b362d;
+  --line:rgba(20,18,14,0.34); --accent:#14120e; --accent-doux:rgba(20,18,14,0.09);
   --rim:rgba(255,252,245,0.72); --reflet:rgba(255,252,245,0.4); --ombre:rgba(37,50,57,0.22);
 }
 

@@ -4121,6 +4121,9 @@ mod native_reglette {
     // Glissement en cours (bouton pressé sur l'onglet) : on ne déploie pas, et
     // on s'aligne au bord le plus proche au relâchement.
     static DRAGGING: AtomicBool = AtomicBool::new(false);
+    // Le rail est-il au-dessus du mini-panneau ? `presenter_mini` le remet
+    // dessous ; le sondage le refait passer devant tant que le curseur y est.
+    static RAIL_FRONTED: AtomicBool = AtomicBool::new(false);
     // Position du curseur au moment du clic sur l'onglet (pour distinguer un
     // clic d'un glissement). None quand aucun bouton n'est pressé sur l'onglet.
     static DRAG_ANCHOR: Mutex<Option<(f64, f64)>> = Mutex::new(None);
@@ -4375,6 +4378,7 @@ mod native_reglette {
                             "expand" => expand(),
                             "collapse" => collapse(),
                             "closemini" => hide_mini(),
+                            "cyclemini" => cycle_mini(),
                             _ => {
                                 if let Some(route) = s.strip_prefix("open:") {
                                     open_module(route);
@@ -4512,16 +4516,26 @@ mod native_reglette {
         let _ = nil;
     }
 
-    /// Déploie le rail plein, bord droit et centre vertical figés.
+    /// Déploie le rail plein, bord d'ancrage et centre vertical figés.
     pub unsafe fn expand() {
         set_size(EXPANDED_W, EXPANDED_H);
         set_ouvert(true);
+        // Repasse AU-DESSUS du mini-panneau le temps du survol : après
+        // `makeKeyAndOrderFront`, le mini le recouvrait et la partie du rail
+        // chevauchée ne recevait plus les clics — cliquer « Notes » retombait
+        // dans le module ouvert (constaté le 15 sept. 2026).
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr != 0 {
+            let _: () = msg_send![(ptr as *mut Object), orderFrontRegardless];
+        }
+        RAIL_FRONTED.store(true, Ordering::SeqCst);
     }
 
     /// Ramène la petite pastille.
     pub unsafe fn collapse() {
         set_ouvert(false);
         set_size(COLLAPSED_W, COLLAPSED_H);
+        RAIL_FRONTED.store(false, Ordering::SeqCst);
     }
 
     /// Bascule la classe CSS `.ouvert` qui dévoile le rail. C'est Rust qui la
@@ -4571,6 +4585,13 @@ mod native_reglette {
         } else {
             NO
         };
+        if mini_vis != NO {
+            // Légère transparence quand le panneau n'a pas le clavier : il
+            // gêne moins la vue de ce qu'on fait à côté, sans disparaître.
+            let key: BOOL = msg_send![(mini_ptr as *mut Object), isKeyWindow];
+            let alpha: f64 = if key != NO { 1.0 } else { 0.94 };
+            let _: () = msg_send![(mini_ptr as *mut Object), setAlphaValue: alpha];
+        }
         // Le rail paraît hors de Diapason OU quand un module est ouvert — pour
         // pouvoir en choisir un autre sans fermer le mini-panneau.
         let doit_paraitre = mini_vis != NO || active == NO;
@@ -4648,6 +4669,11 @@ mod native_reglette {
         } else if expanded && !inside {
             collapse();
         } else if expanded && inside {
+            // Tant que le curseur est sur le rail déployé, il reste AU-DESSUS
+            // du mini-panneau (que presenter_mini vient parfois de re-fronter).
+            if mini_vis != NO && !RAIL_FRONTED.swap(true, Ordering::SeqCst) {
+                let _: () = msg_send![panel, orderFrontRegardless];
+            }
             // Surligne la ligne sous le curseur (le :hover CSS ne s'allume pas
             // hors focus). On passe à JS les coordonnées VUE : origine en haut
             // à gauche, d'où l'inversion de Y.
@@ -4766,6 +4792,10 @@ mod native_reglette {
         let _: () = msg_send![app, activateIgnoringOtherApps: YES];
         let nil: *mut Object = std::ptr::null_mut();
         let _: () = msg_send![panel, makeKeyAndOrderFront: nil];
+        // Le mini vient de passer au-dessus du rail : le sondage le refera
+        // passer devant tant que le curseur reste sur le rail — sinon un
+        // second clic de module retombait dans le mini (15 sept. 2026).
+        RAIL_FRONTED.store(false, Ordering::SeqCst);
     }
 
     /// Ouvre (ou re-navigue) le mini-panneau sur le module demandé.
@@ -4813,6 +4843,7 @@ mod native_reglette {
                bar.addEventListener('pointermove',function(e){{if(!last)return;var dx=e.screenX-last.x,dy=e.screenY-last.y;last={{x:e.screenX,y:e.screenY}};if(dx||dy){{try{{window.webkit.messageHandlers.reglette.postMessage('dragmini:'+dx+','+dy);}}catch(_){{}}}}}});\n\
                function _fin(){{last=null;bar.style.cursor='grab';}}\n\
                bar.addEventListener('pointerup',_fin);bar.addEventListener('pointercancel',_fin);\n\
+               bar.addEventListener('dblclick',function(){{try{{window.webkit.messageHandlers.reglette.postMessage('cyclemini');}}catch(_){{}}}});\n\
                document.body.appendChild(bar);\n\
                var b=document.createElement('button');b.textContent='\\u2715';b.setAttribute('aria-label','Fermer');\n\
                b.style.cssText='position:fixed;top:4px;right:10px;z-index:2147483647;width:26px;height:26px;border-radius:50%;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.14);color:inherit;font-size:13px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
@@ -4837,9 +4868,24 @@ mod native_reglette {
         ];
         let _: () = msg_send![uc, addUserScript: script];
 
-        // Cadre : À CÔTÉ de l'onglet (pas au centre), aligné sur sa hauteur.
-        // Ensuite déplaçable et redimensionnable à volonté.
+        // Cadre : la taille/position mémorisées si Carlito l'a déjà placé ;
+        // sinon À CÔTÉ de l'onglet (pas au centre), aligné sur sa hauteur.
         let vf = visible_frame();
+        if let Some((sx, sy, sw, sh)) = read_mini_frame() {
+            let w = sw.clamp(340.0, vf.size.width);
+            let h = sh.clamp(380.0, vf.size.height);
+            let x = sx.clamp(vf.origin.x, vf.origin.x + vf.size.width - w);
+            let y = sy.clamp(vf.origin.y, vf.origin.y + vf.size.height - h);
+            let frame = CGRect {
+                origin: CGPoint { x, y },
+                size: CGSize {
+                    width: w,
+                    height: h,
+                },
+            };
+            construire_mini(frame, cfg, &url_str);
+            return;
+        }
         let edge_left = EDGE.load(Ordering::SeqCst) == 1;
         let rail_cy = {
             let rp = PANEL_PTR.load(Ordering::SeqCst);
@@ -4870,7 +4916,11 @@ mod native_reglette {
                 height: MINI_H,
             },
         };
+        construire_mini(frame, cfg, &url_str);
+    }
 
+    /// Construit le mini-panneau à ce cadre et l'affiche.
+    unsafe fn construire_mini(frame: CGRect, cfg: *mut Object, url_str: &str) {
         // Sous-classe NSPanel qui ACCEPTE le focus clavier. Non activant +
         // borderless répond NO à canBecomeKeyWindow par défaut : le clic dans
         // un champ n'en fait jamais la key window, la WKWebView ne reçoit
@@ -4931,12 +4981,88 @@ mod native_reglette {
         let _: () = msg_send![panel, setContentView: wv];
         MINI_WV_PTR.store(wv as usize, Ordering::SeqCst);
 
-        let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(&url_str)];
+        let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(url_str)];
         let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
         let _: () = msg_send![wv, loadRequest: req];
 
         MINI_PANEL_PTR.store(panel as usize, Ordering::SeqCst);
         presenter_mini(panel);
+    }
+
+    // --- Taille/position mémorisées du mini-panneau ------------------------
+
+    fn mini_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(super::home_dir())
+            .join(".diapason")
+            .join("reglette-mini.json")
+    }
+
+    unsafe fn save_mini_frame(panel: *mut Object) {
+        let f: CGRect = msg_send![panel, frame];
+        let p = mini_path();
+        if let Some(par) = p.parent() {
+            let _ = std::fs::create_dir_all(par);
+        }
+        let _ = std::fs::write(
+            &p,
+            format!(
+                "{{\"x\":{},\"y\":{},\"w\":{},\"h\":{}}}",
+                f.origin.x, f.origin.y, f.size.width, f.size.height
+            ),
+        );
+    }
+
+    fn read_mini_frame() -> Option<(f64, f64, f64, f64)> {
+        let s = std::fs::read_to_string(mini_path()).ok()?;
+        let num = |k: &str| -> Option<f64> {
+            s.split(&format!("\"{k}\":"))
+                .nth(1)?
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '.')
+                .collect::<String>()
+                .parse()
+                .ok()
+        };
+        Some((num("x")?, num("y")?, num("w")?, num("h")?))
+    }
+
+    /// Trois tailles préréglées — double-clic sur la barre de glissement :
+    /// S (380×520), M (460×620), L (640×780). Centre conservé, borné à
+    /// l'écran, transition animée.
+    unsafe fn cycle_mini() {
+        let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let frame: CGRect = msg_send![panel, frame];
+        const TAILLES: [(f64, f64); 3] = [(380.0, 520.0), (460.0, 620.0), (640.0, 780.0)];
+        let mut idx = 0usize;
+        let mut best = f64::MAX;
+        for (i, (w, h)) in TAILLES.iter().enumerate() {
+            let d = (frame.size.width - w).abs() + (frame.size.height - h).abs();
+            if d < best {
+                best = d;
+                idx = i;
+            }
+        }
+        let (w, h) = TAILLES[(idx + 1) % TAILLES.len()];
+        let vf = visible_frame();
+        let w = w.min(vf.size.width - 20.0);
+        let h = h.min(vf.size.height - 20.0);
+        let cx = frame.origin.x + frame.size.width / 2.0;
+        let cy = frame.origin.y + frame.size.height / 2.0;
+        let x = (cx - w / 2.0).clamp(vf.origin.x, vf.origin.x + vf.size.width - w);
+        let y = (cy - h / 2.0).clamp(vf.origin.y, vf.origin.y + vf.size.height - h);
+        let nf = CGRect {
+            origin: CGPoint { x, y },
+            size: CGSize {
+                width: w,
+                height: h,
+            },
+        };
+        let _: () = msg_send![panel, setFrame: nf display: YES animate: YES];
+        save_mini_frame(panel);
     }
 
     /// Déplace le mini-panneau d'un delta écran (barre de glissement JS). Le
@@ -4969,6 +5095,9 @@ mod native_reglette {
             return;
         }
         let panel = ptr as *mut Object;
+        // Mémorise la taille/position choisies : la prochaine ouverture (même
+        // après relance) retrouve le panneau là où Carlito l'avait mis.
+        save_mini_frame(panel);
         let nil: *mut Object = std::ptr::null_mut();
         let _: () = msg_send![panel, orderOut: nil];
 
