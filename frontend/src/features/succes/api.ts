@@ -261,6 +261,19 @@ export function fetchSuccesPlanner(date: string): Promise<PlannerResponse> {
   return request(`/v1/succes/planner?date=${encodeURIComponent(date)}`);
 }
 
+export interface PlannerPastilles {
+  startDate: string;
+  endDate: string;
+  days: Record<string, { open: number; done: number }>;
+}
+
+/** Les points du petit calendrier — exacts, récurrences projetées comprises. */
+export function fetchPlannerPastilles(start: string, end: string): Promise<PlannerPastilles> {
+  return request(
+    `/v1/succes/planner/pastilles?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+  );
+}
+
 export function fetchSuccesSyncStatus(): Promise<SuccesSyncStatus> {
   return request('/v1/succes/sync/status');
 }

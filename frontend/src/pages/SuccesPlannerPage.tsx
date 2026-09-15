@@ -16,6 +16,7 @@ import {
   addSuccesSubtask,
   createSuccesQuote,
   createSuccesTask,
+  fetchPlannerPastilles,
   fetchSuccesPlanner,
   listSuccesQuotes,
   listSuccesTasks,
@@ -23,13 +24,22 @@ import {
   setSuccesSubtaskDone,
   setSuccesTaskDone,
 } from '../features/succes/api';
+import {
+  analyserIso,
+  dateIsoLocale,
+  filtrer,
+  grilleDuMois,
+  libelleDuJour,
+  pastillesLocales,
+  resumeDuJour,
+  type FiltrePlanner,
+  type Pastille,
+} from '../features/succes/planificateur';
 import { TaskCard } from '../features/succes/TaskCard';
-import type { PlannerResponse, SuccesQuote, SuccesSubtask, SuccesTask } from '../features/succes/types';
+import type { SuccesQuote, SuccesSubtask, SuccesTask } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
-
-type PlannerFilter = 'today' | 'week' | 'done' | 'high';
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MIME = 'application/x-diapason-task';
@@ -42,53 +52,6 @@ function pickRandomQuote(quotes: SuccesQuote[], avoidId?: string): SuccesQuote |
   const pool = avoidId ? quotes.filter((q) => q.id !== avoidId) : quotes;
   const source = pool.length ? pool : quotes;
   return source[Math.floor(Math.random() * source.length)] ?? null;
-}
-
-function localIsoDate(value = new Date()) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function parseIso(iso: string) {
-  const [year, month, day] = iso.split('-').map(Number);
-  return new Date(year, month - 1, day, 12);
-}
-
-function moveDate(iso: string, days: number) {
-  const next = parseIso(iso);
-  next.setDate(next.getDate() + days);
-  return localIsoDate(next);
-}
-
-function startOfWeekMonday(anchor: string) {
-  const date = parseIso(anchor);
-  const day = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - day);
-  return localIsoDate(date);
-}
-
-function endOfWeekSunday(anchor: string) {
-  return moveDate(startOfWeekMonday(anchor), 6);
-}
-
-function monthGrid(anchor: string) {
-  const date = parseIso(anchor);
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const first = localIsoDate(new Date(year, month, 1, 12));
-  const start = startOfWeekMonday(first);
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const end = localIsoDate(new Date(year, month, lastDay, 12));
-  const last = moveDate(startOfWeekMonday(end), 6);
-  const days: string[] = [];
-  let cursor = start;
-  while (cursor <= last) {
-    days.push(cursor);
-    cursor = moveDate(cursor, 1);
-  }
-  return { year, month, days, label: new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(date) };
 }
 
 function AnalogClock() {
@@ -141,49 +104,15 @@ function AnalogClock() {
   );
 }
 
-function filterTasks(
-  tasks: SuccesTask[],
-  filter: PlannerFilter,
-  selectedDate: string,
-  today: string,
-): SuccesTask[] {
-  const weekStart = startOfWeekMonday(selectedDate);
-  const weekEnd = endOfWeekSunday(selectedDate);
-  const priorityRank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
-
-  let next = tasks;
-  if (filter === 'today') {
-    next = tasks.filter((task) => task.date === today && !task.done);
-  } else if (filter === 'week') {
-    next = tasks.filter((task) => !!task.date && !task.done && task.date >= weekStart && task.date <= weekEnd);
-    next = [...next].sort((left, right) => {
-      const byDate = (left.date || '9999').localeCompare(right.date || '9999');
-      if (byDate) return byDate;
-      return (priorityRank[left.priority] ?? 9) - (priorityRank[right.priority] ?? 9);
-    });
-    return next;
-  } else if (filter === 'done') {
-    next = tasks.filter(
-      (task) =>
-        task.done &&
-        !!task.completedDate &&
-        task.completedDate >= weekStart &&
-        task.completedDate <= weekEnd,
-    );
-  } else if (filter === 'high') {
-    next = tasks.filter((task) => !task.done && (task.priority === 'high' || task.priority === 'urgent'));
-  }
-  return next;
-}
-
 export function SuccesPlannerPage() {
   const confirm = useConfirm();
-  const today = localIsoDate();
+  const today = dateIsoLocale();
   const [selectedDate, setSelectedDate] = useState(today);
   const [calendarMonth, setCalendarMonth] = useState(today);
-  const [filter, setFilter] = useState<PlannerFilter>('today');
-  const [planner, setPlanner] = useState<PlannerResponse | null>(null);
+  const [filter, setFilter] = useState<FiltrePlanner>('day');
   const [tasks, setTasks] = useState<SuccesTask[]>([]);
+  /** Les points du calendrier, servis par le serveur ; null tant qu'ils n'ont pas répondu. */
+  const [pastilles, setPastilles] = useState<Record<string, Pastille> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
@@ -211,11 +140,11 @@ export function SuccesPlannerPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextPlanner, nextTasks] = await Promise.all([
-        fetchSuccesPlanner(selectedDate),
-        listSuccesTasks({ includeDone: true }),
-      ]);
-      setPlanner(nextPlanner);
+      // D'ABORD le planificateur, ENSUITE la liste : le premier matérialise
+      // les récurrences du jour ; chargés en parallèle, la liste pouvait
+      // arriver avant elles et contredire les points du calendrier.
+      await fetchSuccesPlanner(selectedDate).catch(() => null);
+      const nextTasks = await listSuccesTasks({ includeDone: true });
       setTasks(nextTasks);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -323,7 +252,7 @@ export function SuccesPlannerPage() {
   const createQuickTask = async () => {
     const title = quickTitle.trim();
     if (!title) return;
-    const date = filter === 'today' ? today : selectedDate;
+    const date = filter === 'day' ? selectedDate : today;
     await change(() => createSuccesTask({ title, date }), `Tâche ajoutée au ${date}`);
     setQuickTitle('');
   };
@@ -359,33 +288,48 @@ export function SuccesPlannerPage() {
     setSelectedDate(date);
   };
 
-  const month = useMemo(() => monthGrid(calendarMonth), [calendarMonth]);
-  const openByDate = useMemo(() => {
-    const map = new Set<string>();
-    for (const task of tasks) {
-      if (!task.done && task.date) map.add(task.date);
-    }
-    return map;
-  }, [tasks]);
-  const donePastByDate = useMemo(() => {
-    const map = new Set<string>();
-    for (const task of tasks) {
-      if (task.done && task.completedDate && task.completedDate < today) {
-        map.add(task.completedDate);
-      }
-    }
-    return map;
-  }, [tasks, today]);
+  const month = useMemo(() => grilleDuMois(calendarMonth), [calendarMonth]);
+
+  // Les points viennent du serveur : lui seul connaît les récurrences pas
+  // encore matérialisées. En attendant sa réponse (ou s'il échoue), le
+  // calcul local — mêmes règles, sans projection — évite un calendrier nu.
+  useEffect(() => {
+    let visible = true;
+    const debut = month.days[0];
+    const fin = month.days[month.days.length - 1];
+    fetchPlannerPastilles(debut, fin)
+      .then((reponse) => {
+        if (visible) setPastilles(reponse.days);
+      })
+      .catch(() => {
+        if (visible) setPastilles(null);
+      });
+    return () => {
+      visible = false;
+    };
+  }, [month, tasks]);
+  const points = pastilles ?? pastillesLocales(tasks);
 
   const visibleTasks = useMemo(
-    () => filterTasks(tasks, filter, selectedDate, today),
+    () => filtrer(tasks, filter, selectedDate, today),
     [tasks, filter, selectedDate, today],
   );
+  const resume = useMemo(() => resumeDuJour(tasks, selectedDate), [tasks, selectedDate]);
+  const retardCount = useMemo(
+    () => filtrer(tasks, 'late', selectedDate, today).length,
+    [tasks, selectedDate, today],
+  );
 
+  /**
+   * Cliquer un jour montre CE jour. L'ancien geste basculait sur
+   * « Terminées de la semaine » : le point promettait des tâches, la liste
+   * montrait autre chose — « je clique et je ne vois pas les tâches »
+   * (13 septembre 2026).
+   */
   const selectDay = (date: string) => {
     setSelectedDate(date);
-    // Portfolio behavior: picking a day focuses the "Terminées" lens for that week.
-    setFilter('done');
+    setFilter('day');
+    setCalendarMonth(date);
   };
 
   const emptyCopy =
@@ -395,7 +339,9 @@ export function SuccesPlannerPage() {
         ? 'Rien de planifié cette semaine'
         : filter === 'high'
           ? 'Aucune priorité haute en cours'
-          : 'Cette journée est libre';
+          : filter === 'late'
+            ? 'Rien en retard'
+            : 'Cette journée est libre';
 
   return (
     <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
@@ -592,9 +538,9 @@ export function SuccesPlannerPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const date = parseIso(calendarMonth);
+                    const date = analyserIso(calendarMonth);
                     date.setMonth(date.getMonth() - 1);
-                    setCalendarMonth(localIsoDate(date));
+                    setCalendarMonth(dateIsoLocale(date));
                   }}
                   className="size-8 rounded-lg flex items-center justify-center cursor-pointer"
                   style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
@@ -608,9 +554,9 @@ export function SuccesPlannerPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const date = parseIso(calendarMonth);
+                    const date = analyserIso(calendarMonth);
                     date.setMonth(date.getMonth() + 1);
-                    setCalendarMonth(localIsoDate(date));
+                    setCalendarMonth(dateIsoLocale(date));
                   }}
                   className="size-8 rounded-lg flex items-center justify-center cursor-pointer"
                   style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
@@ -629,11 +575,12 @@ export function SuccesPlannerPage() {
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {month.days.map((date) => {
-                  const inMonth = parseIso(date).getMonth() === month.month;
+                  const inMonth = analyserIso(date).getMonth() === month.month;
                   const isToday = date === today;
                   const isSelected = date === selectedDate;
-                  const hasOpen = openByDate.has(date);
-                  const hasDonePast = donePastByDate.has(date);
+                  const pastille = points[date];
+                  const hasOpen = (pastille?.open ?? 0) > 0;
+                  const hasDone = (pastille?.done ?? 0) > 0;
                   return (
                     <button
                       key={date}
@@ -671,7 +618,7 @@ export function SuccesPlannerPage() {
                       aria-current={isToday ? 'date' : undefined}
                     >
                       {date.slice(8)}
-                      {(hasOpen || hasDonePast) && (
+                      {(hasOpen || hasDone) && (
                         <span
                           className="absolute bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full"
                           style={{
@@ -688,7 +635,7 @@ export function SuccesPlannerPage() {
                 onClick={() => {
                   setSelectedDate(today);
                   setCalendarMonth(today);
-                  setFilter('today');
+                  setFilter('day');
                 }}
                 className="mt-3 w-full h-8 rounded-lg text-xs cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
@@ -713,7 +660,7 @@ export function SuccesPlannerPage() {
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
-                    }).format(parseIso(selectedDate))}
+                    }).format(analyserIso(selectedDate))}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {selectedDate}
@@ -724,21 +671,21 @@ export function SuccesPlannerPage() {
               <div className="flex flex-wrap gap-1.5 mb-4" role="tablist" aria-label="Filtres">
                 {(
                   [
-                    { id: 'today' as const, label: 'Aujourd’hui' },
+                    { id: 'day' as const, label: libelleDuJour(selectedDate, today) },
                     { id: 'week' as const, label: 'Cette semaine' },
                     { id: 'done' as const, label: 'Terminées' },
                     { id: 'high' as const, label: 'Priorité haute' },
-                  ] as const
+                    // L'onglet n'existe que s'il y a du retard : zéro retard,
+                    // zéro reproche.
+                    ...(retardCount > 0 ? [{ id: 'late' as const, label: `En retard (${retardCount})` }] : []),
+                  ]
                 ).map((option) => (
                   <button
                     key={option.id}
                     type="button"
                     role="tab"
                     aria-selected={filter === option.id}
-                    onClick={() => {
-                      setFilter(option.id);
-                      if (option.id === 'today') setSelectedDate(today);
-                    }}
+                    onClick={() => setFilter(option.id)}
                     className="px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer"
                     style={{
                       background: filter === option.id ? 'var(--color-accent)' : 'var(--color-bg-secondary)',
@@ -753,9 +700,9 @@ export function SuccesPlannerPage() {
 
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  ['Total jour', planner?.summary.total ?? 0],
-                  ['À faire', planner?.summary.open ?? 0],
-                  ['Terminées', planner?.summary.completed ?? 0],
+                  ['Total jour', resume.total],
+                  ['À faire', resume.open],
+                  ['Terminées', resume.done],
                 ].map(([label, value]) => (
                   <CadreVitre compact key={String(label)} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-bg-secondary)' }}>
                     <p className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>{value}</p>

@@ -33,6 +33,7 @@
  "GET /v1/succes/photo-piles/{pile_id}/photos",
  "GET /v1/succes/photos/{photo_id}/contenu",
  "GET /v1/succes/planner",
+ "GET /v1/succes/planner/pastilles",
  "GET /v1/succes/project-kits",
  "GET /v1/succes/project-structures",
  "GET /v1/succes/projects",

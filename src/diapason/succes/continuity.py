@@ -447,6 +447,80 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
             "endDate": end_iso,
         }
 
+    def pastilles_planner(self, start_date: str, end_date: str) -> dict[str, Any]:
+        """Ce que le petit calendrier doit montrer, jour par jour — sans rien créer.
+
+        Le calendrier du Planificateur peignait ses points depuis la liste des
+        tâches déjà en base : une récurrence non encore matérialisée n'avait
+        pas de point, puis en gagnait un après qu'on avait VISITÉ le jour
+        (la matérialisation est à la demande) — « des points apparaissent où
+        il n'y en avait pas » (13 septembre 2026). Ici, les gabarits actifs
+        sont PROJETÉS sur la période, en lecture seule.
+
+        Une tâche « du jour D » : planifiée ce jour (quel que soit son état),
+        ou sans date et terminée ce jour. La vue Jour applique la même règle :
+        un point sans tâches, ou des tâches sans point, est un mensonge.
+        """
+        start_iso = _validate_iso_date(start_date, "La date de début")
+        end_iso = _validate_iso_date(end_date, "La date de fin")
+        if not start_iso or not end_iso or end_iso < start_iso:
+            raise SuccesError("La période des pastilles n'est pas valide.")
+        start, end = date.fromisoformat(start_iso), date.fromisoformat(end_iso)
+        # Deux grilles de mois au plus : le calendrier n'en montre qu'une.
+        if (end - start).days > 62:
+            raise SuccesError("La période ne peut pas dépasser 62 jours.")
+        days: dict[str, dict[str, int]] = {}
+
+        def bucket(iso: str) -> dict[str, int]:
+            return days.setdefault(iso, {"open": 0, "done": 0})
+
+        with self._connect() as conn:
+            for row in conn.execute(
+                """SELECT scheduled_date AS d, done, COUNT(*) AS n
+                     FROM succes_tasks
+                    WHERE deleted_at_ms IS NULL
+                      AND scheduled_date >= ? AND scheduled_date <= ?
+                    GROUP BY scheduled_date, done""",
+                (start_iso, end_iso),
+            ):
+                bucket(row["d"])["done" if row["done"] else "open"] += row["n"]
+            # Les tâches sans date terminées ce jour-là appartiennent au jour
+            # de leur achèvement — c'est là que la vue Jour les montre.
+            for row in conn.execute(
+                """SELECT completed_date AS d, COUNT(*) AS n
+                     FROM succes_tasks
+                    WHERE deleted_at_ms IS NULL AND done = 1
+                      AND scheduled_date = ''
+                      AND completed_date >= ? AND completed_date <= ?
+                    GROUP BY completed_date""",
+                (start_iso, end_iso),
+            ):
+                if row["d"]:
+                    bucket(row["d"])["done"] += row["n"]
+            # Projection des gabarits : une occurrence pas encore matérialisée
+            # compte comme ouverte. Une occurrence déjà en base est déjà
+            # comptée ci-dessus — son id est déterministe, on l'écarte.
+            templates = [
+                item
+                for item in self.list_templates(include_inactive=False)
+                if item["templateKind"] == "task"
+            ]
+            cursor = start
+            while cursor <= end:
+                for template in templates:
+                    if not self._matches_template(template, cursor):
+                        continue
+                    task_id = f"tpl_{template['id']}_{cursor.isoformat()}"
+                    if conn.execute(
+                        "SELECT 1 FROM succes_tasks"
+                        " WHERE id=? AND deleted_at_ms IS NULL",
+                        (task_id,),
+                    ).fetchone():
+                        continue
+                    bucket(cursor.isoformat())["open"] += 1
+                cursor += timedelta(days=1)
+        return {"startDate": start_iso, "endDate": end_iso, "days": days}
+
     def _reconcile_template_habit(self, template: Mapping[str, Any]) -> None:
         habit_id = str(
             template.get("linkedHabitId") or f"template-habit-{template['id']}"

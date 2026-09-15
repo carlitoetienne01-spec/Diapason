@@ -493,6 +493,24 @@ async def planner(date: str) -> dict[str, Any]:
     }
 
 
+@router.get("/planner/pastilles")
+def planner_pastilles(start: str, end: str) -> dict[str, Any]:
+    """Les points du petit calendrier, exacts et en lecture seule.
+
+    Route synchrone (`def`) : elle ne fait que du SQLite — Starlette
+    l'exécute dans un fil, la boucle d'événements reste libre.
+    """
+    store = get_store()
+    if not isinstance(store, SuccesContinuityStore):
+        raise HTTPException(
+            status_code=503, detail="Le module Succès complet n'est pas initialisé."
+        )
+    return store.pastilles_planner(
+        _resolved_date(start, allow_empty=False),
+        _resolved_date(end, allow_empty=False),
+    )
+
+
 def _workspace_store() -> SuccesWorkspaceStore:
     store = get_store()
     if not isinstance(store, SuccesWorkspaceStore):
