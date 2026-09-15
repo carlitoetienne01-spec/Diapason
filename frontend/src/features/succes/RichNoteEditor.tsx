@@ -22,6 +22,7 @@ import {
   Strikethrough,
   Table,
   Underline,
+  MoreHorizontal,
   Undo2,
 } from 'lucide-react';
 
@@ -881,8 +882,9 @@ export function RichNoteEditor({
       document.execCommand('fontSize', false, '7');
       convertirLesMarques(editor, styleDeTaille(points));
     });
-  /** Un seul menu ouvert à la fois : taille, police, encre ou surligneur. */
-  const [menu, setMenu] = useState<null | 'taille' | 'police' | 'encre' | 'surligneur'>(null);
+  /** Un seul menu ouvert à la fois — y compris « titres » et « ⋯ » (les deux
+      de la barre miniature). */
+  const [menu, setMenu] = useState<null | 'taille' | 'police' | 'encre' | 'surligneur' | 'titres' | 'plus'>(null);
   const menuTaille = menu === 'taille';
   const fermerLeMenu = () => {
     finirLApercu(null);
@@ -1722,6 +1724,9 @@ export function RichNoteEditor({
 
   const toolbarBtn =
     'size-8 rounded-lg flex items-center justify-center cursor-pointer shrink-0';
+  // Les outils démis en miniature : visibles dès sm, rangés dans « ⋯ » dessous.
+  const toolbarBtnLarge =
+    'size-8 rounded-lg hidden sm:flex items-center justify-center cursor-pointer shrink-0';
   const toolbarBtnStyle = {
     color: 'var(--color-text-secondary)',
     border: '1px solid transparent',
@@ -1736,7 +1741,7 @@ export function RichNoteEditor({
         <button type="button" title="Annuler" className={toolbarBtn} style={toolbarBtnStyle} onClick={annuler}>
           <Undo2 size={14} />
         </button>
-        <button type="button" title="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onClick={retablir}>
+        <button type="button" title="Rétablir" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={retablir}>
           <Redo2 size={14} />
         </button>
         <Sep />
@@ -1753,7 +1758,7 @@ export function RichNoteEditor({
           type="button"
           title="Barré"
           aria-pressed={Boolean(etats['strikeThrough'])}
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={styleBouton('strikeThrough')}
           onClick={() => commande('strikeThrough')}
         >
@@ -1774,7 +1779,7 @@ export function RichNoteEditor({
             <div
               role="dialog"
               aria-label="Adresse du lien"
-              className="absolute left-0 top-full mt-1 z-50 w-72 rounded-xl p-3 flex flex-col gap-2 shadow-xl"
+              className="absolute left-0 top-full mt-1 z-50 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl p-3 flex flex-col gap-2 shadow-xl"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
             >
               {lien.erreur === 'Sélectionne d’abord le texte à lier.' ? (
@@ -1834,7 +1839,7 @@ export function RichNoteEditor({
         <button
           type="button"
           title="Citation"
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={toolbarBtnStyle}
           onClick={() => gesteDeBloc(basculerCitation)}
         >
@@ -1843,7 +1848,7 @@ export function RichNoteEditor({
         <button
           type="button"
           title="Code"
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={toolbarBtnStyle}
           onClick={() => gesteDeBloc(basculerCode)}
         >
@@ -1852,7 +1857,7 @@ export function RichNoteEditor({
         <button
           type="button"
           title="Tableau"
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={toolbarBtnStyle}
           onMouseDown={garderLaSelection}
           onClick={insererUnTableau}
@@ -1862,7 +1867,7 @@ export function RichNoteEditor({
         <button
           type="button"
           title="Effacer la mise en forme"
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={toolbarBtnStyle}
           onClick={() => {
             commande('removeFormat');
@@ -1872,45 +1877,86 @@ export function RichNoteEditor({
           <Eraser size={14} />
         </button>
         <Sep />
-        <button type="button" title="Aligner à gauche" aria-pressed={Boolean(etats['justifyLeft'])} className={toolbarBtn} style={styleBouton('justifyLeft')} onClick={() => commande('justifyLeft')}>
+        <button type="button" title="Aligner à gauche" aria-pressed={Boolean(etats['justifyLeft'])} className={toolbarBtnLarge} style={styleBouton('justifyLeft')} onClick={() => commande('justifyLeft')}>
           <AlignLeft size={14} />
         </button>
-        <button type="button" title="Centrer" aria-pressed={Boolean(etats['justifyCenter'])} className={toolbarBtn} style={styleBouton('justifyCenter')} onClick={() => commande('justifyCenter')}>
+        <button type="button" title="Centrer" aria-pressed={Boolean(etats['justifyCenter'])} className={toolbarBtnLarge} style={styleBouton('justifyCenter')} onClick={() => commande('justifyCenter')}>
           <AlignCenter size={14} />
         </button>
-        <button type="button" title="Aligner à droite" aria-pressed={Boolean(etats['justifyRight'])} className={toolbarBtn} style={styleBouton('justifyRight')} onClick={() => commande('justifyRight')}>
+        <button type="button" title="Aligner à droite" aria-pressed={Boolean(etats['justifyRight'])} className={toolbarBtnLarge} style={styleBouton('justifyRight')} onClick={() => commande('justifyRight')}>
           <AlignRight size={14} />
         </button>
-        <button type="button" title="Justifier" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('justifyFull')}>
+        <button type="button" title="Justifier" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => commande('justifyFull')}>
           <AlignJustify size={14} />
         </button>
         <Sep />
         <button type="button" title="Liste à puces" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc((r) => basculerListe(r, 'UL'))}>
           <List size={14} />
         </button>
-        <button type="button" title="Liste numérotée" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc((r) => basculerListe(r, 'OL'))}>
+        <button type="button" title="Liste numérotée" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => gesteDeBloc((r) => basculerListe(r, 'OL'))}>
           <ListOrdered size={14} />
         </button>
         <Sep />
-        <button type="button" title="Titre 1" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H1')}>
+        <button type="button" title="Titre 1" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H1')}>
           <Heading1 size={14} />
         </button>
-        <button type="button" title="Titre 2" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H2')}>
+        <button type="button" title="Titre 2" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H2')}>
           <Heading2 size={14} />
         </button>
-        <button type="button" title="Titre 3" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H3')}>
+        <button type="button" title="Titre 3" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'H3')}>
           <Heading3 size={14} />
         </button>
-        <button type="button" title="Paragraphe" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'P')}>
+        <button type="button" title="Paragraphe" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => commande('formatBlock', 'P')}>
           <span className="text-[10px] font-semibold">P</span>
         </button>
-        <button type="button" title="Séparateur" className={toolbarBtn} style={toolbarBtnStyle} onClick={() => gesteDeBloc(insererSeparateur)}>
+        {/* Miniature : les quatre niveaux de titre tiennent dans UN menu. */}
+        <MenuBarre
+          id="titres"
+          ouvert={menu === 'titres'}
+          onQuitter={quitterSansChoisir}
+          classe="sm:hidden"
+          declencheur={
+            <button
+              type="button"
+              title="Titres"
+              aria-label="Titres"
+              aria-haspopup="listbox"
+              aria-expanded={menu === 'titres'}
+              onMouseDown={garderLaSelection}
+              onClick={() => (menu === 'titres' ? fermerLeMenu() : setMenu('titres'))}
+              className={toolbarBtn}
+              style={toolbarBtnStyle}
+            >
+              <Heading1 size={14} />
+            </button>
+          }
+        >
+          {([['Titre 1', 'H1'], ['Titre 2', 'H2'], ['Titre 3', 'H3'], ['Paragraphe', 'P']] as const).map(
+            ([nom, bloc]) => (
+              <div
+                key={bloc}
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  commande('formatBlock', bloc);
+                  setMenu(null);
+                }}
+                className="px-3 py-1.5 text-sm cursor-pointer"
+                style={styleOption(false)}
+              >
+                {nom}
+              </div>
+            ),
+          )}
+        </MenuBarre>
+        <button type="button" title="Séparateur" className={toolbarBtnLarge} style={toolbarBtnStyle} onClick={() => gesteDeBloc(insererSeparateur)}>
           <Minus size={14} />
         </button>
         <button
           type="button"
           title="Saut de page"
-          className={toolbarBtn}
+          className={toolbarBtnLarge}
           style={toolbarBtnStyle}
           onClick={insertPageBreak}
         >
@@ -1922,6 +1968,7 @@ export function RichNoteEditor({
           ouvert={menu === 'police'}
           onQuitter={quitterSansChoisir}
           largeur="w-56"
+          classe="hidden sm:inline"
           declencheur={
             <button
               type="button"
@@ -1966,6 +2013,7 @@ export function RichNoteEditor({
           id="taille"
           ouvert={menuTaille}
           onQuitter={quitterSansChoisir}
+          classe="hidden sm:inline"
           declencheur={
             <button
               type="button"
@@ -2017,6 +2065,8 @@ export function RichNoteEditor({
           ouvert={menu === 'encre'}
           onQuitter={quitterSansChoisir}
           largeur="w-56"
+          classe="hidden sm:inline"
+          alignement="droite"
           declencheur={
             <button
               type="button"
@@ -2053,6 +2103,8 @@ export function RichNoteEditor({
           ouvert={menu === 'surligneur'}
           onQuitter={quitterSansChoisir}
           largeur="w-56"
+          classe="hidden sm:inline"
+          alignement="droite"
           declencheur={
             <button
               type="button"
@@ -2090,7 +2142,7 @@ export function RichNoteEditor({
           onChange={(event) =>
             onMetaChange({ pageSize: event.target.value as SuccesNotePageSize })
           }
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          className="hidden sm:block h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           {NOTE_PAGE_SIZES.map((taille) => (
@@ -2107,7 +2159,7 @@ export function RichNoteEditor({
               pageOrientation: event.target.value as SuccesNotePageOrientation,
             })
           }
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          className="hidden sm:block h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           {NOTE_PAGE_ORIENTATIONS.map((sens) => (
@@ -2122,7 +2174,7 @@ export function RichNoteEditor({
           onChange={(event) =>
             onMetaChange({ pageMargins: event.target.value as SuccesNotePageMargins })
           }
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          className="hidden sm:block h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           {NOTE_PAGE_MARGINS.map((marge) => (
@@ -2139,7 +2191,7 @@ export function RichNoteEditor({
               pageBackground: event.target.value as SuccesNotePageBackground,
             })
           }
-          className="h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
+          className="hidden sm:block h-8 rounded-lg px-2 text-xs bg-transparent outline-none"
           style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           {NOTE_PAGE_BACKGROUNDS.map((bg) => (
@@ -2148,9 +2200,169 @@ export function RichNoteEditor({
             </option>
           ))}
         </select>
+
+        {/* Miniature : tout le reste de la barre vit ici — ancré à DROITE pour
+            ne jamais être coupé par le bord du panneau (retour du 15 sept.
+            2026 : menus « n'importe où, en bas, cachés »). Mêmes handlers que
+            la barre large : rien n'est dupliqué en logique. */}
+        <MenuBarre
+          id="plus"
+          ouvert={menu === 'plus'}
+          onQuitter={quitterSansChoisir}
+          largeur="w-72"
+          alignement="droite"
+          classe="sm:hidden ml-auto"
+          declencheur={
+            <button
+              type="button"
+              title="Plus d’outils"
+              aria-label="Plus d’outils"
+              aria-haspopup="listbox"
+              aria-expanded={menu === 'plus'}
+              onMouseDown={garderLaSelection}
+              onClick={() => (menu === 'plus' ? fermerLeMenu() : setMenu('plus'))}
+              className={toolbarBtn}
+              style={toolbarBtnStyle}
+            >
+              <MoreHorizontal size={15} />
+            </button>
+          }
+        >
+          <div className="px-2 pb-2 pt-1 flex flex-col gap-2">
+            <div className="flex flex-wrap gap-1">
+              <button type="button" title="Rétablir" aria-label="Rétablir" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { retablir(); setMenu(null); }}><Redo2 size={14} /></button>
+              <button type="button" title="Barré" aria-label="Barré" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('strikeThrough'); setMenu(null); }}><Strikethrough size={14} /></button>
+              <button type="button" title="Citation" aria-label="Citation" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { gesteDeBloc(basculerCitation); setMenu(null); }}><Quote size={14} /></button>
+              <button type="button" title="Code" aria-label="Code" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { gesteDeBloc(basculerCode); setMenu(null); }}><Code size={14} /></button>
+              <button type="button" title="Tableau" aria-label="Tableau" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { insererUnTableau(); setMenu(null); }}><Table size={14} /></button>
+              <button type="button" title="Effacer la mise en forme" aria-label="Effacer la mise en forme" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('removeFormat'); emitContent(); setMenu(null); }}><Eraser size={14} /></button>
+              <button type="button" title="Aligner à gauche" aria-label="Aligner à gauche" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('justifyLeft'); setMenu(null); }}><AlignLeft size={14} /></button>
+              <button type="button" title="Centrer" aria-label="Centrer" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('justifyCenter'); setMenu(null); }}><AlignCenter size={14} /></button>
+              <button type="button" title="Aligner à droite" aria-label="Aligner à droite" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('justifyRight'); setMenu(null); }}><AlignRight size={14} /></button>
+              <button type="button" title="Justifier" aria-label="Justifier" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { commande('justifyFull'); setMenu(null); }}><AlignJustify size={14} /></button>
+              <button type="button" title="Liste numérotée" aria-label="Liste numérotée" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { gesteDeBloc((r) => basculerListe(r, 'OL')); setMenu(null); }}><ListOrdered size={14} /></button>
+              <button type="button" title="Séparateur" aria-label="Séparateur" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { gesteDeBloc(insererSeparateur); setMenu(null); }}><Minus size={14} /></button>
+              <button type="button" title="Saut de page" aria-label="Saut de page" className={toolbarBtn} style={toolbarBtnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { insertPageBreak(); setMenu(null); }}><Scissors size={14} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                aria-label="Police"
+                value={fontFamily}
+                onChange={(e) => {
+                  const font = e.target.value;
+                  onMetaChange({ fontFamily: font });
+                  commande('fontName', font);
+                  emitContent();
+                }}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                {NOTE_FONTS.map((font) => (
+                  <option key={font} value={font}>{font}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Taille"
+                value={tailleCourante ?? ''}
+                onChange={(e) => {
+                  const points = Number(e.target.value);
+                  if (points) appliquerStyle(styleDeTaille(points));
+                }}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none tabular-nums"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                <option value="" disabled>
+                  Taille
+                </option>
+                {[
+                  ...(tailleCourante !== null && !NOTE_FONT_SIZES.includes(tailleCourante) ? [tailleCourante] : []),
+                  ...NOTE_FONT_SIZES,
+                ].map((points) => (
+                  <option key={points} value={points}>{points} pt</option>
+                ))}
+              </select>
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-tertiary)' }}>Couleur du texte</div>
+            <Palette
+              couleurs={ENCRES}
+              courante={encreCourante}
+              onSurvol={(hex) => hex && previsualiser(() => document.execCommand('foreColor', false, hex))}
+              onChoix={(hex) => {
+                if (!hex) return;
+                finirLApercu(() => {
+                  setEncreCourante(hex);
+                  commande('foreColor', hex);
+                  emitContent();
+                });
+                setMenu(null);
+              }}
+            />
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-tertiary)' }}>Surlignage</div>
+            <Palette
+              couleurs={SURLIGNAGES}
+              courante={null}
+              aucune="Aucun surlignage"
+              onSurvol={(hex) => previsualiser(() => document.execCommand('hiliteColor', false, hex ?? 'transparent'))}
+              onChoix={(hex) => {
+                finirLApercu(() => {
+                  commande('hiliteColor', hex ?? 'transparent');
+                  emitContent();
+                });
+                setMenu(null);
+              }}
+            />
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-tertiary)' }}>Mise en page</div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                aria-label="Taille du papier"
+                value={mise.size}
+                onChange={(event) => onMetaChange({ pageSize: event.target.value as SuccesNotePageSize })}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                {NOTE_PAGE_SIZES.map((taille) => (
+                  <option key={taille.id} value={taille.id}>{taille.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Orientation"
+                value={mise.orientation}
+                onChange={(event) => onMetaChange({ pageOrientation: event.target.value as SuccesNotePageOrientation })}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                {NOTE_PAGE_ORIENTATIONS.map((sens) => (
+                  <option key={sens.id} value={sens.id}>{sens.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Marges"
+                value={mise.margins}
+                onChange={(event) => onMetaChange({ pageMargins: event.target.value as SuccesNotePageMargins })}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                {NOTE_PAGE_MARGINS.map((marge) => (
+                  <option key={marge.id} value={marge.id}>{marge.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Fond de page"
+                value={pageBackground}
+                onChange={(event) => onMetaChange({ pageBackground: event.target.value as SuccesNotePageBackground })}
+                className="h-8 w-full rounded-lg px-2 text-xs bg-transparent outline-none"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+              >
+                {NOTE_PAGE_BACKGROUNDS.map((bg) => (
+                  <option key={bg.id} value={bg.id}>{bg.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </MenuBarre>
       </div>
 
-      <div className="min-h-0 flex-1 flex gap-2">
+      <div className="relative min-h-0 flex-1 flex gap-2">
         {navigation ? (
           <PanneauNavigation
             editeur={editorRef.current}
@@ -2220,7 +2432,7 @@ export function RichNoteEditor({
 }
 
 function Sep() {
-  return <span className="w-px h-5 mx-0.5 shrink-0" style={{ background: 'var(--color-border)' }} />;
+  return <span className="w-px h-5 mx-0.5 shrink-0 hidden sm:block" style={{ background: 'var(--color-border)' }} />;
 }
 
 /** Les encres : des couleurs qui se lisent sur papier blanc comme sur fond sombre. */
@@ -2316,6 +2528,8 @@ function MenuBarre({
   declencheur,
   children,
   largeur = 'min-w-[6rem]',
+  alignement = 'gauche',
+  classe = '',
   onQuitter,
 }: {
   id: string;
@@ -2323,15 +2537,21 @@ function MenuBarre({
   declencheur: React.ReactNode;
   children: React.ReactNode;
   largeur?: string;
+  /** « droite » ancre la liste au bord droit du déclencheur — indispensable en
+      fin de barre : ancrée à gauche, elle sortait de l'écran (retour du
+      15 sept. 2026 : « des popups coupés, n'importe où »). */
+  alignement?: 'gauche' | 'droite';
+  /** Classes du conteneur (ex. cacher tout le menu sous sm). */
+  classe?: string;
   onQuitter: () => void;
 }) {
   return (
-    <span className="relative shrink-0" data-panneau={id}>
+    <span className={`relative shrink-0 ${classe}`} data-panneau={id}>
       {declencheur}
       {ouvert && (
         <div
           role="listbox"
-          className={`absolute left-0 top-full mt-1 z-50 max-h-72 overflow-y-auto rounded-xl py-1 shadow-xl ${largeur}`}
+          className={`absolute ${alignement === 'droite' ? 'right-0' : 'left-0'} top-full mt-1 z-50 max-h-72 overflow-y-auto rounded-xl py-1 shadow-xl max-w-[calc(100vw-1rem)] ${largeur}`}
           style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
           onMouseLeave={onQuitter}
         >

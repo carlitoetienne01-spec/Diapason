@@ -1087,7 +1087,7 @@ export function SuccesProjectsPage() {
 
   if (selected) {
     return (
-      <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+      <div className="flex-1 overflow-y-auto px-3 py-5 sm:px-5 sm:py-8 md:px-8 md:py-10">
         <main className="max-w-5xl mx-auto w-full">
           <button
             type="button"
@@ -1100,8 +1100,9 @@ export function SuccesProjectsPage() {
           </button>
 
           <header className="grid gap-5 sm:grid-cols-[200px_1fr] mb-7 items-start">
-            <div>
-              <ProjectFolderVisual color={selected.color || FALLBACK_COLOR} height="h-44" />
+            {/* Sous sm : le texte (titre, progression) d'abord, le décor après. */}
+            <div className="order-2 sm:order-none">
+              <ProjectFolderVisual color={selected.color || FALLBACK_COLOR} height="h-28 sm:h-44" />
               {/* Les photos, sous le dossier : une seule pile, toutes les
                   catégories empilées derrière. Choix du 13 septembre 2026,
                   contre une section pleine largeur avant l'arbre. */}
@@ -1114,7 +1115,7 @@ export function SuccesProjectsPage() {
               />
               <NotesDuProjet projectId={selected.id} />
             </div>
-            <div>
+            <div className="order-1 sm:order-none">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
                 {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
@@ -1484,7 +1485,7 @@ export function SuccesProjectsPage() {
           })()}
           {inspected && (
             <aside
-              className="fixed right-6 bottom-6 z-30 w-80 rounded-2xl p-4 shadow-xl"
+              className="fixed bottom-3 inset-x-3 w-auto sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-80 max-w-full max-h-[min(60vh,420px)] overflow-y-auto z-30 rounded-2xl p-4 shadow-xl"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
@@ -1562,7 +1563,7 @@ export function SuccesProjectsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div className="flex-1 overflow-y-auto px-3 py-5 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
@@ -1586,7 +1587,7 @@ export function SuccesProjectsPage() {
         {showForm && (
           <section className="grid gap-3 rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
             <div className="grid gap-4 sm:grid-cols-[240px_1fr]">
-              <ProjectFolderVisual color={draft.color} height="h-48" />
+              <ProjectFolderVisual color={draft.color} height="h-24 sm:h-48" />
               <div className="grid content-start gap-3">
                 <input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} maxLength={200} placeholder="Nom du projet" className="rounded-xl px-3 py-2.5 bg-transparent outline-none" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
                 <div className="flex flex-wrap items-center gap-2">
@@ -1802,7 +1803,7 @@ export function SuccesProjectsPage() {
                 </button>
 
                 {!search.trim() && (
-                  <div className="absolute left-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); void decalerProjet(project, 'avant'); }}
@@ -1825,7 +1826,7 @@ export function SuccesProjectsPage() {
                     </button>
                   </div>
                 )}
-                <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); edit(project); }}

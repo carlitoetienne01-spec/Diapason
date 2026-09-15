@@ -51,11 +51,13 @@ export function Layout() {
   // atteignables par URL.
   if (estCompact) {
     return (
-      <div className="flex flex-col h-full w-full overflow-hidden relative reglette-compact">
+      <div className="flex flex-col h-full w-full overflow-hidden relative">
         <div className="hud-backdrop" aria-hidden="true" />
         <main
           className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden z-[2]"
-          style={{ background: 'transparent' }}
+          // La barre de glissement injectée par le panneau natif recouvre les
+          // ~24 px du haut : on les réserve, sinon l'en-tête passe dessous.
+          style={{ background: 'transparent', paddingTop: 'var(--surplomb-panneau, 0px)' }}
         >
           <Outlet />
         </main>

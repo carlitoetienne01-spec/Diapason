@@ -108,7 +108,9 @@ export function PanneauNavigation({
 
   return (
     <aside
-      className="succes-note-nav shrink-0 flex flex-col min-h-0 w-56 rounded-xl overflow-hidden"
+      // En miniature (sous sm), le volet passerait côte à côte et confisquerait
+      // la moitié du panneau : il se superpose à la feuille, refermable au ✕.
+      className="succes-note-nav shrink-0 flex flex-col min-h-0 w-56 rounded-xl overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-40 max-sm:shadow-2xl"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
       aria-label="Navigation dans le document"
     >

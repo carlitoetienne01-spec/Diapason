@@ -2,6 +2,19 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @custom-variant dark (&:is(.dark *));
+/* Le mini-panneau de la réglette (mode compact) : drapeau posé sur <html>
+ * avant le premier paint (WKUserScript natif, normalisé par lib/compact.ts).
+ * `compact:` gouverne le MODE (chrome, réserves), jamais la largeur — le
+ * condensé/miniature passe par les breakpoints (le viewport EST le panneau).
+ * Voir docs/development/mini-panneau-responsive.md. */
+@custom-variant compact (&:is(html[data-diapason-compact='1'] *));
+
+/* Le panneau natif injecte une barre de glissement (24 px) et un ✕ par-dessus
+ * le module (src-tauri/src/lib.rs, WKUserScript). Sans cette réserve, l'en-tête
+ * de chaque page passait dessous — constaté le 15 sept. 2026. */
+html[data-diapason-compact='1'] {
+  --surplomb-panneau: 30px;
+}
 
 /*
  * Diapason design tokens.

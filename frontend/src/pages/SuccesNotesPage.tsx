@@ -649,9 +649,12 @@ export function SuccesNotesPage() {
 
   if (view === 'editor') {
     return (
-      <div className="flex-1 overflow-hidden px-5 py-6 md:px-8 md:py-8">
+      <div className="flex-1 overflow-hidden px-3 py-3 sm:px-5 sm:py-6 md:px-8 md:py-8">
         <main className="max-w-6xl mx-auto w-full h-full flex flex-col min-h-0">
-          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 shrink-0">
+          {/* Une seule rangée même en miniature : le titre rétrécit (min-w-0),
+              les actions restent à droite — deux rangées mangeaient ~100 px
+              du panneau. */}
+          <header className="flex flex-row items-center justify-between gap-2 mb-3 sm:mb-4 shrink-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
                 type="button"
@@ -704,8 +707,10 @@ export function SuccesNotesPage() {
                 onClick={() => void persist(false)}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer"
                 style={{ background: 'var(--color-accent)', color: '#fff' }}
+                aria-label={dirty ? 'Enregistrer' : 'Enregistré'}
               >
-                <Save size={15} /> {dirty ? 'Enregistrer' : 'Enregistré'}
+                <Save size={15} />
+                <span className="hidden sm:inline">{dirty ? 'Enregistrer' : 'Enregistré'}</span>
               </button>
             </div>
           </header>
@@ -790,7 +795,7 @@ export function SuccesNotesPage() {
                     style={{ color: 'var(--color-accent)' }}
                   >
                     <Bookmark size={11} fill="currentColor" />
-                    Reprendre p. {meta.readingMark}
+                    <span className="hidden @md:inline">Reprendre&nbsp;</span>p.&nbsp;{meta.readingMark}
                   </button>
                   <button
                     type="button"
@@ -835,7 +840,7 @@ export function SuccesNotesPage() {
                   setDirty(true);
                   scheduleAutoSave();
                 }}
-                className="bg-transparent outline-none cursor-pointer text-[11px]"
+                className="hidden @lg:inline-block bg-transparent outline-none cursor-pointer text-[11px]"
                 style={{ color: 'inherit', border: 'none' }}
               >
                 {NOTE_DOC_LANGS.map((lang) => (
@@ -857,7 +862,7 @@ export function SuccesNotesPage() {
                 type="button"
                 title="Largeur de page"
                 onClick={() => setZoomVoulu(null)}
-                className="px-1.5 rounded cursor-pointer"
+                className="hidden @md:inline-block px-1.5 rounded cursor-pointer"
                 style={{ border: '1px solid var(--color-border)', color: 'inherit' }}
               >
                 Ajuster
@@ -901,11 +906,14 @@ export function SuccesNotesPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+        {/* En miniature (sous sm), l'en-tête tient sur UNE rangée : la
+            description se tait et le bouton devient une icône — l'empilement
+            coûtait ~150 px du panneau avant la première note. */}
+        <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
@@ -914,7 +922,7 @@ export function SuccesNotesPage() {
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
               Notes
             </h1>
-            <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
               Traitement de texte riche, formats de page et enregistrement local.
             </p>
           </div>
@@ -924,10 +932,12 @@ export function SuccesNotesPage() {
               if (formOpen) void closeForm();
               else openCreateForm();
             }}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer shrink-0"
             style={{ background: 'var(--color-accent)', color: '#fff' }}
+            aria-label="Nouvelle note"
           >
-            <FilePlus2 size={16} /> Nouvelle note
+            <FilePlus2 size={16} />
+            <span className="hidden sm:inline">Nouvelle note</span>
           </button>
         </header>
 
@@ -1039,9 +1049,11 @@ export function SuccesNotesPage() {
           </section>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        {/* Une seule rangée à toute largeur : la recherche rétrécit, le tri
+            garde une largeur bornée — deux rangées de 40 px en miniature. */}
+        <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5">
           <div
-            className="flex items-center gap-2 flex-1 rounded-xl px-3 h-10"
+            className="flex items-center gap-2 flex-1 min-w-0 rounded-xl px-3 h-10"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
           >
             <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
@@ -1056,13 +1068,13 @@ export function SuccesNotesPage() {
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as SortMode)}
-            className="h-10 rounded-xl px-3 text-sm bg-transparent outline-none"
+            className="h-10 rounded-xl px-2 sm:px-3 text-sm bg-transparent outline-none max-w-[9.5rem] shrink-0"
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', background: 'var(--color-surface)' }}
             aria-label="Trier les notes"
           >
             <option value="manuel">Mon ordre</option>
-            <option value="recent">Modification (récent)</option>
-            <option value="oldest">Modification (ancien)</option>
+            <option value="recent">Récent</option>
+            <option value="oldest">Ancien</option>
             <option value="name-asc">Nom (A→Z)</option>
             <option value="name-desc">Nom (Z→A)</option>
           </select>
@@ -1170,7 +1182,7 @@ export function SuccesNotesPage() {
                     {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
                     <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
                     {section.nom && (
-                      <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
+                      <span className="flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
                         <button
                           type="button"
                           onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
@@ -1280,7 +1292,7 @@ export function SuccesNotesPage() {
                     </p>
                   </button>
 
-                  <div className="absolute left-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -1309,7 +1321,7 @@ export function SuccesNotesPage() {
                     </button>
                   </div>
 
-                  <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {

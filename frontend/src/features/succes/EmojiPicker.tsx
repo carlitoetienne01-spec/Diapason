@@ -17,6 +17,11 @@ type Props = {
 
 export function EmojiPicker({ value, onChange, 'aria-label': ariaLabel = 'Choisir un emoji' }: Props) {
   const [open, setOpen] = useState(false);
+  /** Mesuré à l'ouverture : dans une petite fenêtre (le mini-panneau de la
+      réglette), un panneau toujours ancré bas-gauche partait sous le bord
+      visible ou sortait à droite — « s'ouvre en bas, caché » (15 sept. 2026).
+      On retourne vers le haut et on s'ancre à droite quand la place manque. */
+  const [placement, setPlacement] = useState({ haut: false, droite: false });
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,19 +32,39 @@ export function EmojiPicker({ value, onChange, 'aria-label': ariaLabel = 'Choisi
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
+    // Le panneau se redimensionne en continu : une ancre mesurée à
+    // l'ouverture devient fausse — on referme plutôt que de flotter à côté.
+    const onResize = () => setOpen(false);
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('mousedown', onPointer);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
     };
   }, [open]);
+
+  const basculer = () => {
+    setOpen((current) => {
+      if (!current) {
+        const rect = rootRef.current?.getBoundingClientRect();
+        if (rect) {
+          setPlacement({
+            haut: rect.bottom + 240 > window.innerHeight && rect.top > 240,
+            droite: rect.left + 256 > window.innerWidth - 8,
+          });
+        }
+      }
+      return !current;
+    });
+  };
 
   return (
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={basculer}
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -59,7 +84,9 @@ export function EmojiPicker({ value, onChange, 'aria-label': ariaLabel = 'Choisi
         <div
           role="dialog"
           aria-label="Liste d’emojis"
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-[248px] rounded-xl p-2 shadow-lg"
+          className={`absolute z-50 w-[248px] max-w-[calc(100vw-1rem)] max-h-[min(40vh,240px)] overflow-y-auto rounded-xl p-2 shadow-lg ${
+            placement.haut ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'
+          } ${placement.droite ? 'right-0' : 'left-0'}`}
           style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',

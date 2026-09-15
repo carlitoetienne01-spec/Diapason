@@ -303,7 +303,7 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[min(15vh,64px)]"
       onClick={() => setCommandPaletteOpen(false)}
     >
       <div className="fixed inset-0" style={{ background: 'rgba(0,0,0,0.5)' }} />
@@ -380,7 +380,7 @@ export function CommandPalette() {
         )}
 
         {/* Results */}
-        <div className="max-h-[400px] overflow-y-auto py-2">
+        <div className="max-h-[min(400px,calc(100dvh-180px))] overflow-y-auto py-2">
           {tab === 'installed' ? (
             filtered.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>

@@ -23,3 +23,12 @@ function lireCompact(): boolean {
 }
 
 export const estCompact = lireCompact();
+
+// Quel que soit le chemin d'entrée (WKUserScript, globale, ?compact en
+// navigateur), le drapeau finit sur <html> : LE sélecteur CSS unique — le
+// variant Tailwind `compact:` et la réserve `--surplomb-panneau` (index.css)
+// s'appuient dessus. Sans cette normalisation, le banc `?compact=1` n'avait
+// pas l'attribut et le CSS compact ne s'y appliquait pas.
+if (estCompact && typeof document !== 'undefined') {
+  document.documentElement.setAttribute('data-diapason-compact', '1');
+}

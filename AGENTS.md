@@ -196,6 +196,13 @@ cause et sa preuve chiffrée. Finir par :
 Co-Authored-By: Codex Opus 5 <noreply@anthropic.com>
 ```
 
+### Le mini-panneau et le responsive
+
+Le mini-panneau de la réglette charge le vrai bundle dans une WKWebView
+redimensionnable : la convention (cinq règles — base 340 px, largeur en CSS,
+`compact` = mode, pop-ups qui retournent et se bornent, secondaire caché sous
+`sm`) vit dans [`docs/development/mini-panneau-responsive.md`](docs/development/mini-panneau-responsive.md).
+
 ---
 
 ## 4. Ce qui casse le client mobile — à ne pas enfreindre
