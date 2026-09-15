@@ -162,6 +162,8 @@ export interface SuccesProject {
   structureConfig: SuccesStructureConfig;
   createdAt: string;
   updatedAtMs: number;
+  /** Le rang manuel du projet dans la grille. */
+  order?: number;
   taskTotal: number;
   taskCompleted: number;
 }
@@ -258,6 +260,8 @@ export interface SuccesNote {
   category?: string;
   /** Le projet auquel la note est rattachée ; vide : aucun. */
   projectId?: string;
+  /** Le rang manuel dans sa section ; le mode « Mon ordre » s'en sert. */
+  order?: number;
 }
 
 export interface SuccesDashboard {

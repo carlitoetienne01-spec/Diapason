@@ -444,6 +444,11 @@ export async function deleteSuccesProject(projectId: string): Promise<void> {
   });
 }
 
+/** Fixe l'ordre manuel des projets (leur rang = leur position dans `ids`). */
+export async function reorderProjects(ids: string[]): Promise<void> {
+  await request('/v1/succes/projects/ordre', { method: 'PUT', body: JSON.stringify({ ids }) });
+}
+
 export async function listSuccesHabits(date: string): Promise<SuccesHabit[]> {
   const payload = await request<{ habits: SuccesHabit[] }>(
     `/v1/succes/habits?date=${encodeURIComponent(date)}`,
@@ -560,6 +565,7 @@ export async function updateSuccesNote(
       | 'readingMark'
       | 'category'
       | 'projectId'
+      | 'order'
     >
   >,
 ): Promise<SuccesNote> {
@@ -591,6 +597,11 @@ export async function renameNoteCategory(ancien: string, nouveau: string): Promi
     { method: 'POST', body: JSON.stringify({ ancien, nouveau }) },
   );
   return payload.categories;
+}
+
+/** Fixe l'ordre manuel des notes citées (leur rang = leur position dans `ids`). */
+export async function reorderNotes(ids: string[]): Promise<void> {
+  await request('/v1/succes/notes/ordre', { method: 'PUT', body: JSON.stringify({ ids }) });
 }
 
 export async function deleteSuccesNote(noteId: string): Promise<void> {

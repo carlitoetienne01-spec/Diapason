@@ -9,6 +9,7 @@ import {
 import {
   BriefcaseBusiness,
   ChevronLeft,
+  ChevronRight,
   CirclePlus,
   Loader2,
   Pencil,
@@ -25,6 +26,7 @@ import {
   deleteSuccesTask,
   listSuccesProjectKits,
   listSuccesProjects,
+  reorderProjects,
   listSuccesTasks,
   rescheduleSuccesTask,
   setSuccesSubtaskDone,
@@ -65,6 +67,7 @@ import { useNavigate } from 'react-router';
 import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { listSuccesNotes } from '../features/succes/api';
 import type { SuccesNote } from '../features/succes/types';
+import { deplacerVers } from '../features/succes/photos';
 import { useAppStore } from '../lib/store';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
@@ -699,6 +702,8 @@ export function SuccesProjectsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Le projet survolé pendant un glisser de réordonnancement. */
+  const [cibleProjet, setCibleProjet] = useState<string | null>(null);
   const [quickTitle, setQuickTitle] = useState('');
   const [kits, setKits] = useState<SuccesProjectKit[]>([]);
   const [edges, setEdges] = useState<SuccesTaskEdge[]>([]);
@@ -936,6 +941,56 @@ export function SuccesProjectsPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error("Le projet n'a pas été enregistré.", { description: message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Placer un projet avant un autre. Réordonnancement 1D d'une grille plate
+   * (deplacerVers, la logique pure des photos). Optimiste puis serveur ; en
+   * cas d'échec on recharge, l'ordre affiché venant toujours de la base
+   * (§100). Désactivé pendant une recherche : la liste y est partielle.
+   */
+  const placerProjetAvant = async (projetId: string, cibleId: string) => {
+    if (search.trim() || projetId === cibleId) return;
+    const ordonnes = deplacerVers(projects.map((p) => p.id), projetId, cibleId);
+    if (ordonnes.join('\u0000') === projects.map((p) => p.id).join('\u0000')) return;
+    const rang = new Map(ordonnes.map((id, i) => [id, i]));
+    setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
+    setSaving(true);
+    try {
+      await reorderProjects(ordonnes);
+      await load();
+    } catch (error) {
+      toast.error("L'ordre n'a pas été enregistré.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Déplacer un projet d'un cran (clavier/clic — §82). */
+  const decalerProjet = async (project: SuccesProject, sens: 'avant' | 'apres') => {
+    if (search.trim()) return;
+    const ids = projects.map((p) => p.id);
+    const i = ids.indexOf(project.id);
+    const j = sens === 'avant' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    const rang = new Map(ids.map((id, k) => [id, k]));
+    setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
+    setSaving(true);
+    try {
+      await reorderProjects(ids);
+      await load();
+    } catch (error) {
+      toast.error("L'ordre n'a pas été enregistré.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      await load();
     } finally {
       setSaving(false);
     }
@@ -1694,7 +1749,35 @@ export function SuccesProjectsPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
             {projects.map((project) => (
-              <article key={project.id} className="group relative flex flex-col items-center">
+              <article
+                key={project.id}
+                draggable={!search.trim()}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('application/x-diapason-projet', project.id);
+                  event.dataTransfer.setData('text/plain', project.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(event) => {
+                  if (search.trim()) return;
+                  event.preventDefault();
+                  setCibleProjet(project.id);
+                }}
+                onDragLeave={() => setCibleProjet((c) => (c === project.id ? null : c))}
+                onDrop={(event) => {
+                  const id =
+                    event.dataTransfer.getData('application/x-diapason-projet') ||
+                    event.dataTransfer.getData('text/plain');
+                  setCibleProjet(null);
+                  if (!id || id === project.id) return;
+                  event.preventDefault();
+                  void placerProjetAvant(id, project.id);
+                }}
+                className="group relative flex flex-col items-center rounded-2xl transition-shadow"
+                style={{
+                  WebkitUserDrag: search.trim() ? 'none' : 'element',
+                  boxShadow: cibleProjet === project.id ? 'inset 0 0 0 2px var(--color-accent)' : undefined,
+                } as React.CSSProperties}
+              >
                 <button
                   type="button"
                   onClick={() => setSelectedId(project.id)}
@@ -1718,6 +1801,30 @@ export function SuccesProjectsPage() {
                   </p>
                 </button>
 
+                {!search.trim() && (
+                  <div className="absolute left-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); void decalerProjet(project, 'avant'); }}
+                      aria-label={`Déplacer ${project.name} avant`}
+                      title="Déplacer avant"
+                      className="rounded-lg p-1.5 cursor-pointer"
+                      style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); void decalerProjet(project, 'apres'); }}
+                      aria-label={`Déplacer ${project.name} après`}
+                      title="Déplacer après"
+                      className="rounded-lg p-1.5 cursor-pointer"
+                      style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )}
                 <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"

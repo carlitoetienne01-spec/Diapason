@@ -5,6 +5,8 @@ import {
   Copy,
   FilePlus2,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
   NotebookPen,
   Pencil,
   Save,
@@ -20,6 +22,7 @@ import {
   listSuccesProjects,
   orderNoteCategories,
   renameNoteCategory,
+  reorderNotes,
   deleteSuccesNote,
   listSuccesNotes,
   updateSuccesNote,
@@ -35,6 +38,7 @@ import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
 import { countNotePages } from '../features/succes/notePages';
 import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
 import { RichNoteEditor } from '../features/succes/RichNoteEditor';
+import { deplacerVers } from '../features/succes/photos';
 import { deplacerCategorie, grouperEnSections } from '../features/succes/notesSections';
 import type {
   SuccesProject,
@@ -51,7 +55,7 @@ import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
-type SortMode = 'recent' | 'oldest' | 'name-asc' | 'name-desc';
+type SortMode = 'manuel' | 'recent' | 'oldest' | 'name-asc' | 'name-desc';
 
 const FOLDER_COLORS = [
   '#6366f1',
@@ -129,6 +133,8 @@ export function SuccesNotesPage() {
   /** La catégorie en cours de renommage dans son en-tête, et son brouillon. */
   const [renommage, setRenommage] = useState<{ nom: string; brouillon: string } | null>(null);
   const [cibleSection, setCibleSection] = useState<string | null>(null);
+  /** La carte survolée pendant un glisser de repositionnement. */
+  const [cibleNote, setCibleNote] = useState<string | null>(null);
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
 
@@ -176,6 +182,10 @@ export function SuccesNotesPage() {
   const sortedNotes = useMemo(() => {
     const copy = [...notes];
     copy.sort((a, b) => {
+      // « Mon ordre » : le rang manuel (order), départagé par la récence —
+      // deux notes jamais glissées gardent l'ordre récent tant qu'aucun
+      // glisser n'a fixé leur place.
+      if (sort === 'manuel') return (a.order ?? 0) - (b.order ?? 0) || b.updatedAtMs - a.updatedAtMs;
       if (sort === 'recent') return b.updatedAtMs - a.updatedAtMs;
       if (sort === 'oldest') return a.updatedAtMs - b.updatedAtMs;
       if (sort === 'name-asc') return a.title.localeCompare(b.title, 'fr');
@@ -338,6 +348,68 @@ export function SuccesNotesPage() {
       toast.error('Le classement a échoué.', {
         description: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Placer une note AVANT une autre. Dans la même section, c'est un simple
+   * réordonnancement (deplacerVers, la logique pure éprouvée des photos) ;
+   * d'une section à l'autre, on change d'abord la catégorie, puis on place.
+   * Un repositionnement force le mode « Mon ordre » : sans lui, un tri
+   * automatique écraserait aussitôt la place choisie, et le glisser
+   * passerait pour cassé.
+   */
+  const placerNoteAvant = async (noteId: string, cibleId: string, sectionNom: string) => {
+    const source = notes.find((n) => n.id === noteId);
+    const cible = notes.find((n) => n.id === cibleId);
+    if (!source || !cible || noteId === cibleId) return;
+    setSort('manuel');
+    setSaving(true);
+    try {
+      // La note change-t-elle de section ? On aligne d'abord sa catégorie.
+      if ((source.category || '') !== sectionNom) {
+        const saved = await updateSuccesNote(noteId, { category: sectionNom });
+        setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
+        void listNoteCategories().then(setCategories).catch(() => {});
+      }
+      // Les ids de la section cible, dans l'ordre affiché, la note déplacée
+      // incluse ; deplacerVers la glisse devant la cible.
+      const ids = sortedNotes
+        .filter((n) => (n.category || '') === sectionNom || n.id === noteId)
+        .map((n) => n.id);
+      await reorderNotes(deplacerVers(ids, noteId, cibleId));
+      await load();
+    } catch (error) {
+      toast.error("Le classement n'a pas été enregistré.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Déplacer une note d'un cran dans sa section (clavier/clic — §82). */
+  const decalerNote = async (note: SuccesNote, sens: 'avant' | 'apres') => {
+    const ids = sortedNotes
+      .filter((n) => (n.category || '') === (note.category || ''))
+      .map((n) => n.id);
+    const i = ids.indexOf(note.id);
+    const j = sens === 'avant' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]]; // un simple échange de voisins
+    setSort('manuel');
+    setSaving(true);
+    try {
+      await reorderNotes(ids);
+      await load();
+    } catch (error) {
+      toast.error("Le classement n'a pas été enregistré.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      await load();
     } finally {
       setSaving(false);
     }
@@ -988,6 +1060,7 @@ export function SuccesNotesPage() {
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', background: 'var(--color-surface)' }}
             aria-label="Trier les notes"
           >
+            <option value="manuel">Mon ordre</option>
             <option value="recent">Modification (récent)</option>
             <option value="oldest">Modification (ancien)</option>
             <option value="name-asc">Nom (A→Z)</option>
@@ -1131,10 +1204,33 @@ export function SuccesNotesPage() {
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.setData('application/x-diapason-note', note.id);
+                    event.dataTransfer.setData('text/plain', note.id);
                     event.dataTransfer.effectAllowed = 'move';
                   }}
-                  className="group relative flex flex-col items-center"
-                  style={{ WebkitUserDrag: 'element' } as React.CSSProperties}
+                  onDragOver={(event) => {
+                    // Déposer SUR une carte repositionne (devant elle) ; on
+                    // arrête la propagation pour que la section ne traite pas
+                    // aussi ce dépôt comme un simple changement de catégorie.
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setCibleNote(note.id);
+                  }}
+                  onDragLeave={() => setCibleNote((c) => (c === note.id ? null : c))}
+                  onDrop={(event) => {
+                    const id =
+                      event.dataTransfer.getData('application/x-diapason-note') ||
+                      event.dataTransfer.getData('text/plain');
+                    setCibleNote(null);
+                    if (!id || id === note.id) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void placerNoteAvant(id, note.id, section.nom);
+                  }}
+                  className="group relative flex flex-col items-center rounded-2xl transition-shadow"
+                  style={{
+                    WebkitUserDrag: 'element',
+                    boxShadow: cibleNote === note.id ? 'inset 0 0 0 2px var(--color-accent)' : undefined,
+                  } as React.CSSProperties}
                 >
                   <button
                     type="button"
@@ -1183,6 +1279,35 @@ export function SuccesNotesPage() {
                       {` · ${pages} page${pages === 1 ? '' : 's'}`}
                     </p>
                   </button>
+
+                  <div className="absolute left-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void decalerNote(note, 'avant');
+                      }}
+                      aria-label={`Déplacer ${note.title} avant`}
+                      title="Déplacer avant"
+                      className="rounded-lg p-1.5 cursor-pointer"
+                      style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void decalerNote(note, 'apres');
+                      }}
+                      aria-label={`Déplacer ${note.title} après`}
+                      title="Déplacer après"
+                      className="rounded-lg p-1.5 cursor-pointer"
+                      style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
 
                   <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
