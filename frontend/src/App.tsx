@@ -17,7 +17,6 @@ import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
-import { brancherReglette } from './lib/reglette';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -152,15 +151,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // La réglette de bord ne se montre que hors de Diapason : on la pilote
-  // depuis le focus de la fenêtre.
-  useEffect(() => {
-    let debrancher: (() => void) | undefined;
-    brancherReglette().then((fn) => {
-      debrancher = fn;
-    });
-    return () => debrancher?.();
-  }, []);
 
   // Fire model_changed when the user switches models. First mount is
   // not a "change" — only emit when both prev and current are real and

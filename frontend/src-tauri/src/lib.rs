@@ -4115,6 +4115,9 @@ mod native_reglette {
     // Le mini-panneau flottant qui montre un module en miniature.
     static MINI_PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
     static MINI_WV_PTR: AtomicUsize = AtomicUsize::new(0);
+    // L'app qui avait le focus avant l'ouverture du mini-panneau : on le lui
+    // rend à la fermeture (sinon le clavier reste sans destinataire).
+    static MINI_PREV_APP: AtomicUsize = AtomicUsize::new(0);
     // Le port du serveur, mémorisé pour naviguer le mini-panneau plus tard.
     static API_PORT: AtomicUsize = AtomicUsize::new(0);
 
@@ -4383,8 +4386,34 @@ mod native_reglette {
             return;
         }
         let panel = ptr as *mut Object;
+
+        // Visibilité : la réglette ne paraît que HORS de Diapason et quand le
+        // mini-panneau est fermé. On le décide nativement — NSApp.isActive +
+        // mini-panneau visible — plutôt que par le focus d'UNE fenêtre Tauri :
+        // le mini-panneau devient key sans activer l'app, donc la fenêtre
+        // principale ne « perd » jamais le focus au sens Tauri. Ce sondage à
+        // 16 Hz est auto-correcteur.
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let active: BOOL = msg_send![app, isActive];
+        let mini_ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        let mini_vis: BOOL = if mini_ptr != 0 {
+            msg_send![(mini_ptr as *mut Object), isVisible]
+        } else {
+            NO
+        };
+        let doit_paraitre = active == NO && mini_vis == NO;
         let vis: BOOL = msg_send![panel, isVisible];
+        if !doit_paraitre {
+            if vis != NO {
+                let nil: *mut Object = std::ptr::null_mut();
+                let _: () = msg_send![panel, orderOut: nil];
+            }
+            return;
+        }
         if vis == NO {
+            // Réapparaît TOUJOURS repliée (pastille), jamais restée déployée.
+            collapse();
+            let _: () = msg_send![panel, orderFrontRegardless];
             return;
         }
         // NSEvent mouseLocation : coordonnées écran, origine en bas à gauche.
@@ -4468,28 +4497,44 @@ mod native_reglette {
         let _: () = msg_send![panel, setFrameOrigin: origin];
     }
 
-    pub unsafe fn show() {
-        let ptr = PANEL_PTR.load(Ordering::SeqCst);
-        if ptr == 0 {
-            return;
-        }
-        let panel = ptr as *mut Object;
-        let _: () = msg_send![panel, orderFrontRegardless];
-    }
-
-    pub unsafe fn hide() {
-        let ptr = PANEL_PTR.load(Ordering::SeqCst);
-        if ptr == 0 {
-            return;
-        }
-        let panel = ptr as *mut Object;
-        let nil: *mut Object = std::ptr::null_mut();
-        let _: () = msg_send![panel, orderOut: nil];
-    }
-
     /// Échappe une chaîne pour l'insérer dans un littéral JS entre apostrophes.
     fn js_escape(s: &str) -> String {
         s.replace('\\', "\\\\").replace('\'', "\\'")
+    }
+
+    /// Mémorise l'app frontale avant d'afficher le mini-panneau, pour lui
+    /// rendre le focus à la fermeture. On ne s'active jamais soi-même : le
+    /// mini-panneau devient key sans activer l'app, donc frontmostApplication
+    /// renvoie bien l'app de travail, pas Diapason.
+    unsafe fn remember_front() {
+        let ws: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let front: *mut Object = msg_send![ws, frontmostApplication];
+        if front.is_null() {
+            return;
+        }
+        let _: () = msg_send![front, retain];
+        let old = MINI_PREV_APP.swap(front as usize, Ordering::SeqCst);
+        if old != 0 {
+            let _: () = msg_send![(old as *mut Object), release];
+        }
+    }
+
+    /// Affiche le mini-panneau au-dessus des autres apps ET le rend key, pour
+    /// que le clic dans un champ (« Écrire à Diapason ») pose le curseur.
+    ///
+    /// macOS livre le clavier à la key window de l'app ACTIVE : un panneau non
+    /// activant d'une app inactive ne reçoit donc rien, même devenu key. Il
+    /// faut activer l'app — exactement ce que fait `native_overlay::show()`,
+    /// qui laisse taper. La sous-classe `DiapasonMiniPanel`
+    /// (canBecomeKeyWindow=YES) permet au clic de choisir le champ ; l'app est
+    /// rendue à celle d'avant à la fermeture (`hide_mini`). On mémorise l'app
+    /// frontale AVANT d'activer, sinon on lirait Diapason.
+    unsafe fn presenter_mini(panel: *mut Object) {
+        remember_front();
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () = msg_send![panel, makeKeyAndOrderFront: nil];
     }
 
     /// Ouvre (ou re-navigue) le mini-panneau sur le module demandé.
@@ -4508,7 +4553,7 @@ mod native_reglette {
             let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
             let _: () = msg_send![wv, loadRequest: req];
             let panel = existing as *mut Object;
-            let _: () = msg_send![panel, orderFrontRegardless];
+            presenter_mini(panel);
             return;
         }
 
@@ -4561,8 +4606,26 @@ mod native_reglette {
             },
         };
 
+        // Sous-classe NSPanel qui ACCEPTE le focus clavier. Non activant +
+        // borderless répond NO à canBecomeKeyWindow par défaut : le clic dans
+        // un champ n'en fait jamais la key window, la WKWebView ne reçoit
+        // aucun événement clavier. YES ici = key AU CLIC seulement.
+        if Class::get("DiapasonMiniPanel").is_none() {
+            let sup = Class::get("NSPanel").unwrap();
+            let mut decl = ClassDecl::new("DiapasonMiniPanel", sup).unwrap();
+            extern "C" fn yes(_: &Object, _: Sel) -> BOOL {
+                YES
+            }
+            decl.add_method(
+                sel!(canBecomeKeyWindow),
+                yes as extern "C" fn(&Object, Sel) -> BOOL,
+            );
+            decl.register();
+        }
+
         let style: u64 = 1 << 7;
-        let panel: *mut Object = msg_send![class!(NSPanel), alloc];
+        let cls = Class::get("DiapasonMiniPanel").unwrap();
+        let panel: *mut Object = msg_send![cls, alloc];
         let panel: *mut Object = msg_send![panel,
             initWithContentRect: frame
             styleMask: style
@@ -4574,13 +4637,24 @@ mod native_reglette {
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setReleasedWhenClosed: NO];
         let _: () = msg_send![panel, setHasShadow: YES];
-        // Coins arrondis via la vue : on garde le fond opaque du bundle.
+        // Fond transparent : la carte du module est arrondie par la couche de
+        // la WKWebView (coins nets, ombre qui épouse l'arrondi).
+        let _: () = msg_send![panel, setOpaque: NO];
+        let clear: *mut Object = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![panel, setBackgroundColor: clear];
 
         let wv: *mut Object = msg_send![class!(WKWebView), alloc];
         let wv: *mut Object = msg_send![wv,
             initWithFrame: frame
             configuration: cfg
         ];
+        // Coins arrondis : couche de la vue, rognée.
+        let _: () = msg_send![wv, setWantsLayer: YES];
+        let layer: *mut Object = msg_send![wv, layer];
+        if !layer.is_null() {
+            let _: () = msg_send![layer, setCornerRadius: 18.0_f64];
+            let _: () = msg_send![layer, setMasksToBounds: YES];
+        }
         let _: () = msg_send![panel, setContentView: wv];
         MINI_WV_PTR.store(wv as usize, Ordering::SeqCst);
 
@@ -4589,7 +4663,7 @@ mod native_reglette {
         let _: () = msg_send![wv, loadRequest: req];
 
         MINI_PANEL_PTR.store(panel as usize, Ordering::SeqCst);
-        let _: () = msg_send![panel, orderFrontRegardless];
+        presenter_mini(panel);
     }
 
     pub unsafe fn hide_mini() {
@@ -4600,6 +4674,17 @@ mod native_reglette {
         let panel = ptr as *mut Object;
         let nil: *mut Object = std::ptr::null_mut();
         let _: () = msg_send![panel, orderOut: nil];
+
+        // Le clic dans le module avait fait du mini-panneau la key window ;
+        // orderOut seul laisserait le clavier sans destinataire. On rend le
+        // focus à l'app qui l'avait avant l'ouverture.
+        let prev = MINI_PREV_APP.swap(0, Ordering::SeqCst);
+        if prev != 0 {
+            let prev_app = prev as *mut Object;
+            // NSApplicationActivateIgnoringOtherApps = 2.
+            let _: BOOL = msg_send![prev_app, activateWithOptions: 2_u64];
+            let _: () = msg_send![prev_app, release];
+        }
     }
 }
 
@@ -4656,31 +4741,6 @@ async fn hide_overlay() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         on_main_thread(|| unsafe { native_overlay::hide() });
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    Err(SANS_SUPERPOSITION.into())
-}
-
-/// Montre / cache la réglette de bord. La règle « visible seulement hors de
-/// Diapason » se pilote depuis le frontend, qui sait quand sa propre fenêtre
-/// prend ou perd le focus — plutôt qu'un observateur natif de plus.
-#[tauri::command]
-async fn reglette_show() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        on_main_thread(|| unsafe { native_reglette::show() });
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    Err(SANS_SUPERPOSITION.into())
-}
-
-#[tauri::command]
-async fn reglette_hide() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        on_main_thread(|| unsafe { native_reglette::hide() });
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]
@@ -5000,8 +5060,6 @@ pub fn run() {
             set_inference_source,
             toggle_overlay,
             hide_overlay,
-            reglette_show,
-            reglette_hide,
             get_overlay_conversation,
             live_speech::live_dictation_available,
             live_speech::start_live_dictation,

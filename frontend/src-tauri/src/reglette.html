@@ -3,154 +3,219 @@
 <head>
 <meta charset="utf-8">
 <style>
-/* La réglette Diapason — un onglet de verre satiné collé au bord de l'écran.
- * Au repos : un fin liseré + le diapason. Au survol : le rail des modules
- * fleurit vers l'intérieur. Le fond reste transparent (WKWebView non
- * activante) ; seul le verre est peint. Le bord DROIT est ras l'écran
- * (coins carrés) ; tout ce qui est rond regarde vers l'intérieur.
+/* La réglette Diapason — l'onglet de bord d'écran, en verre satiné.
+ *
+ * Elle suit le thème de l'app : chargée en http://127.0.0.1:8000, elle
+ * partage le localStorage de Diapason (même origine, même WKWebsiteDataStore)
+ * et relit `diapason-settings` pour peindre la bonne palette — clair, sombre,
+ * ou un skin terminal. Le survol/rangement est piloté par Rust (poll_hover) :
+ * une WKWebView de panneau non activant ne reçoit aucun événement de survol
+ * hors focus. Voir [[nspanel-non-activant-survol]].
  */
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --verre:rgba(18,18,20,0.82);
-  --verre-haut:rgba(38,40,44,0.9);
-  --bord:rgba(255,255,255,0.10);
-  --accent:#22d3ee;
-  --accent-doux:rgba(34,211,238,0.14);
-  --texte:#ededef;
-  --texte-doux:#9a9aa2;
+
+/* --- Palettes de thème (mêmes valeurs que src/index.css) -------------- */
+:root, :root.light{
+  --glass:rgba(255,255,255,0.66);
+  --ink:#1a1a1f; --ink-doux:#6b6b73;
+  --line:rgba(0,0,0,0.08);
+  --accent:#0891b2; --accent-doux:rgba(8,145,178,0.12);
+  --logo:#0e7f93; --logo-glow:rgba(8,145,178,0.35);
+  --rim:rgba(255,255,255,0.92); --reflet:rgba(255,255,255,0.55);
+  --ombre:rgba(20,22,30,0.20);
 }
+:root.dark{
+  --glass:rgba(20,21,24,0.60);
+  --ink:#ededef; --ink-doux:#9a9aa2;
+  --line:rgba(255,255,255,0.10);
+  --accent:#22d3ee; --accent-doux:rgba(34,211,238,0.14);
+  --logo:#dbe9ec; --logo-glow:rgba(34,211,238,0.40);
+  --rim:rgba(255,255,255,0.22); --reflet:rgba(255,255,255,0.14);
+  --ombre:rgba(0,0,0,0.46);
+}
+:root.terminal[data-terminal-skin='phosphor']{
+  --glass:rgba(6,16,6,0.66); --ink:#b6ff6a; --ink-doux:#86e04a;
+  --line:rgba(122,240,70,0.30); --accent:#7af046; --accent-doux:rgba(122,240,70,0.16);
+  --logo:#b6ff6a; --logo-glow:rgba(122,240,70,0.45);
+  --rim:rgba(122,240,70,0.22); --reflet:rgba(122,240,70,0.10); --ombre:rgba(0,0,0,0.55);
+}
+:root.terminal[data-terminal-skin='oxblood']{
+  --glass:rgba(38,18,17,0.68); --ink:#c1afa5; --ink-doux:#9c8880;
+  --line:rgba(193,175,165,0.26); --accent:#cf5346; --accent-doux:rgba(207,83,70,0.16);
+  --logo:#e6cfc8; --logo-glow:rgba(207,83,70,0.40);
+  --rim:rgba(255,220,210,0.18); --reflet:rgba(255,220,210,0.10); --ombre:rgba(0,0,0,0.55);
+}
+:root.terminal[data-terminal-skin='sage']{
+  --glass:rgba(10,15,9,0.66); --ink:#90a481; --ink-doux:#778a66;
+  --line:rgba(144,164,129,0.30); --accent:#90a481; --accent-doux:rgba(144,164,129,0.16);
+  --logo:#b8cca8; --logo-glow:rgba(144,164,129,0.40);
+  --rim:rgba(144,164,129,0.20); --reflet:rgba(144,164,129,0.08); --ombre:rgba(0,0,0,0.55);
+}
+:root.terminal[data-terminal-skin='ardechine']{
+  --glass:rgba(197,187,170,0.82); --ink:#14120e; --ink-doux:#3b362d;
+  --line:rgba(20,18,14,0.28); --accent:#3b362d; --accent-doux:rgba(20,18,14,0.10);
+  --logo:#14120e; --logo-glow:rgba(37,50,57,0.30);
+  --rim:rgba(255,252,245,0.72); --reflet:rgba(255,252,245,0.4); --ombre:rgba(37,50,57,0.22);
+}
+
 html,body{
   background:transparent !important;
   height:100%;width:100%;overflow:hidden;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
-  color:var(--texte);
+  color:var(--ink);
   -webkit-user-select:none;user-select:none;cursor:default;
 }
-/* Le panneau occupe toute la fenêtre native et se colle à droite. */
-#panneau{
-  position:absolute;top:0;right:0;bottom:0;
-  display:flex;flex-direction:column;
-  width:100%;
-  background:linear-gradient(180deg,var(--verre-haut),var(--verre));
-  -webkit-backdrop-filter:blur(22px) saturate(1.5);
-  backdrop-filter:blur(22px) saturate(1.5);
-  border-left:1px solid var(--bord);
-  border-top:1px solid var(--bord);
-  border-bottom:1px solid var(--bord);
-  border-top-left-radius:16px;
-  border-bottom-left-radius:16px;
-  box-shadow:-10px 0 34px rgba(0,0,0,0.34);
-  overflow:hidden;
-}
-/* Le halo cyan qui respire, sur l'arête intérieure, seulement au repos. */
-#panneau::before{
-  content:"";position:absolute;left:0;top:18%;bottom:18%;width:2px;
-  background:linear-gradient(180deg,transparent,var(--accent),transparent);
-  opacity:0;border-radius:2px;
-  animation:respire 3.4s ease-in-out infinite;
-}
-body:not(.ouvert) #panneau::before{opacity:.55}
-@keyframes respire{0%,100%{opacity:.30}50%{opacity:.72}}
-@media (prefers-reduced-motion:reduce){#panneau::before{animation:none}}
 
-/* En-tête : le diapason. Toujours présent ; le nom n'apparaît qu'ouvert.
- * Au repos, il occupe toute la pastille et se centre. */
-#tete{
-  display:flex;align-items:center;gap:10px;
-  padding:14px 12px 12px;flex:none;
+/* --- Le panneau de verre ------------------------------------------------ */
+#panneau{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:flex;flex-direction:column;
+  border-radius:18px 0 0 18px;
+  border:1px solid var(--line);
+  border-top-color:color-mix(in srgb, var(--rim) 55%, transparent);
+  border-left-color:color-mix(in srgb, var(--rim) 40%, transparent);
+  background:var(--glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--reflet),
+    inset -0.5px -0.5px 0 rgba(0,0,0,0.10),
+    -14px 0 40px -12px var(--ombre),
+    -3px 0 10px -6px var(--ombre);
+  overflow:hidden;
+  isolation:isolate;
 }
-body:not(.ouvert) #tete{
-  height:100%;padding:0;justify-content:center;gap:0;
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  #panneau{
+    background:linear-gradient(155deg,
+      color-mix(in srgb, var(--rim) 10%, var(--glass)), var(--glass) 30%,
+      var(--glass) 80%, color-mix(in srgb, var(--rim) 6%, var(--glass)));
+    -webkit-backdrop-filter:blur(20px) saturate(1.5);
+    backdrop-filter:blur(20px) saturate(1.5);
+  }
 }
-/* Au repos, seul le diapason reste : le nom hors flux (sinon il pousse la
- * marque hors de la petite pastille), et le reste caché. */
+/* Anneau de biseau — une fine tranche givrée sur le bord (mask exclude). */
+#panneau::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;
+  padding:1px;z-index:0;pointer-events:none;
+  background:linear-gradient(138deg,var(--rim),transparent 20%,transparent 50%,var(--reflet) 64%,transparent 82%,var(--rim));
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+/* Reflet elliptique qui suit le curseur (via __diapHover) + halo au repos. */
+#panneau::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 200px 120px
+    at var(--reflet-x,72%) var(--reflet-y,12%),
+    var(--reflet),transparent 66%);
+  transition:background .18s ease;
+}
+#panneau > *{position:relative;z-index:1}
+
+/* --- En-tête : le diapason + le nom ------------------------------------- */
+#tete{display:flex;align-items:center;gap:11px;padding:15px 14px 12px;flex:none}
+#tete .marque{flex:none;width:26px;height:30px;display:flex;align-items:center;justify-content:center}
+#tete .marque svg{filter:drop-shadow(0 0 5px var(--logo-glow))}
+#tete .nom{
+  font-size:15px;font-weight:600;letter-spacing:.2px;white-space:nowrap;color:var(--ink);
+  opacity:0;transform:translateX(-8px);
+  transition:opacity .22s ease .04s,transform .28s cubic-bezier(.2,.8,.2,1) .04s;
+}
+body.ouvert #tete .nom{opacity:1;transform:none}
+/* Au repos : la pastille ne montre QUE le diapason, centré. */
+body:not(.ouvert) #tete{height:100%;padding:0;justify-content:center}
 body:not(.ouvert) #tete .nom,
 body:not(.ouvert) .trait,
 body:not(.ouvert) #modules,
 body:not(.ouvert) #pied{display:none}
-#tete .marque{flex:none;width:24px;display:flex;justify-content:center}
-#tete .nom{
-  font-size:15px;font-weight:600;letter-spacing:.2px;white-space:nowrap;
-  opacity:0;transform:translateX(-6px);
-  transition:opacity .18s ease,transform .18s ease;
-}
-body.ouvert #tete .nom{opacity:1;transform:none}
 
-.trait{height:1px;background:var(--bord);margin:0 12px;flex:none}
+.trait{height:1px;background:var(--line);margin:2px 14px 4px;flex:none}
 
-/* La liste des modules. */
-#modules{
-  flex:1;display:flex;flex-direction:column;gap:2px;
-  padding:8px;overflow:hidden;
-}
+/* --- Les modules -------------------------------------------------------- */
+#modules{flex:1;display:flex;flex-direction:column;gap:1px;padding:6px 8px;overflow:hidden}
 .mod{
-  display:flex;align-items:center;gap:12px;
-  padding:8px;border-radius:10px;white-space:nowrap;cursor:pointer;
-  color:var(--texte);position:relative;
-  transition:background .14s ease;
+  display:flex;align-items:center;gap:13px;
+  padding:8px 9px;border-radius:11px;white-space:nowrap;cursor:pointer;
+  color:var(--ink);position:relative;
+  transition:background .16s ease;
 }
-.mod .glyphe{flex:none;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+.mod .glyphe{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--ink-doux);transition:color .16s ease,transform .16s ease}
 .mod .etiquette{
-  font-size:13.5px;line-height:1;
-  opacity:0;transform:translateX(-6px);
-  transition:opacity .18s ease,transform .18s ease;
+  font-size:13.5px;line-height:1;color:var(--ink);
+  opacity:0;transform:translateX(-8px);
+  transition:opacity .22s ease,transform .28s cubic-bezier(.2,.8,.2,1);
 }
+/* Révélation en cascade quand le rail s'ouvre. */
 body.ouvert .mod .etiquette{opacity:1;transform:none}
-/* Le survol est piloté par Rust (classe .survol) : le :hover CSS ne
- * s'allume pas quand une autre app a le focus. On garde :hover en second
- * pour le cas où Diapason est bien au premier plan. */
+body.ouvert #modules .mod:nth-child(1) .etiquette{transition-delay:.02s}
+body.ouvert #modules .mod:nth-child(2) .etiquette{transition-delay:.05s}
+body.ouvert #modules .mod:nth-child(3) .etiquette{transition-delay:.08s}
+body.ouvert #modules .mod:nth-child(4) .etiquette{transition-delay:.11s}
+body.ouvert #modules .mod:nth-child(5) .etiquette{transition-delay:.14s}
+body.ouvert #modules .mod:nth-child(6) .etiquette{transition-delay:.17s}
+body.ouvert #modules .mod:nth-child(7) .etiquette{transition-delay:.20s}
+body.ouvert #modules .mod:nth-child(8) .etiquette{transition-delay:.23s}
+/* Le survol (classe .survol posée par Rust ; :hover en secours si focus). */
 body.ouvert .mod.survol,
 body.ouvert .mod:hover{background:var(--accent-doux)}
 body.ouvert .mod.survol .glyphe,
-body.ouvert .mod:hover .glyphe{color:var(--accent)}
-/* La barre d'accent à gauche de la ligne survolée. */
+body.ouvert .mod:hover .glyphe{color:var(--accent);transform:scale(1.06)}
 .mod::before{
-  content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;
-  border-radius:2px;background:var(--accent);
-  opacity:0;transition:opacity .14s ease;
+  content:"";position:absolute;left:2px;top:9px;bottom:9px;width:3px;
+  border-radius:2px;background:var(--accent);opacity:0;
+  transition:opacity .16s ease;
 }
 body.ouvert .mod.survol::before,
 body.ouvert .mod:hover::before{opacity:1}
 
-/* Pied : Parler, épinglé. */
-#pied{flex:none;padding:8px}
-#pied .mod .glyphe{color:var(--accent)}
+#pied{flex:none;padding:6px 8px 9px}
 
 svg{display:block;color:currentColor}
+
+@media (prefers-reduced-motion:reduce){
+  #tete .nom,.mod .etiquette,.mod .glyphe,#panneau::after{transition:none}
+}
+@media (prefers-reduced-transparency:reduce){
+  #panneau{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--glass)}
+  #panneau::before,#panneau::after{display:none}
+}
 </style>
 </head>
 <body>
 <div id="panneau">
   <div id="tete">
-    <span class="marque">
-      <!-- Diapason : trois branches + la courbe du manche. -->
-      <svg width="20" height="24" viewBox="0 0 20 24" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round">
-        <path d="M5 3 v9"/><path d="M10 3 v9"/><path d="M15 3 v9"/>
-        <path d="M5 12 q5 8 10 0"/><path d="M10 20 v2"/>
-      </svg>
-    </span>
+    <span class="marque" id="marque"></span>
     <span class="nom">Diapason</span>
   </div>
   <div class="trait"></div>
-  <div id="modules"><!-- rempli par JS --></div>
+  <div id="modules"></div>
   <div class="trait"></div>
-  <div id="pied"><!-- Parler --></div>
+  <div id="pied"></div>
 </div>
 
 <script>
-// Les modules, dans l'ordre exact de la barre latérale. Le glyphe reprend la
-// silhouette de l'icône lucide correspondante.
+// --- Le vrai diapason (silhouette de l'icône du Dock : deux branches
+// évasées à pointes biseautées, U profond, tige galbée, bille). ----------
+const DIAPASON = '<svg width="22" height="27" viewBox="0 0 22 27" fill="none" '
+  + 'stroke="var(--logo)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M5.6 2.4 L7.5 13.2 C7.5 16.2 8.9 17.6 11 17.6 C13.1 17.6 14.5 16.2 14.5 13.2 L16.4 2.4"/>'
+  + '<path d="M11 17.6 L11 21.3"/>'
+  + '<circle cx="11" cy="23.4" r="2.1" fill="var(--logo)" stroke="none"/>'
+  + '</svg>';
+document.getElementById('marque').innerHTML = DIAPASON;
+
+// --- Les modules, icônes lucide EXACTES (v0.576.0) de la barre latérale. -
 const MODULES = [
-  {route:'/succes/dashboard', nom:'Tableau de bord', svg:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>'},
-  {route:'/succes/planner', nom:'Planificateur', svg:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9 h16 M8 3 v4 M16 3 v4"/>'},
-  {route:'/succes/tasks', nom:'Tâches', svg:'<path d="M4 7 l2 2 3.5-4"/><path d="M4 15 l2 2 3.5-4"/><path d="M13 8 h7 M13 16 h7"/>'},
-  {route:'/succes/projects', nom:'Projets', svg:'<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8 V6 a2 2 0 0 1 2-2 h4 a2 2 0 0 1 2 2 v2"/>'},
-  {route:'/succes/finances', nom:'Finances', svg:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10 h18"/><path d="M15 15 h3"/>'},
-  {route:'/succes/habits', nom:'Habitudes', svg:'<path d="M4 11 a7 7 0 1 1 2 5"/><path d="M4 6 v5 h5"/>'},
-  {route:'/succes/notes', nom:'Notes', svg:'<path d="M6 4 h9 l4 4 v12 a1 1 0 0 1-1 1 H6 a1 1 0 0 1-1-1 V5 a1 1 0 0 1 1-1 z"/><path d="M9 12 h6 M9 16 h6"/>'},
-  {route:'/succes/year-review', nom:'Bilan', svg:'<path d="M7 4 h10 v5 a5 5 0 0 1-10 0 z"/><path d="M7 6 H4 v1 a3 3 0 0 0 3 3 M17 6 h3 v1 a3 3 0 0 1-3 3"/><path d="M10 15 h4 M8 20 h8 M12 15 v5"/>'},
+  {route:'/succes/dashboard', nom:'Tableau de bord', svg:'<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>'},
+  {route:'/succes/planner', nom:'Planificateur', svg:'<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/><path d="M7 14h.01"/><path d="M17 18h.01"/>'},
+  {route:'/succes/tasks', nom:'Tâches', svg:'<path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><rect x="3" y="4" width="6" height="6" rx="1"/>'},
+  {route:'/succes/projects', nom:'Projets', svg:'<path d="M12 12h.01"/><path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M22 13a18.15 18.15 0 0 1-20 0"/><rect width="20" height="14" x="2" y="6" rx="2"/>'},
+  {route:'/succes/finances', nom:'Finances', svg:'<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>'},
+  {route:'/succes/habits', nom:'Habitudes', svg:'<path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/>'},
+  {route:'/succes/notes', nom:'Notes', svg:'<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/>'},
+  {route:'/succes/year-review', nom:'Bilan', svg:'<path d="M10 14.66v1.626a2 2 0 0 1-.976 1.696A5 5 0 0 0 7 21.978"/><path d="M14 14.66v1.626a2 2 0 0 0 .976 1.696A5 5 0 0 1 17 21.978"/><path d="M18 9h1.5a1 1 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"/><path d="M6 9H4.5a1 1 0 0 1 0-5H6"/>'},
 ];
-const PARLER = {route:'/', nom:'Parler', svg:'<path d="M4 8 v8 M8 4 v16 M12 7 v10 M16 3 v18 M20 9 v6"/>'};
+// « Discussion » (le chat, route index) épinglé en bas — icône MessageSquare.
+const DISCUSSION = {route:'/', nom:'Discussion', svg:'<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/>'};
 
 function ligne(m){
   const el = document.createElement('div');
@@ -158,24 +223,30 @@ function ligne(m){
   el.dataset.route = m.route;
   el.title = m.nom;
   el.innerHTML =
-    '<span class="glyphe"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    '<span class="glyphe"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" '
+    + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
     + m.svg + '</svg></span><span class="etiquette">' + m.nom + '</span>';
   el.addEventListener('click', () => envoyer('open:' + m.route));
   return el;
 }
 document.getElementById('modules').append(...MODULES.map(ligne));
-document.getElementById('pied').append(ligne(PARLER));
+document.getElementById('pied').append(ligne(DISCUSSION));
 
-// --- Pont vers Rust -------------------------------------------------------
+// --- Pont vers Rust ------------------------------------------------------
 function envoyer(msg){
   try { window.webkit.messageHandlers.reglette.postMessage(msg); } catch (_) {}
 }
 
-// Survol de ligne, piloté par Rust. `poll_hover` passe les coordonnées VUE
-// du curseur ; on surligne la ligne dessous. (Le déploiement lui-même — la
-// classe `.ouvert` et la taille du panneau — est entièrement natif.)
+// Survol de ligne + reflet, pilotés par Rust (poll_hover passe les
+// coordonnées VUE du curseur ; le WebView ne reçoit rien hors focus).
 let ligneSurvolee = null;
 window.__diapHover = function(x, y){
+  const p = document.getElementById('panneau');
+  const r = p.getBoundingClientRect();
+  if (r.width && r.height){
+    p.style.setProperty('--reflet-x', (100 * x / r.width).toFixed(1) + '%');
+    p.style.setProperty('--reflet-y', (100 * y / r.height).toFixed(1) + '%');
+  }
   const el = document.elementFromPoint(x, y);
   const mod = el ? el.closest('.mod') : null;
   if (mod === ligneSurvolee) return;
@@ -183,6 +254,34 @@ window.__diapHover = function(x, y){
   ligneSurvolee = mod;
   if (mod) mod.classList.add('survol');
 };
+
+// --- Thème : mêmes classes que l'app, relues du localStorage partagé. ----
+function appliquerTheme(){
+  const root = document.documentElement;
+  let theme = 'system', skin = 'phosphor';
+  try {
+    const s = JSON.parse(localStorage.getItem('diapason-settings') || '{}');
+    if (s && typeof s.theme === 'string') theme = s.theme;
+    if (s && typeof s.terminalSkin === 'string') skin = s.terminalSkin;
+  } catch (_) {}
+  root.classList.remove('dark', 'light', 'terminal');
+  delete root.dataset.terminalSkin;
+  const sombreOS = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (theme === 'dark') root.classList.add('dark');
+  else if (theme === 'light') root.classList.add('light');
+  else if (theme === 'terminal'){
+    root.classList.add(skin === 'ardechine' ? 'light' : 'dark', 'terminal');
+    root.dataset.terminalSkin = skin;
+  } else {
+    root.classList.add(sombreOS ? 'dark' : 'light'); // system
+  }
+}
+appliquerTheme();
+// L'app change le thème (autre document, même origine) ou l'OS bascule.
+window.addEventListener('storage', (e) => {
+  if (e.key === 'diapason-settings' || e.key === null) appliquerTheme();
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerTheme);
 </script>
 </body>
 </html>

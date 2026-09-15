@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
+import { estCompact } from '../lib/compact';
 import { useTranslation } from '../i18n/useTranslation';
 
 export function Layout() {
@@ -13,6 +14,9 @@ export function Layout() {
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // En compact (mini-panneau), pas de sonde santé ni de bandeau : la surface
+    // ne montre que le module.
+    if (estCompact) return;
     const check = () => checkHealth().then(setApiReachable);
     check();
     const interval = setInterval(check, 30000);
@@ -39,6 +43,25 @@ export function Layout() {
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+
+  // Surface compacte du mini-panneau : uniquement le verre + le module, sans
+  // barre latérale, sans en-tête « Diapason », sans bandeau. Le routage et le
+  // thème restent intacts (les classes de thème vivent sur <html>, posées par
+  // main.tsx). §82 : rien ne devient geste-only, toutes les routes restent
+  // atteignables par URL.
+  if (estCompact) {
+    return (
+      <div className="flex flex-col h-full w-full overflow-hidden relative reglette-compact">
+        <div className="hud-backdrop" aria-hidden="true" />
+        <main
+          className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden z-[2]"
+          style={{ background: 'transparent' }}
+        >
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
