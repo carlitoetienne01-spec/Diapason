@@ -4087,6 +4087,522 @@ mod native_overlay {
     }
 }
 
+// ---------------------------------------------------------------------------
+// La réglette — l'onglet de bord d'écran.
+//
+// Un second NSPanel, cousin de `native_overlay`, mais d'un tempérament
+// opposé : celui-là est TOUJOURS là, collé au bord droit, tant que Diapason
+// n'est pas au premier plan. Non activant (il ne vole jamais le focus à
+// l'app où l'on travaille), flottant, présent sur tous les Spaces.
+//
+// Au repos il est étroit — un liseré de verre + le diapason. Au survol, la
+// WKWebView demande `expand` : le panneau s'élargit vers l'intérieur (bord
+// droit épinglé) et le rail des modules se dévoile. Un clic sur un module
+// envoie `open:<route>` : un mini-panneau flottant charge le VRAI module
+// (le bundle React servi en 127.0.0.1) avec la clé locale injectée — aucun
+// module réécrit à la main (§5).
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+mod native_reglette {
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
+    static WEBVIEW_PTR: AtomicUsize = AtomicUsize::new(0);
+    // Le mini-panneau flottant qui montre un module en miniature.
+    static MINI_PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
+    static MINI_WV_PTR: AtomicUsize = AtomicUsize::new(0);
+    // Le port du serveur, mémorisé pour naviguer le mini-panneau plus tard.
+    static API_PORT: AtomicUsize = AtomicUsize::new(0);
+
+    // Au repos : une petite pastille de verre (le diapason). Au survol : le
+    // rail plein. On fait varier largeur ET hauteur, centre vertical figé,
+    // bord droit épinglé — la réglette fleurit symétriquement.
+    const COLLAPSED_W: f64 = 26.0;
+    const COLLAPSED_H: f64 = 66.0;
+    const EXPANDED_W: f64 = 272.0;
+    const EXPANDED_H: f64 = 476.0;
+    // Le mini-panneau.
+    const MINI_W: f64 = 460.0;
+    const MINI_H: f64 = 620.0;
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGPoint {
+        x: f64,
+        y: f64,
+    }
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGRect {
+        origin: CGPoint,
+        size: CGSize,
+    }
+
+    unsafe fn nsstring(s: &str) -> *mut Object {
+        let obj: *mut Object = msg_send![class!(NSString), alloc];
+        msg_send![obj,
+            initWithBytes: s.as_ptr()
+            length: s.len()
+            encoding: 4usize
+        ]
+    }
+
+    /// Le cadre `visibleFrame` de l'écran principal (sous la barre de menus).
+    unsafe fn visible_frame() -> CGRect {
+        let screen: *mut Object = msg_send![class!(NSScreen), mainScreen];
+        if screen.is_null() {
+            return CGRect {
+                origin: CGPoint { x: 0.0, y: 0.0 },
+                size: CGSize {
+                    width: 1440.0,
+                    height: 900.0,
+                },
+            };
+        }
+        msg_send![screen, visibleFrame]
+    }
+
+    /// Rend la WKWebView entièrement transparente (le verre est peint en CSS).
+    unsafe fn force_transparent(wv: *mut Object) {
+        let clear: *mut Object = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![wv, _setDrawsBackground: NO];
+        let no_num: *mut Object = msg_send![class!(NSNumber), numberWithBool: NO];
+        let _: () = msg_send![wv, setValue: no_num forKey: nsstring("drawsBackground")];
+        let _: () = msg_send![wv, setUnderPageBackgroundColor: clear];
+    }
+
+    /// Construit la réglette. Appelée une fois au démarrage.
+    pub unsafe fn create(html: &str, api_port: u16) {
+        API_PORT.store(api_port as usize, Ordering::SeqCst);
+
+        // Délégué de navigation : ré-applique la transparence après le chargement.
+        if Class::get("DiapasonRegletteNav").is_none() {
+            let sup = Class::get("NSObject").unwrap();
+            let mut decl = ClassDecl::new("DiapasonRegletteNav", sup).unwrap();
+            extern "C" fn did_finish(_: &Object, _: Sel, wv: *mut Object, _nav: *mut Object) {
+                unsafe {
+                    force_transparent(wv);
+                }
+            }
+            decl.add_method(
+                sel!(webView:didFinishNavigation:),
+                did_finish as extern "C" fn(&Object, Sel, *mut Object, *mut Object),
+            );
+            decl.register();
+        }
+
+        // Gestionnaire de messages JS → Rust (canal « reglette »).
+        if Class::get("DiapasonRegletteMsg").is_none() {
+            let sup = Class::get("NSObject").unwrap();
+            let mut decl = ClassDecl::new("DiapasonRegletteMsg", sup).unwrap();
+            extern "C" fn on_msg(_: &Object, _: Sel, _ctrl: *mut Object, msg: *mut Object) {
+                unsafe {
+                    let body: *mut Object = msg_send![msg, body];
+                    if body.is_null() {
+                        return;
+                    }
+                    let c: *const std::os::raw::c_char = msg_send![body, UTF8String];
+                    if c.is_null() {
+                        return;
+                    }
+                    if let Ok(s) = std::ffi::CStr::from_ptr(c).to_str() {
+                        match s {
+                            "expand" => expand(),
+                            "collapse" => collapse(),
+                            "closemini" => hide_mini(),
+                            _ => {
+                                if let Some(route) = s.strip_prefix("open:") {
+                                    open_module(route);
+                                } else if let Some(coords) = s.strip_prefix("drag:") {
+                                    drag(coords);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            decl.add_method(
+                sel!(userContentController:didReceiveScriptMessage:),
+                on_msg as extern "C" fn(&Object, Sel, *mut Object, *mut Object),
+            );
+            decl.register();
+        }
+
+        // Cadre initial : la petite pastille, collée au bord droit, centrée.
+        let vf = visible_frame();
+        let right = vf.origin.x + vf.size.width;
+        let frame = CGRect {
+            origin: CGPoint {
+                x: right - COLLAPSED_W,
+                y: vf.origin.y + (vf.size.height - COLLAPSED_H) / 2.0,
+            },
+            size: CGSize {
+                width: COLLAPSED_W,
+                height: COLLAPSED_H,
+            },
+        };
+
+        // NSWindowStyleMaskNonactivatingPanel = 1 << 7.
+        let style: u64 = 1 << 7;
+        let panel: *mut Object = msg_send![class!(NSPanel), alloc];
+        let panel: *mut Object = msg_send![panel,
+            initWithContentRect: frame
+            styleMask: style
+            backing: 2u64
+            defer: NO
+        ];
+        let _: () = msg_send![panel, setLevel: 3_i64];
+        // canJoinAllSpaces (1) | fullScreenAuxiliary (1<<8) = 257.
+        let _: () = msg_send![panel, setCollectionBehavior: 257_u64];
+        let _: () = msg_send![panel, setHidesOnDeactivate: NO];
+        let _: () = msg_send![panel, setOpaque: NO];
+        let _: () = msg_send![panel, setHasShadow: NO];
+        let _: () = msg_send![panel, setReleasedWhenClosed: NO];
+        let clear: *mut Object = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![panel, setBackgroundColor: clear];
+
+        // WKWebView + gestionnaire de messages.
+        let cfg: *mut Object = msg_send![class!(WKWebViewConfiguration), alloc];
+        let cfg: *mut Object = msg_send![cfg, init];
+        let hcls = Class::get("DiapasonRegletteMsg").unwrap();
+        let handler: *mut Object = msg_send![hcls, alloc];
+        let handler: *mut Object = msg_send![handler, init];
+        let uc: *mut Object = msg_send![cfg, userContentController];
+        let _: () = msg_send![uc,
+            addScriptMessageHandler: handler
+            name: nsstring("reglette")
+        ];
+
+        let wv: *mut Object = msg_send![class!(WKWebView), alloc];
+        let wv: *mut Object = msg_send![wv,
+            initWithFrame: frame
+            configuration: cfg
+        ];
+        force_transparent(wv);
+        let nav_cls = Class::get("DiapasonRegletteNav").unwrap();
+        let nav_del: *mut Object = msg_send![nav_cls, alloc];
+        let nav_del: *mut Object = msg_send![nav_del, init];
+        let _: () = msg_send![wv, setNavigationDelegate: nav_del];
+        let _: () = msg_send![panel, setContentView: wv];
+        WEBVIEW_PTR.store(wv as usize, Ordering::SeqCst);
+
+        let base_str = nsstring(&format!("http://127.0.0.1:{}", api_port));
+        let base_url: *mut Object = msg_send![class!(NSURL), URLWithString: base_str];
+        let _: () = msg_send![wv,
+            loadHTMLString: nsstring(html)
+            baseURL: base_url
+        ];
+
+        PANEL_PTR.store(panel as usize, Ordering::SeqCst);
+        // Visible tout de suite, sans activer le processus.
+        let _: () = msg_send![panel, orderFrontRegardless];
+
+        // Le sondeur de survol : un NSTimer qui interroge la position du
+        // curseur. Indispensable — voir `poll_hover`.
+        if Class::get("DiapasonRegletteTick").is_none() {
+            let sup = Class::get("NSObject").unwrap();
+            let mut decl = ClassDecl::new("DiapasonRegletteTick", sup).unwrap();
+            extern "C" fn tick(_: &Object, _: Sel, _timer: *mut Object) {
+                unsafe {
+                    poll_hover();
+                }
+            }
+            decl.add_method(
+                sel!(tick:),
+                tick as extern "C" fn(&Object, Sel, *mut Object),
+            );
+            decl.register();
+        }
+        let tcls = Class::get("DiapasonRegletteTick").unwrap();
+        let tobj: *mut Object = msg_send![tcls, alloc];
+        let tobj: *mut Object = msg_send![tobj, init];
+        let nil: *mut Object = std::ptr::null_mut();
+        // Le run loop retient le timer, le timer retient sa cible : rien à
+        // garder nous-mêmes.
+        let _: *mut Object = msg_send![class!(NSTimer),
+            scheduledTimerWithTimeInterval: 0.06_f64
+            target: tobj
+            selector: sel!(tick:)
+            userInfo: nil
+            repeats: YES
+        ];
+        let _ = nil;
+    }
+
+    /// Déploie le rail plein, bord droit et centre vertical figés.
+    pub unsafe fn expand() {
+        set_size(EXPANDED_W, EXPANDED_H);
+        set_ouvert(true);
+    }
+
+    /// Ramène la petite pastille.
+    pub unsafe fn collapse() {
+        set_ouvert(false);
+        set_size(COLLAPSED_W, COLLAPSED_H);
+    }
+
+    /// Bascule la classe CSS `.ouvert` qui dévoile le rail. C'est Rust qui la
+    /// pilote : la WKWebView d'un panneau non activant ne reçoit AUCUN
+    /// événement de survol tant qu'une AUTRE app est au premier plan — vérifié
+    /// le 15 sept. 2026, le rail restait figé. Le survol vient donc d'un
+    /// sondage natif du curseur (`poll_hover`), pas d'un `mouseenter` JS.
+    unsafe fn set_ouvert(v: bool) {
+        let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        let wv = wv as *mut Object;
+        let js = if v {
+            "document.body.classList.add('ouvert')"
+        } else {
+            "document.body.classList.remove('ouvert');\
+             document.querySelectorAll('.mod.survol').forEach(function(e){e.classList.remove('survol')})"
+        };
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () = msg_send![wv, evaluateJavaScript: nsstring(js) completionHandler: nil];
+    }
+
+    /// Sonde la position du curseur (globale, indépendante du focus) et
+    /// déploie/replie la réglette. Appelée ~16 fois par seconde par un NSTimer.
+    /// L'hystérésis vient de ce que la zone testée est le cadre COURANT : la
+    /// pastille (petite) quand replié, le rail (grand) quand déployé — donc pas
+    /// de clignotement au bord.
+    unsafe fn poll_hover() {
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let vis: BOOL = msg_send![panel, isVisible];
+        if vis == NO {
+            return;
+        }
+        // NSEvent mouseLocation : coordonnées écran, origine en bas à gauche.
+        let p: CGPoint = msg_send![class!(NSEvent), mouseLocation];
+        let frame: CGRect = msg_send![panel, frame];
+        let expanded = frame.size.width > (COLLAPSED_W + EXPANDED_W) / 2.0;
+        let m = if expanded { 6.0 } else { 8.0 };
+        let inside = p.x >= frame.origin.x - m
+            && p.x <= frame.origin.x + frame.size.width + m
+            && p.y >= frame.origin.y - m
+            && p.y <= frame.origin.y + frame.size.height + m;
+        if !expanded && inside {
+            expand();
+        } else if expanded && !inside {
+            collapse();
+        } else if expanded && inside {
+            // Surligne la ligne sous le curseur (le :hover CSS ne s'allume pas
+            // hors focus). On passe à JS les coordonnées VUE : origine en haut
+            // à gauche, d'où l'inversion de Y.
+            let vx = p.x - frame.origin.x;
+            let vy = frame.origin.y + frame.size.height - p.y;
+            let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+            if wv != 0 {
+                let js = format!("window.__diapHover&&__diapHover({:.0},{:.0})", vx, vy);
+                let nil: *mut Object = std::ptr::null_mut();
+                let _: () =
+                    msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+            }
+        }
+    }
+
+    unsafe fn set_size(w: f64, h: f64) {
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let frame: CGRect = msg_send![panel, frame];
+        let right = frame.origin.x + frame.size.width;
+        let center_y = frame.origin.y + frame.size.height / 2.0;
+        let nf = CGRect {
+            origin: CGPoint {
+                x: right - w,
+                y: center_y - h / 2.0,
+            },
+            size: CGSize {
+                width: w,
+                height: h,
+            },
+        };
+        let _: () = msg_send![panel, setFrame: nf display: YES animate: NO];
+    }
+
+    /// Déplace la réglette verticalement (bord droit toujours épinglé).
+    unsafe fn drag(coords: &str) {
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let Some((_dxs, dys)) = coords.split_once(',') else {
+            return;
+        };
+        let Ok(dy) = dys.parse::<f64>() else { return };
+        let frame: CGRect = msg_send![panel, frame];
+        // screenY du curseur croît vers le bas ; l'origine NSWindow vers le haut.
+        let mut y = frame.origin.y - dy;
+        let vf = visible_frame();
+        let ymin = vf.origin.y;
+        let ymax = vf.origin.y + vf.size.height - frame.size.height;
+        if y < ymin {
+            y = ymin;
+        }
+        if y > ymax {
+            y = ymax;
+        }
+        let origin = CGPoint {
+            x: frame.origin.x,
+            y,
+        };
+        let _: () = msg_send![panel, setFrameOrigin: origin];
+    }
+
+    pub unsafe fn show() {
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let _: () = msg_send![panel, orderFrontRegardless];
+    }
+
+    pub unsafe fn hide() {
+        let ptr = PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () = msg_send![panel, orderOut: nil];
+    }
+
+    /// Échappe une chaîne pour l'insérer dans un littéral JS entre apostrophes.
+    fn js_escape(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'")
+    }
+
+    /// Ouvre (ou re-navigue) le mini-panneau sur le module demandé.
+    unsafe fn open_module(route: &str) {
+        let port = API_PORT.load(Ordering::SeqCst);
+        if port == 0 {
+            return;
+        }
+        let url_str = format!("http://127.0.0.1:{}{}", port, route);
+
+        let existing = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if existing != 0 {
+            // Déjà construit : on navigue et on remontre.
+            let wv = MINI_WV_PTR.load(Ordering::SeqCst) as *mut Object;
+            let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(&url_str)];
+            let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
+            let _: () = msg_send![wv, loadRequest: req];
+            let panel = existing as *mut Object;
+            let _: () = msg_send![panel, orderFrontRegardless];
+            return;
+        }
+
+        // Script injecté au tout début : la clé locale + un drapeau compact,
+        // plus un bouton ✕ minimal et Échap pour fermer (tant que le mode
+        // compact React ne fournit pas sa propre fermeture).
+        let key = js_escape(&super::local_api_key());
+        let src = format!(
+            "try{{sessionStorage.setItem('diapason-api-key','{key}');}}catch(e){{}}\n\
+             window.__DIAPASON_COMPACT__=true;\n\
+             try{{document.documentElement.setAttribute('data-diapason-compact','1');}}catch(e){{}}\n\
+             function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
+             document.addEventListener('keydown',function(e){{if(e.key==='Escape')__diapFermer();}});\n\
+             window.addEventListener('DOMContentLoaded',function(){{\n\
+               var b=document.createElement('button');b.textContent='\\u2715';\n\
+               b.setAttribute('aria-label','Fermer');\n\
+               b.style.cssText='position:fixed;top:10px;right:12px;z-index:2147483647;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(20,20,22,.72);color:#ededef;font-size:14px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
+               b.onclick=__diapFermer;document.body.appendChild(b);\n\
+             }});",
+        );
+
+        let cfg: *mut Object = msg_send![class!(WKWebViewConfiguration), alloc];
+        let cfg: *mut Object = msg_send![cfg, init];
+        let uc: *mut Object = msg_send![cfg, userContentController];
+        // Le même gestionnaire « reglette » pour recevoir « closemini ».
+        let hcls = Class::get("DiapasonRegletteMsg").unwrap();
+        let handler: *mut Object = msg_send![hcls, alloc];
+        let handler: *mut Object = msg_send![handler, init];
+        let _: () = msg_send![uc, addScriptMessageHandler: handler name: nsstring("reglette")];
+        // WKUserScriptInjectionTimeAtDocumentStart = 0.
+        let script: *mut Object = msg_send![class!(WKUserScript), alloc];
+        let script: *mut Object = msg_send![script,
+            initWithSource: nsstring(&src)
+            injectionTime: 0u64
+            forMainFrameOnly: YES
+        ];
+        let _: () = msg_send![uc, addUserScript: script];
+
+        // Cadre : à gauche de la réglette, centré verticalement.
+        let vf = visible_frame();
+        let right = vf.origin.x + vf.size.width;
+        let frame = CGRect {
+            origin: CGPoint {
+                x: right - COLLAPSED_W - 14.0 - MINI_W,
+                y: vf.origin.y + (vf.size.height - MINI_H) / 2.0,
+            },
+            size: CGSize {
+                width: MINI_W,
+                height: MINI_H,
+            },
+        };
+
+        let style: u64 = 1 << 7;
+        let panel: *mut Object = msg_send![class!(NSPanel), alloc];
+        let panel: *mut Object = msg_send![panel,
+            initWithContentRect: frame
+            styleMask: style
+            backing: 2u64
+            defer: NO
+        ];
+        let _: () = msg_send![panel, setLevel: 3_i64];
+        let _: () = msg_send![panel, setCollectionBehavior: 257_u64];
+        let _: () = msg_send![panel, setHidesOnDeactivate: NO];
+        let _: () = msg_send![panel, setReleasedWhenClosed: NO];
+        let _: () = msg_send![panel, setHasShadow: YES];
+        // Coins arrondis via la vue : on garde le fond opaque du bundle.
+
+        let wv: *mut Object = msg_send![class!(WKWebView), alloc];
+        let wv: *mut Object = msg_send![wv,
+            initWithFrame: frame
+            configuration: cfg
+        ];
+        let _: () = msg_send![panel, setContentView: wv];
+        MINI_WV_PTR.store(wv as usize, Ordering::SeqCst);
+
+        let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(&url_str)];
+        let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
+        let _: () = msg_send![wv, loadRequest: req];
+
+        MINI_PANEL_PTR.store(panel as usize, Ordering::SeqCst);
+        let _: () = msg_send![panel, orderFrontRegardless];
+    }
+
+    pub unsafe fn hide_mini() {
+        let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () = msg_send![panel, orderOut: nil];
+    }
+}
+
 /// Dispatch a closure onto the main thread via GCD.
 #[cfg(target_os = "macos")]
 fn on_main_thread(f: impl FnOnce() + Send + 'static) {
@@ -4140,6 +4656,31 @@ async fn hide_overlay() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         on_main_thread(|| unsafe { native_overlay::hide() });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(SANS_SUPERPOSITION.into())
+}
+
+/// Montre / cache la réglette de bord. La règle « visible seulement hors de
+/// Diapason » se pilote depuis le frontend, qui sait quand sa propre fenêtre
+/// prend ou perd le focus — plutôt qu'un observateur natif de plus.
+#[tauri::command]
+async fn reglette_show() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        on_main_thread(|| unsafe { native_reglette::show() });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    Err(SANS_SUPERPOSITION.into())
+}
+
+#[tauri::command]
+async fn reglette_hide() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        on_main_thread(|| unsafe { native_reglette::hide() });
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]
@@ -4331,6 +4872,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             unsafe {
                 native_overlay::create(include_str!("overlay.html"), DIAPASON_PORT);
+                native_reglette::create(include_str!("reglette.html"), DIAPASON_PORT);
             }
 
             // Register Cmd+Shift+Space to toggle the overlay
@@ -4458,6 +5000,8 @@ pub fn run() {
             set_inference_source,
             toggle_overlay,
             hide_overlay,
+            reglette_show,
+            reglette_hide,
             get_overlay_conversation,
             live_speech::live_dictation_available,
             live_speech::start_live_dictation,
