@@ -4124,6 +4124,15 @@ mod native_reglette {
     // Le rail est-il au-dessus du mini-panneau ? `presenter_mini` le remet
     // dessous ; le sondage le refait passer devant tant que le curseur y est.
     static RAIL_FRONTED: AtomicBool = AtomicBool::new(false);
+    // La route du module ouvert dans le mini-panneau (pour le point « actif »
+    // du rail), None quand il est fermé.
+    static ROUTE_ACTIVE: Mutex<Option<String>> = Mutex::new(None);
+    // Le mini-panneau est-il replié en pastille-carte ? Et son cadre d'avant.
+    static REDUIT: AtomicBool = AtomicBool::new(false);
+    static MINI_SAUVE: Mutex<Option<(f64, f64, f64, f64)>> = Mutex::new(None);
+    // Dernière proximité envoyée au rail (aimant), en centièmes — pour ne
+    // pousser du JS que quand elle change vraiment.
+    static DERNIER_AIMANT: AtomicUsize = AtomicUsize::new(0);
     // Position du curseur au moment du clic sur l'onglet (pour distinguer un
     // clic d'un glissement). None quand aucun bouton n'est pressé sur l'onglet.
     static DRAG_ANCHOR: Mutex<Option<(f64, f64)>> = Mutex::new(None);
@@ -4303,6 +4312,38 @@ mod native_reglette {
             msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
     }
 
+    /// Pousse au rail la route du module ouvert (le point « actif »).
+    unsafe fn push_actif() {
+        let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        let js = match ROUTE_ACTIVE.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => format!("window.__diapActif&&__diapActif('{}')", js_escape(&r)),
+            None => "window.__diapActif&&__diapActif(null)".to_string(),
+        };
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () =
+            msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+    }
+
+    /// Pousse la proximité du curseur (0..1) — la pastille « respire » à
+    /// l'approche. Quantifiée au vingtième pour ne pas mitrailler le WebView.
+    unsafe fn push_aimant(t: f64) {
+        let q = ((t * 20.0).round() as usize) * 5; // 0,5,10…100
+        if DERNIER_AIMANT.swap(q, Ordering::SeqCst) == q {
+            return;
+        }
+        let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        let js = format!("window.__diapAimant&&__diapAimant({})", q as f64 / 100.0);
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () =
+            msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+    }
+
     /// Au relâchement d'un glissement : ancre l'onglet au bord le plus proche,
     /// borne sa position verticale, met à jour l'orientation et mémorise.
     unsafe fn snap_to_edge(panel: *mut Object) {
@@ -4350,6 +4391,7 @@ mod native_reglette {
                     // que la page existe.
                     push_theme_to_rail();
                     push_edge();
+                    push_actif();
                 }
             }
             decl.add_method(
@@ -4379,6 +4421,8 @@ mod native_reglette {
                             "collapse" => collapse(),
                             "closemini" => hide_mini(),
                             "cyclemini" => cycle_mini(),
+                            "reduiremini" => reduire_mini(),
+                            "agrandirmini" => agrandir_mini(),
                             _ => {
                                 if let Some(route) = s.strip_prefix("open:") {
                                     open_module(route);
@@ -4451,6 +4495,9 @@ mod native_reglette {
         // WKWebView + gestionnaire de messages.
         let cfg: *mut Object = msg_send![class!(WKWebViewConfiguration), alloc];
         let cfg: *mut Object = msg_send![cfg, init];
+        // WKAudiovisualMediaTypeNone = 0 : le « la » du diapason (WebAudio)
+        // doit pouvoir sonner à l'éclosion, sans geste utilisateur préalable.
+        let _: () = msg_send![cfg, setMediaTypesRequiringUserActionForPlayback: 0u64];
         let hcls = Class::get("DiapasonRegletteMsg").unwrap();
         let handler: *mut Object = msg_send![hcls, alloc];
         let handler: *mut Object = msg_send![handler, init];
@@ -4659,6 +4706,16 @@ mod native_reglette {
         }
 
         let expanded = frame.size.width > (COLLAPSED_W + EXPANDED_W) / 2.0;
+        // L'aimant : distance du curseur à la pastille → respiration avant le
+        // contact. À zéro dès que le rail est déployé.
+        if expanded {
+            push_aimant(0.0);
+        } else {
+            let dx = ((frame.origin.x - p.x).max(p.x - (frame.origin.x + frame.size.width))).max(0.0);
+            let dy = ((frame.origin.y - p.y).max(p.y - (frame.origin.y + frame.size.height))).max(0.0);
+            let dist = (dx * dx + dy * dy).sqrt();
+            push_aimant((1.0 - dist / 90.0).clamp(0.0, 1.0));
+        }
         let m = if expanded { 6.0 } else { 8.0 };
         let inside = p.x >= frame.origin.x - m
             && p.x <= frame.origin.x + frame.size.width + m
@@ -4806,14 +4863,27 @@ mod native_reglette {
         }
         let url_str = format!("http://127.0.0.1:{}{}", port, route);
 
+        if let Ok(mut g) = ROUTE_ACTIVE.lock() {
+            *g = Some(route.to_string());
+        }
+        push_actif();
+
         let existing = MINI_PANEL_PTR.load(Ordering::SeqCst);
         if existing != 0 {
-            // Déjà construit : on navigue et on remontre.
-            let wv = MINI_WV_PTR.load(Ordering::SeqCst) as *mut Object;
-            let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(&url_str)];
-            let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
-            let _: () = msg_send![wv, loadRequest: req];
             let panel = existing as *mut Object;
+            if REDUIT.load(Ordering::SeqCst) {
+                agrandir_mini();
+            }
+            // Déjà construit : navigation CÔTÉ CLIENT (le routeur React écoute
+            // popstate) enveloppée d'une View Transition — un loadRequest
+            // rechargeait tout le bundle et FLASHAIT à chaque changement.
+            let wv = MINI_WV_PTR.load(Ordering::SeqCst) as *mut Object;
+            let js = format!(
+                "(function(){{var n=function(){{history.pushState({{}},'','{r}');dispatchEvent(new PopStateEvent('popstate'));}};if(document.startViewTransition){{document.startViewTransition(n);}}else{{n();}}}})()",
+                r = js_escape(route)
+            );
+            let nil: *mut Object = std::ptr::null_mut();
+            let _: () = msg_send![wv, evaluateJavaScript: nsstring(&js) completionHandler: nil];
             presenter_mini(panel);
             return;
         }
@@ -4831,9 +4901,12 @@ mod native_reglette {
              try{{var _s={{}};try{{_s=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}_s.theme='{theme}';_s.terminalSkin='{skin}';localStorage.setItem('diapason-settings',JSON.stringify(_s));}}catch(e){{}}\n\
              window.__DIAPASON_COMPACT__=true;\n\
              try{{document.documentElement.setAttribute('data-diapason-compact','1');}}catch(e){{}}\n\
+             try{{var _st=document.createElement('style');_st.textContent=\"@keyframes diapNait{{from{{opacity:0;transform:scale(.94) translateX(14px)}}to{{opacity:1;transform:none}}}}html[data-diapason-compact='1'] body{{animation:diapNait .22s cubic-bezier(.22,1,.36,1);transform-origin:85% 30%}}::view-transition-old(root),::view-transition-new(root){{animation-duration:.18s}}@media (prefers-reduced-motion:reduce){{html[data-diapason-compact='1'] body{{animation:none}}}}#__diapBar,#__diapX,#__diapMin{{transition:opacity .3s ease}}\";document.documentElement.appendChild(_st);}}catch(e){{}}\n\
              window.__diapApplyTheme=function(th,sk){{try{{var r=document.documentElement;r.classList.remove('dark','light','terminal');if(th==='dark')r.classList.add('dark');else if(th==='light')r.classList.add('light');else if(th==='terminal'){{r.classList.add(sk==='ardechine'?'light':'dark','terminal');r.setAttribute('data-terminal-skin',sk);}}else{{r.classList.add(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}}if(th!=='terminal')r.removeAttribute('data-terminal-skin');var q={{}};try{{q=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}q.theme=th;q.terminalSkin=sk;localStorage.setItem('diapason-settings',JSON.stringify(q));}}catch(e){{}}}};\n\
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
              document.addEventListener('keydown',function(e){{if(e.key==='Escape')__diapFermer();}});\n\
+             var __diapNoms={{'/':'Discussion','/succes/dashboard':'Tableau de bord','/succes/planner':'Planificateur','/succes/tasks':'Tâches','/succes/projects':'Projets','/succes/finances':'Finances','/succes/habits':'Habitudes','/succes/notes':'Notes','/succes/year-review':'Bilan'}};\n\
+             window.__diapReduit=function(v){{var c=document.getElementById('__diapChip');if(!c)return;if(v){{var n=document.getElementById('__diapChipNom');if(n)n.textContent=__diapNoms[location.pathname]||'Diapason';c.style.display='flex';}}else{{c.style.display='none';}}}};\n\
              window.addEventListener('DOMContentLoaded',function(){{\n\
                var bar=document.createElement('div');bar.id='__diapBar';\n\
                bar.style.cssText='position:fixed;top:0;left:0;right:0;height:24px;z-index:2147483646;cursor:grab;display:flex;align-items:center;justify-content:center';\n\
@@ -4845,9 +4918,21 @@ mod native_reglette {
                bar.addEventListener('pointerup',_fin);bar.addEventListener('pointercancel',_fin);\n\
                bar.addEventListener('dblclick',function(){{try{{window.webkit.messageHandlers.reglette.postMessage('cyclemini');}}catch(_){{}}}});\n\
                document.body.appendChild(bar);\n\
-               var b=document.createElement('button');b.textContent='\\u2715';b.setAttribute('aria-label','Fermer');\n\
+               var b=document.createElement('button');b.id='__diapX';b.textContent='\\u2715';b.setAttribute('aria-label','Fermer');\n\
                b.style.cssText='position:fixed;top:4px;right:10px;z-index:2147483647;width:26px;height:26px;border-radius:50%;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.14);color:inherit;font-size:13px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
                b.onclick=__diapFermer;document.body.appendChild(b);\n\
+               var mn=document.createElement('button');mn.id='__diapMin';mn.textContent='\\u2013';mn.setAttribute('aria-label','Réduire en carte');\n\
+               mn.style.cssText='position:fixed;top:4px;left:10px;z-index:2147483647;width:26px;height:26px;border-radius:50%;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.14);color:inherit;font-size:14px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
+               mn.onclick=function(){{try{{window.webkit.messageHandlers.reglette.postMessage('reduiremini');}}catch(_){{}}}};document.body.appendChild(mn);\n\
+               var chip=document.createElement('div');chip.id='__diapChip';\n\
+               chip.style.cssText='position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;gap:9px;padding:0 14px;cursor:pointer;background:var(--color-surface,#121214);color:var(--color-text,#ededef);border:1px solid var(--color-border,rgba(128,128,128,.3));border-radius:14px;font-weight:600;font-size:12px';\n\
+               chip.innerHTML='<span style=\"width:6px;height:6px;border-radius:50%;background:var(--color-accent,#22d3ee);box-shadow:0 0 6px var(--color-accent,#22d3ee)\"></span><span id=\"__diapChipNom\">Diapason</span><span style=\"margin-left:auto;opacity:.5;font-size:11px\">\\u2922</span>';\n\
+               chip.setAttribute('role','button');chip.setAttribute('aria-label','Redéployer le module');\n\
+               chip.onclick=function(){{try{{window.webkit.messageHandlers.reglette.postMessage('agrandirmini');}}catch(_){{}}}};document.body.appendChild(chip);\n\
+               var chrome=[bar,b,mn],tFondu=null;\n\
+               function montrerChrome(){{chrome.forEach(function(e){{e.style.opacity='1';}});clearTimeout(tFondu);tFondu=setTimeout(function(){{chrome.forEach(function(e){{e.style.opacity='0.12';}});}},2400);}}\n\
+               document.addEventListener('pointermove',function(e){{if(e.clientY<72)montrerChrome();}},{{passive:true}});\n\
+               montrerChrome();\n\
              }});",
         );
 
@@ -5065,6 +5150,66 @@ mod native_reglette {
         save_mini_frame(panel);
     }
 
+    /// Replie le mini-panneau en PASTILLE-CARTE (icône + nom du module) : il
+    /// libère la vue sans se fermer — demandé le 15 sept. 2026 (« que ça ne
+    /// m'empêche pas la vue »). Le coin haut-droit reste en place : la carte
+    /// se range là où vivait le ✕.
+    unsafe fn reduire_mini() {
+        let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 || REDUIT.load(Ordering::SeqCst) {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let f: CGRect = msg_send![panel, frame];
+        if let Ok(mut g) = MINI_SAUVE.lock() {
+            *g = Some((f.origin.x, f.origin.y, f.size.width, f.size.height));
+        }
+        REDUIT.store(true, Ordering::SeqCst);
+        let (cw, ch) = (190.0, 44.0);
+        let nf = CGRect {
+            origin: CGPoint {
+                x: f.origin.x + f.size.width - cw,
+                y: f.origin.y + f.size.height - ch,
+            },
+            size: CGSize {
+                width: cw,
+                height: ch,
+            },
+        };
+        let wv = MINI_WV_PTR.load(Ordering::SeqCst);
+        if wv != 0 {
+            let nil: *mut Object = std::ptr::null_mut();
+            let js = nsstring("window.__diapReduit&&__diapReduit(true)");
+            let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
+        }
+        let _: () = msg_send![panel, setFrame: nf display: YES animate: YES];
+    }
+
+    /// Redéploie le mini-panneau depuis la pastille-carte, à son cadre d'avant.
+    unsafe fn agrandir_mini() {
+        let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 || !REDUIT.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        if let Some((x, y, w, h)) = MINI_SAUVE.lock().ok().and_then(|g| *g) {
+            let nf = CGRect {
+                origin: CGPoint { x, y },
+                size: CGSize {
+                    width: w,
+                    height: h,
+                },
+            };
+            let _: () = msg_send![panel, setFrame: nf display: YES animate: YES];
+        }
+        let wv = MINI_WV_PTR.load(Ordering::SeqCst);
+        if wv != 0 {
+            let nil: *mut Object = std::ptr::null_mut();
+            let js = nsstring("window.__diapReduit&&__diapReduit(false)");
+            let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
+        }
+    }
+
     /// Déplace le mini-panneau d'un delta écran (barre de glissement JS). Le
     /// WebView reçoit bien ses événements : l'app est active quand un module
     /// est ouvert.
@@ -5095,6 +5240,24 @@ mod native_reglette {
             return;
         }
         let panel = ptr as *mut Object;
+        if let Ok(mut g) = ROUTE_ACTIVE.lock() {
+            *g = None;
+        }
+        push_actif();
+        if REDUIT.swap(false, Ordering::SeqCst) {
+            // Fermé depuis la pastille-carte : mémoriser 190×44 aurait rouvert
+            // le panneau en carte — on remet d'abord le vrai cadre.
+            if let Some((x, y, w, h)) = MINI_SAUVE.lock().ok().and_then(|g| *g) {
+                let nf = CGRect {
+                    origin: CGPoint { x, y },
+                    size: CGSize {
+                        width: w,
+                        height: h,
+                    },
+                };
+                let _: () = msg_send![panel, setFrame: nf display: NO animate: NO];
+            }
+        }
         // Mémorise la taille/position choisies : la prochaine ouverture (même
         // après relance) retrouve le panneau là où Carlito l'avait mis.
         save_mini_frame(panel);

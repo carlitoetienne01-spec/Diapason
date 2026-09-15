@@ -112,6 +112,71 @@ html,body{
 }
 #panneau > *{position:relative;z-index:1}
 
+/* --- L'éclosion : le verre se déroule depuis la pastille (2 temps :
+ * s'étire, puis s'ouvre vers l'intérieur). La fenêtre native change de
+ * taille d'un coup — sans cette animation, l'ouverture CLAQUAIT. --- */
+@keyframes eclosion-droite{
+  0%{clip-path:inset(calc(50% - 33px) 0 calc(50% - 33px) calc(100% - 26px) round 13px)}
+  38%{clip-path:inset(4px 0 4px calc(100% - 26px) round 13px)}
+  100%{clip-path:inset(0 0 0 0 round 18px)}
+}
+@keyframes eclosion-gauche{
+  0%{clip-path:inset(calc(50% - 33px) calc(100% - 26px) calc(50% - 33px) 0 round 13px)}
+  38%{clip-path:inset(4px calc(100% - 26px) 4px 0 round 13px)}
+  100%{clip-path:inset(0 0 0 0 round 18px)}
+}
+body.ouvert #panneau{animation:eclosion-droite .26s cubic-bezier(.22,1,.36,1)}
+body.ouvert.edge-left #panneau{animation-name:eclosion-gauche}
+
+/* --- L'aimant : à l'approche du curseur (poussé par Rust, --aimant 0→1),
+ * la pastille respire — halo plus net, poignée qui s'éveille. --- */
+:root{--aimant:0}
+body:not(.ouvert) #panneau{
+  border-color:color-mix(in srgb, var(--accent) calc(var(--aimant)*45%), var(--line));
+  transition:border-color .15s ease;
+}
+#tete .grip i{
+  transform:scale(calc(1 + var(--aimant)*0.45));
+  opacity:calc(.5 + var(--aimant)*.5);
+  transition:transform .16s cubic-bezier(.3,1.4,.4,1),opacity .16s ease;
+}
+
+/* --- La capsule : UN seul surligneur qui glisse entre les lignes (posé par
+ * __diapHover). Chaque ligne qui s'allumait séparément clignotait. --- */
+#capsule{
+  position:absolute;left:8px;right:8px;top:0;height:34px;
+  border-radius:11px;background:var(--accent-doux);
+  opacity:0;pointer-events:none;z-index:1;
+  transition:transform .18s cubic-bezier(.3,1.3,.4,1),height .18s cubic-bezier(.3,1.3,.4,1),opacity .14s ease;
+}
+#capsule::before{
+  content:"";position:absolute;left:-6px;top:9px;bottom:9px;width:3px;
+  border-radius:2px;background:var(--accent);
+}
+
+/* --- La nappe : un voile de lumière traverse lentement le verre au repos. */
+.nappe{
+  position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+  background:linear-gradient(115deg,transparent 42%,var(--reflet) 50%,transparent 58%);
+  background-size:300% 100%;background-repeat:no-repeat;
+  animation:nappe 9s linear infinite;opacity:.45;
+}
+@keyframes nappe{0%,62%{background-position:140% 0}100%{background-position:-60% 0}}
+
+/* --- La matière du skin : phosphor = balayage CRT discret ; ardechine =
+ * grain papier. Les couleurs seules ne suffisaient pas à dire le skin. --- */
+.matiere{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;opacity:0}
+:root.terminal[data-terminal-skin='phosphor'] .matiere{
+  opacity:1;
+  background:repeating-linear-gradient(0deg,rgba(122,240,70,.05) 0 1px,transparent 1px 3px);
+  animation:crt 7s linear infinite;
+}
+@keyframes crt{0%{transform:translateY(0)}100%{transform:translateY(3px)}}
+:root.terminal[data-terminal-skin='ardechine'] .matiere{
+  opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.32 0 0 0 0 0.26 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
 /* --- Au repos : une pastille SANS logo — une poignée discrète (l'onglet se
  * survole et se déplace). Déployé : AUCUN en-tête, les modules commencent en
  * haut. */
@@ -161,25 +226,25 @@ body.ouvert #modules .mod:nth-child(5) .etiquette{transition-delay:.14s}
 body.ouvert #modules .mod:nth-child(6) .etiquette{transition-delay:.17s}
 body.ouvert #modules .mod:nth-child(7) .etiquette{transition-delay:.20s}
 body.ouvert #modules .mod:nth-child(8) .etiquette{transition-delay:.23s}
-/* Le survol (classe .survol posée par Rust ; :hover en secours si focus). */
-body.ouvert .mod.survol,
-body.ouvert .mod:hover{background:var(--accent-doux)}
+/* Le survol : la CAPSULE porte le fond ; la ligne ne garde que l'éveil de
+ * son icône (classe .survol posée par Rust — le :hover CSS ne s'allume pas
+ * hors focus). */
 body.ouvert .mod.survol .glyphe,
-body.ouvert .mod:hover .glyphe{color:var(--accent);transform:scale(1.06)}
-.mod::before{
-  content:"";position:absolute;left:2px;top:9px;bottom:9px;width:3px;
-  border-radius:2px;background:var(--accent);opacity:0;
-  transition:opacity .16s ease;
+body.ouvert .mod:hover .glyphe{color:var(--accent);transform:scale(1.08)}
+/* Le point du module OUVERT dans le mini-panneau : on sait toujours où on est. */
+.mod.actif::after{
+  content:"";position:absolute;right:10px;top:50%;margin-top:-2px;
+  width:4px;height:4px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px var(--accent);
 }
-body.ouvert .mod.survol::before,
-body.ouvert .mod:hover::before{opacity:1}
 
 #pied{flex:none;padding:6px 8px 9px}
 
 svg{display:block;color:currentColor}
 
 @media (prefers-reduced-motion:reduce){
-  #tete .nom,.mod .etiquette,.mod .glyphe,#panneau::after{transition:none}
+  #tete .nom,.mod .etiquette,.mod .glyphe,#panneau::after,#capsule,#tete .grip i{transition:none}
+  body.ouvert #panneau,.nappe,:root.terminal[data-terminal-skin='phosphor'] .matiere{animation:none}
 }
 @media (prefers-reduced-transparency:reduce){
   #panneau{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--glass)}
@@ -189,6 +254,9 @@ svg{display:block;color:currentColor}
 </head>
 <body>
 <div id="panneau">
+  <div class="nappe" aria-hidden="true"></div>
+  <div class="matiere" aria-hidden="true"></div>
+  <div id="capsule" aria-hidden="true"></div>
   <div id="tete"><span class="grip"><i></i><i></i><i></i></span></div>
   <div class="trait" id="trait-haut"></div>
   <div id="modules"></div>
@@ -234,6 +302,14 @@ function envoyer(msg){
 // Survol de ligne + reflet, pilotés par Rust (poll_hover passe les
 // coordonnées VUE du curseur ; le WebView ne reçoit rien hors focus).
 let ligneSurvolee = null;
+const capsule = document.getElementById('capsule');
+function poserCapsule(mod){
+  if (!mod){ capsule.style.opacity = '0'; return; }
+  const r = mod.getBoundingClientRect();
+  capsule.style.transform = 'translateY(' + Math.round(r.top) + 'px)';
+  capsule.style.height = Math.round(r.height) + 'px';
+  capsule.style.opacity = '1';
+}
 window.__diapHover = function(x, y){
   const p = document.getElementById('panneau');
   const r = p.getBoundingClientRect();
@@ -247,7 +323,65 @@ window.__diapHover = function(x, y){
   if (ligneSurvolee) ligneSurvolee.classList.remove('survol');
   ligneSurvolee = mod;
   if (mod) mod.classList.add('survol');
+  poserCapsule(mod);
 };
+
+// Le module actuellement OUVERT dans le mini-panneau (poussé par Rust) :
+// un point discret au bout de sa ligne — on sait toujours où l'on est.
+window.__diapActif = function(route){
+  document.querySelectorAll('.mod.actif').forEach((e) => e.classList.remove('actif'));
+  if (!route) return;
+  document.querySelectorAll('.mod').forEach((e) => {
+    if (e.dataset.route === route) e.classList.add('actif');
+  });
+};
+
+// L'aimant : Rust pousse la proximité du curseur (0..1) quand la pastille
+// est au repos — elle « respire » avant même le contact.
+window.__diapAimant = function(t){
+  document.documentElement.style.setProperty('--aimant', String(t));
+};
+
+// Le « la » du diapason : un 440 Hz très doux à l'éclosion. Désactivable au
+// clic droit sur l'onglet (mémorisé dans ce localStorage). WebAudio pur —
+// aucun fichier embarqué.
+let contexteLa = null;
+function jouerLa(){
+  try {
+    if (localStorage.getItem('diapason-reglette-son') === 'off') return;
+    contexteLa = contexteLa || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = contexteLa;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.035, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
+    gain.connect(ctx.destination);
+    // Le fondamental et un 2e partiel léger : le timbre d'un diapason.
+    for (const [freq, part] of [[440, 1], [880, 0.18]]){
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.value = part;
+      osc.connect(g); g.connect(gain);
+      osc.start(t0); osc.stop(t0 + 1.2);
+    }
+  } catch (_) {}
+}
+let dernierLa = 0;
+new MutationObserver(() => {
+  const ouvert = document.body.classList.contains('ouvert');
+  if (ouvert && Date.now() - dernierLa > 1500){ dernierLa = Date.now(); jouerLa(); }
+  if (!ouvert){ poserCapsule(null); }
+}).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+document.getElementById('panneau').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const off = localStorage.getItem('diapason-reglette-son') === 'off';
+  localStorage.setItem('diapason-reglette-son', off ? 'on' : 'off');
+  if (off) jouerLa(); // on vient de le rallumer : petit accusé sonore
+});
 
 // --- Thème : l'app le POUSSE (les WKWebView natives ne partagent pas le
 // localStorage de la fenêtre Tauri, vérifié le 15 sept. 2026 : le rail
