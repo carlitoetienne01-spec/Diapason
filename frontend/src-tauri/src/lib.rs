@@ -4108,7 +4108,7 @@ mod native_reglette {
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex;
 
     static PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -4116,6 +4116,14 @@ mod native_reglette {
     // Le thème courant, POUSSÉ par l'app (le localStorage n'est pas partagé
     // entre la fenêtre Tauri et les WKWebView natives). (theme, terminalSkin).
     static THEME: Mutex<Option<(String, String)>> = Mutex::new(None);
+    // Bord d'ancrage de l'onglet : 0 = droite, 1 = gauche. Mémorisé sur disque.
+    static EDGE: AtomicUsize = AtomicUsize::new(0);
+    // Glissement en cours (bouton pressé sur l'onglet) : on ne déploie pas, et
+    // on s'aligne au bord le plus proche au relâchement.
+    static DRAGGING: AtomicBool = AtomicBool::new(false);
+    // Position du curseur au moment du clic sur l'onglet (pour distinguer un
+    // clic d'un glissement). None quand aucun bouton n'est pressé sur l'onglet.
+    static DRAG_ANCHOR: Mutex<Option<(f64, f64)>> = Mutex::new(None);
     // Le mini-panneau flottant qui montre un module en miniature.
     static MINI_PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
     static MINI_WV_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -4204,6 +4212,20 @@ mod native_reglette {
             *g = Some((theme, skin));
         }
         push_theme_to_rail();
+        // Et au mini-panneau s'il est ouvert : sinon le module gardait son
+        // thème d'ouverture (le localStorage n'est pas partagé, il ne « voit »
+        // pas le changement).
+        let mwv = MINI_WV_PTR.load(Ordering::SeqCst);
+        if mwv != 0 {
+            let (t, s) = theme_courant();
+            let js = format!(
+                "window.__diapApplyTheme&&__diapApplyTheme('{}','{}')",
+                js_escape(&t),
+                js_escape(&s)
+            );
+            let nil: *mut Object = std::ptr::null_mut();
+            let _: () = msg_send![mwv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+        }
     }
 
     /// Pousse le thème mémorisé dans la WKWebView du rail.
@@ -4226,6 +4248,89 @@ mod native_reglette {
             msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
     }
 
+    // --- Position mémorisée de l'onglet (bord + centre vertical) -----------
+
+    fn position_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(super::home_dir())
+            .join(".diapason")
+            .join("reglette.json")
+    }
+
+    fn save_position(edge: &str, center_y: f64) {
+        let p = position_path();
+        if let Some(par) = p.parent() {
+            let _ = std::fs::create_dir_all(par);
+        }
+        let _ = std::fs::write(
+            &p,
+            format!("{{\"edge\":\"{}\",\"centerY\":{}}}", edge, center_y),
+        );
+    }
+
+    /// (edge, centerY) mémorisés, si présents et lisibles.
+    fn read_position() -> Option<(String, f64)> {
+        let s = std::fs::read_to_string(position_path()).ok()?;
+        let edge = if s.contains("\"left\"") { "left" } else { "right" }.to_string();
+        let cy = s
+            .split("\"centerY\":")
+            .nth(1)?
+            .trim_start_matches(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.'))
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '.')
+            .collect::<String>()
+            .parse::<f64>()
+            .ok()?;
+        Some((edge, cy))
+    }
+
+    /// Pousse le bord courant au rail (CSS des coins et de l'ombre).
+    unsafe fn push_edge() {
+        let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        let side = if EDGE.load(Ordering::SeqCst) == 1 {
+            "left"
+        } else {
+            "right"
+        };
+        let js = format!("window.__diapEdge&&__diapEdge('{}')", side);
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () =
+            msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+    }
+
+    /// Au relâchement d'un glissement : ancre l'onglet au bord le plus proche,
+    /// borne sa position verticale, met à jour l'orientation et mémorise.
+    unsafe fn snap_to_edge(panel: *mut Object) {
+        let frame: CGRect = msg_send![panel, frame];
+        let vf = visible_frame();
+        let center_x = frame.origin.x + frame.size.width / 2.0;
+        let ecran_centre = vf.origin.x + vf.size.width / 2.0;
+        let gauche = center_x < ecran_centre;
+        EDGE.store(if gauche { 1 } else { 0 }, Ordering::SeqCst);
+        let mut y = frame.origin.y;
+        let ymin = vf.origin.y;
+        let ymax = vf.origin.y + vf.size.height - frame.size.height;
+        if y < ymin {
+            y = ymin;
+        }
+        if y > ymax {
+            y = ymax;
+        }
+        let x = if gauche {
+            vf.origin.x
+        } else {
+            vf.origin.x + vf.size.width - frame.size.width
+        };
+        let _: () = msg_send![panel, setFrameOrigin: CGPoint { x, y }];
+        push_edge();
+        save_position(
+            if gauche { "left" } else { "right" },
+            y + frame.size.height / 2.0,
+        );
+    }
+
     /// Construit la réglette. Appelée une fois au démarrage.
     pub unsafe fn create(html: &str, api_port: u16) {
         API_PORT.store(api_port as usize, Ordering::SeqCst);
@@ -4237,9 +4342,11 @@ mod native_reglette {
             extern "C" fn did_finish(_: &Object, _: Sel, wv: *mut Object, _nav: *mut Object) {
                 unsafe {
                     force_transparent(wv);
-                    // Le rail vient de (re)charger : lui repousser le thème,
-                    // au cas où l'app l'aurait envoyé avant que la page existe.
+                    // Le rail vient de (re)charger : lui repousser le thème et
+                    // le bord d'ancrage, au cas où l'app l'aurait envoyé avant
+                    // que la page existe.
                     push_theme_to_rail();
+                    push_edge();
                 }
             }
             decl.add_method(
@@ -4271,6 +4378,8 @@ mod native_reglette {
                             _ => {
                                 if let Some(route) = s.strip_prefix("open:") {
                                     open_module(route);
+                                } else if let Some(coords) = s.strip_prefix("dragmini:") {
+                                    drag_mini(coords);
                                 } else if let Some(coords) = s.strip_prefix("drag:") {
                                     drag(coords);
                                 }
@@ -4286,14 +4395,30 @@ mod native_reglette {
             decl.register();
         }
 
-        // Cadre initial : la petite pastille, collée au bord droit, centrée.
+        // Cadre initial : la petite pastille. On relit la position mémorisée
+        // (bord gauche/droite + centre vertical) ; par défaut, bord droit,
+        // centrée.
         let vf = visible_frame();
-        let right = vf.origin.x + vf.size.width;
+        let (edge, center_y) = match read_position() {
+            Some((e, cy)) => (e, cy),
+            None => ("right".to_string(), vf.origin.y + vf.size.height / 2.0),
+        };
+        EDGE.store(if edge == "left" { 1 } else { 0 }, Ordering::SeqCst);
+        let x = if edge == "left" {
+            vf.origin.x
+        } else {
+            vf.origin.x + vf.size.width - COLLAPSED_W
+        };
+        let mut y = center_y - COLLAPSED_H / 2.0;
+        let ymax = vf.origin.y + vf.size.height - COLLAPSED_H;
+        if y < vf.origin.y {
+            y = vf.origin.y;
+        }
+        if y > ymax {
+            y = ymax;
+        }
         let frame = CGRect {
-            origin: CGPoint {
-                x: right - COLLAPSED_W,
-                y: vf.origin.y + (vf.size.height - COLLAPSED_H) / 2.0,
-            },
+            origin: CGPoint { x, y },
             size: CGSize {
                 width: COLLAPSED_W,
                 height: COLLAPSED_H,
@@ -4378,7 +4503,7 @@ mod native_reglette {
         // Le run loop retient le timer, le timer retient sa cible : rien à
         // garder nous-mêmes.
         let _: *mut Object = msg_send![class!(NSTimer),
-            scheduledTimerWithTimeInterval: 0.06_f64
+            scheduledTimerWithTimeInterval: 0.03_f64
             target: tobj
             selector: sel!(tick:)
             userInfo: nil
@@ -4466,6 +4591,52 @@ mod native_reglette {
         // NSEvent mouseLocation : coordonnées écran, origine en bas à gauche.
         let p: CGPoint = msg_send![class!(NSEvent), mouseLocation];
         let frame: CGRect = msg_send![panel, frame];
+
+        // --- Glissement de l'onglet ---------------------------------------
+        // Le WebView ne reçoit rien hors focus : on gère le glisser ici, à
+        // partir de la position globale du curseur et de l'état des boutons.
+        // Un clic (pressé/relâché sans bouger) laisse le WebView ouvrir le
+        // module ; au-delà de 5 px, c'est un glissement : on replie en pastille
+        // et on suit le curseur, puis on s'ancre au bord au relâchement.
+        let boutons: u64 = msg_send![class!(NSEvent), pressedMouseButtons];
+        let presse = boutons != 0;
+        let sur_rail = p.x >= frame.origin.x - 2.0
+            && p.x <= frame.origin.x + frame.size.width + 2.0
+            && p.y >= frame.origin.y - 2.0
+            && p.y <= frame.origin.y + frame.size.height + 2.0;
+        {
+            let mut ancre = DRAG_ANCHOR.lock().unwrap();
+            if presse {
+                if ancre.is_none() && sur_rail {
+                    *ancre = Some((p.x, p.y));
+                }
+                if let Some((sx, sy)) = *ancre {
+                    if !DRAGGING.load(Ordering::SeqCst)
+                        && ((p.x - sx).abs() > 5.0 || (p.y - sy).abs() > 5.0)
+                    {
+                        DRAGGING.store(true, Ordering::SeqCst);
+                        collapse(); // devient pastille pendant le glissement
+                    }
+                    if DRAGGING.load(Ordering::SeqCst) {
+                        let vf2 = visible_frame();
+                        let x = (p.x - COLLAPSED_W / 2.0)
+                            .clamp(vf2.origin.x, vf2.origin.x + vf2.size.width - COLLAPSED_W);
+                        let y = (p.y - COLLAPSED_H / 2.0)
+                            .clamp(vf2.origin.y, vf2.origin.y + vf2.size.height - COLLAPSED_H);
+                        let _: () = msg_send![panel, setFrameOrigin: CGPoint { x, y }];
+                    }
+                    return; // bouton pressé et ancré : ni survol ni déploiement
+                }
+            } else {
+                *ancre = None;
+                if DRAGGING.swap(false, Ordering::SeqCst) {
+                    drop(ancre);
+                    snap_to_edge(panel);
+                    return;
+                }
+            }
+        }
+
         let expanded = frame.size.width > (COLLAPSED_W + EXPANDED_W) / 2.0;
         let m = if expanded { 6.0 } else { 8.0 };
         let inside = p.x >= frame.origin.x - m
@@ -4499,11 +4670,18 @@ mod native_reglette {
         }
         let panel = ptr as *mut Object;
         let frame: CGRect = msg_send![panel, frame];
-        let right = frame.origin.x + frame.size.width;
         let center_y = frame.origin.y + frame.size.height / 2.0;
+        // Épingle le bord d'ancrage : à gauche l'origine reste, à droite c'est
+        // le bord droit (origin.x + largeur) qui reste — la réglette fleurit
+        // toujours vers l'intérieur de l'écran.
+        let x = if EDGE.load(Ordering::SeqCst) == 1 {
+            frame.origin.x
+        } else {
+            frame.origin.x + frame.size.width - w
+        };
         let nf = CGRect {
             origin: CGPoint {
-                x: right - w,
+                x,
                 y: center_y - h / 2.0,
             },
             size: CGSize {
@@ -4610,9 +4788,10 @@ mod native_reglette {
             return;
         }
 
-        // Script injecté au tout début : la clé locale + un drapeau compact,
-        // plus un bouton ✕ minimal et Échap pour fermer (tant que le mode
-        // compact React ne fournit pas sa propre fermeture).
+        // Script injecté au tout début : la clé locale, le thème (le
+        // localStorage n'est pas partagé), le drapeau compact, une barre de
+        // glissement (pour déplacer le mini-panneau — le WebView reçoit ses
+        // événements car l'app est active), un ✕ et Échap pour fermer.
         let key = js_escape(&super::local_api_key());
         let (t, s) = theme_courant();
         let theme = js_escape(&t);
@@ -4622,12 +4801,21 @@ mod native_reglette {
              try{{var _s={{}};try{{_s=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}_s.theme='{theme}';_s.terminalSkin='{skin}';localStorage.setItem('diapason-settings',JSON.stringify(_s));}}catch(e){{}}\n\
              window.__DIAPASON_COMPACT__=true;\n\
              try{{document.documentElement.setAttribute('data-diapason-compact','1');}}catch(e){{}}\n\
+             window.__diapApplyTheme=function(th,sk){{try{{var r=document.documentElement;r.classList.remove('dark','light','terminal');if(th==='dark')r.classList.add('dark');else if(th==='light')r.classList.add('light');else if(th==='terminal'){{r.classList.add(sk==='ardechine'?'light':'dark','terminal');r.setAttribute('data-terminal-skin',sk);}}else{{r.classList.add(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}}if(th!=='terminal')r.removeAttribute('data-terminal-skin');var q={{}};try{{q=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}q.theme=th;q.terminalSkin=sk;localStorage.setItem('diapason-settings',JSON.stringify(q));}}catch(e){{}}}};\n\
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
              document.addEventListener('keydown',function(e){{if(e.key==='Escape')__diapFermer();}});\n\
              window.addEventListener('DOMContentLoaded',function(){{\n\
-               var b=document.createElement('button');b.textContent='\\u2715';\n\
-               b.setAttribute('aria-label','Fermer');\n\
-               b.style.cssText='position:fixed;top:10px;right:12px;z-index:2147483647;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(20,20,22,.72);color:#ededef;font-size:14px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
+               var bar=document.createElement('div');bar.id='__diapBar';\n\
+               bar.style.cssText='position:fixed;top:0;left:0;right:0;height:24px;z-index:2147483646;cursor:grab;display:flex;align-items:center;justify-content:center';\n\
+               var g=document.createElement('div');g.style.cssText='width:34px;height:4px;border-radius:2px;background:currentColor;opacity:.26';bar.appendChild(g);\n\
+               var last=null;\n\
+               bar.addEventListener('pointerdown',function(e){{last={{x:e.screenX,y:e.screenY}};try{{bar.setPointerCapture(e.pointerId)}}catch(_){{}}bar.style.cursor='grabbing';}});\n\
+               bar.addEventListener('pointermove',function(e){{if(!last)return;var dx=e.screenX-last.x,dy=e.screenY-last.y;last={{x:e.screenX,y:e.screenY}};if(dx||dy){{try{{window.webkit.messageHandlers.reglette.postMessage('dragmini:'+dx+','+dy);}}catch(_){{}}}}}});\n\
+               function _fin(){{last=null;bar.style.cursor='grab';}}\n\
+               bar.addEventListener('pointerup',_fin);bar.addEventListener('pointercancel',_fin);\n\
+               document.body.appendChild(bar);\n\
+               var b=document.createElement('button');b.textContent='\\u2715';b.setAttribute('aria-label','Fermer');\n\
+               b.style.cssText='position:fixed;top:4px;right:10px;z-index:2147483647;width:26px;height:26px;border-radius:50%;border:1px solid rgba(128,128,128,.28);background:rgba(128,128,128,.14);color:inherit;font-size:13px;line-height:1;cursor:pointer;-webkit-backdrop-filter:blur(10px)';\n\
                b.onclick=__diapFermer;document.body.appendChild(b);\n\
              }});",
         );
@@ -4649,17 +4837,34 @@ mod native_reglette {
         ];
         let _: () = msg_send![uc, addUserScript: script];
 
-        // Cadre : à gauche de la réglette, centré verticalement. On dégage la
-        // largeur DÉPLOYÉE du rail (pas seulement la pastille) pour qu'au survol
-        // le rail ne recouvre pas le mini-panneau — on peut ainsi choisir un
-        // autre module sans fermer.
+        // Cadre : À CÔTÉ de l'onglet (pas au centre), aligné sur sa hauteur.
+        // Ensuite déplaçable et redimensionnable à volonté.
         let vf = visible_frame();
-        let right = vf.origin.x + vf.size.width;
+        let edge_left = EDGE.load(Ordering::SeqCst) == 1;
+        let rail_cy = {
+            let rp = PANEL_PTR.load(Ordering::SeqCst);
+            if rp != 0 {
+                let rf: CGRect = msg_send![(rp as *mut Object), frame];
+                rf.origin.y + rf.size.height / 2.0
+            } else {
+                vf.origin.y + vf.size.height / 2.0
+            }
+        };
+        let x = if edge_left {
+            vf.origin.x + COLLAPSED_W + 10.0
+        } else {
+            vf.origin.x + vf.size.width - COLLAPSED_W - 10.0 - MINI_W
+        };
+        let mut y = rail_cy - MINI_H / 2.0;
+        if y < vf.origin.y {
+            y = vf.origin.y;
+        }
+        let ymax = vf.origin.y + vf.size.height - MINI_H;
+        if y > ymax {
+            y = ymax;
+        }
         let frame = CGRect {
-            origin: CGPoint {
-                x: right - EXPANDED_W - 14.0 - MINI_W,
-                y: vf.origin.y + (vf.size.height - MINI_H) / 2.0,
-            },
+            origin: CGPoint { x, y },
             size: CGSize {
                 width: MINI_W,
                 height: MINI_H,
@@ -4683,7 +4888,9 @@ mod native_reglette {
             decl.register();
         }
 
-        let style: u64 = 1 << 7;
+        // NonactivatingPanel (1<<7) | Resizable (1<<3) : redimensionnable en
+        // tirant ses bords ; le module React est responsive et suit.
+        let style: u64 = (1 << 7) | (1 << 3);
         let cls = Class::get("DiapasonMiniPanel").unwrap();
         let panel: *mut Object = msg_send![cls, alloc];
         let panel: *mut Object = msg_send![panel,
@@ -4697,6 +4904,12 @@ mod native_reglette {
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setReleasedWhenClosed: NO];
         let _: () = msg_send![panel, setHasShadow: YES];
+        // Taille minimale (sous laquelle le module devient illisible).
+        let min = CGSize {
+            width: 340.0,
+            height: 380.0,
+        };
+        let _: () = msg_send![panel, setContentMinSize: min];
         // Fond transparent : la carte du module est arrondie par la couche de
         // la WKWebView (coins nets, ombre qui épouse l'arrondi).
         let _: () = msg_send![panel, setOpaque: NO];
@@ -4724,6 +4937,30 @@ mod native_reglette {
 
         MINI_PANEL_PTR.store(panel as usize, Ordering::SeqCst);
         presenter_mini(panel);
+    }
+
+    /// Déplace le mini-panneau d'un delta écran (barre de glissement JS). Le
+    /// WebView reçoit bien ses événements : l'app est active quand un module
+    /// est ouvert.
+    unsafe fn drag_mini(coords: &str) {
+        let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
+        if ptr == 0 {
+            return;
+        }
+        let panel = ptr as *mut Object;
+        let Some((dxs, dys)) = coords.split_once(',') else {
+            return;
+        };
+        let (Ok(dx), Ok(dy)) = (dxs.parse::<f64>(), dys.parse::<f64>()) else {
+            return;
+        };
+        let frame: CGRect = msg_send![panel, frame];
+        // screenY (souris) croît vers le bas ; l'origine NSWindow vers le haut.
+        let origin = CGPoint {
+            x: frame.origin.x + dx,
+            y: frame.origin.y - dy,
+        };
+        let _: () = msg_send![panel, setFrameOrigin: origin];
     }
 
     pub unsafe fn hide_mini() {

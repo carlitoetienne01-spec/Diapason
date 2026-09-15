@@ -112,18 +112,28 @@ html,body{
 }
 #panneau > *{position:relative;z-index:1}
 
-/* --- Au repos : la pastille montre le VRAI icône de Diapason (celui du
- * Dock), centré. Déployé : AUCUN en-tête — ni icône ni nom — les modules
- * commencent en haut. */
+/* --- Au repos : une pastille SANS logo — une poignée discrète (l'onglet se
+ * survole et se déplace). Déployé : AUCUN en-tête, les modules commencent en
+ * haut. */
 #tete{display:flex;align-items:center;justify-content:center;flex:none;height:100%}
-#tete .ico{width:22px;height:22px;border-radius:5px;display:block;
-  box-shadow:0 1px 3px rgba(0,0,0,.35)}
+#tete .grip{display:flex;flex-direction:column;gap:3px}
+#tete .grip i{width:3px;height:3px;border-radius:50%;background:var(--ink-doux);opacity:.5}
 body.ouvert #tete,
 body.ouvert #trait-haut{display:none}
 body:not(.ouvert) #trait-haut,
 body:not(.ouvert) #modules,
 body:not(.ouvert) #pied{display:none}
-body.ouvert #modules{padding-top:12px}
+body.ouvert #modules{padding-top:14px}
+
+/* Bord gauche : coins arrondis et ombre retournés vers l'intérieur (droite). */
+body.edge-left #panneau{
+  border-radius:0 18px 18px 0;
+  box-shadow:
+    inset 0 0.5px 0 var(--reflet),
+    inset 0.5px -0.5px 0 rgba(0,0,0,0.10),
+    14px 0 40px -12px var(--ombre),
+    3px 0 10px -6px var(--ombre);
+}
 
 .trait{height:1px;background:var(--line);margin:2px 14px 4px;flex:none}
 
@@ -179,7 +189,7 @@ svg{display:block;color:currentColor}
 </head>
 <body>
 <div id="panneau">
-  <div id="tete"><img class="ico" alt="Diapason" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAALKADAAQAAAABAAAALAAAAAD8buejAAAFIUlEQVRYCe1ZXWgcVRT+Zmdn/xeTlKTdh8SgiRE1RlQoVRTsS8VU8KfGVhNIagNFxfbVtj7V+OAPRRv1Tfso4rsgRLClhdI23ZqCqQ0+1KBJBBPibjbZ+fOcSbZMZu7sTnK3D0ouDHvvPT/3mzPfPefmBthqWxH4b0dACQc/vV1VjUcjEaUVsGNkY4ezq6nF6+uWhVumGb0KFGdqWdQAnGnRNP1dQDlAjrbXciYpn6N1vtH1yAcEfDbIVyDgWCz2oG1HviXDB4KM79D8L4pi9ZXL5esi/wGAObLGT2Rwv8jIPWfbNhQlwI1bkfob0P1V19WnRZFWPT6doaYpI/R59opk3jn6EqBoIBKJeEXrxoZhIJFIwCLChmjbVBVxyzK+9+oKVkkTV5V+r6JobBhlHD9+DH19r0DXV0QqzhzLBgb6cfToEbBNuGa/DqR3eHV9gCkbPEZK27yKorFtW2hvvxunTn1CoF+FaZo+NcsyMdA/gC+/GEVbayvRIlSE2U8TYXnc69AHmL4spa7wzTRMlFdW8NKLL4DpwTytNO6nUmkceG0/fQE9LB0q5kQztN0erHV8gGk+6lWqNlYiCnTiZ6lUClRbXl52dNwvE6i8XuDDIgK83qTqSHEyBG+kapnCtmxYplWXaiMJePVtTIqwiL+Vd7UJqklcrkeBlAbMkbWIq7F4PDC1MRX4oe9ReYdN/0oD5u/MlLAoQwRxlOdZXge8kAdMQWMwuqELo8ZFkPBuOEMIndGkPGByYhDgmBYL3Hice0NWuCCct+flAVP0eNNx6RU3DjHpEG2CKCO2E89KA+YMwNEzTCMQkKPDHK5DkwbMGDhlxSlLqHRi8TbOIvxw2tOimle84bE04NUMYCEqAMObrVJQmOdKjRNdGPTSgHkRBsXl18/R1bMyy1nG5wnZJgnYdoAyHTKZND2ZddmAud3QcBeymSzRIYpC4R9ZvPJpLZ+/hlwuh2w2i0OHDhJgnSJJhx16OD0MDw9TFYyhobERly5dpjm5auez1rT4W+R0NEwo+Kzb3NyCsbEfMD8/j2KhgPHxPMZ+HKMyraK39zk83P0QGpua6DS3jD17nkWxuBRYwv1r2kfo8P+Ze953fHMLa/UZ1MzMnzh8+E2cOfMVFgh0Z+e9aG9vczZYkv4kam5pcTbk4OBBLC4uQqMCI9MkOQwHwLlzZymaz+Pnievo6XkE93V1oaOjg55OnD9/wZHl81elwfKLSkW4EimiESYnb2BoaBA7dz6B904cw1JpCSdPjmBi4hplkSiBjVfUpX7rApgRaBoXBQ0XL17A5StXsLCw4IDVtIQUQK+xNCXcDk0qz7t2PYndu59xnu7uHqpwQWcMt2X4vgjwpoo+F4ZkMoWPP/rQSVypZBIjI+875dpfUEID9L2tDzDl+luh3bkUGRQXkHgijqmpKUxPTzs0iVLB2GwjLL97bX2nFdtOLKqqPUSKKa9ytTGX31KpCL526N3b6+Tn06dHiccTwkNRNV9rsr8NQz1Bl5sFt66vcLBQ05KfUpV6x60Yts/nhVxuB1U8G7Ozs2ubMay1W0/5XNdLb7tnuC8EDDiXgWdJ3uU1CDPmoyRHvNZ9WxVfN+ky8CnRZaCPw6tOCnN05bmP+pNVnAaK+FwsAfYGrf2yCCwv6ONwBQVFac6y4t/xLSLN3UNPuiK7Q79/0Qf/miL7hmku/xa0RgAlvOqpnKqa9C8D566r3v8yKHM2ME11HFj6w7vy1ngrAv+3CPwLX7fg+GQATcgAAAAASUVORK5CYII="></div>
+  <div id="tete"><span class="grip"><i></i><i></i><i></i></span></div>
   <div class="trait" id="trait-haut"></div>
   <div id="modules"></div>
   <div class="trait"></div>
@@ -260,6 +270,11 @@ function poserTheme(theme, skin){
 }
 // Poussée depuis Rust (source de vérité).
 window.__diapSetTheme = poserTheme;
+// Le bord d'ancrage (poussé par Rust au snap gauche/droite).
+window.__diapEdge = function(side){
+  document.body.classList.toggle('edge-left', side === 'left');
+  document.body.classList.toggle('edge-right', side !== 'left');
+};
 // Repli : le localStorage de CETTE webview (peut être vide ou périmé).
 function themeDeRepli(){
   let theme = 'system', skin = 'phosphor';
