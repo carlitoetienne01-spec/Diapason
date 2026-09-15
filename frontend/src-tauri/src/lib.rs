@@ -4109,9 +4109,13 @@ mod native_reglette {
     use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     static PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
     static WEBVIEW_PTR: AtomicUsize = AtomicUsize::new(0);
+    // Le thème courant, POUSSÉ par l'app (le localStorage n'est pas partagé
+    // entre la fenêtre Tauri et les WKWebView natives). (theme, terminalSkin).
+    static THEME: Mutex<Option<(String, String)>> = Mutex::new(None);
     // Le mini-panneau flottant qui montre un module en miniature.
     static MINI_PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
     static MINI_WV_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -4184,6 +4188,44 @@ mod native_reglette {
         let _: () = msg_send![wv, setUnderPageBackgroundColor: clear];
     }
 
+    /// Le thème courant (theme, skin), ou un repli.
+    fn theme_courant() -> (String, String) {
+        THEME
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .unwrap_or_else(|| ("system".into(), "phosphor".into()))
+    }
+
+    /// Enregistre le thème poussé par l'app et le réapplique au rail. Appelée
+    /// sur le fil principal (evaluateJavaScript l'exige).
+    pub unsafe fn set_theme(theme: String, skin: String) {
+        if let Ok(mut g) = THEME.lock() {
+            *g = Some((theme, skin));
+        }
+        push_theme_to_rail();
+    }
+
+    /// Pousse le thème mémorisé dans la WKWebView du rail.
+    unsafe fn push_theme_to_rail() {
+        let wv = WEBVIEW_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        if THEME.lock().ok().and_then(|g| g.clone()).is_none() {
+            return;
+        }
+        let (theme, skin) = theme_courant();
+        let js = format!(
+            "window.__diapSetTheme&&__diapSetTheme('{}','{}')",
+            js_escape(&theme),
+            js_escape(&skin)
+        );
+        let nil: *mut Object = std::ptr::null_mut();
+        let _: () =
+            msg_send![wv as *mut Object, evaluateJavaScript: nsstring(&js) completionHandler: nil];
+    }
+
     /// Construit la réglette. Appelée une fois au démarrage.
     pub unsafe fn create(html: &str, api_port: u16) {
         API_PORT.store(api_port as usize, Ordering::SeqCst);
@@ -4195,6 +4237,9 @@ mod native_reglette {
             extern "C" fn did_finish(_: &Object, _: Sel, wv: *mut Object, _nav: *mut Object) {
                 unsafe {
                     force_transparent(wv);
+                    // Le rail vient de (re)charger : lui repousser le thème,
+                    // au cas où l'app l'aurait envoyé avant que la page existe.
+                    push_theme_to_rail();
                 }
             }
             decl.add_method(
@@ -4401,7 +4446,9 @@ mod native_reglette {
         } else {
             NO
         };
-        let doit_paraitre = active == NO && mini_vis == NO;
+        // Le rail paraît hors de Diapason OU quand un module est ouvert — pour
+        // pouvoir en choisir un autre sans fermer le mini-panneau.
+        let doit_paraitre = mini_vis != NO || active == NO;
         let vis: BOOL = msg_send![panel, isVisible];
         if !doit_paraitre {
             if vis != NO {
@@ -4507,6 +4554,12 @@ mod native_reglette {
     /// mini-panneau devient key sans activer l'app, donc frontmostApplication
     /// renvoie bien l'app de travail, pas Diapason.
     unsafe fn remember_front() {
+        // Déjà mémorisée : une re-navigation (changer de module sans fermer)
+        // ne doit pas écraser l'app d'origine par Diapason, sinon la fermeture
+        // rendrait le focus à Diapason au lieu de l'app de travail.
+        if MINI_PREV_APP.load(Ordering::SeqCst) != 0 {
+            return;
+        }
         let ws: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
         let front: *mut Object = msg_send![ws, frontmostApplication];
         if front.is_null() {
@@ -4561,8 +4614,12 @@ mod native_reglette {
         // plus un bouton ✕ minimal et Échap pour fermer (tant que le mode
         // compact React ne fournit pas sa propre fermeture).
         let key = js_escape(&super::local_api_key());
+        let (t, s) = theme_courant();
+        let theme = js_escape(&t);
+        let skin = js_escape(&s);
         let src = format!(
             "try{{sessionStorage.setItem('diapason-api-key','{key}');}}catch(e){{}}\n\
+             try{{var _s={{}};try{{_s=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}_s.theme='{theme}';_s.terminalSkin='{skin}';localStorage.setItem('diapason-settings',JSON.stringify(_s));}}catch(e){{}}\n\
              window.__DIAPASON_COMPACT__=true;\n\
              try{{document.documentElement.setAttribute('data-diapason-compact','1');}}catch(e){{}}\n\
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
@@ -4592,12 +4649,15 @@ mod native_reglette {
         ];
         let _: () = msg_send![uc, addUserScript: script];
 
-        // Cadre : à gauche de la réglette, centré verticalement.
+        // Cadre : à gauche de la réglette, centré verticalement. On dégage la
+        // largeur DÉPLOYÉE du rail (pas seulement la pastille) pour qu'au survol
+        // le rail ne recouvre pas le mini-panneau — on peut ainsi choisir un
+        // autre module sans fermer.
         let vf = visible_frame();
         let right = vf.origin.x + vf.size.width;
         let frame = CGRect {
             origin: CGPoint {
-                x: right - COLLAPSED_W - 14.0 - MINI_W,
+                x: right - EXPANDED_W - 14.0 - MINI_W,
                 y: vf.origin.y + (vf.size.height - MINI_H) / 2.0,
             },
             size: CGSize {
@@ -4745,6 +4805,25 @@ async fn hide_overlay() -> Result<(), String> {
     }
     #[cfg(not(target_os = "macos"))]
     Err(SANS_SUPERPOSITION.into())
+}
+
+/// L'app pousse son thème (clair/sombre/skin terminal) à la réglette. Les
+/// WKWebView natives ne partagent pas le localStorage de la fenêtre Tauri :
+/// sans cette poussée, le rail s'affichait dans un thème périmé (ardechine
+/// alors que l'app était en phosphor, 15 sept. 2026). Ailleurs qu'en macOS il
+/// n'y a pas de réglette : sans objet, sans erreur.
+#[tauri::command]
+async fn reglette_set_theme(theme: String, skin: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        on_main_thread(move || unsafe { native_reglette::set_theme(theme, skin) });
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (theme, skin);
+        Ok(())
+    }
 }
 
 /// Ramène la fenêtre principale au premier plan, à la demande d'un autre
@@ -5060,6 +5139,7 @@ pub fn run() {
             set_inference_source,
             toggle_overlay,
             hide_overlay,
+            reglette_set_theme,
             get_overlay_conversation,
             live_speech::live_dictation_available,
             live_speech::start_live_dictation,

@@ -5,12 +5,13 @@
 <style>
 /* La réglette Diapason — l'onglet de bord d'écran, en verre satiné.
  *
- * Elle suit le thème de l'app : chargée en http://127.0.0.1:8000, elle
- * partage le localStorage de Diapason (même origine, même WKWebsiteDataStore)
- * et relit `diapason-settings` pour peindre la bonne palette — clair, sombre,
- * ou un skin terminal. Le survol/rangement est piloté par Rust (poll_hover) :
- * une WKWebView de panneau non activant ne reçoit aucun événement de survol
- * hors focus. Voir [[nspanel-non-activant-survol]].
+ * Elle suit le thème de l'app, mais l'app le lui POUSSE : les WKWebView
+ * natives ne partagent PAS le localStorage de la fenêtre Tauri (vérifié le
+ * 15 sept. 2026 — le rail s'affichait en ardechine alors que l'app était en
+ * phosphor). Rust appelle `__diapSetTheme(theme, skin)` ; le localStorage ne
+ * sert que de repli avant la première poussée. Le survol/rangement est piloté
+ * par Rust (poll_hover) : une WKWebView de panneau non activant ne reçoit
+ * aucun événement de survol hors focus. Voir [[nspanel-non-activant-survol]].
  */
 *{margin:0;padding:0;box-sizing:border-box}
 
@@ -111,22 +112,18 @@ html,body{
 }
 #panneau > *{position:relative;z-index:1}
 
-/* --- En-tête : le diapason + le nom ------------------------------------- */
-#tete{display:flex;align-items:center;gap:11px;padding:15px 14px 12px;flex:none}
-#tete .marque{flex:none;width:26px;height:30px;display:flex;align-items:center;justify-content:center}
-#tete .marque svg{filter:drop-shadow(0 0 5px var(--logo-glow))}
-#tete .nom{
-  font-size:15px;font-weight:600;letter-spacing:.2px;white-space:nowrap;color:var(--ink);
-  opacity:0;transform:translateX(-8px);
-  transition:opacity .22s ease .04s,transform .28s cubic-bezier(.2,.8,.2,1) .04s;
-}
-body.ouvert #tete .nom{opacity:1;transform:none}
-/* Au repos : la pastille ne montre QUE le diapason, centré. */
-body:not(.ouvert) #tete{height:100%;padding:0;justify-content:center}
-body:not(.ouvert) #tete .nom,
-body:not(.ouvert) .trait,
+/* --- Au repos : la pastille montre le VRAI icône de Diapason (celui du
+ * Dock), centré. Déployé : AUCUN en-tête — ni icône ni nom — les modules
+ * commencent en haut. */
+#tete{display:flex;align-items:center;justify-content:center;flex:none;height:100%}
+#tete .ico{width:22px;height:22px;border-radius:5px;display:block;
+  box-shadow:0 1px 3px rgba(0,0,0,.35)}
+body.ouvert #tete,
+body.ouvert #trait-haut{display:none}
+body:not(.ouvert) #trait-haut,
 body:not(.ouvert) #modules,
 body:not(.ouvert) #pied{display:none}
+body.ouvert #modules{padding-top:12px}
 
 .trait{height:1px;background:var(--line);margin:2px 14px 4px;flex:none}
 
@@ -182,27 +179,14 @@ svg{display:block;color:currentColor}
 </head>
 <body>
 <div id="panneau">
-  <div id="tete">
-    <span class="marque" id="marque"></span>
-    <span class="nom">Diapason</span>
-  </div>
-  <div class="trait"></div>
+  <div id="tete"><img class="ico" alt="Diapason" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAALKADAAQAAAABAAAALAAAAAD8buejAAAFIUlEQVRYCe1ZXWgcVRT+Zmdn/xeTlKTdh8SgiRE1RlQoVRTsS8VU8KfGVhNIagNFxfbVtj7V+OAPRRv1Tfso4rsgRLClhdI23ZqCqQ0+1KBJBBPibjbZ+fOcSbZMZu7sTnK3D0ouDHvvPT/3mzPfPefmBthqWxH4b0dACQc/vV1VjUcjEaUVsGNkY4ezq6nF6+uWhVumGb0KFGdqWdQAnGnRNP1dQDlAjrbXciYpn6N1vtH1yAcEfDbIVyDgWCz2oG1HviXDB4KM79D8L4pi9ZXL5esi/wGAObLGT2Rwv8jIPWfbNhQlwI1bkfob0P1V19WnRZFWPT6doaYpI/R59opk3jn6EqBoIBKJeEXrxoZhIJFIwCLChmjbVBVxyzK+9+oKVkkTV5V+r6JobBhlHD9+DH19r0DXV0QqzhzLBgb6cfToEbBNuGa/DqR3eHV9gCkbPEZK27yKorFtW2hvvxunTn1CoF+FaZo+NcsyMdA/gC+/GEVbayvRIlSE2U8TYXnc69AHmL4spa7wzTRMlFdW8NKLL4DpwTytNO6nUmkceG0/fQE9LB0q5kQztN0erHV8gGk+6lWqNlYiCnTiZ6lUClRbXl52dNwvE6i8XuDDIgK83qTqSHEyBG+kapnCtmxYplWXaiMJePVtTIqwiL+Vd7UJqklcrkeBlAbMkbWIq7F4PDC1MRX4oe9ReYdN/0oD5u/MlLAoQwRxlOdZXge8kAdMQWMwuqELo8ZFkPBuOEMIndGkPGByYhDgmBYL3Hice0NWuCCct+flAVP0eNNx6RU3DjHpEG2CKCO2E89KA+YMwNEzTCMQkKPDHK5DkwbMGDhlxSlLqHRi8TbOIvxw2tOimle84bE04NUMYCEqAMObrVJQmOdKjRNdGPTSgHkRBsXl18/R1bMyy1nG5wnZJgnYdoAyHTKZND2ZddmAud3QcBeymSzRIYpC4R9ZvPJpLZ+/hlwuh2w2i0OHDhJgnSJJhx16OD0MDw9TFYyhobERly5dpjm5auez1rT4W+R0NEwo+Kzb3NyCsbEfMD8/j2KhgPHxPMZ+HKMyraK39zk83P0QGpua6DS3jD17nkWxuBRYwv1r2kfo8P+Ze953fHMLa/UZ1MzMnzh8+E2cOfMVFgh0Z+e9aG9vczZYkv4kam5pcTbk4OBBLC4uQqMCI9MkOQwHwLlzZymaz+Pnievo6XkE93V1oaOjg55OnD9/wZHl81elwfKLSkW4EimiESYnb2BoaBA7dz6B904cw1JpCSdPjmBi4hplkSiBjVfUpX7rApgRaBoXBQ0XL17A5StXsLCw4IDVtIQUQK+xNCXcDk0qz7t2PYndu59xnu7uHqpwQWcMt2X4vgjwpoo+F4ZkMoWPP/rQSVypZBIjI+875dpfUEID9L2tDzDl+luh3bkUGRQXkHgijqmpKUxPTzs0iVLB2GwjLL97bX2nFdtOLKqqPUSKKa9ytTGX31KpCL526N3b6+Tn06dHiccTwkNRNV9rsr8NQz1Bl5sFt66vcLBQ05KfUpV6x60Yts/nhVxuB1U8G7Ozs2ubMay1W0/5XNdLb7tnuC8EDDiXgWdJ3uU1CDPmoyRHvNZ9WxVfN+ky8CnRZaCPw6tOCnN05bmP+pNVnAaK+FwsAfYGrf2yCCwv6ONwBQVFac6y4t/xLSLN3UNPuiK7Q79/0Qf/miL7hmku/xa0RgAlvOqpnKqa9C8D566r3v8yKHM2ME11HFj6w7vy1ngrAv+3CPwLX7fg+GQATcgAAAAASUVORK5CYII="></div>
+  <div class="trait" id="trait-haut"></div>
   <div id="modules"></div>
   <div class="trait"></div>
   <div id="pied"></div>
 </div>
 
 <script>
-// --- Le vrai diapason (silhouette de l'icône du Dock : deux branches
-// évasées à pointes biseautées, U profond, tige galbée, bille). ----------
-const DIAPASON = '<svg width="22" height="27" viewBox="0 0 22 27" fill="none" '
-  + 'stroke="var(--logo)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
-  + '<path d="M5.6 2.4 L7.5 13.2 C7.5 16.2 8.9 17.6 11 17.6 C13.1 17.6 14.5 16.2 14.5 13.2 L16.4 2.4"/>'
-  + '<path d="M11 17.6 L11 21.3"/>'
-  + '<circle cx="11" cy="23.4" r="2.1" fill="var(--logo)" stroke="none"/>'
-  + '</svg>';
-document.getElementById('marque').innerHTML = DIAPASON;
-
 // --- Les modules, icônes lucide EXACTES (v0.576.0) de la barre latérale. -
 const MODULES = [
   {route:'/succes/dashboard', nom:'Tableau de bord', svg:'<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>'},
@@ -255,15 +239,13 @@ window.__diapHover = function(x, y){
   if (mod) mod.classList.add('survol');
 };
 
-// --- Thème : mêmes classes que l'app, relues du localStorage partagé. ----
-function appliquerTheme(){
+// --- Thème : l'app le POUSSE (les WKWebView natives ne partagent pas le
+// localStorage de la fenêtre Tauri, vérifié le 15 sept. 2026 : le rail
+// s'affichait en ardechine alors que l'app était en phosphor). Rust appelle
+// __diapSetTheme quand le thème change. Le localStorage sert juste de repli
+// avant la première poussée. -----------------------------------------------
+function poserTheme(theme, skin){
   const root = document.documentElement;
-  let theme = 'system', skin = 'phosphor';
-  try {
-    const s = JSON.parse(localStorage.getItem('diapason-settings') || '{}');
-    if (s && typeof s.theme === 'string') theme = s.theme;
-    if (s && typeof s.terminalSkin === 'string') skin = s.terminalSkin;
-  } catch (_) {}
   root.classList.remove('dark', 'light', 'terminal');
   delete root.dataset.terminalSkin;
   const sombreOS = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -271,17 +253,25 @@ function appliquerTheme(){
   else if (theme === 'light') root.classList.add('light');
   else if (theme === 'terminal'){
     root.classList.add(skin === 'ardechine' ? 'light' : 'dark', 'terminal');
-    root.dataset.terminalSkin = skin;
+    root.dataset.terminalSkin = skin || 'phosphor';
   } else {
     root.classList.add(sombreOS ? 'dark' : 'light'); // system
   }
 }
-appliquerTheme();
-// L'app change le thème (autre document, même origine) ou l'OS bascule.
-window.addEventListener('storage', (e) => {
-  if (e.key === 'diapason-settings' || e.key === null) appliquerTheme();
-});
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appliquerTheme);
+// Poussée depuis Rust (source de vérité).
+window.__diapSetTheme = poserTheme;
+// Repli : le localStorage de CETTE webview (peut être vide ou périmé).
+function themeDeRepli(){
+  let theme = 'system', skin = 'phosphor';
+  try {
+    const s = JSON.parse(localStorage.getItem('diapason-settings') || '{}');
+    if (s && typeof s.theme === 'string') theme = s.theme;
+    if (s && typeof s.terminalSkin === 'string') skin = s.terminalSkin;
+  } catch (_) {}
+  poserTheme(theme, skin);
+}
+themeDeRepli();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeDeRepli);
 </script>
 </body>
 </html>

@@ -105,6 +105,18 @@ export default function App() {
       root.dataset.terminalSkin = skin;
     }
     if (settings.theme !== 'terminal') delete root.dataset.terminalSkin;
+    // Pousser le thème à la réglette native : ses WKWebView ne partagent pas
+    // ce localStorage, elle ne peut pas le lire seule.
+    if (isTauri()) {
+      import('@tauri-apps/api/core')
+        .then(({ invoke }) =>
+          invoke('reglette_set_theme', {
+            theme: settings.theme,
+            skin: settings.terminalSkin ?? 'phosphor',
+          }),
+        )
+        .catch(() => {});
+    }
   }, [settings.theme, settings.terminalSkin]);
 
   useEffect(() => {
