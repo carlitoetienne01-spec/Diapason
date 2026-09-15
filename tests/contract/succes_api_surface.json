@@ -30,6 +30,7 @@
  "GET /v1/succes/habits",
  "GET /v1/succes/habits/logs",
  "GET /v1/succes/notes",
+ "GET /v1/succes/notes/categories",
  "GET /v1/succes/photo-piles/{pile_id}/photos",
  "GET /v1/succes/photos/{photo_id}/contenu",
  "GET /v1/succes/planner",
@@ -69,6 +70,7 @@
  "POST /v1/succes/habits/{habit_id}/log",
  "POST /v1/succes/import/legacy",
  "POST /v1/succes/notes",
+ "POST /v1/succes/notes/categories/renommer",
  "POST /v1/succes/photo-piles/{pile_id}/photos",
  "POST /v1/succes/photos/exporter",
  "POST /v1/succes/photos/{photo_id}/ocr",
@@ -90,6 +92,7 @@
  "POST /v1/succes/tasks/{task_id}/subtasks/{subtask_id}/done",
  "POST /v1/succes/templates",
  "POST /v1/succes/templates/materialize",
+ "PUT /v1/succes/notes/categories/ordre",
  "PUT /v1/succes/photo-piles/{pile_id}/ordre",
  "PUT /v1/succes/sync/relay"
 ]

@@ -194,6 +194,8 @@ class NoteCreate(BaseModel):
     color: str = "#6366f1"
     # La page où l'on s'est arrêté de lire. Zéro : aucun marqueur.
     readingMark: int = Field(default=0, ge=0, le=100_000)
+    category: str = Field(default="", max_length=60)
+    projectId: str = ""
     opId: str | None = None
 
 
@@ -211,6 +213,9 @@ class NotePatch(BaseModel):
     # `exclude_none` laisse passer 0 : effacer le marqueur est une action, et
     # elle doit pouvoir se dire. Seul `null` veut dire « ne touche pas ».
     readingMark: int | None = Field(default=None, ge=0, le=100_000)
+    # La chaîne vide se dit aussi : « sans catégorie », « sans projet ».
+    category: str | None = Field(default=None, max_length=60)
+    projectId: str | None = None
     opId: str | None = None
 
 
@@ -726,6 +731,32 @@ async def delete_habit(habit_id: str, body: DeleteBody) -> dict[str, Any]:
     except SuccesError as exc:
         raise _domain_error(exc) from exc
     return {"deleted": True, "id": habit_id, "persistence": "local"}
+
+
+class CategoriesOrdre(BaseModel):
+    names: list[str] = Field(max_length=200)
+
+
+class CategorieRenommage(BaseModel):
+    ancien: str = Field(min_length=1, max_length=60)
+    nouveau: str = Field(default="", max_length=60)
+
+
+@router.get("/notes/categories")
+def list_note_categories() -> dict[str, Any]:
+    """Les catégories vivantes, dans l'ordre choisi. Route synchrone : SQLite."""
+    return {"categories": _workspace_store().list_note_categories()}
+
+
+@router.put("/notes/categories/ordre")
+def order_note_categories(body: CategoriesOrdre) -> dict[str, Any]:
+    return {"categories": _workspace_store().order_note_categories(body.names)}
+
+
+@router.post("/notes/categories/renommer")
+def rename_note_category(body: CategorieRenommage) -> dict[str, Any]:
+    count = _workspace_store().rename_note_category(body.ancien, body.nouveau)
+    return {"renamed": count, "categories": _workspace_store().list_note_categories()}
 
 
 @router.get("/notes")

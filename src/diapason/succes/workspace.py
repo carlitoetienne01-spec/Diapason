@@ -83,10 +83,17 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     font_family TEXT NOT NULL DEFAULT 'Special Elite',
     doc_lang TEXT NOT NULL DEFAULT 'fr',
     color TEXT NOT NULL DEFAULT '#6366f1',
-    reading_mark INTEGER NOT NULL DEFAULT 0
+    reading_mark INTEGER NOT NULL DEFAULT 0,
+    category TEXT NOT NULL DEFAULT '',
+    project_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS succes_notes_active_idx
     ON succes_notes(deleted_at_ms, updated_at_ms DESC);
+CREATE TABLE IF NOT EXISTS succes_note_categories (
+    name TEXT PRIMARY KEY,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    updated_at_ms INTEGER NOT NULL DEFAULT 0
+);
 PRAGMA user_version = 3;
 """
 
@@ -236,6 +243,11 @@ class SuccesWorkspaceStore(SuccesStore):
             # dire « aucun marqueur », et c'est un défaut honnête — une note
             # jamais lue n'a pas de page 1 marquée, elle n'a rien.
             ("reading_mark", "INTEGER NOT NULL DEFAULT 0"),
+            # 15 septembre 2026 : le classement demandé par Carlito. Vide veut
+            # dire « sans catégorie » / « sans projet » — jamais NULL, pour
+            # que l'égalité SQL reste simple.
+            ("category", "TEXT NOT NULL DEFAULT ''"),
+            ("project_id", "TEXT NOT NULL DEFAULT ''"),
         )
         neuves = [name for name, _ in additions if name not in columns]
         for name, declaration in additions:
@@ -842,6 +854,38 @@ class SuccesWorkspaceStore(SuccesStore):
                 "UPDATE succes_projects SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                 (timestamp, timestamp, project_id),
             )
+            # Les notes rattachées redeviennent « sans projet » — supprimer un
+            # projet ne supprime jamais une note, et une pastille vers un
+            # projet mort serait un mensonge. Chaque note libérée est
+            # journalisée : la synchronisation doit la voir changer.
+            liberees = [
+                row["id"]
+                for row in conn.execute(
+                    """SELECT id FROM succes_notes
+                       WHERE deleted_at_ms IS NULL AND project_id=?""",
+                    (project_id,),
+                )
+            ]
+            for note_id in liberees:
+                conn.execute(
+                    """UPDATE succes_notes SET project_id='',updated_at_ms=?
+                       WHERE id=?""",
+                    (timestamp, note_id),
+                )
+                note = self._load_note(conn, note_id)
+                if note is not None:
+                    self._record_op(
+                        conn,
+                        entity="notes",
+                        entity_id=note_id,
+                        kind="upsert",
+                        payload=note,
+                        request={
+                            "action": "detach_note_project",
+                            "projectId": project_id,
+                        },
+                        timestamp_ms=timestamp,
+                    )
             self._record_op(
                 conn,
                 entity="projects",
@@ -1293,6 +1337,8 @@ class SuccesWorkspaceStore(SuccesStore):
             "readingMark": (
                 int(row["reading_mark"] or 0) if "reading_mark" in keys else 0
             ),
+            "category": row["category"] if "category" in keys else "",
+            "projectId": row["project_id"] if "project_id" in keys else "",
         }
 
     def _load_note(
@@ -1362,6 +1408,10 @@ class SuccesWorkspaceStore(SuccesStore):
             reading_mark = max(0, int(data.get("readingMark") or 0))
         except (TypeError, ValueError):
             reading_mark = 0
+        category = _clean_text(
+            data.get("category") or "", field="La catégorie", maximum=60
+        )
+        project_id = str(data.get("projectId") or "").strip()
         return {
             "pageFormat": page_format,
             "pageSize": page_size,
@@ -1372,6 +1422,8 @@ class SuccesWorkspaceStore(SuccesStore):
             "docLang": doc_lang,
             "color": _color(data.get("color")),
             "readingMark": reading_mark,
+            "category": category,
+            "projectId": project_id,
         }
 
     @classmethod
@@ -1408,8 +1460,9 @@ class SuccesWorkspaceStore(SuccesStore):
                 """INSERT INTO succes_notes
                    (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                     page_format,page_size,page_orientation,page_margins,
-                    page_background,font_family,doc_lang,color,reading_mark)
-                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)""",
+                    page_background,font_family,doc_lang,color,reading_mark,
+                    category,project_id)
+                   VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     note_id,
                     title,
@@ -1426,8 +1479,13 @@ class SuccesWorkspaceStore(SuccesStore):
                     meta["docLang"],
                     meta["color"],
                     meta["readingMark"],
+                    meta["category"],
+                    meta["projectId"],
                 ),
             )
+            pid = meta["projectId"]
+            if pid and self._load_project(conn, pid) is None:
+                raise SuccesError("Ce projet n'existe pas ou a été supprimé.")
             note = self._load_note(conn, note_id)
             assert note is not None
             self._record_op(
@@ -1460,7 +1518,8 @@ class SuccesWorkspaceStore(SuccesStore):
                 """UPDATE succes_notes SET title=?,content=?,updated_at=?,
                    updated_at_ms=?,page_format=?,page_size=?,page_orientation=?,
                    page_margins=?,page_background=?,font_family=?,
-                   doc_lang=?,color=?,reading_mark=? WHERE id=?""",
+                   doc_lang=?,color=?,reading_mark=?,category=?,project_id=?
+                   WHERE id=?""",
                 (
                     title,
                     content,
@@ -1475,9 +1534,14 @@ class SuccesWorkspaceStore(SuccesStore):
                     meta["docLang"],
                     meta["color"],
                     meta["readingMark"],
+                    meta["category"],
+                    meta["projectId"],
                     note_id,
                 ),
             )
+            pid = meta["projectId"]
+            if pid and self._load_project(conn, pid) is None:
+                raise SuccesError("Ce projet n'existe pas ou a été supprimé.")
             note = self._load_note(conn, note_id)
             assert note is not None
             self._record_op(
@@ -1491,6 +1555,111 @@ class SuccesWorkspaceStore(SuccesStore):
                 op_id=op_id,
             )
             return note
+
+    def list_note_categories(self) -> list[str]:
+        """Les catégories vivantes, dans l'ordre choisi par l'utilisateur.
+
+        Une catégorie EXISTE tant qu'une note vivante la porte — il n'y a pas
+        d'état séparé à entretenir, donc pas d'orphelines. La table ne garde
+        que l'ORDRE ; ses lignes mortes sont élaguées au passage, et une
+        catégorie apparue depuis (note importée, synchronisée) se range à la
+        fin, par ordre alphabétique.
+        """
+        with self._transaction() as conn:
+            vivantes = {
+                str(row["category"])
+                for row in conn.execute(
+                    """SELECT DISTINCT category FROM succes_notes
+                       WHERE deleted_at_ms IS NULL AND category != ''"""
+                )
+            }
+            ordonnees = [
+                str(row["name"])
+                for row in conn.execute(
+                    "SELECT name FROM succes_note_categories ORDER BY order_index"
+                )
+            ]
+            for morte in [n for n in ordonnees if n not in vivantes]:
+                conn.execute(
+                    "DELETE FROM succes_note_categories WHERE name=?", (morte,)
+                )
+            gardees = [n for n in ordonnees if n in vivantes]
+            return gardees + sorted(vivantes - set(gardees))
+
+    def order_note_categories(self, names: list[str]) -> list[str]:
+        """Mémorise l'ordre des sections — celui du glisser de Carlito."""
+        propres: list[str] = []
+        for name in names:
+            nom = _clean_text(name, field="La catégorie", maximum=60)
+            if nom and nom not in propres:
+                propres.append(nom)
+        timestamp = now_ms()
+        with self._transaction() as conn:
+            for index, nom in enumerate(propres):
+                conn.execute(
+                    """INSERT INTO succes_note_categories
+                       (name,order_index,updated_at_ms)
+                       VALUES (?,?,?)
+                       ON CONFLICT(name) DO UPDATE
+                       SET order_index=excluded.order_index,
+                           updated_at_ms=excluded.updated_at_ms""",
+                    (nom, index, timestamp),
+                )
+        return self.list_note_categories()
+
+    def rename_note_category(self, ancien: str, nouveau: str) -> int:
+        """Renomme (ou dissout, si `nouveau` est vide) une catégorie entière.
+
+        Chaque note touchée est journalisée une à une : la synchronisation ne
+        connaît que des notes, pas des catégories.
+        """
+        ancien_nom = _clean_text(ancien, field="La catégorie", maximum=60)
+        nouveau_nom = _clean_text(nouveau or "", field="La catégorie", maximum=60)
+        if not ancien_nom:
+            raise SuccesError("La catégorie à renommer est obligatoire.")
+        timestamp = now_ms()
+        with self._transaction() as conn:
+            notes = [
+                row["id"]
+                for row in conn.execute(
+                    """SELECT id FROM succes_notes
+                       WHERE deleted_at_ms IS NULL AND category=?""",
+                    (ancien_nom,),
+                )
+            ]
+            for note_id in notes:
+                conn.execute(
+                    """UPDATE succes_notes SET category=?,updated_at_ms=?
+                       WHERE id=?""",
+                    (nouveau_nom, timestamp, note_id),
+                )
+                note = self._load_note(conn, note_id)
+                if note is not None:
+                    self._record_op(
+                        conn,
+                        entity="notes",
+                        entity_id=note_id,
+                        kind="upsert",
+                        payload=note,
+                        request={
+                            "action": "rename_note_category",
+                            "from": ancien_nom,
+                            "to": nouveau_nom,
+                        },
+                        timestamp_ms=timestamp,
+                    )
+            # L'ordre suit le nom ; une dissolution retire la ligne.
+            if nouveau_nom:
+                conn.execute(
+                    """UPDATE OR REPLACE succes_note_categories SET name=?
+                       WHERE name=?""",
+                    (nouveau_nom, ancien_nom),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM succes_note_categories WHERE name=?", (ancien_nom,)
+                )
+        return len(notes)
 
     def delete_note(self, note_id: str, *, op_id: str | None = None) -> None:
         note = self.get_note(note_id)
