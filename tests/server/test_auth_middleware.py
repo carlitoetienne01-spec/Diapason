@@ -67,6 +67,10 @@ def _make_app(
     async def succes_sync_exchange():
         return {"ok": True}
 
+    @app.post("/v1/chat/completions")
+    async def chat_completions():
+        return {"ok": True}
+
     return app
 
 
@@ -153,6 +157,29 @@ class TestAuthMiddleware:
         assert client.get("/v1/models", headers=headers).status_code == 429
         assert client.get("/v1/succes/projects", headers=headers).status_code != 429
         assert client.get("/v1/succes/projects").status_code == 401
+
+    def test_le_chat_est_authentifie_mais_jamais_limite(self):
+        """§82/§100 — le mini-panneau de la réglette est une 2e instance du
+        bundle (même adresse, même clé, même seau) : sa rafale de démarrage
+        vidait le seau commun et le message tapé rebondissait « 429 » en 8 ms
+        (16 sept. 2026). La conversation ne doit jamais être limitée ; elle
+        reste derrière le mur de la clé."""
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=1, burst_size=1)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+
+        # Le seau partagé est vidé par une autre route…
+        assert client.get("/v1/models", headers=headers).status_code == 200
+        assert client.get("/v1/models", headers=headers).status_code == 429
+        # … et la conversation passe quand même, mais jamais sans la clé.
+        reponse = client.post("/v1/chat/completions", headers=headers)
+        assert reponse.status_code != 429, (
+            "le message tapé ne doit pas rebondir sur le limiteur"
+        )
+        assert client.post("/v1/chat/completions").status_code == 401, (
+            "sans clé, le mur d'authentification doit rester fermé"
+        )
 
     def test_succes_sync_pair_and_exchange_skip_api_key(self, client):
         assert client.post("/v1/succes/sync/pair").status_code == 200

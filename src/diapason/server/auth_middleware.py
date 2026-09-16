@@ -289,6 +289,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # and unthrottled. Those keep their bucket.
         if path.startswith("/v1/succes") and not path.startswith("/v1/succes/sync/"):
             return await call_next(request)
+        # La conversation elle-même. La fenêtre principale et le mini-panneau
+        # de la réglette sont DEUX instances du bundle — même adresse, même
+        # clé, donc MÊME seau : à l'ouverture du panneau, sa rafale de
+        # démarrage (modèles, infos serveur, santé, économies) vidait le seau
+        # commun (60/min, rafale 10) et le message que l'utilisateur venait de
+        # taper rebondissait « 429 » en 8 ms (constaté le 16 sept. 2026).
+        # Une frappe humaine n'est jamais une rafale ; la route reste derrière
+        # le mur de la clé, et le vrai goulot est le créneau unique d'Ollama.
+        if path == "/v1/chat/completions":
+            return await call_next(request)
         if path == "/v1/voice/live/health":
             return await call_next(request)
         # Same shape, same reason, for the two mesh surfaces the local UI
