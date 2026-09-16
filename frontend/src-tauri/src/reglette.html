@@ -342,46 +342,10 @@ window.__diapAimant = function(t){
   document.documentElement.style.setProperty('--aimant', String(t));
 };
 
-// Le « la » du diapason : un 440 Hz très doux à l'éclosion. Désactivable au
-// clic droit sur l'onglet (mémorisé dans ce localStorage). WebAudio pur —
-// aucun fichier embarqué.
-let contexteLa = null;
-function jouerLa(){
-  try {
-    if (localStorage.getItem('diapason-reglette-son') === 'off') return;
-    contexteLa = contexteLa || new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = contexteLa;
-    if (ctx.state === 'suspended') void ctx.resume();
-    const t0 = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(0.035, t0 + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
-    gain.connect(ctx.destination);
-    // Le fondamental et un 2e partiel léger : le timbre d'un diapason.
-    for (const [freq, part] of [[440, 1], [880, 0.18]]){
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const g = ctx.createGain();
-      g.gain.value = part;
-      osc.connect(g); g.connect(gain);
-      osc.start(t0); osc.stop(t0 + 1.2);
-    }
-  } catch (_) {}
-}
-let dernierLa = 0;
+// À la fermeture (classe retirée par Rust), la capsule se range.
 new MutationObserver(() => {
-  const ouvert = document.body.classList.contains('ouvert');
-  if (ouvert && Date.now() - dernierLa > 1500){ dernierLa = Date.now(); jouerLa(); }
-  if (!ouvert){ poserCapsule(null); }
+  if (!document.body.classList.contains('ouvert')) poserCapsule(null);
 }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
-document.getElementById('panneau').addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  const off = localStorage.getItem('diapason-reglette-son') === 'off';
-  localStorage.setItem('diapason-reglette-son', off ? 'on' : 'off');
-  if (off) jouerLa(); // on vient de le rallumer : petit accusé sonore
-});
 
 // --- Thème : l'app le POUSSE (les WKWebView natives ne partagent pas le
 // localStorage de la fenêtre Tauri, vérifié le 15 sept. 2026 : le rail

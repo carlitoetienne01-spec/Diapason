@@ -4495,9 +4495,6 @@ mod native_reglette {
         // WKWebView + gestionnaire de messages.
         let cfg: *mut Object = msg_send![class!(WKWebViewConfiguration), alloc];
         let cfg: *mut Object = msg_send![cfg, init];
-        // WKAudiovisualMediaTypeNone = 0 : le « la » du diapason (WebAudio)
-        // doit pouvoir sonner à l'éclosion, sans geste utilisateur préalable.
-        let _: () = msg_send![cfg, setMediaTypesRequiringUserActionForPlayback: 0u64];
         let hcls = Class::get("DiapasonRegletteMsg").unwrap();
         let handler: *mut Object = msg_send![hcls, alloc];
         let handler: *mut Object = msg_send![handler, init];
