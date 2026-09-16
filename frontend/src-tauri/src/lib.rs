@@ -4483,8 +4483,14 @@ mod native_reglette {
             defer: NO
         ];
         let _: () = msg_send![panel, setLevel: 3_i64];
-        // canJoinAllSpaces (1) | fullScreenAuxiliary (1<<8) = 257.
-        let _: () = msg_send![panel, setCollectionBehavior: 257_u64];
+        // canJoinAllSpaces (1) | stationary (1<<4) | ignoresCycle (1<<6) |
+        // fullScreenAuxiliary (1<<8) = 337. Sans `stationary`, l'onglet
+        // PARTICIPAIT à l'animation du balayage à trois doigts : il
+        // disparaissait puis réapparaissait à chaque changement de bureau
+        // (retour de Carlito, 16 sept. 2026). `stationary` le cloue à
+        // l'écran pendant que les Spaces glissent dessous ; `ignoresCycle`
+        // le tient hors du Cmd+`.
+        let _: () = msg_send![panel, setCollectionBehavior: 337_u64];
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setOpaque: NO];
         let _: () = msg_send![panel, setHasShadow: NO];
@@ -5032,7 +5038,10 @@ mod native_reglette {
             defer: NO
         ];
         let _: () = msg_send![panel, setLevel: 3_i64];
-        let _: () = msg_send![panel, setCollectionBehavior: 257_u64];
+        // 337 : mêmes drapeaux que l'onglet — sans `stationary`, le module
+        // ouvert disparaissait/réapparaissait au balayage à trois doigts au
+        // lieu de rester cloué (16 sept. 2026).
+        let _: () = msg_send![panel, setCollectionBehavior: 337_u64];
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setReleasedWhenClosed: NO];
         let _: () = msg_send![panel, setHasShadow: YES];
