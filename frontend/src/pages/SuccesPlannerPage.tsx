@@ -68,9 +68,13 @@ function AnalogClock() {
   const minuteAngle = minutes * 6 + seconds * 0.1;
   const secondAngle = seconds * 6;
 
+  // Sous sm, le cadran (176 px) est caché : l'heure vit déjà dans la barre
+  // système du Mac, et il coûtait un tiers d'un panneau de 620 px. Reste
+  // une ligne — l'heure et la date côte à côte (16 sept. 2026, audit du
+  // mini-panneau).
   return (
     <div className="flex flex-col items-center gap-3">
-      <svg viewBox="0 0 200 200" className="w-44 h-44" aria-hidden="true">
+      <svg viewBox="0 0 200 200" className="hidden sm:block w-44 h-44" aria-hidden="true">
         <defs>
           <linearGradient id="clockFace" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgba(255,255,255,0.14)" />
@@ -92,11 +96,11 @@ function AnalogClock() {
         <circle cx="100" cy="100" r="5" fill="var(--color-text)" />
         <circle cx="100" cy="100" r="2.4" fill="var(--color-accent)" />
       </svg>
-      <div className="text-center">
-        <p className="text-2xl font-semibold tabular-nums" style={{ color: 'var(--color-text)' }}>
+      <div className="flex items-baseline gap-3 min-w-0 max-w-full sm:block sm:text-center">
+        <p className="text-lg sm:text-2xl font-semibold tabular-nums shrink-0" style={{ color: 'var(--color-text)' }}>
           {now.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}
         </p>
-        <p className="text-xs mt-1 capitalize" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-xs sm:mt-1 capitalize truncate" style={{ color: 'var(--color-text-tertiary)' }}>
           {now.toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
@@ -344,9 +348,9 @@ export function SuccesPlannerPage() {
             : 'Cette journée est libre';
 
   return (
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
-        <header className="mb-7">
+        <header className="mb-4 sm:mb-7">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
               Succès
@@ -356,25 +360,33 @@ export function SuccesPlannerPage() {
           <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
             Planificateur
           </h1>
-          <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
             Une vue calme de votre journée, privée et disponible hors ligne.
           </p>
         </header>
 
-        <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-          {/* Left column: clock + quote + calendar */}
-          <aside className="grid gap-4 content-start">
+        <div className="grid gap-4 lg:gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+          {/* Left column: clock + quote + calendar.
+              Sous lg (donc toujours dans le mini-panneau), cette colonne
+              passait AVANT les tâches : ~700 px de décor — horloge, citation,
+              calendrier — dans un panneau de 620 px, et la première tâche du
+              jour hors champ. Les tâches d'abord, le décor ensuite
+              (16 sept. 2026, audit du mini-panneau). */}
+          <aside className="order-2 lg:order-none grid gap-4 content-start">
             <CadreVitre as="section"
-              className="rounded-2xl p-5"
+              className="rounded-2xl p-3 sm:p-5"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
               <AnalogClock />
             </CadreVitre>
 
             {/* Rendered even with nothing saved yet: hiding the card would hide
-                the only way to open the quote library. */}
+                the only way to open the quote library. Sous sm, la citation
+                tient sur une ligne tronquée et l'auteur disparaît — la carte
+                reste, le texte entier se lit dans la bibliothèque (16 sept.
+                2026, audit du mini-panneau). */}
             <CadreVitre as="section"
-              className="group rounded-2xl px-4 py-4"
+              className="group rounded-2xl px-4 py-3 sm:py-4"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               aria-label="Les mots du jour"
             >
@@ -383,25 +395,28 @@ export function SuccesPlannerPage() {
                 <div className="min-w-0 flex-1">
                   {displayQuote ? (
                     <>
-                      <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text)' }}>
+                      <p className="text-sm leading-relaxed max-sm:truncate" style={{ color: 'var(--color-text)' }} title={displayQuote.text}>
                         « {displayQuote.text} »
                       </p>
                       {displayQuote.author && (
-                        <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                        <p className="hidden sm:block text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
                           — {displayQuote.author}
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <p className="text-sm truncate" style={{ color: 'var(--color-text-tertiary)' }}>
                       Aucun mot du jour pour l’instant.
                     </p>
                   )}
                 </div>
+                {/* Le « + » n'apparaissait qu'au survol : dans le NSPanel non
+                    activant, le survol n'arrive pas — le bouton restait à 30 %
+                    pour toujours, seul accès à la bibliothèque (§82). */}
                 <button
                   type="button"
                   onClick={() => setQuoteModalOpen(true)}
-                  className="shrink-0 size-6 rounded-lg flex items-center justify-center cursor-pointer transition-opacity opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
+                  className="shrink-0 size-6 rounded-lg flex items-center justify-center cursor-pointer transition-opacity max-sm:opacity-100 compact:opacity-100 opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
                   style={{ color: 'var(--color-text-tertiary)' }}
                   title="Mots du jour"
                   aria-label="Ouvrir les mots du jour"
@@ -645,16 +660,16 @@ export function SuccesPlannerPage() {
             </CadreVitre>
           </aside>
 
-          {/* Right column: filters + tasks */}
-          <section className="min-w-0 grid gap-4 content-start">
+          {/* Right column: filters + tasks — first under lg, see the aside. */}
+          <section className="order-1 lg:order-none min-w-0 grid gap-4 content-start">
             <CadreVitre
               className="rounded-2xl p-4"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <CalendarCheck2 size={20} style={{ color: 'var(--color-accent)' }} />
-                <div>
-                  <p className="font-medium capitalize" style={{ color: 'var(--color-text)' }}>
+                <CalendarCheck2 size={20} className="shrink-0" style={{ color: 'var(--color-accent)' }} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium capitalize truncate" style={{ color: 'var(--color-text)' }}>
                     {new Intl.DateTimeFormat('fr-CA', {
                       weekday: 'long',
                       day: 'numeric',
@@ -662,9 +677,44 @@ export function SuccesPlannerPage() {
                       year: 'numeric',
                     }).format(analyserIso(selectedDate))}
                   </p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <p className="hidden sm:block text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {selectedDate}
                   </p>
+                </div>
+                {/* Sous lg, le mini-calendrier — seul moyen de changer de jour —
+                    passe APRÈS les tâches (les tâches d'abord) : un jour chargé
+                    le renvoyait à quinze cartes de défilement. Les chevrons
+                    rendent le jour d'avant et d'après à portée de pouce
+                    (revue du 16 sept. 2026). */}
+                <div className="flex items-center gap-1 shrink-0 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = analyserIso(selectedDate);
+                      date.setDate(date.getDate() - 1);
+                      selectDay(dateIsoLocale(date));
+                    }}
+                    className="size-8 rounded-lg flex items-center justify-center cursor-pointer"
+                    style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
+                    aria-label="Jour précédent"
+                    title="Jour précédent"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = analyserIso(selectedDate);
+                      date.setDate(date.getDate() + 1);
+                      selectDay(dateIsoLocale(date));
+                    }}
+                    className="size-8 rounded-lg flex items-center justify-center cursor-pointer"
+                    style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
+                    aria-label="Jour suivant"
+                    title="Jour suivant"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -732,20 +782,22 @@ export function SuccesPlannerPage() {
                 type="button"
                 disabled={!quickTitle.trim() || saving}
                 onClick={() => void createQuickTask()}
-                className="px-4 rounded-xl text-sm font-medium flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="px-3 sm:px-4 rounded-xl text-sm font-medium flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 style={{ background: 'var(--color-accent)', color: '#fff' }}
+                aria-label="Ajouter la tâche"
+                title="Ajouter la tâche"
               >
-                <CirclePlus size={16} /> Ajouter
+                <CirclePlus size={16} /> <span className="hidden sm:inline">Ajouter</span>
               </button>
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+              <div className="flex items-center justify-center gap-2 py-10 sm:py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                 <Loader2 size={17} className="animate-spin" /> Chargement du plan…
               </div>
             ) : !visibleTasks.length ? (
               <CadreVitre
-                className="rounded-2xl py-16 text-center"
+                className="rounded-2xl px-4 py-8 sm:py-16 text-center"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
                 <p className="font-medium" style={{ color: 'var(--color-text)' }}>{emptyCopy}</p>

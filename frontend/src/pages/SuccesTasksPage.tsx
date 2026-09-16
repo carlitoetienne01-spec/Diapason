@@ -1,6 +1,6 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CirclePlus, HardDrive, Loader2, Search } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CirclePlus, HardDrive, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -57,6 +57,7 @@ export function SuccesTasksPage() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadTasksViewMode('week'));
   const [boardAnchor, setBoardAnchor] = useState(localIsoDate);
   const [showCreate, setShowCreate] = useState(false);
+  const [recurrencesOuvertes, setRecurrencesOuvertes] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -145,6 +146,9 @@ export function SuccesTasksPage() {
     setCategory('');
     setEmoji('');
     setShowCreate(false);
+    // Sinon la prochaine ouverture naît avec les 800 lignes de récurrences
+    // déjà dépliées — l'inverse du repli voulu (revue du 16 sept. 2026).
+    setRecurrencesOuvertes(false);
   };
 
   const toggleTask = async (task: SuccesTask) => {
@@ -275,6 +279,9 @@ export function SuccesTasksPage() {
       if (!confirmed) return;
     }
     setShowCreate(false);
+    // Sinon la prochaine ouverture naît avec les 800 lignes de récurrences
+    // déjà dépliées — l'inverse du repli voulu (revue du 16 sept. 2026).
+    setRecurrencesOuvertes(false);
   };
 
   // Les jalons des projets structurés (parcours, anglais) ne remplissent
@@ -297,16 +304,20 @@ export function SuccesTasksPage() {
   });
 
   return (
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    // Dans le mini-panneau (620 px de haut, 380 au minimum), 32 px de padding
+    // haut, un sous-titre sur trois lignes et 28 px de marge consommaient
+    // ~150 px avant la première tâche (audit du 16 sept. 2026). Sous sm, on
+    // condense ; les préfixes sm:/md: rendent l'aération à la fenêtre pleine.
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className={`mx-auto w-full ${viewMode === 'list' ? 'max-w-5xl' : 'max-w-7xl'}`}>
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
+        <header className="flex flex-col gap-3 sm:gap-5 md:flex-row md:items-end md:justify-between mb-4 sm:mb-7">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
               {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Tâches</h1>
-            <p className="text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
+            <h1 className="text-xl sm:text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Tâches</h1>
+            <p className="hidden sm:block text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
               Organisez vos actions et leurs étapes. DIA peut les gérer avec vous, sans envoyer vos données hors du Mac.
             </p>
           </div>
@@ -341,52 +352,66 @@ export function SuccesTasksPage() {
                 </button>
               ))}
             </CadreVitre>
+            {/* À 340 px, « Nouvelle tâche » (~150 px) faisait passer la rangée
+                tablist + bouton sur deux lignes ; l'icône seule tient à côté
+                des trois onglets (16 sept. 2026). */}
             <button
               type="button"
               onClick={() => setShowCreate((value) => !value)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer"
               style={{ background: 'var(--color-accent)', color: '#fff' }}
+              aria-label="Nouvelle tâche"
+              aria-expanded={showCreate}
             >
-              <CirclePlus size={16} /> Nouvelle tâche
+              <CirclePlus size={16} /> <span className="hidden sm:inline">Nouvelle tâche</span>
             </button>
           </div>
         </header>
 
+        {/* Trois rangées empilées sous md (~120 px) pour une recherche, une
+            case et un filtre : on passe à deux — la recherche seule, puis la
+            case et le filtre côte à côte. `sm:contents` efface le wrapper dès
+            que le panneau s'élargit et rend la rangée unique (16 sept. 2026). */}
         <CadreVitre as="section"
-          className="flex flex-col md:flex-row md:items-center gap-3 rounded-2xl p-3 mb-4"
+          className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-2xl p-3 mb-4"
           style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
         >
-          <div className="flex-1 flex items-center gap-2 px-2">
-            <Search size={15} style={{ color: 'var(--color-text-tertiary)' }} />
+          <div className="flex-1 min-w-0 flex items-center gap-2 px-2">
+            <Search size={15} className="shrink-0" style={{ color: 'var(--color-text-tertiary)' }} />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Rechercher une tâche…"
-              className="w-full bg-transparent outline-none text-sm"
+              className="w-full min-w-0 bg-transparent outline-none text-sm"
               style={{ color: 'var(--color-text)' }}
             />
           </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer px-2" style={{ color: 'var(--color-text-secondary)' }}>
-            <input type="checkbox" checked={includeDone} onChange={(event) => setIncludeDone(event.target.checked)} />
-            Afficher les tâches terminées
-          </label>
-          <select
-            value={projectFilter}
-            onChange={(event) => setProjectFilter(event.target.value)}
-            className="rounded-xl px-3 py-2 text-xs bg-transparent outline-none cursor-pointer"
-            style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
-            aria-label="Filtrer par projet"
-          >
-            <option value="">Tous les projets</option>
-            <option value="__none__">Sans projet</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between gap-2 min-w-0 sm:contents">
+            <label className="flex items-center gap-2 text-xs cursor-pointer px-2 shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+              <input type="checkbox" checked={includeDone} onChange={(event) => setIncludeDone(event.target.checked)} />
+              <span className="sm:hidden">Terminées</span>
+              <span className="hidden sm:inline">Afficher les tâches terminées</span>
+            </label>
+            <select
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
+              className="min-w-0 max-w-[60%] sm:max-w-none rounded-xl px-3 py-2 text-xs bg-transparent outline-none cursor-pointer"
+              style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+              aria-label="Filtrer par projet"
+            >
+              <option value="">Tous les projets</option>
+              <option value="__none__">Sans projet</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </div>
         </CadreVitre>
 
+        {/* Diagnostic secondaire : dans le mini-panneau il prenait une rangée
+            entière au-dessus des tâches ; il revient avec la largeur. */}
         {syncStatus && (
-          <div className="flex items-start gap-2 mb-5 px-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+          <div className="hidden sm:flex items-start gap-2 mb-5 px-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             <HardDrive size={14} className="mt-0.5 shrink-0" />
             <span>{syncStatus.message} Journal local : {syncStatus.localCursor} opération(s).</span>
           </div>
@@ -418,26 +443,34 @@ export function SuccesTasksPage() {
                 style={{ color: 'var(--color-text)' }}
               />
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Quatre champs empilés sous sm faisaient un formulaire de ~250 px
+                dans un panneau de 620 ; par paires (date+heure, priorité+projet)
+                chaque champ garde ~130 px à 340 px — assez (16 sept. 2026).
+                `min-w-0` : un <input type=date> WebKit a une largeur
+                intrinsèque qui, sinon, déborde la colonne. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <input
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
-                className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+                className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
                 style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                aria-label="Date"
               />
               <input
                 type="time"
                 value={time}
                 onChange={(event) => setTime(event.target.value)}
-                className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+                className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
                 style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                aria-label="Heure"
               />
               <select
                 value={priority}
                 onChange={(event) => setPriority(event.target.value as SuccesPriority)}
-                className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+                className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
                 style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                aria-label="Priorité"
               >
                 <option value="low">Priorité basse</option>
                 <option value="medium">Priorité normale</option>
@@ -447,8 +480,9 @@ export function SuccesTasksPage() {
               <select
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
-                className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+                className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
                 style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                aria-label="Projet"
               >
                 <option value="">Sans projet</option>
                 {projects.map((project) => (
@@ -477,7 +511,26 @@ export function SuccesTasksPage() {
               <button type="button" onClick={() => void cancelCreate()} className="px-3 py-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>Annuler</button>
               <button type="button" disabled={!title.trim() || saving} onClick={() => void handleCreate()} className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>Enregistrer localement</button>
             </div>
-            <RecurrencesPanel kind="task" embedded />
+            {/* Le panneau des récurrences (798 lignes, ses propres grilles)
+                doublait la hauteur du formulaire dans le mini-panneau, sous
+                le bouton Enregistrer — on le replie sous sm derrière un
+                bouton ; la largeur pleine le montre toujours (16 sept. 2026). */}
+            <button
+              type="button"
+              onClick={() => setRecurrencesOuvertes((value) => !value)}
+              className="sm:hidden flex items-center gap-1.5 text-xs cursor-pointer text-left"
+              style={{ color: 'var(--color-text-tertiary)' }}
+              aria-expanded={recurrencesOuvertes}
+            >
+              <ChevronRight
+                size={13}
+                style={{ transform: recurrencesOuvertes ? 'rotate(90deg)' : 'none', transition: 'transform 160ms ease' }}
+              />
+              Récurrences…
+            </button>
+            <div className={`${recurrencesOuvertes ? '' : 'hidden'} sm:block`}>
+              <RecurrencesPanel kind="task" embedded />
+            </div>
           </CadreVitre>
         )}
 
@@ -504,7 +557,9 @@ export function SuccesTasksPage() {
                 {projet.name} · {total}
               </button>
             ))}
-            <span className="text-[11px] flex-1 min-w-[12rem]" style={{ color: 'var(--color-text-tertiary)' }}>
+            {/* `min-w-[12rem]` forçait un retour à la ligne entier en étroit ;
+                l'information reste dans le `title` des chips (16 sept. 2026). */}
+            <span className="hidden sm:inline text-[11px] flex-1 min-w-[12rem]" style={{ color: 'var(--color-text-tertiary)' }}>
               Ces étapes attendent dans Projets. Donnez-en une à une date pour la voir ici.
             </span>
           </CadreVitre>

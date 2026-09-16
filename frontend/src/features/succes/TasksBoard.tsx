@@ -1,6 +1,7 @@
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { libelleIntervalle } from './libelleSemaine';
 import type { SuccesSubtask, SuccesTask } from './types';
 
 export type BoardMode = 'week' | 'month';
@@ -54,7 +55,17 @@ const DAY_LABELS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 const MIME = 'application/x-diapason-task';
 /** Day cells keep a constant height; extra tasks are reachable via the footer count. */
 const MAX_VISIBLE_TASKS = 2;
-const DAY_CELL_HEIGHT = 200;
+/**
+ * La hauteur fixe (200 px) aligne les colonnes d'une même rangée. En une
+ * seule colonne — la Semaine sous sm — cette raison disparaît, et sept
+ * cellules de 200 px faisaient ~1 450 px de défilement pour des jours vides
+ * (audit du mini-panneau, 16 sept. 2026). `souple` laisse la cellule
+ * retomber à son contenu tant que la grille n'a qu'une colonne.
+ */
+const HAUTEUR_CELLULE = {
+  fixe: 'h-[200px]',
+  souple: 'min-h-24 sm:h-[200px]',
+} as const;
 
 function sortColumn(tasks: SuccesTask[]) {
   return [...tasks].sort((left, right) => {
@@ -396,6 +407,7 @@ function DayColumn({
   onQuickAdd,
   onOpenDay,
   dimmed,
+  hauteur = 'fixe',
 }: {
   date: string;
   today: string;
@@ -405,6 +417,7 @@ function DayColumn({
   onQuickAdd: (date: string) => void;
   onOpenDay: (date: string) => void;
   dimmed?: boolean;
+  hauteur?: keyof typeof HAUTEUR_CELLULE;
 }) {
   const [over, setOver] = useState(false);
   const weekday = (parseIso(date).getDay() + 6) % 7;
@@ -427,15 +440,13 @@ function DayColumn({
         const id = event.dataTransfer.getData(MIME) || event.dataTransfer.getData('text/plain');
         if (id) onDropTask(id, date);
       }}
-      className="min-w-0 rounded-2xl p-2.5 flex flex-col gap-2 overflow-hidden"
+      className={`min-w-0 rounded-2xl p-2.5 flex flex-col gap-2 overflow-hidden ${HAUTEUR_CELLULE[hauteur]}`}
       style={{
         background: over
           ? 'color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-secondary))'
           : 'var(--color-bg-secondary)',
         border: `1px solid ${over ? 'var(--color-accent)' : isToday ? 'color-mix(in srgb, var(--color-accent) 55%, var(--color-border))' : 'var(--color-border)'}`,
         opacity: dimmed ? 0.55 : 1,
-        // Fixed height so every day cell stays identical whatever it contains.
-        height: DAY_CELL_HEIGHT,
       }}
     >
       <header className="flex items-center gap-1">
@@ -487,6 +498,106 @@ function DayColumn({
         </button>
       )}
     </CadreVitre>
+  );
+}
+
+/**
+ * Le mois en étroit. Sous sm, la grille de DayColumn tombait à deux colonnes :
+ * 28 à 42 cellules de 200 px, soit 3 000 à 4 200 px de défilement dans un
+ * panneau de 620 px — inutilisable, et la source probable des retours
+ * « n'importe où, en bas » (audit du mini-panneau, 16 sept. 2026). On rend
+ * la forme du mini-calendrier du Planificateur : sept cases carrées par
+ * rangée, une pastille de compte, et le tap ouvre le DayTasksModal existant —
+ * le mois reste atteignable (§82), et une case reste une cible de dépôt.
+ */
+function MoisCompact({
+  days,
+  month,
+  today,
+  byDate,
+  onOpenDay,
+  onDropTask,
+}: {
+  days: string[];
+  month: number;
+  today: string;
+  byDate: Map<string, SuccesTask[]>;
+  onOpenDay: (date: string) => void;
+  onDropTask: (taskId: string, date: string) => void;
+}) {
+  const [cible, setCible] = useState<string | null>(null);
+
+  return (
+    <div className="sm:hidden">
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DAY_LABELS.map((label) => (
+          <div key={label} className="text-center text-[10px] py-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            {label}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((date) => {
+          const dansLeMois = parseIso(date).getMonth() === month;
+          const isToday = date === today;
+          const tasks = byDate.get(date) ?? [];
+          const ouvertes = tasks.filter((task) => !task.done).length;
+          const enRetard = ouvertes > 0 && date < today;
+          return (
+            <button
+              key={date}
+              type="button"
+              onClick={() => onOpenDay(date)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setCible(date);
+              }}
+              onDragLeave={() => setCible((current) => (current === date ? null : current))}
+              onDrop={(event) => {
+                event.preventDefault();
+                setCible(null);
+                const id = event.dataTransfer.getData(MIME) || event.dataTransfer.getData('text/plain');
+                if (id) onDropTask(id, date);
+              }}
+              className="relative aspect-square min-w-0 rounded-lg text-xs font-medium cursor-pointer flex flex-col items-center justify-center gap-0.5"
+              style={{
+                color: !dansLeMois ? 'var(--color-text-tertiary)' : isToday ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                background: cible === date
+                  ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)'
+                  : 'var(--color-bg-secondary)',
+                boxShadow: isToday ? 'inset 0 0 0 1px var(--color-accent)' : undefined,
+                opacity: dansLeMois ? 1 : 0.45,
+              }}
+              aria-label={`${formatDayTitle(date)} — ${tasks.length} tâche${tasks.length > 1 ? 's' : ''}`}
+              aria-current={isToday ? 'date' : undefined}
+              title={`Voir les tâches du ${date}`}
+            >
+              <span className="leading-none">{date.slice(8)}</span>
+              {tasks.length > 0 && (
+                <span
+                  className="min-w-4 px-1 rounded-full text-[9px] leading-4 font-semibold"
+                  // Jamais de blanc en dur : sur l'accent cyan du thème sombre
+                  // il faisait 1,8:1, et sur le gris d'un jour soldé 2,6:1
+                  // (revue du 16 sept. 2026). L'encre « sur accent » de chaque
+                  // palette, et un jour soldé en surface tertiaire + encre
+                  // secondaire.
+                  style={
+                    enRetard
+                      ? { color: 'var(--color-on-accent)', background: 'var(--color-error)' }
+                      : ouvertes > 0
+                        ? { color: 'var(--color-on-accent)', background: 'var(--color-accent)' }
+                        : { color: 'var(--color-text-secondary)', background: 'var(--color-bg-tertiary)' }
+                  }
+                >
+                  {ouvertes > 0 ? ouvertes : tasks.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -631,9 +742,17 @@ export function TasksBoard({
     [tasks],
   );
 
+  // « Semaine du 2026-09-14 – 2026-09-20 » : 33 caractères serrés entre deux
+  // chevrons à 340 px. La date humaine tient partout ; le préfixe revient
+  // avec la largeur (16 sept. 2026).
   const heading =
     mode === 'week'
-      ? `Semaine du ${weekDays[0]} – ${weekDays[6]}`
+      ? (
+        <>
+          <span className="hidden sm:inline">Semaine du </span>
+          {libelleIntervalle(weekDays[0], weekDays[6])}
+        </>
+      )
       : new Intl.DateTimeFormat('fr-CA', { month: 'long', year: 'numeric' }).format(parseIso(anchor));
 
   const shift = (direction: -1 | 1) => {
@@ -682,7 +801,7 @@ export function TasksBoard({
         >
           <ChevronLeft size={16} />
         </button>
-        <h2 className="text-sm font-medium capitalize text-center" style={{ color: 'var(--color-text)' }}>
+        <h2 className="text-sm font-medium capitalize text-center min-w-0 truncate" style={{ color: 'var(--color-text)' }}>
           {heading}
         </h2>
         <button
@@ -696,8 +815,21 @@ export function TasksBoard({
         </button>
       </div>
 
+      {mode === 'month' && (
+        <MoisCompact
+          days={month.days}
+          month={month.month}
+          today={today}
+          byDate={byDate}
+          onOpenDay={setModalDate}
+          onDropTask={(taskId, nextDate) => void drop(taskId, nextDate)}
+        />
+      )}
+
+      {/* Sous sm, le mois vit dans MoisCompact : ses 200 px par cellule n'ont
+          pas leur place ici. La semaine, elle, reste en une colonne souple. */}
       <div
-        className={`grid gap-2 ${mode === 'week' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-7' : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-7'}`}
+        className={`gap-2 ${mode === 'week' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7' : 'hidden sm:grid sm:grid-cols-4 lg:grid-cols-7'}`}
       >
         {days.map((date) => (
           <DayColumn
@@ -706,6 +838,7 @@ export function TasksBoard({
             today={today}
             tasks={byDate.get(date) ?? []}
             dimmed={mode === 'month' && parseIso(date).getMonth() !== month.month}
+            hauteur={mode === 'week' ? 'souple' : 'fixe'}
             onDropTask={(taskId, nextDate) => void drop(taskId, nextDate)}
             onToggleTask={(task) => void onToggleTask(task)}
             onQuickAdd={onQuickAdd}

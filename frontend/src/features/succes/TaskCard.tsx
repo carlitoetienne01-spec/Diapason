@@ -1,5 +1,6 @@
 import { CadreVitre } from '../../components/Glass/CadreVitre';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BriefcaseBusiness,
   CalendarClock,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   Clock3,
   Minus,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -149,7 +151,7 @@ function SubtaskRow({
           {subtask.done && <Check size={12} />}
         </button>
         <span
-          className="flex-1 text-sm"
+          className="flex-1 min-w-0 text-sm break-words"
           style={{
             color: subtask.done ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)',
             textDecoration: subtask.done ? 'line-through' : 'none',
@@ -157,12 +159,20 @@ function SubtaskRow({
         >
           {subtask.title || 'Sous-tâche sans titre'}
         </span>
-        <div className="flex items-center gap-0.5">
+        {/* Le mini-panneau est un NSPanel non activant : le survol n'y
+            arrive plus dès qu'une autre app passe devant. Un « + » à
+            `opacity-0` y était invisible et introuvable, le « − » restait
+            fantôme (audit du 16 sept. 2026). Le défaut est un MODE, pas une
+            largeur — le préréglage L du panneau fait exactement 640 px, où
+            `max-sm:` s'éteint — d'où `compact:opacity-100` (et `max-sm:`
+            pour le tactile et les fenêtres étroites) : §82, rien ne devient
+            inatteignable. */}
+        <div className="flex items-center gap-0.5 shrink-0">
           {onDelete ? (
             <button
               type="button"
               onClick={() => void remove()}
-              className="p-1 rounded cursor-pointer opacity-55 hover:opacity-100 transition-opacity"
+              className="p-1 rounded cursor-pointer opacity-55 hover:opacity-100 max-sm:opacity-100 compact:opacity-100 transition-opacity"
               style={{ color: 'var(--color-error)' }}
               aria-label="Supprimer la sous-tâche"
               title="Supprimer"
@@ -173,9 +183,10 @@ function SubtaskRow({
           <button
             type="button"
             onClick={() => setAdding((value) => !value)}
-            className="opacity-0 group-hover:opacity-100 p-1 rounded cursor-pointer transition-opacity"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 p-1 rounded cursor-pointer transition-opacity"
             style={{ color: 'var(--color-text-tertiary)' }}
             title="Ajouter une étape à l'intérieur"
+            aria-label="Ajouter une étape à l'intérieur"
           >
             <Plus size={13} />
           </button>
@@ -208,6 +219,135 @@ function SubtaskRow({
           onDelete={onDelete}
         />
       ))}
+    </div>
+  );
+}
+
+/** Hauteur réservée au menu « ⋯ » pour décider du retournement : trois
+    entrées de 36 px, le cadre et la marge — 130 px suffisent. */
+const MENU_ACTIONS_HAUTEUR = 130;
+
+/**
+ * Les actions secondaires de la carte, regroupées sous « ⋯ » en étroit.
+ *
+ * À 420 px, quatre boutons toujours visibles (~110 px, `shrink-0`) ne
+ * laissaient que ~180 px au titre (audit du mini-panneau, 16 sept. 2026).
+ *
+ * Le menu est un PORTAIL `fixed` sur body, jamais un `absolute` dans la
+ * carte : une carte vitrée (`backdrop-filter`) est un contexte d'empilement,
+ * et un menu `z-50` posé dedans était peint SOUS la carte suivante — le
+ * verre à 97 % de transparence le laissait voir, mais le clic sur
+ * « Supprimer » atteignait l'autre carte (revue du 16 sept. 2026, reproduit
+ * avec les trois feuilles CSS du dépôt). Modèle ChipMenu : position calculée
+ * depuis le rectangle du bouton, retourné vers le haut quand la place
+ * manque, borné aux bords, refermé au `resize` et au défilement — le panneau
+ * se redimensionne en continu, une ancre mesurée devient fausse.
+ */
+function MenuActions({
+  entrees,
+}: {
+  entrees: { id: string; label: string; icon: React.ReactNode; color?: string; onSelect: () => void }[];
+}) {
+  const [ancre, setAncre] = useState<DOMRect | null>(null);
+  const boutonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const ouvert = ancre !== null;
+
+  useEffect(() => {
+    if (!ouvert) return;
+    const onPointer = (event: MouseEvent) => {
+      const cible = event.target as Node;
+      // Le bouton n'est pas « dehors » : fermer ici ferait la course avec
+      // son propre onClick, qui rouvrirait un menu déjà fermé.
+      if (boutonRef.current?.contains(cible)) return;
+      if (!menuRef.current?.contains(cible)) setAncre(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAncre(null);
+    };
+    const fermer = () => setAncre(null);
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', fermer);
+    // Capture : le défilement se produit dans le conteneur de la page, pas
+    // sur window ; un menu `fixed` resterait planté pendant que sa carte
+    // s'en va.
+    document.addEventListener('scroll', fermer, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', fermer);
+      document.removeEventListener('scroll', fermer, true);
+    };
+  }, [ouvert]);
+
+  const basculer = () => {
+    if (ancre) {
+      setAncre(null);
+      return;
+    }
+    const rect = boutonRef.current?.getBoundingClientRect();
+    if (rect) setAncre(rect);
+  };
+
+  let menu: React.ReactNode = null;
+  if (ancre) {
+    const largeur = Math.min(176, Math.max(0, window.innerWidth - 16));
+    const left = Math.min(Math.max(8, ancre.right - largeur), window.innerWidth - largeur - 8);
+    const versLeHaut =
+      ancre.bottom + MENU_ACTIONS_HAUTEUR > window.innerHeight && ancre.top > MENU_ACTIONS_HAUTEUR;
+    const position = versLeHaut
+      ? { bottom: window.innerHeight - ancre.top + 4 }
+      : { top: ancre.bottom + 4 };
+    menu = createPortal(
+      <div
+        ref={menuRef}
+        role="menu"
+        className="fixed z-50 max-h-[min(40vh,240px)] overflow-y-auto rounded-xl py-1 shadow-lg"
+        style={{
+          ...position,
+          left,
+          width: largeur,
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        {entrees.map((entree) => (
+          <button
+            key={entree.id}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setAncre(null);
+              entree.onSelect();
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left cursor-pointer"
+            style={{ color: entree.color ?? 'var(--color-text)' }}
+          >
+            {entree.icon}
+            {entree.label}
+          </button>
+        ))}
+      </div>,
+      document.body,
+    );
+  }
+
+  return (
+    <div className="sm:hidden">
+      <button
+        ref={boutonRef}
+        type="button"
+        onClick={basculer}
+        className="p-1.5 rounded-lg cursor-pointer"
+        style={{ color: ouvert ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+        aria-label="Autres actions"
+        aria-haspopup="menu"
+        aria-expanded={ouvert}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {menu}
     </div>
   );
 }
@@ -380,12 +520,15 @@ export function TaskCard({
             aria-label="Titre"
           />
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {/* Même plan que le formulaire de création : par paires dès 340 px,
+            `min-w-0` contre la largeur intrinsèque des <input type=date>
+            WebKit (16 sept. 2026). */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
           <input
             type="date"
             value={draft.date}
             onChange={(event) => setDraft({ ...draft, date: event.target.value })}
-            className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+            className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Date"
           />
@@ -393,14 +536,14 @@ export function TaskCard({
             type="time"
             value={draft.time}
             onChange={(event) => setDraft({ ...draft, time: event.target.value })}
-            className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+            className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Heure"
           />
           <select
             value={draft.priority}
             onChange={(event) => setDraft({ ...draft, priority: event.target.value as SuccesPriority })}
-            className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+            className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Priorité"
           >
@@ -412,7 +555,7 @@ export function TaskCard({
           <select
             value={draft.projectId}
             onChange={(event) => setDraft({ ...draft, projectId: event.target.value })}
-            className="rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+            className="min-w-0 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
             style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Projet"
           >
@@ -462,6 +605,35 @@ export function TaskCard({
     );
   }
 
+  // Les mêmes trois actions que les boutons inline, servies par « ⋯ » sous sm.
+  const actionsMenu = [
+    ...(onReschedule && !task.done
+      ? [{
+        id: 'reporter',
+        label: 'Reporter',
+        icon: <CalendarClock size={15} />,
+        onSelect: () => { setRescheduling((value) => !value); setEditing(false); },
+      }]
+      : []),
+    ...(onUpdate
+      ? [{
+        id: 'modifier',
+        label: 'Modifier',
+        icon: <Pencil size={15} />,
+        onSelect: () => { setEditing(true); setRescheduling(false); },
+      }]
+      : []),
+    ...(onDelete
+      ? [{
+        id: 'supprimer',
+        label: 'Supprimer',
+        icon: <Trash2 size={15} />,
+        color: 'var(--color-error)',
+        onSelect: () => void onDelete(task),
+      }]
+      : []),
+  ];
+
   return (
     <CadreVitre as="article" actif={vitre}
       className={`rounded-2xl ${compact ? 'p-3' : 'p-4'} transition-colors`}
@@ -484,7 +656,7 @@ export function TaskCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-3">
             <h3
-              className="flex-1 font-medium leading-6 break-words"
+              className="flex-1 min-w-0 font-medium leading-6 break-words"
               style={{
                 color: task.done ? 'var(--color-text-tertiary)' : 'var(--color-text)',
                 textDecoration: task.done ? 'line-through' : 'none',
@@ -492,31 +664,45 @@ export function TaskCard({
             >
               {task.emoji ? `${task.emoji} ` : ''}{task.title}
             </h3>
+            {/* La pastille « Normale » (~60 px) mangeait le titre en étroit :
+                sous sm, un point coloré porte la même information — le libellé
+                reste dans `title` et pour les lecteurs d'écran (16 sept. 2026). */}
             <span
-              className="succes-priority text-[11px] px-2 py-0.5 rounded-full shrink-0"
+              className="succes-priority sm:hidden mt-2 size-2 rounded-full shrink-0"
+              data-priority={task.priority}
+              style={{ background: priority.color }}
+              title={`Priorité ${priority.label.toLowerCase()}`}
+              role="img"
+              aria-label={`Priorité ${priority.label.toLowerCase()}`}
+            />
+            <span
+              className="succes-priority hidden sm:inline text-[11px] px-2 py-0.5 rounded-full shrink-0"
               data-priority={task.priority}
               style={{ color: priority.color, background: `color-mix(in srgb, ${priority.color} 12%, transparent)` }}
             >
               {priority.label}
             </span>
           </div>
+          {/* Sous sm : date, heure, projet et le compteur de reports restent ;
+              catégorie et notes (`max-w-[420px]`, plus large que le panneau)
+              reviennent avec la largeur — elles restent en édition. */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             {task.date && <span className="flex items-center gap-1"><CalendarDays size={12} />{task.date}</span>}
             {task.time && <span className="flex items-center gap-1"><Clock3 size={12} />{task.time}</span>}
             {project && (
-              <span className="flex items-center gap-1" style={{ color: project.color || 'var(--color-text-tertiary)' }}>
-                <BriefcaseBusiness size={12} />
-                {project.name}
+              <span className="flex items-center gap-1 min-w-0" style={{ color: project.color || 'var(--color-text-tertiary)' }}>
+                <BriefcaseBusiness size={12} className="shrink-0" />
+                <span className="truncate max-w-[9rem] sm:max-w-none">{project.name}</span>
               </span>
             )}
-            {task.category && <span>{task.category}</span>}
+            {task.category && <span className="hidden sm:inline">{task.category}</span>}
             {task.postponedCount > 0 && (
               <span className="flex items-center gap-1" style={{ color: task.postponedCount >= 4 ? 'var(--color-warning)' : undefined }}>
                 <CalendarClock size={12} />
                 Reportée {task.postponedCount}×
               </span>
             )}
-            {task.notes && <span className="truncate max-w-[420px]">{task.notes}</span>}
+            {task.notes && <span className="hidden sm:inline truncate max-w-[420px]">{task.notes}</span>}
           </div>
           {rescheduling && onReschedule && (
             <CadreVitre compact actif={vitre}
@@ -591,11 +777,17 @@ export function TaskCard({
           )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          {/* Sous sm, les trois actions vivent dans MenuActions ; ici elles
+              n'apparaissent qu'avec la largeur. Le survol n'arrive pas au
+              NSPanel non activant dès qu'une autre app est devant :
+              `compact:opacity-100` garde l'icône pleine dans le panneau
+              étiré au-delà de sm, là où `hover:` ne se déclenchera pas
+              (16 sept. 2026). */}
           {onReschedule && !task.done && (
             <button
               type="button"
               onClick={() => { setRescheduling((value) => !value); setEditing(false); }}
-              className="p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
+              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
               style={{ color: rescheduling ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
               title="Reporter"
               aria-label="Reporter la tâche"
@@ -608,7 +800,7 @@ export function TaskCard({
             <button
               type="button"
               onClick={() => { setEditing(true); setRescheduling(false); }}
-              className="p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
+              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
               style={{ color: 'var(--color-text-tertiary)' }}
               title="Modifier"
               aria-label="Modifier la tâche"
@@ -620,13 +812,15 @@ export function TaskCard({
             <button
               type="button"
               onClick={() => void onDelete(task)}
-              className="p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
+              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
               style={{ color: 'var(--color-error)' }}
               title="Supprimer"
+              aria-label="Supprimer la tâche"
             >
               <Trash2 size={15} />
             </button>
           )}
+          {actionsMenu.length > 0 && <MenuActions entrees={actionsMenu} />}
           {hasSubtasks && (
             <button
               type="button"
