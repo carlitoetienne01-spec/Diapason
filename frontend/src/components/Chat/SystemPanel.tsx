@@ -73,13 +73,16 @@ export function SystemPanel() {
   const promptK = (savings?.total_prompt_tokens ?? 0) / 1000;
   const completionK = (savings?.total_completion_tokens ?? 0) / 1000;
 
+  // 16 sept. 2026, audit du mini-panneau : 280 px fixes posés dans le flux
+  // laissaient ~180 px au fil de discussion à 460 de large, ~60 px à 340.
+  // Sous sm le panneau devient une superposition ancrée à droite, plafonnée
+  // à 85 % du viewport (ChatPage pose le voile qui le ferme) ; à partir de
+  // sm il reprend sa place dans le flux, inchangée.
   return (
     <div
-      className="flex flex-col h-full overflow-y-auto"
+      className="flex flex-col h-full overflow-y-auto absolute inset-y-0 right-0 z-40 w-[280px] max-w-[85vw] shadow-xl sm:static sm:z-auto sm:max-w-none sm:shrink-0 sm:shadow-none"
       data-verre-defilement
       style={{
-        width: 280,
-        minWidth: 280,
         background: 'var(--color-bg)',
         borderLeft: '1px solid var(--color-border)',
       }}
@@ -87,13 +90,12 @@ export function SystemPanel() {
       {/* Header. La cloche des validations est fixée en haut à droite de la
           FENÊTRE (Layout), au pixel près où ce bouton × se dessine : on
           voyait « une croix dans la cloche » (13 septembre 2026). Le × se
-          range à gauche du groupe fixe, dont Layout publie la largeur. */}
+          range à gauche du groupe fixe, dont Layout publie la largeur — sauf
+          en compact, où Layout ne rend pas ce groupe et la réserve laissait
+          le × flotter à 55 px du bord (revue du 16 sept. 2026). */}
       <div
-        className="flex items-center justify-between pl-4 py-3 shrink-0"
-        style={{
-          borderBottom: '1px solid var(--color-border)',
-          paddingRight: 'calc(var(--top-right-cluster, 33px) + 22px)',
-        }}
+        className="flex items-center justify-between pl-4 py-3 shrink-0 pr-[calc(var(--top-right-cluster,33px)_+_22px)] compact:pr-3"
+        style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <span className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--color-text-secondary)' }}>
           {t('chat.system.title')}

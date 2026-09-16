@@ -63,21 +63,27 @@ export function SuccesYearReviewPage() {
     }
   };
 
+  // 16 sept. 2026, audit du mini-panneau : px-5 py-8 mangeait 40 px de
+  // large sur 340 et poussait la frise sous la ligne de flottaison à 380 px
+  // de haut. La base est la miniature ; sm: rend les marges.
   return (
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-3 py-5 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
+        <header className="flex flex-col gap-3 sm:gap-5 md:flex-row md:items-end md:justify-between mb-5 sm:mb-7">
           <div>
             <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
             <button type="button" onClick={() => setMonth(undefined)} className="block mt-2 text-left cursor-pointer" aria-label="Revenir au bilan annuel">
               <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Bilan annuel</h1>
             </button>
-            <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
               Prenez du recul sur vos actions, habitudes et projets.
             </p>
           </div>
-          <button type="button" disabled={exporting} onClick={() => void exportData()} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
-            {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Export JSON
+          {/* Empilé sous md, le bouton s'étirait sur toute la largeur du
+              panneau (align-items: stretch) : une barre « Export JSON » de
+              340 px sous le titre. self-start le rend à sa taille. */}
+          <button type="button" disabled={exporting} onClick={() => void exportData()} aria-label="Export JSON" title="Export JSON" className="self-start md:self-auto flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
+            {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} <span className="hidden sm:inline">Export JSON</span>
           </button>
         </header>
 
@@ -89,13 +95,17 @@ export function SuccesYearReviewPage() {
           </div>
 
           {loading ? <div className="h-40 flex items-center justify-center"><Loader2 className="animate-spin" style={{ color: 'var(--color-accent)' }} /></div> : (
-            <div className="grid grid-cols-6 md:grid-cols-12 gap-2" aria-label="Activité par mois">
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5 sm:gap-2" aria-label="Activité par mois">
               {(review?.activityByMonth ?? Array(12).fill(0)).map((value, index) => {
                 const selected = month === index + 1;
                 const ratio = value / maxActivity;
+                // Sous md la frise passe sur deux rangées de six ; avec une
+                // jauge h-24 le bloc faisait ~270 px de haut dans un panneau
+                // de 620, écrasant à 380 (16 sept. 2026). h-14 garde le ratio
+                // lisible et ramène le bloc vers 180 px.
                 return (
-                  <CadreVitre as="button" compact key={MONTHS[index]} type="button" aria-pressed={selected} onClick={() => setMonth(selected ? undefined : index + 1)} className="rounded-xl px-1 py-2 flex flex-col items-center gap-2 cursor-pointer" style={{ background: selected ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)', border: selected ? '1px solid var(--color-accent)' : '1px solid transparent' }}>
-                    <span className="h-24 w-3 rounded-full flex items-end overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}><span className="block w-full rounded-full transition-all" style={{ height: `${Math.max(value ? 8 : 0, Math.round(ratio * 100))}%`, background: `hsl(${Math.round(index * 360 / 12)} 82% 48%)` }} /></span>
+                  <CadreVitre as="button" compact key={MONTHS[index]} type="button" aria-pressed={selected} onClick={() => setMonth(selected ? undefined : index + 1)} className="rounded-xl px-1 py-1.5 sm:py-2 flex flex-col items-center gap-1.5 sm:gap-2 cursor-pointer" style={{ background: selected ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)', border: selected ? '1px solid var(--color-accent)' : '1px solid transparent' }}>
+                    <span className="h-14 sm:h-24 w-3 rounded-full flex items-end overflow-hidden" style={{ background: 'var(--color-bg-tertiary)' }}><span className="block w-full rounded-full transition-all" style={{ height: `${Math.max(value ? 8 : 0, Math.round(ratio * 100))}%`, background: `hsl(${Math.round(index * 360 / 12)} 82% 48%)` }} /></span>
                     <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>{MONTHS[index]}</span>
                     <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{value}</span>
                   </CadreVitre>
@@ -105,8 +115,8 @@ export function SuccesYearReviewPage() {
           )}
         </CadreVitre>
 
-        <section className="grid md:grid-cols-[1.1fr_0.9fr] gap-5">
-          <CadreVitre className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+        <section className="grid md:grid-cols-[1.1fr_0.9fr] gap-4 sm:gap-5">
+          <CadreVitre className="rounded-2xl p-4 sm:p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <h2 className="font-medium mb-4" style={{ color: 'var(--color-text)' }}>
               {month ? `Résumé mensuel — ${MONTH_NAMES[month - 1]} ${year}` : 'Résumé annuel'}
             </h2>
@@ -115,7 +125,7 @@ export function SuccesYearReviewPage() {
             </div>
           </CadreVitre>
 
-          <CadreVitre className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <CadreVitre className="rounded-2xl p-4 sm:p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <div className="flex items-center gap-2 mb-4"><Trophy size={18} style={{ color: 'var(--color-accent)' }} /><h2 className="font-medium" style={{ color: 'var(--color-text)' }}>Top accomplissements</h2></div>
             <p className="text-xs mb-4 capitalize" style={{ color: 'var(--color-text-tertiary)' }}>{month ? `${MONTH_NAMES[month - 1]} ${year}` : `Année ${year}`}</p>
             <div className="grid gap-3">

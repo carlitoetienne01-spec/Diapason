@@ -91,10 +91,13 @@ function CopyMessageButton({ content }: { content: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Dans le mini-panneau (NSPanel non activant), le survol n'arrive plus dès
+  // qu'une autre app est devant : un bouton Copier à `opacity-0` y était
+  // cliquable à l'aveugle seulement (revue du 16 sept. 2026).
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+      className="p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 compact:opacity-100 transition-opacity cursor-pointer"
       style={{ color: 'var(--color-text-tertiary)' }}
       title={t('chat.message.copy')}
       aria-label={t('chat.message.copy')}

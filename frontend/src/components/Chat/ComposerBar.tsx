@@ -52,11 +52,18 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCloseRef.current();
     };
+    // 16 sept. 2026, audit du mini-panneau : `anchor.rect` est un DOMRect
+    // figé au clic, et le panneau de la réglette se redimensionne en
+    // continu — un menu ouvert pendant l'étirement flottait détaché de sa
+    // puce, parfois sur le bord. Fermer suffit (modèle EmojiPicker).
+    const onResize = () => onCloseRef.current();
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
     };
   }, [anchor]);
 

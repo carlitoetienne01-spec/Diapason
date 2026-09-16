@@ -10,8 +10,10 @@ import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
 
 /** Horizontal room the window's floating top-right cluster needs: its measured
- * width, its 12px offset from the edge, and a little air. */
-const CLUSTER_CLEARANCE = 'calc(var(--top-right-cluster, 33px) + 20px)';
+ * width, its 12px offset from the edge, and a little air. A class rather than
+ * an inline style, so that `compact:` can override it (an inline style beats
+ * every class). The underscores are Tailwind's spelling of spaces. */
+const CLUSTER_CLEARANCE_CLASS = 'pr-[calc(var(--top-right-cluster,33px)_+_20px)]';
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -86,14 +88,16 @@ export function ChatArea() {
     <div className="flex flex-col h-full">
       {/* Toggle bar */}
       <div
-        className="flex items-center justify-end gap-1 pl-3 py-1.5 shrink-0"
-        style={{
+        className={`flex items-center justify-end gap-1 pl-3 py-1.5 shrink-0 ${
           // Talk and the approval bell are pinned to the window's top-right
           // corner. With the system panel open the panel sits beneath them;
           // closed, this bar reaches that same edge, so it has to yield their
           // footprint or the controls land on top of one another.
-          paddingRight: systemPanelOpen ? 12 : CLUSTER_CLEARANCE,
-        }}
+          // 16 sept. 2026 : en compact, Layout ne rend pas ce groupe — la
+          // barre réservait 53 px à un cluster absent. `compact:` est le
+          // variant de chrome prévu pour cela (convention, règle 3).
+          systemPanelOpen ? 'pr-3' : `${CLUSTER_CLEARANCE_CLASS} compact:pr-3`
+        }`}
       >
         <button
           onClick={toggleSystemPanel}
@@ -113,10 +117,13 @@ export function ChatArea() {
         </button>
       </div>
 
-      {/* Data sources banner */}
+      {/* Data sources banner. 16 sept. 2026, audit du mini-panneau : à 420 px
+          il occupait trois lignes (texte + deux boutons) au-dessus d'un fil
+          déjà court ; sous sm il disparaît — les connecteurs se règlent dans
+          la fenêtre principale, l'état vide offre encore le raccourci. */}
       {hasConnectedSources === false && !bannerDismissed && (
         <div
-          className="mx-4 mb-2 flex items-center gap-3 px-4 py-3 rounded-lg text-sm shrink-0"
+          className="mx-4 mb-2 hidden sm:flex items-center gap-3 px-4 py-3 rounded-lg text-sm shrink-0"
           style={{
             background: 'var(--color-accent-subtle)',
             border: '1px solid var(--color-border)',
@@ -165,8 +172,9 @@ export function ChatArea() {
                 {t('chat.empty.subtitle')}
               </p>
 
-              {/* Quick action hints */}
-              <div className="flex gap-3">
+              {/* Quick action hints. Sans wrap, les deux boutons débordaient
+                  du panneau sous ~390 px (16 sept. 2026). */}
+              <div className="flex flex-wrap justify-center gap-3">
                 <button
                   onClick={() => navigate('/data-sources')}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"

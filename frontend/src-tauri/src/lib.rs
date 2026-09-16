@@ -4879,9 +4879,13 @@ mod native_reglette {
         }
 
         // Script injecté au tout début : la clé locale, le thème (le
-        // localStorage n'est pas partagé), le drapeau compact, une barre de
-        // glissement (pour déplacer le mini-panneau — le WebView reçoit ses
-        // événements car l'app est active), un ✕ et Échap pour fermer.
+        // localStorage n'est pas partagé), le panneau système FERMÉ par
+        // défaut — le bundle l'ouvre tant que rien ne dit le contraire, et
+        // dans un silo neuf de 460 px la Discussion naissait voilée sous un
+        // panneau de 280 px en superposition (revue du 16 sept. 2026) —, le
+        // drapeau compact, une barre de glissement (pour déplacer le
+        // mini-panneau — le WebView reçoit ses événements car l'app est
+        // active), un ✕ et Échap pour fermer.
         let key = js_escape(&super::local_api_key());
         let (t, s) = theme_courant();
         let theme = js_escape(&t);
@@ -4889,6 +4893,7 @@ mod native_reglette {
         let src = format!(
             "try{{sessionStorage.setItem('diapason-api-key','{key}');}}catch(e){{}}\n\
              try{{var _s={{}};try{{_s=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}_s.theme='{theme}';_s.terminalSkin='{skin}';localStorage.setItem('diapason-settings',JSON.stringify(_s));}}catch(e){{}}\n\
+             try{{if(localStorage.getItem('diapason-system-panel-open')===null)localStorage.setItem('diapason-system-panel-open','false');}}catch(e){{}}\n\
              window.__DIAPASON_COMPACT__=true;\n\
              try{{document.documentElement.setAttribute('data-diapason-compact','1');}}catch(e){{}}\n\
              try{{var _st=document.createElement('style');_st.textContent=\"@keyframes diapNait{{from{{opacity:0;transform:scale(.94) translateX(14px)}}to{{opacity:1;transform:none}}}}html[data-diapason-compact='1'] body{{animation:diapNait .22s cubic-bezier(.22,1,.36,1);transform-origin:85% 30%}}::view-transition-old(root),::view-transition-new(root){{animation-duration:.18s}}@media (prefers-reduced-motion:reduce){{html[data-diapason-compact='1'] body{{animation:none}}}}#__diapBar,#__diapX,#__diapMin{{transition:opacity .3s ease}}\";document.documentElement.appendChild(_st);}}catch(e){{}}\n\

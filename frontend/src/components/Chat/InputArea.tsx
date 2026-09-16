@@ -897,7 +897,10 @@ export function InputArea() {
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      {/* Sous sm (le mini-panneau), cette rangée coûtait une ligne au pied
+          d'un fil déjà court pour rappeler un raccourci que le placeholder
+          suggère — audit du 16 sept. 2026 : secondaire, caché en étroit. */}
+      <div className="hidden sm:flex items-center justify-center mt-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>
           <kbd className="font-mono">Enter</kbd> {t('chat.input.toSend')} &middot;{' '}
           <kbd className="font-mono">Shift+Enter</kbd> {t('chat.input.forNewLine')}
