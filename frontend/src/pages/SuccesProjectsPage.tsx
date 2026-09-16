@@ -1803,7 +1803,7 @@ export function SuccesProjectsPage() {
                 </button>
 
                 {!search.trim() && (
-                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); void decalerProjet(project, 'avant'); }}
@@ -1826,7 +1826,7 @@ export function SuccesProjectsPage() {
                     </button>
                   </div>
                 )}
-                <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); edit(project); }}

@@ -40,14 +40,24 @@ tous en place :
 5. **Sous `sm` : cacher le secondaire, condenser le reste.** Descriptifs
    `hidden sm:block`, libellés de boutons `hidden sm:inline` (avec
    `aria-label`), outils secondaires derrière un « ⋯ » ancré à droite. Les
-   actions révélées au survol doivent être `max-sm:opacity-100` : un NSPanel
-   non activant **ne livre pas le survol** hors focus (les clics, oui) —
-   §82, rien ne devient inatteignable.
+   actions révélées au survol portent `compact:opacity-100` (et
+   `max-sm:opacity-100` pour le tactile et les fenêtres étroites) : un
+   NSPanel non activant **ne livre plus le survol** dès qu'une autre app est
+   devant (les clics, oui), et c'est un MODE, pas une largeur — le
+   préréglage L du panneau fait exactement 640 px, où `max-sm:` s'éteint
+   (revue du 16 sept. 2026). §82, rien ne devient inatteignable. Un menu
+   ouvert DANS une carte vitrée (`backdrop-filter` = contexte
+   d'empilement) est peint sous la carte suivante : un menu est un portail
+   `fixed` sur `body` (modèles : `ChipMenu`, `MenuActions` de TaskCard).
 
-## Ce qui reste à passer au crible
+## État
 
-Notes, Projets, la palette ⌘K et l'EmojiPicker sont traités. Tâches,
-Planificateur, Finances, Tableau de bord, Habitudes, Bilan et le chat portent
-un plan précis issu de l'audit (voir les rapports de la session du
-15 septembre) mais leurs fichiers étaient dans le chantier « verre satiné »
-non commité d'une autre session — à appliquer une fois ce chantier livré.
+Notes, Projets, la palette ⌘K et l'EmojiPicker ont été traités ET vérifiés
+dans le vrai mini-panneau le 15 septembre 2026. Tâches, Planificateur,
+Finances, Tableau de bord, Habitudes, Bilan, la Discussion, la cloche
+d'approbation et les toasts ont reçu leur plan le 16 : vérifiés en
+compilation, en tests et par une revue de code adversaire (20 défauts
+attrapés et corrigés, dont un menu « ⋯ » peint sous la carte suivante), mais
+**pas encore regardés à l'écran** — l'écran était verrouillé. Le contrôle
+visuel de ces neuf morceaux reste dû ; ne lis pas « traité » comme « vu ».
+Un module nouveau se conforme aux cinq règles dès sa naissance.

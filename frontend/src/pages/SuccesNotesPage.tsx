@@ -1182,7 +1182,7 @@ export function SuccesNotesPage() {
                     {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
                     <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
                     {section.nom && (
-                      <span className="flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
+                      <span className="flex gap-0.5 max-sm:opacity-100 compact:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
                         <button
                           type="button"
                           onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
@@ -1292,7 +1292,7 @@ export function SuccesNotesPage() {
                     </p>
                   </button>
 
-                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -1321,7 +1321,7 @@ export function SuccesNotesPage() {
                     </button>
                   </div>
 
-                  <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {

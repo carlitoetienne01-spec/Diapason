@@ -16,6 +16,32 @@ html[data-diapason-compact='1'] {
   --surplomb-panneau: 30px;
 }
 
+/* Les toasts (sonner) montés en bas à droite couvraient le compositeur et le
+ * bas de chaque module dans le mini-panneau — le « popup en bas » rapporté
+ * le 16 sept. 2026. App.tsx les monte en haut en compact (le sens de la pile
+ * est décidé par sonner en JS, pas ici) ; ce bloc les cale sous la bande de
+ * glissement et borne leur largeur. Sonner pose `--offset-top` et `--width`
+ * en style inline : on écrase les propriétés `top`/`width`, pas les
+ * variables. Sous 600 px sonner passe déjà en pleine largeur (16 px de
+ * marge) ; au-delà il centre 356 px : 420 px lisibles sans barrer le module. */
+html[data-diapason-compact='1'] [data-sonner-toaster][data-y-position='top'] {
+  top: calc(var(--surplomb-panneau, 0px) + 8px);
+}
+html[data-diapason-compact='1'] [data-sonner-toaster] {
+  /* Sous 600 px sonner pose `left: 16px; right: 16px` : avec une largeur
+     explicite, `right` serait ignoré et le toast affleurerait le bord droit —
+     on centre nous-mêmes. */
+  left: 50%;
+  right: auto;
+  width: min(calc(100% - 1rem), 420px);
+  transform: translateX(-50%);
+}
+html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
 /*
  * Diapason design tokens.
  * Zinc/slate neutrals, blue accent. Light default, dark via class or system pref.

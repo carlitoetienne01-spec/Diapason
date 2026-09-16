@@ -16,6 +16,31 @@ const TIER_STYLES: Record<string, { labelKey: MessageKey; color: string; bg: str
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 
+/** Le menu portait `width: 340px` et `maxHeight: 500px` EN DUR sous un
+    `top-full` sans mesure : sous ~560 px de haut le bas était coupé (les
+    boutons Approuver/Refuser inatteignables — §82), sous ~360 px de large il
+    sortait à gauche. Audit du mini-panneau, 16 sept. 2026. La hauteur se
+    mesure à l'ouverture ; on retourne vers le haut quand la place manque
+    dessous et qu'il y en a plus dessus. */
+export type PlacementMenu = { haut: boolean; hauteurMax: number };
+
+const MENU_HAUTEUR_MAX = 500;
+/* 160 px = l'en-tête (44) + une demande repliée (~110) : sous ce plancher un
+   menu déroulé ne montre même pas la première décision. */
+const MENU_HAUTEUR_MIN = 160;
+const MENU_MARGE = 12;
+
+export function placerMenu(
+  ancre: { top: number; bottom: number },
+  hauteurFenetre: number,
+): PlacementMenu {
+  const dessous = hauteurFenetre - ancre.bottom - MENU_MARGE;
+  const dessus = ancre.top - MENU_MARGE;
+  const haut = dessous < MENU_HAUTEUR_MIN && dessus > dessous;
+  const place = haut ? dessus : dessous;
+  return { haut, hauteurMax: Math.max(MENU_HAUTEUR_MIN, Math.min(MENU_HAUTEUR_MAX, place)) };
+}
+
 function timeAgo(iso: string, t: Translate): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -32,7 +57,18 @@ export function ApprovalBell() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [processing, setProcessing] = useState<Record<string, boolean>>({});
+  const [placement, setPlacement] = useState<PlacementMenu>({ haut: false, hauteurMax: MENU_HAUTEUR_MAX });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const basculer = () => {
+    setOpen(o => {
+      if (!o) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) setPlacement(placerMenu(rect, window.innerHeight));
+      }
+      return !o;
+    });
+  };
 
   const load = useCallback(async () => {
     try {
@@ -62,8 +98,20 @@ export function ApprovalBell() {
         setOpen(false);
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    // Le panneau se redimensionne en continu : une hauteur mesurée à
+    // l'ouverture devient fausse — on referme plutôt que de déborder.
+    const onResize = () => setOpen(false);
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
   }, [open]);
 
   const handleApprove = async (id: string) => {
@@ -92,10 +140,12 @@ export function ApprovalBell() {
     <div ref={containerRef} className="relative">
       {/* Bell trigger */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={basculer}
         className="relative p-2 rounded-lg transition-colors cursor-pointer"
         title={t('agents.approvals.bellTooltip')}
         aria-label={t('agents.approvals.bellTooltip')}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         style={{
           color: count > 0 ? 'var(--color-text)' : 'var(--color-text-secondary)',
           background: open
@@ -119,10 +169,16 @@ export function ApprovalBell() {
       {/* Dropdown */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+          role="dialog"
+          aria-label={t('agents.approvals.title')}
+          className={`absolute right-0 rounded-xl shadow-2xl overflow-hidden flex flex-col ${
+            placement.haut ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
           style={{
-            width: '340px',
-            maxHeight: '500px',
+            // L'ancre vit à `right-3` : 340 px ne tiennent plus sous 364 px de
+            // large ; le plafond cède, la marge de 8 px reste.
+            width: 'min(340px, calc(100vw - 1.25rem))',
+            maxHeight: `${placement.hauteurMax}px`,
             background: 'var(--color-bg-secondary)',
             border: '1px solid var(--color-border)',
           }}

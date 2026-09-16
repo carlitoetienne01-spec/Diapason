@@ -6,6 +6,7 @@ import { ChatPage } from './pages/ChatPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
+import { estCompact } from './lib/compact';
 import { useAppStore, isLightTerminalSkin } from './lib/store';
 import { ContexteVueHost } from './features/mesh/ContexteVueHost';
 import { ModeGestesProvider } from './features/gestes/ModeGestesContexte';
@@ -285,7 +286,12 @@ export default function App() {
           </Route>
         </Routes>
       </Suspense>
-      <Toaster position="bottom-right" />
+      {/* En bas à droite, les toasts couvraient le compositeur et le bas de
+          chaque module dans le mini-panneau (16 sept. 2026). Le sens de la
+          pile (`data-y-position` sur chaque toast) est décidé ici par sonner :
+          le CSS seul ne pouvait pas la retourner ; index.css cale ensuite les
+          toasts sous la bande de glissement et borne leur largeur. */}
+      <Toaster position={estCompact ? 'top-center' : 'bottom-right'} />
       <TalkToDiapasonHost />
       <MeshHost />
       <ContexteVueHost />
