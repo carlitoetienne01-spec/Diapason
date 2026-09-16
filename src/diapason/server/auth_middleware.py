@@ -299,6 +299,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # le mur de la clé, et le vrai goulot est le créneau unique d'Ollama.
         if path == "/v1/chat/completions":
             return await call_next(request)
+        # La synchronisation des conversations (16 sept. 2026). Le moteur de
+        # sync tire toutes les 10 s et pousse à chaque mutation ; pendant un
+        # streaming, chaque morceau reçu mute la conversation et les poussées
+        # débordent le seau partagé (60/min, rafale 10). Le 429 qui en sort
+        # ne casse rien de visible : la poussée échoue, le client garde sa
+        # copie, et les deux vues divergent EN SILENCE — précisément ce que
+        # ce magasin existe pour empêcher. L'exemption ne saute que la
+        # limitation : le mur de la clé reste fermé.
+        if path.startswith("/v1/conversations"):
+            return await call_next(request)
         if path == "/v1/voice/live/health":
             return await call_next(request)
         # Same shape, same reason, for the two mesh surfaces the local UI

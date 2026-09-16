@@ -97,7 +97,19 @@ function loadConversations(): ConversationStore {
 }
 
 function saveConversations(store: ConversationStore): void {
-  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
+  } catch {
+    // 16 sept. 2026 : un QuotaExceededError se propageait nu jusqu'au
+    // gestionnaire d'événement appelant — l'envoi du message plantait alors
+    // que la conversation, elle, existait bien en mémoire.
+  }
+  // Toujours émettre, même quand l'écriture a échoué : le moteur de sync
+  // (convSync.ts, qui écoute — jamais importé d'ici, sens unique) pousse
+  // alors vers le serveur, devenu le seul exemplaire fiable.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('diapason:conversations-modifiees'));
+  }
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system' | 'terminal';
@@ -187,6 +199,7 @@ function saveSettings(settings: Settings): void {
 
 const INITIAL_STREAM: StreamState = {
   isStreaming: false,
+  conversationId: null,
   phase: '',
   elapsedMs: 0,
   activeToolCalls: [],
@@ -431,6 +444,14 @@ export const useAppStore = create<AppState>((set, get) => {
         store.activeId = remaining.length > 0 ? remaining[0] : null;
       }
       saveConversations(store);
+      // Le retrait local ne suffit pas : sans pierre tombale côté serveur,
+      // la conversation ressusciterait au tirage suivant. Le moteur de sync
+      // écoute cet événement et met l'id en file de suppression.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('diapason:conversation-supprimee', { detail: { id } }),
+        );
+      }
       const convList = Object.values(store.conversations).sort(
         (a, b) => b.updatedAt - a.updatedAt,
       );
@@ -450,6 +471,11 @@ export const useAppStore = create<AppState>((set, get) => {
       const trimmed = title.trim();
       if (!conv || !trimmed) return;
       conv.title = trimmed;
+      // Dater l'écriture : le moteur de sync ne pousse que ce qui dépasse la
+      // version connue du serveur, et un renommage non daté n'atteignait
+      // jamais l'autre vue — puis se faisait écraser par sa prochaine
+      // écriture (revue du 16 sept. 2026).
+      conv.updatedAt = Date.now();
       saveConversations(store);
       set({
         conversations: Object.values(store.conversations).sort(
@@ -463,6 +489,9 @@ export const useAppStore = create<AppState>((set, get) => {
       const conv = store.conversations[id];
       if (!conv) return;
       conv.pinned = !conv.pinned;
+      // Même raison que le renommage : une épingle non datée ne se
+      // synchronise jamais.
+      conv.updatedAt = Date.now();
       saveConversations(store);
       set({
         conversations: Object.values(store.conversations).sort(
@@ -674,4 +703,8 @@ export const useAppStore = create<AppState>((set, get) => {
   };
 });
 
-export { generateId };
+// Le moteur de sync (lib/convSync.ts) et l'import des réglages passent par
+// ces mêmes lecture/écriture pour que l'événement de modification parte de
+// TOUS les chemins d'écriture — un setItem direct court-circuitait la
+// poussée vers le serveur.
+export { generateId, loadConversations, saveConversations, CONVERSATIONS_KEY };

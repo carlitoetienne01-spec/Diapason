@@ -24,9 +24,12 @@ import {
 import {
   useAppStore,
   TERMINAL_SKINS,
+  loadConversations,
+  saveConversations,
   type ThemeMode,
   type TerminalSkin,
 } from '../lib/store';
+import { normaliserImport, programmerSuppressionsServeur } from '../lib/convSync';
 import { useConfirm } from '../components/ConfirmDialog';
 import {
   checkHealth,
@@ -457,9 +460,16 @@ export function SettingsPage() {
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const data = JSON.parse(ev.target?.result as string);
-          if (data.version === 1) {
-            localStorage.setItem('diapason-conversations', JSON.stringify(data));
+          // Normaliser d'abord : une sauvegarde sans `conversations` ou aux
+          // champs mal typés plantait le store à chaque tick et se faisait
+          // refuser par le serveur pour de bon (16 sept. 2026). Puis passer
+          // par saveConversations, pas par un setItem direct : c'est elle
+          // qui émet l'événement de modification, donc c'est elle qui fait
+          // pousser l'import vers le serveur — un setItem nu laissait
+          // l'import invisible aux autres fenêtres.
+          const propre = normaliserImport(JSON.parse(ev.target?.result as string));
+          if (propre) {
+            saveConversations(propre);
             useAppStore.getState().loadConversations();
             showSaved();
           }
@@ -479,6 +489,10 @@ export function SettingsPage() {
       tone: 'danger',
     });
     if (!confirmed) return;
+    // Poser d'abord les pierres tombales côté serveur : effacer seulement le
+    // localStorage laisserait la copie serveur intacte, et tout l'historique
+    // « supprimé » ressusciterait au tirage suivant — un mensonge (§100).
+    programmerSuppressionsServeur(Object.keys(loadConversations().conversations));
     localStorage.removeItem('diapason-conversations');
     useAppStore.getState().loadConversations();
     showSaved();

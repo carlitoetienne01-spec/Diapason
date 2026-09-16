@@ -203,6 +203,15 @@ redimensionnable : la convention (cinq règles — base 340 px, largeur en CSS,
 `compact` = mode, pop-ups qui retournent et se bornent, secondaire caché sous
 `sm`) vit dans [`docs/development/mini-panneau-responsive.md`](docs/development/mini-panneau-responsive.md).
 
+### Les conversations du chat vivent sur le serveur
+
+Le `localStorage` est cloisonné par origine (`tauri://localhost` pour la
+fenêtre, `http://127.0.0.1:8000` pour le mini-panneau) : l'historique est
+donc dans `~/.diapason/conversations.db` et chaque vue le synchronise. Trois
+règles (curseur = numéro d'écriture, fusion au grain du message identique en
+Python et en TypeScript, toute mutation date son écriture) dans
+[`docs/development/conversations-sync.md`](docs/development/conversations-sync.md).
+
 ---
 
 ## 4. Ce qui casse le client mobile — à ne pas enfreindre

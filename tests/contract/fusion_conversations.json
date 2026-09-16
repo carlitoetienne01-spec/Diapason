@@ -1,0 +1,546 @@
+{
+  "cas": [
+    {
+      "nom": "deux vues, deux paires : union dans l'ordre du temps",
+      "a": {
+        "id": "x",
+        "title": "Titre de A",
+        "createdAt": 1000,
+        "updatedAt": 2001,
+        "model": "default",
+        "messages": [
+          {
+            "id": "q1",
+            "role": "user",
+            "content": "Bonjour",
+            "timestamp": 100
+          },
+          {
+            "id": "r1",
+            "role": "assistant",
+            "content": "Salut",
+            "timestamp": 101
+          },
+          {
+            "id": "q2",
+            "role": "user",
+            "content": "A ?",
+            "timestamp": 2000
+          },
+          {
+            "id": "r2",
+            "role": "assistant",
+            "content": "Ra",
+            "timestamp": 2001
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "Titre de B",
+        "createdAt": 1000,
+        "updatedAt": 3001,
+        "model": "default",
+        "messages": [
+          {
+            "id": "q1",
+            "role": "user",
+            "content": "Bonjour",
+            "timestamp": 100
+          },
+          {
+            "id": "r1",
+            "role": "assistant",
+            "content": "Salut",
+            "timestamp": 101
+          },
+          {
+            "id": "q3",
+            "role": "user",
+            "content": "B ?",
+            "timestamp": 3000
+          },
+          {
+            "id": "r3",
+            "role": "assistant",
+            "content": "Rb",
+            "timestamp": 3001
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "Titre de B",
+        "createdAt": 1000,
+        "updatedAt": 3001,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "q1",
+            "role": "user",
+            "content": "Bonjour",
+            "timestamp": 100
+          },
+          {
+            "id": "r1",
+            "role": "assistant",
+            "content": "Salut",
+            "timestamp": 101
+          },
+          {
+            "id": "q2",
+            "role": "user",
+            "content": "A ?",
+            "timestamp": 2000
+          },
+          {
+            "id": "r2",
+            "role": "assistant",
+            "content": "Ra",
+            "timestamp": 2001
+          },
+          {
+            "id": "q3",
+            "role": "user",
+            "content": "B ?",
+            "timestamp": 3000
+          },
+          {
+            "id": "r3",
+            "role": "assistant",
+            "content": "Rb",
+            "timestamp": 3001
+          }
+        ]
+      }
+    },
+    {
+      "nom": "copie partielle récente contre réponse complète ancienne",
+      "a": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 5000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "q",
+            "role": "user",
+            "content": "?",
+            "timestamp": 1
+          },
+          {
+            "id": "r",
+            "role": "assistant",
+            "content": "Bonjour !",
+            "timestamp": 2,
+            "usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 3,
+              "total_tokens": 4
+            }
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 6000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "q",
+            "role": "user",
+            "content": "?",
+            "timestamp": 1
+          },
+          {
+            "id": "r",
+            "role": "assistant",
+            "content": "Bonj",
+            "timestamp": 2
+          }
+        ],
+        "pinned": true
+      },
+      "fusion": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 6000,
+        "model": "default",
+        "pinned": true,
+        "messages": [
+          {
+            "id": "q",
+            "role": "user",
+            "content": "?",
+            "timestamp": 1
+          },
+          {
+            "id": "r",
+            "role": "assistant",
+            "content": "Bonjour !",
+            "timestamp": 2,
+            "usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 3,
+              "total_tokens": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "nom": "même milliseconde, titres différents : ordre total",
+      "a": {
+        "id": "x",
+        "title": "Alpha",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "x",
+            "timestamp": 1
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "Beta",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "x",
+            "timestamp": 1
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "Beta",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "x",
+            "timestamp": 1
+          }
+        ]
+      }
+    },
+    {
+      "nom": "même milliseconde, même contenu, longueur égale : lexicographique",
+      "a": {
+        "id": "x",
+        "title": "T",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "assistant",
+            "content": "abc",
+            "timestamp": 1
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "T",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "assistant",
+            "content": "abd",
+            "timestamp": 1
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "T",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "1",
+            "role": "assistant",
+            "content": "abd",
+            "timestamp": 1
+          }
+        ]
+      }
+    },
+    {
+      "nom": "messages d'avant l'identifiant : repli role@timestamp",
+      "a": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "role": "user",
+            "content": "salut",
+            "timestamp": 5
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "y",
+        "createdAt": 1000,
+        "updatedAt": 20,
+        "model": "default",
+        "messages": [
+          {
+            "role": "user",
+            "content": "salut",
+            "timestamp": 5
+          },
+          {
+            "role": "assistant",
+            "content": "re",
+            "timestamp": 6
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "y",
+        "createdAt": 1000,
+        "updatedAt": 20,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "salut",
+            "timestamp": 5
+          },
+          {
+            "role": "assistant",
+            "content": "re",
+            "timestamp": 6
+          }
+        ]
+      }
+    },
+    {
+      "nom": "paire à la même milliseconde : la question précède la réponse",
+      "a": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "b",
+            "role": "assistant",
+            "content": "réponse",
+            "timestamp": 7
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "a",
+            "role": "user",
+            "content": "question",
+            "timestamp": 7
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "a",
+            "role": "user",
+            "content": "question",
+            "timestamp": 7
+          },
+          {
+            "id": "b",
+            "role": "assistant",
+            "content": "réponse",
+            "timestamp": 7
+          }
+        ]
+      }
+    },
+    {
+      "nom": "unicode et accents dans les deux copies",
+      "a": {
+        "id": "x",
+        "title": "Été 😀",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "héhé",
+            "timestamp": 1
+          }
+        ]
+      },
+      "b": {
+        "id": "x",
+        "title": "Été 😀",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "héhé",
+            "timestamp": 1
+          },
+          {
+            "id": "2",
+            "role": "user",
+            "content": "ça",
+            "timestamp": 2
+          }
+        ]
+      },
+      "fusion": {
+        "id": "x",
+        "title": "Été 😀",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "héhé",
+            "timestamp": 1
+          },
+          {
+            "id": "2",
+            "role": "user",
+            "content": "ça",
+            "timestamp": 2
+          }
+        ]
+      }
+    },
+    {
+      "nom": "copies identiques : sans effet",
+      "a": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "a",
+            "timestamp": 1
+          }
+        ],
+        "pinned": false
+      },
+      "b": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "a",
+            "timestamp": 1
+          }
+        ],
+        "pinned": false
+      },
+      "fusion": {
+        "id": "x",
+        "title": "x",
+        "createdAt": 1000,
+        "updatedAt": 10,
+        "model": "default",
+        "pinned": false,
+        "messages": [
+          {
+            "id": "1",
+            "role": "user",
+            "content": "a",
+            "timestamp": 1
+          }
+        ]
+      }
+    },
+    {
+      "nom": "createdAt le plus bas, updatedAt le plus haut",
+      "a": {
+        "id": "x",
+        "title": "vieux",
+        "createdAt": 5,
+        "updatedAt": 10,
+        "model": "default",
+        "messages": []
+      },
+      "b": {
+        "id": "x",
+        "title": "neuf",
+        "createdAt": 9,
+        "updatedAt": 30,
+        "model": "default",
+        "messages": []
+      },
+      "fusion": {
+        "id": "x",
+        "title": "neuf",
+        "createdAt": 5,
+        "updatedAt": 30,
+        "model": "default",
+        "pinned": false,
+        "messages": []
+      }
+    }
+  ]
+}

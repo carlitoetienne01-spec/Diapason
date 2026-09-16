@@ -334,6 +334,47 @@ def written_sidecar(sidecar_path: Path, sample_sidecar_payload: dict) -> Path:
     return sidecar_path
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isoler_les_conversations(tmp_path_factory):
+    """Aucun ``create_app`` de test n'ouvre la VRAIE base des conversations.
+
+    Constaté le 16 sept. 2026, le jour de la naissance du magasin : chaque
+    ``create_app`` (25 appels dans test_routes.py, plus la CLI et
+    l'intégration) instanciait ``ConversationsStore()`` sans chemin, donc
+    ~/.diapason/conversations.db — la base de PRODUCTION du Mac de Carlito,
+    qui est aussi le runner CI — y exécutait la purge des tombales et
+    laissait fuir une connexion WAL par test. Le premier lancement de la
+    suite a créé la base réelle avant que l'app n'y ait écrit une ligne.
+
+    Portée SESSION, pas fonction : une première version en portée fonction
+    laissait passer la fixture ``schema`` de test_openapi_schema.py, qui
+    construit l'app en portée module — donc AVANT qu'une garde de portée
+    fonction ne s'installe. La base réelle réapparaissait à chaque run.
+    Le module app.py est patché (comme traces.db_path dans
+    tests/server/conftest.py) : ce que les tests construisent vit dans un
+    répertoire jetable de la session.
+    """
+    try:
+        from diapason.server import app as _app_module
+        from diapason.server.conversations_store import ConversationsStore
+    except ImportError:
+        # diapason[server] absent : rien à isoler.
+        yield
+        return
+
+    chemin = tmp_path_factory.mktemp("conversations") / "conversations.db"
+
+    def _magasin_de_test(db_path: str | Path = ""):
+        return ConversationsStore(db_path or chemin)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(_app_module, "ConversationsStore", _magasin_de_test)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
 @pytest.fixture(autouse=True)
 def _isoler_le_profil_vocal(monkeypatch, tmp_path):
     """Aucun test ne touche l'empreinte vocale RÉELLE du propriétaire.

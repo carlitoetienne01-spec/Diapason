@@ -152,6 +152,14 @@ export interface ConversationStore {
 
 export interface StreamState {
   isStreaming: boolean;
+  /**
+   * La conversation dans laquelle le flux écrit — PAS forcément l'active :
+   * on peut changer de conversation pendant qu'une réponse arrive. Le
+   * moteur de sync la protège de toute fusion distante tant que le flux
+   * dure (16 sept. 2026 : la garde visait `activeId`, et cliquer une autre
+   * conversation la retirait à celle qui recevait la réponse).
+   */
+  conversationId: string | null;
   phase: string;
   elapsedMs: number;
   activeToolCalls: ToolCallInfo[];

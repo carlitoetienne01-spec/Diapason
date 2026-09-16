@@ -440,6 +440,7 @@ export function InputArea() {
 
     setStreamState({
       isStreaming: true,
+      conversationId: convId,
       phase: deepResearch ? t('chat.stream.researching') : t('chat.stream.generating'),
       elapsedMs: 0,
       activeToolCalls: [],

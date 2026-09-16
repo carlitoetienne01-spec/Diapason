@@ -15,6 +15,7 @@ import { ConfirmProvider } from './components/ConfirmDialog';
 import { MeshHost } from './components/MeshHost';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
+import { demarrerSyncConversations } from './lib/convSync';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
 
@@ -127,6 +128,16 @@ export default function App() {
       delete root.dataset.fontSize;
     }
   }, [settings.fontSize]);
+
+  // Synchronisation des conversations avec le serveur local — dans TOUS les
+  // contextes, PAS de garde isTauri (contrairement à l'import overlay
+  // dessous) : 16 sept. 2026, la fenêtre principale (tauri://localhost), le
+  // mini-panneau (http://127.0.0.1:8000) et le navigateur ont chacun leur
+  // localStorage ; seul le serveur les fait converger. Le moteur porte son
+  // propre verrou « une fois », donc le double montage StrictMode est sûr.
+  useEffect(() => {
+    demarrerSyncConversations();
+  }, []);
 
   // Sync overlay conversations into the main app
   const importOverlay = useAppStore((s) => s.importOverlayConversation);

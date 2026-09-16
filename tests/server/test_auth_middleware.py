@@ -71,6 +71,10 @@ def _make_app(
     async def chat_completions():
         return {"ok": True}
 
+    @app.get("/v1/conversations")
+    async def conversations():
+        return {"conversations": [], "deleted": []}
+
     return app
 
 
@@ -178,6 +182,27 @@ class TestAuthMiddleware:
             "le message tapé ne doit pas rebondir sur le limiteur"
         )
         assert client.post("/v1/chat/completions").status_code == 401, (
+            "sans clé, le mur d'authentification doit rester fermé"
+        )
+
+    def test_la_sync_des_conversations_est_authentifiee_mais_jamais_limitee(self):
+        """§100 — le moteur de sync tire toutes les 10 s et pousse à chaque
+        mutation ; pendant un streaming les poussées débordent le seau
+        partagé (60/min) et un 429 fait diverger les deux vues EN SILENCE
+        (16 sept. 2026). Jamais limité, mais jamais sans la clé."""
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=1, burst_size=1)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+
+        # Le seau partagé est vidé par une autre route…
+        assert client.get("/v1/models", headers=headers).status_code == 200
+        assert client.get("/v1/models", headers=headers).status_code == 429
+        # … et la synchronisation passe quand même, mais jamais sans la clé.
+        assert client.get("/v1/conversations", headers=headers).status_code != 429, (
+            "une poussée de sync ne doit jamais rebondir sur le limiteur"
+        )
+        assert client.get("/v1/conversations").status_code == 401, (
             "sans clé, le mur d'authentification doit rester fermé"
         )
 
