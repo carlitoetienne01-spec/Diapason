@@ -4621,14 +4621,11 @@ mod native_reglette {
         }
         let panel = ptr as *mut Object;
 
-        // Visibilité : la réglette ne paraît que HORS de Diapason et quand le
-        // mini-panneau est fermé. On le décide nativement — NSApp.isActive +
-        // mini-panneau visible — plutôt que par le focus d'UNE fenêtre Tauri :
-        // le mini-panneau devient key sans activer l'app, donc la fenêtre
-        // principale ne « perd » jamais le focus au sens Tauri. Ce sondage à
-        // 16 Hz est auto-correcteur.
-        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
-        let active: BOOL = msg_send![app, isActive];
+        // Toujours visible, PARTOUT — « ils doivent rester cloués sans
+        // disparaître » (Carlito, 16 sept. 2026). L'ancienne règle « seulement
+        // hors de Diapason » fabriquait exactement le clignotement rapporté :
+        // atterrir d'un balayage sur le bureau de Diapason cachait l'onglet,
+        // en repartir le remontrait. La règle est morte ; l'onglet vit.
         let mini_ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
         let mini_vis: BOOL = if mini_ptr != 0 {
             msg_send![(mini_ptr as *mut Object), isVisible]
@@ -4642,17 +4639,7 @@ mod native_reglette {
             let alpha: f64 = if key != NO { 1.0 } else { 0.94 };
             let _: () = msg_send![(mini_ptr as *mut Object), setAlphaValue: alpha];
         }
-        // Le rail paraît hors de Diapason OU quand un module est ouvert — pour
-        // pouvoir en choisir un autre sans fermer le mini-panneau.
-        let doit_paraitre = mini_vis != NO || active == NO;
         let vis: BOOL = msg_send![panel, isVisible];
-        if !doit_paraitre {
-            if vis != NO {
-                let nil: *mut Object = std::ptr::null_mut();
-                let _: () = msg_send![panel, orderOut: nil];
-            }
-            return;
-        }
         if vis == NO {
             // Réapparaît TOUJOURS repliée (pastille), jamais restée déployée.
             collapse();
