@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Bell,
   ChevronLeft,
@@ -95,6 +95,16 @@ export function SuccesHabitsPage() {
   const [draft, setDraft] = useState(emptyHabit());
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // Le formulaire naît sous les cartes résumé, en haut de page ; « Modifier »
+  // se clique sur une carte souvent bien plus bas. Dans le mini-panneau
+  // (620 px de haut), le formulaire s'ouvrait hors champ et le clic semblait
+  // mort (16 sept. 2026). On l'amène en vue à chaque ouverture ou changement
+  // de cible.
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [showForm, editingId]);
 
   const spanFrom = `${viewYear}-01-01`;
   const spanTo = `${viewYear}-12-31`;
@@ -301,11 +311,15 @@ export function SuccesHabitsPage() {
   const dayCount = daysInMonth(viewYear, viewMonth);
 
   return (
-    <div className="habitudes-verre flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10" data-verre-defilement>
+    <div className="habitudes-verre flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10" data-verre-defilement>
       <main className="max-w-6xl mx-auto w-full">
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+        {/* En miniature (sous sm), l'en-tête tient sur UNE rangée : la
+            description se tait et les deux boutons deviennent des icônes —
+            empilés sous le titre, ils coûtaient ~170 px du panneau avant le
+            premier chiffre (16 sept. 2026, audit du mini-panneau). */}
+        <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
@@ -316,11 +330,11 @@ export function SuccesHabitsPage() {
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
               Habitudes
             </h1>
-            <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
               Grilles mensuelle et annuelle — cochez un jour pour valider, directement sur ce Mac.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {isTauri() && (
               <button
                 type="button"
@@ -331,8 +345,10 @@ export function SuccesHabitsPage() {
                   color: 'var(--color-text-secondary)',
                   border: '1px solid var(--color-border)',
                 }}
+                aria-label="Rappels OS"
               >
-                <Bell size={16} /> Rappels OS
+                <Bell size={16} />
+                <span className="hidden sm:inline">Rappels OS</span>
               </button>
             )}
             <button
@@ -343,13 +359,18 @@ export function SuccesHabitsPage() {
               }}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer"
               style={{ background: 'var(--color-accent)', color: '#fff' }}
+              aria-label="Nouvelle habitude"
+              aria-expanded={showForm}
             >
-              <CirclePlus size={16} /> Nouvelle habitude
+              <CirclePlus size={16} />
+              <span className="hidden sm:inline">Nouvelle habitude</span>
             </button>
           </div>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-3 mb-5">
+        {/* Trois colonnes dès la base : trois cartes empilées faisaient
+            ~210 px pour trois chiffres (16 sept. 2026). */}
+        <section className="grid gap-2 sm:gap-3 grid-cols-3 mb-4 sm:mb-5">
           <SummaryCard icon="🔥" value={`${maxStreak}`} label="Jours consécutifs" />
           <SummaryCard
             icon="✅"
@@ -361,7 +382,7 @@ export function SuccesHabitsPage() {
 
         {showForm && (
           <CarteVitree as="section" className="mb-5" contenuClassName="grid gap-3 p-4">
-            <div className="grid grid-cols-[56px_1fr_54px] gap-3">
+            <div ref={formRef} className="grid grid-cols-[56px_1fr_54px] gap-3 scroll-mt-6">
               <EmojiPicker
                 value={draft.icon}
                 onChange={(icon) => setDraft({ ...draft, icon })}
@@ -515,7 +536,11 @@ export function SuccesHabitsPage() {
           </div>
         ) : (
           <>
-            <CarteVitree as="section" className="mb-5" contenuClassName="p-4">
+            {/* Sous sm, la vue annuelle se tait : 53 colonnes dans 340 px
+                font des cases de ~6 px — elle ne faisait qu'exister, et
+                repoussait la grille mensuelle (le cœur du module) sous le
+                pli (16 sept. 2026). */}
+            <CarteVitree as="section" className="hidden sm:block mb-5" contenuClassName="p-4">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                   Vue annuelle
@@ -581,10 +606,10 @@ export function SuccesHabitsPage() {
             </CarteVitree>
 
             <section className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-sm font-medium capitalize" style={{ color: 'var(--color-text)' }}>
+              <h2 className="text-sm font-medium capitalize min-w-0 truncate" style={{ color: 'var(--color-text)' }}>
                 Grille de {monthLabels[viewMonth]} {viewYear}
               </h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => shiftMonth(-1)}
@@ -655,15 +680,18 @@ export function SuccesHabitsPage() {
 
 function SummaryCard({ icon, value, label }: { icon: string; value: string; label: string }) {
   return (
-    <CarteVitree contenuClassName="px-4 py-3 flex items-center gap-3">
-      <span className="text-xl" aria-hidden>
+    <CarteVitree contenuClassName="px-3 py-2 sm:px-4 sm:py-3 flex items-center gap-3">
+      {/* Sous sm, la colonne fait ~100 px : l'emoji (20 px + espace) prenait
+          le tiers de la carte et poussait le libellé sur trois lignes
+          (16 sept. 2026). Il revient dès sm. */}
+      <span className="hidden sm:inline text-xl" aria-hidden>
         {icon}
       </span>
-      <div>
-        <p className="text-lg font-semibold tabular-nums" style={{ color: 'var(--color-text)' }}>
+      <div className="min-w-0">
+        <p className="text-base sm:text-lg font-semibold tabular-nums truncate" style={{ color: 'var(--color-text)' }}>
           {value}
         </p>
-        <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-[11px] sm:text-xs leading-tight" style={{ color: 'var(--color-text-tertiary)' }}>
           {label}
         </p>
       </div>

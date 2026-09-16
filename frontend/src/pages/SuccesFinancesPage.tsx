@@ -1,12 +1,15 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
+  Check,
+  ChevronDown,
   CirclePlus,
   Loader2,
   Repeat2,
   Trash2,
   Upload,
   Wallet,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -131,6 +134,36 @@ function surfaceStyle(extra?: CSSProperties): CSSProperties {
   };
 }
 
+// Sous `sm`, chaque onglet montrait son formulaire (7 champs) AVANT la
+// première ligne de sa liste : dans le mini-panneau, ouvrir « Transactions »
+// ne montrait aucune transaction. La liste passe devant (`order`) et le
+// formulaire se replie derrière le bouton « + » ; ouvert, il remonte en tête
+// pour ne pas naître sous 200 lignes. Dès `sm`, l'ordre du DOM (formulaire
+// d'abord) reprend : un premier jet gardait `order-2` jusqu'à `lg`, et entre
+// 640 et 1023 px — le panneau étiré — le formulaire passait sous 200 lignes
+// sans le « + » (lui `sm:hidden`) pour le remonter (revue du 16 sept. 2026).
+// Le `order` ne sert donc que sous sm, où le formulaire est soit caché, soit
+// remonté en tête. Audit du mini-panneau, 16 sept. 2026.
+function formSlotClass(open: boolean) {
+  return open ? 'max-sm:order-first' : 'max-sm:hidden';
+}
+
+// Sous sm la rangée défile en interne, barre masquée : sans le fondu du bord
+// droit, « Objectifs » et « Import CSV » existaient sans que rien ne le dise
+// (revue du 16 sept. 2026).
+const PILL_ROW_CLASS =
+  'flex gap-2 overflow-x-auto flex-nowrap sm:flex-wrap min-w-0 [scrollbar-width:none] max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)]';
+const PILL_CLASS =
+  'shrink-0 whitespace-nowrap px-3 py-1.5 rounded-xl text-sm font-medium cursor-pointer';
+
+function pillStyle(active: boolean): CSSProperties {
+  return {
+    background: active ? 'var(--color-accent)' : 'var(--color-surface)',
+    color: active ? '#fff' : 'var(--color-text-secondary)',
+    border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
+  };
+}
+
 export function SuccesFinancesPage() {
   const confirm = useConfirm();
   const today = localIsoDate();
@@ -142,6 +175,13 @@ export function SuccesFinancesPage() {
   const [subscriptions, setSubscriptions] = useState<FinanceSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Trois états de MODE, pas de largeur : le CSS décide seul ce qui se voit à
+  // quelle taille (règle 2 de docs/development/mini-panneau-responsive.md).
+  const [formOpen, setFormOpen] = useState(false);
+  const [moreCharts, setMoreCharts] = useState(false);
+  // « Ajuster » passait par window.prompt, qui rend `null` sans dialogue dans
+  // la WKWebView du panneau : le bouton semblait mort. Saisie en place.
+  const [goalEdit, setGoalEdit] = useState<{ id: string; value: string } | null>(null);
 
   const [txnDraft, setTxnDraft] = useState({
     type: 'expense' as FinanceTxnType,
@@ -312,6 +352,7 @@ export function SuccesFinancesPage() {
         notes: '',
         date: today,
       }));
+      setFormOpen(false);
     }, 'Transaction ajoutée');
   };
 
@@ -339,6 +380,7 @@ export function SuccesFinancesPage() {
         notes: '',
         nextDueDate: today,
       }));
+      setFormOpen(false);
     }, 'Abonnement créé');
   };
 
@@ -360,6 +402,7 @@ export function SuccesFinancesPage() {
         limit,
       });
       setBudgetDraft((prev) => ({ ...prev, limit: '' }));
+      setFormOpen(false);
     }, 'Budget enregistré');
   };
 
@@ -383,6 +426,7 @@ export function SuccesFinancesPage() {
         color: '#6366f1',
         icon: '🏦',
       });
+      setFormOpen(false);
     }, 'Compte créé');
   };
 
@@ -411,6 +455,7 @@ export function SuccesFinancesPage() {
         color: '#6366f1',
         icon: '🎯',
       });
+      setFormOpen(false);
     }, 'Objectif créé');
   };
 
@@ -427,6 +472,7 @@ export function SuccesFinancesPage() {
         icon: categoryDraft.icon,
       });
       setCategoryDraft({ name: '', kind: 'expense', color: '#94a3b8', icon: '📦' });
+      setFormOpen(false);
     }, 'Catégorie créée');
   };
 
@@ -504,6 +550,19 @@ export function SuccesFinancesPage() {
     }, 'Objectif supprimé');
   };
 
+  const commitGoalEdit = (goal: FinanceGoal) => {
+    if (!goalEdit || goalEdit.id !== goal.id) return;
+    const current = Number(goalEdit.value.replace(',', '.'));
+    if (!(current >= 0)) {
+      toast.warning('Montant invalide.');
+      return;
+    }
+    setGoalEdit(null);
+    void runSave(async () => {
+      await updateFinanceGoal(goal.id, { current });
+    }, 'Progression mise à jour');
+  };
+
   const removeCategory = async (category: FinanceCategory) => {
     if (category.system) {
       toast.info('Les catégories système ne peuvent pas être supprimées.');
@@ -567,11 +626,14 @@ export function SuccesFinancesPage() {
     txnDraft.type === 'income' ? incomeCategories : expenseCategories;
 
   return (
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+        {/* À 460 px, ~1 400 px de décor précédaient la première donnée
+            actionnable (audit du 16 sept. 2026). Sous sm l'en-tête tient sur
+            une rangée : sous-titre tu, bouton réduit à son icône. */}
+        <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span
                 className="text-xs font-medium tracking-[0.16em] uppercase"
                 style={{ color: 'var(--color-accent)' }}
@@ -585,27 +647,28 @@ export function SuccesFinancesPage() {
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
               Finances
             </h1>
-            <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
               Budget CAD local — revenus, dépenses, abonnements et objectifs sur ce Mac.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void materializeSubs()}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer"
-              style={{
-                background: 'var(--color-bg-secondary)',
-                color: 'var(--color-text-secondary)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <Repeat2 size={16} /> Matérialiser les dus
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void materializeSubs()}
+            aria-label="Matérialiser les abonnements dus"
+            title="Matérialiser les abonnements dus"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer shrink-0"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              color: 'var(--color-text-secondary)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <Repeat2 size={16} />
+            <span className="hidden sm:inline">Matérialiser les dus</span>
+          </button>
         </header>
 
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className={`${PILL_ROW_CLASS} mb-4 sm:mb-5`}>
           {PERIODS.map((item) => {
             const active = period === item.id;
             return (
@@ -613,12 +676,9 @@ export function SuccesFinancesPage() {
                 key={item.id}
                 type="button"
                 onClick={() => setPeriod(item.id)}
-                className="px-3 py-1.5 rounded-xl text-sm font-medium cursor-pointer"
-                style={{
-                  background: active ? 'var(--color-accent)' : 'var(--color-surface)',
-                  color: active ? '#fff' : 'var(--color-text-secondary)',
-                  border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                }}
+                aria-pressed={active}
+                className={PILL_CLASS}
+                style={pillStyle(active)}
               >
                 {item.label}
               </button>
@@ -626,7 +686,10 @@ export function SuccesFinancesPage() {
           })}
         </div>
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-5">
+        {/* Deux colonnes dès 340 px : cinq cartes empilées coûtaient ~480 px.
+            La cinquième (le compte de transactions) n'apparaît qu'à partir
+            de sm — la liste en dessous porte déjà ce nombre dans son titre. */}
+        <section className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5 mb-4 sm:mb-5">
           <KpiCard
             icon="↑"
             label="Revenus"
@@ -666,16 +729,40 @@ export function SuccesFinancesPage() {
                 ? `${overview.from.slice(5)} → ${overview.to.slice(5)}`
                 : ''
             }
+            secondary
           />
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-3 mb-5">
+        {/* Trois graphiques de 260 px empilés = ~780 px dans un panneau de
+            620 : sous sm, seule la répartition reste visible, les deux autres
+            se déplient à la demande (`contents` les rend enfants de la grille
+            une fois révélés, sans wrapper qui casserait les colonnes). */}
+        <section className="grid gap-3 lg:grid-cols-3 mb-4 sm:mb-5">
           <CategoryDonutChart data={overview?.categoryBreakdown ?? []} />
-          <IncomeExpenseBarChart data={overview?.series ?? []} />
-          <NetEvolutionChart data={overview?.series ?? []} />
+          <div className={moreCharts ? 'contents' : 'hidden sm:contents'}>
+            <IncomeExpenseBarChart data={overview?.series ?? []} />
+            <NetEvolutionChart data={overview?.series ?? []} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setMoreCharts((prev) => !prev)}
+            aria-expanded={moreCharts}
+            className="sm:hidden flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer"
+            style={{
+              color: 'var(--color-text-secondary)',
+              border: '1px dashed var(--color-border)',
+            }}
+          >
+            <ChevronDown
+              size={14}
+              className="transition-transform"
+              style={{ transform: moreCharts ? 'rotate(180deg)' : undefined }}
+            />
+            {moreCharts ? 'Masquer les deux autres graphiques' : 'Revenus vs dépenses, solde net'}
+          </button>
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-3 mb-6">
+        <section className="grid gap-3 lg:grid-cols-3 mb-4 sm:mb-6">
           <Panel title="Alertes budget">
             {!budgets.length && (
               <EmptyLine text="Aucun budget pour ce mois." />
@@ -771,30 +858,54 @@ export function SuccesFinancesPage() {
           </Panel>
         </section>
 
-        <div className="flex flex-wrap gap-2 mb-4">
-          {SECTION_TABS.map((tab) => {
-            const active = section === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSection(tab.id)}
-                className="px-3 py-1.5 rounded-xl text-sm font-medium cursor-pointer"
-                style={{
-                  background: active ? 'var(--color-accent)' : 'var(--color-surface)',
-                  color: active ? '#fff' : 'var(--color-text-secondary)',
-                  border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        {/* Six onglets qui pliaient sur trois rangées : une seule rangée qui
+            défile en interne (jamais la page), et le « + » qui déplie le
+            formulaire de l'onglet courant, ancré à droite, sous sm seulement —
+            à partir de sm les formulaires sont toujours visibles. */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`${PILL_ROW_CLASS} flex-1`} role="tablist" aria-label="Sections">
+            {SECTION_TABS.map((tab) => {
+              const active = section === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => {
+                    setSection(tab.id);
+                    setFormOpen(false);
+                  }}
+                  className={PILL_CLASS}
+                  style={pillStyle(active)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          {section !== 'import' && (
+            <button
+              type="button"
+              onClick={() => setFormOpen((prev) => !prev)}
+              aria-expanded={formOpen}
+              aria-label={formOpen ? 'Replier le formulaire' : 'Ajouter'}
+              title={formOpen ? 'Replier le formulaire' : 'Ajouter'}
+              className="sm:hidden size-8 shrink-0 rounded-xl flex items-center justify-center cursor-pointer"
+              style={{
+                background: formOpen ? 'var(--color-bg-secondary)' : 'var(--color-accent)',
+                color: formOpen ? 'var(--color-text-secondary)' : '#fff',
+                border: `1px solid ${formOpen ? 'var(--color-border)' : 'var(--color-accent)'}`,
+              }}
+            >
+              {formOpen ? <X size={16} /> : <CirclePlus size={16} />}
+            </button>
+          )}
         </div>
 
         {section === 'transactions' && (
           <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <FormCard title="Ajouter une transaction">
+            <FormCard title="Ajouter une transaction" className={formSlotClass(formOpen)}>
               <select
                 value={txnDraft.type}
                 onChange={(event) =>
@@ -941,7 +1052,7 @@ export function SuccesFinancesPage() {
 
         {section === 'subscriptions' && (
           <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <FormCard title="Nouvel abonnement">
+            <FormCard title="Nouvel abonnement" className={formSlotClass(formOpen)}>
               <input
                 value={subDraft.name}
                 onChange={(event) => setSubDraft({ ...subDraft, name: event.target.value })}
@@ -1017,8 +1128,8 @@ export function SuccesFinancesPage() {
                   className="flex items-start justify-between gap-3 py-2.5 border-b last:border-b-0"
                   style={{ borderColor: 'var(--color-border)' }}
                 >
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
                       {sub.name}
                       {!sub.active && (
                         <span className="ml-2 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -1030,7 +1141,7 @@ export function SuccesFinancesPage() {
                       {formatCad(sub.amount)} · {CADENCE_LABELS[sub.cadence]} · prochain {sub.nextDueDate}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() =>
@@ -1059,7 +1170,7 @@ export function SuccesFinancesPage() {
 
         {section === 'budgets' && (
           <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <FormCard title="Définir un budget">
+            <FormCard title="Définir un budget" className={formSlotClass(formOpen)}>
               <select
                 value={budgetDraft.scope}
                 onChange={(event) =>
@@ -1128,9 +1239,9 @@ export function SuccesFinancesPage() {
                     className="flex items-center justify-between gap-3 py-2.5 border-b last:border-b-0"
                     style={{ borderColor: 'var(--color-border)' }}
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p
-                        className="text-sm font-medium"
+                        className="text-sm font-medium truncate"
                         style={{ color: budget.over ? 'var(--color-error)' : 'var(--color-text)' }}
                       >
                         {name}
@@ -1152,7 +1263,7 @@ export function SuccesFinancesPage() {
 
         {section === 'accounts' && (
           <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <div className="space-y-4">
+            <div className={`space-y-4 ${formSlotClass(formOpen)}`}>
               <FormCard title="Nouveau compte">
                 <div className="grid grid-cols-[56px_1fr] gap-2">
                   <EmojiPicker
@@ -1311,7 +1422,7 @@ export function SuccesFinancesPage() {
 
         {section === 'goals' && (
           <section className="grid gap-4 lg:grid-cols-[340px_1fr]">
-            <FormCard title="Nouvel objectif">
+            <FormCard title="Nouvel objectif" className={formSlotClass(formOpen)}>
               <div className="grid grid-cols-[56px_1fr] gap-2">
                 <EmojiPicker
                   value={goalDraft.icon}
@@ -1388,8 +1499,8 @@ export function SuccesFinancesPage() {
                     style={{ borderColor: 'var(--color-border)' }}
                   >
                     <div className="flex items-start justify-between gap-3 mb-2">
-                      <div>
-                        <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
                           {goal.icon} {goal.name}
                         </p>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -1410,48 +1521,74 @@ export function SuccesFinancesPage() {
                         style={{ width: `${pct}%`, background: goal.color || 'var(--color-accent)' }}
                       />
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="px-2 py-1 rounded-lg text-xs cursor-pointer"
-                        style={{
-                          background: 'var(--color-bg-secondary)',
-                          color: 'var(--color-text-secondary)',
-                          border: '1px solid var(--color-border)',
-                        }}
-                        onClick={() => {
-                          const raw = window.prompt('Nouveau montant épargné ($)', String(goal.current));
-                          if (raw == null) return;
-                          const current = Number(raw.replace(',', '.'));
-                          if (!(current >= 0)) {
-                            toast.warning('Montant invalide.');
-                            return;
-                          }
-                          void runSave(async () => {
-                            await updateFinanceGoal(goal.id, { current });
-                          }, 'Progression mise à jour');
+                    {goalEdit?.id === goal.id ? (
+                      <form
+                        className="flex items-center gap-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          commitGoalEdit(goal);
                         }}
                       >
-                        Ajuster
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2 py-1 rounded-lg text-xs cursor-pointer"
-                        style={{
-                          background: 'var(--color-bg-secondary)',
-                          color: 'var(--color-text-secondary)',
-                          border: '1px solid var(--color-border)',
-                        }}
-                        onClick={() => {
-                          const next = Math.round((goal.current + 50) * 100) / 100;
-                          void runSave(async () => {
-                            await updateFinanceGoal(goal.id, { current: next });
-                          }, '+50 $ ajoutés');
-                        }}
-                      >
-                        +50 $
-                      </button>
-                    </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          autoFocus
+                          value={goalEdit.value}
+                          onChange={(event) => setGoalEdit({ id: goal.id, value: event.target.value })}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') setGoalEdit(null);
+                          }}
+                          aria-label={`Montant épargné pour ${goal.name} ($)`}
+                          placeholder="Montant épargné ($)"
+                          className="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs outline-none"
+                          style={fieldStyle()}
+                        />
+                        <button
+                          type="submit"
+                          aria-label="Valider le montant"
+                          className="size-7 shrink-0 rounded-lg flex items-center justify-center cursor-pointer"
+                          style={{ background: 'var(--color-accent)', color: '#fff' }}
+                        >
+                          <Check size={14} />
+                        </button>
+                        <IconButton label="Annuler" onClick={() => setGoalEdit(null)}>
+                          <X size={14} />
+                        </IconButton>
+                      </form>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="px-2 py-1 rounded-lg text-xs cursor-pointer"
+                          style={{
+                            background: 'var(--color-bg-secondary)',
+                            color: 'var(--color-text-secondary)',
+                            border: '1px solid var(--color-border)',
+                          }}
+                          onClick={() => setGoalEdit({ id: goal.id, value: String(goal.current) })}
+                        >
+                          Ajuster
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 rounded-lg text-xs cursor-pointer"
+                          style={{
+                            background: 'var(--color-bg-secondary)',
+                            color: 'var(--color-text-secondary)',
+                            border: '1px solid var(--color-border)',
+                          }}
+                          onClick={() => {
+                            const next = Math.round((goal.current + 50) * 100) / 100;
+                            void runSave(async () => {
+                              await updateFinanceGoal(goal.id, { current: next });
+                            }, '+50 $ ajoutés');
+                          }}
+                        >
+                          +50 $
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1491,7 +1628,9 @@ export function SuccesFinancesPage() {
                 <Upload size={16} /> Importer
               </PrimaryButton>
             </FormCard>
-            <Panel title="Conseils">
+            {/* Purement documentaire : sous sm il précédait le bouton
+                « Importer » de trois paragraphes. */}
+            <Panel title="Conseils" className="hidden sm:block">
               <ul className="text-sm space-y-2" style={{ color: 'var(--color-text-secondary)' }}>
                 <li>Les doublons (même date + montant + libellé) sont ignorés.</li>
                 <li>Un montant négatif est traité comme une dépense si le type est absent.</li>
@@ -1511,12 +1650,15 @@ function KpiCard({
   value,
   hint,
   tone,
+  secondary = false,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   hint?: string;
   tone?: 'success' | 'error';
+  /** Carte absente sous `sm` : le panneau n'a pas la place d'un chiffre redondant. */
+  secondary?: boolean;
 }) {
   const valueColor =
     tone === 'success'
@@ -1525,20 +1667,23 @@ function KpiCard({
         ? 'var(--color-error)'
         : 'var(--color-text)';
   return (
-    <CadreVitre className="rounded-2xl px-4 py-3" style={surfaceStyle()}>
+    <CadreVitre
+      className={`rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 min-w-0 ${secondary ? 'hidden sm:block' : ''}`}
+      style={surfaceStyle()}
+    >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base" aria-hidden style={{ color: 'var(--color-accent)' }}>
           {icon}
         </span>
-        <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)' }}>
           {label}
         </span>
       </div>
-      <p className="text-lg font-semibold tabular-nums" style={{ color: valueColor }}>
+      <p className="text-base sm:text-lg font-semibold tabular-nums truncate" style={{ color: valueColor }}>
         {value}
       </p>
       {hint ? (
-        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="hidden sm:block text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
           {hint}
         </p>
       ) : null}
@@ -1546,9 +1691,17 @@ function KpiCard({
   );
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
+function Panel({
+  title,
+  children,
+  className = '',
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <CadreVitre className="rounded-2xl p-4" style={surfaceStyle()}>
+    <CadreVitre className={`rounded-2xl p-3 sm:p-4 min-w-0 ${className}`} style={surfaceStyle()}>
       <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--color-text-secondary)' }}>
         {title}
       </h3>
@@ -1557,9 +1710,20 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function FormCard({ title, children }: { title: string; children: ReactNode }) {
+function FormCard({
+  title,
+  children,
+  className = '',
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <CadreVitre className="rounded-2xl p-4 grid gap-3 h-fit" style={surfaceStyle({ borderColor: 'var(--color-accent)' })}>
+    <CadreVitre
+      className={`rounded-2xl p-3 sm:p-4 grid gap-3 h-fit min-w-0 ${className}`}
+      style={surfaceStyle({ borderColor: 'var(--color-accent)' })}
+    >
       <h3 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
         {title}
       </h3>

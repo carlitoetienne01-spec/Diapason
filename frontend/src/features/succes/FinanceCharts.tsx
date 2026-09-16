@@ -18,10 +18,11 @@ import {
 
 import type { FinanceCategoryBreakdown, FinanceSeriesPoint } from './types';
 
-const chartPerspective: CSSProperties = {
-  transform: 'perspective(900px) rotateX(6deg)',
-  transformOrigin: 'center bottom',
-};
+// L'inclinaison 3D (perspective + rotateX 6°) n'existe qu'à partir de `sm` :
+// dans le mini-panneau (~140 px de haut utile), elle floutait les ticks de
+// 10 px sans rien apporter — constaté à l'audit du 16 sept. 2026.
+const chartPerspectiveClass =
+  'flex-1 w-full min-w-0 origin-bottom sm:[transform:perspective(900px)_rotateX(6deg)]';
 
 const tooltipStyle: CSSProperties = {
   background: 'var(--color-surface)',
@@ -44,18 +45,80 @@ function shortDate(iso: string) {
   return `${day}/${month}`;
 }
 
+// L'axe vertical réservait 42 px pour écrire « 12500 » : 12 % d'un panneau
+// de 340 px, pris sur les barres. Une graduation compacte (« 12,5k ») tient
+// dans 32 px sans perdre l'ordre de grandeur — les montants exacts sont
+// dans l'info-bulle. Audit du mini-panneau, 16 sept. 2026.
+export const AXIS_WIDTH = 32;
+
+export function compactAxisTick(value: number): string {
+  const abs = Math.abs(value);
+  if (abs < 1000) return `${Math.round(value)}`;
+  const sign = value < 0 ? '-' : '';
+  const [divisor, suffix] = abs >= 1_000_000 ? [1_000_000, 'M'] : [1000, 'k'];
+  const scaled = Math.round((abs / divisor) * 10) / 10;
+  const text = Number.isInteger(scaled) ? `${scaled}` : `${scaled}`.replace('.', ',');
+  return `${sign}${text}${suffix}`;
+}
+
+/** Une entrée de légende : les catégories les plus lourdes, le reste agrégé. */
+export interface LegendSlice {
+  /** Clé React : l'id de catégorie — deux catégories peuvent porter le même
+      nom (aucune unicité côté serveur), et l'entrée « Autres » a la sienne. */
+  key: string;
+  name: string;
+  color: string;
+}
+
+// La légende du camembert avait 36 px de haut, fixes : au-delà de quatre
+// catégories, elle débordait de la boîte de 210 px et recouvrait le disque.
+// On n'en montre que les plus lourdes, le reste devient une entrée « Autres ».
+export const LEGEND_MAX = 4;
+
+export function legendSlices(data: FinanceCategoryBreakdown[], max = LEGEND_MAX): LegendSlice[] {
+  const slice = ({ categoryId, name, color }: FinanceCategoryBreakdown): LegendSlice => ({
+    key: categoryId || name,
+    name,
+    color,
+  });
+  if (data.length <= max) return data.map(slice);
+  const sorted = [...data].sort((a, b) => b.amount - a.amount);
+  const kept = sorted.slice(0, max - 1).map(slice);
+  const rest = sorted.length - (max - 1);
+  return [...kept, { key: '__autres', name: `Autres (${rest})`, color: 'var(--color-text-tertiary)' }];
+}
+
+function DonutLegend({ items }: { items: LegendSlice[] }) {
+  // Sous `sm`, l'info-bulle suffit : la légende est cachée, mais l'espace que
+  // Recharts lui réserve reste — le disque (156 px) tient encore dans 174 px.
+  return (
+    <ul className="hidden sm:flex flex-wrap justify-center gap-x-3 gap-y-1 pt-1 m-0 p-0 list-none">
+      {items.map((item) => (
+        <li key={item.key} className="flex items-center gap-1 min-w-0">
+          <span
+            aria-hidden
+            className="size-2 rounded-full shrink-0"
+            style={{ background: item.color }}
+          />
+          <span className="truncate" style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>
+            {item.name}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ChartShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <CadreVitre
-      className="rounded-2xl p-4 flex flex-col min-h-[260px]"
+      className="rounded-2xl p-3 sm:p-4 flex flex-col min-h-[220px] sm:min-h-[260px] min-w-0"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
-      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+      <h3 className="text-sm font-medium mb-2 sm:mb-3" style={{ color: 'var(--color-text-secondary)' }}>
         {title}
       </h3>
-      <div className="flex-1 w-full" style={chartPerspective}>
-        {children}
-      </div>
+      <div className={chartPerspectiveClass}>{children}</div>
     </CadreVitre>
   );
 }
@@ -65,6 +128,7 @@ export function CategoryDonutChart({ data }: { data: FinanceCategoryBreakdown[] 
     ? data
     : [{ categoryId: '', name: 'Aucune dépense', icon: '—', color: 'var(--color-border)', amount: 1 }];
   const empty = !data.length;
+  const legend = legendSlices(data);
 
   return (
     <ChartShell title="Répartition des dépenses">
@@ -90,13 +154,7 @@ export function CategoryDonutChart({ data }: { data: FinanceCategoryBreakdown[] 
             />
           )}
           {!empty && (
-            <Legend
-              verticalAlign="bottom"
-              height={36}
-              formatter={(value) => (
-                <span style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>{value}</span>
-              )}
-            />
+            <Legend verticalAlign="bottom" height={36} content={() => <DonutLegend items={legend} />} />
           )}
         </PieChart>
       </ResponsiveContainer>
@@ -126,8 +184,8 @@ export function IncomeExpenseBarChart({ data }: { data: FinanceSeriesPoint[] }) 
             tick={{ fill: 'var(--color-text-tertiary)', fontSize: 10 }}
             axisLine={false}
             tickLine={false}
-            width={42}
-            tickFormatter={(value: number) => `${Math.round(value)}`}
+            width={AXIS_WIDTH}
+            tickFormatter={compactAxisTick}
           />
           <Tooltip
             contentStyle={tooltipStyle}
@@ -175,8 +233,8 @@ export function NetEvolutionChart({ data }: { data: FinanceSeriesPoint[] }) {
             tick={{ fill: 'var(--color-text-tertiary)', fontSize: 10 }}
             axisLine={false}
             tickLine={false}
-            width={42}
-            tickFormatter={(value: number) => `${Math.round(value)}`}
+            width={AXIS_WIDTH}
+            tickFormatter={compactAxisTick}
           />
           <Tooltip
             contentStyle={tooltipStyle}

@@ -82,11 +82,15 @@ export function SuccesDashboardPage() {
   );
 
   return (
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-10">
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-7">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+        {/* En miniature (sous sm), l'en-tête tient sur UNE rangée : la
+            description se tait et la date reste à droite du titre — empilés,
+            ils coûtaient ~150 px du panneau avant le premier chiffre
+            (16 sept. 2026, audit du mini-panneau). */}
+        <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
@@ -97,7 +101,7 @@ export function SuccesDashboardPage() {
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
               Tableau de bord
             </h1>
-            <p className="text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
+            <p className="hidden sm:block text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
               Une vue d’ensemble de votre semaine : tâches, habitudes et projets, entièrement locale.
             </p>
           </div>
@@ -105,7 +109,7 @@ export function SuccesDashboardPage() {
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
-            className="h-9 rounded-xl px-3 text-sm bg-transparent outline-none"
+            className="h-9 rounded-xl px-3 text-sm bg-transparent outline-none shrink-0"
             style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
             aria-label="Date du tableau de bord"
           />
@@ -116,10 +120,13 @@ export function SuccesDashboardPage() {
             <Loader2 size={17} className="animate-spin" /> Chargement…
           </div>
         ) : data ? (
-          <div className="grid gap-5">
+          <div className="grid gap-3 sm:gap-5">
+            {/* La citation était le PREMIER bloc rendu : en miniature elle
+                repoussait les KPI sous le pli pour du décoratif. Sous sm elle
+                se tait (16 sept. 2026). */}
             {data.quote && (
               <CadreVitre as="section"
-                className="rounded-2xl px-5 py-4 flex items-start gap-3"
+                className="rounded-2xl px-5 py-4 hidden sm:flex items-start gap-3"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
                 <Quote size={18} className="mt-0.5 shrink-0" style={{ color: 'var(--color-accent)' }} />
@@ -136,7 +143,10 @@ export function SuccesDashboardPage() {
               </CadreVitre>
             )}
 
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Base à DEUX colonnes : en une seule, les quatre KPI faisaient
+                ~550 px de cartes avant le premier graphique dans un panneau
+                de 620 (16 sept. 2026). */}
+            <section className="grid gap-2 sm:gap-3 grid-cols-2 lg:grid-cols-4">
               <KpiCard
                 icon={<CheckCircle2 size={18} />}
                 label="Tâches complétées"
@@ -171,18 +181,18 @@ export function SuccesDashboardPage() {
               />
             </section>
 
-            <section className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+            <section className="grid gap-3 sm:gap-5 lg:grid-cols-[1.2fr_1fr]">
               <CadreVitre as="article"
-                className="rounded-2xl p-5"
+                className="rounded-2xl p-4 sm:p-5"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-3 sm:mb-4">
                   <LayoutDashboard size={16} style={{ color: 'var(--color-accent)' }} />
                   <h2 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                     Tâches cette semaine
                   </h2>
                 </div>
-                <div className="flex items-end gap-2 h-36">
+                <div className="flex items-end gap-2 h-28 sm:h-36">
                   {data.tasks.weeklyCounts.map((count, index) => (
                     <div key={WEEK_LABELS[index]} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
                       <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -205,10 +215,10 @@ export function SuccesDashboardPage() {
               </CadreVitre>
 
               <CadreVitre as="article"
-                className="rounded-2xl p-5"
+                className="rounded-2xl p-4 sm:p-5"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
-                <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--color-text)' }}>
+                <h2 className="text-sm font-medium mb-3 sm:mb-4" style={{ color: 'var(--color-text)' }}>
                   Habitudes du jour
                 </h2>
                 {!data.habits.items.length ? (
@@ -258,10 +268,10 @@ export function SuccesDashboardPage() {
             </section>
 
             <CadreVitre as="article"
-              className="rounded-2xl p-5"
+              className="rounded-2xl p-4 sm:p-5"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
                 <h2 className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                   Projets actifs
                 </h2>
@@ -279,17 +289,21 @@ export function SuccesDashboardPage() {
                   Aucun projet en cours.
                 </p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {activeProjects.slice(0, 6).map((project) => {
+                <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
+                  {activeProjects.slice(0, 6).map((project, index) => {
                     const percent = project.taskTotal
                       ? Math.round((project.taskCompleted / project.taskTotal) * 100)
                       : 0;
+                    // Sous sm, seuls les trois premiers restent : six cartes
+                    // empilées en colonne unique faisaient défiler le panneau
+                    // pour un bloc que « Voir tout » sert déjà (16 sept. 2026).
+                    // La largeur se lit en CSS, pas en JS — règle 2.
                     return (
                       <CadreVitre as="button" compact
                         key={project.id}
                         type="button"
                         onClick={() => navigate('/succes/projects')}
-                        className="rounded-xl p-3 text-left cursor-pointer"
+                        className={`rounded-xl p-3 text-left cursor-pointer${index >= 3 ? ' max-sm:hidden' : ''}`}
                         style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
                       >
                         <div className="flex items-center justify-between gap-2 mb-2">
@@ -344,22 +358,31 @@ function KpiCard({
     <CadreVitre as="button"
       type="button"
       onClick={onClick}
-      className="rounded-2xl p-4 text-left cursor-pointer transition-opacity hover:opacity-90"
+      className="rounded-2xl p-3 sm:p-4 text-left cursor-pointer transition-opacity hover:opacity-90 min-w-0"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
-      <div
-        className="size-9 rounded-xl flex items-center justify-center mb-3"
-        style={{ background: `color-mix(in srgb, ${tint} 16%, transparent)`, color: tint }}
-      >
-        {icon}
+      {/* Sous sm, l'icône se range sur la ligne du chiffre : empilés
+          (icône 36 px + marge + valeur + libellé + complément), chaque carte
+          dépassait 120 px de haut dans une colonne de 160 px de large
+          (16 sept. 2026). */}
+      <div className="flex items-center gap-2 sm:block">
+        <div
+          className="size-7 sm:size-9 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 sm:mb-3"
+          style={{ background: `color-mix(in srgb, ${tint} 16%, transparent)`, color: tint }}
+        >
+          {icon}
+        </div>
+        <p className="text-xl sm:text-2xl font-semibold tabular-nums truncate" style={{ color: 'var(--color-text)' }}>
+          {value}
+        </p>
       </div>
-      <p className="text-2xl font-semibold tabular-nums" style={{ color: 'var(--color-text)' }}>
-        {value}
-      </p>
-      <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+      <p className="text-xs sm:text-sm mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
         {label}
       </p>
-      <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+      {/* Le complément reste visible sous sm : pour « Tâches complétées » il
+          porte le dénominateur (« /12 cette semaine ») — sans lui, « 3 » ne
+          dit rien. Une ligne de 10 px, tronquée, pas cachée. */}
+      <p className="text-[10px] sm:text-[11px] mt-0.5 truncate" style={{ color: 'var(--color-text-tertiary)' }}>
         {hint}
       </p>
     </CadreVitre>
