@@ -96,11 +96,13 @@ export function Pageur({
         </select>
       </div>
       {nbPages > 1 && (
-        // Deux fenêtres de numéros : 5 cases sous sm (« 1 … 4 … 95 »), 7 dès
-        // sm. À 340 px en peau terminal (html 18 px), la fenêtre de 7 faisait
-        // 351 px : le › sortait du panneau et « 95 » était coupé (mesuré en
-        // revue le 17 sept. 2026). `flex-wrap` en filet pour data-font-size
-        // large.
+        // Une seule fenêtre, étroite, à toutes les largeurs : au plus cinq
+        // cases (« 1 … 4 … 95 »). La fenêtre de sept (« 1 … 3 4 5 … 95 »)
+        // s'étirait dès qu'on quittait la première page — « je veux que les
+        // numéros restent comme cela, pour éviter que ça s'étire en
+        // horizontal » (Carlito, 17 sept. 2026) — et à 340 px en peau
+        // terminal elle faisait 351 px, le › hors du panneau. `flex-wrap` en
+        // filet pour data-font-size large.
         <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
@@ -113,12 +115,7 @@ export function Pageur({
           >
             <ChevronLeft size={15} />
           </button>
-          {[0, 1].map((voisins) => (
-            <div
-              key={voisins}
-              className={`${voisins === 0 ? 'flex sm:hidden' : 'hidden sm:flex'} items-center gap-1`}
-            >
-          {fenetrePages(page, nbPages, voisins).map((caseDePageur, index) =>
+          {fenetrePages(page, nbPages, 0).map((caseDePageur, index) =>
             caseDePageur === ELLIPSE ? (
               <span
                 key={`ellipse-${index}`}
@@ -155,8 +152,6 @@ export function Pageur({
               </button>
             ),
           )}
-            </div>
-          ))}
           <button
             type="button"
             onClick={() => onPage(page + 1)}
