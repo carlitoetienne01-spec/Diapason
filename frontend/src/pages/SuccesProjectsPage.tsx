@@ -627,10 +627,16 @@ function ProjectFolderVisual({
 }
 
 /**
- * Les notes rattachées au projet — de petits cartables sous la pile de
- * photos, même langage visuel. Un clic ouvre la note dans le module Notes
- * (le chemin qu'emprunte déjà « montre-moi cette note » du maillage).
- * Demandé le 15 septembre 2026.
+ * Les notes rattachées au projet — de petits cartables, même langage visuel
+ * que le dossier. Un clic ouvre la note dans le module Notes (le chemin
+ * qu'emprunte déjà « montre-moi cette note » du maillage). Demandé le
+ * 15 septembre 2026.
+ *
+ * En LIGNE, pleine largeur, sous l'en-tête — plus dans la colonne de 200 px
+ * du dossier, où six cartables s'empilaient sur trois rangées de deux
+ * pendant que tout l'espace à droite restait vide (Carlito, 17 sept. 2026 :
+ * « mets les notes en horizontal, le plus ergonomique possible »). L'ordre
+ * est celui fixé dans Notes (le serveur sert le rang manuel).
  */
 function NotesDuProjet({ projectId }: { projectId: string }) {
   const [notes, setNotes] = useState<SuccesNote[]>([]);
@@ -654,7 +660,7 @@ function NotesDuProjet({ projectId }: { projectId: string }) {
 
   if (!notes.length) return null;
   return (
-    <div className="mt-4">
+    <section className="mb-6" aria-label="Notes du projet">
       <div className="flex items-center gap-2 mb-2">
         <h3
           className="text-[11px] font-semibold tracking-[0.14em] uppercase shrink-0"
@@ -662,9 +668,17 @@ function NotesDuProjet({ projectId }: { projectId: string }) {
         >
           Notes
         </h3>
+        <span
+          className="text-[11px] tabular-nums shrink-0"
+          style={{ color: 'var(--color-text-tertiary)' }}
+        >
+          {notes.length}
+        </span>
         <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      {/* Une rangée qui ne revient à la ligne que si les cartables ne
+          tiennent pas : tout est visible d'un regard, rien à faire défiler. */}
+      <div className="flex flex-wrap gap-x-3 gap-y-4">
         {notes.map((note) => (
           <button
             key={note.id}
@@ -673,7 +687,7 @@ function NotesDuProjet({ projectId }: { projectId: string }) {
               setPendingMeshSelection({ kind: 'note', id: note.id });
               void navigate('/succes/notes');
             }}
-            className="cursor-pointer bg-transparent border-0 p-0 text-inherit"
+            className="w-24 sm:w-28 shrink-0 cursor-pointer bg-transparent border-0 p-0 text-inherit"
             aria-label={`Ouvrir la note ${note.title}`}
             title={note.title}
           >
@@ -687,7 +701,7 @@ function NotesDuProjet({ projectId }: { projectId: string }) {
           </button>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1113,7 +1127,6 @@ export function SuccesProjectsPage() {
                 onTacheOuverte={surTacheOuverte}
                 onParTache={surPhotosParTache}
               />
-              <NotesDuProjet projectId={selected.id} />
             </div>
             <div className="order-1 sm:order-none">
               <div className="flex items-center gap-2 mb-2">
@@ -1167,6 +1180,8 @@ export function SuccesProjectsPage() {
               <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)' }}>{progress}% d’avancement</p>
             </div>
           </header>
+
+          <NotesDuProjet projectId={selected.id} />
 
           {showForm && editingId === selected.id && (
             <section className="grid gap-3 rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
