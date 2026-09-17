@@ -9,6 +9,7 @@ import { Database, MessageSquare, X } from 'lucide-react';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
+import { EVENEMENT_OUVRIR_SAUTEUR } from '../../lib/panneau';
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -28,10 +29,16 @@ export function ChatArea() {
   const streamState = useAppStore((s) => s.streamState);
   const activeId = useAppStore((s) => s.activeId);
   const navigate = useNavigate();
-  // 17 sept. 2026 : le sauteur de discussions (⌘J) n'existe pas encore ; son
-  // état d'ouverture vit déjà ici — state local, jamais une route (le rail
-  // réécrit l'URL) — pour que l'en-tête l'ouvre sans rien savoir de lui.
+  // 17 sept. 2026 : l'état d'ouverture du sauteur de discussions (⌘J) vit
+  // ici — state local, jamais une route (le rail réécrit l'URL). L'en-tête
+  // l'ouvre au clic ; ⌘J arrive d'App.tsx par un événement, la touche est
+  // reçue là-bas et le fil n'y est pas connu.
   const [sauteurOuvert, setSauteurOuvert] = useState(false);
+  useEffect(() => {
+    const ouvrir = () => setSauteurOuvert(true);
+    window.addEventListener(EVENEMENT_OUVRIR_SAUTEUR, ouvrir);
+    return () => window.removeEventListener(EVENEMENT_OUVRIR_SAUTEUR, ouvrir);
+  }, []);
   const listRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const wasStreaming = useRef(false);
@@ -88,6 +95,7 @@ export function ChatArea() {
       <EnteteDiscussion
         sauteurOuvert={sauteurOuvert}
         onOuvrirSauteur={() => setSauteurOuvert(true)}
+        onFermerSauteur={() => setSauteurOuvert(false)}
       />
 
       {/* Data sources banner. 16 sept. 2026, audit du mini-panneau : à 420 px

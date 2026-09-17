@@ -15,9 +15,18 @@
  * (menu de puce, palette, plus tard le sauteur) émet
  * `diapason:focus-compositeur`, et seul le compositeur décide s'il existe et
  * s'il peut prendre le focus. Aucun composant n'a à connaître le textarea.
+ *
+ * Même chemin pour le sauteur (⌘J) : App.tsx reçoit la touche mais le
+ * sauteur est un état LOCAL de ChatArea (jamais une route, le rail réécrit
+ * l'URL) — il s'ouvre sur `diapason:ouvrir-sauteur`. Et quand le sauteur
+ * crée un fil depuis une requête sans résultat, le texte tapé rejoint le
+ * compositeur par `diapason:deposer-texte` (detail : la chaîne), déposé et
+ * jamais envoyé : InputArea seule connaît son champ.
  */
 export const EVENEMENT_PANNEAU_OUVERT = 'diapason:panneau-ouvert';
 export const EVENEMENT_FOCUS_COMPOSITEUR = 'diapason:focus-compositeur';
+export const EVENEMENT_OUVRIR_SAUTEUR = 'diapason:ouvrir-sauteur';
+export const EVENEMENT_DEPOSER_TEXTE = 'diapason:deposer-texte';
 
 // Une View Transition dure 180 ms et le rendu qui suit quelques dizaines ;
 // 2 s laisse dix fois la marge et reste sous ce qu'une navigation VOULUE
@@ -53,6 +62,15 @@ export function signalerPanneauOuvert(): void {
 
 export function demanderLeFocusDuCompositeur(): void {
   window.dispatchEvent(new CustomEvent(EVENEMENT_FOCUS_COMPOSITEUR));
+}
+
+export function demanderLOuvertureDuSauteur(): void {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR_SAUTEUR));
+}
+
+/** Dépose `texte` dans le compositeur, à la suite d'un brouillon éventuel. */
+export function deposerLeTexteDansLeCompositeur(texte: string): void {
+  window.dispatchEvent(new CustomEvent<string>(EVENEMENT_DEPOSER_TEXTE, { detail: texte }));
 }
 
 // Écoute dès l'import — avant tout montage — pour que le signal ne soit

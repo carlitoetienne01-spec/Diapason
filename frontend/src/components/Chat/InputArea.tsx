@@ -14,7 +14,7 @@ import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
-import { EVENEMENT_FOCUS_COMPOSITEUR } from '../../lib/panneau';
+import { EVENEMENT_DEPOSER_TEXTE, EVENEMENT_FOCUS_COMPOSITEUR } from '../../lib/panneau';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -398,6 +398,28 @@ export function InputArea() {
     focusEnAttente.current = false;
     textareaRef.current?.focus();
   }, [compositeurBloque]);
+
+  // 17 sept. 2026 : le sauteur (⌘J) crée un fil depuis une requête sans
+  // résultat — « Nouvelle discussion « permis » ↩ » — et le texte tapé doit
+  // atterrir ICI, jamais partir tout seul (§100 : rien n'est envoyé qu'on
+  // n'ait relu). À la suite d'un brouillon, avec une espace, comme la
+  // dictée ; le curseur en fin de texte au tour suivant, après que React a
+  // posé la valeur — `focus()` seul le laisserait en tête du champ.
+  useEffect(() => {
+    const deposer = (e: Event) => {
+      const texte = (e as CustomEvent<string>).detail;
+      if (typeof texte !== 'string' || !texte) return;
+      setInput((prev) => (prev ? prev + ' ' + texte : texte));
+      window.requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el || el.disabled) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
+    };
+    window.addEventListener(EVENEMENT_DEPOSER_TEXTE, deposer);
+    return () => window.removeEventListener(EVENEMENT_DEPOSER_TEXTE, deposer);
+  }, []);
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();

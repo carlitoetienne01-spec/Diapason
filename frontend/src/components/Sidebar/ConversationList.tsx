@@ -22,7 +22,11 @@ type Translate = ReturnType<typeof useTranslation>['t'];
 
 // `t` is passed in rather than read from a hook: this runs per row inside the
 // render, and a hook cannot be called from a plain helper.
-function formatRelativeTime(timestamp: number, t: Translate): string {
+//
+// 17 sept. 2026 : exporté tel quel pour le sauteur de discussions (⌘J) du
+// mini-panneau — même heure relative, mêmes sections, pour que la même
+// discussion se lise pareil dans la barre latérale et sous le titre du fil.
+export function formatRelativeTime(timestamp: number, t: Translate): string {
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return t('common.time.justNow');
@@ -36,13 +40,13 @@ function formatRelativeTime(timestamp: number, t: Translate): string {
 
 const DAY_MS = 86_400_000;
 
-interface Section {
+export interface Section {
   label: string;
   items: Conversation[];
 }
 
 /** Pinned first, then the familiar date buckets — organisation the eye can scan. */
-function sectionsOf(conversations: Conversation[], t: Translate): Section[] {
+export function sectionsOf(conversations: Conversation[], t: Translate): Section[] {
   const startOfToday = new Date().setHours(0, 0, 0, 0);
   const buckets: Record<string, Conversation[]> = {
     pinned: [],

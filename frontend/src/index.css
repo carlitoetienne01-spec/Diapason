@@ -1275,6 +1275,17 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   animation: diapason-fil-fondu 180ms ease-out;
 }
 
+/* Le sauteur (⌘J) naît sous le titre : 4 px de descente et un fondu en
+   120 ms — plus court que le fil (180), c'est un menu, pas une page ; plus
+   long que rien, sinon il semble avoir toujours été là. */
+@keyframes diapason-sauteur-entree {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.sauteur-entree {
+  animation: diapason-sauteur-entree 120ms ease-out;
+}
+
 /* A received file is announced only after the receiver has recomputed its
    hash. The motion reads left-to-right like the transfer, then leaves before
    it can become permanent chrome. */
@@ -1363,6 +1374,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 @media (prefers-reduced-motion: reduce) {
   .talk-caption,
   .fil-fondu,
+  .sauteur-entree,
   .file-arrival-card,
   .file-arrival-beam > span,
   .file-arrival-lifetime {

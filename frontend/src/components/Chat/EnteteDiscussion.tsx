@@ -20,6 +20,7 @@ import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
 import { useConfirm } from '../ConfirmDialog';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { ATTRIBUT_BASCULE_SAUTEUR, SauteurDiscussions } from './SauteurDiscussions';
 
 /**
  * L'en-tête du fil : le nom de la discussion active, et de quoi en changer.
@@ -52,13 +53,15 @@ const BOUTON =
   'items-center justify-center w-7 h-7 rounded-md cursor-pointer transition-colors shrink-0';
 
 interface Props {
-  /** Le sauteur (⌘J) est-il ouvert ? Tenu par ChatArea, rempli par le lot suivant. */
+  /** Le sauteur (⌘J) est-il ouvert ? Tenu par ChatArea (⌘J l'y atteint), rendu ici :
+   * l'en-tête seule sait sous quoi l'ancrer. */
   sauteurOuvert: boolean;
   /** Ouvre le sauteur — depuis le titre ou ⌕. */
   onOuvrirSauteur: () => void;
+  onFermerSauteur: () => void;
 }
 
-export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
+export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSauteur }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -79,6 +82,21 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
 
   const [menuAncre, setMenuAncre] = useState<DOMRect | null>(null);
   const boutonMenuRef = useRef<HTMLButtonElement>(null);
+  const rangeeRef = useRef<HTMLDivElement>(null);
+  const titreRef = useRef<HTMLButtonElement>(null);
+  // Le titre et ⌕ BASCULENT : ouvert, un second clic ferme — et leur
+  // `mousedown` n'est pas « dehors » pour le sauteur (ATTRIBUT_BASCULE_SAUTEUR).
+  // Fermé d'ici, le sauteur ne rend pas le focus lui-même : la demande part
+  // d'ici, différée d'un tour comme les siennes (le clic déplace le focus
+  // après les écouteurs).
+  const basculerSauteur = () => {
+    if (!sauteurOuvert) {
+      onOuvrirSauteur();
+      return;
+    }
+    onFermerSauteur();
+    window.setTimeout(demanderLeFocusDuCompositeur, 0);
+  };
   const [renommage, setRenommage] = useState<string | null>(null);
 
   const fermerMenu = (rendreLeFocus = true) => {
@@ -149,6 +167,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
 
   return (
     <div
+      ref={rangeeRef}
       className={`flex items-center gap-1 h-10 pl-3 shrink-0 ${
         // Talk and the approval bell are pinned to the window's top-right
         // corner. With the system panel open the panel sits beneath them;
@@ -189,12 +208,14 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
         />
       ) : (
         <button
+          ref={titreRef}
           type="button"
-          onClick={onOuvrirSauteur}
+          onClick={basculerSauteur}
           className="flex items-center gap-2 flex-1 min-w-0 h-7 px-1.5 -ml-1.5 rounded-md text-left cursor-pointer"
           title={t('chat.header.jump')}
-          aria-haspopup="menu"
+          aria-haspopup="dialog"
           aria-expanded={sauteurOuvert}
+          {...{ [ATTRIBUT_BASCULE_SAUTEUR]: '' }}
         >
           <span
             aria-hidden="true"
@@ -214,13 +235,14 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
       <div className="flex items-center gap-0.5 shrink-0 ml-auto">
         <button
           type="button"
-          onClick={onOuvrirSauteur}
+          onClick={basculerSauteur}
           className={`hidden compact:inline-flex ${BOUTON}`}
           style={{ color: 'var(--color-text-tertiary)' }}
           title={t('chat.header.jump')}
           aria-label={t('chat.header.jump')}
-          aria-haspopup="menu"
+          aria-haspopup="dialog"
           aria-expanded={sauteurOuvert}
+          {...{ [ATTRIBUT_BASCULE_SAUTEUR]: '' }}
         >
           <Search size={15} />
         </button>
@@ -269,6 +291,14 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
           <PanelIcon size={16} />
         </button>
       </div>
+
+      {sauteurOuvert && (
+        <SauteurDiscussions
+          ancre={titreRef.current}
+          repli={rangeeRef.current}
+          onClose={onFermerSauteur}
+        />
+      )}
 
       {menuAncre && active && (
         <MenuEntete ancre={menuAncre} boutonRef={boutonMenuRef} onClose={() => fermerMenu()}>

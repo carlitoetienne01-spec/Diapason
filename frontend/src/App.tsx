@@ -19,7 +19,7 @@ import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
-import { demanderLeFocusDuCompositeur } from './lib/panneau';
+import { demanderLOuvertureDuSauteur, demanderLeFocusDuCompositeur } from './lib/panneau';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -274,6 +274,20 @@ export default function App() {
         } else {
           navigate('/');
           window.setTimeout(demanderLeFocusDuCompositeur, 0);
+        }
+      }
+      // ⌘J — le sauteur de discussions, sous le titre du fil (ChatArea le
+      // tient en state local). Même détour que ⌘N hors de la Discussion :
+      // la page n'est pas montée quand la touche arrive, la demande attend
+      // un tour. Un sauteur déjà ouvert garde le focus dans son champ, d'où
+      // ⌘J ne passe pas ici : c'est lui qui se referme.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'j') {
+        e.preventDefault();
+        if (pathname === '/') {
+          demanderLOuvertureDuSauteur();
+        } else {
+          navigate('/');
+          window.setTimeout(demanderLOuvertureDuSauteur, 0);
         }
       }
     };
