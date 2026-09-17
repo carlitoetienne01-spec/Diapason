@@ -846,22 +846,26 @@ export function SuccesTasksPage() {
     <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-6 md:px-8">
       <main className={`mx-auto w-full ${surTableau ? 'max-w-7xl' : 'max-w-5xl'}`}>
         <header className="mb-2 sm:mb-3">
-          <div className="flex items-end justify-between gap-3">
-            <div className="min-w-0">
+          {/* Le titre ne se casse jamais et c'est la rangée de droite qui
+              revient à la ligne : avec le quatrième onglet, « TÂCHES » en
+              pixel passait sur deux lignes et montait sur l'eyebrow
+              (17 sept. 2026, 1280 px). */}
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+            <div className="shrink-0">
               <div className="hidden sm:flex items-center gap-2 mb-1 h-4">
                 <span className="text-xs font-medium tracking-[0.16em] uppercase leading-4" style={{ color: 'var(--color-accent)' }}>Succès</span>
                 {iconeSynchro}
                 {voyantActivite}
               </div>
               <div className="flex items-center gap-2 h-8">
-                <h1 className="text-xl sm:text-2xl font-semibold leading-8" style={{ color: 'var(--color-text)' }}>Tâches</h1>
+                <h1 className="text-xl sm:text-2xl font-semibold leading-8 whitespace-nowrap" style={{ color: 'var(--color-text)' }}>Tâches</h1>
                 <span className="flex sm:hidden items-center gap-2">
                   {iconeSynchro}
                   {voyantActivite}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
               <span className="hidden sm:block">{selecteurMode}</span>
               {/* Les récurrences en section à part, ouverte par ce bouton et
                   fermée par lui ; N dit qu'il y a quelque chose derrière. */}
