@@ -7,7 +7,30 @@ import {
   demanderLeFocusDuCompositeur,
   panneauVientDeSOuvrir,
 } from '../lib/panneau';
+import { choisirAtterrissage } from '../lib/discussions';
+import { tirer } from '../lib/convSync';
 import { useTranslation } from '../i18n/useTranslation';
+
+/**
+ * 17 sept. 2026 : où le mini-panneau atterrit quand il s'ouvre. `activeId`
+ * n'est jamais synchronisé et le localStorage est cloisonné par origine :
+ * le panneau rouvrait toujours le fil où on l'avait laissé — la question
+ * rapide posée depuis Xcode se collait à la conversation d'avant-hier. La
+ * règle (choisirAtterrissage, 20 min) reprend le fil chaud, fenêtre ou mini
+ * confondus, sinon une vierge par la règle commune. Jamais pendant un flux :
+ * on ne quitte pas une réponse en cours parce que le panneau s'est rouvert.
+ */
+function atterrir(): void {
+  const etat = useAppStore.getState();
+  if (etat.streamState.isStreaming) return;
+  const choix = choisirAtterrissage(etat.conversations, etat.activeId, Date.now());
+  if (choix.type === 'reprendre') {
+    etat.selectConversation(choix.id);
+    etat.loadMessages(choix.id);
+  } else if (choix.type === 'vierge') {
+    etat.nouvelleDiscussion(etat.selectedModel);
+  }
+}
 
 export function ChatPage() {
   const { t } = useTranslation();
@@ -22,8 +45,24 @@ export function ChatPage() {
   // re-navigation depuis un autre module, Rust l'évalue AVANT que la View
   // Transition et le routeur n'aient monté cette page. La fenêtre principale
   // n'émet jamais ce signal : rien n'y change.
+  //
+  // L'atterrissage se joue deux fois : sur ce que le store a déjà, puis
+  // après un tirage du serveur — au premier chargement, le fil chaud de la
+  // fenêtre n'est pas encore dans le localStorage de cette origine, et
+  // sans ce second passage le panneau atterrissait sur une vierge alors
+  // qu'une discussion de dix minutes attendait dans l'autre vue. Le second
+  // passage est sans effet quand rien n'a changé (« rester ») et s'abstient
+  // si l'on a changé de fil soi-même entre-temps (sauteur, ⌘N) : un tirage
+  // ne défait pas un choix.
   useEffect(() => {
-    const surOuverture = () => demanderLeFocusDuCompositeur();
+    const surOuverture = () => {
+      atterrir();
+      demanderLeFocusDuCompositeur();
+      const avant = useAppStore.getState().activeId;
+      void tirer().then(() => {
+        if (useAppStore.getState().activeId === avant) atterrir();
+      });
+    };
     window.addEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);
     if (panneauVientDeSOuvrir()) surOuverture();
     return () => window.removeEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);

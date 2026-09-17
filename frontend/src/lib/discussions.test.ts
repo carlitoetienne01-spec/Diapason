@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChatMessage, Conversation } from '../types';
 import {
+  FENETRE_CHAUDE_MS,
   LONGUEUR_MIN_RECHERCHE,
   RAYON_APRES,
   RAYON_AVANT,
   TITRE_MAX,
+  choisirAtterrissage,
   classerDiscussions,
   debutDeMot,
   filtrerDiscussions,
   plierTexte,
   plusRecente,
+  recentesPourAccueil,
   rechercherDiscussions,
   titreDiscussion,
   titreProvisoire,
@@ -356,5 +359,124 @@ describe('rechercherDiscussions', () => {
     expect(rechercherDiscussions([permis], '', NOW).map((r) => r.conversation.id)).toEqual([
       'permis',
     ]);
+  });
+});
+
+describe('choisirAtterrissage', () => {
+  const NOW = 10_000_000;
+  const MIN = 60_000;
+  const avec = (id: string, title: string, ilYA: number, extra: Partial<Conversation> = {}) =>
+    conv(id, title, {
+      updatedAt: NOW - ilYA,
+      messages: [{ id: `${id}-m`, role: 'user', content: 'salut', timestamp: 1 }],
+      ...extra,
+    });
+
+  it('la fenêtre chaude vaut 20 minutes — une pause entre deux relances, pas un changement de sujet', () => {
+    expect(FENETRE_CHAUDE_MS).toBe(20 * MIN);
+  });
+
+  it('reprend le fil modifié il y a moins de 20 min, même si l’active locale est un autre', () => {
+    // La longue discussion commencée dans la fenêtre dix minutes plus tôt ;
+    // le mini était resté sur le fil d'avant-hier.
+    const fenetre = avec('fenetre', 'Dans la fenêtre', 10 * MIN);
+    const vieux = avec('vieux', 'Avant-hier', 48 * 60 * MIN);
+    expect(choisirAtterrissage([vieux, fenetre], 'vieux', NOW)).toEqual({
+      type: 'reprendre',
+      id: 'fenetre',
+    });
+  });
+
+  it('reste quand le fil chaud est déjà l’active locale', () => {
+    const ici = avec('ici', 'Ici', 3 * MIN);
+    expect(choisirAtterrissage([ici], 'ici', NOW)).toEqual({ type: 'rester' });
+  });
+
+  it('atterrit sur une vierge quand tout a plus de 20 min — la question rapide ne se colle pas au fil d’avant-hier', () => {
+    const vieux = avec('vieux', 'Avant-hier', 48 * 60 * MIN);
+    expect(choisirAtterrissage([vieux], 'vieux', NOW)).toEqual({ type: 'vierge' });
+    const limite = avec('limite', 'Pile 20 min', 20 * MIN);
+    expect(choisirAtterrissage([limite], null, NOW), 'à 20 min exactement, c’est froid').toEqual({
+      type: 'vierge',
+    });
+    const juste = avec('juste', 'Juste avant', 20 * MIN - 1);
+    expect(choisirAtterrissage([juste], null, NOW)).toEqual({ type: 'reprendre', id: 'juste' });
+  });
+
+  it('reste sur l’active locale quand elle est déjà vierge — rien de visible', () => {
+    const vierge = conv('v', '', { updatedAt: NOW - MIN });
+    const vieux = avec('vieux', 'Vieux', 48 * 60 * MIN);
+    expect(choisirAtterrissage([vieux, vierge], 'v', NOW)).toEqual({ type: 'rester' });
+  });
+
+  it('une vierge récente n’est pas « chaude » : sans message, rien à reprendre', () => {
+    // Créée dans l'autre vue à l'instant : ce n'est pas un sujet en cours.
+    const vierge = conv('v', '', { updatedAt: NOW - MIN });
+    expect(choisirAtterrissage([vierge], null, NOW)).toEqual({ type: 'vierge' });
+  });
+
+  it('entre deux chaudes, prend la plus récente ; à égalité, l’active locale', () => {
+    const a = avec('a', 'A', 5 * MIN);
+    const b = avec('b', 'B', 2 * MIN);
+    expect(choisirAtterrissage([a, b], 'a', NOW)).toEqual({ type: 'reprendre', id: 'b' });
+    const c = avec('c', 'C', 2 * MIN);
+    expect(choisirAtterrissage([b, c], 'c', NOW), 'égalité : on ne change pas de fil sans raison').toEqual({
+      type: 'rester',
+    });
+    expect(choisirAtterrissage([c, b], 'b', NOW)).toEqual({ type: 'rester' });
+  });
+
+  it('un updatedAt dans le futur se lit « à l’instant » : chaud, mais pas éternel', () => {
+    const futur = avec('futur', 'Futur', -30 * MIN);
+    expect(choisirAtterrissage([futur], null, NOW)).toEqual({ type: 'reprendre', id: 'futur' });
+    expect(
+      choisirAtterrissage([futur], null, NOW + 51 * MIN),
+      '21 min après le stamp, froid — il n’est pas « chaud » tant qu’il est dans le futur',
+    ).toEqual({ type: 'vierge' });
+  });
+
+  it('respecte une fenêtre passée en paramètre', () => {
+    const c = avec('c', 'C', 2 * MIN);
+    expect(choisirAtterrissage([c], null, NOW, MIN)).toEqual({ type: 'vierge' });
+  });
+
+  it('sans aucune conversation, une vierge', () => {
+    expect(choisirAtterrissage([], null, NOW)).toEqual({ type: 'vierge' });
+  });
+});
+
+describe('recentesPourAccueil', () => {
+  const NOW = 10_000_000;
+  const avec = (id: string, ilYA: number, extra: Partial<Conversation> = {}) =>
+    conv(id, id, {
+      updatedAt: NOW - ilYA,
+      messages: [{ id: `${id}-m`, role: 'user', content: 'x', timestamp: 1 }],
+      ...extra,
+    });
+
+  it('propose le dernier fil à reprendre, puis les trois suivants par récence', () => {
+    const liste = [avec('c', 3), avec('a', 1), avec('e', 5), avec('b', 2), avec('d', 4)];
+    const accueil = recentesPourAccueil(liste, null, NOW);
+    expect(accueil.reprendre?.id).toBe('a');
+    expect(accueil.autres.map((c) => c.id)).toEqual(['b', 'c', 'd']);
+  });
+
+  it('exclut l’active (on y est) et les vierges (rien à reprendre)', () => {
+    const active = avec('active', 0);
+    const vierge = conv('v', '', { updatedAt: NOW });
+    const autre = avec('autre', 10);
+    const accueil = recentesPourAccueil([active, vierge, autre], 'active', NOW);
+    expect(accueil.reprendre?.id).toBe('autre');
+    expect(accueil.autres).toEqual([]);
+  });
+
+  it('les épinglées ne passent pas devant : « reprendre » parle du dernier fil, pas du préféré', () => {
+    const epinglee = avec('ep', 100, { pinned: true });
+    const recente = avec('rec', 1);
+    expect(recentesPourAccueil([epinglee, recente], null, NOW).reprendre?.id).toBe('rec');
+  });
+
+  it('rend null sans rien à reprendre', () => {
+    expect(recentesPourAccueil([], null, NOW)).toEqual({ reprendre: null, autres: [] });
   });
 });

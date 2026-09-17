@@ -5,15 +5,19 @@ import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { EnteteDiscussion } from './EnteteDiscussion';
 import { useAppStore } from '../../lib/store';
-import { Database, MessageSquare, X } from 'lucide-react';
+import { CornerDownLeft, Database, MessageSquare, X } from 'lucide-react';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
+  EVENEMENT_ENTREE_A_VIDE,
   EVENEMENT_MONTRER_MESSAGE,
   EVENEMENT_OUVRIR_SAUTEUR,
   consommerLeMessageAMontrer,
+  demanderLeFocusDuCompositeur,
 } from '../../lib/panneau';
+import { recentesPourAccueil } from '../../lib/discussions';
+import { formatRelativeTime, sectionsOf } from '../Sidebar/ConversationList';
 
 // 800 ms de halo sur la bulle qu'un résultat de recherche vient d'ouvrir :
 // voir .bulle-cible dans index.css, qui porte le même nombre.
@@ -36,6 +40,9 @@ export function ChatArea() {
   const messages = useAppStore((s) => s.messages);
   const streamState = useAppStore((s) => s.streamState);
   const activeId = useAppStore((s) => s.activeId);
+  const conversations = useAppStore((s) => s.conversations);
+  const selectConversation = useAppStore((s) => s.selectConversation);
+  const loadMessages = useAppStore((s) => s.loadMessages);
   const navigate = useNavigate();
   // 17 sept. 2026 : l'état d'ouverture du sauteur de discussions (⌘J) vit
   // ici — state local, jamais une route (le rail réécrit l'URL). L'en-tête
@@ -132,6 +139,35 @@ export function ChatArea() {
 
   const isEmpty = messages.length === 0 && !streamState.isStreaming;
 
+  // 17 sept. 2026 : en compact, la page vide vendait des connecteurs au lieu
+  // d'inviter à écrire ou à reprendre. Elle propose le dernier fil
+  // (« Reprendre « <titre> » — il y a 2 h ↩ ») et les trois suivants ; rien
+  // ne s'ouvre, c'est le contenu de la page qui change. Hors compact la
+  // barre latérale fait ce travail : le bloc est `hidden compact:flex`.
+  const accueil = isEmpty ? recentesPourAccueil(conversations, activeId, Date.now()) : null;
+  const reprendreRef = useRef<HTMLButtonElement>(null);
+  const reprendre = (id: string) => {
+    selectConversation(id);
+    loadMessages(id);
+    demanderLeFocusDuCompositeur();
+  };
+  // ↩ dans le compositeur vide reprend le dernier fil — SEULEMENT si
+  // l'invitation est affichée (`offsetParent` est null sous display:none,
+  // donc hors compact) : le ↩ du libellé n'est pas une promesse en l'air, et
+  // la fenêtre principale garde son ↩ à vide qui ne fait rien.
+  const reprendreId = accueil?.reprendre?.id ?? null;
+  useEffect(() => {
+    if (!reprendreId) return;
+    const surEntree = () => {
+      const bouton = reprendreRef.current;
+      if (!bouton || bouton.offsetParent === null) return;
+      reprendre(reprendreId);
+    };
+    window.addEventListener(EVENEMENT_ENTREE_A_VIDE, surEntree);
+    return () => window.removeEventListener(EVENEMENT_ENTREE_A_VIDE, surEntree);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reprendreId]);
+
   return (
     <div className="flex flex-col h-full">
       {/* 17 sept. 2026 : la rangée du haut ne portait que l'icône du panneau
@@ -202,9 +238,86 @@ export function ChatArea() {
                 {t('chat.empty.subtitle')}
               </p>
 
+              {accueil?.reprendre && (
+                <div className="hidden compact:flex flex-col w-full max-w-sm mb-6">
+                  <button
+                    ref={reprendreRef}
+                    type="button"
+                    onClick={() => reprendre(accueil.reprendre!.id)}
+                    className="flex items-center gap-2 px-3 h-9 rounded-lg text-[13px] text-left cursor-pointer transition-colors"
+                    style={{
+                      background: 'var(--color-accent-subtle)',
+                      border: '1px solid var(--color-border)',
+                      color: 'var(--color-text)',
+                    }}
+                  >
+                    <span className="flex-1 min-w-0 truncate">
+                      {t('chat.empty.resume', {
+                        title: accueil.reprendre.title.trim() || t('sidebar.untitled'),
+                      })}
+                    </span>
+                    <span
+                      className="shrink-0 text-[11px] tabular-nums"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                    >
+                      {formatRelativeTime(accueil.reprendre.updatedAt, t)}
+                    </span>
+                    <CornerDownLeft
+                      size={12}
+                      className="shrink-0"
+                      aria-hidden="true"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                    />
+                  </button>
+                  {accueil.autres.length > 0 && (
+                    <div role="list" aria-label={t('chat.empty.recent')} className="mt-1">
+                      {sectionsOf(accueil.autres, t).map((section) => (
+                        <div key={section.label}>
+                          <div
+                            className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider select-none"
+                            style={{ color: 'var(--color-text-tertiary)' }}
+                          >
+                            {section.label}
+                          </div>
+                          {section.items.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              role="listitem"
+                              onClick={() => reprendre(c.id)}
+                              className="composer-glass-menu-item flex items-center gap-2 w-full px-3 h-7 rounded-md text-[13px] text-left cursor-pointer"
+                              style={{ color: 'var(--color-text)' }}
+                            >
+                              <span
+                                className="flex-1 min-w-0 truncate"
+                                style={{
+                                  color: c.title.trim()
+                                    ? 'var(--color-text)'
+                                    : 'var(--color-text-tertiary)',
+                                }}
+                              >
+                                {c.title.trim() || t('sidebar.untitled')}
+                              </span>
+                              <span
+                                className="shrink-0 text-[11px] tabular-nums"
+                                style={{ color: 'var(--color-text-tertiary)' }}
+                              >
+                                {formatRelativeTime(c.updatedAt, t)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Quick action hints. Sans wrap, les deux boutons débordaient
-                  du panneau sous ~390 px (16 sept. 2026). */}
-              <div className="flex flex-wrap justify-center gap-3">
+                  du panneau sous ~390 px (16 sept. 2026). 17 sept. : sous
+                  sm, cachés — le mini-panneau invite à écrire ou à
+                  reprendre, les connecteurs se règlent dans la fenêtre. */}
+              <div className="hidden sm:flex flex-wrap justify-center gap-3">
                 <button
                   onClick={() => navigate('/data-sources')}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"

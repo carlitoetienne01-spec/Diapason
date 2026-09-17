@@ -14,7 +14,11 @@ import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
-import { EVENEMENT_DEPOSER_TEXTE, EVENEMENT_FOCUS_COMPOSITEUR } from '../../lib/panneau';
+import {
+  EVENEMENT_DEPOSER_TEXTE,
+  EVENEMENT_FOCUS_COMPOSITEUR,
+  signalerEntreeAVide,
+} from '../../lib/panneau';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -847,6 +851,14 @@ export function InputArea() {
           const text = await finishDictation();
           if (text.trim()) await sendMessage(text);
         })();
+        return;
+      }
+      // 17 sept. 2026 : ↩ à vide n'envoyait rien (sendMessage l'écarte) et
+      // ne disait rien. La page vide du mini-panneau propose « Reprendre
+      // « <titre> » ↩ » : c'est elle qui décide si ce ↩ veut dire quelque
+      // chose — ici on ne fait que le signaler.
+      if (!input.trim()) {
+        signalerEntreeAVide();
         return;
       }
       sendMessage();

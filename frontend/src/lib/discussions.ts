@@ -346,3 +346,92 @@ export function rechercherDiscussions(
     occurrences: 0,
   }));
 }
+
+// ── L'atterrissage du mini-panneau ───────────────────────────────────────
+//
+// 17 sept. 2026, chantier « discussions dans le mini-panneau ». `activeId`
+// n'est jamais synchronisé (convSync.ts, fusionner) et le localStorage est
+// cloisonné par origine : le mini-panneau rouvrait TOUJOURS la conversation
+// où on l'avait laissé — la question rapide posée depuis Xcode se collait
+// au fil d'avant-hier, et la longue discussion commencée dans la fenêtre
+// dix minutes plus tôt restait hors de portée. La règle est celle d'Apple
+// Notes (Quick Note rouvre la dernière note si elle est récente, sinon en
+// crée une) et de Raycast AI (« Continue last chat » sous une heure).
+
+// 20 minutes : la durée d'une pause entre deux relances d'un même sujet —
+// on lit une réponse, on retourne dans Xcode, on revient avec la suite. À
+// 5 minutes, un simple aller-retour dans l'éditeur suffisait à perdre le
+// fil ; à une heure (Raycast), on a presque toujours changé de sujet et la
+// nouvelle question se collait à l'ancien.
+export const FENETRE_CHAUDE_MS = 20 * 60_000;
+
+export type Atterrissage =
+  | { type: 'rester' }
+  | { type: 'reprendre'; id: string }
+  | { type: 'vierge' };
+
+/** La récence bornée par `now` : un `updatedAt` dans le futur se lit « à l'instant ». */
+function recenceBornee(c: Conversation, now: number): number {
+  return Math.min(c.updatedAt, now);
+}
+
+/**
+ * Où atterrir à l'ouverture du panneau. (a) La conversation la plus
+ * récemment modifiée — fenêtre ou mini confondus, elles sont synchronisées —
+ * si elle l'a été il y a moins de `fenetreChaudeMs` ET porte au moins un
+ * message : on la reprend (« rester » si c'est déjà l'active locale). (b)
+ * Sinon une vierge : « rester » si l'active locale en est une, « vierge »
+ * (à créer ou à réutiliser par la règle commune) autrement. Deux
+ * conversations chaudes à égalité : l'active locale gagne, on ne change
+ * pas de fil sans raison.
+ */
+export function choisirAtterrissage(
+  conversations: readonly Conversation[],
+  activeIdLocal: string | null,
+  now: number,
+  fenetreChaudeMs: number = FENETRE_CHAUDE_MS,
+): Atterrissage {
+  let chaude: Conversation | null = null;
+  for (const c of conversations) {
+    if (c.messages.length === 0) continue;
+    const recence = recenceBornee(c, now);
+    if (now - recence >= fenetreChaudeMs) continue;
+    if (
+      !chaude ||
+      recence > recenceBornee(chaude, now) ||
+      (recence === recenceBornee(chaude, now) && c.id === activeIdLocal)
+    ) {
+      chaude = c;
+    }
+  }
+  if (chaude) return chaude.id === activeIdLocal ? { type: 'rester' } : { type: 'reprendre', id: chaude.id };
+  const active = activeIdLocal ? conversations.find((c) => c.id === activeIdLocal) : undefined;
+  if (active && estVierge(active)) return { type: 'rester' };
+  return { type: 'vierge' };
+}
+
+export interface Accueil {
+  /** Le dernier fil qui a des messages, hors l'active — à reprendre d'un ↩. */
+  reprendre: Conversation | null;
+  /** Les suivants, par récence, au plus `n`. */
+  autres: Conversation[];
+}
+
+/**
+ * Ce que la page vide propose en compact : le dernier fil à reprendre, puis
+ * les `n` suivants. Seules les conversations qui ont des messages comptent
+ * (une vierge n'a rien à reprendre) et l'active est exclue (on y est). Par
+ * récence bornée — les épinglées ne passent pas devant : « reprendre »
+ * parle du dernier fil, pas du préféré.
+ */
+export function recentesPourAccueil(
+  conversations: readonly Conversation[],
+  activeId: string | null,
+  now: number,
+  n = 3,
+): Accueil {
+  const triees = conversations
+    .filter((c) => c.messages.length > 0 && c.id !== activeId)
+    .sort((a, b) => recenceBornee(b, now) - recenceBornee(a, now));
+  return { reprendre: triees[0] ?? null, autres: triees.slice(1, 1 + n) };
+}

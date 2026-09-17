@@ -28,12 +28,19 @@
  * `diapason:montrer-message` (detail : l'id du message) est émis APRÈS la
  * sélection ; ChatArea, seule à tenir le conteneur de défilement, y défile
  * une fois les bulles rendues et surligne la cible 800 ms.
+ *
+ * `diapason:entree-a-vide` : ↩ dans un compositeur VIDE, sur un fil vide.
+ * InputArea ne sait pas ce que la page vide propose (en compact, « Reprendre
+ * « <titre> » ↩ ») ; elle dit seulement qu'on a appuyé, et ChatArea reprend
+ * le fil si — et seulement si — l'invitation est affichée. Le ↩ du libellé
+ * n'est jamais une promesse en l'air (§5).
  */
 export const EVENEMENT_PANNEAU_OUVERT = 'diapason:panneau-ouvert';
 export const EVENEMENT_FOCUS_COMPOSITEUR = 'diapason:focus-compositeur';
 export const EVENEMENT_OUVRIR_SAUTEUR = 'diapason:ouvrir-sauteur';
 export const EVENEMENT_DEPOSER_TEXTE = 'diapason:deposer-texte';
 export const EVENEMENT_MONTRER_MESSAGE = 'diapason:montrer-message';
+export const EVENEMENT_ENTREE_A_VIDE = 'diapason:entree-a-vide';
 
 // Une View Transition dure 180 ms et le rendu qui suit quelques dizaines ;
 // 2 s laisse dix fois la marge et reste sous ce qu'une navigation VOULUE
@@ -78,6 +85,11 @@ export function demanderLOuvertureDuSauteur(): void {
 /** Dépose `texte` dans le compositeur, à la suite d'un brouillon éventuel. */
 export function deposerLeTexteDansLeCompositeur(texte: string): void {
   window.dispatchEvent(new CustomEvent<string>(EVENEMENT_DEPOSER_TEXTE, { detail: texte }));
+}
+
+/** ↩ dans un compositeur vide : à la page de décider si cela veut dire quelque chose. */
+export function signalerEntreeAVide(): void {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_ENTREE_A_VIDE));
 }
 
 let messageAttendu: { id: string; at: number } | null = null;
