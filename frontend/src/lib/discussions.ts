@@ -435,3 +435,31 @@ export function recentesPourAccueil(
     .sort((a, b) => recenceBornee(b, now) - recenceBornee(a, now));
   return { reprendre: triees[0] ?? null, autres: triees.slice(1, 1 + n) };
 }
+
+// ── Fil précédent / suivant ──────────────────────────────────────────────
+
+export type SensVoisine = 'precedente' | 'suivante';
+
+/**
+ * Le fil voisin de `activeId` dans l'ordre exact du sauteur (épinglées puis
+ * récence, `classerDiscussions` sans requête) : « precedente » remonte
+ * vers le plus récent, « suivante » descend vers le plus ancien — comme
+ * ⌘⇧[ et ⌘⇧] entre les onglets de Safari. Aux extrémités, null : pas de
+ * bouclage, car dans une liste par récence sauter du plus ancien au plus
+ * récent surprend au lieu de dire « c'est le bout ». Sans active, ou active
+ * inconnue (supprimée dans l'autre vue) : le premier de la liste dans les
+ * deux sens — on entre dans la liste par le haut. Liste vide : null.
+ */
+export function discussionVoisine(
+  conversations: readonly Conversation[],
+  activeId: string | null,
+  sens: SensVoisine,
+  now: number,
+): Conversation | null {
+  const ordre = classerDiscussions('', conversations, now);
+  if (ordre.length === 0) return null;
+  const i = activeId ? ordre.findIndex((c) => c.id === activeId) : -1;
+  if (i < 0) return ordre[0];
+  const j = sens === 'precedente' ? i - 1 : i + 1;
+  return j >= 0 && j < ordre.length ? ordre[j] : null;
+}

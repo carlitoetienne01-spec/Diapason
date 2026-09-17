@@ -11,17 +11,28 @@ import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
 import {
   EVENEMENT_ENTREE_A_VIDE,
+  EVENEMENT_FIL_GLISSE,
   EVENEMENT_MONTRER_MESSAGE,
   EVENEMENT_OUVRIR_SAUTEUR,
   consommerLeMessageAMontrer,
   demanderLeFocusDuCompositeur,
 } from '../../lib/panneau';
-import { recentesPourAccueil } from '../../lib/discussions';
+import { recentesPourAccueil, type SensVoisine } from '../../lib/discussions';
 import { formatRelativeTime, sectionsOf } from '../Sidebar/ConversationList';
 
 // 800 ms de halo sur la bulle qu'un résultat de recherche vient d'ouvrir :
 // voir .bulle-cible dans index.css, qui porte le même nombre.
 const HALO_MS = 800;
+
+// ⌘⇧[ / ⌘⇧] : le fil glisse de 24 px dans le sens du geste — assez pour
+// se lire comme un mouvement, pas assez pour qu'un fil de 340 px semble
+// sortir du cadre. Le fondu dure 180 ms (.fil-fondu) ; le décalage est
+// retiré à 260 — 180 plus une marge pour un minuteur qui part avant la
+// première image — pour que le prochain changement de fil (⌘N, sauteur)
+// ne glisse pas à son tour. Retiré trop tôt, les keyframes relisent la
+// variable en cours de route et le fil saute sur ses derniers pixels.
+const GLISSEMENT_PX = 24;
+const GLISSEMENT_MS = 260;
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -54,6 +65,24 @@ export function ChatArea() {
     window.addEventListener(EVENEMENT_OUVRIR_SAUTEUR, ouvrir);
     return () => window.removeEventListener(EVENEMENT_OUVRIR_SAUTEUR, ouvrir);
   }, []);
+  // Le sens annoncé par App.tsx juste avant le changement de fil ; posé en
+  // variable CSS sur le conteneur re-monté, pas en classe : changer
+  // `animation-name` après coup relancerait le fondu, changer une variable
+  // que les keyframes ont déjà lue ne fait rien.
+  const [glissement, setGlissement] = useState<SensVoisine | null>(null);
+  useEffect(() => {
+    const glisser = (e: Event) => {
+      const sens = (e as CustomEvent<SensVoisine>).detail;
+      if (sens === 'precedente' || sens === 'suivante') setGlissement(sens);
+    };
+    window.addEventListener(EVENEMENT_FIL_GLISSE, glisser);
+    return () => window.removeEventListener(EVENEMENT_FIL_GLISSE, glisser);
+  }, []);
+  useEffect(() => {
+    if (!glissement) return;
+    const timer = window.setTimeout(() => setGlissement(null), GLISSEMENT_MS);
+    return () => window.clearTimeout(timer);
+  }, [glissement, activeId]);
   const listRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const wasStreaming = useRef(false);
@@ -228,7 +257,17 @@ export function ChatArea() {
           {/* Clé = fil actif : changer de discussion (⌘N, ＋, sauteur) fait
               naître le nouveau contenu en fondu (.fil-fondu, 180 ms) ; le
               conteneur de défilement, lui, reste en place. */}
-          <div key={activeId ?? 'aucune'} className="fil-fondu h-full">
+          <div
+            key={activeId ?? 'aucune'}
+            className="fil-fondu h-full"
+            style={
+              glissement
+                ? ({
+                    '--fil-decalage': `${glissement === 'suivante' ? GLISSEMENT_PX : -GLISSEMENT_PX}px`,
+                  } as React.CSSProperties)
+                : undefined
+            }
+          >
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center h-full px-4">
               <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>

@@ -34,6 +34,12 @@
  * « <titre> » ↩ ») ; elle dit seulement qu'on a appuyé, et ChatArea reprend
  * le fil si — et seulement si — l'invitation est affichée. Le ↩ du libellé
  * n'est jamais une promesse en l'air (§5).
+ *
+ * `diapason:fil-glisse` (detail : 'precedente' | 'suivante') précède le
+ * changement de fil par ⌘⇧[ / ⌘⇧] : ChatArea, qui tient le conteneur du
+ * fil, fait alors glisser le nouveau contenu de 24 px dans le sens du
+ * geste — la seule preuve, avec le titre, qu'on a changé de fil ; pas de
+ * toast.
  */
 export const EVENEMENT_PANNEAU_OUVERT = 'diapason:panneau-ouvert';
 export const EVENEMENT_FOCUS_COMPOSITEUR = 'diapason:focus-compositeur';
@@ -41,6 +47,7 @@ export const EVENEMENT_OUVRIR_SAUTEUR = 'diapason:ouvrir-sauteur';
 export const EVENEMENT_DEPOSER_TEXTE = 'diapason:deposer-texte';
 export const EVENEMENT_MONTRER_MESSAGE = 'diapason:montrer-message';
 export const EVENEMENT_ENTREE_A_VIDE = 'diapason:entree-a-vide';
+export const EVENEMENT_FIL_GLISSE = 'diapason:fil-glisse';
 
 // Une View Transition dure 180 ms et le rendu qui suit quelques dizaines ;
 // 2 s laisse dix fois la marge et reste sous ce qu'une navigation VOULUE
@@ -85,6 +92,11 @@ export function demanderLOuvertureDuSauteur(): void {
 /** Dépose `texte` dans le compositeur, à la suite d'un brouillon éventuel. */
 export function deposerLeTexteDansLeCompositeur(texte: string): void {
   window.dispatchEvent(new CustomEvent<string>(EVENEMENT_DEPOSER_TEXTE, { detail: texte }));
+}
+
+/** Annonce le sens du prochain changement de fil, pour que le fil glisse avec lui. */
+export function annoncerLeGlissement(sens: 'precedente' | 'suivante'): void {
+  window.dispatchEvent(new CustomEvent(EVENEMENT_FIL_GLISSE, { detail: sens }));
 }
 
 /** ↩ dans un compositeur vide : à la page de décider si cela veut dire quelque chose. */

@@ -10,6 +10,7 @@ import {
   choisirAtterrissage,
   classerDiscussions,
   debutDeMot,
+  discussionVoisine,
   filtrerDiscussions,
   plierTexte,
   plusRecente,
@@ -478,5 +479,43 @@ describe('recentesPourAccueil', () => {
 
   it('rend null sans rien à reprendre', () => {
     expect(recentesPourAccueil([], null, NOW)).toEqual({ reprendre: null, autres: [] });
+  });
+});
+
+describe('discussionVoisine', () => {
+  const NOW = 100_000;
+  const epinglee = conv('ep', 'Épinglée', { updatedAt: 10_000, pinned: true });
+  const recente = conv('rec', 'Récente', { updatedAt: 90_000 });
+  const moyenne = conv('moy', 'Moyenne', { updatedAt: 50_000 });
+  const vieille = conv('vie', 'Vieille', { updatedAt: 20_000 });
+  // Ordre du sauteur : ep, rec, moy, vie — l'ordre d'ENTRÉE est brouillé.
+  const liste = [moyenne, vieille, recente, epinglee];
+
+  it('suit l’ordre du sauteur : épinglées d’abord, puis récence, quel que soit l’ordre d’entrée', () => {
+    expect(discussionVoisine(liste, 'rec', 'precedente', NOW)?.id).toBe('ep');
+    expect(discussionVoisine(liste, 'rec', 'suivante', NOW)?.id).toBe('moy');
+    expect(discussionVoisine(liste, 'moy', 'suivante', NOW)?.id).toBe('vie');
+  });
+
+  it('aux extrémités, rend null — pas de bouclage', () => {
+    expect(discussionVoisine(liste, 'ep', 'precedente', NOW)).toBeNull();
+    expect(discussionVoisine(liste, 'vie', 'suivante', NOW)).toBeNull();
+  });
+
+  it('sans active, ou active supprimée dans l’autre vue, entre par le haut', () => {
+    expect(discussionVoisine(liste, null, 'suivante', NOW)?.id).toBe('ep');
+    expect(discussionVoisine(liste, null, 'precedente', NOW)?.id).toBe('ep');
+    expect(discussionVoisine(liste, 'zz', 'suivante', NOW)?.id).toBe('ep');
+  });
+
+  it('liste vide : null dans les deux sens', () => {
+    expect(discussionVoisine([], null, 'suivante', NOW)).toBeNull();
+    expect(discussionVoisine([], 'x', 'precedente', NOW)).toBeNull();
+  });
+
+  it('ne modifie pas la liste reçue', () => {
+    const copie = [...liste];
+    discussionVoisine(liste, 'rec', 'suivante', NOW);
+    expect(liste).toEqual(copie);
   });
 });

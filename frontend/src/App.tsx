@@ -19,7 +19,25 @@ import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
-import { demanderLOuvertureDuSauteur, demanderLeFocusDuCompositeur } from './lib/panneau';
+import {
+  annoncerLeGlissement,
+  demanderLOuvertureDuSauteur,
+  demanderLeFocusDuCompositeur,
+} from './lib/panneau';
+import { discussionVoisine, type SensVoisine } from './lib/discussions';
+
+/**
+ * ⌘⇧[ ou ⌘⇧] ? Le sens, ou null. Les crochets portent aussi leur `code` :
+ * sur une disposition française, `[` n'existe qu'avec ⌥ et `key` ne dit
+ * plus rien de fiable, alors que `BracketLeft` désigne la même touche que
+ * ⌘⇧[ dans Safari et Arc (même règle que lib/saisie.ts).
+ */
+function sensDuRaccourci(e: KeyboardEvent): SensVoisine | null {
+  if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return null;
+  if (e.code === 'BracketLeft' || e.key === '[' || e.key === '{') return 'precedente';
+  if (e.code === 'BracketRight' || e.key === ']' || e.key === '}') return 'suivante';
+  return null;
+}
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -288,6 +306,31 @@ export default function App() {
         } else {
           navigate('/');
           window.setTimeout(demanderLOuvertureDuSauteur, 0);
+        }
+      }
+      // ⌘⇧[ / ⌘⇧] — 17 sept. 2026 : alterner entre deux ou trois fils
+      // récents (comparer une réponse, reprendre) exigeait d'ouvrir le
+      // sauteur à chaque fois. Fil voisin dans l'ordre exact du sauteur ;
+      // aux extrémités, rien. Ignoré pendant un flux : on ne quitte pas une
+      // réponse en cours par accident. Le retour est le glissement du fil
+      // et le titre de l'en-tête — pas de toast. Le clic passe par le
+      // sauteur, la voix viendra (rang 10) : §82 sans chrome de plus.
+      const sensVoisine = sensDuRaccourci(e);
+      if (sensVoisine) {
+        e.preventDefault();
+        const etat = useAppStore.getState();
+        if (etat.streamState.isStreaming) return;
+        const voisine = discussionVoisine(etat.conversations, etat.activeId, sensVoisine, Date.now());
+        if (!voisine || voisine.id === etat.activeId) return;
+        if (pathname === '/') {
+          annoncerLeGlissement(sensVoisine);
+          etat.selectConversation(voisine.id);
+          etat.loadMessages(voisine.id);
+        } else {
+          navigate('/');
+          etat.selectConversation(voisine.id);
+          etat.loadMessages(voisine.id);
+          window.setTimeout(demanderLeFocusDuCompositeur, 0);
         }
       }
     };
