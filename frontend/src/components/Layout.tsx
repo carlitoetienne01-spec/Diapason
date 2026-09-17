@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
@@ -7,6 +7,7 @@ import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
 import { estCompact } from '../lib/compact';
 import { signalerPanneauOuvert } from '../lib/panneau';
+import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
 
 export function Layout() {
@@ -40,6 +41,21 @@ export function Layout() {
 
   const navigate = useNavigate();
   const topRightRef = useRef<HTMLDivElement>(null);
+
+  // 17 sept. 2026, chantier « discussions dans le mini-panneau » : réduit en
+  // pastille, le panneau disait « Discussion » quel que soit le fil. Le script
+  // natif (lib.rs, __diapReduit) lit maintenant `document.title` quand le
+  // chemin est « / » ; le bundle y pose le titre du fil actif. Ici et pas
+  // dans ChatArea : Layout est le seul lecteur du mode compact (convention),
+  // et la fenêtre principale garde son titre — Tauri n'y suit pas le document.
+  // Le sélecteur rend une chaîne : Layout ne se re-rend que quand le titre
+  // change, pas à chaque message ajouté.
+  const { pathname } = useLocation();
+  const titreFil = useAppStore((s) => titreDiscussion(s.conversations, s.activeId, t));
+  useEffect(() => {
+    if (!estCompact) return;
+    document.title = pathname === '/' ? titreFil : 'Diapason';
+  }, [pathname, titreFil]);
 
   // The cluster floats over every page, so its width is published as a token
   // rather than duplicated as a magic number wherever content has to clear it.

@@ -4907,6 +4907,14 @@ mod native_reglette {
         // mini-panneau — le WebView reçoit ses événements car l'app est
         // active), un ✕ et Échap pour fermer.
         //
+        // Pastille réduite, 17 sept. 2026 (même chantier) : `__diapReduit`
+        // nommait le module par sa route — « Discussion » pour tout fil. Sur
+        // « / », le bundle pose le titre du fil actif dans `document.title`
+        // (Layout.tsx) et la pastille le lit ; « Diapason », le titre du
+        // index.html avant que React n'ait parlé, n'est pas un titre de fil.
+        // Le nom est tronqué par ellipse : un titre de 80 caractères ne doit
+        // pas déborder d'une carte de 200 px.
+        //
         // Échap, 17 sept. 2026 (chantier « discussions dans le mini-panneau ») :
         // ce listener fermait le panneau ENTIER alors qu'un menu de puce ou
         // la palette venaient de consommer la touche. Le contrat : une couche
@@ -4932,7 +4940,7 @@ mod native_reglette {
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
              document.addEventListener('keydown',function(e){{if(e.key!=='Escape'||e.defaultPrevented)return;setTimeout(function(){{if(!e.defaultPrevented)__diapFermer();}},0);}});\n\
              var __diapNoms={{'/':'Discussion','/succes/dashboard':'Tableau de bord','/succes/planner':'Planificateur','/succes/tasks':'Tâches','/succes/projects':'Projets','/succes/finances':'Finances','/succes/habits':'Habitudes','/succes/notes':'Notes','/succes/year-review':'Bilan'}};\n\
-             window.__diapReduit=function(v){{var c=document.getElementById('__diapChip');if(!c)return;if(v){{var n=document.getElementById('__diapChipNom');if(n)n.textContent=__diapNoms[location.pathname]||'Diapason';c.style.display='flex';}}else{{c.style.display='none';}}}};\n\
+             window.__diapReduit=function(v){{var c=document.getElementById('__diapChip');if(!c)return;if(v){{var n=document.getElementById('__diapChipNom');if(n){{var dt=(location.pathname==='/'&&document.title&&document.title!=='Diapason')?document.title:'';n.textContent=dt||__diapNoms[location.pathname]||'Diapason';}}c.style.display='flex';}}else{{c.style.display='none';}}}};\n\
              window.addEventListener('DOMContentLoaded',function(){{\n\
                var bar=document.createElement('div');bar.id='__diapBar';\n\
                bar.style.cssText='position:fixed;top:0;left:0;right:0;height:24px;z-index:2147483646;cursor:grab;display:flex;align-items:center;justify-content:center';\n\
@@ -4952,7 +4960,7 @@ mod native_reglette {
                mn.onclick=function(){{try{{window.webkit.messageHandlers.reglette.postMessage('reduiremini');}}catch(_){{}}}};document.body.appendChild(mn);\n\
                var chip=document.createElement('div');chip.id='__diapChip';\n\
                chip.style.cssText='position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;gap:9px;padding:0 14px;cursor:pointer;background:var(--color-surface,#121214);color:var(--color-text,#ededef);border:1px solid var(--color-border,rgba(128,128,128,.3));border-radius:14px;font-weight:600;font-size:12px';\n\
-               chip.innerHTML='<span style=\"width:6px;height:6px;border-radius:50%;background:var(--color-accent,#22d3ee);box-shadow:0 0 6px var(--color-accent,#22d3ee)\"></span><span id=\"__diapChipNom\">Diapason</span><span style=\"margin-left:auto;opacity:.5;font-size:11px\">\\u2922</span>';\n\
+               chip.innerHTML='<span style=\"width:6px;height:6px;border-radius:50%;background:var(--color-accent,#22d3ee);box-shadow:0 0 6px var(--color-accent,#22d3ee)\"></span><span id=\"__diapChipNom\" style=\"min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">Diapason</span><span style=\"margin-left:auto;opacity:.5;font-size:11px\">\\u2922</span>';\n\
                chip.setAttribute('role','button');chip.setAttribute('aria-label','Redéployer le module');\n\
                var cl=null,cb=false;\n\
                chip.addEventListener('pointerdown',function(e){{cl={{x:e.screenX,y:e.screenY}};cb=false;try{{chip.setPointerCapture(e.pointerId)}}catch(_){{}}}});\n\

@@ -3,17 +3,12 @@ import { useNavigate } from 'react-router';
 import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
+import { EnteteDiscussion } from './EnteteDiscussion';
 import { useAppStore } from '../../lib/store';
-import { PanelRightOpen, PanelRightClose, Database, MessageSquare, X } from 'lucide-react';
+import { Database, MessageSquare, X } from 'lucide-react';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
-
-/** Horizontal room the window's floating top-right cluster needs: its measured
- * width, its 12px offset from the edge, and a little air. A class rather than
- * an inline style, so that `compact:` can override it (an inline style beats
- * every class). The underscores are Tailwind's spelling of spaces. */
-const CLUSTER_CLEARANCE_CLASS = 'pr-[calc(var(--top-right-cluster,33px)_+_20px)]';
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -31,9 +26,11 @@ export function ChatArea() {
   const { t } = useTranslation();
   const messages = useAppStore((s) => s.messages);
   const streamState = useAppStore((s) => s.streamState);
-  const systemPanelOpen = useAppStore((s) => s.systemPanelOpen);
-  const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
   const navigate = useNavigate();
+  // 17 sept. 2026 : le sauteur de discussions (⌘J) n'existe pas encore ; son
+  // état d'ouverture vit déjà ici — state local, jamais une route (le rail
+  // réécrit l'URL) — pour que l'en-tête l'ouvre sans rien savoir de lui.
+  const [sauteurOuvert, setSauteurOuvert] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const wasStreaming = useRef(false);
@@ -82,40 +79,15 @@ export function ChatArea() {
 
   const isEmpty = messages.length === 0 && !streamState.isStreaming;
 
-  const PanelIcon = systemPanelOpen ? PanelRightClose : PanelRightOpen;
-
   return (
     <div className="flex flex-col h-full">
-      {/* Toggle bar */}
-      <div
-        className={`flex items-center justify-end gap-1 pl-3 py-1.5 shrink-0 ${
-          // Talk and the approval bell are pinned to the window's top-right
-          // corner. With the system panel open the panel sits beneath them;
-          // closed, this bar reaches that same edge, so it has to yield their
-          // footprint or the controls land on top of one another.
-          // 16 sept. 2026 : en compact, Layout ne rend pas ce groupe — la
-          // barre réservait 53 px à un cluster absent. `compact:` est le
-          // variant de chrome prévu pour cela (convention, règle 3).
-          systemPanelOpen ? 'pr-3' : `${CLUSTER_CLEARANCE_CLASS} compact:pr-3`
-        }`}
-      >
-        <button
-          onClick={toggleSystemPanel}
-          className="p-1.5 rounded-md transition-colors cursor-pointer"
-          style={{ color: 'var(--color-text-tertiary)' }}
-          title={
-            systemPanelOpen
-              ? t('chat.system.hidePanel', {
-                  shortcut: `${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+I`,
-                })
-              : t('chat.system.showPanel', {
-                  shortcut: `${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+I`,
-                })
-          }
-        >
-          <PanelIcon size={16} />
-        </button>
-      </div>
+      {/* 17 sept. 2026 : la rangée du haut ne portait que l'icône du panneau
+          système ; elle porte maintenant le nom du fil et, en compact, de quoi
+          en changer — dans les mêmes 40 px (EnteteDiscussion). */}
+      <EnteteDiscussion
+        sauteurOuvert={sauteurOuvert}
+        onOuvrirSauteur={() => setSauteurOuvert(true)}
+      />
 
       {/* Data sources banner. 16 sept. 2026, audit du mini-panneau : à 420 px
           il occupait trois lignes (texte + deux boutons) au-dessus d'un fil
