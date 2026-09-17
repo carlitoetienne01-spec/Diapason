@@ -1,6 +1,7 @@
 /** Local UI preferences for Succès (view modes, collapsed trees). */
 
 import { normaliserEchelle } from './echelleTexte';
+import { estTriNotes, type TriNotes } from './triNotes';
 
 const STORAGE_KEY = 'diapason-succes-ui-prefs';
 
@@ -14,6 +15,8 @@ type Prefs = {
   taskSubtasksOpen?: Record<string, boolean>;
   /** subtaskId → whether its children are expanded */
   subtaskExpanded?: Record<string, boolean>;
+  /** Le tri choisi pour les cartables de Notes — voir `triNotes.ts`. */
+  notesSort?: TriNotes;
 };
 
 function readPrefs(): Prefs {
@@ -74,4 +77,18 @@ export function loadLigneEchelle(): number {
 
 export function saveLigneEchelle(echelle: number) {
   writePrefs({ ligneEchelle: normaliserEchelle(echelle) });
+}
+
+/**
+ * Le tri des cartables de Notes tel qu'il a été choisi la dernière fois,
+ * ou `undefined` si rien n'a jamais été choisi (l'appelant infère alors —
+ * un arrangement existant vaut « Mon ordre »).
+ */
+export function loadNotesSort(): TriNotes | undefined {
+  const value = readPrefs().notesSort;
+  return estTriNotes(value) ? value : undefined;
+}
+
+export function saveNotesSort(mode: TriNotes) {
+  writePrefs({ notesSort: mode });
 }

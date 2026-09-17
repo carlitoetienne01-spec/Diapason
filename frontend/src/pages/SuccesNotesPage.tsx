@@ -39,6 +39,8 @@ import { countNotePages } from '../features/succes/notePages';
 import { countNoteWords, sanitizeNoteHtml } from '../features/succes/noteSanitize';
 import { RichNoteEditor } from '../features/succes/RichNoteEditor';
 import { deplacerVers } from '../features/succes/photos';
+import { triInitialDesNotes, type TriNotes } from '../features/succes/triNotes';
+import { loadNotesSort, saveNotesSort } from '../features/succes/uiPrefs';
 import { deplacerCategorie, grouperEnSections } from '../features/succes/notesSections';
 import type {
   SuccesProject,
@@ -55,7 +57,7 @@ import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
-type SortMode = 'manuel' | 'recent' | 'oldest' | 'name-asc' | 'name-desc';
+type SortMode = TriNotes;
 
 const FOLDER_COLORS = [
   '#6366f1',
@@ -101,7 +103,16 @@ export function SuccesNotesPage() {
   const confirm = useConfirm();
   const [notes, setNotes] = useState<SuccesNote[]>([]);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortMode>('recent');
+  // Le tri repartait à « Récent » à chaque ouverture : l'arrangement des
+  // cartables (rang manuel, côté serveur) existait sans jamais être montré —
+  // « ma préférence, où j'ai placé mes cartables, et non le dernier édité »
+  // (17 sept. 2026). Le choix est mémorisé ; sans choix, un arrangement
+  // existant vaut « Mon ordre » (inféré au chargement, plus bas).
+  const [sort, setSortState] = useState<SortMode>(() => loadNotesSort() ?? 'recent');
+  const setSort = useCallback((mode: SortMode) => {
+    setSortState(mode);
+    saveNotesSort(mode);
+  }, []);
   const [view, setView] = useState<'list' | 'editor'>('list');
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -143,6 +154,8 @@ export function SuccesNotesPage() {
     try {
       const next = await listSuccesNotes(search);
       setNotes(next);
+      // Rien de choisi encore : le glisser d'hier EST la préférence.
+      if (loadNotesSort() === undefined) setSortState(triInitialDesNotes(undefined, next));
       // L'ordre des sections et les projets (pour la pastille et le menu).
       // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
       void listNoteCategories().then(setCategories).catch(() => {});
