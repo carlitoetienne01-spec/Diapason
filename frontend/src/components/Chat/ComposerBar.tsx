@@ -77,7 +77,13 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
   // Quel que soit le chemin de sortie (choix, Échap, clic dehors, resize), le
   // curseur retourne au compositeur : avant, il n'était plus nulle part et
   // il fallait cliquer dans le champ pour reprendre la phrase (17 sept. 2026).
-  useEffect(() => () => demanderLeFocusDuCompositeur(), []);
+  // Différé d'un tour : le nettoyage d'effet d'un mousedown est flushé en
+  // microtâche, donc AVANT l'action par défaut du clic, qui reprenait le
+  // focus au compositeur (contre-revue du 17 sept. 2026 : « Autorisations
+  // des outils » ouvert, clic dans le fil → activeElement = BODY).
+  useEffect(() => () => {
+    window.setTimeout(demanderLeFocusDuCompositeur, 0);
+  }, []);
 
   // The composer sits at the bottom of the screen: menus open UPWARD,
   // anchored to the chip, and never off the horizontal edges.

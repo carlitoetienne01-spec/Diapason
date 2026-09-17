@@ -15,6 +15,7 @@ import {
   filtrerDiscussions,
   plierTexte,
   plusRecente,
+  nombreDeRecentesQuiTiennent,
   recentesPourAccueil,
   rechercherDiscussions,
   tientLeFil,
@@ -538,6 +539,31 @@ describe('recentesPourAccueil', () => {
 
   it('rend null sans rien à reprendre', () => {
     expect(recentesPourAccueil([], null, NOW)).toEqual({ reprendre: null, autres: [] });
+  });
+});
+
+describe('nombreDeRecentesQuiTiennent', () => {
+  it('à la taille minimale du mini (fil de 122 px), aucune récente : seul « Reprendre » tient', () => {
+    /* §5 : l'invitation que le ↩ à vide promet doit être visible sans
+       défiler ; une liste qui déborde la repoussait hors champ. */
+    expect(nombreDeRecentesQuiTiennent(122)).toBe(0);
+  });
+
+  it('une récente avec son libellé dès qu’ils tiennent, trois au préréglage S', () => {
+    expect(nombreDeRecentesQuiTiennent(123)).toBe(0);
+    expect(nombreDeRecentesQuiTiennent(124)).toBe(1);
+    expect(nombreDeRecentesQuiTiennent(200)).toBe(2);
+    expect(nombreDeRecentesQuiTiennent(262)).toBe(3);
+  });
+
+  it('ne dépasse jamais le plafond, même avec une grande fenêtre', () => {
+    expect(nombreDeRecentesQuiTiennent(2000)).toBe(3);
+    expect(nombreDeRecentesQuiTiennent(2000, 5)).toBe(5);
+  });
+
+  it('un fil sans hauteur (pas encore mesuré, ou nul) ne rend rien de négatif', () => {
+    expect(nombreDeRecentesQuiTiennent(0)).toBe(0);
+    expect(nombreDeRecentesQuiTiennent(-10)).toBe(0);
   });
 });
 

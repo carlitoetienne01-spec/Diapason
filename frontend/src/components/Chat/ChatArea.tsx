@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
@@ -17,7 +17,11 @@ import {
   consommerLeMessageAMontrer,
   demanderLeFocusDuCompositeur,
 } from '../../lib/panneau';
-import { recentesPourAccueil, type SensVoisine } from '../../lib/discussions';
+import {
+  nombreDeRecentesQuiTiennent,
+  recentesPourAccueil,
+  type SensVoisine,
+} from '../../lib/discussions';
 import { formatRelativeTime, sectionsOf } from '../Sidebar/ConversationList';
 
 // 800 ms de halo sur la bulle qu'un résultat de recherche vient d'ouvrir :
@@ -115,6 +119,8 @@ export function ChatArea() {
       .catch(() => setHasConnectedSources(null));
   }, []);
 
+  const isEmpty = messages.length === 0 && !streamState.isStreaming;
+
   useEffect(() => {
     // Sending a message always pins the view to the bottom, even if the
     // user had scrolled up to read earlier messages.
@@ -123,9 +129,31 @@ export function ChatArea() {
     }
     wasStreaming.current = streamState.isStreaming;
     if (shouldAutoScroll.current && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+      // La page vide se lit par le HAUT : salut, puis « Reprendre ». Épinglée
+      // en bas comme un fil (contre-revue du 17 sept. 2026, mini à 340×380 :
+      // scrollTop 86,5 = max après ⌘N), elle montrait une liste de récentes
+      // coupée sous l'en-tête, sans le salut ni l'invitation.
+      listRef.current.scrollTop = isEmpty ? 0 : listRef.current.scrollHeight;
     }
-  }, [messages, streamState.content, streamState.isStreaming]);
+  }, [messages, streamState.content, streamState.isStreaming, isEmpty]);
+
+  // Combien de récentes tiennent sous « Reprendre » dans le fil tel qu'il
+  // est (nombreDeRecentesQuiTiennent sur sa hauteur). Le NSPanel se
+  // redimensionne en continu : observé, pas lu une fois — et c'est le
+  // NOMBRE qui est gardé, pas la hauteur, pour ne pas re-rendre le fil à
+  // chaque pixel d'étirement. null = pas encore mesuré : le premier rendu
+  // suppose que tout tient, l'effet de mise en page corrige avant le paint.
+  const [nbRecentes, setNbRecentes] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const mesurer = () => setNbRecentes(nombreDeRecentesQuiTiennent(el.clientHeight));
+    mesurer();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(el);
+    return () => observateur.disconnect();
+  }, []);
 
   // Déclaré APRÈS l'effet d'auto-défilement : les deux courent au même
   // commit, et celui-ci doit avoir le dernier mot. Le défilement est
@@ -166,14 +194,15 @@ export function ChatArea() {
     }
   };
 
-  const isEmpty = messages.length === 0 && !streamState.isStreaming;
-
   // 17 sept. 2026 : en compact, la page vide vendait des connecteurs au lieu
   // d'inviter à écrire ou à reprendre. Elle propose le dernier fil
-  // (« Reprendre « <titre> » — il y a 2 h ↩ ») et les trois suivants ; rien
-  // ne s'ouvre, c'est le contenu de la page qui change. Hors compact la
-  // barre latérale fait ce travail : le bloc est `hidden compact:flex`.
-  const accueil = isEmpty ? recentesPourAccueil(conversations, activeId, Date.now()) : null;
+  // (« Reprendre « <titre> » — il y a 2 h ↩ ») et les suivants qui tiennent,
+  // trois au plus ; rien ne s'ouvre, c'est le contenu de la page qui change.
+  // Hors compact la barre latérale fait ce travail : le bloc est
+  // `hidden compact:flex`.
+  const accueil = isEmpty
+    ? recentesPourAccueil(conversations, activeId, Date.now(), nbRecentes ?? undefined)
+    : null;
   const reprendreRef = useRef<HTMLButtonElement>(null);
   // Jamais pendant un flux (comme ⌘N et le sauteur, contre-revue du 17 sept.
   // 2026) : l'invitation n'est rendue que sur un fil vide sans flux, mais
@@ -185,15 +214,22 @@ export function ChatArea() {
     demanderLeFocusDuCompositeur();
   };
   // ↩ dans le compositeur vide reprend le dernier fil — SEULEMENT si
-  // l'invitation est affichée (`offsetParent` est null sous display:none,
-  // donc hors compact) : le ↩ du libellé n'est pas une promesse en l'air, et
-  // la fenêtre principale garde son ↩ à vide qui ne fait rien.
+  // l'invitation est VISIBLE : `offsetParent` est null sous display:none
+  // (hors compact), et le bouton doit croiser le cadre du fil — défilé hors
+  // vue, `offsetParent` répondait encore « DIV » et le ↩ changeait de fil
+  // sans que le libellé qui le promet soit à l'écran (contre-revue du
+  // 17 sept. 2026). Le ↩ du libellé n'est pas une promesse en l'air, et la
+  // fenêtre principale garde son ↩ à vide qui ne fait rien.
   const reprendreId = accueil?.reprendre?.id ?? null;
   useEffect(() => {
     if (!reprendreId) return;
     const surEntree = () => {
       const bouton = reprendreRef.current;
-      if (!bouton || bouton.offsetParent === null) return;
+      const cadre = listRef.current;
+      if (!bouton || !cadre || bouton.offsetParent === null) return;
+      const b = bouton.getBoundingClientRect();
+      const c = cadre.getBoundingClientRect();
+      if (b.bottom <= c.top || b.top >= c.bottom) return;
       reprendre(reprendreId);
     };
     window.addEventListener(EVENEMENT_ENTREE_A_VIDE, surEntree);
@@ -273,16 +309,27 @@ export function ChatArea() {
             }
           >
           {isEmpty ? (
-            <div className="flex flex-col items-center justify-center h-full px-4">
-              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
+            /* `min-h-full`, pas `h-full` : centré dans 122 px, un contenu de
+               209 partait pour moitié en débordement négatif, non défilable —
+               le salut était inatteignable à 340×380 (17 sept. 2026). Sous sm
+               le sous-titre s'efface et les marges se resserrent : le mini
+               invite à écrire ou à reprendre, sans défiler. */
+            <div className="flex flex-col items-center justify-center min-h-full px-4">
+              <h2
+                className="text-xl font-semibold mb-1 sm:mb-2"
+                style={{ color: 'var(--color-text)' }}
+              >
                 {t(greetingKey())}
               </h2>
-              <p className="text-sm text-center max-w-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+              <p
+                className="hidden sm:block text-sm text-center max-w-sm mb-6"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
                 {t('chat.empty.subtitle')}
               </p>
 
               {accueil?.reprendre && (
-                <div className="hidden compact:flex flex-col w-full max-w-sm mb-6">
+                <div className="hidden compact:flex flex-col w-full max-w-sm sm:mb-6">
                   <button
                     ref={reprendreRef}
                     type="button"

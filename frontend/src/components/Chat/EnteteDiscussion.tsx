@@ -113,9 +113,12 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
     setMenuAncre(null);
     // Quel que soit le chemin de sortie, le curseur retourne au compositeur —
     // sauf quand un renommage commence : son champ prend le focus, et une
-    // demande différée le lui reprendrait (le nettoyage passif court APRÈS
-    // l'autoFocus du champ monté dans le même commit).
-    if (rendreLeFocus) demanderLeFocusDuCompositeur();
+    // demande le lui reprendrait. Différé d'un tour, comme le sauteur :
+    // contre-revue du 17 sept. 2026, le clic dehors fermait le menu depuis
+    // le mousedown, le focus partait au compositeur DANS l'écouteur, puis
+    // l'action par défaut du clic (qui court après) le retirait — mesuré
+    // activeElement = BODY après un clic dans le fil.
+    if (rendreLeFocus) window.setTimeout(demanderLeFocusDuCompositeur, 0);
   };
 
   const commencerRenommage = () => {

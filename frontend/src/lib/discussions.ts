@@ -478,6 +478,35 @@ export function recentesPourAccueil(
   return { reprendre: triees[0] ?? null, autres: triees.slice(1, 1 + n) };
 }
 
+/**
+ * Ce que l'accueil compact réserve AVANT la première récente, en px : le
+ * salut (28) et sa marge (4), le bouton « Reprendre » (36) et la marge du
+ * bloc des récentes (4). Mesuré dans le banc `?compact` le 17 sept. 2026.
+ */
+export const ACCUEIL_RESERVE_PX = 72;
+/**
+ * Le coût d'une récente au pire : sa rangée (28) plus un libellé de section
+ * à elle (24, « Aujourd'hui » / « Hier ») — deux fils de jours différents
+ * apportent chacun leur libellé, et compter la rangée seule laisserait la
+ * dernière déborder.
+ */
+export const ACCUEIL_RECENTE_PX = 52;
+
+/**
+ * Combien de récentes tiennent sous « Reprendre » dans un fil de
+ * `hauteurFil` px, au plus `max`. Contre-revue du 17 sept. 2026 : à 340×380
+ * (taille minimale du mini-panneau) le fil mesure 122 px et la page vide
+ * en faisait 209 — l'auto-défilement épinglait le bas, et l'utilisateur
+ * voyait une liste de trois fils coupée sous l'en-tête, sans le salut ni
+ * l'invitation que le ↩ à vide promet. Ce qui ne tient pas n'est pas rendu :
+ * 122 → 0, 162 → 1, 262 (préréglage S, 380×520) → 3.
+ */
+export function nombreDeRecentesQuiTiennent(hauteurFil: number, max = 3): number {
+  const libre = hauteurFil - ACCUEIL_RESERVE_PX;
+  if (libre < ACCUEIL_RECENTE_PX) return 0;
+  return Math.min(max, Math.floor(libre / ACCUEIL_RECENTE_PX));
+}
+
 // ── Fil précédent / suivant ──────────────────────────────────────────────
 
 export type SensVoisine = 'precedente' | 'suivante';
