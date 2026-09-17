@@ -1537,7 +1537,11 @@ export function SuccesFinancesPage() {
                           value={goalEdit.value}
                           onChange={(event) => setGoalEdit({ id: goal.id, value: event.target.value })}
                           onKeyDown={(event) => {
-                            if (event.key === 'Escape') setGoalEdit(null);
+                            if (event.key === 'Escape') {
+                              // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                              event.preventDefault();
+                              setGoalEdit(null);
+                            }
                           }}
                           aria-label={`Montant épargné pour ${goal.name} ($)`}
                           placeholder="Montant épargné ($)"

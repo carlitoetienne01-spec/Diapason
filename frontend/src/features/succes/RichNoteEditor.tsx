@@ -896,7 +896,10 @@ export function RichNoteEditor({
       if (!(e.target instanceof Element) || !e.target.closest(`[data-panneau="${menu}"]`)) fermerLeMenu();
     };
     const echap = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') fermerLeMenu();
+      if (e.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      e.preventDefault();
+      fermerLeMenu();
     };
     document.addEventListener('mousedown', fermer, true);
     document.addEventListener('keydown', echap, true);
@@ -1402,7 +1405,10 @@ export function RichNoteEditor({
     };
     // Échap aussi — y compris quand la boîte n'a qu'un message et pas de champ.
     const echap = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLien(null);
+      if (e.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      e.preventDefault();
+      setLien(null);
     };
     document.addEventListener('mousedown', fermer, true);
     document.addEventListener('keydown', echap, true);

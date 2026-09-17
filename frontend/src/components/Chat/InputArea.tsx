@@ -17,6 +17,8 @@ import { useSurfaceVitree } from './useSurfaceVitree';
 import {
   EVENEMENT_DEPOSER_TEXTE,
   EVENEMENT_FOCUS_COMPOSITEUR,
+  consommerLaDemandeDeFocus,
+  publierLeBrouillon,
   signalerEntreeAVide,
 } from '../../lib/panneau';
 import type {
@@ -382,10 +384,17 @@ export function InputArea() {
   // chargement du modèle ou une réponse en cours, la demande est retenue et
   // honorée dès que le champ rouvre, sinon l'ouverture du panneau pendant un
   // stream laissait le curseur perdu pour de bon.
+  //
+  // Une demande émise AVANT ce montage est relue ici (contre-revue du
+  // 17 sept. 2026) : « Nouvelle discussion » depuis Tâches naviguait vers
+  // « / » et demandait le focus dans la foulée — personne n'écoutait, et
+  // même différée d'un tour la demande arrivait 50 ms avant ce textarea.
+  // Honorée ou relue, la demande est consommée : elle ne vaut qu'une fois.
   const compositeurBloque = streamState.isStreaming || modelLoading;
   const focusEnAttente = useRef(false);
   useEffect(() => {
     const focaliser = () => {
+      consommerLaDemandeDeFocus();
       const el = textareaRef.current;
       if (!el) return;
       if (el.disabled) {
@@ -395,8 +404,17 @@ export function InputArea() {
       el.focus();
     };
     window.addEventListener(EVENEMENT_FOCUS_COMPOSITEUR, focaliser);
+    if (consommerLaDemandeDeFocus()) focaliser();
     return () => window.removeEventListener(EVENEMENT_FOCUS_COMPOSITEUR, focaliser);
   }, []);
+
+  // Le brouillon est publié (lib/panneau.ts) pour que l'atterrissage du
+  // mini-panneau sache qu'on tient le fil — sans connaître ce textarea.
+  // Démonté, le compositeur ne porte plus rien.
+  useEffect(() => {
+    publierLeBrouillon(input);
+  }, [input]);
+  useEffect(() => () => publierLeBrouillon(''), []);
   useEffect(() => {
     if (compositeurBloque || !focusEnAttente.current) return;
     focusEnAttente.current = false;

@@ -172,6 +172,8 @@ export function LigneEtape({
   useEffect(() => {
     const surTouche = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+        e.preventDefault();
         if (enEdition) setEnEdition(null);
         else if (ajoutSous) setAjoutSous(null);
         else onClose();

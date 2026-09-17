@@ -53,7 +53,12 @@ function ConfirmModal({
   useEffect(() => {
     confirmRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onResolve(false);
+      if (event.key !== 'Escape') return;
+      // Consommé (contre-revue du 17 sept. 2026) : le script natif du
+      // mini-panneau lit `defaultPrevented` après le tour et fermait le
+      // panneau ENTIER sur l'Échap qui refusait « Supprimer la discussion ».
+      event.preventDefault();
+      onResolve(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

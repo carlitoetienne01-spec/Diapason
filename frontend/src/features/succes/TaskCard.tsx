@@ -311,7 +311,11 @@ function SubtaskRow({
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') void submit();
-              if (event.key === 'Escape') setAdding(false);
+              if (event.key === 'Escape') {
+                // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                event.preventDefault();
+                setAdding(false);
+              }
             }}
             placeholder="Nouvelle étape…"
             className="flex-1 min-w-0 bg-transparent text-sm outline-none px-2 py-1 rounded-md"
@@ -377,7 +381,10 @@ function MenuActions({
       if (!menuRef.current?.contains(cible)) setAncre(null);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setAncre(null);
+      if (event.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      event.preventDefault();
+      setAncre(null);
     };
     const fermer = () => setAncre(null);
     document.addEventListener('mousedown', onPointer);
@@ -700,7 +707,11 @@ export function TaskCard({
             onChange={(event) => setDraft({ ...draft, title: event.target.value })}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) void saveEdit();
-              if (event.key === 'Escape') setEditing(false);
+              if (event.key === 'Escape') {
+                // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                event.preventDefault();
+                setEditing(false);
+              }
             }}
             maxLength={200}
             className="flex-1 rounded-xl px-3 py-2 font-medium bg-transparent outline-none"
@@ -1199,7 +1210,11 @@ export function TaskCard({
                 onChange={(event) => setSubtaskTitle(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') void submitSubtask();
-                  if (event.key === 'Escape') setAdding(false);
+                  if (event.key === 'Escape') {
+                    // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                    event.preventDefault();
+                    setAdding(false);
+                  }
                 }}
                 placeholder="Nouvelle sous-tâche…"
                 className="flex-1 min-w-0 bg-transparent text-sm outline-none px-2 py-1.5 rounded-lg"

@@ -11,11 +11,14 @@ import {
   classerDiscussions,
   debutDeMot,
   discussionVoisine,
+  doitAfficherLeFil,
   filtrerDiscussions,
   plierTexte,
   plusRecente,
   recentesPourAccueil,
   rechercherDiscussions,
+  tientLeFil,
+  titreARenommer,
   titreDiscussion,
   titreProvisoire,
   trouverDiscussionVierge,
@@ -443,6 +446,62 @@ describe('choisirAtterrissage', () => {
 
   it('sans aucune conversation, une vierge', () => {
     expect(choisirAtterrissage([], null, NOW)).toEqual({ type: 'vierge' });
+  });
+
+  it('un fil choisi exprès n’est pas « chaud » : la règle seule l’abandonnerait — d’où la garde de l’appelant', () => {
+    // Contre-revue du 17 sept. 2026 : selectConversation ne date pas
+    // `updatedAt`, donc « Zéro à Héro » ouvert par ⌘J il y a une seconde
+    // pèse un jour, et « La Cité » (6 min) gagne. La règle est juste pour une
+    // VRAIE ouverture ; c'est à l'appelant de ne la rejouer qu'alors, et
+    // jamais quand on tient le fil (tientLeFil).
+    const laCite = avec('lacite', 'La Cité', 6 * MIN);
+    const zero = avec('zero', 'Zéro à Héro', 24 * 60 * MIN);
+    expect(choisirAtterrissage([laCite, zero], 'zero', NOW)).toEqual({
+      type: 'reprendre',
+      id: 'lacite',
+    });
+  });
+});
+
+describe('tientLeFil', () => {
+  it('un brouillon tient le fil — il partirait dans le mauvais fil (§100)', () => {
+    expect(tientLeFil({ enFlux: false, brouillon: 'et la suite du plan ?' })).toBe(true);
+  });
+
+  it('une réponse en cours tient le fil', () => {
+    expect(tientLeFil({ enFlux: true, brouillon: '' })).toBe(true);
+  });
+
+  it('rien ne tient le fil quand le compositeur est vide ou blanc', () => {
+    // Une espace oubliée n'est pas un brouillon : elle bloquerait
+    // l'atterrissage sans que rien ne soit visible dans le champ.
+    expect(tientLeFil({ enFlux: false, brouillon: '' })).toBe(false);
+    expect(tientLeFil({ enFlux: false, brouillon: '   \n' })).toBe(false);
+  });
+});
+
+describe('doitAfficherLeFil', () => {
+  it('seul le fil actif est affiché ; le fil en flux écrit sans s’afficher', () => {
+    // ⌘N pendant une réponse : les jetons du fil A s'affichaient sous le
+    // titre « Nouvelle discussion », bulle vivante comprise.
+    expect(doitAfficherLeFil('a', 'a')).toBe(true);
+    expect(doitAfficherLeFil('a', 'b')).toBe(false);
+    expect(doitAfficherLeFil('a', null)).toBe(false);
+  });
+});
+
+describe('titreARenommer', () => {
+  it('commet un titre nouveau, sans ses blancs', () => {
+    expect(titreARenommer('  Permis haïtien ', 'Ancien')).toBe('Permis haïtien');
+  });
+
+  it('ne commet ni un champ vidé ni un titre inchangé', () => {
+    // Inchangé : une écriture datée pour rien serait poussée vers l'autre
+    // vue (convSync). Vide : le titre ne se perd pas sur un champ effacé.
+    expect(titreARenommer('', 'Ancien')).toBeNull();
+    expect(titreARenommer('   ', 'Ancien')).toBeNull();
+    expect(titreARenommer('Ancien', 'Ancien')).toBeNull();
+    expect(titreARenommer(' Ancien ', 'Ancien')).toBeNull();
   });
 });
 

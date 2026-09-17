@@ -558,7 +558,11 @@ function GenealogyNodeCard({
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') onSubmitAdd();
-              if (event.key === 'Escape') onCancelAdd();
+              if (event.key === 'Escape') {
+                // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                event.preventDefault();
+                onCancelAdd();
+              }
             }}
             placeholder="Titre de l'enfant…"
             maxLength={200}

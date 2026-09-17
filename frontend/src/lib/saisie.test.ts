@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ATTRIBUT_RACCOURCIS_GLOBAUX,
   estDansUneZoneDeSaisie,
-  laissePasserLeRaccourci,
+  estUnMac,
+  laissePasserLeRaccourci as laissePasserSelonPlateforme,
   type FrappeClavier,
 } from './saisie';
 
@@ -58,6 +59,13 @@ describe('la garde couvre les descendants, pas seulement l’hôte', () => {
 });
 
 describe('laissePasserLeRaccourci — l’exception du compositeur', () => {
+  // Sur Mac, sauf mention contraire : jsdom n'a pas de `platform`, et le
+  // défaut (« pas un Mac ») rendrait ⌘ muet dans tous les tests.
+  const laissePasserLeRaccourci = (
+    cible: EventTarget | null,
+    frappe: FrappeClavier,
+    surMac = true,
+  ) => laissePasserSelonPlateforme(cible, frappe, surMac);
   const frappe = (key: string, extra: Partial<FrappeClavier> = {}): FrappeClavier => ({
     key,
     metaKey: true,
@@ -98,10 +106,28 @@ describe('laissePasserLeRaccourci — l’exception du compositeur', () => {
     expect(laissePasserLeRaccourci(compositeur(), frappe('['))).toBe(false);
   });
 
-  it('accepte Ctrl à la place de ⌘, mais refuse ⌥', () => {
+  it('sur Mac, Ctrl+K et Ctrl+N restent au champ — ce sont les liaisons Cocoa', () => {
+    // Contre-revue du 17 sept. 2026 : Ctrl+K « coupe jusqu'à la fin de la
+    // ligne » et Ctrl+N « descend d'une ligne » dans toute zone de texte
+    // macOS. Les laisser passer vidait le fil depuis un brouillon de trois
+    // lignes — le raccourci confisqué du 30 août, sous un autre nom.
+    const ctrl = { metaKey: false, ctrlKey: true };
+    expect(laissePasserLeRaccourci(compositeur(), frappe('k', ctrl), true)).toBe(false);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('n', ctrl), true)).toBe(false);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('j', ctrl), true)).toBe(false);
+  });
+
+  it('hors Mac, Ctrl est le modificateur et ⌘ (touche Windows) ne l’est pas', () => {
+    const ctrl = { metaKey: false, ctrlKey: true };
+    expect(laissePasserLeRaccourci(compositeur(), frappe('k', ctrl), false)).toBe(true);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('n', ctrl), false)).toBe(true);
     expect(
-      laissePasserLeRaccourci(compositeur(), frappe('k', { metaKey: false, ctrlKey: true })),
+      laissePasserLeRaccourci(compositeur(), frappe('{', { ...ctrl, shiftKey: true }), false),
     ).toBe(true);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('k'), false)).toBe(false);
+  });
+
+  it('refuse ⌥, et une frappe sans modificateur', () => {
     expect(laissePasserLeRaccourci(compositeur(), frappe('k', { altKey: true }))).toBe(false);
     expect(
       laissePasserLeRaccourci(compositeur(), frappe('k', { metaKey: false, ctrlKey: false })),
@@ -122,5 +148,19 @@ describe('laissePasserLeRaccourci — l’exception du compositeur', () => {
     expect(laissePasserLeRaccourci(compositeur(), frappe('i'))).toBe(false);
     expect(laissePasserLeRaccourci(compositeur(), frappe('a'))).toBe(false);
     expect(laissePasserLeRaccourci(compositeur(), frappe('Enter'))).toBe(false);
+  });
+});
+
+describe('estUnMac', () => {
+  it('reconnaît WebKit (platform) et Chromium (userAgentData)', () => {
+    // WKWebView, fenêtre comme mini-panneau : `platform` vaut « MacIntel ».
+    expect(estUnMac({ platform: 'MacIntel' })).toBe(true);
+    expect(estUnMac({ platform: '', userAgentData: { platform: 'macOS' } })).toBe(true);
+  });
+
+  it('ne prend pas Windows ni Linux pour un Mac, et ne casse pas hors navigateur', () => {
+    expect(estUnMac({ platform: 'Win32' })).toBe(false);
+    expect(estUnMac({ platform: 'Linux x86_64', userAgentData: { platform: 'Linux' } })).toBe(false);
+    expect(estUnMac(undefined)).toBe(false);
   });
 });

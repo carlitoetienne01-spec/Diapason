@@ -175,7 +175,11 @@ export function ChatArea() {
   // barre latérale fait ce travail : le bloc est `hidden compact:flex`.
   const accueil = isEmpty ? recentesPourAccueil(conversations, activeId, Date.now()) : null;
   const reprendreRef = useRef<HTMLButtonElement>(null);
+  // Jamais pendant un flux (comme ⌘N et le sauteur, contre-revue du 17 sept.
+  // 2026) : l'invitation n'est rendue que sur un fil vide sans flux, mais
+  // le ↩ à vide arrive par événement et ne doit pas dépendre du rendu.
   const reprendre = (id: string) => {
+    if (useAppStore.getState().streamState.isStreaming) return;
     selectConversation(id);
     loadMessages(id);
     demanderLeFocusDuCompositeur();

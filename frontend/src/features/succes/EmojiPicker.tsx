@@ -115,6 +115,8 @@ export function EmojiPicker({
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      event.preventDefault();
       fermer();
       boutonRef.current?.focus();
     };

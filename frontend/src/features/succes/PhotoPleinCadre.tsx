@@ -367,6 +367,9 @@ export function PhotoPleinCadre({
         (cible.tagName === 'INPUT' || cible.tagName === 'SELECT' || cible.tagName === 'TEXTAREA');
       if (e.key === 'Escape') {
         e.stopPropagation();
+        // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`). (stopPropagation ne suffit pas : le script natif écoute
+        // `document`, avant `window`.)
+        e.preventDefault();
         if (dansChamp) cible.blur();
         else if (choixNote || texteLu) {
           setChoixNote(false);

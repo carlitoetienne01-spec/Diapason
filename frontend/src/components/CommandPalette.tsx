@@ -158,6 +158,24 @@ export function CommandPalette() {
   // avant d'écrire (17 sept. 2026).
   useEffect(() => () => demanderLeFocusDuCompositeur(), []);
 
+  // Échap ferme la palette QUEL QUE SOIT le focus — au niveau du document,
+  // pas du champ. Contre-revue du 17 sept. 2026 : le seul gestionnaire
+  // vivait sur l'input de recherche, absent de l'onglet Cloud ; un clic sur
+  // « Modèles cloud », un bouton Télécharger ou un champ de clé, puis Échap :
+  // personne ne consommait la touche, le script natif fermait le
+  // mini-panneau entier et laissait la palette ouverte (le store survit à
+  // hide_mini) pour la présentation suivante — sous laquelle ChatPage
+  // rendait le focus au compositeur.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setCommandPaletteOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [setCommandPaletteOpen]);
+
   useEffect(() => {
     void refreshCloudKeyStatus();
   }, [refreshCloudKeyStatus]);
@@ -287,14 +305,10 @@ export function CommandPalette() {
     if (draft.trim()) void handleSaveKey(provider, draft);
   };
 
+  // Échap n'est pas ici : l'écouteur document ci-dessus le traite d'où que
+  // vienne la touche.
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      // 17 sept. 2026 : « consommé » — sans ce preventDefault, le script
-      // natif du mini-panneau lisait le même Échap et fermait tout le
-      // panneau avec la palette.
-      e.preventDefault();
-      setCommandPaletteOpen(false);
-    } else if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIdx((i) => Math.min(i + 1, filtered.length - 1));
     } else if (e.key === 'ArrowUp') {

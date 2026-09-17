@@ -77,19 +77,45 @@ const RACCOURCIS_GLOBAUX: readonly RaccourciGlobal[] = [
   { keys: [']', '}'], code: 'BracketRight', shift: true },
 ];
 
+/** Ce qu'il faut d'un `Navigator` pour reconnaître un Mac — sans en exiger un vrai. */
+export interface PlateformeNavigateur {
+  platform?: string;
+  userAgentData?: { platform?: string };
+}
+
+/**
+ * Sommes-nous sur macOS ? `userAgentData.platform` (Chromium) d'abord,
+ * `navigator.platform` (WebKit, « MacIntel ») sinon. Hors navigateur : non.
+ */
+export function estUnMac(nav: PlateformeNavigateur | undefined = globalThis.navigator): boolean {
+  if (!nav) return false;
+  const plateforme = nav.userAgentData?.platform || nav.platform || '';
+  return /mac/i.test(plateforme);
+}
+
 /**
  * Vrai quand la frappe est l'un des raccourcis globaux ET vient d'un champ
  * qui porte `data-raccourcis-globaux`. Tout autre champ garde la garde
  * absolue ; tout autre raccourci reste au champ.
+ *
+ * Le modificateur dépend de la plateforme : ⌘ sur Mac, Ctrl ailleurs — et
+ * JAMAIS Ctrl sur Mac. Contre-revue du 17 sept. 2026 : « metaKey ou
+ * ctrlKey » laissait passer Ctrl+K et Ctrl+N depuis le compositeur, qui sont
+ * dans toute zone de texte macOS les liaisons Cocoa « couper jusqu'à la fin
+ * de la ligne » et « ligne suivante » ; Ctrl+N depuis un brouillon de trois
+ * lignes vidait le fil au lieu de descendre d'une ligne — exactement le
+ * raccourci confisqué du 30 août, sous un autre nom.
  */
 export function laissePasserLeRaccourci(
   cible: EventTarget | null,
   frappe: FrappeClavier,
+  surMac: boolean = estUnMac(),
 ): boolean {
   const element = cible as HTMLElement | null;
   if (!element || typeof element.hasAttribute !== 'function') return false;
   if (!element.hasAttribute(ATTRIBUT_RACCOURCIS_GLOBAUX)) return false;
-  if (!(frappe.metaKey || frappe.ctrlKey) || frappe.altKey) return false;
+  const modificateur = surMac ? frappe.metaKey : frappe.ctrlKey;
+  if (!modificateur || frappe.altKey) return false;
   const key = frappe.key.toLowerCase();
   return RACCOURCIS_GLOBAUX.some(
     (r) =>

@@ -15,7 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
-import { titreDiscussion, titreProvisoire } from '../../lib/discussions';
+import { titreARenommer, titreDiscussion, titreProvisoire } from '../../lib/discussions';
 import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
 import { useConfirm } from '../ConfirmDialog';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -73,6 +73,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
   const togglePinConversation = useAppStore((s) => s.togglePinConversation);
   const duplicateConversation = useAppStore((s) => s.duplicateConversation);
   const deleteConversation = useAppStore((s) => s.deleteConversation);
+  const enFlux = useAppStore((s) => s.streamState.isStreaming);
   const systemPanelOpen = useAppStore((s) => s.systemPanelOpen);
   const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
 
@@ -98,6 +99,15 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
     window.setTimeout(demanderLeFocusDuCompositeur, 0);
   };
   const [renommage, setRenommage] = useState<string | null>(null);
+  // Le renommage se termine UNE fois. Contre-revue du 17 sept. 2026 : Échap
+  // faisait setRenommage(null) (mis en lot) puis demandait le focus au
+  // compositeur — synchrone, `textarea.focus()` blurait l'input DANS le
+  // gestionnaire de touche, et onBlur validait avec la fermeture où
+  // `renommage` portait encore le texte tapé : le seul geste d'annulation
+  // commettait le titre. ↩ commettait deux fois par le même chemin. Le
+  // premier terminateur (↩, Échap ou blur) l'emporte ; les suivants se
+  // taisent.
+  const renommageClos = useRef(true);
 
   const fermerMenu = (rendreLeFocus = true) => {
     setMenuAncre(null);
@@ -113,14 +123,17 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
     // Le titre BRUT, jamais le libellé de repli : valider sans rien toucher
     // figerait « Nouvelle discussion » comme vrai titre et couperait le
     // nommage automatique du premier message.
+    renommageClos.current = false;
     setRenommage(active.title);
     fermerMenu(false);
   };
 
-  const validerRenommage = () => {
-    if (renommage !== null && active) {
-      const suivant = renommage.trim();
-      if (suivant && suivant !== active.title) renameConversation(active.id, suivant);
+  const terminerRenommage = (valider: boolean) => {
+    if (renommageClos.current) return;
+    renommageClos.current = true;
+    if (valider && renommage !== null && active) {
+      const suivant = titreARenommer(renommage, active.title);
+      if (suivant !== null) renameConversation(active.id, suivant);
     }
     setRenommage(null);
     demanderLeFocusDuCompositeur();
@@ -129,7 +142,10 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
   const nouvelle = () => {
     // Même règle que la barre latérale et ⌘N (store.nouvelleDiscussion) :
     // une vierge existante est réutilisée, jamais deux « Nouvelle
-    // discussion » empilées.
+    // discussion » empilées. Jamais pendant un flux (le bouton est
+    // désactivé, ceci garde le clavier) : on ne quitte pas une réponse en
+    // cours, comme ⌘⇧[ ].
+    if (enFlux) return;
     nouvelleDiscussion(selectedModel);
     navigate('/');
     demanderLeFocusDuCompositeur();
@@ -189,16 +205,15 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
           onChange={(e) => setRenommage(e.target.value)}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
-            if (e.key === 'Enter') validerRenommage();
+            if (e.key === 'Enter') terminerRenommage(true);
             if (e.key === 'Escape') {
               // Consommé : le script natif du mini-panneau ne doit pas fermer
               // le panneau sur l'Échap qui annule un renommage.
               e.preventDefault();
-              setRenommage(null);
-              demanderLeFocusDuCompositeur();
+              terminerRenommage(false);
             }
           }}
-          onBlur={validerRenommage}
+          onBlur={() => terminerRenommage(true)}
           className="flex-1 min-w-0 h-7 px-2 text-[13px] font-semibold rounded-md outline-none"
           style={{
             background: 'var(--color-bg-secondary)',
@@ -249,7 +264,8 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
         <button
           type="button"
           onClick={nouvelle}
-          className={`hidden compact:inline-flex ${BOUTON}`}
+          disabled={enFlux}
+          className={`hidden compact:inline-flex ${BOUTON} disabled:opacity-40 disabled:cursor-default`}
           style={{ color: 'var(--color-text-tertiary)' }}
           title={t('chat.header.newChat', { shortcut: raccourci('N') })}
           aria-label={t('chat.header.newChat', { shortcut: raccourci('N') })}

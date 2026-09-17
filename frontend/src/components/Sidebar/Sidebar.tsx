@@ -121,6 +121,9 @@ export function Sidebar() {
     // store (nouvelleDiscussion → lib/discussions.trouverDiscussionVierge).
     nouvelleDiscussion(selectedModel);
     navigate('/');
+    // Depuis un autre module, la Discussion n'est pas encore montée : la
+    // demande est gardée par lib/panneau.ts et relue par le compositeur à son
+    // montage (contre-revue du 17 sept. 2026 — le focus restait sur ce bouton).
     demanderLeFocusDuCompositeur();
   };
 

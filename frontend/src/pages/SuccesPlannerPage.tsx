@@ -198,7 +198,10 @@ export function SuccesPlannerPage() {
   useEffect(() => {
     if (!quoteModalOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') void closeQuoteModal();
+      if (event.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      event.preventDefault();
+      void closeQuoteModal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

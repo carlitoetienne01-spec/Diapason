@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { modeleInitial } from './modelePrefere';
-import { plusRecente, trouverDiscussionVierge } from './discussions';
+import { doitAfficherLeFil, plusRecente, trouverDiscussionVierge } from './discussions';
 import type {
   Conversation,
   ChatMessage,
@@ -572,8 +572,13 @@ export const useAppStore = create<AppState>((set, get) => {
           (message.content.length > 50 ? '...' : '');
       }
       saveConversations(store);
+      // La vue n'est réservée qu'au fil actif (contre-revue du 17 sept.
+      // 2026) : le fil en flux, quitté par ⌘N ou le sauteur, continue
+      // d'être écrit ici sans s'afficher sous le titre d'un autre.
       set({
-        messages: [...conv.messages],
+        ...(doitAfficherLeFil(conversationId, get().activeId)
+          ? { messages: [...conv.messages] }
+          : {}),
         conversations: Object.values(store.conversations).sort(
           (a, b) => b.updatedAt - a.updatedAt,
         ),
@@ -604,7 +609,12 @@ export const useAppStore = create<AppState>((set, get) => {
         if (researchSources) lastMsg.researchSources = researchSources;
         conv.updatedAt = Date.now();
         saveConversations(store);
-        set({ messages: [...conv.messages] });
+        // Chaque jeton reposait `messages` = le fil en flux, même après
+        // avoir changé de fil : ses bulles s'affichaient sous le titre du
+        // nouveau, et la vierge « vide » basculait d'un coup au premier envoi.
+        if (doitAfficherLeFil(conversationId, get().activeId)) {
+          set({ messages: [...conv.messages] });
+        }
       }
     },
 

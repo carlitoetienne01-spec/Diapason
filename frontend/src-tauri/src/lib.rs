@@ -4839,6 +4839,10 @@ mod native_reglette {
     /// frontale AVANT d'activer, sinon on lirait Diapason.
     unsafe fn presenter_mini(panel: *mut Object) {
         remember_front();
+        // Lu AVANT d'ordonner : « ouvert » n'est vrai que si le panneau était
+        // caché (hide_mini → orderOut). Le rail envoie `open:/` à chaque
+        // clic, panneau déjà visible ou non.
+        let etait_visible: BOOL = msg_send![panel, isVisible];
         let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
         let _: () = msg_send![app, activateIgnoringOtherApps: YES];
         let nil: *mut Object = std::ptr::null_mut();
@@ -4847,7 +4851,11 @@ mod native_reglette {
         // passer devant tant que le curseur reste sur le rail — sinon un
         // second clic de module retombait dans le mini (15 sept. 2026).
         RAIL_FRONTED.store(false, Ordering::SeqCst);
-        signaler_panneau_ouvert();
+        if etait_visible == YES {
+            signaler_panneau_repris();
+        } else {
+            signaler_panneau_ouvert();
+        }
     }
 
     /// Dit au bundle que le panneau vient d'être présenté : ChatPage y répond
@@ -4855,13 +4863,34 @@ mod native_reglette {
     /// mini pour écrire et il fallait d'abord cliquer dans le champ. À la
     /// construction, le document est encore vide et personne n'écoute — c'est
     /// Layout.tsx qui rejoue le signal une fois le bundle monté.
+    ///
+    /// Réservé à une VRAIE ouverture (panneau caché qui se montre) : ChatPage
+    /// y rejoue aussi l'atterrissage (fil chaud ou vierge). Contre-revue du
+    /// 17 sept. 2026 : émis à chaque presenter_mini et agrandir_mini, il
+    /// ramenait au fil chaud quand on re-cliquait « Discussion » sur le rail
+    /// ou dépliait la pastille — le fil qu'on venait de choisir par ⌘J était
+    /// abandonné, brouillon compris, et la pastille nommait un fil qu'elle ne
+    /// rendait pas. Ces cas passent par `signaler_panneau_repris`.
     unsafe fn signaler_panneau_ouvert() {
+        evaluer_signal("diapason:panneau-ouvert");
+    }
+
+    /// Le panneau était déjà là (re-présenté, ou déplié depuis la pastille) :
+    /// le bundle rend le curseur au compositeur, sans changer de fil.
+    unsafe fn signaler_panneau_repris() {
+        evaluer_signal("diapason:panneau-repris");
+    }
+
+    unsafe fn evaluer_signal(nom: &str) {
         let wv = MINI_WV_PTR.load(Ordering::SeqCst);
         if wv == 0 {
             return;
         }
         let nil: *mut Object = std::ptr::null_mut();
-        let js = nsstring("window.dispatchEvent(new CustomEvent('diapason:panneau-ouvert'))");
+        let js = nsstring(&format!(
+            "window.dispatchEvent(new CustomEvent('{}'))",
+            js_escape(nom)
+        ));
         let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
     }
 
@@ -5263,8 +5292,9 @@ mod native_reglette {
             let js = nsstring("window.__diapReduit&&__diapReduit(false)");
             let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
         }
-        // Redéployé depuis la pastille = ouvert : même retour du curseur.
-        signaler_panneau_ouvert();
+        // Redéployé depuis la pastille = REPRIS, pas ouvert : le curseur
+        // revient, le fil ne change pas — la pastille nommait ce fil-là.
+        signaler_panneau_repris();
     }
 
     /// Déplace le mini-panneau d'un delta écran (barre de glissement JS). Le

@@ -85,6 +85,7 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
   const selectConversation = useAppStore((s) => s.selectConversation);
   const loadMessages = useAppStore((s) => s.loadMessages);
   const nouvelleDiscussion = useAppStore((s) => s.nouvelleDiscussion);
+  const enFlux = useAppStore((s) => s.streamState.isStreaming);
 
   const ref = useSurfaceVitree();
   const listeRef = useRef<HTMLDivElement>(null);
@@ -166,7 +167,12 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
       ?.scrollIntoView({ block: 'nearest' });
   }, [idx]);
 
+  // Pendant un flux, choisir ou créer est ignoré — comme ⌘⇧[ ] et ⌘N
+  // (contre-revue du 17 sept. 2026) : changer de fil pendant une réponse
+  // affichait les jetons du fil quitté sous le titre du nouveau. Le sauteur
+  // reste ouvert : rien n'a été choisi, et rien ne fait semblant de l'être.
   const choisir = (id: string) => {
+    if (enFlux) return;
     if (id !== activeId) {
       selectConversation(id);
       loadMessages(id);
@@ -179,6 +185,7 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
   };
 
   const creer = () => {
+    if (enFlux) return;
     const texte = requete.trim();
     // Même règle que ＋ et ⌘N : une vierge existante est réutilisée. Le texte
     // tapé est DÉPOSÉ dans le compositeur, jamais envoyé (§100) : on le relit

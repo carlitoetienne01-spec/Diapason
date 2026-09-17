@@ -99,7 +99,10 @@ export function ApprovalBell() {
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+      e.preventDefault();
+      setOpen(false);
     };
     // Le panneau se redimensionne en continu : une hauteur mesurée à
     // l'ouverture devient fausse — on referme plutôt que de déborder.

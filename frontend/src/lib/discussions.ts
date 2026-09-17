@@ -410,6 +410,48 @@ export function choisirAtterrissage(
   return { type: 'vierge' };
 }
 
+export interface Occupation {
+  /** Une réponse est en cours de réception. */
+  enFlux: boolean;
+  /** Ce que le compositeur porte — un espace seul n'est pas un brouillon. */
+  brouillon: string;
+}
+
+/**
+ * L'utilisateur tient-il le fil ? Alors on n'atterrit PAS, quel que soit le
+ * fil chaud. Contre-revue du 17 sept. 2026 : le panneau se dépliait sur
+ * « La Cité » (chaude) alors qu'on avait tapé « et la suite du plan ? » dans
+ * « Zéro à Héro » — le brouillon restait dans le champ sous le mauvais titre
+ * et serait parti dans le mauvais fil (§100). Une réponse en cours tient le
+ * fil de la même façon : on ne quitte pas ce qu'on est en train de lire.
+ */
+export function tientLeFil({ enFlux, brouillon }: Occupation): boolean {
+  return enFlux || brouillon.trim() !== '';
+}
+
+/**
+ * Le fil `conversationId` est-il celui que la vue affiche ? Contre-revue du
+ * 17 sept. 2026 : le store réaffichait les messages du fil en flux quel que
+ * soit l'actif — ⌘N pendant une réponse montrait les jetons du fil A sous le
+ * titre « Nouvelle discussion », bulle vivante comprise, alors que la vierge
+ * était vide sur disque. Le fil en flux continue d'être ÉCRIT dans son
+ * propre objet ; seule la vue est réservée à l'actif.
+ */
+export function doitAfficherLeFil(conversationId: string, activeId: string | null): boolean {
+  return conversationId === activeId;
+}
+
+/**
+ * Le titre à commettre après un renommage, ou null s'il n'y a rien à
+ * commettre : vide ou blanc (le titre ne se perd pas sur un champ effacé),
+ * ou identique à l'actuel (une écriture datée pour rien serait poussée vers
+ * l'autre vue par convSync).
+ */
+export function titreARenommer(saisie: string, actuel: string): string | null {
+  const suivant = saisie.trim();
+  return suivant && suivant !== actuel ? suivant : null;
+}
+
 export interface Accueil {
   /** Le dernier fil qui a des messages, hors l'active — à reprendre d'un ↩. */
   reprendre: Conversation | null;

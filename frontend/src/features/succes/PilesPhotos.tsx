@@ -349,6 +349,9 @@ export function PilesPhotos({
       const cible = e.target as HTMLElement | null;
       if (cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA')) return;
       e.stopPropagation();
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`). (stopPropagation ne suffit pas : le script natif écoute
+      // `document`, avant `window`.)
+      e.preventDefault();
       fermerPopupRef.current();
     };
     window.addEventListener('keydown', surTouche);
@@ -438,7 +441,11 @@ export function PilesPhotos({
                 className="bg-transparent outline-none w-44"
                 style={{ color: 'var(--color-text)' }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape') setRequete('');
+                  if (e.key === 'Escape') {
+                    // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                    e.preventDefault();
+                    setRequete('');
+                  }
                 }}
               />
               {requete && (
@@ -613,6 +620,8 @@ export function PilesPhotos({
                 style={{ border: '1px solid var(--color-accent)', color: 'var(--color-text)' }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
+                    // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                    e.preventDefault();
                     setNouvelleEnCours(false);
                     setNomNouvelle('');
                     setFichiersEnAttente([]);
@@ -1137,6 +1146,9 @@ function PileOuverte({
       // Un champ ouvert (renommage) se ferme par son propre Échap.
       if (cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT')) return;
       e.stopPropagation();
+      // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`). (stopPropagation ne suffit pas : le script natif écoute
+      // `document`, avant `window`.)
+      e.preventDefault();
       if (selectionRef.current.size > 0) {
         setSelection(new Set());
         return;

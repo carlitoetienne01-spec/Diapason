@@ -141,6 +141,8 @@ export function NetworkView({
     if (!linkMode && !selectedEdge) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+        event.preventDefault();
         setLinkMode(false);
         setLinkFrom(null);
         setSelectedEdge(null);

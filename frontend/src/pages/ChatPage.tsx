@@ -4,10 +4,11 @@ import { SystemPanel } from '../components/Chat/SystemPanel';
 import { useAppStore } from '../lib/store';
 import {
   EVENEMENT_PANNEAU_OUVERT,
+  brouillonDuCompositeur,
   demanderLeFocusDuCompositeur,
   panneauVientDeSOuvrir,
 } from '../lib/panneau';
-import { choisirAtterrissage } from '../lib/discussions';
+import { choisirAtterrissage, tientLeFil } from '../lib/discussions';
 import { tirer } from '../lib/convSync';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -17,12 +18,16 @@ import { useTranslation } from '../i18n/useTranslation';
  * le panneau rouvrait toujours le fil où on l'avait laissé — la question
  * rapide posée depuis Xcode se collait à la conversation d'avant-hier. La
  * règle (choisirAtterrissage, 20 min) reprend le fil chaud, fenêtre ou mini
- * confondus, sinon une vierge par la règle commune. Jamais pendant un flux :
- * on ne quitte pas une réponse en cours parce que le panneau s'est rouvert.
+ * confondus, sinon une vierge par la règle commune. Jamais quand on tient le
+ * fil (tientLeFil) : ni pendant un flux — on ne quitte pas une réponse en
+ * cours parce que le panneau s'est rouvert — ni sur un brouillon, qui
+ * partirait dans le mauvais fil (contre-revue du 17 sept. 2026).
  */
 function atterrir(): void {
   const etat = useAppStore.getState();
-  if (etat.streamState.isStreaming) return;
+  if (tientLeFil({ enFlux: etat.streamState.isStreaming, brouillon: brouillonDuCompositeur() })) {
+    return;
+  }
   const choix = choisirAtterrissage(etat.conversations, etat.activeId, Date.now());
   if (choix.type === 'reprendre') {
     etat.selectConversation(choix.id);
@@ -54,6 +59,14 @@ export function ChatPage() {
   // passage est sans effet quand rien n'a changé (« rester ») et s'abstient
   // si l'on a changé de fil soi-même entre-temps (sauteur, ⌘N) : un tirage
   // ne défait pas un choix.
+  //
+  // Seule une VRAIE ouverture (panneau caché qui se montre) atterrit.
+  // Contre-revue du 17 sept. 2026 : Rust émettait le même signal à chaque
+  // presenter_mini et agrandir_mini — re-cliquer « Discussion » sur le rail
+  // ou déplier la pastille ramenait au fil chaud, en abandonnant le fil
+  // choisi par ⌘J ; la pastille nommait un fil et en livrait un autre (§5).
+  // Ces reprises émettent `diapason:panneau-repris`, que lib/panneau.ts
+  // traduit en simple demande de focus.
   useEffect(() => {
     const surOuverture = () => {
       atterrir();

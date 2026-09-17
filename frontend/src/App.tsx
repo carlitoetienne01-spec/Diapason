@@ -282,17 +282,17 @@ export default function App() {
       // compositeur (liste fermée de lib/saisie.ts) ; le menu natif Tauri ne
       // réserve que ⌘R (lib.rs, `accelerator`). Même règle que le bouton : une
       // vierge existante est réutilisée. Hors de la Discussion, on y va ; la
-      // demande de focus est différée d'un tour pour que ChatPage — et son
-      // compositeur, seul à l'honorer — soient montés quand elle arrive.
+      // demande de focus est GARDÉE par lib/panneau.ts et relue par le
+      // compositeur à son montage — différée d'un tour, elle arrivait encore
+      // 50 ms avant lui (contre-revue du 17 sept. 2026). Ignoré pendant un
+      // flux, comme ⌘⇧[ ] : sinon les jetons du fil quitté s'affichaient
+      // sous le titre « Nouvelle discussion ».
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'n') {
         e.preventDefault();
+        if (useAppStore.getState().streamState.isStreaming) return;
         nouvelleDiscussion(useAppStore.getState().selectedModel);
-        if (pathname === '/') {
-          demanderLeFocusDuCompositeur();
-        } else {
-          navigate('/');
-          window.setTimeout(demanderLeFocusDuCompositeur, 0);
-        }
+        if (pathname !== '/') navigate('/');
+        demanderLeFocusDuCompositeur();
       }
       // ⌘J — le sauteur de discussions, sous le titre du fil (ChatArea le
       // tient en state local). Même détour que ⌘N hors de la Discussion :
@@ -330,7 +330,7 @@ export default function App() {
           navigate('/');
           etat.selectConversation(voisine.id);
           etat.loadMessages(voisine.id);
-          window.setTimeout(demanderLeFocusDuCompositeur, 0);
+          demanderLeFocusDuCompositeur();
         }
       }
     };

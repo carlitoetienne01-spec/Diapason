@@ -457,7 +457,11 @@ export function MindMapView({
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') void addBranch();
-              else if (event.key === 'Escape') setPendingParent(null);
+              else if (event.key === 'Escape') {
+                // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
+                event.preventDefault();
+                setPendingParent(null);
+              }
             }}
             placeholder={
               pendingParent
