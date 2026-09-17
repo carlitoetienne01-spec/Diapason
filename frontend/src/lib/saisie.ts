@@ -32,3 +32,68 @@ export function estDansUneZoneDeSaisie(cible: EventTarget | null): boolean {
     element.closest?.('[contenteditable=""], [contenteditable="true"]'),
   );
 }
+
+/**
+ * L'attribut qui marque le SEUL champ d'où les raccourcis globaux passent.
+ *
+ * 17 sept. 2026, chantier « discussions dans le mini-panneau ». La garde
+ * ci-dessus était absolue : ⌘K était mort dès que le curseur était dans le
+ * compositeur — c'est-à-dire presque toujours dans le mini-panneau, où l'on
+ * arrive pour écrire. Il fallait cliquer dans le vide avant d'ouvrir la
+ * palette. L'exception est NOMMÉE et posée à un seul endroit (le textarea
+ * du compositeur, InputArea) : jamais sur l'éditeur de notes, où ⌘I est
+ * l'italique et où un raccourci volé serait exactement le défaut du 30 août.
+ */
+export const ATTRIBUT_RACCOURCIS_GLOBAUX = 'data-raccourcis-globaux';
+
+/** Ce qu'il faut d'un `KeyboardEvent` pour juger — sans en exiger un vrai. */
+export interface FrappeClavier {
+  key: string;
+  code?: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}
+
+interface RaccourciGlobal {
+  /** Valeurs acceptées de `key` (minuscules ; les deux formes d'un crochet). */
+  keys: readonly string[];
+  /** Touche physique, pour les crochets dont `key` varie selon la disposition. */
+  code?: string;
+  shift: boolean;
+}
+
+// ⌘K (palette), ⌘N (nouvelle discussion), ⌘J (sauteur), ⌘⇧[ et ⌘⇧] (fil
+// précédent / suivant). Rien d'autre : ⌘I, ⌘B et consorts restent ceux du
+// champ. Les crochets portent aussi leur `code` : sur une disposition
+// française, `[` n'existe qu'avec ⌥ et `key` ne dit plus rien de fiable,
+// alors que `BracketLeft` désigne la même touche que ⌘⇧[ dans Safari et Arc.
+const RACCOURCIS_GLOBAUX: readonly RaccourciGlobal[] = [
+  { keys: ['k'], shift: false },
+  { keys: ['n'], shift: false },
+  { keys: ['j'], shift: false },
+  { keys: ['[', '{'], code: 'BracketLeft', shift: true },
+  { keys: [']', '}'], code: 'BracketRight', shift: true },
+];
+
+/**
+ * Vrai quand la frappe est l'un des raccourcis globaux ET vient d'un champ
+ * qui porte `data-raccourcis-globaux`. Tout autre champ garde la garde
+ * absolue ; tout autre raccourci reste au champ.
+ */
+export function laissePasserLeRaccourci(
+  cible: EventTarget | null,
+  frappe: FrappeClavier,
+): boolean {
+  const element = cible as HTMLElement | null;
+  if (!element || typeof element.hasAttribute !== 'function') return false;
+  if (!element.hasAttribute(ATTRIBUT_RACCOURCIS_GLOBAUX)) return false;
+  if (!(frappe.metaKey || frappe.ctrlKey) || frappe.altKey) return false;
+  const key = frappe.key.toLowerCase();
+  return RACCOURCIS_GLOBAUX.some(
+    (r) =>
+      r.shift === frappe.shiftKey &&
+      (r.keys.includes(key) || (r.code !== undefined && r.code === frappe.code)),
+  );
+}

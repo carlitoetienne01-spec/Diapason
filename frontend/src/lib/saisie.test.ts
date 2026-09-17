@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { estDansUneZoneDeSaisie } from './saisie';
+import {
+  ATTRIBUT_RACCOURCIS_GLOBAUX,
+  estDansUneZoneDeSaisie,
+  laissePasserLeRaccourci,
+  type FrappeClavier,
+} from './saisie';
 
 // `setAttribute`, et non la propriété : c'est ce que React rend dans le DOM
 // (`contentEditable` en JSX devient l'attribut `contenteditable="true"`), et
@@ -49,5 +54,73 @@ describe('la garde couvre les descendants, pas seulement l’hôte', () => {
     document.body.appendChild(hote);
     expect(estDansUneZoneDeSaisie(para)).toBe(true);
     hote.remove();
+  });
+});
+
+describe('laissePasserLeRaccourci — l’exception du compositeur', () => {
+  const frappe = (key: string, extra: Partial<FrappeClavier> = {}): FrappeClavier => ({
+    key,
+    metaKey: true,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...extra,
+  });
+  const compositeur = () => {
+    const node = document.createElement('textarea');
+    node.setAttribute(ATTRIBUT_RACCOURCIS_GLOBAUX, '');
+    return node;
+  };
+
+  it('l’attribut se nomme comme InputArea l’écrit en JSX', () => {
+    // Le textarea le pose en littéral (`data-raccourcis-globaux=""`) ; un
+    // renommage d'un seul côté rendrait l'exception muette, sans erreur.
+    expect(ATTRIBUT_RACCOURCIS_GLOBAUX).toBe('data-raccourcis-globaux');
+  });
+
+  it('laisse passer ⌘K, ⌘N et ⌘J depuis le textarea marqué', () => {
+    // Sans cette exception, ⌘K était mort dès que le curseur était dans le
+    // compositeur — presque toujours, dans le mini-panneau.
+    for (const key of ['k', 'n', 'j', 'K']) {
+      expect(laissePasserLeRaccourci(compositeur(), frappe(key))).toBe(true);
+    }
+  });
+
+  it('laisse passer ⌘⇧[ et ⌘⇧] par la touche ou par sa position', () => {
+    expect(laissePasserLeRaccourci(compositeur(), frappe('{', { shiftKey: true }))).toBe(true);
+    expect(laissePasserLeRaccourci(compositeur(), frappe(']', { shiftKey: true }))).toBe(true);
+    // Disposition française : `key` vaut « 5 » ou « ° » sur la touche des
+    // crochets ; seul `code` dit encore de quelle touche il s'agit.
+    expect(
+      laissePasserLeRaccourci(compositeur(), frappe('°', { shiftKey: true, code: 'BracketRight' })),
+    ).toBe(true);
+    // Sans ⇧, ⌘[ n'est pas dans la liste.
+    expect(laissePasserLeRaccourci(compositeur(), frappe('['))).toBe(false);
+  });
+
+  it('accepte Ctrl à la place de ⌘, mais refuse ⌥', () => {
+    expect(
+      laissePasserLeRaccourci(compositeur(), frappe('k', { metaKey: false, ctrlKey: true })),
+    ).toBe(true);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('k', { altKey: true }))).toBe(false);
+    expect(
+      laissePasserLeRaccourci(compositeur(), frappe('k', { metaKey: false, ctrlKey: false })),
+    ).toBe(false);
+  });
+
+  it('ne laisse rien passer d’un champ non marqué — l’éditeur de notes garde ⌘K', () => {
+    // Le défaut du 30 août : un raccourci confisqué à quelqu'un qui écrit.
+    // L'exception ne vaut que pour le champ qui la déclare.
+    expect(laissePasserLeRaccourci(el('textarea'), frappe('k'))).toBe(false);
+    expect(laissePasserLeRaccourci(el('div', true), frappe('k'))).toBe(false);
+    expect(laissePasserLeRaccourci(null, frappe('k'))).toBe(false);
+  });
+
+  it('garde au compositeur ce qui n’est pas dans la liste', () => {
+    // ⌘I n'ouvre pas le panneau système depuis le compositeur : la liste est
+    // fermée, pas une passoire.
+    expect(laissePasserLeRaccourci(compositeur(), frappe('i'))).toBe(false);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('a'))).toBe(false);
+    expect(laissePasserLeRaccourci(compositeur(), frappe('Enter'))).toBe(false);
   });
 });

@@ -1,12 +1,33 @@
+import { useEffect } from 'react';
 import { ChatArea } from '../components/Chat/ChatArea';
 import { SystemPanel } from '../components/Chat/SystemPanel';
 import { useAppStore } from '../lib/store';
+import {
+  EVENEMENT_PANNEAU_OUVERT,
+  demanderLeFocusDuCompositeur,
+  panneauVientDeSOuvrir,
+} from '../lib/panneau';
 import { useTranslation } from '../i18n/useTranslation';
 
 export function ChatPage() {
   const { t } = useTranslation();
   const systemPanelOpen = useAppStore((s) => s.systemPanelOpen);
   const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
+
+  // 17 sept. 2026, chantier « discussions dans le mini-panneau » : on ouvre
+  // le panneau pour écrire, et le curseur n'était nulle part — il fallait
+  // cliquer dans le champ. À chaque signal d'ouverture (Rust, ou Layout au
+  // premier chargement), la page demande le focus au compositeur. Au
+  // montage, elle regarde aussi si le signal vient de passer : à la
+  // re-navigation depuis un autre module, Rust l'évalue AVANT que la View
+  // Transition et le routeur n'aient monté cette page. La fenêtre principale
+  // n'émet jamais ce signal : rien n'y change.
+  useEffect(() => {
+    const surOuverture = () => demanderLeFocusDuCompositeur();
+    window.addEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);
+    if (panneauVientDeSOuvrir()) surOuverture();
+    return () => window.removeEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);
+  }, []);
 
   return (
     <div className="relative flex h-full overflow-hidden">

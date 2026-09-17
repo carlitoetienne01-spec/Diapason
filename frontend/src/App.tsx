@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
-import { estDansUneZoneDeSaisie } from './lib/saisie';
+import { estDansUneZoneDeSaisie, laissePasserLeRaccourci } from './lib/saisie';
 import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
@@ -240,7 +240,13 @@ export default function App() {
       // l'italique de toute zone de texte : sans cette garde, il ouvrait le
       // panneau système et l'italique natif ne marchait nulle part dans une
       // note. Cmd+K avait le même défaut.
-      if (estDansUneZoneDeSaisie(e.target)) return;
+      //
+      // 17 sept. 2026 : la garde absolue tuait ⌘K depuis le compositeur —
+      // presque toujours, dans le mini-panneau. Le SEUL champ qui porte
+      // `data-raccourcis-globaux` (le textarea d'InputArea) laisse passer
+      // une liste fermée (⌘K ⌘N ⌘J ⌘⇧[ ⌘⇧]) ; l'éditeur de notes ne la
+      // porte pas et garde ses raccourcis.
+      if (estDansUneZoneDeSaisie(e.target) && !laissePasserLeRaccourci(e.target, e)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);

@@ -108,7 +108,12 @@ export function ConversationList({ searchQuery }: Props) {
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeMenu();
+      if (e.key !== 'Escape') return;
+      // 17 sept. 2026 : Échap consommé par le menu ne doit pas aussi fermer
+      // le mini-panneau (son script natif écoute la même touche et lit
+      // `defaultPrevented`).
+      e.preventDefault();
+      closeMenu();
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKey);
@@ -206,7 +211,10 @@ export function ConversationList({ searchQuery }: Props) {
               // the composer, not to the rename.
               if (e.nativeEvent.isComposing) return;
               if (e.key === 'Enter') commitRename();
-              if (e.key === 'Escape') setRenamingId(null);
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setRenamingId(null);
+              }
             }}
             onBlur={commitRename}
             className="flex-1 mx-2 my-1.5 px-2 py-1 text-sm rounded-md outline-none min-w-0"

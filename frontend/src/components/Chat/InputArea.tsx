@@ -14,6 +14,7 @@ import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { EVENEMENT_FOCUS_COMPOSITEUR } from '../../lib/panneau';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -365,6 +366,38 @@ export function InputArea() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   }, [input]);
+
+  // 17 sept. 2026, chantier « discussions dans le mini-panneau » : rien ne
+  // rendait jamais le focus au compositeur. Un menu de puce fermé, la palette
+  // refermée, le panneau qui vient de s'ouvrir : le curseur n'était nulle
+  // part et il fallait cliquer avant d'écrire. Le compositeur écoute UNE
+  // demande (`diapason:focus-compositeur`) et y répond seul — personne
+  // d'autre n'a à connaître ce textarea.
+  //
+  // Un textarea `disabled` ignore `focus()` sans un mot : pendant le
+  // chargement du modèle ou une réponse en cours, la demande est retenue et
+  // honorée dès que le champ rouvre, sinon l'ouverture du panneau pendant un
+  // stream laissait le curseur perdu pour de bon.
+  const compositeurBloque = streamState.isStreaming || modelLoading;
+  const focusEnAttente = useRef(false);
+  useEffect(() => {
+    const focaliser = () => {
+      const el = textareaRef.current;
+      if (!el) return;
+      if (el.disabled) {
+        focusEnAttente.current = true;
+        return;
+      }
+      el.focus();
+    };
+    window.addEventListener(EVENEMENT_FOCUS_COMPOSITEUR, focaliser);
+    return () => window.removeEventListener(EVENEMENT_FOCUS_COMPOSITEUR, focaliser);
+  }, []);
+  useEffect(() => {
+    if (compositeurBloque || !focusEnAttente.current) return;
+    focusEnAttente.current = false;
+    textareaRef.current?.focus();
+  }, [compositeurBloque]);
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();
@@ -834,7 +867,11 @@ export function InputArea() {
           rows={1}
           className="composer-glass-input flex-1 min-w-0 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
-          disabled={streamState.isStreaming || modelLoading}
+          disabled={compositeurBloque}
+          // Le seul champ d'où ⌘K, ⌘N, ⌘J, ⌘⇧[ et ⌘⇧] passent
+          // (ATTRIBUT_RACCOURCIS_GLOBAUX, lib/saisie.ts) : l'éditeur de notes
+          // ne le porte pas et garde ⌘I pour l'italique.
+          data-raccourcis-globaux=""
         />
         {streamState.isStreaming ? (
           <button

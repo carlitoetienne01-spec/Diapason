@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Cpu, X, Download, Loader2, Trash2, Check, Cloud, Key, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import { useTranslation } from '../i18n/useTranslation';
+import { demanderLeFocusDuCompositeur } from '../lib/panneau';
 import type { MessageKey } from '../i18n/translate';
 import {
   pullModel,
@@ -151,6 +152,12 @@ export function CommandPalette() {
     inputRef.current?.focus();
   }, []);
 
+  // La palette prend le focus en s'ouvrant ; refermée, elle le rend au
+  // compositeur (s'il est là) plutôt que de le laisser nulle part — sinon,
+  // dans le mini-panneau, choisir un modèle obligeait à cliquer dans le champ
+  // avant d'écrire (17 sept. 2026).
+  useEffect(() => () => demanderLeFocusDuCompositeur(), []);
+
   useEffect(() => {
     void refreshCloudKeyStatus();
   }, [refreshCloudKeyStatus]);
@@ -282,6 +289,10 @@ export function CommandPalette() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
+      // 17 sept. 2026 : « consommé » — sans ce preventDefault, le script
+      // natif du mini-panneau lisait le même Échap et fermait tout le
+      // panneau avec la palette.
+      e.preventDefault();
       setCommandPaletteOpen(false);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();

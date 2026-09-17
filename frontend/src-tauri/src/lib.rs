@@ -4847,6 +4847,22 @@ mod native_reglette {
         // passer devant tant que le curseur reste sur le rail — sinon un
         // second clic de module retombait dans le mini (15 sept. 2026).
         RAIL_FRONTED.store(false, Ordering::SeqCst);
+        signaler_panneau_ouvert();
+    }
+
+    /// Dit au bundle que le panneau vient d'être présenté : ChatPage y répond
+    /// en rendant le curseur au compositeur. 17 sept. 2026 : on ouvrait le
+    /// mini pour écrire et il fallait d'abord cliquer dans le champ. À la
+    /// construction, le document est encore vide et personne n'écoute — c'est
+    /// Layout.tsx qui rejoue le signal une fois le bundle monté.
+    unsafe fn signaler_panneau_ouvert() {
+        let wv = MINI_WV_PTR.load(Ordering::SeqCst);
+        if wv == 0 {
+            return;
+        }
+        let nil: *mut Object = std::ptr::null_mut();
+        let js = nsstring("window.dispatchEvent(new CustomEvent('diapason:panneau-ouvert'))");
+        let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
     }
 
     /// Ouvre (ou re-navigue) le mini-panneau sur le module demandé.
@@ -4890,6 +4906,17 @@ mod native_reglette {
         // drapeau compact, une barre de glissement (pour déplacer le
         // mini-panneau — le WebView reçoit ses événements car l'app est
         // active), un ✕ et Échap pour fermer.
+        //
+        // Échap, 17 sept. 2026 (chantier « discussions dans le mini-panneau ») :
+        // ce listener fermait le panneau ENTIER alors qu'un menu de puce ou
+        // la palette venaient de consommer la touche. Le contrat : une couche
+        // qui consomme Échap fait `preventDefault()`, et le panneau ne se
+        // ferme qu'au second Échap (Raycast, Spotlight). Le test est DIFFÉRÉ
+        // d'un tour (`setTimeout 0`) : ce script est injecté avant React,
+        // donc ce listener `document` est le PREMIER à courir — les menus
+        // qui écoutent aussi `document` (ChipMenu, ConversationList) n'ont
+        // pas encore parlé quand il lit `defaultPrevented`. Après le tour,
+        // tous ont répondu et l'objet événement garde leur verdict.
         let key = js_escape(&super::local_api_key());
         let (t, s) = theme_courant();
         let theme = js_escape(&t);
@@ -4903,7 +4930,7 @@ mod native_reglette {
              try{{var _st=document.createElement('style');_st.textContent=\"@keyframes diapNait{{from{{opacity:0;transform:scale(.94) translateX(14px)}}to{{opacity:1;transform:none}}}}html[data-diapason-compact='1'] body{{animation:diapNait .22s cubic-bezier(.22,1,.36,1);transform-origin:85% 30%}}::view-transition-old(root),::view-transition-new(root){{animation-duration:.18s}}@media (prefers-reduced-motion:reduce){{html[data-diapason-compact='1'] body{{animation:none}}}}#__diapBar,#__diapX,#__diapMin{{transition:opacity .3s ease}}\";document.documentElement.appendChild(_st);}}catch(e){{}}\n\
              window.__diapApplyTheme=function(th,sk){{try{{var r=document.documentElement;r.classList.remove('dark','light','terminal');if(th==='dark')r.classList.add('dark');else if(th==='light')r.classList.add('light');else if(th==='terminal'){{r.classList.add(sk==='ardechine'?'light':'dark','terminal');r.setAttribute('data-terminal-skin',sk);}}else{{r.classList.add(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}}if(th!=='terminal')r.removeAttribute('data-terminal-skin');var q={{}};try{{q=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}q.theme=th;q.terminalSkin=sk;localStorage.setItem('diapason-settings',JSON.stringify(q));}}catch(e){{}}}};\n\
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
-             document.addEventListener('keydown',function(e){{if(e.key==='Escape')__diapFermer();}});\n\
+             document.addEventListener('keydown',function(e){{if(e.key!=='Escape'||e.defaultPrevented)return;setTimeout(function(){{if(!e.defaultPrevented)__diapFermer();}},0);}});\n\
              var __diapNoms={{'/':'Discussion','/succes/dashboard':'Tableau de bord','/succes/planner':'Planificateur','/succes/tasks':'Tâches','/succes/projects':'Projets','/succes/finances':'Finances','/succes/habits':'Habitudes','/succes/notes':'Notes','/succes/year-review':'Bilan'}};\n\
              window.__diapReduit=function(v){{var c=document.getElementById('__diapChip');if(!c)return;if(v){{var n=document.getElementById('__diapChipNom');if(n)n.textContent=__diapNoms[location.pathname]||'Diapason';c.style.display='flex';}}else{{c.style.display='none';}}}};\n\
              window.addEventListener('DOMContentLoaded',function(){{\n\
@@ -5228,6 +5255,8 @@ mod native_reglette {
             let js = nsstring("window.__diapReduit&&__diapReduit(false)");
             let _: () = msg_send![wv as *mut Object, evaluateJavaScript: js completionHandler: nil];
         }
+        // Redéployé depuis la pastille = ouvert : même retour du curseur.
+        signaler_panneau_ouvert();
     }
 
     /// Déplace le mini-panneau d'un delta écran (barre de glissement JS). Le

@@ -6,6 +6,7 @@ import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
 import { estCompact } from '../lib/compact';
+import { signalerPanneauOuvert } from '../lib/panneau';
 import { useTranslation } from '../i18n/useTranslation';
 
 export function Layout() {
@@ -16,7 +17,16 @@ export function Layout() {
   useEffect(() => {
     // En compact (mini-panneau), pas de sonde santé ni de bandeau : la surface
     // ne montre que le module.
-    if (estCompact) return;
+    if (estCompact) {
+      // 17 sept. 2026 : Rust signale « panneau ouvert » à chaque
+      // présentation, mais la première tombe sur un document encore vide
+      // (le bundle n'a pas chargé). Le seul lecteur du mode compact rejoue
+      // donc le signal une fois monté — après les effets des pages, qui
+      // écoutent déjà — pour que le compositeur ait le curseur dès le
+      // premier chargement.
+      signalerPanneauOuvert();
+      return;
+    }
     const check = () => checkHealth().then(setApiReachable);
     check();
     const interval = setInterval(check, 30000);

@@ -6,6 +6,7 @@ import { fetchServerConfig, preloadModel, setServerConfigKey } from '../../lib/a
 import { isCloudModel } from '../../lib/cloud-models';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
 
 /* The composer's bottom toolbar: tool-permission mode on the left, the
  * active model and a context-window ring on the right. Everything here
@@ -50,7 +51,13 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
       if (!ref.current || !ref.current.contains(target)) onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key !== 'Escape') return;
+      // 17 sept. 2026 : Échap sur un menu ouvert fermait le menu ET le
+      // mini-panneau entier — le script natif (lib.rs) écoute la même
+      // touche. `preventDefault` est le signal convenu : « la couche du
+      // dessus a consommé Échap » ; le panneau ne se ferme qu'au second.
+      e.preventDefault();
+      onCloseRef.current();
     };
     // 16 sept. 2026, audit du mini-panneau : `anchor.rect` est un DOMRect
     // figé au clic, et le panneau de la réglette se redimensionne en
@@ -66,6 +73,11 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
       window.removeEventListener('resize', onResize);
     };
   }, [anchor]);
+
+  // Quel que soit le chemin de sortie (choix, Échap, clic dehors, resize), le
+  // curseur retourne au compositeur : avant, il n'était plus nulle part et
+  // il fallait cliquer dans le champ pour reprendre la phrase (17 sept. 2026).
+  useEffect(() => () => demanderLeFocusDuCompositeur(), []);
 
   // The composer sits at the bottom of the screen: menus open UPWARD,
   // anchored to the chip, and never off the horizontal edges.
