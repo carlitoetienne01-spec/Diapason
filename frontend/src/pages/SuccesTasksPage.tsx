@@ -1,9 +1,12 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronRight, CirclePlus, HardDrive, Loader2, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, CirclePlus, HardDrive, Loader2, Repeat, Search, SlidersHorizontal } from 'lucide-react';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
 
 import {
+  DateAmbigueError,
+  DateInconnueError,
   addSuccesSubtask,
   createSuccesTask,
   deleteSuccesSubtask,
@@ -11,18 +14,41 @@ import {
   fetchSuccesSyncStatus,
   listSuccesProjects,
   listSuccesTasks,
+  listSuccesTemplates,
   rescheduleSuccesSeries,
   rescheduleSuccesTask,
   setSuccesSubtaskDone,
   setSuccesTaskDone,
   updateSuccesTask,
 } from '../features/succes/api';
+import { EmojiPicker } from '../features/succes/EmojiPicker';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import { TasksBoard } from '../features/succes/TasksBoard';
 import { jalonSuivant, jalonsEnAttente, tachesDuJour } from '../features/succes/jalons';
-import { RecurrencesPanel } from '../features/succes/RecurrencesPanel';
+import {
+  RecurrencesPanel,
+  champsNonReprisParAmorce,
+  type AmorceRecurrence,
+  type RecurrencesPanelHandle,
+} from '../features/succes/RecurrencesPanel';
+import { phraseReportee } from '../features/succes/report';
+import {
+  GLISSEMENT_MS,
+  SuiviDesRequetes,
+  basculerSousTache,
+  estDateIso,
+  glisserSiTerminee,
+  remplacerLigne,
+  retirerSousTache,
+} from '../features/succes/reconciliation';
 import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesSyncStatus, SuccesTask } from '../features/succes/types';
-import { loadTasksViewMode, saveTasksViewMode, type SuccesTasksViewMode } from '../features/succes/uiPrefs';
+import {
+  loadTasksFilters,
+  loadTasksViewMode,
+  saveTasksFilters,
+  saveTasksViewMode,
+  type SuccesTasksViewMode,
+} from '../features/succes/uiPrefs';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
@@ -49,15 +75,38 @@ export function SuccesTasksPage() {
   const confirm = useConfirm();
   const [tasks, setTasks] = useState<SuccesTask[]>([]);
   const [projects, setProjects] = useState<SuccesProject[]>([]);
+  // `loading` ne vaut que pour le PREMIER chargement : ensuite `load()` relit
+  // derrière la liste affichée. Le spinner remplaçait toute la liste à chaque
+  // relecture — retour de focus, frappe dans la recherche, filtre — et
+  // démontait les cartes avec leur carnet ouvert, leur formulaire d'édition
+  // et les deux chips d'un 409 (revue du 17 sept. 2026, défauts 5 et 14).
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [rafraichit, setRafraichit] = useState(false);
+  // Un compteur, pas un booléen : deux écritures en vol (deux sous-tâches,
+  // coche + carnet), et le `finally` de la première éteignait le voyant
+  // pendant que la seconde attendait encore (revue du 17 sept. 2026, défaut 9).
+  const [ecrituresEnVol, setEcrituresEnVol] = useState(0);
+  const saving = ecrituresEnVol > 0;
+  const commencerEcriture = () => setEcrituresEnVol((n) => n + 1);
+  const finirEcriture = () => setEcrituresEnVol((n) => n - 1);
   const [search, setSearch] = useState('');
-  const [includeDone, setIncludeDone] = useState(true);
-  const [projectFilter, setProjectFilter] = useState('');
+  // Retenus comme le mode d'affichage : ils repartaient à zéro à chaque
+  // visite — les terminées revenaient, le projet s'oubliait (17 sept. 2026).
+  const [filtres] = useState(() => loadTasksFilters({ includeDone: true, projectFilter: '' }));
+  const [includeDone, setIncludeDone] = useState(filtres.includeDone);
+  const [projectFilter, setProjectFilter] = useState(filtres.projectFilter);
+  const [filtresOuverts, setFiltresOuverts] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadTasksViewMode('week'));
   const [boardAnchor, setBoardAnchor] = useState(localIsoDate);
   const [showCreate, setShowCreate] = useState(false);
+  // Les récurrences vivent dans leur propre section, jamais en même temps
+  // que le formulaire de création : un gestionnaire de 798 lignes incrusté
+  // sous « Enregistrer » doublait la hauteur du formulaire (17 sept. 2026).
   const [recurrencesOuvertes, setRecurrencesOuvertes] = useState(false);
+  const [amorceRecurrence, setAmorceRecurrence] = useState<AmorceRecurrence | null>(null);
+  /** Pour fermer la section par la confirmation du panneau, jamais en la démontant sec (défaut 21). */
+  const panneauRecurrences = useRef<RecurrencesPanelHandle>(null);
+  const [nbRecurrences, setNbRecurrences] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -68,15 +117,30 @@ export function SuccesTasksPage() {
   const [emoji, setEmoji] = useState('');
   const [syncStatus, setSyncStatus] = useState<SuccesSyncStatus | null>(null);
 
+  useEffect(() => {
+    saveTasksFilters({ includeDone, projectFilter });
+  }, [includeDone, projectFilter]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    setRafraichit(true);
     try {
-      const [nextTasks, nextProjects] = await Promise.all([
+      const [nextTasks, nextProjects, nextTemplates] = await Promise.all([
         listSuccesTasks({ includeDone, search }),
         listSuccesProjects(),
+        // Le bouton « Récurrences (N) » doit dire N avant qu'on l'ouvre.
+        listSuccesTemplates().catch(() => null),
       ]);
       setTasks(nextTasks);
+      suivi.current.rafraichir(nextTasks);
       setProjects(nextProjects);
+      // Un filtre retenu sur un projet supprimé depuis viderait la liste
+      // sans qu'aucune option du sélecteur ne le dise.
+      setProjectFilter((courant) =>
+        courant && courant !== '__none__' && !nextProjects.some((project) => project.id === courant) ? '' : courant,
+      );
+      if (nextTemplates) {
+        setNbRecurrences(nextTemplates.filter((item) => item.templateKind === 'task').length);
+      }
       // This diagnostic is secondary: a temporarily unavailable status poll
       // must never hide task data that was loaded successfully from SQLite.
       try {
@@ -92,6 +156,7 @@ export function SuccesTasksPage() {
       toast.error('Les tâches ne peuvent pas être chargées.', { description: message });
     } finally {
       setLoading(false);
+      setRafraichit(false);
     }
   }, [includeDone, search]);
 
@@ -105,26 +170,122 @@ export function SuccesTasksPage() {
   // jamais. On relit au retour du focus.
   useRefreshOnFocus(() => void load());
 
-  const refreshAfter = async (action: () => Promise<unknown>, success: string) => {
-    setSaving(true);
+  // Le GET complet ne reste que pour ce qui change la LISTE : création,
+  // suppression, retour de focus. Une coche relançait `load()` sur les 702
+  // tâches — case figée quelques centaines de ms, cinq rechargements pour
+  // cinq sous-tâches (expertise du 17 sept. 2026, défaut 6).
+  /** Rend vrai si l'action a abouti : un brouillon ne se vide que sur un vrai succès. */
+  const refreshAfter = async (action: () => Promise<unknown>, success: string): Promise<boolean> => {
+    commencerEcriture();
     try {
       await action();
       await load();
       logSucces('info', success);
       toast.success(success, { description: 'Enregistré localement sur ce Mac.' });
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logSucces('error', `${success} — échec : ${message}`);
       toast.error("L'action n'a pas été enregistrée.", { description: message });
+      return false;
     } finally {
-      setSaving(false);
+      finirEcriture();
     }
+  };
+
+  const glissements = useRef<number[]>([]);
+  const annulerGlissements = () => {
+    for (const timer of glissements.current) window.clearTimeout(timer);
+    glissements.current = [];
+  };
+  useEffect(() => annulerGlissements, []);
+
+  // Le minuteur de glissement relit ce ref au moment de TIRER, pas au clic :
+  // « Terminées » cochée dans la seconde, `load()` rendait la liste AVEC la
+  // tâche faite, puis le minuteur la retirait d'une liste qui disait la
+  // montrer (revue du 17 sept. 2026, défaut 8). Et ce qui est encore armé
+  // s'annule quand le filtre change : la liste relue dit déjà vrai.
+  const includeDoneRef = useRef(includeDone);
+  useEffect(() => {
+    includeDoneRef.current = includeDone;
+    annulerGlissements();
+  }, [includeDone]);
+
+  /** Les requêtes en vol, tâche par tâche — voir `SuiviDesRequetes`. */
+  const suivi = useRef(new SuiviDesRequetes());
+
+  /**
+   * Peint `attendu` tout de suite, puis remplace la ligne par celle que le
+   * serveur renvoie — elle seule reste (§100). En erreur, la dernière ligne
+   * SERVEUR connue revient et un toast rouge le dit ; pas de toast de
+   * succès : le résultat est déjà sous les yeux. Rend la ligne serveur, ou
+   * `null` en échec. Deux requêtes en vol sur la même ligne : seule la plus
+   * récente peint (revue du 17 sept. 2026, défaut 3).
+   *
+   * `relancer` : les refus que la CARTE sait répondre (« lundi prochain »
+   * désigne deux jours — lesquels ? ; « je n'ai pas reconnu cette date »)
+   * lui reviennent tels quels, sans toast : un toast rouge en faisait une
+   * question sans bouton (§34, 17 sept. 2026).
+   */
+  const reconcilier = async (
+    avant: SuccesTask,
+    attendu: SuccesTask | null,
+    action: () => Promise<SuccesTask>,
+    journal: string,
+    relancer: (error: unknown) => boolean = () => false,
+  ): Promise<SuccesTask | null> => {
+    const numero = suivi.current.partir(avant);
+    if (attendu) setTasks((courantes) => remplacerLigne(courantes, attendu));
+    commencerEcriture();
+    try {
+      const serveur = await action();
+      const ligne = suivi.current.reussir(avant.id, numero, serveur);
+      if (ligne) setTasks((courantes) => remplacerLigne(courantes, ligne));
+      logSucces('info', journal);
+      return serveur;
+    } catch (error) {
+      const ligne = suivi.current.echouer(avant.id, numero);
+      if (ligne) setTasks((courantes) => remplacerLigne(courantes, ligne));
+      const message = error instanceof Error ? error.message : String(error);
+      logSucces('error', `${journal} — échec : ${message}`);
+      if (relancer(error)) throw error;
+      toast.error("L'action n'a pas été enregistrée.", { description: message });
+      return null;
+    } finally {
+      finirEcriture();
+    }
+  };
+
+  /**
+   * Une tâche cochée reste barrée à sa place le temps de GLISSEMENT_MS avant
+   * de quitter une liste qui cache les terminées — si elle l'est toujours :
+   * rouverte entre-temps, elle reste.
+   */
+  const programmerGlissement = (taskId: string) => {
+    if (includeDoneRef.current) return;
+    const timer = window.setTimeout(() => {
+      glissements.current = glissements.current.filter((item) => item !== timer);
+      if (includeDoneRef.current) return;
+      setTasks((courantes) => glisserSiTerminee(courantes, taskId));
+    }, GLISSEMENT_MS);
+    glissements.current.push(timer);
+  };
+
+  /**
+   * Après une action de sous-tâche, le serveur recalcule `done` sur la tâche
+   * (`_recompute_task`) : cocher la dernière sous-tâche la termine, et la
+   * carte restait indéfiniment dans une liste censée cacher les terminées —
+   * la coche directe, elle, glissait après 1 s (revue du 17 sept. 2026,
+   * défaut 4). Revenue rouverte, rien à glisser : le minuteur relit `done`.
+   */
+  const glisserSiTermineeParSousTache = (avant: SuccesTask, serveur: SuccesTask | null) => {
+    if (serveur && serveur.done && !avant.done) programmerGlissement(serveur.id);
   };
 
   const handleCreate = async () => {
     const clean = title.trim();
     if (!clean) return;
-    await refreshAfter(
+    const ok = await refreshAfter(
       () => createSuccesTask({
         title: clean,
         date,
@@ -137,25 +298,21 @@ export function SuccesTasksPage() {
       }),
       `Tâche créée : ${clean}`,
     );
-    setTitle('');
-    setNotes('');
-    setDate('');
-    setTime('');
-    setPriority('medium');
-    setProjectId('');
-    setCategory('');
-    setEmoji('');
-    setShowCreate(false);
-    // Sinon la prochaine ouverture naît avec les 800 lignes de récurrences
-    // déjà dépliées — l'inverse du repli voulu (revue du 16 sept. 2026).
-    setRecurrencesOuvertes(false);
+    // Sur un échec, le brouillon reste : le vider après un toast rouge
+    // faisait retaper titre, notes et date (contre-revue du 17 sept. 2026).
+    if (!ok) return;
+    viderCreation();
   };
 
   const toggleTask = async (task: SuccesTask) => {
-    await refreshAfter(
+    const serveur = await reconcilier(
+      task,
+      { ...task, done: !task.done },
       () => setSuccesTaskDone(task.id, !task.done),
       task.done ? 'Tâche rouverte' : 'Tâche terminée',
     );
+    if (!serveur) return;
+    if (serveur.done) programmerGlissement(serveur.id);
     // Une étape de parcours cochée appelle la suivante (24 août 2026) :
     // « une étape datée à la fois ». On la propose pour aujourd'hui, sans
     // rien imposer — un clic la pose, l'ignorer la laisse sur sa carte.
@@ -169,8 +326,11 @@ export function SuccesTasksPage() {
       action: {
         label: "Faire aujourd'hui",
         onClick: () => {
-          void refreshAfter(
-            () => updateSuccesTask(suivant.id, { date: localIsoDate() }),
+          const aujourdHui = localIsoDate();
+          void reconcilier(
+            suivant,
+            { ...suivant, date: aujourdHui },
+            () => updateSuccesTask(suivant.id, { date: aujourdHui }),
             'Étape programmée pour aujourd’hui',
           );
         },
@@ -178,43 +338,103 @@ export function SuccesTasksPage() {
     });
   };
 
-  const toggleSubtask = (task: SuccesTask, subtask: SuccesSubtask) =>
-    refreshAfter(
+  const toggleSubtask = async (task: SuccesTask, subtask: SuccesSubtask) => {
+    const serveur = await reconcilier(
+      task,
+      basculerSousTache(task, subtask.id, !subtask.done),
       () => setSuccesSubtaskDone(task.id, subtask.id, !subtask.done),
       'Sous-tâche mise à jour',
     );
+    glisserSiTermineeParSousTache(task, serveur);
+  };
 
-  const addSubtask = (task: SuccesTask, subtaskTitle: string, parentId?: string) =>
-    refreshAfter(
+  // Pas d'intérim : la sous-tâche n'a d'id qu'une fois créée. Rend la ligne
+  // serveur (ou `null`) : la carte ne vide son champ que sur une ligne
+  // (revue du 17 sept. 2026, défaut 11).
+  const addSubtask = async (task: SuccesTask, subtaskTitle: string, parentId?: string) => {
+    const serveur = await reconcilier(
+      task,
+      null,
       () => addSuccesSubtask(task.id, subtaskTitle, parentId),
       'Sous-tâche ajoutée',
     );
+    glisserSiTermineeParSousTache(task, serveur);
+    return serveur;
+  };
 
-  const removeSubtask = (task: SuccesTask, subtask: SuccesSubtask) =>
-    refreshAfter(
+  const removeSubtask = async (task: SuccesTask, subtask: SuccesSubtask) => {
+    const serveur = await reconcilier(
+      task,
+      retirerSousTache(task, subtask.id),
       () => deleteSuccesSubtask(task.id, subtask.id),
       'Sous-tâche supprimée',
     );
+    glisserSiTermineeParSousTache(task, serveur);
+  };
 
+  // Rend la ligne serveur (ou `null`) : la carte ne ferme son formulaire
+  // que sur une ligne (défaut 11).
   const updateTask = (task: SuccesTask, patch: SuccesTaskPatch) =>
-    refreshAfter(() => updateSuccesTask(task.id, patch), 'Tâche mise à jour');
+    reconcilier(task, { ...task, ...patch }, () => updateSuccesTask(task.id, patch), 'Tâche mise à jour');
 
-  const rescheduleTask = async (task: SuccesTask, date: string) => {
-    setSaving(true);
-    try {
-      const result = await rescheduleSuccesTask(task.id, date);
-      await load();
-      logSucces('info', `Tâche reportée au ${date}`);
-      toast.success(`Reportée au ${date}`, {
-        description: result.warning || 'Enregistré localement sur ce Mac.',
+  // Le carnet de la carte, sur sa prop dédiée : réconciliation silencieuse
+  // (pas de toast de succès — une bulle par pause de 700 ms), et la ligne
+  // serveur ou `null` — le carnet ne dit « Enregistré » que sur une ligne
+  // (§100, revue du 17 sept. 2026, défaut 1).
+  const journalTask = (task: SuccesTask, journal: string) =>
+    reconcilier(task, { ...task, journal }, () => updateSuccesTask(task.id, { journal }), 'Carnet enregistré');
+
+  /**
+   * Le jeton « Découper » ciblé sur une carte : `{ taskId, n }`, où `n`
+   * change à chaque demande pour que la carte rouvre son champ « Nouvelle
+   * sous-tâche » même deux fois de suite. Un état, jamais une requête DOM.
+   * CONSOMMÉ dès que la carte a ouvert son champ (`acquitterDecoupage`) :
+   * laissé posé, chaque remontage de la liste — une lettre dans Rechercher,
+   * la case « Terminées », un retour de focus — rouvrait le champ et lui
+   * volait le focus (revue du 17 sept. 2026, défaut 2).
+   */
+  const [decoupage, setDecoupage] = useState<{ taskId: string; n: number } | null>(null);
+  const compteurDecoupage = useRef(0);
+  const demanderDecoupage = (taskId: string) => {
+    // La Semaine et le Mois n'ont pas de champ de sous-tâche : la réponse
+    // vit sur la carte de la Liste, on y va (sans retenir ce saut comme
+    // préférence — c'est le toast qui l'a demandé, pas l'onglet).
+    if (viewMode !== 'list') setViewMode('list');
+    compteurDecoupage.current += 1;
+    setDecoupage({ taskId, n: compteurDecoupage.current });
+  };
+  const acquitterDecoupage = () => setDecoupage(null);
+
+  const rescheduleTask = async (task: SuccesTask, date: string): Promise<SuccesTask | null> => {
+    // La route résout aussi « lundi » ou « dans 3 jours » : on ne peint
+    // d'avance qu'une date ISO, le reste attend la réponse.
+    const attendu = estDateIso(date) ? { ...task, date } : null;
+    const reponse: { warning: string | null } = { warning: null };
+    const serveur = await reconcilier(
+      task,
+      attendu,
+      async () => {
+        const result = await rescheduleSuccesTask(task.id, date);
+        reponse.warning = result.warning;
+        return result.task;
+      },
+      `Tâche reportée (${date})`,
+      (error) => error instanceof DateAmbigueError || error instanceof DateInconnueError,
+    );
+    // La nouvelle date est sur la carte ; seul l'avertissement mérite un
+    // toast — il n'est visible nulle part ailleurs. Il pose une question
+    // (« voulez-vous la découper ? ») : « Découper » y répond en ouvrant
+    // le champ « Nouvelle sous-tâche » de la carte (§34, 17 sept. 2026).
+    // La date du SERVEUR, dans la langue de la carte : le toast disait
+    // « Reportée au 2026-09-21 » sous une carte qui dit « lun. 21 sept. »
+    // (défaut 12).
+    if (serveur && reponse.warning) {
+      toast.warning(phraseReportee(serveur.date, localIsoDate()), {
+        description: reponse.warning,
+        action: { label: 'Découper', onClick: () => demanderDecoupage(serveur.id) },
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logSucces('error', `Report échoué : ${message}`);
-      toast.error('Le report a échoué.', { description: message });
-    } finally {
-      setSaving(false);
     }
+    return serveur;
   };
 
   const rescheduleById = async (taskId: string, date: string) => {
@@ -224,7 +444,7 @@ export function SuccesTasksPage() {
   };
 
   const rescheduleSeriesById = async (taskId: string, date: string) => {
-    setSaving(true);
+    commencerEcriture();
     try {
       const result = await rescheduleSuccesSeries(taskId, date);
       await load();
@@ -237,19 +457,88 @@ export function SuccesTasksPage() {
       logSucces('error', `Décalage de série échoué : ${message}`);
       toast.error("Le décalage de la série a échoué.", { description: message });
     } finally {
-      setSaving(false);
+      finirEcriture();
     }
   };
 
   const clearTaskDate = async (taskId: string) => {
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
-    await refreshAfter(() => updateSuccesTask(taskId, { date: '' }), `Tâche remise sans date : ${task.title}`);
+    const serveur = await reconcilier(
+      task,
+      { ...task, date: '' },
+      () => updateSuccesTask(taskId, { date: '' }),
+      `Tâche remise sans date : ${task.title}`,
+    );
+    // La carte quitte la grille : sans un mot, cela ressemble à une perte.
+    if (serveur) toast.success(`Remise sans date : ${serveur.title}`);
   };
 
-  const openCreateForDate = (nextDate: string) => {
-    setDate(nextDate);
+  /**
+   * Ferme la section des récurrences par le chemin d'annulation du panneau :
+   * un brouillon de règle non vide (titre hérité de l'amorce compris)
+   * demande « Garder ? » avant d'être perdu. Rend `false` si on le garde.
+   * L'exclusion Récurrences/formulaire est SYMÉTRIQUE : dans un sens comme
+   * dans l'autre, ouvrir l'un ferme l'autre par son annulation confirmée —
+   * « Nouvelle tâche » et le clic sur un jour de la Semaine démontaient la
+   * section d'un `setRecurrencesOuvertes(false)` sec (revue du 17 sept.
+   * 2026, défaut 21).
+   */
+  const fermerRecurrences = async (): Promise<boolean> => {
+    if (!recurrencesOuvertes) return true;
+    const fermee = (await panneauRecurrences.current?.fermerEditeur()) ?? true;
+    if (!fermee) return false;
+    setRecurrencesOuvertes(false);
+    setAmorceRecurrence(null);
+    return true;
+  };
+
+  const ouvrirCreation = async (nextDate?: string) => {
+    const fermee = await fermerRecurrences();
+    if (!fermee) return;
+    if (nextDate !== undefined) setDate(nextDate);
     setShowCreate(true);
+  };
+
+  const openCreateForDate = (nextDate: string) => void ouvrirCreation(nextDate);
+
+  /**
+   * Ouvre la section des récurrences — à la place du formulaire de création,
+   * jamais à côté. Avec une `amorce`, la règle neuve hérite du brouillon de
+   * tâche : « Créer une récurrence à partir de ce brouillon » ne fait pas
+   * retaper le titre. Une règle n'a ni heure, ni notes, ni catégorie : ces
+   * champs, s'ils sont remplis, partiraient en silence — on le dit et on
+   * demande avant de vider (défaut 21).
+   */
+  const ouvrirRecurrences = async (amorce: AmorceRecurrence | null = null) => {
+    if (showCreate && !amorce) {
+      const fermee = await cancelCreate();
+      if (!fermee) return;
+    }
+    if (amorce) {
+      const perdus = champsNonReprisParAmorce({ time, notes, category });
+      if (perdus.length > 0) {
+        const confirmed = await confirm({
+          title: 'Créer la récurrence sans tout reprendre ?',
+          description: `Une récurrence ne porte pas ${perdus.join(', ')} : ce que vous avez saisi là ne sera pas repris. Le titre, l’emoji, la priorité, le projet et la date le seront.`,
+          confirmLabel: 'Créer la récurrence',
+          keepLabel: 'Garder le brouillon',
+          tone: 'warning',
+        });
+        if (!confirmed) return;
+      }
+      viderCreation();
+    }
+    setAmorceRecurrence(amorce);
+    setRecurrencesOuvertes(true);
+  };
+
+  const basculerRecurrences = () => {
+    if (recurrencesOuvertes) {
+      void fermerRecurrences();
+      return;
+    }
+    void ouvrirRecurrences();
   };
 
   const removeTask = async (task: SuccesTask) => {
@@ -264,7 +553,21 @@ export function SuccesTasksPage() {
     await refreshAfter(() => deleteSuccesTask(task.id), `Tâche supprimée : ${task.title}`);
   };
 
-  const cancelCreate = async () => {
+  /** Ferme le formulaire, brouillon compris, sans demander : pour la remise du brouillon aux récurrences. */
+  const viderCreation = () => {
+    setTitle('');
+    setNotes('');
+    setDate('');
+    setTime('');
+    setPriority('medium');
+    setProjectId('');
+    setCategory('');
+    setEmoji('');
+    setShowCreate(false);
+  };
+
+  /** Rend `false` si Carlito a choisi de garder son brouillon. */
+  const cancelCreate = async (): Promise<boolean> => {
     const dirty = Boolean(
       title.trim() || notes.trim() || date || time || projectId || category.trim() || emoji.trim() || priority !== 'medium',
     );
@@ -276,12 +579,10 @@ export function SuccesTasksPage() {
         keepLabel: 'Garder',
         tone: 'warning',
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     setShowCreate(false);
-    // Sinon la prochaine ouverture naît avec les 800 lignes de récurrences
-    // déjà dépliées — l'inverse du repli voulu (revue du 16 sept. 2026).
-    setRecurrencesOuvertes(false);
+    return true;
   };
 
   // Les jalons des projets structurés (parcours, anglais) ne remplissent
@@ -303,80 +604,168 @@ export function SuccesTasksPage() {
     return true;
   });
 
+  const filtreActif = Boolean(search.trim() || !includeDone || projectFilter);
+  const libelleRecurrences = nbRecurrences === null ? 'Récurrences' : `Récurrences (${nbRecurrences})`;
+
+  // Le sélecteur de mode vit sur la rangée du titre dès sm, sur la sienne
+  // en dessous : rendu deux fois, une seule copie est affichée à la fois.
+  const selecteurMode = (
+    <CadreVitre compact
+      className="flex rounded-xl p-1"
+      style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+      role="tablist"
+      aria-label="Mode d’affichage"
+    >
+      {([
+        { id: 'list' as const, label: 'Liste' },
+        { id: 'week' as const, label: 'Semaine' },
+        { id: 'month' as const, label: 'Mois' },
+      ]).map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          role="tab"
+          aria-selected={viewMode === option.id}
+          onClick={() => {
+            setViewMode(option.id);
+            saveTasksViewMode(option.id);
+          }}
+          className="px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+          style={{
+            background: viewMode === option.id ? 'var(--color-surface)' : 'transparent',
+            color: viewMode === option.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </CadreVitre>
+  );
+
+  // La ligne « Ce Mac est prêt à appairer… Journal local : 4387 opérations »
+  // doublonnait la page Synchronisation et prenait une rangée au-dessus des
+  // tâches (17 sept. 2026). Une icône suffit : le message dans `title`, le
+  // lien vers la vraie page, et la couleur d'erreur seulement quand il y a
+  // une erreur — un voyant qui ne dit rien n'a pas à se faire voir.
+  const iconeSynchro = syncStatus && (
+    <Link
+      to="/succes/sync"
+      className="inline-flex items-center shrink-0 rounded"
+      style={{ color: syncStatus.lastSyncError ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}
+      title={`${syncStatus.message} Journal local : ${syncStatus.localCursor} opération(s).${
+        syncStatus.lastSyncError ? ` Dernière erreur : ${syncStatus.lastSyncError}` : ''
+      }`}
+      aria-label={syncStatus.lastSyncError ? 'Synchronisation en erreur — ouvrir' : 'Synchronisation — ouvrir'}
+    >
+      <HardDrive size={14} />
+    </Link>
+  );
+
+  // Le même voyant discret pour une écriture en vol et pour la relecture
+  // derrière une liste déjà affichée ; le grand spinner ne revient jamais
+  // sur une liste peuplée (revue du 17 sept. 2026, défaut 5).
+  const voyantActivite = (saving || (rafraichit && !loading)) && (
+    <Loader2
+      size={13}
+      className="animate-spin"
+      style={{ color: 'var(--color-accent)' }}
+      aria-label={saving ? 'Enregistrement en cours' : 'Relecture des tâches'}
+      role="status"
+    />
+  );
+
   return (
-    // Dans le mini-panneau (620 px de haut, 380 au minimum), 32 px de padding
-    // haut, un sous-titre sur trois lignes et 28 px de marge consommaient
-    // ~150 px avant la première tâche (audit du 16 sept. 2026). Sous sm, on
-    // condense ; les préfixes sm:/md: rendent l'aération à la fenêtre pleine.
-    <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
+    // Budget de chrome au-dessus de la première tâche (expertise du 17 sept.
+    // 2026) : ≤ 96 px à 340 px, ≤ 150 px à 1384 × 868. Compté par la
+    // structure, bordures de verre (1 px) comprises — base : 12 (padding)
+    // + 32 (titre et boutons) + 8 + 34 (modes : 4 + 24 + 4 + 2) + 8 = 94 ;
+    // sm+ : 24 + 52 (surtitre 20 + titre 32) + 12 + 46 (filtres : 8 + 28 +
+    // 8 + 2) + 12 = 146. Le sous-titre et la ligne de synchro — ~300 px de
+    // chrome en tout — sont partis.
+    <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-6 md:px-8">
       <main className={`mx-auto w-full ${viewMode === 'list' ? 'max-w-5xl' : 'max-w-7xl'}`}>
-        <header className="flex flex-col gap-3 sm:gap-5 md:flex-row md:items-end md:justify-between mb-4 sm:mb-7">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
-              {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
+        <header className="mb-2 sm:mb-3">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="hidden sm:flex items-center gap-2 mb-1 h-4">
+                <span className="text-xs font-medium tracking-[0.16em] uppercase leading-4" style={{ color: 'var(--color-accent)' }}>Succès</span>
+                {iconeSynchro}
+                {voyantActivite}
+              </div>
+              <div className="flex items-center gap-2 h-8">
+                <h1 className="text-xl sm:text-2xl font-semibold leading-8" style={{ color: 'var(--color-text)' }}>Tâches</h1>
+                <span className="flex sm:hidden items-center gap-2">
+                  {iconeSynchro}
+                  {voyantActivite}
+                </span>
+              </div>
             </div>
-            <h1 className="text-xl sm:text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Tâches</h1>
-            <p className="hidden sm:block text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>
-              Organisez vos actions et leurs étapes. DIA peut les gérer avec vous, sans envoyer vos données hors du Mac.
-            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="hidden sm:block">{selecteurMode}</span>
+              {/* Les récurrences en section à part, ouverte par ce bouton et
+                  fermée par lui ; N dit qu'il y a quelque chose derrière. */}
+              <button
+                type="button"
+                onClick={basculerRecurrences}
+                className="flex items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm cursor-pointer"
+                style={{
+                  color: recurrencesOuvertes ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                  border: `1px solid ${recurrencesOuvertes ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                }}
+                aria-label={libelleRecurrences}
+                aria-expanded={recurrencesOuvertes}
+                title={libelleRecurrences}
+              >
+                <Repeat size={15} />
+                <span className="hidden sm:inline">{libelleRecurrences}</span>
+                {nbRecurrences !== null && nbRecurrences > 0 && (
+                  <span className="sm:hidden text-xs tabular-nums">{nbRecurrences}</span>
+                )}
+              </button>
+              {/* À 340 px, « Nouvelle tâche » (~150 px) faisait passer la rangée
+                  sur deux lignes ; l'icône seule suffit (16 sept. 2026). */}
+              <button
+                type="button"
+                onClick={() => void (showCreate ? cancelCreate() : ouvrirCreation())}
+                className="flex items-center gap-2 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm font-medium cursor-pointer"
+                style={{ background: 'var(--color-accent)', color: '#fff' }}
+                aria-label="Nouvelle tâche"
+                aria-expanded={showCreate}
+              >
+                <CirclePlus size={16} /> <span className="hidden sm:inline">Nouvelle tâche</span>
+              </button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <CadreVitre compact
-              className="flex rounded-xl p-1"
-              style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-              role="tablist"
-              aria-label="Mode d’affichage"
-            >
-              {([
-                { id: 'list' as const, label: 'Liste' },
-                { id: 'week' as const, label: 'Semaine' },
-                { id: 'month' as const, label: 'Mois' },
-              ]).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={viewMode === option.id}
-                  onClick={() => {
-                    setViewMode(option.id);
-                    saveTasksViewMode(option.id);
-                  }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                  style={{
-                    background: viewMode === option.id ? 'var(--color-surface)' : 'transparent',
-                    color: viewMode === option.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </CadreVitre>
-            {/* À 340 px, « Nouvelle tâche » (~150 px) faisait passer la rangée
-                tablist + bouton sur deux lignes ; l'icône seule tient à côté
-                des trois onglets (16 sept. 2026). */}
+          {/* Sous sm : les modes sur leur rangée, et un bouton pour dérouler
+              recherche et filtres — trois rangées ne tenaient pas dans 96 px.
+              Le bouton se teinte quand un filtre agit sur la liste, pour ne
+              pas cacher ce qui la réduit (§5). */}
+          <div className="mt-2 flex items-center justify-between gap-2 sm:hidden">
+            {selecteurMode}
             <button
               type="button"
-              onClick={() => setShowCreate((value) => !value)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}
-              aria-label="Nouvelle tâche"
-              aria-expanded={showCreate}
+              onClick={() => setFiltresOuverts((value) => !value)}
+              className="flex items-center justify-center size-8 rounded-xl cursor-pointer"
+              style={{
+                color: filtreActif || filtresOuverts ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                border: `1px solid ${filtresOuverts ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              }}
+              aria-label={filtreActif ? 'Recherche et filtres (actifs)' : 'Recherche et filtres'}
+              aria-expanded={filtresOuverts}
+              title={filtreActif ? 'Un filtre réduit la liste' : 'Recherche et filtres'}
             >
-              <CirclePlus size={16} /> <span className="hidden sm:inline">Nouvelle tâche</span>
+              <SlidersHorizontal size={15} />
             </button>
           </div>
         </header>
 
-        {/* Trois rangées empilées sous md (~120 px) pour une recherche, une
-            case et un filtre : on passe à deux — la recherche seule, puis la
-            case et le filtre côte à côte. `sm:contents` efface le wrapper dès
-            que le panneau s'élargit et rend la rangée unique (16 sept. 2026). */}
+        {/* Une seule rangée : recherche, terminées, projet. Sous sm elle
+            n'apparaît qu'à la demande (bouton ci-dessus) et s'empile. */}
         <CadreVitre as="section"
-          className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-2xl p-3 mb-4"
+          className={`${filtresOuverts ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-2xl p-2 mb-3`}
           style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
         >
-          <div className="flex-1 min-w-0 flex items-center gap-2 px-2">
+          <div className="flex-1 min-w-0 flex items-center gap-2 px-2 h-7">
             <Search size={15} className="shrink-0" style={{ color: 'var(--color-text-tertiary)' }} />
             <input
               value={search}
@@ -395,7 +784,7 @@ export function SuccesTasksPage() {
             <select
               value={projectFilter}
               onChange={(event) => setProjectFilter(event.target.value)}
-              className="min-w-0 max-w-[60%] sm:max-w-none rounded-xl px-3 py-2 text-xs bg-transparent outline-none cursor-pointer"
+              className="min-w-0 max-w-[60%] sm:max-w-none rounded-xl px-3 h-7 text-xs bg-transparent outline-none cursor-pointer"
               style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               aria-label="Filtrer par projet"
             >
@@ -408,13 +797,20 @@ export function SuccesTasksPage() {
           </div>
         </CadreVitre>
 
-        {/* Diagnostic secondaire : dans le mini-panneau il prenait une rangée
-            entière au-dessus des tâches ; il revient avec la largeur. */}
-        {syncStatus && (
-          <div className="hidden sm:flex items-start gap-2 mb-5 px-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            <HardDrive size={14} className="mt-0.5 shrink-0" />
-            <span>{syncStatus.message} Journal local : {syncStatus.localCursor} opération(s).</span>
-          </div>
+        {recurrencesOuvertes && (
+          <CadreVitre as="section"
+            className="rounded-2xl px-4 pt-4 mb-5"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+            aria-label="Récurrences de tâches"
+          >
+            <RecurrencesPanel
+              key={amorceRecurrence ? `amorce:${amorceRecurrence.title}` : 'libre'}
+              ref={panneauRecurrences}
+              kind="task"
+              amorce={amorceRecurrence}
+              onCompte={setNbRecurrences}
+            />
+          </CadreVitre>
         )}
 
         {showCreate && (
@@ -422,16 +818,13 @@ export function SuccesTasksPage() {
             className="grid gap-3 rounded-2xl p-4 mb-5"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
           >
-            <div className="flex items-center gap-2">
-              <input
-                value={emoji}
-                onChange={(event) => setEmoji(event.target.value.slice(0, 8))}
-                placeholder="✨"
-                maxLength={8}
-                className="w-14 rounded-xl px-2 py-2 text-center text-lg bg-transparent outline-none"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                aria-label="Emoji"
-              />
+            {/* Le même sélecteur qu'Habitudes et Finances : un champ texte de
+                8 caractères obligeait à trouver l'emoji ailleurs et à le
+                coller (expertise du 17 sept. 2026, cohérence entre pages). */}
+            <div className="flex items-stretch gap-2">
+              <div className="w-14 shrink-0">
+                <EmojiPicker value={emoji} onChange={setEmoji} aria-label="Emoji de la tâche" optionnel />
+              </div>
               <input
                 autoFocus
                 value={title}
@@ -507,29 +900,38 @@ export function SuccesTasksPage() {
               className="resize-none rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
               style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
             />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => void cancelCreate()} className="px-3 py-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>Annuler</button>
-              <button type="button" disabled={!title.trim() || saving} onClick={() => void handleCreate()} className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>Enregistrer localement</button>
-            </div>
-            {/* Le panneau des récurrences (798 lignes, ses propres grilles)
-                doublait la hauteur du formulaire dans le mini-panneau, sous
-                le bouton Enregistrer — on le replie sous sm derrière un
-                bouton ; la largeur pleine le montre toujours (16 sept. 2026). */}
-            <button
-              type="button"
-              onClick={() => setRecurrencesOuvertes((value) => !value)}
-              className="sm:hidden flex items-center gap-1.5 text-xs cursor-pointer text-left"
-              style={{ color: 'var(--color-text-tertiary)' }}
-              aria-expanded={recurrencesOuvertes}
-            >
-              <ChevronRight
-                size={13}
-                style={{ transform: recurrencesOuvertes ? 'rotate(90deg)' : 'none', transition: 'transform 160ms ease' }}
-              />
-              Récurrences…
-            </button>
-            <div className={`${recurrencesOuvertes ? '' : 'hidden'} sm:block`}>
-              <RecurrencesPanel kind="task" embedded />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Le gestionnaire de récurrences (798 lignes) était incrusté
+                  ici, sous « Enregistrer », pour la création d'UNE tâche
+                  (17 sept. 2026). Il ne reste qu'un bouton : il remet ce
+                  brouillon à la section Récurrences, qui s'ouvre sur une
+                  règle neuve pré-remplie — titre, emoji, priorité, projet,
+                  date de départ. Un BOUTON, pas une case « Répéter… » à
+                  `checked={false}` : une case qui ne se coche jamais et qui
+                  vide le formulaire est un bouton déguisé (revue du 17 sept.
+                  2026, défaut 21). */}
+              <button
+                type="button"
+                onClick={() => {
+                  void ouvrirRecurrences({
+                    title: title.trim(),
+                    emoji: emoji.trim(),
+                    priority,
+                    projectId,
+                    startDate: date,
+                  });
+                }}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
+                title="Ouvre les récurrences sur une règle neuve reprenant le titre, l’emoji, la priorité, le projet et la date"
+              >
+                <Repeat size={13} aria-hidden />
+                Créer une récurrence à partir de ce brouillon
+              </button>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => void cancelCreate()} className="px-3 py-2 text-sm cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>Annuler</button>
+                <button type="button" disabled={!title.trim() || saving} onClick={() => void handleCreate()} className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>Enregistrer localement</button>
+              </div>
             </div>
           </CadreVitre>
         )}
@@ -564,6 +966,9 @@ export function SuccesTasksPage() {
             </span>
           </CadreVitre>
         )}
+        {/* Le premier chargement seulement : ensuite la liste reste montée
+            pendant les relectures (carnet, édition, chips d'un 409 vivent
+            dans les cartes). */}
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des tâches…
@@ -573,6 +978,7 @@ export function SuccesTasksPage() {
             mode={viewMode}
             anchor={boardAnchor}
             tasks={visibleTasks}
+            projects={projects}
             onAnchorChange={setBoardAnchor}
             onReschedule={rescheduleById}
             onRescheduleSeries={rescheduleSeriesById}
@@ -600,8 +1006,11 @@ export function SuccesTasksPage() {
                 onAddSubtask={addSubtask}
                 onDeleteSubtask={removeSubtask}
                 onUpdate={updateTask}
+                onJournal={journalTask}
                 onReschedule={rescheduleTask}
                 onDelete={removeTask}
+                decoupage={decoupage?.taskId === task.id ? decoupage.n : undefined}
+                onDecoupageOuvert={acquitterDecoupage}
               />
             ))}
           </div>

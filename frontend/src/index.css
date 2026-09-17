@@ -508,6 +508,19 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   .terminal h5,
   .terminal h6 { font-size: 0.72rem; }
 
+  /* Le titre d'une tâche est un <h3> pour la structure, pas pour l'affiche :
+     en Press Start 2P capitales, un titre courant faisait 2 à 3 lignes et
+     perdait la silhouette de ses mots (expertise de la page Tâches, 17 sept.
+     2026). Il sort de la règle pixel ; le Press Start reste au H1 « Tâches »
+     et aux en-têtes de section. */
+  .terminal .titre-tache {
+    font-family: var(--font-hud);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
   /* DOS panels: square everything except deliberate circles (avatars, dots). */
   .terminal [class*='rounded']:not([class*='rounded-full']) {
     border-radius: 2px;
@@ -584,42 +597,72 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    * error reads as ordinary text, so severity is carried by inversion instead
    * — the filled block a real industrial panel uses. Buttons already filled
    * with the error colour invert on their own; this is for coloured text.
+   *
+   * `.signe-priorite` en est exclu, comme l'était `.succes-priority` avant
+   * lui : le bloc inversé ajoutait 0,6 em de padding au « !!! » (32,4 px en
+   * VT323 contre 25,2 px pour la réserve de 1,4 em), les titres des tâches
+   * urgentes partaient 7 px plus à droite que les autres et l'encre touchait
+   * le titre (revue du 17 sept. 2026, défaut 17). Le signe se replie sur
+   * l'encre comme tout le reste ; c'est sa forme (!!, !!!) qui porte le niveau.
    */
-  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-error)"]:not(button):not(.succes-priority),
-  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-error)"]:not(button):not(.succes-priority),
-  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-warning)"]:not(button):not(.succes-priority),
-  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-warning)"]:not(button):not(.succes-priority) {
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-error)"]:not(button):not(.signe-priorite),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-error)"]:not(button):not(.signe-priorite),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color: var(--color-warning)"]:not(button):not(.signe-priorite),
+  :root.terminal[data-terminal-skin='ardechine'] [style*="color:var(--color-warning)"]:not(button):not(.signe-priorite) {
     background: var(--color-text);
     color: var(--color-bg) !important;
     padding: 0 0.3em;
   }
 
   /*
-   * Priority badges carry their level in an inline colour. Ardéchine folds
-   * every signal colour onto the single ink, so the four levels would read
-   * identically; fill density carries the scale instead. The inline colours
-   * have to be overridden outright for the badge to stay legible.
+   * Le projet d'une tâche : un liseré de 3 px à gauche de la carte, dans sa
+   * couleur. Le nom teinté sur 12 px ne se lisait qu'en s'y arrêtant ; une
+   * bande se lit en périphérie (expertise de la page Tâches, 17 sept. 2026).
+   * Pseudo-élément sur le CONTENU, jamais une bordure sur la carte : le verre
+   * (CadreVitre) possède déjà les bords, les ombres et ses deux pseudos, et
+   * une bordure inline y était retirée ou passait par-dessus le reflet.
+   * `--liseret-couleur` vient du projet, `--liseret-gauche` de la marge de la
+   * carte (p-2, p-3 ou p-4) pour que la bande reste dans la marge.
    */
-  :root.terminal[data-terminal-skin='ardechine'] .succes-priority {
-    color: var(--color-text) !important;
-    background: rgba(20, 18, 14, 0.14) !important;
-    border: 1px solid rgba(20, 18, 14, 0.3);
+  .liseret-projet {
+    position: relative;
+  }
+  .liseret-projet::before {
+    content: '';
+    position: absolute;
+    left: var(--liseret-gauche, -10px);
+    top: 1px;
+    bottom: 1px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--liseret-couleur, var(--color-border));
+  }
+  .monogramme-projet {
+    display: none;
   }
 
-  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='urgent'] {
-    color: var(--color-bg) !important;
-    background: var(--color-text) !important;
-    border-color: var(--color-text);
+  /*
+   * Ardéchine replie toute couleur sur l'encre : trois projets, trois liserés
+   * identiques. La forme remplace la teinte — le monogramme de deux lettres
+   * dans une boîte bordée, et pas de bande.
+   */
+  :root.terminal[data-terminal-skin='ardechine'] .liseret-projet::before {
+    display: none;
   }
-
-  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='high'] {
-    background: rgba(20, 18, 14, 0.36) !important;
-  }
-
-  :root.terminal[data-terminal-skin='ardechine'] .succes-priority[data-priority='low'] {
-    color: var(--color-text-tertiary) !important;
-    background: transparent !important;
-    border-color: rgba(20, 18, 14, 0.24);
+  :root.terminal[data-terminal-skin='ardechine'] .monogramme-projet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6em;
+    height: 1.35em;
+    padding: 0 0.2em;
+    border: 1px solid var(--color-text);
+    font-family: var(--font-hud);
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    color: var(--color-text);
   }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

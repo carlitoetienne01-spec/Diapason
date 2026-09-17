@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import {
   CalendarClock,
   CirclePlus,
@@ -125,12 +125,59 @@ function frequencyLabel(item: SuccesTemplate) {
   return `Chaque mois (${slots || '?'} ${dow})`;
 }
 
+/**
+ * Ce qu'une tâche en cours de création apporte quand on coche « Répéter… » :
+ * le panneau s'ouvre directement sur une nouvelle règle qui en hérite, au
+ * lieu de faire retaper le titre (17 sept. 2026).
+ */
+export type AmorceRecurrence = {
+  title: string;
+  emoji?: string;
+  priority?: SuccesPriority;
+  projectId?: string;
+  startDate?: string;
+};
+
+/**
+ * Ce qu'un brouillon de tâche porte et qu'une règle NE reprend PAS : une
+ * récurrence n'a ni heure, ni notes, ni catégorie (`SuccesTemplate`). La
+ * case « Répéter… » jetait ces trois champs en silence (revue du 17 sept.
+ * 2026, défaut 21) ; on les nomme pour demander avant. Pur, pour vitest.
+ */
+export function champsNonReprisParAmorce(brouillon: { time: string; notes: string; category: string }): string[] {
+  const perdus: string[] = [];
+  if (brouillon.time) perdus.push('l’heure');
+  if (brouillon.notes.trim()) perdus.push('les notes');
+  if (brouillon.category.trim()) perdus.push('la catégorie');
+  return perdus;
+}
+
+/**
+ * Ce que le parent peut demander au panneau : fermer l'éditeur de règle en
+ * passant par SA confirmation. Le parent démontait la section d'un
+ * `setRecurrencesOuvertes(false)` sec — brouillon de règle compris, titre
+ * hérité de l'amorce compris — alors que le sens inverse (ouvrir les
+ * récurrences depuis le formulaire) demandait « Garder ? » (défaut 21).
+ */
+export type RecurrencesPanelHandle = {
+  /** Rend `false` si l'on a choisi de garder le brouillon de règle. */
+  fermerEditeur: () => Promise<boolean>;
+};
+
 export function RecurrencesPanel({
   kind,
   embedded = false,
+  amorce = null,
+  onCompte,
+  ref,
 }: {
   kind: SuccesTemplateKind;
   embedded?: boolean;
+  /** Ouvre le panneau sur une règle neuve pré-remplie ; lue au montage seulement. */
+  amorce?: AmorceRecurrence | null;
+  /** Le nombre de règles de ce type, à chaque (re)chargement — pour un bouton « Récurrences (N) ». */
+  onCompte?: (nombre: number) => void;
+  ref?: Ref<RecurrencesPanelHandle>;
 }) {
   const confirm = useConfirm();
   const today = localIsoDate();
@@ -138,12 +185,28 @@ export function RecurrencesPanel({
   const [projects, setProjects] = useState<SuccesProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(() => amorce !== null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState(() => emptyDraft(kind));
+  const [draft, setDraft] = useState(() => {
+    const vide = emptyDraft(kind);
+    if (!amorce) return vide;
+    return {
+      ...vide,
+      title: amorce.title,
+      emoji: amorce.emoji ?? vide.emoji,
+      priority: amorce.priority ?? vide.priority,
+      projectId: amorce.projectId ?? vide.projectId,
+      startDate: amorce.startDate || vide.startDate,
+      endDate: addMonths(amorce.startDate || vide.startDate, 3),
+    };
+  });
   const [showMaterialize, setShowMaterialize] = useState(false);
   const [materializeFrom, setMaterializeFrom] = useState(today);
   const [materializeTo, setMaterializeTo] = useState(addDays(today, 13));
+  // Une fonction fraîche à chaque rendu du parent ne doit pas relancer le
+  // chargement : on lit la dernière version au moment de compter.
+  const onCompteRef = useRef(onCompte);
+  onCompteRef.current = onCompte;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,8 +215,10 @@ export function RecurrencesPanel({
         listSuccesTemplates(),
         listSuccesProjects(),
       ]);
-      setTemplates(nextTemplates.filter((item) => item.templateKind === kind));
+      const miennes = nextTemplates.filter((item) => item.templateKind === kind);
+      setTemplates(miennes);
       setProjects(nextProjects);
+      onCompteRef.current?.(miennes.length);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error('Les récurrences ne peuvent pas être chargées.', { description: message });
@@ -172,7 +237,8 @@ export function RecurrencesPanel({
     setDraft(emptyDraft(kind));
   };
 
-  const closeEditor = async () => {
+  /** Rend `false` si l'on a choisi de garder le brouillon (ou la règle en cours d'édition). */
+  const closeEditor = async (): Promise<boolean> => {
     const blank = emptyDraft(kind);
     const dirty =
       Boolean(draft.title.trim()) ||
@@ -192,10 +258,18 @@ export function RecurrencesPanel({
         keepLabel: 'Garder',
         tone: 'warning',
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     closeEditorNow();
+    return true;
   };
+
+  // Le parent ferme la section par ce chemin — le même que le bouton
+  // « Annuler » de l'éditeur — jamais en démontant sec (défaut 21). Sans
+  // éditeur ouvert, rien à perdre : `true` tout de suite.
+  useImperativeHandle(ref, () => ({
+    fermerEditeur: () => (showCreate || editingId !== null ? closeEditor() : Promise.resolve(true)),
+  }));
 
   const openCreate = () => {
     setEditingId(null);

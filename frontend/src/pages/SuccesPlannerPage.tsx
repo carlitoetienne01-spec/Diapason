@@ -1,5 +1,5 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarCheck2,
   ChevronLeft,
@@ -13,6 +13,8 @@ import {
 import { toast } from 'sonner';
 
 import {
+  DateAmbigueError,
+  DateInconnueError,
   addSuccesSubtask,
   createSuccesQuote,
   createSuccesTask,
@@ -35,6 +37,7 @@ import {
   type FiltrePlanner,
   type Pastille,
 } from '../features/succes/planificateur';
+import { phraseReportee } from '../features/succes/report';
 import { TaskCard } from '../features/succes/TaskCard';
 import type { SuccesQuote, SuccesSubtask, SuccesTask } from '../features/succes/types';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -141,8 +144,13 @@ export function SuccesPlannerPage() {
     }
   }, []);
 
+  // `loading` n'est vrai qu'au PREMIER chargement : ensuite la liste reste
+  // montée pendant qu'on relit. Démonter les cartes à chaque load() —
+  // retour de focus, coche d'une autre tâche — emportait la boîte Reporter
+  // et ses deux dates proposées (contre-revue du 17 sept. 2026, §34).
+  const dejaCharge = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!dejaCharge.current) setLoading(true);
     try {
       // D'ABORD le planificateur, ENSUITE la liste : le premier matérialise
       // les récurrences du jour ; chargés en parallèle, la liste pouvait
@@ -150,6 +158,7 @@ export function SuccesPlannerPage() {
       await fetchSuccesPlanner(selectedDate).catch(() => null);
       const nextTasks = await listSuccesTasks({ includeDone: true });
       setTasks(nextTasks);
+      dejaCharge.current = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({
@@ -268,15 +277,26 @@ export function SuccesPlannerPage() {
   const addSubtask = (task: SuccesTask, title: string, parentId?: string) =>
     change(() => addSuccesSubtask(task.id, title, parentId), 'Sous-tâche ajoutée');
 
+  /**
+   * `date` : une ISO (glisser-déposer, chips) ou l'expression tapée dans le
+   * champ libre de la carte (« lundi prochain »), que le serveur résout.
+   * Ses deux refus — deux jours possibles, date non reconnue — sont
+   * RELANCÉS : c'est la carte qui y répond (chips datées, message sous le
+   * champ). Attrapés ici, ils fermaient la boîte comme après un succès et
+   * la question du 409 restait sans bouton (§34, revue du 17 sept. 2026,
+   * défauts 6 et 16). Le toast dit la date que le SERVEUR a rendue : il
+   * répétait l'expression envoyée — « Reportée au dans 3 jours » (§100).
+   */
   const rescheduleTask = async (task: SuccesTask, date: string) => {
     setSaving(true);
     try {
       const result = await rescheduleSuccesTask(task.id, date);
       await load();
-      toast.success(`Reportée au ${date}`, {
+      toast.success(phraseReportee(result.task.date, today), {
         description: result.warning || 'Enregistré localement sur ce Mac.',
       });
     } catch (error) {
+      if (error instanceof DateAmbigueError || error instanceof DateInconnueError) throw error;
       toast.error('Le report a échoué.', {
         description: error instanceof Error ? error.message : String(error),
       });

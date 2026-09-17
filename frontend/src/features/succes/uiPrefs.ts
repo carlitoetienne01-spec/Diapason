@@ -7,8 +7,19 @@ const STORAGE_KEY = 'diapason-succes-ui-prefs';
 
 export type SuccesTasksViewMode = 'list' | 'week' | 'month';
 
+/**
+ * Les filtres de la page Tâches. Ils repartaient à zéro à chaque visite —
+ * les terminées revenaient, le projet choisi s'oubliait — alors que le mode
+ * d'affichage, lui, était retenu (expertise du 17 sept. 2026, défaut 6).
+ */
+export type SuccesTasksFilters = {
+  includeDone: boolean;
+  projectFilter: string;
+};
+
 type Prefs = {
   tasksViewMode?: SuccesTasksViewMode;
+  tasksFilters?: Partial<SuccesTasksFilters>;
   /** L'échelle du texte de la Ligne — voir `echelleTexte.ts`. */
   ligneEchelle?: number;
   /** taskId → whether its subtask list is expanded */
@@ -46,6 +57,19 @@ export function loadTasksViewMode(fallback: SuccesTasksViewMode = 'week'): Succe
 
 export function saveTasksViewMode(mode: SuccesTasksViewMode) {
   writePrefs({ tasksViewMode: mode });
+}
+
+export function loadTasksFilters(fallback: SuccesTasksFilters): SuccesTasksFilters {
+  const value = readPrefs().tasksFilters;
+  if (!value || typeof value !== 'object') return fallback;
+  return {
+    includeDone: typeof value.includeDone === 'boolean' ? value.includeDone : fallback.includeDone,
+    projectFilter: typeof value.projectFilter === 'string' ? value.projectFilter : fallback.projectFilter,
+  };
+}
+
+export function saveTasksFilters(filters: SuccesTasksFilters) {
+  writePrefs({ tasksFilters: filters });
 }
 
 export function loadTaskSubtasksOpen(taskId: string, fallback = true): boolean {

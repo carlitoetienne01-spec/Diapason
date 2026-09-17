@@ -35,6 +35,33 @@ export function lignesDuCarnet(journal: string | undefined | null): number {
 /** Le délai avant d'enregistrer, après la dernière frappe. */
 const REPOS_MS = 700;
 
+/**
+ * Le plafond de la route (`TaskPatch.journal`, max_length=20000) : au-delà,
+ * un 422 anglais (« String should have at most 20000 characters ») et le
+ * pied promettait « il repartira à la prochaine frappe » — chaque frappe ne
+ * pouvait que rééchouer, un toast rouge par pause de 700 ms (revue du
+ * 17 sept. 2026, défaut 10). `maxLength` compte en unités UTF-16, Pydantic en
+ * points de code : le navigateur est le plus strict des deux, le serveur ne
+ * refuse donc jamais pour la longueur. Le compteur s'affiche à 18 000 : deux
+ * mille caractères de marge, pour voir venir la limite plutôt que la cogner.
+ */
+export const JOURNAL_MAX = 20000;
+export const JOURNAL_SEUIL_COMPTEUR = 18000;
+
+/** Ce que dit le pied du carnet quand ça n'a pas marché — honnête sur la cause. */
+export function messageEchecCarnet(longueur: number): string {
+  if (longueur >= JOURNAL_MAX) {
+    return `Pas enregistré — le carnet est plein (${JOURNAL_MAX.toLocaleString('fr-CA')} caractères) : effacez avant de reprendre`;
+  }
+  return 'Pas enregistré — votre texte est encore là, il repartira à la prochaine frappe';
+}
+
+/** Le compteur, seulement à l'approche de la limite ; `null` avant. */
+export function compteurCarnet(longueur: number): string | null {
+  if (longueur < JOURNAL_SEUIL_COMPTEUR) return null;
+  return `${longueur.toLocaleString('fr-CA')} / ${JOURNAL_MAX.toLocaleString('fr-CA')}`;
+}
+
 interface Props {
   tache: SuccesTask;
   onFermer: () => void;
@@ -47,6 +74,8 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
   const zone = useRef<HTMLTextAreaElement>(null);
   /** Ce qui est RÉELLEMENT sur le disque — pas ce qu'on a tapé. */
   const enregistre = useRef(tache.journal || '');
+  /** Ce qui est PARTI vers le serveur et n'a pas encore de réponse — pour ne pas l'envoyer deux fois. */
+  const enCours = useRef<string | null>(null);
   const minuteur = useRef<number | null>(null);
   const dernier = useRef(tache.journal || '');
   dernier.current = texte;
@@ -71,6 +100,7 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
   const sauver = async (valeur: string) => {
     if (valeur === enregistre.current) return;
     setEtat('en-cours');
+    enCours.current = valeur;
     try {
       await onEnregistrer(valeur);
       enregistre.current = valeur;
@@ -79,7 +109,23 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
       setEtat(dernier.current === valeur ? 'a-jour' : 'en-cours');
     } catch {
       setEtat('echec');
+    } finally {
+      if (enCours.current === valeur) enCours.current = null;
     }
+  };
+
+  /**
+   * Vider ce qui attend : ce que le minuteur n'a pas encore envoyé, sauf si
+   * ce texte exact est déjà parti — un carnet fermé pendant l'aller-retour
+   * renvoyait le même journal une seconde fois.
+   */
+  const viderLAttente = () => {
+    if (minuteur.current) {
+      window.clearTimeout(minuteur.current);
+      minuteur.current = null;
+    }
+    const attendu = dernier.current;
+    if (attendu !== enregistre.current && attendu !== enCours.current) void sauver(attendu);
   };
 
   // Enregistrer tout seul, une fois la frappe retombée.
@@ -99,6 +145,18 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
     };
   }, [texte]); // eslint-disable-line react-hooks/exhaustive-deps -- `sauver` lit ses refs
 
+  // Démonté sans passer par `fermer` — la carte qui le porte a disparu
+  // (liste relue, filtre, tâche glissée hors de la liste) : le nettoyage
+  // ci-dessus annulait le minuteur SANS sauver, et les derniers 700 ms de
+  // frappe partaient à la poubelle, sans « Pas enregistré » possible sur un
+  // composant démonté (revue du 17 sept. 2026, défaut 14). Ici on envoie ce
+  // qui attend : la page réconcilie la réponse, même sans carnet. Par un ref,
+  // pour que le `onEnregistrer` appelé soit celui du dernier rendu — pas la
+  // fermeture du premier, avec la ligne de tâche d'alors.
+  const viderAuDemontage = useRef(viderLAttente);
+  viderAuDemontage.current = viderLAttente;
+  useEffect(() => () => viderAuDemontage.current(), []);
+
   /**
    * Fermer, mais pas avant d'avoir écrit.
    *
@@ -107,11 +165,7 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
    * qu'on vient d'écrire.
    */
   const fermer = () => {
-    if (minuteur.current) {
-      window.clearTimeout(minuteur.current);
-      minuteur.current = null;
-    }
-    if (dernier.current !== enregistre.current) void sauver(dernier.current);
+    viderLAttente();
     onFermer();
   };
 
@@ -194,6 +248,7 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
           // 2026). 1rem suit le réglage Taille du texte, et le zoom fait le reste.
           className="flex-1 min-h-[220px] w-full resize-none px-4 py-3 text-base leading-relaxed outline-none bg-transparent"
           style={{ color: 'var(--color-text)' }}
+          maxLength={JOURNAL_MAX}
         />
 
         {/* Les liens déjà écrits, cliquables sans quitter le carnet. Un lien
@@ -244,8 +299,7 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
           ) : etat === 'echec' ? (
             <>
               <AlertTriangle size={12} />
-              Pas enregistré — votre texte est encore là, il repartira à la
-              prochaine frappe
+              {messageEchecCarnet(texte.length)}
             </>
           ) : (
             <>
@@ -253,6 +307,21 @@ export function CarnetDeTache({ tache, onFermer, onEnregistrer }: Props) {
               Enregistré · Échap ferme
             </>
           )}
+          {/* Le compteur, à l'approche du plafond seulement — un « 12 / 20 000 »
+              permanent dirait qu'on surveille quelque chose (défaut 10). */}
+          {(() => {
+            const compteur = compteurCarnet(texte.length);
+            if (!compteur) return null;
+            return (
+              <span
+                className="ml-auto tabular-nums shrink-0"
+                style={{ color: texte.length >= JOURNAL_MAX ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}
+                aria-live="polite"
+              >
+                {compteur}
+              </span>
+            );
+          })()}
         </div>
       </div>
     </div>,

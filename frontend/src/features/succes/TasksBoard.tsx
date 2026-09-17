@@ -1,8 +1,10 @@
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { joursDeRetard, libelleEcheance } from './echeances';
 import { libelleIntervalle } from './libelleSemaine';
-import type { SuccesSubtask, SuccesTask } from './types';
+import { MonogrammeProjet, SignePriorite, styleLiseret } from './TaskCard';
+import type { SuccesProject, SuccesSubtask, SuccesTask } from './types';
 
 export type BoardMode = 'week' | 'month';
 
@@ -157,18 +159,20 @@ function BoardSubtaskRow({
 function BoardCard({
   task,
   today,
+  project,
   onToggle,
   onOpenDay,
 }: {
   task: SuccesTask;
   today: string;
+  project?: SuccesProject;
   onToggle: (task: SuccesTask) => void;
   onOpenDay: () => void;
 }) {
-  const overdue = !task.done && !!task.date && task.date < today;
-  const lateDays = overdue
-    ? Math.max(1, Math.round((parseIso(today).getTime() - parseIso(task.date).getTime()) / 86_400_000))
-    : 0;
+  // Le même calcul que la Liste (`echeances.ts`), plus un compte à part :
+  // deux vues qui comptent chacune leurs jours finissent par se contredire
+  // (expertise de la page Tâches, 17 sept. 2026).
+  const overdue = !task.done && joursDeRetard(task.date, today) > 0;
   const hasSubtasks = countSubtasks(task.subtasks) > 0;
 
   return (
@@ -191,7 +195,12 @@ function BoardCard({
         border: `1px solid ${task.done ? 'var(--color-border)' : overdue ? 'color-mix(in srgb, var(--color-error) 45%, var(--color-border))' : 'var(--color-border)'}`,
       }}
     >
-      <div className="flex items-start gap-1">
+      {/* Le liseré de projet vit sur le contenu (p-2 → -6px), pas sur la
+          carte : elle est vitrée et `overflow-hidden` (17 sept. 2026). */}
+      <div
+        className={`flex items-start gap-1 ${project ? 'liseret-projet' : ''}`}
+        style={styleLiseret(project, '-6px')}
+      >
         <button
           type="button"
           onClick={(event) => {
@@ -210,14 +219,22 @@ function BoardCard({
           {task.done && <Check size={10} />}
         </button>
         <div className="min-w-0 flex-1">
+          {/* Même langue que la Liste : signe de priorité devant le titre,
+              basse en encre secondaire, projet en liseré (17 sept. 2026). */}
           <p
-            className="text-sm font-medium leading-5 truncate"
+            className="titre-tache text-sm font-medium leading-5 truncate"
             title={task.title}
             style={{
-              color: task.done ? 'var(--color-text-tertiary)' : 'var(--color-text)',
+              color: task.done
+                ? 'var(--color-text-tertiary)'
+                : task.priority === 'low'
+                  ? 'var(--color-text-secondary)'
+                  : 'var(--color-text)',
               textDecoration: task.done ? 'line-through' : 'none',
             }}
           >
+            <MonogrammeProjet project={project} />
+            <SignePriorite priority={task.priority} reserve={false} terminee={task.done} />
             {task.emoji ? `${task.emoji} ` : ''}{task.title}
           </p>
           {task.done ? (
@@ -226,11 +243,11 @@ function BoardCard({
             </span>
           ) : overdue ? (
             <span
-              className="block text-[10px] leading-4 truncate"
+              className="block text-[10px] leading-4 font-medium truncate"
               style={{ color: 'var(--color-error)' }}
-              title={`En retard de ${lateDays} jour${lateDays > 1 ? 's' : ''}`}
+              title={task.date}
             >
-              Retard {lateDays} j
+              {libelleEcheance(task.date, today)}
             </span>
           ) : null}
         </div>
@@ -408,10 +425,12 @@ function DayColumn({
   onOpenDay,
   dimmed,
   hauteur = 'fixe',
+  projetDe,
 }: {
   date: string;
   today: string;
   tasks: SuccesTask[];
+  projetDe: (task: SuccesTask) => SuccesProject | undefined;
   onDropTask: (taskId: string, date: string) => void;
   onToggleTask: (task: SuccesTask) => void;
   onQuickAdd: (date: string) => void;
@@ -476,6 +495,7 @@ function DayColumn({
             key={task.id}
             task={task}
             today={today}
+            project={projetDe(task)}
             onToggle={onToggleTask}
             onOpenDay={() => onOpenDay(date)}
           />
@@ -686,6 +706,8 @@ interface Props {
   mode: BoardMode;
   anchor: string;
   tasks: SuccesTask[];
+  /** Pour le liseré de projet des cartes — la Semaine ne les recevait pas. */
+  projects?: SuccesProject[];
   onAnchorChange: (iso: string) => void;
   onReschedule: (taskId: string, date: string) => Promise<void>;
   onRescheduleSeries: (taskId: string, date: string) => Promise<void>;
@@ -699,6 +721,7 @@ export function TasksBoard({
   mode,
   anchor,
   tasks,
+  projects = [],
   onAnchorChange,
   onReschedule,
   onRescheduleSeries,
@@ -708,6 +731,10 @@ export function TasksBoard({
   onQuickAdd,
 }: Props) {
   const today = localIsoDate();
+  const projetDe = useMemo(() => {
+    const parId = new Map(projects.map((project) => [project.id, project]));
+    return (task: SuccesTask) => (task.projectId ? parId.get(task.projectId) : undefined);
+  }, [projects]);
   // null = closed, '' = the undated bucket, otherwise the ISO day.
   const [modalDate, setModalDate] = useState<string | null>(null);
   // Recurring occurrence dropped on a day → ask occurrence vs whole series.
@@ -837,6 +864,7 @@ export function TasksBoard({
             date={date}
             today={today}
             tasks={byDate.get(date) ?? []}
+            projetDe={projetDe}
             dimmed={mode === 'month' && parseIso(date).getMonth() !== month.month}
             hauteur={mode === 'week' ? 'souple' : 'fixe'}
             onDropTask={(taskId, nextDate) => void drop(taskId, nextDate)}
@@ -893,6 +921,7 @@ export function TasksBoard({
                 key={task.id}
                 task={task}
                 today={today}
+                project={projetDe(task)}
                 onToggle={(item) => void onToggleTask(item)}
                 onOpenDay={() => setModalDate('')}
               />

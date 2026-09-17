@@ -195,7 +195,15 @@ export function LigneEtape({
       patch.title = brouillon.title.trim();
     if (brouillon.notes !== (t.notes || '')) patch.notes = brouillon.notes;
     if (brouillon.date !== (t.date || '')) patch.date = brouillon.date;
-    if (Object.keys(patch).length) await onUpdate(t.id, patch);
+    // onUpdate relance l'échec (la page l'a déjà dit en toast) : le
+    // brouillon reste ouvert au lieu de se fermer comme un succès.
+    if (Object.keys(patch).length) {
+      try {
+        await onUpdate(t.id, patch);
+      } catch {
+        return;
+      }
+    }
     setEnEdition(null);
   };
 

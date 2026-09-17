@@ -45,6 +45,44 @@ import type {
   SuccesPhotoPiles,
 } from './types';
 
+/**
+ * Une réponse refusée par le serveur local, avec son statut et son `detail`
+ * tel quel. `request` n'en gardait que le message : le 409 `ambiguous_date`
+ * de /reschedule porte deux `options` datées que la carte doit proposer, et
+ * elles se perdaient dans la conversion en chaîne (expertise de la page
+ * Tâches, 17 sept. 2026).
+ */
+export class SuccesApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
+    super(message);
+    this.name = 'SuccesApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/** « lundi prochain » peut désigner deux jours : le serveur les rend, à choisir. */
+export class DateAmbigueError extends Error {
+  options: string[];
+
+  constructor(message: string, options: string[]) {
+    super(message);
+    this.name = 'DateAmbigueError';
+    this.options = options;
+  }
+}
+
+/** Le résolveur n'a rien reconnu (422) : la carte le dit sous le champ, pas en toast. */
+export class DateInconnueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DateInconnueError';
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const requestInit = {
     ...init,
@@ -88,9 +126,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
     if (!response.ok) {
       let message = `Erreur Succès (${response.status})`;
+      let detail: unknown = null;
       try {
         const payload = await response.json();
-        const detail = payload?.detail;
+        detail = payload?.detail;
         if (typeof detail === 'string') {
           message = detail;
         } else if (Array.isArray(detail) && detail[0]) {
@@ -101,13 +140,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
               : typeof first.message === 'string'
                 ? first.message
                 : message;
-        } else if (detail?.message) {
-          message = detail.message;
+        } else if (typeof (detail as { message?: unknown })?.message === 'string') {
+          message = (detail as { message: string }).message;
         }
       } catch {
         // Keep the stable user-facing fallback; technical details stay in logs.
       }
-      throw new Error(message);
+      throw new SuccesApiError(message, response.status, detail);
     }
 
     try {
@@ -195,14 +234,35 @@ export async function setSuccesTaskDone(taskId: string, done: boolean): Promise<
   return payload.task;
 }
 
+/**
+ * Reporte une tâche — `date` est une ISO ou une expression (« lundi »,
+ * « dans 3 jours », 80 caractères au plus) que le serveur résout lui-même.
+ * Deux refus se répondent depuis la carte, d'où leurs erreurs typées :
+ * 409 `{ code: 'ambiguous_date', message, options: [iso, iso] }` et 422
+ * « Je n'ai pas reconnu cette date. » (17 sept. 2026).
+ */
 export async function rescheduleSuccesTask(
   taskId: string,
   date: string,
 ): Promise<{ task: SuccesTask; warning: string | null }> {
-  return request(`/v1/succes/tasks/${encodeURIComponent(taskId)}/reschedule`, {
-    method: 'POST',
-    body: JSON.stringify({ date }),
-  });
+  try {
+    return await request(`/v1/succes/tasks/${encodeURIComponent(taskId)}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify({ date }),
+    });
+  } catch (error) {
+    if (error instanceof SuccesApiError) {
+      const detail = error.detail as { code?: unknown; options?: unknown } | null;
+      if (error.status === 409 && detail?.code === 'ambiguous_date' && Array.isArray(detail.options)) {
+        throw new DateAmbigueError(
+          error.message,
+          detail.options.filter((option): option is string => typeof option === 'string'),
+        );
+      }
+      if (error.status === 422) throw new DateInconnueError(error.message);
+    }
+    throw error;
+  }
 }
 
 export async function rescheduleSuccesSeries(

@@ -11,12 +11,26 @@ import {
   Clock3,
   Minus,
   MoreHorizontal,
+  NotebookPen,
   Pencil,
   Plus,
   Trash2,
   X,
 } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { CarnetDeTache, carnetRempli } from './CarnetDeTache';
+import { SIGNES_PRIORITE, monogrammeProjet } from './carteTache';
+import { EmojiPicker } from './EmojiPicker';
+import { joursDeRetard, libelleEcheance } from './echeances';
+import {
+  EXEMPLES_EXPRESSION,
+  EXPRESSION_MAX,
+  chipsAmbiguite,
+  expressionDeReport,
+  lireRefusDeReport,
+  proposeDecoupage,
+  type RefusDeReport,
+} from './report';
 import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesTask } from './types';
 import {
   loadSubtaskExpanded,
@@ -25,15 +39,71 @@ import {
   saveTaskSubtasksOpen,
 } from './uiPrefs';
 
-const PRIORITY: Record<SuccesTask['priority'], { label: string; color: string }> = {
-  urgent: { label: 'Urgente', color: 'var(--color-error)' },
-  high: { label: 'Haute', color: 'var(--color-warning)' },
-  medium: { label: 'Normale', color: 'var(--color-accent)' },
-  low: { label: 'Basse', color: 'var(--color-text-tertiary)' },
-};
+/**
+ * Le signe de priorité devant le titre : `!!!` urgent, `!!` haute, rien pour
+ * la priorité par défaut. La pastille-mot « Normale » (~60 px) et le point
+ * coloré sous sm signalaient 90 % des cartes, donc aucune (expertise de la
+ * page Tâches, 17 sept. 2026). `reserve` garde la largeur du signe même
+ * absent, pour que les titres d'une liste s'alignent ; la Semaine, à 180 px
+ * la colonne, ne peut pas se l'offrir.
+ *
+ * `terminee` éteint la teinte : une tâche faite gardait son « !!! » rouge
+ * vif devant un titre gris barré, alors que sa date, elle, cessait d'être
+ * en retard — le signal le plus fort de la page sur ce qui est fini (revue
+ * du 17 sept. 2026, défaut 19). `signe-priorite` sort le span de l'inversion
+ * de bloc Ardéchine (voir index.css) ; `mr-1` dans les deux cas — la réserve
+ * seule laissait le signe coller au titre (défaut 17).
+ */
+export function SignePriorite({
+  priority,
+  reserve = true,
+  terminee = false,
+}: { priority: SuccesPriority; reserve?: boolean; terminee?: boolean }) {
+  const signe = SIGNES_PRIORITE[priority];
+  if (!signe.signe) {
+    return reserve ? <span aria-hidden className="inline-block min-w-[1.4em] mr-1" /> : null;
+  }
+  return (
+    <span
+      role="img"
+      aria-label={signe.libelle}
+      title={signe.libelle}
+      className={`signe-priorite inline-block font-semibold mr-1 ${reserve ? 'min-w-[1.4em]' : ''}`}
+      style={{ color: terminee ? 'var(--color-text-tertiary)' : signe.couleur }}
+    >
+      {signe.signe}
+    </span>
+  );
+}
 
+/**
+ * Le projet, sans mot : le liseré gauche (`.liseret-projet` sur le conteneur
+ * de contenu, jamais sur la carte vitrée) prend sa couleur, et en Ardéchine,
+ * où toute teinte se replie sur l'encre, ce monogramme dans une boîte bordée
+ * le remplace — `display: none` partout ailleurs (17 sept. 2026).
+ */
+export function MonogrammeProjet({ project }: { project: SuccesProject | undefined }) {
+  if (!project) return null;
+  return (
+    <span aria-hidden className="monogramme-projet mr-1.5 align-middle" title={project.name}>
+      {monogrammeProjet(project.name)}
+    </span>
+  );
+}
+
+/** Les variables CSS du liseré — `gauche` est la marge de la carte, en négatif. */
+export function styleLiseret(project: SuccesProject | undefined, gauche: string): React.CSSProperties | undefined {
+  if (!project) return undefined;
+  return {
+    '--liseret-couleur': project.color || 'var(--color-border)',
+    '--liseret-gauche': gauche,
+  } as React.CSSProperties;
+}
+
+// `journal` : le carnet, distinct de `notes` — ce qu'on écrit PENDANT la
+// tâche, depuis la carte où on la fait (17 sept. 2026).
 export type SuccesTaskPatch = Partial<
-  Pick<SuccesTask, 'title' | 'date' | 'time' | 'priority' | 'notes' | 'projectId' | 'category' | 'emoji'>
+  Pick<SuccesTask, 'title' | 'date' | 'time' | 'priority' | 'notes' | 'journal' | 'projectId' | 'category' | 'emoji'>
 >;
 
 function localIsoDate(value = new Date()) {
@@ -59,12 +129,51 @@ interface Props {
   projects?: SuccesProject[];
   onToggleTask: (task: SuccesTask) => Promise<void>;
   onToggleSubtask: (task: SuccesTask, subtask: SuccesSubtask) => Promise<void>;
-  onAddSubtask: (task: SuccesTask, title: string, parentId?: string) => Promise<void>;
+  /**
+   * Même contrat que `onUpdate` : `null` dit « rien n'a été enregistré », et
+   * la carte garde alors le titre tapé et son champ ouvert. Elle les vidait
+   * après tout `await`, réussi ou non — le brouillon partait avec l'échec,
+   * seul le toast le disait (revue du 17 sept. 2026, défaut 11).
+   */
+  onAddSubtask: (task: SuccesTask, title: string, parentId?: string) => Promise<SuccesTask | null | void>;
   onDeleteSubtask?: (task: SuccesTask, subtask: SuccesSubtask) => Promise<void>;
-  onUpdate?: (task: SuccesTask, patch: SuccesTaskPatch) => Promise<void>;
-  onReschedule?: (task: SuccesTask, date: string) => Promise<void>;
+  /**
+   * Rend la ligne que le serveur a renvoyée, ou `null` si rien n'a été
+   * enregistré — la carte garde alors son brouillon ouvert. Un `void` vaut
+   * « la page a rechargé depuis le serveur » pour le formulaire d'édition,
+   * qui a son toast ; le carnet, lui, ne s'en contente pas : voir `onJournal`.
+   */
+  onUpdate?: (task: SuccesTask, patch: SuccesTaskPatch) => Promise<SuccesTask | null | void>;
+  /**
+   * Le carnet, sur une prop DÉDIÉE : la ligne serveur, ou `null`. Le bouton
+   * Carnet n'existe que si la page la fournit. Il s'ouvrait dès `onUpdate`,
+   * donc aussi dans Projets, dont le `refreshAfter` avale l'erreur et rend
+   * `undefined` : le carnet y disait « Enregistré » sur un PATCH refusé, et
+   * chaque pause de 700 ms y déclenchait un toast et un rechargement complet
+   * (revue du 17 sept. 2026, défauts 1 et 15). Rien d'autre qu'une ligne
+   * n'est un succès (§100) — `undefined` non plus.
+   */
+  onJournal?: (task: SuccesTask, journal: string) => Promise<SuccesTask | null>;
+  /**
+   * `date` est une ISO ou une expression (« lundi », « dans 3 jours ») que
+   * le serveur résout. Doit RELANCER `DateAmbigueError` et `DateInconnueError`
+   * : la carte y répond (chips datées, message sous le champ).
+   */
+  onReschedule?: (task: SuccesTask, date: string) => Promise<SuccesTask | null | void>;
   onAssignProject?: (task: SuccesTask, projectId: string) => Promise<void>;
   onDelete?: (task: SuccesTask) => Promise<void>;
+  /**
+   * Un jeton qui change à chaque « Découper » venu de la page (le toast du
+   * warning « reportée 4× ») : la carte ouvre son champ « Nouvelle
+   * sous-tâche », puis le signale par `onDecoupageOuvert`, et la page remet
+   * le jeton à `null`. Il restait posé pour toute la vie de la page, et la
+   * liste entière se remonte à chaque `load()` (recherche, filtre, retour de
+   * focus) : la carte neuve voyait un jeton « nouveau », rouvrait le champ
+   * et lui volait le focus — les lettres tapées dans Rechercher tombaient
+   * dans « Nouvelle sous-tâche » (revue du 17 sept. 2026, défaut 2).
+   */
+  decoupage?: number;
+  onDecoupageOuvert?: () => void;
   compact?: boolean;
   vitre?: boolean;
 }
@@ -92,7 +201,9 @@ function SubtaskRow({
   const submit = async () => {
     const clean = title.trim();
     if (!clean) return;
-    await onAdd(task, clean, subtask.id);
+    const ligne = await onAdd(task, clean, subtask.id);
+    // `null` : rien d'enregistré, le titre reste dans son champ (défaut 11).
+    if (ligne === null) return;
     setTitle('');
     setAdding(false);
     setExpanded(true);
@@ -223,9 +334,12 @@ function SubtaskRow({
   );
 }
 
-/** Hauteur réservée au menu « ⋯ » pour décider du retournement : trois
-    entrées de 36 px, le cadre et la marge — 130 px suffisent. */
-const MENU_ACTIONS_HAUTEUR = 130;
+/** Hauteur d'une entrée du menu « ⋯ » (py-2 + une ligne de 20 px) et ce que
+    prennent le cadre, le `py-1` et la marge de 4 px — pour décider du
+    retournement. La constante de 130 px était calée sur trois entrées ;
+    le Carnet en fait une quatrième (17 sept. 2026). */
+const MENU_ACTIONS_ENTREE = 36;
+const MENU_ACTIONS_CADRE = 22;
 
 /**
  * Les actions secondaires de la carte, regroupées sous « ⋯ » en étroit.
@@ -294,8 +408,8 @@ function MenuActions({
   if (ancre) {
     const largeur = Math.min(176, Math.max(0, window.innerWidth - 16));
     const left = Math.min(Math.max(8, ancre.right - largeur), window.innerWidth - largeur - 8);
-    const versLeHaut =
-      ancre.bottom + MENU_ACTIONS_HAUTEUR > window.innerHeight && ancre.top > MENU_ACTIONS_HAUTEUR;
+    const hauteur = entrees.length * MENU_ACTIONS_ENTREE + MENU_ACTIONS_CADRE;
+    const versLeHaut = ancre.bottom + hauteur > window.innerHeight && ancre.top > hauteur;
     const position = versLeHaut
       ? { bottom: window.innerHeight - ancre.top + 4 }
       : { top: ancre.bottom + 4 };
@@ -334,7 +448,10 @@ function MenuActions({
   }
 
   return (
-    <div className="sm:hidden">
+    // `compact:block` : dans le mini-panneau, le « ⋯ » vit à toute largeur
+    // (et les actions inline s'y cachent) — un panneau étiré à 640 px n'a
+    // pas plus de place pour cinq icônes que pour quatre (17 sept. 2026).
+    <div className="sm:hidden compact:block">
       <button
         ref={boutonRef}
         type="button"
@@ -373,9 +490,12 @@ export function TaskCard({
   onAddSubtask,
   onDeleteSubtask,
   onUpdate,
+  onJournal,
   onReschedule,
   onAssignProject,
   onDelete,
+  decoupage,
+  onDecoupageOuvert,
   compact,
   vitre = false,
 }: Props) {
@@ -385,26 +505,64 @@ export function TaskCard({
   const [rescheduling, setRescheduling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [customDate, setCustomDate] = useState(task.date || localIsoDate());
+  // L'expression en langage naturel de la boîte Reporter, et ce que le
+  // serveur lui a répondu : deux jours à choisir, ou « pas reconnu ».
+  const [expression, setExpression] = useState('');
+  const [refus, setRefus] = useState<RefusDeReport | null>(null);
+  const [carnetOuvert, setCarnetOuvert] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const [draft, setDraft] = useState(() => draftFromTask(task));
   const [subtasksOpen, setSubtasksOpen] = useState(() => loadTaskSubtasksOpen(task.id, true));
-  const priority = PRIORITY[task.priority];
   const project = projects.find((item) => item.id === task.projectId);
   const hasSubtasks = task.subtasks.length > 0;
+  // Une tâche terminée n'est jamais en retard : sa date passée redevient
+  // une date (expertise de la page Tâches, 17 sept. 2026).
+  const aujourdHui = localIsoDate();
+  const enRetard = !task.done && joursDeRetard(task.date, aujourdHui) > 0;
 
   useEffect(() => {
     if (!editing) setDraft(draftFromTask(task));
-    if (!rescheduling) setCustomDate(task.date || localIsoDate());
+    if (!rescheduling) {
+      setCustomDate(task.date || localIsoDate());
+      setExpression('');
+      setRefus(null);
+    }
   }, [task, editing, rescheduling]);
 
   useEffect(() => {
     setSubtasksOpen(loadTaskSubtasksOpen(task.id, true));
   }, [task.id]);
 
+  /** Ouvre le champ « Nouvelle sous-tâche » : la réponse à « Reportée 4×, la découper ? ». */
+  const ouvrirDecoupage = () => {
+    setRescheduling(false);
+    setEditing(false);
+    setAdding(true);
+    setSubtasksOpen(true);
+    saveTaskSubtasksOpen(task.id, true);
+  };
+
+  // Le jeton `decoupage` vient du toast de la page : chaque valeur nouvelle
+  // ouvre le champ, y compris au montage — depuis la Semaine, la page bascule
+  // en Liste et la carte naît avec le jeton déjà posé. Puis il est CONSOMMÉ
+  // (`onDecoupageOuvert` → la page le remet à null) : plus de ref d'instance
+  // qui « voyait » le jeton pour la première fois à chaque remontage de la
+  // liste (défaut 2). Par un ref pour le rappel, pour ne pas relancer l'effet
+  // quand la page en redonne une fermeture neuve à chaque rendu.
+  const acquitterDecoupage = useRef(onDecoupageOuvert);
+  acquitterDecoupage.current = onDecoupageOuvert;
+  useEffect(() => {
+    if (decoupage === undefined) return;
+    ouvrirDecoupage();
+    acquitterDecoupage.current?.();
+  }, [decoupage]); // eslint-disable-line react-hooks/exhaustive-deps -- `ouvrirDecoupage` ne lit que task.id
+
   const submitSubtask = async () => {
     const title = subtaskTitle.trim();
     if (!title) return;
-    await onAddSubtask(task, title);
+    const ligne = await onAddSubtask(task, title);
+    // `null` : rien d'enregistré, le titre reste dans son champ (défaut 11).
+    if (ligne === null) return;
     setSubtaskTitle('');
     setAdding(false);
     setSubtasksOpen(true);
@@ -419,15 +577,37 @@ export function TaskCard({
     });
   };
 
+  /**
+   * `date` : une ISO (chips, calendrier) ou l'expression tapée telle quelle
+   * — le serveur la résout. Ses deux refus reviennent ici et restent dans
+   * la boîte, qui ne se ferme pas : deux chips datées pour « lundi
+   * prochain », un mot sous le champ pour ce qu'il n'a pas reconnu. Tout
+   * autre échec a déjà son toast, posé par la page.
+   */
   const moveTo = async (date: string) => {
     if (!onReschedule) return;
     setSaving(true);
+    setRefus(null);
     try {
-      await onReschedule(task, date);
-      setRescheduling(false);
+      // `null` = la page a essayé et le serveur a refusé (elle l'a dit en
+      // toast) : la boîte reste ouverte avec la date choisie — se fermer
+      // comme un succès la perdait (contre-revue du 17 sept. 2026).
+      // `void` = la page a rechargé (Planificateur, Projets) : succès.
+      const ligne = await onReschedule(task, date);
+      if (ligne !== null) setRescheduling(false);
+    } catch (error) {
+      const lu = lireRefusDeReport(error);
+      if (!lu) return;
+      setRefus(lu);
     } finally {
       setSaving(false);
     }
+  };
+
+  const envoyerExpression = () => {
+    const propre = expressionDeReport(expression);
+    if (!propre) return;
+    void moveTo(propre);
   };
 
   const saveEdit = async () => {
@@ -445,7 +625,13 @@ export function TaskCard({
       if (draft.projectId !== (task.projectId || '')) patch.projectId = draft.projectId;
       if (draft.category !== (task.category || '')) patch.category = draft.category;
       if (draft.emoji !== (task.emoji || '')) patch.emoji = draft.emoji;
-      if (Object.keys(patch).length) await onUpdate(task, patch);
+      if (Object.keys(patch).length) {
+        const ligne = await onUpdate(task, patch);
+        // `null` : rien d'enregistré. Fermer remettait le brouillon sur la
+        // ligne revenue à l'ancien état — titre, notes, date : perdus, seul
+        // le toast le disait (revue du 17 sept. 2026, défaut 11).
+        if (ligne === null) return;
+      }
       setEditing(false);
     } finally {
       setSaving(false);
@@ -477,7 +663,7 @@ export function TaskCard({
   };
 
   const cancelReschedule = async () => {
-    if (customDate !== (task.date || localIsoDate())) {
+    if (customDate !== (task.date || localIsoDate()) || expression.trim()) {
       const confirmed = await confirm({
         title: 'Annuler le report ?',
         description: 'La nouvelle date saisie ne sera pas appliquée.',
@@ -496,16 +682,18 @@ export function TaskCard({
         className="rounded-2xl p-4 grid gap-3"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}
       >
-        <div className="flex items-center gap-2">
-          <input
-            value={draft.emoji}
-            onChange={(event) => setDraft({ ...draft, emoji: event.target.value.slice(0, 8) })}
-            placeholder="✨"
-            maxLength={8}
-            className="w-14 rounded-xl px-2 py-2 text-center text-lg bg-transparent outline-none"
-            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-            aria-label="Emoji"
-          />
+        {/* Le même sélecteur qu'Habitudes et Finances : un champ texte de
+            8 caractères obligeait à trouver l'emoji ailleurs et à le coller
+            (expertise du 17 sept. 2026, cohérence entre les pages). */}
+        <div className="flex items-stretch gap-2">
+          <div className="w-14 shrink-0">
+            <EmojiPicker
+              value={draft.emoji}
+              onChange={(emoji) => setDraft({ ...draft, emoji })}
+              aria-label="Emoji de la tâche"
+              optionnel
+            />
+          </div>
           <input
             autoFocus
             value={draft.title}
@@ -605,7 +793,13 @@ export function TaskCard({
     );
   }
 
-  // Les mêmes trois actions que les boutons inline, servies par « ⋯ » sous sm.
+  const journalEcrit = carnetRempli(task.journal);
+  const libelleCarnet = journalEcrit
+    ? 'Carnet — des notes vous attendent'
+    : 'Carnet — prendre des notes sur cette tâche';
+
+  // Les mêmes actions que les boutons inline, servies par « ⋯ » sous sm et
+  // en mode compact.
   const actionsMenu = [
     ...(onReschedule && !task.done
       ? [{
@@ -623,6 +817,15 @@ export function TaskCard({
         onSelect: () => { setEditing(true); setRescheduling(false); },
       }]
       : []),
+    ...(onJournal
+      ? [{
+        id: 'carnet',
+        label: journalEcrit ? 'Carnet (écrit)' : 'Carnet',
+        icon: <NotebookPen size={15} />,
+        color: journalEcrit ? 'var(--color-accent)' : undefined,
+        onSelect: () => setCarnetOuvert(true),
+      }]
+      : []),
     ...(onDelete
       ? [{
         id: 'supprimer',
@@ -637,9 +840,18 @@ export function TaskCard({
   return (
     <CadreVitre as="article" actif={vitre}
       className={`rounded-2xl ${compact ? 'p-3' : 'p-4'} transition-colors`}
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+      style={{
+        background: 'var(--color-surface)',
+        // La même bordure que BoardCard donne au retard : la Liste ne le
+        // disait nulle part (17 sept. 2026). `styleCadreVitre` ne retire que
+        // la bordure neutre, celle-ci survit au verre.
+        border: `1px solid ${enRetard ? 'color-mix(in srgb, var(--color-error) 45%, var(--color-border))' : 'var(--color-border)'}`,
+      }}
     >
-      <div className="flex items-start gap-3">
+      <div
+        className={`flex items-start gap-3 ${project ? 'liseret-projet' : ''}`}
+        style={styleLiseret(project, compact ? '-8px' : '-10px')}
+      >
         <button
           type="button"
           onClick={() => void onToggleTask(task)}
@@ -654,53 +866,75 @@ export function TaskCard({
           {task.done && <Check size={14} />}
         </button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-3">
-            <h3
-              className="flex-1 min-w-0 font-medium leading-6 break-words"
-              style={{
-                color: task.done ? 'var(--color-text-tertiary)' : 'var(--color-text)',
-                textDecoration: task.done ? 'line-through' : 'none',
-              }}
-            >
-              {task.emoji ? `${task.emoji} ` : ''}{task.title}
-            </h3>
-            {/* La pastille « Normale » (~60 px) mangeait le titre en étroit :
-                sous sm, un point coloré porte la même information — le libellé
-                reste dans `title` et pour les lecteurs d'écran (16 sept. 2026). */}
-            <span
-              className="succes-priority sm:hidden mt-2 size-2 rounded-full shrink-0"
-              data-priority={task.priority}
-              style={{ background: priority.color }}
-              title={`Priorité ${priority.label.toLowerCase()}`}
-              role="img"
-              aria-label={`Priorité ${priority.label.toLowerCase()}`}
-            />
-            <span
-              className="succes-priority hidden sm:inline text-[11px] px-2 py-0.5 rounded-full shrink-0"
-              data-priority={task.priority}
-              style={{ color: priority.color, background: `color-mix(in srgb, ${priority.color} 12%, transparent)` }}
-            >
-              {priority.label}
-            </span>
-          </div>
+          {/* `titre-tache` sort le titre de la règle `.terminal h3` (Press
+              Start en capitales, 2-3 lignes par titre) ; la priorité est un
+              signe devant lui et la basse s'efface en encre secondaire — la
+              pastille-mot et le point sous sm sont partis (17 sept. 2026). */}
+          <h3
+            className="titre-tache min-w-0 font-medium leading-6 break-words"
+            style={{
+              color: task.done
+                ? 'var(--color-text-tertiary)'
+                : task.priority === 'low'
+                  ? 'var(--color-text-secondary)'
+                  : 'var(--color-text)',
+              textDecoration: task.done ? 'line-through' : 'none',
+            }}
+          >
+            <MonogrammeProjet project={project} />
+            <SignePriorite priority={task.priority} terminee={task.done} />
+            {task.emoji ? `${task.emoji} ` : ''}{task.title}
+          </h3>
           {/* Sous sm : date, heure, projet et le compteur de reports restent ;
               catégorie et notes (`max-w-[420px]`, plus large que le panneau)
-              reviennent avec la largeur — elles restent en édition. */}
+              reviennent avec la largeur — elles restent en édition.
+              L'échéance vient en premier, relative (« Demain », « sam. 19
+              sept. ») ou en retard, en rouge et en gras ; l'ISO reste dans
+              `title`. En Ardéchine, le mot « retard » et l'inversion de bloc
+              portent le signal, jamais la couleur seule (17 sept. 2026). */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            {task.date && <span className="flex items-center gap-1"><CalendarDays size={12} />{task.date}</span>}
+            {task.date && (
+              <span
+                className={`flex items-center gap-1 ${enRetard ? 'font-medium' : ''}`}
+                style={enRetard ? { color: 'var(--color-error)' } : undefined}
+                title={task.date}
+              >
+                <CalendarDays size={12} />
+                {libelleEcheance(task.date, aujourdHui, { terminee: task.done })}
+              </span>
+            )}
             {task.time && <span className="flex items-center gap-1"><Clock3 size={12} />{task.time}</span>}
             {project && (
-              <span className="flex items-center gap-1 min-w-0" style={{ color: project.color || 'var(--color-text-tertiary)' }}>
+              <span className="flex items-center gap-1 min-w-0">
                 <BriefcaseBusiness size={12} className="shrink-0" />
                 <span className="truncate max-w-[9rem] sm:max-w-none">{project.name}</span>
               </span>
             )}
             {task.category && <span className="hidden sm:inline">{task.category}</span>}
+            {/* À partir du quatrième report, la mention devient un bouton vers
+                « Nouvelle sous-tâche » : le warning du serveur posait une
+                question — « voulez-vous la découper ? » — sans rien pour y
+                répondre (§34, 17 sept. 2026). Le soulignement porte le
+                signal là où la teinte se replie sur l'encre (Ardéchine). */}
             {task.postponedCount > 0 && (
-              <span className="flex items-center gap-1" style={{ color: task.postponedCount >= 4 ? 'var(--color-warning)' : undefined }}>
-                <CalendarClock size={12} />
-                Reportée {task.postponedCount}×
-              </span>
+              proposeDecoupage(task.postponedCount) && !task.done ? (
+                <button
+                  type="button"
+                  onClick={ouvrirDecoupage}
+                  className="flex items-center gap-1 underline underline-offset-2 decoration-dotted cursor-pointer"
+                  style={{ color: 'var(--color-warning)' }}
+                  title="Reportée souvent — la découper en sous-tâches ?"
+                  aria-label={`Reportée ${task.postponedCount} fois — découper en sous-tâches`}
+                >
+                  <CalendarClock size={12} />
+                  Reportée {task.postponedCount}× · découper ?
+                </button>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <CalendarClock size={12} />
+                  Reportée {task.postponedCount}×
+                </span>
+              )
             )}
             {task.notes && <span className="hidden sm:inline truncate max-w-[420px]">{task.notes}</span>}
           </div>
@@ -710,7 +944,15 @@ export function TaskCard({
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
             >
               <p className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>Reporter au…</p>
-              <div className="flex flex-wrap gap-1.5">
+              {/* Les quatre chips, puis un champ libre : le résolveur du
+                  serveur (« lundi », « dans 3 jours », « 21/09/2026 ») n'était
+                  atteint que par la voix ; au clic il fallait le calendrier
+                  (17 sept. 2026). Entrée envoie l'expression telle quelle ;
+                  `min-w-[9rem]` la fait passer à la ligne sous 340 px plutôt
+                  que d'écraser les chips. Les exemples du placeholder sont
+                  ceux que `dates.py` comprend : « 21 sept » y figurait et
+                  rendait 422 à coup sûr (défaut 7). */}
+              <div className="flex flex-wrap items-center gap-1.5">
                 {[
                   { label: 'Aujourd’hui', date: localIsoDate() },
                   { label: 'Demain', date: shiftIsoDate(undefined, 1) },
@@ -732,7 +974,79 @@ export function TaskCard({
                     {option.label}
                   </button>
                 ))}
+                <input
+                  value={expression}
+                  onChange={(event) => {
+                    setExpression(event.target.value);
+                    if (refus) setRefus(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      envoyerExpression();
+                    }
+                    if (event.key === 'Escape') {
+                      // Échap efface d'abord ce qui est tapé ; vide, il ferme
+                      // la boîte — sans passer par le dialogue « Annuler le
+                      // report ? » : monté PENDANT la propagation de ce même
+                      // keydown, il s'ouvrait et se refermait sur la même
+                      // touche, laissant la boîte et emportant le focus
+                      // (contre-revue du 17 sept. 2026).
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (expression.trim() || refus) {
+                        setExpression('');
+                        setRefus(null);
+                      } else {
+                        setRescheduling(false);
+                      }
+                    }
+                  }}
+                  disabled={saving}
+                  maxLength={EXPRESSION_MAX}
+                  size={12}
+                  placeholder={EXEMPLES_EXPRESSION}
+                  className="flex-1 min-w-0 basis-[9rem] rounded-lg px-2.5 py-1.5 text-xs bg-transparent outline-none disabled:opacity-40"
+                  style={{
+                    border: `1px solid ${refus?.type === 'inconnue' ? 'var(--color-error)' : 'var(--color-border)'}`,
+                    color: 'var(--color-text)',
+                  }}
+                  aria-label="Reporter à une date en toutes lettres — Entrée pour envoyer"
+                  aria-invalid={refus?.type === 'inconnue' || undefined}
+                  aria-describedby={refus ? `refus-report-${task.id}` : undefined}
+                />
               </div>
+              {/* La réponse du serveur, dans la boîte et pas en toast : deux
+                  jours à choisir (409 ambiguous_date, ses `options`), ou le
+                  mot qu'il n'a pas reconnu (422). */}
+              {refus && (
+                <div id={`refus-report-${task.id}`} role="status" className="grid gap-1.5 text-xs">
+                  <p style={{ color: refus.type === 'inconnue' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>
+                    {refus.type === 'inconnue' ? "Je n'ai pas reconnu cette date." : refus.message}
+                  </p>
+                  {refus.type === 'ambigue' && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {chipsAmbiguite(refus.options, aujourdHui).map((chip) => (
+                        <button
+                          key={chip.date}
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void moveTo(chip.date)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-40"
+                          style={{
+                            background: 'var(--color-surface)',
+                            color: 'var(--color-accent)',
+                            border: '1px solid var(--color-accent)',
+                          }}
+                          title={chip.date}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
@@ -777,17 +1091,17 @@ export function TaskCard({
           )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          {/* Sous sm, les trois actions vivent dans MenuActions ; ici elles
-              n'apparaissent qu'avec la largeur. Le survol n'arrive pas au
-              NSPanel non activant dès qu'une autre app est devant :
-              `compact:opacity-100` garde l'icône pleine dans le panneau
-              étiré au-delà de sm, là où `hover:` ne se déclenchera pas
-              (16 sept. 2026). */}
+          {/* Sous sm ET en mode compact, les actions vivent dans MenuActions ;
+              ici elles n'apparaissent qu'avec la largeur, hors panneau. Le
+              survol n'arrive pas au NSPanel non activant dès qu'une autre
+              app est devant (16 sept. 2026) ; avec le Carnet, cinq icônes
+              toujours pleines à 640 px reprenaient au titre ce que le « ⋯ »
+              lui avait rendu — d'où `compact:hidden` (17 sept. 2026). */}
           {onReschedule && !task.done && (
             <button
               type="button"
               onClick={() => { setRescheduling((value) => !value); setEditing(false); }}
-              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
+              className="hidden sm:block compact:hidden p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
               style={{ color: rescheduling ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
               title="Reporter"
               aria-label="Reporter la tâche"
@@ -800,7 +1114,7 @@ export function TaskCard({
             <button
               type="button"
               onClick={() => { setEditing(true); setRescheduling(false); }}
-              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
+              className="hidden sm:block compact:hidden p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
               style={{ color: 'var(--color-text-tertiary)' }}
               title="Modifier"
               aria-label="Modifier la tâche"
@@ -808,11 +1122,38 @@ export function TaskCard({
               <Pencil size={15} />
             </button>
           )}
+          {/* Le carnet, depuis la carte où l'on FAIT la tâche : une étape
+              datée apparaissait ici et l'on ne pouvait pas y noter où l'on
+              bloque — il fallait la retrouver dans Projets (17 sept. 2026).
+              Même repère que LigneEtape : accent quand il y a quelque chose
+              dedans, et le point plein le dit aussi là où la teinte se
+              replie sur l'encre. Seulement avec `onJournal` : Projets a déjà
+              son carnet dans LigneEtape et ne le fournit pas (défaut 15). */}
+          {onJournal && (
+            <button
+              type="button"
+              onClick={() => setCarnetOuvert(true)}
+              className={`hidden sm:block compact:hidden relative p-1.5 rounded-lg cursor-pointer hover:opacity-100 ${journalEcrit ? '' : 'opacity-60'}`}
+              style={{ color: journalEcrit ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
+              title={libelleCarnet}
+              aria-label={journalEcrit ? `Carnet de « ${task.title} » — écrit` : `Carnet de « ${task.title} » — vide`}
+              aria-haspopup="dialog"
+            >
+              <NotebookPen size={15} />
+              {journalEcrit && (
+                <span
+                  aria-hidden
+                  className="absolute top-1 right-1 size-1.5 rounded-full"
+                  style={{ background: 'currentColor' }}
+                />
+              )}
+            </button>
+          )}
           {onDelete && (
             <button
               type="button"
               onClick={() => void onDelete(task)}
-              className="hidden sm:block p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100 compact:opacity-100"
+              className="hidden sm:block compact:hidden p-1.5 rounded-lg cursor-pointer opacity-60 hover:opacity-100"
               style={{ color: 'var(--color-error)' }}
               title="Supprimer"
               aria-label="Supprimer la tâche"
@@ -889,6 +1230,24 @@ export function TaskCard({
         >
           <Plus size={13} /> Ajouter une sous-tâche
         </button>
+      )}
+      {/* Monté seulement ouvert (un texte en mémoire par carnet regardé, pas
+          par carte). CarnetDeTache est déjà un portail `fixed` sur body — la
+          carte vitrée (`backdrop-filter`) est un contexte d'empilement où un
+          `z-50` local passerait sous la carte suivante, modèle MenuActions.
+          Il écrit tout seul, sans toast : `onJournal` de la page réconcilie
+          en silence et rend la ligne serveur ; tout le reste — `null`, et
+          aussi `undefined` — est un échec que le carnet dit, au lieu
+          d'« Enregistré » (§100, défaut 1). */}
+      {carnetOuvert && onJournal && (
+        <CarnetDeTache
+          tache={task}
+          onFermer={() => setCarnetOuvert(false)}
+          onEnregistrer={async (journal) => {
+            const ligne = await onJournal(task, journal);
+            if (!ligne) throw new Error("Le carnet n'a pas été enregistré.");
+          }}
+        />
       )}
     </CadreVitre>
   );

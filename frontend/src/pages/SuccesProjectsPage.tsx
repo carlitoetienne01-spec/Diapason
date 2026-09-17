@@ -19,6 +19,8 @@ import {
 import { toast } from 'sonner';
 
 import {
+  DateAmbigueError,
+  DateInconnueError,
   addSuccesSubtask,
   createSuccesProject,
   createSuccesTask,
@@ -52,6 +54,8 @@ import {
   tachesVerrouillees,
 } from '../features/succes/verrou';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { dateIsoLocale } from '../features/succes/planificateur';
+import { phraseReportee } from '../features/succes/report';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import type {
   SuccesProject,
@@ -1049,10 +1053,17 @@ export function SuccesProjectsPage() {
   * L'échec, lui, garde sa bulle : une sauvegarde qui rate en silence est
   * exactement ce qu'il ne faut pas.
   */
+  /**
+   * Rend vrai si l'action ET le rechargement ont abouti. Un appelant qui
+   * annonce lui-même le succès (le carnet d'une étape) doit le savoir :
+   * avaler l'échec en rendant `undefined` lui faisait afficher « Enregistré »
+   * sur un PATCH refusé, pendant qu'un toast rouge disait l'inverse
+   * (contre-revue du 17 sept. 2026, §100).
+   */
   const refreshAfter = async (
     action: () => Promise<unknown>,
     success: string | null,
-  ) => {
+  ): Promise<boolean> => {
     setSaving(true);
     try {
       await action();
@@ -1060,10 +1071,12 @@ export function SuccesProjectsPage() {
       if (success) {
         toast.success(success, { description: 'Enregistré localement sur ce Mac.' });
       }
+      return true;
     } catch (error) {
       toast.error("L'action n'a pas été enregistrée.", {
         description: error instanceof Error ? error.message : String(error),
       });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1076,6 +1089,33 @@ export function SuccesProjectsPage() {
       `Tâche ajoutée à « ${selected.name} »`,
     );
     setQuickTitle('');
+  };
+
+  /**
+   * Le report d'une carte, hors `refreshAfter` : `date` peut être
+   * l'expression tapée dans le champ libre de la carte (« lundi prochain »),
+   * et les deux refus du serveur — deux jours possibles, date non reconnue
+   * — doivent lui REVENIR pour qu'elle montre ses chips ou son message.
+   * Avalés par `refreshAfter`, ils fermaient la boîte comme un succès et la
+   * question du 409 restait sans bouton (§34, revue du 17 sept. 2026,
+   * défaut 6). Le toast dit la date que le SERVEUR a rendue (§100).
+   */
+  const rescheduleTask = async (task: SuccesTask, date: string) => {
+    setSaving(true);
+    try {
+      const result = await rescheduleSuccesTask(task.id, date);
+      await loadTasks();
+      toast.success(phraseReportee(result.task.date, dateIsoLocale()), {
+        description: result.warning || 'Enregistré localement sur ce Mac.',
+      });
+    } catch (error) {
+      if (error instanceof DateAmbigueError || error instanceof DateInconnueError) throw error;
+      toast.error("L'action n'a pas été enregistrée.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const structure: SuccesProjectStructure = selected?.structure || 'flat';
@@ -1426,25 +1466,27 @@ export function SuccesProjectsPage() {
                       key={task.id}
                       task={task}
                       projects={projects}
-                      onToggleTask={(item) => refreshAfter(() => setSuccesTaskDone(item.id, !item.done), item.done ? 'Tâche rouverte' : 'Tâche terminée')}
-                      onToggleSubtask={(item, subtask: SuccesSubtask) =>
-                        refreshAfter(() => setSuccesSubtaskDone(item.id, subtask.id, !subtask.done), 'Sous-tâche mise à jour')
+                      onToggleTask={async (item) => {
+                        await refreshAfter(() => setSuccesTaskDone(item.id, !item.done), item.done ? 'Tâche rouverte' : 'Tâche terminée');
+                      }}
+                      onToggleSubtask={async (item, subtask: SuccesSubtask) => {
+                        await refreshAfter(() => setSuccesSubtaskDone(item.id, subtask.id, !subtask.done), 'Sous-tâche mise à jour');
+                      }}
+                      // `null` sur un échec : la carte garde alors son brouillon
+                      // au lieu de le vider comme après un succès.
+                      onAddSubtask={async (item, title, parentId) =>
+                        (await refreshAfter(() => addSuccesSubtask(item.id, title, parentId), 'Sous-tâche ajoutée')) ? undefined : null
                       }
-                      onAddSubtask={(item, title, parentId) =>
-                        refreshAfter(() => addSuccesSubtask(item.id, title, parentId), 'Sous-tâche ajoutée')
+                      onAssignProject={async (item, projectId) => {
+                        await refreshAfter(() => updateSuccesTask(item.id, { projectId }), projectId ? 'Tâche réassignée' : 'Tâche retirée du projet');
+                      }}
+                      onUpdate={async (item, patch: SuccesTaskPatch) =>
+                        (await refreshAfter(() => updateSuccesTask(item.id, patch), 'Tâche mise à jour')) ? undefined : null
                       }
-                      onAssignProject={(item, projectId) =>
-                        refreshAfter(() => updateSuccesTask(item.id, { projectId }), projectId ? 'Tâche réassignée' : 'Tâche retirée du projet')
-                      }
-                      onUpdate={(item, patch: SuccesTaskPatch) =>
-                        refreshAfter(() => updateSuccesTask(item.id, patch), 'Tâche mise à jour')
-                      }
-                      onReschedule={(item, date) =>
-                        refreshAfter(() => rescheduleSuccesTask(item.id, date), 'Tâche replanifiée')
-                      }
-                      onDelete={(item) =>
-                        refreshAfter(() => deleteSuccesTask(item.id), 'Tâche supprimée')
-                      }
+                      onReschedule={rescheduleTask}
+                      onDelete={async (item) => {
+                        await refreshAfter(() => deleteSuccesTask(item.id), 'Tâche supprimée');
+                      }}
                     />
                   ))}
                 </div>
@@ -1479,10 +1521,13 @@ export function SuccesProjectsPage() {
                   );
                 }}
                 onUpdate={async (taskId, patch, options) => {
-                  await refreshAfter(
+                  const ok = await refreshAfter(
                     () => updateSuccesTask(taskId, patch),
                     options?.silencieux ? null : 'Étape mise à jour',
                   );
+                  // Le carnet (silencieux) ne doit jamais croire enregistré
+                  // ce que le serveur a refusé : l'échec lui est relancé.
+                  if (!ok) throw new Error("L'étape n'a pas été enregistrée.");
                 }}
                 onCreate={async ({ title, parentTaskId }) => {
                   await refreshAfter(
