@@ -43,3 +43,41 @@ export function titreProvisoire(
   const active = activeId ? conversations.find((c) => c.id === activeId) : undefined;
   return !active || !active.title.trim();
 }
+
+/**
+ * Une discussion VIERGE : aucun message, pas de titre, pas épinglée. Une
+ * conversation vide que l'on a renommée ou épinglée est du travail préparé,
+ * pas une page blanche à recycler.
+ *
+ * La règle vivait en ligne dans Sidebar.handleNewChat — inaccessible au
+ * mini-panneau, et au moteur de sync qui poussait chaque vierge abandonnée au
+ * serveur : elles réapparaissaient « Sans titre » dans l'autre vue (2 lignes
+ * sur 3 dans conversations.db le 17 sept. 2026).
+ */
+export function estVierge(c: Conversation): boolean {
+  return c.messages.length === 0 && !c.title.trim() && !c.pinned;
+}
+
+/** La vierge la plus récente à réutiliser, ou null s'il faut en créer une. */
+export function trouverDiscussionVierge(
+  conversations: readonly Conversation[],
+): Conversation | null {
+  let meilleure: Conversation | null = null;
+  for (const c of conversations) {
+    if (estVierge(c) && (!meilleure || c.updatedAt > meilleure.updatedAt)) meilleure = c;
+  }
+  return meilleure;
+}
+
+/**
+ * La conversation à réactiver quand l'active disparaît : la plus récente
+ * par `updatedAt`. `deleteConversation` prenait `Object.keys(...)[0]` — l'ordre
+ * d'insertion d'un objet JSON, c'est-à-dire un fil arbitraire.
+ */
+export function plusRecente(conversations: readonly Conversation[]): Conversation | null {
+  let meilleure: Conversation | null = null;
+  for (const c of conversations) {
+    if (!meilleure || c.updatedAt > meilleure.updatedAt) meilleure = c;
+  }
+  return meilleure;
+}

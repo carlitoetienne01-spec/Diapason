@@ -33,6 +33,7 @@ import { TalkButton } from '../TalkButton';
 import { BandeauMiseAJour } from '../Desktop/BandeauMiseAJour';
 import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
 import { useTranslation } from '../../i18n/useTranslation';
+import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
 
 /** Pages that live behind the Réglages drawer, so a deep link opens it. */
 const SETTINGS_PATHS = [
@@ -58,7 +59,7 @@ export function Sidebar() {
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
-  const createConversation = useAppStore((s) => s.createConversation);
+  const nouvelleDiscussion = useAppStore((s) => s.nouvelleDiscussion);
   const selectedModel = useAppStore((s) => s.selectedModel);
 
   const settings = useAppStore((s) => s.settings);
@@ -111,23 +112,16 @@ export function Sidebar() {
           ? `${t('settings.theme.terminal')} · ${TERMINAL_SKIN_NAMES[stop.skin ?? 'phosphor']}`
           : t('settings.theme.system');
 
-  const conversations = useAppStore((s) => s.conversations);
-  const selectConversation = useAppStore((s) => s.selectConversation);
   const handleNewChat = () => {
     // The button always lands on a fresh chat. Reusing an existing empty
     // conversation (instead of silently doing nothing, the old behavior)
     // keeps the list free of stacked blanks while never ignoring a click.
-    // Only a TRULY blank one though: an empty conversation the user has
-    // renamed or pinned is prepared work, not a blank to hijack.
-    const blank = conversations.find(
-      (c) => c.messages.length === 0 && !c.title && !c.pinned,
-    );
-    if (blank) {
-      selectConversation(blank.id);
-    } else {
-      createConversation(selectedModel);
-    }
+    // 17 sept. 2026 : la règle de la vierge vivait ici, en ligne — le ＋ du
+    // mini-panneau et ⌘N ne pouvaient pas la partager. Elle est dans le
+    // store (nouvelleDiscussion → lib/discussions.trouverDiscussionVierge).
+    nouvelleDiscussion(selectedModel);
     navigate('/');
+    demanderLeFocusDuCompositeur();
   };
 
   // The drawer follows the route, in both directions.

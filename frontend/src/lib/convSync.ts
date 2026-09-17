@@ -29,6 +29,7 @@
 
 import type { ChatMessage, Conversation, ConversationStore } from '../types';
 import { apiFetch, getApiKey } from './api';
+import { estVierge } from './discussions';
 import { generateId, loadConversations, saveConversations, useAppStore } from './store';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -235,6 +236,13 @@ export function fusionner(
  * conversation condamnée (file de suppressions) ne se pousse jamais — le
  * DELETE part à sa place ; une conversation en quarantaine (refusée pour de
  * bon par le serveur) non plus.
+ *
+ * Une VIERGE (sans message, sans titre, non épinglée) non plus : elle
+ * n'existe que localement jusqu'au premier envoi. 17 sept. 2026 : chaque
+ * « Nouvelle discussion » abandonnée partait au serveur et réapparaissait
+ * « Sans titre » dans l'autre vue — 2 lignes sur 3 dans conversations.db.
+ * Dès qu'elle reçoit un message, un titre ou une épingle, elle part comme
+ * les autres.
  */
 export function choisirAPousser(
   local: ConversationStore,
@@ -244,7 +252,10 @@ export function choisirAPousser(
 ): Conversation[] {
   const exclues = new Set([...suppressions, ...quarantaine]);
   return Object.values(local.conversations).filter(
-    (c) => !exclues.has(c.id) && (carte[c.id] === undefined || c.updatedAt > carte[c.id]),
+    (c) =>
+      !exclues.has(c.id) &&
+      !estVierge(c) &&
+      (carte[c.id] === undefined || c.updatedAt > carte[c.id]),
   );
 }
 

@@ -1261,6 +1261,20 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   text-wrap: balance;
 }
 
+/* 17 sept. 2026, chantier « discussions dans le mini-panneau » : ⌘N, ＋ ou
+   un changement de fil vidaient la vue d'un coup sec — rien ne disait qu'on
+   avait changé de discussion. Le contenu du fil est re-monté sous une clé
+   (l'id actif) et naît en 180 ms, la durée déjà réglée pour les View
+   Transitions du panneau (lib.rs). Une seconde pression sur un fil déjà
+   vierge ne change pas la clé : rien de visible, par construction. */
+@keyframes diapason-fil-fondu {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fil-fondu {
+  animation: diapason-fil-fondu 180ms ease-out;
+}
+
 /* A received file is announced only after the receiver has recomputed its
    hash. The motion reads left-to-right like the transfer, then leaves before
    it can become permanent chrome. */
@@ -1348,6 +1362,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 }
 @media (prefers-reduced-motion: reduce) {
   .talk-caption,
+  .fil-fondu,
   .file-arrival-card,
   .file-arrival-beam > span,
   .file-arrival-lifetime {

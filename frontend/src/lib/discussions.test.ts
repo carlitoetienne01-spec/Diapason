@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Conversation } from '../types';
-import { TITRE_MAX, titreDiscussion, titreProvisoire } from './discussions';
+import {
+  TITRE_MAX,
+  plusRecente,
+  titreDiscussion,
+  titreProvisoire,
+  trouverDiscussionVierge,
+} from './discussions';
 
 function conv(id: string, title: string, extra: Partial<Conversation> = {}): Conversation {
   return {
@@ -58,5 +64,50 @@ describe('titreProvisoire', () => {
     expect(titreProvisoire([], null)).toBe(true);
     expect(titreProvisoire([conv('a', '')], 'a')).toBe(true);
     expect(titreProvisoire([conv('a', 'Permis')], 'a')).toBe(false);
+  });
+});
+
+describe('trouverDiscussionVierge', () => {
+  it('réutilise une conversation vide, sans titre, non épinglée', () => {
+    const vierge = conv('v', '');
+    expect(trouverDiscussionVierge([conv('a', 'Permis'), vierge])).toBe(vierge);
+  });
+
+  it('prend la vierge la plus récente quand il y en a plusieurs', () => {
+    const vieille = conv('v1', '', { updatedAt: 10 });
+    const recente = conv('v2', '', { updatedAt: 20 });
+    expect(trouverDiscussionVierge([vieille, recente])).toBe(recente);
+  });
+
+  it('ne recycle ni une vide renommée ni une vide épinglée — c’est du travail préparé', () => {
+    const renommee = conv('r', 'Idées pour le bilan');
+    const epinglee = conv('e', '', { pinned: true });
+    expect(trouverDiscussionVierge([renommee, epinglee])).toBeNull();
+  });
+
+  it('ne recycle pas une conversation qui a des messages, même sans titre', () => {
+    const avecMessage = conv('m', '', {
+      messages: [{ id: 'x', role: 'user', content: 'salut', timestamp: 1 }],
+    });
+    expect(trouverDiscussionVierge([avecMessage])).toBeNull();
+  });
+
+  it('rend null sans aucune conversation', () => {
+    expect(trouverDiscussionVierge([])).toBeNull();
+  });
+});
+
+describe('plusRecente', () => {
+  it('rend la conversation au updatedAt le plus grand, pas la première de la liste', () => {
+    // deleteConversation prenait Object.keys[0] : l'ordre d'insertion du
+    // JSON, c'est-à-dire un fil arbitraire après une suppression.
+    const ancienne = conv('a', 'A', { updatedAt: 5 });
+    const recente = conv('b', 'B', { updatedAt: 50 });
+    const moyenne = conv('c', 'C', { updatedAt: 20 });
+    expect(plusRecente([ancienne, recente, moyenne])).toBe(recente);
+  });
+
+  it('rend null quand il ne reste rien', () => {
+    expect(plusRecente([])).toBeNull();
   });
 });

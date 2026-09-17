@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { estDansUneZoneDeSaisie, laissePasserLeRaccourci } from './lib/saisie';
-import { Routes, Route, Navigate } from 'react-router';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { CommandPalette } from './components/CommandPalette';
@@ -19,6 +19,7 @@ import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
 import { startHabitReminderScheduler } from './features/succes/habitReminders';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
+import { demanderLeFocusDuCompositeur } from './lib/panneau';
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -90,6 +91,9 @@ export default function App() {
   const updateSettings = useAppStore((s) => s.updateSettings);
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
+  const nouvelleDiscussion = useAppStore((s) => s.nouvelleDiscussion);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   // Apply theme class to <html>. Terminal rides on top of `dark` so every
   // `dark:` variant still resolves; its own class only re-skins the tokens.
@@ -255,10 +259,35 @@ export default function App() {
         e.preventDefault();
         toggleSystemPanel();
       }
+      // ⌘N — 17 sept. 2026 : « Nouvelle discussion » n'était qu'un bouton de
+      // la barre latérale, absente du mini-panneau. Passe depuis le
+      // compositeur (liste fermée de lib/saisie.ts) ; le menu natif Tauri ne
+      // réserve que ⌘R (lib.rs, `accelerator`). Même règle que le bouton : une
+      // vierge existante est réutilisée. Hors de la Discussion, on y va ; la
+      // demande de focus est différée d'un tour pour que ChatPage — et son
+      // compositeur, seul à l'honorer — soient montés quand elle arrive.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'n') {
+        e.preventDefault();
+        nouvelleDiscussion(useAppStore.getState().selectedModel);
+        if (pathname === '/') {
+          demanderLeFocusDuCompositeur();
+        } else {
+          navigate('/');
+          window.setTimeout(demanderLeFocusDuCompositeur, 0);
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [commandPaletteOpen, setCommandPaletteOpen, toggleSystemPanel, updateSettings]);
+  }, [
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    toggleSystemPanel,
+    updateSettings,
+    nouvelleDiscussion,
+    navigate,
+    pathname,
+  ]);
 
 
   if (!setupDone) {

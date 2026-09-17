@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { modeleInitial } from './modelePrefere';
+import { plusRecente, trouverDiscussionVierge } from './discussions';
 import type {
   Conversation,
   ChatMessage,
@@ -236,6 +237,12 @@ interface AppState {
   loadConversations: () => void;
   importOverlayConversation: () => Promise<void>;
   createConversation: (model?: string) => string;
+  /**
+   * « Nouvelle discussion » : réutilise la vierge la plus récente (vide, sans
+   * titre, non épinglée), sinon en crée une. Une seule règle pour la barre
+   * latérale, le ＋ de l'en-tête et ⌘N ; rend l'id actif.
+   */
+  nouvelleDiscussion: (model?: string) => string;
   selectConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
@@ -425,6 +432,20 @@ export const useAppStore = create<AppState>((set, get) => {
       return conv.id;
     },
 
+    nouvelleDiscussion: (model?: string) => {
+      // 17 sept. 2026 : la règle vivait en ligne dans Sidebar.handleNewChat,
+      // inaccessible au mini-panneau ; deux « Nouvelle discussion » empilaient
+      // deux vierges. Une vierge déjà active ne bouge pas : rien de visible
+      // (ChatGPT ⌘⇧O, Raycast AI ⌘N recyclent le chat vide courant).
+      const { conversations, activeId } = get();
+      const vierge = trouverDiscussionVierge(conversations);
+      if (vierge) {
+        if (vierge.id !== activeId) get().selectConversation(vierge.id);
+        return vierge.id;
+      }
+      return get().createConversation(model);
+    },
+
     selectConversation: (id: string) => {
       const store = loadConversations();
       store.activeId = id;
@@ -440,8 +461,9 @@ export const useAppStore = create<AppState>((set, get) => {
       const store = loadConversations();
       delete store.conversations[id];
       if (store.activeId === id) {
-        const remaining = Object.keys(store.conversations);
-        store.activeId = remaining.length > 0 ? remaining[0] : null;
+        // La plus récente, pas `Object.keys[0]` : supprimer le fil courant
+        // atterrissait sur un fil arbitraire (ordre d'insertion du JSON).
+        store.activeId = plusRecente(Object.values(store.conversations))?.id ?? null;
       }
       saveConversations(store);
       // Le retrait local ne suffit pas : sans pierre tombale côté serveur,

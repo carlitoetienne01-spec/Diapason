@@ -26,6 +26,7 @@ export function ChatArea() {
   const { t } = useTranslation();
   const messages = useAppStore((s) => s.messages);
   const streamState = useAppStore((s) => s.streamState);
+  const activeId = useAppStore((s) => s.activeId);
   const navigate = useNavigate();
   // 17 sept. 2026 : le sauteur de discussions (⌘J) n'existe pas encore ; son
   // état d'ouverture vit déjà ici — state local, jamais une route (le rail
@@ -135,6 +136,10 @@ export function ChatArea() {
           onScroll={handleScroll}
           className="absolute inset-0 overflow-y-auto"
         >
+          {/* Clé = fil actif : changer de discussion (⌘N, ＋, sauteur) fait
+              naître le nouveau contenu en fondu (.fil-fondu, 180 ms) ; le
+              conteneur de défilement, lui, reste en place. */}
+          <div key={activeId ?? 'aucune'} className="fil-fondu h-full">
           {isEmpty ? (
             <div className="flex flex-col items-center justify-center h-full px-4">
               <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
@@ -204,6 +209,7 @@ export function ChatArea() {
               })()}
             </div>
           )}
+          </div>
         </div>
       </div>
       <InputArea />

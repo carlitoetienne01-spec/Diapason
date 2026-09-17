@@ -189,6 +189,21 @@ describe('ce qui se pousse', () => {
     const local = magasin([conv('a', 1001, 'renommée')]);
     expect(choisirAPousser(local, { a: 1000 }).map((c) => c.id)).toEqual(['a']);
   });
+
+  it('ne pousse jamais une vierge — sans message, sans titre, non épinglée', () => {
+    // Chaque « Nouvelle discussion » abandonnée partait au serveur et
+    // réapparaissait « Sans titre » dans l'autre vue (17 sept. 2026).
+    const local = magasin([conv('vierge', 5000, '')]);
+    expect(choisirAPousser(local, {})).toEqual([]);
+  });
+
+  it('pousse la même conversation dès qu’elle a un message, un titre ou une épingle', () => {
+    const avecMessage = conv('m', 5000, '', [msg('x', 'user', 'salut', 1)]);
+    const renommee = conv('r', 5000, 'Idées');
+    const epinglee = conv('e', 5000, '', [], { pinned: true });
+    const local = magasin([avecMessage, renommee, epinglee]);
+    expect(choisirAPousser(local, {}).map((c) => c.id).sort()).toEqual(['e', 'm', 'r']);
+  });
 });
 
 describe('la file de suppressions', () => {

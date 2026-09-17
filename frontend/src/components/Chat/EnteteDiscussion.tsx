@@ -65,7 +65,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
   const conversations = useAppStore((s) => s.conversations);
   const activeId = useAppStore((s) => s.activeId);
   const selectedModel = useAppStore((s) => s.selectedModel);
-  const createConversation = useAppStore((s) => s.createConversation);
+  const nouvelleDiscussion = useAppStore((s) => s.nouvelleDiscussion);
   const renameConversation = useAppStore((s) => s.renameConversation);
   const togglePinConversation = useAppStore((s) => s.togglePinConversation);
   const duplicateConversation = useAppStore((s) => s.duplicateConversation);
@@ -109,7 +109,10 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
   };
 
   const nouvelle = () => {
-    createConversation(selectedModel);
+    // Même règle que la barre latérale et ⌘N (store.nouvelleDiscussion) :
+    // une vierge existante est réutilisée, jamais deux « Nouvelle
+    // discussion » empilées.
+    nouvelleDiscussion(selectedModel);
     navigate('/');
     demanderLeFocusDuCompositeur();
   };
@@ -140,7 +143,9 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
   };
 
   const PanelIcon = systemPanelOpen ? PanelRightClose : PanelRightOpen;
-  const raccourciPanneau = `${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+I`;
+  const raccourci = (touche: string) =>
+    `${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+${touche}`;
+  const raccourciPanneau = raccourci('I');
 
   return (
     <div
@@ -224,8 +229,8 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur }: Props) {
           onClick={nouvelle}
           className={`hidden compact:inline-flex ${BOUTON}`}
           style={{ color: 'var(--color-text-tertiary)' }}
-          title={t('sidebar.newChat')}
-          aria-label={t('sidebar.newChat')}
+          title={t('chat.header.newChat', { shortcut: raccourci('N') })}
+          aria-label={t('chat.header.newChat', { shortcut: raccourci('N') })}
         >
           <Plus size={16} />
         </button>
