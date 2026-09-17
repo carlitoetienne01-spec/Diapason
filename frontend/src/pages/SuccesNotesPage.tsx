@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -1063,26 +1064,30 @@ export function SuccesNotesPage() {
         )}
 
         {/* Une seule rangée à toute largeur : la recherche rétrécit, le tri
-            garde une largeur bornée — deux rangées de 40 px en miniature. */}
-        <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5">
-          <div
-            className="flex items-center gap-2 flex-1 min-w-0 rounded-xl px-3 h-10"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
-          >
-            <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+            garde une largeur bornée — deux rangées de 40 px en miniature.
+            La même vitre que la rangée de filtres de Tâches : deux cadres
+            plats ici, du verre là — « des composants qui ne respectent pas
+            mon style liquid glass » (Carlito, 17 sept. 2026). */}
+        <CadreVitre as="section"
+          className="flex flex-row items-center gap-2 sm:gap-3 rounded-2xl p-2 mb-4 sm:mb-5"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+          aria-label="Recherche et tri des notes"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0 px-2 h-7">
+            <Search size={15} className="shrink-0" style={{ color: 'var(--color-text-tertiary)' }} />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Rechercher…"
-              className="w-full bg-transparent outline-none text-sm"
+              className="w-full min-w-0 bg-transparent outline-none text-sm"
               style={{ color: 'var(--color-text)' }}
             />
           </div>
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as SortMode)}
-            className="h-10 rounded-xl px-2 sm:px-3 text-sm bg-transparent outline-none max-w-[9.5rem] shrink-0"
-            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', background: 'var(--color-surface)' }}
+            className="h-7 rounded-xl px-2 sm:px-3 text-xs bg-transparent outline-none max-w-[9.5rem] shrink-0 cursor-pointer"
+            style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
             aria-label="Trier les notes"
           >
             <option value="manuel">Mon ordre</option>
@@ -1091,14 +1096,14 @@ export function SuccesNotesPage() {
             <option value="name-asc">Nom (A→Z)</option>
             <option value="name-desc">Nom (Z→A)</option>
           </select>
-        </div>
+        </CadreVitre>
 
         {loading && !notes.length ? (
           <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement…
           </div>
         ) : sortedNotes.length === 0 ? (
-          <div
+          <CadreVitre
             className="rounded-2xl py-16 text-center"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
           >
@@ -1109,7 +1114,7 @@ export function SuccesNotesPage() {
             <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
               Cliquez sur Nouvelle note pour commencer.
             </p>
-          </div>
+          </CadreVitre>
         ) : (
           <div className="grid gap-1">
             {grouperEnSections(sortedNotes, categories).map((section) => (

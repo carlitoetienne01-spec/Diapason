@@ -1,3 +1,4 @@
+import { CadreVitre } from '../components/Glass/CadreVitre';
 import {
   useCallback,
   useEffect,
@@ -1454,11 +1455,11 @@ export function SuccesProjectsPage() {
                   <Loader2 size={17} className="animate-spin" /> Chargement…
                 </div>
               ) : projectTasks.length === 0 ? (
-                <div className="rounded-2xl py-14 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                <CadreVitre className="rounded-2xl py-14 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
                   <BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: selected.color || 'var(--color-accent)' }} />
                   <p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucune tâche dans ce projet</p>
                   <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Ajoutez-en une ci-dessus, ou assignez-en une depuis Tâches.</p>
-                </div>
+                </CadreVitre>
               ) : (
                 <div className="grid gap-3">
                   {projectTasks.map((task) => (
@@ -1639,10 +1640,17 @@ export function SuccesProjectsPage() {
           </button>
         </header>
 
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-5" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-          <Search size={15} style={{ color: 'var(--color-text-tertiary)' }} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un projet…" className="w-full bg-transparent outline-none text-sm" style={{ color: 'var(--color-text)' }} />
-        </div>
+        {/* La même vitre que la rangée de filtres de Tâches (17 sept. 2026). */}
+        <CadreVitre as="section"
+          className="flex items-center gap-2 rounded-2xl p-2 mb-5"
+          style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+          aria-label="Recherche de projets"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0 px-2 h-7">
+            <Search size={15} className="shrink-0" style={{ color: 'var(--color-text-tertiary)' }} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un projet…" className="w-full min-w-0 bg-transparent outline-none text-sm" style={{ color: 'var(--color-text)' }} />
+          </div>
+        </CadreVitre>
 
         {showForm && (
           <section className="grid gap-3 rounded-2xl p-4 mb-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-accent)' }}>
@@ -1806,7 +1814,7 @@ export function SuccesProjectsPage() {
         {loading ? (
           <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}><Loader2 size={17} className="animate-spin" /> Chargement des projets…</div>
         ) : projects.length === 0 ? (
-          <div className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}><BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} /><p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucun projet</p><p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez votre premier projet ou demandez-le à DIA.</p></div>
+          <CadreVitre className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}><BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} /><p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucun projet</p><p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez votre premier projet ou demandez-le à DIA.</p></CadreVitre>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
             {projects.map((project) => (
