@@ -664,6 +664,18 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
     line-height: 1;
     color: var(--color-text);
   }
+
+  /*
+   * L'onglet Terminées, son compte et les numéros de son pageur portent
+   * `--color-success` — Carlito les voulait « d'une autre couleur » (17 sept.
+   * 2026). En Ardéchine, ce jeton EST l'encre (#14120e) : la teinte ne dit
+   * plus rien, et c'est un soulignement pointillé qui distingue les pages
+   * des terminées de celles de la Liste.
+   */
+  :root.terminal[data-terminal-skin='ardechine'] .teinte-terminees {
+    text-decoration: underline dotted;
+    text-underline-offset: 0.25em;
+  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-weight: 400;

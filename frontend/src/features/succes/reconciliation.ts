@@ -66,11 +66,17 @@ export function retirerSousTache(task: SuccesTask, subtaskId: string): SuccesTas
 }
 
 /**
- * La liste sans la tâche `taskId` — seulement si elle est encore terminée :
- * une tâche rouverte pendant le délai reste à sa place.
+ * Ce qu'une liste qui cache les terminées montre : les ouvertes, plus les
+ * terminées EN SURSIS — cochées il y a moins de GLISSEMENT_MS, encore
+ * barrées à leur place. Une tâche rouverte pendant le délai est ouverte,
+ * donc reste, sursis ou non.
+ *
+ * Jusqu'au 17 sept. 2026 le glissement RETIRAIT la tâche de `tasks` ; depuis
+ * que les terminées ont leur onglet, `tasks` porte tout (le compte de
+ * l'onglet en a besoin) et c'est le filtre de la Liste qui glisse.
  */
-export function glisserSiTerminee(tasks: SuccesTask[], taskId: string): SuccesTask[] {
-  return tasks.filter((task) => task.id !== taskId || !task.done);
+export function sansTerminees(tasks: readonly SuccesTask[], sursis: ReadonlySet<string>): SuccesTask[] {
+  return tasks.filter((task) => !task.done || sursis.has(task.id));
 }
 
 /** Une date ISO `AAAA-MM-JJ` — la seule qu'on ose peindre avant la réponse. */

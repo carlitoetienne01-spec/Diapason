@@ -22,9 +22,13 @@ import {
   updateSuccesTask,
 } from '../features/succes/api';
 import { EmojiPicker } from '../features/succes/EmojiPicker';
+import { Pageur } from '../features/succes/Pageur';
+import { TachesTerminees } from '../features/succes/TachesTerminees';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import { TasksBoard } from '../features/succes/TasksBoard';
 import { jalonSuivant, jalonsEnAttente, tachesDuJour } from '../features/succes/jalons';
+import { nombreDePages, pageApresRetaille, pageDe, paginer, type TaillePage } from '../features/succes/pagination';
+import { bilanSuppression, type EchecDeSuppression } from '../features/succes/terminees';
 import {
   RecurrencesPanel,
   champsNonReprisParAmorce,
@@ -37,16 +41,21 @@ import {
   SuiviDesRequetes,
   basculerSousTache,
   estDateIso,
-  glisserSiTerminee,
   remplacerLigne,
   retirerSousTache,
+  sansTerminees,
 } from '../features/succes/reconciliation';
 import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesSyncStatus, SuccesTask } from '../features/succes/types';
 import {
   loadTasksFilters,
+  loadTasksPage,
+  loadTasksPageSize,
   loadTasksViewMode,
   saveTasksFilters,
+  saveTasksPage,
+  saveTasksPageSize,
   saveTasksViewMode,
+  type SuccesTasksOngletPagine,
   type SuccesTasksViewMode,
 } from '../features/succes/uiPrefs';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -60,6 +69,13 @@ function localIsoDate(value = new Date()) {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/** Le filtre projet : « Sans projet » (`__none__`), un projet, ou tout. */
+function duProjet(task: SuccesTask, projectFilter: string): boolean {
+  if (projectFilter === '__none__') return !task.projectId;
+  if (projectFilter) return task.projectId === projectFilter;
+  return true;
 }
 
 function logSucces(level: 'info' | 'error', message: string) {
@@ -81,6 +97,7 @@ export function SuccesTasksPage() {
   // démontait les cartes avec leur carnet ouvert, leur formulaire d'édition
   // et les deux chips d'un 409 (revue du 17 sept. 2026, défauts 5 et 14).
   const [loading, setLoading] = useState(true);
+  const chargeReussi = useRef(false);
   const [rafraichit, setRafraichit] = useState(false);
   // Un compteur, pas un booléen : deux écritures en vol (deux sous-tâches,
   // coche + carnet), et le `finally` de la première éteignait le voyant
@@ -92,11 +109,47 @@ export function SuccesTasksPage() {
   const [search, setSearch] = useState('');
   // Retenus comme le mode d'affichage : ils repartaient à zéro à chaque
   // visite — les terminées revenaient, le projet s'oubliait (17 sept. 2026).
+  // `includeDone` ne gouverne plus que la Semaine et le Mois : la Liste ne
+  // montre que l'ouvert et les terminées ont leur onglet.
   const [filtres] = useState(() => loadTasksFilters({ includeDone: true, projectFilter: '' }));
   const [includeDone, setIncludeDone] = useState(filtres.includeDone);
   const [projectFilter, setProjectFilter] = useState(filtres.projectFilter);
   const [filtresOuverts, setFiltresOuverts] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadTasksViewMode('week'));
+  // Les pages (demande de Carlito, 17 sept. 2026) : cinq tâches par défaut,
+  // taille et page retenues — par onglet, la Liste et les Terminées ne
+  // comptent pas les mêmes lignes.
+  const [parPage, setParPage] = useState<TaillePage>(loadTasksPageSize);
+  const [pages, setPages] = useState<Record<SuccesTasksOngletPagine, number>>(() => ({
+    list: loadTasksPage('list'),
+    done: loadTasksPage('done'),
+  }));
+  const changerPage = useCallback((onglet: SuccesTasksOngletPagine, page: number) => {
+    setPages((courantes) => (courantes[onglet] === page ? courantes : { ...courantes, [onglet]: page }));
+    saveTasksPage(onglet, page);
+  }, []);
+  const changerParPage = (taille: TaillePage) => {
+    // Le premier élément de la page courante reste sous les yeux.
+    changerPage('list', pageApresRetaille(pages.list, parPage, taille));
+    changerPage('done', pageApresRetaille(pages.done, parPage, taille));
+    setParPage(taille);
+    saveTasksPageSize(taille);
+  };
+  const changerPageListe = useCallback((page: number) => changerPage('list', page), [changerPage]);
+  const changerPageTerminees = useCallback((page: number) => changerPage('done', page), [changerPage]);
+  // La recherche ou le filtre projet change la liste de fond : la page 7
+  // d'une liste de 690 ne veut rien dire dans une liste de 12. Pas au
+  // montage — la page retenue est justement ce qu'on vient chercher ; on
+  // compare aux valeurs précédentes plutôt que de compter les passages,
+  // StrictMode joue l'effet deux fois au montage.
+  const dernierFiltrage = useRef({ search, projectFilter });
+  useEffect(() => {
+    const precedent = dernierFiltrage.current;
+    if (precedent.search === search && precedent.projectFilter === projectFilter) return;
+    dernierFiltrage.current = { search, projectFilter };
+    changerPage('list', 1);
+    changerPage('done', 1);
+  }, [search, projectFilter, changerPage]);
   const [boardAnchor, setBoardAnchor] = useState(localIsoDate);
   const [showCreate, setShowCreate] = useState(false);
   // Les récurrences vivent dans leur propre section, jamais en même temps
@@ -124,14 +177,18 @@ export function SuccesTasksPage() {
   const load = useCallback(async () => {
     setRafraichit(true);
     try {
+      // TOUJOURS avec les terminées : le compte de l'onglet Terminées et
+      // l'onglet lui-même en ont besoin (17 sept. 2026). La Liste filtre
+      // `!done` chez elle ; la Semaine et le Mois filtrent selon la case.
       const [nextTasks, nextProjects, nextTemplates] = await Promise.all([
-        listSuccesTasks({ includeDone, search }),
+        listSuccesTasks({ includeDone: true, search }),
         listSuccesProjects(),
         // Le bouton « Récurrences (N) » doit dire N avant qu'on l'ouvre.
         listSuccesTemplates().catch(() => null),
       ]);
       setTasks(nextTasks);
       suivi.current.rafraichir(nextTasks);
+      chargeReussi.current = true;
       setProjects(nextProjects);
       // Un filtre retenu sur un projet supprimé depuis viderait la liste
       // sans qu'aucune option du sélecteur ne le dise.
@@ -158,7 +215,7 @@ export function SuccesTasksPage() {
       setLoading(false);
       setRafraichit(false);
     }
-  }, [includeDone, search]);
+  }, [search]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 180);
@@ -194,22 +251,21 @@ export function SuccesTasksPage() {
   };
 
   const glissements = useRef<number[]>([]);
-  const annulerGlissements = () => {
+  useEffect(() => () => {
     for (const timer of glissements.current) window.clearTimeout(timer);
     glissements.current = [];
-  };
-  useEffect(() => annulerGlissements, []);
+  }, []);
 
-  // Le minuteur de glissement relit ce ref au moment de TIRER, pas au clic :
-  // « Terminées » cochée dans la seconde, `load()` rendait la liste AVEC la
-  // tâche faite, puis le minuteur la retirait d'une liste qui disait la
-  // montrer (revue du 17 sept. 2026, défaut 8). Et ce qui est encore armé
-  // s'annule quand le filtre change : la liste relue dit déjà vrai.
-  const includeDoneRef = useRef(includeDone);
-  useEffect(() => {
-    includeDoneRef.current = includeDone;
-    annulerGlissements();
-  }, [includeDone]);
+  /**
+   * Les tâches cochées il y a moins de GLISSEMENT_MS : encore barrées à leur
+   * place dans une liste qui cache les terminées. Avant le 17 sept. 2026, le
+   * glissement RETIRAIT la tâche de `tasks` — impossible depuis que l'onglet
+   * Terminées et son compte lisent la même liste ; c'est le filtre qui
+   * glisse (`sansTerminees`). Une ligne en sursis dans une vue qui montre
+   * les terminées est simplement montrée : le sursis n'a plus rien à
+   * relire au moment de tirer (l'ancien défaut 8 disparaît avec le retrait).
+   */
+  const [sursis, setSursis] = useState<ReadonlySet<string>>(() => new Set());
 
   /** Les requêtes en vol, tâche par tâche — voir `SuiviDesRequetes`. */
   const suivi = useRef(new SuiviDesRequetes());
@@ -259,14 +315,18 @@ export function SuccesTasksPage() {
   /**
    * Une tâche cochée reste barrée à sa place le temps de GLISSEMENT_MS avant
    * de quitter une liste qui cache les terminées — si elle l'est toujours :
-   * rouverte entre-temps, elle reste.
+   * rouverte entre-temps, elle est ouverte et reste, sursis ou non.
    */
   const programmerGlissement = (taskId: string) => {
-    if (includeDoneRef.current) return;
+    setSursis((courant) => new Set(courant).add(taskId));
     const timer = window.setTimeout(() => {
       glissements.current = glissements.current.filter((item) => item !== timer);
-      if (includeDoneRef.current) return;
-      setTasks((courantes) => glisserSiTerminee(courantes, taskId));
+      setSursis((courant) => {
+        if (!courant.has(taskId)) return courant;
+        const suivant = new Set(courant);
+        suivant.delete(taskId);
+        return suivant;
+      });
     }, GLISSEMENT_MS);
     glissements.current.push(timer);
   };
@@ -305,6 +365,13 @@ export function SuccesTasksPage() {
   };
 
   const toggleTask = async (task: SuccesTask) => {
+    // Le sursis se pose AVANT la réconciliation : l'état optimiste `done`
+    // est peint tout de suite, et sans sursis la Liste retirait la carte
+    // sous le doigt, la remontait barrée à la réponse du serveur, puis la
+    // faisait repartir — deux sauts au lieu d'un glissement (revue du
+    // 17 sept. 2026). Sur un échec, la ligne serveur revient `done: false`
+    // et le sursis expire sans effet.
+    if (!task.done) programmerGlissement(task.id);
     const serveur = await reconcilier(
       task,
       { ...task, done: !task.done },
@@ -312,7 +379,17 @@ export function SuccesTasksPage() {
       task.done ? 'Tâche rouverte' : 'Tâche terminée',
     );
     if (!serveur) return;
-    if (serveur.done) programmerGlissement(serveur.id);
+    // Rouverte depuis Terminées sans date, dans un projet à jalons : elle
+    // ne revient pas en Liste mais sur sa carte — le dire, sinon la ligne
+    // qui disparaît de l'onglet ressemble à une perte.
+    if (task.done && !serveur.done && !serveur.date && serveur.projectId) {
+      const projet = projects.find((p) => p.id === serveur.projectId);
+      if (projet && (projet.structure || 'flat') !== 'flat') {
+        toast(`Rouverte : ${serveur.title}`, {
+          description: `Sans date, elle attend sur sa carte dans Projets (${projet.name}).`,
+        });
+      }
+    }
     // Une étape de parcours cochée appelle la suivante (24 août 2026) :
     // « une étape datée à la fois ». On la propose pour aujourd'hui, sans
     // rien imposer — un clic la pose, l'ignorer la laisse sur sa carte.
@@ -395,11 +472,17 @@ export function SuccesTasksPage() {
    */
   const [decoupage, setDecoupage] = useState<{ taskId: string; n: number } | null>(null);
   const compteurDecoupage = useRef(0);
+  /** Les ouvertes de la Liste au dernier rendu : le toast « Découper » vit plus longtemps qu'un rendu. */
+  const ouvertesRef = useRef<SuccesTask[]>([]);
   const demanderDecoupage = (taskId: string) => {
     // La Semaine et le Mois n'ont pas de champ de sous-tâche : la réponse
     // vit sur la carte de la Liste, on y va (sans retenir ce saut comme
-    // préférence — c'est le toast qui l'a demandé, pas l'onglet).
+    // préférence — c'est le toast qui l'a demandé, pas l'onglet). Et sur
+    // SA page : depuis que la Liste est paginée, ouvrir le champ d'une
+    // carte qui n'est pas affichée n'ouvrait rien (17 sept. 2026).
     if (viewMode !== 'list') setViewMode('list');
+    const page = pageDe(ouvertesRef.current, (task) => task.id === taskId, parPage);
+    if (page !== null) changerPage('list', page);
     compteurDecoupage.current += 1;
     setDecoupage({ taskId, n: compteurDecoupage.current });
   };
@@ -553,6 +636,46 @@ export function SuccesTasksPage() {
     await refreshAfter(() => deleteSuccesTask(task.id), `Tâche supprimée : ${task.title}`);
   };
 
+  /**
+   * Supprime plusieurs terminées — la sélection, ou tout l'onglet (« Vider
+   * les terminées », filtre compris). Une requête par tâche, en séquence ;
+   * puis `load()` ; puis un toast qui rend le BILAN des réponses : « 4
+   * supprimées », ou « 3 sur 4 supprimées » avec ce qui a échoué et
+   * pourquoi. Jamais un succès global déduit du nombre demandé (§100) : ce
+   * qui a échoué reste dans l'onglet, sélectionné, et le toast le nomme.
+   */
+  const supprimerTerminees = async (cibles: SuccesTask[]) => {
+    if (cibles.length === 0) return;
+    const confirmed = await confirm({
+      title: cibles.length === 1
+        ? `Supprimer « ${cibles[0].title} » ?`
+        : `Supprimer ${cibles.length} tâches terminées ?`,
+      description: 'Chaque suppression est enregistrée comme suppression synchronisable. Rien ne se rouvre après.',
+      confirmLabel: 'Supprimer',
+      keepLabel: 'Garder',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    const echecs: EchecDeSuppression[] = [];
+    commencerEcriture();
+    try {
+      for (const cible of cibles) {
+        try {
+          await deleteSuccesTask(cible.id);
+        } catch (error) {
+          echecs.push({ titre: cible.title, message: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      await load();
+    } finally {
+      finirEcriture();
+    }
+    const bilan = bilanSuppression(cibles.length, echecs);
+    logSucces(bilan.ok ? 'info' : 'error', `Terminées : ${bilan.titre}${bilan.description ? ` — ${bilan.description}` : ''}`);
+    if (bilan.ok) toast.success(bilan.titre, { description: 'Enregistré localement sur ce Mac.' });
+    else toast.error(bilan.titre, { description: bilan.description });
+  };
+
   /** Ferme le formulaire, brouillon compris, sans demander : pour la remise du brouillon aux récurrences. */
   const viderCreation = () => {
     setTitle('');
@@ -598,17 +721,46 @@ export function SuccesTasksPage() {
     () => (projectFilter ? tasks : tachesDuJour(tasks, projects)),
     [tasks, projects, projectFilter],
   );
-  const visibleTasks = tachesDuQuotidien.filter((task) => {
-    if (projectFilter === '__none__') return !task.projectId;
-    if (projectFilter) return task.projectId === projectFilter;
-    return true;
-  });
+  const visibleTasks = useMemo(
+    () => tachesDuQuotidien.filter((task) => duProjet(task, projectFilter)),
+    [tachesDuQuotidien, projectFilter],
+  );
+  // La Liste : l'ouvert seulement, plus ce qui glisse encore ; la Semaine et
+  // le Mois : selon la case « Afficher les tâches terminées ».
+  const ouvertes = useMemo(() => sansTerminees(visibleTasks, sursis), [visibleTasks, sursis]);
+  useEffect(() => {
+    ouvertesRef.current = ouvertes;
+  }, [ouvertes]);
+  const tachesDuTableau = includeDone ? visibleTasks : ouvertes;
+  // Les Terminées : TOUTES les faites, étapes de projet comprises — une
+  // étape faite n'attend plus sur sa carte —, sous le même filtre projet.
+  const terminees = useMemo(
+    () => tasks.filter((task) => task.done && duProjet(task, projectFilter)),
+    [tasks, projectFilter],
+  );
+  const paginationListe = paginer(ouvertes, pages.list, parPage);
+  const nbPagesTerminees = nombreDePages(terminees.length, parPage);
 
-  const filtreActif = Boolean(search.trim() || !includeDone || projectFilter);
+  // Une page retenue qui n'existe plus (moins de tâches qu'à la dernière
+  // visite, taille de page plus grande) revient sur la dernière — après un
+  // chargement RÉUSSI seulement : avant lui la liste est vide et TOUTE page
+  // retenue serait « hors bornes » ; un premier chargement en échec (serveur
+  // injoignable) écrasait la page de la veille par 1 dans les préférences
+  // (revue du 17 sept. 2026).
+  useEffect(() => {
+    if (loading || !chargeReussi.current) return;
+    if (pages.list > paginationListe.nbPages) changerPage('list', paginationListe.nbPages);
+    if (pages.done > nbPagesTerminees) changerPage('done', nbPagesTerminees);
+  }, [loading, pages.list, pages.done, paginationListe.nbPages, nbPagesTerminees, changerPage]);
+
+  const surTableau = viewMode === 'week' || viewMode === 'month';
+  const filtreActif = Boolean(search.trim() || projectFilter || (surTableau && !includeDone));
   const libelleRecurrences = nbRecurrences === null ? 'Récurrences' : `Récurrences (${nbRecurrences})`;
 
   // Le sélecteur de mode vit sur la rangée du titre dès sm, sur la sienne
   // en dessous : rendu deux fois, une seule copie est affichée à la fois.
+  // Quatre onglets à 340 px : `px-2` sous sm — avec `px-3`, « Terminées 36 »
+  // poussait le bouton des filtres à la ligne (17 sept. 2026).
   const selecteurMode = (
     <CadreVitre compact
       className="flex rounded-xl p-1"
@@ -620,23 +772,32 @@ export function SuccesTasksPage() {
         { id: 'list' as const, label: 'Liste' },
         { id: 'week' as const, label: 'Semaine' },
         { id: 'month' as const, label: 'Mois' },
+        { id: 'done' as const, label: 'Terminées' },
       ]).map((option) => (
         <button
           key={option.id}
           type="button"
           role="tab"
           aria-selected={viewMode === option.id}
+          aria-label={option.id === 'done' ? `Terminées (${terminees.length})` : undefined}
           onClick={() => {
             setViewMode(option.id);
             saveTasksViewMode(option.id);
           }}
-          className="px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+          className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1"
           style={{
             background: viewMode === option.id ? 'var(--color-surface)' : 'transparent',
             color: viewMode === option.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
           }}
         >
           {option.label}
+          {/* Le compte des terminées, dans leur couleur — la même que les
+              numéros de leur pageur (Carlito, 17 sept. 2026). */}
+          {option.id === 'done' && (
+            <span className="tabular-nums teinte-terminees" style={{ color: 'var(--color-success)' }} aria-hidden>
+              {terminees.length}
+            </span>
+          )}
         </button>
       ))}
     </CadreVitre>
@@ -683,7 +844,7 @@ export function SuccesTasksPage() {
     // 8 + 2) + 12 = 146. Le sous-titre et la ligne de synchro — ~300 px de
     // chrome en tout — sont partis.
     <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-6 md:px-8">
-      <main className={`mx-auto w-full ${viewMode === 'list' ? 'max-w-5xl' : 'max-w-7xl'}`}>
+      <main className={`mx-auto w-full ${surTableau ? 'max-w-7xl' : 'max-w-5xl'}`}>
         <header className="mb-2 sm:mb-3">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
@@ -775,16 +936,26 @@ export function SuccesTasksPage() {
               style={{ color: 'var(--color-text)' }}
             />
           </div>
+          {/* `ml-auto` sur le sélecteur : quand la case « Terminées » est
+              absente (Liste, onglet Terminées), `justify-between` n'a plus
+              qu'un enfant et le collait à gauche — le même contrôle changeait
+              de côté selon l'onglet (revue du 17 sept. 2026). */}
           <div className="flex items-center justify-between gap-2 min-w-0 sm:contents">
-            <label className="flex items-center gap-2 text-xs cursor-pointer px-2 shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
-              <input type="checkbox" checked={includeDone} onChange={(event) => setIncludeDone(event.target.checked)} />
-              <span className="sm:hidden">Terminées</span>
-              <span className="hidden sm:inline">Afficher les tâches terminées</span>
-            </label>
+            {/* La case ne vaut que pour la Semaine et le Mois : la Liste ne
+                montre que l'ouvert et les terminées ont leur onglet (17 sept.
+                2026). En Liste et en Terminées, elle est cachée — une case
+                sans effet est une promesse (§5). */}
+            {surTableau && (
+              <label className="flex items-center gap-2 text-xs cursor-pointer px-2 shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                <input type="checkbox" checked={includeDone} onChange={(event) => setIncludeDone(event.target.checked)} />
+                <span className="sm:hidden">Terminées</span>
+                <span className="hidden sm:inline">Afficher les tâches terminées</span>
+              </label>
+            )}
             <select
               value={projectFilter}
               onChange={(event) => setProjectFilter(event.target.value)}
-              className="min-w-0 max-w-[60%] sm:max-w-none rounded-xl px-3 h-7 text-xs bg-transparent outline-none cursor-pointer"
+              className="min-w-0 max-w-[60%] sm:max-w-none ml-auto sm:ml-0 rounded-xl px-3 h-7 text-xs bg-transparent outline-none cursor-pointer"
               style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               aria-label="Filtrer par projet"
             >
@@ -936,7 +1107,7 @@ export function SuccesTasksPage() {
           </CadreVitre>
         )}
 
-        {!loading && jalonsQuiAttendent.length > 0 && (
+        {!loading && viewMode !== 'done' && jalonsQuiAttendent.length > 0 && (
           <CadreVitre as="section"
             className="mb-5 rounded-2xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
             style={{
@@ -973,11 +1144,26 @@ export function SuccesTasksPage() {
           <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des tâches…
           </div>
-        ) : viewMode !== 'list' ? (
+        ) : viewMode === 'done' ? (
+          <TachesTerminees
+            taches={terminees}
+            projects={projects}
+            aujourdHui={localIsoDate()}
+            page={pages.done}
+            parPage={parPage}
+            onPage={changerPageTerminees}
+            onParPage={changerParPage}
+            onRouvrir={toggleTask}
+            onSupprimer={removeTask}
+            onSupprimerPlusieurs={supprimerTerminees}
+            saving={saving}
+            filtreActif={filtreActif}
+          />
+        ) : surTableau ? (
           <TasksBoard
             mode={viewMode}
             anchor={boardAnchor}
-            tasks={visibleTasks}
+            tasks={tachesDuTableau}
             projects={projects}
             onAnchorChange={setBoardAnchor}
             onReschedule={rescheduleById}
@@ -987,33 +1173,53 @@ export function SuccesTasksPage() {
             onToggleSubtask={toggleSubtask}
             onQuickAdd={openCreateForDate}
           />
-        ) : visibleTasks.length === 0 ? (
+        ) : paginationListe.total === 0 ? (
           <CadreVitre className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <CheckCircle2 size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} />
             <p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucune tâche ici</p>
-            <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez-en une, ou demandez simplement à DIA.</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+              {terminees.length > 0 && !filtreActif
+                ? 'Tout est fait — les terminées vous attendent dans leur onglet.'
+                : 'Créez-en une, ou demandez simplement à DIA.'}
+            </p>
           </CadreVitre>
         ) : (
-          <div className="grid gap-3">
-            {visibleTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                vitre
-                task={task}
-                projects={projects}
-                onToggleTask={toggleTask}
-                onToggleSubtask={toggleSubtask}
-                onAddSubtask={addSubtask}
-                onDeleteSubtask={removeSubtask}
-                onUpdate={updateTask}
-                onJournal={journalTask}
-                onReschedule={rescheduleTask}
-                onDelete={removeTask}
-                decoupage={decoupage?.taskId === task.id ? decoupage.n : undefined}
-                onDecoupageOuvert={acquitterDecoupage}
-              />
-            ))}
-          </div>
+          <>
+            {/* Une page à la fois (Carlito, 17 sept. 2026) : 473 cartes
+                vitrées montées d'un coup pour un filtre projet, c'était la
+                molette pour retrouver la seule qu'on voulait. */}
+            <div className="grid gap-3">
+              {paginationListe.tranche.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  vitre
+                  task={task}
+                  projects={projects}
+                  onToggleTask={toggleTask}
+                  onToggleSubtask={toggleSubtask}
+                  onAddSubtask={addSubtask}
+                  onDeleteSubtask={removeSubtask}
+                  onUpdate={updateTask}
+                  onJournal={journalTask}
+                  onReschedule={rescheduleTask}
+                  onDelete={removeTask}
+                  decoupage={decoupage?.taskId === task.id ? decoupage.n : undefined}
+                  onDecoupageOuvert={acquitterDecoupage}
+                />
+              ))}
+            </div>
+            <Pageur
+              page={paginationListe.page}
+              nbPages={paginationListe.nbPages}
+              total={paginationListe.total}
+              debut={paginationListe.debut}
+              fin={paginationListe.fin}
+              parPage={parPage}
+              onPage={changerPageListe}
+              onParPage={changerParPage}
+              unite="tâches"
+            />
+          </>
         )}
       </main>
     </div>

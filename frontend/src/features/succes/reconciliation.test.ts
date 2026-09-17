@@ -4,9 +4,9 @@ import {
   SuiviDesRequetes,
   basculerSousTache,
   estDateIso,
-  glisserSiTerminee,
   remplacerLigne,
   retirerSousTache,
+  sansTerminees,
 } from './reconciliation';
 import type { SuccesSubtask, SuccesTask } from './types';
 
@@ -81,14 +81,23 @@ describe('l’état optimiste d’une sous-tâche', () => {
 });
 
 describe('le glissement d’une tâche cochée hors d’une liste sans terminées', () => {
-  it('la retire si elle est toujours terminée après le délai', () => {
+  it('la garde barrée à sa place tant qu’elle est en sursis, puis la retire', () => {
     const liste = [tache('a', { done: true }), tache('b')];
-    expect(glisserSiTerminee(liste, 'a').map((t) => t.id)).toEqual(['b']);
+    expect(sansTerminees(liste, new Set(['a'])).map((t) => t.id)).toEqual(['a', 'b']);
+    expect(sansTerminees(liste, new Set()).map((t) => t.id)).toEqual(['b']);
   });
 
-  it('la garde si elle a été rouverte entre-temps', () => {
+  it('la garde si elle a été rouverte entre-temps, sursis ou non', () => {
     const liste = [tache('a', { done: false }), tache('b')];
-    expect(glisserSiTerminee(liste, 'a')).toHaveLength(2);
+    expect(sansTerminees(liste, new Set())).toHaveLength(2);
+  });
+
+  it('ne retire jamais rien de la liste reçue — les terminées vivent dans leur onglet', () => {
+    // Depuis le 17 sept. 2026, `tasks` porte tout : le compte de l'onglet
+    // Terminées en a besoin ; seul le filtre de la Liste glisse.
+    const liste = [tache('a', { done: true }), tache('b')];
+    sansTerminees(liste, new Set());
+    expect(liste).toHaveLength(2);
   });
 });
 

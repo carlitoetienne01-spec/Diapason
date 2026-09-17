@@ -1,11 +1,20 @@
 /** Local UI preferences for Succès (view modes, collapsed trees). */
 
 import { normaliserEchelle } from './echelleTexte';
+import { TAILLE_PAGE_DEFAUT, bornerPage, estTaillePage, type TaillePage } from './pagination';
 import { estTriNotes, type TriNotes } from './triNotes';
 
 const STORAGE_KEY = 'diapason-succes-ui-prefs';
 
-export type SuccesTasksViewMode = 'list' | 'week' | 'month';
+/**
+ * `done` : l'onglet Terminées, à part de la Liste depuis le 17 sept. 2026 —
+ * les 36 tâches faites traînaient sous les 690 ouvertes, barrées.
+ */
+export type SuccesTasksViewMode = 'list' | 'week' | 'month' | 'done';
+const MODES: readonly SuccesTasksViewMode[] = ['list', 'week', 'month', 'done'];
+
+/** Les deux onglets paginés ; chacun retient sa page. */
+export type SuccesTasksOngletPagine = 'list' | 'done';
 
 /**
  * Les filtres de la page Tâches. Ils repartaient à zéro à chaque visite —
@@ -20,6 +29,10 @@ export type SuccesTasksFilters = {
 type Prefs = {
   tasksViewMode?: SuccesTasksViewMode;
   tasksFilters?: Partial<SuccesTasksFilters>;
+  /** Tâches par page (5, 10 ou 20), commun aux deux onglets paginés. */
+  tasksPageSize?: number;
+  /** La page où l'on était, par onglet paginé — pour y revenir. */
+  tasksPages?: Partial<Record<SuccesTasksOngletPagine, number>>;
   /** L'échelle du texte de la Ligne — voir `echelleTexte.ts`. */
   ligneEchelle?: number;
   /** taskId → whether its subtask list is expanded */
@@ -52,11 +65,35 @@ function writePrefs(patch: Prefs) {
 
 export function loadTasksViewMode(fallback: SuccesTasksViewMode = 'week'): SuccesTasksViewMode {
   const value = readPrefs().tasksViewMode;
-  return value === 'list' || value === 'week' || value === 'month' ? value : fallback;
+  return MODES.includes(value as SuccesTasksViewMode) ? (value as SuccesTasksViewMode) : fallback;
 }
 
 export function saveTasksViewMode(mode: SuccesTasksViewMode) {
   writePrefs({ tasksViewMode: mode });
+}
+
+/** Tâches par page, telle que choisie la dernière fois ; 5 si rien ou si la valeur n'est pas offerte. */
+export function loadTasksPageSize(): TaillePage {
+  const value = readPrefs().tasksPageSize;
+  return estTaillePage(value) ? value : TAILLE_PAGE_DEFAUT;
+}
+
+export function saveTasksPageSize(taille: TaillePage) {
+  writePrefs({ tasksPageSize: taille });
+}
+
+/**
+ * La page retenue pour un onglet — au moins 1 ; la borne HAUTE n'est connue
+ * qu'une fois la liste chargée, c'est la page qui la ramène dans ses bornes.
+ */
+export function loadTasksPage(onglet: SuccesTasksOngletPagine): number {
+  const value = readPrefs().tasksPages?.[onglet];
+  return typeof value === 'number' ? bornerPage(value, Number.MAX_SAFE_INTEGER) : 1;
+}
+
+export function saveTasksPage(onglet: SuccesTasksOngletPagine, page: number) {
+  const pages = { ...(readPrefs().tasksPages || {}), [onglet]: page };
+  writePrefs({ tasksPages: pages });
 }
 
 export function loadTasksFilters(fallback: SuccesTasksFilters): SuccesTasksFilters {
