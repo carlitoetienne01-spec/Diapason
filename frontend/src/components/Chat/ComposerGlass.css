@@ -66,14 +66,20 @@
 }
 
 /* La couche CRT reste inchangée ailleurs. Le masque est retiré au démontage
-   du compositeur et des menus, et ne modifie jamais les événements souris. */
+   du compositeur et des menus, et ne modifie jamais les événements souris.
+   Des dégradés, pas une image (voir verreTexture.ts, 17 sept. 2026) : un
+   calque plein qui soustrait la réunion des trous ajoutés dessous. */
 .terminal body::after {
-  -webkit-mask-image: var(--diapason-decoupes-verre, none);
-  mask-image: var(--diapason-decoupes-verre, none);
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
+  -webkit-mask-image: var(--diapason-verre-masque, none);
+  mask-image: var(--diapason-verre-masque, none);
+  -webkit-mask-size: var(--diapason-verre-taille, 100% 100%);
+  mask-size: var(--diapason-verre-taille, 100% 100%);
+  -webkit-mask-position: var(--diapason-verre-position, 0 0);
+  mask-position: var(--diapason-verre-position, 0 0);
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
+  -webkit-mask-composite: var(--diapason-verre-composite-webkit, source-over);
+  mask-composite: var(--diapason-verre-composite, add);
 }
 
 .composer-glass {
