@@ -3,14 +3,16 @@ import { createPortal } from 'react-dom';
 import { CornerDownLeft, Plus, Search } from 'lucide-react';
 import type { Conversation } from '../../types';
 import { useAppStore } from '../../lib/store';
-import { classerDiscussions } from '../../lib/discussions';
+import { rechercherDiscussions } from '../../lib/discussions';
 import {
+  demanderDeMontrerLeMessage,
   demanderLeFocusDuCompositeur,
   deposerLeTexteDansLeCompositeur,
 } from '../../lib/panneau';
 import { formatRelativeTime, sectionsOf } from '../Sidebar/ConversationList';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { ExtraitDeMessage } from './ExtraitDeMessage';
 
 /**
  * Le sauteur de discussions (⌘J) : un menu de verre ancré SOUS le titre du
@@ -35,6 +37,14 @@ import { useSurfaceVitree } from './useSurfaceVitree';
  * Les actions sur un AUTRE fil ne sont pas ici : on le choisit, puis ⋯ agit
  * sur le courant — épuré. L'état d'ouverture est celui de ChatArea, jamais
  * une route (le rail réécrit l'URL).
+ *
+ * Dès deux caractères, la requête fouille aussi les MESSAGES
+ * (`rechercherDiscussions`) : le titre n'est que la première question, et
+ * « la discussion où il m'a donné la date du permis » n'y est pas. L'extrait
+ * (24 caractères avant, 40 après, terme surligné) tient en seconde ligne, cachée sous `sm`
+ * où une rangée de 340 px n'a de place que pour le titre. ↩ sur un tel
+ * résultat ouvre le fil AU message : défilement jusqu'à la bulle et halo
+ * (iMessage macOS 13, Slack « ouvrir au message »).
  */
 
 /** Posé sur les boutons qui ouvrent ET ferment le sauteur (titre, ⌕) : un
@@ -103,14 +113,20 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
   const [idx, setIdx] = useState(0);
   const enRecherche = requete.trim() !== '';
 
-  const classees = useMemo(
-    () => classerDiscussions(requete, conversations, Date.now()),
+  const resultats = useMemo(
+    () => rechercherDiscussions(conversations, requete, Date.now()),
     [requete, conversations],
+  );
+  const classees = useMemo(() => resultats.map((r) => r.conversation), [resultats]);
+  const resultatDe = useMemo(
+    () => new Map(resultats.map((r) => [r.conversation.id, r])),
+    [resultats],
   );
   // Sans requête, les sections de la barre latérale ; avec, une liste plate
   // dans l'ordre du classement (épinglées, début de mot, sous-chaîne,
-  // récence). Les sections ne réordonnent pas : leur concaténation est
-  // exactement `classees`, et l'index clavier s'y lit directement.
+  // récence — ou, dès deux caractères, épinglées, occurrences, récence).
+  // Les sections ne réordonnent pas : leur concaténation est exactement
+  // `classees`, et l'index clavier s'y lit directement.
   const sections = useMemo<{ label: string | null; items: Conversation[] }[]>(
     () => (enRecherche ? [{ label: null, items: classees }] : sectionsOf(classees, t)),
     [enRecherche, classees, t],
@@ -155,6 +171,10 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
       selectConversation(id);
       loadMessages(id);
     }
+    // Un résultat venu d'un message ouvre le fil AU message : la demande
+    // part après la sélection, ChatArea défile une fois les bulles rendues.
+    const messageId = resultatDe.get(id)?.messageId;
+    if (messageId) demanderDeMontrerLeMessage(messageId);
     fermer();
   };
 
@@ -294,6 +314,8 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
               const i = indexDe.get(c.id) ?? 0;
               const choisie = i === idx;
               const active = c.id === activeId;
+              const extrait = resultatDe.get(c.id)?.extrait ?? null;
+              const role = resultatDe.get(c.id)?.role ?? null;
               return (
                 <div
                   key={c.id}
@@ -303,9 +325,11 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
                   aria-selected={choisie}
                   onClick={() => choisir(c.id)}
                   onMouseEnter={() => setIdx(i)}
-                  className="composer-glass-menu-item flex items-center gap-2 px-2.5 text-[13px] cursor-pointer"
+                  className="composer-glass-menu-item flex items-center gap-2 px-2.5 py-1 text-[13px] cursor-pointer"
                   style={{
-                    height: HAUTEUR_RANGEE,
+                    // Hauteur minimale, pas fixe : l'extrait ajoute une
+                    // ligne à partir de `sm`, la rangée reste 32 px en dessous.
+                    minHeight: HAUTEUR_RANGEE,
                     background: choisie ? 'var(--color-accent-subtle)' : undefined,
                     color: 'var(--color-text)',
                   }}
@@ -315,14 +339,19 @@ export function SauteurDiscussions({ ancre, repli, onClose }: Props) {
                     className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ background: active ? 'var(--color-accent)' : 'transparent' }}
                   />
-                  <span
-                    className="flex-1 min-w-0 truncate"
-                    style={{
-                      color: c.title.trim() ? 'var(--color-text)' : 'var(--color-text-tertiary)',
-                      fontWeight: active ? 500 : 400,
-                    }}
-                  >
-                    {c.title.trim() || t('sidebar.untitled')}
+                  <span className="flex-1 min-w-0 flex flex-col">
+                    <span
+                      className="truncate"
+                      style={{
+                        color: c.title.trim() ? 'var(--color-text)' : 'var(--color-text-tertiary)',
+                        fontWeight: active ? 500 : 400,
+                      }}
+                    >
+                      {c.title.trim() || t('sidebar.untitled')}
+                    </span>
+                    {extrait && (
+                      <ExtraitDeMessage extrait={extrait} role={role} t={t} />
+                    )}
                   </span>
                   <span
                     className="shrink-0 text-[11px] tabular-nums"

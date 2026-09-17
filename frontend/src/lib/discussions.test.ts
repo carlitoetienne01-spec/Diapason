@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Conversation } from '../types';
+import type { ChatMessage, Conversation } from '../types';
 import {
+  LONGUEUR_MIN_RECHERCHE,
+  RAYON_APRES,
+  RAYON_AVANT,
   TITRE_MAX,
   classerDiscussions,
   debutDeMot,
+  filtrerDiscussions,
   plierTexte,
   plusRecente,
+  rechercherDiscussions,
   titreDiscussion,
   titreProvisoire,
   trouverDiscussionVierge,
@@ -202,5 +207,154 @@ describe('classerDiscussions', () => {
     const liste = [permis, anglais];
     classerDiscussions('', liste, NOW);
     expect(liste.map((c) => c.id)).toEqual(['permis', 'anglais']);
+  });
+});
+
+describe('filtrerDiscussions', () => {
+  const NOW = 100_000;
+  const msg = (id: string, role: ChatMessage['role'], content: string): ChatMessage => ({
+    id,
+    role,
+    content,
+    timestamp: 1,
+  });
+  const permis = conv('permis', 'La Cité — permis', {
+    updatedAt: 90_000,
+    messages: [
+      msg('q1', 'user', 'Quelle est la date limite pour le permis haïtien ?'),
+      msg('r1', 'assistant', 'La date limite est le 27 octobre 2026, puis le 6 novembre 2027.'),
+    ],
+  });
+  const anglais = conv('anglais', 'English Mastery', {
+    updatedAt: 95_000,
+    messages: [msg('q2', 'user', 'Comment dit-on « permis » en anglais ?')],
+  });
+  const bilan = conv('bilan', 'Bilan du permis', { updatedAt: 80_000, pinned: true });
+  const muet = conv('muet', 'Appel d’outil', {
+    updatedAt: 99_000,
+    messages: [{ id: 'o', role: 'assistant', content: '', timestamp: 1, toolCalls: [] }],
+  });
+
+  it('trouve une discussion par un mot qui n’est que dans ses messages — le titre ne dit pas tout', () => {
+    // « la discussion où il m'a donné la date du permis » : « date » n'est
+    // dans aucun titre, seulement dans les messages.
+    const res = filtrerDiscussions([permis, anglais, bilan], 'date', NOW);
+    expect(res.map((r) => r.conversation.id)).toEqual(['permis']);
+    expect(res[0].messageId, 'le PREMIER message qui contient le terme').toBe('q1');
+    expect(res[0].role).toBe('user');
+    expect(res[0].occurrences, 'deux messages, une occurrence chacun').toBe(2);
+  });
+
+  it('rend l’extrait autour de la première occurrence, le terme écrit comme dans le message', () => {
+    const res = filtrerDiscussions([permis], 'DATE', NOW);
+    const ex = res[0].extrait!;
+    expect(ex.terme, 'accents et casse d’origine, pas ceux de la requête').toBe('date');
+    expect(ex.avant).toBe('Quelle est la ');
+    expect(ex.apres).toBe(' limite pour le permis haïtien ?');
+    expect(ex.avant + ex.terme + ex.apres).toBe(permis.messages[0].content);
+  });
+
+  it('borne l’extrait à RAYON_AVANT / RAYON_APRES caractères et marque les coupes d’une ellipse', () => {
+    // Asymétrique : la ligne est tronquée à droite, le terme doit rester
+    // visible avant la coupe à 320 px.
+    expect(RAYON_AVANT).toBeLessThan(RAYON_APRES);
+    const long = conv('long', 'Long', {
+      messages: [msg('m', 'assistant', 'a'.repeat(100) + ' cible ' + 'b'.repeat(100))],
+    });
+    const ex = filtrerDiscussions([long], 'cible', NOW)[0].extrait!;
+    expect(ex.avant.startsWith('…')).toBe(true);
+    expect(ex.apres.endsWith('…')).toBe(true);
+    expect(ex.avant.length, 'ellipse + 24').toBe(RAYON_AVANT + 1);
+    expect(ex.apres.length, '40 + ellipse').toBe(RAYON_APRES + 1);
+  });
+
+  it('place l’extrait au bon endroit malgré des accents AVANT le terme', () => {
+    // Plier le texte entier déplace tout ce qui suit un « é » (NFD fait deux
+    // unités, l'une retirée) : sans index par caractère, l'extrait tombait
+    // un caractère trop tôt par accent précédent.
+    const accents = conv('acc', 'Été', {
+      messages: [msg('m', 'user', 'Élève éméché à Nîmes : réserver la salle')],
+    });
+    const ex = filtrerDiscussions([accents], 'reserver', NOW)[0].extrait!;
+    expect(ex.terme).toBe('réserver');
+    expect(ex.avant).toBe('Élève éméché à Nîmes : ');
+    expect(ex.apres).toBe(' la salle');
+  });
+
+  it('aplatit les retours à la ligne dans l’extrait — c’est une ligne, pas un paragraphe', () => {
+    const md = conv('md', 'Md', { messages: [msg('m', 'assistant', 'Un.\n\nDeux cible\ntrois.')] });
+    const ex = filtrerDiscussions([md], 'cible', NOW)[0].extrait!;
+    expect(ex.avant).toBe('Un. Deux ');
+    expect(ex.apres).toBe(' trois.');
+  });
+
+  it('une correspondance de titre seul n’a ni extrait ni message — le titre est déjà affiché', () => {
+    const res = filtrerDiscussions([bilan], 'bilan', NOW);
+    expect(res).toHaveLength(1);
+    expect(res[0].extrait).toBeNull();
+    expect(res[0].messageId).toBeNull();
+    expect(res[0].role).toBeNull();
+    expect(res[0].occurrences).toBe(1);
+  });
+
+  it('trie : épinglées, puis nombre d’occurrences, puis récence', () => {
+    // « permis » : titre + 2 messages = 3 occurrences ; « anglais » : 1, plus
+    // récente ; « bilan » : 1 mais épinglée — devant tout.
+    const ids = filtrerDiscussions([permis, anglais, bilan], 'permis', NOW).map(
+      (r) => r.conversation.id,
+    );
+    expect(ids).toEqual(['bilan', 'permis', 'anglais']);
+  });
+
+  it('une requête vide ou blanche ne rend rien — le catalogue n’est pas un résultat', () => {
+    expect(filtrerDiscussions([permis, anglais], '', NOW)).toEqual([]);
+    expect(filtrerDiscussions([permis, anglais], '   ', NOW)).toEqual([]);
+  });
+
+  it('un message sans texte (appel d’outil seul) ne correspond pas et ne plante pas', () => {
+    expect(filtrerDiscussions([muet], 'outil', NOW).map((r) => r.conversation.id)).toEqual([
+      'muet',
+    ]);
+    expect(filtrerDiscussions([muet], 'zzz', NOW)).toEqual([]);
+    const casse = conv('casse', 'Casse', {
+      messages: [{ ...msg('m', 'user', ''), content: undefined as unknown as string }],
+    });
+    expect(filtrerDiscussions([casse], 'zzz', NOW)).toEqual([]);
+  });
+
+  it('ignore accents et casse dans la requête comme dans les messages', () => {
+    expect(filtrerDiscussions([permis], 'HAITIEN', NOW).map((r) => r.conversation.id)).toEqual([
+      'permis',
+    ]);
+    expect(filtrerDiscussions([permis], 'haïtien', NOW)[0].extrait!.terme).toBe('haïtien');
+  });
+});
+
+describe('rechercherDiscussions', () => {
+  const NOW = 100_000;
+  const permis = conv('permis', 'Permis', {
+    messages: [{ id: 'm', role: 'user', content: 'la date limite', timestamp: 1 }],
+  });
+
+  it('sous LONGUEUR_MIN_RECHERCHE caractères, ne fouille que les titres, sans extrait', () => {
+    expect(LONGUEUR_MIN_RECHERCHE).toBe(2);
+    const res = rechercherDiscussions([permis], 'd', NOW);
+    expect(res, '« d » est dans « date » mais pas dans le titre').toEqual([]);
+    const titre = rechercherDiscussions([permis], 'p', NOW);
+    expect(titre).toHaveLength(1);
+    expect(titre[0].extrait).toBeNull();
+  });
+
+  it('dès deux caractères, fouille les messages avec extrait', () => {
+    const res = rechercherDiscussions([permis], 'da', NOW);
+    expect(res).toHaveLength(1);
+    expect(res[0].extrait?.terme).toBe('da');
+    expect(res[0].messageId).toBe('m');
+  });
+
+  it('sans requête, rend l’ordre du sauteur en entier', () => {
+    expect(rechercherDiscussions([permis], '', NOW).map((r) => r.conversation.id)).toEqual([
+      'permis',
+    ]);
   });
 });

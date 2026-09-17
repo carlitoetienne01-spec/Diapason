@@ -156,3 +156,193 @@ export function classerDiscussions(
     })
     .map((e) => e.c);
 }
+
+// ── Recherche dans les messages ──────────────────────────────────────────
+//
+// 17 sept. 2026, chantier « discussions dans le mini-panneau ». Le titre est
+// les 50 premiers caractères de la première question (store.ts) : « la
+// discussion où il m'a donné la date du permis » était introuvable, le mot
+// « date » n'étant jamais dans un titre. Les messages sont déjà dans le
+// store ; à trois conversations, un index FTS côté serveur serait une
+// promesse sans usage (§5). La recherche est donc ici, pure, et le même
+// résultat se lit pareil sous le titre du fil et dans la barre latérale.
+
+/** Un segment de l'extrait : `avant` et `apres` sont du texte nu, `terme`
+ * est l'occurrence telle qu'elle est écrite (accents et casse d'origine),
+ * à surligner. Le module ne rend pas de <mark> : il n'a pas de DOM. */
+export interface Extrait {
+  avant: string;
+  terme: string;
+  apres: string;
+}
+
+export interface ResultatRecherche {
+  conversation: Conversation;
+  /** null quand seul le titre correspond : il est déjà affiché. */
+  extrait: Extrait | null;
+  /** Qui a écrit le message extrait ; null pour une correspondance de titre. */
+  role: 'user' | 'assistant' | null;
+  /** Le message d'où vient l'extrait, pour y défiler ; null sur le titre. */
+  messageId: string | null;
+  /** Occurrences dans le titre et tous les messages — le second critère de tri. */
+  occurrences: number;
+}
+
+// 24 caractères avant le terme, 40 après. La ligne d'extrait (11 px) porte
+// ≈ 55 caractères à 320 px, la largeur du sauteur ; elle est tronquée à
+// droite, et « Vous : » (7) + une ellipse + 24 laissent le terme visible
+// avant la coupe — avec 40 devant, un terme au milieu d'un long message
+// était tronqué hors de la ligne, et l'extrait ne montrait que du contexte
+// (vu dans le banc à 800 px, 17 sept. 2026). Après, 40 : de quoi lire la
+// suite de la phrase quand la ligne est plus large.
+export const RAYON_AVANT = 24;
+export const RAYON_APRES = 40;
+
+// Sous deux caractères, presque tout correspond (« e » est dans chaque
+// message) et l'extrait ne dit rien ; on reste alors sur les titres.
+export const LONGUEUR_MIN_RECHERCHE = 2;
+
+interface TextePlie {
+  plie: string;
+  /** Pour chaque unité de code du texte plié, l'index d'origine de son caractère. */
+  debut: number[];
+  /** … et l'index d'origine juste APRÈS ce caractère. */
+  fin: number[];
+}
+
+/**
+ * Plie caractère par caractère en gardant la correspondance des index :
+ * `plierTexte` seul déplace tout ce qui suit un accent (« é » NFD fait deux
+ * unités, dont une est retirée), et l'extrait tombait un caractère trop tôt
+ * par accent précédent.
+ */
+function plierAvecIndex(texte: string): TextePlie {
+  let plie = '';
+  const debut: number[] = [];
+  const fin: number[] = [];
+  let i = 0;
+  for (const car of texte) {
+    const p = plierCaractere(car);
+    for (let k = 0; k < p.length; k++) {
+      debut.push(i);
+      fin.push(i + car.length);
+    }
+    plie += p;
+    i += car.length;
+  }
+  return { plie, debut, fin };
+}
+
+function plierCaractere(car: string): string {
+  return car
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
+
+/** Occurrences non chevauchantes de `q` dans `plie` (q non vide). */
+function compterOccurrences(plie: string, q: string): number {
+  let n = 0;
+  let depuis = 0;
+  for (;;) {
+    const i = plie.indexOf(q, depuis);
+    if (i < 0) return n;
+    n += 1;
+    depuis = i + q.length;
+  }
+}
+
+/** Les retours à la ligne d'un message deviennent des espaces : l'extrait
+ * est une ligne, et un « \n\n » de Markdown y ferait un trou. */
+function aplatir(texte: string): string {
+  return texte.replace(/\s+/g, ' ');
+}
+
+function extraire(contenu: string, texte: TextePlie, q: string): Extrait | null {
+  const i = texte.plie.indexOf(q);
+  if (i < 0) return null;
+  const debut = texte.debut[i];
+  const fin = texte.fin[i + q.length - 1];
+  const depuis = Math.max(0, debut - RAYON_AVANT);
+  const jusqua = Math.min(contenu.length, fin + RAYON_APRES);
+  return {
+    avant: (depuis > 0 ? '…' : '') + aplatir(contenu.slice(depuis, debut)),
+    terme: aplatir(contenu.slice(debut, fin)),
+    apres: aplatir(contenu.slice(fin, jusqua)) + (jusqua < contenu.length ? '…' : ''),
+  };
+}
+
+/**
+ * Cherche `requete` dans le titre puis dans `messages[].content` de chaque
+ * conversation, accents et casse pliés. Le résultat porte un extrait
+ * (RAYON_AVANT caractères avant, RAYON_APRES après) de la PREMIÈRE
+ * occurrence dans un message (le premier qui contient la requête) ; quand seul le
+ * titre correspond, pas d'extrait — il est déjà affiché. Tri : épinglées,
+ * puis nombre d'occurrences (titre et messages confondus), puis la plus
+ * récente, `now` bornant la récence comme dans `classerDiscussions`.
+ *
+ * Une requête vide ou blanche ne rend RIEN : le catalogue entier n'est pas
+ * un résultat de recherche, l'appelant montre alors l'ordre du sauteur. Un
+ * message sans texte (appel d'outil seul, audio) n'est pas une erreur : il
+ * ne correspond simplement pas.
+ */
+export function filtrerDiscussions(
+  conversations: readonly Conversation[],
+  requete: string,
+  now: number = Date.now(),
+): ResultatRecherche[] {
+  const q = plierTexte(requete);
+  if (!q) return [];
+  const resultats: ResultatRecherche[] = [];
+  for (const c of conversations) {
+    let occurrences = compterOccurrences(plierTexte(c.title), q);
+    let extrait: Extrait | null = null;
+    let role: ResultatRecherche['role'] = null;
+    let messageId: string | null = null;
+    for (const m of c.messages) {
+      const contenu = typeof m.content === 'string' ? m.content : '';
+      if (!contenu) continue;
+      const texte = plierAvecIndex(contenu);
+      const n = compterOccurrences(texte.plie, q);
+      if (n === 0) continue;
+      occurrences += n;
+      if (!extrait) {
+        extrait = extraire(contenu, texte, q);
+        role = m.role;
+        messageId = m.id;
+      }
+    }
+    if (occurrences > 0) resultats.push({ conversation: c, extrait, role, messageId, occurrences });
+  }
+  const recence = (c: Conversation) => Math.min(c.updatedAt, now);
+  return resultats.sort((a, b) => {
+    const ea = a.conversation.pinned ? 0 : 1;
+    const eb = b.conversation.pinned ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    if (a.occurrences !== b.occurrences) return b.occurrences - a.occurrences;
+    return recence(b.conversation) - recence(a.conversation);
+  });
+}
+
+/**
+ * Ce que le sauteur ET la barre latérale affichent pour une requête : sous
+ * LONGUEUR_MIN_RECHERCHE caractères, les titres seuls (`classerDiscussions`,
+ * sans extrait) ; à partir de deux, titres et messages avec extrait. Une
+ * seule fonction pour que les deux vues ne divergent jamais.
+ */
+export function rechercherDiscussions(
+  conversations: readonly Conversation[],
+  requete: string,
+  now: number,
+): ResultatRecherche[] {
+  if (plierTexte(requete).length >= LONGUEUR_MIN_RECHERCHE) {
+    return filtrerDiscussions(conversations, requete, now);
+  }
+  return classerDiscussions(requete, conversations, now).map((conversation) => ({
+    conversation,
+    extrait: null,
+    role: null,
+    messageId: null,
+    occurrences: 0,
+  }));
+}

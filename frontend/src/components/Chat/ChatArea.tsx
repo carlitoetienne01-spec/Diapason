@@ -9,7 +9,15 @@ import { Database, MessageSquare, X } from 'lucide-react';
 import { MatrixRain } from './MatrixRain';
 import { listConnectors } from '../../lib/connectors-api';
 import { useTranslation } from '../../i18n/useTranslation';
-import { EVENEMENT_OUVRIR_SAUTEUR } from '../../lib/panneau';
+import {
+  EVENEMENT_MONTRER_MESSAGE,
+  EVENEMENT_OUVRIR_SAUTEUR,
+  consommerLeMessageAMontrer,
+} from '../../lib/panneau';
+
+// 800 ms de halo sur la bulle qu'un résultat de recherche vient d'ouvrir :
+// voir .bulle-cible dans index.css, qui porte le même nombre.
+const HALO_MS = 800;
 
 // The greeting picks a catalogue key rather than a sentence: a hook cannot be
 // called out here, so the wording is resolved at render time.
@@ -44,6 +52,23 @@ export function ChatArea() {
   const wasStreaming = useRef(false);
   const lastScrollTop = useRef(0);
 
+  // 17 sept. 2026 : un résultat de recherche venu d'un MESSAGE (sauteur,
+  // barre latérale) ouvre le fil au message, pas en bas. La demande arrive
+  // par événement après la sélection — ou, depuis la barre latérale, AVANT
+  // que cette vue soit montée : on la relit alors au montage. Le défilement
+  // se fait dans l'effet ci-dessous, une fois les bulles rendues.
+  const [messageCible, setMessageCible] = useState<string | null>(() =>
+    consommerLeMessageAMontrer(),
+  );
+  useEffect(() => {
+    const montrer = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (typeof id === 'string' && id) setMessageCible(id);
+    };
+    window.addEventListener(EVENEMENT_MONTRER_MESSAGE, montrer);
+    return () => window.removeEventListener(EVENEMENT_MONTRER_MESSAGE, montrer);
+  }, []);
+
   // Check if any data sources are connected
   const [hasConnectedSources, setHasConnectedSources] = useState<boolean | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -65,6 +90,26 @@ export function ChatArea() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, streamState.content, streamState.isStreaming]);
+
+  // Déclaré APRÈS l'effet d'auto-défilement : les deux courent au même
+  // commit, et celui-ci doit avoir le dernier mot. Le défilement est
+  // désarmé pour que le prochain rendu ne ramène pas la vue en bas.
+  useEffect(() => {
+    if (!messageCible) return;
+    const bulle = listRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(messageCible)}"]`,
+    );
+    if (bulle) {
+      shouldAutoScroll.current = false;
+      const sansMouvement = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      bulle.scrollIntoView({ block: 'center', behavior: sansMouvement ? 'auto' : 'smooth' });
+    }
+    // Le halo se retire au bout de HALO_MS, cible trouvée ou non : une cible
+    // absente (message supprimé dans l'autre vue) ne doit pas rester armée
+    // jusqu'à ce qu'un id identique réapparaisse.
+    const timer = window.setTimeout(() => setMessageCible(null), HALO_MS);
+    return () => window.clearTimeout(timer);
+  }, [messageCible, messages]);
 
   const handleScroll = () => {
     if (!listRef.current) return;
@@ -200,6 +245,7 @@ export function ChatArea() {
                     key={msg.id}
                     message={msg}
                     isLive={isLastAssistant && streamState.isStreaming}
+                    cible={msg.id === messageCible}
                   />
                 );
               })}

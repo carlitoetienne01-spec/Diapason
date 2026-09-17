@@ -23,6 +23,9 @@ function stripThinkTags(text: string): string {
 interface Props {
   message: ChatMessage;
   isLive?: boolean;
+  /** 17 sept. 2026 : la bulle qu'un résultat de recherche vient d'ouvrir —
+   * halo d'accent 800 ms, le temps de la trouver des yeux. */
+  cible?: boolean;
 }
 
 function getTextContent(node: any): string {
@@ -107,14 +110,17 @@ function CopyMessageButton({ content }: { content: string }) {
   );
 }
 
-export function MessageBubble({ message, isLive = false }: Props) {
+export function MessageBubble({ message, isLive = false, cible = false }: Props) {
   const isUser = message.role === 'user';
+  // `data-message-id` : la cible du défilement « au message » (sauteur,
+  // barre latérale) ; ChatArea la cherche dans le DOM une fois rendue.
+  const halo = cible ? ' bulle-cible' : '';
 
   if (isUser) {
     // Ses propres mots se copient aussi (demandé le 23 août 2026) : même
     // bouton que côté réponse, à gauche de la bulle, révélé au survol.
     return (
-      <div className="flex justify-end mb-4 group">
+      <div className={`flex justify-end mb-4 group${halo}`} data-message-id={message.id}>
         <div className="flex items-end gap-1.5 max-w-[85%]">
           <CopyMessageButton content={message.content} />
           <div
@@ -153,7 +159,7 @@ export function MessageBubble({ message, isLive = false }: Props) {
   }, [sourcesMap]);
 
   return (
-    <div className="group mb-6">
+    <div className={`group mb-6${halo}`} data-message-id={message.id}>
       {/* Deep Research timeline (steps + status) */}
       {(message.isResearch || (message.researchTraces && message.researchTraces.length > 0)) && (
         <ResearchTimeline

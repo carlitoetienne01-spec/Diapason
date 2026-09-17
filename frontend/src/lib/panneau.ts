@@ -22,11 +22,18 @@
  * crée un fil depuis une requête sans résultat, le texte tapé rejoint le
  * compositeur par `diapason:deposer-texte` (detail : la chaîne), déposé et
  * jamais envoyé : InputArea seule connaît son champ.
+ *
+ * Et quand un résultat de recherche vient d'un MESSAGE (le sauteur ou la
+ * barre latérale), le fil doit s'ouvrir « au message », pas en bas :
+ * `diapason:montrer-message` (detail : l'id du message) est émis APRÈS la
+ * sélection ; ChatArea, seule à tenir le conteneur de défilement, y défile
+ * une fois les bulles rendues et surligne la cible 800 ms.
  */
 export const EVENEMENT_PANNEAU_OUVERT = 'diapason:panneau-ouvert';
 export const EVENEMENT_FOCUS_COMPOSITEUR = 'diapason:focus-compositeur';
 export const EVENEMENT_OUVRIR_SAUTEUR = 'diapason:ouvrir-sauteur';
 export const EVENEMENT_DEPOSER_TEXTE = 'diapason:deposer-texte';
+export const EVENEMENT_MONTRER_MESSAGE = 'diapason:montrer-message';
 
 // Une View Transition dure 180 ms et le rendu qui suit quelques dizaines ;
 // 2 s laisse dix fois la marge et reste sous ce qu'une navigation VOULUE
@@ -71,6 +78,29 @@ export function demanderLOuvertureDuSauteur(): void {
 /** Dépose `texte` dans le compositeur, à la suite d'un brouillon éventuel. */
 export function deposerLeTexteDansLeCompositeur(texte: string): void {
   window.dispatchEvent(new CustomEvent<string>(EVENEMENT_DEPOSER_TEXTE, { detail: texte }));
+}
+
+let messageAttendu: { id: string; at: number } | null = null;
+
+/**
+ * Demande au fil de défiler jusqu'au message `messageId` et de le surligner.
+ * La demande est aussi GARDÉE : depuis la barre latérale, la sélection
+ * navigue vers « / » et ChatArea n'est pas encore montée quand l'événement
+ * part — elle relit la demande au montage, dans la même fenêtre que le
+ * signal d'ouverture (au-delà, une demande périmée ferait défiler un fil
+ * qu'on vient d'ouvrir soi-même).
+ */
+export function demanderDeMontrerLeMessage(messageId: string, now: number = Date.now()): void {
+  messageAttendu = { id: messageId, at: now };
+  window.dispatchEvent(new CustomEvent<string>(EVENEMENT_MONTRER_MESSAGE, { detail: messageId }));
+}
+
+/** Le message demandé récemment, une seule fois ; null sinon. */
+export function consommerLeMessageAMontrer(now: number = Date.now()): string | null {
+  const attendu = messageAttendu;
+  messageAttendu = null;
+  if (!attendu || !ouvertureRecente(attendu.at, now)) return null;
+  return attendu.id;
 }
 
 // Écoute dès l'import — avant tout montage — pour que le signal ne soit

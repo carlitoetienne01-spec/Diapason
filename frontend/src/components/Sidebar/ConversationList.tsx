@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Copy,
@@ -11,8 +11,11 @@ import {
 import { useNavigate } from 'react-router';
 import type { Conversation } from '../../types';
 import { useAppStore } from '../../lib/store';
+import { rechercherDiscussions } from '../../lib/discussions';
+import { demanderDeMontrerLeMessage } from '../../lib/panneau';
 import { useConfirm } from '../ConfirmDialog';
 import { useTranslation } from '../../i18n/useTranslation';
+import { ExtraitDeMessage } from '../Chat/ExtraitDeMessage';
 
 interface Props {
   searchQuery: string;
@@ -161,11 +164,19 @@ export function ConversationList({ searchQuery }: Props) {
     navigate('/');
   };
 
-  const filtered = searchQuery
-    ? conversations.filter((c) =>
-        displayTitle(c).toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : conversations;
+  // 17 sept. 2026 : la recherche ne fouillait que les titres, en
+  // sous-chaîne brute (« Cité » ne trouvait pas « cite »). Même moteur que le
+  // sauteur (⌘J) : accents pliés, et dès deux caractères les messages avec
+  // extrait — le même résultat se lit pareil dans les deux vues.
+  const resultats = useMemo(
+    () => (searchQuery ? rechercherDiscussions(conversations, searchQuery, Date.now()) : null),
+    [conversations, searchQuery],
+  );
+  const resultatDe = useMemo(
+    () => new Map((resultats ?? []).map((r) => [r.conversation.id, r])),
+    [resultats],
+  );
+  const filtered = resultats ? resultats.map((r) => r.conversation) : conversations;
 
   if (filtered.length === 0) {
     return (
@@ -233,6 +244,10 @@ export function ConversationList({ searchQuery }: Props) {
             onClick={() => {
               selectConversation(conv.id);
               navigate('/');
+              // Un résultat venu d'un message ouvre le fil AU message ; la
+              // demande est gardée pour ChatArea, montée après la navigation.
+              const messageId = resultatDe.get(conv.id)?.messageId;
+              if (messageId) demanderDeMontrerLeMessage(messageId);
             }}
             className="flex-1 text-left px-3 py-2 min-w-0 cursor-pointer"
           >
@@ -245,6 +260,13 @@ export function ConversationList({ searchQuery }: Props) {
             >
               {displayTitle(conv)}
             </div>
+            {resultatDe.get(conv.id)?.extrait && (
+              <ExtraitDeMessage
+                extrait={resultatDe.get(conv.id)!.extrait!}
+                role={resultatDe.get(conv.id)!.role}
+                t={t}
+              />
+            )}
             <div
               className="text-[11px] mt-0.5 flex items-center gap-1"
               style={{ color: 'var(--color-text-tertiary)' }}

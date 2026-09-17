@@ -1286,6 +1286,27 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   animation: diapason-sauteur-entree 120ms ease-out;
 }
 
+/* 17 sept. 2026 : un résultat de recherche venu d'un message ouvre le fil
+   AU message — la bulle reçoit un halo d'accent qui s'éteint en 800 ms, le
+   temps de la trouver des yeux ; plus court, on ne le voit pas dans un fil
+   qui vient de défiler, plus long, il ressemble à une sélection. Le terme
+   trouvé, lui, est surligné dans l'extrait (<mark>) avec le jeton d'accent,
+   pas le jaune du navigateur — quatre peaux. */
+@keyframes diapason-bulle-halo {
+  from { box-shadow: 0 0 0 3px var(--color-accent); }
+  to { box-shadow: 0 0 0 3px transparent; }
+}
+.bulle-cible {
+  border-radius: var(--radius-lg);
+  animation: diapason-bulle-halo 800ms ease-out;
+}
+.extrait-terme {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
 /* A received file is announced only after the receiver has recomputed its
    hash. The motion reads left-to-right like the transfer, then leaves before
    it can become permanent chrome. */
@@ -1375,10 +1396,16 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   .talk-caption,
   .fil-fondu,
   .sauteur-entree,
+  .bulle-cible,
   .file-arrival-card,
   .file-arrival-beam > span,
   .file-arrival-lifetime {
     animation: none;
+  }
+  /* Sans mouvement, le halo reste fixe les 800 ms où la classe est posée :
+     la cible doit toujours se trouver, elle ne clignote simplement pas. */
+  .bulle-cible {
+    box-shadow: 0 0 0 3px var(--color-accent);
   }
 }
 
