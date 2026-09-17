@@ -4483,14 +4483,18 @@ mod native_reglette {
             defer: NO
         ];
         let _: () = msg_send![panel, setLevel: 3_i64];
-        // canJoinAllSpaces (1) | stationary (1<<4) | ignoresCycle (1<<6) |
-        // fullScreenAuxiliary (1<<8) = 337. Sans `stationary`, l'onglet
-        // PARTICIPAIT à l'animation du balayage à trois doigts : il
-        // disparaissait puis réapparaissait à chaque changement de bureau
-        // (retour de Carlito, 16 sept. 2026). `stationary` le cloue à
-        // l'écran pendant que les Spaces glissent dessous ; `ignoresCycle`
-        // le tient hors du Cmd+`.
-        let _: () = msg_send![panel, setCollectionBehavior: 337_u64];
+        // canJoinAllSpaces (1) | ignoresCycle (1<<6) | fullScreenAuxiliary
+        // (1<<8) = 321. PAS `stationary` (1<<4) : ajouté le 16 sept. 2026
+        // pour clouer l'onglet pendant le balayage à trois doigts, il l'a
+        // fait — mais Apple le décrit « comme la fenêtre du bureau », et en
+        // plein écran le bureau est SOUS l'app : « le mini-panneau ne
+        // s'affiche plus sur les écrans des autres applications, il
+        // s'affiche en dessous » (Carlito, 17 sept. 2026). Le clignotement
+        // qui avait motivé `stationary` venait d'ailleurs (la règle qui
+        // cachait l'onglet sur le bureau de Diapason, retirée). 257 était la
+        // combinaison de l'overlay, celle qui « marchait bien » ;
+        // `ignoresCycle` tient l'onglet hors du Cmd+`.
+        let _: () = msg_send![panel, setCollectionBehavior: 321_u64];
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setOpaque: NO];
         let _: () = msg_send![panel, setHasShadow: NO];
@@ -5030,10 +5034,10 @@ mod native_reglette {
             defer: NO
         ];
         let _: () = msg_send![panel, setLevel: 3_i64];
-        // 337 : mêmes drapeaux que l'onglet — sans `stationary`, le module
-        // ouvert disparaissait/réapparaissait au balayage à trois doigts au
-        // lieu de rester cloué (16 sept. 2026).
-        let _: () = msg_send![panel, setCollectionBehavior: 337_u64];
+        // 321 : mêmes drapeaux que l'onglet, sans `stationary` — avec lui,
+        // le module ouvert passait SOUS les apps en plein écran (17 sept.
+        // 2026) ; voir le commentaire de l'onglet.
+        let _: () = msg_send![panel, setCollectionBehavior: 321_u64];
         let _: () = msg_send![panel, setHidesOnDeactivate: NO];
         let _: () = msg_send![panel, setReleasedWhenClosed: NO];
         let _: () = msg_send![panel, setHasShadow: YES];
