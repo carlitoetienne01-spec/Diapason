@@ -4927,7 +4927,11 @@ mod native_reglette {
                chip.style.cssText='position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;gap:9px;padding:0 14px;cursor:pointer;background:var(--color-surface,#121214);color:var(--color-text,#ededef);border:1px solid var(--color-border,rgba(128,128,128,.3));border-radius:14px;font-weight:600;font-size:12px';\n\
                chip.innerHTML='<span style=\"width:6px;height:6px;border-radius:50%;background:var(--color-accent,#22d3ee);box-shadow:0 0 6px var(--color-accent,#22d3ee)\"></span><span id=\"__diapChipNom\">Diapason</span><span style=\"margin-left:auto;opacity:.5;font-size:11px\">\\u2922</span>';\n\
                chip.setAttribute('role','button');chip.setAttribute('aria-label','Redéployer le module');\n\
-               chip.onclick=function(){{try{{window.webkit.messageHandlers.reglette.postMessage('agrandirmini');}}catch(_){{}}}};document.body.appendChild(chip);\n\
+               var cl=null,cb=false;\n\
+               chip.addEventListener('pointerdown',function(e){{cl={{x:e.screenX,y:e.screenY}};cb=false;try{{chip.setPointerCapture(e.pointerId)}}catch(_){{}}}});\n\
+               chip.addEventListener('pointermove',function(e){{if(!cl)return;var dx=e.screenX-cl.x,dy=e.screenY-cl.y;if(!cb&&Math.abs(dx)+Math.abs(dy)<4)return;cb=true;cl={{x:e.screenX,y:e.screenY}};if(dx||dy){{try{{window.webkit.messageHandlers.reglette.postMessage('dragmini:'+dx+','+dy);}}catch(_){{}}}}}});\n\
+               function _cfin(){{var b=cb;cl=null;cb=false;if(!b){{try{{window.webkit.messageHandlers.reglette.postMessage('agrandirmini');}}catch(_){{}}}}}}\n\
+               chip.addEventListener('pointerup',_cfin);chip.addEventListener('pointercancel',function(){{cl=null;cb=false;}});document.body.appendChild(chip);\n\
                var chrome=[bar,b,mn],tFondu=null;\n\
                function montrerChrome(){{chrome.forEach(function(e){{e.style.opacity='1';}});clearTimeout(tFondu);tFondu=setTimeout(function(){{chrome.forEach(function(e){{e.style.opacity='0.12';}});}},2400);}}\n\
                document.addEventListener('pointermove',function(e){{if(e.clientY<72)montrerChrome();}},{{passive:true}});\n\
@@ -5118,7 +5122,9 @@ mod native_reglette {
     /// l'écran, transition animée.
     unsafe fn cycle_mini() {
         let ptr = MINI_PANEL_PTR.load(Ordering::SeqCst);
-        if ptr == 0 {
+        // Jamais sur une pastille : un préréglage S/M/L appliqué à un cadre
+        // replié donnerait la même fenêtre vide que le redimensionnement.
+        if ptr == 0 || REDUIT.load(Ordering::SeqCst) {
             return;
         }
         let panel = ptr as *mut Object;
@@ -5168,6 +5174,15 @@ mod native_reglette {
         }
         REDUIT.store(true, Ordering::SeqCst);
         let (cw, ch) = (190.0, 44.0);
+        // La pastille n'est PAS redimensionnable, et son minimum est
+        // elle-même : le cadre gardait le masque « redimensionnable » et le
+        // minimum 340×380 du module — attraper le bord de la pastille pour la
+        // déplacer (elle n'avait pas de poignée) lançait un redimensionnement,
+        // et macOS l'ouvrait aussitôt à 340×380, vide, avec le nom du module
+        // au milieu (capture de Carlito, 17 sept. 2026). Le déplacement passe
+        // maintenant par la pastille elle-même (dragmini).
+        let _: () = msg_send![panel, setStyleMask: (1_u64 << 7)];
+        let _: () = msg_send![panel, setContentMinSize: CGSize { width: cw, height: ch }];
         let nf = CGRect {
             origin: CGPoint {
                 x: f.origin.x + f.size.width - cw,
@@ -5194,6 +5209,9 @@ mod native_reglette {
             return;
         }
         let panel = ptr as *mut Object;
+        // Le module redevient redimensionnable, avec son minimum lisible.
+        let _: () = msg_send![panel, setStyleMask: ((1_u64 << 7) | (1_u64 << 3))];
+        let _: () = msg_send![panel, setContentMinSize: CGSize { width: 340.0, height: 380.0 }];
         if let Some((x, y, w, h)) = MINI_SAUVE.lock().ok().and_then(|g| *g) {
             let nf = CGRect {
                 origin: CGPoint { x, y },
@@ -5248,7 +5266,10 @@ mod native_reglette {
         push_actif();
         if REDUIT.swap(false, Ordering::SeqCst) {
             // Fermé depuis la pastille-carte : mémoriser 190×44 aurait rouvert
-            // le panneau en carte — on remet d'abord le vrai cadre.
+            // le panneau en carte — on remet d'abord le vrai cadre, son masque
+            // redimensionnable et son minimum.
+            let _: () = msg_send![panel, setStyleMask: ((1_u64 << 7) | (1_u64 << 3))];
+            let _: () = msg_send![panel, setContentMinSize: CGSize { width: 340.0, height: 380.0 }];
             if let Some((x, y, w, h)) = MINI_SAUVE.lock().ok().and_then(|g| *g) {
                 let nf = CGRect {
                     origin: CGPoint { x, y },
