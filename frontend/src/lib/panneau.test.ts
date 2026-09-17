@@ -8,6 +8,7 @@ import {
   brouillonDuCompositeur,
   consommerLaDemandeDeFocus,
   demanderLeFocusDuCompositeur,
+  consommerLAtterrissage,
   noterOuverture,
   ouvertureRecente,
   panneauVientDeSOuvrir,
@@ -101,5 +102,16 @@ describe('le brouillon publié par le compositeur', () => {
     publierLeBrouillon('et la suite du plan ?');
     expect(brouillonDuCompositeur()).toBe('et la suite du plan ?');
     publierLeBrouillon('');
+  });
+});
+
+describe('l’atterrissage en attente', () => {
+  it('se consomme une seule fois par ouverture, quel que soit le délai', () => {
+    // Contre-revue du 17 sept. 2026 : panneau ouvert sur Tâches, Discussion
+    // cliquée 4 s plus tard → la fenêtre de 2 s disait « pas d’ouverture ».
+    consommerLAtterrissage();
+    noterOuverture(0);
+    expect(consommerLAtterrissage(), 'la première Discussion montée atterrit').toBe(true);
+    expect(consommerLAtterrissage(), 'la seconde ne ré-atterrit pas').toBe(false);
   });
 });

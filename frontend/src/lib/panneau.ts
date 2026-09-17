@@ -83,9 +83,25 @@ export function ouvertureRecente(
   return ecart >= 0 && ecart < fenetreMs;
 }
 
+// Levé à chaque « ouvert », consommé par la PREMIÈRE Discussion montée
+// depuis : un panneau ouvert sur Tâches, puis « Discussion » cliqué au rail
+// trois minutes plus tard, doit atterrir — la fenêtre de 2 s, calibrée sur
+// la View Transition, laissait revenir le fil d'avant-hier (contre-revue du
+// 17 sept. 2026). Le temps passé ailleurs ne compte pas ; seule compte
+// l'ouverture.
+let atterrissageEnAttente = false;
+
 /** À appeler quand le signal arrive ; exposé pour les tests. */
 export function noterOuverture(now: number = Date.now()): void {
   dernierSignal = now;
+  atterrissageEnAttente = true;
+}
+
+/** Vrai une seule fois par ouverture, quel que soit le délai écoulé. */
+export function consommerLAtterrissage(): boolean {
+  const attendu = atterrissageEnAttente;
+  atterrissageEnAttente = false;
+  return attendu;
 }
 
 export function panneauVientDeSOuvrir(now: number = Date.now()): boolean {

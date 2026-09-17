@@ -6,7 +6,7 @@ import {
   EVENEMENT_PANNEAU_OUVERT,
   brouillonDuCompositeur,
   demanderLeFocusDuCompositeur,
-  panneauVientDeSOuvrir,
+  consommerLAtterrissage,
 } from '../lib/panneau';
 import { choisirAtterrissage, tientLeFil } from '../lib/discussions';
 import { tirer } from '../lib/convSync';
@@ -69,6 +69,7 @@ export function ChatPage() {
   // traduit en simple demande de focus.
   useEffect(() => {
     const surOuverture = () => {
+      consommerLAtterrissage();
       atterrir();
       demanderLeFocusDuCompositeur();
       const avant = useAppStore.getState().activeId;
@@ -77,7 +78,9 @@ export function ChatPage() {
       });
     };
     window.addEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);
-    if (panneauVientDeSOuvrir()) surOuverture();
+    // Montée après le signal (autre module d'abord, ou View Transition) :
+    // l'ouverture attend encore son atterrissage, quel que soit le délai.
+    if (consommerLAtterrissage()) surOuverture();
     return () => window.removeEventListener(EVENEMENT_PANNEAU_OUVERT, surOuverture);
   }, []);
 
