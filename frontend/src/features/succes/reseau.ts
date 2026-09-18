@@ -858,3 +858,85 @@ export function chaineComplete(reseau: Reseau, id: string): Set<string> {
   const v = voisinage(reseau, id);
   return new Set([id, ...v.amontTransitif, ...v.avalTransitif]);
 }
+
+/** La forme sous laquelle on lit le réseau : le dessin, ou les mêmes tâches en lignes. */
+export type VueReseau = 'graphe' | 'liste';
+
+export function estVueReseau(valeur: unknown): valeur is VueReseau {
+  return valeur === 'graphe' || valeur === 'liste';
+}
+
+export interface LigneListe {
+  id: string;
+  statut: StatutTache;
+  /** Bloquée : les prédécesseures directes encore ouvertes, par titre. */
+  attend: string[];
+  /** Faisable : ce que la terminer ouvrirait, par titre. */
+  libere: string[];
+  /** Les tâches ouvertes en aval, de près ou de loin. */
+  aval: number;
+}
+
+export interface NiveauListe {
+  /** 0 pour les racines. */
+  niveau: number;
+  lignes: LigneListe[];
+}
+
+const RANG_STATUT: Record<StatutTache, number> = { faisable: 0, bloquee: 1, faite: 2 };
+
+/**
+ * Le réseau en lignes, par niveau (18 sept. 2026) : à 340 px le graphe est
+ * une illustration, pas un outil, et même large il ne dit pas « par quoi je
+ * commence ce matin ». Sept tâches sur trois niveaux se lisent en sept
+ * lignes. Dans un niveau : les faisables d'abord (celles qui libèrent le
+ * plus en tête), puis les bloquées, puis les faites, ex æquo par titre —
+ * la première ligne du premier niveau est la tâche à faire ce soir.
+ */
+export function lignesParNiveau(reseau: Reseau): NiveauListe[] {
+  const levels = niveaux(reseau);
+  const st = statuts(reseau);
+  const parNiveau = new Map<number, LigneListe[]>();
+  for (const task of reseau.taches) {
+    const statut = st.get(task.id) ?? 'faisable';
+    const ligne: LigneListe = {
+      id: task.id,
+      statut,
+      attend: statut === 'bloquee' ? voisinage(reseau, task.id).manquantes : [],
+      libere: statut === 'faisable' ? ceQueDebloque(reseau, task.id) : [],
+      aval: task.done ? 0 : impact(reseau, task.id),
+    };
+    const niveau = levels.get(task.id) ?? 0;
+    const lignes = parNiveau.get(niveau);
+    if (lignes) lignes.push(ligne);
+    else parNiveau.set(niveau, [ligne]);
+  }
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  return [...parNiveau.keys()]
+    .sort((a, b) => a - b)
+    .map((niveau) => ({
+      niveau,
+      lignes: (parNiveau.get(niveau) ?? []).sort(
+        (a, b) =>
+          RANG_STATUT[a.statut] - RANG_STATUT[b.statut] ||
+          b.aval - a.aval ||
+          titreDe(a.id).localeCompare(titreDe(b.id), 'fr'),
+      ),
+    }));
+}
+
+/**
+ * La mention grise sous un titre de la Liste : « attend : X, Y » pour une
+ * bloquée, « libère : Z » pour une faisable ; rien pour une faite, ni pour
+ * une faisable qui n'ouvre rien seule (« ↓N » le dit déjà quand N ≥ 2).
+ */
+export function mentionLigne(reseau: Reseau, ligne: LigneListe): string | null {
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  if (ligne.statut === 'bloquee' && ligne.attend.length > 0) {
+    return `attend : ${ligne.attend.map(titreDe).join(', ')}`;
+  }
+  if (ligne.statut === 'faisable' && ligne.libere.length > 0) {
+    return `libère : ${ligne.libere.map(titreDe).join(', ')}`;
+  }
+  return null;
+}

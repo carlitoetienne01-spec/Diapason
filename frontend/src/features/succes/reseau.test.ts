@@ -10,6 +10,9 @@ import {
   chaineComplete,
   chaineLaPlusLongue,
   colonnesInitiales,
+  estVueReseau,
+  lignesParNiveau,
+  mentionLigne,
   compterCroisements,
   composantes,
   comptes,
@@ -672,5 +675,62 @@ describe('disposerParComposantes', () => {
     expect(d.pos.get('x')).toEqual({ x: 5, y: d.separateurs[0] + 5 });
     expect(d.pos.get('y')).toEqual({ x: 125, y: d.separateurs[0] + 5 });
     expect(d.pos.get('z')).toEqual({ x: 5, y: d.separateurs[0] + 5 + 60 });
+  });
+});
+
+describe('la Liste — les mêmes tâches par niveau', () => {
+  it('range AgriCulture sur trois niveaux, la tâche qui libère le plus en tête', () => {
+    // À 340 px un graphe est une illustration : sept tâches sur trois niveaux
+    // se lisent en sept lignes, la première étant la tâche à faire ce soir.
+    const niveaux = lignesParNiveau(agriculture());
+    expect(niveaux.map((n) => n.niveau)).toEqual([0, 1, 2]);
+    expect(niveaux.map((n) => n.lignes.map((l) => l.id))).toEqual([
+      ['riz', 'agri'],
+      ['besoin', 'discuter'],
+      // Trois bloquées, par titre : « Avoir besoin d'un tracteur » avant « Avoir un budget… ».
+      ['tracteur', 'budget', 'contrat'],
+    ]);
+    expect(niveaux.flatMap((n) => n.lignes)).toHaveLength(7);
+  });
+
+  it('dit ce qu’une bloquée attend et ce qu’une faisable libère, rien pour une faite', () => {
+    const reseau = agricultureApresAgri();
+    const lignes = lignesParNiveau(reseau).flatMap((n) => n.lignes);
+    const de = (id: string) => lignes.find((l) => l.id === id) as (typeof lignes)[number];
+    expect(de('agri').statut).toBe('faite');
+    expect(mentionLigne(reseau, de('agri'))).toBeNull();
+    expect(de('discuter').statut).toBe('faisable');
+    expect(mentionLigne(reseau, de('discuter'))).toBe(
+      'libère : Contrat | Paiement par jours de travail ou commission',
+    );
+    expect(de('contrat').statut).toBe('bloquee');
+    expect(mentionLigne(reseau, de('contrat'))).toBe('attend : Discuter du contrat avec les agriculteurs');
+    expect(de('besoin').aval).toBe(2);
+  });
+
+  it('place les faisables avant les bloquées et les faites dans un même niveau', () => {
+    // Un niveau mêlé : « r » et « a » faisables (« r » libère « b », donc en
+    // tête), « c » faite en dernier ; « b » attend « r » au niveau suivant.
+    const reseau = construireReseau(
+      [tache('c', 'c', true), tache('b', 'b'), tache('a', 'a'), tache('r', 'r')],
+      [arete('r', 'b')],
+    );
+    const niveaux = lignesParNiveau(reseau);
+    expect(niveaux[0].lignes.map((l) => l.id)).toEqual(['r', 'a', 'c']);
+    expect(niveaux[1].lignes.map((l) => l.id)).toEqual(['b']);
+    expect(mentionLigne(reseau, niveaux[1].lignes[0])).toBe('attend : r');
+    // « a » n'ouvre rien seule : pas de mention, « ↓N » ne s'affiche pas non plus.
+    expect(mentionLigne(reseau, niveaux[0].lignes[1])).toBeNull();
+    expect(niveaux[0].lignes[1].aval).toBe(0);
+    // « r » libère « b » : la mention le dit, en une seule tâche (pas de « ↓ »).
+    expect(mentionLigne(reseau, niveaux[0].lignes[0])).toBe('libère : b');
+    expect(niveaux[0].lignes[0].aval).toBe(1);
+  });
+
+  it('ne retient qu’un choix connu pour la vue', () => {
+    expect(estVueReseau('graphe')).toBe(true);
+    expect(estVueReseau('liste')).toBe(true);
+    expect(estVueReseau('carte')).toBe(false);
+    expect(estVueReseau(undefined)).toBe(false);
   });
 });

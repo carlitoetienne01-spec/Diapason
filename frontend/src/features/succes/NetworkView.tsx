@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Check, ChevronRight, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, CirclePlus, HelpCircle, Link2, List, Loader2, Network } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
@@ -26,15 +26,19 @@ import {
   interpolerPositions,
   libelleEnTete,
   libelleRevue,
+  lignesParNiveau,
+  mentionLigne,
   revue,
   statuts,
   traitArete,
   type EtatArete,
   type Point,
   type StatutTache,
+  type VueReseau,
 } from './reseau';
 import { dureeImpulsion, longueurApprochee } from './synapses';
 import type { SuccesTask, SuccesTaskEdge } from './types';
+import { loadReseauVue, saveReseauVue } from './uiPrefs';
 
 type Props = {
   tasks: SuccesTask[];
@@ -96,6 +100,80 @@ const LEGENDE: Array<{ etat: EtatArete; libelle: string }> = [
 // `reseau.ts`, testé sur AgriCulture (chantier réseau, 18 sept. 2026) :
 // ici on ne fait que dessiner.
 
+/**
+ * Le commutateur Graphe · Liste. Rendu DEUX fois tant que rien n'a été
+ * choisi — l'un `sm:hidden` pressé sur Liste, l'autre `hidden sm:inline`
+ * pressé sur Graphe — parce que la vue par défaut dépend de la largeur et
+ * que la largeur se lit en CSS, jamais en JS (règle 2 du mini-panneau) :
+ * `aria-pressed` dit ainsi toujours ce qui est réellement affiché.
+ */
+function Commutateur({ actif, onChoisir }: { actif: VueReseau; onChoisir: (vue: VueReseau) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Forme du réseau"
+      className="inline-flex rounded-xl p-0.5"
+      style={{ border: '1px solid var(--color-border)' }}
+    >
+      {(['graphe', 'liste'] as const).map((vue) => {
+        const presse = actif === vue;
+        return (
+          <button
+            key={vue}
+            type="button"
+            aria-pressed={presse}
+            onClick={() => onChoisir(vue)}
+            className="px-2.5 py-1.5 rounded-[10px] text-xs font-medium cursor-pointer inline-flex items-center gap-1.5"
+            style={
+              presse
+                ? { background: 'var(--color-accent)', color: 'var(--color-on-accent)' }
+                : { color: 'var(--color-text-secondary)' }
+            }
+          >
+            {vue === 'graphe' ? <Network size={13} aria-hidden="true" /> : <List size={13} aria-hidden="true" />}
+            {vue === 'graphe' ? 'Graphe' : 'Liste'}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** La coche et le glyphe d'état par la forme : plein = faite, cerclé = faisable, pointillé = bloquée. */
+function BoutonCoche({
+  task,
+  status,
+  saving,
+  onClick,
+}: {
+  task: SuccesTask;
+  status: StatutTache;
+  saving: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      aria-label={task.done ? `Rouvrir « ${task.title} »` : `Terminer « ${task.title} »`}
+      className="mt-0.5 size-5 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-50"
+      style={{
+        border: `1.5px ${status === 'bloquee' ? 'dashed' : 'solid'} ${
+          task.done || status === 'faisable' ? 'var(--color-accent)' : 'var(--color-border)'
+        }`,
+        background: task.done ? 'var(--color-accent)' : 'transparent',
+        color: 'var(--color-on-accent)',
+      }}
+    >
+      {task.done && <Check size={12} />}
+    </button>
+  );
+}
+
 export function NetworkView({
   tasks,
   edges,
@@ -118,6 +196,17 @@ export function NetworkView({
   const [revueOuverte, setRevueOuverte] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Graphe ou Liste (18 sept. 2026). `undefined` tant que rien n'a été
+  // choisi : le CSS montre alors la Liste sous `sm` et le Graphe au-delà —
+  // à 340 px un graphe est une illustration, pas un outil. Le choix est
+  // retenu par origine (fenêtre et mini-panneau ont chacun le leur).
+  const [vue, setVue] = useState<VueReseau | undefined>(() => loadReseauVue());
+  const choisirVue = (choix: VueReseau) => {
+    setVue(choix);
+    saveReseauVue(choix);
+  };
+  const classeGraphe = vue === 'graphe' ? '' : vue === 'liste' ? 'hidden' : 'hidden sm:block';
+  const classeListe = vue === 'liste' ? '' : vue === 'graphe' ? 'hidden' : 'sm:hidden';
 
   const reseau = useMemo(() => construireReseau(tasks, edges), [tasks, edges]);
   const byId = reseau.parId;
@@ -129,6 +218,7 @@ export function NetworkView({
   // tâche oubliée sans lien passait pour « faisable » ; le goulot
   // d'AgriCulture n'était nommé nulle part.
   const laRevue = useMemo(() => revue(reseau), [reseau]);
+  const niveauxListe = useMemo(() => lignesParNiveau(reseau), [reseau]);
 
   // Le fil : la chaîne la plus longue en tâches ouvertes (18 sept. 2026).
   // Ce n'est PAS un « chemin critique » — sans durée, seule la profondeur
@@ -289,16 +379,19 @@ export function NetworkView({
   const dejaCadre = useRef(false);
   useLayoutEffect(() => {
     if (dejaCadre.current || tasks.length === 0) return;
-    dejaCadre.current = true;
     const conteneur = defilement.current;
-    if (!conteneur) return;
+    // Caché (la Liste s'affiche), le conteneur n'a pas de largeur et un
+    // `scrollLeft` posé dessus ne fait rien : on réessaie quand le Graphe
+    // est choisi, au lieu de croire le cadrage fait.
+    if (!conteneur || conteneur.clientWidth === 0) return;
+    dejaCadre.current = true;
     let xMin = Number.POSITIVE_INFINITY;
     for (const task of feasible) {
       const p = layout.pos.get(task.id);
       if (p) xMin = Math.min(xMin, p.x);
     }
     if (Number.isFinite(xMin)) conteneur.scrollLeft = Math.max(0, xMin - PAD);
-  }, [tasks.length, feasible, layout]);
+  }, [tasks.length, feasible, layout, vue]);
 
   useEffect(() => {
     if (!linkMode && !selectedEdge && !filActif) return;
@@ -369,6 +462,18 @@ export function NetworkView({
   /** En mode liaison, une fois la source choisie : cette cible fermerait-elle une boucle ? */
   const cibleImpossible = (id: string) =>
     linkMode && linkFrom !== null && linkFrom !== id && fermeraitUneBoucle(reseau, linkFrom, id);
+
+  /** Même atténuation dans le dessin et dans la Liste : chaîne nette, cible impossible, hors fil, faite. */
+  const opaciteDe = (task: SuccesTask) =>
+    estompe(task.id)
+      ? 0.3
+      : cibleImpossible(task.id)
+        ? 0.4
+        : horsFil(task.id)
+          ? 0.5
+          : task.done
+            ? 0.72
+            : 1;
 
   const toggleTask = (task: SuccesTask) => {
     if (saving) return;
@@ -553,6 +658,19 @@ export function NetworkView({
       </section>
 
       <div className="flex items-center gap-3 flex-wrap">
+        {tasks.length > 0 &&
+          (vue ? (
+            <Commutateur actif={vue} onChoisir={choisirVue} />
+          ) : (
+            <>
+              <span className="sm:hidden">
+                <Commutateur actif="liste" onChoisir={choisirVue} />
+              </span>
+              <span className="hidden sm:inline">
+                <Commutateur actif="graphe" onChoisir={choisirVue} />
+              </span>
+            </>
+          ))}
         <button
           type="button"
           disabled={saving || tasks.length < 2}
@@ -579,20 +697,23 @@ export function NetworkView({
               : 'Cliquez la tâche source. Échap pour annuler.'}
           </span>
         )}
-        {tasks.length > 0 && (
+        {tasks.length > 0 && vue !== 'liste' && (
           <>
             {/* Sous `sm` la légende vit derrière un « ? » : trois entrées de
-                11 px tiennent à 640 px, pas à 340. */}
-            <button
-              type="button"
-              onClick={() => setLegendeOuverte((v) => !v)}
-              aria-expanded={legendeOuverte}
-              aria-label="Légende des traits"
-              className="ml-auto sm:hidden size-8 rounded-lg flex items-center justify-center cursor-pointer"
-              style={{ color: 'var(--color-text-tertiary)' }}
-            >
-              <HelpCircle size={15} />
-            </button>
+                11 px tiennent à 640 px, pas à 340. Sans choix explicite,
+                sous `sm` c'est la Liste qui s'affiche : pas de « ? ». */}
+            {vue === 'graphe' && (
+              <button
+                type="button"
+                onClick={() => setLegendeOuverte((v) => !v)}
+                aria-expanded={legendeOuverte}
+                aria-label="Légende des traits"
+                className="ml-auto sm:hidden size-8 rounded-lg flex items-center justify-center cursor-pointer"
+                style={{ color: 'var(--color-text-tertiary)' }}
+              >
+                <HelpCircle size={15} />
+              </button>
+            )}
             <ul
               aria-label="Légende des traits"
               className={`${legendeOuverte ? 'flex' : 'hidden sm:flex'} sm:ml-auto basis-full sm:basis-auto flex-wrap items-center gap-x-3 gap-y-1 text-[11px]`}
@@ -647,9 +768,11 @@ export function NetworkView({
           </p>
         </div>
       ) : (
+        <>
         <div
           ref={defilement}
-          className="rounded-2xl p-2 overflow-x-auto"
+          // `hidden` / `sm:block` : sans choix, la Liste sous `sm` et le Graphe au-delà.
+          className={`rounded-2xl p-2 overflow-x-auto ${classeGraphe}`}
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
           {/* Le canevas prend sa largeur RÉELLE en pixels : à 340 px il défile,
@@ -850,38 +973,10 @@ export function NetworkView({
                     boxShadow: enHalo
                       ? '0 0 14px color-mix(in srgb, var(--color-accent) 35%, transparent)'
                       : undefined,
-                    opacity: estompe(task.id)
-                      ? 0.3
-                      : impossible
-                        ? 0.4
-                        : horsFil(task.id)
-                          ? 0.5
-                          : task.done
-                            ? 0.72
-                            : 1,
+                    opacity: opaciteDe(task),
                   }}
                 >
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleTask(task);
-                    }}
-                    aria-label={task.done ? `Rouvrir « ${task.title} »` : `Terminer « ${task.title} »`}
-                    className="mt-0.5 size-5 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-50"
-                    // Le glyphe d'état par la forme, et la coche : plein = faite,
-                    // cerclé = faisable, pointillé = bloquée.
-                    style={{
-                      border: `1.5px ${status === 'bloquee' ? 'dashed' : 'solid'} ${
-                        task.done || status === 'faisable' ? 'var(--color-accent)' : 'var(--color-border)'
-                      }`,
-                      background: task.done ? 'var(--color-accent)' : 'transparent',
-                      color: 'var(--color-on-accent)',
-                    }}
-                  >
-                    {task.done && <Check size={12} />}
-                  </button>
+                  <BoutonCoche task={task} status={status} saving={saving} onClick={() => toggleTask(task)} />
                   <button
                     type="button"
                     onClick={() => activateCard(task)}
@@ -1005,6 +1100,164 @@ export function NetworkView({
             </svg>
           </div>
         </div>
+
+        {/* La Liste (18 sept. 2026) : les mêmes tâches en ordre topologique,
+            groupées par niveau, la première ligne étant la tâche à faire ce
+            soir. Mêmes coche, fiche et Relier que le dessin ; les mentions
+            « attend : X » et « libère : Z » sont les arêtes elles-mêmes, que
+            l'on choisit puis supprime ici aussi — aucune action n'existe que
+            dans le dessin (§82). */}
+        <div className={classeListe}>
+          <div
+            role="group"
+            aria-label="Réseau des tâches, en liste par niveau"
+            className="rounded-2xl p-2 grid gap-3"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+          >
+            {niveauxListe.map(({ niveau, lignes }) => (
+              <section key={niveau} className="grid gap-0.5" aria-label={`Niveau ${niveau + 1}`}>
+                <p
+                  className="text-[11px] font-medium tracking-[0.12em] uppercase px-2 pt-1"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  Niveau {niveau + 1}
+                </p>
+                {lignes.map((ligne) => {
+                  const task = byId.get(ligne.id);
+                  if (!task) return null;
+                  const status = ligne.statut;
+                  const isLinkSource = linkFrom === task.id;
+                  const isFocused = focusedId === task.id;
+                  const impossible = cibleImpossible(task.id);
+                  const mention = mentionLigne(reseau, ligne);
+                  const orpheline = !task.done && estOrpheline(reseau, task.id);
+                  // Les voisines citées : en amont pour une bloquée (ce qu'elle
+                  // attend), en aval pour une faisable (ce qu'elle libère).
+                  const voisines = status === 'bloquee' ? ligne.attend : ligne.libere;
+                  return (
+                    <div
+                      key={task.id}
+                      className="reseau-ligne flex items-start gap-2 rounded-xl px-2 py-1.5"
+                      data-statut={status}
+                      style={{
+                        opacity: opaciteDe(task),
+                        // Le focus et la source de liaison par un trait, pas une teinte.
+                        outline: isLinkSource
+                          ? '2px dashed var(--color-accent)'
+                          : isFocused
+                            ? '2px solid var(--color-accent)'
+                            : 'none',
+                        outlineOffset: -2,
+                      }}
+                    >
+                      <BoutonCoche task={task} status={status} saving={saving} onClick={() => toggleTask(task)} />
+                      <div className="flex-1 min-w-0 grid gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => activateCard(task)}
+                          onFocus={() => setFocusedId(task.id)}
+                          onBlur={() => setFocusedId(null)}
+                          aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
+                            mention ? `, ${mention}` : ''
+                          }${ligne.aval >= 2 ? `, ${ligne.aval} tâches en aval` : ''}${
+                            impossible
+                              ? '. Impossible : fermerait une boucle'
+                              : linkMode
+                                ? linkFrom
+                                  ? '. Choisir comme cible'
+                                  : '. Choisir comme source'
+                                : ''
+                          }`}
+                          aria-disabled={impossible || undefined}
+                          title={impossible ? 'Impossible : fermerait une boucle' : undefined}
+                          className="text-left cursor-pointer outline-none text-[13px] font-medium leading-snug whitespace-normal break-words"
+                          style={{
+                            color: 'var(--color-text)',
+                            textDecoration: task.done ? 'line-through' : undefined,
+                          }}
+                        >
+                          {task.title}
+                          {orpheline && (
+                            <span className="font-normal" style={{ color: 'var(--color-text-tertiary)' }}>
+                              {' '}· sans lien
+                            </span>
+                          )}
+                        </button>
+                        {mention && (
+                          <p
+                            className="text-[11px] leading-relaxed flex flex-wrap items-center gap-x-1"
+                            style={{ color: 'var(--color-text-tertiary)' }}
+                          >
+                            <span>{status === 'bloquee' ? 'attend :' : 'libère :'}</span>
+                            {voisines.map((vid, i) => {
+                              const voisine = byId.get(vid);
+                              if (!voisine) return null;
+                              const from = status === 'bloquee' ? vid : task.id;
+                              const to = status === 'bloquee' ? task.id : vid;
+                              const choisi = selectedEdge?.from === from && selectedEdge?.to === to;
+                              return (
+                                <span key={vid} className="inline-flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedEdge(choisi ? null : { from, to });
+                                    }}
+                                    aria-pressed={choisi}
+                                    aria-label={`Lien : « ${byId.get(from)?.title ?? ''} » débloque « ${
+                                      byId.get(to)?.title ?? ''
+                                    } ». Sélectionner pour supprimer.`}
+                                    className="cursor-pointer text-left underline-offset-2 hover:underline"
+                                    style={{
+                                      color: choisi ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                                      textDecoration: choisi ? 'underline' : undefined,
+                                    }}
+                                  >
+                                    {voisine.title}
+                                    {i < voisines.length - 1 ? ',' : ''}
+                                  </button>
+                                  {choisi && (
+                                    <button
+                                      type="button"
+                                      disabled={saving}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        unlinkSelected();
+                                      }}
+                                      aria-label="Supprimer ce lien"
+                                      className="size-5 rounded-full flex items-center justify-center cursor-pointer text-sm font-semibold leading-none disabled:opacity-50"
+                                      style={{
+                                        border: `1.5px solid ${DANGER}`,
+                                        color: DANGER,
+                                        background: 'var(--color-surface)',
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </span>
+                              );
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      {ligne.aval >= 2 && (
+                        <span
+                          aria-hidden="true"
+                          className="shrink-0 text-[11px] tabular-nums mt-1"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        >
+                          ↓{ligne.aval}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
+          </div>
+        </div>
+        </>
       )}
 
       <section

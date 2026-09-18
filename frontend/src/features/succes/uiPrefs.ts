@@ -2,6 +2,7 @@
 
 import { normaliserEchelle } from './echelleTexte';
 import { TAILLE_PAGE_DEFAUT, bornerPage, estTaillePage, type TaillePage } from './pagination';
+import { estVueReseau, type VueReseau } from './reseau';
 import { estTriNotes, type TriNotes } from './triNotes';
 
 const STORAGE_KEY = 'diapason-succes-ui-prefs';
@@ -41,6 +42,8 @@ type Prefs = {
   subtaskExpanded?: Record<string, boolean>;
   /** Le tri choisi pour les cartables de Notes — voir `triNotes.ts`. */
   notesSort?: TriNotes;
+  /** Graphe ou Liste pour un projet réseau — voir `reseau.ts`. Absent : jamais choisi. */
+  reseauVue?: VueReseau;
 };
 
 function readPrefs(): Prefs {
@@ -152,4 +155,20 @@ export function loadNotesSort(): TriNotes | undefined {
 
 export function saveNotesSort(mode: TriNotes) {
   writePrefs({ notesSort: mode });
+}
+
+/**
+ * Graphe ou Liste pour le réseau, tel que choisi la dernière fois ; `undefined`
+ * si rien n'a jamais été choisi — la vue laisse alors le CSS décider (Liste
+ * sous `sm`, Graphe au-delà : la largeur se lit en CSS, jamais en JS).
+ * Le `localStorage` est cloisonné par origine : le mini-panneau et la
+ * fenêtre retiennent chacun le leur, ce qui est le comportement voulu.
+ */
+export function loadReseauVue(): VueReseau | undefined {
+  const value = readPrefs().reseauVue;
+  return estVueReseau(value) ? value : undefined;
+}
+
+export function saveReseauVue(vue: VueReseau) {
+  writePrefs({ reseauVue: vue });
 }
