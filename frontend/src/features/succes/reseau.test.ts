@@ -11,19 +11,25 @@ import {
   chaineLaPlusLongue,
   colonnesInitiales,
   compterCroisements,
+  composantes,
   comptes,
   construireReseau,
   dispositionBouge,
+  disposerParComposantes,
+  estOrpheline,
   faisables,
   fermeraitUneBoucle,
   glypheStatut,
+  goulots,
   impact,
   interpolerPositions,
   libelleEnTete,
+  libelleRevue,
   ligneDeComptes,
   margeDe,
   niveaux,
   ordonnerColonnes,
+  orphelines,
   phraseApresBascule,
   placeSurLeFil,
   positionner,
@@ -580,5 +586,91 @@ describe('traitArete', () => {
     const st = statuts(reseau);
     expect(traitArete(st.get('agri') ?? 'faisable').etat).toBe('satisfaite');
     expect(traitArete(st.get('discuter') ?? 'faisable').etat).toBe('prochaine');
+  });
+});
+
+describe('revue du réseau', () => {
+  it('AgriCulture a deux composantes, la plus grande d’abord, chacune par titre', () => {
+    expect(composantes(agriculture())).toEqual([
+      ['tracteur', 'budget', 'riz', 'besoin'],
+      ['agri', 'contrat', 'discuter'],
+    ]);
+  });
+
+  it('une tâche seule est une composante, et une orpheline si elle est ouverte', () => {
+    const reseau = construireReseau([...AGRI, tache('x', 'Xylophone'), tache('f', 'Finie', true)], ARETES);
+    expect(composantes(reseau)).toHaveLength(4);
+    expect(orphelines(reseau)).toEqual(['x']);
+    expect(estOrpheline(reseau, 'f')).toBe(true);
+    expect(estOrpheline(reseau, 'agri')).toBe(false);
+    expect(orphelines(agriculture())).toEqual([]);
+  });
+
+  it('« besoin » est le goulot d’AgriCulture : deux tâches l’attendent directement', () => {
+    expect(goulots(agriculture())).toEqual([{ id: 'besoin', debloque: 2 }]);
+    const apres = construireReseau(
+      AGRI.map((t) => (t.id === 'besoin' ? { ...t, done: true } : t)),
+      ARETES,
+    );
+    expect(goulots(apres)).toEqual([]);
+  });
+
+  it('la ligne de revue nomme le goulot', () => {
+    expect(libelleRevue(agriculture())).toBe(
+      '2 chaînes indépendantes · 0 orpheline · goulot : « Qu’est-ce qu’on aura besoin en premier ? » (débloque 2)',
+    );
+  });
+
+  it('la ligne de revue s’accorde : une chaîne, deux orphelines, aucun goulot', () => {
+    const reseau = construireReseau(
+      [tache('a', 'a'), tache('b', 'b'), tache('x', 'x'), tache('y', 'y')],
+      [arete('a', 'b')],
+    );
+    expect(libelleRevue(reseau)).toBe('1 chaîne · 2 orphelines · aucun goulot');
+    expect(libelleRevue(construireReseau([tache('x', 'x')], []))).toBe('aucune chaîne · 1 orpheline · aucun goulot');
+  });
+});
+
+describe('disposerParComposantes', () => {
+  const dims = { largeurCarte: 100, hauteurCarte: 50, ecartX: 20, ecartY: 10, marge: 5 };
+
+  it('empile les deux chaînes d’AgriCulture, la plus grande en haut, un filet entre', () => {
+    const reseau = agriculture();
+    const d = disposerParComposantes(reseau, dims);
+    expect(d.separateurs).toHaveLength(1);
+    const yRiz = d.pos.get('riz')?.y ?? Number.NaN;
+    const yAgri = d.pos.get('agri')?.y ?? Number.NaN;
+    expect(yRiz).toBeLessThan(d.separateurs[0]);
+    expect(yAgri).toBeGreaterThan(d.separateurs[0]);
+    expect(d.pos.size).toBe(7);
+    // Chaque bande a trois colonnes : la largeur est celle d'une bande.
+    expect(d.largeur).toBe(5 * 2 + 3 * 100 + 2 * 20);
+    // Deux bandes de deux lignes (riz→besoin→{tracteur,budget}) et une ligne.
+    expect(d.hauteur).toBe((5 * 2 + 2 * 50 + 10) + (5 * 2 + 50));
+  });
+
+  it('ne change rien à une seule composante', () => {
+    const reseau = construireReseau(
+      [tache('a', 'a'), tache('b', 'b'), tache('c', 'c')],
+      [arete('a', 'b'), arete('b', 'c')],
+    );
+    const attendu = positionner(ordonnerColonnes(reseau), dims);
+    const d = disposerParComposantes(reseau, dims);
+    expect(d.separateurs).toEqual([]);
+    expect([...d.pos.entries()]).toEqual([...attendu.pos.entries()]);
+    expect(d.hauteur).toBe(attendu.hauteur);
+  });
+
+  it('range les tâches seules en grille dans une dernière bande', () => {
+    const reseau = construireReseau(
+      [tache('a', 'a'), tache('b', 'b'), tache('x', 'x'), tache('y', 'y'), tache('z', 'z')],
+      [arete('a', 'b')],
+    );
+    const d = disposerParComposantes(reseau, dims);
+    expect(d.separateurs).toHaveLength(1);
+    // Deux colonnes (la chaîne a → b en a deux) : x et y sur une ligne, z dessous.
+    expect(d.pos.get('x')).toEqual({ x: 5, y: d.separateurs[0] + 5 });
+    expect(d.pos.get('y')).toEqual({ x: 125, y: d.separateurs[0] + 5 });
+    expect(d.pos.get('z')).toEqual({ x: 5, y: d.separateurs[0] + 5 + 60 });
   });
 });

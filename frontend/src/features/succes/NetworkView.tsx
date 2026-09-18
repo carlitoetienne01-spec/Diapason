@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Check, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
@@ -18,12 +18,15 @@ import {
   comptes,
   construireReseau,
   dispositionBouge,
+  disposerParComposantes,
+  estOrpheline,
   faisables,
+  fermeraitUneBoucle,
   impact,
   interpolerPositions,
   libelleEnTete,
-  ordonnerColonnes,
-  positionner,
+  libelleRevue,
+  revue,
   statuts,
   traitArete,
   type EtatArete,
@@ -112,6 +115,7 @@ export function NetworkView({
   const [survolId, setSurvolId] = useState<string | null>(null);
   const [legendeOuverte, setLegendeOuverte] = useState(false);
   const [filActif, setFilActif] = useState(false);
+  const [revueOuverte, setRevueOuverte] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +125,10 @@ export function NetworkView({
   const statusById = useMemo(() => statuts(reseau), [reseau]);
   const feasible = useMemo(() => faisables(reseau), [reseau]);
   const nombres = useMemo(() => comptes(reseau), [reseau]);
+  // La revue (18 sept. 2026) : chaînes séparées, orphelines, goulots. Une
+  // tâche oubliée sans lien passait pour « faisable » ; le goulot
+  // d'AgriCulture n'était nommé nulle part.
+  const laRevue = useMemo(() => revue(reseau), [reseau]);
 
   // Le fil : la chaîne la plus longue en tâches ouvertes (18 sept. 2026).
   // Ce n'est PAS un « chemin critique » — sans durée, seule la profondeur
@@ -154,9 +162,11 @@ export function NetworkView({
 
   // Les colonnes sont ordonnées par barycentre (reseau.ts) : triées par
   // alphabet, 5 arêtes suffisaient à croiser deux flèches sur AgriCulture.
+  // Les composantes sans rapport sont empilées l'une sous l'autre avec un
+  // filet pointillé, au lieu d'être entrelacées dans les mêmes colonnes.
   const layout = useMemo(
     () =>
-      positionner(ordonnerColonnes(reseau), {
+      disposerParComposantes(reseau, {
         largeurCarte: CARD_W,
         hauteurCarte: CARD_H,
         ecartX: GAP_X,
@@ -300,6 +310,9 @@ export function NetworkView({
         setLinkFrom(null);
         setSelectedEdge(null);
         setFilActif(false);
+        // « … fermerait une boucle » ne commente qu'une liaison en cours :
+        // laissé là après l'annulation, il accusait un lien qu'on ne fait plus.
+        setError(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -334,6 +347,16 @@ export function NetworkView({
         setLinkFrom(null);
         return;
       }
+      if (fermeraitUneBoucle(reseau, linkFrom, task.id)) {
+        // Prévenu AVANT le clic : la cible est déjà atténuée et son libellé
+        // le dit ; ici, on ne fait que le redire. Le serveur reste le juge
+        // (workspace.py refuse la boucle avec sa phrase) pour tout ce que le
+        // client ne voit pas — une arête arrivée d'un pair entre-temps.
+        setError(
+          `« ${byId.get(linkFrom)?.title ?? ''} » attend déjà « ${task.title} », de près ou de loin : ce lien fermerait une boucle.`,
+        );
+        return;
+      }
       const from = linkFrom;
       setLinkMode(false);
       setLinkFrom(null);
@@ -342,6 +365,10 @@ export function NetworkView({
     }
     onSelect?.(task);
   };
+
+  /** En mode liaison, une fois la source choisie : cette cible fermerait-elle une boucle ? */
+  const cibleImpossible = (id: string) =>
+    linkMode && linkFrom !== null && linkFrom !== id && fermeraitUneBoucle(reseau, linkFrom, id);
 
   const toggleTask = (task: SuccesTask) => {
     if (saving) return;
@@ -458,6 +485,69 @@ export function NetworkView({
                 </button>
               );
             })}
+          </div>
+        )}
+        {tasks.length > 0 && (
+          <div className="grid gap-1">
+            {/* Repliée par défaut : une ligne de revue ouverte en permanence
+                ferait de l'en-tête un tableau de bord. Le chevron et le
+                texte tertiaire suffisent ; `aria-expanded` pour le clavier. */}
+            <button
+              type="button"
+              onClick={() => setRevueOuverte((v) => !v)}
+              aria-expanded={revueOuverte}
+              className="flex items-center gap-1 text-[11px] cursor-pointer self-start"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              <ChevronRight
+                size={12}
+                className="transition-transform motion-reduce:transition-none"
+                style={{ transform: revueOuverte ? 'rotate(90deg)' : undefined }}
+                aria-hidden="true"
+              />
+              Revue du réseau
+            </button>
+            {revueOuverte && (
+              <p
+                className="text-[11px] leading-relaxed pl-4"
+                style={{ color: 'var(--color-text-tertiary)' }}
+                aria-label={libelleRevue(reseau, laRevue)}
+              >
+                {laRevue.chaines === 0
+                  ? 'aucune chaîne'
+                  : laRevue.chaines === 1
+                    ? '1 chaîne'
+                    : `${laRevue.chaines} chaînes indépendantes`}
+                {' · '}
+                {laRevue.orphelines.length} orpheline{laRevue.orphelines.length > 1 ? 's' : ''}
+                {' · '}
+                {laRevue.goulots.length === 0 ? (
+                  'aucun goulot'
+                ) : (
+                  <>
+                    goulot{laRevue.goulots.length > 1 ? 's' : ''} :{' '}
+                    {laRevue.goulots.map((g, i) => {
+                      const t = byId.get(g.id);
+                      if (!t) return null;
+                      return (
+                        <span key={g.id}>
+                          {i > 0 && ', '}
+                          <button
+                            type="button"
+                            onClick={() => onSelect?.(t)}
+                            className="cursor-pointer underline-offset-2 hover:underline"
+                            style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            « {t.title} »
+                          </button>{' '}
+                          (débloque {g.debloque})
+                        </span>
+                      );
+                    })}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -612,6 +702,19 @@ export function NetworkView({
                   </marker>
                 ))}
               </defs>
+              {/* Un filet pointillé entre deux composantes sans rapport. */}
+              {layout.separateurs.map((y) => (
+                <line
+                  key={y}
+                  x1={PAD / 2}
+                  x2={layout.largeur - PAD / 2}
+                  y1={y}
+                  y2={y}
+                  stroke="var(--color-border)"
+                  strokeWidth={1}
+                  strokeDasharray="2 5"
+                />
+              ))}
               {visibleEdges.map((edge) => {
                 const d = cheminArete(edge.fromTaskId, edge.toTaskId);
                 if (!d) return null;
@@ -711,12 +814,20 @@ export function NetworkView({
               // « ↓3 » seulement à partir de deux tâches ouvertes en aval :
               // à une, la flèche vers la carte suivante le dit déjà.
               const aval = task.done ? 0 : impact(reseau, task.id);
+              // Sans aucun lien : un trait en pointillés, et « sans lien »
+              // sous le titre — elle passe pour faisable sans que rien ne
+              // l'ait placée.
+              const orpheline = !task.done && estOrpheline(reseau, task.id);
+              // En mode liaison, une cible qui fermerait une boucle est
+              // atténuée à 0.4 et son libellé le dit, avant le clic.
+              const impossible = cibleImpossible(task.id);
               return (
                 <CadreVitre
                   compact
                   key={task.id}
                   className="reseau-carte reseau-estompable rounded-xl p-2.5 flex items-start gap-2 overflow-hidden"
                   data-statut={status}
+                  data-orpheline={orpheline ? 'true' : undefined}
                   onPointerEnter={() => setSurvolId(task.id)}
                   onPointerLeave={() => setSurvolId((id) => (id === task.id ? null : id))}
                   // `position` en inline : `.composer-glass { position: relative }`
@@ -735,11 +846,19 @@ export function NetworkView({
                     // et la source de liaison, par un trait de 2 px.
                     border: `1px solid ${highlighted ? 'var(--color-accent)' : 'var(--color-border)'}`,
                     borderWidth: highlighted ? 2 : undefined,
-                    borderStyle: isLinkSource ? 'dashed' : undefined,
+                    borderStyle: isLinkSource || orpheline ? 'dashed' : undefined,
                     boxShadow: enHalo
                       ? '0 0 14px color-mix(in srgb, var(--color-accent) 35%, transparent)'
                       : undefined,
-                    opacity: estompe(task.id) ? 0.3 : horsFil(task.id) ? 0.5 : task.done ? 0.72 : 1,
+                    opacity: estompe(task.id)
+                      ? 0.3
+                      : impossible
+                        ? 0.4
+                        : horsFil(task.id)
+                          ? 0.5
+                          : task.done
+                            ? 0.72
+                            : 1,
                   }}
                 >
                   <button
@@ -768,10 +887,19 @@ export function NetworkView({
                     onClick={() => activateCard(task)}
                     onFocus={() => setFocusedId(task.id)}
                     onBlur={() => setFocusedId(null)}
-                    aria-label={`${task.title} — ${statusLabel(status)}${
+                    aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
                       aval >= 2 ? `, ${aval} tâches en aval` : ''
-                    }${linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''}`}
-                    title={task.title}
+                    }${
+                      impossible
+                        ? '. Impossible : fermerait une boucle'
+                        : linkMode
+                          ? linkFrom
+                            ? '. Choisir comme cible'
+                            : '. Choisir comme source'
+                          : ''
+                    }`}
+                    aria-disabled={impossible || undefined}
+                    title={impossible ? 'Impossible : fermerait une boucle' : task.title}
                     className="flex-1 min-w-0 text-left cursor-pointer grid gap-0.5 outline-none"
                   >
                     <span
@@ -786,6 +914,9 @@ export function NetworkView({
                     <span className="text-[11px] leading-none flex items-center gap-2">
                       <span className="truncate" style={{ color: statusColor(status) }}>
                         {statusLabel(status)}
+                        {orpheline && (
+                          <span style={{ color: 'var(--color-text-tertiary)' }}> · sans lien</span>
+                        )}
                       </span>
                       {aval >= 2 && (
                         <span

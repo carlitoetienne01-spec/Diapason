@@ -696,6 +696,12 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   :root.terminal[data-terminal-skin='ardechine'] .reseau-carte[data-statut='faite'] {
     border: 1px solid color-mix(in srgb, var(--color-text) 45%, transparent) !important;
   }
+  /* Une orpheline (aucun lien, 18 sept. 2026) : le pointillé, comme dans
+     les autres peaux — sinon la règle « faisable » ci-dessus la redessinait
+     en trait plein de 2 px, et rien ne la distinguait d'une tâche placée. */
+  :root.terminal[data-terminal-skin='ardechine'] .reseau-carte[data-orpheline='true'] {
+    border: 1px dashed var(--color-text) !important;
+  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-weight: 400;

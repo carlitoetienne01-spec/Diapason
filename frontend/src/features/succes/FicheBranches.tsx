@@ -23,6 +23,7 @@ import {
   ceQueDebloque,
   chaine,
   construireReseau,
+  estOrpheline,
   glypheStatut,
   ligneDeComptes,
   placeSurLeFil,
@@ -429,6 +430,11 @@ export function FicheBranches({
                   {notesDepliees ? 'Replier' : 'Voir'}
                 </button>
               </div>
+            )}
+            {estOrpheline(reseau, tache.id) && (
+              <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                Sans lien dans le réseau — « Relier depuis ici » la rattache à ce qu’elle débloque.
+              </p>
             )}
             {/* À 340 px, les deux colonnes s'empilent : Attend, puis Débloque. */}
             <div className="grid gap-3 sm:grid-cols-2">

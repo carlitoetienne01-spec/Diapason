@@ -610,6 +610,165 @@ export function positionner(colonnes: string[][], dims: DimensionsDisposition): 
 export type Point = { x: number; y: number };
 
 /**
+ * Les composantes connexes, sens des arêtes ignoré : deux chaînes sans
+ * rapport (AgriCulture en a deux) partageaient les mêmes colonnes,
+ * entrelacées. Les plus grandes d'abord, ex æquo par le premier titre ;
+ * dans chacune, les tâches par titre. Une tâche seule est une composante.
+ */
+export function composantes(reseau: Reseau): string[][] {
+  const vues = new Set<string>();
+  const resultat: string[][] = [];
+  for (const depart of reseau.taches) {
+    if (vues.has(depart.id)) continue;
+    const membres: string[] = [];
+    const frontiere = [depart.id];
+    vues.add(depart.id);
+    while (frontiere.length > 0) {
+      const courant = frontiere.pop() as string;
+      membres.push(courant);
+      for (const vid of [...(reseau.amont.get(courant) ?? []), ...(reseau.aval.get(courant) ?? [])]) {
+        if (!vues.has(vid)) {
+          vues.add(vid);
+          frontiere.push(vid);
+        }
+      }
+    }
+    resultat.push(
+      membres
+        .map((id) => reseau.parId.get(id) as SuccesTask)
+        .sort(compareTitres)
+        .map((t) => t.id),
+    );
+  }
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  return resultat.sort(
+    (a, b) => b.length - a.length || titreDe(a[0]).localeCompare(titreDe(b[0]), 'fr'),
+  );
+}
+
+export function estOrpheline(reseau: Reseau, id: string): boolean {
+  return (reseau.amont.get(id)?.length ?? 0) + (reseau.aval.get(id)?.length ?? 0) === 0;
+}
+
+/** Les tâches ouvertes sans aucun lien, par titre : elles passent pour faisables sans que rien ne les ait placées. */
+export function orphelines(reseau: Reseau): string[] {
+  return reseau.taches
+    .filter((t) => !t.done && estOrpheline(reseau, t.id))
+    .sort(compareTitres)
+    .map((t) => t.id);
+}
+
+export interface Goulot {
+  id: string;
+  /** Combien de tâches ouvertes attendent directement celle-ci. */
+  debloque: number;
+}
+
+/** Les tâches ouvertes qu'au moins deux tâches ouvertes attendent directement ; la plus attendue d'abord. */
+export function goulots(reseau: Reseau): Goulot[] {
+  return reseau.taches
+    .filter((t) => !t.done)
+    .map((t) => ({
+      id: t.id,
+      debloque: (reseau.aval.get(t.id) ?? []).filter((sid) => !reseau.parId.get(sid)?.done).length,
+    }))
+    .filter((g) => g.debloque >= 2)
+    .sort(
+      (a, b) =>
+        b.debloque - a.debloque ||
+        compareTitres(reseau.parId.get(a.id) as SuccesTask, reseau.parId.get(b.id) as SuccesTask),
+    );
+}
+
+export interface Revue {
+  /** Les composantes d'au moins deux tâches. */
+  chaines: number;
+  orphelines: string[];
+  goulots: Goulot[];
+}
+
+export function revue(reseau: Reseau): Revue {
+  return {
+    chaines: composantes(reseau).filter((c) => c.length >= 2).length,
+    orphelines: orphelines(reseau),
+    goulots: goulots(reseau),
+  };
+}
+
+/**
+ * « 2 chaînes indépendantes · 0 orpheline · goulot : « Qu'est-ce qu'on aura
+ * besoin en premier ? » (débloque 2) ». Avant le 18 sept. 2026, le goulot
+ * d'AgriCulture n'était nommé nulle part.
+ */
+export function libelleRevue(reseau: Reseau, r: Revue = revue(reseau)): string {
+  const chaines =
+    r.chaines === 0
+      ? 'aucune chaîne'
+      : r.chaines === 1
+        ? '1 chaîne'
+        : `${r.chaines} chaînes indépendantes`;
+  const orphs = `${r.orphelines.length} orpheline${r.orphelines.length > 1 ? 's' : ''}`;
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  const gs =
+    r.goulots.length === 0
+      ? 'aucun goulot'
+      : `goulot${r.goulots.length > 1 ? 's' : ''} : ${r.goulots
+          .map((g) => `« ${titreDe(g.id)} » (débloque ${g.debloque})`)
+          .join(', ')}`;
+  return `${chaines} · ${orphs} · ${gs}`;
+}
+
+export interface DispositionEmpilee extends Disposition {
+  /** Les ordonnées des filets pointillés entre deux composantes. */
+  separateurs: number[];
+}
+
+/**
+ * Les composantes empilées l'une sous l'autre, chacune décroisée pour elle
+ * seule, un filet entre deux ; les tâches seules forment une dernière bande
+ * en grille, aussi large que la composante la plus large. Une seule
+ * composante donne exactement `positionner(ordonnerColonnes(...))`.
+ */
+export function disposerParComposantes(reseau: Reseau, dims: DimensionsDisposition): DispositionEmpilee {
+  const comps = composantes(reseau);
+  if (comps.length <= 1) {
+    return { ...positionner(ordonnerColonnes(reseau), dims), separateurs: [] };
+  }
+  const groupes = comps.filter((c) => c.length >= 2);
+  const seules = comps.filter((c) => c.length === 1).flat();
+  const bandes: string[][][] = groupes.map((membres) => {
+    const ids = new Set(membres);
+    const sous = construireReseau(
+      membres.map((id) => reseau.parId.get(id) as SuccesTask),
+      reseau.aretes.filter((e) => ids.has(e.fromTaskId) && ids.has(e.toTaskId)),
+    );
+    return ordonnerColonnes(sous);
+  });
+  if (seules.length > 0) {
+    const nbColonnes = Math.max(1, ...bandes.map((b) => b.length));
+    const grille: string[][] = [];
+    seules.forEach((id, i) => {
+      const c = i % nbColonnes;
+      if (!grille[c]) grille[c] = [];
+      grille[c].push(id);
+    });
+    bandes.push(grille);
+  }
+  const pos = new Map<string, Point>();
+  const separateurs: number[] = [];
+  let largeur = 0;
+  let hauteur = 0;
+  bandes.forEach((colonnes, k) => {
+    const d = positionner(colonnes, dims);
+    if (k > 0) separateurs.push(hauteur);
+    for (const [id, p] of d.pos) pos.set(id, { x: p.x, y: p.y + hauteur });
+    largeur = Math.max(largeur, d.largeur);
+    hauteur += d.hauteur;
+  });
+  return { pos, largeur, hauteur, separateurs };
+}
+
+/**
  * Les positions à l'instant `t` (0 → départ, 1 → arrivée) d'un glissement
  * de cartes, en sortie douce (cubique) : quand une arête change et que le
  * barycentre réordonne une colonne, une carte qui saute d'une ligne à
