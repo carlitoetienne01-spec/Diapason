@@ -4,6 +4,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type PointerEvent,
 } from 'react';
@@ -55,6 +56,8 @@ import {
   tachesVerrouillees,
 } from '../features/succes/verrou';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { useChargementTemporise } from '../features/succes/useChargementTemporise';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { dateIsoLocale } from '../features/succes/planificateur';
 import { phraseReportee } from '../features/succes/report';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
@@ -712,10 +715,21 @@ function NotesDuProjet({ projectId }: { projectId: string }) {
 
 export function SuccesProjectsPage() {
   const confirm = useConfirm();
-  const [projects, setProjects] = useState<SuccesProject[]>([]);
-  const [tasks, setTasks] = useState<SuccesTask[]>([]);
+  // L'état initial vient du cache — la dernière réponse du serveur, en
+  // mémoire depuis la visite précédente ou relue du disque au lancement.
+  // Chaque retour sur la page repartait d'un écran vide et d'un spinner
+  // pour un serveur qui répond en 3-8 ms (Carlito, 18 sept. 2026).
+  const [projects, setProjects] = useState<SuccesProject[]>(
+    () => lireCache<SuccesProject[]>(clesSucces.projets()) ?? [],
+  );
+  const [tasks, setTasks] = useState<SuccesTask[]>(() => lireCache<SuccesTask[]>(clesSucces.taches()) ?? []);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  // Le spinner n'existe qu'au premier chargement sans cache : ensuite la
+  // liste reste montée pendant qu'on relit derrière (retour de focus,
+  // recherche, réordonnancement) — `saving` tient le voyant discret.
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.projets()) === null);
+  /** Vrai dès que le serveur a rendu une liste pendant ce montage — le cache n'y suffit pas. */
+  const chargeReussi = useRef(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -724,7 +738,9 @@ export function SuccesProjectsPage() {
   /** Le projet survolé pendant un glisser de réordonnancement. */
   const [cibleProjet, setCibleProjet] = useState<string | null>(null);
   const [quickTitle, setQuickTitle] = useState('');
-  const [kits, setKits] = useState<SuccesProjectKit[]>([]);
+  const [kits, setKits] = useState<SuccesProjectKit[]>(
+    () => lireCache<SuccesProjectKit[]>(clesSucces.kitsProjets()) ?? [],
+  );
   const [edges, setEdges] = useState<SuccesTaskEdge[]>([]);
   const [edgesFailed, setEdgesFailed] = useState(false);
   // Les cinq vues exposent onSelect ; sans destinataire, chips « faisable »,
@@ -747,16 +763,23 @@ export function SuccesProjectsPage() {
   const [treeEditMode, setTreeEditMode] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const [nextProjects, nextTasks, nextKits] = await Promise.all([
         listSuccesProjects(search),
         listSuccesTasks({ includeDone: true }),
-        listSuccesProjectKits().catch(() => [] as SuccesProjectKit[]),
+        listSuccesProjectKits().catch(() => null),
       ]);
+      // Une recherche tapée reste en mémoire seule : le disque ne garde que
+      // la liste complète, celle qu'un retour sur la page redemande.
+      ecrireCache(clesSucces.projets(search), nextProjects, { memoireSeule: Boolean(search) });
+      ecrireCache(clesSucces.taches(), nextTasks);
       setProjects(nextProjects);
       setTasks(nextTasks);
-      setKits(nextKits);
+      chargeReussi.current = true;
+      if (nextKits) {
+        ecrireCache(clesSucces.kitsProjets(), nextKits);
+        setKits(nextKits);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({ timestamp: Date.now(), level: 'error', category: 'succes', message: `Projets : ${message}` });
@@ -766,10 +789,7 @@ export function SuccesProjectsPage() {
     }
   }, [search]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 180);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+  useChargementTemporise(load, search);
 
   // Une page ouverte gardait son état indéfiniment : dans l'application de
   // bureau, des tâches créées ailleurs n'apparaissaient pas et un projet
@@ -804,9 +824,13 @@ export function SuccesProjectsPage() {
   // referme la sélection pour qu'un rechargement ne la rouvre pas.
   useEffect(() => {
     if (!selectedId || loading || selected) return;
-    // `projects` peut être vide le temps du premier chargement : on n'annonce
-    // une disparition que si la liste a bien été remplie.
-    if (projects.length === 0) return;
+    // On n'annonce une disparition que sur une liste que le SERVEUR a rendue
+    // pendant ce montage : la liste du cache peut dater d'avant la création
+    // du projet qu'un autre appareil demande d'ouvrir (18 sept. 2026), et
+    // « n'existe plus » aurait été un faux (§100). D'où `projects` entier en
+    // dépendance, pas sa longueur : la relecture qui suit rend un nouveau
+    // tableau de même taille.
+    if (!chargeReussi.current || projects.length === 0) return;
     setSelectedId(null);
     setEdges([]);
     setInspected(null);
@@ -814,7 +838,7 @@ export function SuccesProjectsPage() {
     toast.info('Ce projet n’existe plus.', {
       description: 'Il a été supprimé ailleurs — retour à la liste.',
     });
-  }, [selectedId, selected, projects.length, loading]);
+  }, [selectedId, selected, projects, loading]);
 
   const loadEdges = useCallback(async () => {
     if (!selected || selected.structure !== 'network') {
@@ -1039,7 +1063,9 @@ export function SuccesProjectsPage() {
 
   const loadTasks = useCallback(async () => {
     try {
-      setTasks(await listSuccesTasks({ includeDone: true }));
+      const nextTasks = await listSuccesTasks({ includeDone: true });
+      ecrireCache(clesSucces.taches(), nextTasks);
+      setTasks(nextTasks);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error('Les tâches ne peuvent pas être chargées.', { description: message });

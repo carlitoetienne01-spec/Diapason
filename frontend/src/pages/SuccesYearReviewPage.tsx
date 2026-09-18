@@ -7,6 +7,7 @@ import { downloadSuccesExport, fetchSuccesYearReview } from '../features/succes/
 import type { SuccesYearReview } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 
 const MONTHS = ['JAN', 'FÉV', 'MAR', 'AVR', 'MAI', 'JUN', 'JUL', 'AOÛ', 'SEP', 'OCT', 'NOV', 'DÉC'];
 const MONTH_NAMES = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -15,14 +16,27 @@ export function SuccesYearReviewPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState<number | undefined>();
-  const [review, setReview] = useState<SuccesYearReview | null>(null);
-  const [loading, setLoading] = useState(true);
+  // L'état initial vient du cache — le bilan que le serveur a rendu pour
+  // cette année à la dernière visite (Carlito, 18 sept. 2026 : chaque
+  // montage repartait d'une frise vide sous un spinner).
+  const [review, setReview] = useState<SuccesYearReview | null>(
+    () => lireCache<SuccesYearReview>(clesSucces.bilan(currentYear)),
+  );
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.bilan(currentYear)) === null);
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // Une autre année ou un autre mois : ce que le cache en sait s'affiche
+    // tout de suite ; sinon le spinner — les chiffres de 2025 ne tiendront
+    // pas lieu de ceux de 2026, même cinquante millisecondes.
+    const cle = clesSucces.bilan(year, month);
+    const connu = lireCache<SuccesYearReview>(cle);
+    if (connu) setReview(connu);
+    else setLoading(true);
     try {
-      setReview(await fetchSuccesYearReview(year, month));
+      const next = await fetchSuccesYearReview(year, month);
+      ecrireCache(cle, next);
+      setReview(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({ timestamp: Date.now(), level: 'error', category: 'succes', message: `Bilan : ${message}` });

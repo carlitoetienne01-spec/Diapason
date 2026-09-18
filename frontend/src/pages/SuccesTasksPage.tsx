@@ -21,6 +21,7 @@ import {
   setSuccesTaskDone,
   updateSuccesTask,
 } from '../features/succes/api';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { EmojiPicker } from '../features/succes/EmojiPicker';
 import { Pageur } from '../features/succes/Pageur';
 import { TachesTerminees } from '../features/succes/TachesTerminees';
@@ -45,7 +46,14 @@ import {
   retirerSousTache,
   sansTerminees,
 } from '../features/succes/reconciliation';
-import type { SuccesPriority, SuccesProject, SuccesSubtask, SuccesSyncStatus, SuccesTask } from '../features/succes/types';
+import type {
+  SuccesPriority,
+  SuccesProject,
+  SuccesSubtask,
+  SuccesSyncStatus,
+  SuccesTask,
+  SuccesTemplate,
+} from '../features/succes/types';
 import {
   loadTasksFilters,
   loadTasksPage,
@@ -61,6 +69,7 @@ import {
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { useChargementTemporise } from '../features/succes/useChargementTemporise';
 
 type ViewMode = SuccesTasksViewMode;
 
@@ -89,15 +98,26 @@ function logSucces(level: 'info' | 'error', message: string) {
 
 export function SuccesTasksPage() {
   const confirm = useConfirm();
-  const [tasks, setTasks] = useState<SuccesTask[]>([]);
-  const [projects, setProjects] = useState<SuccesProject[]>([]);
-  // `loading` ne vaut que pour le PREMIER chargement : ensuite `load()` relit
-  // derrière la liste affichée. Le spinner remplaçait toute la liste à chaque
-  // relecture — retour de focus, frappe dans la recherche, filtre — et
-  // démontait les cartes avec leur carnet ouvert, leur formulaire d'édition
-  // et les deux chips d'un 409 (revue du 17 sept. 2026, défauts 5 et 14).
-  const [loading, setLoading] = useState(true);
+  // L'état initial vient du cache : la dernière liste que le serveur a
+  // rendue, en mémoire depuis la visite précédente ou relue du disque au
+  // lancement. Sans lui, chaque retour sur la page — Tâches → Projets →
+  // Tâches, chaque clic de module du mini-panneau — repartait d'un écran
+  // vide avec « Chargement des tâches… » pendant que l'onglet disait déjà
+  // « Terminées 37 » (capture de Carlito, 18 sept. 2026).
+  const [tasks, setTasks] = useState<SuccesTask[]>(() => lireCache<SuccesTask[]>(clesSucces.taches()) ?? []);
+  const [projects, setProjects] = useState<SuccesProject[]>(
+    () => lireCache<SuccesProject[]>(clesSucces.projets()) ?? [],
+  );
+  // `loading` ne vaut que pour le PREMIER chargement SANS cache : ensuite
+  // `load()` relit derrière la liste affichée. Le spinner remplaçait toute
+  // la liste à chaque relecture — retour de focus, frappe dans la recherche,
+  // filtre — et démontait les cartes avec leur carnet ouvert, leur
+  // formulaire d'édition et les deux chips d'un 409 (revue du 17 sept.
+  // 2026, défauts 5 et 14).
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.taches()) === null);
   const chargeReussi = useRef(false);
+  /** La clé sous laquelle `tasks` a été chargée — celle du miroir, plus bas. */
+  const cleChargee = useRef<string | null>(null);
   const [rafraichit, setRafraichit] = useState(false);
   // Un compteur, pas un booléen : deux écritures en vol (deux sous-tâches,
   // coche + carnet), et le `finally` de la première éteignait le voyant
@@ -159,7 +179,9 @@ export function SuccesTasksPage() {
   const [amorceRecurrence, setAmorceRecurrence] = useState<AmorceRecurrence | null>(null);
   /** Pour fermer la section par la confirmation du panneau, jamais en la démontant sec (défaut 21). */
   const panneauRecurrences = useRef<RecurrencesPanelHandle>(null);
-  const [nbRecurrences, setNbRecurrences] = useState<number | null>(null);
+  const [nbRecurrences, setNbRecurrences] = useState<number | null>(
+    () => lireCache<SuccesTemplate[]>(clesSucces.gabarits())?.filter((item) => item.templateKind === 'task').length ?? null,
+  );
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -176,6 +198,19 @@ export function SuccesTasksPage() {
 
   const load = useCallback(async () => {
     setRafraichit(true);
+    // Le voyant de synchronisation se charge À CÔTÉ, jamais devant : jusqu'au
+    // 18 sept. 2026 son `await` précédait `setLoading(false)`, et la liste
+    // déjà reçue attendait derrière le spinner qu'un second aller-retour
+    // réponde — d'où la capture « Chargement des tâches… » sous « Terminées
+    // 37 ». Une sonde indisponible ne doit jamais cacher des tâches lues
+    // avec succès dans SQLite.
+    void fetchSuccesSyncStatus()
+      .then(setSyncStatus)
+      .catch((statusError: unknown) => {
+        setSyncStatus(null);
+        const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
+        logSucces('error', `État de synchronisation indisponible : ${statusMessage}`);
+      });
     try {
       // TOUJOURS avec les terminées : le compte de l'onglet Terminées et
       // l'onglet lui-même en ont besoin (17 sept. 2026). La Liste filtre
@@ -186,6 +221,9 @@ export function SuccesTasksPage() {
         // Le bouton « Récurrences (N) » doit dire N avant qu'on l'ouvre.
         listSuccesTemplates().catch(() => null),
       ]);
+      cleChargee.current = clesSucces.taches(search);
+      ecrireCache(cleChargee.current, nextTasks, { memoireSeule: Boolean(search) });
+      ecrireCache(clesSucces.projets(), nextProjects);
       setTasks(nextTasks);
       suivi.current.rafraichir(nextTasks);
       chargeReussi.current = true;
@@ -196,16 +234,8 @@ export function SuccesTasksPage() {
         courant && courant !== '__none__' && !nextProjects.some((project) => project.id === courant) ? '' : courant,
       );
       if (nextTemplates) {
+        ecrireCache(clesSucces.gabarits(), nextTemplates);
         setNbRecurrences(nextTemplates.filter((item) => item.templateKind === 'task').length);
-      }
-      // This diagnostic is secondary: a temporarily unavailable status poll
-      // must never hide task data that was loaded successfully from SQLite.
-      try {
-        setSyncStatus(await fetchSuccesSyncStatus());
-      } catch (statusError) {
-        setSyncStatus(null);
-        const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
-        logSucces('error', `État de synchronisation indisponible : ${statusMessage}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -217,10 +247,16 @@ export function SuccesTasksPage() {
     }
   }, [search]);
 
+  useChargementTemporise(load, search);
+
+  // Le miroir : chaque ligne réconciliée (coche, report, sous-tâche) se
+  // reflète dans le cache, pour qu'un retour sur la page montre l'état à
+  // jour sans attendre la relecture. Après un chargement réussi seulement —
+  // avant lui, `tasks` EST le cache, ou le vide.
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 180);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    if (!cleChargee.current) return;
+    ecrireCache(cleChargee.current, tasks, { memoireSeule: cleChargee.current !== clesSucces.taches() });
+  }, [tasks]);
 
   // Une page ouverte gardait son état indéfiniment : ce qui change
   // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
@@ -271,6 +307,20 @@ export function SuccesTasksPage() {
   const suivi = useRef(new SuiviDesRequetes());
 
   /**
+   * La ligne SERVEUR va aussi droit dans le cache : le miroir (l'effet sur
+   * `tasks`) ne bat que tant que la page est montée, et une réponse qui
+   * arrive après qu'on a quitté la page laissait l'intérim optimiste dans le
+   * cache jusqu'à la relecture suivante (§100, 18 sept. 2026).
+   */
+  const refleterLigne = (ligne: SuccesTask) => {
+    const cle = cleChargee.current;
+    if (!cle) return;
+    const courantes = lireCache<SuccesTask[]>(cle);
+    if (!courantes) return;
+    ecrireCache(cle, remplacerLigne(courantes, ligne), { memoireSeule: cle !== clesSucces.taches() });
+  };
+
+  /**
    * Peint `attendu` tout de suite, puis remplace la ligne par celle que le
    * serveur renvoie — elle seule reste (§100). En erreur, la dernière ligne
    * SERVEUR connue revient et un toast rouge le dit ; pas de toast de
@@ -296,12 +346,18 @@ export function SuccesTasksPage() {
     try {
       const serveur = await action();
       const ligne = suivi.current.reussir(avant.id, numero, serveur);
-      if (ligne) setTasks((courantes) => remplacerLigne(courantes, ligne));
+      if (ligne) {
+        setTasks((courantes) => remplacerLigne(courantes, ligne));
+        refleterLigne(ligne);
+      }
       logSucces('info', journal);
       return serveur;
     } catch (error) {
       const ligne = suivi.current.echouer(avant.id, numero);
-      if (ligne) setTasks((courantes) => remplacerLigne(courantes, ligne));
+      if (ligne) {
+        setTasks((courantes) => remplacerLigne(courantes, ligne));
+        refleterLigne(ligne);
+      }
       const message = error instanceof Error ? error.message : String(error);
       logSucces('error', `${journal} — échec : ${message}`);
       if (relancer(error)) throw error;

@@ -60,6 +60,7 @@ import type {
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 
 type SectionTab =
   | 'transactions'
@@ -169,11 +170,28 @@ export function SuccesFinancesPage() {
   const today = localIsoDate();
   const [period, setPeriod] = useState<FinancePeriod>('month');
   const [section, setSection] = useState<SectionTab>('transactions');
-  const [overview, setOverview] = useState<FinanceOverview | null>(null);
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
-  const [categories, setCategories] = useState<FinanceCategory[]>([]);
-  const [subscriptions, setSubscriptions] = useState<FinanceSubscription[]>([]);
-  const [loading, setLoading] = useState(true);
+  // L'état initial vient du cache — la dernière réponse du serveur pour la
+  // période d'ouverture (le mois). Chaque montage repartait de panneaux
+  // vides qui disaient « Aucune transaction » avant la première réponse
+  // (Carlito, 18 sept. 2026).
+  const [overview, setOverview] = useState<FinanceOverview | null>(
+    () => lireCache<FinanceOverview>(clesSucces.financesApercu('month', today)),
+  );
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>(() => {
+    const apercu = lireCache<FinanceOverview>(clesSucces.financesApercu('month', today));
+    return (apercu && lireCache<FinanceTransaction[]>(clesSucces.financesTransactions(apercu.from, apercu.to))) ?? [];
+  });
+  const [categories, setCategories] = useState<FinanceCategory[]>(
+    () => lireCache<FinanceCategory[]>(clesSucces.financesCategories()) ?? [],
+  );
+  const [subscriptions, setSubscriptions] = useState<FinanceSubscription[]>(
+    () => lireCache<FinanceSubscription[]>(clesSucces.financesAbonnements()) ?? [],
+  );
+  // `loading` : le premier chargement sans cache seulement — les lignes
+  // « Aucun… » se taisent tant qu'il dure. `rafraichit` tient le voyant
+  // discret de l'en-tête pendant les relectures.
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.financesApercu('month', today)) === null);
+  const [rafraichit, setRafraichit] = useState(false);
   const [saving, setSaving] = useState(false);
   // Trois états de MODE, pas de largeur : le CSS décide seul ce qui se voit à
   // quelle taille (règle 2 de docs/development/mini-panneau-responsive.md).
@@ -260,7 +278,7 @@ export function SuccesFinancesPage() {
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setRafraichit(true);
     try {
       const [nextOverview, nextCategories, nextSubs] = await Promise.all([
         fetchFinanceOverview(period, today),
@@ -272,6 +290,10 @@ export function SuccesFinancesPage() {
         to: nextOverview.to,
         limit: 200,
       });
+      ecrireCache(clesSucces.financesApercu(period, today), nextOverview);
+      ecrireCache(clesSucces.financesCategories(), nextCategories);
+      ecrireCache(clesSucces.financesAbonnements(), nextSubs);
+      ecrireCache(clesSucces.financesTransactions(nextOverview.from, nextOverview.to), nextTxns);
       setOverview(nextOverview);
       setCategories(nextCategories);
       setSubscriptions(nextSubs);
@@ -297,6 +319,7 @@ export function SuccesFinancesPage() {
       toast.error('Les finances ne peuvent pas être chargées.', { description: message });
     } finally {
       setLoading(false);
+      setRafraichit(false);
     }
   }, [period, today]);
 
@@ -640,7 +663,7 @@ export function SuccesFinancesPage() {
               >
                 Succès
               </span>
-              {(loading || saving) && (
+              {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
@@ -765,7 +788,7 @@ export function SuccesFinancesPage() {
         <section className="grid gap-3 lg:grid-cols-3 mb-4 sm:mb-6">
           <Panel title="Alertes budget">
             {!budgets.length && (
-              <EmptyLine text="Aucun budget pour ce mois." />
+              <EmptyLine attente={loading} text="Aucun budget pour ce mois." />
             )}
             {budgets.map((budget) => {
               const name =
@@ -806,7 +829,7 @@ export function SuccesFinancesPage() {
 
           <Panel title="Abonnements à venir">
             {!(overview?.upcomingSubscriptions.length) && (
-              <EmptyLine text="Rien d’imminent sur 14 jours." />
+              <EmptyLine attente={loading} text="Rien d’imminent sur 14 jours." />
             )}
             {(overview?.upcomingSubscriptions ?? []).map((sub) => (
               <div
@@ -830,7 +853,7 @@ export function SuccesFinancesPage() {
           </Panel>
 
           <Panel title="Objectifs d’épargne">
-            {!goals.length && <EmptyLine text="Aucun objectif pour l’instant." />}
+            {!goals.length && <EmptyLine attente={loading} text="Aucun objectif pour l’instant." />}
             {goals.map((goal) => {
               const pct = goal.target > 0 ? Math.min(100, (goal.current / goal.target) * 100) : 0;
               return (
@@ -1004,7 +1027,7 @@ export function SuccesFinancesPage() {
             </FormCard>
 
             <Panel title={`Liste (${transactions.length})`}>
-              {!transactions.length && <EmptyLine text="Aucune transaction sur cette période." />}
+              {!transactions.length && <EmptyLine attente={loading} text="Aucune transaction sur cette période." />}
               {transactions.map((txn) => {
                 const cat = categoryById.get(txn.categoryId);
                 const account = accountById.get(txn.accountId);
@@ -1121,7 +1144,7 @@ export function SuccesFinancesPage() {
             </FormCard>
 
             <Panel title={`Abonnements (${subscriptions.length})`}>
-              {!subscriptions.length && <EmptyLine text="Aucun abonnement enregistré." />}
+              {!subscriptions.length && <EmptyLine attente={loading} text="Aucun abonnement enregistré." />}
               {subscriptions.map((sub) => (
                 <div
                   key={sub.id}
@@ -1227,7 +1250,7 @@ export function SuccesFinancesPage() {
             </FormCard>
 
             <Panel title="Budgets du mois">
-              {!budgets.length && <EmptyLine text="Aucun budget défini." />}
+              {!budgets.length && <EmptyLine attente={loading} text="Aucun budget défini." />}
               {budgets.map((budget) => {
                 const name =
                   budget.scope === 'global'
@@ -1357,7 +1380,7 @@ export function SuccesFinancesPage() {
 
             <div className="space-y-4">
               <Panel title={`Comptes (${accounts.length})`}>
-                {!accounts.length && <EmptyLine text="Aucun compte." />}
+                {!accounts.length && <EmptyLine attente={loading} text="Aucun compte." />}
                 {accounts.map((account) => (
                   <div
                     key={account.id}
@@ -1394,7 +1417,7 @@ export function SuccesFinancesPage() {
 
               <Panel title="Catégories custom">
                 {categories.filter((cat) => !cat.system).length === 0 && (
-                  <EmptyLine text="Pas encore de catégorie personnalisée." />
+                  <EmptyLine attente={loading} text="Pas encore de catégorie personnalisée." />
                 )}
                 {categories
                   .filter((cat) => !cat.system)
@@ -1489,7 +1512,7 @@ export function SuccesFinancesPage() {
             </FormCard>
 
             <Panel title={`Objectifs (${goals.length})`}>
-              {!goals.length && <EmptyLine text="Aucun objectif d’épargne." />}
+              {!goals.length && <EmptyLine attente={loading} text="Aucun objectif d’épargne." />}
               {goals.map((goal) => {
                 const pct = goal.target > 0 ? Math.min(100, (goal.current / goal.target) * 100) : 0;
                 return (
@@ -1736,7 +1759,13 @@ function FormCard({
   );
 }
 
-function EmptyLine({ text }: { text: string }) {
+/**
+ * `attente` : le premier chargement sans cache est en cours — « Aucune
+ * transaction sur cette période » s'affichait AVANT la première réponse,
+ * et se lisait comme un fait (18 sept. 2026, §100).
+ */
+function EmptyLine({ text, attente = false }: { text: string; attente?: boolean }) {
+  if (attente) return null;
   return (
     <p className="text-sm py-2" style={{ color: 'var(--color-text-tertiary)' }}>
       {text}

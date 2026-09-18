@@ -17,6 +17,7 @@ import { resyncHabitReminders } from '../features/succes/habitReminders';
 import type { SuccesDashboard, SuccesHabit } from '../features/succes/types';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 
 function localIsoDate(value = new Date()) {
   const year = value.getFullYear();
@@ -30,14 +31,23 @@ const WEEK_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 export function SuccesDashboardPage() {
   const navigate = useNavigate();
   const [date, setDate] = useState(localIsoDate);
-  const [data, setData] = useState<SuccesDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
+  // L'état initial vient du cache — le tableau que le serveur a rendu pour
+  // cette date à la dernière visite (46 ms côté serveur ; c'était l'écran
+  // vide par montage qui coûtait, Carlito, 18 sept. 2026). Un changement de
+  // date relit derrière le tableau affiché, avec le voyant de l'en-tête.
+  const [data, setData] = useState<SuccesDashboard | null>(
+    () => lireCache<SuccesDashboard>(clesSucces.tableauDeBord(localIsoDate())),
+  );
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.tableauDeBord(localIsoDate())) === null);
+  const [rafraichit, setRafraichit] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setRafraichit(true);
     try {
-      setData(await fetchSuccesDashboard(date));
+      const next = await fetchSuccesDashboard(date);
+      ecrireCache(clesSucces.tableauDeBord(date), next);
+      setData(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({
@@ -49,6 +59,7 @@ export function SuccesDashboardPage() {
       toast.error('Le tableau de bord ne peut pas être chargé.', { description: message });
     } finally {
       setLoading(false);
+      setRafraichit(false);
     }
   }, [date]);
 
@@ -94,7 +105,7 @@ export function SuccesDashboardPage() {
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
-              {(loading || saving) && (
+              {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
@@ -115,7 +126,7 @@ export function SuccesDashboardPage() {
           />
         </header>
 
-        {loading && !data ? (
+        {loading ? (
           <div className="flex items-center justify-center gap-2 py-24 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement…
           </div>

@@ -1,5 +1,5 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarCheck2,
   ChevronLeft,
@@ -43,6 +43,7 @@ import type { SuccesQuote, SuccesSubtask, SuccesTask } from '../features/succes/
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MIME = 'application/x-diapason-task';
@@ -117,21 +118,28 @@ export function SuccesPlannerPage() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [calendarMonth, setCalendarMonth] = useState(today);
   const [filter, setFilter] = useState<FiltrePlanner>('day');
-  const [tasks, setTasks] = useState<SuccesTask[]>([]);
+  // L'état initial vient du cache — la même liste que Tâches et Projets
+  // (`/v1/succes/tasks?include_done=true`), rendue par le serveur à la
+  // dernière visite de l'une des trois. Chaque montage repartait d'un écran
+  // vide et de « Chargement du plan… » (Carlito, 18 sept. 2026).
+  const [tasks, setTasks] = useState<SuccesTask[]>(() => lireCache<SuccesTask[]>(clesSucces.taches()) ?? []);
   /** Les points du calendrier, servis par le serveur ; null tant qu'ils n'ont pas répondu. */
   const [pastilles, setPastilles] = useState<Record<string, Pastille> | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.taches()) === null);
   const [saving, setSaving] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [quoteDraft, setQuoteDraft] = useState({ text: '', author: '' });
-  const [quotes, setQuotes] = useState<SuccesQuote[]>([]);
-  const [displayQuote, setDisplayQuote] = useState<SuccesQuote | null>(null);
+  const [quotes, setQuotes] = useState<SuccesQuote[]>(() => lireCache<SuccesQuote[]>(clesSucces.citations()) ?? []);
+  const [displayQuote, setDisplayQuote] = useState<SuccesQuote | null>(() =>
+    quotes.length ? pickRandomQuote(quotes) : null,
+  );
 
   const loadQuotes = useCallback(async () => {
     try {
       const next = await listSuccesQuotes();
+      ecrireCache(clesSucces.citations(), next);
       setQuotes(next);
       setDisplayQuote((current) => {
         if (!next.length) return null;
@@ -144,21 +152,19 @@ export function SuccesPlannerPage() {
     }
   }, []);
 
-  // `loading` n'est vrai qu'au PREMIER chargement : ensuite la liste reste
-  // montée pendant qu'on relit. Démonter les cartes à chaque load() —
-  // retour de focus, coche d'une autre tâche — emportait la boîte Reporter
-  // et ses deux dates proposées (contre-revue du 17 sept. 2026, §34).
-  const dejaCharge = useRef(false);
+  // `loading` n'est vrai qu'au PREMIER chargement sans cache : ensuite la
+  // liste reste montée pendant qu'on relit. Démonter les cartes à chaque
+  // load() — retour de focus, coche d'une autre tâche — emportait la boîte
+  // Reporter et ses deux dates proposées (contre-revue du 17 sept. 2026, §34).
   const load = useCallback(async () => {
-    if (!dejaCharge.current) setLoading(true);
     try {
       // D'ABORD le planificateur, ENSUITE la liste : le premier matérialise
       // les récurrences du jour ; chargés en parallèle, la liste pouvait
       // arriver avant elles et contredire les points du calendrier.
       await fetchSuccesPlanner(selectedDate).catch(() => null);
       const nextTasks = await listSuccesTasks({ includeDone: true });
+      ecrireCache(clesSucces.taches(), nextTasks);
       setTasks(nextTasks);
-      dejaCharge.current = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({

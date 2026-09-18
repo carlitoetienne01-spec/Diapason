@@ -43,6 +43,7 @@ import { CarteVitree } from '../components/Glass/CarteVitree';
 import { isTauri } from '../lib/api';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import './SuccesHabitsGlass.css';
 
 const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -86,9 +87,23 @@ export function SuccesHabitsPage() {
   const confirm = useConfirm();
   const today = localIsoDate();
   const now = new Date();
-  const [habits, setHabits] = useState<SuccesHabit[]>([]);
-  const [logs, setLogs] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
+  // L'état initial vient du cache — la dernière réponse du serveur pour
+  // aujourd'hui et l'année en cours. Chaque montage repartait de
+  // « Chargement des habitudes… » (Carlito, 18 sept. 2026).
+  const [habits, setHabits] = useState<SuccesHabit[]>(
+    () => lireCache<SuccesHabit[]>(clesSucces.habitudes(today)) ?? [],
+  );
+  const [logs, setLogs] = useState<Record<string, boolean>>(
+    () =>
+      lireCache<Record<string, boolean>>(clesSucces.journalHabitudes(`${now.getFullYear()}-01-01`, `${now.getFullYear()}-12-31`)) ??
+      {},
+  );
+  // Le spinner n'existe qu'au premier chargement sans cache ; `rafraichit`
+  // tient le voyant discret de l'en-tête pendant les relectures.
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.habitudes(today)) === null);
+  const [rafraichit, setRafraichit] = useState(false);
+  /** Les clés sous lesquelles `habits` et `logs` ont été chargés — celles du miroir, plus bas. */
+  const clesChargees = useRef<{ habitudes: string; journal: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -110,12 +125,18 @@ export function SuccesHabitsPage() {
   const spanTo = `${viewYear}-12-31`;
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setRafraichit(true);
     try {
       const [nextHabits, nextLogs] = await Promise.all([
         listSuccesHabits(today),
         fetchSuccesHabitLogs(spanFrom, spanTo),
       ]);
+      ecrireCache(clesSucces.habitudes(today), nextHabits);
+      ecrireCache(clesSucces.journalHabitudes(spanFrom, spanTo), nextLogs);
+      clesChargees.current = {
+        habitudes: clesSucces.habitudes(today),
+        journal: clesSucces.journalHabitudes(spanFrom, spanTo),
+      };
       setHabits(nextHabits);
       setLogs(nextLogs);
     } catch (error) {
@@ -129,12 +150,25 @@ export function SuccesHabitsPage() {
       toast.error('Les habitudes ne peuvent pas être chargées.', { description: message });
     } finally {
       setLoading(false);
+      setRafraichit(false);
     }
   }, [spanFrom, spanTo, today]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Le miroir : une case cochée (réconciliée avec la réponse du serveur, ou
+  // rétablie en échec) se reflète dans le cache, pour qu'un retour sur la
+  // page la montre sans attendre la relecture. Après un chargement réussi
+  // seulement, et sous la clé de CE chargement : entre le changement
+  // d'année et la réponse, `logs` porte encore l'année d'avant.
+  useEffect(() => {
+    if (clesChargees.current) ecrireCache(clesChargees.current.habitudes, habits);
+  }, [habits]);
+  useEffect(() => {
+    if (clesChargees.current) ecrireCache(clesChargees.current.journal, logs);
+  }, [logs]);
 
   // Une page ouverte gardait son état indéfiniment : ce qui change
   // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
@@ -323,7 +357,7 @@ export function SuccesHabitsPage() {
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
-              {(loading || saving) && (
+              {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
@@ -530,7 +564,7 @@ export function SuccesHabitsPage() {
           </CarteVitree>
         )}
 
-        {loading && !habits.length ? (
+        {loading ? (
           <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des habitudes…
           </div>

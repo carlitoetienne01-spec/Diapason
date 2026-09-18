@@ -56,6 +56,8 @@ import type {
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
+import { useChargementTemporise } from '../features/succes/useChargementTemporise';
+import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
 type SortMode = TriNotes;
@@ -102,7 +104,10 @@ const emptyMeta = () => ({
 
 export function SuccesNotesPage() {
   const confirm = useConfirm();
-  const [notes, setNotes] = useState<SuccesNote[]>([]);
+  // L'état initial vient du cache — la dernière liste que le serveur a
+  // rendue (924 Ko, 3-8 ms côté serveur ; c'est l'écran vide par montage
+  // qui coûtait, Carlito, 18 sept. 2026).
+  const [notes, setNotes] = useState<SuccesNote[]>(() => lireCache<SuccesNote[]>(clesSucces.notes()) ?? []);
   const [search, setSearch] = useState('');
   // Le tri repartait à « Récent » à chaque ouverture : l'arrangement des
   // cartables (rang manuel, côté serveur) existait sans jamais être montré —
@@ -128,7 +133,12 @@ export function SuccesNotesPage() {
   const [draftTitle, setDraftTitle] = useState('Sans titre');
   const [draftContent, setDraftContent] = useState('');
   const [meta, setMeta] = useState(emptyMeta());
-  const [loading, setLoading] = useState(true);
+  // Le spinner n'existe qu'au premier chargement sans cache ; `rafraichit`
+  // tient le voyant discret de l'en-tête pendant les relectures.
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.notes()) === null);
+  const [rafraichit, setRafraichit] = useState(false);
+  /** La clé sous laquelle `notes` a été chargée — celle du miroir, plus bas. */
+  const cleChargee = useRef<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -140,8 +150,12 @@ export function SuccesNotesPage() {
     projectId: '',
   });
   /** L'ordre des sections, celui du serveur — le glisser de l'utilisateur. */
-  const [categories, setCategories] = useState<string[]>([]);
-  const [projects, setProjects] = useState<SuccesProject[]>([]);
+  const [categories, setCategories] = useState<string[]>(
+    () => lireCache<string[]>(clesSucces.categoriesNotes()) ?? [],
+  );
+  const [projects, setProjects] = useState<SuccesProject[]>(
+    () => lireCache<SuccesProject[]>(clesSucces.projets()) ?? [],
+  );
   /** La catégorie en cours de renommage dans son en-tête, et son brouillon. */
   const [renommage, setRenommage] = useState<{ nom: string; brouillon: string } | null>(null);
   const [cibleSection, setCibleSection] = useState<string | null>(null);
@@ -150,18 +164,37 @@ export function SuccesNotesPage() {
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
 
+  // Lu au moment de la réponse, pas capturé : `load` dépendait d'`activeId`
+  // et chaque note ouverte relançait la liste entière (924 Ko) 180 ms plus
+  // tard, pour rien (18 sept. 2026).
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
+
   const load = useCallback(async () => {
-    setLoading(true);
+    setRafraichit(true);
     try {
       const next = await listSuccesNotes(search);
+      cleChargee.current = clesSucces.notes(search);
+      ecrireCache(cleChargee.current, next, { memoireSeule: Boolean(search) });
       setNotes(next);
       // Rien de choisi encore : le glisser d'hier EST la préférence.
       if (loadNotesSort() === undefined) setSortState(triInitialDesNotes(undefined, next));
       // L'ordre des sections et les projets (pour la pastille et le menu).
       // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
-      void listNoteCategories().then(setCategories).catch(() => {});
-      void listSuccesProjects().then(setProjects).catch(() => {});
-      if (activeId && !next.some((note) => note.id === activeId)) {
+      void listNoteCategories()
+        .then((suivantes) => {
+          ecrireCache(clesSucces.categoriesNotes(), suivantes);
+          setCategories(suivantes);
+        })
+        .catch(() => {});
+      void listSuccesProjects()
+        .then((suivants) => {
+          ecrireCache(clesSucces.projets(), suivants);
+          setProjects(suivants);
+        })
+        .catch(() => {});
+      const ouverte = activeIdRef.current;
+      if (ouverte && !next.some((note) => note.id === ouverte)) {
         setActiveId(null);
         setView('list');
       }
@@ -176,13 +209,25 @@ export function SuccesNotesPage() {
       toast.error('Les notes ne peuvent pas être chargées.', { description: message });
     } finally {
       setLoading(false);
+      setRafraichit(false);
     }
-  }, [activeId, search]);
+  }, [search]);
 
+  useChargementTemporise(load, search);
+
+  // Le miroir : une note enregistrée, créée ou réordonnée se reflète dans
+  // le cache, pour qu'un retour sur la page la montre sans attendre la
+  // relecture. Après un chargement réussi seulement.
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 180);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    if (!cleChargee.current) return;
+    ecrireCache(cleChargee.current, notes, { memoireSeule: cleChargee.current !== clesSucces.notes() });
+  }, [notes]);
+  // Les sections aussi : réordonnées, renommées ou dissoutes, c'est le
+  // serveur qui rend la liste (`orderNoteCategories`, `renameNoteCategory`).
+  useEffect(() => {
+    if (!cleChargee.current) return;
+    ecrireCache(clesSucces.categoriesNotes(), categories);
+  }, [categories]);
 
   // Une page ouverte gardait son état indéfiniment : ce qui change
   // ailleurs — téléphone, autre fenêtre, assistant — n'apparaissait
@@ -931,7 +976,7 @@ export function SuccesNotesPage() {
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
                 Succès
               </span>
-              {loading && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
+              {(loading || rafraichit) && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
             </div>
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
               Notes
@@ -1098,7 +1143,7 @@ export function SuccesNotesPage() {
           </select>
         </CadreVitre>
 
-        {loading && !notes.length ? (
+        {loading ? (
           <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement…
           </div>
