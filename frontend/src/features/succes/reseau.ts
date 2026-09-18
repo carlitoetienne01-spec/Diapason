@@ -1,0 +1,447 @@
+// Le raisonnement du réseau — niveaux, statuts, voisinage, impact, boucle,
+// chaîne la plus longue, ordre des colonnes. Pur : (tâches, arêtes) en
+// entrée, jamais le DOM.
+//
+// Chantier réseau du 18 septembre 2026. Jusque-là tout vivait dans
+// NetworkView.tsx, non exporté et sans un test : la garde anti-cycle de
+// `computeLevels` était PORTEUSE (une arête relayée par un pair peut fermer
+// une boucle, test_structures.py l. 373) et rien ne le vérifiait ; la fiche,
+// la voix, le tri des faisables et le décroisement des flèches avaient tous
+// besoin de « ce que X attend » et « ce que X débloque », qui n'existaient
+// nulle part. Une arête se lit « from débloque to » : `to` attend `from`.
+
+import type { SuccesTask, SuccesTaskEdge } from './types';
+
+export type StatutTache = 'faite' | 'faisable' | 'bloquee';
+
+/** Le sens d'un parcours : vers ce qu'on attend, ou vers ce qu'on débloque. */
+export type Sens = 'amont' | 'aval';
+
+export interface Reseau {
+  taches: SuccesTask[];
+  /** Les arêtes dont les deux bouts existent — les autres sont des fantômes. */
+  aretes: SuccesTaskEdge[];
+  parId: Map<string, SuccesTask>;
+  /** id → ce qu'il attend (prédécesseures directes), dans l'ordre des arêtes. */
+  amont: Map<string, string[]>;
+  /** id → ce qu'il débloque (successeures directes), dans l'ordre des arêtes. */
+  aval: Map<string, string[]>;
+}
+
+export interface Voisinage {
+  amont: string[];
+  aval: string[];
+  amontTransitif: string[];
+  avalTransitif: string[];
+  /** Les prédécesseures directes encore ouvertes — les vraies raisons du blocage. */
+  manquantes: string[];
+}
+
+export interface Maillon {
+  id: string;
+  /** 1 pour une voisine directe, 2 pour la voisine de la voisine, etc. */
+  profondeur: number;
+}
+
+const compareTitres = (a: SuccesTask, b: SuccesTask) => a.title.localeCompare(b.title, 'fr');
+
+export function construireReseau(tasks: SuccesTask[], edges: SuccesTaskEdge[]): Reseau {
+  const parId = new Map(tasks.map((task) => [task.id, task]));
+  const amont = new Map<string, string[]>();
+  const aval = new Map<string, string[]>();
+  for (const task of tasks) {
+    amont.set(task.id, []);
+    aval.set(task.id, []);
+  }
+  const aretes: SuccesTaskEdge[] = [];
+  for (const edge of edges) {
+    if (!parId.has(edge.fromTaskId) || !parId.has(edge.toTaskId)) continue;
+    aretes.push(edge);
+    amont.get(edge.toTaskId)?.push(edge.fromTaskId);
+    aval.get(edge.fromTaskId)?.push(edge.toTaskId);
+  }
+  return { taches: tasks, aretes, parId, amont, aval };
+}
+
+/**
+ * Niveau = longueur du plus long chemin depuis une source.
+ *
+ * La garde `visiting` est porteuse : une boucle relayée par un pair (t1→t2
+ * ET t2→t1, acceptée à la réception pour ne pas figer les appareils) ferait
+ * sinon une récursion sans fin. Ici l'arête qui referme le cycle est comptée
+ * comme une source : les niveaux restent finis, le graphe se dessine.
+ */
+export function niveaux(reseau: Reseau): Map<string, number> {
+  const levels = new Map<string, number>();
+  const visiting = new Set<string>();
+  const levelOf = (id: string): number => {
+    const known = levels.get(id);
+    if (known !== undefined) return known;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const sources = reseau.amont.get(id) ?? [];
+    const value =
+      sources.length === 0 ? 0 : Math.max(...sources.map((sourceId) => levelOf(sourceId))) + 1;
+    visiting.delete(id);
+    levels.set(id, value);
+    return value;
+  };
+  for (const task of reseau.taches) levelOf(task.id);
+  return levels;
+}
+
+/** Faite, faisable (rien d'ouvert en amont), ou bloquée (au moins une attente ouverte). */
+export function statuts(reseau: Reseau): Map<string, StatutTache> {
+  const map = new Map<string, StatutTache>();
+  for (const task of reseau.taches) {
+    if (task.done) {
+      map.set(task.id, 'faite');
+      continue;
+    }
+    const attend = (reseau.amont.get(task.id) ?? []).some((id) => !reseau.parId.get(id)?.done);
+    map.set(task.id, attend ? 'bloquee' : 'faisable');
+  }
+  return map;
+}
+
+export function statutDe(reseau: Reseau, id: string): StatutTache {
+  const task = reseau.parId.get(id);
+  if (!task || task.done) return 'faite';
+  const attend = (reseau.amont.get(id) ?? []).some((pid) => !reseau.parId.get(pid)?.done);
+  return attend ? 'bloquee' : 'faisable';
+}
+
+/** Les faisables maintenant, par titre — l'ordre par impact attend la proposition 5. */
+export function faisables(reseau: Reseau): SuccesTask[] {
+  const st = statuts(reseau);
+  return reseau.taches.filter((task) => st.get(task.id) === 'faisable').sort(compareTitres);
+}
+
+/** Parcours en largeur dans un sens, sans le départ, chaque tâche une seule fois. */
+export function chaine(reseau: Reseau, id: string, sens: Sens): Maillon[] {
+  const voisins = sens === 'amont' ? reseau.amont : reseau.aval;
+  const vus = new Set<string>([id]);
+  const resultat: Maillon[] = [];
+  let frontiere = [id];
+  let profondeur = 0;
+  while (frontiere.length > 0) {
+    profondeur += 1;
+    const suivante: string[] = [];
+    for (const courant of frontiere) {
+      const proches = [...(voisins.get(courant) ?? [])]
+        .map((vid) => reseau.parId.get(vid))
+        .filter((t): t is SuccesTask => t !== undefined)
+        .sort(compareTitres);
+      for (const proche of proches) {
+        if (vus.has(proche.id)) continue;
+        vus.add(proche.id);
+        resultat.push({ id: proche.id, profondeur });
+        suivante.push(proche.id);
+      }
+    }
+    frontiere = suivante;
+  }
+  return resultat;
+}
+
+/**
+ * Les voisines directes, dans l'ordre où la fiche les lit : en amont, les
+ * ouvertes d'abord (ce sont les vraies raisons du blocage), puis par titre ;
+ * en aval, par titre.
+ */
+function voisinesOrdonnees(reseau: Reseau, id: string, sens: Sens): SuccesTask[] {
+  const ids = (sens === 'amont' ? reseau.amont : reseau.aval).get(id) ?? [];
+  const taches = ids
+    .map((vid) => reseau.parId.get(vid))
+    .filter((t): t is SuccesTask => t !== undefined);
+  return taches.sort((a, b) => {
+    if (sens === 'amont' && a.done !== b.done) return a.done ? 1 : -1;
+    return compareTitres(a, b);
+  });
+}
+
+export function voisinage(reseau: Reseau, id: string): Voisinage {
+  const amont = voisinesOrdonnees(reseau, id, 'amont');
+  const aval = voisinesOrdonnees(reseau, id, 'aval');
+  return {
+    amont: amont.map((t) => t.id),
+    aval: aval.map((t) => t.id),
+    amontTransitif: chaine(reseau, id, 'amont').map((m) => m.id),
+    avalTransitif: chaine(reseau, id, 'aval').map((m) => m.id),
+    manquantes: amont.filter((t) => !t.done).map((t) => t.id),
+  };
+}
+
+/** La première voisine dans un sens — la cible de ← et → dans la fiche. */
+export function voisinSuivant(reseau: Reseau, id: string, sens: Sens): string | null {
+  return voisinesOrdonnees(reseau, id, sens)[0]?.id ?? null;
+}
+
+/**
+ * Les successeures qu'achever `id` ouvre : celles dont toutes les autres
+ * attentes sont déjà faites. Calculé sur l'état RECHARGÉ après la coche,
+ * `id` y est déjà faite et le résultat dit ce qui vient de devenir faisable
+ * (§100 : la phrase vient du serveur, pas du clic).
+ */
+export function ceQueDebloque(reseau: Reseau, id: string): string[] {
+  const resultat: string[] = [];
+  for (const sid of reseau.aval.get(id) ?? []) {
+    const succ = reseau.parId.get(sid);
+    if (!succ || succ.done) continue;
+    const autres = (reseau.amont.get(sid) ?? []).filter((pid) => pid !== id);
+    if (autres.every((pid) => reseau.parId.get(pid)?.done)) resultat.push(sid);
+  }
+  return resultat
+    .map((sid) => reseau.parId.get(sid) as SuccesTask)
+    .sort(compareTitres)
+    .map((t) => t.id);
+}
+
+/** Combien de tâches ouvertes attendent, de près ou de loin, que `id` soit faite. */
+export function impact(reseau: Reseau, id: string): number {
+  return chaine(reseau, id, 'aval').filter((m) => !reseau.parId.get(m.id)?.done).length;
+}
+
+/**
+ * Même parcours que `create_task_edge` (workspace.py) : une boucle se
+ * formerait si `from` est déjà atteignable depuis `to`. Le serveur reste le
+ * juge ; le client ne fait que prévenir avant le clic.
+ */
+export function fermeraitUneBoucle(reseau: Reseau, from: string, to: string): boolean {
+  if (from === to) return true;
+  const atteints = new Set<string>([to]);
+  const frontiere = [to];
+  while (frontiere.length > 0) {
+    const courant = frontiere.pop() as string;
+    for (const suivant of reseau.aval.get(courant) ?? []) {
+      if (suivant === from) return true;
+      if (!atteints.has(suivant)) {
+        atteints.add(suivant);
+        frontiere.push(suivant);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * La plus longue chaîne de tâches OUVERTES, dans l'ordre. Ce n'est pas un
+ * « chemin critique » : sans durée, seule la profondeur en tâches est vraie.
+ * À égalité, la chaîne dont les titres viennent en premier (stable d'un rendu
+ * à l'autre). Les tâches faites sont hors du sous-graphe : une chaîne finie
+ * ne compte plus.
+ */
+export function chaineLaPlusLongue(reseau: Reseau): string[] {
+  const ouvertes = reseau.taches.filter((t) => !t.done);
+  const memo = new Map<string, string[]>();
+  const visiting = new Set<string>();
+  const meilleure = (id: string): string[] => {
+    const connue = memo.get(id);
+    if (connue) return connue;
+    // Une boucle relayée : l'arête qui la referme est traitée comme une
+    // source, sinon la chaîne se rallongerait d'un tour à chaque passage.
+    if (visiting.has(id)) return [];
+    visiting.add(id);
+    let best: string[] = [];
+    for (const pid of reseau.amont.get(id) ?? []) {
+      const pred = reseau.parId.get(pid);
+      if (!pred || pred.done) continue;
+      const candidate = meilleure(pid);
+      if (candidate.length > best.length || (candidate.length === best.length && plusTot(reseau, candidate, best))) {
+        best = candidate;
+      }
+    }
+    visiting.delete(id);
+    const chemin = [...best, id];
+    memo.set(id, chemin);
+    return chemin;
+  };
+  let resultat: string[] = [];
+  for (const task of ouvertes) {
+    const chemin = meilleure(task.id);
+    if (chemin.length > resultat.length || (chemin.length === resultat.length && plusTot(reseau, chemin, resultat))) {
+      resultat = chemin;
+    }
+  }
+  return resultat;
+}
+
+function plusTot(reseau: Reseau, a: string[], b: string[]): boolean {
+  if (b.length === 0) return true;
+  const ta = a.map((id) => reseau.parId.get(id)?.title ?? '').join(' ');
+  const tb = b.map((id) => reseau.parId.get(id)?.title ?? '').join(' ');
+  return ta.localeCompare(tb, 'fr') < 0;
+}
+
+/** Les colonnes telles que la vue les dessinait : par niveau, faites en bas, puis par titre. */
+export function colonnesInitiales(reseau: Reseau): string[][] {
+  const levels = niveaux(reseau);
+  const parNiveau = new Map<number, SuccesTask[]>();
+  for (const task of reseau.taches) {
+    const level = levels.get(task.id) ?? 0;
+    const colonne = parNiveau.get(level);
+    if (colonne) colonne.push(task);
+    else parNiveau.set(level, [task]);
+  }
+  return [...parNiveau.keys()]
+    .sort((a, b) => a - b)
+    .map((level) =>
+      (parNiveau.get(level) ?? [])
+        .sort((a, b) => (a.done === b.done ? compareTitres(a, b) : a.done ? 1 : -1))
+        .map((t) => t.id),
+    );
+}
+
+/**
+ * Combien de flèches se croisent. Chaque arête est un segment de sa colonne
+ * de départ à sa colonne d'arrivée ; deux arêtes qui partagent un intervalle
+ * de colonnes se croisent si leur ordre vertical s'inverse entre les deux
+ * bouts de cet intervalle. Une arête qui remonte (boucle relayée) est
+ * ignorée : elle n'a pas de direction à croiser.
+ */
+export function compterCroisements(reseau: Reseau, colonnes: string[][]): number {
+  const colonneDe = new Map<string, number>();
+  const rangDe = new Map<string, number>();
+  colonnes.forEach((ids, c) => ids.forEach((id, r) => {
+    colonneDe.set(id, c);
+    rangDe.set(id, r);
+  }));
+  const segments = reseau.aretes
+    .map((edge) => {
+      const c1 = colonneDe.get(edge.fromTaskId);
+      const c2 = colonneDe.get(edge.toTaskId);
+      const r1 = rangDe.get(edge.fromTaskId);
+      const r2 = rangDe.get(edge.toTaskId);
+      if (c1 === undefined || c2 === undefined || r1 === undefined || r2 === undefined) return null;
+      if (c1 >= c2) return null;
+      return { c1, c2, r1, r2 };
+    })
+    .filter((s): s is { c1: number; c2: number; r1: number; r2: number } => s !== null);
+  const yA = (s: { c1: number; c2: number; r1: number; r2: number }, c: number) =>
+    s.r1 + ((s.r2 - s.r1) * (c - s.c1)) / (s.c2 - s.c1);
+  let croisements = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    for (let j = i + 1; j < segments.length; j += 1) {
+      const a = segments[i];
+      const b = segments[j];
+      const debut = Math.max(a.c1, b.c1);
+      const fin = Math.min(a.c2, b.c2);
+      if (debut >= fin) continue;
+      const d1 = yA(a, debut) - yA(b, debut);
+      const d2 = yA(a, fin) - yA(b, fin);
+      if (d1 * d2 < 0) croisements += 1;
+    }
+  }
+  return croisements;
+}
+
+/**
+ * Ordonnancement barycentrique (Sugiyama, phase 2) : quatre balayages
+ * aller-retour, chaque tâche placée à la moyenne des rangs de ses voisines
+ * dans la colonne de référence, ex æquo par titre pour rester stable. On
+ * garde le balayage au moins de croisements — le dernier n'est pas toujours
+ * le meilleur. Les colonnes du départ étaient triées par alphabet : sur
+ * AgriCulture, 5 arêtes suffisaient à en croiser deux.
+ */
+export function ordonnerColonnes(reseau: Reseau, balayages = 4): string[][] {
+  let colonnes = colonnesInitiales(reseau);
+  let meilleures = colonnes;
+  let moins = compterCroisements(reseau, colonnes);
+  if (moins === 0 || colonnes.length < 2) return colonnes;
+
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  const trier = (ids: string[], reference: string[], voisins: Map<string, string[]>) => {
+    const rang = new Map(reference.map((id, i) => [id, i]));
+    const bary = new Map<string, number>();
+    ids.forEach((id, i) => {
+      const rangs = (voisins.get(id) ?? [])
+        .map((vid) => rang.get(vid))
+        .filter((r): r is number => r !== undefined);
+      bary.set(id, rangs.length === 0 ? i : rangs.reduce((s, r) => s + r, 0) / rangs.length);
+    });
+    return [...ids].sort((a, b) => {
+      const d = (bary.get(a) ?? 0) - (bary.get(b) ?? 0);
+      return d !== 0 ? d : titreDe(a).localeCompare(titreDe(b), 'fr');
+    });
+  };
+
+  for (let passe = 0; passe < balayages; passe += 1) {
+    const suivantes = colonnes.map((ids) => [...ids]);
+    if (passe % 2 === 0) {
+      for (let c = 1; c < suivantes.length; c += 1) {
+        suivantes[c] = trier(suivantes[c], suivantes[c - 1], reseau.amont);
+      }
+    } else {
+      for (let c = suivantes.length - 2; c >= 0; c -= 1) {
+        suivantes[c] = trier(suivantes[c], suivantes[c + 1], reseau.aval);
+      }
+    }
+    colonnes = suivantes;
+    const croisements = compterCroisements(reseau, colonnes);
+    if (croisements < moins) {
+      moins = croisements;
+      meilleures = colonnes;
+      if (moins === 0) break;
+    }
+  }
+  return meilleures;
+}
+
+export interface DimensionsDisposition {
+  largeurCarte: number;
+  hauteurCarte: number;
+  ecartX: number;
+  ecartY: number;
+  marge: number;
+}
+
+export interface Disposition {
+  pos: Map<string, { x: number; y: number }>;
+  largeur: number;
+  hauteur: number;
+}
+
+/** Les positions des cartes à partir des colonnes ordonnées — la seule géométrie. */
+export function positionner(colonnes: string[][], dims: DimensionsDisposition): Disposition {
+  const pos = new Map<string, { x: number; y: number }>();
+  let maxRangs = 1;
+  colonnes.forEach((ids, c) => {
+    maxRangs = Math.max(maxRangs, ids.length);
+    ids.forEach((id, r) => {
+      pos.set(id, {
+        x: dims.marge + c * (dims.largeurCarte + dims.ecartX),
+        y: dims.marge + r * (dims.hauteurCarte + dims.ecartY),
+      });
+    });
+  });
+  const nbColonnes = Math.max(colonnes.length, 1);
+  return {
+    pos,
+    largeur: dims.marge * 2 + nbColonnes * dims.largeurCarte + (nbColonnes - 1) * dims.ecartX,
+    hauteur: dims.marge * 2 + maxRangs * dims.hauteurCarte + (maxRangs - 1) * dims.ecartY,
+  };
+}
+
+/** Le glyphe d'état par la FORME — en Ardéchine, la teinte ne dit rien. */
+export function glypheStatut(statut: StatutTache): string {
+  return statut === 'faite' ? '●' : statut === 'faisable' ? '○' : '◌';
+}
+
+/** La ligne sous le titre de la fiche : « Attend 2 · Débloque 1 », « Faisable maintenant · Débloque 3 ». */
+export function ligneDeComptes(reseau: Reseau, id: string): string {
+  const statut = statutDe(reseau, id);
+  const v = voisinage(reseau, id);
+  const tete =
+    statut === 'faite'
+      ? 'Faite'
+      : statut === 'faisable'
+        ? 'Faisable maintenant'
+        : `Attend ${v.manquantes.length}`;
+  return `${tete} · Débloque ${v.aval.length}`;
+}
+
+/** La chaîne d'une tâche, elle comprise : ce que la vue garde net quand le reste s'estompe. */
+export function chaineComplete(reseau: Reseau, id: string): Set<string> {
+  const v = voisinage(reseau, id);
+  return new Set([id, ...v.amontTransitif, ...v.avalTransitif]);
+}

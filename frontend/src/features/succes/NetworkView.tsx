@@ -7,6 +7,14 @@ import {
 } from 'react';
 import { CirclePlus, Link2, Loader2 } from 'lucide-react';
 
+import {
+  colonnesInitiales,
+  construireReseau,
+  faisables,
+  positionner,
+  statuts,
+  type StatutTache,
+} from './reseau';
 import type { SuccesTask, SuccesTaskEdge } from './types';
 
 type Props = {
@@ -20,8 +28,6 @@ type Props = {
   onSelect?: (task: SuccesTask) => void;
 };
 
-type TaskStatus = 'done' | 'feasible' | 'blocked';
-
 const CARD_W = 190;
 const CARD_H = 64;
 const GAP_X = 72;
@@ -29,33 +35,9 @@ const GAP_Y = 26;
 const PAD = 24;
 const DANGER = 'var(--color-error, var(--color-text-secondary))';
 
-/** Niveau = longueur du plus long chemin depuis les sources (garde anti-cycle). */
-function computeLevels(tasks: SuccesTask[], edges: SuccesTaskEdge[]): Map<string, number> {
-  const ids = new Set(tasks.map((task) => task.id));
-  const preds = new Map<string, string[]>();
-  for (const task of tasks) preds.set(task.id, []);
-  for (const edge of edges) {
-    if (ids.has(edge.fromTaskId) && ids.has(edge.toTaskId)) {
-      preds.get(edge.toTaskId)?.push(edge.fromTaskId);
-    }
-  }
-  const levels = new Map<string, number>();
-  const visiting = new Set<string>();
-  const levelOf = (id: string): number => {
-    const known = levels.get(id);
-    if (known !== undefined) return known;
-    if (visiting.has(id)) return 0;
-    visiting.add(id);
-    const sources = preds.get(id) ?? [];
-    const value =
-      sources.length === 0 ? 0 : Math.max(...sources.map((sourceId) => levelOf(sourceId))) + 1;
-    visiting.delete(id);
-    levels.set(id, value);
-    return value;
-  };
-  for (const task of tasks) levelOf(task.id);
-  return levels;
-}
+// Le raisonnement (niveaux, statuts, faisables, colonnes) vit dans
+// `reseau.ts`, testé sur AgriCulture (chantier réseau, 18 sept. 2026) :
+// ici on ne fait que dessiner.
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -78,64 +60,23 @@ export function NetworkView({
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const reseau = useMemo(() => construireReseau(tasks, edges), [tasks, edges]);
+  const byId = reseau.parId;
+  const visibleEdges = reseau.aretes;
+  const statusById = useMemo(() => statuts(reseau), [reseau]);
+  const feasible = useMemo(() => faisables(reseau), [reseau]);
 
-  const visibleEdges = useMemo(
-    () => edges.filter((edge) => byId.has(edge.fromTaskId) && byId.has(edge.toTaskId)),
-    [edges, byId],
-  );
-
-  const statusById = useMemo(() => {
-    const blocked = new Set<string>();
-    for (const edge of visibleEdges) {
-      const from = byId.get(edge.fromTaskId);
-      if (from && !from.done) blocked.add(edge.toTaskId);
-    }
-    const map = new Map<string, TaskStatus>();
-    for (const task of tasks) {
-      map.set(task.id, task.done ? 'done' : blocked.has(task.id) ? 'blocked' : 'feasible');
-    }
-    return map;
-  }, [tasks, visibleEdges, byId]);
-
-  const feasible = useMemo(
+  const layout = useMemo(
     () =>
-      tasks
-        .filter((task) => statusById.get(task.id) === 'feasible')
-        .sort((a, b) => a.title.localeCompare(b.title, 'fr')),
-    [tasks, statusById],
+      positionner(colonnesInitiales(reseau), {
+        largeurCarte: CARD_W,
+        hauteurCarte: CARD_H,
+        ecartX: GAP_X,
+        ecartY: GAP_Y,
+        marge: PAD,
+      }),
+    [reseau],
   );
-
-  const layout = useMemo(() => {
-    const levels = computeLevels(tasks, visibleEdges);
-    const columns = new Map<number, SuccesTask[]>();
-    for (const task of tasks) {
-      const level = levels.get(task.id) ?? 0;
-      const column = columns.get(level);
-      if (column) column.push(task);
-      else columns.set(level, [task]);
-    }
-    const sortedLevels = [...columns.keys()].sort((a, b) => a - b);
-    const pos = new Map<string, { x: number; y: number }>();
-    let maxRows = 1;
-    sortedLevels.forEach((level, columnIndex) => {
-      const items = columns.get(level) ?? [];
-      items.sort((a, b) =>
-        a.done === b.done ? a.title.localeCompare(b.title, 'fr') : a.done ? 1 : -1,
-      );
-      maxRows = Math.max(maxRows, items.length);
-      items.forEach((task, row) => {
-        pos.set(task.id, {
-          x: PAD + columnIndex * (CARD_W + GAP_X),
-          y: PAD + row * (CARD_H + GAP_Y),
-        });
-      });
-    });
-    const columnCount = Math.max(sortedLevels.length, 1);
-    const width = PAD * 2 + columnCount * CARD_W + (columnCount - 1) * GAP_X;
-    const height = PAD * 2 + maxRows * CARD_H + (maxRows - 1) * GAP_Y;
-    return { pos, width, height };
-  }, [tasks, visibleEdges]);
 
   useEffect(() => {
     if (!linkMode && !selectedEdge) return;
@@ -212,13 +153,13 @@ export function NetworkView({
     });
   };
 
-  const statusLabel = (status: TaskStatus) =>
-    status === 'done' ? '✓ fait' : status === 'feasible' ? '→ faisable maintenant' : '⏳ bloquée';
+  const statusLabel = (status: StatutTache) =>
+    status === 'faite' ? '✓ fait' : status === 'faisable' ? '→ faisable maintenant' : '⏳ bloquée';
 
-  const statusColor = (status: TaskStatus) =>
-    status === 'done'
+  const statusColor = (status: StatutTache) =>
+    status === 'faite'
       ? 'var(--color-text-secondary)'
-      : status === 'feasible'
+      : status === 'faisable'
         ? 'var(--color-accent)'
         : 'var(--color-text-tertiary)';
 
@@ -307,7 +248,7 @@ export function NetworkView({
         >
           <svg
             width="100%"
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
+            viewBox={`0 0 ${layout.largeur} ${layout.hauteur}`}
             role="img"
             aria-label="Réseau des tâches reliées par « débloque »"
             style={{ display: 'block', width: '100%', height: 'auto' }}
@@ -386,7 +327,7 @@ export function NetworkView({
             {tasks.map((task) => {
               const p = layout.pos.get(task.id);
               if (!p) return null;
-              const status = statusById.get(task.id) ?? 'feasible';
+              const status = statusById.get(task.id) ?? 'faisable';
               const isLinkSource = linkFrom === task.id;
               const isFocused = focusedId === task.id;
               const highlighted = isLinkSource || isFocused;
@@ -411,7 +352,7 @@ export function NetworkView({
                     rx={14}
                     fill="var(--color-surface)"
                     stroke={
-                      highlighted || status === 'feasible'
+                      highlighted || status === 'faisable'
                         ? 'var(--color-accent)'
                         : 'var(--color-border)'
                     }
