@@ -43,7 +43,7 @@ import { CarteVitree } from '../components/Glass/CarteVitree';
 import { isTauri } from '../lib/api';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
-import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
+import { appliquerAuCache, clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import './SuccesHabitsGlass.css';
 
 const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -131,8 +131,11 @@ export function SuccesHabitsPage() {
         listSuccesHabits(today),
         fetchSuccesHabitLogs(spanFrom, spanTo),
       ]);
-      ecrireCache(clesSucces.habitudes(today), nextHabits);
-      ecrireCache(clesSucces.journalHabitudes(spanFrom, spanTo), nextLogs);
+      // Une seule entrée persistée par ressource : une par jour (habitudes)
+      // et une par année feuilletée (journal) s'accumulaient sans que rien
+      // ne les relise ni ne les retire (revue du cache, 18 sept. 2026).
+      ecrireCache(clesSucces.habitudes(today), nextHabits, { uniqueParRessource: true });
+      ecrireCache(clesSucces.journalHabitudes(spanFrom, spanTo), nextLogs, { uniqueParRessource: true });
       clesChargees.current = {
         habitudes: clesSucces.habitudes(today),
         journal: clesSucces.journalHabitudes(spanFrom, spanTo),
@@ -164,10 +167,10 @@ export function SuccesHabitsPage() {
   // seulement, et sous la clé de CE chargement : entre le changement
   // d'année et la réponse, `logs` porte encore l'année d'avant.
   useEffect(() => {
-    if (clesChargees.current) ecrireCache(clesChargees.current.habitudes, habits);
+    if (clesChargees.current) ecrireCache(clesChargees.current.habitudes, habits, { uniqueParRessource: true });
   }, [habits]);
   useEffect(() => {
-    if (clesChargees.current) ecrireCache(clesChargees.current.journal, logs);
+    if (clesChargees.current) ecrireCache(clesChargees.current.journal, logs, { uniqueParRessource: true });
   }, [logs]);
 
   // Une page ouverte gardait son état indéfiniment : ce qui change
@@ -271,6 +274,35 @@ export function SuccesHabitsPage() {
     }
   };
 
+  /**
+   * Ce que le serveur a rendu (la coche acceptée, l'habitude mise à jour) —
+   * ou le rétablissement en échec — va aussi DROIT dans le cache, sous les
+   * clés de ce chargement, comme `refleterLigne` dans Tâches : le miroir
+   * (les effets sur `logs` et `habits`) ne bat que page montée. Reproduit
+   * le 18 sept. 2026 (revue du cache) : POST en 2,5 s puis 503, clic sur un
+   * autre module avant la réponse → le `setLogs` du catch était un no-op
+   * React, et la case refusée par le serveur restait « terminée » dans le
+   * cache, persistée, rejouée au relancement tant qu'aucune relecture ne
+   * réussissait — un faux SUCCESS (§100).
+   */
+  const refleterCoche = (key: string, done: boolean) => {
+    const cles = clesChargees.current;
+    if (!cles) return;
+    appliquerAuCache<Record<string, boolean>>(cles.journal, (journal) => {
+      const copie = { ...journal };
+      if (done) copie[key] = true;
+      else delete copie[key];
+      return copie;
+    });
+  };
+  const refleterHabitude = (updated: SuccesHabit) => {
+    const cles = clesChargees.current;
+    if (!cles) return;
+    appliquerAuCache<SuccesHabit[]>(cles.habitudes, (liste) =>
+      liste.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+    );
+  };
+
   const toggleDay = async (habit: SuccesHabit, iso: string) => {
     if (iso > today) {
       toast.info('Jour futur — non modifiable');
@@ -287,9 +319,12 @@ export function SuccesHabitsPage() {
     });
     try {
       const updated = await setSuccesHabitDone(habit.id, iso, nextDone);
+      refleterCoche(key, nextDone);
+      refleterHabitude(updated);
       setHabits((prev) => prev.map((item) => (item.id === habit.id ? { ...item, ...updated } : item)));
       if (iso === today) void resyncHabitReminders();
     } catch (error) {
+      refleterCoche(key, !nextDone);
       setLogs((prev) => {
         const copy = { ...prev };
         if (nextDone) delete copy[key];

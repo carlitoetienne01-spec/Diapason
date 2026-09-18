@@ -139,6 +139,8 @@ export function SuccesNotesPage() {
   const [rafraichit, setRafraichit] = useState(false);
   /** La clé sous laquelle `notes` a été chargée — celle du miroir, plus bas. */
   const cleChargee = useRef<string | null>(null);
+  /** Vrai dès que le serveur a rendu une liste pendant ce montage — le cache n'y suffit pas. */
+  const chargeReussi = useRef(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -177,6 +179,7 @@ export function SuccesNotesPage() {
       cleChargee.current = clesSucces.notes(search);
       ecrireCache(cleChargee.current, next, { memoireSeule: Boolean(search) });
       setNotes(next);
+      chargeReussi.current = true;
       // Rien de choisi encore : le glisser d'hier EST la préférence.
       if (loadNotesSort() === undefined) setSortState(triInitialDesNotes(undefined, next));
       // L'ordre des sections et les projets (pour la pastille et le menu).
@@ -273,17 +276,28 @@ export function SuccesNotesPage() {
   // Un autre appareil peut demander « montre-moi cette note ». On passe par
   // openNote plutôt que par setActiveId : c'est lui qui charge le contenu et
   // bascule en mode éditeur, et court-circuiter cela ouvrirait une note vide.
+  //
+  // Consommée sur la liste du SERVEUR seulement, jamais sur celle du cache
+  // (revue du cache, 18 sept. 2026) : avec un cache, `loading` naît faux et
+  // l'effet tournait au premier commit sur la liste d'hier. Une note créée
+  // sur le téléphone depuis en était absente — abandon silencieux d'une
+  // commande qui avait pourtant focalisé la fenêtre — et une note modifiée
+  // là-bas s'ouvrait avec son contenu PÉRIMÉ, que la première frappe
+  // renvoyait en entier au serveur, effaçant les modifications du téléphone :
+  // « continue ça sur mon Mac » à l'envers. D'où `notes` en dépendance : la
+  // relecture qui suit rend un nouveau tableau, et l'effet retourne.
   const pendingMeshSelection = useAppStore((s) => s.pendingMeshSelection);
   const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
   useEffect(() => {
-    if (pendingMeshSelection?.kind !== 'note' || loading) return;
+    if (pendingMeshSelection?.kind !== 'note' || !chargeReussi.current) return;
     const wanted = notes.find((note) => note.id === pendingMeshSelection.id);
-    // Absente en local : l'appareil émetteur est peut-être en avance sur la
-    // synchronisation. On abandonne sans bruit plutôt que d'ouvrir autre chose.
+    // Absente de la liste du serveur : l'appareil émetteur est peut-être en
+    // avance sur la synchronisation. On abandonne sans bruit plutôt que
+    // d'ouvrir autre chose.
     if (wanted) openNote(wanted);
     setPendingMeshSelection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingMeshSelection, notes, loading, setPendingMeshSelection]);
+  }, [pendingMeshSelection, notes, setPendingMeshSelection]);
 
   const openCreateForm = () => {
     setFormNoteId(null);
@@ -474,18 +488,28 @@ export function SuccesNotesPage() {
     }
   };
 
-  /** Glisser un en-tête de section avant un autre : l'ordre est mémorisé. */
+  /**
+   * Glisser un en-tête de section avant un autre : l'ordre est mémorisé.
+   * L'ordre que le SERVEUR rend — ou celui qu'il relit en échec — va aussi
+   * droit dans le cache : le miroir (l'effet sur `categories`) ne bat que
+   * page montée, et une réponse arrivée après qu'on a quitté la page y
+   * laissait l'ordre optimiste (§100, revue du cache, 18 sept. 2026).
+   */
   const deposerCategorieAvant = async (nom: string, avant: string) => {
     const suivant = deplacerCategorie(categories, nom, avant);
     if (suivant.join('\u0000') === categories.join('\u0000')) return;
     setCategories(suivant);
+    const refleter = (serveur: string[]) => {
+      ecrireCache(clesSucces.categoriesNotes(), serveur);
+      setCategories(serveur);
+    };
     try {
-      setCategories(await orderNoteCategories(suivant));
+      refleter(await orderNoteCategories(suivant));
     } catch (error) {
       toast.error("L'ordre n'a pas été enregistré.", {
         description: error instanceof Error ? error.message : String(error),
       });
-      void listNoteCategories().then(setCategories).catch(() => {});
+      void listNoteCategories().then(refleter).catch(() => {});
     }
   };
 

@@ -35,7 +35,9 @@ export function SuccesYearReviewPage() {
     else setLoading(true);
     try {
       const next = await fetchSuccesYearReview(year, month);
-      ecrireCache(cle, next);
+      // Une seule entrée persistée : une par année ou mois feuilleté
+      // s'accumulait (revue du cache, 18 sept. 2026).
+      ecrireCache(cle, next, { uniqueParRessource: true });
       setReview(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

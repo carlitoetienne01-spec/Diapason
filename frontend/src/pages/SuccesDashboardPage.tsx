@@ -46,7 +46,10 @@ export function SuccesDashboardPage() {
     setRafraichit(true);
     try {
       const next = await fetchSuccesDashboard(date);
-      ecrireCache(clesSucces.tableauDeBord(date), next);
+      // Une seule entrée persistée : une par date feuilletée s'accumulait
+      // sans que rien ne la relise ni ne la retire (revue du cache, 18 sept.
+      // 2026) ; la mémoire garde les autres dates pour la session.
+      ecrireCache(clesSucces.tableauDeBord(date), next, { uniqueParRessource: true });
       setData(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

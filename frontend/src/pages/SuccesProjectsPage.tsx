@@ -727,9 +727,21 @@ export function SuccesProjectsPage() {
   // Le spinner n'existe qu'au premier chargement sans cache : ensuite la
   // liste reste montée pendant qu'on relit derrière (retour de focus,
   // recherche, réordonnancement) — `saving` tient le voyant discret.
-  const [loading, setLoading] = useState(() => lireCache(clesSucces.projets()) === null);
-  /** Vrai dès que le serveur a rendu une liste pendant ce montage — le cache n'y suffit pas. */
-  const chargeReussi = useRef(false);
+  // Les DEUX caches : le détail d'un projet dépend des tâches, et Notes
+  // remplit celui des projets sans toucher à celui des tâches — « Notes,
+  // puis Projets » montait avec les projets et zéro tâche, et le détail
+  // disait « Aucune tâche dans ce projet » et « 0/12 terminée(s) » pendant
+  // tout le premier chargement (revue du cache, 18 sept. 2026).
+  const [loading, setLoading] = useState(
+    () => lireCache(clesSucces.projets()) === null || lireCache(clesSucces.taches()) === null,
+  );
+  /**
+   * Vrai dès que le serveur a rendu projets ET tâches pendant ce montage —
+   * le cache n'y suffit pas. Un état, pas une ref : le rendu s'en sert pour
+   * ne montrer l'état vide et les comptes d'un projet que sur une liste de
+   * tâches que le serveur a rendue.
+   */
+  const [chargeReussi, setChargeReussi] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -775,7 +787,7 @@ export function SuccesProjectsPage() {
       ecrireCache(clesSucces.taches(), nextTasks);
       setProjects(nextProjects);
       setTasks(nextTasks);
-      chargeReussi.current = true;
+      setChargeReussi(true);
       if (nextKits) {
         ecrireCache(clesSucces.kitsProjets(), nextKits);
         setKits(nextKits);
@@ -830,7 +842,7 @@ export function SuccesProjectsPage() {
     // « n'existe plus » aurait été un faux (§100). D'où `projects` entier en
     // dépendance, pas sa longueur : la relecture qui suit rend un nouveau
     // tableau de même taille.
-    if (!chargeReussi.current || projects.length === 0) return;
+    if (!chargeReussi || projects.length === 0) return;
     setSelectedId(null);
     setEdges([]);
     setInspected(null);
@@ -838,7 +850,7 @@ export function SuccesProjectsPage() {
     toast.info('Ce projet n’existe plus.', {
       description: 'Il a été supprimé ailleurs — retour à la liste.',
     });
-  }, [selectedId, selected, projects, loading]);
+  }, [selectedId, selected, projects, loading, chargeReussi]);
 
   const loadEdges = useCallback(async () => {
     if (!selected || selected.structure !== 'network') {
@@ -883,6 +895,11 @@ export function SuccesProjectsPage() {
   const progress = projectTasks.length
     ? Math.round((doneCount / projectTasks.length) * 100)
     : 0;
+  // Un projet sans tâche connue n'est « vide » que si le serveur l'a dit
+  // pendant ce montage ; des tâches du cache, elles, sont une réponse du
+  // serveur et se montrent. Sinon : le voyant discret, pas « Aucune tâche »
+  // ni « 0/N terminée(s) » (§100, revue du cache, 18 sept. 2026).
+  const tachesConnues = chargeReussi || projectTasks.length > 0;
 
   const closeFormNow = () => {
     setShowForm(false);
@@ -1232,8 +1249,14 @@ export function SuccesProjectsPage() {
                 )}
                 {selected.startDate && <span>Début {selected.startDate}</span>}
                 {selected.endDate && <span>Fin {selected.endDate}</span>}
-                <span>{doneCount}/{projectTasks.length || selected.taskTotal} terminée(s)</span>
-                <span>{openCount} ouverte(s)</span>
+                {tachesConnues ? (
+                  <>
+                    <span>{doneCount}/{projectTasks.length || selected.taskTotal} terminée(s)</span>
+                    <span>{openCount} ouverte(s)</span>
+                  </>
+                ) : (
+                  <Loader2 size={12} className="animate-spin" aria-label="Chargement des tâches" />
+                )}
               </div>
               <div className="mt-4 h-2 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
                 <div
@@ -1479,6 +1502,10 @@ export function SuccesProjectsPage() {
               {loading ? (
                 <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                   <Loader2 size={17} className="animate-spin" /> Chargement…
+                </div>
+              ) : !tachesConnues ? (
+                <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <Loader2 size={17} className="animate-spin" /> Chargement des tâches…
                 </div>
               ) : projectTasks.length === 0 ? (
                 <CadreVitre className="rounded-2xl py-14 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>

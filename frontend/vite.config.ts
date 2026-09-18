@@ -16,9 +16,17 @@ const isTauriBuild =
   process.env.npm_lifecycle_event === 'build:tauri' ||
   Boolean(process.env.TAURI_ENV_PLATFORM);
 
+// L'empreinte du build, pour le cache client des pages Succès
+// (features/succes/cacheSucces.ts) : nouvelle à chaque `npm run build` et à
+// chaque démarrage du serveur Vite. La version seule ne suffisait pas —
+// « 1.0.4 » pour 44 builds d'affilée, et un cache écrit par l'un était relu
+// tel quel par tous les autres (revue du cache, 18 sept. 2026).
+const buildStamp = `${pkgVersion}-${Date.now().toString(36)}`;
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkgVersion),
+    __BUILD_STAMP__: JSON.stringify(buildStamp),
   },
   resolve: {
     alias: {

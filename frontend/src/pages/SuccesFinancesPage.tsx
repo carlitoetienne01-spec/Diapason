@@ -290,10 +290,15 @@ export function SuccesFinancesPage() {
         to: nextOverview.to,
         limit: 200,
       });
-      ecrireCache(clesSucces.financesApercu(period, today), nextOverview);
+      // Une seule entrée persistée par ressource datée (aperçu, transactions) :
+      // une par jour et par période s'accumulaient sans que rien ne les
+      // relise ni ne les retire (revue du cache, 18 sept. 2026).
+      ecrireCache(clesSucces.financesApercu(period, today), nextOverview, { uniqueParRessource: true });
       ecrireCache(clesSucces.financesCategories(), nextCategories);
       ecrireCache(clesSucces.financesAbonnements(), nextSubs);
-      ecrireCache(clesSucces.financesTransactions(nextOverview.from, nextOverview.to), nextTxns);
+      ecrireCache(clesSucces.financesTransactions(nextOverview.from, nextOverview.to), nextTxns, {
+        uniqueParRessource: true,
+      });
       setOverview(nextOverview);
       setCategories(nextCategories);
       setSubscriptions(nextSubs);

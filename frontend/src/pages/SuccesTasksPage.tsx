@@ -21,7 +21,7 @@ import {
   setSuccesTaskDone,
   updateSuccesTask,
 } from '../features/succes/api';
-import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
+import { appliquerAuCache, clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { EmojiPicker } from '../features/succes/EmojiPicker';
 import { Pageur } from '../features/succes/Pageur';
 import { TachesTerminees } from '../features/succes/TachesTerminees';
@@ -307,17 +307,37 @@ export function SuccesTasksPage() {
   const suivi = useRef(new SuiviDesRequetes());
 
   /**
+   * Les entrées du cache qu'une mutation doit toucher : la clé chargée, et
+   * TOUJOURS la clé principale (`taches('')`) — celle que Planificateur,
+   * Projets et le prochain montage de Tâches lisent, et que le disque garde.
+   * Sous une recherche active, le miroir n'écrit que la clé de recherche :
+   * une tâche supprimée sous « rapport » restait dans la principale, peinte
+   * par Planificateur et rejouée au relancement ; un PATCH refusé après la
+   * bascule de clé y laissait la coche optimiste, persistée — un état que le
+   * serveur avait REFUSÉ (revue du cache, 18 sept. 2026). Chaque clé reçoit
+   * sa propre liste transformée : jamais une liste filtrée sous la
+   * principale.
+   */
+  const appliquerAuxCaches = (transformer: (liste: SuccesTask[]) => SuccesTask[]) => {
+    const principale = clesSucces.taches();
+    const cle = cleChargee.current;
+    if (cle && cle !== principale) appliquerAuCache<SuccesTask[]>(cle, transformer, { memoireSeule: true });
+    appliquerAuCache<SuccesTask[]>(principale, transformer);
+  };
+
+  /**
    * La ligne SERVEUR va aussi droit dans le cache : le miroir (l'effet sur
    * `tasks`) ne bat que tant que la page est montée, et une réponse qui
    * arrive après qu'on a quitté la page laissait l'intérim optimiste dans le
    * cache jusqu'à la relecture suivante (§100, 18 sept. 2026).
    */
   const refleterLigne = (ligne: SuccesTask) => {
-    const cle = cleChargee.current;
-    if (!cle) return;
-    const courantes = lireCache<SuccesTask[]>(cle);
-    if (!courantes) return;
-    ecrireCache(cle, remplacerLigne(courantes, ligne), { memoireSeule: cle !== clesSucces.taches() });
+    appliquerAuxCaches((liste) => remplacerLigne(liste, ligne));
+  };
+
+  /** Une suppression que le serveur a confirmée : la tâche sort de chaque entrée. */
+  const retirerDesCaches = (id: string) => {
+    appliquerAuxCaches((liste) => (liste.some((task) => task.id === id) ? liste.filter((task) => task.id !== id) : liste));
   };
 
   /**
@@ -689,7 +709,10 @@ export function SuccesTasksPage() {
       tone: 'danger',
     });
     if (!confirmed) return;
-    await refreshAfter(() => deleteSuccesTask(task.id), `Tâche supprimée : ${task.title}`);
+    await refreshAfter(async () => {
+      await deleteSuccesTask(task.id);
+      retirerDesCaches(task.id);
+    }, `Tâche supprimée : ${task.title}`);
   };
 
   /**
@@ -718,6 +741,7 @@ export function SuccesTasksPage() {
       for (const cible of cibles) {
         try {
           await deleteSuccesTask(cible.id);
+          retirerDesCaches(cible.id);
         } catch (error) {
           echecs.push({ titre: cible.title, message: error instanceof Error ? error.message : String(error) });
         }
