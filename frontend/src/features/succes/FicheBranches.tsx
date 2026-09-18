@@ -25,6 +25,7 @@ import {
   construireReseau,
   glypheStatut,
   ligneDeComptes,
+  placeSurLeFil,
   statutDe,
   voisinSuivant,
   voisinage,
@@ -158,6 +159,7 @@ export function FicheBranches({
 
   const statut = statutDe(reseau, tache.id);
   const fil = [...historique, tache.id].slice(-3);
+  const place = placeSurLeFil(reseau, tache.id);
   // Ce que terminer la tâche centrale ouvrirait : les successeures dont elle
   // est la dernière attente ouverte. Dit seulement pour une faisable — c'est
   // une invitation, et « Débloque 2 » au-dessus compte déjà les voisines.
@@ -392,6 +394,9 @@ export function FicheBranches({
                 </h2>
                 <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   {ligneDeComptes(reseau, tache.id)}
+                  {/* « Sur la chaîne la plus longue » ou « Marge : 1 tâche » —
+                      en tâches, jamais en jours : aucune durée n'existe. */}
+                  {place && <> · {place}</>}
                 </p>
                 {ouvrirait.length > 0 && (
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>

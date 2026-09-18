@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aretesDeChaine,
   aretesLiberees,
   ceQueDebloque,
   ceQueRebloque,
@@ -10,6 +11,7 @@ import {
   chaineLaPlusLongue,
   colonnesInitiales,
   compterCroisements,
+  comptes,
   construireReseau,
   dispositionBouge,
   faisables,
@@ -17,10 +19,13 @@ import {
   glypheStatut,
   impact,
   interpolerPositions,
+  libelleEnTete,
   ligneDeComptes,
+  margeDe,
   niveaux,
   ordonnerColonnes,
   phraseApresBascule,
+  placeSurLeFil,
   positionner,
   statutDe,
   statuts,
@@ -392,6 +397,69 @@ describe('chaineLaPlusLongue', () => {
       [arete('t1', 't2'), arete('t2', 't1')],
     );
     expect(chaineLaPlusLongue(reseau).length).toBeLessThanOrEqual(2);
+  });
+
+  it('ses arêtes portent la clé que la vue emploie', () => {
+    expect([...aretesDeChaine(['agri', 'discuter', 'contrat'])]).toEqual([
+      'agri->discuter',
+      'discuter->contrat',
+    ]);
+    expect(aretesDeChaine(['seule']).size).toBe(0);
+  });
+});
+
+describe('placeSurLeFil — sans inventer un chemin critique', () => {
+  it('« contrat » est sur la chaîne la plus longue, « tracteur » sur une aussi longue', () => {
+    const reseau = agriculture();
+    expect(margeDe(reseau, 'contrat')).toBe(0);
+    expect(placeSurLeFil(reseau, 'contrat')).toBe('Sur la chaîne la plus longue');
+    expect(margeDe(reseau, 'tracteur')).toBe(0);
+    expect(placeSurLeFil(reseau, 'tracteur')).toBe('Sur une chaîne aussi longue que le fil');
+  });
+
+  it('une tâche sans lien a deux tâches de marge sur AgriCulture', () => {
+    const reseau = construireReseau([...AGRI, tache('x', 'Xylophone')], ARETES);
+    expect(margeDe(reseau, 'x')).toBe(2);
+    expect(placeSurLeFil(reseau, 'x')).toBe('Marge : 2 tâches');
+  });
+
+  it('accorde « tâche » au singulier, et se tait sur une tâche faite', () => {
+    // a → b (2) face à s → t → u (3) : une tâche de marge.
+    const courte = construireReseau(
+      [tache('a', 'a'), tache('b', 'b'), tache('s', 's'), tache('t', 't'), tache('u', 'u')],
+      [arete('a', 'b'), arete('s', 't'), arete('t', 'u')],
+    );
+    expect(placeSurLeFil(courte, 'a')).toBe('Marge : 1 tâche');
+    const faite = construireReseau(
+      [tache('a', 'a', true), tache('b', 'b')],
+      [arete('a', 'b')],
+    );
+    expect(placeSurLeFil(faite, 'a')).toBeNull();
+  });
+
+  it('les tâches faites en amont ne rallongent pas la chaîne', () => {
+    // Une fois « agriculteurs » faite, la chaîne de contrat ne fait plus que deux :
+    // le fil passe à riz → besoin → tracteur, et contrat a une tâche de marge.
+    const reseau = agricultureApresAgri();
+    expect(placeSurLeFil(reseau, 'contrat')).toBe('Marge : 1 tâche');
+    expect(placeSurLeFil(reseau, 'tracteur')).toBe('Sur la chaîne la plus longue');
+  });
+});
+
+describe('comptes et en-tête', () => {
+  it('AgriCulture : 2 faisables, 5 bloquées, 0 faite, profondeur 3', () => {
+    expect(comptes(agriculture())).toEqual({ faisables: 2, bloquees: 5, faites: 0, profondeur: 3 });
+    expect(libelleEnTete(comptes(agriculture()))).toBe('2 faisables · 5 bloquées · profondeur 3');
+  });
+
+  it('accorde le singulier', () => {
+    const reseau = construireReseau([tache('a', 'a'), tache('b', 'b')], [arete('a', 'b')]);
+    expect(libelleEnTete(comptes(reseau))).toBe('1 faisable · 1 bloquée · profondeur 2');
+  });
+
+  it('un projet fini a une profondeur de zéro', () => {
+    const reseau = construireReseau([tache('a', 'a', true), tache('b', 'b', true)], [arete('a', 'b')]);
+    expect(comptes(reseau)).toEqual({ faisables: 0, bloquees: 0, faites: 2, profondeur: 0 });
   });
 });
 

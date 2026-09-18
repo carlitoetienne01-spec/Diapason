@@ -11,13 +11,17 @@ import { Check, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
+  aretesDeChaine,
   aretesLiberees,
   chaineComplete,
+  chaineLaPlusLongue,
+  comptes,
   construireReseau,
   dispositionBouge,
   faisables,
   impact,
   interpolerPositions,
+  libelleEnTete,
   ordonnerColonnes,
   positionner,
   statuts,
@@ -107,6 +111,7 @@ export function NetworkView({
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [survolId, setSurvolId] = useState<string | null>(null);
   const [legendeOuverte, setLegendeOuverte] = useState(false);
+  const [filActif, setFilActif] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +120,18 @@ export function NetworkView({
   const visibleEdges = reseau.aretes;
   const statusById = useMemo(() => statuts(reseau), [reseau]);
   const feasible = useMemo(() => faisables(reseau), [reseau]);
+  const nombres = useMemo(() => comptes(reseau), [reseau]);
+
+  // Le fil : la chaîne la plus longue en tâches ouvertes (18 sept. 2026).
+  // Ce n'est PAS un « chemin critique » — sans durée, seule la profondeur
+  // en tâches est vraie (§5). Rien ne distinguait le vrai fil du projet de
+  // « tracteur », qui ne bloque personne. Un fil d'une seule tâche n'en est
+  // pas un : le bouton se désactive.
+  const fil = useMemo(() => chaineLaPlusLongue(reseau), [reseau]);
+  const filIds = useMemo(() => new Set(fil), [fil]);
+  const filAretes = useMemo(() => aretesDeChaine(fil), [fil]);
+  const filVisible = filActif && fil.length >= 2;
+  const horsFil = (...ids: string[]) => filVisible && !ids.every((id) => filIds.has(id));
 
   // La mise en avant suit la fiche, sinon le focus clavier, sinon le survol.
   // Dans le mini-panneau non activant, le NSPanel ne livre pas le survol :
@@ -179,14 +196,19 @@ export function NetworkView({
   }, [layout]);
   const posDe = (id: string): Point | undefined => posAffichees.get(id) ?? layout.pos.get(id);
 
-  /** La courbe d'une arête, du bord droit de la source au bord gauche de la cible. */
-  const cheminArete = (fromId: string, toId: string): string | null => {
+  /**
+   * La courbe d'une arête, du bord droit de la source au bord gauche de la
+   * cible. `raccourci` arrête la courbe avant la pointe : le trait double du
+   * fil est un trait de surface posé sur un trait accent, et sans ce retrait
+   * il effaçait le milieu de la pointe.
+   */
+  const cheminArete = (fromId: string, toId: string, raccourci = 0): string | null => {
     const from = posDe(fromId);
     const to = posDe(toId);
     if (!from || !to) return null;
     const x1 = from.x + CARD_W;
     const y1 = from.y + CARD_H / 2;
-    const x2 = to.x - 2;
+    const x2 = to.x - 2 - raccourci;
     const y2 = to.y + CARD_H / 2;
     const dx = Math.max(28, Math.abs(x2 - x1) / 2);
     return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
@@ -269,7 +291,7 @@ export function NetworkView({
   }, [tasks.length, feasible, layout]);
 
   useEffect(() => {
-    if (!linkMode && !selectedEdge) return;
+    if (!linkMode && !selectedEdge && !filActif) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
@@ -277,11 +299,12 @@ export function NetworkView({
         setLinkMode(false);
         setLinkFrom(null);
         setSelectedEdge(null);
+        setFilActif(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [linkMode, selectedEdge]);
+  }, [linkMode, selectedEdge, filActif]);
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -359,8 +382,46 @@ export function NetworkView({
         className="grid gap-2 rounded-2xl p-4"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
       >
-        <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-          Faisable maintenant : <span style={{ color: 'var(--color-accent)' }}>{feasible.length}</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Trois chiffres honnêtes : faisables, bloquées, profondeur. Le
+              dernier est la chaîne la plus longue en tâches ouvertes — pas un
+              chemin critique, qui demanderait des durées. */}
+          <p
+            className="text-sm font-medium flex flex-wrap items-baseline gap-x-1.5"
+            style={{ color: 'var(--color-text)' }}
+            aria-label={libelleEnTete(nombres)}
+          >
+            <span>
+              <span style={{ color: 'var(--color-accent)' }}>{nombres.faisables}</span>{' '}
+              {nombres.faisables > 1 ? 'faisables' : 'faisable'}
+            </span>
+            <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>·</span>
+            <span>
+              {nombres.bloquees} {nombres.bloquees > 1 ? 'bloquées' : 'bloquée'}
+            </span>
+            <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>·</span>
+            <span title="Chaîne la plus longue, en tâches ouvertes">
+              profondeur {nombres.profondeur}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setFilActif((v) => !v)}
+            aria-pressed={filActif}
+            disabled={fil.length < 2}
+            title="Mettre en évidence la chaîne la plus longue (Échap pour l’éteindre)"
+            className="ml-auto px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            style={
+              filVisible
+                ? { background: 'var(--color-accent)', color: 'var(--color-on-accent)' }
+                : { border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+            }
+          >
+            Fil
+          </button>
+        </div>
+        <p className="text-[11px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--color-text-tertiary)' }}>
+          Faisable maintenant
         </p>
         {feasible.length === 0 ? (
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -557,9 +618,34 @@ export function NetworkView({
                 const trait = traitArete(statusById.get(edge.fromTaskId) ?? 'faisable');
                 const isSelected =
                   selectedEdge?.from === edge.fromTaskId && selectedEdge?.to === edge.toTaskId;
+                const cle = `${edge.fromTaskId}->${edge.toTaskId}`;
+                const opacite = estompe(edge.fromTaskId, edge.toTaskId)
+                  ? 0.3
+                  : horsFil(edge.fromTaskId, edge.toTaskId)
+                    ? 0.5
+                    : 1;
+                if (filVisible && filAretes.has(cle)) {
+                  // Le trait double du fil : deux traits de 1 px espacés de
+                  // 2 px — un trait accent de 4 px sous un trait de surface
+                  // de 2 px, arrêté 8 px avant la pointe. Lisible en
+                  // Ardéchine, où l'accent est l'encre : la forme, pas la teinte.
+                  const dCourt = cheminArete(edge.fromTaskId, edge.toTaskId, 8);
+                  return (
+                    <g key={cle} className="reseau-estompable" style={{ opacity: opacite }}>
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke="var(--color-accent)"
+                        strokeWidth={4}
+                        markerEnd="url(#nv-pointe-prochaine)"
+                      />
+                      {dCourt && <path d={dCourt} fill="none" stroke="var(--color-surface)" strokeWidth={2} />}
+                    </g>
+                  );
+                }
                 return (
                   <path
-                    key={`${edge.fromTaskId}->${edge.toTaskId}`}
+                    key={cle}
                     className="reseau-estompable"
                     d={d}
                     fill="none"
@@ -567,7 +653,7 @@ export function NetworkView({
                     strokeWidth={isSelected ? trait.epaisseur + 1 : trait.epaisseur}
                     strokeDasharray={trait.pointilles}
                     markerEnd={`url(#nv-pointe-${trait.etat})`}
-                    style={{ opacity: estompe(edge.fromTaskId, edge.toTaskId) ? 0.3 : 1 }}
+                    style={{ opacity: opacite }}
                   />
                 );
               })}
@@ -653,7 +739,7 @@ export function NetworkView({
                     boxShadow: enHalo
                       ? '0 0 14px color-mix(in srgb, var(--color-accent) 35%, transparent)'
                       : undefined,
-                    opacity: estompe(task.id) ? 0.3 : task.done ? 0.72 : 1,
+                    opacity: estompe(task.id) ? 0.3 : horsFil(task.id) ? 0.5 : task.done ? 0.72 : 1,
                   }}
                 >
                   <button

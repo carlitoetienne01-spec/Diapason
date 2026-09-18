@@ -365,6 +365,99 @@ function plusTot(reseau: Reseau, a: string[], b: string[]): boolean {
   return ta.localeCompare(tb, 'fr') < 0;
 }
 
+/** Les arêtes d'une chaîne, sous la clé `from->to` que la vue emploie. */
+export function aretesDeChaine(chaine: string[]): Set<string> {
+  const aretes = new Set<string>();
+  for (let i = 1; i < chaine.length; i += 1) aretes.add(`${chaine[i - 1]}->${chaine[i]}`);
+  return aretes;
+}
+
+/**
+ * Le nombre de tâches ouvertes sur la plus longue chaîne qui part de `id`
+ * (elle comprise) dans un sens. 0 pour une tâche faite ou inconnue. Même
+ * garde que `chaineLaPlusLongue` : une boucle relayée compte comme un bout.
+ */
+function longueurOuverte(reseau: Reseau, id: string, sens: Sens): number {
+  const voisins = sens === 'amont' ? reseau.amont : reseau.aval;
+  const memo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const longueur = (tid: string): number => {
+    const tache = reseau.parId.get(tid);
+    if (!tache || tache.done) return 0;
+    const connue = memo.get(tid);
+    if (connue !== undefined) return connue;
+    if (visiting.has(tid)) return 0;
+    visiting.add(tid);
+    let best = 0;
+    for (const vid of voisins.get(tid) ?? []) best = Math.max(best, longueur(vid));
+    visiting.delete(tid);
+    memo.set(tid, best + 1);
+    return best + 1;
+  };
+  return longueur(id);
+}
+
+/**
+ * De combien de tâches la chaîne qui passe par `id` est plus courte que la
+ * plus longue : 0 quand elle est aussi longue. Null pour une tâche faite,
+ * qui n'est plus sur aucune chaîne ouverte. C'est la marge du CPM réduite
+ * en tâches : sans durée, ce compte-là est vrai, un « chemin critique » ne
+ * le serait pas (§5).
+ */
+export function margeDe(reseau: Reseau, id: string): number | null {
+  const tache = reseau.parId.get(id);
+  if (!tache || tache.done) return null;
+  const traverse =
+    longueurOuverte(reseau, id, 'amont') + longueurOuverte(reseau, id, 'aval') - 1;
+  return chaineLaPlusLongue(reseau).length - traverse;
+}
+
+/**
+ * Ce que la fiche dit de la place d'une tâche : sur le fil (la chaîne que la
+ * vue met en évidence), sur une chaîne aussi longue (AgriCulture en a deux
+ * de trois tâches : « tracteur » n'est pas sur le fil et n'a pourtant
+ * aucune marge), ou sa marge. Rien pour une tâche faite.
+ */
+export function placeSurLeFil(reseau: Reseau, id: string): string | null {
+  const marge = margeDe(reseau, id);
+  if (marge === null) return null;
+  if (chaineLaPlusLongue(reseau).includes(id)) return 'Sur la chaîne la plus longue';
+  if (marge === 0) return 'Sur une chaîne aussi longue que le fil';
+  return `Marge : ${marge} tâche${marge > 1 ? 's' : ''}`;
+}
+
+export interface Comptes {
+  faisables: number;
+  bloquees: number;
+  faites: number;
+  /** La chaîne la plus longue, en tâches ouvertes — pas un « chemin critique ». */
+  profondeur: number;
+}
+
+export function comptes(reseau: Reseau): Comptes {
+  const st = statuts(reseau);
+  let faisables = 0;
+  let bloquees = 0;
+  let faites = 0;
+  for (const statut of st.values()) {
+    if (statut === 'faisable') faisables += 1;
+    else if (statut === 'bloquee') bloquees += 1;
+    else faites += 1;
+  }
+  return { faisables, bloquees, faites, profondeur: chaineLaPlusLongue(reseau).length };
+}
+
+/**
+ * L'en-tête du réseau : « 2 faisables · 5 bloquées · profondeur 3 ». Le seul
+ * chiffre affiché jusqu'au 18 sept. 2026 était « Faisable maintenant : N » ;
+ * rien ne disait combien attendaient ni jusqu'où le projet s'enchaîne.
+ */
+export function libelleEnTete(c: Comptes): string {
+  const faisables = `${c.faisables} faisable${c.faisables > 1 ? 's' : ''}`;
+  const bloquees = `${c.bloquees} bloquée${c.bloquees > 1 ? 's' : ''}`;
+  return `${faisables} · ${bloquees} · profondeur ${c.profondeur}`;
+}
+
 /** Les colonnes telles que la vue les dessinait : par niveau, faites en bas, puis par titre. */
 export function colonnesInitiales(reseau: Reseau): string[][] {
   const levels = niveaux(reseau);
