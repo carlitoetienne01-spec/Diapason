@@ -20,6 +20,7 @@ import { Link2, Loader2, MoreHorizontal, NotebookPen, X } from 'lucide-react';
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { CarnetDeTache } from './CarnetDeTache';
 import {
+  categories,
   ceQueDebloque,
   chaine,
   construireReseau,
@@ -51,6 +52,8 @@ interface Props {
   onSupprimer: (task: SuccesTask) => Promise<void>;
   /** Doit LEVER si le serveur a refusé : le carnet ne dit « Enregistré » qu'à raison. */
   onEnregistrerCarnet: (taskId: string, journal: string) => Promise<void>;
+  /** Le couloir de la tâche ; vide pour l'en retirer. La page enregistre et recharge. */
+  onChangerCategorie: (taskId: string, category: string) => Promise<void>;
 }
 
 interface Ligne {
@@ -113,6 +116,7 @@ export function FicheBranches({
   onRelierDepuis,
   onSupprimer,
   onEnregistrerCarnet,
+  onChangerCategorie,
 }: Props) {
   const reseau = useMemo(() => construireReseau(tasks, edges), [tasks, edges]);
   const tache = reseau.parId.get(tacheId) ?? null;
@@ -120,6 +124,12 @@ export function FicheBranches({
   const [curseur, setCurseur] = useState<{ colonne: Sens; index: number } | null>(null);
   const [notesDepliees, setNotesDepliees] = useState(false);
   const [menuOuvert, setMenuOuvert] = useState(false);
+  // La catégorie en cours de frappe dans le « ⋯ » ; null = on montre celle
+  // de la tâche RECHARGÉE (§100 : un refus du serveur laisse l'ancienne).
+  const [categorieSaisie, setCategorieSaisie] = useState<string | null>(null);
+  // Le miroir de `categorieSaisie` hors rendu : Entrée pose puis ferme le
+  // menu, et le `blur` du champ qui disparaît ne doit pas poser une seconde fois.
+  const saisieEnCours = useRef<string | null>(null);
   const [carnetOuvert, setCarnetOuvert] = useState(false);
   const boite = useRef<HTMLDivElement>(null);
   const origine = useRef<Element | null>(null);
@@ -144,6 +154,7 @@ export function FicheBranches({
   useEffect(() => {
     setCurseur(null);
     setMenuOuvert(false);
+    setCategorieSaisie(null);
     setNotesDepliees(false);
     boite.current?.focus();
   }, [tacheId]);
@@ -159,6 +170,26 @@ export function FicheBranches({
   if (!tache) return null;
 
   const statut = statutDe(reseau, tache.id);
+  // Les couloirs déjà employés dans le projet, proposés dans le « ⋯ » ;
+  // AgriCulture n'en a aucun : le champ accepte aussi un mot nouveau.
+  const couloirs = categories(reseau);
+  const fermerMenu = () => {
+    setMenuOuvert(false);
+    saisieEnCours.current = null;
+    setCategorieSaisie(null);
+    // Le champ du menu disparaît avec lui : sans ce rappel le focus tombait
+    // sur `body` et Échap suivant fermait le mini-panneau entier.
+    boite.current?.focus();
+  };
+  const poserCategorie = () => {
+    const saisie = saisieEnCours.current;
+    if (saisie === null) return;
+    saisieEnCours.current = null;
+    setCategorieSaisie(null);
+    const valeur = saisie.trim();
+    if (valeur === (tache.category ?? '')) return;
+    void onChangerCategorie(tache.id, valeur);
+  };
   const fil = [...historique, tache.id].slice(-3);
   const place = placeSurLeFil(reseau, tache.id);
   // Ce que terminer la tâche centrale ouvrirait : les successeures dont elle
@@ -217,10 +248,15 @@ export function FicheBranches({
       // (contrat du 17 sept. 2026, lib.rs) et fermerait le panneau ENTIER.
       event.preventDefault();
       event.stopPropagation();
-      if (menuOuvert) setMenuOuvert(false);
+      if (menuOuvert) fermerMenu();
       else onFermer();
       return;
     }
+    // Dans le champ « Catégorie » du « ⋯ », les lettres, Espace, les flèches
+    // et Retour arrière sont de la frappe, pas des raccourcis : « l » y
+    // entrait en mode liaison et Espace terminait la tâche.
+    const dansChamp = cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT';
+    if (dansChamp && event.key !== 'Tab') return;
     if (event.key === 'Tab') {
       const focusables = [...(boite.current?.querySelectorAll<HTMLElement>(FOCUSABLES) ?? [])];
       if (focusables.length === 0) return;
@@ -478,7 +514,7 @@ export function FicheBranches({
             </button>
             <button
               type="button"
-              onClick={() => setMenuOuvert((v) => !v)}
+              onClick={() => (menuOuvert ? fermerMenu() : setMenuOuvert(true))}
               aria-label="Autres actions"
               aria-expanded={menuOuvert}
               className="ml-auto size-8 rounded-lg flex items-center justify-center cursor-pointer"
@@ -496,6 +532,39 @@ export function FicheBranches({
                   boxShadow: '0 8px 24px -12px rgba(0,0,0,0.4)',
                 }}
               >
+                {/* Le couloir (18 sept. 2026) : un champ qui propose les
+                    catégories déjà employées dans le projet et accepte un mot
+                    nouveau ; posé à Entrée ou en quittant le champ, vidé pour
+                    le retirer. 100 caractères : la borne du serveur (store.py). */}
+                <label className="grid gap-1 px-2 py-1">
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Catégorie (couloir)</span>
+                  <input
+                    list={`fiche-couloirs-${tache.id}`}
+                    value={categorieSaisie ?? tache.category ?? ''}
+                    onChange={(event) => {
+                      saisieEnCours.current = event.target.value;
+                      setCategorieSaisie(event.target.value);
+                    }}
+                    onBlur={poserCategorie}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        poserCategorie();
+                        fermerMenu();
+                      }
+                    }}
+                    placeholder="Aucune"
+                    maxLength={100}
+                    disabled={saving}
+                    className="w-full rounded-lg px-2 py-1 text-xs bg-transparent outline-none disabled:opacity-50"
+                    style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                  />
+                  <datalist id={`fiche-couloirs-${tache.id}`}>
+                    {couloirs.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </label>
                 {(tache.date || tache.stage) && (
                   <div className="px-2 py-1" style={{ color: 'var(--color-text-tertiary)' }}>
                     {tache.date && <div>Le {tache.date}</div>}
@@ -507,7 +576,7 @@ export function FicheBranches({
                   role="menuitem"
                   disabled={saving}
                   onClick={() => {
-                    setMenuOuvert(false);
+                    fermerMenu();
                     void onSupprimer(tache);
                   }}
                   className="text-left rounded-lg px-2 py-1.5 cursor-pointer disabled:opacity-50"

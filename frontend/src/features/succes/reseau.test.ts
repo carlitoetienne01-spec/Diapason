@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  HAUTEUR_LIBELLE_COULOIR,
   aretesDeChaine,
   aretesLiberees,
+  categories,
   ceQueDebloque,
   ceQueRebloque,
   chaine,
@@ -18,7 +20,9 @@ import {
   comptes,
   construireReseau,
   dispositionBouge,
+  disposer,
   disposerParComposantes,
+  disposerParCouloirs,
   estOrpheline,
   faisables,
   fermeraitUneBoucle,
@@ -732,5 +736,68 @@ describe('la Liste — les mêmes tâches par niveau', () => {
     expect(estVueReseau('liste')).toBe(true);
     expect(estVueReseau('carte')).toBe(false);
     expect(estVueReseau(undefined)).toBe(false);
+  });
+});
+
+describe('les couloirs par catégorie', () => {
+  const dims = { largeurCarte: 100, hauteurCarte: 50, ecartX: 20, ecartY: 10, marge: 5 };
+  /** AgriCulture, deux projets en un : la chaîne du contrat, celle du matériel, et « riz » sans catégorie. */
+  const CATEGORIES: Record<string, string> = {
+    agri: 'Contrat',
+    discuter: 'Contrat',
+    contrat: 'Contrat',
+    besoin: 'Matériel',
+    budget: 'Matériel',
+    tracteur: ' Matériel ',
+  };
+  const agricultureEnCouloirs = () =>
+    construireReseau(
+      AGRI.map((t) => ({ ...t, category: CATEGORIES[t.id] ?? '' })),
+      ARETES,
+    );
+
+  it('liste les catégories employées, sans doublon ni blanc, par titre', () => {
+    expect(categories(agricultureEnCouloirs())).toEqual(['Contrat', 'Matériel']);
+    expect(categories(agriculture())).toEqual([]);
+  });
+
+  it('empile un couloir par catégorie puis « — », le rang topologique restant global', () => {
+    const d = disposerParCouloirs(agricultureEnCouloirs(), dims);
+    expect(d.couloirs.map((c) => c.libelle)).toEqual(['Contrat', 'Matériel', '—']);
+    // Contrat : une ligne (60 px + le libellé) ; Matériel : deux lignes ; « — » : une.
+    expect(d.couloirs.map((c) => [c.y, c.hauteur])).toEqual([
+      [0, HAUTEUR_LIBELLE_COULOIR + 60],
+      [80, HAUTEUR_LIBELLE_COULOIR + 120],
+      [220, HAUTEUR_LIBELLE_COULOIR + 60],
+    ]);
+    expect(d.separateurs).toEqual([80, 220]);
+    expect(d.hauteur).toBe(300);
+    // Trois colonnes globales, même quand un couloir n'en occupe qu'une.
+    expect(d.largeur).toBe(5 * 2 + 3 * 100 + 2 * 20);
+    // « riz » reste en colonne 0 dans son couloir, « besoin » en colonne 1
+    // dans le sien : l'arête riz → besoin traverse le filet, c'est l'information.
+    expect(d.pos.get('riz')).toEqual({ x: 5, y: 220 + HAUTEUR_LIBELLE_COULOIR + 5 });
+    expect(d.pos.get('besoin')).toEqual({ x: 125, y: 80 + HAUTEUR_LIBELLE_COULOIR + 5 });
+    expect(d.pos.get('contrat')?.x).toBe(245);
+    expect(d.pos.size).toBe(7);
+  });
+
+  it('ne change rien sans catégorie : pas de chrome vide', () => {
+    const reseau = agriculture();
+    const attendu = disposerParComposantes(reseau, dims);
+    const d = disposer(reseau, dims);
+    expect(d.couloirs).toEqual([]);
+    expect(d.separateurs).toEqual(attendu.separateurs);
+    expect([...d.pos.entries()]).toEqual([...attendu.pos.entries()]);
+  });
+
+  it('passe aux couloirs dès qu’une seule tâche porte une catégorie', () => {
+    const reseau = construireReseau(
+      AGRI.map((t) => (t.id === 'contrat' ? { ...t, category: 'Contrat' } : t)),
+      ARETES,
+    );
+    const d = disposer(reseau, dims);
+    expect(d.couloirs.map((c) => c.libelle)).toEqual(['Contrat', '—']);
+    expect(d.separateurs).toHaveLength(1);
   });
 });

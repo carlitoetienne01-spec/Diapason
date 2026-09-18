@@ -17,8 +17,8 @@ import {
   chaineLaPlusLongue,
   comptes,
   construireReseau,
+  disposer,
   dispositionBouge,
-  disposerParComposantes,
   estOrpheline,
   faisables,
   fermeraitUneBoucle,
@@ -254,9 +254,12 @@ export function NetworkView({
   // alphabet, 5 arêtes suffisaient à croiser deux flèches sur AgriCulture.
   // Les composantes sans rapport sont empilées l'une sous l'autre avec un
   // filet pointillé, au lieu d'être entrelacées dans les mêmes colonnes.
+  // Dès qu'une tâche porte une catégorie, ce sont des couloirs par
+  // catégorie qui s'empilent à la place (18 sept. 2026) — le rang reste
+  // global, une arête peut traverser un couloir ; sans catégorie, rien.
   const layout = useMemo(
     () =>
-      disposerParComposantes(reseau, {
+      disposer(reseau, {
         largeurCarte: CARD_W,
         hauteurCarte: CARD_H,
         ecartX: GAP_X,
@@ -783,7 +786,13 @@ export function NetworkView({
               grandir sans que la disposition le sache. */}
           <div
             role="group"
-            aria-label="Réseau des tâches reliées par « débloque »"
+            aria-label={
+              layout.couloirs.length > 0
+                ? `Réseau des tâches reliées par « débloque », en couloirs : ${layout.couloirs
+                    .map((c) => c.libelle)
+                    .join(', ')}`
+                : 'Réseau des tâches reliées par « débloque »'
+            }
             className="relative isolate"
             style={{ width: layout.largeur, height: layout.hauteur }}
             onClick={() => setSelectedEdge(null)}
@@ -925,6 +934,24 @@ export function NetworkView({
                 );
               })}
             </svg>
+
+            {/* Le libellé d'un couloir, discret, en marge gauche au-dessus de
+                sa première ligne ; « — » pour les tâches sans catégorie. */}
+            {layout.couloirs.map((c) => (
+              <span
+                key={c.categorie || '—'}
+                aria-hidden="true"
+                className="absolute text-[11px] font-medium tracking-[0.12em] uppercase pointer-events-none truncate"
+                style={{
+                  left: PAD,
+                  top: c.y + 6,
+                  maxWidth: layout.largeur - PAD * 2,
+                  color: 'var(--color-text-tertiary)',
+                }}
+              >
+                {c.libelle}
+              </span>
+            ))}
 
             {tasks.map((task) => {
               const p = posDe(task.id);
@@ -1180,6 +1207,12 @@ export function NetworkView({
                           {orpheline && (
                             <span className="font-normal" style={{ color: 'var(--color-text-tertiary)' }}>
                               {' '}· sans lien
+                            </span>
+                          )}
+                          {task.category && (
+                            // Le couloir du dessin, dit en mot dans la Liste.
+                            <span className="font-normal" style={{ color: 'var(--color-text-tertiary)' }}>
+                              {' '}· {task.category}
                             </span>
                           )}
                         </button>

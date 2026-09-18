@@ -1685,6 +1685,14 @@ export function SuccesProjectsPage() {
                   // serveur a refusé : l'échec lui est relancé.
                   if (!ok) throw new Error("Le carnet n'a pas été enregistré.");
                 }}
+                onChangerCategorie={async (taskId, category) => {
+                  // Le couloir du réseau : la fiche relit la catégorie dans
+                  // les tâches rechargées, le toast ne dit rien de plus.
+                  await refreshAfter(
+                    () => updateSuccesTask(taskId, { category }),
+                    category ? 'Couloir mis à jour' : 'Couloir retiré',
+                  );
+                }}
               />
             );
           })()}

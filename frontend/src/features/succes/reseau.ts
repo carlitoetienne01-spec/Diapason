@@ -768,6 +768,80 @@ export function disposerParComposantes(reseau: Reseau, dims: DimensionsDispositi
   return { pos, largeur, hauteur, separateurs };
 }
 
+/** Les catégories que portent les tâches du projet, par titre ; vide : aucun couloir. */
+export function categories(reseau: Reseau): string[] {
+  const vues = new Set<string>();
+  for (const task of reseau.taches) {
+    const c = (task.category ?? '').trim();
+    if (c) vues.add(c);
+  }
+  return [...vues].sort((a, b) => a.localeCompare(b, 'fr'));
+}
+
+export interface Couloir {
+  /** La catégorie ; vide pour la bande des tâches sans catégorie. */
+  categorie: string;
+  /** Ce qu'on écrit en marge : la catégorie, ou « — ». */
+  libelle: string;
+  y: number;
+  hauteur: number;
+}
+
+export interface DispositionCouloirs extends DispositionEmpilee {
+  /** Vide quand aucune tâche ne porte de catégorie : pas de chrome vide. */
+  couloirs: Couloir[];
+}
+
+/** La hauteur réservée au libellé d'un couloir, au-dessus de sa première ligne. */
+export const HAUTEUR_LIBELLE_COULOIR = 20;
+
+/**
+ * Les couloirs par catégorie (18 sept. 2026) : quand au moins une tâche
+ * porte une `category`, les lignes se regroupent en bandes horizontales —
+ * une par catégorie, par titre, puis « — » pour les autres — avec un filet
+ * entre deux. Le rang topologique reste GLOBAL (`ordonnerColonnes` sur tout
+ * le réseau, chaque bande n'en garde que ses tâches, colonnes vides
+ * comprises) : une arête peut traverser un couloir, et c'est l'information.
+ * AgriCulture est deux projets en un (contrat / matériel) que la vue
+ * mélangeait sans le dire ; `SuccesTask.category` existait et ne servait
+ * nulle part dans le réseau.
+ */
+export function disposerParCouloirs(reseau: Reseau, dims: DimensionsDisposition): DispositionCouloirs {
+  const colonnes = ordonnerColonnes(reseau);
+  const categorieDe = (id: string) => (reseau.parId.get(id)?.category ?? '').trim();
+  const bandes = categories(reseau).map((c) => ({ categorie: c, libelle: c }));
+  if (reseau.taches.some((t) => !(t.category ?? '').trim())) {
+    bandes.push({ categorie: '', libelle: '—' });
+  }
+  const pos = new Map<string, Point>();
+  const separateurs: number[] = [];
+  const couloirs: Couloir[] = [];
+  let largeur = 0;
+  let hauteur = 0;
+  bandes.forEach(({ categorie, libelle }, k) => {
+    const d = positionner(
+      colonnes.map((ids) => ids.filter((id) => categorieDe(id) === categorie)),
+      dims,
+    );
+    if (k > 0) separateurs.push(hauteur);
+    const y = hauteur;
+    for (const [id, p] of d.pos) pos.set(id, { x: p.x, y: p.y + y + HAUTEUR_LIBELLE_COULOIR });
+    largeur = Math.max(largeur, d.largeur);
+    hauteur += HAUTEUR_LIBELLE_COULOIR + d.hauteur;
+    couloirs.push({ categorie, libelle, y, hauteur: hauteur - y });
+  });
+  return { pos, largeur, hauteur, separateurs, couloirs };
+}
+
+/**
+ * La disposition du dessin : par couloirs dès qu'une catégorie existe,
+ * sinon par composantes empilées — sans catégorie, rien ne change.
+ */
+export function disposer(reseau: Reseau, dims: DimensionsDisposition): DispositionCouloirs {
+  if (categories(reseau).length > 0) return disposerParCouloirs(reseau, dims);
+  return { ...disposerParComposantes(reseau, dims), couloirs: [] };
+}
+
 /**
  * Les positions à l'instant `t` (0 → départ, 1 → arrivée) d'un glissement
  * de cartes, en sortie douce (cubique) : quand une arête change et que le
