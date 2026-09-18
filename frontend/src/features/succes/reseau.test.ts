@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aretesLiberees,
   ceQueDebloque,
+  ceQueRebloque,
   chaine,
+  citer,
   chaineComplete,
   chaineLaPlusLongue,
   colonnesInitiales,
@@ -17,6 +20,7 @@ import {
   ligneDeComptes,
   niveaux,
   ordonnerColonnes,
+  phraseApresBascule,
   positionner,
   statutDe,
   statuts,
@@ -146,8 +150,16 @@ describe('statuts', () => {
     expect(statutDe(agriculture(), 'nulle-part')).toBe('faite');
   });
 
-  it('les faisables se lisent par titre', () => {
-    expect(faisables(agriculture()).map((t) => t.id)).toEqual(['agri', 'riz']);
+  it('les faisables se lisent par ce qu’elles libèrent : « riz » (3) avant « agriculteurs » (2)', () => {
+    expect(faisables(agriculture()).map((t) => t.id)).toEqual(['riz', 'agri']);
+  });
+
+  it('à impact égal, les faisables se lisent par titre', () => {
+    const reseau = construireReseau(
+      [tache('z', 'zèbre'), tache('a', 'âne'), tache('c', 'cible')],
+      [arete('z', 'c'), arete('a', 'c')],
+    );
+    expect(faisables(reseau).map((t) => t.id)).toEqual(['a', 'z']);
   });
 
   it('les glyphes disent l’état par la forme', () => {
@@ -256,6 +268,85 @@ describe('ceQueDebloque et impact', () => {
       [arete('a', 'b'), arete('b', 'c')],
     );
     expect(impact(reseau, 'a')).toBe(1);
+  });
+
+  it('rouvrir « agriculteurs » rebloque « discuter », qui était devenue faisable', () => {
+    expect(ceQueRebloque(agriculture(), 'agri')).toEqual(['discuter']);
+  });
+});
+
+describe('phraseApresBascule — la phrase vient de l’état rechargé', () => {
+  it('cite ce qui vient de s’ouvrir', () => {
+    expect(phraseApresBascule(agricultureApresAgri(), 'agri')).toEqual({
+      titre: 'Tâche terminée',
+      description: 'Débloque « Discuter du contrat avec les agriculteurs ».',
+    });
+  });
+
+  it('dit « rien de nouveau » et nomme ce que la successeure attend encore', () => {
+    const reseau = construireReseau(
+      [tache('a', 'Acheter', true), tache('b', 'Bêcher'), tache('c', 'Cultiver')],
+      [arete('a', 'c'), arete('b', 'c')],
+    );
+    expect(phraseApresBascule(reseau, 'a')).toEqual({
+      titre: 'Tâche terminée',
+      description: 'Rien de nouveau : « Cultiver » attend encore « Bêcher ».',
+    });
+  });
+
+  it('dit que rien ne l’attendait quand la tâche est une feuille', () => {
+    const reseau = construireReseau(
+      AGRI.map((t) => (t.id === 'tracteur' ? { ...t, done: true } : t)),
+      ARETES,
+    );
+    expect(phraseApresBascule(reseau, 'tracteur').description).toBe('Rien ne l’attendait.');
+  });
+
+  it('rouvrir dit ce qui se rebloque, ou que rien ne bouge', () => {
+    expect(phraseApresBascule(agriculture(), 'agri')).toEqual({
+      titre: 'Tâche rouverte',
+      description: 'Rebloque « Discuter du contrat avec les agriculteurs ».',
+    });
+    expect(phraseApresBascule(agriculture(), 'contrat').description).toBe('Rien ne se rebloque.');
+  });
+
+  it('ne prétend rien sur une tâche absente de l’état rechargé', () => {
+    expect(phraseApresBascule(agriculture(), 'disparue').titre).toBe('Tâche mise à jour');
+  });
+
+  it('cite deux ou trois titres avec « et »', () => {
+    expect(citer(['A'])).toBe('« A »');
+    expect(citer(['A', 'B'])).toBe('« A » et « B »');
+    expect(citer(['A', 'B', 'C'])).toBe('« A », « B » et « C »');
+  });
+});
+
+describe('aretesLiberees — ce que l’impulsion parcourt', () => {
+  it('trouve l’arête agriculteurs → discuter une fois la coche rechargée', () => {
+    const avant = statuts(agriculture());
+    expect(aretesLiberees(avant, agricultureApresAgri())).toEqual([{ from: 'agri', to: 'discuter' }]);
+  });
+
+  it('n’allume rien quand rien n’a changé, ni sur une tâche déjà faite avant', () => {
+    expect(aretesLiberees(statuts(agriculture()), agriculture())).toEqual([]);
+    const apres = agricultureApresAgri();
+    expect(aretesLiberees(statuts(apres), apres)).toEqual([]);
+  });
+
+  it('n’allume rien vers une cible qui attend encore ailleurs', () => {
+    const avant = construireReseau(
+      [tache('a', 'a'), tache('b', 'b'), tache('c', 'c')],
+      [arete('a', 'c'), arete('b', 'c')],
+    );
+    const apres = construireReseau(
+      [tache('a', 'a', true), tache('b', 'b'), tache('c', 'c')],
+      [arete('a', 'c'), arete('b', 'c')],
+    );
+    expect(aretesLiberees(statuts(avant), apres)).toEqual([]);
+  });
+
+  it('ignore une tâche inconnue de l’état précédent — un autre projet, pas une coche', () => {
+    expect(aretesLiberees(new Map(), agricultureApresAgri())).toEqual([]);
   });
 });
 

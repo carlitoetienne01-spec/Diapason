@@ -111,10 +111,17 @@ export function statutDe(reseau: Reseau, id: string): StatutTache {
   return attend ? 'bloquee' : 'faisable';
 }
 
-/** Les faisables maintenant, par titre — l'ordre par impact attend la proposition 5. */
+/**
+ * Les faisables maintenant, celles qui libèrent le plus en premier, puis par
+ * titre. Triées par titre (jusqu'au 18 sept. 2026), « Qu'est-ce qu'on aura
+ * besoin en premier ? » (3 tâches en aval) passait après « Avoir les bons
+ * agriculteurs » : la première puce doit être la tâche à faire ce soir.
+ */
 export function faisables(reseau: Reseau): SuccesTask[] {
   const st = statuts(reseau);
-  return reseau.taches.filter((task) => st.get(task.id) === 'faisable').sort(compareTitres);
+  return reseau.taches
+    .filter((task) => st.get(task.id) === 'faisable')
+    .sort((a, b) => impact(reseau, b.id) - impact(reseau, a.id) || compareTitres(a, b));
 }
 
 /** Parcours en largeur dans un sens, sans le départ, chaque tâche une seule fois. */
@@ -197,9 +204,94 @@ export function ceQueDebloque(reseau: Reseau, id: string): string[] {
     .map((t) => t.id);
 }
 
+/**
+ * Les successeures que ROUVRIR `id` vient de rebloquer : celles dont `id`
+ * est la seule attente ouverte. Même ensemble que `ceQueDebloque` — le
+ * calcul ne regarde pas l'état de `id`, seulement celui des autres attentes —
+ * mais lu sur l'état rechargé après une réouverture, il dit ce qui vient de
+ * repasser de faisable à bloquée.
+ */
+export function ceQueRebloque(reseau: Reseau, id: string): string[] {
+  return ceQueDebloque(reseau, id);
+}
+
 /** Combien de tâches ouvertes attendent, de près ou de loin, que `id` soit faite. */
 export function impact(reseau: Reseau, id: string): number {
   return chaine(reseau, id, 'aval').filter((m) => !reseau.parId.get(m.id)?.done).length;
+}
+
+/** « A », « A » et « B », « A », « B » et « C ». */
+export function citer(titres: string[]): string {
+  const guillemets = titres.map((t) => `« ${t} »`);
+  if (guillemets.length <= 1) return guillemets.join('');
+  return `${guillemets.slice(0, -1).join(', ')} et ${guillemets[guillemets.length - 1]}`;
+}
+
+export interface PhraseBascule {
+  titre: string;
+  description: string;
+}
+
+/**
+ * Ce que le toast dit après une coche ou une réouverture, calculé sur l'état
+ * RECHARGÉ (§100 : la phrase vient du serveur, jamais du clic). Jusqu'au
+ * 18 sept. 2026 le toast disait « Tâche terminée » comme pour une liste
+ * plate : l'information pour laquelle le réseau existe — ce qui vient de
+ * s'ouvrir — n'était ni dite ni montrée. « Rien de nouveau » nomme la
+ * successeure qui attend encore, et ce qu'elle attend.
+ */
+export function phraseApresBascule(reseau: Reseau, id: string): PhraseBascule {
+  const tache = reseau.parId.get(id);
+  const titreDe = (tid: string) => reseau.parId.get(tid)?.title ?? '';
+  if (!tache) {
+    return { titre: 'Tâche mise à jour', description: 'Elle n’est plus dans ce projet.' };
+  }
+  if (tache.done) {
+    const ouvertes = ceQueDebloque(reseau, id);
+    if (ouvertes.length > 0) {
+      return { titre: 'Tâche terminée', description: `Débloque ${citer(ouvertes.map(titreDe))}.` };
+    }
+    const encoreBloquees = (reseau.aval.get(id) ?? [])
+      .map((sid) => reseau.parId.get(sid))
+      .filter((t): t is SuccesTask => t !== undefined && !t.done)
+      .sort(compareTitres);
+    const premiere = encoreBloquees[0];
+    if (!premiere) {
+      return { titre: 'Tâche terminée', description: 'Rien ne l’attendait.' };
+    }
+    const attend = voisinage(reseau, premiere.id).manquantes.map(titreDe);
+    const autres = encoreBloquees.length > 1 ? ` (et ${encoreBloquees.length - 1} autre${encoreBloquees.length > 2 ? 's' : ''})` : '';
+    return {
+      titre: 'Tâche terminée',
+      description: `Rien de nouveau : « ${premiere.title} » attend encore ${citer(attend)}${autres}.`,
+    };
+  }
+  const rebloquees = ceQueRebloque(reseau, id);
+  return {
+    titre: 'Tâche rouverte',
+    description:
+      rebloquees.length > 0 ? `Rebloque ${citer(rebloquees.map(titreDe))}.` : 'Rien ne se rebloque.',
+  };
+}
+
+/**
+ * Les arêtes qui viennent de se libérer entre deux états : la source vient
+ * de passer faite, et la cible est devenue faisable par là. C'est ce que
+ * l'impulsion parcourt dans le graphe — calculé sur l'état rechargé, jamais
+ * sur le clic : une coche refusée par le serveur n'allume rien.
+ */
+export function aretesLiberees(
+  statutsAvant: ReadonlyMap<string, StatutTache>,
+  reseau: Reseau,
+): Array<{ from: string; to: string }> {
+  const resultat: Array<{ from: string; to: string }> = [];
+  for (const task of reseau.taches) {
+    if (!task.done) continue;
+    const avant = statutsAvant.get(task.id);
+    if (avant === undefined || avant === 'faite') continue;
+    for (const to of ceQueDebloque(reseau, task.id)) resultat.push({ from: task.id, to });
+  }
+  return resultat;
 }
 
 /**

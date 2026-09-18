@@ -61,6 +61,7 @@ import { useChargementTemporise } from '../features/succes/useChargementTemporis
 import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { dateIsoLocale } from '../features/succes/planificateur';
 import { phraseReportee } from '../features/succes/report';
+import { construireReseau, phraseApresBascule, type PhraseBascule } from '../features/succes/reseau';
 import { TaskCard, type SuccesTaskPatch } from '../features/succes/TaskCard';
 import type {
   SuccesProject,
@@ -1094,14 +1095,19 @@ export function SuccesProjectsPage() {
     }
   };
 
-  const loadTasks = useCallback(async () => {
+  // Rend la liste rechargée, ou null si le serveur n'a pas répondu : le
+  // réseau (18 sept. 2026) en tire la phrase du toast après une coche —
+  // « débloque « … » » se calcule sur ce qui est revenu, pas sur le clic.
+  const loadTasks = useCallback(async (): Promise<SuccesTask[] | null> => {
     try {
       const nextTasks = await listSuccesTasks({ includeDone: true });
       ecrireCache(clesSucces.taches(), nextTasks);
       setTasks(nextTasks);
+      return nextTasks;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error('Les tâches ne peuvent pas être chargées.', { description: message });
+      return null;
     }
   }, []);
 
@@ -1122,13 +1128,19 @@ export function SuccesProjectsPage() {
    */
   const refreshAfter = async (
     action: () => Promise<unknown>,
-    success: string | null,
+    // Une phrase fixe, rien, ou une phrase ÉCRITE D'APRÈS L'ÉTAT RECHARGÉ
+    // (le réseau : « Tâche terminée — débloque « … » », §100). Elle reçoit
+    // null quand le rechargement a échoué, et doit alors le dire.
+    success: string | null | ((fraiches: SuccesTask[] | null) => PhraseBascule),
   ): Promise<boolean> => {
     setSaving(true);
     try {
       await action();
-      await loadTasks();
-      if (success) {
+      const fraiches = await loadTasks();
+      if (typeof success === 'function') {
+        const phrase = success(fraiches);
+        toast.success(phrase.titre, { description: phrase.description });
+      } else if (success) {
         toast.success(success, { description: 'Enregistré localement sur ce Mac.' });
       }
       return true;
@@ -1141,6 +1153,22 @@ export function SuccesProjectsPage() {
       setSaving(false);
     }
   };
+
+  /**
+   * La phrase d'une coche dans le réseau, écrite d'après les tâches
+   * RECHARGÉES et les arêtes du projet : « débloque « Discuter du contrat » »
+   * ou « rien de nouveau : … attend encore … ». Quand le rechargement a
+   * échoué, on ne devine pas ce qui s'est ouvert — on dit qu'on ne sait pas.
+   */
+  const phraseBasculeReseau =
+    (task: SuccesTask) =>
+    (fraiches: SuccesTask[] | null): PhraseBascule =>
+      fraiches
+        ? phraseApresBascule(construireReseau(fraiches, edges), task.id)
+        : {
+            titre: task.done ? 'Tâche rouverte' : 'Tâche terminée',
+            description: 'L’état rechargé n’a pas pu être lu : ce qui s’ouvre reste inconnu.',
+          };
 
   const createTaskForProject = async () => {
     if (!selected || !quickTitle.trim()) return;
@@ -1401,7 +1429,7 @@ export function SuccesProjectsPage() {
               onToggle={async (task) => {
                 await refreshAfter(
                   () => setSuccesTaskDone(task.id, !task.done),
-                  task.done ? 'Tâche rouverte' : 'Tâche terminée',
+                  phraseBasculeReseau(task),
                 );
               }}
               onLink={async (fromTaskId, toTaskId) => {
@@ -1631,7 +1659,7 @@ export function SuccesProjectsPage() {
                 onToggle={async (task) => {
                   await refreshAfter(
                     () => setSuccesTaskDone(task.id, !task.done),
-                    task.done ? 'Tâche rouverte' : 'Tâche terminée',
+                    phraseBasculeReseau(task),
                   );
                 }}
                 onRelierDepuis={(task) => {

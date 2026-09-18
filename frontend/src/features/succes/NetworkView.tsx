@@ -11,10 +11,12 @@ import { Check, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
+  aretesLiberees,
   chaineComplete,
   construireReseau,
   dispositionBouge,
   faisables,
+  impact,
   interpolerPositions,
   ordonnerColonnes,
   positionner,
@@ -24,6 +26,7 @@ import {
   type Point,
   type StatutTache,
 } from './reseau';
+import { dureeImpulsion, longueurApprochee } from './synapses';
 import type { SuccesTask, SuccesTaskEdge } from './types';
 
 type Props = {
@@ -65,6 +68,10 @@ const PAD = 24;
 // 260 ms : le temps qu'une carte change de ligne sans qu'on la perde de vue ;
 // à 160 ms elle saute encore, à 400 ms le graphe traîne derrière la coche.
 const GLISSEMENT_MS = 260;
+// Le halo sur la carte que l'impulsion vient d'atteindre : 320 ms, le temps
+// de l'apercevoir après la comète ; à 600 ms (le halo de l'arbre, rare et
+// aléatoire) il traînait derrière un toast déjà lu.
+const HALO_MS = 320;
 const DANGER = 'var(--color-error, var(--color-text-secondary))';
 
 const TON_ARETE: Record<EtatArete, string> = {
@@ -173,9 +180,9 @@ export function NetworkView({
   const posDe = (id: string): Point | undefined => posAffichees.get(id) ?? layout.pos.get(id);
 
   /** La courbe d'une arête, du bord droit de la source au bord gauche de la cible. */
-  const cheminArete = (edge: SuccesTaskEdge): string | null => {
-    const from = posDe(edge.fromTaskId);
-    const to = posDe(edge.toTaskId);
+  const cheminArete = (fromId: string, toId: string): string | null => {
+    const from = posDe(fromId);
+    const to = posDe(toId);
     if (!from || !to) return null;
     const x1 = from.x + CARD_W;
     const y1 = from.y + CARD_H / 2;
@@ -184,6 +191,64 @@ export function NetworkView({
     const dx = Math.max(28, Math.abs(x2 - x1) / 2);
     return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
   };
+
+  // L'impulsion (18 sept. 2026) : quand une coche RECHARGÉE libère une
+  // successeure, une comète unique part de la carte cochée le long de l'arête
+  // libérée, puis la carte atteinte porte un halo. Calculée en comparant les
+  // statuts d'avant et d'après (`aretesLiberees`), jamais depuis le clic :
+  // une coche refusée par le serveur n'allume rien (§100). Rien ne clignote
+  // en permanence — à la différence des synapses de l'arbre, qui sont un
+  // flux — et tout est éteint sous `prefers-reduced-motion`.
+  const [impulsions, setImpulsions] = useState<
+    Array<{ cle: string; from: string; to: string; dureeMs: number }>
+  >([]);
+  const [halos, setHalos] = useState<Set<string>>(new Set());
+  const statutsAvant = useRef<Map<string, StatutTache> | null>(null);
+  const minuteries = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const encours = minuteries.current;
+    return () => {
+      for (const t of encours) window.clearTimeout(t);
+    };
+  }, []);
+  useEffect(() => {
+    const avant = statutsAvant.current;
+    statutsAvant.current = statusById;
+    if (!avant) return;
+    const liberees = aretesLiberees(avant, reseau);
+    if (liberees.length === 0) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const poser = (fn: () => void, delai: number) => {
+      const t = window.setTimeout(() => {
+        minuteries.current.delete(t);
+        fn();
+      }, delai);
+      minuteries.current.add(t);
+    };
+    for (const { from, to } of liberees) {
+      const a = layout.pos.get(from);
+      const b = layout.pos.get(to);
+      if (!a || !b) continue;
+      const dureeMs = dureeImpulsion(
+        longueurApprochee({ x1: a.x + CARD_W, y1: a.y + CARD_H / 2, x2: b.x, y2: b.y + CARD_H / 2 }),
+      );
+      const cle = `imp-${from}-${to}-${performance.now()}`;
+      setImpulsions((liste) => [...liste, { cle, from, to, dureeMs }]);
+      poser(() => {
+        setHalos((h) => new Set(h).add(to));
+        poser(
+          () =>
+            setHalos((h) => {
+              const suivant = new Set(h);
+              suivant.delete(to);
+              return suivant;
+            }),
+          HALO_MS,
+        );
+        poser(() => setImpulsions((liste) => liste.filter((i) => i.cle !== cle)), 400);
+      }, dureeMs);
+    }
+  }, [statusById]); // eslint-disable-line react-hooks/exhaustive-deps -- `reseau` et `layout` sont lus à l'instant du changement
 
   // À l'ouverture, la première colonne faisable est visible : le graphe
   // défile désormais au lieu de rétrécir, et un projet dont les racines sont
@@ -303,18 +368,35 @@ export function NetworkView({
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {feasible.map((task) => (
-              <button
-                key={task.id}
-                type="button"
-                onClick={() => onSelect?.(task)}
-                className="px-2.5 py-1 rounded-full text-xs cursor-pointer"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-              >
-                <span style={{ color: 'var(--color-accent)' }}>→ </span>
-                {task.title}
-              </button>
-            ))}
+            {/* Triées par ce qu'elles libèrent (`faisables`, reseau.ts) : la
+                première puce est la tâche à faire ce soir. « → 2 » dit
+                combien de tâches ouvertes attendent celle-ci, de près ou de
+                loin ; rien quand elle n'ouvre rien seule. */}
+            {feasible.map((task) => {
+              const n = impact(reseau, task.id);
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => onSelect?.(task)}
+                  aria-label={
+                    n >= 1 ? `${task.title} — débloque ${n} tâche${n > 1 ? 's' : ''}` : task.title
+                  }
+                  className="px-2.5 py-1 rounded-full text-xs cursor-pointer inline-flex items-center gap-1.5"
+                  style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <span>{task.title}</span>
+                  {n >= 1 && (
+                    <span
+                      className="font-medium tabular-nums whitespace-nowrap"
+                      style={{ color: 'var(--color-accent)' }}
+                    >
+                      → {n}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
@@ -470,7 +552,7 @@ export function NetworkView({
                 ))}
               </defs>
               {visibleEdges.map((edge) => {
-                const d = cheminArete(edge);
+                const d = cheminArete(edge.fromTaskId, edge.toTaskId);
                 if (!d) return null;
                 const trait = traitArete(statusById.get(edge.fromTaskId) ?? 'faisable');
                 const isSelected =
@@ -489,6 +571,47 @@ export function NetworkView({
                   />
                 );
               })}
+              {impulsions.map((imp) => {
+                // La comète relit l'arête au rendu : la carte cochée glisse
+                // vers le bas de sa colonne pendant le voyage, et la lumière
+                // suit la flèche au lieu de flotter dans le vide. Deux tirets
+                // de même période dont les fronts coïncident (synapses de
+                // l'arbre, index.css) : la queue diaphane épouse la tête.
+                const d = cheminArete(imp.from, imp.to);
+                if (!d) return null;
+                return (
+                  <g key={imp.cle} aria-hidden="true">
+                    <path
+                      d={d}
+                      pathLength={100}
+                      fill="none"
+                      stroke="var(--color-accent)"
+                      strokeWidth={1.5}
+                      strokeLinecap="round"
+                      style={{
+                        strokeDasharray: '18 100',
+                        strokeDashoffset: 18,
+                        animation: `synapse-queue ${imp.dureeMs}ms linear forwards`,
+                        opacity: 0.35,
+                      }}
+                    />
+                    <path
+                      d={d}
+                      pathLength={100}
+                      fill="none"
+                      stroke="var(--color-accent)"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                      style={{
+                        strokeDasharray: '6 112',
+                        strokeDashoffset: 6,
+                        animation: `synapse-tete ${imp.dureeMs}ms linear forwards`,
+                        filter: 'drop-shadow(0 0 5px var(--color-accent))',
+                      }}
+                    />
+                  </g>
+                );
+              })}
             </svg>
 
             {tasks.map((task) => {
@@ -497,7 +620,11 @@ export function NetworkView({
               const status = statusById.get(task.id) ?? 'faisable';
               const isLinkSource = linkFrom === task.id;
               const isFocused = focusedId === task.id;
-              const highlighted = isLinkSource || isFocused;
+              const enHalo = halos.has(task.id);
+              const highlighted = isLinkSource || isFocused || enHalo;
+              // « ↓3 » seulement à partir de deux tâches ouvertes en aval :
+              // à une, la flèche vers la carte suivante le dit déjà.
+              const aval = task.done ? 0 : impact(reseau, task.id);
               return (
                 <CadreVitre
                   compact
@@ -523,6 +650,9 @@ export function NetworkView({
                     border: `1px solid ${highlighted ? 'var(--color-accent)' : 'var(--color-border)'}`,
                     borderWidth: highlighted ? 2 : undefined,
                     borderStyle: isLinkSource ? 'dashed' : undefined,
+                    boxShadow: enHalo
+                      ? '0 0 14px color-mix(in srgb, var(--color-accent) 35%, transparent)'
+                      : undefined,
                     opacity: estompe(task.id) ? 0.3 : task.done ? 0.72 : 1,
                   }}
                 >
@@ -553,8 +683,8 @@ export function NetworkView({
                     onFocus={() => setFocusedId(task.id)}
                     onBlur={() => setFocusedId(null)}
                     aria-label={`${task.title} — ${statusLabel(status)}${
-                      linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''
-                    }`}
+                      aval >= 2 ? `, ${aval} tâches en aval` : ''
+                    }${linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''}`}
                     title={task.title}
                     className="flex-1 min-w-0 text-left cursor-pointer grid gap-0.5 outline-none"
                   >
@@ -567,8 +697,19 @@ export function NetworkView({
                     >
                       {task.title}
                     </span>
-                    <span className="text-[11px] leading-none truncate" style={{ color: statusColor(status) }}>
-                      {statusLabel(status)}
+                    <span className="text-[11px] leading-none flex items-center gap-2">
+                      <span className="truncate" style={{ color: statusColor(status) }}>
+                        {statusLabel(status)}
+                      </span>
+                      {aval >= 2 && (
+                        <span
+                          aria-hidden="true"
+                          className="ml-auto shrink-0 tabular-nums"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        >
+                          ↓{aval}
+                        </span>
+                      )}
                     </span>
                   </button>
                 </CadreVitre>
@@ -585,7 +726,7 @@ export function NetworkView({
               viewBox={`0 0 ${layout.largeur} ${layout.hauteur}`}
             >
               {visibleEdges.map((edge) => {
-                const d = cheminArete(edge);
+                const d = cheminArete(edge.fromTaskId, edge.toTaskId);
                 const fromTask = byId.get(edge.fromTaskId);
                 const toTask = byId.get(edge.toTaskId);
                 if (!d || !fromTask || !toTask) return null;

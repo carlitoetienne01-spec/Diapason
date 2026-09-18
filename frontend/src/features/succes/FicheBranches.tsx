@@ -20,6 +20,7 @@ import { Link2, Loader2, MoreHorizontal, NotebookPen, X } from 'lucide-react';
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import { CarnetDeTache } from './CarnetDeTache';
 import {
+  ceQueDebloque,
   chaine,
   construireReseau,
   glypheStatut,
@@ -157,6 +158,15 @@ export function FicheBranches({
 
   const statut = statutDe(reseau, tache.id);
   const fil = [...historique, tache.id].slice(-3);
+  // Ce que terminer la tâche centrale ouvrirait : les successeures dont elle
+  // est la dernière attente ouverte. Dit seulement pour une faisable — c'est
+  // une invitation, et « Débloque 2 » au-dessus compte déjà les voisines.
+  const ouvrirait =
+    statut === 'faisable'
+      ? ceQueDebloque(reseau, tache.id)
+          .map((id) => reseau.parId.get(id)?.title)
+          .filter((t): t is string => Boolean(t))
+      : [];
 
   const aller = (id: string) => {
     if (id === tache.id) return;
@@ -383,6 +393,11 @@ export function FicheBranches({
                 <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   {ligneDeComptes(reseau, tache.id)}
                 </p>
+                {ouvrirait.length > 0 && (
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                    Terminer ceci ouvre : {ouvrirait.join(', ')}
+                  </p>
+                )}
               </div>
             </div>
             <button
