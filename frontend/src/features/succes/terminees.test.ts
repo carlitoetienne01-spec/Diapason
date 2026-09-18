@@ -33,6 +33,7 @@ function terminee(id: string, completedDate: string, extra: Partial<SuccesTask> 
     createdAt: '',
     completedDate,
     postponedCount: 0,
+    estimateDays: 0,
     updatedAtMs: 0,
     stage: '',
     cadence: null,

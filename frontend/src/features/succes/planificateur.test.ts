@@ -36,6 +36,7 @@ function tache(partiel: Partial<SuccesTask>): SuccesTask {
     createdAt: '2026-09-01',
     completedDate: '',
     postponedCount: 0,
+    estimateDays: 0,
     updatedAtMs: 0,
     stage: '',
     cadence: null,

@@ -191,6 +191,7 @@ export async function createSuccesTask(input: {
   emoji?: string;
   stage?: string;
   cadence?: SuccesCadence | null;
+  estimateDays?: number;
 }): Promise<SuccesTask> {
   const payload = await request<{ task: SuccesTask }>('/v1/succes/tasks', {
     method: 'POST',
@@ -216,6 +217,7 @@ export async function updateSuccesTask(
       | 'emoji'
       | 'stage'
       | 'cadence'
+      | 'estimateDays'
     >
   >,
 ): Promise<SuccesTask> {

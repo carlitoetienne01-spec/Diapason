@@ -1693,6 +1693,14 @@ export function SuccesProjectsPage() {
                     category ? 'Couloir mis à jour' : 'Couloir retiré',
                   );
                 }}
+                onChangerDuree={async (taskId, jours) => {
+                  // La durée estimée (18 sept. 2026), un entier de jours :
+                  // la fiche et l'en-tête la relisent dans l'état rechargé.
+                  await refreshAfter(
+                    () => updateSuccesTask(taskId, { estimateDays: jours }),
+                    jours > 0 ? `Durée estimée : ~${jours} j` : 'Durée estimée retirée',
+                  );
+                }}
               />
             );
           })()}

@@ -81,6 +81,13 @@ export interface SuccesTask {
   updatedAtMs: number;
   stage: string;
   cadence: SuccesCadence | null;
+  /**
+   * La durée estimée en jours, un ENTIER (18 sept. 2026) — jamais un
+   * flottant, le client Dart signe des enveloppes canoniques où `1e-07`
+   * et `1e-7` divergent. 0 = pas d'estimation : le réseau ne parle de
+   * « chemin critique » que lorsqu'une durée existe (§5).
+   */
+  estimateDays: number;
   subtasks: SuccesSubtask[];
 }
 

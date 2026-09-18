@@ -56,6 +56,11 @@ class TaskCreate(BaseModel):
     # L'étape (pipeline) et la cadence (cycle) ; validées contre le projet.
     stage: str = Field(default="", max_length=40)
     cadence: dict[str, Any] | None = None
+    # La durée estimée en jours d'une tâche du réseau (18 sept. 2026) : un
+    # ENTIER, jamais un flottant — le client Dart signe des enveloppes
+    # canoniques où `1e-07` (Python) et `1e-7` (Dart) divergent. 0 = pas
+    # d'estimation. `strict` : « 1.5 » n'est pas arrondi en silence.
+    estimateDays: int = Field(default=0, ge=0, le=3650, strict=True)
     # Le magasin lit « done » depuis toujours ; la route le laissait tomber en
     # silence, si bien qu'un client important une tâche déjà terminée la
     # récupérait ouverte, sans le moindre message.
@@ -77,6 +82,7 @@ class TaskPatch(BaseModel):
     order: int | None = None
     stage: str | None = Field(default=None, max_length=40)
     cadence: dict[str, Any] | None = None
+    estimateDays: int | None = Field(default=None, ge=0, le=3650, strict=True)
     opId: str | None = None
 
 

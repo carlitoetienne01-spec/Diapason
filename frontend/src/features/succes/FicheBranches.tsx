@@ -27,6 +27,7 @@ import {
   estOrpheline,
   glypheStatut,
   ligneDeComptes,
+  lireDureeSaisie,
   placeSurLeFil,
   statutDe,
   voisinSuivant,
@@ -54,6 +55,8 @@ interface Props {
   onEnregistrerCarnet: (taskId: string, journal: string) => Promise<void>;
   /** Le couloir de la tâche ; vide pour l'en retirer. La page enregistre et recharge. */
   onChangerCategorie: (taskId: string, category: string) => Promise<void>;
+  /** La durée estimée en jours entiers ; 0 pour la retirer. La page enregistre et recharge. */
+  onChangerDuree: (taskId: string, jours: number) => Promise<void>;
 }
 
 interface Ligne {
@@ -117,6 +120,7 @@ export function FicheBranches({
   onSupprimer,
   onEnregistrerCarnet,
   onChangerCategorie,
+  onChangerDuree,
 }: Props) {
   const reseau = useMemo(() => construireReseau(tasks, edges), [tasks, edges]);
   const tache = reseau.parId.get(tacheId) ?? null;
@@ -130,6 +134,12 @@ export function FicheBranches({
   // Le miroir de `categorieSaisie` hors rendu : Entrée pose puis ferme le
   // menu, et le `blur` du champ qui disparaît ne doit pas poser une seconde fois.
   const saisieEnCours = useRef<string | null>(null);
+  // La durée « ~ j » en cours de frappe (18 sept. 2026), même motif que la
+  // catégorie : null = on montre celle de la tâche RECHARGÉE ; `dureeRefusee`
+  // dit qu'un texte qui n'est pas un entier de jours n'est pas parti.
+  const [dureeSaisie, setDureeSaisie] = useState<string | null>(null);
+  const dureeEnCours = useRef<string | null>(null);
+  const [dureeRefusee, setDureeRefusee] = useState(false);
   const [carnetOuvert, setCarnetOuvert] = useState(false);
   const boite = useRef<HTMLDivElement>(null);
   const origine = useRef<Element | null>(null);
@@ -155,6 +165,8 @@ export function FicheBranches({
     setCurseur(null);
     setMenuOuvert(false);
     setCategorieSaisie(null);
+    setDureeSaisie(null);
+    setDureeRefusee(false);
     setNotesDepliees(false);
     boite.current?.focus();
   }, [tacheId]);
@@ -177,6 +189,9 @@ export function FicheBranches({
     setMenuOuvert(false);
     saisieEnCours.current = null;
     setCategorieSaisie(null);
+    dureeEnCours.current = null;
+    setDureeSaisie(null);
+    setDureeRefusee(false);
     // Le champ du menu disparaît avec lui : sans ce rappel le focus tombait
     // sur `body` et Échap suivant fermait le mini-panneau entier.
     boite.current?.focus();
@@ -189,6 +204,22 @@ export function FicheBranches({
     const valeur = saisie.trim();
     if (valeur === (tache.category ?? '')) return;
     void onChangerCategorie(tache.id, valeur);
+  };
+  /** Posée à Entrée ou en quittant le champ ; un texte refusé reste affiché avec sa raison, rien ne part. */
+  const poserDuree = (): boolean => {
+    const saisie = dureeEnCours.current;
+    if (saisie === null) return true;
+    const jours = lireDureeSaisie(saisie);
+    if (jours === null) {
+      setDureeRefusee(true);
+      return false;
+    }
+    dureeEnCours.current = null;
+    setDureeSaisie(null);
+    setDureeRefusee(false);
+    if (jours === (tache.estimateDays ?? 0)) return true;
+    void onChangerDuree(tache.id, jours);
+    return true;
   };
   const fil = [...historique, tache.id].slice(-3);
   const place = placeSurLeFil(reseau, tache.id);
@@ -431,8 +462,13 @@ export function FicheBranches({
                 </h2>
                 <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   {ligneDeComptes(reseau, tache.id)}
-                  {/* « Sur la chaîne la plus longue » ou « Marge : 1 tâche » —
-                      en tâches, jamais en jours : aucune durée n'existe. */}
+                  {/* « ~3 j » quand la tâche est estimée ; puis « Sur le chemin
+                      critique » ou « Marge : 2 j » dès qu'une durée existe dans
+                      le projet, sinon « Sur la chaîne la plus longue » ou
+                      « Marge : 1 tâche » — en tâches, jamais en jours inventés. */}
+                  {!tache.done && (tache.estimateDays ?? 0) > 0 && (
+                    <span className="tabular-nums"> · ~{tache.estimateDays} j</span>
+                  )}
                   {place && <> · {place}</>}
                 </p>
                 {ouvrirait.length > 0 && (
@@ -564,6 +600,49 @@ export function FicheBranches({
                       <option key={c} value={c} />
                     ))}
                   </datalist>
+                </label>
+                {/* La durée estimée (18 sept. 2026) : un seul champ « ~ j »,
+                    entier de 0 à 3650, posé à Entrée ou en quittant ; vide =
+                    pas d'estimation. Le texte plutôt que `type="number"` :
+                    WebKit y accepte « 1,5 » et le rend `''`, on ne saurait
+                    pas ce qui a été refusé. */}
+                <label className="grid gap-1 px-2 py-1">
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>Durée estimée (jours)</span>
+                  <span className="flex items-center gap-1.5">
+                    <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>~</span>
+                    <input
+                      inputMode="numeric"
+                      value={dureeSaisie ?? (tache.estimateDays ? String(tache.estimateDays) : '')}
+                      onChange={(event) => {
+                        dureeEnCours.current = event.target.value;
+                        setDureeSaisie(event.target.value);
+                        setDureeRefusee(false);
+                      }}
+                      onBlur={() => void poserDuree()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (poserDuree()) fermerMenu();
+                        }
+                      }}
+                      placeholder="0"
+                      maxLength={4}
+                      disabled={saving}
+                      aria-invalid={dureeRefusee || undefined}
+                      aria-describedby={dureeRefusee ? `fiche-duree-erreur-${tache.id}` : undefined}
+                      className="w-16 rounded-lg px-2 py-1 text-xs bg-transparent outline-none tabular-nums disabled:opacity-50"
+                      style={{
+                        border: `1px solid ${dureeRefusee ? 'var(--color-error, var(--color-text))' : 'var(--color-border)'}`,
+                        color: 'var(--color-text)',
+                      }}
+                    />
+                    <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>j</span>
+                  </span>
+                  {dureeRefusee && (
+                    <span id={`fiche-duree-erreur-${tache.id}`} role="alert" style={{ color: 'var(--color-error, var(--color-text))' }}>
+                      Un nombre entier de jours, de 0 à 3650.
+                    </span>
+                  )}
                 </label>
                 {(tache.date || tache.stage) && (
                   <div className="px-2 py-1" style={{ color: 'var(--color-text-tertiary)' }}>

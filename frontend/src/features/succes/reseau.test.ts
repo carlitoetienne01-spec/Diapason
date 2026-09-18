@@ -47,6 +47,12 @@ import {
   traitArete,
   voisinSuivant,
   voisinage,
+  aDesDurees,
+  dureeDe,
+  finProjetee,
+  joursDeChaine,
+  lireDureeSaisie,
+  margeJours,
   aBouge,
   cheminElastique,
   consigneTirage,
@@ -76,6 +82,7 @@ const tache = (id: string, title: string, done = false): SuccesTask => ({
   createdAt: '',
   completedDate: '',
   postponedCount: 0,
+  estimateDays: 0,
   updatedAtMs: 0,
   stage: '',
   cadence: null,
@@ -471,7 +478,14 @@ describe('placeSurLeFil — sans inventer un chemin critique', () => {
 
 describe('comptes et en-tête', () => {
   it('AgriCulture : 2 faisables, 5 bloquées, 0 faite, profondeur 3', () => {
-    expect(comptes(agriculture())).toEqual({ faisables: 2, bloquees: 5, faites: 0, profondeur: 3 });
+    expect(comptes(agriculture())).toEqual({
+      faisables: 2,
+      bloquees: 5,
+      faites: 0,
+      profondeur: 3,
+      // Aucune durée sur AgriCulture : pas de fin projetée, pas de « chemin critique ».
+      joursProjetes: null,
+    });
     expect(libelleEnTete(comptes(agriculture()))).toBe('2 faisables · 5 bloquées · profondeur 3');
   });
 
@@ -482,7 +496,7 @@ describe('comptes et en-tête', () => {
 
   it('un projet fini a une profondeur de zéro', () => {
     const reseau = construireReseau([tache('a', 'a', true), tache('b', 'b', true)], [arete('a', 'b')]);
-    expect(comptes(reseau)).toEqual({ faisables: 0, bloquees: 0, faites: 2, profondeur: 0 });
+    expect(comptes(reseau)).toEqual({ faisables: 0, bloquees: 0, faites: 2, profondeur: 0, joursProjetes: null });
   });
 });
 
@@ -938,5 +952,105 @@ describe('tracer un lien en tirant une carte (18 sept. 2026)', () => {
     expect(consigneTirage(reseau, 'besoin', 'budget')).toBe(
       'Tirage depuis « Qu’est-ce qu’on aura besoin en premier ? » : « Avoir un budget bien detaillé ? » est déjà débloquée par elle.',
     );
+  });
+});
+
+describe('une durée estimée en jours, et alors seulement un chemin critique (18 sept. 2026)', () => {
+  /** AgriCulture avec des durées : le fil en tâches (agri → discuter → contrat, 3) n'est plus le plus lourd. */
+  const avecDurees = (jours: Record<string, number>) =>
+    construireReseau(
+      AGRI.map((t) => ({ ...t, estimateDays: jours[t.id] ?? 0 })),
+      ARETES,
+    );
+
+  it('sans durée, rien ne change : pas de jours, la chaîne se compte en tâches', () => {
+    const reseau = agriculture();
+    expect(aDesDurees(reseau)).toBe(false);
+    expect(finProjetee(reseau)).toBeNull();
+    expect(margeJours(reseau, 'budget')).toBeNull();
+    expect(chaineLaPlusLongue(reseau)).toEqual(['agri', 'discuter', 'contrat']);
+    expect(placeSurLeFil(reseau, 'budget')).toBe('Sur une chaîne aussi longue que le fil');
+    expect(libelleEnTete(comptes(reseau))).toBe('2 faisables · 5 bloquées · profondeur 3');
+  });
+
+  it('lit la durée en entier, jamais en flottant ni en négatif', () => {
+    const reseau = construireReseau(
+      [
+        { ...tache('a', 'a'), estimateDays: 3 },
+        { ...tache('b', 'b'), estimateDays: 2.9 },
+        { ...tache('c', 'c'), estimateDays: -4 },
+        { ...tache('d', 'd'), estimateDays: Number.NaN },
+        // Une tâche lue dans le cache d'avant le champ n'en porte pas.
+        { ...tache('e', 'e'), estimateDays: undefined as unknown as number },
+      ],
+      [],
+    );
+    expect(['a', 'b', 'c', 'd', 'e', 'inconnue'].map((id) => dureeDe(reseau, id))).toEqual([3, 2, 0, 0, 0, 0]);
+  });
+
+  it('dès qu\'une durée existe, la chaîne la plus lourde en jours l\'emporte sur la plus longue en tâches', () => {
+    // riz 1 j → besoin 5 j → budget 4 j = 10 j, contre agri → discuter → contrat = 0 j en 3 tâches.
+    const reseau = avecDurees({ riz: 1, besoin: 5, budget: 4 });
+    expect(aDesDurees(reseau)).toBe(true);
+    expect(chaineLaPlusLongue(reseau)).toEqual(['riz', 'besoin', 'budget']);
+    expect(joursDeChaine(reseau, ['riz', 'besoin', 'budget'])).toBe(10);
+    expect(finProjetee(reseau)).toBe(10);
+    expect(libelleEnTete(comptes(reseau))).toBe(
+      '2 faisables · 5 bloquées · profondeur 3 · fin projetée ~10 j',
+    );
+  });
+
+  it('à jours égaux, la chaîne la plus longue en tâches, puis la première par titres', () => {
+    // Deux chaînes de 6 j : la première est la plus longue en tâches (3 contre 2).
+    const reseau = construireReseau(
+      [
+        { ...tache('a', 'a'), estimateDays: 2 },
+        { ...tache('b', 'b'), estimateDays: 2 },
+        { ...tache('c', 'c'), estimateDays: 2 },
+        { ...tache('x', 'x'), estimateDays: 3 },
+        { ...tache('y', 'y'), estimateDays: 3 },
+      ],
+      [arete('a', 'b'), arete('b', 'c'), arete('x', 'y')],
+    );
+    expect(chaineLaPlusLongue(reseau)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('la marge en jours est la marge totale du CPM, et zéro vaut « sur le chemin critique »', () => {
+    // riz 1 → besoin 5 → budget 4 (10 j, critique) ; besoin → tracteur 2 (8 j via ce bras).
+    const reseau = avecDurees({ riz: 1, besoin: 5, budget: 4, tracteur: 2, agri: 1, discuter: 1, contrat: 1 });
+    expect(margeJours(reseau, 'besoin')).toBe(0);
+    expect(margeJours(reseau, 'budget')).toBe(0);
+    expect(margeJours(reseau, 'tracteur')).toBe(2);
+    expect(margeJours(reseau, 'contrat')).toBe(7);
+    expect(placeSurLeFil(reseau, 'riz')).toBe('Sur le chemin critique');
+    expect(placeSurLeFil(reseau, 'tracteur')).toBe('Marge : 2 j');
+    expect(placeSurLeFil(reseau, 'contrat')).toBe('Marge : 7 j');
+  });
+
+  it('une tâche sans estimation sur un projet qui en a compte zéro jour, et une faite ne compte plus', () => {
+    const reseau = construireReseau(
+      AGRI.map((t) =>
+        t.id === 'riz' ? { ...t, done: true, estimateDays: 9 } : { ...t, estimateDays: t.id === 'besoin' ? 5 : 0 },
+      ),
+      ARETES,
+    );
+    // riz est faite : ses 9 j ne pèsent plus ; besoin → budget = 5 j, tracteur idem.
+    expect(finProjetee(reseau)).toBe(5);
+    expect(margeJours(reseau, 'riz')).toBeNull();
+    expect(margeJours(reseau, 'budget')).toBe(0);
+    expect(margeJours(reseau, 'contrat')).toBe(5);
+    expect(placeSurLeFil(reseau, 'riz')).toBeNull();
+  });
+
+  it('la saisie « ~ j » n\'accepte qu\'un entier de 0 à 3650, vide valant zéro', () => {
+    expect(lireDureeSaisie('')).toBe(0);
+    expect(lireDureeSaisie(' 12 ')).toBe(12);
+    expect(lireDureeSaisie('0')).toBe(0);
+    expect(lireDureeSaisie('3650')).toBe(3650);
+    expect(lireDureeSaisie('3651')).toBeNull();
+    expect(lireDureeSaisie('1,5')).toBeNull();
+    expect(lireDureeSaisie('1.5')).toBeNull();
+    expect(lireDureeSaisie('-1')).toBeNull();
+    expect(lireDureeSaisie('deux')).toBeNull();
   });
 });

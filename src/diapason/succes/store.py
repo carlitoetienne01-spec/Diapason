@@ -78,6 +78,39 @@ def _validate_iso_date(value: str, field: str = "date") -> str:
     return raw
 
 
+# 3650 jours : dix ans. Une tâche d'un projet personnel n'en demande pas
+# plus, et une valeur au-delà est une faute de frappe (« 100 » tapé « 1000 »),
+# pas une estimation.
+ESTIMATE_DAYS_MAX = 3650
+
+
+def _estimate_days(value: Any) -> int:
+    """La durée estimée, en jours ENTIERS (chantier réseau, 18 sept. 2026).
+
+    Jamais un flottant : le client Dart réimplémente l'encodage canonique et
+    écrit ``1e-7`` là où Python écrit ``1e-07`` (CLAUDE.md §4) — un demi-jour
+    dans une enveloppe signée invaliderait la signature sans un mot. Une
+    valeur vide vaut 0 : « pas d'estimation », et non « zéro jour ».
+    """
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool):
+        raise SuccesError("La durée estimée est un nombre entier de jours.")
+    if isinstance(value, float) and not value.is_integer():
+        raise SuccesError("La durée estimée est un nombre entier de jours.")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise SuccesError("La durée estimée est un nombre entier de jours.") from None
+    if parsed < 0:
+        raise SuccesError("La durée estimée ne peut pas être négative.")
+    if parsed > ESTIMATE_DAYS_MAX:
+        raise SuccesError(
+            f"La durée estimée ne peut pas dépasser {ESTIMATE_DAYS_MAX} jours."
+        )
+    return parsed
+
+
 def _clean_text(value: Any, *, field: str, maximum: int, required: bool = False) -> str:
     raw = str(value or "").strip()
     if required and not raw:
@@ -233,6 +266,16 @@ class SuccesStore:
         if "journal" not in columns:
             conn.execute(
                 "ALTER TABLE succes_tasks ADD COLUMN journal TEXT NOT NULL DEFAULT ''"
+            )
+        # La durée estimée en jours d'une tâche du réseau (18 sept. 2026).
+        # Sans elle, la chaîne la plus longue se compte en tâches et la vue ne
+        # peut ni projeter une fin ni distinguer la marge de « budget » de
+        # l'absence de marge de « paiement ». 0 = pas d'estimation : le mot
+        # « chemin critique » n'apparaît que lorsqu'une durée existe (§5).
+        if "estimate_days" not in columns:
+            conn.execute(
+                "ALTER TABLE succes_tasks ADD COLUMN "
+                "estimate_days INTEGER NOT NULL DEFAULT 0"
             )
 
     @staticmethod
@@ -415,6 +458,7 @@ class SuccesStore:
             "cadence": _decode_cadence_raw(row["cadence"])
             if "cadence" in keys
             else None,
+            "estimateDays": int(row["estimate_days"]) if "estimate_days" in keys else 0,
             "subtasks": subtasks,
         }
 
@@ -713,7 +757,9 @@ class SuccesStore:
             "parentTaskId": str(data.get("parentTaskId") or ""),
             "category": str(data.get("category") or ""),
             "notes": str(data.get("notes") or ""),
+            "estimateDays": data.get("estimateDays"),
         }
+        estimate_days = _estimate_days(data.get("estimateDays"))
         task_id = str(
             data.get("id")
             or (
@@ -807,6 +853,7 @@ class SuccesStore:
                 max(0, int(data.get("postponedCount") or 0)),
                 stage,
                 cadence,
+                estimate_days,
                 ts,
             )
             conn.execute(
@@ -814,8 +861,8 @@ class SuccesStore:
                    (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                     parent_task_id,category,notes,journal,emoji,template_id,group_id,
                     order_index,created_date,completed_date,postponed_count,stage,
-                    cadence,updated_at_ms)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    cadence,estimate_days,updated_at_ms)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 values,
             )
             task = self._load_task(conn, task_id)
@@ -866,6 +913,7 @@ class SuccesStore:
             # projet cible, que seul le SELECT courant connaît.
             "stage": ("stage", lambda value: str(value or "").strip()),
             "cadence": ("cadence", _cadence_convert),
+            "estimateDays": ("estimate_days", _estimate_days),
         }
         assignments: list[str] = []
         values: list[Any] = []

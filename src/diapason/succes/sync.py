@@ -898,13 +898,31 @@ class SuccesSyncStore(SuccesPhotosStore):
         completed = _validate_iso_date(
             str(data.get("completedDate") or ""), "completedDate"
         )
+        # La durée estimée (18 sept. 2026). Un pair qui ne connaît pas le
+        # champ — le client Dart n'écrit que ce qu'il sait — renvoie la tâche
+        # sans lui : on GARDE alors la valeur locale au lieu de la remettre à
+        # zéro à chaque relève. Un pair qui l'envoie l'emporte, comme le reste
+        # de la tâche (dernier écrit gagne).
+        estimate = data.get("estimateDays")
+        if estimate is None:
+            courante = conn.execute(
+                "SELECT estimate_days FROM succes_tasks WHERE id=?", (task_id,)
+            ).fetchone()
+            estimate = courante["estimate_days"] if courante is not None else 0
+        try:
+            estimate_days = max(0, min(3650, int(estimate)))
+        except (TypeError, ValueError):
+            # Une valeur illisible devient 0 plutôt que de faire échouer le
+            # lot entier : une estimation perdue est un désagrément, un lot
+            # rejeté brise la réplication (même règle que la cadence).
+            estimate_days = 0
         conn.execute(
             """INSERT INTO succes_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                 category,notes,emoji,template_id,group_id,order_index,created_date,
                 completed_date,postponed_count,updated_at_ms,deleted_at_ms,
-                parent_task_id,stage,cadence)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)
+                parent_task_id,stage,cadence,estimate_days)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title,done=excluded.done,
                priority=excluded.priority,scheduled_date=excluded.scheduled_date,
                scheduled_time=excluded.scheduled_time,project_id=excluded.project_id,
@@ -915,7 +933,7 @@ class SuccesSyncStore(SuccesPhotosStore):
                postponed_count=excluded.postponed_count,
                updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL,
                parent_task_id=excluded.parent_task_id,stage=excluded.stage,
-               cadence=excluded.cadence""",
+               cadence=excluded.cadence,estimate_days=excluded.estimate_days""",
             (
                 task_id,
                 title,
@@ -940,6 +958,7 @@ class SuccesSyncStore(SuccesPhotosStore):
                 # pipeline vidé de ses colonnes sur l'appareil d'en face.
                 str(data.get("stage") or "")[:40],
                 _encode_cadence_for_sync(data.get("cadence")),
+                estimate_days,
             ),
         )
         conn.execute(

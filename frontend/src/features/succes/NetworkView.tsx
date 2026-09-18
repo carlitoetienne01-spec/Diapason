@@ -26,6 +26,7 @@ import {
   construireReseau,
   disposer,
   dispositionBouge,
+  dureeDe,
   estOrpheline,
   faisables,
   fermeraitUneBoucle,
@@ -779,13 +780,29 @@ export function NetworkView({
             <span title="Chaîne la plus longue, en tâches ouvertes">
               profondeur {nombres.profondeur}
             </span>
+            {/* Dès qu'une durée existe (18 sept. 2026) : les jours du chemin
+                critique, projetés depuis aujourd'hui — jamais une date
+                promise. Sans durée, rien : on ne compte pas des jours que
+                personne n'a estimés. */}
+            {nombres.joursProjetes !== null && (
+              <>
+                <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>·</span>
+                <span title="Les jours du chemin critique, depuis aujourd’hui — pas une date promise">
+                  fin projetée <span className="tabular-nums">~{nombres.joursProjetes} j</span>
+                </span>
+              </>
+            )}
           </p>
           <button
             type="button"
             onClick={() => setFilActif((v) => !v)}
             aria-pressed={filActif}
             disabled={fil.length < 2}
-            title="Mettre en évidence la chaîne la plus longue (Échap pour l’éteindre)"
+            title={
+              nombres.joursProjetes !== null
+                ? 'Mettre en évidence le chemin critique (Échap pour l’éteindre)'
+                : 'Mettre en évidence la chaîne la plus longue (Échap pour l’éteindre)'
+            }
             className="ml-auto px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer disabled:opacity-50 disabled:cursor-default"
             style={
               filVisible
@@ -1260,6 +1277,9 @@ export function NetworkView({
               // En mode liaison, une cible qui fermerait une boucle est
               // atténuée à 0.4 et son libellé le dit, avant le clic.
               const impossible = cibleImpossible(task.id);
+              // « ~3 j » : la durée estimée, seulement quand elle existe et
+              // que la tâche est ouverte — une faite ne pèse plus.
+              const jours = task.done ? 0 : dureeDe(reseau, task.id);
               return (
                 <CadreVitre
                   compact
@@ -1316,8 +1336,8 @@ export function NetworkView({
                     onFocus={() => setFocusedId(task.id)}
                     onBlur={() => setFocusedId(null)}
                     aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
-                      aval >= 2 ? `, ${aval} tâches en aval` : ''
-                    }${
+                      jours > 0 ? `, environ ${jours} jour${jours > 1 ? 's' : ''}` : ''
+                    }${aval >= 2 ? `, ${aval} tâches en aval` : ''}${
                       impossible
                         ? '. Impossible : fermerait une boucle'
                         : linkMode
@@ -1344,6 +1364,11 @@ export function NetworkView({
                         {statusLabel(status)}
                         {orpheline && (
                           <span style={{ color: 'var(--color-text-tertiary)' }}> · sans lien</span>
+                        )}
+                        {jours > 0 && (
+                          <span className="tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {' '}· ~{jours} j
+                          </span>
                         )}
                       </span>
                       {aval >= 2 && (
@@ -1589,6 +1614,11 @@ export function NetworkView({
                             // Le couloir du dessin, dit en mot dans la Liste.
                             <span className="font-normal" style={{ color: 'var(--color-text-tertiary)' }}>
                               {' '}· {task.category}
+                            </span>
+                          )}
+                          {!task.done && dureeDe(reseau, task.id) > 0 && (
+                            <span className="font-normal tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+                              {' '}· ~{dureeDe(reseau, task.id)} j
                             </span>
                           )}
                         </button>

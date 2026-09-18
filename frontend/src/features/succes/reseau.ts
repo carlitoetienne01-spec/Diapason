@@ -316,12 +316,48 @@ export function fermeraitUneBoucle(reseau: Reseau, from: string, to: string): bo
   return false;
 }
 
+// ── La durée estimée, en jours entiers (18 sept. 2026) ──────────────────────
+//
+// Sans durée, le réseau ne peut ni projeter une fin ni distinguer la marge de
+// « budget » de l'absence de marge de « paiement » ; mais un « chemin
+// critique » sans durée serait faire semblant (§5). Dès qu'une durée existe,
+// la chaîne la plus longue se pondère (passe avant du CPM) et le mot devient
+// honnête ; sans aucune, tout ci-dessous se réduit exactement au compte en
+// tâches. 0 = pas d'estimation. Toujours un entier : le client Dart signe
+// des enveloppes canoniques où `1e-07` (Python) et `1e-7` (Dart) divergent.
+
+/** La durée estimée d'une tâche, en jours entiers ; 0 sans estimation ou pour une inconnue. */
+export function dureeDe(reseau: Reseau, id: string): number {
+  const n = Number(reseau.parId.get(id)?.estimateDays ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+/** Vrai dès qu'une tâche OUVERTE porte une durée : le seul cas où l'on parle de jours. */
+export function aDesDurees(reseau: Reseau): boolean {
+  return reseau.taches.some((t) => !t.done && dureeDe(reseau, t.id) > 0);
+}
+
+/** Les jours d'une chaîne : la somme des durées de ses tâches. */
+export function joursDeChaine(reseau: Reseau, chaine: string[]): number {
+  return chaine.reduce((somme, id) => somme + dureeDe(reseau, id), 0);
+}
+
+/** Entre deux chaînes : la plus lourde en jours, puis la plus longue en tâches, puis la première par titres. */
+function meilleureChaine(reseau: Reseau, a: string[], b: string[]): boolean {
+  const ja = joursDeChaine(reseau, a);
+  const jb = joursDeChaine(reseau, b);
+  if (ja !== jb) return ja > jb;
+  if (a.length !== b.length) return a.length > b.length;
+  return plusTot(reseau, a, b);
+}
+
 /**
- * La plus longue chaîne de tâches OUVERTES, dans l'ordre. Ce n'est pas un
- * « chemin critique » : sans durée, seule la profondeur en tâches est vraie.
- * À égalité, la chaîne dont les titres viennent en premier (stable d'un rendu
- * à l'autre). Les tâches faites sont hors du sous-graphe : une chaîne finie
- * ne compte plus.
+ * La plus longue chaîne de tâches OUVERTES, dans l'ordre. Sans durée, c'est
+ * la profondeur en tâches — pas un « chemin critique ». Dès qu'une durée
+ * existe, la chaîne la plus lourde en jours l'emporte (les tâches sans
+ * estimation pèsent 0), ex æquo par le nombre de tâches, puis la chaîne
+ * dont les titres viennent en premier (stable d'un rendu à l'autre). Les
+ * tâches faites sont hors du sous-graphe : une chaîne finie ne compte plus.
  */
 export function chaineLaPlusLongue(reseau: Reseau): string[] {
   const ouvertes = reseau.taches.filter((t) => !t.done);
@@ -339,9 +375,7 @@ export function chaineLaPlusLongue(reseau: Reseau): string[] {
       const pred = reseau.parId.get(pid);
       if (!pred || pred.done) continue;
       const candidate = meilleure(pid);
-      if (candidate.length > best.length || (candidate.length === best.length && plusTot(reseau, candidate, best))) {
-        best = candidate;
-      }
+      if (meilleureChaine(reseau, candidate, best)) best = candidate;
     }
     visiting.delete(id);
     const chemin = [...best, id];
@@ -351,11 +385,18 @@ export function chaineLaPlusLongue(reseau: Reseau): string[] {
   let resultat: string[] = [];
   for (const task of ouvertes) {
     const chemin = meilleure(task.id);
-    if (chemin.length > resultat.length || (chemin.length === resultat.length && plusTot(reseau, chemin, resultat))) {
-      resultat = chemin;
-    }
+    if (meilleureChaine(reseau, chemin, resultat)) resultat = chemin;
   }
   return resultat;
+}
+
+/**
+ * La fin projetée : les jours de la chaîne la plus lourde, depuis
+ * aujourd'hui — « ~9 j », jamais une date promise. Null sans durée.
+ */
+export function finProjetee(reseau: Reseau): number | null {
+  if (!aDesDurees(reseau)) return null;
+  return joursDeChaine(reseau, chaineLaPlusLongue(reseau));
 }
 
 function plusTot(reseau: Reseau, a: string[], b: string[]): boolean {
@@ -412,13 +453,55 @@ export function margeDe(reseau: Reseau, id: string): number | null {
   return chaineLaPlusLongue(reseau).length - traverse;
 }
 
+/** Les jours de la chaîne ouverte la plus lourde qui part de `id` (elle comprise) dans un sens. */
+function joursOuverts(reseau: Reseau, id: string, sens: Sens): number {
+  const voisins = sens === 'amont' ? reseau.amont : reseau.aval;
+  const memo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const jours = (tid: string): number => {
+    const tache = reseau.parId.get(tid);
+    if (!tache || tache.done) return 0;
+    const connue = memo.get(tid);
+    if (connue !== undefined) return connue;
+    if (visiting.has(tid)) return 0;
+    visiting.add(tid);
+    let best = 0;
+    for (const vid of voisins.get(tid) ?? []) best = Math.max(best, jours(vid));
+    visiting.delete(tid);
+    const total = best + dureeDe(reseau, tid);
+    memo.set(tid, total);
+    return total;
+  };
+  return jours(id);
+}
+
 /**
- * Ce que la fiche dit de la place d'une tâche : sur le fil (la chaîne que la
- * vue met en évidence), sur une chaîne aussi longue (AgriCulture en a deux
- * de trois tâches : « tracteur » n'est pas sur le fil et n'a pourtant
- * aucune marge), ou sa marge. Rien pour une tâche faite.
+ * La marge totale du CPM, en jours : de combien la chaîne la plus lourde qui
+ * passe par `id` est plus courte que la plus lourde du projet. 0 = sur le
+ * chemin critique. Null pour une tâche faite, ou quand aucune durée
+ * n'existe — on ne compte pas des jours que personne n'a estimés.
+ */
+export function margeJours(reseau: Reseau, id: string): number | null {
+  const tache = reseau.parId.get(id);
+  if (!tache || tache.done || !aDesDurees(reseau)) return null;
+  const traverse =
+    joursOuverts(reseau, id, 'amont') + joursOuverts(reseau, id, 'aval') - dureeDe(reseau, id);
+  return joursDeChaine(reseau, chaineLaPlusLongue(reseau)) - traverse;
+}
+
+/**
+ * Ce que la fiche dit de la place d'une tâche. Avec des durées : « Sur le
+ * chemin critique » (marge nulle — le mot n'apparaît qu'ici, quand il est
+ * vrai) ou « Marge : 2 j ». Sans : sur le fil (la chaîne que la vue met en
+ * évidence), sur une chaîne aussi longue (AgriCulture en a deux de trois
+ * tâches : « tracteur » n'est pas sur le fil et n'a pourtant aucune marge),
+ * ou sa marge en tâches. Rien pour une tâche faite.
  */
 export function placeSurLeFil(reseau: Reseau, id: string): string | null {
+  const jours = margeJours(reseau, id);
+  if (jours !== null) {
+    return jours === 0 ? 'Sur le chemin critique' : `Marge : ${jours} j`;
+  }
   const marge = margeDe(reseau, id);
   if (marge === null) return null;
   if (chaineLaPlusLongue(reseau).includes(id)) return 'Sur la chaîne la plus longue';
@@ -432,6 +515,8 @@ export interface Comptes {
   faites: number;
   /** La chaîne la plus longue, en tâches ouvertes — pas un « chemin critique ». */
   profondeur: number;
+  /** Les jours du chemin critique, depuis aujourd'hui ; null tant qu'aucune durée n'existe. */
+  joursProjetes: number | null;
 }
 
 export function comptes(reseau: Reseau): Comptes {
@@ -444,18 +529,40 @@ export function comptes(reseau: Reseau): Comptes {
     else if (statut === 'bloquee') bloquees += 1;
     else faites += 1;
   }
-  return { faisables, bloquees, faites, profondeur: chaineLaPlusLongue(reseau).length };
+  return {
+    faisables,
+    bloquees,
+    faites,
+    profondeur: chaineLaPlusLongue(reseau).length,
+    joursProjetes: finProjetee(reseau),
+  };
 }
 
 /**
- * L'en-tête du réseau : « 2 faisables · 5 bloquées · profondeur 3 ». Le seul
- * chiffre affiché jusqu'au 18 sept. 2026 était « Faisable maintenant : N » ;
- * rien ne disait combien attendaient ni jusqu'où le projet s'enchaîne.
+ * L'en-tête du réseau : « 2 faisables · 5 bloquées · profondeur 3 », et
+ * « · fin projetée ~9 j » dès qu'une durée existe — projetée depuis
+ * aujourd'hui, jamais une date promise. Le seul chiffre affiché jusqu'au
+ * 18 sept. 2026 était « Faisable maintenant : N » ; rien ne disait combien
+ * attendaient ni jusqu'où le projet s'enchaîne.
  */
 export function libelleEnTete(c: Comptes): string {
   const faisables = `${c.faisables} faisable${c.faisables > 1 ? 's' : ''}`;
   const bloquees = `${c.bloquees} bloquée${c.bloquees > 1 ? 's' : ''}`;
-  return `${faisables} · ${bloquees} · profondeur ${c.profondeur}`;
+  const fin = c.joursProjetes === null ? '' : ` · fin projetée ~${c.joursProjetes} j`;
+  return `${faisables} · ${bloquees} · profondeur ${c.profondeur}${fin}`;
+}
+
+/**
+ * La durée telle qu'on la saisit dans le « ⋯ » de la fiche : un entier de
+ * jours entre 0 et 3650 (la borne du serveur), ou null quand le texte n'en
+ * est pas un — « 1,5 », « deux », un négatif. Vide = 0, pas d'estimation.
+ */
+export function lireDureeSaisie(texte: string): number | null {
+  const brut = texte.trim();
+  if (brut === '') return 0;
+  if (!/^\d{1,4}$/.test(brut)) return null;
+  const n = Number(brut);
+  return n <= 3650 ? n : null;
 }
 
 /** Les colonnes telles que la vue les dessinait : par niveau, faites en bas, puis par titre. */
