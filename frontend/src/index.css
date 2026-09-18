@@ -2027,3 +2027,47 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
     stroke-dashoffset: -112;
   }
 }
+
+/* La fiche « Branches » du réseau (18 sept. 2026) : fondu et légère échelle
+   à l'ouverture, glissement quand elle se recentre sur une voisine — elle
+   ne se ferme jamais pour naviguer, il faut donc que le changement se voie.
+   Derrière, le graphe estompe tout ce qui n'est pas la chaîne de la tâche
+   ouverte : le pop-up commente ce qu'on voit au lieu de le cacher. */
+@keyframes fiche-branches-entree {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes fiche-branches-glisse {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.fiche-branches-entree {
+  animation: fiche-branches-entree 180ms ease-out;
+}
+.fiche-branches-glisse {
+  animation: fiche-branches-glisse 200ms ease-out;
+}
+.reseau-estompable {
+  transition: opacity 240ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fiche-branches-entree,
+  .fiche-branches-glisse {
+    animation: none;
+  }
+  .reseau-estompable {
+    transition: none;
+  }
+}

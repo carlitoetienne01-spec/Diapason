@@ -8,6 +8,7 @@ import {
 import { CirclePlus, Link2, Loader2 } from 'lucide-react';
 
 import {
+  chaineComplete,
   colonnesInitiales,
   construireReseau,
   faisables,
@@ -26,6 +27,18 @@ type Props = {
   onUnlink: (fromTaskId: string, toTaskId: string) => Promise<void>;
   onCreate: (input: { title: string }) => Promise<void>;
   onSelect?: (task: SuccesTask) => void;
+  /**
+   * La tâche mise en avant (ouverte dans la fiche « Branches ») : sa chaîne
+   * amont + aval reste nette, le reste du graphe passe à 0.3. La
+   * proposition 4 y ajoutera le survol et le focus clavier.
+   */
+  miseEnAvantId?: string | null;
+  /**
+   * « Relier depuis ici » de la fiche : entrer en mode liaison avec cette
+   * source. Le jeton change à chaque demande, pour qu'une seconde demande
+   * sur la même tâche soit encore entendue.
+   */
+  liaisonDemandee?: { sourceId: string; jeton: number } | null;
 };
 
 const CARD_W = 190;
@@ -52,6 +65,8 @@ export function NetworkView({
   onUnlink,
   onCreate,
   onSelect,
+  miseEnAvantId = null,
+  liaisonDemandee = null,
 }: Props) {
   const [linkMode, setLinkMode] = useState(false);
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
@@ -65,6 +80,21 @@ export function NetworkView({
   const visibleEdges = reseau.aretes;
   const statusById = useMemo(() => statuts(reseau), [reseau]);
   const feasible = useMemo(() => faisables(reseau), [reseau]);
+
+  const chaineNette = useMemo(
+    () => (miseEnAvantId && byId.has(miseEnAvantId) ? chaineComplete(reseau, miseEnAvantId) : null),
+    [reseau, byId, miseEnAvantId],
+  );
+  const estompe = (...ids: string[]) =>
+    chaineNette !== null && !ids.every((id) => chaineNette.has(id));
+
+  useEffect(() => {
+    if (!liaisonDemandee || !byId.has(liaisonDemandee.sourceId)) return;
+    setError(null);
+    setSelectedEdge(null);
+    setLinkMode(true);
+    setLinkFrom(liaisonDemandee.sourceId);
+  }, [liaisonDemandee]); // eslint-disable-line react-hooks/exhaustive-deps -- une demande, une fois
 
   const layout = useMemo(
     () =>
@@ -295,7 +325,11 @@ export function NetworkView({
               const isSelected =
                 selectedEdge?.from === edge.fromTaskId && selectedEdge?.to === edge.toTaskId;
               return (
-                <g key={`${edge.fromTaskId}->${edge.toTaskId}`}>
+                <g
+                  key={`${edge.fromTaskId}->${edge.toTaskId}`}
+                  className="reseau-estompable"
+                  style={{ opacity: estompe(edge.fromTaskId, edge.toTaskId) ? 0.3 : 1 }}
+                >
                   <path
                     d={d}
                     fill="none"
@@ -340,7 +374,8 @@ export function NetworkView({
                   aria-label={`${task.title} — ${statusLabel(status)}${
                     linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''
                   }`}
-                  style={{ cursor: 'pointer', outline: 'none' }}
+                  className="reseau-estompable"
+                  style={{ cursor: 'pointer', outline: 'none', opacity: estompe(task.id) ? 0.3 : 1 }}
                   onClick={() => activateCard(task)}
                   onKeyDown={keyActivate(() => activateCard(task))}
                   onFocus={() => setFocusedId(task.id)}

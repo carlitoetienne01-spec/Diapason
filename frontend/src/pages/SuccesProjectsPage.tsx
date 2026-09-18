@@ -48,6 +48,7 @@ import { LigneEtape } from '../features/succes/LigneEtape';
 import { MindMapView } from '../features/succes/MindMapView';
 import { PipelineBoard } from '../features/succes/PipelineBoard';
 import { NetworkView } from '../features/succes/NetworkView';
+import { FicheBranches } from '../features/succes/FicheBranches';
 import { CycleWheel } from '../features/succes/CycleWheel';
 import { PilesPhotos } from '../features/succes/PilesPhotos';
 import { StructureGlyph } from '../features/succes/StructureGlyph';
@@ -758,6 +759,13 @@ export function SuccesProjectsPage() {
   // Les cinq vues exposent onSelect ; sans destinataire, chips « faisable »,
   // titres de cartes et clics simples étaient des boutons morts.
   const [inspected, setInspected] = useState<SuccesTask | null>(null);
+  // Le réseau (18 sept. 2026) garde l'ID, pas l'objet : la fiche « Branches »
+  // se relit dans `projectTasks` et `edges` à chaque rendu. L'aside générique
+  // ci-dessus affichait encore « Ouverte » après une coche sur la carte du
+  // graphe, parce qu'il tenait une photo prise au clic.
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  /** « Relier depuis ici » : la source demandée au graphe, avec un jeton par demande. */
+  const [liaisonDemandee, setLiaisonDemandee] = useState<{ sourceId: string; jeton: number } | null>(null);
   // La Ligne (23 août 2026) : cliquer une étape RACINE de l'arbre déroule ses
   // cours en stations de métro. On garde l'id, pas l'objet — après chaque
   // enregistrement, l'étape affichée se relit dans les tâches fraîches.
@@ -878,6 +886,10 @@ export function SuccesProjectsPage() {
   useEffect(() => {
     void loadEdges();
     setTreeEditMode(false);
+    // Sinon la fiche du projet précédent se rouvrait d'elle-même en revenant
+    // sur lui : l'id restait posé, et ses tâches réapparaissaient.
+    setInspectedId(null);
+    setLiaisonDemandee(null);
   }, [selectedId, selected?.structure]); // eslint-disable-line react-hooks/exhaustive-deps
   // Trié par RANG, pas par priorité. La liste globale place la priorité avant
   // order_index — juste pour la page Tâches, faux pour un arbre : un jalon
@@ -1377,7 +1389,9 @@ export function SuccesProjectsPage() {
             />
           ) : structure === 'network' ? (
             <NetworkView
-              onSelect={setInspected}
+              onSelect={(task) => setInspectedId(task.id)}
+              miseEnAvantId={inspectedId}
+              liaisonDemandee={liaisonDemandee}
               // Sans les arêtes, le raisonnement « faisable / bloquée » n'a
               // plus de fondement : on n'affiche aucune tâche plutôt que de
               // toutes les déclarer faisables.
@@ -1600,6 +1614,51 @@ export function SuccesProjectsPage() {
                 }}
               />
             ) : null;
+          })()}
+          {(() => {
+            // La fiche « Branches » du réseau, relue dans les tâches fraîches
+            // (§100). Les autres structures gardent l'aside ci-dessous.
+            if (structure !== 'network' || !inspectedId || edgesFailed) return null;
+            if (!projectTasks.some((t) => t.id === inspectedId)) return null;
+            return (
+              <FicheBranches
+                tacheId={inspectedId}
+                tasks={projectTasks}
+                edges={edges}
+                saving={saving}
+                onFermer={() => setInspectedId(null)}
+                onNaviguer={setInspectedId}
+                onToggle={async (task) => {
+                  await refreshAfter(
+                    () => setSuccesTaskDone(task.id, !task.done),
+                    task.done ? 'Tâche rouverte' : 'Tâche terminée',
+                  );
+                }}
+                onRelierDepuis={(task) => {
+                  setInspectedId(null);
+                  setLiaisonDemandee({ sourceId: task.id, jeton: Date.now() });
+                }}
+                onSupprimer={async (task) => {
+                  const confirme = await confirm({
+                    title: `Supprimer « ${task.title} » ?`,
+                    description: 'Cette tâche et ses liens disparaîtront.',
+                    confirmLabel: 'Supprimer',
+                    keepLabel: 'Garder',
+                    tone: 'danger',
+                  });
+                  if (!confirme) return;
+                  const ok = await refreshAfter(() => deleteSuccesTask(task.id), 'Tâche supprimée');
+                  if (ok) setInspectedId(null);
+                  await loadEdges();
+                }}
+                onEnregistrerCarnet={async (taskId, journal) => {
+                  const ok = await refreshAfter(() => updateSuccesTask(taskId, { journal }), null);
+                  // Le carnet ne doit jamais croire enregistré ce que le
+                  // serveur a refusé : l'échec lui est relancé.
+                  if (!ok) throw new Error("Le carnet n'a pas été enregistré.");
+                }}
+              />
+            );
           })()}
           {inspected && (
             <aside
