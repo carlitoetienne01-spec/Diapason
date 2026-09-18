@@ -1014,3 +1014,95 @@ export function mentionLigne(reseau: Reseau, ligne: LigneListe): string | null {
   }
   return null;
 }
+
+// ── Le clavier suit les arêtes (§82, 18 sept. 2026) ─────────────────────────
+//
+// Tab suivait l'ordre du DOM — celui du tableau de tâches, sans rapport avec
+// les liens — et aucune flèche ne faisait rien : au clavier, le réseau était
+// une liste dans le désordre. Ici, ← et → suivent les arêtes (ce qu'on attend,
+// ce qu'on débloque), ↑ et ↓ parcourent une colonne. Pur : le composant ne
+// fait que donner le focus à la carte rendue.
+
+export type ToucheFleche = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
+
+const compareTitresParId = (reseau: Reseau) => (a: string, b: string) =>
+  (reseau.parId.get(a)?.title ?? '').localeCompare(reseau.parId.get(b)?.title ?? '', 'fr');
+
+/** Parmi `ids`, la carte la plus proche en hauteur de `y` ; ex æquo par titre. */
+function laPlusProcheEnY(reseau: Reseau, pos: Map<string, Point>, ids: string[], y: number): string | null {
+  const parTitre = compareTitresParId(reseau);
+  let meilleure: string | null = null;
+  let distance = Number.POSITIVE_INFINITY;
+  for (const id of [...ids].sort(parTitre)) {
+    const p = pos.get(id);
+    if (!p) continue;
+    const d = Math.abs(p.y - y);
+    if (d < distance) {
+      distance = d;
+      meilleure = id;
+    }
+  }
+  return meilleure;
+}
+
+/**
+ * La carte que la flèche atteint depuis `id`, ou null s'il n'y a rien dans
+ * cette direction. ← et → vont d'abord à la voisine par arête la plus
+ * proche en hauteur ; sans arête de ce côté (une racine, une feuille, une
+ * orpheline), à la carte la plus proche de la colonne voisine, pour que
+ * rien ne soit hors d'atteinte. ↑ et ↓ restent dans la colonne (même x),
+ * toutes bandes confondues.
+ */
+export function cibleClavier(
+  reseau: Reseau,
+  pos: Map<string, Point>,
+  id: string,
+  touche: ToucheFleche,
+): string | null {
+  const ici = pos.get(id);
+  if (!ici) return null;
+  if (touche === 'ArrowLeft' || touche === 'ArrowRight') {
+    const sens: Sens = touche === 'ArrowLeft' ? 'amont' : 'aval';
+    const voisines = ((sens === 'amont' ? reseau.amont : reseau.aval).get(id) ?? []).filter((v) =>
+      pos.has(v),
+    );
+    const parArete = laPlusProcheEnY(reseau, pos, voisines, ici.y);
+    if (parArete) return parArete;
+    // La colonne voisine : la plus proche en x de ce côté, puis en y.
+    let xVoisin: number | null = null;
+    for (const [autre, p] of pos) {
+      if (autre === id) continue;
+      const deCeCote = sens === 'amont' ? p.x < ici.x : p.x > ici.x;
+      if (!deCeCote) continue;
+      if (xVoisin === null || Math.abs(p.x - ici.x) < Math.abs(xVoisin - ici.x)) xVoisin = p.x;
+    }
+    if (xVoisin === null) return null;
+    const colonne = [...pos.entries()].filter(([, p]) => p.x === xVoisin).map(([k]) => k);
+    return laPlusProcheEnY(reseau, pos, colonne, ici.y);
+  }
+  const parTitre = compareTitresParId(reseau);
+  let meilleure: string | null = null;
+  let distance = Number.POSITIVE_INFINITY;
+  for (const [autre, p] of [...pos.entries()].sort(([a], [b]) => parTitre(a, b))) {
+    if (autre === id || p.x !== ici.x) continue;
+    const d = touche === 'ArrowUp' ? ici.y - p.y : p.y - ici.y;
+    if (d > 0 && d < distance) {
+      distance = d;
+      meilleure = autre;
+    }
+  }
+  return meilleure;
+}
+
+/**
+ * La consigne du mode liaison, lue par `aria-live` : elle nomme la source
+ * dès qu'elle est choisie (au clic, à L, ou depuis la fiche) et dit les
+ * deux chemins, souris et clavier. « Cliquez la tâche à débloquer » ne
+ * disait ni laquelle était la source ni qu'Entrée suffisait.
+ */
+export function consigneLiaison(titreSource: string | null): string {
+  if (titreSource === null) {
+    return 'Choisissez la tâche source : clic, ou L sur une carte. Échap pour annuler.';
+  }
+  return `Source : « ${titreSource} ». Choisissez la tâche à débloquer (cible) : clic, ou flèches puis Entrée. Échap pour annuler.`;
+}

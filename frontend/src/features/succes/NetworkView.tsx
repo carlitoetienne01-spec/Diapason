@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -15,7 +16,9 @@ import {
   aretesLiberees,
   chaineComplete,
   chaineLaPlusLongue,
+  cibleClavier,
   comptes,
+  consigneLiaison,
   construireReseau,
   disposer,
   dispositionBouge,
@@ -34,6 +37,7 @@ import {
   type EtatArete,
   type Point,
   type StatutTache,
+  type ToucheFleche,
   type VueReseau,
 } from './reseau';
 import { dureeImpulsion, longueurApprochee } from './synapses';
@@ -196,6 +200,12 @@ export function NetworkView({
   const [revueOuverte, setRevueOuverte] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Le clavier suit les arêtes (§82, 18 sept. 2026) : les boutons des
+  // cartes, par id, pour que ← → ↑ ↓ donnent le focus à la carte calculée
+  // par `cibleClavier` — Tab suivait l'ordre du tableau, sans rapport avec
+  // les liens, et aucune flèche ne faisait rien.
+  const boutons = useRef(new Map<string, HTMLButtonElement>());
+  const aideClavierId = useId();
   // Graphe ou Liste (18 sept. 2026). `undefined` tant que rien n'a été
   // choisi : le CSS montre alors la Liste sous `sm` et le Graphe au-delà —
   // à 340 px un graphe est une illustration, pas un outil. Le choix est
@@ -492,6 +502,67 @@ export function NetworkView({
     });
   };
 
+  const focaliser = (id: string | null) => {
+    if (!id) return;
+    boutons.current.get(id)?.focus();
+  };
+
+  /**
+   * Le clavier sur le canevas (§82). Depuis une carte : ← → suivent les
+   * arêtes, ↑ ↓ la colonne, L la prend pour source de liaison (Entrée sur
+   * la cible conclut, par `activateCard`). Depuis un lien focalisé : ← → vont
+   * à ses deux bouts, Suppr le retire. Avec un lien choisi (le « × »
+   * visible), Suppr le retire aussi, d'où que vienne le focus. Rien n'est
+   * dit ici sur le résultat : la phrase vient du rechargement (§100).
+   */
+  const clavierCanevas = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const cible = event.target as HTMLElement;
+    const arete = cible.dataset.arete;
+    const [areteDe, areteVers] = arete ? arete.split('->') : [null, null];
+    const carte = cible.dataset.carte ?? null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      if (areteDe && areteVers) {
+        event.preventDefault();
+        focaliser(event.key === 'ArrowLeft' ? areteDe : areteVers);
+        return;
+      }
+      if (carte) {
+        event.preventDefault();
+        focaliser(cibleClavier(reseau, layout.pos, carte, event.key));
+      }
+      return;
+    }
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      if (!carte) return;
+      event.preventDefault();
+      focaliser(cibleClavier(reseau, layout.pos, carte, event.key as ToucheFleche));
+      return;
+    }
+    if ((event.key === 'l' || event.key === 'L') && carte && tasks.length >= 2) {
+      event.preventDefault();
+      setError(null);
+      setSelectedEdge(null);
+      setLinkMode(true);
+      setLinkFrom(carte);
+      return;
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      if (areteDe && areteVers && !saving) {
+        event.preventDefault();
+        void run(async () => {
+          await onUnlink(areteDe, areteVers);
+          setSelectedEdge(null);
+        });
+        return;
+      }
+      if (selectedEdge) {
+        event.preventDefault();
+        unlinkSelected();
+      }
+    }
+  };
+
   const addTask = () => {
     const title = newTitle.trim();
     if (!title || saving) return;
@@ -693,13 +764,18 @@ export function NetworkView({
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
           {linkMode ? 'Annuler la liaison' : 'Relier'}
         </button>
-        {linkMode && (
-          <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-            {linkFrom
-              ? 'Cliquez la tâche à débloquer (cible). Échap pour annuler.'
-              : 'Cliquez la tâche source. Échap pour annuler.'}
-          </span>
-        )}
+        {/* Toujours montée, pour qu'un lecteur d'écran l'entende changer :
+            `aria-live` ne lit pas ce qui apparaît avec sa région. Elle nomme
+            la source dès qu'elle est choisie — au clic, à L, ou depuis la
+            fiche — et dit les deux chemins, souris et clavier. */}
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className={linkMode ? 'text-xs' : 'sr-only'}
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {linkMode ? consigneLiaison(linkFrom ? (byId.get(linkFrom)?.title ?? null) : null) : ''}
+        </span>
         {tasks.length > 0 && vue !== 'liste' && (
           <>
             {/* Sous `sm` la légende vit derrière un « ? » : trois entrées de
@@ -793,14 +869,21 @@ export function NetworkView({
                     .join(', ')}`
                 : 'Réseau des tâches reliées par « débloque »'
             }
+            aria-describedby={aideClavierId}
             className="relative isolate"
             style={{ width: layout.largeur, height: layout.hauteur }}
             onClick={() => setSelectedEdge(null)}
+            onKeyDown={clavierCanevas}
             // Un défilement à la molette déplace les cartes sous un pointeur
             // immobile sans `pointerleave` sur la carte quittée : la mise en
             // avant restait sur elle. Quitter le canevas remet tout à net.
             onPointerLeave={() => setSurvolId(null)}
           >
+            <p id={aideClavierId} className="sr-only">
+              Au clavier : flèche gauche et droite suivent les liens, haut et bas parcourent une
+              colonne ; L prend la carte comme source d’un lien, Entrée choisit la cible ; sur un
+              lien, Suppr le retire.
+            </p>
             <svg
               className="absolute inset-0 -z-10 pointer-events-none"
               width={layout.largeur}
@@ -1006,6 +1089,11 @@ export function NetworkView({
                   <BoutonCoche task={task} status={status} saving={saving} onClick={() => toggleTask(task)} />
                   <button
                     type="button"
+                    ref={(el) => {
+                      if (el) boutons.current.set(task.id, el);
+                      else boutons.current.delete(task.id);
+                    }}
+                    data-carte={task.id}
                     onClick={() => activateCard(task)}
                     onFocus={() => setFocusedId(task.id)}
                     onBlur={() => setFocusedId(null)}
@@ -1078,7 +1166,8 @@ export function NetworkView({
                     strokeWidth={14}
                     role="button"
                     tabIndex={0}
-                    aria-label={`Lien : « ${fromTask.title} » débloque « ${toTask.title} ». Sélectionner pour supprimer.`}
+                    data-arete={`${edge.fromTaskId}->${edge.toTaskId}`}
+                    aria-label={`Lien : « ${fromTask.title} » débloque « ${toTask.title} ». Entrée pour le choisir, Suppr pour le retirer.`}
                     style={{ cursor: 'pointer', outline: 'none', pointerEvents: 'stroke' }}
                     onClick={(event: ReactMouseEvent<SVGPathElement>) => {
                       event.stopPropagation();

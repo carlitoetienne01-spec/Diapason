@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from diapason.succes import reseau as reseau_module
 from diapason.succes.dates import normalize_time
 from diapason.succes.project_kits import (
     get_project_kit,
@@ -655,6 +656,99 @@ class SuccesWorkspaceStore(SuccesStore):
                 timestamp_ms=ts,
                 op_id=op_id,
             )
+
+    # ── Les branches : ce qu'une tâche attend, ce qu'elle débloque ────────
+    #
+    # Chantier réseau du 18 septembre 2026. Le serveur savait refuser une
+    # boucle mais ne calculait rien de dérivé : la voix ne pouvait ni dire
+    # « qu'est-ce que je peux faire dans AgriCulture ? » ni « relie le budget
+    # au tracteur » — la souris était l'unique chemin, ce que le §82 refuse.
+    # Le raisonnement vit dans `succes/reseau.py`, miroir de `reseau.ts`.
+
+    def list_project_tasks(self, project_id: str) -> list[dict[str, Any]]:
+        """Les tâches vivantes d'un projet, sous-tâches comprises.
+
+        `list_tasks` n'a jamais filtré par projet : l'outil vocal aurait
+        résolu « budget » parmi les quatre-vingt-cinq tâches de toutes les
+        listes, et relié deux tâches de projets différents.
+        """
+        self.get_project(project_id)
+        with self._connect() as conn:
+            ids = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM succes_tasks WHERE project_id=? "
+                    "AND deleted_at_ms IS NULL ORDER BY order_index, updated_at_ms",
+                    (project_id,),
+                ).fetchall()
+            ]
+            return [task for tid in ids if (task := self._load_task(conn, tid))]
+
+    def _reseau(self, project_id: str) -> reseau_module.Reseau:
+        return reseau_module.construire_reseau(
+            self.list_project_tasks(project_id), self.list_task_edges(project_id)
+        )
+
+    @staticmethod
+    def _resume_tache(reseau: reseau_module.Reseau, tid: str) -> dict[str, Any]:
+        tache = reseau.par_id[tid]
+        return {
+            "id": tid,
+            "title": tache["title"],
+            "done": bool(tache.get("done")),
+            "status": reseau_module.statut_de(reseau, tid),
+        }
+
+    def branches_de(self, project_id: str, task_id: str) -> dict[str, Any]:
+        """Les branches d'une tâche : amont, aval, la chaîne entière, ce que
+        la terminer ouvre. Les champs sont ceux du fil (camelCase anglais)."""
+        reseau = self._reseau(project_id)
+        tid = str(task_id or "").strip()
+        if tid not in reseau.par_id:
+            raise SuccesNotFound(
+                "Cette tâche n'existe pas dans ce projet ou a été supprimée."
+            )
+        amont = reseau_module.voisines_ordonnees(reseau, tid, "amont")
+        aval = reseau_module.voisines_ordonnees(reseau, tid, "aval")
+        return {
+            "task": self._resume_tache(reseau, tid),
+            "status": reseau_module.statut_de(reseau, tid),
+            "upstream": [self._resume_tache(reseau, i) for i in amont],
+            "downstream": [self._resume_tache(reseau, i) for i in aval],
+            "upstreamAll": [
+                {**self._resume_tache(reseau, i), "depth": p}
+                for i, p in reseau_module.chaine(reseau, tid, "amont")
+            ],
+            "downstreamAll": [
+                {**self._resume_tache(reseau, i), "depth": p}
+                for i, p in reseau_module.chaine(reseau, tid, "aval")
+            ],
+            "missing": [
+                self._resume_tache(reseau, i)
+                for i in amont
+                if not bool(reseau.par_id[i].get("done"))
+            ],
+            "unlocks": [
+                self._resume_tache(reseau, i)
+                for i in reseau_module.ce_que_debloque(reseau, tid)
+            ],
+            "impact": reseau_module.impact(reseau, tid),
+        }
+
+    def prochaines_actions(self, project_id: str) -> list[dict[str, Any]]:
+        """Les faisables maintenant, celles qui libèrent le plus d'abord."""
+        reseau = self._reseau(project_id)
+        return [
+            {
+                **self._resume_tache(reseau, tid),
+                "impact": reseau_module.impact(reseau, tid),
+                "unlocks": [
+                    self._resume_tache(reseau, i)
+                    for i in reseau_module.ce_que_debloque(reseau, tid)
+                ],
+            }
+            for tid in reseau_module.faisables(reseau)
+        ]
 
     # ── Le cycle : chaque nouveau tour régénère les tâches ────────────────
 

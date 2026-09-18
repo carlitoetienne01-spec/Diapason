@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.succes.dates import normalize_time, resolve_date_expression
+from diapason.succes.reseau import cle_titre
 from diapason.succes.store import SuccesError, SuccesStore
+from diapason.succes.workspace import SuccesWorkspaceStore
 from diapason.tools._stubs import BaseTool, ToolSpec
+
+_STATUT_FR = {"done": "faite", "feasible": "faisable maintenant", "blocked": "bloquée"}
+
+
+def _citer(titres: list[str]) -> str:
+    """« A », « A » et « B », « A », « B » et « C » — comme `citer` de reseau.ts."""
+    guillemets = [f"« {t} »" for t in titres]
+    if len(guillemets) <= 1:
+        return "".join(guillemets)
+    return ", ".join(guillemets[:-1]) + " et " + guillemets[-1]
 
 
 @ToolRegistry.register("succes_tasks")
@@ -19,7 +31,10 @@ class SuccesTasksTool(BaseTool):
     is_local = True
 
     def __init__(self, store: SuccesStore | None = None) -> None:
-        self._store = store or SuccesStore()
+        # Le magasin complet par défaut (18 sept. 2026) : les arêtes du
+        # réseau y vivent, et `SuccesWorkspaceStore` est un `SuccesStore` —
+        # tout ce qui marchait marche encore.
+        self._store = store or SuccesWorkspaceStore()
 
     @property
     def spec(self) -> ToolSpec:
@@ -30,6 +45,15 @@ class SuccesTasksTool(BaseTool):
                 "creating, completing/reopening, rescheduling, and adding or toggling "
                 "subtasks. Never claims remote sync. Deletion and bulk changes "
                 "are not allowed. "
+                # Le réseau (18 sept. 2026) : sans ces quatre actions, la
+                # souris était l'unique chemin pour relier deux tâches ou
+                # savoir ce qu'une tâche attend (§82).
+                "Network projects: `link` (from_task unlocks to_task), `unlink`, "
+                "`branches` (what a task waits for and what it unlocks) and "
+                "`next_actions` (what can be done now, most unlocking first). "
+                "These take `project` (name) or `project_id`, and tasks by exact "
+                "ID or by title; an ambiguous title is refused with the candidates "
+                "— ask the user which one, never guess. "
                 # Sans cette phrase, un modèle 9b appelle list sans date et
                 # reçoit les quatre-vingt-cinq tâches d'un coup — dont il ne
                 # voit qu'un extrait, et sur lequel il répond de travers. La
@@ -55,9 +79,37 @@ class SuccesTasksTool(BaseTool):
                             "reschedule",
                             "add_subtask",
                             "toggle_subtask",
+                            "link",
+                            "unlink",
+                            "branches",
+                            "next_actions",
                         ],
                     },
                     "task_id": {"type": "string"},
+                    "project_id": {
+                        "type": "string",
+                        "description": "Exact project ID (network actions).",
+                    },
+                    "project": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "description": "Project name, e.g. AgriCulture (network).",
+                    },
+                    "task": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Task ID or title, for `branches`.",
+                    },
+                    "from_task": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "ID or title of the task that unlocks to_task.",
+                    },
+                    "to_task": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "ID or title of the task that waits.",
+                    },
                     "title": {"type": "string", "maxLength": 200},
                     "date": {
                         "type": "string",
@@ -111,6 +163,8 @@ class SuccesTasksTool(BaseTool):
                     f"Tâche créée : {task['title']}",
                     {"task": task, "persistence": "local"},
                 )
+            if action in {"link", "unlink", "branches", "next_actions"}:
+                return self._reseau(action, params)
             task_id = str(params.get("task_id") or "").strip()
             if not task_id:
                 return self._fail("L'identifiant exact de la tâche est obligatoire.")
@@ -161,6 +215,178 @@ class SuccesTasksTool(BaseTool):
             return self._fail(f"Action Succès inconnue : {action}")
         except (SuccesError, ValueError) as exc:
             return self._fail(str(exc))
+
+    # ── Le réseau à la voix (18 sept. 2026) ────────────────────────────────
+
+    def _workspace(self) -> SuccesWorkspaceStore:
+        if not isinstance(self._store, SuccesWorkspaceStore):
+            raise SuccesError(
+                "Le module Succès complet n'est pas initialisé : le réseau est "
+                "hors de portée."
+            )
+        return self._store
+
+    def _resoudre_projet(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """Un id exact, sinon un nom : deux projets qui correspondent → on
+        demande (§34), jamais le premier venu."""
+        store = self._workspace()
+        project_id = str(params.get("project_id") or "").strip()
+        if project_id:
+            return store.get_project(project_id)
+        nom = str(params.get("project") or "").strip()
+        if not nom:
+            raise SuccesError("Le projet est obligatoire : son nom ou son identifiant.")
+        candidats = store.list_projects(search=nom)
+        exacts = [p for p in candidats if cle_titre(p["name"]) == cle_titre(nom)]
+        if len(exacts) == 1:
+            return exacts[0]
+        if not candidats:
+            raise SuccesError(f"Aucun projet ne s'appelle « {nom} ».")
+        if len(candidats) > 1:
+            raise SuccesError(
+                f"Plusieurs projets correspondent à « {nom} » : "
+                + _citer([p["name"] for p in candidats])
+                + ". Demandez à l'utilisateur lequel."
+            )
+        return candidats[0]
+
+    @staticmethod
+    def _resoudre_tache(
+        taches: list[dict[str, Any]], valeur: Any, *, role: str
+    ) -> dict[str, Any]:
+        """Un id exact d'abord, sinon un titre : entier avant fragment, et
+        deux titres qui correspondent encore → on demande (§34). « contrat »
+        désigne à la fois « Discuter du contrat… » et « Contrat | Paiement… »
+        dans AgriCulture : deviner relierait la mauvaise."""
+        texte = str(valeur or "").strip()
+        if not texte:
+            raise SuccesError(f"La tâche {role} est obligatoire : son titre ou son id.")
+        for tache in taches:
+            if tache["id"] == texte:
+                return tache
+        cle = cle_titre(texte)
+        exacts = [t for t in taches if cle_titre(str(t["title"])) == cle]
+        if len(exacts) == 1:
+            return exacts[0]
+        partiels = exacts or [t for t in taches if cle in cle_titre(str(t["title"]))]
+        if not partiels:
+            raise SuccesError(
+                f"Aucune tâche de ce projet ne s'appelle « {texte} » ({role})."
+            )
+        if len(partiels) > 1:
+            raise SuccesError(
+                f"Plusieurs tâches correspondent à « {texte} » ({role}) : "
+                + _citer([str(t["title"]) for t in partiels])
+                + ". Demandez à l'utilisateur laquelle."
+            )
+        return partiels[0]
+
+    def _reseau(self, action: str, params: Mapping[str, Any]) -> ToolResult:
+        store = self._workspace()
+        projet = self._resoudre_projet(params)
+        pid = projet["id"]
+        if action == "next_actions":
+            actions = store.prochaines_actions(pid)
+            if not actions:
+                return self._ok(
+                    f"Rien n'est faisable maintenant dans « {projet['name']} » : "
+                    "tout est fait, ou tout attend.",
+                    {"projectId": pid, "nextActions": [], "persistence": "local"},
+                )
+            lignes = []
+            for a in actions:
+                suite = (
+                    f" (débloque {_citer([u['title'] for u in a['unlocks']])})"
+                    if a["unlocks"]
+                    else ""
+                )
+                lignes.append(f"« {a['title']} »{suite}")
+            return self._ok(
+                f"Faisable maintenant dans « {projet['name']} », la plus utile "
+                f"d'abord : {' ; '.join(lignes)}.",
+                {"projectId": pid, "nextActions": actions, "persistence": "local"},
+            )
+        taches = store.list_project_tasks(pid)
+        if action == "branches":
+            tache = self._resoudre_tache(taches, params.get("task"), role="demandée")
+            branches = store.branches_de(pid, tache["id"])
+            statut = _STATUT_FR[branches["status"]]
+            phrase = f"« {tache['title']} » est {statut}."
+            if branches["missing"]:
+                phrase += (
+                    " Attend " + _citer([t["title"] for t in branches["missing"]]) + "."
+                )
+            elif branches["upstream"]:
+                phrase += " Ses attentes sont toutes faites."
+            else:
+                phrase += " Rien à attendre."
+            if branches["downstream"]:
+                phrase += (
+                    " Débloque "
+                    + _citer([t["title"] for t in branches["downstream"]])
+                    + "."
+                )
+                if branches["unlocks"] and branches["status"] != "done":
+                    phrase += (
+                        " La terminer ouvre "
+                        + _citer([t["title"] for t in branches["unlocks"]])
+                        + "."
+                    )
+                if branches["impact"] >= 2:
+                    phrase += f" {branches['impact']} tâches ouvertes en aval."
+            else:
+                phrase += " Ne débloque rien."
+            return self._ok(
+                phrase, {**branches, "projectId": pid, "persistence": "local"}
+            )
+        de = self._resoudre_tache(taches, params.get("from_task"), role="qui débloque")
+        vers = self._resoudre_tache(taches, params.get("to_task"), role="qui attend")
+        if action == "unlink":
+            store.delete_task_edge(pid, de["id"], vers["id"])
+            restantes = store.list_task_edges(pid)
+            if any(
+                e["fromTaskId"] == de["id"] and e["toTaskId"] == vers["id"]
+                for e in restantes
+            ):
+                return self._fail(
+                    f"Le lien « {de['title']} » → « {vers['title']} » est encore là "
+                    "après la suppression."
+                )
+            return self._ok(
+                f"Lien supprimé : « {de['title']} » ne débloque plus "
+                f"« {vers['title']} ».",
+                {
+                    "projectId": pid,
+                    "fromTaskId": de["id"],
+                    "toTaskId": vers["id"],
+                    "persistence": "local",
+                },
+            )
+        # `link`. La boucle est refusée par `create_task_edge` avec sa phrase,
+        # relayée mot pour mot par `except SuccesError` ; un lien qui existait
+        # déjà est rendu tel quel par le serveur sans nouvelle op, et on le dit.
+        existait = any(
+            e["fromTaskId"] == de["id"] and e["toTaskId"] == vers["id"]
+            for e in store.list_task_edges(pid)
+        )
+        arete = store.create_task_edge(pid, de["id"], vers["id"])
+        # La phrase cite l'arête RENVOYÉE, jamais la demande (§100).
+        par_id = {t["id"]: t for t in taches}
+        source = par_id.get(arete["fromTaskId"], de)
+        cible = par_id.get(arete["toTaskId"], vers)
+        branches = store.branches_de(pid, arete["toTaskId"])
+        etat = _STATUT_FR[branches["status"]]
+        prefixe = "Ce lien existait déjà" if existait else "Lien créé"
+        return self._ok(
+            f"{prefixe} : « {source['title']} » débloque « {cible['title']} ». "
+            f"« {cible['title']} » est maintenant {etat}.",
+            {
+                "edge": arete,
+                "alreadyExisted": existait,
+                "target": branches["task"],
+                "persistence": "local",
+            },
+        )
 
     @staticmethod
     def _resolve_required_date(value: Any) -> str:

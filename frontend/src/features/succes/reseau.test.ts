@@ -11,7 +11,9 @@ import {
   citer,
   chaineComplete,
   chaineLaPlusLongue,
+  cibleClavier,
   colonnesInitiales,
+  consigneLiaison,
   estVueReseau,
   lignesParNiveau,
   mentionLigne,
@@ -45,6 +47,7 @@ import {
   traitArete,
   voisinSuivant,
   voisinage,
+  type Point,
 } from './reseau';
 import type { SuccesTask, SuccesTaskEdge } from './types';
 
@@ -799,5 +802,72 @@ describe('les couloirs par catégorie', () => {
     const d = disposer(reseau, dims);
     expect(d.couloirs.map((c) => c.libelle)).toEqual(['Contrat', '—']);
     expect(d.separateurs).toHaveLength(1);
+  });
+});
+
+describe('le clavier suit les arêtes (§82)', () => {
+  const dims = { largeurCarte: 100, hauteurCarte: 50, ecartX: 20, ecartY: 10, marge: 5 };
+
+  it('→ va à ce que la carte débloque, ← à ce qu’elle attend', () => {
+    const reseau = agriculture();
+    const { pos } = disposer(reseau, dims);
+    expect(cibleClavier(reseau, pos, 'riz', 'ArrowRight')).toBe('besoin');
+    expect(cibleClavier(reseau, pos, 'besoin', 'ArrowLeft')).toBe('riz');
+    expect(cibleClavier(reseau, pos, 'discuter', 'ArrowRight')).toBe('contrat');
+    expect(cibleClavier(reseau, pos, 'contrat', 'ArrowLeft')).toBe('discuter');
+  });
+
+  it('entre deux successeures, → choisit la plus proche en hauteur', () => {
+    const reseau = agriculture();
+    const { pos } = disposer(reseau, dims);
+    const cible = cibleClavier(reseau, pos, 'besoin', 'ArrowRight');
+    expect(['tracteur', 'budget']).toContain(cible);
+    expect(pos.get(cible as string)?.y).toBe(pos.get('besoin')?.y);
+  });
+
+  it('au bout d’une chaîne, la flèche ne mène nulle part', () => {
+    const reseau = agriculture();
+    const { pos } = disposer(reseau, dims);
+    expect(cibleClavier(reseau, pos, 'agri', 'ArrowLeft')).toBeNull();
+    expect(cibleClavier(reseau, pos, 'contrat', 'ArrowRight')).toBeNull();
+    expect(cibleClavier(reseau, pos, 'tracteur', 'ArrowRight')).toBeNull();
+  });
+
+  it('↑ et ↓ parcourent la colonne, toutes bandes confondues', () => {
+    const reseau = agriculture();
+    const { pos } = disposer(reseau, dims);
+    // « riz » et « agriculteurs » sont toutes deux en colonne 0, chacune
+    // dans sa composante empilée (la plus grande, celle de « riz », en
+    // haut) : ↓ passe de l'une à l'autre.
+    expect(pos.get('riz')?.x).toBe(pos.get('agri')?.x);
+    expect(cibleClavier(reseau, pos, 'riz', 'ArrowDown')).toBe('agri');
+    expect(cibleClavier(reseau, pos, 'agri', 'ArrowUp')).toBe('riz');
+    expect(cibleClavier(reseau, pos, 'riz', 'ArrowUp')).toBeNull();
+    expect(cibleClavier(reseau, pos, 'agri', 'ArrowDown')).toBeNull();
+  });
+
+  it('sans arête de ce côté, → rejoint la colonne voisine : une orpheline n’est pas hors d’atteinte', () => {
+    const reseau = construireReseau(
+      [tache('a', 'amont'), tache('b', 'bout'), tache('o', 'orpheline')],
+      [arete('a', 'b')],
+    );
+    const pos = new Map<string, Point>([
+      ['a', { x: 0, y: 0 }],
+      ['b', { x: 120, y: 0 }],
+      ['o', { x: 0, y: 60 }],
+    ]);
+    expect(cibleClavier(reseau, pos, 'o', 'ArrowRight')).toBe('b');
+    expect(cibleClavier(reseau, pos, 'b', 'ArrowLeft')).toBe('a');
+    expect(cibleClavier(reseau, pos, 'a', 'ArrowDown')).toBe('o');
+    expect(cibleClavier(reseau, pos, 'inconnue', 'ArrowDown')).toBeNull();
+  });
+
+  it('la consigne nomme la source et les deux chemins', () => {
+    expect(consigneLiaison(null)).toBe(
+      'Choisissez la tâche source : clic, ou L sur une carte. Échap pour annuler.',
+    );
+    expect(consigneLiaison('Avoir un budget bien detaillé ?')).toBe(
+      'Source : « Avoir un budget bien detaillé ? ». Choisissez la tâche à débloquer (cible) : clic, ou flèches puis Entrée. Échap pour annuler.',
+    );
   });
 });
