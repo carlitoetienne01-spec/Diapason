@@ -7,18 +7,22 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Check, ChevronRight, CirclePlus, HelpCircle, Link2, List, Loader2, Network } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
+  aBouge,
   aretesDeChaine,
   aretesLiberees,
   chaineComplete,
   chaineLaPlusLongue,
+  cheminElastique,
   cibleClavier,
   comptes,
   consigneLiaison,
+  consigneTirage,
   construireReseau,
   disposer,
   dispositionBouge,
@@ -31,9 +35,12 @@ import {
   libelleRevue,
   lignesParNiveau,
   mentionLigne,
+  phraseBoucle,
+  phraseDepot,
   revue,
   statuts,
   traitArete,
+  verdictDepot,
   type EtatArete,
   type Point,
   type StatutTache,
@@ -200,6 +207,32 @@ export function NetworkView({
   const [revueOuverte, setRevueOuverte] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Le tirage (18 sept. 2026) : la poignée au bord droit d'une carte se tire
+  // jusqu'à la cible, un trait élastique suit le pointeur dans le SVG
+  // supérieur, et le dépôt appelle le même `onLink` que le mode Relier.
+  // Relier = bouton, clic source, clic cible en lisant une consigne : trois
+  // gestes pour un trait, le geste répété le plus lent de la vue. Ce qui est
+  // AFFICHÉ (`tirage`) ne porte que la source, la cible survolée et la pointe
+  // du trait ; le reste (pointeur capturé, point de départ, si le seuil de
+  // 4 px est franchi) vit hors rendu, il change à chaque mouvement.
+  const [tirage, setTirage] = useState<{ sourceId: string; cibleId: string | null; pointe: Point } | null>(null);
+  const tirageEnCours = useRef<{
+    pointerId: number;
+    sourceId: string;
+    depart: Point;
+    franchi: boolean;
+    pointeur: Point;
+    cibleId: string | null;
+  } | null>(null);
+  // Vrai entre le dépôt et le `click` qui le suit : le clic sur la poignée
+  // ne doit pas, en plus, entrer en mode liaison. Remis à faux par ce clic
+  // ou par le `pointerdown` suivant — pas par une minuterie, qui laissait
+  // passer un clic arrivé un peu tard.
+  const vientDeTirer = useRef(false);
+  // Le point du `pointerdown` sur le titre d'une carte : le clic n'ouvre la
+  // fiche que si le pointeur n'a pas bougé de plus de 4 px.
+  const departClic = useRef<Point | null>(null);
+  const canevas = useRef<HTMLDivElement>(null);
   // Le clavier suit les arêtes (§82, 18 sept. 2026) : les boutons des
   // cartes, par id, pour que ← → ↑ ↓ donnent le focus à la carte calculée
   // par `cibleClavier` — Tab suivait l'ordre du tableau, sans rapport avec
@@ -244,7 +277,10 @@ export function NetworkView({
   // La mise en avant suit la fiche, sinon le focus clavier, sinon le survol.
   // Dans le mini-panneau non activant, le NSPanel ne livre pas le survol :
   // la sélection et le focus suffisent, la souris n'est pas l'unique chemin.
-  const misEnAvantId = miseEnAvantId ?? focusedId ?? survolId;
+  // Pendant un tirage, rien ne s'estompe par le survol : la poignée est
+  // survolée, la chaîne de la source restait nette et TOUT le reste passait à
+  // 0.3 — les cibles possibles avaient l'air impossibles.
+  const misEnAvantId = tirage ? null : (miseEnAvantId ?? focusedId ?? survolId);
   const chaineNette = useMemo(
     () => (misEnAvantId && byId.has(misEnAvantId) ? chaineComplete(reseau, misEnAvantId) : null),
     [reseau, byId, misEnAvantId],
@@ -407,7 +443,7 @@ export function NetworkView({
   }, [tasks.length, feasible, layout, vue]);
 
   useEffect(() => {
-    if (!linkMode && !selectedEdge && !filActif) return;
+    if (!linkMode && !selectedEdge && !filActif && !tirage) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         // Consommé : le mini-panneau ne se ferme qu'au second Échap (contrat du 17 sept. 2026, lib.rs lit `defaultPrevented`).
@@ -416,6 +452,10 @@ export function NetworkView({
         setLinkFrom(null);
         setSelectedEdge(null);
         setFilActif(false);
+        // Un tirage en cours est abandonné : le `pointerup` qui suivra ne
+        // trouvera plus rien à déposer.
+        tirageEnCours.current = null;
+        setTirage(null);
         // « … fermerait une boucle » ne commente qu'une liaison en cours :
         // laissé là après l'annulation, il accusait un lien qu'on ne fait plus.
         setError(null);
@@ -423,7 +463,137 @@ export function NetworkView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [linkMode, selectedEdge, filActif]);
+  }, [linkMode, selectedEdge, filActif, tirage]);
+
+  // L'élastique : la pointe du trait rejoint le pointeur avec un peu de
+  // retard (35 % du chemin par image, ~90 ms pour se poser), et se pose sur
+  // le bord gauche de la cible dès qu'elle est possible. Sous
+  // `prefers-reduced-motion`, la pointe est le pointeur, sans élastique.
+  useEffect(() => {
+    if (!tirage) return undefined;
+    const immobile = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    let raf = 0;
+    const pas = () => {
+      const etat = tirageEnCours.current;
+      if (!etat) return;
+      const cible = etat.cibleId ? affichees.current.get(etat.cibleId) : undefined;
+      const visee =
+        cible && verdictDepot(reseau, etat.sourceId, etat.cibleId) === 'ok'
+          ? { x: cible.x - 2, y: cible.y + CARD_H / 2 }
+          : etat.pointeur;
+      setTirage((t) => {
+        if (!t) return t;
+        const pointe = immobile
+          ? visee
+          : { x: t.pointe.x + (visee.x - t.pointe.x) * 0.35, y: t.pointe.y + (visee.y - t.pointe.y) * 0.35 };
+        if (t.cibleId === etat.cibleId && Math.abs(pointe.x - t.pointe.x) < 0.1 && Math.abs(pointe.y - t.pointe.y) < 0.1) {
+          return t;
+        }
+        return { sourceId: t.sourceId, cibleId: etat.cibleId, pointe };
+      });
+      raf = requestAnimationFrame(pas);
+    };
+    raf = requestAnimationFrame(pas);
+    return () => cancelAnimationFrame(raf);
+  }, [tirage !== null, reseau]); // eslint-disable-line react-hooks/exhaustive-deps -- la boucle tourne tant qu'un tirage existe
+
+  /** Le pointeur en coordonnées du canevas (celles des cartes et des arêtes). */
+  const pointDuCanevas = (event: ReactPointerEvent): Point => {
+    const rect = canevas.current?.getBoundingClientRect();
+    return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : { x: event.clientX, y: event.clientY };
+  };
+
+  /** La carte sous le pointeur, ou null — le tirage a capturé le pointeur, `elementFromPoint` regarde en dessous. */
+  const carteSousLePointeur = (event: ReactPointerEvent): string | null => {
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    const cadre = el?.closest<HTMLElement>('[data-carte-cadre]');
+    const id = cadre?.dataset.carteCadre ?? null;
+    return id && byId.has(id) ? id : null;
+  };
+
+  const debutPoignee = (event: ReactPointerEvent<HTMLButtonElement>, sourceId: string) => {
+    if (event.button !== 0 || saving) return;
+    // Sans lui, le `mousedown` de compatibilité entamait une sélection de
+    // texte à travers les cartes pendant le tirage.
+    event.preventDefault();
+    vientDeTirer.current = false;
+    const depart = { x: event.clientX, y: event.clientY };
+    tirageEnCours.current = {
+      pointerId: event.pointerId,
+      sourceId,
+      depart,
+      franchi: false,
+      pointeur: pointDuCanevas(event),
+      cibleId: null,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Un pointeur déjà relâché (événement synthétique, ou relâché entre
+      // deux images) ne se capture pas : le tirage suit alors le pointeur
+      // tant qu'il reste sur la poignée, puis s'annule de lui-même.
+    }
+  };
+
+  const mouvementPoignee = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const etat = tirageEnCours.current;
+    if (!etat || etat.pointerId !== event.pointerId) return;
+    etat.pointeur = pointDuCanevas(event);
+    if (!etat.franchi) {
+      if (!aBouge(etat.depart, { x: event.clientX, y: event.clientY })) return;
+      etat.franchi = true;
+      // Le message d'erreur précédent reste jusqu'au dépôt : retiré ici,
+      // sa ligne disparaissait et le graphe remontait de 32 px sous le
+      // pointeur, dès le premier mouvement.
+      setSelectedEdge(null);
+      setSurvolId(null);
+      setTirage({ sourceId: etat.sourceId, cibleId: null, pointe: etat.pointeur });
+    }
+    const cibleId = carteSousLePointeur(event);
+    if (cibleId !== etat.cibleId) {
+      etat.cibleId = cibleId;
+      // La cible change ici même, pas à la prochaine image : le verdict
+      // (impossible, doublon, possible) se lit dès que le pointeur entre.
+      setTirage((t) => (t ? { ...t, cibleId } : t));
+    }
+  };
+
+  const finPoignee = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const etat = tirageEnCours.current;
+    if (!etat || etat.pointerId !== event.pointerId) return;
+    tirageEnCours.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    // Sous le seuil : un clic, que `onClick` traite (mode liaison).
+    if (!etat.franchi) return;
+    vientDeTirer.current = true;
+    setTirage(null);
+    const cibleId = carteSousLePointeur(event);
+    // Boucle ou doublon : dit ici, sans rien envoyer. Un lien possible part
+    // au serveur, qui reste le juge (une arête arrivée d'un pair entre-temps).
+    const phrase = phraseDepot(reseau, etat.sourceId, cibleId);
+    setError(phrase);
+    if (phrase) return;
+    if (cibleId && verdictDepot(reseau, etat.sourceId, cibleId) === 'ok') {
+      void run(() => onLink(etat.sourceId, cibleId));
+    }
+  };
+
+  const annulerPoignee = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const etat = tirageEnCours.current;
+    if (!etat || etat.pointerId !== event.pointerId) return;
+    tirageEnCours.current = null;
+    setTirage(null);
+  };
+
+  /** Entrer en mode liaison avec cette source : la touche L, le clic sur la poignée, la fiche. */
+  const relierDepuis = (sourceId: string) => {
+    setError(null);
+    setSelectedEdge(null);
+    setLinkMode(true);
+    setLinkFrom(sourceId);
+  };
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -458,9 +628,7 @@ export function NetworkView({
         // le dit ; ici, on ne fait que le redire. Le serveur reste le juge
         // (workspace.py refuse la boucle avec sa phrase) pour tout ce que le
         // client ne voit pas — une arête arrivée d'un pair entre-temps.
-        setError(
-          `« ${byId.get(linkFrom)?.title ?? ''} » attend déjà « ${task.title} », de près ou de loin : ce lien fermerait une boucle.`,
-        );
+        setError(phraseBoucle(reseau, linkFrom, task.id));
         return;
       }
       const from = linkFrom;
@@ -472,16 +640,21 @@ export function NetworkView({
     onSelect?.(task);
   };
 
-  /** En mode liaison, une fois la source choisie : cette cible fermerait-elle une boucle ? */
-  const cibleImpossible = (id: string) =>
-    linkMode && linkFrom !== null && linkFrom !== id && fermeraitUneBoucle(reseau, linkFrom, id);
+  // La source d'un lien en cours : celle du tirage, sinon celle du mode Relier.
+  const sourceLiaison = tirage?.sourceId ?? (linkMode ? linkFrom : null);
 
-  /** Même atténuation dans le dessin et dans la Liste : chaîne nette, cible impossible, hors fil, faite. */
+  /** Une fois la source choisie (Relier ou tirage) : cette cible fermerait-elle une boucle ? */
+  const cibleImpossible = (id: string) =>
+    sourceLiaison !== null && sourceLiaison !== id && fermeraitUneBoucle(reseau, sourceLiaison, id);
+
+  /** Même atténuation dans le dessin et dans la Liste : chaîne nette, cible impossible (0.3 pendant le tirage), hors fil, faite. */
   const opaciteDe = (task: SuccesTask) =>
     estompe(task.id)
       ? 0.3
       : cibleImpossible(task.id)
-        ? 0.4
+        ? tirage
+          ? 0.3
+          : 0.4
         : horsFil(task.id)
           ? 0.5
           : task.done
@@ -541,10 +714,7 @@ export function NetworkView({
     }
     if ((event.key === 'l' || event.key === 'L') && carte && tasks.length >= 2) {
       event.preventDefault();
-      setError(null);
-      setSelectedEdge(null);
-      setLinkMode(true);
-      setLinkFrom(carte);
+      relierDepuis(carte);
       return;
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -768,13 +938,22 @@ export function NetworkView({
             `aria-live` ne lit pas ce qui apparaît avec sa région. Elle nomme
             la source dès qu'elle est choisie — au clic, à L, ou depuis la
             fiche — et dit les deux chemins, souris et clavier. */}
+        {/* Pendant un tirage, la consigne reste hors flux (`sr-only`, lue
+            quand même) et se montre en pastille SUR le graphe : affichée ici,
+            elle prenait une ligne et décalait les cartes de 57 px sous un
+            pointeur immobile — le dépôt tombait dans le vide entre deux
+            cartes. */}
         <span
           aria-live="polite"
           aria-atomic="true"
-          className={linkMode ? 'text-xs' : 'sr-only'}
+          className={linkMode && !tirage ? 'text-xs' : 'sr-only'}
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          {linkMode ? consigneLiaison(linkFrom ? (byId.get(linkFrom)?.title ?? null) : null) : ''}
+          {tirage
+            ? consigneTirage(reseau, tirage.sourceId, tirage.cibleId)
+            : linkMode
+              ? consigneLiaison(linkFrom ? (byId.get(linkFrom)?.title ?? null) : null)
+              : ''}
         </span>
         {tasks.length > 0 && vue !== 'liste' && (
           <>
@@ -848,10 +1027,24 @@ export function NetworkView({
         </div>
       ) : (
         <>
+        {/* `hidden` / `sm:block` : sans choix, la Liste sous `sm` et le Graphe au-delà. */}
+        <div className={`relative ${classeGraphe}`}>
+        {tirage && (
+          <p
+            aria-hidden="true"
+            className="absolute left-3 top-1.5 z-10 pointer-events-none max-w-[calc(100%-24px)] truncate rounded-full px-2.5 py-1 text-xs"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            {consigneTirage(reseau, tirage.sourceId, tirage.cibleId)}
+          </p>
+        )}
         <div
           ref={defilement}
-          // `hidden` / `sm:block` : sans choix, la Liste sous `sm` et le Graphe au-delà.
-          className={`rounded-2xl p-2 overflow-x-auto ${classeGraphe}`}
+          className="rounded-2xl p-2 overflow-x-auto"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
           {/* Le canevas prend sa largeur RÉELLE en pixels : à 340 px il défile,
@@ -869,9 +1062,15 @@ export function NetworkView({
                     .join(', ')}`
                 : 'Réseau des tâches reliées par « débloque »'
             }
+            ref={canevas}
             aria-describedby={aideClavierId}
             className="relative isolate"
-            style={{ width: layout.largeur, height: layout.hauteur }}
+            style={{
+              width: layout.largeur,
+              height: layout.hauteur,
+              cursor: tirage ? 'grabbing' : undefined,
+              userSelect: tirage ? 'none' : undefined,
+            }}
             onClick={() => setSelectedEdge(null)}
             onKeyDown={clavierCanevas}
             // Un défilement à la molette déplace les cartes sous un pointeur
@@ -882,7 +1081,8 @@ export function NetworkView({
             <p id={aideClavierId} className="sr-only">
               Au clavier : flèche gauche et droite suivent les liens, haut et bas parcourent une
               colonne ; L prend la carte comme source d’un lien, Entrée choisit la cible ; sur un
-              lien, Suppr le retire.
+              lien, Suppr le retire. À la souris, la poignée au bord droit d’une carte se tire
+              jusqu’à la tâche à débloquer.
             </p>
             <svg
               className="absolute inset-0 -z-10 pointer-events-none"
@@ -1040,10 +1240,16 @@ export function NetworkView({
               const p = posDe(task.id);
               if (!p) return null;
               const status = statusById.get(task.id) ?? 'faisable';
-              const isLinkSource = linkFrom === task.id;
+              const isLinkSource = sourceLiaison === task.id;
               const isFocused = focusedId === task.id;
               const enHalo = halos.has(task.id);
-              const highlighted = isLinkSource || isFocused || enHalo;
+              // La cible possible sous le trait tiré : le même trait de 2 px
+              // que le focus, le dépôt est annoncé avant d'avoir lieu.
+              const cibleDuTirage =
+                tirage !== null &&
+                tirage.cibleId === task.id &&
+                verdictDepot(reseau, tirage.sourceId, task.id) === 'ok';
+              const highlighted = isLinkSource || isFocused || enHalo || cibleDuTirage;
               // « ↓3 » seulement à partir de deux tâches ouvertes en aval :
               // à une, la flèche vers la carte suivante le dit déjà.
               const aval = task.done ? 0 : impact(reseau, task.id);
@@ -1058,9 +1264,10 @@ export function NetworkView({
                 <CadreVitre
                   compact
                   key={task.id}
-                  className="reseau-carte reseau-estompable rounded-xl p-2.5 flex items-start gap-2 overflow-hidden"
+                  className="group reseau-carte reseau-estompable rounded-xl p-2.5 flex items-start gap-2 overflow-hidden"
                   data-statut={status}
                   data-orpheline={orpheline ? 'true' : undefined}
+                  data-carte-cadre={task.id}
                   onPointerEnter={() => setSurvolId(task.id)}
                   onPointerLeave={() => setSurvolId((id) => (id === task.id ? null : id))}
                   // `position` en inline : `.composer-glass { position: relative }`
@@ -1094,7 +1301,18 @@ export function NetworkView({
                       else boutons.current.delete(task.id);
                     }}
                     data-carte={task.id}
-                    onClick={() => activateCard(task)}
+                    onPointerDown={(event) => {
+                      departClic.current = { x: event.clientX, y: event.clientY };
+                    }}
+                    onClick={(event) => {
+                      // Un pointeur qui a bougé de plus de 4 px n'était pas un
+                      // clic : la fiche ne s'ouvre pas. Au clavier, il n'y a
+                      // pas eu de `pointerdown` : rien ne retient.
+                      const depart = departClic.current;
+                      departClic.current = null;
+                      if (depart && event.detail > 0 && aBouge(depart, { x: event.clientX, y: event.clientY })) return;
+                      activateCard(task);
+                    }}
                     onFocus={() => setFocusedId(task.id)}
                     onBlur={() => setFocusedId(null)}
                     aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
@@ -1110,7 +1328,7 @@ export function NetworkView({
                     }`}
                     aria-disabled={impossible || undefined}
                     title={impossible ? 'Impossible : fermerait une boucle' : task.title}
-                    className="flex-1 min-w-0 text-left cursor-pointer grid gap-0.5 outline-none"
+                    className="flex-1 min-w-0 pr-4 text-left cursor-pointer grid gap-0.5 outline-none"
                   >
                     <span
                       className="text-[13px] font-semibold leading-[1.3] line-clamp-2 break-words"
@@ -1139,6 +1357,45 @@ export function NetworkView({
                       )}
                     </span>
                   </button>
+                  {/* La poignée (18 sept. 2026) : révélée au survol, toujours
+                      visible dans le mini-panneau et sous `sm` (le NSPanel non
+                      activant ne livre pas le survol). La tirer trace le lien ;
+                      la cliquer entre en mode liaison avec cette source — le
+                      même chemin que L et que « Relier depuis ici ». Ronde et
+                      cerclée d'accent, pleine sur la source en cours. */}
+                  {tasks.length >= 2 && (
+                    <button
+                      type="button"
+                      aria-label={`Tirer un lien depuis « ${task.title} »`}
+                      title="Tirer jusqu’à la tâche à débloquer, ou cliquer pour choisir la cible"
+                      disabled={saving}
+                      onPointerDown={(event) => debutPoignee(event, task.id)}
+                      onPointerMove={mouvementPoignee}
+                      onPointerUp={finPoignee}
+                      onPointerCancel={annulerPoignee}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (vientDeTirer.current) {
+                          vientDeTirer.current = false;
+                          return;
+                        }
+                        if (isLinkSource) {
+                          setLinkMode(false);
+                          setLinkFrom(null);
+                          return;
+                        }
+                        relierDepuis(task.id);
+                      }}
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 size-3.5 rounded-full transition-opacity motion-reduce:transition-none focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 disabled:opacity-0 ${
+                        isLinkSource ? 'opacity-100 cursor-grabbing' : 'opacity-0 group-hover:opacity-100 cursor-grab'
+                      }`}
+                      style={{
+                        border: '1.5px solid var(--color-accent)',
+                        background: isLinkSource ? 'var(--color-accent)' : 'var(--color-surface)',
+                        touchAction: 'none',
+                      }}
+                    />
+                  )}
                 </CadreVitre>
               );
             })}
@@ -1168,7 +1425,10 @@ export function NetworkView({
                     tabIndex={0}
                     data-arete={`${edge.fromTaskId}->${edge.toTaskId}`}
                     aria-label={`Lien : « ${fromTask.title} » débloque « ${toTask.title} ». Entrée pour le choisir, Suppr pour le retirer.`}
-                    style={{ cursor: 'pointer', outline: 'none', pointerEvents: 'stroke' }}
+                    // Pendant un tirage, les arêtes ne prennent plus le
+                    // pointeur : `elementFromPoint` doit trouver la carte
+                    // en dessous, pas le trait de 14 px qui la traverse.
+                    style={{ cursor: 'pointer', outline: 'none', pointerEvents: tirage ? 'none' : 'stroke' }}
                     onClick={(event: ReactMouseEvent<SVGPathElement>) => {
                       event.stopPropagation();
                       setSelectedEdge({ from: edge.fromTaskId, to: edge.toTaskId });
@@ -1179,6 +1439,32 @@ export function NetworkView({
                   />
                 );
               })}
+
+              {tirage &&
+                (() => {
+                  // Le trait tiré : pointillé tant qu'il n'est posé sur rien,
+                  // plein avec sa pointe (le trait « prochaine ») dès que la
+                  // cible est possible, pointillé en teinte d'erreur sur une
+                  // cible qui fermerait une boucle ou un doublon — la forme
+                  // le dit aussi en Ardéchine, où l'accent est l'encre.
+                  const src = posDe(tirage.sourceId);
+                  if (!src) return null;
+                  const verdict = verdictDepot(reseau, tirage.sourceId, tirage.cibleId);
+                  const refuse = verdict === 'boucle' || verdict === 'deja';
+                  return (
+                    <path
+                      aria-hidden="true"
+                      d={cheminElastique({ x: src.x + CARD_W, y: src.y + CARD_H / 2 }, tirage.pointe)}
+                      fill="none"
+                      stroke={refuse ? DANGER : 'var(--color-accent)'}
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                      strokeDasharray={verdict === 'ok' ? undefined : '6 4'}
+                      markerEnd={verdict === 'ok' ? 'url(#nv-pointe-prochaine)' : undefined}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                })()}
 
               {selectedEdge &&
                 (() => {
@@ -1215,6 +1501,7 @@ export function NetworkView({
                 })()}
             </svg>
           </div>
+        </div>
         </div>
 
         {/* La Liste (18 sept. 2026) : les mêmes tâches en ordre topologique,

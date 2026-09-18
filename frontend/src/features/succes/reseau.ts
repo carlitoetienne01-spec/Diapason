@@ -1106,3 +1106,89 @@ export function consigneLiaison(titreSource: string | null): string {
   }
   return `Source : « ${titreSource} ». Choisissez la tâche à débloquer (cible) : clic, ou flèches puis Entrée. Échap pour annuler.`;
 }
+
+// ── Tracer un lien en tirant une carte vers l'autre (18 sept. 2026) ─────────
+//
+// Relier = bouton, clic source, clic cible, en lisant une consigne : trois
+// gestes pour un trait, et sur quinze tâches c'est le geste répété le plus
+// lent de la vue. Ici, une poignée au bord droit de la carte se tire jusqu'à
+// la cible ; le dépôt appelle le même `onLink`, le serveur reste le juge.
+// Le bouton, la touche L et la voix restent (§82) : le tirage n'est jamais
+// l'unique chemin. Pur : le composant ne fait que lire le pointeur.
+
+/**
+ * En deçà de 4 px, un pointeur qui bouge est une main qui tremble : le
+ * geste reste un clic (la fiche s'ouvre, la poignée entre en mode liaison).
+ * Au-delà, c'est un tirage. 4 et non 2 : au trackpad, un clic sans intention
+ * dérive déjà de 1 à 3 px.
+ */
+export const SEUIL_TIRAGE_PX = 4;
+
+export function aBouge(depart: Point, arrivee: Point, seuil = SEUIL_TIRAGE_PX): boolean {
+  return Math.hypot(arrivee.x - depart.x, arrivee.y - depart.y) > seuil;
+}
+
+export type VerdictDepot = 'aucune' | 'meme-tache' | 'boucle' | 'deja' | 'ok';
+
+/**
+ * Ce que déposer le trait sur `to` ferait. `deja` : le serveur est idempotent
+ * sur un doublon et ne l'enregistre pas — le dire ici évite un toast
+ * « Dépendance ajoutée » pour un lien qui existait (§100).
+ */
+export function verdictDepot(reseau: Reseau, from: string, to: string | null): VerdictDepot {
+  if (to === null || !reseau.parId.has(to)) return 'aucune';
+  if (to === from) return 'meme-tache';
+  if ((reseau.aval.get(from) ?? []).includes(to)) return 'deja';
+  if (fermeraitUneBoucle(reseau, from, to)) return 'boucle';
+  return 'ok';
+}
+
+/** « « A » attend déjà « B », de près ou de loin : ce lien fermerait une boucle. » */
+export function phraseBoucle(reseau: Reseau, from: string, to: string): string {
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  return `« ${titreDe(from)} » attend déjà « ${titreDe(to)} », de près ou de loin : ce lien fermerait une boucle.`;
+}
+
+/** Ce que le dépôt dit quand il ne crée rien ; null quand il crée (la phrase vient alors du serveur). */
+export function phraseDepot(reseau: Reseau, from: string, to: string | null): string | null {
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  switch (verdictDepot(reseau, from, to)) {
+    case 'boucle':
+      return phraseBoucle(reseau, from, to as string);
+    case 'deja':
+      return `« ${titreDe(from)} » débloque déjà « ${titreDe(to as string)} ».`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * La courbe du trait tiré, du bord droit de la source au pointeur — même
+ * forme que les arêtes (`cheminArete`), pour que le trait posé ressemble à
+ * celui qu'on tire. Quand le pointeur est à gauche de la source, la courbe
+ * se replie sans s'écraser : `dx` garde 28 px de tangente.
+ */
+export function cheminElastique(depart: Point, arrivee: Point): string {
+  const dx = Math.max(28, Math.abs(arrivee.x - depart.x) / 2);
+  return `M ${depart.x} ${depart.y} C ${depart.x + dx} ${depart.y}, ${arrivee.x - dx} ${arrivee.y}, ${arrivee.x} ${arrivee.y}`;
+}
+
+/**
+ * La consigne du tirage, lue par `aria-live` : la source, puis ce qu'un
+ * dépôt sur la cible survolée ferait. Une cible impossible est dite AVANT
+ * le dépôt, comme en mode liaison.
+ */
+export function consigneTirage(reseau: Reseau, from: string, to: string | null): string {
+  const titreDe = (id: string) => reseau.parId.get(id)?.title ?? '';
+  const tete = `Tirage depuis « ${titreDe(from)} »`;
+  switch (verdictDepot(reseau, from, to)) {
+    case 'ok':
+      return `${tete} : déposer pour débloquer « ${titreDe(to as string)} ».`;
+    case 'boucle':
+      return `${tete} : « ${titreDe(to as string)} » est impossible, ce lien fermerait une boucle.`;
+    case 'deja':
+      return `${tete} : « ${titreDe(to as string)} » est déjà débloquée par elle.`;
+    default:
+      return `${tete} : déposer sur la tâche à débloquer. Échap pour annuler.`;
+  }
+}

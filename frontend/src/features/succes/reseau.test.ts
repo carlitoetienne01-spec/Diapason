@@ -47,6 +47,13 @@ import {
   traitArete,
   voisinSuivant,
   voisinage,
+  aBouge,
+  cheminElastique,
+  consigneTirage,
+  phraseBoucle,
+  phraseDepot,
+  verdictDepot,
+  SEUIL_TIRAGE_PX,
   type Point,
 } from './reseau';
 import type { SuccesTask, SuccesTaskEdge } from './types';
@@ -868,6 +875,68 @@ describe('le clavier suit les arêtes (§82)', () => {
     );
     expect(consigneLiaison('Avoir un budget bien detaillé ?')).toBe(
       'Source : « Avoir un budget bien detaillé ? ». Choisissez la tâche à débloquer (cible) : clic, ou flèches puis Entrée. Échap pour annuler.',
+    );
+  });
+});
+
+describe('tracer un lien en tirant une carte (18 sept. 2026)', () => {
+  it('en deçà de 4 px le geste reste un clic, au-delà c’est un tirage', () => {
+    // §11 : « le clic n'ouvre la fiche que si le pointeur n'a pas bougé de
+    // plus de 4 px ». Au trackpad un clic dérive déjà de 1 à 3 px.
+    expect(SEUIL_TIRAGE_PX).toBe(4);
+    expect(aBouge({ x: 10, y: 10 }, { x: 12, y: 13 })).toBe(false);
+    expect(aBouge({ x: 10, y: 10 }, { x: 14, y: 10 })).toBe(false);
+    expect(aBouge({ x: 10, y: 10 }, { x: 14, y: 12 })).toBe(true);
+  });
+
+  it('le verdict du dépôt : rien, la même tâche, un doublon, une boucle, ou un lien', () => {
+    const reseau = agriculture();
+    expect(verdictDepot(reseau, 'besoin', null)).toBe('aucune');
+    expect(verdictDepot(reseau, 'besoin', 'inconnue')).toBe('aucune');
+    expect(verdictDepot(reseau, 'besoin', 'besoin')).toBe('meme-tache');
+    expect(verdictDepot(reseau, 'besoin', 'budget')).toBe('deja');
+    // « besoin » attend déjà « riz » : riz ← besoin fermerait une boucle.
+    expect(verdictDepot(reseau, 'besoin', 'riz')).toBe('boucle');
+    expect(verdictDepot(reseau, 'budget', 'tracteur')).toBe('ok');
+    expect(verdictDepot(reseau, 'contrat', 'riz')).toBe('ok');
+  });
+
+  it('la boucle et le doublon sont dits sans rien envoyer ; un lien possible ne dit rien (la phrase viendra du serveur)', () => {
+    const reseau = agriculture();
+    expect(phraseBoucle(reseau, 'besoin', 'riz')).toBe(
+      '« Qu’est-ce qu’on aura besoin en premier ? » attend déjà « Qu’est ce que nou allons commencer avec en premier | Riz ou Haricots ? », de près ou de loin : ce lien fermerait une boucle.',
+    );
+    expect(phraseDepot(reseau, 'besoin', 'riz')).toBe(phraseBoucle(reseau, 'besoin', 'riz'));
+    expect(phraseDepot(reseau, 'besoin', 'budget')).toBe(
+      '« Qu’est-ce qu’on aura besoin en premier ? » débloque déjà « Avoir un budget bien detaillé ? ».',
+    );
+    expect(phraseDepot(reseau, 'budget', 'tracteur')).toBeNull();
+    expect(phraseDepot(reseau, 'budget', null)).toBeNull();
+    expect(phraseDepot(reseau, 'budget', 'budget')).toBeNull();
+  });
+
+  it('le trait tiré a la forme des arêtes et garde 28 px de tangente quand on tire vers la gauche', () => {
+    expect(cheminElastique({ x: 210, y: 38 }, { x: 410, y: 138 })).toBe(
+      'M 210 38 C 310 38, 310 138, 410 138',
+    );
+    expect(cheminElastique({ x: 210, y: 38 }, { x: 200, y: 40 })).toBe(
+      'M 210 38 C 238 38, 172 40, 200 40',
+    );
+  });
+
+  it('la consigne du tirage nomme la source et dit le verdict AVANT le dépôt', () => {
+    const reseau = agriculture();
+    expect(consigneTirage(reseau, 'budget', null)).toBe(
+      'Tirage depuis « Avoir un budget bien detaillé ? » : déposer sur la tâche à débloquer. Échap pour annuler.',
+    );
+    expect(consigneTirage(reseau, 'budget', 'tracteur')).toBe(
+      'Tirage depuis « Avoir un budget bien detaillé ? » : déposer pour débloquer « Avoir besoin d’un tracteur ».',
+    );
+    expect(consigneTirage(reseau, 'besoin', 'riz')).toBe(
+      'Tirage depuis « Qu’est-ce qu’on aura besoin en premier ? » : « Qu’est ce que nou allons commencer avec en premier | Riz ou Haricots ? » est impossible, ce lien fermerait une boucle.',
+    );
+    expect(consigneTirage(reseau, 'besoin', 'budget')).toBe(
+      'Tirage depuis « Qu’est-ce qu’on aura besoin en premier ? » : « Avoir un budget bien detaillé ? » est déjà débloquée par elle.',
     );
   });
 });
