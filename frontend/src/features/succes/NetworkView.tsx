@@ -14,10 +14,12 @@ import { Check, ChevronRight, CirclePlus, HelpCircle, Link2, List, Loader2, Netw
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
   aBouge,
+  actionLiaison,
   aretesDeChaine,
   aretesLiberees,
   chaineComplete,
   chaineLaPlusLongue,
+  cheminCritique,
   cheminElastique,
   cibleClavier,
   comptes,
@@ -29,14 +31,14 @@ import {
   dureeDe,
   estOrpheline,
   faisables,
-  fermeraitUneBoucle,
   impact,
   interpolerPositions,
   libelleEnTete,
+  libelleEstimation,
   libelleRevue,
   lignesParNiveau,
   mentionLigne,
-  phraseBoucle,
+  motifCibleImpossible,
   phraseDepot,
   revue,
   statuts,
@@ -264,12 +266,16 @@ export function NetworkView({
   const laRevue = useMemo(() => revue(reseau), [reseau]);
   const niveauxListe = useMemo(() => lignesParNiveau(reseau), [reseau]);
 
-  // Le fil : la chaîne la plus longue en tâches ouvertes (18 sept. 2026).
-  // Ce n'est PAS un « chemin critique » — sans durée, seule la profondeur
-  // en tâches est vraie (§5). Rien ne distinguait le vrai fil du projet de
+  // Le fil : le chemin critique quand chaque tâche ouverte est estimée,
+  // sinon la chaîne la plus longue en tâches ouvertes (18 sept. 2026). Sans
+  // estimation complète, ce n'est PAS un « chemin critique » — seule la
+  // profondeur en tâches est vraie (§5) : une seule durée saisie faisait
+  // basculer le fil sur la chaîne la plus lourde, et une chaîne de 4 tâches
+  // sans durée perdait le fil au profit d'une tâche seule estimée à 1 j
+  // (revue du réseau). Rien ne distinguait le vrai fil du projet de
   // « tracteur », qui ne bloque personne. Un fil d'une seule tâche n'en est
   // pas un : le bouton se désactive.
-  const fil = useMemo(() => chaineLaPlusLongue(reseau), [reseau]);
+  const fil = useMemo(() => cheminCritique(reseau) ?? chaineLaPlusLongue(reseau), [reseau]);
   const filIds = useMemo(() => new Set(fil), [fil]);
   const filAretes = useMemo(() => aretesDeChaine(fil), [fil]);
   const filVisible = filActif && fil.length >= 2;
@@ -616,27 +622,32 @@ export function NetworkView({
   const activateCard = (task: SuccesTask) => {
     setSelectedEdge(null);
     if (linkMode) {
-      if (!linkFrom) {
-        setLinkFrom(task.id);
-        return;
+      // Le même verdict que le tirage (`actionLiaison` → `verdictDepot`) :
+      // boucle ou doublon sont dits ici, sans rien envoyer. Jusqu'à la revue
+      // du 18 sept. 2026, ce chemin — clic, L + Entrée, « Relier depuis
+      // ici » — ne regardait que la boucle : un lien déjà présent partait au
+      // serveur, qui le rendait sans rien enregistrer, et le toast disait
+      // « Dépendance ajoutée » (§100). Le serveur reste le juge pour ce que
+      // le client ne voit pas — une arête arrivée d'un pair entre-temps.
+      const action = actionLiaison(reseau, linkFrom, task.id);
+      switch (action.type) {
+        case 'choisir-source':
+          setLinkFrom(task.id);
+          return;
+        case 'annuler-source':
+          setLinkFrom(null);
+          return;
+        case 'refus':
+          // Prévenu AVANT le clic : la cible est déjà atténuée et son
+          // libellé le dit ; ici, on ne fait que le redire.
+          setError(action.phrase);
+          return;
+        case 'lier':
+          setLinkMode(false);
+          setLinkFrom(null);
+          void run(() => onLink(action.from, action.to));
+          return;
       }
-      if (linkFrom === task.id) {
-        setLinkFrom(null);
-        return;
-      }
-      if (fermeraitUneBoucle(reseau, linkFrom, task.id)) {
-        // Prévenu AVANT le clic : la cible est déjà atténuée et son libellé
-        // le dit ; ici, on ne fait que le redire. Le serveur reste le juge
-        // (workspace.py refuse la boucle avec sa phrase) pour tout ce que le
-        // client ne voit pas — une arête arrivée d'un pair entre-temps.
-        setError(phraseBoucle(reseau, linkFrom, task.id));
-        return;
-      }
-      const from = linkFrom;
-      setLinkMode(false);
-      setLinkFrom(null);
-      void run(() => onLink(from, task.id));
-      return;
     }
     onSelect?.(task);
   };
@@ -644,9 +655,10 @@ export function NetworkView({
   // La source d'un lien en cours : celle du tirage, sinon celle du mode Relier.
   const sourceLiaison = tirage?.sourceId ?? (linkMode ? linkFrom : null);
 
-  /** Une fois la source choisie (Relier ou tirage) : cette cible fermerait-elle une boucle ? */
-  const cibleImpossible = (id: string) =>
-    sourceLiaison !== null && sourceLiaison !== id && fermeraitUneBoucle(reseau, sourceLiaison, id);
+  /** Une fois la source choisie (Relier ou tirage) : pourquoi cette cible est impossible (boucle, déjà reliée), ou null. */
+  const motifCible = (id: string): string | null =>
+    sourceLiaison !== null && sourceLiaison !== id ? motifCibleImpossible(reseau, sourceLiaison, id) : null;
+  const cibleImpossible = (id: string) => motifCible(id) !== null;
 
   /** Même atténuation dans le dessin et dans la Liste : chaîne nette, cible impossible (0.3 pendant le tirage), hors fil, faite. */
   const opaciteDe = (task: SuccesTask) =>
@@ -780,15 +792,30 @@ export function NetworkView({
             <span title="Chaîne la plus longue, en tâches ouvertes">
               profondeur {nombres.profondeur}
             </span>
-            {/* Dès qu'une durée existe (18 sept. 2026) : les jours du chemin
-                critique, projetés depuis aujourd'hui — jamais une date
-                promise. Sans durée, rien : on ne compte pas des jours que
-                personne n'a estimés. */}
+            {/* Quand chaque tâche ouverte est estimée (18 sept. 2026) : les
+                jours du chemin critique, projetés depuis aujourd'hui — jamais
+                une date promise. Estimation entamée mais incomplète : « 3
+                tâches estimées sur 7 », en tertiaire — la revue du réseau a
+                mesuré « fin projetée ~3 j » pour un projet dont six tâches
+                ouvertes sur sept pesaient 0 j faute d'estimation. Sans
+                aucune durée, rien. */}
             {nombres.joursProjetes !== null && (
               <>
                 <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>·</span>
                 <span title="Les jours du chemin critique, depuis aujourd’hui — pas une date promise">
                   fin projetée <span className="tabular-nums">~{nombres.joursProjetes} j</span>
+                </span>
+              </>
+            )}
+            {libelleEstimation(nombres) !== null && (
+              <>
+                <span aria-hidden="true" style={{ color: 'var(--color-text-tertiary)' }}>·</span>
+                <span
+                  className="font-normal"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                  title="Une fin ne se projette que quand chaque tâche ouverte porte une durée"
+                >
+                  {libelleEstimation(nombres)}
                 </span>
               </>
             )}
@@ -825,7 +852,11 @@ export function NetworkView({
             {/* Triées par ce qu'elles libèrent (`faisables`, reseau.ts) : la
                 première puce est la tâche à faire ce soir. « → 2 » dit
                 combien de tâches ouvertes attendent celle-ci, de près ou de
-                loin ; rien quand elle n'ouvre rien seule. */}
+                loin ; rien quand elle n'ouvre rien seule. C'est « en aval »,
+                pas « débloque » : ce verbe est réservé aux successeures
+                directes ouvertes (revue, goulot, fiche), et la puce disait
+                « débloque 3 » là où la fiche de « riz » disait « Débloque 1 »
+                (revue du réseau, 18 sept. 2026). */}
             {feasible.map((task) => {
               const n = impact(reseau, task.id);
               return (
@@ -834,8 +865,9 @@ export function NetworkView({
                   type="button"
                   onClick={() => onSelect?.(task)}
                   aria-label={
-                    n >= 1 ? `${task.title} — débloque ${n} tâche${n > 1 ? 's' : ''}` : task.title
+                    n >= 1 ? `${task.title} — ${n} tâche${n > 1 ? 's' : ''} en aval` : task.title
                   }
+                  title={n >= 1 ? `${n} tâche${n > 1 ? 's' : ''} ouverte${n > 1 ? 's' : ''} en aval, de près ou de loin` : undefined}
                   className="px-2.5 py-1 rounded-full text-xs cursor-pointer inline-flex items-center gap-1.5"
                   style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 >
@@ -1274,9 +1306,11 @@ export function NetworkView({
               // sous le titre — elle passe pour faisable sans que rien ne
               // l'ait placée.
               const orpheline = !task.done && estOrpheline(reseau, task.id);
-              // En mode liaison, une cible qui fermerait une boucle est
-              // atténuée à 0.4 et son libellé le dit, avant le clic.
-              const impossible = cibleImpossible(task.id);
+              // En mode liaison, une cible qui fermerait une boucle ou qui
+              // est déjà reliée est atténuée à 0.4 et son libellé le dit,
+              // avant le clic.
+              const motif = motifCible(task.id);
+              const impossible = motif !== null;
               // « ~3 j » : la durée estimée, seulement quand elle existe et
               // que la tâche est ouverte — une faite ne pèse plus.
               const jours = task.done ? 0 : dureeDe(reseau, task.id);
@@ -1338,8 +1372,8 @@ export function NetworkView({
                     aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
                       jours > 0 ? `, environ ${jours} jour${jours > 1 ? 's' : ''}` : ''
                     }${aval >= 2 ? `, ${aval} tâches en aval` : ''}${
-                      impossible
-                        ? '. Impossible : fermerait une boucle'
+                      motif
+                        ? `. ${motif}`
                         : linkMode
                           ? linkFrom
                             ? '. Choisir comme cible'
@@ -1347,7 +1381,7 @@ export function NetworkView({
                           : ''
                     }`}
                     aria-disabled={impossible || undefined}
-                    title={impossible ? 'Impossible : fermerait une boucle' : task.title}
+                    title={motif ?? task.title}
                     className="flex-1 min-w-0 pr-4 text-left cursor-pointer grid gap-0.5 outline-none"
                   >
                     <span
@@ -1556,7 +1590,8 @@ export function NetworkView({
                   const status = ligne.statut;
                   const isLinkSource = linkFrom === task.id;
                   const isFocused = focusedId === task.id;
-                  const impossible = cibleImpossible(task.id);
+                  const motif = motifCible(task.id);
+                  const impossible = motif !== null;
                   const mention = mentionLigne(reseau, ligne);
                   const orpheline = !task.done && estOrpheline(reseau, task.id);
                   // Les voisines citées : en amont pour une bloquée (ce qu'elle
@@ -1588,8 +1623,8 @@ export function NetworkView({
                           aria-label={`${task.title} — ${statusLabel(status)}${orpheline ? ', sans lien' : ''}${
                             mention ? `, ${mention}` : ''
                           }${ligne.aval >= 2 ? `, ${ligne.aval} tâches en aval` : ''}${
-                            impossible
-                              ? '. Impossible : fermerait une boucle'
+                            motif
+                              ? `. ${motif}`
                               : linkMode
                                 ? linkFrom
                                   ? '. Choisir comme cible'
@@ -1597,7 +1632,7 @@ export function NetworkView({
                                 : ''
                           }`}
                           aria-disabled={impossible || undefined}
-                          title={impossible ? 'Impossible : fermerait une boucle' : undefined}
+                          title={motif ?? undefined}
                           className="text-left cursor-pointer outline-none text-[13px] font-medium leading-snug whitespace-normal break-words"
                           style={{
                             color: 'var(--color-text)',

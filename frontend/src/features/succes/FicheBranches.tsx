@@ -225,7 +225,8 @@ export function FicheBranches({
   const place = placeSurLeFil(reseau, tache.id);
   // Ce que terminer la tâche centrale ouvrirait : les successeures dont elle
   // est la dernière attente ouverte. Dit seulement pour une faisable — c'est
-  // une invitation, et « Débloque 2 » au-dessus compte déjà les voisines.
+  // une invitation, et « Débloque 2 » au-dessus compte déjà les voisines
+  // directes ouvertes.
   const ouvrirait =
     statut === 'faisable'
       ? ceQueDebloque(reseau, tache.id)
@@ -463,9 +464,12 @@ export function FicheBranches({
                 <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
                   {ligneDeComptes(reseau, tache.id)}
                   {/* « ~3 j » quand la tâche est estimée ; puis « Sur le chemin
-                      critique » ou « Marge : 2 j » dès qu'une durée existe dans
-                      le projet, sinon « Sur la chaîne la plus longue » ou
-                      « Marge : 1 tâche » — en tâches, jamais en jours inventés. */}
+                      critique » ou « Marge : 2 j » quand CHAQUE tâche ouverte du
+                      projet est estimée, sinon « Sur la chaîne la plus longue »
+                      ou « Marge : 1 tâche » — en tâches, jamais en jours
+                      inventés : une seule durée saisie donnait « Marge : 3 j »
+                      sur des chaînes que personne n'avait estimées (revue du
+                      réseau, 18 sept. 2026). */}
                   {!tache.done && (tache.estimateDays ?? 0) > 0 && (
                     <span className="tabular-nums"> · ~{tache.estimateDays} j</span>
                   )}

@@ -60,6 +60,13 @@ import {
   phraseDepot,
   verdictDepot,
   SEUIL_TIRAGE_PX,
+  actionLiaison,
+  cheminCritique,
+  debloqueDirectes,
+  estimation,
+  estimationComplete,
+  libelleEstimation,
+  motifCibleImpossible,
   type Point,
 } from './reseau';
 import type { SuccesTask, SuccesTaskEdge } from './types';
@@ -266,6 +273,21 @@ describe('voisinage', () => {
     expect(ligneDeComptes(reseau, 'besoin')).toBe('Attend 1 · Débloque 2');
     expect(ligneDeComptes(reseau, 'contrat')).toBe('Attend 1 · Débloque 0');
     expect(ligneDeComptes(agricultureApresAgri(), 'agri')).toBe('Faite · Débloque 1');
+  });
+
+  it('« débloque » ne compte que les successeures directes OUVERTES — le même nombre dans la fiche et la revue', () => {
+    // §5, revue du 18 sept. 2026 : riz et budget faites, la fiche de « besoin »
+    // disait « Débloque 2 » en comptant budget, déjà faite ; la revue « débloque 1 ».
+    const reseau = construireReseau(
+      AGRI.map((t) => (t.id === 'riz' || t.id === 'budget' ? { ...t, done: true } : t)),
+      ARETES,
+    );
+    expect(debloqueDirectes(reseau, 'besoin')).toBe(1);
+    expect(ligneDeComptes(reseau, 'besoin')).toBe('Faisable maintenant · Débloque 1');
+    expect(goulots(agriculture())[0]).toEqual({ id: 'besoin', debloque: debloqueDirectes(agriculture(), 'besoin') });
+    // L'aval transitif garde son mot : « riz » a 3 tâches en aval et n'en débloque qu'une.
+    expect(impact(agriculture(), 'riz')).toBe(3);
+    expect(debloqueDirectes(agriculture(), 'riz')).toBe(1);
   });
 });
 
@@ -474,6 +496,21 @@ describe('placeSurLeFil — sans inventer un chemin critique', () => {
     expect(placeSurLeFil(reseau, 'contrat')).toBe('Marge : 1 tâche');
     expect(placeSurLeFil(reseau, 'tracteur')).toBe('Sur la chaîne la plus longue');
   });
+
+  it('sur une boucle relayée, la marge n’est jamais négative (§5)', () => {
+    // t1→t2, t2→t1 (acceptée à la réception, test_structures.py) et t2→t3 :
+    // la fiche écrivait « Marge : -1 tâche » (revue du réseau, 18 sept. 2026).
+    const reseau = construireReseau(
+      [tache('t1', 'un'), tache('t2', 'deux'), tache('t3', 'trois')],
+      [arete('t1', 't2'), arete('t2', 't1'), arete('t2', 't3')],
+    );
+    for (const id of ['t1', 't2', 't3']) {
+      const marge = margeDe(reseau, id);
+      expect(marge, `marge de ${id}`).not.toBeNull();
+      expect(marge as number, `marge de ${id}`).toBeGreaterThanOrEqual(0);
+      expect(placeSurLeFil(reseau, id), `place de ${id}`).not.toMatch(/-/);
+    }
+  });
 });
 
 describe('comptes et en-tête', () => {
@@ -485,6 +522,8 @@ describe('comptes et en-tête', () => {
       profondeur: 3,
       // Aucune durée sur AgriCulture : pas de fin projetée, pas de « chemin critique ».
       joursProjetes: null,
+      estimees: 0,
+      ouvertes: 7,
     });
     expect(libelleEnTete(comptes(agriculture()))).toBe('2 faisables · 5 bloquées · profondeur 3');
   });
@@ -496,7 +535,15 @@ describe('comptes et en-tête', () => {
 
   it('un projet fini a une profondeur de zéro', () => {
     const reseau = construireReseau([tache('a', 'a', true), tache('b', 'b', true)], [arete('a', 'b')]);
-    expect(comptes(reseau)).toEqual({ faisables: 0, bloquees: 0, faites: 2, profondeur: 0, joursProjetes: null });
+    expect(comptes(reseau)).toEqual({
+      faisables: 0,
+      bloquees: 0,
+      faites: 2,
+      profondeur: 0,
+      joursProjetes: null,
+      estimees: 0,
+      ouvertes: 0,
+    });
   });
 });
 
@@ -955,17 +1002,21 @@ describe('tracer un lien en tirant une carte (18 sept. 2026)', () => {
   });
 });
 
-describe('une durée estimée en jours, et alors seulement un chemin critique (18 sept. 2026)', () => {
-  /** AgriCulture avec des durées : le fil en tâches (agri → discuter → contrat, 3) n'est plus le plus lourd. */
+describe('une durée estimée en jours, et un chemin critique seulement quand chaque tâche ouverte en porte une (18 sept. 2026)', () => {
+  /** AgriCulture avec des durées, 0 = non estimée. */
   const avecDurees = (jours: Record<string, number>) =>
     construireReseau(
       AGRI.map((t) => ({ ...t, estimateDays: jours[t.id] ?? 0 })),
       ARETES,
     );
+  /** Les sept tâches d'AgriCulture estimées : riz → besoin → budget pèse 10 j, la chaîne agri → discuter → contrat 3 j. */
+  const COMPLETE = { riz: 1, besoin: 5, budget: 4, tracteur: 2, agri: 1, discuter: 1, contrat: 1 };
 
   it('sans durée, rien ne change : pas de jours, la chaîne se compte en tâches', () => {
     const reseau = agriculture();
     expect(aDesDurees(reseau)).toBe(false);
+    expect(estimationComplete(reseau)).toBe(false);
+    expect(cheminCritique(reseau)).toBeNull();
     expect(finProjetee(reseau)).toBeNull();
     expect(margeJours(reseau, 'budget')).toBeNull();
     expect(chaineLaPlusLongue(reseau)).toEqual(['agri', 'discuter', 'contrat']);
@@ -988,19 +1039,63 @@ describe('une durée estimée en jours, et alors seulement un chemin critique (1
     expect(['a', 'b', 'c', 'd', 'e', 'inconnue'].map((id) => dureeDe(reseau, id))).toEqual([3, 2, 0, 0, 0, 0]);
   });
 
-  it('dès qu\'une durée existe, la chaîne la plus lourde en jours l\'emporte sur la plus longue en tâches', () => {
-    // riz 1 j → besoin 5 j → budget 4 j = 10 j, contre agri → discuter → contrat = 0 j en 3 tâches.
-    const reseau = avecDurees({ riz: 1, besoin: 5, budget: 4 });
-    expect(aDesDurees(reseau)).toBe(true);
-    expect(chaineLaPlusLongue(reseau)).toEqual(['riz', 'besoin', 'budget']);
-    expect(joursDeChaine(reseau, ['riz', 'besoin', 'budget'])).toBe(10);
-    expect(finProjetee(reseau)).toBe(10);
-    expect(libelleEnTete(comptes(reseau))).toBe(
-      '2 faisables · 5 bloquées · profondeur 3 · fin projetée ~10 j',
+  it('une chaîne de quatre tâches sans durée reste « profondeur 4 » face à une tâche seule estimée à 1 j', () => {
+    // Revue du réseau : `chaineLaPlusLongue` rendait ['z'] et l'en-tête
+    // « profondeur 1 · fin projetée ~1 j » pour un graphe à quatre niveaux.
+    const reseau = construireReseau(
+      [
+        tache('a', 'a'),
+        tache('b', 'b'),
+        tache('c', 'c'),
+        tache('d', 'd'),
+        { ...tache('z', 'z'), estimateDays: 1 },
+      ],
+      [arete('a', 'b'), arete('b', 'c'), arete('c', 'd')],
     );
+    expect(chaineLaPlusLongue(reseau)).toEqual(['a', 'b', 'c', 'd']);
+    expect(estimation(reseau)).toEqual({ estimees: 1, ouvertes: 5, complete: false });
+    expect(cheminCritique(reseau)).toBeNull();
+    expect(finProjetee(reseau)).toBeNull();
+    const c = comptes(reseau);
+    expect(c.profondeur).toBe(4);
+    expect(c.joursProjetes).toBeNull();
+    expect(libelleEstimation(c)).toBe('1 tâche estimée sur 5');
+    expect(libelleEnTete(c)).toBe('2 faisables · 3 bloquées · profondeur 4 · 1 tâche estimée sur 5');
+    // La fiche reste en tâches : pas de « chemin critique » sur z, pas de « Marge : 1 j » sur a.
+    expect(margeJours(reseau, 'z')).toBeNull();
+    expect(placeSurLeFil(reseau, 'z')).toBe('Marge : 3 tâches');
+    expect(placeSurLeFil(reseau, 'a')).toBe('Sur la chaîne la plus longue');
   });
 
-  it('à jours égaux, la chaîne la plus longue en tâches, puis la première par titres', () => {
+  it('une seule durée sur AgriCulture ne projette rien et ne pose de marge en jours sur personne', () => {
+    // Revue du réseau : « ~ 3 j » sur « agriculteurs » seule donnait « fin
+    // projetée ~3 j », « Marge : 3 j » sur riz et « Sur le chemin critique »
+    // sur contrat, non estimée.
+    const reseau = avecDurees({ agri: 3 });
+    expect(aDesDurees(reseau)).toBe(true);
+    expect(estimationComplete(reseau)).toBe(false);
+    expect(libelleEnTete(comptes(reseau))).toBe('2 faisables · 5 bloquées · profondeur 3 · 1 tâche estimée sur 7');
+    expect(placeSurLeFil(reseau, 'riz')).toBe('Sur une chaîne aussi longue que le fil');
+    expect(placeSurLeFil(reseau, 'contrat')).toBe('Sur la chaîne la plus longue');
+    expect(placeSurLeFil(reseau, 'budget')).toBe('Sur une chaîne aussi longue que le fil');
+    expect(['riz', 'contrat', 'budget'].map((id) => placeSurLeFil(reseau, id))).not.toContain('Sur le chemin critique');
+  });
+
+  it('estimation complète : le chemin critique est la chaîne la plus lourde, la profondeur reste en tâches', () => {
+    const reseau = avecDurees(COMPLETE);
+    expect(estimationComplete(reseau)).toBe(true);
+    expect(cheminCritique(reseau)).toEqual(['riz', 'besoin', 'budget']);
+    expect(joursDeChaine(reseau, ['riz', 'besoin', 'budget'])).toBe(10);
+    expect(finProjetee(reseau)).toBe(10);
+    // Deux chaînes de 3 tâches : la plus longue en tâches est tranchée par les titres, pas par les jours.
+    expect(chaineLaPlusLongue(reseau)).toEqual(['agri', 'discuter', 'contrat']);
+    const c = comptes(reseau);
+    expect(c.profondeur).toBe(3);
+    expect(libelleEstimation(c)).toBeNull();
+    expect(libelleEnTete(c)).toBe('2 faisables · 5 bloquées · profondeur 3 · fin projetée ~10 j');
+  });
+
+  it('à jours égaux, le chemin critique est la chaîne la plus longue en tâches, puis la première par titres', () => {
     // Deux chaînes de 6 j : la première est la plus longue en tâches (3 contre 2).
     const reseau = construireReseau(
       [
@@ -1012,12 +1107,12 @@ describe('une durée estimée en jours, et alors seulement un chemin critique (1
       ],
       [arete('a', 'b'), arete('b', 'c'), arete('x', 'y')],
     );
-    expect(chaineLaPlusLongue(reseau)).toEqual(['a', 'b', 'c']);
+    expect(cheminCritique(reseau)).toEqual(['a', 'b', 'c']);
   });
 
   it('la marge en jours est la marge totale du CPM, et zéro vaut « sur le chemin critique »', () => {
     // riz 1 → besoin 5 → budget 4 (10 j, critique) ; besoin → tracteur 2 (8 j via ce bras).
-    const reseau = avecDurees({ riz: 1, besoin: 5, budget: 4, tracteur: 2, agri: 1, discuter: 1, contrat: 1 });
+    const reseau = avecDurees(COMPLETE);
     expect(margeJours(reseau, 'besoin')).toBe(0);
     expect(margeJours(reseau, 'budget')).toBe(0);
     expect(margeJours(reseau, 'tracteur')).toBe(2);
@@ -1027,19 +1122,32 @@ describe('une durée estimée en jours, et alors seulement un chemin critique (1
     expect(placeSurLeFil(reseau, 'contrat')).toBe('Marge : 7 j');
   });
 
-  it('une tâche sans estimation sur un projet qui en a compte zéro jour, et une faite ne compte plus', () => {
+  it('une tâche faite ne compte ni dans l’estimation ni dans les jours', () => {
+    // riz faite (9 j) : ses jours ne pèsent plus, et son absence d'estimation
+    // n'aurait pas compté non plus. Les six ouvertes sont estimées : complet.
     const reseau = construireReseau(
       AGRI.map((t) =>
-        t.id === 'riz' ? { ...t, done: true, estimateDays: 9 } : { ...t, estimateDays: t.id === 'besoin' ? 5 : 0 },
+        t.id === 'riz' ? { ...t, done: true, estimateDays: 9 } : { ...t, estimateDays: COMPLETE[t.id as keyof typeof COMPLETE] },
       ),
       ARETES,
     );
-    // riz est faite : ses 9 j ne pèsent plus ; besoin → budget = 5 j, tracteur idem.
-    expect(finProjetee(reseau)).toBe(5);
+    expect(estimation(reseau)).toEqual({ estimees: 6, ouvertes: 6, complete: true });
+    // besoin 5 → budget 4 = 9 j, contre agri 1 → discuter 1 → contrat 1 = 3 j.
+    expect(finProjetee(reseau)).toBe(9);
     expect(margeJours(reseau, 'riz')).toBeNull();
     expect(margeJours(reseau, 'budget')).toBe(0);
-    expect(margeJours(reseau, 'contrat')).toBe(5);
+    expect(margeJours(reseau, 'contrat')).toBe(6);
     expect(placeSurLeFil(reseau, 'riz')).toBeNull();
+  });
+
+  it('un projet fini n’a rien à projeter : l’estimation n’y est pas « complète »', () => {
+    const reseau = construireReseau(
+      [{ ...tache('a', 'a', true), estimateDays: 2 }, { ...tache('b', 'b', true), estimateDays: 2 }],
+      [arete('a', 'b')],
+    );
+    expect(estimation(reseau)).toEqual({ estimees: 0, ouvertes: 0, complete: false });
+    expect(finProjetee(reseau)).toBeNull();
+    expect(libelleEstimation(comptes(reseau))).toBeNull();
   });
 
   it('la saisie « ~ j » n\'accepte qu\'un entier de 0 à 3650, vide valant zéro', () => {
@@ -1052,5 +1160,44 @@ describe('une durée estimée en jours, et alors seulement un chemin critique (1
     expect(lireDureeSaisie('1.5')).toBeNull();
     expect(lireDureeSaisie('-1')).toBeNull();
     expect(lireDureeSaisie('deux')).toBeNull();
+  });
+});
+
+describe('relier au clic, à Entrée ou depuis la fiche passe par le verdict du tirage (§100, revue du 18 sept. 2026)', () => {
+  it('sans source, la carte devient la source ; la même carte l’annule', () => {
+    const reseau = agriculture();
+    expect(actionLiaison(reseau, null, 'riz')).toEqual({ type: 'choisir-source' });
+    expect(actionLiaison(reseau, 'riz', 'riz')).toEqual({ type: 'annuler-source' });
+  });
+
+  it('un lien déjà présent est refusé sans rien envoyer — plus de « Dépendance ajoutée » pour un doublon', () => {
+    const reseau = agriculture();
+    expect(actionLiaison(reseau, 'riz', 'besoin')).toEqual({
+      type: 'refus',
+      phrase: '« Qu’est ce que nou allons commencer avec en premier | Riz ou Haricots ? » débloque déjà « Qu’est-ce qu’on aura besoin en premier ? ».',
+    });
+  });
+
+  it('une boucle est refusée avant le clic, avec la phrase du tirage', () => {
+    const reseau = agriculture();
+    expect(actionLiaison(reseau, 'besoin', 'riz')).toEqual({
+      type: 'refus',
+      phrase: phraseBoucle(reseau, 'besoin', 'riz'),
+    });
+  });
+
+  it('un lien possible part au serveur, et lui seul', () => {
+    const reseau = agriculture();
+    expect(actionLiaison(reseau, 'budget', 'tracteur')).toEqual({ type: 'lier', from: 'budget', to: 'tracteur' });
+    expect(verdictDepot(reseau, 'budget', 'tracteur')).toBe('ok');
+  });
+
+  it('la cible dit pourquoi elle est impossible : boucle, ou déjà reliée', () => {
+    const reseau = agriculture();
+    expect(motifCibleImpossible(reseau, 'besoin', 'riz')).toBe('Impossible : fermerait une boucle');
+    expect(motifCibleImpossible(reseau, 'riz', 'besoin')).toBe(
+      'Déjà reliée : « Qu’est ce que nou allons commencer avec en premier | Riz ou Haricots ? » la débloque déjà',
+    );
+    expect(motifCibleImpossible(reseau, 'budget', 'tracteur')).toBeNull();
   });
 });
