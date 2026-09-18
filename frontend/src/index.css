@@ -676,6 +676,26 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
     text-decoration: underline dotted;
     text-underline-offset: 0.25em;
   }
+
+  /*
+   * Les cartes du réseau (18 sept. 2026). Ailleurs, la carte faisable porte
+   * l'accent sur sa bordure et le glyphe d'état le porte aussi ; en
+   * Ardéchine `--color-accent` EST l'encre (#14120e) : faisable et bloquée ne
+   * se distinguaient que par le petit libellé sous le titre. La forme
+   * remplace la teinte — faisable = bordure pleine de 2 px, bloquée =
+   * pointillés, faite = titre barré (inline) et carte estompée. `!important`
+   * parce que la bordure de la carte est posée en style inline par la vue,
+   * et que le verre de CadreVitre pose la sienne en quatre propriétés.
+   */
+  :root.terminal[data-terminal-skin='ardechine'] .reseau-carte[data-statut='faisable'] {
+    border: 2px solid var(--color-text) !important;
+  }
+  :root.terminal[data-terminal-skin='ardechine'] .reseau-carte[data-statut='bloquee'] {
+    border: 1px dashed var(--color-text) !important;
+  }
+  :root.terminal[data-terminal-skin='ardechine'] .reseau-carte[data-statut='faite'] {
+    border: 1px solid color-mix(in srgb, var(--color-text) 45%, transparent) !important;
+  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-weight: 400;
@@ -2062,12 +2082,19 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 .reseau-estompable {
   transition: opacity 240ms ease;
 }
+/* La carte vitrée : `.composer-glass` pose sa propre `transition`
+   (bordure, ombre) hors couche, à égalité de spécificité — l'estompage de la
+   carte ne s'animait pas selon l'ordre d'import. Deux classes tranchent. */
+.cadre-vitre.reseau-carte {
+  transition: opacity 240ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
 @media (prefers-reduced-motion: reduce) {
   .fiche-branches-entree,
   .fiche-branches-glisse {
     animation: none;
   }
-  .reseau-estompable {
+  .reseau-estompable,
+  .cadre-vitre.reseau-carte {
     transition: none;
   }
 }

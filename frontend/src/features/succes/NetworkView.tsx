@@ -1,12 +1,15 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { CirclePlus, Link2, Loader2 } from 'lucide-react';
+import { Check, CirclePlus, Link2, Loader2 } from 'lucide-react';
 
+import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
   chaineComplete,
   colonnesInitiales,
@@ -41,8 +44,16 @@ type Props = {
   liaisonDemandee?: { sourceId: string; jeton: number } | null;
 };
 
-const CARD_W = 190;
-const CARD_H = 64;
+// Des cartes HTML vitrées (chantier réseau, 18 sept. 2026). Jusque-là la
+// carte était un <rect> SVG : `truncate(title, 20)` donnait « Avoir les bons
+// agri… » sur 6 des 7 titres d'AgriCulture, et le <svg width="100%">
+// mettait le graphe À L'ÉCHELLE — 3 colonnes = 762 px de viewBox rendus dans
+// les 340 px du mini-panneau, texte de 13 px affiché à ~6 px.
+// 210 × 76 : deux lignes de 13 px (interligne 1,3 → 34 px), une ligne d'état
+// de 11 px, 10 px de marge en haut et en bas ; il reste 6 px pour la bordure
+// de 2 px du focus et l'arrondi.
+const CARD_W = 210;
+const CARD_H = 76;
 const GAP_X = 72;
 const GAP_Y = 26;
 const PAD = 24;
@@ -51,10 +62,6 @@ const DANGER = 'var(--color-error, var(--color-text-secondary))';
 // Le raisonnement (niveaux, statuts, faisables, colonnes) vit dans
 // `reseau.ts`, testé sur AgriCulture (chantier réseau, 18 sept. 2026) :
 // ici on ne fait que dessiner.
-
-function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
-}
 
 export function NetworkView({
   tasks,
@@ -107,6 +114,37 @@ export function NetworkView({
       }),
     [reseau],
   );
+
+  /** La courbe d'une arête, du bord droit de la source au bord gauche de la cible. */
+  const cheminArete = (edge: SuccesTaskEdge): string | null => {
+    const from = layout.pos.get(edge.fromTaskId);
+    const to = layout.pos.get(edge.toTaskId);
+    if (!from || !to) return null;
+    const x1 = from.x + CARD_W;
+    const y1 = from.y + CARD_H / 2;
+    const x2 = to.x - 2;
+    const y2 = to.y + CARD_H / 2;
+    const dx = Math.max(28, Math.abs(x2 - x1) / 2);
+    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  };
+
+  // À l'ouverture, la première colonne faisable est visible : le graphe
+  // défile désormais au lieu de rétrécir, et un projet dont les racines sont
+  // faites aurait montré deux colonnes de cartes barrées à 340 px.
+  const defilement = useRef<HTMLDivElement>(null);
+  const dejaCadre = useRef(false);
+  useLayoutEffect(() => {
+    if (dejaCadre.current || tasks.length === 0) return;
+    dejaCadre.current = true;
+    const conteneur = defilement.current;
+    if (!conteneur) return;
+    let xMin = Number.POSITIVE_INFINITY;
+    for (const task of feasible) {
+      const p = layout.pos.get(task.id);
+      if (p) xMin = Math.min(xMin, p.x);
+    }
+    if (Number.isFinite(xMin)) conteneur.scrollLeft = Math.max(0, xMin - PAD);
+  }, [tasks.length, feasible, layout]);
 
   useEffect(() => {
     if (!linkMode && !selectedEdge) return;
@@ -184,7 +222,7 @@ export function NetworkView({
   };
 
   const statusLabel = (status: StatutTache) =>
-    status === 'faite' ? '✓ fait' : status === 'faisable' ? '→ faisable maintenant' : '⏳ bloquée';
+    status === 'faite' ? 'Faite' : status === 'faisable' ? 'Faisable maintenant' : 'Bloquée';
 
   const statusColor = (status: StatutTache) =>
     status === 'faite'
@@ -237,7 +275,7 @@ export function NetworkView({
           className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer disabled:opacity-50"
           style={
             linkMode
-              ? { background: 'var(--color-accent)', color: '#fff' }
+              ? { background: 'var(--color-accent)', color: 'var(--color-on-accent)' }
               : { border: '1px solid var(--color-border)', color: 'var(--color-text)' }
           }
         >
@@ -273,90 +311,75 @@ export function NetworkView({
         </div>
       ) : (
         <div
+          ref={defilement}
           className="rounded-2xl p-2 overflow-x-auto"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
-          <svg
-            width="100%"
-            viewBox={`0 0 ${layout.largeur} ${layout.hauteur}`}
-            role="img"
+          {/* Le canevas prend sa largeur RÉELLE en pixels : à 340 px il défile,
+              il ne rétrécit plus. Les cartes sont posées en absolu aux
+              positions de `positionner`, à taille fixe (`overflow-hidden`,
+              titre replié sur deux lignes) : la géométrie des arêtes est donc
+              celle du layout, sans mesure du DOM — une carte ne peut pas
+              grandir sans que la disposition le sache. */}
+          <div
+            role="group"
             aria-label="Réseau des tâches reliées par « débloque »"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
+            className="relative isolate"
+            style={{ width: layout.largeur, height: layout.hauteur }}
             onClick={() => setSelectedEdge(null)}
           >
-            <defs>
-              <marker
-                id="nv-arrow-border"
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="8"
-                markerHeight="8"
-                orient="auto-start-reverse"
-              >
-                <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-border)" />
-              </marker>
-              <marker
-                id="nv-arrow-accent"
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="8"
-                markerHeight="8"
-                orient="auto-start-reverse"
-              >
-                <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-accent)" />
-              </marker>
-            </defs>
-
-            {visibleEdges.map((edge) => {
-              const from = layout.pos.get(edge.fromTaskId);
-              const to = layout.pos.get(edge.toTaskId);
-              const fromTask = byId.get(edge.fromTaskId);
-              const toTask = byId.get(edge.toTaskId);
-              if (!from || !to || !fromTask || !toTask) return null;
-              const x1 = from.x + CARD_W;
-              const y1 = from.y + CARD_H / 2;
-              const x2 = to.x - 2;
-              const y2 = to.y + CARD_H / 2;
-              const dx = Math.max(28, Math.abs(x2 - x1) / 2);
-              const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-              const waiting = !fromTask.done;
-              const isSelected =
-                selectedEdge?.from === edge.fromTaskId && selectedEdge?.to === edge.toTaskId;
-              return (
-                <g
-                  key={`${edge.fromTaskId}->${edge.toTaskId}`}
-                  className="reseau-estompable"
-                  style={{ opacity: estompe(edge.fromTaskId, edge.toTaskId) ? 0.3 : 1 }}
+            <svg
+              className="absolute inset-0 -z-10 pointer-events-none"
+              width={layout.largeur}
+              height={layout.hauteur}
+              viewBox={`0 0 ${layout.largeur} ${layout.hauteur}`}
+              aria-hidden="true"
+            >
+              <defs>
+                <marker
+                  id="nv-arrow-border"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="8"
+                  markerHeight="8"
+                  orient="auto-start-reverse"
                 >
+                  <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-border)" />
+                </marker>
+                <marker
+                  id="nv-arrow-accent"
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="8"
+                  markerHeight="8"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-accent)" />
+                </marker>
+              </defs>
+              {visibleEdges.map((edge) => {
+                const d = cheminArete(edge);
+                const fromTask = byId.get(edge.fromTaskId);
+                if (!d || !fromTask) return null;
+                const waiting = !fromTask.done;
+                const isSelected =
+                  selectedEdge?.from === edge.fromTaskId && selectedEdge?.to === edge.toTaskId;
+                return (
                   <path
+                    key={`${edge.fromTaskId}->${edge.toTaskId}`}
+                    className="reseau-estompable"
                     d={d}
                     fill="none"
                     stroke={waiting ? 'var(--color-accent)' : 'var(--color-border)'}
                     strokeWidth={isSelected ? 2.5 : 1.5}
                     markerEnd={`url(#${waiting ? 'nv-arrow-accent' : 'nv-arrow-border'})`}
+                    style={{ opacity: estompe(edge.fromTaskId, edge.toTaskId) ? 0.3 : 1 }}
                   />
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={14}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Lien : « ${fromTask.title} » débloque « ${toTask.title} ». Sélectionner pour supprimer.`}
-                    style={{ cursor: 'pointer', outline: 'none' }}
-                    onClick={(event: ReactMouseEvent<SVGPathElement>) => {
-                      event.stopPropagation();
-                      setSelectedEdge({ from: edge.fromTaskId, to: edge.toTaskId });
-                    }}
-                    onKeyDown={keyActivate(() =>
-                      setSelectedEdge({ from: edge.fromTaskId, to: edge.toTaskId }),
-                    )}
-                  />
-                </g>
-              );
-            })}
+                );
+              })}
+            </svg>
 
             {tasks.map((task) => {
               const p = layout.pos.get(task.id);
@@ -366,116 +389,150 @@ export function NetworkView({
               const isFocused = focusedId === task.id;
               const highlighted = isLinkSource || isFocused;
               return (
-                <g
+                <CadreVitre
+                  compact
                   key={task.id}
-                  transform={`translate(${p.x} ${p.y})`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${task.title} — ${statusLabel(status)}${
-                    linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''
-                  }`}
-                  className="reseau-estompable"
-                  style={{ cursor: 'pointer', outline: 'none', opacity: estompe(task.id) ? 0.3 : 1 }}
-                  onClick={() => activateCard(task)}
-                  onKeyDown={keyActivate(() => activateCard(task))}
-                  onFocus={() => setFocusedId(task.id)}
-                  onBlur={() => setFocusedId(null)}
+                  className="reseau-carte reseau-estompable rounded-xl p-2.5 flex items-start gap-2 overflow-hidden"
+                  data-statut={status}
+                  // `position` en inline : `.composer-glass { position: relative }`
+                  // (ComposerGlass.css, hors couche) l'emporte sur l'utilitaire
+                  // `absolute` de Tailwind (couche utilities) — les cartes
+                  // s'empilaient en flux, décalées de leur `left/top`.
+                  style={{
+                    position: 'absolute',
+                    left: p.x,
+                    top: p.y,
+                    width: CARD_W,
+                    height: CARD_H,
+                    background: 'var(--color-surface)',
+                    border: `1px solid ${
+                      highlighted || status === 'faisable' ? 'var(--color-accent)' : 'var(--color-border)'
+                    }`,
+                    borderWidth: highlighted ? 2 : undefined,
+                    borderStyle: isLinkSource ? 'dashed' : undefined,
+                    opacity: estompe(task.id) ? 0.3 : task.done ? 0.72 : 1,
+                  }}
                 >
-                  <rect
-                    width={CARD_W}
-                    height={CARD_H}
-                    rx={14}
-                    fill="var(--color-surface)"
-                    stroke={
-                      highlighted || status === 'faisable'
-                        ? 'var(--color-accent)'
-                        : 'var(--color-border)'
-                    }
-                    strokeWidth={highlighted ? 2 : 1}
-                    strokeDasharray={isLinkSource ? '5 3' : undefined}
-                    opacity={task.done ? 0.72 : 1}
-                  />
-                  <g
-                    role="button"
-                    tabIndex={0}
-                    aria-label={task.done ? `Rouvrir « ${task.title} »` : `Terminer « ${task.title} »`}
-                    style={{ cursor: 'pointer', outline: 'none' }}
-                    onClick={(event: ReactMouseEvent<SVGGElement>) => {
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={(event) => {
                       event.stopPropagation();
                       toggleTask(task);
                     }}
-                    onKeyDown={keyActivate(() => toggleTask(task))}
+                    aria-label={task.done ? `Rouvrir « ${task.title} »` : `Terminer « ${task.title} »`}
+                    className="mt-0.5 size-5 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-50"
+                    // Le glyphe d'état par la forme, et la coche : plein = faite,
+                    // cerclé = faisable, pointillé = bloquée.
+                    style={{
+                      border: `1.5px ${status === 'bloquee' ? 'dashed' : 'solid'} ${
+                        task.done || status === 'faisable' ? 'var(--color-accent)' : 'var(--color-border)'
+                      }`,
+                      background: task.done ? 'var(--color-accent)' : 'transparent',
+                      color: 'var(--color-on-accent)',
+                    }}
                   >
-                    <circle
-                      cx={20}
-                      cy={CARD_H / 2}
-                      r={9}
-                      fill={task.done ? 'var(--color-accent)' : 'var(--color-surface)'}
-                      stroke={task.done ? 'var(--color-accent)' : 'var(--color-border)'}
-                      strokeWidth={1.5}
-                    />
-                    {task.done && (
-                      <path
-                        d={`M 16 ${CARD_H / 2 + 0.5} L 19 ${CARD_H / 2 + 3.5} L 25 ${CARD_H / 2 - 3}`}
-                        fill="none"
-                        stroke="#fff"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    )}
-                  </g>
-                  <text
-                    x={38}
-                    y={CARD_H / 2 - 5}
-                    fontSize={13}
-                    fontWeight={600}
-                    fill="var(--color-text)"
-                    style={{ textDecoration: task.done ? 'line-through' : undefined }}
+                    {task.done && <Check size={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => activateCard(task)}
+                    onFocus={() => setFocusedId(task.id)}
+                    onBlur={() => setFocusedId(null)}
+                    aria-label={`${task.title} — ${statusLabel(status)}${
+                      linkMode ? (linkFrom ? '. Choisir comme cible' : '. Choisir comme source') : ''
+                    }`}
+                    title={task.title}
+                    className="flex-1 min-w-0 text-left cursor-pointer grid gap-0.5 outline-none"
                   >
-                    {truncate(task.title, 20)}
-                  </text>
-                  <text x={38} y={CARD_H / 2 + 14} fontSize={11} fill={statusColor(status)}>
-                    {statusLabel(status)}
-                  </text>
-                </g>
+                    <span
+                      className="text-[13px] font-semibold leading-[1.3] line-clamp-2 break-words"
+                      style={{
+                        color: 'var(--color-text)',
+                        textDecoration: task.done ? 'line-through' : undefined,
+                      }}
+                    >
+                      {task.title}
+                    </span>
+                    <span className="text-[11px] leading-none truncate" style={{ color: statusColor(status) }}>
+                      {statusLabel(status)}
+                    </span>
+                  </button>
+                </CadreVitre>
               );
             })}
 
-            {selectedEdge &&
-              (() => {
-                const from = layout.pos.get(selectedEdge.from);
-                const to = layout.pos.get(selectedEdge.to);
-                if (!from || !to) return null;
-                const mx = (from.x + CARD_W + to.x - 2) / 2;
-                const my = (from.y + CARD_H / 2 + to.y + CARD_H / 2) / 2;
+            {/* Au-dessus des cartes, les arêtes cliquables : un trait invisible de
+                14 px qui n'attrape que sa propre épaisseur, et le « × » de
+                suppression quand une arête est choisie. */}
+            <svg
+              className="absolute inset-0 pointer-events-none"
+              width={layout.largeur}
+              height={layout.hauteur}
+              viewBox={`0 0 ${layout.largeur} ${layout.hauteur}`}
+            >
+              {visibleEdges.map((edge) => {
+                const d = cheminArete(edge);
+                const fromTask = byId.get(edge.fromTaskId);
+                const toTask = byId.get(edge.toTaskId);
+                if (!d || !fromTask || !toTask) return null;
                 return (
-                  <g
-                    transform={`translate(${mx} ${my})`}
+                  <path
+                    key={`${edge.fromTaskId}->${edge.toTaskId}`}
+                    d={d}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={14}
                     role="button"
                     tabIndex={0}
-                    aria-label="Supprimer ce lien"
-                    style={{ cursor: 'pointer', outline: 'none' }}
-                    onClick={(event: ReactMouseEvent<SVGGElement>) => {
+                    aria-label={`Lien : « ${fromTask.title} » débloque « ${toTask.title} ». Sélectionner pour supprimer.`}
+                    style={{ cursor: 'pointer', outline: 'none', pointerEvents: 'stroke' }}
+                    onClick={(event: ReactMouseEvent<SVGPathElement>) => {
                       event.stopPropagation();
-                      unlinkSelected();
+                      setSelectedEdge({ from: edge.fromTaskId, to: edge.toTaskId });
                     }}
-                    onKeyDown={keyActivate(unlinkSelected)}
-                  >
-                    <circle r={11} fill="var(--color-surface)" stroke={DANGER} strokeWidth={1.5} />
-                    <text
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fontSize={14}
-                      fontWeight={600}
-                      fill={DANGER}
-                    >
-                      ×
-                    </text>
-                  </g>
+                    onKeyDown={keyActivate(() =>
+                      setSelectedEdge({ from: edge.fromTaskId, to: edge.toTaskId }),
+                    )}
+                  />
                 );
-              })()}
-          </svg>
+              })}
+
+              {selectedEdge &&
+                (() => {
+                  const from = layout.pos.get(selectedEdge.from);
+                  const to = layout.pos.get(selectedEdge.to);
+                  if (!from || !to) return null;
+                  const mx = (from.x + CARD_W + to.x - 2) / 2;
+                  const my = (from.y + CARD_H / 2 + to.y + CARD_H / 2) / 2;
+                  return (
+                    <g
+                      transform={`translate(${mx} ${my})`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Supprimer ce lien"
+                      style={{ cursor: 'pointer', outline: 'none', pointerEvents: 'all' }}
+                      onClick={(event: ReactMouseEvent<SVGGElement>) => {
+                        event.stopPropagation();
+                        unlinkSelected();
+                      }}
+                      onKeyDown={keyActivate(unlinkSelected)}
+                    >
+                      <circle r={11} fill="var(--color-surface)" stroke={DANGER} strokeWidth={1.5} />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={14}
+                        fontWeight={600}
+                        fill={DANGER}
+                      >
+                        ×
+                      </text>
+                    </g>
+                  );
+                })()}
+            </svg>
+          </div>
         </div>
       )}
 
@@ -500,7 +557,7 @@ export function NetworkView({
           disabled={!newTitle.trim() || saving}
           onClick={addTask}
           className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer"
-          style={{ background: 'var(--color-accent)', color: '#fff' }}
+          style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : <CirclePlus size={15} />}
           Ajouter
