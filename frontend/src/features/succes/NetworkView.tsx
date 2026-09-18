@@ -60,7 +60,8 @@ type Props = {
   saving?: boolean;
   onToggle: (task: SuccesTask) => Promise<void>;
   onLink: (fromTaskId: string, toTaskId: string) => Promise<void>;
-  onUnlink: (fromTaskId: string, toTaskId: string) => Promise<void>;
+  /** Rend vrai si le lien a été retiré (le serveur l'a confirmé). */
+  onUnlink: (fromTaskId: string, toTaskId: string) => Promise<boolean>;
   onCreate: (input: { title: string }) => Promise<void>;
   onSelect?: (task: SuccesTask) => void;
   /**
@@ -710,7 +711,11 @@ export function NetworkView({
    */
   const retirerArete = (from: string, to: string) =>
     run(async () => {
-      await onUnlink(from, to);
+      // « Pas d'exception donc retiré » était faux : la page avale l'échec
+      // dans un toast, et le focus quittait un lien toujours présent
+      // (contre-revue du 18 sept. 2026). On ne bouge qu'après confirmation.
+      const retire = await onUnlink(from, to);
+      if (!retire) return;
       setSelectedEdge(null);
       if (!focaliser(from)) focaliser(to);
     });

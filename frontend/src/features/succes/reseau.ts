@@ -472,15 +472,16 @@ export function finProjetee(reseau: Reseau): number | null {
   return critique === null ? null : joursDeChaine(reseau, critique);
 }
 
-// Le séparateur est U+0000, qui trie avant tout caractère : « a » puis
-// « ab » ne se lisent pas « a ab » contre « aab ». Écrit en échappement :
-// l'octet brut, commis par 3b7e50c, faisait classer ce fichier « data » par
-// `file`, et `grep` répondait « Binary file matches » sans une ligne
-// (revue du réseau, 18 sept. 2026).
+// Le séparateur est un saut de ligne : la collation ICU IGNORE U+0000 (et
+// tout contrôle C0), si bien que « a » puis « ab » se lisaient « aab »
+// contre « aab » — l'égalité tombait sur l'ordre d'itération, pas sur les
+// titres (contre-revue du réseau, 18 sept. 2026). '\n' compte pour la
+// collation et trie avant toute lettre ; il ne peut pas venir d'un titre
+// (le serveur les borne à une ligne).
 function plusTot(reseau: Reseau, a: string[], b: string[]): boolean {
   if (b.length === 0) return true;
-  const ta = a.map((id) => reseau.parId.get(id)?.title ?? '').join('\x00');
-  const tb = b.map((id) => reseau.parId.get(id)?.title ?? '').join('\x00');
+  const ta = a.map((id) => reseau.parId.get(id)?.title ?? '').join('\n');
+  const tb = b.map((id) => reseau.parId.get(id)?.title ?? '').join('\n');
   return ta.localeCompare(tb, 'fr') < 0;
 }
 

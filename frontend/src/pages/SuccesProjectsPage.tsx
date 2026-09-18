@@ -1438,12 +1438,12 @@ export function SuccesProjectsPage() {
                   await loadEdges();
                 }, 'Dépendance ajoutée');
               }}
-              onUnlink={async (fromTaskId, toTaskId) => {
-                await refreshAfter(async () => {
+              onUnlink={(fromTaskId, toTaskId) =>
+                refreshAfter(async () => {
                   await deleteSuccesTaskEdge(selected.id, fromTaskId, toTaskId);
                   await loadEdges();
-                }, 'Dépendance retirée');
-              }}
+                }, 'Dépendance retirée')
+              }
               onCreate={async ({ title }) => {
                 await refreshAfter(
                   () => createSuccesTask({ title, projectId: selected.id }),
