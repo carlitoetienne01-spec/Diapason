@@ -2052,7 +2052,9 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    à l'ouverture, glissement quand elle se recentre sur une voisine — elle
    ne se ferme jamais pour naviguer, il faut donc que le changement se voie.
    Derrière, le graphe estompe tout ce qui n'est pas la chaîne de la tâche
-   ouverte : le pop-up commente ce qu'on voit au lieu de le cacher. */
+   ouverte : le pop-up commente ce qu'on voit au lieu de le cacher. La même
+   mise en avant suit le survol et le focus clavier : 160 ms, parce qu'à
+   240 ms la souris qui traverse trois cartes laissait une traînée. */
 @keyframes fiche-branches-entree {
   from {
     opacity: 0;
@@ -2080,13 +2082,13 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   animation: fiche-branches-glisse 200ms ease-out;
 }
 .reseau-estompable {
-  transition: opacity 240ms ease;
+  transition: opacity 160ms ease;
 }
 /* La carte vitrée : `.composer-glass` pose sa propre `transition`
    (bordure, ombre) hors couche, à égalité de spécificité — l'estompage de la
    carte ne s'animait pas selon l'ordre d'import. Deux classes tranchent. */
 .cadre-vitre.reseau-carte {
-  transition: opacity 240ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition: opacity 160ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 @media (prefers-reduced-motion: reduce) {
   .fiche-branches-entree,

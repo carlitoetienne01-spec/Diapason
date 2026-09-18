@@ -396,14 +396,14 @@ export interface DimensionsDisposition {
 }
 
 export interface Disposition {
-  pos: Map<string, { x: number; y: number }>;
+  pos: Map<string, Point>;
   largeur: number;
   hauteur: number;
 }
 
 /** Les positions des cartes à partir des colonnes ordonnées — la seule géométrie. */
 export function positionner(colonnes: string[][], dims: DimensionsDisposition): Disposition {
-  const pos = new Map<string, { x: number; y: number }>();
+  const pos = new Map<string, Point>();
   let maxRangs = 1;
   colonnes.forEach((ids, c) => {
     maxRangs = Math.max(maxRangs, ids.length);
@@ -420,6 +420,75 @@ export function positionner(colonnes: string[][], dims: DimensionsDisposition): 
     largeur: dims.marge * 2 + nbColonnes * dims.largeurCarte + (nbColonnes - 1) * dims.ecartX,
     hauteur: dims.marge * 2 + maxRangs * dims.hauteurCarte + (maxRangs - 1) * dims.ecartY,
   };
+}
+
+export type Point = { x: number; y: number };
+
+/**
+ * Les positions à l'instant `t` (0 → départ, 1 → arrivée) d'un glissement
+ * de cartes, en sortie douce (cubique) : quand une arête change et que le
+ * barycentre réordonne une colonne, une carte qui saute d'une ligne à
+ * l'autre sans transition se perd de vue. Une carte sans position de départ
+ * (nouvelle) apparaît directement à l'arrivée.
+ */
+export function interpolerPositions(
+  depart: Map<string, Point>,
+  arrivee: Map<string, Point>,
+  t: number,
+): Map<string, Point> {
+  const k = Math.min(1, Math.max(0, t));
+  const e = 1 - (1 - k) ** 3;
+  const resultat = new Map<string, Point>();
+  for (const [id, cible] of arrivee) {
+    const origine = depart.get(id);
+    if (!origine || k >= 1) {
+      resultat.set(id, cible);
+      continue;
+    }
+    resultat.set(id, {
+      x: origine.x + (cible.x - origine.x) * e,
+      y: origine.y + (cible.y - origine.y) * e,
+    });
+  }
+  return resultat;
+}
+
+/** Vrai si une carte connue des deux dispositions change de place. */
+export function dispositionBouge(depart: Map<string, Point>, arrivee: Map<string, Point>): boolean {
+  for (const [id, cible] of arrivee) {
+    const origine = depart.get(id);
+    if (origine && (origine.x !== cible.x || origine.y !== cible.y)) return true;
+  }
+  return false;
+}
+
+export type EtatArete = 'satisfaite' | 'prochaine' | 'en-attente';
+
+export interface TraitArete {
+  etat: EtatArete;
+  epaisseur: number;
+  /** Le motif `stroke-dasharray`, ou rien pour un trait continu. */
+  pointilles: string | undefined;
+  pointe: 'creuse' | 'pleine';
+}
+
+/**
+ * Trois traits par la FORME, selon l'état de la SOURCE (18 sept. 2026).
+ * Jusque-là deux teintes seulement (accent si la source n'est pas faite,
+ * bordure sinon) : en Ardéchine, où l'accent est l'encre, une arête
+ * satisfaite et une arête en attente se ressemblaient. Fin et pointe creuse
+ * = satisfaite, la source est faite ; plein et pointe pleine = « prochaine »,
+ * la source est faisable, ce lien se libère au prochain geste ; pointillé
+ * 4 3 = en attente, la source est elle-même bloquée, c'est encore loin.
+ */
+export function traitArete(statutSource: StatutTache): TraitArete {
+  if (statutSource === 'faite') {
+    return { etat: 'satisfaite', epaisseur: 1, pointilles: undefined, pointe: 'creuse' };
+  }
+  if (statutSource === 'faisable') {
+    return { etat: 'prochaine', epaisseur: 1.75, pointilles: undefined, pointe: 'pleine' };
+  }
+  return { etat: 'en-attente', epaisseur: 1.25, pointilles: '4 3', pointe: 'pleine' };
 }
 
 /** Le glyphe d'état par la FORME — en Ardéchine, la teinte ne dit rien. */

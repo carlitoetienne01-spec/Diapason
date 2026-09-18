@@ -7,16 +7,21 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Check, CirclePlus, Link2, Loader2 } from 'lucide-react';
+import { Check, CirclePlus, HelpCircle, Link2, Loader2 } from 'lucide-react';
 
 import { CadreVitre } from '../../components/Glass/CadreVitre';
 import {
   chaineComplete,
-  colonnesInitiales,
   construireReseau,
+  dispositionBouge,
   faisables,
+  interpolerPositions,
+  ordonnerColonnes,
   positionner,
   statuts,
+  traitArete,
+  type EtatArete,
+  type Point,
   type StatutTache,
 } from './reseau';
 import type { SuccesTask, SuccesTaskEdge } from './types';
@@ -31,9 +36,9 @@ type Props = {
   onCreate: (input: { title: string }) => Promise<void>;
   onSelect?: (task: SuccesTask) => void;
   /**
-   * La tâche mise en avant (ouverte dans la fiche « Branches ») : sa chaîne
-   * amont + aval reste nette, le reste du graphe passe à 0.3. La
-   * proposition 4 y ajoutera le survol et le focus clavier.
+   * La tâche ouverte dans la fiche « Branches » : sa chaîne amont + aval
+   * reste nette, le reste du graphe passe à 0.3. Elle prime sur le focus
+   * clavier et le survol, que la vue suit d'elle-même.
    */
   miseEnAvantId?: string | null;
   /**
@@ -57,7 +62,21 @@ const CARD_H = 76;
 const GAP_X = 72;
 const GAP_Y = 26;
 const PAD = 24;
+// 260 ms : le temps qu'une carte change de ligne sans qu'on la perde de vue ;
+// à 160 ms elle saute encore, à 400 ms le graphe traîne derrière la coche.
+const GLISSEMENT_MS = 260;
 const DANGER = 'var(--color-error, var(--color-text-secondary))';
+
+const TON_ARETE: Record<EtatArete, string> = {
+  satisfaite: 'var(--color-border)',
+  prochaine: 'var(--color-accent)',
+  'en-attente': 'var(--color-text-tertiary)',
+};
+const LEGENDE: Array<{ etat: EtatArete; libelle: string }> = [
+  { etat: 'satisfaite', libelle: 'Satisfaite' },
+  { etat: 'prochaine', libelle: 'Se libère au prochain geste' },
+  { etat: 'en-attente', libelle: 'Encore loin' },
+];
 
 // Le raisonnement (niveaux, statuts, faisables, colonnes) vit dans
 // `reseau.ts`, testé sur AgriCulture (chantier réseau, 18 sept. 2026) :
@@ -79,6 +98,8 @@ export function NetworkView({
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<{ from: string; to: string } | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [survolId, setSurvolId] = useState<string | null>(null);
+  const [legendeOuverte, setLegendeOuverte] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -88,9 +109,13 @@ export function NetworkView({
   const statusById = useMemo(() => statuts(reseau), [reseau]);
   const feasible = useMemo(() => faisables(reseau), [reseau]);
 
+  // La mise en avant suit la fiche, sinon le focus clavier, sinon le survol.
+  // Dans le mini-panneau non activant, le NSPanel ne livre pas le survol :
+  // la sélection et le focus suffisent, la souris n'est pas l'unique chemin.
+  const misEnAvantId = miseEnAvantId ?? focusedId ?? survolId;
   const chaineNette = useMemo(
-    () => (miseEnAvantId && byId.has(miseEnAvantId) ? chaineComplete(reseau, miseEnAvantId) : null),
-    [reseau, byId, miseEnAvantId],
+    () => (misEnAvantId && byId.has(misEnAvantId) ? chaineComplete(reseau, misEnAvantId) : null),
+    [reseau, byId, misEnAvantId],
   );
   const estompe = (...ids: string[]) =>
     chaineNette !== null && !ids.every((id) => chaineNette.has(id));
@@ -103,9 +128,11 @@ export function NetworkView({
     setLinkFrom(liaisonDemandee.sourceId);
   }, [liaisonDemandee]); // eslint-disable-line react-hooks/exhaustive-deps -- une demande, une fois
 
+  // Les colonnes sont ordonnées par barycentre (reseau.ts) : triées par
+  // alphabet, 5 arêtes suffisaient à croiser deux flèches sur AgriCulture.
   const layout = useMemo(
     () =>
-      positionner(colonnesInitiales(reseau), {
+      positionner(ordonnerColonnes(reseau), {
         largeurCarte: CARD_W,
         hauteurCarte: CARD_H,
         ecartX: GAP_X,
@@ -115,10 +142,40 @@ export function NetworkView({
     [reseau],
   );
 
+  // Quand une arête change et qu'une carte change de ligne, elle glisse en
+  // 260 ms au lieu de sauter — cartes et arêtes lisent les mêmes positions
+  // interpolées, sinon les flèches arrivaient avant les cartes. Le départ est
+  // ce qui est AFFICHÉ, pas la cible précédente : un second changement en
+  // plein vol repart d'où la carte est. Coupé sous `prefers-reduced-motion`.
+  const [posAffichees, setPosAffichees] = useState<Map<string, Point>>(layout.pos);
+  const affichees = useRef<Map<string, Point>>(layout.pos);
+  useEffect(() => {
+    const depart = affichees.current;
+    const poser = (positions: Map<string, Point>) => {
+      affichees.current = positions;
+      setPosAffichees(positions);
+    };
+    const immobile = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    if (immobile || !dispositionBouge(depart, layout.pos)) {
+      poser(layout.pos);
+      return undefined;
+    }
+    const debut = performance.now();
+    let raf = 0;
+    const pas = (maintenant: number) => {
+      const t = (maintenant - debut) / GLISSEMENT_MS;
+      poser(interpolerPositions(depart, layout.pos, t));
+      if (t < 1) raf = requestAnimationFrame(pas);
+    };
+    raf = requestAnimationFrame(pas);
+    return () => cancelAnimationFrame(raf);
+  }, [layout]);
+  const posDe = (id: string): Point | undefined => posAffichees.get(id) ?? layout.pos.get(id);
+
   /** La courbe d'une arête, du bord droit de la source au bord gauche de la cible. */
   const cheminArete = (edge: SuccesTaskEdge): string | null => {
-    const from = layout.pos.get(edge.fromTaskId);
-    const to = layout.pos.get(edge.toTaskId);
+    const from = posDe(edge.fromTaskId);
+    const to = posDe(edge.toTaskId);
     if (!from || !to) return null;
     const x1 = from.x + CARD_W;
     const y1 = from.y + CARD_H / 2;
@@ -289,6 +346,53 @@ export function NetworkView({
               : 'Cliquez la tâche source. Échap pour annuler.'}
           </span>
         )}
+        {tasks.length > 0 && (
+          <>
+            {/* Sous `sm` la légende vit derrière un « ? » : trois entrées de
+                11 px tiennent à 640 px, pas à 340. */}
+            <button
+              type="button"
+              onClick={() => setLegendeOuverte((v) => !v)}
+              aria-expanded={legendeOuverte}
+              aria-label="Légende des traits"
+              className="ml-auto sm:hidden size-8 rounded-lg flex items-center justify-center cursor-pointer"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              <HelpCircle size={15} />
+            </button>
+            <ul
+              aria-label="Légende des traits"
+              className={`${legendeOuverte ? 'flex' : 'hidden sm:flex'} sm:ml-auto basis-full sm:basis-auto flex-wrap items-center gap-x-3 gap-y-1 text-[11px]`}
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              {LEGENDE.map(({ etat, libelle }) => {
+                const trait = traitArete(
+                  etat === 'satisfaite' ? 'faite' : etat === 'prochaine' ? 'faisable' : 'bloquee',
+                );
+                return (
+                  <li key={etat} className="flex items-center gap-1.5">
+                    <svg aria-hidden="true" width={26} height={8} viewBox="0 0 26 8">
+                      <path
+                        d="M0,4 L18,4"
+                        stroke={TON_ARETE[etat]}
+                        strokeWidth={trait.epaisseur}
+                        strokeDasharray={trait.pointilles}
+                        fill="none"
+                      />
+                      <path
+                        d="M18,0.5 L25,4 L18,7.5 Z"
+                        fill={trait.pointe === 'creuse' ? 'var(--color-surface)' : TON_ARETE[etat]}
+                        stroke={TON_ARETE[etat]}
+                        strokeWidth={trait.pointe === 'creuse' ? 1 : 0}
+                      />
+                    </svg>
+                    {libelle}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </div>
 
       {error && (
@@ -327,6 +431,10 @@ export function NetworkView({
             className="relative isolate"
             style={{ width: layout.largeur, height: layout.hauteur }}
             onClick={() => setSelectedEdge(null)}
+            // Un défilement à la molette déplace les cartes sous un pointeur
+            // immobile sans `pointerleave` sur la carte quittée : la mise en
+            // avant restait sur elle. Quitter le canevas remet tout à net.
+            onPointerLeave={() => setSurvolId(null)}
           >
             <svg
               className="absolute inset-0 -z-10 pointer-events-none"
@@ -336,34 +444,35 @@ export function NetworkView({
               aria-hidden="true"
             >
               <defs>
-                <marker
-                  id="nv-arrow-border"
-                  viewBox="0 0 8 8"
-                  refX="7"
-                  refY="4"
-                  markerWidth="8"
-                  markerHeight="8"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-border)" />
-                </marker>
-                <marker
-                  id="nv-arrow-accent"
-                  viewBox="0 0 8 8"
-                  refX="7"
-                  refY="4"
-                  markerWidth="8"
-                  markerHeight="8"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-accent)" />
-                </marker>
+                {/* Pointes en unités d'espace utilisateur : sinon la pointe
+                    grandit avec l'épaisseur, et la « prochaine » à 1,75 px
+                    portait une pointe double de la satisfaite. */}
+                {(['satisfaite', 'prochaine', 'en-attente'] as EtatArete[]).map((etat) => (
+                  <marker
+                    key={etat}
+                    id={`nv-pointe-${etat}`}
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth={etat === 'prochaine' ? 11 : 9}
+                    markerHeight={etat === 'prochaine' ? 11 : 9}
+                    markerUnits="userSpaceOnUse"
+                    orient="auto-start-reverse"
+                  >
+                    <path
+                      d="M1,1 L9,5 L1,9 Z"
+                      fill={etat === 'satisfaite' ? 'var(--color-surface)' : TON_ARETE[etat]}
+                      stroke={TON_ARETE[etat]}
+                      strokeWidth={etat === 'satisfaite' ? 1.25 : 0}
+                      strokeLinejoin="round"
+                    />
+                  </marker>
+                ))}
               </defs>
               {visibleEdges.map((edge) => {
                 const d = cheminArete(edge);
-                const fromTask = byId.get(edge.fromTaskId);
-                if (!d || !fromTask) return null;
-                const waiting = !fromTask.done;
+                if (!d) return null;
+                const trait = traitArete(statusById.get(edge.fromTaskId) ?? 'faisable');
                 const isSelected =
                   selectedEdge?.from === edge.fromTaskId && selectedEdge?.to === edge.toTaskId;
                 return (
@@ -372,9 +481,10 @@ export function NetworkView({
                     className="reseau-estompable"
                     d={d}
                     fill="none"
-                    stroke={waiting ? 'var(--color-accent)' : 'var(--color-border)'}
-                    strokeWidth={isSelected ? 2.5 : 1.5}
-                    markerEnd={`url(#${waiting ? 'nv-arrow-accent' : 'nv-arrow-border'})`}
+                    stroke={TON_ARETE[trait.etat]}
+                    strokeWidth={isSelected ? trait.epaisseur + 1 : trait.epaisseur}
+                    strokeDasharray={trait.pointilles}
+                    markerEnd={`url(#nv-pointe-${trait.etat})`}
                     style={{ opacity: estompe(edge.fromTaskId, edge.toTaskId) ? 0.3 : 1 }}
                   />
                 );
@@ -382,7 +492,7 @@ export function NetworkView({
             </svg>
 
             {tasks.map((task) => {
-              const p = layout.pos.get(task.id);
+              const p = posDe(task.id);
               if (!p) return null;
               const status = statusById.get(task.id) ?? 'faisable';
               const isLinkSource = linkFrom === task.id;
@@ -394,6 +504,8 @@ export function NetworkView({
                   key={task.id}
                   className="reseau-carte reseau-estompable rounded-xl p-2.5 flex items-start gap-2 overflow-hidden"
                   data-statut={status}
+                  onPointerEnter={() => setSurvolId(task.id)}
+                  onPointerLeave={() => setSurvolId((id) => (id === task.id ? null : id))}
                   // `position` en inline : `.composer-glass { position: relative }`
                   // (ComposerGlass.css, hors couche) l'emporte sur l'utilitaire
                   // `absolute` de Tailwind (couche utilities) — les cartes
@@ -405,9 +517,10 @@ export function NetworkView({
                     width: CARD_W,
                     height: CARD_H,
                     background: 'var(--color-surface)',
-                    border: `1px solid ${
-                      highlighted || status === 'faisable' ? 'var(--color-accent)' : 'var(--color-border)'
-                    }`,
+                    // La carte ne dispute plus l'accent à la flèche : seul le
+                    // glyphe d'état le porte. La bordure ne dit que le focus
+                    // et la source de liaison, par un trait de 2 px.
+                    border: `1px solid ${highlighted ? 'var(--color-accent)' : 'var(--color-border)'}`,
                     borderWidth: highlighted ? 2 : undefined,
                     borderStyle: isLinkSource ? 'dashed' : undefined,
                     opacity: estompe(task.id) ? 0.3 : task.done ? 0.72 : 1,
@@ -500,8 +613,8 @@ export function NetworkView({
 
               {selectedEdge &&
                 (() => {
-                  const from = layout.pos.get(selectedEdge.from);
-                  const to = layout.pos.get(selectedEdge.to);
+                  const from = posDe(selectedEdge.from);
+                  const to = posDe(selectedEdge.to);
                   if (!from || !to) return null;
                   const mx = (from.x + CARD_W + to.x - 2) / 2;
                   const my = (from.y + CARD_H / 2 + to.y + CARD_H / 2) / 2;

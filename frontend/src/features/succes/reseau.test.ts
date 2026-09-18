@@ -8,16 +8,19 @@ import {
   colonnesInitiales,
   compterCroisements,
   construireReseau,
+  dispositionBouge,
   faisables,
   fermeraitUneBoucle,
   glypheStatut,
   impact,
+  interpolerPositions,
   ligneDeComptes,
   niveaux,
   ordonnerColonnes,
   positionner,
   statutDe,
   statuts,
+  traitArete,
   voisinSuivant,
   voisinage,
 } from './reseau';
@@ -336,6 +339,20 @@ describe('colonnes', () => {
     expect(compterCroisements(reseau, [['b', 'a'], ['c'], ['d', 'e']])).toBe(0);
   });
 
+  it('ne réordonne rien quand rien ne se croise', () => {
+    // Un ordre déjà bon reste l'ordre alphabétique : stable d'un rendu à l'autre.
+    const reseau = construireReseau(
+      ['a', 'b', 'c', 'd'].map((id) => tache(id, id)),
+      [arete('a', 'c'), arete('b', 'd')],
+    );
+    expect(ordonnerColonnes(reseau)).toEqual(colonnesInitiales(reseau));
+  });
+
+  it('garde chaque tâche une fois et une seule après le décroisement', () => {
+    const colonnes = ordonnerColonnes(agriculture()).flat().sort();
+    expect(colonnes).toEqual(AGRI.map((t) => t.id).sort());
+  });
+
   it('positionner donne la géométrie et rien d’autre', () => {
     const d = positionner([['a', 'b'], ['c']], {
       largeurCarte: 100,
@@ -348,5 +365,61 @@ describe('colonnes', () => {
     expect(d.pos.get('c')).toEqual({ x: 125, y: 5 });
     expect(d.largeur).toBe(5 * 2 + 2 * 100 + 20);
     expect(d.hauteur).toBe(5 * 2 + 2 * 50 + 10);
+  });
+});
+
+describe('glissement des cartes', () => {
+  const depart = new Map([
+    ['a', { x: 0, y: 0 }],
+    ['b', { x: 0, y: 100 }],
+  ]);
+  const arrivee = new Map([
+    ['a', { x: 0, y: 100 }],
+    ['b', { x: 0, y: 0 }],
+    ['c', { x: 50, y: 50 }],
+  ]);
+
+  it('à 0 les cartes sont au départ, à 1 à l’arrivée, entre les deux en sortie douce', () => {
+    expect(interpolerPositions(depart, arrivee, 0).get('a')).toEqual({ x: 0, y: 0 });
+    expect(interpolerPositions(depart, arrivee, 1).get('a')).toEqual({ x: 0, y: 100 });
+    const milieu = interpolerPositions(depart, arrivee, 0.5).get('a') as { x: number; y: number };
+    // Sortie cubique : à mi-temps, 87,5 % du chemin est fait — la carte
+    // part vite et se pose lentement.
+    expect(milieu.y).toBeCloseTo(87.5);
+  });
+
+  it('une carte nouvelle apparaît directement à l’arrivée, et t est borné', () => {
+    expect(interpolerPositions(depart, arrivee, 0.2).get('c')).toEqual({ x: 50, y: 50 });
+    expect(interpolerPositions(depart, arrivee, 7).get('b')).toEqual({ x: 0, y: 0 });
+    expect(interpolerPositions(depart, arrivee, -1).get('b')).toEqual({ x: 0, y: 100 });
+  });
+
+  it('ne glisse pas quand aucune carte connue ne bouge', () => {
+    expect(dispositionBouge(depart, arrivee)).toBe(true);
+    expect(dispositionBouge(depart, new Map([['a', { x: 0, y: 0 }], ['z', { x: 9, y: 9 }]]))).toBe(false);
+    expect(dispositionBouge(new Map(), arrivee)).toBe(false);
+  });
+});
+
+describe('traitArete', () => {
+  it('dit l’état par la forme : fin et creux, plein, pointillé', () => {
+    expect(traitArete('faite')).toMatchObject({ etat: 'satisfaite', epaisseur: 1, pointe: 'creuse' });
+    expect(traitArete('faite').pointilles).toBeUndefined();
+    expect(traitArete('faisable')).toMatchObject({ etat: 'prochaine', epaisseur: 1.75, pointe: 'pleine' });
+    expect(traitArete('bloquee')).toMatchObject({ etat: 'en-attente', pointilles: '4 3' });
+  });
+
+  it('sur AgriCulture, les arêtes des racines sont « prochaines », les autres en attente', () => {
+    const reseau = agriculture();
+    const st = statuts(reseau);
+    const etats = ARETES.map((a) => traitArete(st.get(a.fromTaskId) ?? 'faisable').etat);
+    expect(etats).toEqual(['prochaine', 'en-attente', 'en-attente', 'prochaine', 'en-attente']);
+  });
+
+  it('une fois « agriculteurs » faite, son arête est satisfaite et celle de « discuter » devient prochaine', () => {
+    const reseau = agricultureApresAgri();
+    const st = statuts(reseau);
+    expect(traitArete(st.get('agri') ?? 'faisable').etat).toBe('satisfaite');
+    expect(traitArete(st.get('discuter') ?? 'faisable').etat).toBe('prochaine');
   });
 });
