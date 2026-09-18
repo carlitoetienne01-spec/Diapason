@@ -472,10 +472,15 @@ export function finProjetee(reseau: Reseau): number | null {
   return critique === null ? null : joursDeChaine(reseau, critique);
 }
 
+// Le séparateur est U+0000, qui trie avant tout caractère : « a » puis
+// « ab » ne se lisent pas « a ab » contre « aab ». Écrit en échappement :
+// l'octet brut, commis par 3b7e50c, faisait classer ce fichier « data » par
+// `file`, et `grep` répondait « Binary file matches » sans une ligne
+// (revue du réseau, 18 sept. 2026).
 function plusTot(reseau: Reseau, a: string[], b: string[]): boolean {
   if (b.length === 0) return true;
-  const ta = a.map((id) => reseau.parId.get(id)?.title ?? '').join(' ');
-  const tb = b.map((id) => reseau.parId.get(id)?.title ?? '').join(' ');
+  const ta = a.map((id) => reseau.parId.get(id)?.title ?? '').join('\x00');
+  const tb = b.map((id) => reseau.parId.get(id)?.title ?? '').join('\x00');
   return ta.localeCompare(tb, 'fr') < 0;
 }
 

@@ -241,6 +241,9 @@ export function NetworkView({
   // par `cibleClavier` — Tab suivait l'ordre du tableau, sans rapport avec
   // les liens, et aucune flèche ne faisait rien.
   const boutons = useRef(new Map<string, HTMLButtonElement>());
+  // Les boutons des lignes de la Liste, à part : l'un des deux jeux est
+  // toujours `display: none`, et le focus doit aller à celui qui se voit.
+  const boutonsListe = useRef(new Map<string, HTMLButtonElement>());
   const aideClavierId = useId();
   // Graphe ou Liste (18 sept. 2026). `undefined` tant que rien n'a été
   // choisi : le CSS montre alors la Liste sous `sm` et le Graphe au-delà —
@@ -679,18 +682,42 @@ export function NetworkView({
     void run(() => onToggle(task));
   };
 
-  const unlinkSelected = () => {
-    if (!selectedEdge || saving) return;
-    const { from, to } = selectedEdge;
-    void run(async () => {
-      await onUnlink(from, to);
-      setSelectedEdge(null);
-    });
+  /**
+   * Donne le focus à la carte visible (dessin ou Liste) ; faux si aucune ne
+   * l'est. Un bouton sous `display: none` n'a pas d'`offsetParent` et
+   * `focus()` n'y fait rien : on passe au jeu suivant.
+   */
+  const focaliser = (id: string | null): boolean => {
+    if (!id) return false;
+    for (const jeu of [boutons.current, boutonsListe.current]) {
+      const el = jeu.get(id);
+      if (el && el.isConnected && el.offsetParent !== null) {
+        el.focus();
+        return true;
+      }
+    }
+    return false;
   };
 
-  const focaliser = (id: string | null) => {
-    if (!id) return;
-    boutons.current.get(id)?.focus();
+  /**
+   * Retirer une arête et rendre le focus à sa source, sinon à sa cible.
+   * Le `<path>` ou le « × » qui portait le focus est démonté avec l'arête :
+   * `document.activeElement` tombait sur `body`, Tab repartait du haut de
+   * la page, et dans le mini-panneau l'Échap suivant fermait le panneau
+   * entier faute de couche pour le consommer (revue du réseau, 18 sept.
+   * 2026). La fiche rend déjà le focus à sa carte d'origine ; ici rien ne le
+   * rendait à l'un des deux bouts, pourtant connus au moment de l'appel.
+   */
+  const retirerArete = (from: string, to: string) =>
+    run(async () => {
+      await onUnlink(from, to);
+      setSelectedEdge(null);
+      if (!focaliser(from)) focaliser(to);
+    });
+
+  const unlinkSelected = () => {
+    if (!selectedEdge || saving) return;
+    void retirerArete(selectedEdge.from, selectedEdge.to);
   };
 
   /**
@@ -733,10 +760,7 @@ export function NetworkView({
     if (event.key === 'Delete' || event.key === 'Backspace') {
       if (areteDe && areteVers && !saving) {
         event.preventDefault();
-        void run(async () => {
-          await onUnlink(areteDe, areteVers);
-          setSelectedEdge(null);
-        });
+        void retirerArete(areteDe, areteVers);
         return;
       }
       if (selectedEdge) {
@@ -1077,7 +1101,17 @@ export function NetworkView({
       ) : (
         <>
         {/* `hidden` / `sm:block` : sans choix, la Liste sous `sm` et le Graphe au-delà. */}
-        <div className={`relative ${classeGraphe}`}>
+        {/* `min-w-0` : cette enveloppe (d84083b, pour la pastille du tirage)
+            est un enfant de grille, dont le minimum automatique est la
+            largeur de son contenu — 840 px de canevas. Mesuré à 340 px : la
+            colonne de page entière passait à 840 px, le défileur
+            `overflow-x-auto` ne défilait plus (clientWidth = scrollWidth =
+            838), « Fil » se retrouvait à x = 800 hors de l'écran et le
+            cadrage sur la première colonne faisable était sans effet. Avant
+            d84083b, le défileur était l'enfant direct de la grille — un
+            conteneur de défilement a un minimum de 0, un `relative` non
+            (revue du réseau, 18 sept. 2026). */}
+        <div className={`relative min-w-0 ${classeGraphe}`}>
         {tirage && (
           <p
             aria-hidden="true"
@@ -1569,7 +1603,7 @@ export function NetworkView({
             « attend : X » et « libère : Z » sont les arêtes elles-mêmes, que
             l'on choisit puis supprime ici aussi — aucune action n'existe que
             dans le dessin (§82). */}
-        <div className={classeListe}>
+        <div className={`min-w-0 ${classeListe}`}>
           <div
             role="group"
             aria-label="Réseau des tâches, en liste par niveau"
@@ -1617,6 +1651,10 @@ export function NetworkView({
                       <div className="flex-1 min-w-0 grid gap-0.5">
                         <button
                           type="button"
+                          ref={(el) => {
+                            if (el) boutonsListe.current.set(task.id, el);
+                            else boutonsListe.current.delete(task.id);
+                          }}
                           onClick={() => activateCard(task)}
                           onFocus={() => setFocusedId(task.id)}
                           onBlur={() => setFocusedId(null)}
