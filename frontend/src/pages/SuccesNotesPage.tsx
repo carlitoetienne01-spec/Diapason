@@ -141,6 +141,7 @@ export function SuccesNotesPage() {
   const cleChargee = useRef<string | null>(null);
   /** Vrai dès que le serveur a rendu une liste pendant ce montage — le cache n'y suffit pas. */
   const chargeReussi = useRef(false);
+  const tentativeFaite = useRef(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -211,6 +212,7 @@ export function SuccesNotesPage() {
       });
       toast.error('Les notes ne peuvent pas être chargées.', { description: message });
     } finally {
+      tentativeFaite.current = true;
       setLoading(false);
       setRafraichit(false);
     }
@@ -289,15 +291,22 @@ export function SuccesNotesPage() {
   const pendingMeshSelection = useAppStore((s) => s.pendingMeshSelection);
   const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
   useEffect(() => {
-    if (pendingMeshSelection?.kind !== 'note' || !chargeReussi.current) return;
-    const wanted = notes.find((note) => note.id === pendingMeshSelection.id);
+    // Tant que la première relecture du montage n'a pas RÉPONDU (succès ou
+    // échec), on attend : la liste du cache peut dater d'avant la note
+    // demandée. Sur un échec, la sélection est consommée quand même —
+    // laissée dans le magasin, elle rouvrait la note à une visite ultérieure
+    // sans que personne ne l'ait demandé (contre-revue, 18 sept. 2026).
+    if (pendingMeshSelection?.kind !== 'note' || !tentativeFaite.current) return;
+    const wanted = chargeReussi.current
+      ? notes.find((note) => note.id === pendingMeshSelection.id)
+      : undefined;
     // Absente de la liste du serveur : l'appareil émetteur est peut-être en
     // avance sur la synchronisation. On abandonne sans bruit plutôt que
     // d'ouvrir autre chose.
     if (wanted) openNote(wanted);
     setPendingMeshSelection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingMeshSelection, notes, setPendingMeshSelection]);
+  }, [pendingMeshSelection, notes, rafraichit, setPendingMeshSelection]);
 
   const openCreateForm = () => {
     setFormNoteId(null);

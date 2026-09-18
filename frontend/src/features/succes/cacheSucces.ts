@@ -178,6 +178,13 @@ export interface OptionsEcriture {
    * feuillette les dates sans relire.
    */
   uniqueParRessource?: boolean;
+  /**
+   * Clés de la même ressource à NE PAS évincer — la clé que le montage relit
+   * (le mois courant des finances, l'année du bilan, le jour du tableau de
+   * bord). Sans elle, feuilleter « Année » évinçait « Mois » du disque et le
+   * prochain lancement repartait du spinner (contre-revue, 18 sept. 2026).
+   */
+  conserver?: readonly string[];
 }
 
 export interface OptionsCache {
@@ -255,7 +262,7 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
   /** Les clés déjà cherchées dans le stockage : on ne relit pas un disque qui a dit non. */
   const consultees = new Set<string>();
   /** Les clés dont la mémoire attend d'être persistée (ou retirée : `null`). */
-  const enAttente = new Map<string, { valeur: unknown | null; uniqueParRessource: boolean }>();
+  const enAttente = new Map<string, { valeur: unknown | null; uniqueParRessource: boolean; conserver: readonly string[] }>();
   let planifiee = false;
   /**
    * La taille (en unités de code) de chacune de nos entrées persistées, pour
@@ -350,12 +357,17 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
     tailles = null;
   };
 
-  const retirerLesMemesRessources = (store: Stockage, cle: string, saufNomComplet: string): void => {
+  const retirerLesMemesRessources = (
+    store: Stockage,
+    cle: string,
+    saufNomComplet: string,
+    conserver: readonly string[],
+  ): void => {
     const ressource = ressourceDe(cle);
+    const gardees = new Set(conserver.map((c) => PREFIXE_STOCKAGE + c));
     for (const nom of nosEntrees(store)) {
-      if (nom !== saufNomComplet && ressourceDe(nom.slice(PREFIXE_STOCKAGE.length)) === ressource) {
-        retirer(store, nom);
-      }
+      if (nom === saufNomComplet || gardees.has(nom)) continue;
+      if (ressourceDe(nom.slice(PREFIXE_STOCKAGE.length)) === ressource) retirer(store, nom);
     }
   };
 
@@ -365,7 +377,7 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
     const lot = [...enAttente];
     enAttente.clear();
     if (!store) return;
-    for (const [cle, { valeur, uniqueParRessource }] of lot) {
+    for (const [cle, { valeur, uniqueParRessource, conserver }] of lot) {
       const nomComplet = PREFIXE_STOCKAGE + cle;
       try {
         if (valeur === null) {
@@ -374,7 +386,7 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
         }
         const texte = JSON.stringify({ v: VERSION_SCHEMA, b: empreinte, d: valeur } satisfies Enveloppe);
         if (texte.length * OCTETS_PAR_UNITE > plafond) continue;
-        if (uniqueParRessource) retirerLesMemesRessources(store, cle, nomComplet);
+        if (uniqueParRessource) retirerLesMemesRessources(store, cle, nomComplet, conserver);
         // Le budget global : la somme de nos entrées, celle-ci remplacée.
         // Dépassé, l'entrée reste en mémoire seule — on ne purge pas les
         // autres pour la loger, elles servent au prochain lancement.
@@ -416,7 +428,11 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
       enAttente.delete(cle);
       return;
     }
-    enAttente.set(cle, { valeur, uniqueParRessource: Boolean(options.uniqueParRessource) });
+    enAttente.set(cle, {
+      valeur,
+      uniqueParRessource: Boolean(options.uniqueParRessource),
+      conserver: options.conserver ?? [],
+    });
     programmer();
   };
 
@@ -445,7 +461,7 @@ export function creerCacheSucces(options: OptionsCache = {}): CacheSucces {
     oublierCache(cle: string): void {
       memoire.delete(cle);
       consultees.add(cle);
-      enAttente.set(cle, { valeur: null, uniqueParRessource: false });
+      enAttente.set(cle, { valeur: null, uniqueParRessource: false, conserver: [] });
       programmer();
     },
 

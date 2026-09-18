@@ -293,11 +293,19 @@ export function SuccesFinancesPage() {
       // Une seule entrée persistée par ressource datée (aperçu, transactions) :
       // une par jour et par période s'accumulaient sans que rien ne les
       // relise ni ne les retire (revue du cache, 18 sept. 2026).
-      ecrireCache(clesSucces.financesApercu(period, today), nextOverview, { uniqueParRessource: true });
+      // Le mois courant est ce que le montage relit : « Semaine » ou
+      // « Année » ne doivent pas l'évincer du disque (contre-revue,
+      // 18 sept. 2026).
+      const moisEnCache = lireCache<FinanceOverview>(clesSucces.financesApercu('month', today));
+      ecrireCache(clesSucces.financesApercu(period, today), nextOverview, {
+        uniqueParRessource: true,
+        conserver: [clesSucces.financesApercu('month', today)],
+      });
       ecrireCache(clesSucces.financesCategories(), nextCategories);
       ecrireCache(clesSucces.financesAbonnements(), nextSubs);
       ecrireCache(clesSucces.financesTransactions(nextOverview.from, nextOverview.to), nextTxns, {
         uniqueParRessource: true,
+        conserver: moisEnCache ? [clesSucces.financesTransactions(moisEnCache.from, moisEnCache.to)] : [],
       });
       setOverview(nextOverview);
       setCategories(nextCategories);

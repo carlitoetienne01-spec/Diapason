@@ -37,7 +37,12 @@ export function SuccesYearReviewPage() {
       const next = await fetchSuccesYearReview(year, month);
       // Une seule entrée persistée : une par année ou mois feuilleté
       // s'accumulait (revue du cache, 18 sept. 2026).
-      ecrireCache(cle, next, { uniqueParRessource: true });
+      ecrireCache(cle, next, {
+        uniqueParRessource: true,
+        // L'année courante est la clé que le montage relit : regarder un
+        // mois ne doit pas l'évincer du disque (contre-revue, 18 sept. 2026).
+        conserver: [clesSucces.bilan(currentYear)],
+      });
       setReview(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

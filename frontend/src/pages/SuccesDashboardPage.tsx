@@ -49,7 +49,12 @@ export function SuccesDashboardPage() {
       // Une seule entrée persistée : une par date feuilletée s'accumulait
       // sans que rien ne la relise ni ne la retire (revue du cache, 18 sept.
       // 2026) ; la mémoire garde les autres dates pour la session.
-      ecrireCache(clesSucces.tableauDeBord(date), next, { uniqueParRessource: true });
+      ecrireCache(clesSucces.tableauDeBord(date), next, {
+        uniqueParRessource: true,
+        // Le jour courant est la clé que le montage relit : feuilleter hier
+        // ne doit pas l'évincer du disque.
+        conserver: [clesSucces.tableauDeBord(localIsoDate())],
+      });
       setData(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

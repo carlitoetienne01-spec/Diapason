@@ -333,6 +333,29 @@ describe('La persistance', () => {
     expect(cache.lireCache('dashboard?date=2026-09-17'), 'la mémoire garde hier : on feuillette sans relire').toEqual({ j: 17 });
   });
 
+  it('garde la clé d’ouverture quand une autre date de la même ressource s’écrit', () => {
+    // Contre-revue du 18 sept. 2026 : feuilleter « hier » évinçait le jour
+    // courant du disque, et le prochain lancement repartait du spinner.
+    const store = new StockageFactice();
+    const { cache, plan } = monter(store);
+    cache.ecrireCache('dashboard?date=2026-09-18', { j: 18 }, { uniqueParRessource: true });
+    plan.tic();
+    cache.ecrireCache('dashboard?date=2026-09-17', { j: 17 }, {
+      uniqueParRessource: true,
+      conserver: ['dashboard?date=2026-09-18'],
+    });
+    plan.tic();
+    expect(store.entrees.has(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-18'), 'le jour courant reste sur le disque').toBe(true);
+    expect(store.entrees.has(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-17'), 'hier est écrit aussi').toBe(true);
+    cache.ecrireCache('dashboard?date=2026-09-16', { j: 16 }, {
+      uniqueParRessource: true,
+      conserver: ['dashboard?date=2026-09-18'],
+    });
+    plan.tic();
+    expect(store.entrees.has(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-17'), 'les autres dates, elles, s’évincent').toBe(false);
+    expect(store.entrees.has(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-18')).toBe(true);
+  });
+
   it('ne lève jamais quand le quota reste plein même après purge', () => {
     const store = new StockageFactice();
     store.quota = 10;

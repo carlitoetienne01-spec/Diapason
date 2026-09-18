@@ -899,7 +899,11 @@ export function SuccesProjectsPage() {
   // pendant ce montage ; des tâches du cache, elles, sont une réponse du
   // serveur et se montrent. Sinon : le voyant discret, pas « Aucune tâche »
   // ni « 0/N terminée(s) » (§100, revue du cache, 18 sept. 2026).
-  const tachesConnues = chargeReussi || projectTasks.length > 0;
+  // Une liste de tâches du cache est une réponse du serveur au même titre
+  // qu'une relecture : un projet qui n'y a aucune tâche est « connu » vide.
+  // Tester `projectTasks` laissait « Chargement des tâches… » sans fin sur
+  // un projet vide quand la relecture échouait (contre-revue, 18 sept. 2026).
+  const tachesConnues = chargeReussi || tasks.length > 0;
 
   const closeFormNow = () => {
     setShowForm(false);
