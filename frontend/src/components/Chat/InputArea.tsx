@@ -14,6 +14,7 @@ import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
+import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import {
@@ -512,6 +513,8 @@ export function InputArea() {
     let usage: TokenUsage | undefined;
     let complexity: { score: number; tier: string; suggested_max_tokens: number } | undefined;
     let lightningMeta: { action?: string; total_ms?: number; verified?: boolean } | undefined;
+    let modeleServeur: string | undefined;
+    let routageServeur: RoutageServeur | undefined;
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -750,6 +753,8 @@ export function InputArea() {
             if (data.usage) usage = data.usage;
             if (data.complexity) complexity = data.complexity;
             if (data.lightning) lightningMeta = data.lightning;
+            if (typeof data.model === 'string' && data.model) modeleServeur = data.model;
+            if (data.routing) routageServeur = data.routing;
             if (delta?.content) {
               if (!ttftMs) ttftMs = Date.now() - startTime;
               accumulatedContent += delta.content;
@@ -788,7 +793,7 @@ export function InputArea() {
           : 'ollama';
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
-        model_id: selectedModel,
+        ...modeleDeLaReponse(selectedModel, modeleServeur, routageServeur, Boolean(lightningMeta)),
         total_ms: totalMs,
         ttft_ms: ttftMs,
         tokens_per_sec: usage?.completion_tokens

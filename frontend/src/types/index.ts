@@ -53,6 +53,8 @@ export interface TokenUsage {
 export interface MessageTelemetry {
   engine?: string;
   model_id?: string;
+  // Le modèle demandé quand un tour léger est parti sur le modèle léger (20/09/2026).
+  routed_from?: string;
   tokens_per_sec?: number;
   ttft_ms?: number;
   total_ms?: number;

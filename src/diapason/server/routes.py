@@ -38,6 +38,7 @@ from diapason.server.reponses_longues import (
     prolonger_flux,
     quantite_du_tour,
 )
+from diapason.server.tour_leger import Routage, choisir_le_modele
 from diapason.telemetry.chat_latency import ChatLatency, measure_response
 
 router = APIRouter()
@@ -613,6 +614,21 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                 exc_info=True,
             )
 
+    # 20/09/2026 : « Que veut dire "Self Aware" ? » payait le 27b choisi dans
+    # le sélecteur (89 s). Un tour léger part sur le modèle léger configuré ;
+    # le modèle demandé reste pour tout le reste. Voir server/tour_leger.py.
+    routage = await asyncio.to_thread(
+        choisir_le_modele,
+        model,
+        _to_messages(request_body.messages),
+        config,
+        trousse_du_client=bool(request_body.tools),
+        engine=engine,
+    )
+    if routage.substitue:
+        model = routage.modele
+        latency.routage = routage.public()
+
     # Run complexity analysis on the last user message
     complexity_info = None
     query_text_for_complexity = ""
@@ -689,6 +705,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             # enregistrés et la seule interface qui sert vraiment.
             tooling=tooling,
             latency=latency,
+            routage=routage,
         )
         return measure_response(response, latency)
 
@@ -734,6 +751,9 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             app_config=config,
             client_system=client_system,
         )
+
+    if routage.substitue and isinstance(response, ChatCompletionResponse):
+        response.routing = routage.public()
 
     # Hand the completed exchange to the background memory service.
     _remember_exchange(
@@ -1200,6 +1220,7 @@ async def _handle_stream(
     client_system: bool = False,
     latency: ChatLatency | None = None,
     tooling=None,
+    routage: Routage | None = None,
 ):
     """Stream response using SSE format.
 
@@ -1487,6 +1508,8 @@ async def _handle_stream(
         # unwrapping the engine chain, which can be in a broken state.
         finish_dict.setdefault("telemetry", {})
         finish_dict["telemetry"]["engine"] = "cloud" if use_cloud else "ollama"
+        if routage is not None and routage.substitue:
+            finish_dict["routing"] = routage.public()
 
         if complexity_info is not None:
             finish_dict["complexity"] = complexity_info.model_dump()

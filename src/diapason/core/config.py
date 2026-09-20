@@ -597,6 +597,10 @@ class IntelligenceConfig:
 
     default_model: str = ""
     fallback_model: str = ""
+    # 20/09/2026 : un tour d'une ligne part sur ce modèle quand il est
+    # configuré ; le modèle choisi dans le chat garde les tâches lourdes.
+    # Vide = aucun routage. Voir server/tour_leger.py.
+    light_model: str = ""
     model_path: str = ""  # Local weights (HF repo, GGUF file, etc.)
     checkpoint_path: str = ""  # Checkpoint/adapter path
     quantization: str = "none"  # none, fp8, int8, int4, gguf_q4, gguf_q8
@@ -2209,6 +2213,7 @@ default = "{engine}"
 {engine_host_section}
 [intelligence]
 default_model = "{model}"
+# light_model = ""            # petit modèle pour les tours d'une ligne (vide = aucun)
 
 [agent]
 default_agent = "simple"

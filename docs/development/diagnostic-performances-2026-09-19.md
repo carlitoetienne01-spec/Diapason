@@ -8,6 +8,59 @@ initial ci-dessous est conservé ; les bilans suivent cette introduction.
 Les étapes restantes ne sont pas présentées comme livrées. Les essais n’ont
 pas enregistré de nouveaux messages dans les discussions.
 
+## Suite du 20 septembre 2026 — ce que les lots n'avaient pas vu
+
+Deux tours réels du matin, télémétrie des messages et journal d'Ollama :
+
+| Tour | Modèle | Total | Premier texte | Passages Ollama |
+|---|---|---:|---:|---|
+| « Qui est le président actuel d'Haïti ? » | qwen3.8:27b-mlx | 56,6 s | 47,5 s | 37,4 s (décide `web_search`) + 18,0 s |
+| « Que veut dire "Self Aware" en français ? » | qwen3.8:27b-mlx | 89,4 s | **88,3 s** | 53,2 s + 36,2 s |
+| « Ouvre moi Youtube et joue la musique Self Away » | voie éclair, sans modèle | 1,2 s | 1,1 s | aucun |
+
+Trois causes, trois réponses, dans l'ordre des commits :
+
+1. **La relecture du lot 3 se déclenchait sur une traduction.** Le premier
+   passage avait répondu juste, sans outil ; la règle l'a retenu et rejoué
+   avec les 44 schémas — préfixe différent, contexte entièrement retraité.
+   Elle s'était armée parce que la demande précédente parlait de musique et
+   qu'un `web_search` traînait trois échanges plus haut. Trois règles
+   remplacent « trousse réduite = relecture » (`trousse_chat.py`) : seule
+   une demande **reconnue** (un mot d'une famille, hors mots de temps seuls)
+   ou une réponse autonome (explique, traduis, que veut dire…) diffère les
+   schémas — une demande inconnue, même courte après une action, garde les
+   44 ; la relecture n'est armée que si la demande courante parle de données
+   à LIRE (tâches, notes, agenda, web, mails, messages, écran, fichiers,
+   onglets, appareils — les mots, pas les outils amorcés : « ouvre » et
+   « onglets » amorcent le même outil) ; un suivi court n'hérite du sujet que
+   s'il interroge ou enchaîne et que le tour précédent a réellement lu.
+2. **Le 27b ne tient pas sur ce Mac.** 18 à 26 Go résidents pour 32 Go, 10,5
+   libres au chargement (journal d'Ollama 10:54:14) ; la première passe après
+   chargement a duré 1 min 38 s. Le classificateur marquait ces questions
+   « trivial » (0,06) mais ne changeait que le budget de jetons — ses motifs
+   sont anglais, en français presque tout est trivial. `server/tour_leger.py`
+   envoie un tour léger sur `[intelligence].light_model` quand il est
+   configuré et qu'Ollama le liste (relu toutes les 60 s) : une ou deux
+   lignes, sans image, code, calcul, quantité, verbe de production en tête
+   (rédige, prépare, code-moi, fais-moi…) ni raisonnement (pourquoi, résous,
+   démontre). Une suite (« Continue », « Plus long », trois mots ou moins)
+   garde le poids du tour qu'elle prolonge, de proche en proche. Le modèle
+   choisi garde le reste ; chaque fragment porte le modèle réel et le bilan
+   un bloc `routing` ; le pied de la réponse affiche « léger ← lourd », et
+   plus aucun modèle sur la voie éclair. Limite mesurée : deux modèles ne
+   cohabitent pas quand le lourd occupe la mémoire (le préchauffage du
+   sélecteur est défait par le premier tour léger) ; le remède de fond reste
+   le 9b comme modèle du quotidien.
+3. **La mémoire suit le tour, jamais l'inverse.** Aucun modèle n'est chargé
+   pour extraire un souvenir : après un tour léger l'extraction tourne sur
+   le léger, après un tour lourd sur le lourd (`extraction_model` reste
+   vide). Un 27b résident n'est pas évincé pour 200 jetons de souvenir.
+
+Deux corrections de mesure : la ligne `chat_performance` n'atteignait jamais
+`serve.err.log` (logger au niveau WARNING ; elle parle en INFO désormais), et
+le pied de chaque réponse affichait le modèle du sélecteur, pas celui qui
+avait répondu.
+
 ## Lot 1 — contexte stable, réactivité et mesures
 
 Livré :

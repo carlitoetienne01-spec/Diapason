@@ -29,6 +29,9 @@ class ChatLatency:
         self.first_model_text_ms: float | None = None
         self.first_text_ms: float | None = None
         self.inferences: list[dict[str, Any]] = []
+        # Rempli quand un tour léger a été rerouté : le journal doit dire
+        # quel modèle a vraiment répondu, pas celui du sélecteur.
+        self.routage: dict[str, Any] | None = None
 
     def elapsed_ms(self) -> float:
         return round((self.clock() - self.started) * 1000, 3)
@@ -50,6 +53,7 @@ class ChatLatency:
             "totalMs": self.elapsed_ms(),
             "firstModelTextMs": self.first_model_text_ms,
             "firstTextMs": self.first_text_ms,
+            "routing": self.routage,
             "inferences": list(self.inferences),
         }
 

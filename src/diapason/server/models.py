@@ -79,6 +79,9 @@ class ChatCompletionResponse(BaseModel):
     usage: UsageInfo = Field(default_factory=UsageInfo)
     complexity: Optional[ComplexityInfo] = None
     lightning: Optional[Dict[str, Any]] = None
+    # 20/09/2026 : le modèle qui a répondu quand un tour léger a été rerouté
+    # ({"model", "from", "reason"}) ; absent quand le modèle demandé a servi.
+    routing: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------

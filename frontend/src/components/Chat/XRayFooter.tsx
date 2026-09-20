@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TokenUsage, MessageTelemetry } from '../../types';
+import { etiquetteDuModele } from './modeleDeLaReponse';
 
 interface Props {
   usage?: TokenUsage;
@@ -23,7 +24,7 @@ export function XRayFooter({ usage, telemetry, isResearch = false }: Props) {
     parts.push('Deep Research');
   } else {
     if (telemetry?.engine) parts.push(telemetry.engine);
-    if (telemetry?.model_id) parts.push(telemetry.model_id);
+    if (telemetry?.model_id) parts.push(etiquetteDuModele(telemetry));
   }
   if (telemetry?.complexity_tier) parts.push(telemetry.complexity_tier);
   if (telemetry?.total_ms) parts.push(formatMs(telemetry.total_ms));
@@ -44,6 +45,9 @@ export function XRayFooter({ usage, telemetry, isResearch = false }: Props) {
   } else if (telemetry?.engine) {
     const modelDetail = telemetry.model_id || '';
     rows.push({ label: 'Engine', value: `${telemetry.engine}${modelDetail ? ` (${modelDetail})` : ''}` });
+    if (telemetry.routed_from) {
+      rows.push({ label: 'Routing', value: `tour léger — ${modelDetail} au lieu de ${telemetry.routed_from}` });
+    }
   }
   if (usage) {
     const tokenParts = [`${usage.completion_tokens} generated`, `${usage.prompt_tokens} prompt`];
