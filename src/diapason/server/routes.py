@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
 import uuid
+from contextlib import aclosing
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -13,7 +15,9 @@ from fastapi.responses import StreamingResponse
 
 from diapason.core.paths import get_config_dir
 from diapason.core.tool_turn import text_needs_tools
-from diapason.core.types import Message, Role
+from diapason.core.types import Message, Role, ToolCall
+from diapason.engine.scheduling import interactive_turn
+from diapason.server.contexte_chat import inserer_au_tour_courant
 from diapason.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -27,6 +31,14 @@ from diapason.server.models import (
     StreamChoice,
     UsageInfo,
 )
+from diapason.server.reponses_longues import (
+    SEUIL_REPRISE,
+    budget_quantite,
+    consigne_quantite,
+    prolonger_flux,
+    quantite_du_tour,
+)
+from diapason.telemetry.chat_latency import ChatLatency, measure_response
 
 router = APIRouter()
 
@@ -196,6 +208,20 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
     return resultat
 
 
+async def _chat_tooling_async(app_state: Any, config: Any):
+    # 19/09/2026 : importer les outils au premier message bloquait la boucle.
+    # Une construction partagée évite que deux fenêtres initialisent la trousse
+    # en double. Annuler l'une n'annule ni ce travail commun, ni l'autre fenêtre.
+    cached = getattr(app_state, "_chat_tooling_cache", "absent")
+    if cached != "absent":
+        return cached
+    task = getattr(app_state, "_chat_tooling_task", None)
+    if task is None or task.done():
+        task = asyncio.create_task(asyncio.to_thread(_chat_tooling, app_state, config))
+        app_state._chat_tooling_task = task
+    return await asyncio.shield(task)
+
+
 _JOURS = (
     "lundi",
     "mardi",
@@ -241,11 +267,29 @@ def _to_messages(chat_messages) -> list[Message]:
     messages = []
     for m in chat_messages:
         role = Role(m.role) if m.role in {r.value for r in Role} else Role.USER
+        appels = []
+        for appel in m.tool_calls or []:
+            fonction = appel.get("function")
+            if not isinstance(fonction, dict) or not fonction.get("name"):
+                continue
+            arguments = fonction.get("arguments", "{}")
+            appels.append(
+                ToolCall(
+                    id=appel.get("id", ""),
+                    name=fonction["name"],
+                    arguments=(
+                        arguments
+                        if isinstance(arguments, str)
+                        else json.dumps(arguments)
+                    ),
+                )
+            )
         messages.append(
             Message(
                 role=role,
                 content=m.content or "",
                 name=m.name,
+                tool_calls=appels or None,
                 tool_call_id=m.tool_call_id,
             )
         )
@@ -314,14 +358,14 @@ def _ensure_identity_prompt(
     injection" rather than crashing the endpoint, but the failure is logged
     (per REVIEW.md — never silently swallow).
     """
-    # L'heure d'abord, et quoi qu'il arrive. Le retour anticipé ci-dessous
-    # existe pour ne pas doubler l'IDENTITÉ quand l'appelant fournit la
+    # L'heure à chaque tour, même avec un cadrage fourni par le client.
+    # Le retour anticipé évite de doubler l'IDENTITÉ quand l'appelant fournit la
     # sienne ; laisser l'horloge sauter avec elle est ce qui faisait répondre
     # une date lue dans la mémoire.
     ancre = _now_anchor()
     # Le cliché du bureau rejoint l'ancre (Atlas, 24 août 2026) : le chat
-    # sait ce qui tourne et ce qui est devant, comme la voix. L'ancre est
-    # déjà volatile à la minute — l'état n'y coûte rien de plus.
+    # sait ce qui tourne et ce qui est devant, comme la voix. L'ancre
+    # volatile est placée près de la demande, après le préfixe réutilisable.
     try:
         from diapason.desktop.etat_bureau import decrire, dernier_etat_connu
 
@@ -332,8 +376,8 @@ def _ensure_identity_prompt(
         pass
     # Et ce que l'utilisateur regarde DANS Diapason (handoff, 25/08/2026) :
     # « continue ce projet sur mon téléphone » a enfin un référent pour
-    # « ce projet ». Même place que le cliché du bureau — l'ancre est déjà
-    # volatile à la minute, un état de plus n'y coûte rien.
+    # « ce projet ». Même place que le cliché du bureau — près de la demande,
+    # après les échanges précédents.
     try:
         from diapason.desktop.contexte_app import (
             decrire as decrire_app,
@@ -366,7 +410,12 @@ def _ensure_identity_prompt(
             ancre = f"{ancre}\n{decrire_main(objet)}"
     except Exception:  # noqa: BLE001 - la perception est un bonus
         pass
-    anchored = [Message(role=Role.SYSTEM, content=ancre), *messages]
+    nombre = quantite_du_tour(messages)
+    if nombre:
+        ancre += "\n" + consigne_quantite(nombre)
+    anchored = inserer_au_tour_courant(
+        messages, [Message(role=Role.SYSTEM, content=ancre)]
+    )
 
     # Le retour anticipé n'a de sens que si le CLIENT a fourni son propre
     # cadrage. Il testait la liste telle qu'elle arrive ici — or le serveur y
@@ -424,6 +473,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
     config = getattr(request.app.state, "config", None)
+    latency = ChatLatency()
 
     # Le cliché du bureau se rafraîchit en parallèle de la requête (~100 ms
     # d'osascript) ; l'ancre du prompt ne lit que le cache — même mécanique
@@ -482,7 +532,9 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             )
             if outcome.handled:
                 if request_body.stream:
-                    return _handle_lightning_stream(model, outcome)
+                    return measure_response(
+                        _handle_lightning_stream(model, outcome), latency
+                    )
                 return ChatCompletionResponse(
                     model=model,
                     choices=[
@@ -527,18 +579,23 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                     min_score=config.memory.context_min_score,
                     max_context_tokens=config.memory.context_max_tokens,
                 )
-                enriched = inject_context(
-                    query_text,
-                    messages,
-                    memory_backend,
-                    config=ctx_cfg,
-                )
-                # Rebuild request messages from enriched Message objects
+                # 19/09/2026 : la recherche SQLite tournait sur la boucle
+                # du serveur ; un disque occupé retenait aussi les flux ouverts.
+                with latency.phase("memoryMs"):
+                    enriched = await asyncio.to_thread(
+                        inject_context,
+                        query_text,
+                        messages,
+                        memory_backend,
+                        config=ctx_cfg,
+                    )
                 if len(enriched) > len(messages):
+                    # Seuls les ajouts du serveur bougent ; les messages système
+                    # fournis par le client et les échanges d'outils restent intacts.
                     from diapason.server.models import ChatMessage
 
                     new_msgs = []
-                    for msg in enriched:
+                    for msg in enriched[: len(enriched) - len(messages)]:
                         new_msgs.append(
                             ChatMessage(
                                 role=msg.role.value,
@@ -547,7 +604,9 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                                 tool_call_id=getattr(msg, "tool_call_id", None),
                             )
                         )
-                    request_body.messages = new_msgs
+                    request_body.messages = inserer_au_tour_courant(
+                        request_body.messages, new_msgs
+                    )
         except Exception:
             logging.getLogger("diapason.server").debug(
                 "Memory context injection failed",
@@ -573,6 +632,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                 cr.suggested_max_tokens,
                 model,
             )
+            suggested = max(suggested, budget_quantite(query_text_for_complexity))
             complexity_info = ComplexityInfo(
                 score=cr.score,
                 tier=cr.tier,
@@ -599,7 +659,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         # #414).  For plain chat (no tools), stream token-by-token directly
         # from the engine for true real-time output.
         if request_body.tools:
-            return await _handle_stream_tools(
+            response = await _handle_stream_tools(
                 engine,
                 model,
                 request_body,
@@ -608,8 +668,12 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                 bus=getattr(request.app.state, "bus", None),
                 memory_service=getattr(request.app.state, "memory_service", None),
                 client_system=client_system,
+                latency=latency,
             )
-        return await _handle_stream(
+            return measure_response(response, latency)
+        with latency.phase("toolSetupMs"):
+            tooling = await _chat_tooling_async(request.app.state, config)
+        response = await _handle_stream(
             engine,
             model,
             request_body,
@@ -623,8 +687,10 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             # Diapason ne pouvait rien LIRE — ni l'heure, ni l'agenda, ni une
             # tâche Succès. C'est le fil qui manquait entre les 98 outils
             # enregistrés et la seule interface qui sert vraiment.
-            tooling=_chat_tooling(request.app.state, config),
+            tooling=tooling,
+            latency=latency,
         )
+        return measure_response(response, latency)
 
     # Non-streaming: use agent if available, otherwise direct engine call.
     #
@@ -788,6 +854,7 @@ def _remember_exchange(
     )
 
 
+@interactive_turn()
 def _handle_direct(
     engine,
     model: str,
@@ -894,6 +961,7 @@ def _handle_direct(
     )
 
 
+@interactive_turn()
 def _handle_agent(
     agent,
     model: str,
@@ -983,6 +1051,7 @@ async def _handle_stream_tools(
     bus=None,
     memory_service=None,
     client_system: bool = False,
+    latency: ChatLatency | None = None,
 ):
     """Stream a raw OpenAI-compat function-calling response via SSE.
 
@@ -1000,11 +1069,17 @@ async def _handle_stream_tools(
     from diapason.server.cloud_router import is_cloud_model
 
     messages = _to_messages(req.messages)
-    messages = _ensure_identity_prompt(
-        messages, app_config, client_supplied_system=client_system
-    )
+    latency = latency or ChatLatency()
+    with latency.phase("promptMs"):
+        messages = await asyncio.to_thread(
+            _ensure_identity_prompt,
+            messages,
+            app_config,
+            client_supplied_system=client_system,
+        )
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     use_cloud = is_cloud_model(model)
+
     query_text = ""
     for _m in reversed(req.messages):
         if _m.role == "user" and _m.content:
@@ -1023,32 +1098,39 @@ async def _handle_stream_tools(
 
         finish_reason = "stop"
         try:
-            async for sc in engine.stream_full(
-                messages,
-                model=model,
-                temperature=req.temperature,
-                max_tokens=req.max_tokens,
-                tools=req.tools,
-            ):
-                if sc.content:
-                    full_content += sc.content
-                    content_chunk = ChatCompletionChunk(
-                        id=chunk_id,
-                        model=model,
-                        choices=[StreamChoice(delta=DeltaMessage(content=sc.content))],
-                    )
-                    yield f"data: {content_chunk.model_dump_json()}\n\n"
-                if sc.tool_calls:
-                    tc_chunk = ChatCompletionChunk(
-                        id=chunk_id,
-                        model=model,
-                        choices=[
-                            StreamChoice(delta=DeltaMessage(tool_calls=sc.tool_calls))
-                        ],
-                    )
-                    yield f"data: {tc_chunk.model_dump_json()}\n\n"
-                if sc.finish_reason:
-                    finish_reason = sc.finish_reason
+            async with aclosing(
+                engine.stream_full(
+                    messages,
+                    model=model,
+                    temperature=req.temperature,
+                    max_tokens=req.max_tokens,
+                    tools=req.tools,
+                )
+            ) as source_flux:
+                async for sc in source_flux:
+                    if sc.content:
+                        full_content += sc.content
+                        content_chunk = ChatCompletionChunk(
+                            id=chunk_id,
+                            model=model,
+                            choices=[
+                                StreamChoice(delta=DeltaMessage(content=sc.content))
+                            ],
+                        )
+                        yield f"data: {content_chunk.model_dump_json()}\n\n"
+                    if sc.tool_calls:
+                        tc_chunk = ChatCompletionChunk(
+                            id=chunk_id,
+                            model=model,
+                            choices=[
+                                StreamChoice(
+                                    delta=DeltaMessage(tool_calls=sc.tool_calls)
+                                )
+                            ],
+                        )
+                        yield f"data: {tc_chunk.model_dump_json()}\n\n"
+                    if sc.finish_reason:
+                        finish_reason = sc.finish_reason
         except Exception as exc:
             import logging
 
@@ -1116,6 +1198,7 @@ async def _handle_stream(
     bus=None,
     memory_service=None,
     client_system: bool = False,
+    latency: ChatLatency | None = None,
     tooling=None,
 ):
     """Stream response using SSE format.
@@ -1135,9 +1218,14 @@ async def _handle_stream(
     )
 
     messages = _to_messages(req.messages)
-    messages = _ensure_identity_prompt(
-        messages, app_config, client_supplied_system=client_system
-    )
+    latency = latency or ChatLatency()
+    with latency.phase("promptMs"):
+        messages = await asyncio.to_thread(
+            _ensure_identity_prompt,
+            messages,
+            app_config,
+            client_supplied_system=client_system,
+        )
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     # Last user message — recorded as the trace query.
@@ -1150,6 +1238,11 @@ async def _handle_stream(
     # Route directly to the right backend — bypasses engine routing entirely
     # so broken MultiEngine state can never misdirect requests.
     use_cloud = is_cloud_model(model)
+
+    if req.interactiveQuestions and use_cloud:
+        from diapason.server.questions_chat import instruire_questions_texte
+
+        messages = instruire_questions_texte(messages)
 
     async def generate():
         started_at = time.time()
@@ -1199,13 +1292,32 @@ async def _handle_stream(
                     token_iter = stream_local(
                         model, messages, req.temperature, req.max_tokens
                     )
-                elif tooling is not None and text_needs_tools(query_text):
+                elif (
+                    tooling is not None or req.interactiveQuestions
+                ) and text_needs_tools(query_text):
                     # Les schémas des dix-sept outils pèsent près de trois mille
                     # jetons que le modèle relit avant de répondre. Sur « merci »
                     # c'est du temps pur perdu ; le chemin vocal l'avait déjà
                     # mesuré (voir core/tool_turn.py). Par défaut on les envoie :
                     # seule une parole sans demande en est dispensée.
                     token_iter = None
+                elif (quantite_du_tour(messages) or 0) >= SEUIL_REPRISE:
+
+                    async def texte_long():
+                        async with aclosing(
+                            prolonger_flux(
+                                engine,
+                                messages,
+                                model=model,
+                                temperature=req.temperature,
+                                max_tokens=req.max_tokens,
+                            )
+                        ) as source_flux:
+                            async for morceau in source_flux:
+                                if morceau.content:
+                                    yield morceau.content
+
+                    token_iter = texte_long()
                 else:
                     # Les questions analytiques passent par le brouillon-
                     # critique (server/reflexion.py) : silence le temps d'un
@@ -1241,50 +1353,69 @@ async def _handle_stream(
 
                 from diapason.server.agentic_stream import stream_with_tools
 
-                _outils, _executeur = tooling
-                async for _evt in stream_with_tools(
-                    engine,
-                    model,
-                    messages,
-                    tools=_outils,
-                    executor=_executeur,
-                    temperature=req.temperature,
-                    max_tokens=req.max_tokens,
-                ):
-                    if _evt.kind == "token":
-                        full_content += _evt.data
+                _outils, _executeur = tooling or ([], None)
+                async with aclosing(
+                    stream_with_tools(
+                        engine,
+                        model,
+                        messages,
+                        tools=_outils,
+                        executor=_executeur,
+                        temperature=req.temperature,
+                        max_tokens=req.max_tokens,
+                        interactive_questions=req.interactiveQuestions,
+                    )
+                ) as source_flux:
+                    async for _evt in source_flux:
+                        if _evt.kind == "token":
+                            full_content += _evt.data
+                            chunk = ChatCompletionChunk(
+                                id=chunk_id,
+                                model=model,
+                                choices=[
+                                    StreamChoice(
+                                        delta=DeltaMessage(content=_evt.data),
+                                    )
+                                ],
+                            )
+                            yield f"data: {chunk.model_dump_json()}\n\n"
+                        else:
+                            _nom = {
+                                "tool_start": "tool_call_start",
+                                "tool_end": "tool_call_end",
+                                "questions": "questions",
+                            }[_evt.kind]
+                            yield (
+                                f"event: {_nom}\n"
+                                f"data: {_json_outils.dumps(_evt.data)}\n\n"
+                            )
+            else:
+                async with aclosing(token_iter) as source_flux:
+                    from diapason.server.questions_chat import filtrer_questions_texte
+
+                    async def textes():
+                        if req.interactiveQuestions:
+                            async for evenement in filtrer_questions_texte(source_flux):
+                                yield evenement
+                        else:
+                            async for token in source_flux:
+                                yield "token", token
+
+                    async for kind, token in textes():
+                        if kind == "questions":
+                            yield f"event: questions\ndata: {json.dumps(token)}\n\n"
+                            continue
+                        full_content += token
                         chunk = ChatCompletionChunk(
                             id=chunk_id,
                             model=model,
                             choices=[
                                 StreamChoice(
-                                    delta=DeltaMessage(content=_evt.data),
+                                    delta=DeltaMessage(content=token),
                                 )
                             ],
                         )
                         yield f"data: {chunk.model_dump_json()}\n\n"
-                    else:
-                        _nom = (
-                            "tool_call_start"
-                            if _evt.kind == "tool_start"
-                            else "tool_call_end"
-                        )
-                        yield (
-                            f"event: {_nom}\ndata: {_json_outils.dumps(_evt.data)}\n\n"
-                        )
-            else:
-                async for token in token_iter:
-                    full_content += token
-                    chunk = ChatCompletionChunk(
-                        id=chunk_id,
-                        model=model,
-                        choices=[
-                            StreamChoice(
-                                delta=DeltaMessage(content=token),
-                            )
-                        ],
-                    )
-                    yield f"data: {chunk.model_dump_json()}\n\n"
         except Exception as exc:
             # Surface errors as a content chunk so the frontend can
             # display them instead of silently failing.
@@ -1772,7 +1903,7 @@ async def server_info(request: Request):
 async def health(request: Request):
     """Health check endpoint."""
     engine = request.app.state.engine
-    healthy = engine.health()
+    healthy = await asyncio.to_thread(engine.health)
     if not healthy:
         raise HTTPException(status_code=503, detail="Engine unhealthy")
     return {"status": "ok"}

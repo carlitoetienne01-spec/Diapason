@@ -29,12 +29,12 @@ class TestDansLeChat:
 
     def test_un_system_du_client_ne_recoit_rien(self):
         # Un client qui fournit son propre cadrage garde la main : ni
-        # identité ni règles — seule l'horloge est préfixée.
+        # identité ni règles — seule l'horloge rejoint la demande courante.
         messages = [
             Message(role=Role.SYSTEM, content="Cadrage du client."),
             Message(role=Role.USER, content="Bonjour"),
         ]
         prepares = _ensure_identity_prompt(messages, None, client_supplied_system=True)
         assert not any("Manière d'écrire" in (m.content or "") for m in prepares[:1])
-        assert prepares[0].role == Role.SYSTEM  # l'ancre horaire
-        assert "MAINTENANT" in prepares[0].content
+        assert prepares[0] is messages[0], "le cadrage du client reste en tête"
+        assert "MAINTENANT" in prepares[-2].content
