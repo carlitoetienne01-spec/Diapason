@@ -320,8 +320,16 @@ async def run_discovery(
             now_ms=stamp,
         )
 
-    def changed(_zc: Any, service_type: str, name: str, state: Any) -> None:
-        if state not in {ServiceStateChange.Added, ServiceStateChange.Updated}:
+    # python-zeroconf n'appelle un gestionnaire QU'AVEC des mots-clés :
+    # ``_fire_service_state_changed_event`` fait ``fire(zeroconf=…,
+    # service_type=…, name=…, state_change=…)``. Du 26 août au 20 septembre
+    # 2026 ces paramètres s'appelaient ``_zc`` et ``state`` : chaque paquet
+    # multicast levait « unexpected keyword argument 'zeroconf' » sur la
+    # boucle — 251 956 fois dans serve.err.log (465 Mo), dès la ligne 283 du
+    # premier démarrage journalisé. Aucun ``inspect`` n'a jamais été lancé ;
+    # le maillage ne s'est jamais découvert. Ces quatre noms sont le contrat.
+    def changed(zeroconf: Any, service_type: str, name: str, state_change: Any) -> None:
+        if state_change not in {ServiceStateChange.Added, ServiceStateChange.Updated}:
             return
         task = asyncio.create_task(inspect(service_type, name))
         tasks.add(task)
