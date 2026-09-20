@@ -211,22 +211,23 @@ def test_quand_le_modele_n_appelle_rien_le_flux_reste_un_flux():
     assert [m for m in morceaux if m] == ["Deux", " et", " deux"]
 
 
-def test_un_bonjour_ne_paie_pas_les_schemas_d_outils():
-    """Trois mille jetons de schémas sur « bonjour », c'est du temps pur perdu.
-
-    Le chemin vocal avait déjà mesuré ce coût (core/tool_turn.py) ; le chat en
-    hérite. On vérifie que le tour part par le chemin NU, sans trousse.
+def test_un_bonjour_garde_la_trousse_pour_ne_pas_perdre_le_prefixe():
+    """Jusqu'au 20/09/2026 un salut partait par le chemin NU, sans trousse :
+    trois mille jetons de schémas relus pour rien. Avec la trousse stable le
+    préfixe outillé est en cache et c'est le chemin nu qui coûte — 4,2 s de
+    préremplissage pour « Merci ! » contre 2,7 s pour une question outillée
+    (banc du 20/09). Le salut passe donc par le même chemin, même trousse.
     """
     engine = _moteur_qui_reclame("calculator", "{}")
     vus: list[bool] = []
 
     async def stream_full(messages, **kwargs):
         vus.append("tools" in kwargs)
-        yield StreamChunk(content="ne devrait pas servir")
+        yield StreamChunk(content="Bonjour Carlito.")
 
     async def stream(messages, **kwargs):
         vus.append(False)
-        yield "Bonjour Carlito."
+        yield "ne devrait pas servir"
 
     engine.stream_full = stream_full
     engine.stream = stream
@@ -241,4 +242,4 @@ def test_un_bonjour_ne_paie_pas_les_schemas_d_outils():
         },
     )
     assert _texte(_evenements(reponse.text)) == "Bonjour Carlito."
-    assert vus == [False], "un salut ne doit pas payer la trousse"
+    assert vus == [True], "un salut garde la trousse : le préfixe reste en cache"

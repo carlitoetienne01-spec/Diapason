@@ -1010,6 +1010,12 @@ class AgentConfig:
     system_prompt: str = ""  # inline system prompt (takes precedence if set)
     system_prompt_path: str = ""  # path to system prompt file (.txt, .md)
     context_from_memory: bool = True  # inject relevant memory context into prompts
+    # 20/09/2026 : une trousse qui change d'un tour à l'autre invalide le
+    # préfixe calculé par Ollama — quatre tours sur cinq à froid (9 à 24 s de
+    # préremplissage sur le 9b) contre 2,9 s quand la trousse est la même.
+    # False = les mêmes schémas à chaque tour ; True = catalogue léger et
+    # familles reconnues, la trousse du 19 septembre. Voir server/trousse_chat.py.
+    trousse_adaptative: bool = False
     # Confirmation-gated tools fail closed until the user explicitly agrees.
     # Existing configs may still opt into "auto", but it is no longer safe by
     # default for an assistant capable of shell and filesystem operations.

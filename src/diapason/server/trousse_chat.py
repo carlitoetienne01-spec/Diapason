@@ -1,9 +1,36 @@
-"""Catalogue léger, sans retirer une capacité du chat (19 septembre 2026).
+"""La trousse du chat : stable par défaut, adaptative sur demande.
 
-44 schémas occupaient 31 748 caractères pour expliquer la croissance d'un
-arbre. Tout filtrer par mots-clés ferait en revanche inventer les données des
-formulations inconnues. Le catalogue conserve l'accès à TOUS les outils de
-la trousse autorisée ; seuls leurs paramètres détaillés sont différés.
+20 septembre 2026 — la trousse qui change coûte plus cher que la trousse
+lourde. Ollama (llama-server, un créneau) réutilise le préfixe calculé du
+tour précédent ; les schémas d'outils sont rendus en TÊTE du prompt, donc
+toute variation de la trousse invalide tout ce qui suit. Banc de cinq tours
+sur le 9b, même conversation, trousse adaptative :
+
+    tâches (catalogue + 2)  préremplissage 9,1 s  — froid
+    capitale du Pérou (45)                24,4 s  — froid
+    mes notes (catalogue + 1)              8,4 s  — froid, puis relecture 2,9 s
+    capitale du Chili (45)                 2,9 s  — chaud : même trousse que le Pérou
+    tâches en retard (catalogue + 2)       9,0 s  — froid
+
+Quatre tours sur cinq à froid ; le seul tour chaud est celui dont la trousse
+était identique au précédent tour de même forme. Une trousse unique pour
+toute la conversation — et pour TOUTES les conversations, le préfixe étant
+le même partout — ne se paie qu'au chargement du modèle.
+
+Le mode adaptatif du 19 septembre (catalogue léger + schémas des familles
+reconnues, relecture d'une réponse sans appel) reste disponible :
+``[agent] trousse_adaptative = true``. Il gardait l'accès à TOUS les outils
+(les paramètres seuls étaient différés) et valait pour un premier tour à
+froid : 3 441 jetons au lieu de 10 231.
+
+Ce qui varie encore, mesuré ou lu le 20 septembre : un « Merci ! » part
+sans trousse (préfixe = identité seule, 4,2 s de préremplissage pour 1 843
+jetons) mais llama-server garde le préfixe outillé en cache — le tour
+suivant est revenu chaud à 2,7 s ; le tour qui répond à un questionnaire
+retire le schéma des questions (46 → 45) et le passage sans outils après
+trois actions retire tout le bloc : un recalcul de l'historique chacun,
+rares. La relecture avant affichage n'a plus d'objet avec tous les schémas ;
+le modèle qui affirme sans lire reste possible, comme avant le 19 septembre.
 """
 
 from __future__ import annotations
@@ -128,8 +155,11 @@ _REDACTION = re.compile(
     r"what does .* mean|how do you say|what is the meaning)\b"
 )
 # 19/09/2026 : « Prépare moi un programme pour la programmation » envoyait
-# les 44 schémas complets au 14b : 57,8 s pour répéter la demande. Le catalogue
-# conserve tous les outils, sans leurs paramètres inutiles avant le cadrage.
+# les 44 schémas complets au 14b : 57,8 s pour répéter la demande. Revue du
+# 20/09 : ces 57,8 s étaient le préremplissage à FROID d'un modèle qui venait
+# d'être chargé, pas un coût de qualité des schémas — chaud, la même trousse
+# coûte ~3 s (banc du 20/09) ; les 13 jetons qui répétaient la demande sont
+# un symptôme non mesuré. Le catalogue ne vaut donc qu'en mode adaptatif.
 _CONCEPTION = re.compile(
     r"^(?:(?:peux.tu|pourrais.tu|tu peux)\s+)?"
     r"(?:prepare(?:r)?|concois|concevoir|elabore(?:r)?|cree(?:r)?|fais|faire)\b[\s-]*"
@@ -247,7 +277,13 @@ def _taille(specs: list[dict[str, Any]]) -> int:
 class TrousseChat:
     """Sélection propre au tour ; aucune mutation du registre ou de l'exécuteur."""
 
-    def __init__(self, tools: Sequence[Any], messages: Sequence[Message]):
+    def __init__(
+        self,
+        tools: Sequence[Any],
+        messages: Sequence[Message],
+        *,
+        adaptative: bool = False,
+    ):
         self._specs = [outil.to_openai_function() for outil in tools]
         self.noms = {s["function"]["name"] for s in self._specs}
         self._charges = 0
@@ -291,7 +327,8 @@ class TrousseChat:
             },
         }
         self._differee = (
-            CHARGER_OUTILS not in self.noms
+            adaptative
+            and CHARGER_OUTILS not in self.noms
             and _taille(self._specs) > SEUIL_CATALOGUE
             # Essai réel du 19/09 : « J'ai reçu quoi ? » avec catalogue seul
             # produisait une absence de messages inventée. Une demande inconnue

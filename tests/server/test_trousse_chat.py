@@ -1,4 +1,8 @@
-"""§5/§100 : alléger les schémas sans inventer les données ni élargir les droits."""
+"""§5/§100 : la trousse adaptative du 19 septembre, toujours disponible sur demande.
+
+Les classes ci-dessous instancient TrousseChat(adaptative=True) ; la trousse
+stable par défaut (20 septembre 2026) est testée dans TestLaTrousseStable.
+"""
 
 import asyncio
 import copy
@@ -7,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from diapason.core.config import DiapasonConfig
 from diapason.core.types import Message, Role, ToolCall, ToolResult
 from diapason.engine._stubs import StreamChunk
 from diapason.server.agentic_stream import stream_with_tools
@@ -101,12 +106,97 @@ async def collecter(moteur, liste, **kwargs):
     executeur = kwargs.pop("executor", None) or ToolExecutor(
         liste, autoload_capability_policy=False
     )
+    kwargs.setdefault("trousse_adaptative", True)
     return [
         e
         async for e in stream_with_tools(
             moteur, "local", dialogue, tools=liste, executor=executeur, **kwargs
         )
     ]
+
+
+class TestLaTrousseStable:
+    """20/09/2026 : la trousse qui change invalide le préfixe calculé par Ollama."""
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Quelles sont mes tâches aujourd’hui ?",
+            "Quelle est la capitale du Pérou ?",
+            'Que veut dire "Self Aware" en français ?',
+            "Prepare moi un programme pour la programmation",
+        ],
+    )
+    def test_par_defaut_les_memes_schemas_quelle_que_soit_la_demande(self, question):
+        liste = outils_du_bureau()
+        trousse = TrousseChat(liste, messages(question))
+        assert noms(trousse.specs) == [o.nom for o in liste], (
+            "reconnue, inconnue ou autonome : la même trousse, dans le même ordre"
+        )
+        assert not trousse.verifier_lecture(messages(question)), (
+            "avec tous les schémas, rien à relire"
+        )
+        assert not trousse.est_chargement(CHARGER_OUTILS)
+
+    @pytest.mark.asyncio
+    async def test_les_tours_d_une_conversation_envoient_la_meme_trousse(self):
+        # Banc réel du 20/09 : tâches → Pérou → notes → Chili → retard, quatre
+        # préremplissages à froid sur cinq (9,1 / 24,4 / 8,4 / 9,0 s).
+        liste = outils_du_bureau()
+        moteur = Moteur([[StreamChunk(content="Oui.", finish_reason="stop")]])
+        fil: list[Message] = []
+        for question in (
+            "Quelles sont mes tâches aujourd’hui ?",
+            "Quelle est la capitale du Pérou ?",
+            "Et mes notes ?",
+            "Quelle est la capitale du Chili ?",
+        ):
+            fil.append(Message(role=Role.USER, content=question))
+            await collecter(moteur, liste, messages=list(fil), trousse_adaptative=False)
+            fil.append(Message(role=Role.ASSISTANT, content="Oui."))
+        trousses = [json.dumps(k.get("tools")) for _, k in moteur.appels]
+        assert len(trousses) == 4, "un seul passage par tour, aucune relecture"
+        assert len(set(trousses)) == 1, (
+            "la même trousse, octet pour octet, à chaque tour"
+        )
+
+    def test_l_ancienne_trousse_reste_disponible_sur_demande(self):
+        trousse = TrousseChat(outils(), messages(), adaptative=True)
+        assert noms(trousse.specs) == [CHARGER_OUTILS]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("app_config", [None, DiapasonConfig()])
+    async def test_la_route_du_bureau_envoie_toute_la_trousse_par_defaut(
+        self, monkeypatch, app_config
+    ):
+        """Revue du 20/09 : seul le mode adaptatif était prouvé de bout en bout."""
+        from diapason.server.models import ChatCompletionRequest
+        from diapason.server.routes import _handle_stream
+
+        moteur = Moteur([[StreamChunk(content="Oui.", finish_reason="stop")]])
+        monkeypatch.setattr(
+            "diapason.server.routes._ensure_identity_prompt",
+            lambda messages, *args, **kwargs: messages,
+        )
+        liste = outils()
+        requete = ChatCompletionRequest(
+            model="test",
+            stream=True,
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Prepare moi un programme pour la programmation",
+                }
+            ],
+        )
+        response = await _handle_stream(
+            moteur, "test", requete, tooling=(liste, MagicMock()), app_config=app_config
+        )
+        "".join([part async for part in response.body_iterator])
+        assert noms(moteur.appels[0][1]["tools"]) == [o.nom for o in liste], (
+            "sans réglage, la route envoie tous les schémas, sans catalogue"
+        )
+        assert len(moteur.appels) == 1
 
 
 class TestCatalogue:
@@ -119,7 +209,7 @@ class TestCatalogue:
         ],
     )
     def test_concevoir_un_programme_ne_charge_pas_tous_les_parametres(self, demande):
-        trousse = TrousseChat(outils(), messages(demande))
+        trousse = TrousseChat(outils(), messages(demande), adaptative=True)
         assert noms(trousse.specs) == [CHARGER_OUTILS], (
             "le cadrage garde l'accès aux outils sans noyer le modèle dans 44 schémas"
         )
@@ -136,7 +226,7 @@ class TestCatalogue:
     def test_un_programme_fonde_sur_des_donnees_conserve_le_filet_de_lecture(
         self, demande
     ):
-        trousse = TrousseChat(outils(), messages(demande))
+        trousse = TrousseChat(outils(), messages(demande), adaptative=True)
         assert trousse.verifier_lecture(messages(demande)) or noms(trousse.specs) == [
             o.nom for o in outils()
         ], "concevoir ne dispense pas de lire les données"
@@ -145,7 +235,7 @@ class TestCatalogue:
         liste = outils()
         original = [o.to_openai_function() for o in liste]
         sauvegarde = copy.deepcopy(original)
-        trousse = TrousseChat(liste, messages())
+        trousse = TrousseChat(liste, messages(), adaptative=True)
         assert noms(trousse.specs) == [CHARGER_OUTILS], (
             "aucune exclusion de capacité : les noms restent au catalogue"
         )
@@ -163,7 +253,7 @@ class TestCatalogue:
         ],
     )
     def test_precharge_sans_supprimer_le_catalogue(self, question, attendus):
-        trousse = TrousseChat(outils(), messages(question))
+        trousse = TrousseChat(outils(), messages(question), adaptative=True)
         assert attendus <= set(noms(trousse.specs))
         assert CHARGER_OUTILS in noms(trousse.specs)
 
@@ -171,7 +261,9 @@ class TestCatalogue:
         historique = messages("Quelles sont mes tâches ?") + [
             Message(role=Role.USER, content="Et demain ?")
         ]
-        assert "succes_tasks" in noms(TrousseChat(outils(), historique).specs)
+        assert "succes_tasks" in noms(
+            TrousseChat(outils(), historique, adaptative=True).specs
+        )
         historique = [
             Message(
                 role=Role.ASSISTANT,
@@ -182,11 +274,16 @@ class TestCatalogue:
             ),
             *messages("Continue"),
         ]
-        assert "outil_prive" in noms(TrousseChat(outils(), historique).specs)
+        assert "outil_prive" in noms(
+            TrousseChat(outils(), historique, adaptative=True).specs
+        )
 
     def test_les_schemas_charges_sont_exacts_et_independants_des_autres_fenetres(self):
         liste = outils()
-        a, b = TrousseChat(liste, messages()), TrousseChat(liste, messages())
+        a, b = (
+            TrousseChat(liste, messages(), adaptative=True),
+            TrousseChat(liste, messages(), adaptative=True),
+        )
         reponse = json.loads(
             a.charger(json.dumps({"toolNames": ["outil_prive", "shell_exec"]}))
         )
@@ -209,7 +306,7 @@ class TestCatalogue:
     )
     def test_une_decouverte_mal_formee_revient_aux_schemas_complets(self, arguments):
         liste = outils()
-        t = TrousseChat(liste, messages())
+        t = TrousseChat(liste, messages(), adaptative=True)
         assert "error" in json.loads(t.charger(arguments))
         assert noms(t.specs) == [o.nom for o in liste], (
             "repli complet sans outil supplémentaire"
@@ -217,16 +314,18 @@ class TestCatalogue:
 
     def test_deux_decouvertes_suffisent_et_la_petite_trousse_est_inchangee(self):
         liste = outils()
-        t = TrousseChat(liste, messages())
+        t = TrousseChat(liste, messages(), adaptative=True)
         for _ in range(MAX_CHARGEMENTS):
             t.charger('{"toolNames":["outil_prive"]}')
         assert noms(t.specs) == [o.nom for o in liste]
         petit = [Outil("personnel", grand=False)]
-        assert TrousseChat(petit, messages()).specs == [petit[0].to_openai_function()]
+        assert TrousseChat(petit, messages(), adaptative=True).specs == [
+            petit[0].to_openai_function()
+        ]
 
     def test_le_nom_reserve_ne_detourne_pas_un_outil_configure(self):
         liste = [*outils(), Outil(CHARGER_OUTILS)]
-        t = TrousseChat(liste, messages())
+        t = TrousseChat(liste, messages(), adaptative=True)
         assert not t.est_chargement(CHARGER_OUTILS)
         assert noms(t.specs) == [o.nom for o in liste]
 
@@ -242,7 +341,7 @@ class TestCatalogue:
     )
     def test_une_demande_inconnue_ou_dependante_garde_la_trousse(self, question):
         liste = outils()
-        assert TrousseChat(liste, messages(question)).specs == [
+        assert TrousseChat(liste, messages(question), adaptative=True).specs == [
             o.to_openai_function() for o in liste
         ], "l'optimisation ne doit pas faire croire que les données ont été lues"
 
@@ -291,7 +390,7 @@ class TestLaRelectureNeViseQueLesDonnees:
 
     def test_une_traduction_apres_youtube_n_est_pas_relue(self):
         fil = apres_youtube('Que veut dire "Self Aware" en français ?')
-        trousse = TrousseChat(outils_du_bureau(), fil)
+        trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert noms(trousse.specs) == [CHARGER_OUTILS], (
             "une traduction est une réponse autonome : le catalogue seul"
         )
@@ -303,7 +402,7 @@ class TestLaRelectureNeViseQueLesDonnees:
         # « Qui est le président actuel d'Haïti ? » n'est ni reconnue ni
         # autonome (« actuel ») : tous les schémas, et un seul passage.
         fil = apres_youtube("Qui est le premier ministre actuel d'Haïti ?")
-        trousse = TrousseChat(outils_du_bureau(), fil)
+        trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert noms(trousse.specs) == [o.nom for o in outils_du_bureau()]
         assert not trousse.verifier_lecture(fil)
 
@@ -317,7 +416,7 @@ class TestLaRelectureNeViseQueLesDonnees:
     )
     def test_une_demande_de_donnees_garde_le_filet(self, question):
         fil = apres_youtube(question)
-        trousse = TrousseChat(outils_du_bureau(), fil)
+        trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert trousse.verifier_lecture(fil) or noms(trousse.specs) == [
             o.nom for o in outils_du_bureau()
         ], "une lecture attendue est relue, ou reçoit d'emblée tous les schémas"
@@ -334,11 +433,13 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(role=Role.ASSISTANT, content="Deux tâches."),
         ]
         suite = [*lecture, Message(role=Role.USER, content="Et demain ?")]
-        assert TrousseChat(outils_du_bureau(), suite).verifier_lecture(suite)
-        merci = [*lecture, Message(role=Role.USER, content="Merci !")]
-        assert not TrousseChat(outils_du_bureau(), merci).verifier_lecture(merci), (
-            "un remerciement n'affirme rien sur les données"
+        assert TrousseChat(outils_du_bureau(), suite, adaptative=True).verifier_lecture(
+            suite
         )
+        merci = [*lecture, Message(role=Role.USER, content="Merci !")]
+        assert not TrousseChat(
+            outils_du_bureau(), merci, adaptative=True
+        ).verifier_lecture(merci), "un remerciement n'affirme rien sur les données"
 
     @pytest.mark.parametrize(
         "question",
@@ -352,7 +453,7 @@ class TestLaRelectureNeViseQueLesDonnees:
         # Revue du 20/09/2026 : « envoie » amorçait mesh_devices, « ouvre »
         # browser_tabs, tous deux « lecteurs » — une blague était relue.
         fil = apres_youtube(question)
-        trousse = TrousseChat(outils_du_bureau(), fil)
+        trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert not trousse.verifier_lecture(fil)
 
     @pytest.mark.parametrize(
@@ -363,7 +464,7 @@ class TestLaRelectureNeViseQueLesDonnees:
         # Revue du 20/09/2026 : « aujourd'hui » réduisait la trousse à l'horloge
         # et « Tu n'as rien reçu, j'ai tout vérifié » partait sans lecture.
         liste = [*outils_du_bureau(), Outil("digest_collect")]
-        trousse = TrousseChat(liste, messages(question))
+        trousse = TrousseChat(liste, messages(question), adaptative=True)
         assert noms(trousse.specs) == [o.nom for o in liste], (
             "une demande inconnue garde tous les schémas, l'horloge n'est pas un sujet"
         )
@@ -383,7 +484,9 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(role=Role.ASSISTANT, content="Deux tâches."),
             Message(role=Role.USER, content=suivi),
         ]
-        assert not TrousseChat(outils_du_bureau(), lecture).verifier_lecture(lecture)
+        assert not TrousseChat(
+            outils_du_bureau(), lecture, adaptative=True
+        ).verifier_lecture(lecture)
 
     @pytest.mark.parametrize(
         "question",
@@ -410,7 +513,9 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(role=Role.ASSISTANT, content="C'est parti."),
             Message(role=Role.USER, content=question),
         ]
-        assert noms(TrousseChat(liste, fil).specs) == [o.nom for o in liste]
+        assert noms(TrousseChat(liste, fil, adaptative=True).specs) == [
+            o.nom for o in liste
+        ]
 
     def test_un_suivi_court_apres_une_action_n_est_pas_relu(self):
         fil = [
@@ -424,7 +529,9 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(role=Role.ASSISTANT, content="C'est parti."),
             Message(role=Role.USER, content="Et le titre suivant ?"),
         ]
-        assert not TrousseChat(outils_du_bureau(), fil).verifier_lecture(fil)
+        assert not TrousseChat(
+            outils_du_bureau(), fil, adaptative=True
+        ).verifier_lecture(fil)
 
     @pytest.mark.asyncio
     async def test_la_traduction_s_affiche_au_premier_passage(self):
@@ -484,8 +591,10 @@ class TestDialogueAvecDecouverte:
                 },
             ],
         )
+        config = DiapasonConfig()
+        config.agent.trousse_adaptative = True
         response = await _handle_stream(
-            moteur, "test", requete, tooling=(outils(), executeur)
+            moteur, "test", requete, tooling=(outils(), executeur), app_config=config
         )
         corps = "".join([part async for part in response.body_iterator])
         assert noms(moteur.appels[0][1]["tools"]) == [

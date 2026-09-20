@@ -14,7 +14,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from diapason.core.paths import get_config_dir
-from diapason.core.tool_turn import text_needs_tools
 from diapason.core.types import Message, Role, ToolCall
 from diapason.engine.scheduling import interactive_turn
 from diapason.server.contexte_chat import inserer_au_tour_courant
@@ -1313,14 +1312,15 @@ async def _handle_stream(
                     token_iter = stream_local(
                         model, messages, req.temperature, req.max_tokens
                     )
-                elif (
-                    tooling is not None or req.interactiveQuestions
-                ) and text_needs_tools(query_text):
-                    # Les schémas des dix-sept outils pèsent près de trois mille
-                    # jetons que le modèle relit avant de répondre. Sur « merci »
-                    # c'est du temps pur perdu ; le chemin vocal l'avait déjà
-                    # mesuré (voir core/tool_turn.py). Par défaut on les envoie :
-                    # seule une parole sans demande en est dispensée.
+                elif tooling is not None or req.interactiveQuestions:
+                    # Jusqu'au 20/09/2026, « merci » était dispensé de la trousse
+                    # (text_needs_tools) parce que dix-sept schémas pesaient
+                    # trois mille jetons relus à chaque tour. Avec la trousse
+                    # stable, c'est l'inverse : le préfixe outillé est en cache
+                    # et un « Merci ! » SANS trousse repart de l'identité seule —
+                    # 4,2 s de préremplissage pour 1 843 jetons, contre 2,7 s
+                    # pour une question outillée de 10 292 jetons (banc du 20/09).
+                    # Le chemin vocal garde sa propre règle (core/tool_turn.py).
                     token_iter = None
                 elif (quantite_du_tour(messages) or 0) >= SEUIL_REPRISE:
 
@@ -1385,6 +1385,13 @@ async def _handle_stream(
                         temperature=req.temperature,
                         max_tokens=req.max_tokens,
                         interactive_questions=req.interactiveQuestions,
+                        trousse_adaptative=bool(
+                            getattr(
+                                getattr(app_config, "agent", None),
+                                "trousse_adaptative",
+                                False,
+                            )
+                        ),
                     )
                 ) as source_flux:
                     async for _evt in source_flux:

@@ -210,6 +210,7 @@ async def stream_with_tools(
     max_tokens: int = 1024,
     max_tool_turns: int = DEFAULT_MAX_TOOL_TURNS,
     interactive_questions: bool = False,
+    trousse_adaptative: bool = False,
 ) -> AsyncIterator[ToolStreamEvent]:
     """Diffuse la réponse du modèle en exécutant les outils qu'il réclame.
 
@@ -217,8 +218,11 @@ async def stream_with_tools(
     dérivées ici pour que l'appelant n'ait pas à connaître ce détail.
     ``executor`` est un ``ToolExecutor`` déjà porteur de sa politique de
     sécurité — ce module ne décide jamais seul qu'un appel est permis.
+    ``trousse_adaptative`` rend la trousse du 19 septembre (catalogue +
+    familles) ; par défaut la trousse est la même à chaque tour, pour que le
+    préfixe calculé par Ollama survive d'un tour à l'autre (20/09/2026).
     """
-    trousse = TrousseChat(tools, messages)
+    trousse = TrousseChat(tools, messages, adaptative=trousse_adaptative)
     travail: list[Message] = list(messages)
     if interactive_questions:
         travail = ajouter_consigne(travail)
