@@ -13,6 +13,10 @@ class EngineConnectionError(Exception):
     """Raised when an engine is unreachable."""
 
 
+class EngineToolsUnsupportedError(EngineConnectionError):
+    """The local model explicitly refused function tools before generating text."""
+
+
 class EngineContextLengthError(EngineConnectionError):
     """The prompt exceeds the served model's maximum context window.
 
@@ -122,6 +126,7 @@ def estimate_prompt_tokens(messages: Sequence[Message]) -> int:
 __all__ = [
     "CONTEXT_LENGTH_MARKERS",
     "EngineConnectionError",
+    "EngineToolsUnsupportedError",
     "EngineContextLengthError",
     "InferenceEngine",
     "estimate_prompt_tokens",
