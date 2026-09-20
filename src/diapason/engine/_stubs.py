@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -101,14 +102,17 @@ class InferenceEngine(ABC):
         Default implementation wraps ``stream()`` for backward compatibility.
         Engines with native tool-call streaming should override this.
         """
-        async for token in self.stream(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        ):
-            yield StreamChunk(content=token)
+        async with aclosing(
+            self.stream(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        ) as source:
+            async for token in source:
+                yield StreamChunk(content=token)
         yield StreamChunk(finish_reason="stop")
 
     @abstractmethod

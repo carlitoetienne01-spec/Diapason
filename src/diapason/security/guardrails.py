@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections import deque
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -18,29 +21,55 @@ class SecurityBlockError(Exception):
     """Raised when mode is BLOCK and security findings are detected."""
 
 
-# Trailing characters never released while the stream is still running. Must
-# exceed the longest pattern any scanner can match, or a secret could reach
-# the screen in pieces before the scan that catches it.
-#
-# Sized against scanner.py rather than guessed. Every fixed pattern is short
-# — the longest is the 36-character private-key header — and the token-shaped
-# ones stop at the first character outside their class: an AWS key is 20, a
-# GitHub PAT ~93, Stripe ~30. 128 clears all of them with room to spare.
-#
-# It was 512 first, which was safe and useless: no answer under ~560
-# characters streamed at all, which is most of them. A window has to be
-# small enough that ordinary replies flow, or it protects nothing anyone
-# waits for.
-#
-# Residual case, stated rather than hidden: a quoted secret VALUE longer
-# than 128 characters could straddle the boundary. Detection still fires at
-# end of stream and the tail is redacted; the prefix already on screen
-# cannot be recalled. Raise this to trade latency back for margin.
+# 2026-09-19: the rich stream withheld the whole answer; the plain stream
+# released long secrets in pieces. 128 only covers FIXED patterns (at most
+# 36 characters), never arbitrary keys, email addresses or quoted values.
 _STREAM_HOLDBACK = 128
+_STREAM_RELEASE_STEP = 48  # amortize scanning without waiting for a paragraph
 
-# Minimum new text before attempting a release. Scanning on every token is
-# quadratic in the response length and buys nothing perceptible.
-_STREAM_RELEASE_STEP = 48
+# An assignment may contain arbitrarily much whitespace and a multiline
+# quoted value. Retain its beginning until the closing quote makes it
+# scannable, even when that beginning lies outside the fixed holdback.
+_OPEN_ASSIGNMENT = re.compile(
+    r"""(?:password|passwd|pwd|api_key|secret_key|auth_token)\s*"""
+    r"""(?:[=:]\s*(?:['"][^'"]*)?)?\Z""",
+    re.IGNORECASE,
+)
+
+
+def _safe_prefix(text: str) -> int:
+    """A boundary that future built-in scanner matches cannot cross.
+
+    Fixed patterns fit inside the tail. Unbounded token-shaped patterns
+    cannot cross whitespace, so never split a word/URI/email. The only
+    unbounded patterns spanning whitespace are the assignments above.
+    Custom scanners have no such contract and must use full buffering.
+    New built-in patterns require reviewing this boundary and its tests.
+    """
+    end = max(0, len(text) - _STREAM_HOLDBACK)
+    assignment = _OPEN_ASSIGNMENT.search(text)
+    if assignment is not None:
+        end = min(end, assignment.start())
+    # Only whitespace shared by Python and Rust: str.isspace() additionally
+    # accepts U+001C..U+001F, which Rust's database-URI pattern can consume.
+    while end and text[end - 1] not in " \t\r\n\f\v":
+        end -= 1
+    return end
+
+
+def _text_only(chunk: StreamChunk) -> bool:
+    # 2026-09-19: releasing a tool or final metadata before the scan finishes
+    # could trigger an action early or report a finish before the held text.
+    return all(
+        value is None
+        for value in (
+            chunk.tool_calls,
+            chunk.finish_reason,
+            chunk.usage,
+            chunk.content_blocks,
+            chunk.tool_results,
+        )
+    )
 
 
 class GuardrailsEngine(InferenceEngine):
@@ -245,6 +274,74 @@ class GuardrailsEngine(InferenceEngine):
 
         return response
 
+    async def _checked_stream(
+        self, source: AsyncIterator[StreamChunk]
+    ) -> AsyncIterator[StreamChunk]:
+        """Release clean text prefixes; retain metadata and ambiguous content."""
+        buffered: deque[StreamChunk] = deque()
+        pending_chars = 0
+        new_chars = 0
+        check_after = _STREAM_RELEASE_STEP
+        progressive = self._mode != RedactionMode.BLOCK and all(
+            type(scanner) in (SecretScanner, PIIScanner) for scanner in self._scanners
+        )
+        async with aclosing(source):
+            async for chunk in source:
+                if not self._scan_output:
+                    yield chunk
+                    continue
+                buffered.append(chunk)
+                size = len(chunk.content or "")
+                pending_chars += size
+                new_chars += size
+                progressive = progressive and _text_only(chunk)
+                if not progressive or new_chars < check_after:
+                    continue
+                text = "".join(item.content or "" for item in buffered)
+                new_chars = 0
+                # An unusually long token/open quote cannot yet be released.
+                # Back off geometrically instead of rescanning a growing
+                # megabyte at every token; normal prose keeps the 48-char step.
+                check_after = max(_STREAM_RELEASE_STEP, pending_chars // 2)
+                if not self._scan_text(text).clean:
+                    progressive = False
+                    continue
+                remaining = _safe_prefix(text)
+                pending_chars -= remaining
+                if remaining:
+                    check_after = _STREAM_RELEASE_STEP
+                while remaining and buffered:
+                    item = buffered.popleft()
+                    content = item.content or ""
+                    if len(content) <= remaining:
+                        yield item
+                        remaining -= len(content)
+                    else:
+                        yield replace(item, content=content[:remaining])
+                        buffered.appendleft(replace(item, content=content[remaining:]))
+                        remaining = 0
+
+        if not buffered:
+            return
+        text = "".join(chunk.content or "" for chunk in buffered)
+        result = self._scan_text(text) if text else ScanResult()
+        if result.clean:
+            for chunk in buffered:
+                yield chunk
+            return
+
+        # Already emitted prefixes cannot contain a finding or the start of
+        # one. Redact the remaining text ONCE, preserving every metadata
+        # fragment exactly once, in its original order. BLOCK emits nothing.
+        sanitized = self._handle_findings(text, result, "output")
+        content_emitted = False
+        for chunk in buffered:
+            content = None
+            if chunk.content and not content_emitted:
+                content = sanitized
+                content_emitted = True
+            yield replace(chunk, content=content)
+
     async def stream(
         self,
         messages: Sequence[Message],
@@ -254,82 +351,26 @@ class GuardrailsEngine(InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Scan output as it comes, releasing everything already proven safe.
-
-        This used to buffer the WHOLE response, scan once, and release it in
-        one burst. Correct, and the single largest source of felt slowness:
-        measured on this machine, 93 chunks arrived within 20 ms after 9.07
-        seconds of complete silence. The user waits in front of an empty
-        screen for the entire generation, then the answer appears at once.
-
-        Now the text is scanned as it grows and released continuously, minus
-        a trailing holdback window. The window is what makes it safe: a
-        pattern still being typed cannot be released half-formed, because
-        nothing within ``_STREAM_HOLDBACK`` characters of the end is ever
-        emitted — see that constant for how the window is sized and what it
-        does not cover.
-        """
+        """Use the same safe boundaries as rich output, including long secrets."""
         messages = self._process_input_messages(messages)
 
-        if not self._scan_output:
-            async for token in self._engine.stream(
-                messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            ):
-                yield token
-            return
+        async def chunks() -> AsyncIterator[StreamChunk]:
+            async with aclosing(
+                self._engine.stream(
+                    messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+            ) as source:
+                async for token in source:
+                    yield StreamChunk(content=token)
 
-        accumulated: list[str] = []
-        emitted = 0  # index du prochain jeton à relâcher
-        released = 0  # caractères déjà relâchés
-        tainted = False
-
-        async for token in self._engine.stream(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        ):
-            accumulated.append(token)
-            if tainted:
-                continue
-            text = "".join(accumulated)
-            safe_upto = len(text) - _STREAM_HOLDBACK
-            # Rescanning on every token would be quadratic for no benefit;
-            # a chunk's worth of new text at a time still reads as flowing.
-            if safe_upto - released < _STREAM_RELEASE_STEP:
-                continue
-            if not self._scan_text(text).clean:
-                # Stop releasing. The findings are handled once, below, on
-                # the complete text — partial redaction of a growing match
-                # would leak the very characters it means to hide.
-                tainted = True
-                continue
-            # Relâcher les JETONS entiers du modèle, pas des tranches de
-            # caractères : c'est le découpage que l'interface affiche, et
-            # des blocs arbitraires de 48 caractères se lisent comme des
-            # saccades là où les jetons du modèle se lisent comme des mots.
-            while emitted < len(accumulated):
-                fin = released + len(accumulated[emitted])
-                if fin > safe_upto:
-                    break
-                yield accumulated[emitted]
-                released = fin
-                emitted += 1
-
-        full_output = "".join(accumulated)
-        if not full_output:
-            return
-        result = self._scan_text(full_output)
-        if result.clean:
-            for token in accumulated[emitted:]:
-                yield token
-            return
-        yield self._handle_findings(full_output[released:], result, "output")
+        async with aclosing(self._checked_stream(chunks())) as checked:
+            async for chunk in checked:
+                if chunk.content is not None:
+                    yield chunk.content
 
     async def stream_full(
         self,
@@ -339,42 +380,19 @@ class GuardrailsEngine(InferenceEngine):
         temperature: float = 0.7,
         max_tokens: int = 1024,
         **kwargs: Any,
-    ) -> AsyncIterator["StreamChunk"]:
-        """Buffer rich chunks and scan all textual output before release."""
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream verified text without releasing tools or terminal data early."""
         messages = self._process_input_messages(messages)
-        buffered: list[StreamChunk] = []
-        accumulated: list[str] = []
-        async for chunk in self._engine.stream_full(
+        source = self._engine.stream_full(
             messages,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
-        ):
-            buffered.append(chunk)
-            if chunk.content:
-                accumulated.append(chunk.content)
-
-        if not self._scan_output:
-            for chunk in buffered:
+        )
+        async with aclosing(self._checked_stream(source)) as checked:
+            async for chunk in checked:
                 yield chunk
-            return
-
-        full_output = "".join(accumulated)
-        result = self._scan_text(full_output) if full_output else ScanResult()
-        if result.clean:
-            for chunk in buffered:
-                yield chunk
-            return
-
-        sanitized = self._handle_findings(full_output, result, "output")
-        content_emitted = False
-        for chunk in buffered:
-            content = None
-            if chunk.content and not content_emitted:
-                content = sanitized
-                content_emitted = True
-            yield replace(chunk, content=content)
 
     def list_models(self) -> List[str]:
         """Delegate to wrapped engine."""

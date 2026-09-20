@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing
 from typing import Any, Dict, List
 
 from diapason.core.types import Message
@@ -92,14 +93,17 @@ class MultiEngine(InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        async for token in self._engine_for(model).stream(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        ):
-            yield token
+        async with aclosing(
+            self._engine_for(model).stream(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        ) as source:
+            async for token in source:
+                yield token
 
     async def stream_full(
         self,
@@ -110,8 +114,11 @@ class MultiEngine(InferenceEngine):
     ) -> AsyncIterator["StreamChunk"]:
         """Delegate stream_full() to the engine that owns the model."""
         engine = self._engine_for(model)
-        async for chunk in engine.stream_full(messages, model=model, **kwargs):
-            yield chunk
+        async with aclosing(
+            engine.stream_full(messages, model=model, **kwargs)
+        ) as source:
+            async for chunk in source:
+                yield chunk
 
     def list_models(self) -> List[str]:
         self._refresh_map()
