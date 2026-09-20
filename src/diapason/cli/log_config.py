@@ -72,6 +72,11 @@ def setup_logging(
     if not quiet:
         console_handler.setLevel(min(level, logging.INFO))
         logging.getLogger("diapason.speech.realtime.local_voice").setLevel(logging.INFO)
+        # Même défaut, même remède, le 20 septembre 2026 : la ligne
+        # « chat_performance » du 19 (phases, jetons, attente d'admission, sans
+        # contenu) n'a jamais atteint serve.err.log — les 89 s d'une traduction
+        # ont dû être reconstituées depuis le journal d'Ollama.
+        logging.getLogger("diapason.telemetry.chat_latency").setLevel(logging.INFO)
 
     # File handler (verbose or explicit path)
     if verbose or log_file is not None:

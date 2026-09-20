@@ -25,6 +25,15 @@ class TestSetupLogging:
         assert isinstance(logger, logging.Logger)
         assert logger.name == "diapason"
 
+    def test_la_mesure_du_chat_parle_en_info_par_defaut(self):
+        """Sans cette règle, chat_performance restait sous le niveau WARNING
+        du logger racine et le journal du serveur ne portait aucune latence."""
+        setup_logging(verbose=False, quiet=False)
+        mesure = logging.getLogger("diapason.telemetry.chat_latency")
+        assert mesure.isEnabledFor(logging.INFO), "la ligne doit atteindre le journal"
+        voix = logging.getLogger("diapason.speech.realtime.local_voice")
+        assert voix.isEnabledFor(logging.INFO)
+
     def test_log_file_handler_on_verbose(self, tmp_path):
         log_file = tmp_path / "cli.log"
         logger = setup_logging(verbose=True, quiet=False, log_file=log_file)
