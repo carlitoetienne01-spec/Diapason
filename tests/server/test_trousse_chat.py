@@ -247,6 +247,115 @@ class TestCatalogue:
         ], "l'optimisation ne doit pas faire croire que les données ont été lues"
 
 
+def apres_youtube(question):
+    """Le vrai fil du 20 septembre 2026, avec un web_search plus haut."""
+    return [
+        Message(role=Role.USER, content="Qui est le président actuel d’Haïti ?"),
+        Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[ToolCall(id="recherche", name="web_search", arguments="{}")],
+        ),
+        Message(role=Role.TOOL, content="…", tool_call_id="recherche"),
+        Message(role=Role.ASSISTANT, content="Un conseil de transition."),
+        Message(
+            role=Role.USER, content="Ouvre moi Youtube et joue la musique Self Away"
+        ),
+        Message(role=Role.ASSISTANT, content="Ouvert."),
+        Message(role=Role.USER, content=question),
+    ]
+
+
+def outils_du_bureau():
+    return [
+        Outil(n)
+        for n in (
+            "succes_tasks",
+            "current_time",
+            "web_search",
+            "open_anything",
+            "browser_tabs",
+            "spotify_play",
+            "media_control",
+            "volume_control",
+        )
+    ]
+
+
+class TestLaRelectureNeViseQueLesDonnees:
+    """§5 : retenir une réponse n'a de sens que si elle affirme des données non lues.
+
+    20/09/2026 : une traduction a coûté deux passages du 27b (53 s + 36 s) et
+    88 s sans un mot à l'écran, parce que le tour précédent parlait de musique.
+    """
+
+    def test_une_traduction_apres_youtube_n_est_pas_relue(self):
+        fil = apres_youtube('Que veut dire "Self Aware" en français ?')
+        trousse = TrousseChat(outils_du_bureau(), fil)
+        assert CHARGER_OUTILS in noms(trousse.specs), "la trousse est bien réduite"
+        assert not trousse.verifier_lecture(fil), (
+            "aucune donnée personnelle en jeu : la réponse s'affiche tout de suite"
+        )
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Montre mes tâches de demain",
+            "Cherche sur le web le président d’Haïti",
+            "Quels onglets sont ouverts ?",
+        ],
+    )
+    def test_une_demande_de_donnees_garde_le_filet(self, question):
+        fil = apres_youtube(question)
+        trousse = TrousseChat(outils_du_bureau(), fil)
+        assert trousse.verifier_lecture(fil) or noms(trousse.specs) == [
+            o.nom for o in outils_du_bureau()
+        ], "une lecture attendue est relue, ou reçoit d'emblée tous les schémas"
+
+    def test_un_suivi_court_herite_du_sujet_lu(self):
+        lecture = [
+            Message(role=Role.USER, content="Quelles sont mes tâches ?"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="t", name="succes_tasks", arguments="{}")],
+            ),
+            Message(role=Role.TOOL, content="…", tool_call_id="t"),
+            Message(role=Role.ASSISTANT, content="Deux tâches."),
+        ]
+        suite = [*lecture, Message(role=Role.USER, content="Et demain ?")]
+        assert TrousseChat(outils_du_bureau(), suite).verifier_lecture(suite)
+        merci = [*lecture, Message(role=Role.USER, content="Merci !")]
+        assert not TrousseChat(outils_du_bureau(), merci).verifier_lecture(merci), (
+            "un remerciement n'affirme rien sur les données"
+        )
+
+    def test_un_suivi_court_apres_une_action_n_est_pas_relu(self):
+        fil = [
+            Message(role=Role.USER, content="Joue Self Away sur Spotify"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="s", name="spotify_play", arguments="{}")],
+            ),
+            Message(role=Role.TOOL, content="lecture lancée", tool_call_id="s"),
+            Message(role=Role.ASSISTANT, content="C'est parti."),
+            Message(role=Role.USER, content="Et le titre suivant ?"),
+        ]
+        assert not TrousseChat(outils_du_bureau(), fil).verifier_lecture(fil)
+
+    @pytest.mark.asyncio
+    async def test_la_traduction_s_affiche_au_premier_passage(self):
+        moteur = Moteur(
+            [[StreamChunk(content="« Conscient de soi ».", finish_reason="stop")]]
+        )
+        fil = apres_youtube('Que veut dire "Self Aware" en français ?')
+        evts = await collecter(moteur, outils_du_bureau(), messages=fil)
+        assert len(moteur.appels) == 1, "un seul passage, pas de relecture"
+        texte = "".join(e.data for e in evts if e.kind == "token")
+        assert texte == "« Conscient de soi »."
+
+
 class TestDialogueAvecDecouverte:
     @pytest.mark.asyncio
     async def test_le_programme_vague_recoit_une_carte_par_le_flux_du_chat(

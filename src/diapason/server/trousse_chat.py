@@ -64,6 +64,45 @@ _GROUPES = (
     (r"\b(calcule|calcul|combien)\b|\d\s*[+*/×÷]\s*\d", ("calculator",)),
 )
 _INDICES = [(re.compile(motif), noms) for motif, noms in _GROUPES]
+# 20/09/2026 : « Que veut dire "Self Aware" en français ? » a coûté 89 s sur
+# le 27b, dont 88 s sans un mot à l'écran. Le tour précédent parlait de
+# musique (« Ouvre moi Youtube et joue… ») et un web_search traînait dans
+# l'historique : la trousse était réduite, la réponse directe — juste — a
+# été retenue puis rejouée avec les 44 schémas (53 s + 36 s, journal
+# d'Ollama). Une relecture n'a de sens que si l'absence d'appel rend la
+# réponse invérifiable : ces outils LISENT des données que le modèle ne
+# peut pas connaître. Ouvrir, jouer, calculer ou dire l'heure n'en font
+# pas partie — l'heure est déjà dans le contexte.
+_LECTURES = frozenset(
+    {
+        "succes_tasks",
+        "succes_workspace",
+        "succes_continuity",
+        "succes_finances",
+        "calendar_query",
+        "web_search",
+        "gmail_search",
+        "digest_collect",
+        "imessage_conversation",
+        "messages_status",
+        "screen_describe",
+        "screen_read_text",
+        "find_files",
+        "knowledge_search",
+        "knowledge_get_document",
+        "mesh_devices",
+        "browser_tabs",
+    }
+)
+# Un suivi court ne redemande des données que s'il pose une question ou
+# enchaîne (« Et demain ? ») ; « Merci ! » après une liste de tâches n'en
+# est pas une, et payait pourtant la relecture.
+_SUIVI_DE_LECTURE = re.compile(
+    r"\?|^(?:et|puis|aussi|ensuite)\b|"
+    r"\b(?:quoi|quel|quelle|quels|quelles|combien|ou|quand|qui|montre|liste|"
+    r"donne|affiche|lis|verifie|regarde|cherche|what|which|when|where|who|"
+    r"how many|show|list|check|any)\b"
+)
 _REDACTION = re.compile(
     r"^(?:(?:peux.tu|pourrais.tu|tu peux)\s+)?"
     r"(?:explique|explain|definis|define|raconte|invente|conjugue|conjugate)\b"
@@ -84,6 +123,35 @@ _REFERENCE = re.compile(
     r"recu|ordinateur|machine|ecran|appareil|outil)\b|"
     r"https?://|\b20\d{2}\b"
 )
+
+
+def _demande_de_lecture(messages: Sequence[Message]) -> bool:
+    """Vrai si la demande courante porte sur des données à lire.
+
+    Seule la demande courante compte pour les indices : le message
+    précédent ne fait qu'amorcer des schémas. Un suivi court hérite du
+    sujet seulement si le tour précédent a réellement lu quelque chose et
+    si ce suivi enchaîne ou interroge.
+    """
+    demandes = [m for m in messages if m.role == Role.USER]
+    if not demandes:
+        return False
+    texte = _normaliser(demandes[-1].content or "")
+    for motif, groupe in _INDICES:
+        if motif.search(texte) and set(groupe) & _LECTURES:
+            return True
+    if len(texte) >= 100 or len(demandes) < 2 or not _SUIVI_DE_LECTURE.search(texte):
+        return False
+    # Seul le tour précédent compte : un web_search trois échanges plus haut
+    # ne fait pas d'une question de vocabulaire une demande de données.
+    precedente = demandes[-2]
+    debut = next(i for i, m in enumerate(messages) if m is precedente)
+    tour_precedent = messages[debut + 1 : -1]
+    return any(
+        appel.name in _LECTURES
+        for message in tour_precedent
+        for appel in message.tool_calls or []
+    )
 
 
 def _normaliser(texte: str) -> str:
@@ -142,6 +210,7 @@ class TrousseChat:
         self.noms = {s["function"]["name"] for s in self._specs}
         self._charges = 0
         self._actifs = _amorcer(messages) & self.noms
+        self._lecture_attendue = _demande_de_lecture(messages)
         catalogue = "\n".join(
             s["function"]["name"]
             + ": "
@@ -207,6 +276,7 @@ class TrousseChat:
     def verifier_lecture(self, messages: Sequence[Message]) -> bool:
         return (
             self._differee
+            and self._lecture_attendue
             and self.specs[0]["function"]["name"] == CHARGER_OUTILS
             and not _redaction_autonome(messages)
         )
