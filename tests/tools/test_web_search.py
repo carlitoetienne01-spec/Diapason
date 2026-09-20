@@ -5,8 +5,21 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from diapason.core.registry import ToolRegistry
 from diapason.tools.web_search import WebSearchTool
+
+
+@pytest.fixture
+def recherche_de_repli(monkeypatch):
+    """§100 : tester le repli sans dépendre d'un vrai moteur de recherche."""
+    module = MagicMock()
+    module.DDGS.return_value.text.return_value = [
+        {"title": "Résultat témoin", "href": "https://example.com", "body": "Texte"}
+    ]
+    monkeypatch.setitem(sys.modules, "ddgs", module)
+    return module.DDGS.return_value.text
 
 
 class TestWebSearchTool:
@@ -36,7 +49,7 @@ class TestWebSearchTool:
         assert result.success is False
         assert "No query" in result.content
 
-    def test_execute_no_api_key(self, monkeypatch):
+    def test_execute_no_api_key(self, monkeypatch, recherche_de_repli):
         """When no API key, falls back to DuckDuckGo."""
         tool = WebSearchTool(api_key=None)
         with patch.dict("os.environ", {}, clear=True):
@@ -45,6 +58,7 @@ class TestWebSearchTool:
             result = tool.execute(query="test query")
         assert result.success is True
         assert result.metadata["engine"] == "duckduckgo"
+        recherche_de_repli.assert_called_once_with("test query", max_results=5)
 
     def test_execute_mocked_tavily(self, monkeypatch):
         mock_client = MagicMock()
@@ -87,7 +101,7 @@ class TestWebSearchTool:
         assert "Result 2" in result.content
         assert result.metadata["num_results"] == 2
 
-    def test_execute_tavily_error(self, monkeypatch):
+    def test_execute_tavily_error(self, monkeypatch, recherche_de_repli):
         """When Tavily errors (any error), falls back to DuckDuckGo."""
         import builtins
         from typing import Any
@@ -114,6 +128,7 @@ class TestWebSearchTool:
         result = tool.execute(query="test query")
         assert result.success is True
         assert result.metadata["engine"] == "duckduckgo"
+        recherche_de_repli.assert_called_once_with("test query", max_results=5)
 
     def test_execute_duckduckgo_fallback_format(self, monkeypatch):
         """DuckDuckGo fallback returns properly formatted results."""
@@ -181,7 +196,7 @@ class TestWebSearchTool:
         assert fn["function"]["name"] == "web_search"
         assert "query" in fn["function"]["parameters"]["properties"]
 
-    def test_execute_import_error(self, monkeypatch):
+    def test_execute_import_error(self, monkeypatch, recherche_de_repli):
         """When tavily-python not installed, falls back to DuckDuckGo."""
         monkeypatch.delitem(sys.modules, "tavily", raising=False)
         import builtins
@@ -199,6 +214,7 @@ class TestWebSearchTool:
         result = tool.execute(query="test query")
         assert result.success is True
         assert result.metadata["engine"] == "duckduckgo"
+        recherche_de_repli.assert_called_once_with("test query", max_results=5)
 
     def test_empty_results(self, monkeypatch):
         import builtins

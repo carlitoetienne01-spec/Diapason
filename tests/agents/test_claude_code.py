@@ -83,13 +83,14 @@ class TestEnsureRunner:
             with pytest.raises(RuntimeError, match="Node.js"):
                 agent._ensure_runner()
 
-    def test_creates_runner_dir(self, tmp_path):
+    def test_creates_runner_dir(self, tmp_path, monkeypatch):
         engine = MagicMock()
         engine.engine_id = "mock"
         agent = ClaudeCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
         home_dir.mkdir()
+        monkeypatch.setenv("DIAPASON_HOME", str(home_dir / ".diapason"))
 
         with (
             patch("shutil.which", return_value="/usr/bin/node"),
@@ -104,7 +105,7 @@ class TestEnsureRunner:
             call_args = mock_run.call_args
             assert "npm" in call_args[0][0][0]
 
-    def test_skips_npm_install_when_node_modules_exists(self, tmp_path):
+    def test_skips_npm_install_when_node_modules_exists(self, tmp_path, monkeypatch):
         engine = MagicMock()
         engine.engine_id = "mock"
         agent = ClaudeCodeAgent(engine, "test-model")
@@ -113,6 +114,7 @@ class TestEnsureRunner:
         dest = home_dir / ".diapason" / "claude_code_runner"
         dest.mkdir(parents=True)
         (dest / "node_modules").mkdir()
+        monkeypatch.setenv("DIAPASON_HOME", str(home_dir / ".diapason"))
 
         with (
             patch("shutil.which", return_value="/usr/bin/node"),

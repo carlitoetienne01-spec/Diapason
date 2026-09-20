@@ -136,8 +136,15 @@ def test_connect_granola_invalid_key_returns_400_keeps_existing(
     import json
     from unittest.mock import patch
 
+    from diapason.server.connectors_router import (
+        _ensure_connectors_registered,
+        _instances,
+    )
+
+    # 19/09/2026 : le premier appel rechargeait Granola APRÈS le patch et
+    # partait sur Internet avec la fausse clé. Préparer le registre d'abord.
+    _ensure_connectors_registered()
     from diapason.connectors.granola import GranolaConnector, GranolaKeyError
-    from diapason.server.connectors_router import _instances
 
     creds = tmp_path / "granola.json"
     creds.write_text(json.dumps({"token": "grl_real_existing_key"}))

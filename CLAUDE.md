@@ -128,9 +128,9 @@ extra non listé dans `make setup` — constaté deux fois : `faster-whisper` et
 `make setup` réinstalle aussi `sherpa-onnx`, qui perd ses dylibs à chaque
 synchronisation. En cas de doute, `.venv/bin/python -m <outil>`.
 
-Deux tests de `tests/desktop/test_vision_mains.py` se **sautent** quand
-« Enregistrement de l'écran » n'est pas accordé au programme qui lance
-pytest. C'est normal, et le message dit quoi faire.
+Les tests de `tests/desktop/test_vision_mains.py` utilisent une image fixe
+sans main, générée dans leur dossier temporaire : ils n'ont plus besoin de
+capturer l'écran. Ils se sautent si le framework Vision de macOS manque.
 
 ### Reconstruire l'app / recharger le serveur
 

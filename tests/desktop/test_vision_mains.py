@@ -7,8 +7,9 @@ jamais sur ce qu'il n'a pas vu.
 
 from __future__ import annotations
 
-import subprocess
+import struct
 import sys
+import zlib
 
 import pytest
 
@@ -65,30 +66,39 @@ class TestSurUneVraieImage:
 
     @pytest.fixture()
     def image(self, tmp_path):
-        chemin = tmp_path / "ecran.jpg"
-        capture = subprocess.run(
-            ["screencapture", "-x", "-t", "jpg", str(chemin)],
-            capture_output=True,
-        )
-        # `screencapture` sort en erreur quand « Enregistrement de l'écran »
-        # n'est pas accordé AU PROGRAMME QUI LANCE PYTEST — un terminal, un
-        # agent, un runner de CI. Ce n'est pas un défaut du pont Vision, et
-        # faire rougir la suite pour cela apprend à ignorer le rouge : au
-        # bout de trois fois, plus personne ne lit les deux erreurs de fin.
-        # Un test sauté, lui, dit l'absence d'une vérification sans la
-        # maquiller en succès (§5).
-        manquante = not chemin.exists() or chemin.stat().st_size == 0
-        if capture.returncode != 0 or manquante:
-            detail = (capture.stderr or b"").decode(errors="replace").strip()
-            pytest.skip(
-                "capture d'écran indisponible : autorise « Enregistrement de "
-                "l'écran » pour le programme qui lance pytest"
-                + (f" — {detail}" if detail else "")
+        # 19/09/2026 : une capture du bureau n'est pas une image « sans
+        # main » connue. Son contenu change et rendait le test aléatoire.
+        # PNG RGB fixe de 640×400 : fond sombre et lignes de code stylisées,
+        # générés sans capteur ni bibliothèque graphique supplémentaire.
+        largeur, hauteur = 640, 400
+        pixels = bytearray([24, 28, 32]) * (largeur * hauteur)
+        for ligne in range(20):
+            x = 28 + (ligne % 3) * 16
+            y = 24 + ligne * 17
+            longueur = 100 + (ligne * 73) % 360
+            couleur = bytes((92 + ligne % 4 * 24, 140, 162))
+            for dy in range(3):
+                debut = ((y + dy) * largeur + x) * 3
+                pixels[debut : debut + longueur * 3] = couleur * longueur
+
+        def bloc(nom, contenu):
+            return (
+                struct.pack(">I", len(contenu))
+                + nom
+                + contenu
+                + struct.pack(">I", zlib.crc32(nom + contenu))
             )
-        subprocess.run(
-            ["sips", "-Z", "640", str(chemin), "--out", str(chemin)],
-            check=True,
-            capture_output=True,
+
+        lignes = b"".join(
+            b"\x00" + pixels[y * largeur * 3 : (y + 1) * largeur * 3]
+            for y in range(hauteur)
+        )
+        chemin = tmp_path / "code-sans-main.png"
+        chemin.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + bloc(b"IHDR", struct.pack(">IIBBBBB", largeur, hauteur, 8, 2, 0, 0, 0))
+            + bloc(b"IDAT", zlib.compress(lignes))
+            + bloc(b"IEND", b"")
         )
         return chemin
 
