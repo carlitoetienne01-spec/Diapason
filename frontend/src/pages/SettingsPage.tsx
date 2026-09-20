@@ -440,7 +440,7 @@ export function SettingsPage() {
   );
 
   const handleExport = () => {
-    const data = localStorage.getItem('diapason-conversations') || '{}';
+    const data = JSON.stringify(loadConversations());
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -471,6 +471,7 @@ export function SettingsPage() {
           if (propre) {
             saveConversations(propre);
             useAppStore.getState().loadConversations();
+            useAppStore.getState().loadMessages(propre.activeId);
             showSaved();
           }
         } catch {}
@@ -493,7 +494,8 @@ export function SettingsPage() {
     // localStorage laisserait la copie serveur intacte, et tout l'historique
     // « supprimé » ressusciterait au tirage suivant — un mensonge (§100).
     programmerSuppressionsServeur(Object.keys(loadConversations().conversations));
-    localStorage.removeItem('diapason-conversations');
+    saveConversations({ version: 1, conversations: {}, activeId: null });
+    useAppStore.getState().loadMessages(null);
     useAppStore.getState().loadConversations();
     showSaved();
   };

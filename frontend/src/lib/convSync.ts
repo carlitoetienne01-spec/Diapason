@@ -30,7 +30,7 @@
 import type { ChatMessage, Conversation, ConversationStore } from '../types';
 import { apiFetch, getApiKey } from './api';
 import { estVierge } from './discussions';
-import { generateId, loadConversations, saveConversations, useAppStore } from './store';
+import { CONVERSATIONS_KEY, generateId, loadConversations, saveConversations, useAppStore, viderSauvegardeConversations } from './store';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -163,12 +163,19 @@ export function fusionnerMessages(desA: ChatMessage[], desB: ChatMessage[]): Cha
  */
 export function fusionnerConversations(a: Conversation, b: Conversation): Conversation {
   const [gagnante, perdante] = prime(a, b) ? [a, b] : [b, a];
+  const locaux = new Map(a.messages.map((m) => [cleMessage(m), m]));
+  const messages = fusionnerMessages(gagnante.messages, perdante.messages).map((m) => {
+    const local = locaux.get(cleMessage(m));
+    // Même valeur selon le contrat, même objet pour la bulle : une nouvelle
+    // réponse de l'autre vue ne réanalyse pas tous les anciens tableaux.
+    return local && (local === m || JSON.stringify(local) === JSON.stringify(m)) ? local : m;
+  });
   return {
     ...gagnante,
     createdAt: Math.min(a.createdAt, b.createdAt),
     updatedAt: Math.max(a.updatedAt, b.updatedAt),
     pinned: !!gagnante.pinned,
-    messages: fusionnerMessages(gagnante.messages, perdante.messages),
+    messages,
   };
 }
 
@@ -455,7 +462,9 @@ function appliquerDistant(distantes: Conversation[], tombales: Tombale[]): strin
 
   app.loadConversations();
   const apres = useAppStore.getState();
-  if (!apres.streamState.isStreaming) {
+  // 19/09/2026 : un flux laissé dans A bloquait aussi le rafraîchissement
+  // du fil B consulté entre-temps. Seul le fil qui reçoit reste protégé.
+  if (!enFlux || apres.activeId !== enFlux) {
     if (activeSupprimee) {
       apres.loadMessages(null);
     } else if (apres.activeId && changees.includes(apres.activeId)) {
@@ -468,7 +477,13 @@ function appliquerDistant(distantes: Conversation[], tombales: Tombale[]): strin
 // ── Tirer / pousser ───────────────────────────────────────────────────
 
 /** GET des écritures serveur depuis le curseur, puis fusion locale. */
-export async function tirer(): Promise<void> {
+let tirageEnCours: Promise<void> | null = null;
+export function tirer(): Promise<void> {
+  if (tirageEnCours) return tirageEnCours;
+  tirageEnCours = tirerUneFois().finally(() => { tirageEnCours = null; });
+  return tirageEnCours;
+}
+async function tirerUneFois(): Promise<void> {
   // Sans clé, ne rien tenter et ne rien afficher : le prochain tick
   // réessaiera. Prétendre « synchronisé » ici serait un faux SUCCESS.
   if (!getApiKey()) return;
@@ -505,7 +520,7 @@ export async function tirer(): Promise<void> {
   // Le curseur n'avance que si TOUT a été appliqué : une conversation
   // exclue parce qu'elle reçoit un flux sera re-tirée au tick suivant (la
   // fusion est idempotente, re-recevoir le reste ne coûte rien).
-  if (exclues.length === 0) e.curseur = seq;
+  if (exclues.length === 0) e.curseur = Math.max(e.curseur, seq);
   persisterEtat();
 }
 
@@ -675,25 +690,41 @@ export function demarrerSyncConversations(): void {
     programmerPoussee();
   });
 
-  window.addEventListener('focus', () => {
-    void tirer();
+  const reprendre = () => {
+    viderSauvegardeConversations();
+    void tirer().then(() => pousser());
+  };
+  const vider = () => {
+    if (minuteurPoussee !== null) clearTimeout(minuteurPoussee);
+    minuteurPoussee = null;
+    viderSauvegardeConversations();
+    void pousser();
+  };
+  window.addEventListener('focus', reprendre);
+  window.addEventListener('online', reprendre);
+  window.addEventListener('diapason:panneau-ouvert', reprendre);
+  window.addEventListener('diapason:panneau-repris', reprendre);
+  window.addEventListener('pagehide', vider);
+  window.addEventListener('diapason:conversation-terminee', vider);
+  window.addEventListener('storage', (event) => {
+    if (event.key !== CONVERSATIONS_KEY || !event.newValue) return;
+    try {
+      const autre = normaliserImport(JSON.parse(event.newValue));
+      if (autre) appliquerDistant(Object.values(autre.conversations), []);
+    } catch { /* Une copie locale invalide ne remplace pas celle du travail. */ }
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) return;
-    // L'onglet se cache : pousser tout de suite ce que le débordement
-    // retenait — une fenêtre fermée n'aura pas de « 1200 ms plus tard ».
-    if (minuteurPoussee !== null) {
-      clearTimeout(minuteurPoussee);
-      minuteurPoussee = null;
-    }
-    void pousser();
+    if (document.hidden) vider();
+    else reprendre();
   });
 
   void tirer().then(() => pousser());
   setInterval(() => {
     // pousser() après chaque tirage : c'est le réessai silencieux des PUT et
     // DELETE tombés en panne — un no-op quand la carte est à jour.
-    void tirer().then(() => pousser());
+    viderSauvegardeConversations();
+    if (document.hidden) void pousser();
+    else void tirer().then(() => pousser());
   }, INTERVALLE_MS);
 }

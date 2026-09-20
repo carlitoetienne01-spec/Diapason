@@ -8,6 +8,7 @@ export interface ChatRequest {
   temperature?: number;
   max_tokens?: number;
   action_mode?: 'off' | 'auto';
+  interactiveQuestions?: boolean;
 }
 
 export async function* streamChat(
@@ -29,6 +30,7 @@ export async function* streamChat(
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent: string | undefined;
 
   try {
     while (true) {
@@ -38,8 +40,6 @@ export async function* streamChat(
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
-      let currentEvent: string | undefined;
 
       for (const line of lines) {
         if (line.startsWith('event: ')) {
@@ -55,6 +55,9 @@ export async function* streamChat(
       }
     }
   } finally {
+    // 19/09/2026 : sortir au finish_reason relâchait seulement le verrou,
+    // laissant le fournisseur travailler après la fermeture du consommateur.
+    try { await reader.cancel(); } catch { /* Déjà interrompu par AbortSignal. */ }
     reader.releaseLock();
   }
 }
@@ -105,6 +108,9 @@ export async function* streamResearch(
       }
     }
   } finally {
+    // 19/09/2026 : sortir au finish_reason relâchait seulement le verrou,
+    // laissant le fournisseur travailler après la fermeture du consommateur.
+    try { await reader.cancel(); } catch { /* Déjà interrompu par AbortSignal. */ }
     reader.releaseLock();
   }
 }

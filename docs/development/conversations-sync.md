@@ -10,8 +10,8 @@ la fenêtre, et réciproquement.
 
 Depuis, le serveur garde l'historique dans `~/.diapason/conversations.db`
 (`server/conversations_store.py`), et chaque vue le synchronise
-(`frontend/src/lib/convSync.ts`). Le `localStorage` reste le cache de
-travail synchrone de chaque vue et son secours hors-ligne.
+(`frontend/src/lib/convSync.ts`). Chaque vue garde une copie de travail en
+mémoire ; le `localStorage` est son point de reprise et son secours hors ligne.
 
 ## Le contrat (camelCase anglais sur le fil, comme partout)
 
@@ -48,18 +48,50 @@ clé.
 3. **Toute mutation du store date son écriture.** `choisirAPousser` ne pousse
    que ce dont `updatedAt` dépasse la version connue du serveur ; un
    renommage ou une épingle non datés ne partaient jamais, puis se faisaient
-   écraser.
+   écraser. La date progresse d'au moins 1 ms dans une conversation, même
+   lorsque deux mutations arrivent pendant la même milliseconde.
+
+## Rendu et sauvegarde (19 septembre 2026)
+
+- `cacheConversations.ts` charge le JSON une fois. Les écritures produisent
+  des copies des seuls objets modifiés ; les anciens messages gardent leur
+  identité. Ne jamais modifier une valeur obtenue par `loadConversations()`.
+  Les sauvegardes réseau déjà en vol restent ainsi des instantanés stables.
+- Le premier texte est publié immédiatement, puis les rafales sont regroupées
+  par `cadenceFlux.ts` sur 80 ms au plus lorsque la boucle de la vue s'exécute
+  normalement. Une publication de fin garantit le dernier fragment ; aucune
+  dépendance à `requestAnimationFrame` ne retient le texte hors écran.
+- Pendant un flux, un point de reprise local est écrit toutes les 1 000 ms
+  au plus lorsque les minuteurs s'exécutent normalement. C'est un délai fixe,
+  pas un debounce repoussé par chaque fragment. Les autres mutations, la fin
+  du flux, `pagehide`, `beforeunload` et le passage hors écran vident la copie
+  en attente. Un arrêt brutal peut perdre le texte depuis le dernier point
+  réellement écrit ; les minuteurs des vues suspendues ne garantissent pas
+  une borne d'une seconde. Le serveur peut aussi détenir une copie plus récente.
+- Une panne de stockage conserve la copie récente en mémoire et signale la
+  panne une fois. Le moteur peut encore la pousser au serveur. Le retour au
+  premier plan et le tick de synchronisation réessaient l'écriture locale.
+- Exporter, importer et effacer passent par ce cache, jamais directement par
+  l'ancien JSON sur disque. Une réponse audio tardive cible l'identifiant du
+  message, sans bloquer le bouton Envoyer ni modifier la réponse suivante.
 
 ## Ce que le moteur fait, et pourquoi
 
-- Tire au démarrage, toutes les 10 s et au `focus` ; pousse 1200 ms après la
-  dernière modification (pendant un flux, chaque bout de texte modifie) et
-  tout de suite quand la fenêtre se cache. Une poussée demandée pendant
-  qu'une autre est en vol est rejouée juste après.
+- Tire au démarrage, toutes les 10 s lorsque la vue est visible, au `focus`,
+  au retour du réseau et à la réouverture du mini-panneau. Les GET simultanés
+  partagent la même requête. Hors écran, le tick ne fait que réessayer les
+  écritures en attente. Les événements `storage` fusionnent aussi les copies
+  d'une même origine ; entre les deux origines, le serveur reste le relais.
+- Pousse 1200 ms après la dernière modification, immédiatement à la fin d'un
+  flux, quand la fenêtre se cache et à `pagehide`. Une fermeture brutale ne
+  garantit pas l'achèvement HTTP : le point de reprise local et les tombales
+  en attente permettent de réessayer au prochain lancement. Une poussée
+  demandée pendant qu'une autre est en vol est rejouée juste après.
 - La conversation qui **reçoit un flux** (`streamState.conversationId`, pas
   `activeId` — on peut changer de conversation pendant qu'une réponse
   arrive) est exclue de toute fusion tant que le flux dure, et le curseur
-  n'avance pas tant qu'une exclue n'a pas été appliquée.
+  n'avance pas tant qu'une exclue n'a pas été appliquée. Un autre fil consulté
+  pendant ce flux continue, lui, de recevoir les modifications distantes.
 - Un refus permanent du serveur (4xx hors 401/429) met la conversation en
   quarantaine pour la session, sans bloquer les autres ; un 5xx ou une panne
   réseau se réessaie au tick suivant, un seul `console.warn` à la panne, un

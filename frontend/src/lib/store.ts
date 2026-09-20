@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { creerCacheConversations } from './cacheConversations';
 
 import { modeleInitial } from './modelePrefere';
 import { doitAfficherLeFil, plusRecente, trouverDiscussionVierge } from './discussions';
@@ -85,32 +86,34 @@ function saveSystemPanelOpen(open: boolean): void {
   }
 }
 
-function loadConversations(): ConversationStore {
-  try {
-    const raw = localStorage.getItem(CONVERSATIONS_KEY);
-    if (!raw) return { version: 1, conversations: {}, activeId: null };
-    const parsed = JSON.parse(raw);
-    if (parsed.version === 1) return parsed;
-    return { version: 1, conversations: {}, activeId: null };
-  } catch {
-    return { version: 1, conversations: {}, activeId: null };
-  }
-}
+const cacheConversations = creerCacheConversations(
+  () => localStorage.getItem(CONVERSATIONS_KEY),
+  (texte) => localStorage.setItem(CONVERSATIONS_KEY, texte),
+);
+function loadConversations(): ConversationStore { return cacheConversations.charger(); }
+export function viderSauvegardeConversations(): boolean { return cacheConversations.vider(); }
 
-function saveConversations(store: ConversationStore): void {
-  try {
-    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
-  } catch {
-    // 16 sept. 2026 : un QuotaExceededError se propageait nu jusqu'au
-    // gestionnaire d'événement appelant — l'envoi du message plantait alors
-    // que la conversation, elle, existait bien en mémoire.
-  }
-  // Toujours émettre, même quand l'écriture a échoué : le moteur de sync
-  // (convSync.ts, qui écoute — jamais importé d'ici, sens unique) pousse
-  // alors vers le serveur, devenu le seul exemplaire fiable.
+// Les lectures gardent leurs identités pour React.memo. Chaque mutation part
+// d'une copie ; ne jamais modifier un objet déjà affiché ou envoyé au serveur.
+function copieConversations(): ConversationStore {
+  const courant = loadConversations();
+  return { ...courant, conversations: { ...courant.conversations } };
+}
+function dateEcriture(precedente: number): number {
+  return Math.max(Date.now(), precedente + 1);
+}
+function saveConversations(store: ConversationStore, differe = false): void {
+  cacheConversations.sauver(store, differe);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('diapason:conversations-modifiees'));
   }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', viderSauvegardeConversations);
+  window.addEventListener('beforeunload', viderSauvegardeConversations);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) viderSauvegardeConversations();
+  });
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system' | 'terminal';
@@ -260,6 +263,7 @@ interface AppState {
     audio?: { url: string },
     researchTraces?: ResearchSearchTrace[],
     researchSources?: ResearchSource[],
+    questions?: ChatMessage['questions'],
   ) => void;
   setStreamState: (state: Partial<StreamState>) => void;
   resetStream: () => void;
@@ -380,7 +384,7 @@ export const useAppStore = create<AppState>((set, get) => {
         if (!raw || raw === '[]') return;
         const overlay = JSON.parse(raw);
         if (!overlay.id || !overlay.messages?.length) return;
-        const store = loadConversations();
+        const store = copieConversations();
         const existing = store.conversations[overlay.id];
         // Only update if the overlay has newer/more messages
         if (existing && existing.messages.length >= overlay.messages.length) return;
@@ -410,7 +414,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     createConversation: (model?: string) => {
-      const store = loadConversations();
+      const store = copieConversations();
       const conv: Conversation = {
         id: generateId(),
         title: '',
@@ -447,7 +451,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     selectConversation: (id: string) => {
-      const store = loadConversations();
+      const store = copieConversations();
       store.activeId = id;
       saveConversations(store);
       const conv = store.conversations[id];
@@ -458,7 +462,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     deleteConversation: (id: string) => {
-      const store = loadConversations();
+      const store = copieConversations();
       delete store.conversations[id];
       if (store.activeId === id) {
         // La plus récente, pas `Object.keys[0]` : supprimer le fil courant
@@ -488,8 +492,10 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     renameConversation: (id: string, title: string) => {
-      const store = loadConversations();
-      const conv = store.conversations[id];
+      const store = copieConversations();
+      const original = store.conversations[id];
+      const conv = original ? { ...original, messages: [...original.messages] } : undefined;
+      if (conv) store.conversations[id] = conv;
       const trimmed = title.trim();
       if (!conv || !trimmed) return;
       conv.title = trimmed;
@@ -497,7 +503,7 @@ export const useAppStore = create<AppState>((set, get) => {
       // version connue du serveur, et un renommage non daté n'atteignait
       // jamais l'autre vue — puis se faisait écraser par sa prochaine
       // écriture (revue du 16 sept. 2026).
-      conv.updatedAt = Date.now();
+      conv.updatedAt = dateEcriture(conv.updatedAt);
       saveConversations(store);
       set({
         conversations: Object.values(store.conversations).sort(
@@ -507,13 +513,15 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     togglePinConversation: (id: string) => {
-      const store = loadConversations();
-      const conv = store.conversations[id];
+      const store = copieConversations();
+      const original = store.conversations[id];
+      const conv = original ? { ...original, messages: [...original.messages] } : undefined;
+      if (conv) store.conversations[id] = conv;
       if (!conv) return;
       conv.pinned = !conv.pinned;
       // Même raison que le renommage : une épingle non datée ne se
       // synchronise jamais.
-      conv.updatedAt = Date.now();
+      conv.updatedAt = dateEcriture(conv.updatedAt);
       saveConversations(store);
       set({
         conversations: Object.values(store.conversations).sort(
@@ -523,7 +531,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     duplicateConversation: (id: string, newTitle: string) => {
-      const store = loadConversations();
+      const store = copieConversations();
       const orig = store.conversations[id];
       if (!orig) return null;
       const copy: Conversation = {
@@ -561,11 +569,13 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addMessage: (conversationId: string, message: ChatMessage) => {
-      const store = loadConversations();
-      const conv = store.conversations[conversationId];
+      const store = copieConversations();
+      const original = store.conversations[conversationId];
+      const conv = original ? { ...original, messages: [...original.messages] } : undefined;
+      if (conv) store.conversations[conversationId] = conv;
       if (!conv) return;
       conv.messages.push(message);
-      conv.updatedAt = Date.now();
+      conv.updatedAt = dateEcriture(conv.updatedAt);
       if (message.role === 'user' && (!conv.title || conv.title === 'New chat')) {
         conv.title =
           message.content.slice(0, 50) +
@@ -594,27 +604,34 @@ export const useAppStore = create<AppState>((set, get) => {
       audio?: { url: string },
       researchTraces?: ResearchSearchTrace[],
       researchSources?: ResearchSource[],
+      questions?: ChatMessage['questions'],
     ) => {
-      const store = loadConversations();
-      const conv = store.conversations[conversationId];
+      const store = copieConversations();
+      const original = store.conversations[conversationId];
+      const conv = original ? { ...original, messages: [...original.messages] } : undefined;
+      if (conv) store.conversations[conversationId] = conv;
       if (!conv) return;
-      const lastMsg = conv.messages[conv.messages.length - 1];
+      const avant = conv.messages[conv.messages.length - 1];
+      const lastMsg = avant ? { ...avant } : undefined;
       if (lastMsg && lastMsg.role === 'assistant') {
+        conv.messages[conv.messages.length - 1] = lastMsg;
         lastMsg.content = content;
-        if (toolCalls) lastMsg.toolCalls = toolCalls;
+        if (toolCalls) lastMsg.toolCalls = toolCalls.map((appel) => ({ ...appel }));
         if (usage) lastMsg.usage = usage;
         if (telemetry) lastMsg.telemetry = telemetry;
         if (audio) lastMsg.audio = audio;
-        if (researchTraces) lastMsg.researchTraces = researchTraces;
+        if (researchTraces) lastMsg.researchTraces = researchTraces.map((trace) => ({ ...trace }));
         if (researchSources) lastMsg.researchSources = researchSources;
-        conv.updatedAt = Date.now();
-        saveConversations(store);
+        if (questions) lastMsg.questions = questions;
+        conv.updatedAt = dateEcriture(conv.updatedAt);
+        saveConversations(store, get().streamState.isStreaming);
         // Chaque jeton reposait `messages` = le fil en flux, même après
         // avoir changé de fil : ses bulles s'affichaient sous le titre du
         // nouveau, et la vierge « vide » basculait d'un coup au premier envoi.
-        if (doitAfficherLeFil(conversationId, get().activeId)) {
-          set({ messages: [...conv.messages] });
-        }
+        set({
+          ...(doitAfficherLeFil(conversationId, get().activeId) ? { messages: conv.messages } : {}),
+          conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt),
+        });
       }
     },
 
@@ -624,6 +641,8 @@ export const useAppStore = create<AppState>((set, get) => {
 
     resetStream: () => {
       set({ streamState: INITIAL_STREAM });
+      viderSauvegardeConversations();
+      window.dispatchEvent(new CustomEvent('diapason:conversation-terminee'));
     },
 
     // ── Deep Research ─────────────────────────────────────────────
@@ -739,4 +758,20 @@ export const useAppStore = create<AppState>((set, get) => {
 // ces mêmes lecture/écriture pour que l'événement de modification parte de
 // TOUS les chemins d'écriture — un setItem direct court-circuitait la
 // poussée vers le serveur.
+/** Un résultat audio tardif ne doit jamais modifier la réponse suivante. */
+export function completerAudioMessage(conversationId: string, messageId: string, audio: { url: string }): void {
+  const store = copieConversations();
+  const original = store.conversations[conversationId];
+  const index = original?.messages.findIndex((m) => m.id === messageId && m.role === 'assistant') ?? -1;
+  if (!original || index < 0) return;
+  const messages = [...original.messages];
+  messages[index] = { ...messages[index], audio };
+  store.conversations[conversationId] = { ...original, messages, updatedAt: dateEcriture(original.updatedAt) };
+  saveConversations(store);
+  useAppStore.setState({
+    conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt),
+    ...(useAppStore.getState().activeId === conversationId ? { messages } : {}),
+  });
+}
+
 export { generateId, loadConversations, saveConversations, CONVERSATIONS_KEY };

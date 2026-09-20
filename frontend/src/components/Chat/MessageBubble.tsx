@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { memo, useState, useMemo, useRef, type RefObject } from 'react';
+import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
@@ -13,6 +14,9 @@ import { rehypeCitations } from '../../lib/rehype-citations';
 import { XRayFooter } from './XRayFooter';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { ChatMessage } from '../../types';
+import { copierMessage } from './copieMessage';
+import { lireQuestions, texteQuestions } from '../../lib/questionsChat';
+import { QuestionsDiscussion } from './QuestionsDiscussion';
 
 function stripThinkTags(text: string): string {
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
@@ -50,10 +54,14 @@ function CodeBlockPre({ children, ...props }: any) {
   const lang = match ? match[1] : '';
   const code = getTextContent(codeElement?.props?.children).replace(/\n$/, '');
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copierMessage(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error(t('chat.message.copyFailed'));
+    }
   };
 
   return (
@@ -84,14 +92,21 @@ function CodeBlockPre({ children, ...props }: any) {
   );
 }
 
-function CopyMessageButton({ content }: { content: string }) {
+function CopyMessageButton({ content, rendu }: {
+  content: string;
+  rendu?: RefObject<HTMLDivElement | null>;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copierMessage(content, rendu?.current);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error(t('chat.message.copyFailed'));
+    }
   };
 
   // Dans le mini-panneau (NSPanel non activant), le survol n'arrive plus dès
@@ -110,7 +125,8 @@ function CopyMessageButton({ content }: { content: string }) {
   );
 }
 
-export function MessageBubble({ message, isLive = false, cible = false }: Props) {
+export const MessageBubble = memo(function MessageBubble({ message, isLive = false, cible = false }: Props) {
+  const rendu = useRef<HTMLDivElement>(null);
   const isUser = message.role === 'user';
   // `data-message-id` : la cible du défilement « au message » (sauteur,
   // barre latérale) ; ChatArea la cherche dans le DOM une fois rendue.
@@ -120,6 +136,26 @@ export function MessageBubble({ message, isLive = false, cible = false }: Props)
   // surlignage de rangée, pas de bulle) ; côté assistant le contenu occupe
   // toute la rangée, l'anneau y désigne bien ce qu'on cherche.
   const halo = cible ? ' bulle-cible' : '';
+
+  const questions = useMemo(() => lireQuestions(message.questions), [message.questions]);
+  const cleanContent = useMemo(() => questions ? texteQuestions(questions) : stripThinkTags(message.content), [message.content, questions]);
+
+  // Build a ref→source lookup once per render. Memoized so the rehype plugin
+  // identity stays stable until the source list actually changes.
+  const sourcesMap = useMemo(() => {
+    const m = new Map<number, NonNullable<ChatMessage['researchSources']>[number]>();
+    for (const s of message.researchSources ?? []) {
+      if (typeof s.ref === 'number') m.set(s.ref, s);
+    }
+    return m;
+  }, [message.researchSources]);
+
+  const rehypePlugins = useMemo(() => {
+    const base: any[] = [[rehypeHighlight, { detect: true }], rehypeKatex];
+    if (sourcesMap.size > 0) base.push([rehypeCitations, { sources: sourcesMap }]);
+    return base;
+  }, [sourcesMap]);
+
 
   if (isUser) {
     // Ses propres mots se copient aussi (demandé le 23 août 2026) : même
@@ -145,24 +181,6 @@ export function MessageBubble({ message, isLive = false, cible = false }: Props)
     );
   }
 
-  const cleanContent = useMemo(() => stripThinkTags(message.content), [message.content]);
-
-  // Build a ref→source lookup once per render. Memoized so the rehype plugin
-  // identity stays stable until the source list actually changes.
-  const sourcesMap = useMemo(() => {
-    const m = new Map<number, NonNullable<ChatMessage['researchSources']>[number]>();
-    for (const s of message.researchSources ?? []) {
-      if (typeof s.ref === 'number') m.set(s.ref, s);
-    }
-    return m;
-  }, [message.researchSources]);
-
-  const rehypePlugins = useMemo(() => {
-    const base: any[] = [[rehypeHighlight, { detect: true }], rehypeKatex];
-    if (sourcesMap.size > 0) base.push([rehypeCitations, { sources: sourcesMap }]);
-    return base;
-  }, [sourcesMap]);
-
   return (
     <div className={`group mb-6${halo}`} data-message-id={message.id}>
       {/* Deep Research timeline (steps + status) */}
@@ -187,8 +205,8 @@ export function MessageBubble({ message, isLive = false, cible = false }: Props)
       {message.audio?.url && <AudioPlayer src={message.audio.url} />}
 
       {/* Assistant message */}
-      {cleanContent && (
-        <div className="prose max-w-none">
+      {questions ? <QuestionsDiscussion key={questions.id} messageId={message.id} demande={questions} /> : cleanContent && (
+        <div ref={rendu} className="prose max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={rehypePlugins}
@@ -203,7 +221,7 @@ export function MessageBubble({ message, isLive = false, cible = false }: Props)
 
       {/* Footer: copy + x-ray */}
       <div className="flex items-center gap-2 mt-1.5">
-        <CopyMessageButton content={cleanContent} />
+        <CopyMessageButton content={cleanContent} rendu={rendu} />
       </div>
       <XRayFooter
         usage={message.usage}
@@ -212,4 +230,4 @@ export function MessageBubble({ message, isLive = false, cible = false }: Props)
       />
     </div>
   );
-}
+});

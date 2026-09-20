@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Send, Square, Paperclip, Brain } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAppStore, generateId } from '../../lib/store';
+import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversations } from '../../lib/store';
+import { creerCadenceFlux } from '../../lib/cadenceFlux';
+import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { fetchSavings, getBase, isTauri, finalizeDictation } from '../../lib/api';
+import { fetchSavings, getBase, isTauri, finalizeDictation, apiFetch } from '../../lib/api';
 import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
@@ -101,8 +103,7 @@ export function InputArea() {
 
   const activeId = useAppStore((s) => s.activeId);
   const selectedModel = useAppStore((s) => s.selectedModel);
-  const streamState = useAppStore((s) => s.streamState);
-  const messages = useAppStore((s) => s.messages);
+  const isStreaming = useAppStore((s) => s.streamState.isStreaming);
   const speechEnabled = useAppStore((s) => s.settings.speechEnabled);
   const maxTokens = useAppStore((s) => s.settings.maxTokens);
   const temperature = useAppStore((s) => s.settings.temperature);
@@ -128,17 +129,15 @@ export function InputArea() {
   // This prevents errors from trying to continue a stream with a stale model.
   const prevModelRef = useRef(selectedModel);
   useEffect(() => {
-    if (prevModelRef.current !== selectedModel && streamState.isStreaming) {
+    if (prevModelRef.current !== selectedModel && isStreaming) {
       abortRef.current?.abort();
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      resetStream();
-      abortRef.current = null;
     }
     prevModelRef.current = selectedModel;
-  }, [selectedModel, streamState.isStreaming, resetStream]);
+  }, [selectedModel, isStreaming]);
 
   // Live dictation runs entirely in the app on Apple's on-device recogniser,
   // so it works whether or not the Python speech backend is configured. When
@@ -150,11 +149,11 @@ export function InputArea() {
   const micDisabled =
     !speechEnabled ||
     (!liveMode && !speechAvailable) ||
-    streamState.isStreaming;
+    isStreaming;
   const micReason: 'not-enabled' | 'no-backend' | 'streaming' | undefined =
     !speechEnabled ? 'not-enabled'
     : !liveMode && !speechAvailable ? 'no-backend'
-    : streamState.isStreaming ? 'streaming'
+    : isStreaming ? 'streaming'
     : undefined;
 
   useEffect(() => {
@@ -390,7 +389,7 @@ export function InputArea() {
   // « / » et demandait le focus dans la foulée — personne n'écoutait, et
   // même différée d'un tour la demande arrivait 50 ms avant ce textarea.
   // Honorée ou relue, la demande est consommée : elle ne vaut qu'une fois.
-  const compositeurBloque = streamState.isStreaming || modelLoading;
+  const compositeurBloque = isStreaming || modelLoading;
   const focusEnAttente = useRef(false);
   useEffect(() => {
     const focaliser = () => {
@@ -449,20 +448,24 @@ export function InputArea() {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    resetStream();
-  }, [resetStream]);
+    // La finalisation conserve le flux jusqu'à sa vraie sortie.
+  }, []);
 
   // `override` exists for dictation: the last words are transcribed after the
   // microphone closes, so the auto-send path has fresher text than `input`.
-  const sendMessage = useCallback(async (override?: string) => {
+  const sendMessage = useCallback(async (override?: string, envoi?: EnvoiReponses) => {
+    const recherche = deepResearch && !envoi;
     const content = (override ?? input).trim();
-    if (!content || streamState.isStreaming) return;
+    if (!content || useAppStore.getState().streamState.isStreaming) return;
     if (!selectedModel) {
       toast.error(t('chat.input.pickModel'));
       return;
     }
 
-    setInput('');
+    if (envoi) {
+      const actuel = useAppStore.getState();
+      if (actuel.activeId !== envoi.conversationId || !preparerEnvoiQuestions(actuel.messages, envoi)) return;
+    } else setInput('');
 
     let convId = activeId;
     if (!convId) {
@@ -474,22 +477,23 @@ export function InputArea() {
       role: 'user',
       content,
       timestamp: Date.now(),
+      ...(envoi ? { questionReply: envoi.reply } : {}),
     };
     addMessage(convId, userMsg);
 
     // Build API messages before adding assistant placeholder
     const currentMessages = useAppStore.getState().messages;
-    const apiMessages = currentMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const apiMessages = currentMessages.map((m) => {
+      const cadrage = m.role === 'assistant' ? lireQuestions(m.questions) : null;
+      return { role: m.role, content: cadrage ? texteQuestions(cadrage) : m.content };
+    });
 
     const assistantMsg: ChatMessage = {
       id: generateId(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
-      isResearch: deepResearch || undefined,
+      isResearch: recherche || undefined,
     };
     addMessage(convId, assistantMsg);
 
@@ -504,6 +508,7 @@ export function InputArea() {
     abortRef.current = controller;
 
     let accumulatedContent = '';
+    let questions: ChatMessage['questions'];
     let usage: TokenUsage | undefined;
     let complexity: { score: number; tier: string; suggested_max_tokens: number } | undefined;
     let lightningMeta: { action?: string; total_ms?: number; verified?: boolean } | undefined;
@@ -512,13 +517,31 @@ export function InputArea() {
     const researchSourcesByRef = new Map<number, ResearchSource>();
     const flushSources = () =>
       Array.from(researchSourcesByRef.values()).sort((a, b) => a.ref - b.ref);
-    let lastFlush = 0;
     let ttftMs: number | undefined;
+    const publication = creerCadenceFlux(() => {
+      setStreamState({ content: accumulatedContent, phase: '' });
+      updateLastAssistant(
+        convId!, accumulatedContent,
+        toolCalls.length ? toolCalls : undefined,
+        undefined, undefined, undefined,
+        researchTraces.length ? researchTraces : undefined,
+        researchSourcesByRef.size ? flushSources() : undefined,
+        questions,
+      );
+    });
+    const sauvegarderEnSortant = () => {
+      publication.vider();
+      viderSauvegardeConversations();
+    };
+    const surVisibilite = () => { if (document.hidden) sauvegarderEnSortant(); };
+    window.addEventListener('pagehide', sauvegarderEnSortant);
+    window.addEventListener('beforeunload', sauvegarderEnSortant);
+    document.addEventListener('visibilitychange', surVisibilite);
 
     setStreamState({
       isStreaming: true,
       conversationId: convId,
-      phase: deepResearch ? t('chat.stream.researching') : t('chat.stream.generating'),
+      phase: recherche ? t('chat.stream.researching') : t('chat.stream.generating'),
       elapsedMs: 0,
       activeToolCalls: [],
       content: '',
@@ -527,18 +550,19 @@ export function InputArea() {
       timestamp: Date.now(),
       level: 'info',
       category: 'chat',
-      message: deepResearch
+      message: recherche
         ? `Research: "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}"`
         : `Request: "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}" → ${selectedModel}`,
     });
 
     try {
-      if (deepResearch) {
+      if (recherche) {
         for await (const ev of streamResearch(
           content,
           selectedModel,
           controller.signal,
         )) {
+          if (ev.type !== 'synthesis' && ev.type !== 'system_metrics') publication.vider();
           if (ev.type === 'search_call') {
             const trace: ResearchSearchTrace = {
               id: generateId(),
@@ -592,21 +616,7 @@ export function InputArea() {
           } else if (ev.type === 'synthesis') {
             if (!ttftMs) ttftMs = Date.now() - startTime;
             accumulatedContent += ev.text;
-            setStreamState({ content: accumulatedContent, phase: '' });
-            const now = Date.now();
-            if (now - lastFlush >= 80) {
-              updateLastAssistant(
-                convId,
-                accumulatedContent,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                [...researchTraces],
-                flushSources(),
-              );
-              lastFlush = now;
-            }
+            publication.demander();
           } else if (ev.type === 'system_metrics') {
             // Live GPU sample — feed straight to the System panel so Power
             // (W) and Energy (kJ) tick up in real time as the agent runs.
@@ -668,12 +678,24 @@ export function InputArea() {
           // Explicit trusted-client opt-in. OpenAI-compatible API callers
           // remain action-free unless they make the same deliberate choice.
           action_mode: 'auto',
+          // Le tour qui reçoit les réponses réalise la demande ; il ne rouvre
+          // pas un questionnaire identique sous l'effet du rappel d'interface.
+          interactiveQuestions: !envoi,
         },
         controller.signal,
       )) {
         const eventName = sseEvent.event;
 
-        if (eventName === 'agent_turn_start') {
+        if (eventName && eventName !== 'message') publication.vider();
+        if (eventName === 'questions') {
+          try {
+            const validees = lireQuestions(JSON.parse(sseEvent.data));
+            if (validees) {
+              questions = validees;
+              publication.demander();
+            }
+          } catch { /* Le texte de secours reste lisible si le formulaire est invalide. */ }
+        } else if (eventName === 'agent_turn_start') {
           setStreamState({ phase: t('chat.stream.agentThinking') });
         } else if (eventName === 'inference_start') {
           setStreamState({ phase: t('chat.stream.generating') });
@@ -731,17 +753,7 @@ export function InputArea() {
             if (delta?.content) {
               if (!ttftMs) ttftMs = Date.now() - startTime;
               accumulatedContent += delta.content;
-              setStreamState({ content: accumulatedContent, phase: '' });
-
-              const now = Date.now();
-              if (now - lastFlush >= 80) {
-                updateLastAssistant(
-                  convId,
-                  accumulatedContent,
-                  toolCalls.length > 0 ? [...toolCalls] : undefined,
-                );
-                lastFlush = now;
-              }
+              publication.demander();
             }
             if (data.choices?.[0]?.finish_reason === 'stop') break;
           } catch {}
@@ -786,46 +798,51 @@ export function InputArea() {
         complexity_tier: complexity?.tier,
         suggested_max_tokens: complexity?.suggested_max_tokens,
       };
-      // Check if the response has digest audio available
-      let audioMeta: { url: string } | undefined;
-      try {
-        const digestRes = await fetch(`${getBase()}/api/digest`);
-        if (digestRes.ok) {
-          const digest = await digestRes.json();
-          if (digest.audio_available) {
-            audioMeta = { url: `${getBase()}/api/digest/audio` };
-          }
-        }
-      } catch {
-        // Not a digest response or server unavailable — skip
-      }
-
+      publication.annuler();
+      window.removeEventListener('pagehide', sauvegarderEnSortant);
+      window.removeEventListener('beforeunload', sauvegarderEnSortant);
+      document.removeEventListener('visibilitychange', surVisibilite);
       updateLastAssistant(
         convId,
         accumulatedContent,
         toolCalls.length > 0 ? toolCalls : undefined,
         usage,
         telemetry,
-        audioMeta,
+        undefined,
         researchTraces.length > 0 ? researchTraces : undefined,
         researchSourcesByRef.size > 0 ? flushSources() : undefined,
+        questions,
       );
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      clearInterval(timer);
+      if (timerRef.current === timer) timerRef.current = null;
       resetStream();
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(), level: 'info', category: 'chat',
         message: `Response: ${accumulatedContent.length} chars`,
       });
-      abortRef.current = null;
+      if (abortRef.current === controller) abortRef.current = null;
+
+      // 19/09/2026 : cette lecture secondaire retenait le dernier fragment
+      // et le bouton Envoyer. Elle ne possède plus le flux.
+      const audioController = new AbortController();
+      const delaiAudio = setTimeout(() => audioController.abort(), 3000);
+      void apiFetch('/api/digest', { signal: audioController.signal })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const digest = await res.json();
+          if (digest.audio_available && typeof digest.text === 'string'
+            && digest.text.trim() === accumulatedContent.trim()) {
+            completerAudioMessage(convId!, assistantMsg.id, { url: `${getBase()}/api/digest/audio` });
+          }
+        })
+        .catch(() => {})
+        .finally(() => clearTimeout(delaiAudio));
 
       // Research path updates session counters optimistically from the
       // `done` event's usage payload — re-fetching here would overwrite
       // it with a potentially stale snapshot if the server's research
       // telemetry hasn't been merged into /v1/savings yet.
-      if (!deepResearch) {
+      if (!recherche) {
         fetchSavings()
           .then((data) => useAppStore.getState().setSavings(data))
           .catch(() => {});
@@ -835,7 +852,7 @@ export function InputArea() {
     input,
     activeId,
     selectedModel,
-    streamState.isStreaming,
+    isStreaming,
     createConversation,
     addMessage,
     updateLastAssistant,
@@ -846,6 +863,18 @@ export function InputArea() {
     maxTokens,
     t,
   ]);
+
+  useEffect(() => {
+    const repondre = (event: Event) => {
+      const envoi = (event as CustomEvent<EnvoiReponses>).detail;
+      const actuel = useAppStore.getState();
+      if (!envoi || actuel.streamState.isStreaming || actuel.activeId !== envoi.conversationId) return;
+      const texte = preparerEnvoiQuestions(actuel.messages, envoi);
+      if (texte) void sendMessage(texte, envoi);
+    };
+    window.addEventListener(EVENEMENT_REPONSES_CHAT, repondre);
+    return () => window.removeEventListener(EVENEMENT_REPONSES_CHAT, repondre);
+  }, [sendMessage]);
 
   // Falling silent ends the turn: once dictation has been quiet for this long,
   // the message goes on its own. Pressing Enter or the send button beats the
@@ -925,7 +954,7 @@ export function InputArea() {
           // ne le porte pas et garde ⌘I pour l'italique.
           data-raccourcis-globaux=""
         />
-        {streamState.isStreaming ? (
+        {isStreaming ? (
           <button
             onClick={stopStreaming}
             className="composer-glass-stop p-2 shrink-0 cursor-pointer"
@@ -966,11 +995,11 @@ export function InputArea() {
             Diapason wiring. */}
         <div className="composer-glass-toolbar">
           <div className="composer-glass-tools">
-            <ModeChip disabled={streamState.isStreaming} />
+            <ModeChip disabled={isStreaming} />
             <button
               type="button"
               onClick={() => setDeepResearch(!deepResearch)}
-              disabled={streamState.isStreaming}
+              disabled={isStreaming}
               aria-pressed={deepResearch}
               aria-label={t('common.deepResearch')}
               className="composer-glass-chip composer-glass-research inline-flex items-center justify-center cursor-pointer disabled:cursor-default disabled:opacity-50"
@@ -982,7 +1011,7 @@ export function InputArea() {
           </div>
           <div className="composer-glass-models">
             <ContextRing draftLength={input.length} />
-            <ModelChip disabled={streamState.isStreaming} />
+            <ModelChip disabled={isStreaming} />
           </div>
         </div>
       </div>

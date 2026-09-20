@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { MessageBubble } from './MessageBubble';
@@ -53,7 +54,11 @@ function greetingKey():
 export function ChatArea() {
   const { t } = useTranslation();
   const messages = useAppStore((s) => s.messages);
-  const streamState = useAppStore((s) => s.streamState);
+  const streamState = useAppStore(useShallow((s) => ({
+    isStreaming: s.streamState.isStreaming && s.streamState.conversationId === s.activeId,
+    phase: s.streamState.phase,
+    attendTexte: s.streamState.content === '',
+  })));
   const activeId = useAppStore((s) => s.activeId);
   const conversations = useAppStore((s) => s.conversations);
   const selectConversation = useAppStore((s) => s.selectConversation);
@@ -135,7 +140,7 @@ export function ChatArea() {
       // coupée sous l'en-tête, sans le salut ni l'invitation.
       listRef.current.scrollTop = isEmpty ? 0 : listRef.current.scrollHeight;
     }
-  }, [messages, streamState.content, streamState.isStreaming, isEmpty]);
+  }, [messages, streamState.isStreaming, isEmpty]);
 
   // Combien de récentes tiennent sous « Reprendre » dans le fil tel qu'il
   // est (nombreDeRecentesQuiTiennent sur sa hauteur). Le NSPanel se
@@ -453,7 +458,7 @@ export function ChatArea() {
                 );
               })}
               {(() => {
-                if (!streamState.isStreaming || streamState.content !== '') return null;
+                if (!streamState.isStreaming || !streamState.attendTexte) return null;
                 // For research messages the ResearchTimeline handles its own
                 // pre-content loading state — suppress the generic dots.
                 const last = messages[messages.length - 1];
