@@ -70,9 +70,20 @@ _INDICES = [(re.compile(motif), noms) for motif, noms in _GROUPES]
 # l'historique : la trousse était réduite, la réponse directe — juste — a
 # été retenue puis rejouée avec les 44 schémas (53 s + 36 s, journal
 # d'Ollama). Une relecture n'a de sens que si l'absence d'appel rend la
-# réponse invérifiable : ces outils LISENT des données que le modèle ne
-# peut pas connaître. Ouvrir, jouer, calculer ou dire l'heure n'en font
-# pas partie — l'heure est déjà dans le contexte.
+# réponse invérifiable : la demande parle de données que le modèle ne peut
+# pas connaître. Les MOTS comptent, pas les outils amorcés : « ouvre » et
+# « onglets » amorcent le même browser_tabs, « envoie » amorce mesh_devices —
+# revue du 20/09 : « Envoie-moi une blague » était relue avec 44 schémas.
+_LECTURE = re.compile(
+    r"\b(taches?|tasks?|sous.taches?|projets?|projects?|habitudes?|habits?|"
+    r"notes?|carnets?|routines?|citations?|bilan|finances?|budgets?|depenses?|"
+    r"revenus?|comptes?|agenda|calendrier|calendar|rendez.vous|cherche|recherche|"
+    r"search|web|internet|actualites?|mails?|emails?|courriels?|gmail|messages?|"
+    r"imessage|sms|ecran|screen|capture|fichiers?|documents?|onglets?|appareils?)\b"
+)
+# Les outils dont un résultat, au tour précédent, fait d'un suivi court une
+# suite de lecture (« Et demain ? » après les tâches). Une action (Spotify,
+# ouvrir) ne fait pas d'un suivi une demande de données.
 _LECTURES = frozenset(
     {
         "succes_tasks",
@@ -94,18 +105,27 @@ _LECTURES = frozenset(
         "browser_tabs",
     }
 )
-# Un suivi court ne redemande des données que s'il pose une question ou
-# enchaîne (« Et demain ? ») ; « Merci ! » après une liste de tâches n'en
-# est pas une, et payait pourtant la relecture.
+# Un suivi court ne redemande des données que s'il interroge (« ? »), enchaîne
+# (« Et les urgentes ») ou commence par un mot de question ou de lecture.
+# Revue du 20/09 : « Merci, c'est toi qui gères ! » et « Bof, plus ou moins »
+# étaient relus parce que « qui » et « ou » traînaient au milieu.
 _SUIVI_DE_LECTURE = re.compile(
     r"\?|^(?:et|puis|aussi|ensuite)\b|"
-    r"\b(?:quoi|quel|quelle|quels|quelles|combien|ou|quand|qui|montre|liste|"
-    r"donne|affiche|lis|verifie|regarde|cherche|what|which|when|where|who|"
-    r"how many|show|list|check|any)\b"
+    r"^(?:quoi|quel|quelle|quels|quelles|combien|quand|qui|montre|liste|donne|"
+    r"affiche|lis|verifie|regarde|cherche|what|which|when|where|who|how|show|"
+    r"list|check)\b"
 )
+# Revue du 20/09/2026 : « que veut dire », « traduis », « c'est quoi » sont des
+# réponses autonomes au même titre qu'« explique » — sans référence à quelque
+# chose de personnel (_REFERENCE), un mot ou une phrase n'ont besoin d'aucun
+# outil, et le catalogue seul suffit.
 _REDACTION = re.compile(
     r"^(?:(?:peux.tu|pourrais.tu|tu peux)\s+)?"
-    r"(?:explique|explain|definis|define|raconte|invente|conjugue|conjugate)\b"
+    r"(?:explique|explain|definis|define|raconte|invente|conjugue|conjugate|"
+    r"traduis|traduire|translate|epelle|prononce|"
+    r"que veut dire|que signifie|c'est quoi|qu'est.ce que c'est|qu'est.ce qu'|"
+    r"comment (?:dit.on|on dit|traduire|ecrire|s'ecrit|se dit)|"
+    r"what does .* mean|how do you say|what is the meaning)\b"
 )
 # 19/09/2026 : « Prépare moi un programme pour la programmation » envoyait
 # les 44 schémas complets au 14b : 57,8 s pour répéter la demande. Le catalogue
@@ -136,10 +156,9 @@ def _demande_de_lecture(messages: Sequence[Message]) -> bool:
     demandes = [m for m in messages if m.role == Role.USER]
     if not demandes:
         return False
-    texte = _normaliser(demandes[-1].content or "")
-    for motif, groupe in _INDICES:
-        if motif.search(texte) and set(groupe) & _LECTURES:
-            return True
+    texte = _normaliser(demandes[-1].content or "").strip()
+    if _LECTURE.search(texte):
+        return True
     if len(texte) >= 100 or len(demandes) < 2 or not _SUIVI_DE_LECTURE.search(texte):
         return False
     # Seul le tour précédent compte : un web_search trois échanges plus haut
@@ -162,22 +181,45 @@ def _normaliser(texte: str) -> str:
     )
 
 
-def _amorcer(messages: Sequence[Message]) -> set[str]:
+def _indices(texte: str) -> set[str]:
     noms: set[str] = set()
-    demandes = [m.content or "" for m in messages if m.role == Role.USER]
-    texte = demandes[-1] if demandes else ""
-    # « Et demain ? » n'efface pas la demande précédente. Un vrai changement
-    # de sujet n'embarque pas en permanence les outils de tout l'historique.
-    if len(texte) < 100 and len(demandes) > 1:
-        texte = demandes[-2] + "\n" + texte
-    texte = _normaliser(texte)
     for motif, groupe in _INDICES:
         if motif.search(texte):
             noms.update(groupe)
-    for message in messages[-8:]:
-        for appel in message.tool_calls or []:
-            noms.add(appel.name)
     return noms
+
+
+def _amorcer(messages: Sequence[Message]) -> tuple[set[str], bool]:
+    """Les schémas à précharger, et si la demande courante est RECONNUE.
+
+    Seule une demande reconnue justifie de différer les autres schémas.
+    Revue du 20/09/2026 : « Mets la musique Self Aware sur Spotify » puis
+    « Est-ce que Carlito m'a répondu ? » — la demande précédente, fusionnée
+    parce que la courante est courte, réduisait la trousse à Spotify, et le
+    modèle répondait « non » sans lire les messages. La précédente ne fait
+    plus qu'AJOUTER des schémas ; elle ne rend pas la courante connue.
+    """
+    demandes = [m.content or "" for m in messages if m.role == Role.USER]
+    courant = _normaliser(demandes[-1]) if demandes else ""
+    propres = _indices(courant)
+    noms = set(propres)
+    # Une réponse autonome (traduction, explication) n'embarque pas les
+    # schémas du tour d'avant : « Que veut dire… » après « joue la musique »
+    # recevait Spotify, le volume et un web_search dont elle n'a que faire.
+    if not _redaction_autonome(messages):
+        # « Et demain ? » n'efface pas la demande précédente. Un vrai changement
+        # de sujet n'embarque pas en permanence les outils de tout l'historique.
+        if len(courant) < 100 and len(demandes) > 1:
+            noms |= _indices(_normaliser(demandes[-2]))
+        for message in messages[-8:]:
+            for appel in message.tool_calls or []:
+                noms.add(appel.name)
+    # « Qu'est-ce que j'ai reçu aujourd'hui ? » n'était reconnu que par
+    # « aujourd'hui » — trousse réduite à l'horloge, et le modèle affirmait
+    # « rien reçu » sans lire. Un mot de temps seul ne fait pas une demande
+    # connue : elle garde les schémas complets.
+    connue = bool(propres - {"current_time"}) or _demande_de_lecture(messages)
+    return noms, connue
 
 
 def _redaction_autonome(messages: Sequence[Message]) -> bool:
@@ -209,7 +251,8 @@ class TrousseChat:
         self._specs = [outil.to_openai_function() for outil in tools]
         self.noms = {s["function"]["name"] for s in self._specs}
         self._charges = 0
-        self._actifs = _amorcer(messages) & self.noms
+        amorces, connue = _amorcer(messages)
+        self._actifs = amorces & self.noms
         self._lecture_attendue = _demande_de_lecture(messages)
         catalogue = "\n".join(
             s["function"]["name"]
@@ -253,7 +296,7 @@ class TrousseChat:
             # Essai réel du 19/09 : « J'ai reçu quoi ? » avec catalogue seul
             # produisait une absence de messages inventée. Une demande inconnue
             # garde donc les schémas complets ; les indices ne sont pas un plafond.
-            and (bool(self._actifs) or _redaction_autonome(messages))
+            and (connue or _redaction_autonome(messages))
             and _taille(self._selection()) < _taille(self._specs)
         )
 

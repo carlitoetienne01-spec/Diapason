@@ -292,10 +292,20 @@ class TestLaRelectureNeViseQueLesDonnees:
     def test_une_traduction_apres_youtube_n_est_pas_relue(self):
         fil = apres_youtube('Que veut dire "Self Aware" en français ?')
         trousse = TrousseChat(outils_du_bureau(), fil)
-        assert CHARGER_OUTILS in noms(trousse.specs), "la trousse est bien réduite"
+        assert noms(trousse.specs) == [CHARGER_OUTILS], (
+            "une traduction est une réponse autonome : le catalogue seul"
+        )
         assert not trousse.verifier_lecture(fil), (
             "aucune donnée personnelle en jeu : la réponse s'affiche tout de suite"
         )
+
+    def test_une_question_de_culture_generale_garde_tous_les_schemas(self):
+        # « Qui est le président actuel d'Haïti ? » n'est ni reconnue ni
+        # autonome (« actuel ») : tous les schémas, et un seul passage.
+        fil = apres_youtube("Qui est le premier ministre actuel d'Haïti ?")
+        trousse = TrousseChat(outils_du_bureau(), fil)
+        assert noms(trousse.specs) == [o.nom for o in outils_du_bureau()]
+        assert not trousse.verifier_lecture(fil)
 
     @pytest.mark.parametrize(
         "question",
@@ -329,6 +339,78 @@ class TestLaRelectureNeViseQueLesDonnees:
         assert not TrousseChat(outils_du_bureau(), merci).verifier_lecture(merci), (
             "un remerciement n'affirme rien sur les données"
         )
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Envoie-moi une blague",
+            "Peux-tu m'ouvrir les yeux sur la philosophie ?",
+            "Lance-moi un défi",
+        ],
+    )
+    def test_une_action_amorcee_ne_fait_pas_une_demande_de_donnees(self, question):
+        # Revue du 20/09/2026 : « envoie » amorçait mesh_devices, « ouvre »
+        # browser_tabs, tous deux « lecteurs » — une blague était relue.
+        fil = apres_youtube(question)
+        trousse = TrousseChat(outils_du_bureau(), fil)
+        assert not trousse.verifier_lecture(fil)
+
+    @pytest.mark.parametrize(
+        "question",
+        ["Qu'est-ce que j'ai reçu aujourd'hui ?", "Rien de neuf aujourd'hui ?"],
+    )
+    def test_un_mot_de_temps_seul_garde_les_schemas_complets(self, question):
+        # Revue du 20/09/2026 : « aujourd'hui » réduisait la trousse à l'horloge
+        # et « Tu n'as rien reçu, j'ai tout vérifié » partait sans lecture.
+        liste = [*outils_du_bureau(), Outil("digest_collect")]
+        trousse = TrousseChat(liste, messages(question))
+        assert noms(trousse.specs) == [o.nom for o in liste], (
+            "une demande inconnue garde tous les schémas, l'horloge n'est pas un sujet"
+        )
+
+    @pytest.mark.parametrize(
+        "suivi", ["Merci, c'est toi qui gères !", "Bof, plus ou moins", "Parfait."]
+    )
+    def test_un_commentaire_apres_une_lecture_n_est_pas_relu(self, suivi):
+        lecture = [
+            Message(role=Role.USER, content="Quelles sont mes tâches ?"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="t", name="succes_tasks", arguments="{}")],
+            ),
+            Message(role=Role.TOOL, content="…", tool_call_id="t"),
+            Message(role=Role.ASSISTANT, content="Deux tâches."),
+            Message(role=Role.USER, content=suivi),
+        ]
+        assert not TrousseChat(outils_du_bureau(), lecture).verifier_lecture(lecture)
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Est-ce que Carlito m'a répondu ?",
+            "Qu'est-ce que j'ai de prévu ce soir ?",
+        ],
+    )
+    def test_une_demande_inconnue_apres_une_action_garde_tous_les_schemas(
+        self, question
+    ):
+        # Revue du 20/09/2026 : la demande précédente (Spotify), fusionnée
+        # parce que la courante est courte, réduisait la trousse à Spotify et
+        # « non, personne ne t'a répondu » partait sans lecture.
+        liste = [*outils_du_bureau(), Outil("imessage_conversation")]
+        fil = [
+            Message(role=Role.USER, content="Mets la musique Self Aware sur Spotify"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="s", name="spotify_play", arguments="{}")],
+            ),
+            Message(role=Role.TOOL, content="lecture lancée", tool_call_id="s"),
+            Message(role=Role.ASSISTANT, content="C'est parti."),
+            Message(role=Role.USER, content=question),
+        ]
+        assert noms(TrousseChat(liste, fil).specs) == [o.nom for o in liste]
 
     def test_un_suivi_court_apres_une_action_n_est_pas_relu(self):
         fil = [
