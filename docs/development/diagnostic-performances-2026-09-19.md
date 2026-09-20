@@ -61,6 +61,89 @@ Deux corrections de mesure : la ligne `chat_performance` n'atteignait jamais
 le pied de chaque réponse affichait le modèle du sélecteur, pas celui qui
 avait répondu.
 
+### La trousse stable — 20 septembre, après-midi
+
+La trousse adaptative du lot 3 changeait de forme à chaque tour (catalogue +
+familles reconnues, ou les 45 schémas pour une demande inconnue). Or Ollama
+rend les schémas en tête du prompt et ne réutilise que le préfixe identique :
+chaque changement de trousse remettait tout le préremplissage à froid. Banc
+de cinq tours sur le 9b, même conversation, mesuré par `chat_performance` —
+`promptEvalMs` de la première passe, puis premier texte reçu :
+
+| Tour | Trousse adaptative (lot 3) | Trousse stable |
+|---|---:|---:|
+| « Quelles sont mes tâches aujourd'hui ? » (appel `succes_tasks`) | 9,1 s → 15,6 s | 2,4 s → 6,4 s |
+| « Quelle est la capitale du Pérou ? » | 24,4 s → 24,9 s | 2,7 s → 3,2 s |
+| « Et mes notes ? » | 8,4 s + relecture 2,9 s → 14,1 s | 2,7 s → 4,2 s |
+| « Quelle est la capitale du Chili ? » | 2,9 s → 3,4 s | 3,0 s → 3,4 s |
+| « Quelles sont mes tâches en retard ? » | 9,0 s + relecture 2,8 s → 13,0 s | 2,7 s → 4,3 s |
+| **Somme des premiers textes** | **71,0 s** | **21,5 s** |
+
+Avec la trousse adaptative, quatre tours sur cinq partaient à froid ; le seul
+tour chaud avait la même trousse que celui du Pérou. Avec la trousse stable,
+le préfixe (identité + 45 schémas, 10 112 jetons rapportés par Ollama) est le
+même pour tous les tours et toutes les conversations : il ne se paie qu'au
+chargement du modèle (≈ 24 s sur le 9b), et le premier tour du banc l'a
+trouvé encore en cache. `[agent] trousse_adaptative = true` rend l'ancienne
+trousse ; par défaut la trousse est stable et la relecture avant affichage
+n'est plus armée — elle n'aurait rien à élargir. Limite connue, non
+mesurée : un 9b qui affirme « aucune tâche » sans lire malgré les 45
+schémas n'est rattrapé par rien, comme avant le 19 septembre ; le seul
+indice favorable est ce banc, où `succes_tasks` a bien été appelé.
+
+Ce que ce banc ne mesure pas : le premier tour après un vrai chargement du
+modèle (≈ 7 s de chargement + 24 s de préremplissage), et les conversations
+qui débordent la fenêtre de 16 384 jetons — 10 112 sont pris par le préfixe,
+il en reste environ 6 000 pour l'historique. Au-delà, Ollama écarte les
+messages les plus anciens mais garde toujours les messages système et le
+dernier message : le préfixe reste en cache, l'historique conservé glisse et
+se retraite (quelques secondes par tour). Si le préfixe et le dernier message
+dépassent à eux seuls la fenêtre (un document de 25 000 caractères collé),
+le runner coupe au jeton en ne gardant que quatre jetons de tête : identité
+et premiers schémas disparaissent sans un mot. Élargir `DIAPASON_NUM_CTX` à
+32 768 pour le 9b coûterait environ 2,4 Go de cache KV de plus ; à mesurer
+avant de le poser.
+
+Deux compléments mesurés le même après-midi :
+
+- **Le préfixe reste chaud entre deux questions.** Le cache meurt avec le
+  runner (`keep_alive` 30 min) ; `server/prechauffage.py` rejoue le préfixe
+  exact du bureau (identité, 45 schémas, celui des questions, « Bonjour »,
+  un jeton) toutes les dix minutes, par l'admission de fond — un tour
+  interactif le fait attendre. Preuve dans le journal de llama-server, 20
+  septembre à 19:39 : préchauffage 27,7 s (points de contrôle créés à
+  9 848 et 10 868 jetons), puis première question du bureau quatre secondes
+  plus tard « sim = 0.946 (10104/10678) … restored context checkpoint
+  (pos 9848) » : **2,44 s** au lieu de 25. La ligne `prefixe_chauffe … en
+  N s` du journal du serveur dit si le tour de dix minutes a trouvé le
+  préfixe en cache (~0,3 s) ou l'a recalculé. En passant : le préchargement
+  du modèle au démarrage (`_prewarm_local_model`) n'avait jamais envoyé un
+  seul `/api/generate` sur ce Mac — son déballage s'arrêtait sur le
+  GuardrailsEngine, qui relaie `engine_id` sans avoir d'hôte ; il partage
+  désormais le déballage du préchauffage.
+- **Pourquoi la forme du préfixe doit être exacte.** Le 9b est hybride
+  (couches SSM + attention) ; llama-server ne peut reprendre qu'à un point de
+  contrôle, créé au plus tôt vers 8 192 jetons et au début du dernier lot de
+  1 024. Un préfixe commun de 8 116 jetons (le bureau avec 46 schémas contre
+  un appel API avec 45) ne sert à rien : « checking checkpoint with [9615]
+  against 8116 » → tout est recalculé, et les points de contrôle de l'autre
+  prompt sont effacés. Même trousse, même ordre, même schéma des questions :
+  c'est à ce prix que le point de contrôle tient.
+- **Un « Merci ! » garde la trousse.** Dispensé de schémas, un salut partait
+  de l'identité seule et retraitait tout l'historique : 4,2 s de
+  préremplissage pour 1 843 jetons, contre 2,7 s pour la question outillée
+  suivante (10 292 jetons) dont le préfixe était en cache. Tous les tours du
+  bureau passent désormais par la même trousse. Sur ce banc, le tour outillé
+  qui suivait le « Merci ! » est resté chaud : llama-server conserve le
+  préfixe outillé même après un prompt sans outils.
+
+Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
+retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
+1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à
+3,0 s. Sur huit tours de 180 à 220 jetons de réponse chacun (historique de
+10 254 à 11 750 jetons), le préremplissage est passé de 2,9 à 3,3 s : la
+croissance existe mais reste lente à cette échelle.
+
 ## Lot 1 — contexte stable, réactivité et mesures
 
 Livré :

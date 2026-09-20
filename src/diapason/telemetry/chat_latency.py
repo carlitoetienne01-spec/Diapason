@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -85,9 +86,12 @@ def record_ollama_metrics(
         # Counts only, never schemas/arguments: distinguish a slow model from
         # prefill spent reading tools that the turn does not actually use.
         metrics["toolSchemaCount"] = len(tools)
-        metrics["toolSchemaCharacters"] = len(
-            json.dumps(tools, ensure_ascii=False, separators=(",", ":"))
-        )
+        rendu = json.dumps(tools, ensure_ascii=False, separators=(",", ":"))
+        metrics["toolSchemaCharacters"] = len(rendu)
+        # 20/09/2026 : deux trousses de même taille peuvent différer d'un
+        # schéma ; l'empreinte dit si le préfixe rejoué par le préchauffage
+        # est celui que le tour a vraiment envoyé. Une empreinte, pas un schéma.
+        metrics["toolSchemaDigest"] = hashlib.sha256(rendu.encode()).hexdigest()[:12]
     for source, target, divisor in (
         ("load_duration", "loadMs", 1e6),
         ("prompt_eval_duration", "promptEvalMs", 1e6),

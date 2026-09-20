@@ -77,6 +77,9 @@ def setup_logging(
         # contenu) n'a jamais atteint serve.err.log — les 89 s d'une traduction
         # ont dû être reconstituées depuis le journal d'Ollama.
         logging.getLogger("diapason.telemetry.chat_latency").setLevel(logging.INFO)
+        # Une ligne toutes les dix minutes qui dit si le préfixe était en
+        # cache : sans elle, une pause coûteuse ne laisse aucune trace.
+        logging.getLogger("diapason.server.prechauffage").setLevel(logging.INFO)
 
     # File handler (verbose or explicit path)
     if verbose or log_file is not None:

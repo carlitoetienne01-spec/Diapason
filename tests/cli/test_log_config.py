@@ -33,6 +33,8 @@ class TestSetupLogging:
         assert mesure.isEnabledFor(logging.INFO), "la ligne doit atteindre le journal"
         voix = logging.getLogger("diapason.speech.realtime.local_voice")
         assert voix.isEnabledFor(logging.INFO)
+        chauffe = logging.getLogger("diapason.server.prechauffage")
+        assert chauffe.isEnabledFor(logging.INFO)
 
     def test_log_file_handler_on_verbose(self, tmp_path):
         log_file = tmp_path / "cli.log"

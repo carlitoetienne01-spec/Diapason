@@ -70,21 +70,13 @@ async def _prewarm_local_model(app: FastAPI) -> None:
     lightning = getattr(getattr(config, "desktop", None), "lightning", None)
     if lightning is not None and not lightning.preload_model:
         return
-    engine = getattr(app.state, "engine", None)
-    inner = engine
-    # Telemetry and routing wrappers are transparent; locate the concrete
-    # engine so warmup uses its real host/keep-alive settings.
-    for _ in range(4):
-        candidate = getattr(inner, "__dict__", {}).get("_inner")
-        if candidate is None:
-            break
-        inner = candidate
-    engine_id = str(getattr(inner, "engine_id", "") or "").lower()
-    if engine_id != "ollama" or not app.state.model:
-        return
-    from diapason.core.local_mode import host_is_local
+    # 20/09/2026 : l'ancien déballage ne suivait que ``_inner`` et s'arrêtait
+    # sur le MultiEngine que fait naître un moteur cloud — aucun
+    # /api/generate n'a jamais atteint Ollama au démarrage sur ce Mac.
+    from diapason.server.prechauffage import moteur_local
 
-    if not host_is_local(str(getattr(inner, "_host", ""))):
+    inner = moteur_local(app.state)
+    if inner is None or not app.state.model:
         return
     keep_alive = str(getattr(inner, "_keep_alive", "30m") or "30m")
     try:
@@ -263,12 +255,18 @@ def create_app(
         prewarm_task = asyncio.create_task(_prewarm_local_model(application))
         heartbeat_task = asyncio.create_task(_mesh_heartbeat(application))
         from diapason.mesh.discovery import run_discovery
+        from diapason.server.prechauffage import entretenir_le_prefixe
 
         discovery_task = asyncio.create_task(run_discovery())
+        # 20/09/2026 : le préfixe du chat (identité + trousse) coûte 24 s à
+        # froid et meurt avec le runner d'Ollama après 30 min de silence ;
+        # le rejouer toutes les dix minutes le garde chaud pour la question
+        # qui suivra la pause. Voir server/prechauffage.py.
+        prefixe_task = asyncio.create_task(entretenir_le_prefixe(application))
         try:
             yield
         finally:
-            for task in (prewarm_task, heartbeat_task, discovery_task):
+            for task in (prewarm_task, heartbeat_task, discovery_task, prefixe_task):
                 if not task.done():
                     task.cancel()
                 with suppress(asyncio.CancelledError):
