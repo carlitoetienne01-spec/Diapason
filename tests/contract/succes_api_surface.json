@@ -31,6 +31,8 @@
  "GET /v1/succes/habits/logs",
  "GET /v1/succes/notes",
  "GET /v1/succes/notes/categories",
+ "GET /v1/succes/notes/resumes",
+ "GET /v1/succes/notes/{note_id}",
  "GET /v1/succes/photo-piles/{pile_id}/photos",
  "GET /v1/succes/photos/{photo_id}/contenu",
  "GET /v1/succes/planner",

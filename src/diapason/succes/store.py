@@ -725,18 +725,35 @@ class SuccesStore:
             clauses.append("lower(title) LIKE ?")
             params.append(f"%{search.strip().lower()}%")
         with self._connect() as conn:
-            ids = [
-                row["id"]
-                for row in conn.execute(
-                    f"""SELECT id FROM succes_tasks WHERE {" AND ".join(clauses)}
+            # 19/09/2026 : 702 tâches faisaient 1 + 2×702 lectures SQLite.
+            # Deux lectures groupées gardent les mêmes données et le même
+            # arbre de sous-tâches, dans un instantané cohérent.
+            conn.execute("BEGIN")
+            filtre = " AND ".join(clauses)
+            rows = conn.execute(
+                f"""SELECT * FROM succes_tasks WHERE {filtre}
                          ORDER BY done, CASE priority
                            WHEN 'urgent' THEN 0 WHEN 'high' THEN 1
                            WHEN 'medium' THEN 2 ELSE 3 END,
                          scheduled_time, order_index, updated_at_ms DESC""",
-                    params,
-                ).fetchall()
+                params,
+            ).fetchall()
+            if not rows:
+                return []
+            subrows = conn.execute(
+                f"""SELECT * FROM succes_subtasks
+                    WHERE deleted_at_ms IS NULL AND task_id IN
+                      (SELECT id FROM succes_tasks WHERE {filtre})
+                    ORDER BY order_index, id""",
+                params,
+            ).fetchall()
+            par_tache: dict[str, list[sqlite3.Row]] = {}
+            for subrow in subrows:
+                par_tache.setdefault(subrow["task_id"], []).append(subrow)
+            return [
+                self._task_dict(row, self._subtask_tree(par_tache.get(row["id"], [])))
+                for row in rows
             ]
-            return [task for task_id in ids if (task := self._load_task(conn, task_id))]
 
     def create_task(
         self, data: Mapping[str, Any], *, op_id: str | None = None

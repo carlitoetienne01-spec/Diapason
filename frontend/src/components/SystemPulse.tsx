@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useAppStore } from '../lib/store';
 import { fetchManagedAgents } from '../lib/api';
+import { useSondeVisible } from '../lib/useSondeVisible';
 
 type PulseState = 'idle' | 'inferencing' | 'agent-active' | 'hidden';
 
@@ -23,17 +24,11 @@ export function SystemPulse({ apiReachable }: { apiReachable: boolean | null }) 
   const isStreaming = useAppStore((s) => s.streamState.isStreaming);
   const [hasRunningAgent, setHasRunningAgent] = useState(false);
 
-  // Poll for running agents every 30s
-  useEffect(() => {
-    if (apiReachable === false) return;
-    const check = () =>
-      fetchManagedAgents()
-        .then((agents) => setHasRunningAgent(agents.some((a) => a.status === 'running')))
-        .catch(() => {});
-    check();
-    const interval = setInterval(check, 30000);
-    return () => clearInterval(interval);
-  }, [apiReachable]);
+  const verifierAgents = useCallback(async (signal: AbortSignal) => {
+    const agents = await fetchManagedAgents(signal);
+    if (!signal.aborted) setHasRunningAgent(agents.some((a) => a.status === 'running'));
+  }, []);
+  useSondeVisible(verifierAgents, 30000, apiReachable !== false);
 
   if (apiReachable === false) return null;
 

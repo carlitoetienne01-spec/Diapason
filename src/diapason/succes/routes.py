@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -9,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.dates import normalize_time, resolve_date_expression
+from diapason.succes.notes_resume import resumer_note
 from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
 from diapason.succes.sync import MAX_SYNC_BATCH, SuccesSyncStore
 from diapason.succes.workspace import (
@@ -24,15 +26,20 @@ from diapason.succes.workspace import (
     SuccesWorkspaceStore,
 )
 
+# 19/09/2026 : les routes SQLite et sync réseau étaient async sans await.
+# Elles bloquaient le chat et la voix sur la boucle commune. Les handlers
+# synchrones passent par le pool Starlette ; le contrat HTTP reste identique.
 router = APIRouter(prefix="/v1/succes", tags=["succes"])
 _store: SuccesStore | None = None
+_store_lock = Lock()
 
 
 def get_store() -> SuccesStore:
     global _store
-    if _store is None:
-        _store = SuccesSyncStore()
-    return _store
+    with _store_lock:
+        if _store is None:
+            _store = SuccesSyncStore()
+        return _store
 
 
 def set_store_for_tests(store: SuccesStore | None) -> None:
@@ -336,7 +343,7 @@ def _resolved_date(value: str, *, allow_empty: bool = True) -> str:
 
 
 @router.get("/tasks")
-async def list_tasks(
+def list_tasks(
     date: str | None = None,
     include_done: bool = True,
     search: str = Query(default="", max_length=200),
@@ -353,7 +360,7 @@ async def list_tasks(
 
 
 @router.get("/tasks/{task_id}")
-async def get_task(task_id: str) -> dict[str, Any]:
+def get_task(task_id: str) -> dict[str, Any]:
     try:
         return get_store().get_task(task_id)
     except SuccesError as exc:
@@ -361,7 +368,7 @@ async def get_task(task_id: str) -> dict[str, Any]:
 
 
 @router.post("/tasks", status_code=201)
-async def create_task(body: TaskCreate) -> dict[str, Any]:
+def create_task(body: TaskCreate) -> dict[str, Any]:
     data = body.model_dump(exclude={"opId"})
     data["date"] = _resolved_date(body.date)
     try:
@@ -373,7 +380,7 @@ async def create_task(body: TaskCreate) -> dict[str, Any]:
 
 
 @router.patch("/tasks/{task_id}")
-async def update_task(task_id: str, body: TaskPatch) -> dict[str, Any]:
+def update_task(task_id: str, body: TaskPatch) -> dict[str, Any]:
     patch = body.model_dump(exclude_none=True, exclude={"opId"})
     if "date" in patch:
         patch["date"] = _resolved_date(str(patch["date"]))
@@ -390,7 +397,7 @@ async def update_task(task_id: str, body: TaskPatch) -> dict[str, Any]:
 
 
 @router.post("/tasks/{task_id}/done")
-async def set_task_done(task_id: str, body: DoneBody) -> dict[str, Any]:
+def set_task_done(task_id: str, body: DoneBody) -> dict[str, Any]:
     try:
         task = get_store().set_task_done(task_id, body.done, op_id=body.opId)
     except SuccesError as exc:
@@ -399,7 +406,7 @@ async def set_task_done(task_id: str, body: DoneBody) -> dict[str, Any]:
 
 
 @router.post("/tasks/{task_id}/reschedule")
-async def reschedule_task(task_id: str, body: RescheduleBody) -> dict[str, Any]:
+def reschedule_task(task_id: str, body: RescheduleBody) -> dict[str, Any]:
     scheduled_date = _resolved_date(body.date, allow_empty=False)
     try:
         task = get_store().reschedule_task(task_id, scheduled_date, op_id=body.opId)
@@ -414,7 +421,7 @@ async def reschedule_task(task_id: str, body: RescheduleBody) -> dict[str, Any]:
 
 
 @router.post("/tasks/{task_id}/reschedule-series")
-async def reschedule_task_series(task_id: str, body: RescheduleBody) -> dict[str, Any]:
+def reschedule_task_series(task_id: str, body: RescheduleBody) -> dict[str, Any]:
     scheduled_date = _resolved_date(body.date, allow_empty=False)
     try:
         result = get_store().reschedule_series(task_id, scheduled_date, op_id=body.opId)
@@ -424,7 +431,7 @@ async def reschedule_task_series(task_id: str, body: RescheduleBody) -> dict[str
 
 
 @router.post("/tasks/{task_id}/subtasks", status_code=201)
-async def create_subtask(task_id: str, body: SubtaskCreate) -> dict[str, Any]:
+def create_subtask(task_id: str, body: SubtaskCreate) -> dict[str, Any]:
     try:
         task = get_store().add_subtask(
             task_id, body.title, parent_id=body.parentId, op_id=body.opId
@@ -435,9 +442,7 @@ async def create_subtask(task_id: str, body: SubtaskCreate) -> dict[str, Any]:
 
 
 @router.post("/tasks/{task_id}/subtasks/{subtask_id}/done")
-async def set_subtask_done(
-    task_id: str, subtask_id: str, body: DoneBody
-) -> dict[str, Any]:
+def set_subtask_done(task_id: str, subtask_id: str, body: DoneBody) -> dict[str, Any]:
     try:
         task = get_store().set_subtask_done(
             task_id, subtask_id, body.done, op_id=body.opId
@@ -448,9 +453,7 @@ async def set_subtask_done(
 
 
 @router.delete("/tasks/{task_id}/subtasks/{subtask_id}")
-async def delete_subtask(
-    task_id: str, subtask_id: str, body: DeleteBody
-) -> dict[str, Any]:
+def delete_subtask(task_id: str, subtask_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -467,7 +470,7 @@ async def delete_subtask(
 
 
 @router.delete("/tasks/{task_id}")
-async def delete_task(task_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_task(task_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -484,7 +487,7 @@ async def delete_task(task_id: str, body: DeleteBody) -> dict[str, Any]:
 
 
 @router.get("/planner")
-async def planner(date: str) -> dict[str, Any]:
+def planner(date: str) -> dict[str, Any]:
     scheduled_date = _resolved_date(date, allow_empty=False)
     store = get_store()
     quote = None
@@ -554,7 +557,7 @@ def reorder_projects(body: OrdreParIds) -> dict[str, Any]:
 
 
 @router.get("/projects")
-async def list_projects(
+def list_projects(
     search: str = Query(default="", max_length=200),
 ) -> dict[str, Any]:
     projects = _workspace_store().list_projects(search=search)
@@ -562,7 +565,7 @@ async def list_projects(
 
 
 @router.get("/project-kits")
-async def list_project_kits() -> dict[str, Any]:
+def list_project_kits() -> dict[str, Any]:
     from diapason.succes.project_kits import list_project_kits as _list_kits
 
     kits = _list_kits()
@@ -570,7 +573,7 @@ async def list_project_kits() -> dict[str, Any]:
 
 
 @router.get("/project-structures")
-async def list_project_structures() -> dict[str, Any]:
+def list_project_structures() -> dict[str, Any]:
     """Les cinq formes qu'un projet peut prendre, pour le sélecteur."""
     from diapason.succes.structures import STRUCTURE_CATALOG
 
@@ -578,7 +581,7 @@ async def list_project_structures() -> dict[str, Any]:
 
 
 @router.get("/projects/{project_id}/edges")
-async def list_task_edges(project_id: str) -> dict[str, Any]:
+def list_task_edges(project_id: str) -> dict[str, Any]:
     try:
         edges = _workspace_store().list_task_edges(project_id)
     except SuccesError as exc:
@@ -587,7 +590,7 @@ async def list_task_edges(project_id: str) -> dict[str, Any]:
 
 
 @router.post("/projects/{project_id}/edges", status_code=201)
-async def create_task_edge(project_id: str, body: EdgeCreate) -> dict[str, Any]:
+def create_task_edge(project_id: str, body: EdgeCreate) -> dict[str, Any]:
     try:
         edge = _workspace_store().create_task_edge(
             project_id, body.fromTaskId, body.toTaskId, op_id=body.opId
@@ -598,7 +601,7 @@ async def create_task_edge(project_id: str, body: EdgeCreate) -> dict[str, Any]:
 
 
 @router.delete("/projects/{project_id}/edges/{from_task_id}/{to_task_id}")
-async def delete_task_edge(
+def delete_task_edge(
     project_id: str, from_task_id: str, to_task_id: str
 ) -> dict[str, Any]:
     try:
@@ -609,7 +612,7 @@ async def delete_task_edge(
 
 
 @router.post("/projects/{project_id}/cycle/reset")
-async def reset_project_cycle(
+def reset_project_cycle(
     project_id: str, body: CycleResetBody | None = None
 ) -> dict[str, Any]:
     try:
@@ -622,7 +625,7 @@ async def reset_project_cycle(
 
 
 @router.post("/projects", status_code=201)
-async def create_project(body: ProjectCreate) -> dict[str, Any]:
+def create_project(body: ProjectCreate) -> dict[str, Any]:
     try:
         project = _workspace_store().create_project(
             body.model_dump(exclude={"opId"}), op_id=body.opId
@@ -633,7 +636,7 @@ async def create_project(body: ProjectCreate) -> dict[str, Any]:
 
 
 @router.patch("/projects/{project_id}")
-async def update_project(project_id: str, body: ProjectPatch) -> dict[str, Any]:
+def update_project(project_id: str, body: ProjectPatch) -> dict[str, Any]:
     try:
         project = _workspace_store().update_project(
             project_id,
@@ -646,7 +649,7 @@ async def update_project(project_id: str, body: ProjectPatch) -> dict[str, Any]:
 
 
 @router.delete("/projects/{project_id}")
-async def delete_project(project_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_project(project_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -663,7 +666,7 @@ async def delete_project(project_id: str, body: DeleteBody) -> dict[str, Any]:
 
 
 @router.get("/habits")
-async def list_habits(date: str | None = None) -> dict[str, Any]:
+def list_habits(date: str | None = None) -> dict[str, Any]:
     try:
         habits = _workspace_store().list_habits(
             on_date=_resolved_date(date) if date is not None else None
@@ -678,7 +681,7 @@ async def list_habits(date: str | None = None) -> dict[str, Any]:
 
 
 @router.get("/habits/logs")
-async def list_habit_logs(
+def list_habit_logs(
     from_date: str = Query(alias="from", min_length=1, max_length=80),
     to_date: str = Query(alias="to", min_length=1, max_length=80),
     habit_id: str | None = Query(default=None, alias="habitId", max_length=80),
@@ -695,7 +698,7 @@ async def list_habit_logs(
 
 
 @router.post("/habits", status_code=201)
-async def create_habit(body: HabitCreate) -> dict[str, Any]:
+def create_habit(body: HabitCreate) -> dict[str, Any]:
     data = body.model_dump(exclude={"opId"})
     if data["startDate"]:
         data["startDate"] = _resolved_date(data["startDate"])
@@ -709,7 +712,7 @@ async def create_habit(body: HabitCreate) -> dict[str, Any]:
 
 
 @router.patch("/habits/{habit_id}")
-async def update_habit(habit_id: str, body: HabitPatch) -> dict[str, Any]:
+def update_habit(habit_id: str, body: HabitPatch) -> dict[str, Any]:
     data = body.model_dump(exclude_none=True, exclude={"opId"})
     for key in ("startDate", "endDate"):
         if key in data and data[key]:
@@ -722,7 +725,7 @@ async def update_habit(habit_id: str, body: HabitPatch) -> dict[str, Any]:
 
 
 @router.post("/habits/{habit_id}/log")
-async def set_habit_done(habit_id: str, body: HabitLogBody) -> dict[str, Any]:
+def set_habit_done(habit_id: str, body: HabitLogBody) -> dict[str, Any]:
     log_date = _resolved_date(body.date, allow_empty=False)
     try:
         habit = _workspace_store().set_habit_done(
@@ -734,7 +737,7 @@ async def set_habit_done(habit_id: str, body: HabitLogBody) -> dict[str, Any]:
 
 
 @router.delete("/habits/{habit_id}")
-async def delete_habit(habit_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_habit(habit_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -783,8 +786,24 @@ def reorder_notes(body: OrdreParIds) -> dict[str, Any]:
     return {"reordered": len(changed)}
 
 
+@router.get("/notes/resumes")
+def note_summaries(
+    search: str = Query(default="", max_length=200),
+) -> dict[str, Any]:
+    notes = _workspace_store().list_notes(search=search)
+    return {"notes": [resumer_note(note) for note in notes], "count": len(notes)}
+
+
+@router.get("/notes/{note_id}")
+def get_note(note_id: str) -> dict[str, Any]:
+    try:
+        return {"note": _workspace_store().get_note(note_id)}
+    except SuccesError as exc:
+        raise _domain_error(exc) from exc
+
+
 @router.get("/notes")
-async def list_notes(
+def list_notes(
     search: str = Query(default="", max_length=200),
 ) -> dict[str, Any]:
     notes = _workspace_store().list_notes(search=search)
@@ -802,7 +821,7 @@ async def list_notes(
 
 
 @router.post("/notes", status_code=201)
-async def create_note(body: NoteCreate) -> dict[str, Any]:
+def create_note(body: NoteCreate) -> dict[str, Any]:
     try:
         note = _workspace_store().create_note(
             body.model_dump(exclude={"opId"}), op_id=body.opId
@@ -813,7 +832,7 @@ async def create_note(body: NoteCreate) -> dict[str, Any]:
 
 
 @router.patch("/notes/{note_id}")
-async def update_note(note_id: str, body: NotePatch) -> dict[str, Any]:
+def update_note(note_id: str, body: NotePatch) -> dict[str, Any]:
     try:
         note = _workspace_store().update_note(
             note_id,
@@ -826,7 +845,7 @@ async def update_note(note_id: str, body: NotePatch) -> dict[str, Any]:
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_note(note_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -843,20 +862,20 @@ async def delete_note(note_id: str, body: DeleteBody) -> dict[str, Any]:
 
 
 @router.get("/dashboard")
-async def dashboard(date: str | None = None) -> dict[str, Any]:
+def dashboard(date: str | None = None) -> dict[str, Any]:
     return _workspace_store().dashboard(
         on_date=_resolved_date(date) if date is not None else None
     )
 
 
 @router.get("/templates")
-async def list_templates(include_inactive: bool = True) -> dict[str, Any]:
+def list_templates(include_inactive: bool = True) -> dict[str, Any]:
     items = _continuity_store().list_templates(include_inactive=include_inactive)
     return {"templates": items, "count": len(items)}
 
 
 @router.post("/templates", status_code=201)
-async def create_template(body: TemplateCreate) -> dict[str, Any]:
+def create_template(body: TemplateCreate) -> dict[str, Any]:
     data = body.model_dump(exclude={"opId"})
     data["startDate"] = _resolved_date(body.startDate, allow_empty=False)
     data["endDate"] = _resolved_date(body.endDate, allow_empty=False)
@@ -868,7 +887,7 @@ async def create_template(body: TemplateCreate) -> dict[str, Any]:
 
 
 @router.patch("/templates/{template_id}")
-async def update_template(template_id: str, body: TemplatePatch) -> dict[str, Any]:
+def update_template(template_id: str, body: TemplatePatch) -> dict[str, Any]:
     patch = body.model_dump(exclude_none=True, exclude={"opId"})
     for key in ("startDate", "endDate"):
         if key in patch:
@@ -881,7 +900,7 @@ async def update_template(template_id: str, body: TemplatePatch) -> dict[str, An
 
 
 @router.delete("/templates/{template_id}")
-async def delete_template(template_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_template(template_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -898,7 +917,7 @@ async def delete_template(template_id: str, body: DeleteBody) -> dict[str, Any]:
 
 
 @router.post("/templates/materialize")
-async def materialize_templates(body: MaterializeBody) -> dict[str, Any]:
+def materialize_templates(body: MaterializeBody) -> dict[str, Any]:
     try:
         return _continuity_store().materialize_templates(
             _resolved_date(body.startDate, allow_empty=False),
@@ -909,13 +928,13 @@ async def materialize_templates(body: MaterializeBody) -> dict[str, Any]:
 
 
 @router.get("/quotes")
-async def list_quotes(category: str = "") -> dict[str, Any]:
+def list_quotes(category: str = "") -> dict[str, Any]:
     items = _continuity_store().list_quotes(category=category)
     return {"quotes": items, "count": len(items)}
 
 
 @router.post("/quotes", status_code=201)
-async def create_quote(body: QuoteCreate) -> dict[str, Any]:
+def create_quote(body: QuoteCreate) -> dict[str, Any]:
     try:
         item = _continuity_store().create_quote(
             body.model_dump(exclude={"opId"}), op_id=body.opId
@@ -926,7 +945,7 @@ async def create_quote(body: QuoteCreate) -> dict[str, Any]:
 
 
 @router.delete("/quotes/{quote_id}")
-async def delete_quote(quote_id: str, body: DeleteBody) -> dict[str, Any]:
+def delete_quote(quote_id: str, body: DeleteBody) -> dict[str, Any]:
     if not body.confirmed:
         raise HTTPException(
             status_code=409,
@@ -943,7 +962,7 @@ async def delete_quote(quote_id: str, body: DeleteBody) -> dict[str, Any]:
 
 
 @router.get("/year-review")
-async def year_review(year: int, month: int | None = None) -> dict[str, Any]:
+def year_review(year: int, month: int | None = None) -> dict[str, Any]:
     try:
         return _continuity_store().year_review(year, month=month)
     except SuccesError as exc:
@@ -951,22 +970,22 @@ async def year_review(year: int, month: int | None = None) -> dict[str, Any]:
 
 
 @router.get("/export")
-async def export_succes() -> dict[str, Any]:
+def export_succes() -> dict[str, Any]:
     return _continuity_store().export_state()
 
 
 @router.get("/sync/status")
-async def sync_status() -> dict[str, Any]:
+def sync_status() -> dict[str, Any]:
     return get_store().sync_status()
 
 
 @router.get("/sync/operations")
-async def sync_operations(after: int = 0, limit: int = 500) -> dict[str, Any]:
+def sync_operations(after: int = 0, limit: int = 500) -> dict[str, Any]:
     return get_store().list_operations(after=after, limit=limit)
 
 
 @router.post("/sync/pairings")
-async def create_sync_pairing(body: PairingCreate) -> dict[str, Any]:
+def create_sync_pairing(body: PairingCreate) -> dict[str, Any]:
     """Prepare a ten-minute invitation from the authenticated local app."""
     try:
         return _sync_store().create_pairing(body.deviceName)
@@ -975,7 +994,7 @@ async def create_sync_pairing(body: PairingCreate) -> dict[str, Any]:
 
 
 @router.post("/sync/pair")
-async def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
+def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
     """Redeem a pairing token (auth = valid invitation; no API key required)."""
     try:
         return _sync_store().redeem_pairing(body.pairingToken)
@@ -984,7 +1003,7 @@ async def redeem_sync_pairing(body: PairingRedeem) -> dict[str, Any]:
 
 
 @router.post("/sync/exchange")
-async def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
+def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
     """Exchange operations authenticated by the peer sync token in the body."""
     peer = _sync_store().peer_for_token(body.peerToken)
     if peer is None:
@@ -1000,7 +1019,7 @@ async def exchange_sync_operations(body: SyncExchangeBody) -> dict[str, Any]:
 
 
 @router.put("/sync/relay")
-async def set_sync_relay(body: SyncRelayBody) -> dict[str, Any]:
+def set_sync_relay(body: SyncRelayBody) -> dict[str, Any]:
     try:
         return _sync_store().set_relay_url(body.url)
     except SuccesError as exc:
@@ -1008,12 +1027,12 @@ async def set_sync_relay(body: SyncRelayBody) -> dict[str, Any]:
 
 
 @router.delete("/sync/relay")
-async def clear_sync_relay() -> dict[str, Any]:
+def clear_sync_relay() -> dict[str, Any]:
     return _sync_store().clear_relay_url()
 
 
 @router.post("/sync/join")
-async def join_sync_remote(body: SyncJoinBody) -> dict[str, Any]:
+def join_sync_remote(body: SyncJoinBody) -> dict[str, Any]:
     """Redeem a remote invitation and store guest credentials locally."""
     try:
         return _sync_store().join_remote(
@@ -1026,7 +1045,7 @@ async def join_sync_remote(body: SyncJoinBody) -> dict[str, Any]:
 
 
 @router.post("/sync/run")
-async def run_sync_exchange() -> dict[str, Any]:
+def run_sync_exchange() -> dict[str, Any]:
     """Guest round-trip: push local ops, pull host ops through the relay."""
     try:
         return _sync_store().run_exchange()
@@ -1035,12 +1054,12 @@ async def run_sync_exchange() -> dict[str, Any]:
 
 
 @router.delete("/sync/guest")
-async def clear_sync_guest() -> dict[str, Any]:
+def clear_sync_guest() -> dict[str, Any]:
     return _sync_store().clear_guest_session()
 
 
 @router.delete("/sync/peers/{peer_id}")
-async def revoke_sync_peer(peer_id: str) -> dict[str, Any]:
+def revoke_sync_peer(peer_id: str) -> dict[str, Any]:
     revoked = _sync_store().revoke_peer(peer_id)
     if not revoked:
         raise HTTPException(status_code=404, detail="Cet appareil n'existe pas.")
@@ -1048,7 +1067,7 @@ async def revoke_sync_peer(peer_id: str) -> dict[str, Any]:
 
 
 @router.post("/import/legacy")
-async def import_legacy(body: LegacyImportBody) -> dict[str, Any]:
+def import_legacy(body: LegacyImportBody) -> dict[str, Any]:
     try:
         summary = get_store().import_legacy_snapshot(body.snapshot, source=body.source)
     except SuccesError as exc:

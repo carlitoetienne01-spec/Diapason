@@ -126,6 +126,7 @@ export const clesSucces = {
   kitsProjets: () => cleDeCache('project-kits'),
   gabarits: () => cleDeCache('templates'),
   notes: (search = '') => cleDeCache('notes', { search }),
+  resumesNotes: (search = '') => cleDeCache('notes/resumes', { search }),
   categoriesNotes: () => cleDeCache('notes/categories'),
   habitudes: (date: string) => cleDeCache('habits', { date }),
   journalHabitudes: (from: string, to: string) => cleDeCache('habits/logs', { from, to }),
@@ -148,6 +149,7 @@ export const clesSucces = {
 export const CLES_DE_LANCEMENT: ReadonlySet<string> = new Set([
   clesSucces.taches(),
   clesSucces.notes(),
+  clesSucces.resumesNotes(),
   clesSucces.projets(),
 ]);
 

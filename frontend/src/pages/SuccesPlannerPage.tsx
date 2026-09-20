@@ -1,3 +1,4 @@
+import { useDerniereLecture } from '../features/succes/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -156,16 +157,21 @@ export function SuccesPlannerPage() {
   // liste reste montée pendant qu'on relit. Démonter les cartes à chaque
   // load() — retour de focus, coche d'une autre tâche — emportait la boîte
   // Reporter et ses deux dates proposées (contre-revue du 17 sept. 2026, §34).
+  const lecture = useDerniereLecture(selectedDate);
   const load = useCallback(async () => {
+    const actuelle = lecture.commencer();
     try {
       // D'ABORD le planificateur, ENSUITE la liste : le premier matérialise
       // les récurrences du jour ; chargés en parallèle, la liste pouvait
       // arriver avant elles et contredire les points du calendrier.
       await fetchSuccesPlanner(selectedDate).catch(() => null);
+      if (!actuelle()) return;
       const nextTasks = await listSuccesTasks({ includeDone: true });
+      if (!actuelle()) return;
       ecrireCache(clesSucces.taches(), nextTasks);
       setTasks(nextTasks);
     } catch (error) {
+      if (!actuelle()) return;
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(),
@@ -175,7 +181,7 @@ export function SuccesPlannerPage() {
       });
       toast.error('Le planificateur ne peut pas être chargé.', { description: message });
     } finally {
-      setLoading(false);
+      if (actuelle()) setLoading(false);
     }
   }, [selectedDate]);
 
@@ -236,6 +242,7 @@ export function SuccesPlannerPage() {
     event.preventDefault();
     const text = quoteDraft.text.trim();
     if (!text) return;
+    lecture.invalider();
     setSaving(true);
     try {
       const created = await createSuccesQuote({ text, author: quoteDraft.author.trim() });
@@ -252,6 +259,7 @@ export function SuccesPlannerPage() {
   };
 
   const change = async (action: () => Promise<unknown>, success: string) => {
+    lecture.invalider();
     setSaving(true);
     try {
       await action();
@@ -297,6 +305,7 @@ export function SuccesPlannerPage() {
    * répétait l'expression envoyée — « Reportée au dans 3 jours » (§100).
    */
   const rescheduleTask = async (task: SuccesTask, date: string) => {
+    lecture.invalider();
     setSaving(true);
     try {
       const result = await rescheduleSuccesTask(task.id, date);

@@ -1,3 +1,4 @@
+import { useDerniereLecture } from '../features/succes/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import {
   useCallback,
@@ -75,8 +76,8 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useNavigate } from 'react-router';
 
 import { NoteFolderVisual } from '../features/succes/NoteFolderVisual';
-import { listSuccesNotes } from '../features/succes/api';
-import type { SuccesNote } from '../features/succes/types';
+import { listSuccesNoteResumes } from '../features/succes/api';
+import type { SuccesNoteResume } from '../features/succes/types';
 import { deplacerVers } from '../features/succes/photos';
 import { useAppStore } from '../lib/store';
 import { useContexteVue } from '../features/mesh/useContexteVue';
@@ -649,13 +650,13 @@ function ProjectFolderVisual({
  * est celui fixé dans Notes (le serveur sert le rang manuel).
  */
 function NotesDuProjet({ projectId }: { projectId: string }) {
-  const [notes, setNotes] = useState<SuccesNote[]>([]);
+  const [notes, setNotes] = useState<SuccesNoteResume[]>([]);
   const navigate = useNavigate();
   const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
 
   useEffect(() => {
     let visible = true;
-    listSuccesNotes('')
+    listSuccesNoteResumes('')
       .then((toutes) => {
         if (visible) setNotes(toutes.filter((note) => note.projectId === projectId));
       })
@@ -783,13 +784,20 @@ export function SuccesProjectsPage() {
   // spécialisée montre et crée, l'édition renomme et supprime.
   const [treeEditMode, setTreeEditMode] = useState(false);
 
+  const lecture = useDerniereLecture(search);
   const load = useCallback(async () => {
+    const actuelle = lecture.commencer();
+    void listSuccesProjectKits().then((nextKits) => {
+      if (!actuelle()) return;
+      ecrireCache(clesSucces.kitsProjets(), nextKits);
+      setKits(nextKits);
+    }).catch(() => {});
     try {
-      const [nextProjects, nextTasks, nextKits] = await Promise.all([
+      const [nextProjects, nextTasks] = await Promise.all([
         listSuccesProjects(search),
         listSuccesTasks({ includeDone: true }),
-        listSuccesProjectKits().catch(() => null),
       ]);
+      if (!actuelle()) return;
       // Une recherche tapée reste en mémoire seule : le disque ne garde que
       // la liste complète, celle qu'un retour sur la page redemande.
       ecrireCache(clesSucces.projets(search), nextProjects, { memoireSeule: Boolean(search) });
@@ -797,16 +805,13 @@ export function SuccesProjectsPage() {
       setProjects(nextProjects);
       setTasks(nextTasks);
       setChargeReussi(true);
-      if (nextKits) {
-        ecrireCache(clesSucces.kitsProjets(), nextKits);
-        setKits(nextKits);
-      }
     } catch (error) {
+      if (!actuelle()) return;
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({ timestamp: Date.now(), level: 'error', category: 'succes', message: `Projets : ${message}` });
       toast.error('Les projets ne peuvent pas être chargés.', { description: message });
     } finally {
-      setLoading(false);
+      if (actuelle()) setLoading(false);
     }
   }, [search]);
 
@@ -970,6 +975,7 @@ export function SuccesProjectsPage() {
 
   const save = async () => {
     if (!draft.name.trim()) return;
+    lecture.invalider();
     setSaving(true);
     try {
       if (editingId) {
@@ -1035,6 +1041,7 @@ export function SuccesProjectsPage() {
     if (ordonnes.join('\u0000') === projects.map((p) => p.id).join('\u0000')) return;
     const rang = new Map(ordonnes.map((id, i) => [id, i]));
     setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
+    lecture.invalider();
     setSaving(true);
     try {
       await reorderProjects(ordonnes);
@@ -1059,6 +1066,7 @@ export function SuccesProjectsPage() {
     [ids[i], ids[j]] = [ids[j], ids[i]];
     const rang = new Map(ids.map((id, k) => [id, k]));
     setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
+    lecture.invalider();
     setSaving(true);
     try {
       await reorderProjects(ids);
@@ -1082,6 +1090,7 @@ export function SuccesProjectsPage() {
       tone: 'danger',
     });
     if (!confirmed) return;
+    lecture.invalider();
     setSaving(true);
     try {
       await deleteSuccesProject(project.id);
@@ -1133,6 +1142,7 @@ export function SuccesProjectsPage() {
     // null quand le rechargement a échoué, et doit alors le dire.
     success: string | null | ((fraiches: SuccesTask[] | null) => PhraseBascule),
   ): Promise<boolean> => {
+    lecture.invalider();
     setSaving(true);
     try {
       await action();
@@ -1189,6 +1199,7 @@ export function SuccesProjectsPage() {
    * défaut 6). Le toast dit la date que le SERVEUR a rendue (§100).
    */
   const rescheduleTask = async (task: SuccesTask, date: string) => {
+    lecture.invalider();
     setSaving(true);
     try {
       const result = await rescheduleSuccesTask(task.id, date);

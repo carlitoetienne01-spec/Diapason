@@ -1,3 +1,4 @@
+import { useDerniereLecture } from '../features/succes/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, CirclePlus, HardDrive, Loader2, Repeat, Search, SlidersHorizontal } from 'lucide-react';
@@ -124,9 +125,10 @@ export function SuccesTasksPage() {
   // pendant que la seconde attendait encore (revue du 17 sept. 2026, défaut 9).
   const [ecrituresEnVol, setEcrituresEnVol] = useState(0);
   const saving = ecrituresEnVol > 0;
-  const commencerEcriture = () => setEcrituresEnVol((n) => n + 1);
+  const commencerEcriture = () => { lecture.invalider(); setRafraichit(false); setEcrituresEnVol((n) => n + 1); };
   const finirEcriture = () => setEcrituresEnVol((n) => n - 1);
   const [search, setSearch] = useState('');
+  const lecture = useDerniereLecture(search);
   // Retenus comme le mode d'affichage : ils repartaient à zéro à chaque
   // visite — les terminées revenaient, le projet s'oubliait (17 sept. 2026).
   // `includeDone` ne gouverne plus que la Semaine et le Mois : la Liste ne
@@ -197,6 +199,7 @@ export function SuccesTasksPage() {
   }, [includeDone, projectFilter]);
 
   const load = useCallback(async () => {
+    const actuelle = lecture.commencer();
     setRafraichit(true);
     // Le voyant de synchronisation se charge À CÔTÉ, jamais devant : jusqu'au
     // 18 sept. 2026 son `await` précédait `setLoading(false)`, et la liste
@@ -205,8 +208,9 @@ export function SuccesTasksPage() {
     // 37 ». Une sonde indisponible ne doit jamais cacher des tâches lues
     // avec succès dans SQLite.
     void fetchSuccesSyncStatus()
-      .then(setSyncStatus)
+      .then((statut) => { if (actuelle()) setSyncStatus(statut); })
       .catch((statusError: unknown) => {
+        if (!actuelle()) return;
         setSyncStatus(null);
         const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
         logSucces('error', `État de synchronisation indisponible : ${statusMessage}`);
@@ -215,35 +219,34 @@ export function SuccesTasksPage() {
       // TOUJOURS avec les terminées : le compte de l'onglet Terminées et
       // l'onglet lui-même en ont besoin (17 sept. 2026). La Liste filtre
       // `!done` chez elle ; la Semaine et le Mois filtrent selon la case.
-      const [nextTasks, nextProjects, nextTemplates] = await Promise.all([
-        listSuccesTasks({ includeDone: true, search }),
-        listSuccesProjects(),
-        // Le bouton « Récurrences (N) » doit dire N avant qu'on l'ouvre.
-        listSuccesTemplates().catch(() => null),
-      ]);
+      // Les projets et récurrences enrichissent les cartes dès qu'ils sont
+      // disponibles ; ni leur lenteur ni leur panne ne retiennent les tâches.
+      void listSuccesProjects().then((nextProjects) => {
+        if (!actuelle()) return;
+        ecrireCache(clesSucces.projets(), nextProjects);
+        setProjects(nextProjects);
+        setProjectFilter((courant) => courant && courant !== '__none__'
+          && !nextProjects.some((p) => p.id === courant) ? '' : courant);
+      }).catch(() => {});
+      void listSuccesTemplates().then((nextTemplates) => {
+        if (!actuelle()) return;
+        ecrireCache(clesSucces.gabarits(), nextTemplates);
+        setNbRecurrences(nextTemplates.filter((item) => item.templateKind === 'task').length);
+      }).catch(() => {});
+      const nextTasks = await listSuccesTasks({ includeDone: true, search });
+      if (!actuelle()) return;
       cleChargee.current = clesSucces.taches(search);
       ecrireCache(cleChargee.current, nextTasks, { memoireSeule: Boolean(search) });
-      ecrireCache(clesSucces.projets(), nextProjects);
       setTasks(nextTasks);
       suivi.current.rafraichir(nextTasks);
       chargeReussi.current = true;
-      setProjects(nextProjects);
-      // Un filtre retenu sur un projet supprimé depuis viderait la liste
-      // sans qu'aucune option du sélecteur ne le dise.
-      setProjectFilter((courant) =>
-        courant && courant !== '__none__' && !nextProjects.some((project) => project.id === courant) ? '' : courant,
-      );
-      if (nextTemplates) {
-        ecrireCache(clesSucces.gabarits(), nextTemplates);
-        setNbRecurrences(nextTemplates.filter((item) => item.templateKind === 'task').length);
-      }
     } catch (error) {
+      if (!actuelle()) return;
       const message = error instanceof Error ? error.message : String(error);
       logSucces('error', `Chargement des tâches échoué : ${message}`);
       toast.error('Les tâches ne peuvent pas être chargées.', { description: message });
     } finally {
-      setLoading(false);
-      setRafraichit(false);
+      if (actuelle()) { setLoading(false); setRafraichit(false); }
     }
   }, [search]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
@@ -9,11 +9,17 @@ import { estCompact } from '../lib/compact';
 import { signalerPanneauOuvert } from '../lib/panneau';
 import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
+import { useSondeVisible } from '../lib/useSondeVisible';
 
 export function Layout() {
   const { t } = useTranslation();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+  const verifierSante = useCallback(async (signal: AbortSignal) => {
+    const disponible = await checkHealth(signal);
+    if (!signal.aborted) setApiReachable(disponible);
+  }, []);
+  useSondeVisible(verifierSante, 30000, !estCompact);
 
   useEffect(() => {
     // En compact (mini-panneau), pas de sonde santé ni de bandeau : la surface
@@ -28,15 +34,6 @@ export function Layout() {
       signalerPanneauOuvert();
       return;
     }
-    const check = () => checkHealth().then(setApiReachable);
-    check();
-    const interval = setInterval(check, 30000);
-    const onFocus = () => check();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
   }, []);
 
   const navigate = useNavigate();

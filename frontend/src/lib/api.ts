@@ -335,7 +335,8 @@ export async function fetchServerInfo(): Promise<ServerInfo> {
   return res.json();
 }
 
-export async function checkHealth(): Promise<boolean> {
+export async function checkHealth(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
   if (isTauri()) {
     try {
       await tauriInvoke('check_health', { apiUrl: getBase() });
@@ -356,13 +357,14 @@ export async function checkHealth(): Promise<boolean> {
   // reach the backend.
   const probe = async (url: string): Promise<boolean> => {
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store', signal });
       return res.ok;
     } catch {
       return false;
     }
   };
   if (await probe('/health')) return true;
+  if (signal?.aborted) return false;
   return probe('/v1/connectors');
 }
 
@@ -679,8 +681,8 @@ export interface AgentMessage {
   tool_calls?: PersistedToolCall[] | null;
 }
 
-export async function fetchManagedAgents(): Promise<ManagedAgent[]> {
-  const res = await apiFetch(`/v1/managed-agents`);
+export async function fetchManagedAgents(signal?: AbortSignal): Promise<ManagedAgent[]> {
+  const res = await apiFetch(`/v1/managed-agents`, { signal });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   const data = await res.json();
   return data.agents || [];

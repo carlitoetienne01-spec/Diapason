@@ -10,7 +10,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
-import { getBase } from '../../lib/api';
+import { apiFetch } from '../../lib/api';
+import { useSondeVisible } from '../../lib/useSondeVisible';
 import { useTranslation } from '../../i18n/useTranslation';
 import { CarteVitree } from '../Glass/CarteVitree';
 
@@ -41,13 +42,13 @@ export function SystemPanel() {
   const [energy, setEnergy] = useState<EnergyData | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal: AbortSignal) => {
     try {
-      const base = getBase();
       const [energyRes, telRes] = await Promise.allSettled([
-        fetch(`${base}/v1/telemetry/energy`).then((r) => (r.ok ? r.json() : null)),
-        fetch(`${base}/v1/telemetry/stats`).then((r) => (r.ok ? r.json() : null)),
+        apiFetch('/v1/telemetry/energy', { signal }).then((r) => (r.ok ? r.json() : null)),
+        apiFetch('/v1/telemetry/stats', { signal }).then((r) => (r.ok ? r.json() : null)),
       ]);
+      if (signal.aborted) return;
       if (energyRes.status === 'fulfilled' && energyRes.value) {
         setEnergy(energyRes.value as EnergyData);
       }
@@ -59,16 +60,8 @@ export function SystemPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  // Re-fetch energy/telemetry when savings updates (after a chat message)
-  useEffect(() => {
-    if (savings) fetchData();
-  }, [savings, fetchData]);
+  const rafraichir = useSondeVisible(fetchData, 3000);
+  useEffect(() => { if (savings) rafraichir(); }, [savings, rafraichir]);
 
   const promptK = (savings?.total_prompt_tokens ?? 0) / 1000;
   const completionK = (savings?.total_completion_tokens ?? 0) / 1000;

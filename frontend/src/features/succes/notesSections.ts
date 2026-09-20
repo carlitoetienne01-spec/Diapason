@@ -7,10 +7,10 @@
 
 import type { SuccesNote } from './types';
 
-export interface SectionDeNotes {
+export interface SectionDeNotes<T extends { category?: string } = SuccesNote> {
   /** Vide : la section « Sans catégorie » (ou la page à plat). */
   nom: string;
-  notes: SuccesNote[];
+  notes: T[];
 }
 
 /**
@@ -20,11 +20,11 @@ export interface SectionDeNotes {
  * sans-catégorie ferment la marche. Et tant qu'AUCUNE catégorie n'existe, la
  * page reste à plat : une seule section sans nom, pas d'en-tête pour rien.
  */
-export function grouperEnSections(
-  notes: SuccesNote[],
+export function grouperEnSections<T extends { category?: string }>(
+  notes: T[],
   ordre: string[],
-): SectionDeNotes[] {
-  const parCategorie = new Map<string, SuccesNote[]>();
+): SectionDeNotes<T>[] {
+  const parCategorie = new Map<string, T[]>();
   for (const note of notes) {
     const nom = note.category || '';
     const liste = parCategorie.get(nom) ?? [];
@@ -35,7 +35,7 @@ export function grouperEnSections(
   if (!nommees.length) return [{ nom: '', notes }];
   const connues = ordre.filter((n) => parCategorie.has(n));
   const inconnues = nommees.filter((n) => !connues.includes(n)).sort((a, b) => a.localeCompare(b, 'fr'));
-  const sections: SectionDeNotes[] = [...connues, ...inconnues].map((nom) => ({
+  const sections: SectionDeNotes<T>[] = [...connues, ...inconnues].map((nom) => ({
     nom,
     notes: parCategorie.get(nom) ?? [],
   }));

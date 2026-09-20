@@ -25,7 +25,8 @@ import {
   renameNoteCategory,
   reorderNotes,
   deleteSuccesNote,
-  listSuccesNotes,
+  listSuccesNoteResumes,
+  getSuccesNote,
   updateSuccesNote,
 } from '../features/succes/api';
 import { NOTE_DOC_LANGS, miseEnPageDeLaNote } from '../features/succes/noteFormats';
@@ -59,6 +60,10 @@ import { useRefreshOnFocus } from '../features/succes/useRefreshOnFocus';
 import { useChargementTemporise } from '../features/succes/useChargementTemporise';
 import { clesSucces, ecrireCache, lireCache } from '../features/succes/cacheSucces';
 import { useContexteVue } from '../features/mesh/useContexteVue';
+
+import { creerFileEcritures } from '../features/succes/lecturesPartagees';
+import { useDerniereLecture } from '../features/succes/useDerniereLecture';
+import { resumeDeNote, type CartableNote } from '../features/succes/notesResume';
 
 type SortMode = TriNotes;
 
@@ -107,7 +112,7 @@ export function SuccesNotesPage() {
   // L'état initial vient du cache — la dernière liste que le serveur a
   // rendue (924 Ko, 3-8 ms côté serveur ; c'est l'écran vide par montage
   // qui coûtait, Carlito, 18 sept. 2026).
-  const [notes, setNotes] = useState<SuccesNote[]>(() => lireCache<SuccesNote[]>(clesSucces.notes()) ?? []);
+  const [notes, setNotes] = useState<CartableNote[]>(() => lireCache<CartableNote[]>(clesSucces.resumesNotes()) ?? []);
   const [search, setSearch] = useState('');
   // Le tri repartait à « Récent » à chaque ouverture : l'arrangement des
   // cartables (rang manuel, côté serveur) existait sans jamais être montré —
@@ -135,7 +140,7 @@ export function SuccesNotesPage() {
   const [meta, setMeta] = useState(emptyMeta());
   // Le spinner n'existe qu'au premier chargement sans cache ; `rafraichit`
   // tient le voyant discret de l'en-tête pendant les relectures.
-  const [loading, setLoading] = useState(() => lireCache(clesSucces.notes()) === null);
+  const [loading, setLoading] = useState(() => lireCache(clesSucces.resumesNotes()) === null);
   const [rafraichit, setRafraichit] = useState(false);
   /** La clé sous laquelle `notes` a été chargée — celle du miroir, plus bas. */
   const cleChargee = useRef<string | null>(null);
@@ -164,6 +169,7 @@ export function SuccesNotesPage() {
   const [cibleSection, setCibleSection] = useState<string | null>(null);
   /** La carte survolée pendant un glisser de repositionnement. */
   const [cibleNote, setCibleNote] = useState<string | null>(null);
+  const fileEcritures = useRef(creerFileEcritures()).current;
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
 
@@ -173,11 +179,16 @@ export function SuccesNotesPage() {
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 
+  const lecture = useDerniereLecture(search);
+  const ouverture = useDerniereLecture();
+  const [ouvertureId, setOuvertureId] = useState<string | null>(null);
   const load = useCallback(async () => {
+    const actuelle = lecture.commencer();
     setRafraichit(true);
     try {
-      const next = await listSuccesNotes(search);
-      cleChargee.current = clesSucces.notes(search);
+      const next = await listSuccesNoteResumes(search);
+      if (!actuelle()) return;
+      cleChargee.current = clesSucces.resumesNotes(search);
       ecrireCache(cleChargee.current, next, { memoireSeule: Boolean(search) });
       setNotes(next);
       chargeReussi.current = true;
@@ -187,12 +198,14 @@ export function SuccesNotesPage() {
       // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
       void listNoteCategories()
         .then((suivantes) => {
+          if (!actuelle()) return;
           ecrireCache(clesSucces.categoriesNotes(), suivantes);
           setCategories(suivantes);
         })
         .catch(() => {});
       void listSuccesProjects()
         .then((suivants) => {
+          if (!actuelle()) return;
           ecrireCache(clesSucces.projets(), suivants);
           setProjects(suivants);
         })
@@ -203,6 +216,7 @@ export function SuccesNotesPage() {
         setView('list');
       }
     } catch (error) {
+      if (!actuelle()) return;
       const message = error instanceof Error ? error.message : String(error);
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(),
@@ -212,9 +226,11 @@ export function SuccesNotesPage() {
       });
       toast.error('Les notes ne peuvent pas être chargées.', { description: message });
     } finally {
-      tentativeFaite.current = true;
-      setLoading(false);
-      setRafraichit(false);
+      if (actuelle()) {
+        tentativeFaite.current = true;
+        setLoading(false);
+        setRafraichit(false);
+      }
     }
   }, [search]);
 
@@ -225,7 +241,7 @@ export function SuccesNotesPage() {
   // relecture. Après un chargement réussi seulement.
   useEffect(() => {
     if (!cleChargee.current) return;
-    ecrireCache(cleChargee.current, notes, { memoireSeule: cleChargee.current !== clesSucces.notes() });
+    ecrireCache(cleChargee.current, notes.map(resumeDeNote), { memoireSeule: cleChargee.current !== clesSucces.resumesNotes() });
   }, [notes]);
   // Les sections aussi : réordonnées, renommées ou dissoutes, c'est le
   // serveur qui rend la liste (`orderNoteCategories`, `renameNoteCategory`).
@@ -258,7 +274,7 @@ export function SuccesNotesPage() {
     return copy;
   }, [notes, sort]);
 
-  const openNote = (note: SuccesNote) => {
+  const afficherNote = (note: SuccesNote) => {
     setActiveId(note.id);
     setDraftTitle(note.title);
     setDraftContent(note.content);
@@ -273,6 +289,23 @@ export function SuccesNotesPage() {
     });
     setDirty(false);
     setView('editor');
+  };
+
+  const openNote = async (cartable: CartableNote) => {
+    const actuelle = ouverture.commencer();
+    setOuvertureId(cartable.id);
+    try {
+      // Un résumé n'est jamais une note vide : aucune édition avant ce GET.
+      const note = await getSuccesNote(cartable.id);
+      if (!actuelle()) return;
+      afficherNote(note);
+    } catch (error) {
+      if (actuelle()) toast.error("La note ne peut pas être ouverte.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      if (actuelle()) setOuvertureId(null);
+    }
   };
 
   // Un autre appareil peut demander « montre-moi cette note ». On passe par
@@ -314,7 +347,7 @@ export function SuccesNotesPage() {
     setFormOpen(true);
   };
 
-  const openEditForm = (note: SuccesNote) => {
+  const openEditForm = (note: CartableNote) => {
     setFormNoteId(note.id);
     setFormDraft({
       title: note.title,
@@ -357,6 +390,10 @@ export function SuccesNotesPage() {
 
   const submitForm = async () => {
     const title = formDraft.title.trim() || 'Sans titre';
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       if (formNoteId) {
@@ -381,7 +418,7 @@ export function SuccesNotesPage() {
         setNotes((prev) => [saved, ...prev]);
         toast.success('Note créée', { description: 'Enregistrée localement sur ce Mac.' });
         closeFormNow();
-        openNote(saved);
+        afficherNote(saved);
       }
     } catch (error) {
       toast.error("La note n'a pas été enregistrée.", {
@@ -392,7 +429,7 @@ export function SuccesNotesPage() {
     }
   };
 
-  const removeNote = async (note: SuccesNote) => {
+  const removeNote = async (note: CartableNote) => {
     const confirmed = await confirm({
       title: `Supprimer la note « ${note.title || 'Sans titre'} » ?`,
       description: 'Cette note sera définitivement retirée de ce Mac.',
@@ -401,6 +438,10 @@ export function SuccesNotesPage() {
       tone: 'danger',
     });
     if (!confirmed) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       await deleteSuccesNote(note.id);
@@ -420,6 +461,10 @@ export function SuccesNotesPage() {
   const deposerNoteSurSection = async (noteId: string, nomSection: string) => {
     const note = notes.find((n) => n.id === noteId);
     if (!note || (note.category || '') === nomSection) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       const saved = await updateSuccesNote(noteId, { category: nomSection });
@@ -448,6 +493,10 @@ export function SuccesNotesPage() {
     const cible = notes.find((n) => n.id === cibleId);
     if (!source || !cible || noteId === cibleId) return;
     setSort('manuel');
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       // La note change-t-elle de section ? On aligne d'abord sa catégorie.
@@ -474,7 +523,7 @@ export function SuccesNotesPage() {
   };
 
   /** Déplacer une note d'un cran dans sa section (clavier/clic — §82). */
-  const decalerNote = async (note: SuccesNote, sens: 'avant' | 'apres') => {
+  const decalerNote = async (note: CartableNote, sens: 'avant' | 'apres') => {
     const ids = sortedNotes
       .filter((n) => (n.category || '') === (note.category || ''))
       .map((n) => n.id);
@@ -483,6 +532,10 @@ export function SuccesNotesPage() {
     if (i < 0 || j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]]; // un simple échange de voisins
     setSort('manuel');
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       await reorderNotes(ids);
@@ -507,6 +560,8 @@ export function SuccesNotesPage() {
   const deposerCategorieAvant = async (nom: string, avant: string) => {
     const suivant = deplacerCategorie(categories, nom, avant);
     if (suivant.join('\u0000') === categories.join('\u0000')) return;
+    lecture.invalider();
+    setRafraichit(false);
     setCategories(suivant);
     const refleter = (serveur: string[]) => {
       ecrireCache(clesSucces.categoriesNotes(), serveur);
@@ -528,6 +583,10 @@ export function SuccesNotesPage() {
     const ancien = renommage.nom;
     setRenommage(null);
     if (!nouveau || nouveau === ancien) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       setCategories(await renameNoteCategory(ancien, nouveau));
@@ -551,6 +610,10 @@ export function SuccesNotesPage() {
       tone: 'warning',
     });
     if (!confirmed) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       setCategories(await renameNoteCategory(nom, ''));
@@ -566,15 +629,20 @@ export function SuccesNotesPage() {
   };
 
   const backToList = async () => {
-    if (dirty) await persist(true);
+    if (dirty && !(await persist(true))) return;
+    if (autoSaveRef.current) window.clearTimeout(autoSaveRef.current);
     setView('list');
     setDirty(false);
     await load();
   };
 
-  const persist = async (silent = false) => {
+  const persist = (silent = false) => fileEcritures(async () => {
     const snapshot = draftRef.current;
     const title = snapshot.title.trim() || 'Sans titre';
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       const payload = {
@@ -585,19 +653,26 @@ export function SuccesNotesPage() {
       const saved = snapshot.activeId
         ? await updateSuccesNote(snapshot.activeId, payload)
         : await createSuccesNote(payload);
-      setActiveId(saved.id);
-      setDraftTitle(saved.title);
-      setDraftContent(saved.content);
-      setMeta({
-        pageFormat: saved.pageFormat || 'a4',
-        ...axesDeLaNote(saved),
-        pageBackground: saved.pageBackground || 'default',
-        fontFamily: saved.fontFamily || 'Special Elite',
-        docLang: saved.docLang || 'fr',
-        color: saved.color || FOLDER_COLORS[0],
-        readingMark: saved.readingMark || 0,
-      });
-      setDirty(false);
+      // Le retour d'une sauvegarde ne remplace jamais la frappe suivante.
+      const courant = draftRef.current;
+      const identique = courant.activeId === snapshot.activeId
+        && courant.title === snapshot.title && courant.content === snapshot.content
+        && courant.meta === snapshot.meta;
+      if (identique) {
+        setActiveId(saved.id);
+        setDraftTitle(saved.title);
+        setDraftContent(saved.content);
+        setMeta({
+          pageFormat: saved.pageFormat || 'a4',
+          ...axesDeLaNote(saved),
+          pageBackground: saved.pageBackground || 'default',
+          fontFamily: saved.fontFamily || 'Special Elite',
+          docLang: saved.docLang || 'fr',
+          color: saved.color || FOLDER_COLORS[0],
+          readingMark: saved.readingMark || 0,
+        });
+        setDirty(false);
+      }
       setNotes((prev) => {
         const without = prev.filter((note) => note.id !== saved.id);
         return [saved, ...without];
@@ -607,7 +682,7 @@ export function SuccesNotesPage() {
           description: 'Enregistrée localement sur ce Mac.',
         });
       }
-      return saved;
+      return identique ? saved : null;
     } catch (error) {
       toast.error("La note n'a pas été enregistrée.", {
         description: error instanceof Error ? error.message : String(error),
@@ -616,7 +691,7 @@ export function SuccesNotesPage() {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   const scheduleAutoSave = () => {
     setDirty(true);
@@ -643,6 +718,10 @@ export function SuccesNotesPage() {
       tone: 'danger',
     });
     if (!confirmed) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
       await deleteSuccesNote(activeId);
@@ -661,25 +740,28 @@ export function SuccesNotesPage() {
   };
 
   const duplicate = async () => {
-    const source = notes.find((note) => note.id === activeId);
-    if (!source && !draftTitle.trim()) return;
+    if (!activeId && !draftTitle.trim()) return;
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
     setSaving(true);
     try {
-      if (dirty) await persist(true);
+      if (dirty && !(await persist(true))) return;
       const saved = await createSuccesNote({
-        title: `${(source?.title || draftTitle).trim() || 'Sans titre'} (copie)`,
-        content: source?.content ?? draftContent,
-        pageFormat: source?.pageFormat ?? meta.pageFormat,
-        pageSize: source?.pageSize ?? meta.pageSize,
-        pageOrientation: source?.pageOrientation ?? meta.pageOrientation,
-        pageMargins: source?.pageMargins ?? meta.pageMargins,
-        pageBackground: source?.pageBackground ?? meta.pageBackground,
-        fontFamily: source?.fontFamily ?? meta.fontFamily,
-        docLang: source?.docLang ?? meta.docLang,
-        color: source?.color ?? meta.color,
+        title: `${draftTitle.trim() || 'Sans titre'} (copie)`,
+        content: draftContent,
+        pageFormat: meta.pageFormat,
+        pageSize: meta.pageSize,
+        pageOrientation: meta.pageOrientation,
+        pageMargins: meta.pageMargins,
+        pageBackground: meta.pageBackground,
+        fontFamily: meta.fontFamily,
+        docLang: meta.docLang,
+        color: meta.color,
       });
       toast.success('Note dupliquée');
-      openNote(saved);
+      afficherNote(saved);
       await load();
     } catch (error) {
       toast.error('La duplication a échoué.', {
@@ -1305,7 +1387,7 @@ export function SuccesNotesPage() {
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
             {section.notes.map((note) => {
-              const pages = countNotePages(note.content, note.pageFormat);
+              const pages = resumeDeNote(note).pageCountEstimate;
               return (
                 <article
                   key={note.id}
@@ -1342,7 +1424,8 @@ export function SuccesNotesPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => openNote(note)}
+                    onClick={() => void openNote(note)}
+                    aria-busy={ouvertureId === note.id}
                     className="w-full cursor-pointer bg-transparent border-0 p-0 text-inherit"
                     aria-label={`Ouvrir ${note.title}`}
                   >
@@ -1355,7 +1438,7 @@ export function SuccesNotesPage() {
                       title={note.title}
                       style={{ color: 'var(--color-text)' }}
                     >
-                      {note.title}
+                      {ouvertureId === note.id ? 'Ouverture…' : note.title}
                     </h2>
                     <p className="text-[11px] pb-4 flex items-center justify-center gap-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
                       {(() => {
@@ -1384,7 +1467,7 @@ export function SuccesNotesPage() {
                             year: 'numeric',
                           })
                         : ''}
-                      {` · ${pages} page${pages === 1 ? '' : 's'}`}
+                      {` · ≈ ${pages} page${pages === 1 ? '' : 's'}`}
                     </p>
                   </button>
 

@@ -1,4 +1,5 @@
-import { apiFetch } from '../../lib/api';
+import { apiFetch, getBase, getApiKey } from '../../lib/api';
+import { creerLecturesPartagees } from './lecturesPartagees';
 import type {
   FinanceAccount,
   FinanceAccountType,
@@ -19,6 +20,7 @@ import type {
   SuccesHabit,
   SuccesHabitFrequency,
   SuccesNote,
+  SuccesNoteResume,
   SuccesPairingInvitation,
   SuccesPriority,
   SuccesProject,
@@ -83,7 +85,18 @@ export class DateInconnueError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+const lectures = creerLecturesPartagees();
+function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const lecture = !init.method || init.method === 'GET';
+  if (lecture && !init.signal) {
+    return lectures.lire(`${getBase()}\0${getApiKey()}\0${path}`, () => executerRequete<T>(path, init));
+  }
+  if (lecture) return executerRequete<T>(path, init);
+  lectures.invalider();
+  return executerRequete<T>(path, init).finally(lectures.invalider);
+}
+
+async function executerRequete<T>(path: string, init: RequestInit = {}): Promise<T> {
   const requestInit = {
     ...init,
     headers: {
@@ -100,14 +113,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch (error) {
       lastError = error;
       // WebKit reports aborted/network races as "Load failed".
-      if (attempt < 3) {
+      // Un POST peut avoir été enregistré avant que sa réponse se perde.
+      // Le rejouer fabriquait alors un second objet : seul GET se réessaie.
+      if (init.signal?.aborted) throw error;
+      if ((!init.method || init.method === 'GET') && attempt < 3) {
         await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
         continue;
       }
       const raw = error instanceof Error ? error.message : String(error);
       throw new Error(
         /load failed|failed to fetch|networkerror/i.test(raw)
-          ? 'Connexion locale interrompue. Réessayez.'
+          ? (!init.method || init.method === 'GET'
+            ? 'Connexion locale interrompue. Réessayez.'
+            : 'Réponse interrompue : vérifiez la liste avant de réessayer, la modification peut déjà être enregistrée.')
           : /did not match the expected pattern|invalid url|failed to construct/i.test(raw)
             ? "L'URL de l'API est invalide. Vérifiez Réglages → Connexion → URL de l'API."
             : raw || 'Connexion locale impossible.',
@@ -117,7 +135,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (response.status === 429) {
       const retrySeconds = Number(response.headers.get('Retry-After') || attempt + 1);
       const delay = Math.min(2500, Math.max(300, retrySeconds * 1000));
-      if (attempt < 3) {
+      if ((!init.method || init.method === 'GET') && attempt < 3) {
         await new Promise((resolve) => window.setTimeout(resolve, delay));
         continue;
       }
@@ -585,6 +603,18 @@ export async function listSuccesNotes(search = ''): Promise<SuccesNote[]> {
     `/v1/succes/notes?search=${encodeURIComponent(search)}`,
   );
   return payload.notes;
+}
+
+export async function listSuccesNoteResumes(search = ''): Promise<SuccesNoteResume[]> {
+  const payload = await request<{ notes: SuccesNoteResume[] }>(
+    `/v1/succes/notes/resumes?search=${encodeURIComponent(search)}`,
+  );
+  return payload.notes;
+}
+
+export async function getSuccesNote(id: string): Promise<SuccesNote> {
+  const payload = await request<{ note: SuccesNote }>(`/v1/succes/notes/${encodeURIComponent(id)}`);
+  return payload.note;
 }
 
 export async function createSuccesNote(input: {

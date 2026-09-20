@@ -271,6 +271,9 @@ export interface SuccesNote {
   order?: number;
 }
 
+/** Le cartable ne possède pas le document : il faut le lire avant d'éditer. */
+export type SuccesNoteResume = Omit<SuccesNote, 'content'> & { pageCountEstimate: number };
+
 export interface SuccesDashboard {
   date: string;
   tasks: {
