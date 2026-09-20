@@ -42,6 +42,12 @@ cli/daemon_cmd.py
 cli/init_cmd.py
 cli/mine_cmd.py
 cli/model.py
+# cli/serve.py — quand le port d'écoute est déjà tenu, sonde /health sur
+# CE port, à l'adresse que l'utilisateur a lui-même configurée, pour dire
+# si le détenteur est un autre Diapason avant d'attendre qu'il le rende
+# (20 septembre 2026 : 837 cycles mort/relancé sous launchd). Aucune
+# destination tierce, aucune donnée envoyée.
+cli/serve.py
 cli/serve_service_cmd.py
 connectors/dropbox.py
 connectors/embeddings.py

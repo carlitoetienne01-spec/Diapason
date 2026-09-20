@@ -66,8 +66,19 @@ class TestCLI:
         result = CliRunner().invoke(cli, ["ask"])
         assert result.exit_code != 0
 
-    def test_serve_needs_engine(self) -> None:
+    def test_serve_needs_engine(self, monkeypatch) -> None:
         """Serve requires a running engine; exits with error when none available."""
+        import importlib
+
+        serve_mod = importlib.import_module("diapason.cli.serve")
+        # Jusqu'au 20 septembre 2026 ce test lançait `serve` sur le VRAI port
+        # de la machine (8000, celui du serveur launchd) : il montait toute la
+        # pile en mémoire puis mourait au bind, exit 3 — et « ≠ 0 » passait.
+        # Depuis que `serve` attend un port tenu au lieu de mourir, il
+        # bloquerait pour toujours ; le port se simule libre, et l'absence
+        # de moteur — ce que la docstring prétend tester — se simule aussi.
+        monkeypatch.setattr(serve_mod, "attendre_le_port", lambda *a, **k: 0)
+        monkeypatch.setattr(serve_mod, "get_engine", lambda *a, **k: None)
         result = CliRunner().invoke(cli, ["serve"])
         # Either exits with error (no engine) or succeeds (deps missing)
         # Both are valid states for testing

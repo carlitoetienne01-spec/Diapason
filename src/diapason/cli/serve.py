@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
+from typing import Callable
 
 import click
 from rich.console import Console
 
 from diapason.cli._banner import print_banner
+from diapason.core import ports
 from diapason.core.config import load_config
 from diapason.core.credentials import inject_credentials
 from diapason.core.events import EventBus
@@ -24,6 +27,121 @@ from diapason.intelligence import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Le rythme du sondage pendant qu'un autre tient le port. Dix secondes, c'est
+# le ThrottleInterval de launchd — le rythme même de la boucle qu'on remplace.
+# Cinq bornent à cinq secondes le trou sans serveur après que l'app de bureau
+# a quitté et rendu le port ; un `lsof` toutes les cinq secondes ne se mesure
+# pas. Une seconde ferait douze fois plus de `lsof` pour un gain que personne
+# ne remarquerait.
+_ATTENTE_PORT_S = 5.0
+
+# Délai de la sonde /health quand le port est tenu. Deux secondes suffisent à
+# un serveur local qui répond ; un serveur qui met plus longtemps est traité
+# comme « pas un Diapason sain », ce qui ne change que le message.
+_SONDE_S = 2.0
+
+DIAPASON_SAIN = "sain"
+DIAPASON_CHARGE = "charge"
+
+
+def sonder_diapason(host: str, port: int) -> str | None:
+    """Qui répond sur ``/health`` : un Diapason sain, un qui charge, ou rien.
+
+    ``DIAPASON_SAIN`` pour ``200 {"status": "ok"}``, ``DIAPASON_CHARGE`` pour
+    un 503 (le moteur n'est pas prêt), ``None`` pour tout le reste — refus de
+    connexion, délai dépassé, autre statut, corps qui n'est pas le nôtre.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    # Une adresse d'écoute joker ne se sonde pas ; le loopback y répond.
+    hote = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host  # noqa: S104
+    try:
+        with urllib.request.urlopen(  # noqa: S310 - hôte local, schéma http
+            f"http://{hote}:{port}/health", timeout=_SONDE_S
+        ) as reponse:
+            if reponse.status != 200:
+                return None
+            corps = json.loads(reponse.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as erreur:
+        return DIAPASON_CHARGE if erreur.code == 503 else None
+    except (OSError, ValueError):
+        return None
+    if isinstance(corps, dict) and corps.get("status") == "ok":
+        return DIAPASON_SAIN
+    return None
+
+
+def attendre_le_port(
+    host: str,
+    port: int,
+    *,
+    console: Console,
+    etat_du_port: Callable[[int], tuple[str, str]] = ports.port_state,
+    sonder: Callable[[str, int], str | None] = sonder_diapason,
+    dormir: Callable[[float], None] = time.sleep,
+) -> int:
+    """Attendre que ``port`` soit libre AVANT de charger quoi que ce soit.
+
+    Rend le nombre de sondages effectués — zéro quand le port était libre.
+
+    Du 26 août au 20 septembre 2026, ce contrôle n'existait pas : `serve`
+    chargeait moteur, mémoire et voix, puis mourait au bind (uvicorn sort 3
+    sur EADDRINUSE) ; launchd (`KeepAlive.SuccessfulExit=false`, dix
+    secondes de ThrottleInterval) le relançait, et ainsi de suite tant que
+    l'autre tenait le port. serve.err.log en portait 837 cycles (1 674
+    « Errno 48 », deux par cycle) sur 465 Mo, contre 67 démarrages réussis —
+    et pendant chaque cycle le second socket, celui du maillage, n'existait
+    pas. L'autre, c'était un `serve` sans `--lan-host` : celui que l'app de
+    bureau lance quand sa sonde arrive avant notre bind, ou un terminal.
+
+    Attendre plutôt que mourir garde UN processus sous launchd, aucune
+    relance, une ligne de journal, et le maillage revient cinq secondes après
+    que l'autre a quitté. Même politique que `diapason start` : tout auditeur
+    sur le port compte, quelle que soit son adresse — deux serveurs sur un
+    même port à des adresses différentes cohabitent sur macOS, et l'un des
+    deux devient un zombie muet.
+    """
+    etat, detail = etat_du_port(port)
+    if etat != ports.OCCUPE:
+        # LIBRE, ou INCONNU : dans l'ignorance, le bind d'uvicorn reste
+        # l'arbitre — refuser de démarrer sur une ignorance ferait boucler
+        # launchd tout autant.
+        if etat == ports.INCONNU:
+            logger.debug(
+                "port %s : état inconnu (%s), on laisse uvicorn trancher",
+                port,
+                detail,
+            )
+        return 0
+
+    verdict = sonder(host, port)
+    if verdict == DIAPASON_SAIN:
+        qui = "un autre Diapason, qui répond"
+    elif verdict == DIAPASON_CHARGE:
+        qui = "un autre Diapason, dont le moteur charge encore"
+    else:
+        qui = "un processus qui n'est pas un Diapason"
+    console.print(
+        f"[yellow]Le port {port} est déjà tenu par {qui}[/yellow] ({detail}).\n"
+        f"  On attend qu'il le rende, sondage toutes les {_ATTENTE_PORT_S:.0f} s, "
+        "plutôt que mourir et être relancé par launchd toutes les dix secondes.\n"
+        "  Pour l'arrêter : fermer l'app de bureau, Ctrl-C dans son terminal, "
+        "ou diapason stop s'il vient de diapason start.\n"
+        f"  Pour l'identifier : lsof -nP -iTCP:{port} -sTCP:LISTEN"
+    )
+    tours = 0
+    while etat == ports.OCCUPE:
+        dormir(_ATTENTE_PORT_S)
+        tours += 1
+        etat, detail = etat_du_port(port)
+    console.print(
+        f"[green]Le port {port} est libre[/green] après "
+        f"{tours * _ATTENTE_PORT_S:.0f} s d'attente — démarrage."
+    )
+    return tours
 
 
 def _unique_model_ids(model_ids: list[str]) -> list[str]:
@@ -247,6 +365,11 @@ def serve(
             "Linux.[/red]"
         )
         raise SystemExit(2)
+
+    # AVANT le moteur, la mémoire et la voix : un port tenu se constate en
+    # cinquante millisecondes de `lsof`, pas après trente secondes de
+    # chargement. Voir la docstring d'attendre_le_port pour les 837 cycles.
+    attendre_le_port(bind_host, bind_port, console=console)
 
     # Set up engine
     register_builtin_models()
