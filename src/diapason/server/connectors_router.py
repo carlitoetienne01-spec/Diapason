@@ -27,6 +27,29 @@ logger = logging.getLogger(__name__)
 # Module-level cache of connector instances (keyed by connector_id).
 _instances: Dict[str, Any] = {}
 
+
+def _translate_sync_error(raw: str) -> str:
+    """Map common backend exceptions to a short user-facing message."""
+    # Avant le « 401 » : Google répond 400 à un refresh_token mort, et la
+    # phrase brute — un JSON de deux lignes — était tout ce que l'interface
+    # et le journal montraient, 1 715 fois du 6 au 20 septembre 2026, sans
+    # jamais dire le seul geste utile : reconnecter.
+    if "invalid_grant" in raw:
+        return (
+            "Google revoked this access — reconnect the connector "
+            "(Connect button, or `diapason connect <id>`)."
+        )
+    if "401" in raw or "Unauthorized" in raw:
+        return "Authentication failed — credentials may have expired."
+    if "403" in raw or "Forbidden" in raw:
+        return "Permission denied — check API scopes."
+    if "429" in raw or "Too Many Requests" in raw:
+        return "Rate limited — wait a minute and try again."
+    if "timeout" in raw.lower():
+        return "Connection timed out."
+    return raw
+
+
 # La synchro périodique ne démarre qu'UNE fois par processus, même si
 # plusieurs applications sont construites (les tests en fabriquent des
 # dizaines) — et son premier passage attend deux minutes : un serveur qui
@@ -222,18 +245,6 @@ def create_connectors_router():
 
     _sync_threads: Dict[str, Any] = {}
     _sync_state: Dict[str, Dict[str, Any]] = {}
-
-    def _translate_sync_error(raw: str) -> str:
-        """Map common backend exceptions to a short user-facing message."""
-        if "401" in raw or "Unauthorized" in raw:
-            return "Authentication failed — credentials may have expired."
-        if "403" in raw or "Forbidden" in raw:
-            return "Permission denied — check API scopes."
-        if "429" in raw or "Too Many Requests" in raw:
-            return "Rate limited — wait a minute and try again."
-        if "timeout" in raw.lower():
-            return "Connection timed out."
-        return raw
 
     def _start_sync(connector_id: str, instance: Any) -> str:
         """Spawn a background sync; returns ``"started"`` or ``"already_syncing"``.

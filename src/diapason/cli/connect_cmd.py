@@ -137,6 +137,18 @@ def _connect_source(registry: object, source: str, path: str = "") -> None:
                 console.print(f"[green]{source} is already connected.[/green]")
                 return
 
+            # Le fichier peut porter un verdict de Google : le dire ici, à
+            # l'endroit même où l'on va redemander un consentement.
+            from diapason.connectors.google_auth import revocation_of
+
+            revoque = revocation_of(str(getattr(instance, "_credentials_path", "")))
+            if revoque:
+                quand, pourquoi = revoque
+                console.print(
+                    f"[yellow]Google revoked this access on {quand} ({pourquoi}). "
+                    "Starting a new OAuth flow.[/yellow]"
+                )
+
             provider = get_provider_for_connector(source)
             if provider is None:
                 console.print(f"[red]No OAuth provider configured for {source}.[/red]")
