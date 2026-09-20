@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing
 from typing import Any, Dict, List
 
 import httpx
@@ -14,6 +15,7 @@ from diapason.core.registry import EngineRegistry
 from diapason.core.types import Message
 from diapason.engine._base import (
     EngineConnectionError,
+    EngineToolsUnsupportedError,
     InferenceEngine,
     estimate_prompt_tokens,
     messages_to_dicts,
@@ -23,6 +25,16 @@ from diapason.engine._http_async import (
     AsyncHTTPEngineMixin,
 )
 from diapason.engine._stubs import StreamChunk
+from diapason.engine.scheduling import (
+    InferenceQueueTimeout,
+    background_work,
+    scheduler_for,
+)
+from diapason.telemetry.chat_latency import (
+    mark_model_text,
+    record_ollama_metrics,
+    record_queue_wait,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +121,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             env_host = os.environ.get("OLLAMA_HOST")
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
+        self._scheduler = scheduler_for(self._host)
         # Used by the shared async streaming plumbing (AsyncHTTPEngineMixin) so a
         # wedged token read is bounded by ``timeout`` instead of hanging the
         # single event loop for the httpx default.
@@ -123,6 +136,19 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         self._last_stream_usage: Dict[str, int] = {}
 
     def prewarm(self, model: str) -> bool:
+        if not model:
+            return False
+        # A requested prewarm names a model: report/load that exact model.
+        # Automatic memory alone follows the last successful interactive one.
+        try:
+            with background_work():
+                with self._scheduler.slot(model, timeout=self._timeout):
+                    return self._prewarm(model)
+        except InferenceQueueTimeout:
+            logger.debug("Ollama prewarm skipped: inference queue busy")
+            return False
+
+    def _prewarm(self, model: str) -> bool:
         """Load *model* into Ollama's resident cache without generating text."""
         if not model:
             return False
@@ -143,6 +169,25 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             return False
 
     def generate(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        with self._scheduler.slot(model, timeout=self._timeout) as lease:
+            record_queue_wait(lease.wait_ms)
+            return self._generate(
+                messages,
+                model=lease.model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+
+    def _generate(
         self,
         messages: Sequence[Message],
         *,
@@ -210,7 +255,9 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             raise RuntimeError(
                 f"Ollama returned {exc.response.status_code}: {body}"
             ) from exc
+        self._scheduler.remember_model(model)
         data = resp.json()
+        record_ollama_metrics(data, model, tools=payload.get("tools", []))
         # prompt_eval_count = tokens actually evaluated (KV-cache-aware).
         # estimate_prompt_tokens = full prompt size (for cost comparison).
         # We report both so downstream can use the right one:
@@ -285,6 +332,29 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
+        async with self._scheduler.async_slot(model, timeout=self._timeout) as lease:
+            record_queue_wait(lease.wait_ms)
+            async with aclosing(
+                self._stream(
+                    messages,
+                    model=lease.model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+            ) as source:
+                async for chunk in source:
+                    yield chunk
+
+    async def _stream(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages_to_dicts(messages),
@@ -324,6 +394,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     # a streaming response is otherwise unread.
                     await resp.aread()
                     self._raise_stream_http_error(resp.status_code, resp.text)
+                self._scheduler.remember_model(str(payload["model"]))
                 async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
@@ -333,8 +404,12 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         continue
                     content = chunk.get("message", {}).get("content", "")
                     if content:
+                        mark_model_text()
                         yield content
                     if chunk.get("done", False):
+                        record_ollama_metrics(
+                            chunk, str(payload["model"]), tools=payload.get("tools", [])
+                        )
                         reported_prompt = chunk.get("prompt_eval_count", 0)
                         est_prompt = estimate_prompt_tokens(messages)
                         full_prompt = max(reported_prompt, est_prompt)
@@ -358,6 +433,29 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             ) from exc
 
     async def stream_full(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamChunk]:
+        async with self._scheduler.async_slot(model, timeout=self._timeout) as lease:
+            record_queue_wait(lease.wait_ms)
+            async with aclosing(
+                self._stream_full(
+                    messages,
+                    model=lease.model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+            ) as source:
+                async for chunk in source:
+                    yield chunk
+
+    async def _stream_full(
         self,
         messages: Sequence[Message],
         *,
@@ -404,11 +502,19 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         tools = kwargs.get("tools")
         if tools:
             payload["tools"] = tools
+        if kwargs.get("format") is not None:
+            payload["format"] = kwargs["format"]
 
-        async for chunk in self._run_stream(
-            payload, messages, retry_without_tools=bool(tools)
-        ):
-            yield chunk
+        async with aclosing(
+            self._run_stream(
+                payload,
+                messages,
+                retry_without_tools=bool(tools),
+                tools_required=bool(kwargs.get("tools_required")),
+            )
+        ) as source_flux:
+            async for chunk in source_flux:
+                yield chunk
 
     async def _run_stream(
         self,
@@ -416,6 +522,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         messages: Sequence[Message],
         *,
         retry_without_tools: bool,
+        tools_required: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Execute the streaming request and yield parsed StreamChunks."""
         try:
@@ -425,15 +532,27 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             client = self._get_async_client()
             async with client.stream("POST", "/api/chat", json=payload) as resp:
                 if resp.status_code == 400 and retry_without_tools:
+                    if tools_required:
+                        # 19/09/2026 : Gemma refusait les outils ; la reprise
+                        # nue gardait « appelle diapason_ask_questions » et le
+                        # modèle la récitait. Le chat doit adapter son protocole
+                        # AVANT toute génération. Un autre 400 reste une erreur.
+                        await resp.aread()
+                        if "does not support tools" in resp.text.lower():
+                            raise EngineToolsUnsupportedError(
+                                f"{payload['model']} does not support tools"
+                            )
+                        self._raise_stream_http_error(resp.status_code, resp.text)
                     # Model doesn't support tools — retry without them.
                     # PRESERVED: this specific 400 path must still trigger the
                     # tools-less retry; only OTHER non-2xx responses map to
                     # EngineConnectionError below.
                     payload.pop("tools", None)
-                    async for c in self._run_stream(
-                        payload, messages, retry_without_tools=False
-                    ):
-                        yield c
+                    async with aclosing(
+                        self._run_stream(payload, messages, retry_without_tools=False)
+                    ) as source_flux:
+                        async for c in source_flux:
+                            yield c
                     return
                 # ``not is_success`` covers 3xx as well as 4xx/5xx and maps
                 # to ``EngineConnectionError`` (matching the OpenAI-compat
@@ -446,6 +565,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     self._raise_stream_http_error(resp.status_code, resp.text)
 
                 finish_reason: str | None = None
+                self._scheduler.remember_model(str(payload["model"]))
                 async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
@@ -459,6 +579,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     raw_tool_calls = message.get("tool_calls") or []
 
                     if content:
+                        mark_model_text()
                         yield StreamChunk(content=content)
 
                     if raw_tool_calls:
@@ -499,6 +620,9 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                             finish_reason = "tool_calls"
 
                     if chunk.get("done", False):
+                        record_ollama_metrics(
+                            chunk, str(payload["model"]), tools=payload.get("tools", [])
+                        )
                         reported_prompt = chunk.get("prompt_eval_count", 0)
                         est_prompt = estimate_prompt_tokens(messages)
                         full_prompt = max(reported_prompt, est_prompt)

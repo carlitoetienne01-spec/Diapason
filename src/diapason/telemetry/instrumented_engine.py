@@ -5,6 +5,7 @@ from __future__ import annotations
 import statistics
 import time
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any, Dict, List, Optional, Sequence
 
 from diapason.core.events import EventBus, EventType
@@ -170,6 +171,13 @@ class InstrumentedEngine(InferenceEngine):
             )
 
         latency = time.time() - t0
+
+        # 19/09/2026: automatic memory may follow the current local model.
+        # Attribute the completed work to the model that actually answered,
+        # not to the startup model supplied before queue admission.
+        actual_model = result.get("model")
+        if isinstance(actual_model, str) and actual_model:
+            model = actual_model
 
         usage = result.get("usage", {})
         completion_tokens = usage.get("completion_tokens", 0)
@@ -368,39 +376,48 @@ class InstrumentedEngine(InferenceEngine):
 
         if self._energy_monitor is not None:
             with self._energy_monitor.sample() as energy_sample:
-                async for token in self._inner.stream(
-                    messages,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    **kwargs,
-                ):
-                    token_timestamps.append(time.time())
-                    token_count += 1
-                    yield token
+                async with aclosing(
+                    self._inner.stream(
+                        messages,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                ) as source_flux:
+                    async for token in source_flux:
+                        token_timestamps.append(time.time())
+                        token_count += 1
+                        yield token
         elif self._gpu_monitor is not None:
             with self._gpu_monitor.sample() as gpu_sample:
-                async for token in self._inner.stream(
+                async with aclosing(
+                    self._inner.stream(
+                        messages,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                ) as source_flux:
+                    async for token in source_flux:
+                        token_timestamps.append(time.time())
+                        token_count += 1
+                        yield token
+        else:
+            async with aclosing(
+                self._inner.stream(
                     messages,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     **kwargs,
-                ):
+                )
+            ) as source_flux:
+                async for token in source_flux:
                     token_timestamps.append(time.time())
                     token_count += 1
                     yield token
-        else:
-            async for token in self._inner.stream(
-                messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            ):
-                token_timestamps.append(time.time())
-                token_count += 1
-                yield token
 
         latency = time.time() - t0
         ttft = token_timestamps[0] - t0 if token_timestamps else 0.0
@@ -561,14 +578,17 @@ class InstrumentedEngine(InferenceEngine):
         **kwargs: Any,
     ) -> AsyncIterator["StreamChunk"]:
         """Delegate to inner engine's stream_full for tool-call support."""
-        async for chunk in self._inner.stream_full(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        ):
-            yield chunk
+        async with aclosing(
+            self._inner.stream_full(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        ) as source_flux:
+            async for chunk in source_flux:
+                yield chunk
 
     def list_models(self) -> List[str]:
         return self._inner.list_models()

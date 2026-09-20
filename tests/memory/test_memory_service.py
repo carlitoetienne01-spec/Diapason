@@ -194,6 +194,7 @@ def test_build_memory_service_enabled(tmp_path):
     )
     svc = build_memory_service(cfg, object(), "fallback-model")
     assert isinstance(svc, MemoryService)
+    assert svc._extractor._use_active_model is False
 
 
 def test_build_memory_service_falls_back_to_default_model(tmp_path):
@@ -206,3 +207,109 @@ def test_build_memory_service_falls_back_to_default_model(tmp_path):
     )
     svc = build_memory_service(cfg, object(), "active-model")
     assert isinstance(svc, MemoryService)
+    assert svc._extractor._use_active_model is True
+
+
+class TestMemoirePrioritaire:
+    """§5 : différer ne signifie ni perdre les échanges ni lancer deux ouvriers."""
+
+    def test_un_doublon_en_attente_ne_consomme_pas_une_seconde_place(self, tmp_path):
+        gate = threading.Event()
+        extractor = FakeExtractor(["fact"], gate=gate)
+        svc = _service(tmp_path, extractor, max_queue=1)
+        svc.start()
+        try:
+            assert svc.submit("premier", "a")
+            assert _wait_until(lambda: len(extractor.calls) == 1)
+            assert svc.submit("premier", "a"), (
+                "l'échange en cours est déjà pris en charge"
+            )
+            assert svc.submit("second", "b")
+            assert svc.submit("second", "b"), "le doublon ne remplit pas la file"
+            assert not svc.submit("second", "autre réponse"), (
+                "une réponse différente reste distincte"
+            )
+            gate.set()
+            assert _wait_until(lambda: svc._queue.unfinished_tasks == 0)
+            assert extractor.calls == [("premier", "a"), ("second", "b")]
+            assert svc.submit("premier", "a"), (
+                "la déduplication ne dure pas éternellement"
+            )
+            assert _wait_until(lambda: len(extractor.calls) == 3)
+        finally:
+            gate.set()
+            svc.stop()
+
+    def test_un_redemarrage_ne_duplique_pas_une_extraction_encore_en_cours(
+        self, tmp_path
+    ):
+        gate = threading.Event()
+        extractor = FakeExtractor(["fact"], gate=gate)
+        svc = _service(tmp_path, extractor)
+        svc.start()
+        try:
+            svc.submit("premier", "a")
+            assert _wait_until(lambda: len(extractor.calls) == 1)
+            thread = svc._thread
+            svc.stop(timeout=0.001)
+            svc.start()
+            assert svc._thread is thread, "l'ancien ouvrier possède encore son appel"
+            assert not svc.is_running
+            gate.set()
+            thread.join(1)
+            svc.start()
+            assert svc.is_running
+            assert svc.submit("second", "b")
+            assert _wait_until(lambda: len(extractor.calls) == 2)
+        finally:
+            gate.set()
+            svc.stop()
+
+    def test_une_memoire_differee_secrit_apres_la_question(self, tmp_path):
+        from diapason.engine.scheduling import InferenceScheduler, interactive_turn
+        from diapason.memory.extractor import FactExtractor
+
+        scheduler = InferenceScheduler(quiet_seconds=0)
+        appels = []
+
+        class Moteur:
+            def generate(self, messages, *, model, **kwargs):
+                with scheduler.slot(model):
+                    appels.append(model)
+                    return {"content": '["Préfère le thé"]'}
+
+        svc = _service(tmp_path, FactExtractor(Moteur(), "m"))
+        svc.start()
+        try:
+            with interactive_turn():
+                assert svc.submit("J'aime le thé", "Noté")
+                assert _wait_until(lambda: len(scheduler._pending) == 1)
+                assert not appels, "la mémoire ne prend pas le moteur pendant le tour"
+                assert svc.fact_count() == 0
+            assert _wait_until(lambda: svc.fact_count() == 1)
+            assert [f.text for f in svc.list_facts()] == ["Préfère le thé"]
+        finally:
+            svc.stop()
+
+    def test_arreter_la_memoire_differee_ne_declenche_aucun_appel(self, tmp_path):
+        from diapason.engine.scheduling import InferenceScheduler, interactive_turn
+        from diapason.memory.extractor import FactExtractor
+
+        scheduler = InferenceScheduler(quiet_seconds=0)
+        appels = []
+
+        class Moteur:
+            def generate(self, messages, *, model, **kwargs):
+                with scheduler.slot(model):
+                    appels.append(model)
+                    return {"content": "[]"}
+
+        svc = _service(tmp_path, FactExtractor(Moteur(), "m"))
+        svc.start()
+        with interactive_turn():
+            svc.submit("Test", "Réponse")
+            assert _wait_until(lambda: len(scheduler._pending) == 1)
+            svc.stop(timeout=1)
+            assert svc._thread is None, "le fil sort même pendant une discussion"
+        assert not appels, "un arrêt n'envoie pas une vieille extraction à Ollama"
+        assert not scheduler._pending

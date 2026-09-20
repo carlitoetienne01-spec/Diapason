@@ -17,7 +17,7 @@ except ImportError:  # respx is an optional test-only dep; the async MockTranspo
 
 from diapason.core.registry import EngineRegistry
 from diapason.core.types import Message, Role
-from diapason.engine._base import EngineConnectionError
+from diapason.engine._base import EngineConnectionError, EngineToolsUnsupportedError
 from diapason.engine.ollama import OllamaEngine, _is_control_token_only_args
 
 # respx-backed tests exercise the SYNC client paths (generate/list_models/health)
@@ -535,3 +535,66 @@ class TestOllamaStreamHttpErrorMapping:
         # First request had tools (400), second retried without them (200).
         assert calls == [True, False]
         assert any(c.content == "recovered" for c in chunks)
+
+
+class TestLeChatApprendQueLesOutilsSontAbsents:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "erreur,attendue",
+        [
+            ("model does not support tools", EngineToolsUnsupportedError),
+            ("invalid tool schema", EngineConnectionError),
+        ],
+    )
+    async def test_le_refus_explicit_ne_devient_pas_une_generation_nue(
+        self, erreur, attendue
+    ):
+        """§5 : ne pas réciter une consigne d'outil qu'Ollama vient de retirer."""
+        appels = []
+
+        def handler(request):
+            appels.append(json.loads(request.content))
+            return httpx.Response(400, json={"error": erreur})
+
+        moteur = OllamaEngine(host="http://testhost:11434")
+        moteur._async_transport = httpx.MockTransport(handler)
+        try:
+            with pytest.raises(attendue) as capture:
+                async for _ in moteur.stream_full(
+                    [Message(role=Role.USER, content="Prépare un programme")],
+                    model="local",
+                    tools=[{"type": "function", "function": {"name": "questions"}}],
+                    tools_required=True,
+                ):
+                    pytest.fail("un modèle incompatible ne doit pas encore répondre")
+            assert type(capture.value) is attendue
+            assert len(appels) == 1, "le protocole doit être adapté avant toute réponse"
+        finally:
+            await moteur._get_async_client().aclose()
+
+    @pytest.mark.asyncio
+    async def test_le_schema_de_sortie_arrive_a_ollama_sans_fausse_fonction(self):
+        """§5 : un paramètre format ignoré ferait revenir du texte libre."""
+        schema = {"type": "object", "properties": {"questions": {"type": "array"}}}
+        appels = []
+
+        def handler(request):
+            appels.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                text=json.dumps(
+                    {"message": {"content": '{"questions":[]}'}, "done": True}
+                )
+                + "\n",
+            )
+
+        moteur = OllamaEngine(host="http://testhost:11434")
+        moteur._async_transport = httpx.MockTransport(handler)
+        try:
+            resultat = [
+                c async for c in moteur.stream_full([], model="local", format=schema)
+            ]
+            assert appels[0]["format"] == schema and "tools" not in appels[0]
+            assert resultat[-1].finish_reason == "stop"
+        finally:
+            await moteur._get_async_client().aclose()

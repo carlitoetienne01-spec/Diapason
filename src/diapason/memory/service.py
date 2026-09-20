@@ -4,6 +4,8 @@
 never blocks ``diapason serve`` request handling or the ``diapason chat`` REPL.
 Callers hand off an exchange via :meth:`submit`, which enqueues the work and
 returns immediately — the slow model call and disk write happen out of band.
+Ollama admission defers memory while an interactive turn is running. A
+background thread alone does not prevent competition for the same GPU.
 The worker swallows every per-job error (including ``BrokenPipeError`` when a
 client disconnects mid-extraction), so a flaky extraction model can never take
 down the host process.
@@ -21,6 +23,7 @@ import threading
 from typing import Any, List, Optional
 
 from diapason.core.events import Event, EventBus, EventType
+from diapason.engine.scheduling import background_work
 from diapason.memory.extractor import FactExtractor
 from diapason.memory.store import (
     Fact,
@@ -53,6 +56,9 @@ class MemoryService:
         self._queue: "queue.Queue[Any]" = queue.Queue(maxsize=max(1, max_queue))
         self._thread: Optional[threading.Thread] = None
         self._running = threading.Event()
+        self._stopping = threading.Event()
+        self._pending: set[tuple[str, str]] = set()
+        self._pending_lock = threading.Lock()
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -60,6 +66,9 @@ class MemoryService:
         """Start the background worker thread (idempotent)."""
         if self._running.is_set():
             return
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stopping.clear()
         self._running.set()
         self._subscribe_events()
         self._thread = threading.Thread(
@@ -71,18 +80,21 @@ class MemoryService:
         logger.debug("Memory service started")
 
     def stop(self, timeout: float = 2.0) -> None:
-        """Signal the worker to drain and stop, then join it (idempotent)."""
+        """Stop pending admission; finish an already sent call, then join."""
         if not self._running.is_set():
             return
-        self._running.clear()
-        try:
-            self._queue.put_nowait(_STOP)
-        except queue.Full:
-            pass  # worker will notice the cleared flag on its next loop
+        with self._pending_lock:
+            self._running.clear()
+            self._stopping.set()
+            try:
+                self._queue.put_nowait(_STOP)
+            except queue.Full:
+                pass  # worker will notice the cleared flag on its next loop
         thread = self._thread
         if thread is not None:
             thread.join(timeout=timeout)
-        self._thread = None
+        if thread is None or not thread.is_alive():
+            self._thread = None
         self._unsubscribe_events()
         logger.debug("Memory service stopped")
 
@@ -103,12 +115,22 @@ class MemoryService:
             return False
         if not user_text or not user_text.strip():
             return False
-        try:
-            self._queue.put_nowait((user_text, assistant_text))
-            return True
-        except queue.Full:
-            logger.debug("Memory service queue full; dropping exchange")
-            return False
+        job = (user_text, assistant_text)
+        # 19/09/2026: identical lifecycle notifications need one extraction.
+        # Never merge different replies or conversations by text similarity.
+        with self._pending_lock:
+            if not self._running.is_set():
+                return False
+            if job in self._pending:
+                return True
+            try:
+                self._pending.add(job)
+                self._queue.put_nowait(job)
+                return True
+            except queue.Full:
+                self._pending.discard(job)
+                logger.debug("Memory service queue full; dropping exchange")
+                return False
 
     def _subscribe_events(self) -> None:
         """Subscribe to lifecycle events that feed automatic memory."""
@@ -152,10 +174,13 @@ class MemoryService:
                 self._queue.task_done()
                 break
             try:
-                self._process(job)
+                with background_work(stop=self._stopping):
+                    self._process(job)
             except Exception:  # noqa: BLE001 — a bad job must not kill the worker
                 logger.debug("Memory extraction job failed", exc_info=True)
             finally:
+                with self._pending_lock:
+                    self._pending.discard(job)
                 self._queue.task_done()
             if not self._running.is_set() and self._queue.empty():
                 break
@@ -222,7 +247,9 @@ def build_memory_service(
     # plus jamais. Voir SearchableFactStore.
     if memory_backend is not None:
         store = SearchableFactStore(store, memory_backend)
-    extractor = FactExtractor(engine, model)
+    extractor = FactExtractor(
+        engine, model, use_active_model=not bool(getattr(mem, "extraction_model", ""))
+    )
     return MemoryService(store, extractor, event_bus=event_bus)
 
 

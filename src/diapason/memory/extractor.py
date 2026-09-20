@@ -16,6 +16,7 @@ import re
 from typing import Any, List, Optional
 
 from diapason.core.types import Message, Role
+from diapason.engine.scheduling import background_work
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,9 @@ class FactExtractor:
         max_facts_per_turn: int = 10,
         max_fact_chars: int = 200,
         system_prompt: Optional[str] = None,
+        use_active_model: bool = False,
     ) -> None:
+        self._use_active_model = use_active_model
         self._engine = engine
         self._model = model
         self._temperature = temperature
@@ -68,12 +71,13 @@ class FactExtractor:
         ]
 
         try:
-            result = self._engine.generate(
-                messages,
-                model=self._model,
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
-            )
+            with background_work(use_active_model=self._use_active_model):
+                result = self._engine.generate(
+                    messages,
+                    model=self._model,
+                    temperature=self._temperature,
+                    max_tokens=self._max_tokens,
+                )
         except BrokenPipeError:
             # The classic failure mode: the model call's transport died.
             # Extraction is best-effort, so swallow it.

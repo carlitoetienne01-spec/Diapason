@@ -31,6 +31,17 @@ def bus():
 
 
 class TestInstrumentedEngine:
+    def test_le_bilan_nomme_le_modele_qui_a_vraiment_repondu(self, mock_engine, bus):
+        """§100 : le modèle mémoire peut changer pendant l'attente du moteur."""
+        mock_engine.generate.return_value["model"] = "modele-actuel"
+        InstrumentedEngine(mock_engine, bus).generate([], model="modele-du-demarrage")
+        fin = next(e for e in bus.history if e.event_type == EventType.INFERENCE_END)
+        mesure = next(
+            e for e in bus.history if e.event_type == EventType.TELEMETRY_RECORD
+        )
+        assert fin.data["model"] == "modele-actuel"
+        assert mesure.data["record"].model_id == "modele-actuel"
+
     def test_generate_passes_through(self, mock_engine, bus):
         ie = InstrumentedEngine(mock_engine, bus)
         messages = [Message(role=Role.USER, content="Hi")]
