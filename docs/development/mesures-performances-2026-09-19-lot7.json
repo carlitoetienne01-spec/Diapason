@@ -1,0 +1,2864 @@
+{
+  "date": "2026-09-19",
+  "scope": "Lot 7 : validation globale Mac, lectures sous charge, cache des compteurs et sondes du chrome",
+  "protocol": {
+    "http": "40 GET par route et par mode après un appel de chauffe exclu ; séquentiel, puis quatre lecteurs en boucle. Santé du serveur sur une connexion indépendante. Données personnelles lues, jamais exportées dans les mesures.",
+    "percentile": "Rang entier supérieur (nearest rank), 40 échantillons par route. Pas un p95 de tous les usages, ni une mesure du premier mot.",
+    "limits": "Poste utilisateur non réservé ; les autres activités n’ont pas été arrêtées. La première chauffe n’a pas été chronométrée. Les mesures au repos excluent WebKit XPC, le GPU et Ollama."
+  },
+  "beforePageEstimateCache": {
+    "warmupExcluded": 1,
+    "samplesPerRoute": 40,
+    "concurrency": 4,
+    "series": {
+      "/v1/succes/tasks?include_done=true": {
+        "sequential": [
+          {
+            "ms": 9.86,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.76,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.99,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.19,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.99,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.5,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.16,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 6.97,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 6.86,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 6.86,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.11,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.24,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.23,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.84,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.97,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.95,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.77,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.65,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.81,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.32,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.07,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.41,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 10.1,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.44,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.27,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.15,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.51,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.28,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.4,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.08,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.99,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.51,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.5,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.5,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.51,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.21,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.16,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.21,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.32,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.21,
+            "status": 200,
+            "bytes": 840823
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 65.78,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 95.18,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 96.19,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 103.7,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 81.48,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 79.48,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 100.89,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 78.86,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 66.46,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 95.05,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 70.63,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 72.15,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 93.82,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 71.65,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 44.83,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 66.55,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 59.29,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 92.7,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 90.86,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 71.01,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 96.98,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 73.02,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 71.46,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 96.56,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 70.35,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 42.34,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 95.32,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 121.67,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 78.87,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 51.89,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 66.77,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 85.1,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 93.68,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 74.84,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 72.54,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 69.53,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 67.34,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 72.17,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 70.33,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 41.44,
+            "status": 200,
+            "bytes": 840823
+          }
+        ]
+      },
+      "/v1/succes/notes/resumes": {
+        "sequential": [
+          {
+            "ms": 24.14,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.11,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.89,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.86,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.78,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.82,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.83,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.79,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.93,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.77,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.68,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.67,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.56,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.85,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.75,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.91,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.68,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.57,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.76,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.95,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.89,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.65,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.68,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.81,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.99,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.73,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.81,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.07,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.07,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.19,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.93,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.81,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 29.36,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.6,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.75,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.76,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.82,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 23.76,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.1,
+            "status": 200,
+            "bytes": 5799
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 31.73,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.38,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 27.52,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 25.84,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.29,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.3,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.31,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 25.58,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.98,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 29.22,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.67,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.16,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 27.29,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.3,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 29.94,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 29.65,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.75,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.48,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.57,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.66,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.47,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 25.66,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.13,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.6,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.04,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 24.99,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 30.16,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.73,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 25.37,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 30.31,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.66,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 27.33,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.9,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.17,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 25.61,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 32.21,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.61,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 28.58,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 26.55,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 29.22,
+            "status": 200,
+            "bytes": 5799
+          }
+        ]
+      },
+      "/v1/succes/projects": {
+        "sequential": [
+          {
+            "ms": 2.79,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.63,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.57,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.47,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.63,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.5,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.63,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.57,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.47,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.68,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.58,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.28,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.15,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.3,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.36,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.59,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.47,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.52,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.45,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.71,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.72,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.59,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.69,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.56,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.54,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.61,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.58,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.55,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.59,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.56,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.53,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.62,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.86,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.62,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.59,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.64,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.61,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.64,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.73,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.72,
+            "status": 200,
+            "bytes": 3361
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 32.56,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.96,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.87,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 23.64,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.42,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 8.18,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.92,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.53,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 8.34,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 23.53,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.2,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 8.57,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 28.59,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.22,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.8,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.31,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 30.06,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 28.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.28,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.54,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.97,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.23,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.52,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.58,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 10.79,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.31,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.25,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.41,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.81,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 28.01,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 27.68,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.36,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.07,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.99,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 25.63,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.73,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 29.07,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.11,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 26.54,
+            "status": 200,
+            "bytes": 3361
+          }
+        ]
+      }
+    },
+    "healthDuringLoad": [
+      {
+        "ms": 32.5,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 36.15,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 35.07,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 50.25,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 44.17,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 45.36,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 42.62,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 43.47,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 42.92,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 36.62,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 42.82,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 37.52,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 47.12,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 20.8,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 29.29,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 21.16,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 43.66,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 34.61,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 35.4,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 49.44,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 42.48,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 23.29,
+        "status": 200,
+        "bytes": 15
+      }
+    ],
+    "summary": {
+      "/v1/succes/tasks?include_done=true": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 8.99,
+          "p95Ms": 9.51,
+          "maxMs": 10.1,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 72.54,
+          "p95Ms": 100.89,
+          "maxMs": 121.67,
+          "errors": 0
+        }
+      },
+      "/v1/succes/notes/resumes": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 23.81,
+          "p95Ms": 24.14,
+          "maxMs": 29.36,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 26.73,
+          "p95Ms": 30.31,
+          "maxMs": 32.21,
+          "errors": 0
+        }
+      },
+      "/v1/succes/projects": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 2.59,
+          "p95Ms": 2.73,
+          "maxMs": 2.86,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 26.11,
+          "p95Ms": 29.07,
+          "maxMs": 32.56,
+          "errors": 0
+        }
+      },
+      "healthDuringLoad": {
+        "count": 22,
+        "p50Ms": 37.52,
+        "p95Ms": 49.44,
+        "maxMs": 50.25,
+        "errors": 0
+      }
+    }
+  },
+  "afterPageEstimateCache": {
+    "warmupExcluded": 1,
+    "samplesPerRoute": 40,
+    "concurrency": 4,
+    "series": {
+      "/v1/succes/tasks?include_done=true": {
+        "sequential": [
+          {
+            "ms": 12.27,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 10.28,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 9.25,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.79,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.69,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.39,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.78,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.14,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.38,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.88,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.69,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.38,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.71,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.21,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.7,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.37,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.94,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.19,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.81,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.33,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.5,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.54,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.59,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.72,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.6,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.74,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.2,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.77,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.85,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.59,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.99,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.66,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.31,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.39,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.34,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.39,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.35,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.17,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 7.99,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 8.06,
+            "status": 200,
+            "bytes": 840823
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 14.46,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 37.25,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.42,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 45.88,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 44.47,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 41.94,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 41.87,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 42.96,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.63,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.57,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 40.25,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.08,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 51.72,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 48.0,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 48.88,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 45.64,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 37.61,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 28.29,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 27.04,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 30.22,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 38.65,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 39.75,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.42,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 40.8,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 30.79,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 30.96,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 38.4,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 41.72,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 40.27,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 37.05,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 30.56,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 35.73,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 40.93,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 45.82,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 46.39,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 51.96,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 51.44,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 50.27,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 43.39,
+            "status": 200,
+            "bytes": 840823
+          },
+          {
+            "ms": 33.53,
+            "status": 200,
+            "bytes": 840823
+          }
+        ]
+      },
+      "/v1/succes/notes/resumes": {
+        "sequential": [
+          {
+            "ms": 2.91,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.72,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.75,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.68,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.8,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.4,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.7,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.97,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.81,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.87,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.87,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.67,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.91,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.6,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.58,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.69,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.53,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.6,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.85,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.73,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.7,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 3.15,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.89,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.79,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.54,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.57,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.77,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.35,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.86,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.54,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.74,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.78,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.79,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 2.93,
+            "status": 200,
+            "bytes": 5799
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 10.81,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 10.04,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.53,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.23,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.09,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.43,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.97,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.64,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.56,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.17,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 6.54,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.18,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.65,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.35,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.98,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 6.75,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.53,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.8,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.82,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.26,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.35,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.4,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.1,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.64,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.96,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.15,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.79,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.09,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.58,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.76,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.5,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 4.7,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 9.24,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 11.0,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.71,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 8.46,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 5.7,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 6.92,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 10.85,
+            "status": 200,
+            "bytes": 5799
+          },
+          {
+            "ms": 7.91,
+            "status": 200,
+            "bytes": 5799
+          }
+        ]
+      },
+      "/v1/succes/projects": {
+        "sequential": [
+          {
+            "ms": 2.04,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.77,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.74,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.9,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.82,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.78,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.71,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.82,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.69,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.77,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.94,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.92,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.79,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.68,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.73,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.62,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.27,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.73,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.77,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.71,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.72,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.7,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.97,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.07,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.85,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.78,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.77,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.87,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.79,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.67,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.66,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.91,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.84,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 2.07,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.74,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.68,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 1.6,
+            "status": 200,
+            "bytes": 3361
+          }
+        ],
+        "mixedConcurrent": [
+          {
+            "ms": 7.93,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.76,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.88,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.67,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.53,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.14,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.73,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.74,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.18,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 5.64,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.48,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.8,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.51,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.4,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.4,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.9,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.24,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.61,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.37,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.45,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.2,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.86,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.8,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.97,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.78,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.55,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 3.33,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.19,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.26,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.82,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 7.88,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.44,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.93,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 4.74,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 6.32,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 5.87,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 9.46,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 11.48,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 15.6,
+            "status": 200,
+            "bytes": 3361
+          },
+          {
+            "ms": 5.7,
+            "status": 200,
+            "bytes": 3361
+          }
+        ]
+      }
+    },
+    "healthDuringLoad": [
+      {
+        "ms": 17.38,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 11.9,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 12.83,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 12.46,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 12.74,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 10.73,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 11.86,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 14.85,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 13.05,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 14.26,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 13.17,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 14.88,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 13.55,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 13.87,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 11.03,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 14.71,
+        "status": 200,
+        "bytes": 15
+      },
+      {
+        "ms": 11.72,
+        "status": 200,
+        "bytes": 15
+      }
+    ],
+    "summary": {
+      "/v1/succes/tasks?include_done=true": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 7.99,
+          "p95Ms": 10.28,
+          "maxMs": 43.99,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 41.72,
+          "p95Ms": 51.44,
+          "maxMs": 51.96,
+          "errors": 0
+        }
+      },
+      "/v1/succes/notes/resumes": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 2.74,
+          "p95Ms": 2.97,
+          "maxMs": 7.35,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 5.7,
+          "p95Ms": 10.81,
+          "maxMs": 11.0,
+          "errors": 0
+        }
+      },
+      "/v1/succes/projects": {
+        "sequential": {
+          "count": 40,
+          "p50Ms": 1.77,
+          "p95Ms": 2.07,
+          "maxMs": 2.27,
+          "errors": 0
+        },
+        "mixedConcurrent": {
+          "count": 40,
+          "p50Ms": 4.74,
+          "p95Ms": 9.46,
+          "maxMs": 15.6,
+          "errors": 0
+        }
+      },
+      "healthDuringLoad": {
+        "count": 17,
+        "p50Ms": 13.05,
+        "p95Ms": 17.38,
+        "maxMs": 17.38,
+        "errors": 0
+      }
+    }
+  },
+  "observedIdle": {
+    "durationSeconds": 30.0,
+    "controlledIdle": false,
+    "excludes": "WebKit XPC, GPU, Ollama, autres processus ; aucune interaction de test ajoutée pendant la fenêtre.",
+    "serveur": {
+      "meanPercentOfOneCpuCore": 1.77,
+      "rssKiBStart": 1363504,
+      "rssKiBEnd": 1363216
+    },
+    "appNative": {
+      "meanPercentOfOneCpuCore": 1.2,
+      "rssKiBStart": 116832,
+      "rssKiBEnd": 116720
+    }
+  },
+  "nativePollingCheck": {
+    "hiddenDurationSeconds": 31,
+    "visibility": "document.hidden simulé dans WKWebView native visible",
+    "strictMode": true,
+    "countsBefore": {
+      "health": 3,
+      "agents": 3,
+      "energy": 28,
+      "stats": 28,
+      "approvals": 18
+    },
+    "countsHidden": {
+      "health": 3,
+      "agents": 3,
+      "energy": 28,
+      "stats": 28,
+      "approvals": 24
+    },
+    "countsAfterVisibilityFocusResume": {
+      "health": 4,
+      "agents": 4,
+      "energy": 29,
+      "stats": 29,
+      "approvals": 24
+    },
+    "javascriptErrors": []
+  },
+  "measurementCorrection": {
+    "discardedHealthP95Ms": 1196.33,
+    "reason": "La sonde partageait le pool de quatre connexions du client saturé par les quatre lecteurs. Cette attente côté banc ne mesurait pas la disponibilité de la boucle serveur. Les deux séries retenues utilisent une connexion indépendante."
+  },
+  "checks": {
+    "pythonFullBeforeFinalCache": 10026,
+    "pythonSuccesAfterCache": 251,
+    "frontend": 944,
+    "rustWorkspace": 421,
+    "tauri": 58,
+    "tauriIgnored": 1,
+    "pythonLintFiles": 1662,
+    "windowsRunner": "pc-bureau hors ligne, vérifié par GitHub API ; aucun job ni push lancé",
+    "pythonFullFinal": 10027,
+    "pythonSkipped": 40,
+    "pythonFullFinalSeconds": 59.64,
+    "vision": "PNG fixe 640×400 sans main, vrai framework natif ; plus aucune capture de l’écran dans cette fixture."
+  },
+  "dependencyAudit": {
+    "result": "Aucune vulnérabilité connue restante avec les deux exclusions déjà configurées par le dépôt.",
+    "directUpdates": {
+      "gitpython": "3.1.59 → 3.1.60",
+      "vllm": "0.27.1 → 0.28.0"
+    },
+    "localInstall": "Les deux paquets optionnels sont absents du venv Mac. Seul le verrou a changé ; aucune synchronisation/élagage du venv.",
+    "transitiveChanges": "humming-kernels, nvidia-cutlass-dsl et ses bibliothèques, quack-kernels ; pyelftools retiré du graphe."
+  },
+  "remaining": [
+    "Windows/WebView2 : poste hors ligne.",
+    "Profil graphique de production, consommation GPU et processus WebKit, démarrage réellement à froid.",
+    "Génération locale longue et qualité des réponses : pas de nouvelle comparaison de modèle dans ce lot."
+  ],
+  "activation": {
+    "/health": {
+      "status": 200,
+      "bytes": 15
+    },
+    "/v1/succes/notes/resumes": {
+      "status": 200,
+      "bytes": 5799,
+      "sansContenu": true
+    },
+    "/": {
+      "status": 200,
+      "bytes": 829,
+      "sha256": "8e0205490cff0c7c3289f82cd6ce36c764848774d3a4eeee43ec30055ddc0ee8"
+    },
+    "interfacesIdentiques": true,
+    "appEnCours": true
+  }
+}

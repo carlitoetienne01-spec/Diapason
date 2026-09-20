@@ -1,0 +1,342 @@
+{
+  "date": "2026-09-19",
+  "protocol": {
+    "model": "qwen3.5:9b",
+    "temperature": 0,
+    "maxTokens": 128,
+    "automaticTools": true,
+    "question": "Explique simplement comment les arbres grandissent, en huit phrases courtes. Réponds directement sans utiliser un outil.",
+    "scope": "Client HTTP local sur le parcours normal du chat ; aucune écriture dans les discussions.",
+    "limits": [
+      "Un essai avant, un premier passage après et une répétition ; aucun p95.",
+      "Modèle déjà résident ; premier passage ne signifie pas démarrage à froid du modèle.",
+      "Rendu WebKit non mesuré. Réponses de 122/119/119 jetons.",
+      "Les essais de qualité utilisent des outils doublés avec données fictives, pas les notes/tâches personnelles."
+    ]
+  },
+  "measurements": [
+    {
+      "phase": "bureau",
+      "firstClientTextMs": 25554.38,
+      "totalClientMs": 29637.61,
+      "contentChunks": 129,
+      "contentCharacters": 528,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "a9482dcd67ed4b9f93fdd2e4716ffd6d",
+        "memoryMs": 1.983,
+        "toolSetupMs": 36.975,
+        "promptMs": 0.711,
+        "preparationMs": 40.676,
+        "totalMs": 29630.549,
+        "firstModelTextMs": 23982.371,
+        "firstTextMs": 25549.968,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "loadMs": 10.511,
+            "promptEvalMs": 23884.572,
+            "generationMs": 5635.138,
+            "providerTotalMs": 29571.086,
+            "promptTokensReported": 10231.0,
+            "completionTokens": 122.0,
+            "finishReason": "stop"
+          }
+        ]
+      },
+      "holdAfterFirstModelTextMs": 1567.597
+    },
+    {
+      "phase": "bureau",
+      "firstClientTextMs": 9258.65,
+      "totalClientMs": 13155.28,
+      "contentChunks": 126,
+      "contentCharacters": 508,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "966bd37cecab491b9f228bb5742d2de7",
+        "memoryMs": 7.109,
+        "toolSetupMs": 10.363,
+        "promptMs": 0.956,
+        "preparationMs": 1193.664,
+        "totalMs": 13144.993,
+        "firstModelTextMs": 7794.98,
+        "firstTextMs": 9250.81,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 1,
+            "toolSchemaCharacters": 5502,
+            "loadMs": 8.547,
+            "promptEvalMs": 6533.414,
+            "generationMs": 5334.779,
+            "providerTotalMs": 11927.455,
+            "promptTokensReported": 3441.0,
+            "completionTokens": 119.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    },
+    {
+      "phase": "bureau-chaud",
+      "firstClientTextMs": 2681.55,
+      "totalClientMs": 6668.81,
+      "contentChunks": 126,
+      "contentCharacters": 508,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "6796cd2c211f40fea8456286431a9ce6",
+        "memoryMs": 1.88,
+        "toolSetupMs": 0.008,
+        "promptMs": 14.165,
+        "preparationMs": 17.186,
+        "totalMs": 6661.887,
+        "firstModelTextMs": 1165.465,
+        "firstTextMs": 2677.329,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 1,
+            "toolSchemaCharacters": 5502,
+            "loadMs": 4.952,
+            "promptEvalMs": 1098.971,
+            "generationMs": 5485.094,
+            "providerTotalMs": 6623.85,
+            "promptTokensReported": 3441.0,
+            "completionTokens": 119.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    }
+  ],
+  "qualityBench": {
+    "tasks": {
+      "case": "taches",
+      "elapsedMs": 11891.39,
+      "done": true,
+      "readCalls": [
+        {
+          "name": "succes_tasks",
+          "action": "list",
+          "date": "demain"
+        }
+      ],
+      "answerContainsFixture": true,
+      "performance": {
+        "requestId": "ec970995b4ba444f89915d3c880f4a02",
+        "promptMs": 2.223,
+        "preparationMs": 2.517,
+        "totalMs": 11891.39,
+        "firstModelTextMs": 8701.761,
+        "firstTextMs": 10833.42,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 3,
+            "toolSchemaCharacters": 8039,
+            "loadMs": 2.079,
+            "promptEvalMs": 8658.047,
+            "generationMs": 2131.067,
+            "providerTotalMs": 10824.512,
+            "promptTokensReported": 3937.0,
+            "completionTokens": 48.0,
+            "finishReason": "stop"
+          },
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 3,
+            "toolSchemaCharacters": 8039,
+            "loadMs": 2.444,
+            "promptEvalMs": 324.0,
+            "generationMs": 716.46,
+            "providerTotalMs": 1050.837,
+            "promptTokensReported": 4055.0,
+            "completionTokens": 17.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    },
+    "notes": {
+      "case": "notes",
+      "elapsedMs": 3898.15,
+      "done": true,
+      "readCalls": [
+        {
+          "name": "succes_workspace",
+          "action": "list_notes",
+          "date": null
+        }
+      ],
+      "answerContainsFixture": true,
+      "performance": {
+        "requestId": "3bebb9c49a834cf388bf63104733824e",
+        "promptMs": 2.097,
+        "preparationMs": 2.396,
+        "totalMs": 3898.159,
+        "firstModelTextMs": 1132.72,
+        "firstTextMs": 2932.189,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 2,
+            "toolSchemaCharacters": 6474,
+            "loadMs": 10.139,
+            "promptEvalMs": 1092.458,
+            "generationMs": 1798.791,
+            "providerTotalMs": 2919.808,
+            "promptTokensReported": 3520.0,
+            "completionTokens": 41.0,
+            "finishReason": "stop"
+          },
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 2,
+            "toolSchemaCharacters": 6474,
+            "loadMs": 2.429,
+            "promptEvalMs": 325.573,
+            "generationMs": 622.48,
+            "providerTotalMs": 957.809,
+            "promptTokensReported": 3647.0,
+            "completionTokens": 15.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    },
+    "receivedWithDate": {
+      "case": "decouverte",
+      "elapsedMs": 10039.91,
+      "done": true,
+      "readCalls": [
+        {
+          "name": "digest_collect",
+          "action": null,
+          "date": null
+        }
+      ],
+      "answerContainsFixture": false,
+      "performance": {
+        "requestId": "58de8c5b9e384d32b3804eb9095ef165",
+        "promptMs": 2.416,
+        "preparationMs": 2.794,
+        "totalMs": 10039.917,
+        "firstModelTextMs": 7260.23,
+        "firstTextMs": 8548.008,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 2,
+            "toolSchemaCharacters": 6005,
+            "loadMs": 9.545,
+            "promptEvalMs": 7196.62,
+            "generationMs": 1287.061,
+            "providerTotalMs": 8531.697,
+            "promptTokensReported": 3388.0,
+            "completionTokens": 29.0,
+            "finishReason": "stop"
+          },
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 2,
+            "toolSchemaCharacters": 6005,
+            "loadMs": 2.179,
+            "promptEvalMs": 285.051,
+            "generationMs": 1189.069,
+            "providerTotalMs": 1484.302,
+            "promptTokensReported": 3446.0,
+            "completionTokens": 27.0,
+            "finishReason": "stop"
+          }
+        ]
+      },
+      "answerContainsFixtureIdentifier": true,
+      "verificationNote": "Le marqueur complet a été paraphrasé en « courriel de vérification (ID 947) » ; appel digest_collect réellement observé dans le banc."
+    },
+    "unknownFullFallback": {
+      "case": "inconnue",
+      "elapsedMs": 25857.58,
+      "done": true,
+      "readCalls": [
+        {
+          "name": "imessage_conversation",
+          "action": null,
+          "date": null
+        }
+      ],
+      "answerContainsFixture": false,
+      "performance": {
+        "requestId": "757498b038294710a1c842069036efa5",
+        "promptMs": 3.796,
+        "preparationMs": 4.105,
+        "totalMs": 25857.58,
+        "firstModelTextMs": 20406.46,
+        "firstTextMs": 23090.303,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 44,
+            "toolSchemaCharacters": 30304,
+            "loadMs": 12.218,
+            "promptEvalMs": 20323.714,
+            "generationMs": 2682.256,
+            "providerTotalMs": 23074.249,
+            "promptTokensReported": 9853.0,
+            "completionTokens": 59.0,
+            "finishReason": "stop"
+          },
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 44,
+            "toolSchemaCharacters": 30304,
+            "loadMs": 2.736,
+            "promptEvalMs": 332.663,
+            "generationMs": 2401.047,
+            "providerTotalMs": 2758.806,
+            "promptTokensReported": 9940.0,
+            "completionTokens": 53.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    },
+    "unknownFullFallbackNote": "Le modèle a demandé imessage_conversation ; ce connecteur était volontairement indisponible dans le banc. Il a signalé cette absence d’accès au lieu de prétendre à une lecture réussie.",
+    "rejectedPrototype": {
+      "case": {
+        "case": "decouverte",
+        "elapsedMs": 4586.92,
+        "done": true,
+        "readCalls": [],
+        "answerContainsFixture": false,
+        "performance": {
+          "requestId": "9c2449b2a3dd48bd939568ecae8bea51",
+          "promptMs": 1.359,
+          "preparationMs": 1.532,
+          "totalMs": 4586.92,
+          "firstModelTextMs": 2296.527,
+          "firstTextMs": 3897.318,
+          "inferences": [
+            {
+              "model": "qwen3.5:9b",
+              "toolSchemaCount": 1,
+              "toolSchemaCharacters": 5390,
+              "loadMs": 2.337,
+              "promptEvalMs": 2245.834,
+              "generationMs": 2289.981,
+              "providerTotalMs": 4580.596,
+              "promptTokensReported": 3228.0,
+              "completionTokens": 51.0,
+              "finishReason": "stop"
+            }
+          ]
+        }
+      },
+      "reason": "Catalogue seul sur une demande inconnue : aucune lecture, absence inventée. Variante rejetée, pas activée."
+    }
+  }
+}

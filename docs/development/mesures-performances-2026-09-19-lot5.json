@@ -1,0 +1,152 @@
+{
+  "date": "2026-09-19",
+  "lot": 5,
+  "scope": "Rendu, persistance et synchronisation du chat",
+  "method": {
+    "engine": "WKWebView natif macOS",
+    "build": "React développement, Vite local ; pas une mesure du bundle de production ni du calcul du modèle",
+    "fixture": "40 anciens messages, dont 20 tableaux de 25 lignes ; 100 mises à jour d'une nouvelle réponse",
+    "before": "Ancien chemin reproduit : JSON.parse puis JSON.stringify/localStorage à chaque publication, composant MessageBubble sans memo",
+    "after": "Vrais store.ts et MessageBubble.memo modifiés, cadence de points de reprise",
+    "operation": "100 flushSync React espacés de 20 ms demandées ; durées d'appel et du Profiler React, pas durées GPU/images de l'écran",
+    "visibility": "Deux paires à 1000 px dans une fenêtre alpha=0 ; une paire à 340 px dans une fenêtre visible. Ne pas agréger ces contextes.",
+    "precision": "performance.now() arrondi par WebKit ; une médiane de 0 ms signifie sous la résolution du chronomètre, jamais coût nul."
+  },
+  "samples": [
+    {
+      "case": "benchBefore1",
+      "ancienMessageIdentique": false,
+      "avant": true,
+      "ecritures": 100,
+      "errors": [],
+      "lectures": 100,
+      "renderMedianMs": 29,
+      "renderP95Ms": 35.00000000000364,
+      "updateMedianMs": 31,
+      "updateOver50ms": 2,
+      "updateP95Ms": 39.00000000000364,
+      "updates": 100,
+      "width": 1000
+    },
+    {
+      "case": "benchAfter1",
+      "ancienMessageIdentique": true,
+      "avant": false,
+      "ecritures": 3,
+      "errors": [],
+      "lectures": 0,
+      "renderMedianMs": 3,
+      "renderP95Ms": 5,
+      "updateMedianMs": 4,
+      "updateOver50ms": 0,
+      "updateP95Ms": 6,
+      "updates": 100,
+      "width": 1000
+    },
+    {
+      "case": "benchBefore2",
+      "ancienMessageIdentique": false,
+      "avant": true,
+      "ecritures": 100,
+      "errors": [],
+      "lectures": 100,
+      "renderMedianMs": 27.999999999992724,
+      "renderP95Ms": 30.000000000007276,
+      "updateMedianMs": 29.000000000007276,
+      "updateOver50ms": 1,
+      "updateP95Ms": 32.000000000007276,
+      "updates": 100,
+      "width": 1000
+    },
+    {
+      "case": "benchAfter2",
+      "ancienMessageIdentique": true,
+      "avant": false,
+      "ecritures": 3,
+      "errors": [],
+      "lectures": 0,
+      "renderMedianMs": 4,
+      "renderP95Ms": 5,
+      "updateMedianMs": 4.999999999985448,
+      "updateOver50ms": 0,
+      "updateP95Ms": 6,
+      "updates": 100,
+      "width": 1000
+    },
+    {
+      "case": "benchMiniBefore",
+      "ancienMessageIdentique": false,
+      "avant": true,
+      "ecritures": 100,
+      "errors": [],
+      "lectures": 100,
+      "renderMedianMs": 27,
+      "renderP95Ms": 30,
+      "updateMedianMs": 29,
+      "updateOver50ms": 1,
+      "updateP95Ms": 32,
+      "updates": 100,
+      "width": 340
+    },
+    {
+      "case": "benchMiniAfter",
+      "ancienMessageIdentique": true,
+      "avant": false,
+      "ecritures": 3,
+      "errors": [],
+      "lectures": 1,
+      "renderMedianMs": 3,
+      "renderP95Ms": 4,
+      "updateMedianMs": 0,
+      "updateOver50ms": 0,
+      "updateP95Ms": 5,
+      "updates": 100,
+      "width": 340
+    }
+  ],
+  "validation": {
+    "frontend": {
+      "files": 76,
+      "testsPassed": 931,
+      "typescript": "passed",
+      "desktopBuild": "passed; application 1.0.4 reconstruite et relancée localement, interface serveur copiée, signature Apple Development restaurée"
+    },
+    "nativeWebKit": {
+      "widths": [
+        1000,
+        340
+      ],
+      "themes": [
+        "dark",
+        "terminal/phosphor"
+      ],
+      "syntheticTableRows": 100,
+      "rowsPreserved": true,
+      "pageHorizontalOverflow": false,
+      "composerAfterStop": "enabled",
+      "nextRequestAfterStop": "100 rows",
+      "streamReaderCancellation": "observed",
+      "slowDigest": "No longer holds final text or composer; fake digest delayed until AbortSignal",
+      "javascriptErrors": 0
+    },
+    "sync": {
+      "setup": "Deux processus WKWebView, stockage éphémère séparé, origines 127.0.0.1 et localhost ; vrais store/convSync et routes ConversationsStore/FastAPI sur SQLite temporaire. Aucun accès à conversations.db personnel.",
+      "passed": [
+        "window to mini",
+        "mini to window",
+        "network failure retry from memory",
+        "concurrent message while other view streaming",
+        "cursor held during streaming",
+        "convergence: 3 messages without duplicates, full response preserved",
+        "deletion propagated, activeId null and empty displayed messages"
+      ]
+    }
+  },
+  "limits": [
+    "Windows/WebView2 non vérifié",
+    "Pas de p95 de latence utilisateur en production",
+    "Pas de mesure de consommation GPU ou CPU au repos",
+    "Le rendu de la réponse courante, les énormes historiques et la sérialisation du point de reprise gardent un coût",
+    "Un arrêt brutal peut perdre le texte depuis le dernier point de reprise effectif"
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "date": "2026-09-19",
+  "timezone": "America/Toronto",
+  "protocol": {
+    "model": "qwen3.5:9b",
+    "context": 16384,
+    "maxGeneratedTokens": 32,
+    "temperature": 0,
+    "seed": 42,
+    "history": "Anglais, 24 messages, contenu non conservé dans ce rapport",
+    "identity": "identité configurée incluse",
+    "tools": "non inclus dans la comparaison directe",
+    "interpretation": "Comparer le deuxième appel de chaque placement : contexte déjà préparé, seconde de la date modifiée ; premier appel après changement de disposition encore coûteux."
+  },
+  "comparison": [
+    {
+      "placement": "avant",
+      "seconde": "01",
+      "firstTextMs": 17356.0,
+      "totalMs": 17895.74,
+      "promptTokensReported": 7530,
+      "completionTokens": 12,
+      "promptEvalMs": 17296.11,
+      "loadMs": 10.03
+    },
+    {
+      "placement": "avant",
+      "seconde": "02",
+      "firstTextMs": 17373.11,
+      "totalMs": 17909.85,
+      "promptTokensReported": 7530,
+      "completionTokens": 12,
+      "promptEvalMs": 17327.73,
+      "loadMs": 2.23
+    },
+    {
+      "placement": "apres",
+      "seconde": "01",
+      "firstTextMs": 18011.77,
+      "totalMs": 18557.76,
+      "promptTokensReported": 7530,
+      "completionTokens": 12,
+      "promptEvalMs": 17966.04,
+      "loadMs": 2.33
+    },
+    {
+      "placement": "apres",
+      "seconde": "02",
+      "firstTextMs": 2768.79,
+      "totalMs": 3306.93,
+      "promptTokensReported": 7530,
+      "completionTokens": 12,
+      "promptEvalMs": 2747.27,
+      "loadMs": 2.77
+    }
+  ],
+  "liveServer": {
+    "texteRecu": true,
+    "performance": {
+      "requestId": "621311139b0d4281aef04c8c67f829cb",
+      "memoryMs": 0.954,
+      "toolSetupMs": 10.578,
+      "promptMs": 0.976,
+      "preparationMs": 1231.558,
+      "totalMs": 6430.125,
+      "firstModelTextMs": 5399.827,
+      "firstTextMs": 6417.062,
+      "inferences": [
+        {
+          "model": "qwen3.5:9b",
+          "loadMs": 9.215,
+          "promptEvalMs": 4096.531,
+          "generationMs": 1016.383,
+          "providerTotalMs": 5177.266,
+          "promptTokensReported": 1793.0,
+          "completionTokens": 24.0,
+          "finishReason": "stop"
+        }
+      ]
+    },
+    "healthDuringGeneration": {
+      "status": 200,
+      "latenceMs": 18.61
+    }
+  }
+}

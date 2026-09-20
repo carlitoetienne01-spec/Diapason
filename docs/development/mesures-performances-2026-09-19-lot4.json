@@ -1,0 +1,341 @@
+{
+  "date": "2026-09-19",
+  "scope": "Lot 4: priority of interactive Ollama calls over queued memory and prewarm, one Diapason process only. In-flight calls are not preempted.",
+  "syntheticContention": {
+    "protocol": "Synthetic provider: one slot, memory 300 ms, answer 50 ms, tool gap 40 ms; real engine/extractor, three alternating pairs. Not a GPU or application latency claim.",
+    "samples": [
+      {
+        "optimized": false,
+        "firstModelTextMs": 318.66,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "memorySubmitted",
+            "atMs": 0.42
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 0.43
+          },
+          {
+            "event": "questionRequested",
+            "atMs": 41.29
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 41.53
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 305.46
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 306.76
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 358.96
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 360.05
+          }
+        ]
+      },
+      {
+        "optimized": true,
+        "firstModelTextMs": 55.79,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "questionRequested",
+            "atMs": 40.66
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 41.05
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 41.06
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 96.08
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 96.5
+          },
+          {
+            "event": "memorySubmitted",
+            "atMs": 2134.77
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 2134.79
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 2438.06
+          }
+        ]
+      },
+      {
+        "optimized": false,
+        "firstModelTextMs": 319.73,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "memorySubmitted",
+            "atMs": 0.83
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 0.83
+          },
+          {
+            "event": "questionRequested",
+            "atMs": 41.59
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 42.22
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 305.87
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 306.51
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 360.52
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 361.4
+          }
+        ]
+      },
+      {
+        "optimized": true,
+        "firstModelTextMs": 56.12,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "questionRequested",
+            "atMs": 41.2
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 41.69
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 41.69
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 96.73
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 97.4
+          },
+          {
+            "event": "memorySubmitted",
+            "atMs": 2129.17
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 2129.18
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 2433.39
+          }
+        ]
+      },
+      {
+        "optimized": false,
+        "firstModelTextMs": 320.65,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "memorySubmitted",
+            "atMs": 1.06
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 1.07
+          },
+          {
+            "event": "questionRequested",
+            "atMs": 41.75
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 42.16
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 305.99
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 306.66
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 361.67
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 362.48
+          }
+        ]
+      },
+      {
+        "optimized": true,
+        "firstModelTextMs": 53.49,
+        "memoryStoredFixtureReady": true,
+        "events": [
+          {
+            "event": "questionRequested",
+            "atMs": 41.6
+          },
+          {
+            "event": "questionSubmitted",
+            "atMs": 42.35
+          },
+          {
+            "event": "questionStarted",
+            "atMs": 42.36
+          },
+          {
+            "event": "questionFinished",
+            "atMs": 94.29
+          },
+          {
+            "event": "turnFinished",
+            "atMs": 95.2
+          },
+          {
+            "event": "memorySubmitted",
+            "atMs": 2105.15
+          },
+          {
+            "event": "memoryStarted",
+            "atMs": 2105.17
+          },
+          {
+            "event": "memoryFinished",
+            "atMs": 2406.54
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "beforeMedianMs": 319.73,
+      "afterMedianMs": 55.79,
+      "allMemoryFixturesExtracted": true
+    }
+  },
+  "liveChecks": {
+    "healthHttpStatus": 200,
+    "protocol": "Same tree-growth prompt as lot 3; temperature 0, max_tokens 128, default desktop chat path. Two models resident before both calls. Not directly comparable to the one-resident-model lot-3 run; residency is not evidence of concurrent generation.",
+    "first": {
+      "residentModelsBeforeRequest": [
+        "qwen3.5:9b",
+        "gemma3:4b"
+      ],
+      "phase": "bureau",
+      "firstClientTextMs": 10087.75,
+      "totalClientMs": 14405.8,
+      "contentChunks": 138,
+      "contentCharacters": 560,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "4127dbd467934f43b63f436bbbfa2700",
+        "memoryMs": 12.685,
+        "toolSetupMs": 10.323,
+        "promptMs": 1.64,
+        "preparationMs": 1305.506,
+        "inferenceQueueMs": 0.003,
+        "totalMs": 14396.076,
+        "firstModelTextMs": 8663.321,
+        "firstTextMs": 10079.689,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 1,
+            "toolSchemaCharacters": 5502,
+            "loadMs": 6.289,
+            "promptEvalMs": 7309.067,
+            "generationMs": 5716.421,
+            "providerTotalMs": 13065.617,
+            "promptTokensReported": 3426.0,
+            "completionTokens": 130.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    },
+    "repeat": {
+      "residentModelsBeforeRequest": [
+        "qwen3.5:9b",
+        "gemma3:4b"
+      ],
+      "phase": "bureau-chaud",
+      "firstClientTextMs": 3774.27,
+      "totalClientMs": 8116.48,
+      "contentChunks": 138,
+      "contentCharacters": 560,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "1ae311d367b04424b53fb67febc555f4",
+        "memoryMs": 14.638,
+        "toolSetupMs": 0.096,
+        "promptMs": 2.59,
+        "preparationMs": 19.134,
+        "inferenceQueueMs": 0.012,
+        "totalMs": 8111.172,
+        "firstModelTextMs": 2349.249,
+        "firstTextMs": 3770.112,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "toolSchemaCount": 1,
+            "toolSchemaCharacters": 5502,
+            "loadMs": 8.077,
+            "promptEvalMs": 2289.434,
+            "generationMs": 5748.81,
+            "providerTotalMs": 8069.701,
+            "promptTokensReported": 3426.0,
+            "completionTokens": 130.0,
+            "finishReason": "stop"
+          }
+        ]
+      }
+    }
+  },
+  "tests": {
+    "passed": 1632,
+    "skipped": 14,
+    "deselected": 4,
+    "scope": "security, engines, telemetry, memory and selected chat/prewarm server suites; not whole repository"
+  },
+  "limitations": [
+    "Requests from other processes and direct provider callers bypass this in-process admission.",
+    "An already running memory inference can still delay an interactive request.",
+    "Only queued memory and prewarm are classified as background here; other agents/periodic jobs require separate classification.",
+    "Memory queue remains bounded at 256 exchanges and best-effort on overflow or process shutdown; no durable queue added.",
+    "No desktop render latency or GPU speedup inferred from the synthetic provider."
+  ]
+}

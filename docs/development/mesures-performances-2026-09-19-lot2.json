@@ -1,0 +1,120 @@
+{
+  "date": "2026-09-19",
+  "protocol": {
+    "source": "API Diapason locale, aucune écriture dans les discussions",
+    "model": "qwen3.5:9b",
+    "temperature": 0,
+    "question": "Explication des arbres en huit phrases courtes, sans demande de données personnelles",
+    "beforeAfter": {
+      "maxTokens": 192,
+      "explicitToolSchemas": 1
+    },
+    "normalDesktopPath": {
+      "maxTokens": 128,
+      "explicitToolSchemas": null,
+      "automaticTools": true
+    },
+    "limitations": [
+      "Un essai par cas, ni médiane ni p95.",
+      "Les réponses et les contextes ne sont pas identiques ; ne pas attribuer toute la différence au contrôle de sortie.",
+      "Premier texte reçu par un client HTTP local, rendu WebKit non mesuré.",
+      "Le parcours normal ne possède pas ici de mesure avant correction."
+    ]
+  },
+  "measurements": [
+    {
+      "phase": "avant",
+      "firstClientTextMs": 12954.17,
+      "totalClientMs": 12978.87,
+      "contentChunks": 159,
+      "contentCharacters": 697,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "a5ed7fb4147a4cfc94ac790e1d06bba5",
+        "memoryMs": 4.085,
+        "promptMs": 3.251,
+        "preparationMs": 1127.326,
+        "totalMs": 12967.422,
+        "firstModelTextMs": 5904.605,
+        "firstTextMs": 12944.19,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "loadMs": 7.247,
+            "promptEvalMs": 4684.038,
+            "generationMs": 7039.541,
+            "providerTotalMs": 11753.542,
+            "promptTokensReported": 2144.0,
+            "completionTokens": 160.0,
+            "finishReason": "stop"
+          }
+        ]
+      },
+      "holdAfterFirstModelTextMs": 7039.585
+    },
+    {
+      "phase": "apres",
+      "firstClientTextMs": 5504.93,
+      "totalClientMs": 9478.86,
+      "contentChunks": 137,
+      "contentCharacters": 546,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "ad620605d74a445293707d3a2913508a",
+        "memoryMs": 1.505,
+        "promptMs": 54.162,
+        "preparationMs": 1225.41,
+        "totalMs": 9469.045,
+        "firstModelTextMs": 3739.484,
+        "firstTextMs": 5497.972,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "loadMs": 7.458,
+            "promptEvalMs": 2471.308,
+            "generationMs": 5714.971,
+            "providerTotalMs": 8222.915,
+            "promptTokensReported": 2177.0,
+            "completionTokens": 130.0,
+            "finishReason": "stop"
+          }
+        ]
+      },
+      "holdAfterFirstModelTextMs": 1758.488
+    },
+    {
+      "phase": "bureau",
+      "firstClientTextMs": 25554.38,
+      "totalClientMs": 29637.61,
+      "contentChunks": 129,
+      "contentCharacters": 528,
+      "done": true,
+      "toolRequested": false,
+      "performance": {
+        "requestId": "a9482dcd67ed4b9f93fdd2e4716ffd6d",
+        "memoryMs": 1.983,
+        "toolSetupMs": 36.975,
+        "promptMs": 0.711,
+        "preparationMs": 40.676,
+        "totalMs": 29630.549,
+        "firstModelTextMs": 23982.371,
+        "firstTextMs": 25549.968,
+        "inferences": [
+          {
+            "model": "qwen3.5:9b",
+            "loadMs": 10.511,
+            "promptEvalMs": 23884.572,
+            "generationMs": 5635.138,
+            "providerTotalMs": 29571.086,
+            "promptTokensReported": 10231.0,
+            "completionTokens": 122.0,
+            "finishReason": "stop"
+          }
+        ]
+      },
+      "holdAfterFirstModelTextMs": 1567.597
+    }
+  ]
+}

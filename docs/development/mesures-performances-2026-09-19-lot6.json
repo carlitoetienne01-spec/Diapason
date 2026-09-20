@@ -1,0 +1,137 @@
+{
+  "date": "2026-09-19",
+  "lot": 6,
+  "scope": "Listes Succès, réponses tardives et sondes secondaires",
+  "protocol": {
+    "api": "Trois GET successifs par route sur le serveur local authentifié ; aucun contenu utilisateur enregistré dans ces mesures.",
+    "webkit": "WKWebView native visible, bundle React en développement, données artificielles et réseau simulé ; aucune écriture dans les bases personnelles."
+  },
+  "before": {
+    "tasks?include_done=true": {
+      "bytes": 840823,
+      "ms": [
+        62.25,
+        17.56,
+        14.64
+      ]
+    },
+    "notes?search=": {
+      "bytes": 1101391,
+      "ms": [
+        6.9,
+        3.15,
+        2.97
+      ]
+    },
+    "projects?search=": {
+      "bytes": 3361,
+      "ms": [
+        2.22,
+        1.43,
+        1.5
+      ]
+    }
+  },
+  "after": {
+    "tasks?include_done=true": {
+      "bytes": 840823,
+      "ms": [
+        58.49,
+        11.74,
+        10.15
+      ]
+    },
+    "notes?search=": {
+      "bytes": 1101391,
+      "ms": [
+        7.44,
+        4.26,
+        3.24
+      ]
+    },
+    "notes/resumes?search=": {
+      "bytes": 5799,
+      "ms": [
+        26.34,
+        22.67,
+        22.71
+      ]
+    },
+    "projects?search=": {
+      "bytes": 3361,
+      "ms": [
+        2.32,
+        1.55,
+        1.36
+      ]
+    }
+  },
+  "notesPayloadReductionPercent": 99.47,
+  "taskSqlSelects": {
+    "beforeFor702Tasks": 1405,
+    "afterForNonemptyList": 2,
+    "regressionTestTasks": 24
+  },
+  "nativeChecks": [
+    {
+      "case": "Tâches avec projets et récurrences retardés de 2500 ms",
+      "observed": "Les sept tâches sont présentes au contrôle après 150 ms."
+    },
+    {
+      "case": "Recherche 0 puis 1, ancienne réponse retardée de 800 ms",
+      "observed": "Seul Cartable 1 reste affiché après réception des deux réponses."
+    },
+    {
+      "case": "Ouverture 0 puis 1, délais 700 et 100 ms",
+      "observed": "La liste garde son indicateur pendant le chargement ; aucun éditeur vide ; seul Document complet 1 s’ouvre."
+    },
+    {
+      "case": "Saisie B pendant la sauvegarde de A, délai serveur 800 ms",
+      "observed": "La réponse A ne remplace pas B ; envois A puis B, état final Enregistré."
+    },
+    {
+      "case": "Échec PATCH 503 et retour à la liste",
+      "observed": "La note reste ouverte et modifiée ; réessai manuel réussi, texte conservé."
+    },
+    {
+      "case": "Notes à 340 px, mode compact, Terminal phosphore",
+      "observed": "Document et tableau présents, aucun débordement horizontal de page ni erreur JavaScript."
+    },
+    {
+      "case": "Projets et Planificateur à 340 px",
+      "observed": "Montages réussis sans erreur JavaScript ni débordement horizontal ; sept tâches dans le jour du planificateur."
+    }
+  ],
+  "automated": {
+    "frontend": 944,
+    "frontendFiles": 79,
+    "pythonSuccesAndContracts": 250,
+    "typescript": "passed",
+    "ruffChangedBackendFiles": "passed",
+    "contractRoutes": 100
+  },
+  "limits": [
+    "Trois GET ne mesurent pas un p95 représentatif ; le premier de chaque série n’est pas un démarrage à froid contrôlé.",
+    "Le résumé des notes économise le transfert et le travail côté client ; le calcul HTML côté serveur prend environ 23 ms, contre environ 3 à 4 ms pour la liste complète.",
+    "Les tâches conservent leur contenu complet et leurs sous-tâches : même charge utile de 840823 octets.",
+    "La suspension des sondes est vérifiée par tests de visibilité, pas par une campagne CPU/GPU au repos.",
+    "WebView2 Windows, coût graphique de production et saturation SQLite restent à mesurer.",
+    "Le jeu Projets artificiel ne vérifie pas le recomptage métier des tâches ; ces règles restent couvertes par les tests serveur."
+  ],
+  "activation": {
+    "/health": {
+      "status": 200,
+      "bytes": 15
+    },
+    "/v1/succes/notes/resumes": {
+      "status": 200,
+      "bytes": 5799,
+      "sansContenu": true,
+      "nombre": 12
+    },
+    "interfaceAppEtServeurIdentique": true,
+    "sha256Interface": "428efa1fa33482e7d3ce922bad2607ec0a4fe0a937d10e2b5014c20503e3959a",
+    "appEnCours": true,
+    "desktopVersion": "1.0.4, reconstruction locale"
+  }
+}

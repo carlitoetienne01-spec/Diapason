@@ -1,0 +1,164 @@
+{
+  "mesures_api": [
+    {
+      "route": "/health",
+      "statut": 200,
+      "octets": 15,
+      "temps_ms": [
+        18.52,
+        15.79,
+        12.48
+      ],
+      "mediane_ms": 15.79
+    },
+    {
+      "route": "/v1/succes/tasks?include_done=true",
+      "statut": 200,
+      "octets": 840823,
+      "temps_ms": [
+        56.6,
+        19.2,
+        16.41
+      ],
+      "mediane_ms": 19.2
+    },
+    {
+      "route": "/v1/succes/notes",
+      "statut": 200,
+      "octets": 965671,
+      "temps_ms": [
+        7.14,
+        4.21,
+        4.78
+      ],
+      "mediane_ms": 4.78
+    },
+    {
+      "route": "/v1/succes/projects",
+      "statut": 200,
+      "octets": 3361,
+      "temps_ms": [
+        2.94,
+        1.98,
+        1.75
+      ],
+      "mediane_ms": 1.98
+    },
+    {
+      "route": "/v1/succes/dashboard",
+      "statut": 200,
+      "octets": 4488,
+      "temps_ms": [
+        15.8,
+        14.57,
+        12.32
+      ],
+      "mediane_ms": 14.57
+    }
+  ],
+  "mesures_modele": [
+    {
+      "cas": "court_1",
+      "premier_texte_s": 0.399,
+      "total_s": 1.984,
+      "load_duration_s": 0.005,
+      "prompt_eval_duration_s": 0.371,
+      "eval_duration_s": 1.585,
+      "total_duration_s": 1.983,
+      "prompt_eval_count": 25,
+      "eval_count": 29,
+      "done_reason": "stop",
+      "jetons_par_s": 18.3
+    },
+    {
+      "cas": "court_identique_2",
+      "premier_texte_s": 0.094,
+      "total_s": 1.673,
+      "load_duration_s": 0.002,
+      "prompt_eval_duration_s": 0.082,
+      "eval_duration_s": 1.578,
+      "total_duration_s": 1.671,
+      "prompt_eval_count": 25,
+      "eval_count": 29,
+      "done_reason": "stop",
+      "jetons_par_s": 18.4
+    },
+    {
+      "cas": "historique_prefixe_fixe_1",
+      "premier_texte_s": 15.873,
+      "total_s": 16.694,
+      "load_duration_s": 0.003,
+      "prompt_eval_duration_s": 15.857,
+      "eval_duration_s": 0.821,
+      "total_duration_s": 16.692,
+      "prompt_eval_count": 5910,
+      "eval_count": 14,
+      "done_reason": "stop",
+      "jetons_par_s": 17.1
+    },
+    {
+      "cas": "historique_prefixe_fixe_2",
+      "premier_texte_s": 0.116,
+      "total_s": 0.903,
+      "load_duration_s": 0.003,
+      "prompt_eval_duration_s": 0.099,
+      "eval_duration_s": 0.787,
+      "total_duration_s": 0.901,
+      "prompt_eval_count": 5910,
+      "eval_count": 14,
+      "done_reason": "stop",
+      "jetons_par_s": 17.8
+    },
+    {
+      "cas": "historique_prefixe_modifie",
+      "premier_texte_s": 16.252,
+      "total_s": 17.023,
+      "load_duration_s": 0.002,
+      "prompt_eval_duration_s": 16.213,
+      "eval_duration_s": 0.771,
+      "total_duration_s": 17.02,
+      "prompt_eval_count": 5910,
+      "eval_count": 14,
+      "done_reason": "stop",
+      "jetons_par_s": 18.2
+    },
+    {
+      "cas": "historique_prefixe_modifie_identique",
+      "erreur": "TimeoutError",
+      "total_s": 100.0
+    }
+  ],
+  "config": {
+    "reflexion_activee": true,
+    "modele_reflexion": "qwen3:14b",
+    "memoire_contexte": true,
+    "memoire_top_k": 5,
+    "memoire_budget": 2048,
+    "memoire_stockage_faits": "local",
+    "memoire_recherche": "sqlite"
+  },
+  "modeles_charges": [
+    {
+      "name": "qwen3.5:9b",
+      "size": 6031262349,
+      "size_vram": 6031262349,
+      "context_length": 16384
+    }
+  ],
+  "historique": {
+    "messages": 24,
+    "caracteres": 17300
+  },
+  "date": "2026-09-19",
+  "timezone": "America/Toronto",
+  "protocol": {
+    "max_generated_tokens": 32,
+    "temperature": 0,
+    "seed": 42,
+    "think": false,
+    "context": 16384,
+    "engine": "Ollama direct",
+    "scope": "durées et volumes, aucun contenu utilisateur",
+    "concurrency": "dernière mesure perturbée par une autre requête qwen3.8:27b-mlx ; délai limite 100 s"
+  }
+}
