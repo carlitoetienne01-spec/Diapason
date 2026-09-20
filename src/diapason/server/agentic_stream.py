@@ -30,10 +30,26 @@ import asyncio
 import json
 import logging
 import time
+from contextlib import aclosing
 from typing import Any, AsyncIterator, Iterable, Sequence
 
 from diapason.core.promesse import est_une_promesse_sans_acte
 from diapason.core.types import Message, Role, ToolCall
+from diapason.engine._base import EngineToolsUnsupportedError
+from diapason.server.questions_chat import (
+    CADRAGE_MAX_JETONS,
+    POSER_QUESTIONS,
+    RAPPEL,
+    ajouter_consigne,
+    cadrer_sans_outils,
+    consigne_sans_outils,
+    est_un_cadrage_textuel,
+    schema_questions,
+    texte_questions,
+    valider_questions,
+)
+from diapason.server.reponses_longues import prolonger_flux
+from diapason.server.trousse_chat import MAX_CHARGEMENTS, TrousseChat
 
 logger = logging.getLogger("diapason.server")
 
@@ -193,6 +209,7 @@ async def stream_with_tools(
     temperature: float = 0.7,
     max_tokens: int = 1024,
     max_tool_turns: int = DEFAULT_MAX_TOOL_TURNS,
+    interactive_questions: bool = False,
 ) -> AsyncIterator[ToolStreamEvent]:
     """Diffuse la réponse du modèle en exécutant les outils qu'il réclame.
 
@@ -201,8 +218,13 @@ async def stream_with_tools(
     ``executor`` est un ``ToolExecutor`` déjà porteur de sa politique de
     sécurité — ce module ne décide jamais seul qu'un appel est permis.
     """
-    specs = [outil.to_openai_function() for outil in tools]
+    trousse = TrousseChat(tools, messages)
     travail: list[Message] = list(messages)
+    if interactive_questions:
+        travail = ajouter_consigne(travail)
+        # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
+        # en prose. Le rappel au tour courant a produit le véritable appel.
+        travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
     deja_vus: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
@@ -210,16 +232,32 @@ async def stream_with_tools(
     # — un compte rendu d'outil n'est pas une promesse en l'air.
     sommation_faite = False
     un_outil_a_tourne = False
+    cadrage_requis = False
+    outils_indisponibles = False
 
-    for tour in range(max_tool_turns + 1):
+    tours_actions = 0
+    passages = max_tool_turns + MAX_CHARGEMENTS + 1
+    for passage in range(passages):
         # Le tour de trop se fait sans outils : on veut une phrase, pas un
         # nouvel appel qu'on n'exécuterait pas.
-        dernier_tour = tour == max_tool_turns
+        # 19/09/2026 : charger un schéma ne doit pas prendre la place d'une
+        # vraie action dans les trois tours permis. La découverte reste bornée.
+        dernier_tour = tours_actions >= max_tool_turns or passage == passages - 1
+        specs = [] if outils_indisponibles else trousse.specs
+        if interactive_questions:
+            specs = [*specs, schema_questions()]
         specs_du_tour = None if dernier_tour else specs
+        verifier_lecture = (
+            not dernier_tour
+            and not outils_indisponibles
+            and not un_outil_a_tourne
+            and trousse.verifier_lecture(messages)
+        )
 
         morceaux: list[str] = []
         fragments: dict[int, dict[str, Any]] = {}
         premier_du_tour = True
+        raison_arret = None
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -228,32 +266,191 @@ async def stream_with_tools(
         }
         if specs_du_tour:
             kwargs["tools"] = specs_du_tour
-            kwargs["temperature"] = min(temperature, TOOL_TURN_TEMPERATURE)
+            kwargs["tools_required"] = True
+            kwargs["temperature"] = (
+                0.0
+                if interactive_questions
+                else min(temperature, TOOL_TURN_TEMPERATURE)
+            )
 
-        async for morceau in engine.stream_full(travail, **kwargs):
-            if morceau.content:
-                if premier_du_tour and deja_ecrit and morceau.content.strip():
-                    # Le tour précédent avait écrit (« Je regarde tes
-                    # tâches… ») et celui-ci reprend après l'outil. Sans ce
-                    # séparateur les deux se recollent :
-                    # « Je regarde tes tâches.Tu as une tâche ».
-                    yield ToolStreamEvent("token", "\n\n")
-                premier_du_tour = False
-                # Du blanc n'est pas du texte écrit : un tour qui n'émet que
-                # des espaces ne doit pas faire précéder le suivant d'un saut.
-                deja_ecrit = deja_ecrit or bool(morceau.content.strip())
-                morceaux.append(morceau.content)
-                yield ToolStreamEvent("token", morceau.content)
-            if morceau.tool_calls:
-                _fusionner_fragments(fragments, morceau.tool_calls)
+        try:
+            async with aclosing(
+                prolonger_flux(engine, travail, **kwargs)
+            ) as source_flux:
+                async for morceau in source_flux:
+                    if morceau.content:
+                        morceaux.append(morceau.content)
+                        if (
+                            not verifier_lecture
+                            and premier_du_tour
+                            and deja_ecrit
+                            and morceau.content.strip()
+                        ):
+                            # Le tour précédent avait écrit (« Je regarde tes
+                            # tâches… ») et celui-ci reprend après l'outil. Sans ce
+                            # séparateur les deux se recollent :
+                            # « Je regarde tes tâches.Tu as une tâche ».
+                            yield ToolStreamEvent("token", "\n\n")
+                        if not verifier_lecture:
+                            premier_du_tour = False
+                            # Un tour composé d'espaces ne doit pas faire
+                            # précéder le suivant d'un saut de ligne.
+                            deja_ecrit = deja_ecrit or bool(morceau.content.strip())
+                            yield ToolStreamEvent("token", morceau.content)
+                    if morceau.tool_calls:
+                        _fusionner_fragments(fragments, morceau.tool_calls)
+                    if morceau.finish_reason:
+                        raison_arret = morceau.finish_reason
+        except EngineToolsUnsupportedError:
+            # 19/09/2026 : Gemma disait « Appelle diapason_ask_questions » car
+            # Ollama retirait les outils sans retirer leurs consignes. Le JSON
+            # contraint fournit les mêmes choix, sans fonction ni exécuteur.
+            if morceaux or fragments or outils_indisponibles:
+                raise
+            if interactive_questions:
+                try:
+                    demande = await cadrer_sans_outils(engine, model, list(messages))
+                except Exception:
+                    logger.warning(
+                        "Questionnaire sans outils indisponible", exc_info=True
+                    )
+                    yield ToolStreamEvent(
+                        "token",
+                        "Je n’ai pas pu préparer le questionnaire. Tu peux préciser "
+                        "ta demande ici pour continuer.",
+                    )
+                    return
+                if demande is not None:
+                    yield ToolStreamEvent("questions", demande)
+                    yield ToolStreamEvent("token", texte_questions(demande))
+                    return
+            outils_indisponibles = True
+            interactive_questions = False
+            travail = consigne_sans_outils(list(messages))
+            continue
 
         appels = [fragments[i] for i in sorted(fragments)]
+        if outils_indisponibles and appels:
+            yield ToolStreamEvent(
+                "token", "Je n’ai pas pu terminer cette demande sans accès aux outils."
+            )
+            return
+        cadrage = next(
+            (
+                a
+                for a in appels
+                if (a.get("function") or {}).get("name") == POSER_QUESTIONS
+            ),
+            None,
+        )
+        if interactive_questions and cadrage is not None:
+            # 19/09/2026 : le cadrage suspend LE TOUR, pas un thread Ollama.
+            # Même si le modèle joint une création au même lot, aucune action
+            # de ce lot ne s'exécute avant que l'utilisateur ait répondu.
+            try:
+                demande = valider_questions(
+                    cadrage["function"].get("arguments") or "{}"
+                )
+            except ValueError:
+                cadrage_requis = True
+                if dernier_tour:
+                    yield ToolStreamEvent("token", "\n\nPeux-tu préciser ta demande ?")
+                    return
+                travail.append(
+                    Message(
+                        role=Role.SYSTEM,
+                        content=(
+                            "Le questionnaire n'est pas valide. Utilise des "
+                            "questions distinctes, utiles et concises, chacune "
+                            "avec 2 à 4 options "
+                            "{label, description}. Ne lance aucune autre action "
+                            "avant la réponse de l'utilisateur."
+                        ),
+                    )
+                )
+                tours_actions += 1
+                continue
+            yield ToolStreamEvent("questions", demande)
+            yield ToolStreamEvent("token", "\n\n" + texte_questions(demande))
+            return
+        if cadrage_requis and appels:
+            yield ToolStreamEvent("token", "\n\nPeux-tu préciser ta demande ?")
+            return
+        if verifier_lecture:
+            if not appels and raison_arret == "stop":
+                # 19/09/2026 : le 9b affirmait ne voir aucun message sans lecture.
+                # Ne pas diffuser cette réponse : revenir UNE fois aux schémas
+                # complets, sans injecter l'affirmation non vérifiée dans le fil.
+                trousse.elargir()
+                continue
+            if deja_ecrit and any(m.strip() for m in morceaux):
+                yield ToolStreamEvent("token", "\n\n")
+            for contenu in morceaux:
+                yield ToolStreamEvent("token", contenu)
+            deja_ecrit = deja_ecrit or any(m.strip() for m in morceaux)
+            if not appels:
+                # Une coupure ou un arrêt de sécurité n'autorise pas une
+                # nouvelle génération destinée à contourner cet arrêt.
+                return
         if not appels:
             # La PROMESSE SANS L'ACTE, version chat : « je regarde tes
             # tâches » sans appel d'outil. La promesse est déjà partie dans
             # le flux — la livraison la suit après le séparateur \n\n, et
             # les événements tool_start rendent la reprise visible.
             texte_du_tour = "".join(morceaux)
+            if (
+                interactive_questions
+                and raison_arret == "stop"
+                and est_un_cadrage_textuel(texte_du_tour)
+            ):
+                # 19/09/2026 : le 9b posait quatre questions en Markdown malgré
+                # l'outil. Une seule conversion isolée, sans exécuteur, transforme
+                # CE cadrage en boutons ; une réponse normale ne paie pas ce tour.
+                fragments_cadrage: dict[int, dict[str, Any]] = {}
+                conversion = [
+                    Message(
+                        role=Role.USER,
+                        content=(
+                            "Convertis ce questionnaire en appel de "
+                            "diapason_ask_questions. "
+                            "Appelle cet outil maintenant, sans prose. Conserve toutes "
+                            "les questions utiles, sans doublons ni quota, "
+                            "deux à quatre options courtes chacune, "
+                            "et la langue du texte. N'exécute pas la demande "
+                            "d'origine.\n\n" + texte_du_tour
+                        ),
+                    )
+                ]
+                try:
+                    async with aclosing(
+                        engine.stream_full(
+                            conversion,
+                            model=model,
+                            tools=[schema_questions()],
+                            temperature=0.0,
+                            max_tokens=CADRAGE_MAX_JETONS,
+                        )
+                    ) as flux_cadrage:
+                        async for morceau in flux_cadrage:
+                            if morceau.tool_calls:
+                                _fusionner_fragments(
+                                    fragments_cadrage, morceau.tool_calls
+                                )
+                except Exception:  # la prose de secours est déjà livrée
+                    logger.warning("Conversion du cadrage indisponible", exc_info=True)
+                    return
+                for candidat in fragments_cadrage.values():
+                    fonction = candidat.get("function") or {}
+                    if fonction.get("name") != POSER_QUESTIONS:
+                        continue
+                    try:
+                        demande = valider_questions(fonction.get("arguments") or "{}")
+                    except ValueError:
+                        continue
+                    yield ToolStreamEvent("questions", demande)
+                    return
+                # Le texte déjà écrit reste utilisable si la conversion échoue.
+                return
             if (
                 not dernier_tour
                 and specs
@@ -275,9 +472,19 @@ async def stream_with_tools(
                     )
                 )
                 logger.warning("chat promise without action, retrying with a summons")
+                tours_actions += 1
                 continue
             return
         if dernier_tour:
+            if any(
+                trousse.est_chargement((a.get("function") or {}).get("name", ""))
+                for a in appels
+            ):
+                yield ToolStreamEvent(
+                    "token",
+                    "\n\nJe n’ai pas pu préparer les outils nécessaires pour "
+                    "terminer cette demande.",
+                )
             return
 
         # Le modèle veut des outils. On enregistre son intention avant les
@@ -298,6 +505,7 @@ async def stream_with_tools(
             )
         )
 
+        chargement_seul = True
         for appel in appels:
             fonction = appel.get("function") or {}
             nom = fonction.get("name", "")
@@ -305,6 +513,19 @@ async def stream_with_tools(
 
             if not nom:
                 continue
+
+            if trousse.est_chargement(nom):
+                travail.append(
+                    Message(
+                        role=Role.TOOL,
+                        name=nom,
+                        tool_call_id=appel.get("id") or "",
+                        content=trousse.charger(arguments),
+                    )
+                )
+                continue
+
+            chargement_seul = False
 
             signature = _signature(nom, arguments)
             if signature in deja_vus:
@@ -330,6 +551,10 @@ async def stream_with_tools(
             un_outil_a_tourne = True
             debut = time.time()
             try:
+                if nom not in trousse.noms:
+                    raise ValueError(
+                        "Cet outil n'appartient pas à la trousse autorisée."
+                    )
                 resultat = await asyncio.to_thread(
                     executor.execute,
                     ToolCall(id=appel.get("id") or "", name=nom, arguments=arguments),
@@ -362,6 +587,9 @@ async def stream_with_tools(
                     content=contenu,
                 )
             )
+
+        if not chargement_seul:
+            tours_actions += 1
 
 
 __all__ = [

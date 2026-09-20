@@ -13,6 +13,15 @@
 
 export const MESSAGES = {
   en: {
+    'chat.questions.label': 'A few details',
+    'chat.questions.step': 'Question {current} of {total}',
+    'chat.questions.free': 'Or write your own answer',
+    'chat.questions.placeholder': 'Your answer…',
+    'chat.questions.back': 'Previous',
+    'chat.questions.next': 'Next',
+    'chat.questions.send': 'Send my answers',
+    'chat.questions.answered': 'Answers sent',
+    'chat.questions.closed': 'Earlier questions',
     'composer.contextApprox': 'Approximate — history, reply and draft included.',
     'composer.contextTokens': '{used} / {max} tokens ({pct}%)',
     'composer.contextWindow': 'Context window',
@@ -542,6 +551,7 @@ export const MESSAGES = {
     'chat.input.stopGenerating': 'Stop generating',
     'chat.input.toSend': 'to send',
     'chat.message.copy': 'Copy message',
+    'chat.message.copyFailed': 'Copy failed. Please try again.',
     'chat.research.failed': '**Research failed:** {message}',
     'chat.research.noDetail': 'Research failed (no detail provided)',
     'chat.research.stopped': '**Research stopped:** {message}',
@@ -1147,6 +1157,15 @@ export const MESSAGES = {
   },
 
   fr: {
+    'chat.questions.label': 'Quelques précisions',
+    'chat.questions.step': 'Question {current} sur {total}',
+    'chat.questions.free': 'Ou écris ta propre réponse',
+    'chat.questions.placeholder': 'Ta réponse…',
+    'chat.questions.back': 'Précédent',
+    'chat.questions.next': 'Suivant',
+    'chat.questions.send': 'Envoyer mes réponses',
+    'chat.questions.answered': 'Réponses envoyées',
+    'chat.questions.closed': 'Questions précédentes',
     'composer.contextApprox': 'Approximatif — historique, réponse et brouillon compris.',
     'composer.contextTokens': '{used} / {max} jetons ({pct} %)',
     'composer.contextWindow': 'Fenêtre de contexte',
@@ -1671,6 +1690,7 @@ export const MESSAGES = {
     'chat.input.stopGenerating': 'Arrêter la génération',
     'chat.input.toSend': 'pour envoyer',
     'chat.message.copy': 'Copier le message',
+    'chat.message.copyFailed': 'La copie a échoué. Réessaie.',
     'chat.research.failed': '**Échec de la recherche :** {message}',
     'chat.research.noDetail': 'Échec de la recherche (aucun détail fourni)',
     'chat.research.stopped': '**Recherche interrompue :** {message}',

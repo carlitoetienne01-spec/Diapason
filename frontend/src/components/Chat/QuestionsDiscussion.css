@@ -1,0 +1,49 @@
+/* 19/09/2026 : une carte dans le fil, sans popup ni hauteur bloquée. Les
+   mêmes tokens que le compositeur suivent le thème des deux WKWebView. */
+.questions-discussion {
+  color: var(--color-text);
+  padding: clamp(14px, 3vw, 22px);
+  font-size: .875rem;
+  overflow-wrap: anywhere;
+}
+.questions-discussion fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.questions-intro { margin: 0 0 16px; color: var(--color-text-secondary); }
+.questions-position { display: flex; gap: 12px; align-items: center; justify-content: space-between; color: var(--color-text-secondary); font-size: .8rem; margin-bottom: 12px; }
+.questions-progression { flex: 0 1 84px; min-width: 24px; height: 3px; border-radius: 3px; overflow: hidden; background: var(--color-border); }
+.questions-progression span { display: block; height: 100%; background: var(--color-accent); transform-origin: left; }
+.questions-discussion legend { font-size: 1rem; font-weight: 500; padding: 0; margin-bottom: 16px; }
+.questions-choix { display: grid; gap: 8px; }
+.questions-choix button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; width: 100%; padding: 11px 13px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); text-align: left; transition: background 160ms, border-color 160ms; cursor: pointer; }
+.questions-choix button:hover:not(:disabled), .questions-choix button[aria-pressed="true"] { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-secondary)); }
+.questions-choix strong { font-weight: 500; display: block; }
+.questions-choix small { display: block; font-size: .8rem; margin-top: 2px; color: var(--color-text-secondary); }
+.questions-coche { flex-shrink: 0; display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--color-border); border-radius: 50%; }
+.questions-coche svg { visibility: hidden; }
+[aria-pressed="true"] > .questions-coche { border-color: var(--color-accent); color: var(--color-accent); }
+[aria-pressed="true"] > .questions-coche svg { visibility: visible; }
+.questions-libre { display: block; color: var(--color-text-secondary); margin: 16px 0 7px; font-size: .8rem; }
+.questions-discussion textarea { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); resize: vertical; color: var(--color-text); font: inherit; }
+.questions-discussion textarea::placeholder { color: var(--color-text-tertiary); }
+.questions-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.questions-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 9px 12px; border-radius: var(--radius-md); cursor: pointer; }
+.questions-retour { color: var(--color-text-secondary); }
+.questions-suite { margin-left: auto; background: var(--color-accent); color: var(--color-on-accent); font-weight: 500; }
+.questions-discussion button:disabled { opacity: .45; cursor: default; }
+.questions-discussion button:focus-visible, .questions-discussion textarea:focus-visible, .questions-discussion summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.questions-terminees { padding: 12px 16px; }
+.questions-terminees summary { cursor: pointer; display: flex; gap: 9px; align-items: center; color: var(--color-text-secondary); min-height: 28px; }
+.questions-terminees summary::-webkit-details-marker { display: none; }
+.questions-terminees summary > svg:last-child { margin-left: auto; }
+.questions-terminees dl > div { margin-top: 14px; }
+.questions-terminees dt { color: var(--color-text-secondary); }
+.questions-terminees dd { margin: 4px 0 0; }
+@media (max-width: 639px) {
+  .questions-intro, .questions-choix small { display: none; }
+  .questions-libre { margin-top: 12px; }
+  .questions-discussion textarea { font-size: 1rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .questions-progression span { transition: transform 180ms ease-out; }
+  .questions-etape { animation: questions-etape 180ms ease-out; }
+  @keyframes questions-etape { from { opacity: .5; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
+}

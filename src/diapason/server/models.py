@@ -32,6 +32,8 @@ class ChatCompletionRequest(BaseModel):
     # desktop client opts in explicitly so external callers never launch apps
     # merely by posting conversational text.
     action_mode: str = "off"
+    # L'ancien client et l'API standard gardent leur réponse textuelle.
+    interactiveQuestions: bool = False
 
 
 # ---------------------------------------------------------------------------

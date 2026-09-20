@@ -127,6 +127,8 @@ export interface ChatMessage {
   usage?: TokenUsage;
   telemetry?: MessageTelemetry;
   audio?: { url: string };
+  questions?: import('../lib/questionsChat').QuestionsChat;
+  questionReply?: import('../lib/questionsChat').ReponsesQuestions;
 }
 
 export interface Conversation {
