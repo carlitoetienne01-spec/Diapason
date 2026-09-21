@@ -137,6 +137,31 @@ Deux compléments mesurés le même après-midi :
   qui suivait le « Merci ! » est resté chaud : llama-server conserve le
   préfixe outillé même après un prompt sans outils.
 
+### La fenêtre de contexte à 32 768 — 20 septembre, soir
+
+`[intelligence] num_ctx = 32768` dans `config.toml` (nouvelle clé, câblée
+sur `DIAPASON_NUM_CTX` que l'environnement peut encore imposer pour un
+appel ponctuel). Mesures sur le 9b, même Mac :
+
+| | 16 384 | 32 768 |
+|---|---:|---:|
+| Cache KV alloué par llama-server (8 couches d'attention sur 32) | 512 Mio | 1 024 Mio |
+| Modèle résident selon `/api/ps` | 5,62 Gio | 6,18 Gio |
+| Chargement du runner | 2,8 s | 2,8 s |
+| Préremplissage du préfixe à froid (10 640 jetons) | 25,6 s (416 jetons/s) | 25,2 s (423 jetons/s) |
+| Tours courts, préfixe chaud (premier texte) | 3,2 – 3,5 s | 3,2 – 5,7 s |
+| Conversation de 17 300 jetons, tours suivants | *tronquée* | 3,3 – 3,5 s, `truncated = 0` |
+
+Le coût est de 512 Mio ; la vitesse de préremplissage ne bouge pas. Sur une
+conversation amorcée à 17 300 jetons (quatorze échanges synthétiques d'un
+paragraphe, sans contenu personnel), le premier tour paie l'historique une
+fois (21,9 s), puis llama-server reprend au point de contrôle (« restored
+context checkpoint (pos 16325) », 903 jetons retraités) : 3,5 s et 3,3 s.
+À 16 384, ces prompts auraient dépassé la fenêtre : Ollama aurait écarté les
+messages les plus anciens à chaque tour, le début conservé aurait glissé et
+tout l'historique aurait été retraité — raisonnement, pas mesure, la fenêtre
+ne se règle pas par requête.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

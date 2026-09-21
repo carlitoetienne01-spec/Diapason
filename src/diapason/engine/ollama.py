@@ -82,6 +82,21 @@ def _is_control_token_only_args(raw_args: Any) -> bool:
     return saw_token
 
 
+# 20/09/2026 : le préfixe du chat (identité + 45 schémas) prend 10 112 des
+# 16 384 jetons ; il en restait 6 000 pour l'historique avant qu'Ollama
+# n'écarte les messages anciens. [intelligence] num_ctx pose la fenêtre
+# depuis la config ; la variable d'environnement garde la main pour un
+# appel ponctuel (docs/user-guide/cli.md). 0 ou absent = 16 384.
+NUM_CTX_PAR_DEFAUT = 16384
+_num_ctx_configure: int | None = None
+
+
+def configurer_num_ctx(valeur: int | None) -> None:
+    """Fenêtre de contexte venue de la config ; None ou 0 rend le défaut."""
+    global _num_ctx_configure
+    _num_ctx_configure = int(valeur) if valeur else None
+
+
 def _default_num_ctx() -> int:
     """Default context window (tokens). Override with ``DIAPASON_NUM_CTX``.
 
@@ -92,9 +107,12 @@ def _default_num_ctx() -> int:
     try:
         from diapason.core.env import get as _env_get
 
-        return int(_env_get("NUM_CTX", "16384") or "16384")
+        explicite = _env_get("NUM_CTX")
+        if explicite:
+            return int(explicite)
     except ValueError:
-        return 16384
+        return NUM_CTX_PAR_DEFAUT
+    return _num_ctx_configure or NUM_CTX_PAR_DEFAUT
 
 
 @EngineRegistry.register("ollama")

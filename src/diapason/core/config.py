@@ -601,7 +601,11 @@ class IntelligenceConfig:
     # configuré ; le modèle choisi dans le chat garde les tâches lourdes.
     # Vide = aucun routage. Voir server/tour_leger.py.
     light_model: str = ""
-    model_path: str = ""  # Local weights (HF repo, GGUF file, etc.)
+    # 20/09/2026 : fenêtre de contexte demandée à Ollama (num_ctx). 0 = le
+    # défaut de 16 384. Le préfixe du chat en prend 10 112 ; à 32 768 il reste
+    # 22 000 jetons d'historique au lieu de 6 000, pour 512 Mio de cache KV
+    # de plus sur le 9b (seules 8 couches sur 32 sont de l'attention).
+    num_ctx: int = 0
     checkpoint_path: str = ""  # Checkpoint/adapter path
     quantization: str = "none"  # none, fp8, int8, int4, gguf_q4, gguf_q8
     preferred_engine: str = ""  # Override engine for this model (e.g., "vllm")
@@ -2220,6 +2224,7 @@ default = "{engine}"
 [intelligence]
 default_model = "{model}"
 # light_model = ""            # petit modèle pour les tours d'une ligne (vide = aucun)
+# num_ctx = 0                 # fenêtre de contexte d'Ollama (0 = 16384)
 
 [agent]
 default_agent = "simple"

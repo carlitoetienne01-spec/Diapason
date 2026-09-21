@@ -134,6 +134,11 @@ the `DIAPASON_NUM_CTX` environment variable (default `16384`):
 DIAPASON_NUM_CTX=8192 diapason ask --screen "What's on my screen?"
 ```
 
+For the server, set it once in `config.toml` instead — `[intelligence]
+num_ctx = 32768` — so the desktop chat keeps room for its history after the
+10 000-token tool prefix (see `docs/development/diagnostic-performances-2026-09-19.md`).
+The environment variable still wins when both are set.
+
 !!! note "Keep vision on-device"
     Images are sensitive. Diapason prints a privacy warning before sending
     an image to a non-local engine, so a screenshot never leaves your machine

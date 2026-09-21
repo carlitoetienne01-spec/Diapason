@@ -598,3 +598,60 @@ class TestLeChatApprendQueLesOutilsSontAbsents:
             assert resultat[-1].finish_reason == "stop"
         finally:
             await moteur._get_async_client().aclose()
+
+
+class TestLaFenetreDeContexte:
+    """20/09/2026 : 10 112 jetons de préfixe sur 16 384 ne laissaient que 6 000
+    jetons d'historique ; la config peut élargir la fenêtre, l'environnement
+    garde la main pour un appel ponctuel."""
+
+    def test_la_config_pose_la_fenetre_et_zero_rend_le_defaut(self, monkeypatch):
+        from diapason.engine import ollama
+
+        monkeypatch.delenv("DIAPASON_NUM_CTX", raising=False)
+        monkeypatch.delenv("JARVIS_NUM_CTX", raising=False)
+        try:
+            ollama.configurer_num_ctx(32768)
+            assert ollama._default_num_ctx() == 32768
+            ollama.configurer_num_ctx(0)
+            assert ollama._default_num_ctx() == ollama.NUM_CTX_PAR_DEFAUT
+            ollama.configurer_num_ctx(None)
+            assert ollama._default_num_ctx() == 16384
+        finally:
+            ollama.configurer_num_ctx(None)
+
+    def test_la_variable_d_environnement_garde_la_main(self, monkeypatch):
+        from diapason.engine import ollama
+
+        monkeypatch.setenv("DIAPASON_NUM_CTX", "8192")
+        try:
+            ollama.configurer_num_ctx(32768)
+            assert ollama._default_num_ctx() == 8192, "un appel ponctuel prime"
+        finally:
+            ollama.configurer_num_ctx(None)
+
+    def test_la_fenetre_configuree_part_dans_chaque_requete(self, monkeypatch):
+        from diapason.engine import ollama
+
+        monkeypatch.delenv("DIAPASON_NUM_CTX", raising=False)
+        monkeypatch.delenv("JARVIS_NUM_CTX", raising=False)
+        vues = []
+
+        def handler(request):
+            vues.append(json.loads(request.content)["options"]["num_ctx"])
+            return httpx.Response(
+                200,
+                json={"message": {"role": "assistant", "content": "ok"}, "done": True},
+            )
+
+        moteur = OllamaEngine(host="http://testhost:11434")
+        moteur._client = httpx.Client(
+            base_url="http://testhost:11434", transport=httpx.MockTransport(handler)
+        )
+        try:
+            ollama.configurer_num_ctx(32768)
+            moteur.generate([Message(role=Role.USER, content="Bonjour")], model="m")
+            assert vues == [32768]
+        finally:
+            ollama.configurer_num_ctx(None)
+            moteur.close()

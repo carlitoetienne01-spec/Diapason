@@ -344,6 +344,11 @@ def serve(
     inject_credentials()
 
     config = load_config()
+    # La fenêtre de contexte configurée vaut pour tous les moteurs Ollama du
+    # processus ; DIAPASON_NUM_CTX, s'il est posé, garde la main.
+    from diapason.engine.ollama import configurer_num_ctx
+
+    configurer_num_ctx(getattr(config.intelligence, "num_ctx", 0))
 
     # Resolve host/port from CLI args or config
     bind_host = host or config.server.host
