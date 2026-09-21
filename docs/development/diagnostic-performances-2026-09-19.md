@@ -262,6 +262,132 @@ page de référence stable peut passer derrière trois pages fraîches ; le
 contrôle a posteriori ignore les mots seuls et les flexions ; brave ne lit
 que le pays de `ca-fr`, la langue n'atteint que les moteurs de secours.
 
+### Lire la page, dater, comparer — 21 septembre
+
+Le socle livré, le premier essai réel l'a pris en défaut : « Qui est le
+premier ministre du Canada ? » → `web_search("premier ministre du Canada
+2026", recency=year)`, cinq sources (Wikipédia ×3, pm.gc.ca ×2), et « Le
+premier ministre du Canada en 2026 est Justin Trudeau [3] ». Cité, daté,
+faux. Relu le matin : aucun des cinq extraits ne nommait le titulaire —
+brave rend un passage pris au hasard dans chaque page (« En date de janvier
+2026, six anciens premiers ministres sont encore en vie… »). Le corps de
+la page « Premier ministre du Canada — Wikipédia » le dit, lui, dans son
+infobox : « Titulaire actuel | Mark Carney | depuis le 14 mars 2025 ». Le
+contrôle a posteriori n'a rien signalé : « Trudeau » figure bien dans les
+sources — la réponse était *sourcée*, pas *vraie*. Les deux pièces du
+palier « pro » du jury (P3, P5) :
+
+1. **`web_read`** (`tools/web_read.py`) : un vrai outil de lecture dans la
+   trousse (§82 — le modèle peut le demander), qui rend le texte principal
+   d'une page (`<article>`/`<main>`, bruit retiré : navigation, pied,
+   cookies, `sup.reference`, `mw-editsection` — jamais un bruit qui
+   ENGLOBE le corps, `body.has-sidebar` de WordPress ou le `<form>` unique
+   d'ASP.NET ; tables gardées et rendues « a | b | c » — c'est l'infobox
+   qui porte le titulaire), son titre et ses dates (JSON-LD
+   `datePublished`/`dateModified`, puis `<meta>` `article:*`,
+   `publication_date`, `last_modified_date`, puis le pied MediaWiki « La
+   dernière modification de cette page a été faite le … » — la page
+   anglaise du poste n'a pas de `dateModified` et sortait « publié 2001 »
+   pour seule date —, puis `<time>` d'un article, puis l'en-tête HTTP
+   `Last-Modified` quand la page ne déclare rien ; une forme ambiguë comme
+   le « ven, 06/17/2016 - 20:07 » de pm.gc.ca vaut « pas de date », jamais
+   une devinette), avec un `focus` : les passages autour des mots de la
+   question passent avant le reste, sous 3 600 caractères. SSRF vérifié
+   avant l'appel et à chaque saut de redirection (suivies à la main),
+   lecture bornée à 2 Mo même sous gzip, 10 s de budget total, HTML trop
+   imbriqué ou page sans texte refusés plutôt que rendus amputés en succès
+   (§100). L'ancien mode « une URL dans la requête » de `web_search`
+   (regex `<[^>]+>` sur tout le HTML : 6 000 caractères de menu) reste
+   pour compatibilité mais n'est plus le chemin.
+2. **Lecture automatique de la page du poste** (`_lire_la_page` dans
+   `agentic_stream.py`) : pour une question qui demande le NOM d'un
+   titulaire (`question_de_titulaire` : « qui est le président / la
+   mairesse / le PDG », « comment s'appelle » — pas « quel est le salaire
+   du premier ministre »), après la première recherche concluante, le code
+   lit lui-même la page dont le titre porte la fonction (`page_de_reference`
+   : « Premier ministre du Canada — Wikipédia », jamais une « Liste des… »
+   ni une biographie ; entre « du Canada » et « du Québec », le titre qui
+   reprend le plus de mots de la question), sans attendre que le 9b y
+   pense. La page est jointe au résultat de la recherche sous son numéro
+   de pastille (pas [1], et le même après une redirection) ; l'interface
+   voit un `tool_start` `web_read` marqué `auto` — rien ne se fait en
+   cachette (§5). Une page illisible ne coûte que sa carte d'échec. Un
+   prix, une météo, un score ne lisent rien.
+3. **Dates dans les extraits** (`web_search.date_en_tete`) : brave date
+   chaque extrait en tête (« 19 hours ago - », « August 14, 2026 - ») ; la
+   date passe dans l'en-tête « [N] … · 2026-08-14 » que lit le modèle, et
+   l'extrait ne la porte plus deux fois. Seule la forme de brave est un
+   en-tête (« 14 mars 2025 - jour de l'assermentation » est du texte). Un
+   âge relatif (« 19 hours ago », « il y a 3 h ») est compté depuis
+   aujourd'hui : pour une page de référence c'est l'âge de sa dernière
+   édition, pas la date du fait — un vieil article recopié hier paraît
+   d'hier. La `published_date` RFC 2822 de Tavily est lue entière.
+4. **Note avant la rédaction** (`actualite.note_avant_redaction`) : après
+   les outils, avant que le modèle écrive, un message SYSTEM lui dit ce que
+   le code a établi — et REMPLACE la note du passage précédent (ajoutées,
+   deux consignes contradictoires restaient empilées). *Titulaire* :
+   `titulaires_selon_sources` ne regarde que les sources dont l'en-tête
+   situe la fonction demandée (« Canada » pour « premier ministre du
+   Canada » ; radicaux et équivalents « États-Unis » ↔ « United States »
+   — « premier ministre du Québec » recevait Mark Carney), puis, ligne par
+   ligne, le nom propre lié à un marqueur de fonction en cours : « Titulaire
+   actuel », « incumbent » valent seuls (dans une page dont le titre porte
+   la fonction) ; « actuel », « current », « depuis », « en poste » doivent
+   être collés au mot de la fonction (deux mots d'écart au plus : « Katie
+   Telford is currently a producer » avait « prime minister » à 75
+   caractères) ; entre la grappe « fonction + marqueur » et le nom, rien
+   d'autre qu'un lien sujet-attribut (« est », « is », « , », « | », un
+   titre collé au nom — « Le premier ministre actuel doit rencontrer Donald
+   Trump » désignait Trump) ; une grappe qui parle du passé ne désigne
+   personne (« premier titulaire », « since the first president, George
+   Washington », « fut en poste de 1946 à 1952 » — neuf vraies pages de
+   postes sur dix désignaient un ancien) ; un nom précédé de « ancien »,
+   « former », « après la démission de », « succédant à », « the late » est
+   un prédécesseur ; « Prime Minister Mark Carney » et « Mark Carney » sont
+   le même homme ; une rangée d'infobox l'emporte sur les phrases (la page
+   du pape désignait Léon XIV ET Robert Francis Prevost) ; « le premier
+   ministre actuel » ne répond pas pour « le ministre des Finances » ; les
+   intitulés de ministère ne sont pas des personnes. Un seul nom → « Les
+   sources désignent Mark Carney [2] (2026-08-14) comme titulaire actuel :
+   appuie-toi dessus et cite cette source ; ne nomme pas un prédécesseur » ;
+   deux → « retiens la plus récente et nomme le désaccord » ; « Qui dirige
+   le Canada ? » (aucune fonction nommée) ne désigne personne. *Âge* : si
+   toutes les sources sont datées et que la plus récente a un an ou plus
+   (sept jours pour ce qui se périme en jours), « les sources datent au plus
+   du … : dis-le » ; une seule source non datée éteint le constat — c'est
+   souvent la bonne (§5).
+5. **Le signal s'enrichit** : l'événement `verification` porte, en plus de
+   `nonRetrouves`, `desaccord` ({reponse, sources} quand la réponse nomme
+   quelqu'un que l'unique titulaire des sources n'est pas ET que les sources
+   donnent bien ce quelqu'un comme prédécesseur — le cas « Trudeau [3] »
+   exactement, invisible au contrôle du 20/09 ; sans cette seconde preuve
+   le signal reposerait sur l'extraction seule) et `sourcesDatees`. Sous la
+   bulle : « ⚠︎ Les sources désignent Mark Carney comme titulaire ; la
+   réponse nomme Justin Trudeau. » Un signal, jamais une réécriture de la
+   réponse.
+
+Mesuré sur les vraies pages de quatorze postes (président de la France,
+maire de Montréal, gouverneure générale, pape, roi du Royaume-Uni, PDG
+d'Apple, ministre des Finances, premiers ministres du Canada, du Québec, de
+la France, président et vice-président des États-Unis, liste des premiers
+ministres) : douze désignent le bon nom, deux ne désignent personne
+(infobox anglaise « Monarch », « Key people | Tim Cook (CEO) »), aucune ne
+désigne un ancien. Le silence est le repli voulu : quand la forme n'est
+pas sûre, le code ne dit rien et le modèle reste sur les extraits et la
+page lue.
+
+Limites : la lecture automatique ne vaut que pour les titulaires, et
+seulement quand une page porte la fonction dans son titre ; l'extraction
+du titulaire est lexicale (deux mots capitalisés ; un patronyme seul n'est
+ni un titulaire ni un désaccord ; « Léon XIV » et « Leo XIV » sont deux
+noms) et se tait dès que le ressort de la question n'est pas dans
+l'en-tête de la source (un extrait de presse titré sans le pays) ; les
+tables d'équivalences (fonctions, lieux, mots de fonction) sont des
+listes ; un site sans JSON-LD ni `<meta>` ni pied MediaWiki reste sans
+date ; le modèle qui relit lui-même la page déjà lue paie une seconde
+lecture ; le message TOOL d'une recherche avec page lue approche 8 000
+caractères (deux plafonds de 4 000).
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

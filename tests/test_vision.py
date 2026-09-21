@@ -41,7 +41,12 @@ def test_messages_to_dicts_empty_images_treated_as_text() -> None:
 
 
 def test_default_num_ctx_default_and_override(monkeypatch) -> None:
+    # 21/09/2026 : sous xdist, un test du serveur avait déjà posé la fenêtre
+    # de la config de Carlito (32 768) par configurer_num_ctx ; le défaut
+    # attendu ici est celui SANS config.
     monkeypatch.delenv("JARVIS_NUM_CTX", raising=False)
+    monkeypatch.delenv("DIAPASON_NUM_CTX", raising=False)
+    monkeypatch.setattr(ollama_mod, "_num_ctx_configure", None)
     assert ollama_mod._default_num_ctx() == 16384
 
     monkeypatch.setenv("JARVIS_NUM_CTX", "8000")

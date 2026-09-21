@@ -42,6 +42,9 @@ export interface ToolCallInfo {
   status: 'running' | 'success' | 'error';
   result?: string;
   latency?: number;
+  // 21/09/2026 : le serveur lit lui-même la page d'un poste après une
+  // recherche. La carte le dit : ce que le modèle n'a pas demandé se voit.
+  auto?: boolean;
 }
 
 export interface TokenUsage {
@@ -133,7 +136,13 @@ export interface ChatMessage {
   questionReply?: import('../lib/questionsChat').ReponsesQuestions;
   // 20/09/2026 : ce que la réponse affirme et que ses sources ne portent pas
   // (années, valeurs, noms) — un signal du serveur, jamais dans le texte.
-  verification?: { nonRetrouves: string[] };
+  // 21/09 : plus le titulaire que les sources désignent quand la réponse en
+  // nomme un autre, et la date des sources quand elles sont trop vieilles.
+  verification?: {
+    nonRetrouves: string[];
+    sourcesDatees?: string;
+    desaccord?: { reponse: string; sources: string[] };
+  };
 }
 
 export interface Conversation {

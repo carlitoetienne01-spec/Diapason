@@ -15,6 +15,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
+import { lireVerification } from './notesDeVerification';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import {
@@ -718,6 +719,7 @@ export function InputArea() {
               tool: data.tool,
               arguments: data.arguments || '',
               status: 'running',
+              ...(data.auto === true ? { auto: true } : {}),
             };
             toolCalls.push(tc);
             setStreamState({
@@ -734,10 +736,7 @@ export function InputArea() {
           // Ce que la réponse affirme sans source : un signal à part, jamais
           // dans le texte (il se copierait et le modèle le relirait).
           try {
-            const data = JSON.parse(sseEvent.data);
-            if (data && Array.isArray(data.nonRetrouves) && data.nonRetrouves.length > 0) {
-              verification = { nonRetrouves: data.nonRetrouves.map(String) };
-            }
+            verification = lireVerification(JSON.parse(sseEvent.data));
           } catch {}
         } else if (eventName === 'sources') {
           // 20/09/2026 : une recherche rend des sources numérotées [N] ; les

@@ -67,6 +67,11 @@ export function ToolCallCard({ toolCall }: Props) {
         >
           {toolCall.tool}
         </span>
+        {toolCall.auto && (
+          <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10.5, flexShrink: 0 }}>
+            · auto
+          </span>
+        )}
         {preview && !expanded && (
           <span
             className="truncate"

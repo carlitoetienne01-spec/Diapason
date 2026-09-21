@@ -18,6 +18,7 @@ import { copierMessage } from './copieMessage';
 import { lireQuestions, texteQuestions } from '../../lib/questionsChat';
 import { QuestionsDiscussion } from './QuestionsDiscussion';
 import { lignesDeSources } from './sourcesDeReponse';
+import { notesDeVerification } from './notesDeVerification';
 
 function stripThinkTags(text: string): string {
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
@@ -153,6 +154,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
   }, [message.researchSources]);
 
   const lignes = useMemo(() => lignesDeSources(message.researchSources), [message.researchSources]);
+  const notes = useMemo(() => notesDeVerification(message.verification, t), [message.verification, t]);
 
   const rehypePlugins = useMemo(() => {
     const base: any[] = [[rehypeHighlight, { detect: true }], rehypeKatex];
@@ -243,10 +245,14 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
         </div>
       )}
 
-      {/* Ce que la réponse affirme sans source (20/09/2026) : un signal, pas un verdict. */}
-      {message.verification && message.verification.nonRetrouves.length > 0 && (
+      {/* Ce que la réponse affirme sans source (20/09/2026), le titulaire que
+          les sources désignent, l'âge des sources (21/09) : des signaux, pas
+          un verdict — une ligne chacun. */}
+      {notes.length > 0 && (
         <div className="mt-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-          ⚠︎ {t('chat.verification.nonRetrouves')} {message.verification.nonRetrouves.join(', ')}
+          {notes.map((note) => (
+            <div key={note}>⚠︎ {note}</div>
+          ))}
         </div>
       )}
 

@@ -44,8 +44,12 @@ from diapason.server.actualite import (
     CONSIGNE_FERME,
     completer_arguments,
     consigne_actualite,
+    desaccord_sur_le_titulaire,
     elements_hors_sources,
+    note_avant_redaction,
+    page_de_reference,
     question_courante_d_actualite,
+    question_de_titulaire,
     recherche_concluante,
 )
 from diapason.server.questions_chat import (
@@ -177,20 +181,103 @@ def _renumeroter(
 
 
 def _controle_des_sources(
-    reponse: str, corpus: str, question: str
+    reponse: str,
+    corpus: str,
+    question: str,
+    donnees: dict[str, Any] | None = None,
 ) -> list[ToolStreamEvent]:
-    """Le signal de fin de tour : ce que la réponse affirme sans source.
+    """Le signal de fin de tour : ce que la réponse affirme sans source, le
+    titulaire qu'elle nomme contre celui des sources, l'âge des sources.
 
     Un événement à part, pas un jeton : revue du 20/09 — un jeton entrait
     dans le texte copié, dans conversations.db et dans l'historique que le
-    modèle relit au tour suivant.
+    modèle relit au tour suivant. Un seul événement, toutes clés réunies :
+    le client n'en garde qu'un par message.
     """
-    if not corpus.strip():
+    signal: dict[str, Any] = dict(donnees or {})
+    if corpus.strip():
+        manquants = elements_hors_sources(reponse, corpus, question)
+        if manquants:
+            signal["nonRetrouves"] = manquants
+        desaccord = desaccord_sur_le_titulaire(reponse, corpus, question)
+        if desaccord:
+            signal["desaccord"] = desaccord
+    if not signal:
         return []
-    manquants = elements_hors_sources(reponse, corpus, question)
-    if not manquants:
-        return []
-    return [ToolStreamEvent("verification", {"nonRetrouves": manquants})]
+    return [ToolStreamEvent("verification", signal)]
+
+
+def _sous_l_url_demandee(
+    sources: list[dict[str, Any]], url: str
+) -> list[dict[str, Any]]:
+    """La page lue garde la pastille de l'URL demandée : après une
+    redirection (http → https, www), web_read rend l'URL finale et la page
+    déjà [2] recevait une quatrième pastille (revue du 21/09)."""
+    if not url:
+        return sources
+    return [
+        {**src, "url": url} if isinstance(src, dict) and src.get("url") != url else src
+        for src in sources
+    ]
+
+
+def _url_demandee(arguments: str) -> str:
+    try:
+        donnees = json.loads(arguments or "{}")
+    except (ValueError, TypeError):
+        return ""
+    return str(donnees.get("url") or "") if isinstance(donnees, dict) else ""
+
+
+async def _lire_la_page(
+    executor: Any,
+    url: str,
+    question: str,
+    deja: list[dict[str, Any]],
+) -> AsyncIterator[tuple[ToolStreamEvent | None, str]]:
+    """Lit la page de la fonction par web_read, comme si le modèle l'avait
+    demandé : les événements tool_start/tool_end la rendent visible dans
+    l'interface (§5 — rien ne se fait en cachette), et le texte renuméroté
+    revient pour être joint au résultat de la recherche."""
+    arguments = json.dumps({"url": url, "focus": question}, ensure_ascii=False)
+    yield (
+        ToolStreamEvent(
+            "tool_start", {"tool": "web_read", "arguments": arguments, "auto": True}
+        ),
+        "",
+    )
+    debut = time.time()
+    texte = ""
+    try:
+        resultat = await asyncio.to_thread(
+            executor.execute,
+            ToolCall(id="auto_web_read", name="web_read", arguments=arguments),
+        )
+        succes = bool(getattr(resultat, "success", False))
+        contenu = observation(resultat)
+        if succes:
+            meta = getattr(resultat, "metadata", None) or {}
+            texte, nouvelles = _renumeroter(
+                contenu, _sous_l_url_demandee(meta.get("sources") or [], url), deja
+            )
+            if nouvelles:
+                deja.extend(nouvelles)
+                yield ToolStreamEvent("sources", list(nouvelles)), ""
+    except Exception as exc:  # noqa: BLE001 - une page illisible n'arrête pas le tour
+        logger.warning("lecture automatique de %s en échec : %s", url, exc)
+        succes, contenu = False, f"L'outil a échoué : {exc}"
+    yield (
+        ToolStreamEvent(
+            "tool_end",
+            {
+                "tool": "web_read",
+                "success": succes,
+                "latency": round(time.time() - debut, 3),
+                "result": (texte or contenu)[:1000],
+            },
+        ),
+        texte,
+    )
 
 
 def observation(resultat: Any) -> str:
@@ -318,6 +405,13 @@ async def stream_with_tools(
     question_courante = next(
         (m.content or "" for m in reversed(messages) if m.role == Role.USER), ""
     )
+    # 21/09/2026 : cinq sources et « Justin Trudeau [3] ». Ce que le code
+    # établit sur les sources avant que le modèle rédige (titulaire désigné,
+    # âge des sources) lui est dit en SYSTEM ; ce qui concerne l'interface
+    # part avec le signal de fin de tour.
+    donnees_verification: dict[str, Any] = {}
+    index_de_la_note: int | None = None
+    lecture_auto_faite = False
     deja_vus: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
@@ -537,7 +631,10 @@ async def stream_with_tools(
                 # nouvelle génération destinée à contourner cet arrêt.
                 if actualite:
                     for evt in _controle_des_sources(
-                        "".join(morceaux), corpus_sources, question_courante
+                        "".join(morceaux),
+                        corpus_sources,
+                        question_courante,
+                        donnees_verification,
                     ):
                         yield evt
                 return
@@ -628,7 +725,10 @@ async def stream_with_tools(
                 # tenir aux sources ; juger une recette sur ce critère
                 # signalait « Ricardo Larrivée » (revue du 20/09).
                 for evt in _controle_des_sources(
-                    texte_du_tour, corpus_sources, question_courante
+                    texte_du_tour,
+                    corpus_sources,
+                    question_courante,
+                    donnees_verification,
                 ):
                     yield evt
             return
@@ -728,6 +828,7 @@ async def stream_with_tools(
                 contenu = f"L'outil a échoué : {exc}"
                 succes = False
             latence = time.time() - debut
+            page_lue = ""
             if nom == "web_search":
                 recherche_tentee = True
                 if recherche_concluante(nom, succes, contenu):
@@ -740,8 +841,49 @@ async def stream_with_tools(
                         sources_du_tour.extend(nouvelles)
                         yield ToolStreamEvent("sources", list(nouvelles))
                     corpus_sources += "\n" + contenu
+                    # 21/09/2026 : aucun des cinq extraits ne nommait le
+                    # premier ministre ; la page du poste le fait dans son
+                    # infobox. Pour un titulaire, le code lit cette page —
+                    # sans attendre que le 9b y pense — et la joint au
+                    # résultat de la recherche.
+                    if (
+                        actualite
+                        and not lecture_auto_faite
+                        and "web_read" in trousse.noms
+                        and question_de_titulaire(question_courante)
+                    ):
+                        url = page_de_reference(sources_du_tour, question_courante)
+                        if url:
+                            lecture_auto_faite = True
+                            async for evt, texte in _lire_la_page(
+                                executor, url, question_courante, sources_du_tour
+                            ):
+                                if evt is not None:
+                                    yield evt
+                                if texte:
+                                    page_lue = texte
+                                    corpus_sources += "\n" + texte
+            elif nom == "web_read" and succes:
+                # Une page lue est une source au même titre qu'une recherche.
+                verification_faite = True
+                meta = getattr(resultat, "metadata", None) or {}
+                contenu, nouvelles = _renumeroter(
+                    contenu,
+                    _sous_l_url_demandee(
+                        meta.get("sources") or [], _url_demandee(arguments)
+                    ),
+                    sources_du_tour,
+                )
+                if nouvelles:
+                    sources_du_tour.extend(nouvelles)
+                    yield ToolStreamEvent("sources", list(nouvelles))
+                corpus_sources += "\n" + contenu
 
             contenu = _tronquer(contenu)
+            if page_lue:
+                # Deux plafonds distincts : la page lue ne doit pas manger
+                # les extraits, ni l'inverse.
+                contenu += "\n\nPage lue (web_read) :\n" + _tronquer(page_lue)
 
             yield ToolStreamEvent(
                 "tool_end",
@@ -761,6 +903,24 @@ async def stream_with_tools(
                     content=contenu,
                 )
             )
+
+        if actualite and corpus_sources:
+            # Ce que le code sait des sources, dit au modèle avant qu'il
+            # rédige : le titulaire qu'elles désignent, leur âge. Recalculé à
+            # chaque passage, et la note REMPLACE la précédente dans le fil —
+            # revue du 21/09 : ajoutée, deux consignes contradictoires
+            # (« appuie-toi sur X » puis « plusieurs titulaires ») restaient
+            # empilées, et « sources datées » survivait à la lecture d'une
+            # page du jour.
+            note, donnees_verification = note_avant_redaction(
+                sources_du_tour, corpus_sources, question_courante
+            )
+            if index_de_la_note is not None:
+                del travail[index_de_la_note]
+                index_de_la_note = None
+            if note:
+                travail.append(Message(role=Role.SYSTEM, content=note))
+                index_de_la_note = len(travail) - 1
 
         if not chargement_seul:
             tours_actions += 1
