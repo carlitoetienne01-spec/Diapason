@@ -494,6 +494,32 @@ l'épilogue en tient lieu ; le texte de l'épilogue est fixe ; un nom de
 personne privée dans la question à vérifier n'est pas reconnu comme
 personnel.
 
+### Les pages officielles — 21 septembre, nuit (P6)
+
+« Quel temps fait-il aujourd'hui à Ottawa ? » (20/09) : cinq articles
+datés sans une donnée météo, et le modèle honnête — « La recherche n'a pas
+retourné de données météo. » Environnement Canada publie pourtant la
+prévision sept jours de chaque ville sur une page que `web_read` lit d'un
+coup (`meteo.gc.ca/fr/location/index.html?coords=…` — l'ancienne adresse
+`city/pages/on-118_metric_f.html` répond 404 ; sondé le 21/09). `server/
+sources_officielles.py` : une table courte sujet → page officielle (météo
+par ville, coordonnées de trente-cinq villes canadiennes ; taux directeur
+de la Banque du Canada), lue EN COMPLÉMENT de la recherche — que celle-ci
+ait rendu quelque chose ou non —, jamais à sa place, et étiquetée : « [N]
+Ottawa — Prévision 7 jours, Environnement Canada — meteo.gc.ca · source
+officielle · consultée le 2026-09-21 » (une page vivante est datée du jour
+de sa lecture, pas de sa `last_modified_date` : celle de la prévision
+disait 2026-09-03 et aurait fait dire « sources trop vieilles »). La ville
+vient de la question, sinon de `[tools] ville` dans la config ; une ville
+inconnue de la table (« à Tombouctou ») n'est jamais remplacée par celle
+de la config (§34 : on ne devine pas), et sans ville rien n'est lu. Chat et
+voix (`actualite_vocale._avec_page_officielle`). Une page officielle lue
+vaut vérification : le badge est « Vérifié en ligne » même quand la
+recherche était vide.
+
+Limites : la table est figée (deux sujets, une liste de villes) ; la page
+météo n'existe qu'en français et en anglais pour le Canada.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

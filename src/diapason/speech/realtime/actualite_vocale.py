@@ -46,6 +46,11 @@ from diapason.server.actualite import (
     renumeroter,
     sous_l_url_demandee,
 )
+from diapason.server.sources_officielles import (
+    entete_officielle,
+    page_officielle,
+    source_officielle,
+)
 
 # La consigne du chat demandait de citer « [1] » : Kokoro prononçait « Mark
 # Carney deux, depuis mars deux mille vingt-cinq » (revue vocale du 21/09).
@@ -123,6 +128,8 @@ class TourVocal:
 
     question: str
     demande: bool = False
+    ville: str = ""
+    officielle_lue: bool = False
     recherche_tentee: bool = False
     recherche_refusee: bool = False
     verification_faite: bool = False
@@ -164,7 +171,9 @@ def est_une_demande_vocale(texte: str) -> bool:
     )
 
 
-def preparer_tour(texte: str, historique: Sequence[dict[str, Any]]) -> TourVocal | None:
+def preparer_tour(
+    texte: str, historique: Sequence[dict[str, Any]], ville: str = ""
+) -> TourVocal | None:
     """Le tour est-il une question d'actualité, ou une demande de vérifier
     ce qui vient d'être dit ? None quand la voix n'a rien à garder."""
     if est_une_demande_vocale(texte):
@@ -175,9 +184,9 @@ def preparer_tour(texte: str, historique: Sequence[dict[str, Any]]) -> TourVocal
             or question_personnelle(question)
         ):
             return None
-        return TourVocal(question=question, demande=True)
+        return TourVocal(question=question, demande=True, ville=ville)
     if question_d_actualite(texte):
-        return TourVocal(question=texte)
+        return TourVocal(question=texte, ville=ville)
     return None
 
 
@@ -289,7 +298,8 @@ def absorber_resultat(
                 or bool(resultat.get("error"))
             )
         if not recherche_concluante(nom, ok, contenu):
-            return _pour_le_modele(resultat)
+            # P6 : la page officielle se lit même quand la recherche est vide.
+            return _pour_le_modele(_avec_page_officielle(tour, resultat, lire))
     elif nom == "web_read":
         if not ok:
             return _pour_le_modele(resultat)
@@ -338,7 +348,51 @@ def absorber_resultat(
             else:
                 raison = str(page.get("error") or page.get("content") or "")[:200]
                 contenu += f"\n\nPage du poste non lue ({url}) : {raison}"
-    return _pour_le_modele({**resultat, "content": contenu})
+    resultat = {**resultat, "content": contenu}
+    if nom == "web_search":
+        resultat = _avec_page_officielle(tour, resultat, lire)
+    return _pour_le_modele(resultat)
+
+
+def _avec_page_officielle(
+    tour: TourVocal, resultat: dict[str, Any], lire: Lecteur | None
+) -> dict[str, Any]:
+    """P6 (21/09) : la prévision d'Environnement Canada, le taux de la Banque
+    du Canada — la page officielle du sujet, lue en complément de la
+    recherche, que celle-ci ait rendu quelque chose ou non."""
+    if lire is None or tour.officielle_lue:
+        return resultat
+    off = page_officielle(tour.question, tour.ville)
+    if off is None:
+        return resultat
+    tour.officielle_lue = True
+    page = lire("web_read", {"url": off.url, "focus": off.focus})
+    if not page.get("ok") or not str(page.get("content") or "").strip():
+        return resultat
+    pmeta = page.get("metadata") if isinstance(page.get("metadata"), dict) else {}
+    texte, nouvelles = renumeroter(
+        str(page["content"]),
+        sous_l_url_demandee(list(pmeta.get("sources") or []), off.url),
+        tour.sources,
+    )
+    if nouvelles:
+        ref = int(nouvelles[0]["ref"])
+        nouvelles = [source_officielle(off, ref)]
+        lignes = texte.split("\n", 1)
+        texte = entete_officielle(off, ref) + (
+            "\n" + lignes[1] if len(lignes) > 1 else ""
+        )
+    tour.sources.extend(nouvelles)
+    tour.corpus += "\n" + texte
+    tour.verification_faite = True
+    contenu = str(resultat.get("content") or "")
+    return {
+        **resultat,
+        "ok": True,
+        "content": contenu
+        + "\n\nSource officielle, lue par le code — réponds d'après elle :\n"
+        + _tronquer(texte),
+    }
 
 
 def note(tour: TourVocal) -> dict[str, str] | None:

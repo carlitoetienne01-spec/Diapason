@@ -1395,6 +1395,10 @@ async def _handle_stream(
                         # Le client de bureau (interactiveQuestions) lit le
                         # niveau ; l'API standard garde le signe dans le texte.
                         signal_textuel=not req.interactiveQuestions,
+                        ville=str(
+                            getattr(getattr(app_config, "tools", None), "ville", "")
+                            or ""
+                        ),
                         trousse_adaptative=bool(
                             getattr(
                                 getattr(app_config, "agent", None),

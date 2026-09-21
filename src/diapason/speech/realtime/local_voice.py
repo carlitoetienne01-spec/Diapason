@@ -1291,7 +1291,20 @@ class LocalVoiceSession(RealtimeVoiceSession):
         honorer (revue du 21/09)."""
         if not self._enable_tools or not self._web_search_permis():
             return None
-        return actualite_vocale.preparer_tour(text, self._history)
+        return actualite_vocale.preparer_tour(text, self._history, self._ville())
+
+    def _ville(self) -> str:
+        """La ville de la config ([tools] ville), lue une fois par session."""
+        if not hasattr(self, "_ville_config"):
+            try:
+                from diapason.core.config import load_config
+
+                self._ville_config = str(
+                    getattr(load_config().tools, "ville", "") or ""
+                )
+            except Exception:  # noqa: BLE001 - sans config, aucune ville devinée
+                self._ville_config = ""
+        return self._ville_config
 
     def _web_search_permis(self) -> bool:
         try:

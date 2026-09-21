@@ -71,6 +71,12 @@ from diapason.server.questions_chat import (
     valider_questions,
 )
 from diapason.server.reponses_longues import prolonger_flux
+from diapason.server.sources_officielles import (
+    PageOfficielle,
+    entete_officielle,
+    page_officielle,
+    source_officielle,
+)
 from diapason.server.trousse_chat import MAX_CHARGEMENTS, TrousseChat
 
 logger = logging.getLogger("diapason.server")
@@ -207,12 +213,17 @@ async def _lire_la_page(
     url: str,
     question: str,
     deja: list[dict[str, Any]],
+    officielle: PageOfficielle | None = None,
 ) -> AsyncIterator[tuple[ToolStreamEvent | None, str]]:
-    """Lit la page de la fonction par web_read, comme si le modèle l'avait
-    demandé : les événements tool_start/tool_end la rendent visible dans
-    l'interface (§5 — rien ne se fait en cachette), et le texte renuméroté
-    revient pour être joint au résultat de la recherche."""
-    arguments = json.dumps({"url": url, "focus": question}, ensure_ascii=False)
+    """Lit la page de la fonction — ou la page officielle du sujet — par
+    web_read, comme si le modèle l'avait demandé : les événements
+    tool_start/tool_end la rendent visible dans l'interface (§5 — rien ne se
+    fait en cachette), et le texte renuméroté revient pour être joint au
+    résultat de la recherche. Une page officielle porte son propre en-tête
+    (« source officielle · consultée le … ») : une page vivante n'a pas de
+    date de publication qui compte."""
+    focus = officielle.focus if officielle is not None else question
+    arguments = json.dumps({"url": url, "focus": focus}, ensure_ascii=False)
     yield (
         ToolStreamEvent(
             "tool_start", {"tool": "web_read", "arguments": arguments, "auto": True}
@@ -233,6 +244,13 @@ async def _lire_la_page(
             texte, nouvelles = _renumeroter(
                 contenu, _sous_l_url_demandee(meta.get("sources") or [], url), deja
             )
+            if officielle is not None and nouvelles:
+                ref = int(nouvelles[0]["ref"])
+                nouvelles = [source_officielle(officielle, ref)]
+                lignes = texte.split("\n", 1)
+                texte = entete_officielle(officielle, ref) + (
+                    "\n" + lignes[1] if len(lignes) > 1 else ""
+                )
             if nouvelles:
                 deja.extend(nouvelles)
                 yield ToolStreamEvent("sources", list(nouvelles)), ""
@@ -340,6 +358,7 @@ async def stream_with_tools(
     trousse_adaptative: bool = False,
     verifier_en_ligne: bool = False,
     signal_textuel: bool = True,
+    ville: str = "",
 ) -> AsyncIterator[ToolStreamEvent]:
     """Diffuse la réponse du modèle en exécutant les outils qu'il réclame.
 
@@ -413,6 +432,7 @@ async def stream_with_tools(
     donnees_verification: dict[str, Any] = {}
     index_de_la_note: int | None = None
     lecture_auto_faite = False
+    officielle_lue = False
     # Revue du 21/09 : le contrôle ne jugeait que le DERNIER passage du
     # modèle ; « Justin Trudeau [3], depuis 2015 » écrit avant un second
     # outil restait affiché sous un badge vert. On juge ce que la bulle
@@ -897,6 +917,31 @@ async def stream_with_tools(
                                 if texte:
                                     page_lue = texte
                                     corpus_sources += "\n" + texte
+            if nom == "web_search" and actualite and not officielle_lue:
+                # P6 (21/09) : la page officielle du sujet — la prévision
+                # d'Environnement Canada, le taux de la Banque du Canada —
+                # lue en complément de la recherche, que celle-ci ait rendu
+                # quelque chose ou non : cinq articles sans une donnée météo
+                # laissaient « Quel temps fait-il ce soir ? » sans réponse.
+                off = (
+                    page_officielle(question_courante, ville)
+                    if "web_read" in trousse.noms
+                    else None
+                )
+                if off is not None:
+                    officielle_lue = True
+                    async for evt, texte in _lire_la_page(
+                        executor, off.url, question_courante, sources_du_tour, off
+                    ):
+                        if evt is not None:
+                            yield evt
+                        if texte:
+                            verification_faite = True
+                            page_lue = (page_lue + "\n\n" if page_lue else "") + (
+                                "Source officielle, lue par le code — réponds "
+                                "d'après elle :\n" + texte
+                            )
+                            corpus_sources += "\n" + texte
             elif nom == "web_read" and succes:
                 # Une page lue est une source au même titre qu'une recherche.
                 verification_faite = True
@@ -917,7 +962,9 @@ async def stream_with_tools(
             if page_lue:
                 # Deux plafonds distincts : la page lue ne doit pas manger
                 # les extraits, ni l'inverse.
-                contenu += "\n\nPage lue (web_read) :\n" + _tronquer(page_lue)
+                contenu += "\n\nPage lue (web_read) :\n" + _tronquer(
+                    page_lue, MAX_TOOL_RESULT_CHARS * 2
+                )
 
             yield ToolStreamEvent(
                 "tool_end",

@@ -319,13 +319,71 @@ class TestLesPiecesDuTour:
             "la page lue garde le numéro [2] de la recherche ; la seconde "
             "recherche ne renumérote rien"
         )
-        prix = actualite_vocale.TourVocal(question="Quel est le taux directeur ?")
+        prix = actualite_vocale.TourVocal(question="Quel est le prix du bitcoin ?")
         actualite_vocale.absorber_resultat(
             prix, "web_search", {}, dict(RECHERCHE), lire
         )
         assert lectures == [
             "https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada"
         ], "un prix ne lit aucune page"
+
+    def test_la_page_officielle_est_lue_meme_sans_resultat_de_recherche(self):
+        """P6 à la voix : la prévision d'Environnement Canada pour la ville de
+        la config, jointe au résultat, datée du jour et dite officielle."""
+        from datetime import date
+
+        tour = actualite_vocale.TourVocal(
+            question="Quel temps fait-il ce soir ?", ville="Ottawa"
+        )
+        lectures = []
+
+        def lire(nom, args):
+            lectures.append(args)
+            return {
+                "ok": True,
+                "content": (
+                    "[1] Ottawa, ON - Prévision — meteo.gc.ca · modifié 2026-09-03\n"
+                    f"Source: {args['url']}\nCe soir et cette nuit\n3°C\n"
+                    "Partiellement nuageux\n"
+                ),
+                "metadata": {
+                    "sources": [
+                        {
+                            "ref": 1,
+                            "title": "Ottawa",
+                            "url": args["url"],
+                            "date": "2026-09-03",
+                        }
+                    ]
+                },
+            }
+
+        vide = {"ok": True, "content": "No results found.", "metadata": {}}
+        resultat = actualite_vocale.absorber_resultat(
+            tour, "web_search", {}, vide, lire
+        )
+        assert lectures[0]["url"] == (
+            "https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697"
+        )
+        assert tour.verification_faite and tour.officielle_lue
+        assert tour.sources == [
+            {
+                "ref": 1,
+                "title": "Ottawa — Prévision 7 jours, Environnement Canada",
+                "url": "https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697",
+                "date": date.today().isoformat(),
+                "sender": "meteo.gc.ca",
+                "official": True,
+            }
+        ]
+        assert "Source officielle, lue par le code" in resultat["content"]
+        assert "source officielle · consultée le" in resultat["content"]
+        assert "Ce soir et cette nuit" in resultat["content"]
+        assert actualite_vocale.epilogue(tour, "Ce soir, trois degrés.") == "", (
+            "la page officielle vaut vérification : rien à avouer"
+        )
+        actualite_vocale.absorber_resultat(tour, "web_search", {}, vide, lire)
+        assert len(lectures) == 1, "une seule lecture par tour"
 
     def test_le_resultat_reste_du_json_lisible_par_le_modele(self):
         tour = actualite_vocale.TourVocal(question=PREMIER_MINISTRE)

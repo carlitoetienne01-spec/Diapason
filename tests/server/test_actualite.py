@@ -1160,18 +1160,14 @@ class TestLaLectureDeLaPageDuPoste:
         lecture = Lecture()
         moteur = Moteur(
             [
-                [
-                    StreamChunk(
-                        tool_calls=[appel_web("taux directeur Banque du Canada")]
-                    )
-                ],
-                [StreamChunk(content="2,25 % [1].", finish_reason="stop")],
+                [StreamChunk(tool_calls=[appel_web("prix du bitcoin")])],
+                [StreamChunk(content="110 000 $ [1].", finish_reason="stop")],
             ]
         )
         evts = await collecter(
             moteur,
             [Recherche("web_search"), lecture],
-            "Quel est le taux directeur de la Banque du Canada ?",
+            "Quel est le prix du bitcoin aujourd'hui ?",
         )
         assert lecture.executions == [], (
             "lire une page au hasard n'apporte rien à un prix"
@@ -1225,13 +1221,15 @@ class TestLaLectureDeLaPageDuPoste:
         url = "https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada"
         moteur = Moteur(
             [
-                [StreamChunk(tool_calls=[appel_web("taux directeur")])],
+                [StreamChunk(tool_calls=[appel_web("prix du bitcoin")])],
                 [StreamChunk(tool_calls=[appel_lecture(url)])],
                 [StreamChunk(content="Réponse [2].", finish_reason="stop")],
             ]
         )
         evts = await collecter(
-            moteur, [Recherche("web_search"), lecture], "Quel est le taux directeur ?"
+            moteur,
+            [Recherche("web_search"), lecture],
+            "Quel est le prix du bitcoin aujourd'hui ?",
         )
         assert lecture.executions and lecture.executions[0]["url"] == url
         lu = [m for m in moteur.appels[2][0] if m.role == Role.TOOL][-1]
@@ -1923,3 +1921,172 @@ async def test_sur_un_modele_distant_le_bouton_dit_qu_il_n_a_rien_verifie(monkey
         'event: verification\ndata: {"level": "memory", "searchTried": false}' in corps
     )
     assert "[DONE]" in corps
+
+
+class TestLaPageOfficielle:
+    """P6 (21/09/2026) : « Quel temps fait-il ce soir ? » recevait cinq
+    articles sans une donnée météo ; Environnement Canada publie la
+    prévision de chaque ville sur une page que web_read lit d'un coup."""
+
+    @staticmethod
+    def lecture_meteo():
+        class Meteo(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] Ottawa, ON - Prévision 7 jours - Environnement Canada"
+                        " — meteo.gc.ca · modifié 2026-09-03\n"
+                        f"Source: {params['url']}\n"
+                        "Début : Ottawa, ON\nCe soir et cette nuit\n3°C\n"
+                        "Partiellement nuageux\nmar 22 sep\n17°C\nEnsoleillé\n"
+                    ),
+                    success=True,
+                    metadata={
+                        "url": params["url"],
+                        "modified": "2026-09-03",
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Ottawa, ON - Prévision 7 jours",
+                                "url": params["url"],
+                                "date": "2026-09-03",
+                                "sender": "meteo.gc.ca",
+                            }
+                        ],
+                    },
+                )
+
+        return Meteo()
+
+    @pytest.mark.asyncio
+    async def test_la_prevision_officielle_est_lue_meme_quand_la_recherche_est_vide(
+        self,
+    ):
+        from datetime import date
+
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("météo Ottawa ce soir")])],
+                [
+                    StreamChunk(
+                        content="Ce soir, 3 °C et partiellement nuageux [1].",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        vide = Outil("web_search", reponse="No results found.")
+        evts = await collecter(
+            moteur, [vide, lecture], "Quel temps fait-il ce soir ?", ville="Ottawa"
+        )
+        assert lecture.executions and lecture.executions[0]["url"] == (
+            "https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697"
+        ), "la ville vient de la config quand la question n'en nomme pas"
+        assert "ce soir cette nuit demain" in lecture.executions[0]["focus"]
+        sources = [
+            s for lot in (e.data for e in evts if e.kind == "sources") for s in lot
+        ]
+        assert sources == [
+            {
+                "ref": 1,
+                "title": "Ottawa — Prévision 7 jours, Environnement Canada",
+                "url": "https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697",
+                "date": date.today().isoformat(),
+                "sender": "meteo.gc.ca",
+                "official": True,
+            }
+        ], "une page vivante est datée du jour de sa lecture, et dite officielle"
+        outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
+        assert "Source officielle, lue par le code — réponds d'après elle :" in (
+            outil.content or ""
+        )
+        assert "[1] Ottawa — Prévision 7 jours, Environnement Canada — meteo.gc.ca" in (
+            outil.content or ""
+        )
+        assert "source officielle · consultée le" in (outil.content or "")
+        assert "Ce soir et cette nuit" in (outil.content or "")
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ], "la recherche était vide, la page officielle vaut vérification"
+        assert texte(evts) == "Ce soir, 3 °C et partiellement nuageux [1]."
+
+    @pytest.mark.asyncio
+    async def test_sans_ville_connue_aucune_page_n_est_lue(self):
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("météo ce soir")])],
+                [StreamChunk(content="Je n'ai pas de données.", finish_reason="stop")],
+            ]
+        )
+        await collecter(
+            moteur, [Recherche("web_search"), lecture], "Quel temps fait-il ce soir ?"
+        )
+        assert lecture.executions == [], "on ne devine pas une ville (§34)"
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("météo Tombouctou")])],
+                [StreamChunk(content="Je n'ai pas de données.", finish_reason="stop")],
+            ]
+        )
+        await collecter(
+            moteur,
+            [Recherche("web_search"), lecture],
+            "Quel temps fait-il ce soir à Tombouctou ?",
+            ville="Ottawa",
+        )
+        assert lecture.executions == [], (
+            "une ville hors de la table n'a pas de page officielle : la config "
+            "ne prend pas sa place"
+        )
+
+
+class TestDemainEtLeFutur:
+    """Essai du 21/09 : « Va-t-il pleuvoir demain à Montréal ? » passait sans
+    consigne ni page officielle — « demain » n'était pas un marqueur, et
+    « va-t-il » pas une forme de question de fait."""
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Va-t-il pleuvoir demain à Montréal ?",
+            "Est-ce qu'il va neiger demain ?",
+            "Y aura-t-il du soleil ce week-end ?",
+            "Quel temps fera-t-il demain ?",
+            "Will it rain tomorrow in Ottawa?",
+        ],
+    )
+    def test_le_futur_proche_est_une_question_d_actualite(self, question):
+        from diapason.server.actualite import (
+            parametres_de_recherche,
+            question_d_actualite,
+        )
+
+        assert question_d_actualite(question), question
+        assert parametres_de_recherche(question)["recency"] == "week", (
+            "demain se périme en jours"
+        )
+
+    def test_une_production_pour_demain_reste_de_tete(self):
+        from diapason.server.actualite import question_d_actualite
+
+        assert not question_d_actualite("Écris un poème pour demain")
+
+    def test_une_valeur_a_decimales_se_retrouve_sans_son_unite(self):
+        """« 2,25 % » signalé hors sources quand la table de la Banque du
+        Canada écrit « 2,25 » dans une colonne de taux (essai du 21/09)."""
+        from diapason.server.actualite import elements_hors_sources
+
+        table = (
+            "[1] Taux — banqueducanada.ca\nDate | Taux cible\n"
+            "2 septembre 2026 | 2,25 | ---"
+        )
+        assert elements_hors_sources("Le taux est de 2,25 % [1].", table, "") == []
+        assert elements_hors_sources(
+            "Le taux est de 5 % [1].", "[1] x\n2026 | 5 | ---", ""
+        ) == ["5 %"], (
+            "un chiffre seul n'est pas assez précis pour valoir sans son unité"
+        )

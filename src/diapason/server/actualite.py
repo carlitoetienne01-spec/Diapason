@@ -33,12 +33,15 @@ from typing import Any
 from diapason.core.types import Message, Role
 
 # Ce qui dépend du moment. Les accents sont retirés avant la recherche.
+# « demain » est un marqueur (essai du 21/09 : « Va-t-il pleuvoir demain à
+# Montréal ? » passait sans consigne ni page officielle).
 _MARQUEURS = re.compile(
-    r"\b(?:actuel(?:le|lement)?|en ce moment|aujourd.hui|ces jours.ci|hier|"
-    r"ce (?:soir|matin|week.end|mois)|cette (?:annee|semaine|nuit)|"
+    r"\b(?:actuel(?:le|lement)?|en ce moment|aujourd.hui|ces jours.ci|hier|demain|"
+    r"apres.demain|ce (?:soir|matin|week.end|mois)|cette (?:annee|semaine|nuit)|"
     r"dernier(?:e|es|s)?|recent(?:e|es|s|ement)?|"
     r"20(?:2[4-9]|3\d)|"
-    r"current(?:ly)?|latest|right now|today|nowadays|these days|recently)\b"
+    r"current(?:ly)?|latest|right now|today|tonight|tomorrow|nowadays|these days|"
+    r"recently)\b"
 )
 # Ce qui change de titulaire ou de valeur sans prévenir. Revue du 20/09 :
 # « résultat », « version », « match », « nouveau » seuls attrapaient
@@ -69,7 +72,9 @@ _QUESTION_DE_FAIT = re.compile(
     r"quel(?:le|s|les)? (?:est|sont|temps|prix|taux|score|age|version)|"
     r"combien (?:coute|vaut|fait|font|de)|quand (?:est|sera|sort|aura lieu|commence)|"
     r"ou en est|c'est qui|c'est combien|est.ce que .+ (?:est|sont|toujours|encore)|"
-    r"who is|who are|what is the|how much)\b"
+    r"(?:va|vont|fera|fait|y a|y aura)[- ]t[- ](?:il|elle|ils|elles)|"
+    r"est.ce qu'il (?:va|fera|fait|pleut|neige)|"
+    r"who is|who are|what is the|how much|will it|is it going to)\b"
 )
 # Les données de Carlito ne se cherchent pas sur le web : un possessif, une
 # première personne conjuguée, un mot de ses modules. « Dis-moi » et « je
@@ -294,9 +299,9 @@ def consigne_actualite(
 # Ce qui se périme en jours (météo, résultats, cours), et ce qui relève des
 # journaux plutôt que du web général.
 _TRES_FRAIS = re.compile(
-    r"\b(?:aujourd.hui|hier|ce (?:soir|matin|week.end)|cette (?:semaine|nuit)|"
+    r"\b(?:aujourd.hui|hier|demain|ce (?:soir|matin|week.end)|cette (?:semaine|nuit)|"
     r"meteo|temperature|pleuvoir|pluie|neige|scores?|matchs?|cours (?:du|de l')|"
-    r"bourse|today|tonight|weather|right now)\b"
+    r"bourse|today|tonight|tomorrow|weather|right now)\b"
 )
 _JOURNAUX = re.compile(
     r"\b(?:meteo|pleuvoir|pluie|neige|elections?|sondages?|nouvelles|actualites?|"
@@ -417,10 +422,20 @@ def _valeur_retrouvee(valeur: str, corpus_compact: str) -> bool:
     if re.search(motif, corpus_compact) is not None:
         return True
     m = re.match(r"^([\d.]+)(.*)$", compact)
-    if not m or not m.group(2).endswith("s"):
+    if not m:
         return False
-    motif = r"(?<![\d.])" + re.escape(m.group(1) + m.group(2).rstrip("s")) + r"(?!\d)"
-    return re.search(motif, corpus_compact) is not None
+    nombre, unite = m.group(1), m.group(2)
+    if unite.endswith("s"):
+        motif = r"(?<![\d.])" + re.escape(nombre + unite.rstrip("s")) + r"(?!\d)"
+        if re.search(motif, corpus_compact) is not None:
+            return True
+    # « 2,25 % » quand la page dit « 2,25 » dans une colonne de taux (essai du
+    # 21/09) : un nombre à décimales ou à trois chiffres est assez précis
+    # pour se retrouver sans son unité ; « 5 % » ne l'est pas.
+    if "." in nombre or len(nombre) >= 3:
+        motif = r"(?<![\d.])" + re.escape(nombre) + r"(?![\d.])"
+        return re.search(motif, corpus_compact) is not None
+    return False
 
 
 def elements_hors_sources(reponse: str, sources: str, question: str = "") -> list[str]:

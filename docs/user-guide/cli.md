@@ -139,6 +139,12 @@ num_ctx = 32768` — so the desktop chat keeps room for its history after the
 10 000-token tool prefix (see `docs/development/diagnostic-performances-2026-09-19.md`).
 The environment variable still wins when both are set.
 
+Weather questions read Environment Canada's 7-day forecast page for the
+city named in the question; when no city is named, the chat uses `[tools]
+ville = "Ottawa"` from `config.toml` (any city of
+`server/sources_officielles.py`'s table). With no city configured, the
+question must name one — Diapason never guesses a place.
+
 !!! note "Keep vision on-device"
     Images are sensitive. Diapason prints a privacy warning before sending
     an image to a non-local engine, so a screenshot never leaves your machine

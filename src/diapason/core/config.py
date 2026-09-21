@@ -1001,6 +1001,11 @@ class ToolsConfig:
     mcp: MCPConfig = field(default_factory=MCPConfig)
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     enabled: str = ""  # comma-separated default tools
+    # 21/09/2026 : la ville dont on parle quand la question n'en nomme pas
+    # (« Quel temps fait-il ce soir ? ») — la page météo officielle d'Environ-
+    # nement Canada se lit par coordonnées (server/sources_officielles.py).
+    # Vide = aucune ville devinée : la question doit la nommer.
+    ville: str = ""
 
 
 @dataclass
