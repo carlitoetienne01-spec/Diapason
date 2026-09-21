@@ -162,6 +162,43 @@ messages les plus anciens à chaque tour, le début conservé aurait glissé et
 tout l'historique aurait été retraité — raisonnement, pas mesure, la fenêtre
 ne se règle pas par requête.
 
+### Vite, mais faux — 20 septembre, 22:30
+
+Dans le mini-panneau : « Qui est le président actuel du Canada ? » →
+« Justin Trudeau, 23e Premier ministre, depuis 2015 », en 5,1 s, sans appel
+d'outil. Le 9b avait `web_search` et la règle « ce qui est récent » dans son
+identité ; il a répondu de tête parce qu'il croyait savoir. La vitesse ne
+sert à rien si la réponse date. `server/actualite.py` :
+
+- une question de fait sur un titulaire, une valeur ou une date (« qui est
+  le premier ministre », « quel est le prix », « dis-moi qui… »), ou un
+  marqueur de temps joint à un tel sujet (« la météo à Ottawa aujourd'hui »),
+  hors données personnelles, définitions, productions et histoire ancienne,
+  reçoit une consigne AU TOUR COURANT — là où le 9b obéit — : appelle
+  `web_search`, réponds d'après les résultats en datant l'information, sinon
+  dis que tu n'as pas pu vérifier ;
+- la réponse est retenue tant qu'une recherche n'a pas RENDU quelque chose
+  (`current_time`, un `web_search` vide ou en échec ne comptent pas) ; un
+  premier passage sans appel vaut une relance ferme, une seule ; un second
+  refus, ou une recherche vide, fait partir la réponse avec « ⚠︎ Non vérifié
+  en ligne » ou « ⚠︎ La recherche web n'a rien donné » en tête (§100) ; un
+  silence devient « Je n'ai pas pu vérifier cette information en ligne » ;
+  une demande de précision (« quel billet ? ») suit le chemin des questions.
+
+Même question, même 9b, après : appel `web_search("président actuel du
+Canada 2026")`, résultats lus, « Le Canada n'a pas de président, mais un
+Premier ministre. En septembre 2026, c'est Mark Carney qui occupe ce poste.
+Il a succédé à Justin Trudeau en avril 2025. » — premier texte à 11,6 s,
+total 13,2 s (1,2 s de préparation après relance du serveur, 4,4 s pour le
+passage qui décide l'appel, 1,5 s de recherche, 5,7 s pour le passage qui
+rédige). Avant : 5,1 s, faux. Le prix d'une question d'actualité est donc
+un passage de plus et la recherche ; sur une question ordinaire rien ne
+change. Limites : la reconnaissance est lexicale (une question d'actualité
+sans forme interrogative ni marqueur passe encore de tête) ; rien ne relit
+la réponse finale — un modèle qui lit les résultats et n'en tient pas
+compte, ou invente une source, n'est pas rattrapé ; la voix et le chemin
+non diffusé n'ont pas cette garde.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

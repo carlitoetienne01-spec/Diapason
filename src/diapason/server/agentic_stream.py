@@ -36,6 +36,15 @@ from typing import Any, AsyncIterator, Iterable, Sequence
 from diapason.core.promesse import est_une_promesse_sans_acte
 from diapason.core.types import Message, Role, ToolCall
 from diapason.engine._base import EngineToolsUnsupportedError
+from diapason.server.actualite import (
+    AVERTISSEMENT,
+    AVERTISSEMENT_RECHERCHE,
+    AVEU,
+    CONSIGNE_FERME,
+    consigne_actualite,
+    question_courante_d_actualite,
+    recherche_concluante,
+)
 from diapason.server.questions_chat import (
     CADRAGE_MAX_JETONS,
     POSER_QUESTIONS,
@@ -229,6 +238,20 @@ async def stream_with_tools(
         # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
         # en prose. Le rappel au tour courant a produit le véritable appel.
         travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
+    # 20/09/2026 : « Qui est le président actuel du Canada ? » → « Justin
+    # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question
+    # d'actualité reçoit sa consigne au tour courant, sa réponse est retenue
+    # tant qu'aucune recherche n'a abouti, et une relance ferme précède l'aveu.
+    actualite = "web_search" in trousse.noms and question_courante_d_actualite(messages)
+    if actualite:
+        travail = consigne_actualite(travail)
+    relance_actualite_faite = False
+    # Revue du 20/09 : « un outil a tourné » ne vaut pas vérification —
+    # current_time, ou un web_search sans résultat, laissaient passer la
+    # réponse de mémoire comme vérifiée. Seule une recherche qui a rendu
+    # quelque chose lève la retenue.
+    recherche_tentee = False
+    verification_faite = False
     deja_vus: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
@@ -251,7 +274,13 @@ async def stream_with_tools(
         if interactive_questions:
             specs = [*specs, schema_questions()]
         specs_du_tour = None if dernier_tour else specs
-        verifier_lecture = (
+        verifier_actualite = (
+            actualite
+            and not dernier_tour
+            and not outils_indisponibles
+            and not verification_faite
+        )
+        verifier_lecture = verifier_actualite or (
             not dernier_tour
             and not outils_indisponibles
             and not un_outil_a_tourne
@@ -380,11 +409,56 @@ async def stream_with_tools(
         if cadrage_requis and appels:
             yield ToolStreamEvent("token", "\n\nPeux-tu préciser ta demande ?")
             return
+        texte_retenu = "".join(morceaux)
+        cadrage_textuel = (
+            interactive_questions
+            and raison_arret == "stop"
+            and est_un_cadrage_textuel(texte_retenu)
+        )
+        if verifier_actualite and not appels and cadrage_textuel:
+            # Le modèle demande une précision (« quel billet ? ») : ce n'est
+            # pas une réponse de mémoire. Le cadrage suit son chemin ordinaire,
+            # jusqu'aux boutons (revue du 20/09).
+            verifier_lecture = False
         if verifier_lecture:
-            if not appels and raison_arret == "stop":
-                # 19/09/2026 : le 9b affirmait ne voir aucun message sans lecture.
-                # Ne pas diffuser cette réponse : revenir UNE fois aux schémas
-                # complets, sans injecter l'affirmation non vérifiée dans le fil.
+            # Une réponse de mémoire coupée par le plafond (« length ») reste
+            # une réponse de mémoire ; la relecture du 19/09, elle, ne rejoue
+            # jamais un arrêt qui n'est pas « stop » (ne pas contourner une coupure).
+            arret_ordinaire = raison_arret == "stop" or (
+                verifier_actualite and raison_arret == "length"
+            )
+            if not appels and arret_ordinaire:
+                if (
+                    verifier_actualite
+                    and not relance_actualite_faite
+                    and not recherche_tentee
+                ):
+                    # Le premier passage a répondu de mémoire : une seule
+                    # relance, ferme, sans afficher l'affirmation non vérifiée.
+                    relance_actualite_faite = True
+                    travail = consigne_actualite(travail, CONSIGNE_FERME)
+                    continue
+                if verifier_actualite:
+                    # Deux refus d'appeler web_search, ou une recherche qui n'a
+                    # rien rendu : la réponse part, annoncée pour ce qu'elle
+                    # est (§100) ; un silence devient un aveu, pas un bandeau nu.
+                    if not texte_retenu.strip():
+                        morceaux = [AVEU]
+                    else:
+                        yield ToolStreamEvent(
+                            "token",
+                            AVERTISSEMENT_RECHERCHE
+                            if recherche_tentee
+                            else AVERTISSEMENT,
+                        )
+                    if deja_ecrit:
+                        yield ToolStreamEvent("token", "\n\n")
+                    for contenu in morceaux:
+                        yield ToolStreamEvent("token", contenu)
+                    return
+                # 19/09/2026 : le 9b affirmait ne voir aucun message sans
+                # lecture. Ne pas diffuser cette réponse : revenir UNE fois
+                # aux schémas complets, sans injecter l'affirmation dans le fil.
                 trousse.elargir()
                 continue
             if deja_ecrit and any(m.strip() for m in morceaux):
@@ -570,6 +644,10 @@ async def stream_with_tools(
                 contenu = f"L'outil a échoué : {exc}"
                 succes = False
             latence = time.time() - debut
+            if nom == "web_search":
+                recherche_tentee = True
+                if recherche_concluante(nom, succes, contenu):
+                    verification_faite = True
 
             contenu = _tronquer(contenu)
 
