@@ -15,7 +15,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
-import { lireVerification } from './notesDeVerification';
+import { EVENEMENT_VERIFIER_EN_LIGNE, lireVerification, type DemandeDeVerification } from './notesDeVerification';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import {
@@ -455,8 +455,10 @@ export function InputArea() {
 
   // `override` exists for dictation: the last words are transcribed after the
   // microphone closes, so the auto-send path has fresher text than `input`.
-  const sendMessage = useCallback(async (override?: string, envoi?: EnvoiReponses) => {
-    const recherche = deepResearch && !envoi;
+  const sendMessage = useCallback(async (override?: string, envoi?: EnvoiReponses, options?: { verifyOnline?: boolean; garderBrouillon?: boolean }) => {
+    // 21/09/2026 : « Vérifier en ligne » passe par le chat ordinaire, jamais
+    // par la recherche profonde — c'est une question, pas un dossier.
+    const recherche = deepResearch && !envoi && !options?.verifyOnline;
     const content = (override ?? input).trim();
     if (!content || useAppStore.getState().streamState.isStreaming) return;
     if (!selectedModel) {
@@ -467,7 +469,11 @@ export function InputArea() {
     if (envoi) {
       const actuel = useAppStore.getState();
       if (actuel.activeId !== envoi.conversationId || !preparerEnvoiQuestions(actuel.messages, envoi)) return;
-    } else setInput('');
+    } else if (!options?.garderBrouillon) {
+      // Revue du 21/09 : « Vérifier en ligne » effaçait le brouillon en cours ;
+      // la dictée, elle, passe par ce vidage (elle pose son texte dans le champ).
+      setInput('');
+    }
 
     let convId = activeId;
     if (!convId) {
@@ -686,6 +692,7 @@ export function InputArea() {
           // Le tour qui reçoit les réponses réalise la demande ; il ne rouvre
           // pas un questionnaire identique sous l'effet du rappel d'interface.
           interactiveQuestions: !envoi,
+          ...(options?.verifyOnline ? { verifyOnline: true } : {}),
         },
         controller.signal,
       )) {
@@ -902,6 +909,21 @@ export function InputArea() {
     window.addEventListener(EVENEMENT_REPONSES_CHAT, repondre);
     return () => window.removeEventListener(EVENEMENT_REPONSES_CHAT, repondre);
   }, [sendMessage]);
+
+  // Le bouton « Vérifier en ligne » d'une bulle (21/09/2026) : un nouveau tour
+  // « Vérifie ça en ligne. » que le serveur rattache à la question d'avant ;
+  // la nouvelle réponse s'ajoute sous l'ancienne, elle ne la remplace pas.
+  useEffect(() => {
+    const verifier = (event: Event) => {
+      const demande = (event as CustomEvent<DemandeDeVerification>).detail;
+      const actuel = useAppStore.getState();
+      if (!demande || actuel.streamState.isStreaming || actuel.activeId !== demande.conversationId) return;
+      if (!actuel.messages.some((m) => m.id === demande.messageId)) return;
+      void sendMessage(t('chat.verification.demande'), undefined, { verifyOnline: true, garderBrouillon: true });
+    };
+    window.addEventListener(EVENEMENT_VERIFIER_EN_LIGNE, verifier);
+    return () => window.removeEventListener(EVENEMENT_VERIFIER_EN_LIGNE, verifier);
+  }, [sendMessage, t]);
 
   // Falling silent ends the turn: once dictation has been quiet for this long,
   // the message goes on its own. Pressing Enter or the send button beats the

@@ -388,6 +388,58 @@ date ; le modèle qui relit lui-même la page déjà lue paie une seconde
 lecture ; le message TOOL d'une recherche avec page lue approche 8 000
 caractères (deux plafonds de 4 000).
 
+### Le badge et le bouton — 21 septembre, après-midi
+
+Deux pièces du palier « pro » de plus (P1, P2), parce que la
+reconnaissance d'une question d'actualité est lexicale et le restera :
+
+1. **Le niveau de vérification vient du code** (`actualite.
+   niveau_de_verification`) : `memory` tant qu'aucune recherche n'a rendu
+   quelque chose ; `partial` quand la réponse ne cite aucun `[N]`, cite un
+   numéro que la carte ne connaît pas, n'est qu'une citation, ou que le
+   contrôle a relevé quelque chose (élément hors sources, titulaire en
+   désaccord, sources trop vieilles) ; `verified` sinon. Il part avec
+   l'événement `verification` (`level`, `searchTried`) — sur toute question
+   d'actualité, et sur tout tour où le modèle a cherché de lui-même — et
+   s'affiche en pastille sous la bulle : « Vérifié en ligne »,
+   « Partiellement vérifié », « De mémoire », « De mémoire — recherche sans
+   résultat ». Le contrôle juge ce que la bulle AFFICHE, tout le texte du
+   tour, pas le dernier passage (revue du 21/09 : « Justin Trudeau [3],
+   depuis 2015 » écrit avant un second outil restait sous un badge vert) ;
+   quand deux sources désignent deux titulaires et que la plus récente
+   tranche, citer le périmé sans le récent est un désaccord. Le préfixe de
+   texte « ⚠︎ Non vérifié en ligne » ne part plus au client de bureau (il
+   se copiait avec la réponse et se prononçait) ; l'API standard, qui ne
+   lit pas les événements, le garde (§100 — `signal_textuel`, discriminé
+   par `interactiveQuestions`). Les clés du signal passent à l'anglais sur
+   le fil (`notFound`, `sourcesDatedAt`, `disagreement {answer, sources}`) ;
+   le client lit encore les clés françaises des messages enregistrés le 20.
+2. **« Vérifier en ligne », à la main et à la voix** (§82) : sur la
+   dernière bulle du fil quand elle n'est pas vérifiée (de mémoire,
+   partielle, ou sans niveau — le cas pour lequel le bouton existe), un
+   bouton envoie un tour « Vérifie ça en ligne. » avec `verifyOnline:
+   true` ; tapé ou dicté, « Vérifie ça », « vérifie-le », « confirme-moi
+   ça », « C'est vrai ? », « t'es sûr de ça ? », « Check this online »
+   suffisent (`est_une_demande_de_verification` — le message ENTIER, et le
+   verbe veut un complément : « Vérifie que mon script compile », « Vérifie
+   mes tâches » et un « Confirme » nu qui acquiesce n'envoient personne sur
+   le web). Le serveur rattache la demande à la question qui la précède en
+   sautant toutes les demandes consécutives (`question_a_verifier` — une
+   seconde pression vérifiait « Vérifie ça en ligne. »), pose une consigne
+   qui la nomme (`CONSIGNE_DEMANDEE`), retient une confirmation de mémoire
+   et relance fermement ; la nouvelle réponse s'ajoute sous l'ancienne. Ce
+   qui est personnel (`_PERSONNEL` : tâches, notes, agenda…) ou porte une
+   image ne se vérifie pas sur le web : le tour redevient ordinaire. Le
+   bouton ne s'affiche ni sur une réponse vérifiée, ni après une recherche
+   sans résultat (relancer la même boucle sur Ollama `-np 1` pour rien), ni
+   sur un modèle distant — où `verifyOnline` répond « de mémoire » plutôt
+   que de se taire.
+
+Limites : la voix en direct (`speech/realtime`) n'a toujours aucune de ces
+gardes ; le niveau juge les citations, pas leur pertinence (une réponse qui
+cite [1] à côté est « vérifiée ») ; « Léon XIV » et « Leo XIV » restent deux
+noms.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

@@ -138,10 +138,15 @@ export interface ChatMessage {
   // (années, valeurs, noms) — un signal du serveur, jamais dans le texte.
   // 21/09 : plus le titulaire que les sources désignent quand la réponse en
   // nomme un autre, et la date des sources quand elles sont trop vieilles.
+  // 21/09 aussi : le niveau calculé par le serveur (vérifié en ligne,
+  // partiel, de mémoire) et si une recherche a été tentée. Clés anglaises
+  // sur le fil, comme tout ce qui voyage (CLAUDE.md).
   verification?: {
-    nonRetrouves: string[];
-    sourcesDatees?: string;
-    desaccord?: { reponse: string; sources: string[] };
+    level?: 'verified' | 'partial' | 'memory';
+    searchTried?: boolean;
+    notFound: string[];
+    sourcesDatedAt?: string;
+    disagreement?: { answer: string; sources: string[] };
   };
 }
 

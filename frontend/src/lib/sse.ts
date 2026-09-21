@@ -9,6 +9,9 @@ export interface ChatRequest {
   max_tokens?: number;
   action_mode?: 'off' | 'auto';
   interactiveQuestions?: boolean;
+  // 21/09/2026 : le bouton « Vérifier en ligne » force la recherche web sur
+  // ce tour, quelle que soit la forme de la question.
+  verifyOnline?: boolean;
 }
 
 export async function* streamChat(

@@ -1391,6 +1391,10 @@ async def _handle_stream(
                         temperature=req.temperature,
                         max_tokens=req.max_tokens,
                         interactive_questions=req.interactiveQuestions,
+                        verifier_en_ligne=req.verifyOnline,
+                        # Le client de bureau (interactiveQuestions) lit le
+                        # niveau ; l'API standard garde le signe dans le texte.
+                        signal_textuel=not req.interactiveQuestions,
                         trousse_adaptative=bool(
                             getattr(
                                 getattr(app_config, "agent", None),
@@ -1455,6 +1459,14 @@ async def _handle_stream(
                             ],
                         )
                         yield f"data: {chunk.model_dump_json()}\n\n"
+                    if req.verifyOnline:
+                        # Revue du 21/09 : sur un modèle distant ou sans
+                        # trousse, « Vérifier en ligne » était ignoré en
+                        # silence et la réponse se lisait comme vérifiée.
+                        yield (
+                            "event: verification\n"
+                            'data: {"level": "memory", "searchTried": false}\n\n'
+                        )
         except Exception as exc:
             # Surface errors as a content chunk so the frontend can
             # display them instead of silently failing.

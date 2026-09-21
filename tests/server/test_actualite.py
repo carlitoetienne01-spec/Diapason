@@ -8,8 +8,6 @@ from diapason.core.types import Message, Role
 from diapason.engine._stubs import StreamChunk
 from diapason.security.capabilities import CapabilityPolicy
 from diapason.server.actualite import (
-    AVERTISSEMENT,
-    AVERTISSEMENT_RECHERCHE,
     AVEU,
     CONSIGNE,
     CONSIGNE_FERME,
@@ -153,6 +151,9 @@ async def collecter(moteur, liste, question, **kwargs):
     executeur = ToolExecutor(
         liste, autoload_capability_policy=False, capability_policy=politique
     )
+    # Sémantique du client de bureau : le niveau part dans l'événement, pas
+    # dans le texte. L'API standard (signal_textuel=True) a son propre test.
+    kwargs.setdefault("signal_textuel", False)
     return [
         e
         async for e in stream_with_tools(
@@ -237,7 +238,12 @@ class TestLaVerificationAuFilDuChat:
             ]
         )
         evts = await collecter(moteur, liste, QUESTION)
-        assert texte(evts) == AVERTISSEMENT + "Justin Trudeau, depuis 2015."
+        assert texte(evts) == "Justin Trudeau, depuis 2015.", (
+            "plus de préfixe dans le texte (21/09) : il se copiait et se prononçait"
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "memory", "searchTried": False}
+        ], "le niveau « de mémoire » part avec le signal, calculé par le code"
         assert len(moteur.appels) == 2, "une seule relance, jamais une boucle"
         assert not liste[0].executions
 
@@ -303,7 +309,10 @@ class TestCeQuiVautVerification:
             ]
         )
         evts = await collecter(moteur, liste, QUESTION)
-        assert texte(evts) == AVERTISSEMENT_RECHERCHE + "Justin Trudeau."
+        assert texte(evts) == "Justin Trudeau."
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "memory", "searchTried": True}
+        ], "recherche tentée, rien rendu : de mémoire, et l'interface le sait"
         assert len(moteur.appels) == 2, (
             "après une recherche tentée, aucune relance : on annonce, on n'insiste pas"
         )
@@ -318,7 +327,10 @@ class TestCeQuiVautVerification:
             ]
         )
         evts = await collecter(moteur, liste, QUESTION)
-        assert texte(evts).startswith(AVERTISSEMENT_RECHERCHE)
+        assert texte(evts) == "Justin Trudeau."
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "memory", "searchTried": True}
+        ]
 
     @pytest.mark.asyncio
     async def test_un_silence_apres_la_relance_devient_un_aveu(self):
@@ -331,6 +343,9 @@ class TestCeQuiVautVerification:
         )
         evts = await collecter(moteur, liste, QUESTION)
         assert texte(evts) == AVEU, "jamais un bandeau sans rien dessous"
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "memory", "searchTried": False}
+        ]
 
     @pytest.mark.asyncio
     async def test_une_reponse_de_memoire_coupee_par_le_plafond_est_relancee(self):
@@ -360,8 +375,10 @@ class TestCeQuiVautVerification:
         evts = await collecter(
             moteur, liste, "Quel est le prix du billet ?", interactive_questions=True
         )
-        assert AVERTISSEMENT not in texte(evts)
         assert AVEU not in texte(evts)
+        assert not [e for e in evts if e.kind == "verification"], (
+            "un cadrage n'est pas une réponse : aucun niveau"
+        )
         assert all(
             msg.content != CONSIGNE_FERME for msgs, _ in moteur.appels for msg in msgs
         ), "aucune relance ferme sur un cadrage"
@@ -527,8 +544,8 @@ class TestLesSourcesEtLeControle:
             "le signal n'entre pas dans le texte : il se copierait et se relirait"
         )
         assert [e.data for e in evts if e.kind == "verification"] == [
-            {"nonRetrouves": ["Justin Trudeau"]}
-        ]
+            {"notFound": ["Justin Trudeau"], "level": "partial", "searchTried": True}
+        ], "un élément hors sources rend la vérification partielle"
         message_outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
         assert '"sources"' not in (message_outil.content or ""), (
             "la liste structurée n'est pas recopiée au modèle : le texte est numéroté"
@@ -863,7 +880,7 @@ class TestLaNoteAvantRedaction:
             [{"date": "2024-03-01"}], "", PREMIER_MINISTRE
         )
         assert note.startswith("Les sources trouvées datent au plus du 2024-03-01")
-        assert donnees == {"sourcesDatees": "2024-03-01"}
+        assert donnees == {"sourcesDatedAt": "2024-03-01"}
 
     def test_rien_a_dire_rien_de_dit(self):
         from diapason.server.actualite import note_avant_redaction
@@ -881,7 +898,7 @@ class TestLeDesaccordSurLeTitulaire:
             "Le premier ministre du Canada en 2026 est Justin Trudeau [3].",
             PAGE_DU_POSTE,
             PREMIER_MINISTRE,
-        ) == {"reponse": "Justin Trudeau", "sources": ["Mark Carney"]}
+        ) == {"answer": "Justin Trudeau", "sources": ["Mark Carney"]}
 
     def test_la_reponse_d_accord_avec_les_sources(self):
         from diapason.server.actualite import desaccord_sur_le_titulaire
@@ -917,10 +934,25 @@ class TestLeDesaccordSurLeTitulaire:
             is None
         ), "sans titulaire désigné par les sources, pas de comparaison"
         deux = PAGE_DU_POSTE + INFOBOX_ANGLAISE_PERIMEE
+        assert desaccord_sur_le_titulaire(
+            "Justin Trudeau [1].", deux, PREMIER_MINISTRE
+        ) == {"answer": "Justin Trudeau", "sources": ["Mark Carney"]}, (
+            "deux titulaires, une source strictement plus récente : la réponse "
+            "qui cite le périmé sans le récent est en désaccord (revue du 21/09)"
+        )
         assert (
-            desaccord_sur_le_titulaire("Justin Trudeau [1].", deux, PREMIER_MINISTRE)
+            desaccord_sur_le_titulaire("Mark Carney [2].", deux, PREMIER_MINISTRE)
             is None
-        ), "deux titulaires, c'est un désaccord entre sources, déjà signalé au modèle"
+        )
+        meme_date = PAGE_DU_POSTE + INFOBOX_ANGLAISE_PERIMEE.replace(
+            "2024-01-01", "2026-08-14"
+        )
+        assert (
+            desaccord_sur_le_titulaire(
+                "Justin Trudeau [1].", meme_date, PREMIER_MINISTRE
+            )
+            is None
+        ), "sans date qui tranche, silence"
         assert (
             desaccord_sur_le_titulaire(
                 "Justin Trudeau.", PAGE_DU_POSTE, "Quel est le taux directeur ?"
@@ -1083,9 +1115,9 @@ class TestLaLectureDeLaPageDuPoste:
         assert [e.data for e in evts if e.kind == "sources"] == [
             resultat_de_recherche().metadata["sources"]
         ], "la page lue ne fait pas une nouvelle pastille : elle a déjà la sienne"
-        assert [e.data for e in evts if e.kind == "verification"] == [], (
-            "la réponse cite le titulaire des sources : rien à signaler"
-        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ], "la réponse cite le titulaire des sources : vérifiée, rien à signaler"
 
     @pytest.mark.asyncio
     async def test_la_reponse_qui_nomme_le_predecesseur_est_signalee(self):
@@ -1106,7 +1138,14 @@ class TestLaLectureDeLaPageDuPoste:
         )
         evts = await collecter(moteur, liste, PREMIER_MINISTRE)
         assert [e.data for e in evts if e.kind == "verification"] == [
-            {"desaccord": {"reponse": "Justin Trudeau", "sources": ["Mark Carney"]}}
+            {
+                "disagreement": {
+                    "answer": "Justin Trudeau",
+                    "sources": ["Mark Carney"],
+                },
+                "level": "partial",
+                "searchTried": True,
+            }
         ], (
             "Trudeau est dans les sources (donc pas « non retrouvé ») mais n'en "
             "est pas le titulaire"
@@ -1400,7 +1439,7 @@ class TestCeQueLExtractionRefuse:
         ), "rien dans les sources ne dit que Trudeau est un ancien : silence"
         assert desaccord_sur_le_titulaire(
             "Justin Trudeau [2].", PAGE_DU_POSTE, PREMIER_MINISTRE
-        ) == {"reponse": "Justin Trudeau", "sources": ["Mark Carney"]}
+        ) == {"answer": "Justin Trudeau", "sources": ["Mark Carney"]}
 
 
 class TestLAgeDesSourcesMelangees:
@@ -1513,3 +1552,374 @@ class TestLaNoteEstRemplaceeEtLaPageGardeSaPastille:
         assert url in (outil.content or "") or "www.fr.wikipedia.org" in (
             outil.content or ""
         )
+
+
+# ---------------------------------------------------------------------------
+# P1/P2 du jury (21/09/2026) : le niveau de vérification vient du code, et la
+# vérification se force à la main — bouton, « Vérifie ça » tapé ou dicté.
+# ---------------------------------------------------------------------------
+
+
+class TestLeNiveauDeVerification:
+    SOURCES = [{"ref": 1, "url": "https://a"}, {"ref": 2, "url": "https://b"}]
+
+    def test_de_memoire_tant_que_rien_n_a_ete_trouve(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        assert (
+            niveau_de_verification("Mark Carney [1].", self.SOURCES, False) == "memory"
+        )
+        assert niveau_de_verification("Mark Carney.", [], False) == "memory"
+
+    def test_partiel_sans_citation_ou_avec_un_numero_inconnu(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        assert (
+            niveau_de_verification("Mark Carney.", self.SOURCES, True) == "partial"
+        ), "des sources, mais la réponse n'en cite aucune"
+        assert (
+            niveau_de_verification("Mark Carney [7].", self.SOURCES, True) == "partial"
+        ), "un numéro que la carte ne connaît pas"
+
+    def test_partiel_quand_le_controle_a_releve_quelque_chose(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        assert (
+            niveau_de_verification(
+                "Mark Carney [1].", self.SOURCES, True, {"notFound": ["2015"]}
+            )
+            == "partial"
+        )
+        assert (
+            niveau_de_verification(
+                "Justin Trudeau [1].",
+                self.SOURCES,
+                True,
+                {
+                    "disagreement": {
+                        "answer": "Justin Trudeau",
+                        "sources": ["Mark Carney"],
+                    }
+                },
+            )
+            == "partial"
+        )
+
+    def test_verifie_quand_tout_tient(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        assert niveau_de_verification(
+            "Mark Carney [1][2].", self.SOURCES, True, {}
+        ) == ("verified")
+
+
+class TestLaDemandeDeVerification:
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            "Vérifie ça",
+            "Vérifie ça en ligne.",
+            "vérifie-le",
+            "confirme-moi ça",
+            "c'est sûr ?",
+            "t'es sûr de ça ?",
+            "verifie sa",
+            "Vérifie ça svp",
+            "est-ce que c'est vrai ?",
+            "ah bon ?",
+            "checke ça",
+            "C'est vrai ?",
+            "Est-ce vrai ?",
+            "Check this online",
+            "Verify this online.",
+            "Peux-tu vérifier ça ?",
+            "Tu es sûr ?",
+            "Vraiment ?",
+            "Vérifie cette information sur le web, stp.",
+        ],
+    )
+    def test_ce_qui_est_une_demande(self, texte):
+        from diapason.server.actualite import est_une_demande_de_verification
+
+        assert est_une_demande_de_verification(texte), texte
+
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            "Vérifie que mon script compile",
+            "Vérifie mes tâches",
+            "Confirme la réunion de demain",
+            "Qui est le premier ministre du Canada ?",
+            "",
+            # Revue du 21/09 : un verbe nu est un acquiescement — « Confirme »
+            # à « je crée la tâche ? » créait la tâche puis « n'a pas pu vérifier ».
+            "Vérifie",
+            "Confirme",
+            "Confirmé.",
+            "Check",
+            "Sure",
+            "Vraiment",
+            "vérifie ça dans mes notes",
+        ],
+    )
+    def test_ce_qui_n_en_est_pas(self, texte):
+        """« Vérifie que mon script compile » n'envoie personne sur le web."""
+        from diapason.server.actualite import est_une_demande_de_verification
+
+        assert not est_une_demande_de_verification(texte), texte
+
+    def test_la_question_a_verifier_est_celle_qui_precede(self):
+        from diapason.server.actualite import question_a_verifier
+
+        fil = [
+            Message(role=Role.USER, content=PREMIER_MINISTRE),
+            Message(role=Role.ASSISTANT, content="Justin Trudeau."),
+            Message(role=Role.USER, content="Vérifie ça."),
+        ]
+        assert question_a_verifier(fil) == PREMIER_MINISTRE
+        assert question_a_verifier(fil[:1]) == PREMIER_MINISTRE
+        assert (
+            question_a_verifier([Message(role=Role.USER, content="Vérifie ça.")]) == ""
+        ), "sans question avant, une demande nue n'a rien à vérifier"
+        # Revue du 21/09 : une seconde pression vérifiait « Vérifie ça en ligne. ».
+        deux = fil + [
+            Message(role=Role.ASSISTANT, content="Mark Carney [2]."),
+            Message(role=Role.USER, content="Vérifie ça en ligne."),
+        ]
+        assert question_a_verifier(deux) == PREMIER_MINISTRE
+        assert question_a_verifier(deux, forcee=True) == PREMIER_MINISTRE
+        # Le bouton avec un libellé traduit : le dernier message est la demande.
+        traduit = fil[:2] + [Message(role=Role.USER, content="Verify this online.")]
+        assert question_a_verifier(traduit, forcee=True) == PREMIER_MINISTRE
+        assert (
+            question_a_verifier(
+                [
+                    Message(
+                        role=Role.USER,
+                        content="Le Canada compte 40 millions d'habitants.",
+                    )
+                ],
+                forcee=True,
+            )
+            == "Le Canada compte 40 millions d'habitants."
+        ), "une affirmation seule, envoyée avec le bouton, se vérifie elle-même"
+
+
+class TestLaVerificationForcee:
+    """§82 : la reconnaissance lexicale ne couvrira jamais tout ; le bouton
+    (verifyOnline) et « Vérifie ça » forcent la recherche."""
+
+    @pytest.mark.asyncio
+    async def test_le_bouton_force_la_recherche_sur_une_affirmation_quelconque(self):
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(content="Oui, c'est exact.", finish_reason="stop")],
+                [StreamChunk(tool_calls=[appel_web("population du Canada 2026")])],
+                [StreamChunk(content="Environ 41 millions [1].", finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            liste,
+            "Le Canada compte 40 millions d'habitants.",
+            verifier_en_ligne=True,
+        )
+        premier = [m.content for m in moteur.appels[0][0] if m.role == Role.SYSTEM]
+        assert any(
+            "Une vérification en ligne est demandée pour : « Le Canada compte 40 "
+            "millions d'habitants. »" in c
+            for c in premier
+        ), "la consigne nomme ce qu'il faut vérifier"
+        assert "Oui, c'est exact." not in texte(evts), (
+            "la confirmation de mémoire est retenue, la relance ferme suit"
+        )
+        assert texte(evts) == "Environ 41 millions [1]."
+        assert liste[0].executions, "la recherche a bien tourné"
+
+    @pytest.mark.asyncio
+    async def test_verifie_ca_tape_ou_dicte_porte_sur_la_question_d_avant(self):
+        liste = [Recherche("web_search"), Lecture()]
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web()])],
+                [StreamChunk(content="Mark Carney [2].", finish_reason="stop")],
+            ]
+        )
+        politique = CapabilityPolicy(default_deny=False)
+        executeur = ToolExecutor(
+            liste, autoload_capability_policy=False, capability_policy=politique
+        )
+        evts = [
+            e
+            async for e in stream_with_tools(
+                moteur,
+                "local",
+                [
+                    Message(role=Role.USER, content=PREMIER_MINISTRE),
+                    Message(role=Role.ASSISTANT, content="Justin Trudeau."),
+                    Message(role=Role.USER, content="Vérifie ça."),
+                ],
+                tools=liste,
+                executor=executeur,
+            )
+        ]
+        systeme = [m.content for m in moteur.appels[0][0] if m.role == Role.SYSTEM]
+        assert any(f"demandée pour : « {PREMIER_MINISTRE} »" in c for c in systeme)
+        assert liste[1].executions, (
+            "la page du poste est lue : la question à vérifier est bien celle "
+            "du premier ministre, pas « Vérifie ça »"
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ]
+
+
+class TestLesUnitesSansPluriel:
+    def test_une_source_anglaise_au_singulier(self):
+        """Essai du 21/09 : « 40,5 millions » signalé non retrouvé alors que la
+        source disait « 40.5 million »."""
+        from diapason.server.actualite import elements_hors_sources
+
+        sources = "[5] Canada population — statcan.gc.ca\nExtrait: 40.5 million people."
+        assert elements_hors_sources("Environ 40,5 millions [5].", sources, "") == []
+        assert elements_hors_sources("Environ 42,5 millions [5].", sources, "") == [
+            "42,5 millions"
+        ], "un autre nombre reste non retrouvé"
+
+
+class TestLeSigneTextuelPourLApiStandard:
+    @pytest.mark.asyncio
+    async def test_un_client_qui_ne_lit_pas_les_evenements_garde_le_prefixe(self):
+        """Revue du 21/09 : sans le préfixe, curl ou un SDK OpenAI recevaient
+        une réponse de mémoire sans aucun signe (§100). Le client de bureau,
+        lui, lit le niveau et n'en veut pas dans le texte."""
+        from diapason.server.actualite import AVERTISSEMENT
+
+        liste = [Outil("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(content="Justin Trudeau.", finish_reason="stop")],
+                [
+                    StreamChunk(
+                        content="Justin Trudeau, depuis 2015.", finish_reason="stop"
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(moteur, liste, QUESTION, signal_textuel=True)
+        assert texte(evts) == AVERTISSEMENT + "Justin Trudeau, depuis 2015."
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "memory", "searchTried": False}
+        ], "l'événement part aussi : un client qui le lit l'a"
+
+
+class TestCeQueLaBulleAffiche:
+    @pytest.mark.asyncio
+    async def test_la_prose_ecrite_avant_un_second_outil_est_jugee_aussi(self):
+        """Revue du 21/09 : « Justin Trudeau [3], depuis 2015 » écrit avant un
+        second outil restait affiché sous un badge vert."""
+        liste = [Recherche("web_search"), Lecture()]
+        url = "https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada"
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web()])],
+                [
+                    StreamChunk(content="Justin Trudeau [3], depuis 2015. "),
+                    StreamChunk(tool_calls=[appel_lecture(url)]),
+                ],
+                [StreamChunk(content="Voilà.", finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(moteur, liste, PREMIER_MINISTRE)
+        assert texte(evts).startswith("Justin Trudeau [3], depuis 2015.")
+        signal = [e.data for e in evts if e.kind == "verification"]
+        assert signal and signal[0]["level"] == "partial"
+        assert signal[0]["disagreement"] == {
+            "answer": "Justin Trudeau",
+            "sources": ["Mark Carney"],
+        }, "ce que la bulle affiche est jugé en entier, pas le dernier passage"
+
+    @pytest.mark.asyncio
+    async def test_une_recherche_faite_d_elle_meme_recoit_son_badge(self):
+        """Hors actualité, le modèle a cherché : les pastilles [N] sont là, le
+        badge aussi — sans le contrôle lexical réservé aux questions d'actualité."""
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("recette de tarte")])],
+                [
+                    StreamChunk(
+                        content="Ricardo Larrivée propose une pâte [1].",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur, [Recherche("web_search")], "Donne-moi une recette de tarte."
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ], "vérifié, et « Ricardo Larrivée » n'est pas signalé (revue du 20/09)"
+
+    @pytest.mark.asyncio
+    async def test_une_demande_sur_des_donnees_personnelles_reste_locale(self):
+        """Revue du 21/09 : « Vérifie ça » après « quelles sont mes tâches ? »
+        forçait une recherche web sur des données personnelles."""
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [[StreamChunk(content="Tu as trois tâches.", finish_reason="stop")]]
+        )
+        politique = CapabilityPolicy(default_deny=False)
+        executeur = ToolExecutor(
+            liste, autoload_capability_policy=False, capability_policy=politique
+        )
+        evts = [
+            e
+            async for e in stream_with_tools(
+                moteur,
+                "local",
+                [
+                    Message(role=Role.USER, content="Quelles sont mes tâches ?"),
+                    Message(role=Role.ASSISTANT, content="Tu as trois tâches."),
+                    Message(role=Role.USER, content="Vérifie ça."),
+                ],
+                tools=liste,
+                executor=executeur,
+                verifier_en_ligne=True,
+                signal_textuel=False,
+            )
+        ]
+        assert texte(evts) == "Tu as trois tâches."
+        assert not liste[0].executions, "aucune recherche web sur les tâches"
+        assert not [e for e in evts if e.kind == "verification"]
+        assert len(moteur.appels) == 1, "ni retenue, ni relance"
+
+
+@pytest.mark.asyncio
+async def test_sur_un_modele_distant_le_bouton_dit_qu_il_n_a_rien_verifie(monkeypatch):
+    """Revue du 21/09 : verifyOnline sur un modèle distant était ignoré en
+    silence — la réponse arrivait sans recherche ni badge et se lisait comme
+    une vérification. Le chemin non outillé émet le niveau « memory »."""
+    from unittest.mock import MagicMock
+
+    from diapason.server.models import ChatCompletionRequest
+    from diapason.server.routes import _handle_stream
+
+    async def flux_cloud(model, messages, temperature, max_tokens):
+        yield "Oui, c'est vrai."
+
+    monkeypatch.setattr("diapason.server.cloud_router.stream_cloud", flux_cloud)
+    requete = ChatCompletionRequest(
+        model="gpt-test",
+        stream=True,
+        interactiveQuestions=True,
+        verifyOnline=True,
+        messages=[{"role": "user", "content": "Vérifie ça en ligne."}],
+    )
+    response = await _handle_stream(MagicMock(), requete.model, requete)
+    corps = "".join([part async for part in response.body_iterator])
+    assert (
+        'event: verification\ndata: {"level": "memory", "searchTried": false}' in corps
+    )
+    assert "[DONE]" in corps

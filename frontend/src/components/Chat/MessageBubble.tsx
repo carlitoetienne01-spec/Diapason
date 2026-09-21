@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Globe } from 'lucide-react';
 import { AudioPlayer } from './AudioPlayer';
 import { ToolCallCard } from './ToolCallCard';
 import { ResearchTimeline } from './ResearchTimeline';
@@ -18,7 +18,15 @@ import { copierMessage } from './copieMessage';
 import { lireQuestions, texteQuestions } from '../../lib/questionsChat';
 import { QuestionsDiscussion } from './QuestionsDiscussion';
 import { lignesDeSources } from './sourcesDeReponse';
-import { notesDeVerification } from './notesDeVerification';
+import {
+  EVENEMENT_VERIFIER_EN_LIGNE,
+  badgeDeVerification,
+  notesDeVerification,
+  peutVerifierEnLigne,
+  type DemandeDeVerification,
+} from './notesDeVerification';
+import { useAppStore } from '../../lib/store';
+import { isCloudModel } from '../../lib/cloud-models';
 
 function stripThinkTags(text: string): string {
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
@@ -127,6 +135,39 @@ function CopyMessageButton({ content, rendu }: {
   );
 }
 
+function VerifierEnLigneButton({ messageId }: { messageId: string }) {
+  const { t } = useTranslation();
+  const isStreaming = useAppStore((s) => s.streamState.isStreaming);
+  const activeId = useAppStore((s) => s.activeId);
+  // Revue du 21/09 : sur une bulle ancienne, le bouton vérifiait la DERNIÈRE
+  // question du fil, pas celle de la bulle ; et sur un modèle distant, rien
+  // n'était vérifié sans un mot. Dernière bulle du fil, modèle local seulement.
+  const estLaDerniere = useAppStore((s) => s.messages[s.messages.length - 1]?.id === messageId);
+  const modeleDistant = useAppStore((s) => isCloudModel(s.selectedModel));
+  if (!estLaDerniere || modeleDistant) return null;
+  const demander = () => {
+    if (!activeId || isStreaming) return;
+    window.dispatchEvent(
+      new CustomEvent<DemandeDeVerification>(EVENEMENT_VERIFIER_EN_LIGNE, {
+        detail: { conversationId: activeId, messageId },
+      }),
+    );
+  };
+  return (
+    <button
+      onClick={demander}
+      disabled={isStreaming}
+      className="inline-flex items-center gap-1 text-[11px] px-1.5 py-px rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 compact:opacity-100 transition-opacity cursor-pointer disabled:cursor-default disabled:opacity-40"
+      style={{ color: 'var(--color-accent)', border: '1px solid currentColor' }}
+      title={t('chat.verification.verifierEnLigne')}
+      aria-label={t('chat.verification.verifierEnLigne')}
+    >
+      <Globe size={11} />
+      {t('chat.verification.verifierEnLigne')}
+    </button>
+  );
+}
+
 export const MessageBubble = memo(function MessageBubble({ message, isLive = false, cible = false }: Props) {
   const { t } = useTranslation();
   const rendu = useRef<HTMLDivElement>(null);
@@ -155,6 +196,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
 
   const lignes = useMemo(() => lignesDeSources(message.researchSources), [message.researchSources]);
   const notes = useMemo(() => notesDeVerification(message.verification, t), [message.verification, t]);
+  const badge = useMemo(() => badgeDeVerification(message.verification), [message.verification]);
 
   const rehypePlugins = useMemo(() => {
     const base: any[] = [[rehypeHighlight, { detect: true }], rehypeKatex];
@@ -256,9 +298,28 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
         </div>
       )}
 
-      {/* Footer: copy + x-ray */}
-      <div className="flex items-center gap-2 mt-1.5">
+      {/* Footer: copy + badge de vérification + x-ray. 21/09/2026 (P1/P2 du
+          jury) : le niveau vient du serveur, jamais du modèle ; le bouton
+          « Vérifier en ligne » force la recherche à la main (§82) et n'apparaît
+          que quand il peut changer quelque chose. Visible sans survol dans le
+          mini-panneau (compact:opacity-100), comme Copier. */}
+      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
         <CopyMessageButton content={cleanContent} rendu={rendu} />
+        {badge && (
+          <span
+            className="text-[11px] px-1.5 py-px rounded-full whitespace-nowrap"
+            style={{
+              color: badge.ton === 'ok' ? 'var(--color-success)' : 'var(--color-warning)',
+              border: '1px solid currentColor',
+              opacity: 0.85,
+            }}
+          >
+            {t(badge.cle)}
+          </span>
+        )}
+        {!isLive && message.role === 'assistant' && peutVerifierEnLigne(message.verification) && (
+          <VerifierEnLigneButton messageId={message.id} />
+        )}
       </div>
       <XRayFooter
         usage={message.usage}

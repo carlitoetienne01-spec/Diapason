@@ -41,15 +41,20 @@ from diapason.server.actualite import (
     AVERTISSEMENT,
     AVERTISSEMENT_RECHERCHE,
     AVEU,
+    CONSIGNE_DEMANDEE,
     CONSIGNE_FERME,
     completer_arguments,
     consigne_actualite,
     desaccord_sur_le_titulaire,
     elements_hors_sources,
+    est_une_demande_de_verification,
+    niveau_de_verification,
     note_avant_redaction,
     page_de_reference,
+    question_a_verifier,
     question_courante_d_actualite,
     question_de_titulaire,
+    question_personnelle,
     recherche_concluante,
 )
 from diapason.server.questions_chat import (
@@ -185,25 +190,35 @@ def _controle_des_sources(
     corpus: str,
     question: str,
     donnees: dict[str, Any] | None = None,
+    *,
+    sources: Sequence[dict[str, Any]] = (),
+    recherche_tentee: bool = False,
+    verification_faite: bool = False,
+    controle_lexical: bool = True,
 ) -> list[ToolStreamEvent]:
-    """Le signal de fin de tour : ce que la réponse affirme sans source, le
-    titulaire qu'elle nomme contre celui des sources, l'âge des sources.
+    """Le signal de fin de tour d'une question d'actualité : le niveau de
+    vérification (calculé par le code, jamais déclaré par le modèle), ce que
+    la réponse affirme sans source, le titulaire qu'elle nomme contre celui
+    des sources, l'âge des sources.
 
     Un événement à part, pas un jeton : revue du 20/09 — un jeton entrait
     dans le texte copié, dans conversations.db et dans l'historique que le
     modèle relit au tour suivant. Un seul événement, toutes clés réunies :
-    le client n'en garde qu'un par message.
+    le client n'en garde qu'un par message. Les clés sont anglaises sur le
+    fil (CLAUDE.md) ; « nonRetrouves » du 20/09 l'était en français.
     """
     signal: dict[str, Any] = dict(donnees or {})
-    if corpus.strip():
+    if corpus.strip() and controle_lexical:
         manquants = elements_hors_sources(reponse, corpus, question)
         if manquants:
-            signal["nonRetrouves"] = manquants
+            signal["notFound"] = manquants
         desaccord = desaccord_sur_le_titulaire(reponse, corpus, question)
         if desaccord:
-            signal["desaccord"] = desaccord
-    if not signal:
-        return []
+            signal["disagreement"] = desaccord
+    signal["level"] = niveau_de_verification(
+        reponse, sources, verification_faite, signal
+    )
+    signal["searchTried"] = bool(recherche_tentee)
     return [ToolStreamEvent("verification", signal)]
 
 
@@ -365,6 +380,8 @@ async def stream_with_tools(
     max_tool_turns: int = DEFAULT_MAX_TOOL_TURNS,
     interactive_questions: bool = False,
     trousse_adaptative: bool = False,
+    verifier_en_ligne: bool = False,
+    signal_textuel: bool = True,
 ) -> AsyncIterator[ToolStreamEvent]:
     """Diffuse la réponse du modèle en exécutant les outils qu'il réclame.
 
@@ -387,8 +404,37 @@ async def stream_with_tools(
     # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question
     # d'actualité reçoit sa consigne au tour courant, sa réponse est retenue
     # tant qu'aucune recherche n'a abouti, et une relance ferme précède l'aveu.
-    actualite = "web_search" in trousse.noms and question_courante_d_actualite(messages)
-    if actualite:
+    # 21/09/2026 (P2) : la reconnaissance est lexicale et le restera. Le
+    # bouton « Vérifier en ligne » (verifyOnline) et « Vérifie ça » tapé ou
+    # dicté forcent la vérification, avec une consigne qui nomme la question
+    # à vérifier — celle qui précède la demande, pas la demande elle-même.
+    dernier_message = next((m for m in reversed(messages) if m.role == Role.USER), None)
+    derniere_demande = (dernier_message.content or "") if dernier_message else ""
+    avec_image = bool(dernier_message is not None and dernier_message.images)
+    demande_de_verification = (
+        "web_search" in trousse.noms
+        and not avec_image
+        and (verifier_en_ligne or est_une_demande_de_verification(derniere_demande))
+    )
+    question_courante = derniere_demande
+    if demande_de_verification:
+        question_courante = question_a_verifier(messages, forcee=verifier_en_ligne)
+        # Revue du 21/09 : « Vérifie ça » après « quelles sont mes tâches ? »
+        # forçait une recherche web sur des données personnelles, retenait
+        # la réponse venue de l'outil local et finissait par « je n'ai pas pu
+        # vérifier ». Ce qui est personnel ne se vérifie pas sur le web ; ce
+        # tour redevient ordinaire. Sans question avant, rien à vérifier.
+        if not question_courante.strip() or question_personnelle(question_courante):
+            demande_de_verification = False
+            question_courante = derniere_demande
+    actualite = demande_de_verification or (
+        "web_search" in trousse.noms and question_courante_d_actualite(messages)
+    )
+    if demande_de_verification:
+        travail = consigne_actualite(
+            travail, CONSIGNE_DEMANDEE.format(question=question_courante.strip())
+        )
+    elif actualite:
         travail = consigne_actualite(travail)
     relance_actualite_faite = False
     # Revue du 20/09 : « un outil a tourné » ne vaut pas vérification —
@@ -402,9 +448,6 @@ async def stream_with_tools(
     # réponse affirme et que les sources ne portent pas est signalé (20/09).
     sources_du_tour: list[dict[str, Any]] = []
     corpus_sources = ""
-    question_courante = next(
-        (m.content or "" for m in reversed(messages) if m.role == Role.USER), ""
-    )
     # 21/09/2026 : cinq sources et « Justin Trudeau [3] ». Ce que le code
     # établit sur les sources avant que le modèle rédige (titulaire désigné,
     # âge des sources) lui est dit en SYSTEM ; ce qui concerne l'interface
@@ -412,6 +455,11 @@ async def stream_with_tools(
     donnees_verification: dict[str, Any] = {}
     index_de_la_note: int | None = None
     lecture_auto_faite = False
+    # Revue du 21/09 : le contrôle ne jugeait que le DERNIER passage du
+    # modèle ; « Justin Trudeau [3], depuis 2015 » écrit avant un second
+    # outil restait affiché sous un badge vert. On juge ce que la bulle
+    # AFFICHE : tout le texte parti sur le fil pendant le tour.
+    texte_affiche: list[str] = []
     deja_vus: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
@@ -569,6 +617,8 @@ async def stream_with_tools(
         if cadrage_requis and appels:
             yield ToolStreamEvent("token", "\n\nPeux-tu préciser ta demande ?")
             return
+        if not verifier_lecture:
+            texte_affiche.extend(morceaux)
         texte_retenu = "".join(morceaux)
         cadrage_textuel = (
             interactive_questions
@@ -601,10 +651,15 @@ async def stream_with_tools(
                 if verifier_actualite:
                     # Deux refus d'appeler web_search, ou une recherche qui n'a
                     # rien rendu : la réponse part, annoncée pour ce qu'elle
-                    # est (§100) ; un silence devient un aveu, pas un bandeau nu.
+                    # est (§100) — par le niveau « memory » du signal, plus par
+                    # un préfixe de texte qui se copiait et se prononçait
+                    # (21/09) ; un silence devient un aveu, pas un bandeau nu.
                     if not texte_retenu.strip():
                         morceaux = [AVEU]
-                    else:
+                    elif signal_textuel:
+                        # Un client qui ne lit pas les événements (curl, SDK
+                        # OpenAI) garde le signe dans le texte (§100) ; le
+                        # client de bureau lit le niveau et n'en veut pas.
                         yield ToolStreamEvent(
                             "token",
                             AVERTISSEMENT_RECHERCHE
@@ -615,6 +670,17 @@ async def stream_with_tools(
                         yield ToolStreamEvent("token", "\n\n")
                     for contenu in morceaux:
                         yield ToolStreamEvent("token", contenu)
+                    texte_affiche.extend(morceaux)
+                    for evt in _controle_des_sources(
+                        "".join(texte_affiche),
+                        corpus_sources,
+                        question_courante,
+                        donnees_verification,
+                        sources=sources_du_tour,
+                        recherche_tentee=recherche_tentee,
+                        verification_faite=verification_faite,
+                    ):
+                        yield evt
                     return
                 # 19/09/2026 : le 9b affirmait ne voir aucun message sans
                 # lecture. Ne pas diffuser cette réponse : revenir UNE fois
@@ -625,16 +691,21 @@ async def stream_with_tools(
                 yield ToolStreamEvent("token", "\n\n")
             for contenu in morceaux:
                 yield ToolStreamEvent("token", contenu)
+            texte_affiche.extend(morceaux)
             deja_ecrit = deja_ecrit or any(m.strip() for m in morceaux)
             if not appels:
                 # Une coupure ou un arrêt de sécurité n'autorise pas une
                 # nouvelle génération destinée à contourner cet arrêt.
-                if actualite:
+                if actualite or verification_faite:
                     for evt in _controle_des_sources(
-                        "".join(morceaux),
+                        "".join(texte_affiche),
                         corpus_sources,
                         question_courante,
                         donnees_verification,
+                        sources=sources_du_tour,
+                        recherche_tentee=recherche_tentee,
+                        verification_faite=verification_faite,
+                        controle_lexical=actualite,
                     ):
                         yield evt
                 return
@@ -720,15 +791,20 @@ async def stream_with_tools(
                 logger.warning("chat promise without action, retrying with a summons")
                 tours_actions += 1
                 continue
-            if actualite:
+            if actualite or verification_faite:
                 # Seule une question d'actualité a reçu la consigne de s'en
                 # tenir aux sources ; juger une recette sur ce critère
-                # signalait « Ricardo Larrivée » (revue du 20/09).
+                # signalait « Ricardo Larrivée » (revue du 20/09). Mais une
+                # recherche faite d'elle-même mérite son badge (21/09).
                 for evt in _controle_des_sources(
-                    texte_du_tour,
+                    "".join(texte_affiche),
                     corpus_sources,
                     question_courante,
                     donnees_verification,
+                    sources=sources_du_tour,
+                    recherche_tentee=recherche_tentee,
+                    verification_faite=verification_faite,
+                    controle_lexical=actualite,
                 ):
                     yield evt
             return

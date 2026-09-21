@@ -101,6 +101,10 @@ def _normaliser(texte: str) -> str:
     ).strip()
 
 
+def _plat(question: str) -> str:
+    return _normaliser(question).replace("’", "'")
+
+
 def question_d_actualite(texte: str) -> bool:
     """Vrai si la réponse dépend du moment et ne concerne pas ses données.
 
@@ -143,11 +147,103 @@ CONSIGNE_FERME = (
     "affichée. Appelle web_search maintenant, sans écrire de texte avant "
     "l'appel ; tu répondras après avoir lu les résultats."
 )
+AVEU = "Je n'ai pas pu vérifier cette information en ligne."
+# Pour les clients qui ne lisent pas l'événement « verification » (curl, SDK
+# OpenAI) : le client de bureau, lui, affiche le niveau et n'en veut pas
+# dans le texte (21/09).
 AVERTISSEMENT = "⚠︎ Non vérifié en ligne — réponse de mémoire, qui peut dater.\n\n"
 AVERTISSEMENT_RECHERCHE = (
     "⚠︎ La recherche web n'a rien donné — réponse de mémoire, qui peut dater.\n\n"
 )
-AVEU = "Je n'ai pas pu vérifier cette information en ligne."
+
+
+def question_personnelle(texte: str) -> bool:
+    """Les données de Carlito ne se cherchent pas sur le web."""
+    return _PERSONNEL.search(_plat(texte)) is not None
+
+
+# 21/09/2026 (P2 du jury) : la reconnaissance d'une question d'actualité est
+# lexicale et le restera. Carlito doit pouvoir forcer la vérification à la
+# main, au clavier et à la voix (§82) : le bouton « Vérifier en ligne » pose
+# verifyOnline sur la requête, et « Vérifie ça » tapé ou dicté suffit.
+# Le message ENTIER est une demande, et le verbe veut un complément :
+# « Vérifie que mon script compile » n'en est pas une, « Vérifie ça en
+# ligne. », « C'est vrai ? », « t'es sûr de ça ? » en sont. Revue du 21/09 :
+# « Confirme », « Check », « Sure », « Vraiment » nus étaient pris pour des
+# demandes — un « Confirme » qui acquiesce à « je crée la tâche ? » créait la
+# tâche puis affichait « je n'ai pas pu vérifier ».
+_DEMANDE_DE_VERIFICATION = re.compile(
+    r"^(?:"
+    # « (peux-tu) vérifie(r)(-le/-moi) ça (en ligne) (svp) »
+    r"(?:(?:peux.tu |tu peux |est.ce que tu peux |pourrais.tu |can you |could you |"
+    r"please )?"
+    r"(?:verifie[rsz]?|verify|check(?:e[rsz]?)?|confirme[rsz]?|confirm)"
+    r"(?:"
+    # « vérifie-le », « confirme-moi ça » : le clitique est l'objet
+    r"[- ](?:le|la|les)(?:\s+(?:en ligne|sur le web|sur internet|online|on the web))?"
+    r"|(?:[- ]moi|[- ]nous)?\s*"
+    r"(?:(?:ca|sa|cela|ceci|ce que tu dis|"
+    r"cette (?:information|reponse|affirmation|info)|"
+    r"l'information|la reponse|l'info|this|that|it|tout ca|tout cela)"
+    r"(?:\s+(?:en ligne|sur le web|sur internet|online|on the web))?|"
+    r"(?:en ligne|sur le web|sur internet|online|on the web))"
+    r")"
+    r"[\s,]*(?:s'il te plait|s'il vous plait|stp|svp|please)?)"
+    # « c'est vrai (ça) ? », « est-ce (que c'est) vrai ? », « c'est sûr ? »
+    r"|(?:ah bon, )?c'est (?:vrai|sur|exact|certain)(?: ca| cela)?\s*\?"
+    r"|est.ce (?:que c'est )?(?:vrai|sur|exact)(?: ca)?\s*\?"
+    r"|is (?:that|this|it) (?:true|right|correct)\s*\?"
+    # « t'es sûr (de ça) ? », « tu en es certain ? », « are you sure ? »
+    r"|(?:t(?:u es|'es|u en es|'en es)|es.tu|vous etes) (?:sur|sure|certain|certaine)"
+    r"(?: de (?:ca|cela|toi|cette reponse|cette info|cette information))?\s*\?"
+    r"|are you sure\s*\?"
+    # « vraiment ? », « ah bon ? » — interrogatifs seulement
+    r"|vraiment\s*\?|ah bon\s*\?|serieux\s*\?|really\s*\?"
+    r")[\s.!?]*$"
+)
+# Une demande de vérification est courte : elle renvoie à ce qui précède.
+_DEMANDE_MAX = 80
+CONSIGNE_DEMANDEE = (
+    "Une vérification en ligne est demandée pour : « {question} ». Appelle "
+    "web_search maintenant avec une requête précise, sans écrire de texte "
+    "avant l'appel ; puis réponds d'après les résultats : cite chaque fait "
+    "par le numéro de sa source, comme [1], et donne la date de "
+    "l'information. Si la recherche ne rend rien d'utile, dis que tu n'as "
+    "pas pu vérifier — ne confirme jamais de mémoire."
+)
+
+
+def est_une_demande_de_verification(texte: str) -> bool:
+    """« Vérifie ça », « c'est vrai ? », « check this online » — une demande
+    courte qui porte sur ce qui vient d'être dit."""
+    plat = _plat(texte)
+    return (
+        bool(plat)
+        and len(plat) <= _DEMANDE_MAX
+        and (_DEMANDE_DE_VERIFICATION.search(plat) is not None)
+    )
+
+
+def question_a_verifier(messages: Sequence[Message], forcee: bool = False) -> str:
+    """Ce qu'il faut chercher : la question qui précède la demande, en
+    sautant TOUTES les demandes de vérification consécutives (revue du
+    21/09 : une seconde pression vérifiait « Vérifie ça en ligne. »). Avec
+    le bouton (``forcee``), le dernier message EST la demande, quel que soit
+    son libellé — traduit ou reformulé. Sans question avant : le message
+    lui-même s'il n'est pas une demande nue, sinon "" (rien à vérifier)."""
+    utilisateur = [m.content or "" for m in messages if m.role == Role.USER]
+    if not utilisateur:
+        return ""
+    if not forcee and not est_une_demande_de_verification(utilisateur[-1]):
+        return utilisateur[-1]
+    for texte in reversed(utilisateur[:-1]):
+        if not est_une_demande_de_verification(texte):
+            return texte
+    # Rien avant : une affirmation envoyée seule avec le bouton se vérifie
+    # elle-même ; une demande nue (« Vérifie ça ») n'a rien à vérifier.
+    return "" if est_une_demande_de_verification(utilisateur[-1]) else utilisateur[-1]
+
+
 # Ce que web_search rend quand il n'a rien : pas une vérification.
 _RECHERCHE_VIDE = re.compile(
     r"^\s*(?:no results|aucun r[ée]sultat|search error|error)", re.I
@@ -287,8 +383,16 @@ def _compacter(valeur: str) -> str:
 
 def _valeur_retrouvee(valeur: str, corpus_compact: str) -> bool:
     """« 5 % » n'est pas dans « 2,75 % » : la valeur doit commencer à un chiffre
-    qui n'en prolonge pas un autre."""
-    motif = r"(?<![\d.])" + re.escape(_compacter(valeur)) + r"(?!\d)"
+    qui n'en prolonge pas un autre. « 40,5 millions » EST dans « 40.5 million »
+    (source anglaise, essai du 21/09) : l'unité se compare sans son pluriel."""
+    compact = _compacter(valeur)
+    motif = r"(?<![\d.])" + re.escape(compact) + r"(?!\d)"
+    if re.search(motif, corpus_compact) is not None:
+        return True
+    m = re.match(r"^([\d.]+)(.*)$", compact)
+    if not m or not m.group(2).endswith("s"):
+        return False
+    motif = r"(?<![\d.])" + re.escape(m.group(1) + m.group(2).rstrip("s")) + r"(?!\d)"
     return re.search(motif, corpus_compact) is not None
 
 
@@ -460,10 +564,6 @@ _AVANT_LE_NOM = 30
 _AVANT_LE_MARQUEUR = 25
 _EN_TETE_DE_SOURCE = re.compile(r"^\[(\d+)\]\s*(.*)$", re.M)
 _DATE_ISO = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
-
-
-def _plat(question: str) -> str:
-    return _normaliser(question).replace("’", "'")
 
 
 def question_de_titulaire(question: str) -> bool:
@@ -879,7 +979,7 @@ def note_avant_redaction(
             f"Les sources trouvées datent au plus du {vieille} : dis-le dans ta "
             "réponse, la situation a pu changer depuis."
         )
-        donnees["sourcesDatees"] = vieille
+        donnees["sourcesDatedAt"] = vieille
     if question_de_titulaire(question):
         titulaires = titulaires_selon_sources(corpus, question)
         if len(titulaires) == 1:
@@ -915,7 +1015,7 @@ def desaccord_sur_le_titulaire(
     reponse: str, corpus: str, question: str
 ) -> dict[str, Any] | None:
     """La réponse nomme quelqu'un que les sources ne désignent pas comme
-    titulaire : {"reponse": nom, "sources": [noms]}, sinon None.
+    titulaire : {"answer": nom, "sources": [noms]}, sinon None.
 
     Seulement quand les sources désignent UN titulaire (deux, c'est déjà un
     désaccord entre elles, pas avec la réponse), que la réponse nomme au
@@ -926,7 +1026,7 @@ def desaccord_sur_le_titulaire(
     if not question_de_titulaire(question):
         return None
     titulaires = titulaires_selon_sources(corpus, question)
-    if len(titulaires) != 1:
+    if not titulaires:
         return None
     attendu = titulaires[0]["nom"]
     noms_de_la_reponse: list[str] = []
@@ -939,9 +1039,75 @@ def desaccord_sur_le_titulaire(
         return None
     if any(_nom_retrouve(attendu, _normaliser(n)) for n in noms_de_la_reponse):
         return None
-    coupable = next(
-        (n for n in noms_de_la_reponse if _nomme_un_predecesseur(n, corpus)), None
-    )
+    if len(titulaires) > 1:
+        # Plusieurs titulaires : le plus récent est attendu, à condition que
+        # sa source soit strictement plus récente ; la réponse qui nomme un
+        # autre titulaire sans lui recevait « Vérifié en ligne » (revue du
+        # 21/09). Sans date qui tranche, silence.
+        date = titulaires[0]["date"]
+        if not date or any(t["date"] == date for t in titulaires[1:]):
+            return None
+        anciens = {_cle_de_nom(t["nom"]): t["nom"] for t in titulaires[1:]}
+        coupable = next(
+            (
+                anciens[_cle_de_nom(n)]
+                for n in noms_de_la_reponse
+                if _cle_de_nom(n) in anciens
+            ),
+            None,
+        )
+    else:
+        coupable = next(
+            (n for n in noms_de_la_reponse if _nomme_un_predecesseur(n, corpus)), None
+        )
     if coupable is None:
         return None
-    return {"reponse": coupable, "sources": [attendu]}
+    return {"answer": coupable, "sources": [attendu]}
+
+
+# ---------------------------------------------------------------------------
+# Le niveau de vérification, calculé par le code (P1 du jury, 21/09/2026).
+#
+# « ⚠︎ Non vérifié en ligne » était un préfixe de texte : il se copiait avec
+# la réponse, se prononçait à voix haute, et ne distinguait pas une réponse
+# qui cite ses sources d'une réponse qui les ignore. Trois niveaux, jamais
+# déclarés par le modèle : ce que la boucle sait (une recherche a rendu
+# quelque chose), ce que la réponse fait (elle cite des [N] qui existent), et
+# ce que le contrôle a trouvé (rien, ou des éléments hors sources, ou un
+# titulaire qui n'est pas celui des sources).
+# ---------------------------------------------------------------------------
+
+VERIFIE = "verified"
+PARTIEL = "partial"
+DE_MEMOIRE = "memory"
+_CITATION = re.compile(r"\[(\d+)\]")
+
+
+def niveau_de_verification(
+    reponse: str,
+    sources: Sequence[dict[str, Any]],
+    verification_faite: bool,
+    signal: dict[str, Any] | None = None,
+) -> str:
+    """verified / partial / memory.
+
+    De mémoire tant qu'aucune recherche n'a rendu quelque chose ; partiel
+    quand la réponse ne cite aucune source, cite un numéro qui n'existe pas,
+    ou que le contrôle a relevé quelque chose ; vérifié sinon.
+    """
+    if not verification_faite:
+        return DE_MEMOIRE
+    connus = {s.get("ref") for s in sources if isinstance(s, dict)}
+    cites = {int(n) for n in _CITATION.findall(reponse or "")}
+    if not cites or not cites <= connus:
+        return PARTIEL
+    # « [1] » tout seul n'est pas une réponse vérifiée (revue du 21/09).
+    if not _CITATION.sub("", reponse or "").strip():
+        return PARTIEL
+    if signal and (
+        signal.get("notFound")
+        or signal.get("disagreement")
+        or signal.get("sourcesDatedAt")
+    ):
+        return PARTIEL
+    return VERIFIE

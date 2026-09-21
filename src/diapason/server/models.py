@@ -34,6 +34,9 @@ class ChatCompletionRequest(BaseModel):
     action_mode: str = "off"
     # L'ancien client et l'API standard gardent leur réponse textuelle.
     interactiveQuestions: bool = False
+    # 21/09/2026 : le bouton « Vérifier en ligne » force la recherche web
+    # sur ce tour, quelle que soit la forme de la question.
+    verifyOnline: bool = False
 
 
 # ---------------------------------------------------------------------------
