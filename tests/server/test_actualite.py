@@ -43,6 +43,13 @@ class TestCeQuiEstDActualite:
             "Donne-moi la météo à Ottawa aujourd'hui",
             "Quel est le cours du bitcoin aujourd'hui ?",
             "C’est quoi le taux directeur de la Banque du Canada en 2026 ?",
+            # Réfuteurs du 20/09 : ces six-là passaient encore de tête.
+            "Qui dirige le Canada ?",
+            "Va-t-il pleuvoir ce soir ?",
+            "Qui a remporté la Coupe Stanley ?",
+            "Quelles sont les nouvelles ?",
+            "Que se passe-t-il en Haïti ?",
+            "Quel est le salaire minimum en Ontario ?",
         ],
     )
     def test_ce_qui_depend_du_moment(self, question):

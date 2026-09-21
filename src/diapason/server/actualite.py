@@ -33,7 +33,7 @@ from diapason.core.types import Message, Role
 # Ce qui dépend du moment. Les accents sont retirés avant la recherche.
 _MARQUEURS = re.compile(
     r"\b(?:actuel(?:le|lement)?|en ce moment|aujourd.hui|ces jours.ci|hier|"
-    r"cette (?:annee|semaine)|ce mois|"
+    r"ce (?:soir|matin|week.end|mois)|cette (?:annee|semaine|nuit)|"
     r"dernier(?:e|es|s)?|recent(?:e|es|s|ement)?|"
     r"20(?:2[4-9]|3\d)|"
     r"current(?:ly)?|latest|right now|today|nowadays|these days|recently)\b"
@@ -46,9 +46,17 @@ _SUJETS = re.compile(
     r"chancelier(?:e)?|roi|reine|pape|pdg|ceo|directeur|directrice|entraineur|"
     r"capitaine|champion(?:ne)?|vainqueur|gagnant(?:e)?|laureat(?:e)?|"
     r"prix|cout[e]?|tarif|taux|cours (?:du|de l')|bourse|inflation|"
-    r"meteo|temperature|previsions?|score|classement|election|sondage|"
-    r"version|resultats? (?:du|de la|des)|"
+    r"meteo|temperature|previsions?|pleuvoir|pluie|neige|neiger|"
+    r"score|classement|election|sondage|coupe|championnat|tournoi|finale|"
+    r"version|resultats? (?:du|de la|des)|salaire minimum|smic|loyer|essence|"
+    r"carburant|nouvelles|actualites?|news|"
     r"prime minister|governor|price|weather|forecast)\b"
+)
+# Ces formes suffisent seules : elles désignent un titulaire ou un résultat
+# par nature (revue du 20/09 : « Qui dirige le Canada ? » passait de tête).
+_FAIT_SUFFISANT = re.compile(
+    r"\b(?:qui (?:dirige|preside|gouverne|a (?:gagne|remporte))|"
+    r"que se passe.t.il|qu'arrive.t.il|quoi de neuf|what's happening|who won)\b"
 )
 # La forme d'une question de fait : on cherche un titulaire, une valeur, une
 # date. « Dis-moi qui est le président » et « J'aimerais savoir qui est… »
@@ -100,6 +108,8 @@ def question_d_actualite(texte: str) -> bool:
     plat = _normaliser(texte).replace("’", "'")
     if not plat or _PERSONNEL.search(plat) or _INTEMPOREL.search(plat):
         return False
+    if _FAIT_SUFFISANT.search(plat):
+        return True
     marqueur = bool(_MARQUEURS.search(plat))
     sujet = bool(_SUJETS.search(plat))
     if _QUESTION_DE_FAIT.search(plat):
