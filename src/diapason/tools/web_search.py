@@ -44,6 +44,10 @@ MINIMUM_UTILE = 3
 # un timeout par appel, et un moteur qui lève est écarté pour tous les plans.
 BUDGET_S = 12.0
 TIMEOUT_MOTEUR_S = 5
+# La variante actualités d'une requête texte (P4, 21/09) : trois résultats
+# de plus au plus — huit résultats font ~3 200 caractères, sous les 4 000
+# que le chat garde d'un résultat d'outil.
+VARIANTE_RESULTATS = 3
 _UTM = re.compile(r"^(?:utm_|fbclid|gclid|ref$)", re.I)
 
 
@@ -352,6 +356,7 @@ class WebSearchTool(BaseTool):
         *,
         fraicheur: str | None = None,
         actualites: bool = False,
+        seulement_actualites: bool = False,
     ) -> tuple[list[dict], list[dict[str, Any]], int]:
         """Résultats, plans qui ont répondu, nombre de moteurs joints.
 
@@ -373,10 +378,13 @@ class WebSearchTool(BaseTool):
         plans: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         if actualites:
             plans.append(("news", MOTEURS_ACTUALITES, fraicheur, self._region))
-        plans.append(("text", MOTEURS_TEXTE, fraicheur, self._region))
-        if fraicheur:
-            plans.append(("text", MOTEURS_TEXTE, None, self._region))
-        plans.append(("text", MOTEURS_TEXTE, None, None))
+        if not seulement_actualites:
+            # La variante actualités d'une requête texte (P4) ne redescend
+            # pas sur le web général : la principale s'en charge déjà.
+            plans.append(("text", MOTEURS_TEXTE, fraicheur, self._region))
+            if fraicheur:
+                plans.append(("text", MOTEURS_TEXTE, None, self._region))
+            plans.append(("text", MOTEURS_TEXTE, None, None))
         retenus: list[dict] = []
         plans_retenus: list[dict[str, Any]] = []
         morts: set[str] = set()
@@ -436,6 +444,73 @@ class WebSearchTool(BaseTool):
                 break
         return retenus[:max_results], plans_retenus, joints
 
+    def _rechercher_avec_variante(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        fraicheur: str | None,
+        actualites: bool,
+    ) -> tuple[list[dict], list[dict[str, Any]], int]:
+        """La requête, et EN PARALLÈLE sa variante mécanique (P4 du jury,
+        21/09/2026) : une requête texte reçoit aussi le vertical actualités —
+        des articles datés, quand le web général rend trois pages du même
+        site. Jamais une reformulation par le modèle, qui dérive du sens.
+        Bornée : une variante, VARIANTE_RESULTATS résultats, le même budget ;
+        l'échec de la variante ne coûte rien. Les pages vues par les deux
+        passent en tête — c'est ce que deux requêtes s'accordent à dire.
+        """
+        if actualites:
+            return self._ddgs_search(
+                query, max_results, fraicheur=fraicheur, actualites=True
+            )
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            principale = pool.submit(
+                self._ddgs_search,
+                query,
+                max_results,
+                fraicheur=fraicheur,
+                actualites=False,
+            )
+            variante = pool.submit(
+                self._ddgs_search,
+                query,
+                VARIANTE_RESULTATS,
+                fraicheur=fraicheur,
+                actualites=True,
+                seulement_actualites=True,
+            )
+            resultats, plans, joints = principale.result()
+            try:
+                autres, plans_variante, joints_variante = variante.result(
+                    timeout=BUDGET_S
+                )
+            except Exception as exc:  # noqa: BLE001 - la variante est un bonus
+                logger.debug("web_search variante : %s", exc)
+                return resultats, plans, joints
+        joints += joints_variante
+        if not autres:
+            return resultats, plans, joints
+        # Les plans d'actualités de la variante ne servent que leurs
+        # résultats (le premier plan est celui de la requête principale,
+        # jamais un prêt de filtres d'un plan à l'autre).
+        plans = plans + [{**pl, "variant": True} for pl in plans_variante]
+        cles = {url_canonique(r["url"]) for r in resultats}
+        communs = [r for r in autres if url_canonique(r["url"]) in cles]
+        # Une page vue par les deux requêtes passe en tête, sous sa forme
+        # datée (celle des actualités) quand la principale n'en avait pas.
+        if communs:
+            dates = {url_canonique(r["url"]): r.get("date") for r in communs}
+            for r in resultats:
+                if not r.get("date") and dates.get(url_canonique(r["url"])):
+                    r["date"] = dates[url_canonique(r["url"])]
+            communes = {url_canonique(r["url"]) for r in communs}
+            resultats.sort(key=lambda r: url_canonique(r["url"]) not in communes)
+        fusion = dedoublonner(resultats + autres)
+        return fusion[: max_results + VARIANTE_RESULTATS], plans, joints
+
     def execute(self, **params: Any) -> ToolResult:
         query = params.get("query", "")
         if not query:
@@ -445,16 +520,24 @@ class WebSearchTool(BaseTool):
                 success=False,
             )
 
-        # If the query contains a URL, fetch it directly instead of searching
+        # If the query contains a URL, read it instead of searching. 21/09/2026 :
+        # l'ancien mode « fetch » (regex <[^>]+> sur tout le HTML, 6 000
+        # caractères de menu) rendait la page sans sources ni numéro — le
+        # lecteur de web_read donne le texte principal, les dates, et une
+        # source [1] que l'interface sait afficher.
         url = self._extract_url(query) if not self._is_url(query) else query.strip()
         if url:
             try:
-                content = self._fetch_url(url)
+                from diapason.tools.web_read import WebReadTool
+
+                lecture = WebReadTool().execute(
+                    url=url, focus=query.replace(url, " ").strip()
+                )
                 return ToolResult(
                     tool_name="web_search",
-                    content=content or "No content found at URL.",
-                    success=True,
-                    metadata={"url": url, "mode": "fetch"},
+                    content=lecture.content,
+                    success=lecture.success,
+                    metadata={**(lecture.metadata or {}), "mode": "fetch"},
                 )
             except Exception as exc:
                 return ToolResult(
@@ -521,7 +604,7 @@ class WebSearchTool(BaseTool):
             )
 
         try:
-            resultats, plans, joints = self._ddgs_search(
+            resultats, plans, joints = self._rechercher_avec_variante(
                 query,
                 max_results,
                 fraicheur=fraicheur,

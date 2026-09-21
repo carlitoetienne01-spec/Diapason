@@ -10,10 +10,12 @@ describe('les sources sous une réponse', () => {
         { ref: 1, url: 'https://ledevoir.com/a', title: 'Carney assermenté', sender: 'Le Devoir', date: '2026-09-16T10:00:00' },
         { ref: 1, url: 'https://ledevoir.com/a', title: 'doublon' },
         { ref: 3, url: '', title: 'sans adresse' },
+        { ref: 4, url: 'https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697', title: 'Ottawa — Prévision', sender: 'meteo.gc.ca', date: '2026-09-21', official: true },
       ]),
     ).toEqual([
-      { ref: 1, url: 'https://ledevoir.com/a', domaine: 'Le Devoir', titre: 'Carney assermenté', date: '16 sept. 2026' },
-      { ref: 2, url: 'https://www.france24.com/b', domaine: 'france24.com', titre: 'Canada–UE', date: '18 sept. 2026' },
+      { ref: 1, url: 'https://ledevoir.com/a', domaine: 'Le Devoir', titre: 'Carney assermenté', date: '16 sept. 2026', officielle: false },
+      { ref: 2, url: 'https://www.france24.com/b', domaine: 'france24.com', titre: 'Canada–UE', date: '18 sept. 2026', officielle: false },
+      { ref: 4, url: 'https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697', domaine: 'meteo.gc.ca', titre: 'Ottawa — Prévision', date: '21 sept. 2026', officielle: true },
     ]);
   });
 

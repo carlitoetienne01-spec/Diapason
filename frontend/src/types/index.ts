@@ -77,6 +77,9 @@ export interface ResearchSource {
   sender?: string;
   date?: string;
   url?: string;
+  // 21/09/2026 : une page officielle (Environnement Canada, Banque du
+  // Canada) lue par le code en complément de la recherche.
+  official?: boolean;
 }
 
 export interface ResearchSearchTrace {

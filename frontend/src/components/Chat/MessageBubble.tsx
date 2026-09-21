@@ -281,6 +281,11 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
             >
               <span className="research-citation">{l.ref}</span>
               <span className="truncate">{l.domaine}</span>
+              {l.officielle && (
+                <span className="whitespace-nowrap" style={{ color: 'var(--color-success)' }}>
+                  · {t('chat.sources.officielle')}
+                </span>
+              )}
               {l.date && <span className="opacity-70 whitespace-nowrap">· {l.date}</span>}
             </a>
           ))}

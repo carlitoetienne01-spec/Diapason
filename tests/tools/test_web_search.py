@@ -469,40 +469,45 @@ class TestUrlFetching:
 
 
 class TestExecuteWithUrl:
-    def _mock_ssrf(self, monkeypatch):
-        """Stub out the SSRF check (requires Rust backend)."""
-        import diapason.tools.web_search as _ws
+    """21/09/2026 : une URL dans la requête passe par le lecteur de web_read —
+    l'ancien mode « fetch » rendait 6 000 caractères de menu, sans source."""
 
-        monkeypatch.setattr(_ws, "check_ssrf", lambda url: None)
+    @staticmethod
+    def _page(monkeypatch, html: str, url: str = "https://example.com/article"):
+        from diapason.tools import web_read
+
+        def faux(u: str) -> web_read._Telechargement:
+            return web_read._Telechargement(
+                url, 200, "text/html", html.encode(), {"content-type": "text/html"}
+            )
+
+        monkeypatch.setattr(web_read, "_telecharger", faux)
 
     def test_execute_with_url_query(self, monkeypatch):
-        """When query is a URL, fetch instead of search."""
-        import httpx
-
-        self._mock_ssrf(monkeypatch)
-        mock_resp = MagicMock()
-        mock_resp.text = "<html><body>Page content here</body></html>"
-        mock_resp.headers = {"content-type": "text/html"}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr(httpx, "get", MagicMock(return_value=mock_resp))
-
+        """When query is a URL, read it instead of searching."""
+        self._page(
+            monkeypatch,
+            "<html><head><title>Article</title></head><body><main><p>Page content "
+            "here, long enough to count as the main text of the page.</p></main>"
+            "</body></html>",
+        )
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="https://example.com/article")
         assert result.success is True
         assert "Page content here" in result.content
         assert result.metadata.get("mode") == "fetch"
+        assert result.metadata["sources"][0]["ref"] == 1, (
+            "la page lue est une source [1] : l'interface l'affiche"
+        )
+        assert result.content.startswith("[1] Article — example.com")
 
     def test_execute_with_embedded_url(self, monkeypatch):
-        """When query contains a URL within text, detect and fetch it."""
-        import httpx
-
-        self._mock_ssrf(monkeypatch)
-        mock_resp = MagicMock()
-        mock_resp.text = "<html><body>Article text</body></html>"
-        mock_resp.headers = {"content-type": "text/html"}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr(httpx, "get", MagicMock(return_value=mock_resp))
-
+        """When query contains a URL within text, detect and read it."""
+        self._page(
+            monkeypatch,
+            "<html><body><main><p>Article text, long enough to be the main text "
+            "of this small page.</p></main></body></html>",
+        )
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="Summarize https://example.com/article please")
         assert result.success is True
@@ -510,34 +515,29 @@ class TestExecuteWithUrl:
 
     def test_execute_url_ssrf_blocked(self, monkeypatch):
         """SSRF check rejects unsafe URLs before any HTTP request."""
-        import diapason.tools.web_search as _ws
+        from diapason.tools import web_read
 
-        monkeypatch.setattr(
-            _ws,
-            "check_ssrf",
-            lambda url: "private IP blocked",
-        )
-
+        monkeypatch.setattr(web_read, "check_ssrf", lambda url: "private IP blocked")
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="http://169.254.169.254/metadata")
         assert result.success is False
         assert "private IP blocked" in result.content
 
     def test_execute_url_fetch_failure(self, monkeypatch):
-        """URL fetch failure returns error result."""
+        """URL fetch failure returns error result, never a trace."""
         import httpx
 
-        self._mock_ssrf(monkeypatch)
-        monkeypatch.setattr(
-            httpx,
-            "get",
-            MagicMock(side_effect=httpx.HTTPError("Connection failed")),
-        )
+        from diapason.tools import web_read
 
+        def casse(u: str):
+            raise httpx.ConnectError("Connection failed")
+
+        monkeypatch.setattr(web_read, "_telecharger", casse)
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="https://example.com/broken")
         assert result.success is False
-        assert "Failed to fetch URL" in result.content
+        assert "Lecture impossible" in result.content
+        assert "Connection failed" not in result.content, "la classe suffit"
 
 
 class TestLaRechercheDateeEtNommee:
@@ -748,7 +748,10 @@ class TestLeBudgetEtLesPannes:
             },
         )
         resultat = outil.execute(query="q", max_results=2)
-        assert resultat.metadata["numResults"] == 2
+        assert resultat.metadata["numResults"] == 2, (
+            "le plafond vaut pour la requête principale ; la variante "
+            "actualités (P4) n'a rien rendu ici"
+        )
 
     def test_la_date_est_celle_du_poste(self, monkeypatch):
         from diapason.tools.web_search import date_locale
@@ -892,3 +895,98 @@ class TestLaDateDeTavily:
         assert date_locale("n'importe quoi") == "", (
             "une forme inconnue vaut pas de date"
         )
+
+
+class TestLaVarianteActualites:
+    """P4 (21/09/2026) : une requête texte reçoit aussi, en parallèle, le
+    vertical actualités — des articles datés quand le web général rend trois
+    pages du même site. Bornée à trois résultats ; l'échec ne coûte rien."""
+
+    def test_les_articles_dates_s_ajoutent_et_la_page_commune_passe_en_tete(
+        self, monkeypatch
+    ):
+        outil, _ = TestLaRechercheDateeEtNommee._outil(
+            monkeypatch,
+            {
+                ("text", "brave"): [
+                    {"title": "Page A", "href": "https://a.example/x", "body": "…"},
+                    {"title": "Page B", "href": "https://b.example/y", "body": "…"},
+                ],
+                ("news", "duckduckgo"): [
+                    {
+                        "title": "Article B",
+                        "url": "https://b.example/y?utm_source=z",
+                        "body": "…",
+                        "date": "2026-09-21T10:00:00+00:00",
+                        "source": "Le Devoir",
+                    },
+                    {
+                        "title": "Article C",
+                        "url": "https://c.example/z",
+                        "body": "…",
+                        "date": "2026-09-20T10:00:00+00:00",
+                        "source": "TVA",
+                    },
+                ],
+            },
+        )
+        resultat = outil.execute(query="q")
+        titres = [s["title"] for s in resultat.metadata["sources"]]
+        assert titres == ["Page B", "Page A", "Article C"], (
+            "la page vue par les deux requêtes passe en tête, une fois ; "
+            "l'article inédit suit"
+        )
+        assert resultat.metadata["sources"][0]["date"] == "2026-09-21", (
+            "la page commune prend la date que l'article lui donne"
+        )
+        assert resultat.metadata["engine"] == "brave/text", (
+            "le moteur annoncé reste celui de la requête principale"
+        )
+        assert any(pl.get("variant") for pl in resultat.metadata["plans"])
+
+    def test_la_variante_ne_redescend_pas_sur_le_web_general(self, monkeypatch):
+        outil, mock_ddgs = TestLaRechercheDateeEtNommee._outil(
+            monkeypatch,
+            {
+                ("text", "brave"): [
+                    {"title": f"A{i}", "href": f"https://a.example/{i}", "body": "…"}
+                    for i in range(3)
+                ]
+            },
+        )
+        outil.execute(query="q")
+        backends_texte = [
+            c.kwargs.get("backend") for c in mock_ddgs.text.call_args_list
+        ]
+        assert backends_texte == ["brave"], (
+            "un seul appel texte : la variante ne rejoue pas les moteurs texte"
+        )
+        assert mock_ddgs.news.call_count >= 1, "la variante a bien tenté les actualités"
+
+    def test_une_variante_qui_leve_ne_coute_rien(self, monkeypatch):
+        outil, _ = TestLaRechercheDateeEtNommee._outil(
+            monkeypatch,
+            {
+                ("text", "brave"): [
+                    {"title": "A", "href": "https://a.example/1", "body": "…"}
+                ],
+                ("news", "duckduckgo"): RuntimeError("panne"),
+                ("news", "bing"): RuntimeError("panne"),
+                ("news", "yahoo"): RuntimeError("panne"),
+            },
+        )
+        resultat = outil.execute(query="q")
+        assert resultat.success and resultat.metadata["numResults"] == 1
+
+    def test_une_requete_deja_en_actualites_n_a_pas_de_variante(self, monkeypatch):
+        outil, mock_ddgs = TestLaRechercheDateeEtNommee._outil(
+            monkeypatch,
+            {
+                ("news", "duckduckgo"): [
+                    {"title": f"A{i}", "url": f"https://a.example/{i}", "body": "…"}
+                    for i in range(3)
+                ]
+            },
+        )
+        outil.execute(query="q", news=True)
+        assert mock_ddgs.news.call_count == 1

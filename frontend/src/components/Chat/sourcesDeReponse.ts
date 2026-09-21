@@ -9,6 +9,8 @@ export interface LigneDeSource {
   domaine: string;
   titre: string;
   date: string;
+  /** Page officielle lue par le code : dite telle quelle sous la bulle. */
+  officielle: boolean;
 }
 
 const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -44,6 +46,7 @@ export function lignesDeSources(sources: ResearchSource[] | undefined): LigneDeS
       domaine: s.sender && !s.sender.includes('/') ? s.sender : domaineDe(s.url),
       titre: (s.title || '').trim(),
       date: dateCourte(s.date),
+      officielle: s.official === true,
     });
   }
   return lignes.sort((a, b) => a.ref - b.ref);

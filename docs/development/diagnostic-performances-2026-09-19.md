@@ -520,6 +520,15 @@ recherche était vide.
 Limites : la table est figée (deux sujets, une liste de villes) ; la page
 météo n'existe qu'en français et en anglais pour le Canada.
 
+Dans la foulée : la ligne des sources dit « officiel » sur une page
+officielle ; une URL dans la requête de `web_search` passe par le lecteur
+de `web_read` (l'ancien mode « fetch » rendait 6 000 caractères de menu
+sans source) ; et **P4** — une requête texte reçoit en parallèle sa
+variante actualités (trois articles datés au plus, même budget, le même
+plan sans redescendre sur le web général) ; une page vue par les deux
+requêtes passe en tête et prend la date de l'article. Mesuré : huit
+résultats en 1,5 s au lieu de cinq en 1,3 s.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à
