@@ -34,6 +34,9 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "calendar_query",
     "spotify_play",
     "web_search",
+    # 21/09/2026 : la voix lit la page d'un poste après une recherche, comme
+    # le chat (actualite_vocale) — sans elle, « Justin Trudeau » à la voix.
+    "web_read",
     "find_files",
     "mail_compose",
     "messages_compose",
@@ -171,6 +174,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.web_search",
         (("web_search", "WebSearchTool"),),
+    ),
+    (
+        "diapason.tools.web_read",
+        (("web_read", "WebReadTool"),),
     ),
     (
         "diapason.tools.succes_tasks",

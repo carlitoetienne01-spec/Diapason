@@ -31,6 +31,7 @@ import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
 
 from diapason.core.tool_turn import NO_TOOL_TURN_RE, turn_needs_tools
+from diapason.speech.realtime import actualite_vocale
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,11 @@ _UNSPEAKABLE = re.compile(
 )
 
 
+_CITATION_ECRITE = re.compile(
+    r"\s*\[\d+(?:\s*[,;]\s*\d+)*\]|\s*(?:Sources?\s*:\s*)?\(?https?://\S+\)?"
+)
+
+
 def speakable(text: str) -> str:
     """Strip what a voice cannot say; collapse the leftover whitespace.
 
@@ -183,6 +189,9 @@ def speakable(text: str) -> str:
     bare period says "point" out loud.
     """
     cleaned = _UNSPEAKABLE.sub("", text or "")
+    # 21/09/2026 : « Mark Carney [2] » se prononçait « Mark Carney deux » ;
+    # un numéro de source ou une adresse web ne se disent pas.
+    cleaned = _CITATION_ECRITE.sub("", cleaned)
     cleaned = re.sub(r"^[\s\-•]+", "", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
     if not re.search(r"[\w]", cleaned, re.UNICODE):
@@ -555,6 +564,15 @@ class _RefusOutils(RuntimeError):
     """Ollama a refusé le champ tools (« does not support tools »)."""
 
 
+def _num_ctx() -> int:
+    try:
+        from diapason.engine.ollama import _default_num_ctx
+
+        return int(_default_num_ctx())
+    except Exception:  # noqa: BLE001 - le défaut d'Ollama plutôt qu'une panne
+        return 16384
+
+
 def _default_llm(
     model: str,
     system: str,
@@ -610,6 +628,10 @@ def _default_llm(
                 "think": False,
                 "options": {
                     "num_predict": 320,
+                    # La même fenêtre que le chat (config, sinon le défaut) :
+                    # sans elle, Ollama prenait la sienne, et deux fenêtres
+                    # font deux modèles chargés (revue vocale du 21/09).
+                    "num_ctx": _num_ctx(),
                     # Le tour qui PORTE des outils est refroidi. Décider
                     # d'appeler un outil n'est pas un acte créatif, et à
                     # la voix la règle « keep answers short and spoken »
@@ -1252,7 +1274,32 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 extra.append({"role": "system", "content": decrire(objet)})
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
-        return hist + extra + [{"role": "user", "content": text}]
+        messages = hist + extra + [{"role": "user", "content": text}]
+        # 21/09/2026 : la consigne d'actualité est DANS l'assemblage, donc
+        # dans la spéculation aussi — posée seulement à l'adoption, la
+        # réponse préparée pendant le silence aurait été bâtie sans elle, et
+        # adoptée telle quelle : « Justin Trudeau » de mémoire, à la voix.
+        tour = self._tour_actualite(text)
+        if tour is not None:
+            messages.append(actualite_vocale.consigne(tour))
+        return messages
+
+    def _tour_actualite(self, text: str) -> Optional["actualite_vocale.TourVocal"]:
+        """Le tour d'actualité de cet énoncé, ou None — recalculé à
+        l'identique par la spéculation et par l'adoption. Sans web_search
+        (outils coupés, liste du client), aucune consigne qu'on ne pourrait
+        honorer (revue du 21/09)."""
+        if not self._enable_tools or not self._web_search_permis():
+            return None
+        return actualite_vocale.preparer_tour(text, self._history)
+
+    def _web_search_permis(self) -> bool:
+        try:
+            from diapason.speech.realtime.tools import list_voice_tool_ids
+
+            return "web_search" in set(list_voice_tool_ids(self._allowed_tools))
+        except Exception:  # noqa: BLE001 - sans liste, on suppose la trousse par défaut
+            return True
 
     @staticmethod
     def _anti_loop_note(hist: List[dict]) -> Optional[dict]:
@@ -1843,7 +1890,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # otherwise drag those payloads through every later turn.
             # Assemblé AVANT la mutation de l'historique, par le même chemin
             # que la spéculation.
+            # 21/09/2026 : les gardes d'actualité du chat, à la voix. Une
+            # question d'actualité (ou « vérifie ça ») reçoit sa consigne au
+            # tour courant (dans _turn_messages, spéculation comprise) ; la
+            # fraîcheur, la page du poste et la note avant rédaction suivent ;
+            # et si rien n'a été vérifié, la voix le DIT en fin de tour au
+            # lieu de laisser passer « Justin Trudeau ».
+            tour_actualite = self._tour_actualite(text)
             messages = self._turn_messages(text)
+            index_note: Optional[int] = None
             self._history.append({"role": "user", "content": text})
             # A cap on history keeps a long session from slowly pushing the
             # first-token latency past conversational.
@@ -1884,6 +1939,23 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     pending = await self._speak_complete_sentences(pending, spoken)
                 if pending.strip():
                     await self._speak_sentence(pending.strip(), spoken)
+                if (
+                    tour_actualite is not None
+                    and not tool_calls
+                    and not tour_actualite.recherche_tentee
+                    and not tour_actualite.relance_faite
+                    and not relance_promesse
+                ):
+                    # Le premier passage a parlé sans chercher (« je vais
+                    # vérifier… », ou la réponse de mémoire). La parole est
+                    # sortie ; la livraison suit, UNE fois — revue du 21/09 :
+                    # « Je vais vérifier ça en ligne. Je le dis de mémoire,
+                    # sans avoir pu vérifier en ligne. »
+                    messages.extend(
+                        actualite_vocale.relance(tour_actualite, " ".join(spoken))
+                    )
+                    logger.warning("voice actuality answer without search, retrying")
+                    continue
                 if not tool_calls or not self._enable_tools:
                     # La PROMESSE SANS L'ACTE (23 août 2026) : « d'accord, je
                     # cherche du R&B sur YouTube pour toi » — dit, rien fait.
@@ -1936,9 +2008,19 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     # — la deuxième passe LLM (1-2,5 s, le plus gros silence
                     # du tour) se déroule pendant qu'il joue.
                     await self._emit_optimistic_ack(tool_calls, spoken)
+                if tour_actualite is not None and not spoken:
+                    noms_appeles = {
+                        (c.get("function") or {}).get("name", "") for c in tool_calls
+                    }
+                    if "web_search" in noms_appeles:
+                        # Une recherche et une lecture font une à trois
+                        # secondes de silence que rien ne signalait (21/09).
+                        await self._speak_sentence(
+                            actualite_vocale.ACCUSE_RECHERCHE, spoken
+                        )
                 for call in tool_calls:
                     debut_outil = time.monotonic()
-                    reply = await self._run_tool(call)
+                    reply = await self._run_tool(call, tour=tour_actualite)
                     logger.info(
                         "local voice timing: stage=tool_exec tool=%s ms=%.0f",
                         (call.get("function") or {}).get("name", ""),
@@ -1946,7 +2028,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     )
                     messages.append(reply)
                     tool_notes.append(_tool_note(call, reply))
+                if tour_actualite is not None:
+                    # Ce que le code sait des sources, dit avant la rédaction
+                    # — et une note nouvelle REMPLACE la précédente.
+                    note = actualite_vocale.note(tour_actualite)
+                    if index_note is not None:
+                        del messages[index_note]
+                        index_note = None
+                    if note is not None:
+                        messages.append(note)
+                        index_note = len(messages) - 1
 
+            if tour_actualite is not None:
+                # §100, prononcé : de mémoire, ou en désaccord avec les sources.
+                epilogue = actualite_vocale.epilogue(
+                    tour_actualite, " ".join(spoken).strip()
+                )
+                if epilogue:
+                    await self._speak_sentence(epilogue, spoken)
             answer = " ".join(spoken).strip()
             if tool_notes:
                 # The raw tool payloads stay per-turn (see above), but a
@@ -2032,12 +2131,19 @@ class LocalVoiceSession(RealtimeVoiceSession):
             return {**args, "target": last_user}
         return args
 
-    async def _run_tool(self, call: dict) -> dict:
+    async def _run_tool(
+        self, call: dict, tour: Optional["actualite_vocale.TourVocal"] = None
+    ) -> dict:
         """Execute one tool call and shape the result for the transcript.
 
         The result goes two ways at once: a "tool" event so the panel shows
         what just happened, and a role="tool" message so the model can build
         its answer on what the tool actually returned.
+
+        Sur un tour d'actualité (``tour``), les arguments de web_search sont
+        complétés par le code (fraîcheur), et la page du poste est lue et
+        jointe au résultat — la lecture est annoncée au panneau comme un
+        outil, rien ne se fait en cachette (§5).
         """
         function = call.get("function") or {}
         name = str(function.get("name") or "")
@@ -2050,6 +2156,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 args = {}
 
         args = self._restore_spoken_target(name, args)
+        if tour is not None:
+            args = actualite_vocale.preparer_appel(tour, name, args)
+            deja = actualite_vocale.deja_lue(tour, name, args)
+            if deja is not None:
+                return {
+                    "role": "tool",
+                    "tool_name": name,
+                    "content": json.dumps(deja, ensure_ascii=False),
+                }
         # Successful voice tool calls used to leave zero trace server-side —
         # every misfire diagnosis started blind. One compact line fixes that.
         logger.warning(
@@ -2075,6 +2190,42 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 detail=str(result.get("error") or "")[:200],
             )
         )
+        if tour is not None and self._tool_executor is not None:
+            lectures: list[dict] = []
+            executeur = self._tool_executor
+            budget = self._budget
+
+            def lire(nom: str, arguments: dict) -> dict:
+                # La lecture automatique compte dans le budget du tour, comme
+                # un appel du modèle (revue du 21/09 : elle passait à côté).
+                if not budget.allow():
+                    page = {"ok": False, "error": "Voice tool budget exceeded"}
+                else:
+                    budget.consume()
+                    page = executeur(nom, arguments)
+                lectures.append(page)
+                return page
+
+            try:
+                result = await asyncio.to_thread(
+                    actualite_vocale.absorber_resultat, tour, name, args, result, lire
+                )
+            except Exception as exc:  # noqa: BLE001 - la recherche payée ne se perd pas
+                logger.warning(
+                    "voice actuality: reading failed: %s", exc, exc_info=True
+                )
+                lectures.append({"ok": False, "error": str(exc)})
+            for page in lectures:
+                await self._queue.put(
+                    SessionEvent(
+                        kind="tool",
+                        tool_name="web_read",
+                        tool_ok=bool(page.get("ok")),
+                        detail=str(page.get("error") or page.get("content") or "")[
+                            :200
+                        ],
+                    )
+                )
         return {
             "role": "tool",
             "tool_name": name,

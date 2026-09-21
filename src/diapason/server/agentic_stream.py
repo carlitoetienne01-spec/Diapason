@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import time
 from contextlib import aclosing
 from typing import Any, AsyncIterator, Iterable, Sequence
@@ -56,6 +55,8 @@ from diapason.server.actualite import (
     question_de_titulaire,
     question_personnelle,
     recherche_concluante,
+    renumeroter,
+    sous_l_url_demandee,
 )
 from diapason.server.questions_chat import (
     CADRAGE_MAX_JETONS,
@@ -148,41 +149,8 @@ def _abreger(valeur: Any) -> Any:
     return valeur
 
 
-_NUMERO_DE_LIGNE = re.compile(r"^\[(\d+)\]", re.M)
-
-
-def _renumeroter(
-    contenu: str,
-    sources: list[dict[str, Any]],
-    deja: list[dict[str, Any]],
-) -> tuple[str, list[dict[str, Any]]]:
-    """Une seconde recherche ne recommence pas à [1] : ses numéros suivent, et
-    une page déjà vue garde son premier numéro (revue du 20/09 : deux
-    recherches rendaient deux pastilles vers le même article)."""
-    from diapason.tools.web_search import url_canonique
-
-    connus = {url_canonique(str(d.get("url") or "")): d["ref"] for d in deja}
-    prochain = len(deja) + 1
-    correspondance: dict[int, int] = {}
-    nouvelles: list[dict[str, Any]] = []
-    for src in sources:
-        if not isinstance(src, dict) or not isinstance(src.get("ref"), int):
-            continue
-        cle = url_canonique(str(src.get("url") or ""))
-        if cle in connus:
-            correspondance[src["ref"]] = connus[cle]
-            continue
-        correspondance[src["ref"]] = prochain
-        connus[cle] = prochain
-        nouvelles.append({**src, "ref": prochain})
-        prochain += 1
-    if not correspondance:
-        return contenu, []
-    texte = _NUMERO_DE_LIGNE.sub(
-        lambda m: f"[{correspondance.get(int(m.group(1)), int(m.group(1)))}]",
-        contenu,
-    )
-    return texte, nouvelles
+# La renumérotation des sources vit dans actualite.py (partagée avec la voix).
+_renumeroter = renumeroter
 
 
 def _controle_des_sources(
@@ -222,18 +190,8 @@ def _controle_des_sources(
     return [ToolStreamEvent("verification", signal)]
 
 
-def _sous_l_url_demandee(
-    sources: list[dict[str, Any]], url: str
-) -> list[dict[str, Any]]:
-    """La page lue garde la pastille de l'URL demandée : après une
-    redirection (http → https, www), web_read rend l'URL finale et la page
-    déjà [2] recevait une quatrième pastille (revue du 21/09)."""
-    if not url:
-        return sources
-    return [
-        {**src, "url": url} if isinstance(src, dict) and src.get("url") != url else src
-        for src in sources
-    ]
+# Partagée avec la voix (actualite.sous_l_url_demandee).
+_sous_l_url_demandee = sous_l_url_demandee
 
 
 def _url_demandee(arguments: str) -> str:

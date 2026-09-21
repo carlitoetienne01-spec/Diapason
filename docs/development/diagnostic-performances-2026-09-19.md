@@ -435,10 +435,64 @@ reconnaissance d'une question d'actualité est lexicale et le restera :
    sur un modèle distant — où `verifyOnline` répond « de mémoire » plutôt
    que de se taire.
 
-Limites : la voix en direct (`speech/realtime`) n'a toujours aucune de ces
-gardes ; le niveau juge les citations, pas leur pertinence (une réponse qui
-cite [1] à côté est « vérifiée ») ; « Léon XIV » et « Leo XIV » restent deux
-noms.
+Limites : le niveau juge les citations, pas leur pertinence (une réponse
+qui cite [1] à côté est « vérifiée ») ; « Léon XIV » et « Leo XIV » restent
+deux noms.
+
+### La voix — 21 septembre, soir
+
+La voix en direct (`speech/realtime/local_voice.py`) n'avait aucune de ces
+gardes : « Qui est le premier ministre du Canada ? » dit au micro recevait
+« Justin Trudeau » sans qu'une recherche parte, et rien ne le disait.
+`speech/realtime/actualite_vocale.py` fait le pont entre la boucle vocale
+(messages en dicts, résultats d'outils en JSON) et `server/actualite.py`,
+sans dupliquer la logique (`renumeroter` et `sous_l_url_demandee` y sont
+déplacés, partagés par les deux chemins) :
+
+- une consigne PROPRE à la voix — la consigne du chat demandait de citer
+  « [1] », et Kokoro prononçait « Mark Carney deux, depuis mars deux mille
+  vingt-cinq » (revue du 21/09) : à l'oral, la source se nomme et la date
+  se dit en toutes lettres ; `speakable()` retire par ailleurs tout `[N]`
+  et toute adresse web avant la synthèse. Posée DANS `_turn_messages`,
+  donc dans la spéculation aussi : posée seulement à l'adoption, la réponse
+  préparée pendant le silence aurait été bâtie sans elle et adoptée telle
+  quelle. Aucune consigne quand `web_search` n'est pas permis (outils
+  coupés, liste du client) : rien qu'on ne puisse honorer ;
+- « vérifie ça », « c'est vrai », « vraiment », « t'es sûr » dits au micro
+  — sans le point d'interrogation que Whisper ne pose pas toujours, quand
+  c'est tout l'énoncé — rattachés à la question d'avant, jamais sur du
+  personnel (possessifs, modules, et désormais un NAS, un téléphone, une
+  adresse postale — `question_personnelle`), jamais sur un énoncé de moins
+  de douze caractères ;
+- sur un tour d'actualité, `_run_tool` complète les arguments de
+  `web_search` (fraîcheur), absorbe le résultat (numéros continus, corpus,
+  métadonnées techniques retirées et texte borné à 4 000 caractères par
+  partie), lit la page du poste par `web_read` pour un titulaire — dans le
+  budget d'outils du tour, annoncée au panneau, jamais deux fois : le
+  modèle qui la redemande reçoit « déjà lue ci-dessus » sans réseau — et
+  la joint au résultat ; « Je vérifie en ligne. » est prononcé pendant la
+  recherche (une à trois secondes de silence que rien ne signalait) ;
+  après les outils de chaque round, la note avant rédaction remplace la
+  précédente ; une lecture qui lève ne perd pas la recherche ;
+- le premier passage qui parle sans chercher est RELANCÉ une fois, comme
+  une promesse sans acte : la parole est sortie, la livraison suit ;
+- la voix ne peut pas RETENIR — alors elle le DIT en fin de tour : « Je le
+  dis de mémoire, sans avoir pu vérifier en ligne. » (« La recherche n'a
+  rien donné : … », « Je n'ai pas pu chercher en ligne : … »), « Attention :
+  les sources désignent Mark Carney comme titulaire, pas Justin Trudeau. »
+  Et elle se tait quand l'épilogue mentirait ou doublerait (revue du
+  21/09) : réponse vide (l'aveu du chat, qui se tient seul), aveu déjà dit,
+  question de précision, phrase sans nom ni nombre, fait lu à un outil
+  local ; « Quelle heure est-il ? » et « Quelle est la date ? » ne sont plus
+  des questions d'actualité (chat compris) — l'horloge n'est ni mémoire ni
+  web.
+
+`web_read` entre dans la trousse vocale ; le tour vocal passe `num_ctx`
+comme le chat (sans lui, Ollama prenait sa fenêtre, et deux fenêtres font
+deux modèles chargés). Limites : pas de badge dans le panneau vocal,
+l'épilogue en tient lieu ; le texte de l'épilogue est fixe ; un nom de
+personne privée dans la question à vérifier n'est pas reconnu comme
+personnel.
 
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à

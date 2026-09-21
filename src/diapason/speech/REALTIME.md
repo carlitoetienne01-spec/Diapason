@@ -52,7 +52,8 @@ Allow-listed desktop tools run inside the live session (default budget 12):
 - **`spotify_play`** — search/play via Spotify URI (also “joue X sur Spotify”)
 - **`mail_compose`** — Mail.app **draft** only (never auto-sends)
 - **`messages_compose`** — Messages **draft** via `sms:`/`imessage:` (never auto-sends)
-- **`web_search`** — Tavily or DuckDuckGo; summarize orally
+- **`web_search`** — Tavily or DuckDuckGo; numbered, dated results; summarize orally
+- **`web_read`** — one page's main text, title and date (21/09/2026: the page of an office is read automatically after a search about its holder; an unverified answer is spoken as « de mémoire » — see `actualite_vocale.py`)
 - **`find_files`** — Spotlight `mdfind` (grant **Full Disk Access** for some folders)
 - **`screen_describe`** — one-shot screenshot → local vision
 - **`screen_share_start` / `screen_share_stop` / `screen_share_status`** — continuous share session (periodic captures until stop)

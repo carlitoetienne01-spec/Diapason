@@ -105,6 +105,19 @@ def _plat(question: str) -> str:
     return _normaliser(question).replace("’", "'")
 
 
+# Ce que l'horloge locale répond : ni mémoire, ni web. Revue vocale du
+# 21/09 : « Quelle est la date aujourd'hui ? » recevait la consigne, le
+# modèle appelait current_time, et la voix concluait « je le dis de
+# mémoire, sans avoir pu vérifier en ligne » — faux sur la provenance.
+_HORLOGE = re.compile(
+    r"\b(?:quel(?:le)?(?: est)? (?:la |le |l')?(?:heure|date)\b|"
+    r"quel jour (?:on est|sommes|est-on|est-ce)|quel jour\s*\??$|"
+    r"l'heure(?: qu'il est| actuelle)?\b|il est quelle heure|"
+    r"la date d'aujourd'hui|on est (?:quel|le combien)|"
+    r"what time|what day|what's the date|what is the date)"
+)
+
+
 def question_d_actualite(texte: str) -> bool:
     """Vrai si la réponse dépend du moment et ne concerne pas ses données.
 
@@ -114,6 +127,8 @@ def question_d_actualite(texte: str) -> bool:
     """
     plat = _normaliser(texte).replace("’", "'")
     if not plat or _PERSONNEL.search(plat) or _INTEMPOREL.search(plat):
+        return False
+    if _HORLOGE.search(plat):
         return False
     if _FAIT_SUFFISANT.search(plat):
         return True
@@ -157,9 +172,21 @@ AVERTISSEMENT_RECHERCHE = (
 )
 
 
+# Une donnée d'identité dans la question : un NAS ou un numéro à neuf
+# chiffres, un téléphone, une adresse postale. Revue vocale du 21/09 :
+# « vérifie ça » après une question qui les portait les envoyait au web.
+_IDENTITE = re.compile(
+    r"\b\d{3}[ -]?\d{3}[ -]?\d{3}\b|"
+    r"\b\+?1?[ -]?\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}\b|"
+    r"\b\d{1,5},? (?:rue|avenue|boulevard|boul\.?|chemin|rang|place|street|road|"
+    r"drive|ave\.?)\b"
+)
+
+
 def question_personnelle(texte: str) -> bool:
     """Les données de Carlito ne se cherchent pas sur le web."""
-    return _PERSONNEL.search(_plat(texte)) is not None
+    plat = _plat(texte)
+    return _PERSONNEL.search(plat) is not None or _IDENTITE.search(plat) is not None
 
 
 # 21/09/2026 (P2 du jury) : la reconnaissance d'une question d'actualité est
@@ -1111,3 +1138,58 @@ def niveau_de_verification(
     ):
         return PARTIEL
     return VERIFIE
+
+
+# ---------------------------------------------------------------------------
+# Les numéros des sources, continus sur tout le tour (chat et voix).
+# ---------------------------------------------------------------------------
+
+_NUMERO_DE_LIGNE = re.compile(r"^\[(\d+)\]", re.M)
+
+
+def renumeroter(
+    contenu: str,
+    sources: list[dict[str, Any]],
+    deja: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Une seconde recherche ne recommence pas à [1] : ses numéros suivent, et
+    une page déjà vue garde son premier numéro (revue du 20/09 : deux
+    recherches rendaient deux pastilles vers le même article)."""
+    from diapason.tools.web_search import url_canonique
+
+    connus = {url_canonique(str(d.get("url") or "")): d["ref"] for d in deja}
+    prochain = len(deja) + 1
+    correspondance: dict[int, int] = {}
+    nouvelles: list[dict[str, Any]] = []
+    for src in sources:
+        if not isinstance(src, dict) or not isinstance(src.get("ref"), int):
+            continue
+        cle = url_canonique(str(src.get("url") or ""))
+        if cle in connus:
+            correspondance[src["ref"]] = connus[cle]
+            continue
+        correspondance[src["ref"]] = prochain
+        connus[cle] = prochain
+        nouvelles.append({**src, "ref": prochain})
+        prochain += 1
+    if not correspondance:
+        return contenu, []
+    texte = _NUMERO_DE_LIGNE.sub(
+        lambda m: f"[{correspondance.get(int(m.group(1)), int(m.group(1)))}]",
+        contenu,
+    )
+    return texte, nouvelles
+
+
+def sous_l_url_demandee(
+    sources: list[dict[str, Any]], url: str
+) -> list[dict[str, Any]]:
+    """La page lue garde la pastille de l'URL demandée : après une
+    redirection (http → https, www), web_read rend l'URL finale et la page
+    déjà [2] recevait une quatrième pastille (revue du 21/09)."""
+    if not url:
+        return sources
+    return [
+        {**src, "url": url} if isinstance(src, dict) and src.get("url") != url else src
+        for src in sources
+    ]
