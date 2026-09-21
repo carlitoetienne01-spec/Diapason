@@ -1,10 +1,22 @@
-"""Web search tool — Tavily API with DuckDuckGo fallback."""
+"""Web search tool — Tavily API with DuckDuckGo fallback.
+
+20 septembre 2026 : « Qui est le président actuel du Canada ? » cherchait
+avec les réglages par défaut de ddgs — région ``us-en``, aucune fraîcheur,
+pas de vertical actualités, cinq extraits sans date, moteur tiré au hasard
+(``backend="auto"``). La page Wikipédia de Trudeau sortait en tête, et le 9b
+ne pouvait pas « dater l'information » : aucune date ne lui arrivait. Les
+résultats portent désormais un numéro, un domaine et une date quand elle
+existe ; la région suit la config, la fraîcheur et le vertical actualités se
+demandent par paramètre, et le moteur qui a répondu est nommé.
+"""
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
@@ -12,6 +24,123 @@ from diapason.security.ssrf import check_ssrf
 from diapason.tools._stubs import BaseTool, ToolSpec
 
 logger = logging.getLogger(__name__)
+
+# ca-fr : Carlito est à Ottawa et écrit en français ; ``us-en`` classait la
+# page anglaise de Trudeau devant tout. DIAPASON_SEARCH_REGION pour un autre
+# poste. Le repli sans région reste en fin de chaîne.
+REGION_PAR_DEFAUT = "ca-fr"
+# Un ordre fixe, pour qu'une même question rende les mêmes sources et que
+# l'on sache qui a répondu. Sondé le 20/09 : duckduckgo (texte) refusait la
+# région ca-fr (« No results found »), brave répondait ; les trois moteurs
+# d'actualités rendaient des dates.
+MOTEURS_TEXTE = ("brave", "duckduckgo", "yahoo", "mojeek")
+MOTEURS_ACTUALITES = ("duckduckgo", "bing", "yahoo")
+FRAICHEURS = {"day": "d", "week": "w", "month": "m", "year": "y"}
+# Sous trois résultats, une seconde page du même moteur ; jamais plus.
+MINIMUM_UTILE = 3
+# Revue du 20/09 : quatre moteurs × trois plans + pages 2 faisaient jusqu'à
+# quinze appels en série (60–75 s) qu'un exécuteur à 30 s tranchait sans un
+# mot, et un moteur mort repayait ses 5 s à chaque plan. Un budget global,
+# un timeout par appel, et un moteur qui lève est écarté pour tous les plans.
+BUDGET_S = 12.0
+TIMEOUT_MOTEUR_S = 5
+_UTM = re.compile(r"^(?:utm_|fbclid|gclid|ref$)", re.I)
+
+
+def url_canonique(url: str) -> str:
+    """La même page sous deux habits (schéma, utm, ordre des paramètres,
+    fragment, barre finale) compte une fois."""
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        return url.strip()
+    query = urlencode(
+        sorted((k, v) for k, v in parse_qsl(parts.query) if not _UTM.match(k))
+    )
+    chemin = parts.path.rstrip("/") or "/"
+    return urlunsplit(("https", parts.netloc.lower(), chemin, query, ""))
+
+
+def domaine(url: str) -> str:
+    try:
+        hote = urlsplit(url).netloc.lower()
+    except ValueError:
+        return ""
+    return hote[4:] if hote.startswith("www.") else hote
+
+
+def date_locale(brute: str) -> str:
+    """AAAA-MM-JJ dans le fuseau du poste ; ddgs rend de l'UTC.
+
+    Revue du 20/09 : « 1 hour ago » lu à 23:50 à Ottawa donnait le lendemain.
+    """
+    texte = str(brute or "").strip()
+    if not texte:
+        return ""
+    try:
+        from datetime import datetime
+
+        instant = datetime.fromisoformat(texte.replace("Z", "+00:00"))
+    except ValueError:
+        return texte[:10]
+    if instant.tzinfo is not None:
+        instant = instant.astimezone()
+    return instant.date().isoformat()
+
+
+def _normaliser_resultats(brut: list[dict[str, Any]], categorie: str) -> list[dict]:
+    resultats = []
+    for r in brut or ():
+        url = str(r.get("url") or r.get("href") or "").strip()
+        if not url:
+            continue
+        resultats.append(
+            {
+                "title": str(r.get("title") or "Sans titre").strip(),
+                "url": url,
+                "snippet": str(r.get("body") or r.get("content") or "").strip(),
+                "date": date_locale(r.get("date")),
+                "source": str(r.get("source") or "").strip() or domaine(url),
+                "kind": "news" if categorie == "news" else "web",
+            }
+        )
+    return resultats
+
+
+def dedoublonner(resultats: list[dict]) -> list[dict]:
+    vus: set[str] = set()
+    propres = []
+    for r in resultats:
+        cle = url_canonique(r["url"])
+        if cle in vus:
+            continue
+        vus.add(cle)
+        propres.append(r)
+    return propres
+
+
+def sources_de(resultats: list[dict]) -> list[dict[str, Any]]:
+    return [
+        {
+            "ref": i,
+            "title": r["title"],
+            "url": r["url"],
+            "date": r["date"],
+            "sender": r["source"],
+        }
+        for i, r in enumerate(resultats, 1)
+    ]
+
+
+def formater(resultats: list[dict]) -> str:
+    """Numéroté [N] pour que le modèle cite ; date et domaine s'ils existent."""
+    blocs = []
+    for i, r in enumerate(resultats, 1):
+        entete = f"[{i}] {r['title']} — {r['source']}"
+        if r.get("date"):
+            entete += f" · {r['date']}"
+        blocs.append(f"{entete}\nSource: {r['url']}\nExtrait: {r['snippet']}")
+    return "\n\n".join(blocs)
 
 
 @ToolRegistry.register("web_search")
@@ -21,9 +150,17 @@ class WebSearchTool(BaseTool):
     tool_id = "web_search"
     is_local = False
 
-    def __init__(self, api_key: str | None = None, max_results: int = 5):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        max_results: int = 5,
+        region: str | None = None,
+    ):
         self._api_key = api_key or os.environ.get("TAVILY_API_KEY")
         self._max_results = max_results
+        self._region = (
+            region or os.environ.get("DIAPASON_SEARCH_REGION") or REGION_PAR_DEFAUT
+        )
 
     @property
     def spec(self) -> ToolSpec:
@@ -31,7 +168,8 @@ class WebSearchTool(BaseTool):
             name="web_search",
             description=(
                 "Search the web for current information."
-                " Returns relevant search results."
+                " Returns numbered results [N] with source and date;"
+                " cite them by number."
             ),
             parameters={
                 "type": "object",
@@ -40,6 +178,15 @@ class WebSearchTool(BaseTool):
                     "max_results": {
                         "type": "integer",
                         "description": "Maximum results to return.",
+                    },
+                    "recency": {
+                        "type": "string",
+                        "enum": ["day", "week", "month", "year"],
+                        "description": "Only results from the last day/week/month/year",
+                    },
+                    "news": {
+                        "type": "boolean",
+                        "description": "Search news outlets first (dated articles).",
                     },
                 },
                 "required": ["query"],
@@ -115,21 +262,96 @@ class WebSearchTool(BaseTool):
             text = text[:max_chars] + "\n\n[Content truncated]"
         return text
 
-    def _duckduckgo_search(self, query: str, max_results: int) -> str:
-        """Search using DuckDuckGo as fallback."""
+    def _ddgs_search(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        fraicheur: str | None = None,
+        actualites: bool = False,
+    ) -> tuple[list[dict], list[dict[str, Any]], int]:
+        """Résultats, plans qui ont répondu, nombre de moteurs joints.
+
+        Chaîne de plans, du plus précis au plus large : actualités puis texte,
+        avec fraîcheur et région, puis sans fraîcheur, puis sans région. Un
+        moteur qui lève est écarté pour tous les plans suivants ; le budget
+        BUDGET_S borne l'ensemble. Le premier plan qui rend quelque chose
+        gagne, complété d'une seconde page sous trois résultats. Chaque plan
+        retenu est décrit (moteur, catégorie, filtres, nombre) : la carte ne
+        prête pas les filtres d'un plan au moteur d'un autre. Zéro moteur
+        joint, c'est une panne ; des moteurs qui répondent vide, c'est un vide.
+        """
+        import time
+
         from ddgs import DDGS
 
-        ddgs = DDGS()
-        raw_results = list(ddgs.text(query, max_results=max_results))
-        results = []
-        for r in raw_results:
-            title = r.get("title", "Untitled")
-            url = r.get("href", "")
-            snippet = r.get("body", "")
-            results.append(f"### {title}\nSource: {url}\nSummary: {snippet}")
-
-        formatted = "\n\n---\n\n".join(results)
-        return formatted
+        ddgs = DDGS(timeout=TIMEOUT_MOTEUR_S)
+        depart = time.monotonic()
+        plans: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
+        if actualites:
+            plans.append(("news", MOTEURS_ACTUALITES, fraicheur, self._region))
+        plans.append(("text", MOTEURS_TEXTE, fraicheur, self._region))
+        if fraicheur:
+            plans.append(("text", MOTEURS_TEXTE, None, self._region))
+        plans.append(("text", MOTEURS_TEXTE, None, None))
+        retenus: list[dict] = []
+        plans_retenus: list[dict[str, Any]] = []
+        morts: set[str] = set()
+        joints = 0
+        for categorie, moteurs, tl, region in plans:
+            if time.monotonic() - depart > BUDGET_S:
+                break
+            for moteur in moteurs:
+                if (categorie, moteur) in morts:
+                    continue
+                if time.monotonic() - depart > BUDGET_S:
+                    break
+                options: dict[str, Any] = {
+                    "max_results": max_results,
+                    "backend": moteur,
+                }
+                if region:
+                    options["region"] = region
+                if tl:
+                    options["timelimit"] = tl
+                try:
+                    brut = list(getattr(ddgs, categorie)(query, **options) or [])
+                except Exception as exc:  # noqa: BLE001 - un moteur muet cède au suivant
+                    logger.debug("web_search %s/%s : %s", categorie, moteur, exc)
+                    # « No results found » est une réponse vide, pas une panne.
+                    if "no results" in str(exc).lower():
+                        joints += 1
+                    else:
+                        morts.add((categorie, moteur))
+                    continue
+                joints += 1
+                resultats = dedoublonner(_normaliser_resultats(brut, categorie))
+                if not resultats:
+                    continue
+                if len(resultats) < MINIMUM_UTILE and max_results >= MINIMUM_UTILE:
+                    try:
+                        suite = list(
+                            getattr(ddgs, categorie)(query, page=2, **options) or []
+                        )
+                        resultats = dedoublonner(
+                            resultats + _normaliser_resultats(suite, categorie)
+                        )
+                    except Exception:  # noqa: BLE001 - la seconde page est un bonus
+                        pass
+                avant = len(retenus)
+                retenus = dedoublonner(retenus + resultats)
+                plans_retenus.append(
+                    {
+                        "engine": f"{moteur}/{categorie}",
+                        "region": region,
+                        "timelimit": tl,
+                        "count": len(retenus) - avant,
+                    }
+                )
+                break
+            if len(retenus) >= MINIMUM_UTILE:
+                break
+        return retenus[:max_results], plans_retenus, joints
 
     def execute(self, **params: Any) -> ToolResult:
         query = params.get("query", "")
@@ -159,6 +381,8 @@ class WebSearchTool(BaseTool):
                 )
 
         max_results = params.get("max_results", self._max_results)
+        fraicheur = FRAICHEURS.get(str(params.get("recency") or "").lower())
+        actualites = bool(params.get("news"))
 
         try:
             if not self._api_key:
@@ -170,31 +394,42 @@ class WebSearchTool(BaseTool):
             from tavily import TavilyClient
 
             client = TavilyClient(api_key=self._api_key)
-            response = client.search(
-                query,
-                max_results=max_results,
-                search_depth="advanced",
-                include_usage=True,
-            )
-            results = response.get("results", [])
-            formatted_parts = []
-            for r in results:
-                title = r.get("title", "Untitled")
-                url = r.get("url", "")
-                content = r.get("content", "") or r.get("snippet", "")
-                formatted_parts.append(
-                    f"### {title}\nSource: {url}\nSummary: {content}"
+            options: dict[str, Any] = {
+                "max_results": max_results,
+                "search_depth": "advanced",
+                "include_usage": True,
+            }
+            # Revue du 20/09 : avec une clé, recency/news étaient annoncés
+            # dans la carte et jamais transmis. Tavily les connaît sous
+            # time_range et topic.
+            if fraicheur:
+                options["time_range"] = str(params.get("recency")).lower()
+            if actualites:
+                options["topic"] = "news"
+            response = client.search(query, **options)
+            results = dedoublonner(
+                _normaliser_resultats(
+                    [
+                        {
+                            "title": r.get("title"),
+                            "url": r.get("url"),
+                            "body": r.get("content") or r.get("snippet"),
+                            "date": r.get("published_date"),
+                        }
+                        for r in response.get("results", [])
+                    ],
+                    "news" if actualites else "text",
                 )
-
-            formatted = "\n\n---\n\n".join(formatted_parts)
+            )
             return ToolResult(
                 tool_name="web_search",
-                content=formatted or "No results found.",
+                content=formater(results) or "No results found.",
                 success=True,
                 metadata={
-                    "num_results": len(results),
+                    "numResults": len(results),
                     "engine": "tavily",
                     "credits": (response.get("usage") or {}).get("credits"),
+                    "sources": sources_de(results),
                 },
             )
         except Exception as exc:
@@ -203,12 +438,31 @@ class WebSearchTool(BaseTool):
             )
 
         try:
-            formatted = self._duckduckgo_search(query, max_results)
+            resultats, plans, joints = self._ddgs_search(
+                query,
+                max_results,
+                fraicheur=fraicheur,
+                actualites=actualites,
+            )
+            if not resultats and not joints:
+                return ToolResult(
+                    tool_name="web_search",
+                    content="Search error: aucun moteur n'a répondu (réseau ?).",
+                    success=False,
+                    metadata={"engine": "", "numResults": 0, "plans": []},
+                )
             return ToolResult(
                 tool_name="web_search",
-                content=formatted or "No results found.",
+                content=formater(resultats) or "No results found.",
                 success=True,
-                metadata={"engine": "duckduckgo"},
+                metadata={
+                    "engine": plans[0]["engine"] if plans else "",
+                    "numResults": len(resultats),
+                    "plans": plans,
+                    # Pour l'interface (pastilles [N] cliquables) — jamais
+                    # recopié au modèle, qui lit déjà le texte numéroté.
+                    "sources": sources_de(resultats),
+                },
             )
         except ImportError:
             return ToolResult(

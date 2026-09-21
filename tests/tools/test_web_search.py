@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -57,8 +57,12 @@ class TestWebSearchTool:
             monkeypatch.delitem(sys.modules, "tavily", raising=False)
             result = tool.execute(query="test query")
         assert result.success is True
-        assert result.metadata["engine"] == "duckduckgo"
-        recherche_de_repli.assert_called_once_with("test query", max_results=5)
+        assert result.metadata["engine"] == "brave/text", (
+            "le premier moteur de la chaîne fixe qui a répondu est nommé"
+        )
+        assert recherche_de_repli.call_args_list[0] == call(
+            "test query", max_results=5, backend="brave", region="ca-fr"
+        ), "région du poste et premier moteur de la chaîne fixe"
 
     def test_execute_mocked_tavily(self, monkeypatch):
         mock_client = MagicMock()
@@ -99,7 +103,8 @@ class TestWebSearchTool:
         assert result.success is True
         assert "Result 1" in result.content
         assert "Result 2" in result.content
-        assert result.metadata["num_results"] == 2
+        assert result.metadata["numResults"] == 2, "camelCase sur le fil (CLAUDE.md §3)"
+        assert [src["ref"] for src in result.metadata["sources"]] == [1, 2]
 
     def test_execute_tavily_error(self, monkeypatch, recherche_de_repli):
         """When Tavily errors (any error), falls back to DuckDuckGo."""
@@ -127,8 +132,12 @@ class TestWebSearchTool:
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="test query")
         assert result.success is True
-        assert result.metadata["engine"] == "duckduckgo"
-        recherche_de_repli.assert_called_once_with("test query", max_results=5)
+        assert result.metadata["engine"] == "brave/text", (
+            "le premier moteur de la chaîne fixe qui a répondu est nommé"
+        )
+        assert recherche_de_repli.call_args_list[0] == call(
+            "test query", max_results=5, backend="brave", region="ca-fr"
+        ), "région du poste et premier moteur de la chaîne fixe"
 
     def test_execute_duckduckgo_fallback_format(self, monkeypatch):
         """DuckDuckGo fallback returns properly formatted results."""
@@ -161,7 +170,11 @@ class TestWebSearchTool:
         assert "DDG Result 1" in result.content
         assert "DDG Result 2" in result.content
         assert "https://example.com/1" in result.content
-        assert result.metadata["engine"] == "duckduckgo"
+        assert result.metadata["engine"] == "brave/text"
+        assert result.content.startswith("[1] DDG Result 1 — example.com"), (
+            "numéroté, avec le domaine, pour que le modèle cite [N]"
+        )
+        assert [s["ref"] for s in result.metadata["sources"]] == [1, 2]
 
     def test_max_results_parameter(self, monkeypatch):
         import builtins
@@ -213,8 +226,12 @@ class TestWebSearchTool:
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="test query")
         assert result.success is True
-        assert result.metadata["engine"] == "duckduckgo"
-        recherche_de_repli.assert_called_once_with("test query", max_results=5)
+        assert result.metadata["engine"] == "brave/text", (
+            "le premier moteur de la chaîne fixe qui a répondu est nommé"
+        )
+        assert recherche_de_repli.call_args_list[0] == call(
+            "test query", max_results=5, backend="brave", region="ca-fr"
+        ), "région du poste et premier moteur de la chaîne fixe"
 
     def test_empty_results(self, monkeypatch):
         import builtins
@@ -284,9 +301,11 @@ class TestWebSearchTool:
         result = tool.execute(query="test query")
         assert result.success is True
         # Labeled structure with the page content surfaced.
-        assert "### Result 1" in result.content
+        assert result.content.startswith("[1] Result 1 — example.com"), (
+            "avec une clé aussi, numéroté : la consigne demande de citer [N]"
+        )
         assert "Source: https://example.com/1" in result.content
-        assert "Summary: Content about test." in result.content
+        assert "Extrait: Content about test." in result.content
         # search_depth='advanced' is what pulls richer content from Tavily.
         _, kwargs = mock_client.search.call_args
         assert kwargs.get("search_depth") == "advanced"
@@ -323,7 +342,7 @@ class TestWebSearchTool:
 
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="test query")
-        assert "Summary: Fallback snippet text." in result.content
+        assert "Extrait: Fallback snippet text." in result.content
 
 
 # ---------------------------------------------------------------------------
@@ -519,3 +538,228 @@ class TestExecuteWithUrl:
         result = tool.execute(query="https://example.com/broken")
         assert result.success is False
         assert "Failed to fetch URL" in result.content
+
+
+class TestLaRechercheDateeEtNommee:
+    """20/09/2026 : cinq extraits sans date, région us-en, moteur au hasard."""
+
+    @staticmethod
+    def _outil(monkeypatch, moteurs):
+        """Un DDGS dont chaque moteur répond selon `moteurs` (liste ou exception)."""
+        mock_ddgs = MagicMock()
+
+        def repondre(categorie):
+            def _rep(query, **kw):
+                reponse = moteurs.get((categorie, kw.get("backend")), [])
+                if isinstance(reponse, Exception):
+                    raise reponse
+                if kw.get("page") == 2:
+                    return []
+                return reponse
+
+            return _rep
+
+        mock_ddgs.text.side_effect = repondre("text")
+        mock_ddgs.news.side_effect = repondre("news")
+        module = MagicMock()
+        module.DDGS.return_value = mock_ddgs
+        monkeypatch.setitem(sys.modules, "ddgs", module)
+        monkeypatch.delitem(sys.modules, "tavily", raising=False)
+        outil = WebSearchTool(api_key=None, region="ca-fr")
+        outil._api_key = None
+        return outil, mock_ddgs
+
+    def test_les_actualites_passent_en_premier_avec_leur_date(self, monkeypatch):
+        outil, ddgs = self._outil(
+            monkeypatch,
+            {
+                ("news", "duckduckgo"): [
+                    {
+                        "title": "Carney assermenté",
+                        "url": "https://ledevoir.com/a?utm_source=x",
+                        "body": "…",
+                        "date": "2026-09-18T10:00:00",
+                        "source": "Le Devoir",
+                    },
+                    {
+                        "title": "Doublon",
+                        "url": "https://ledevoir.com/a/",
+                        "body": "…",
+                        "date": "2026-09-18",
+                        "source": "Le Devoir",
+                    },
+                    {
+                        "title": "France 24",
+                        "url": "https://france24.com/b",
+                        "body": "…",
+                        "date": "2026-09-17",
+                        "source": "France 24",
+                    },
+                ]
+            },
+        )
+        resultat = outil.execute(
+            query="premier ministre du Canada", news=True, recency="month"
+        )
+        assert resultat.success
+        assert resultat.content.startswith(
+            "[1] Carney assermenté — Le Devoir · 2026-09-18\nSource: https://ledevoir.com/a?utm_source=x"
+        )
+        assert "[2] France 24 — France 24 · 2026-09-17" in resultat.content
+        assert "Doublon" not in resultat.content, "utm et barre finale : la même page"
+        assert resultat.metadata["engine"] == "duckduckgo/news"
+        assert resultat.metadata["plans"] == [
+            {
+                "engine": "duckduckgo/news",
+                "region": "ca-fr",
+                "timelimit": "m",
+                "count": 2,
+            }
+        ], "la carte décrit le plan qui a répondu, pas un mélange de plans"
+        assert ddgs.news.call_args_list[0].kwargs == {
+            "max_results": 5,
+            "backend": "duckduckgo",
+            "region": "ca-fr",
+            "timelimit": "m",
+        }
+        assert [s["sender"] for s in resultat.metadata["sources"]] == [
+            "Le Devoir",
+            "France 24",
+        ]
+
+    def test_un_moteur_muet_cede_au_suivant_et_les_filtres_se_relachent(
+        self, monkeypatch
+    ):
+        # Sondé le 20/09 : duckduckgo (texte) refusait la région ca-fr.
+        outil, ddgs = self._outil(
+            monkeypatch,
+            {
+                ("text", "brave"): Exception("No results found."),
+                ("text", "duckduckgo"): [],
+                ("text", "yahoo"): [
+                    {"title": "A", "href": "https://a.example/1", "body": "…"},
+                    {"title": "B", "href": "https://a.example/2", "body": "…"},
+                    {"title": "C", "href": "https://a.example/3", "body": "…"},
+                ],
+            },
+        )
+        resultat = outil.execute(query="taux directeur", recency="year")
+        assert resultat.success
+        assert resultat.metadata["engine"] == "yahoo/text"
+        assert resultat.metadata["numResults"] == 3
+        assert "[3] C — a.example" in resultat.content
+        assert " · " not in resultat.content.split("\n")[0], (
+            "sans date connue, aucune date inventée (§5)"
+        )
+        appels = [c.kwargs.get("backend") for c in ddgs.text.call_args_list]
+        assert appels[:3] == ["brave", "duckduckgo", "yahoo"], "ordre fixe, nommé"
+
+    def test_sans_aucun_resultat_le_vide_est_dit_tel_quel(self, monkeypatch):
+        outil, _ = self._outil(monkeypatch, {})
+        resultat = outil.execute(query="zzz", recency="day", news=True)
+        assert resultat.success
+        assert resultat.content == "No results found."
+        assert resultat.metadata["numResults"] == 0
+        assert resultat.metadata["sources"] == []
+
+    def test_url_canonique_et_domaine(self):
+        from diapason.tools.web_search import domaine, url_canonique
+
+        assert url_canonique("https://WWW.Site.ca/page/?utm_campaign=x&b=2#frag") == (
+            "https://www.site.ca/page?b=2"
+        )
+        assert url_canonique("https://site.ca/") == "https://site.ca/"
+        assert domaine("https://www.ledevoir.com/x") == "ledevoir.com"
+        assert domaine("pas une url") == ""
+
+
+class TestLeBudgetEtLesPannes:
+    """Revue du 20/09 : quinze appels en série, moteur mort repayé, panne dite vide."""
+
+    def test_un_moteur_qui_leve_est_ecarte_pour_tous_les_plans(self, monkeypatch):
+        appels = []
+
+        def brave(query, **kw):
+            appels.append(("brave", kw.get("timelimit"), kw.get("region")))
+            raise TimeoutError("brave ne répond pas")
+
+        def yahoo(query, **kw):
+            appels.append(("yahoo", kw.get("timelimit"), kw.get("region")))
+            return [{"title": "A", "href": "https://a.example/1", "body": "…"}]
+
+        outil, _ = TestLaRechercheDateeEtNommee._outil(monkeypatch, {})
+        mock_ddgs = sys.modules["ddgs"].DDGS.return_value
+
+        def text(query, **kw):
+            if kw.get("backend") == "brave":
+                return brave(query, **kw)
+            if kw.get("backend") == "yahoo":
+                return yahoo(query, **kw)
+            appels.append((kw.get("backend"), kw.get("timelimit"), kw.get("region")))
+            return []
+
+        mock_ddgs.text.side_effect = text
+        resultat = outil.execute(query="q", recency="year")
+        assert resultat.success and resultat.metadata["numResults"] == 1
+        assert [a for a in appels if a[0] == "brave"] == [("brave", "y", "ca-fr")], (
+            "un moteur qui lève n'est plus rappelé par les plans suivants"
+        )
+
+    def test_le_budget_borne_la_chaine(self, monkeypatch):
+        from diapason.tools import web_search
+
+        horloge = {"t": 0.0}
+        monkeypatch.setattr(web_search, "BUDGET_S", 3.0)
+        outil, _ = TestLaRechercheDateeEtNommee._outil(monkeypatch, {})
+        mock_ddgs = sys.modules["ddgs"].DDGS.return_value
+        appels = []
+
+        def lent(query, **kw):
+            appels.append(kw.get("backend"))
+            horloge["t"] += 2.0  # chaque moteur coûte deux secondes fictives
+            return []
+
+        mock_ddgs.text.side_effect = lent
+        mock_ddgs.news.side_effect = lent
+        import time as _time
+
+        monkeypatch.setattr(_time, "monotonic", lambda: horloge["t"])
+        resultat = outil.execute(query="q", recency="year", news=True)
+        assert resultat.success and resultat.content == "No results found."
+        assert len(appels) <= 3, "le budget arrête la chaîne, pas l'exécuteur à 30 s"
+
+    def test_aucun_moteur_joint_est_une_panne_pas_un_vide(self, monkeypatch):
+        outil, _ = TestLaRechercheDateeEtNommee._outil(monkeypatch, {})
+        mock_ddgs = sys.modules["ddgs"].DDGS.return_value
+        mock_ddgs.text.side_effect = TimeoutError("réseau coupé")
+        mock_ddgs.news.side_effect = TimeoutError("réseau coupé")
+        resultat = outil.execute(query="q")
+        assert resultat.success is False
+        assert resultat.content.startswith("Search error: aucun moteur")
+
+    def test_max_results_est_un_plafond(self, monkeypatch):
+        outil, _ = TestLaRechercheDateeEtNommee._outil(
+            monkeypatch,
+            {
+                ("text", "brave"): [
+                    {"title": f"R{i}", "href": f"https://x.example/{i}", "body": "…"}
+                    for i in range(5)
+                ]
+            },
+        )
+        resultat = outil.execute(query="q", max_results=2)
+        assert resultat.metadata["numResults"] == 2
+
+    def test_la_date_est_celle_du_poste(self, monkeypatch):
+        from diapason.tools.web_search import date_locale
+
+        assert date_locale("2026-09-18") == "2026-09-18"
+        assert date_locale("") == ""
+        assert date_locale("il y a 3 h") == "il y a 3 h"
+        # Un instant UTC se lit dans le fuseau du poste, jamais tronqué en UTC.
+        from datetime import datetime, timezone
+
+        instant = datetime(2026, 9, 21, 3, 50, tzinfo=timezone.utc)
+        assert (
+            date_locale(instant.isoformat()) == instant.astimezone().date().isoformat()
+        )
