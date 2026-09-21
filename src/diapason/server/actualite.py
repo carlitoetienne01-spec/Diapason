@@ -706,10 +706,17 @@ def page_de_reference(sources: Sequence[dict[str, Any]], question: str) -> str:
     meilleure: tuple[int, int, str] | None = None
     for rang, s in enumerate(candidates):
         titre = _plat(str(s.get("title") or ""))
-        if fonction.search(titre) and not _LISTE.match(titre):
+        url = str(s["url"])
+        # La page DU poste : un titre qui commence par la fonction (« Premier
+        # ministre du Canada — Wikipédia »), ou un site de référence qui la
+        # porte (pm.gc.ca). Essai du 21/09 : « Le premier ministre Carney
+        # rencontre… » d'un journal était lu comme la page du poste.
+        de_reference = "wikipedia.org" in url or ".gc.ca" in url or "canada.ca" in url
+        m = fonction.search(titre)
+        if m and not _LISTE.match(titre) and (m.start() == 0 or de_reference):
             score = sum(1 for m in mots if m in titre)
             if meilleure is None or score > meilleure[0]:
-                meilleure = (score, rang, str(s["url"]))
+                meilleure = (score, rang, url)
     if meilleure is not None:
         return meilleure[2]
     # Sans page de la fonction, une page Wikipédia — celle dont le titre situe

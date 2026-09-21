@@ -2090,3 +2090,34 @@ class TestDemainEtLeFutur:
         ) == ["5 %"], (
             "un chiffre seul n'est pas assez précis pour valoir sans son unité"
         )
+
+
+class TestLaPageDuPosteEstUnePageDeReference:
+    def test_un_article_de_presse_n_est_pas_la_page_du_poste(self):
+        """Essai du 21/09 : « Le premier ministre Carney rencontre… » d'un
+        journal était lu comme la page du poste."""
+        from diapason.server.actualite import page_de_reference
+
+        sources = [
+            {
+                "ref": 1,
+                "title": (
+                    "Le premier ministre Carney rencontre le premier ministre du Québec"
+                ),
+                "url": "https://www.lesaffaires.com/x",
+            },
+            {
+                "ref": 2,
+                "title": (
+                    "Mark Carney - Premier ministre du Canada | "
+                    "Premier ministre du Canada"
+                ),
+                "url": "https://www.pm.gc.ca/fr/premier-ministre",
+            },
+        ]
+        assert page_de_reference(sources, PREMIER_MINISTRE) == (
+            "https://www.pm.gc.ca/fr/premier-ministre"
+        ), "un site de référence qui porte la fonction, avant un journal"
+        assert page_de_reference(sources[:1], PREMIER_MINISTRE) == "", (
+            "sans page de référence, rien : la presse n'est pas la page du poste"
+        )
