@@ -1412,6 +1412,11 @@ async def _handle_stream(
                                 "tool_start": "tool_call_start",
                                 "tool_end": "tool_call_end",
                                 "questions": "questions",
+                                # 20/09/2026 : les sources numérotées d'une
+                                # recherche, pour les pastilles [N] cliquables.
+                                "sources": "sources",
+                                # … et ce que la réponse affirme sans source.
+                                "verification": "verification",
                             }[_evt.kind]
                             yield (
                                 f"event: {_nom}\n"

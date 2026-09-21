@@ -515,6 +515,7 @@ export function InputArea() {
     let lightningMeta: { action?: string; total_ms?: number; verified?: boolean } | undefined;
     let modeleServeur: string | undefined;
     let routageServeur: RoutageServeur | undefined;
+    let verification: ChatMessage['verification'];
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -729,6 +730,27 @@ export function InputArea() {
               message: `Calling ${data.tool}(${data.arguments || ''})`,
             });
           } catch {}
+        } else if (eventName === 'verification') {
+          // Ce que la réponse affirme sans source : un signal à part, jamais
+          // dans le texte (il se copierait et le modèle le relirait).
+          try {
+            const data = JSON.parse(sseEvent.data);
+            if (data && Array.isArray(data.nonRetrouves) && data.nonRetrouves.length > 0) {
+              verification = { nonRetrouves: data.nonRetrouves.map(String) };
+            }
+          } catch {}
+        } else if (eventName === 'sources') {
+          // 20/09/2026 : une recherche rend des sources numérotées [N] ; les
+          // pastilles cliquables et leur infobulle (titre · média · date)
+          // existaient déjà pour Deep Research, il manquait l'événement.
+          try {
+            const lot = JSON.parse(sseEvent.data);
+            for (const src of Array.isArray(lot) ? lot : []) {
+              if (src && typeof src.ref === 'number' && !researchSourcesByRef.has(src.ref)) {
+                researchSourcesByRef.set(src.ref, src);
+              }
+            }
+          } catch {}
         } else if (eventName === 'tool_call_end') {
           try {
             const data = JSON.parse(sseEvent.data);
@@ -817,6 +839,7 @@ export function InputArea() {
         researchTraces.length > 0 ? researchTraces : undefined,
         researchSourcesByRef.size > 0 ? flushSources() : undefined,
         questions,
+        verification,
       );
       clearInterval(timer);
       if (timerRef.current === timer) timerRef.current = null;

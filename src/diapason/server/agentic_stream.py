@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import aclosing
 from typing import Any, AsyncIterator, Iterable, Sequence
@@ -41,7 +42,9 @@ from diapason.server.actualite import (
     AVERTISSEMENT_RECHERCHE,
     AVEU,
     CONSIGNE_FERME,
+    completer_arguments,
     consigne_actualite,
+    elements_hors_sources,
     question_courante_d_actualite,
     recherche_concluante,
 )
@@ -99,7 +102,8 @@ def _tronquer(texte: str, limite: int = MAX_TOOL_RESULT_CHARS) -> str:
 
 
 # Clés de métadonnées qui parlent à l'application, pas au modèle.
-_META_TECHNIQUE = frozenset({"persistence", "when", "_taint"})
+# « sources » : la liste structurée des pastilles [N], que le texte porte déjà.
+_META_TECHNIQUE = frozenset({"persistence", "when", "_taint", "sources"})
 
 # Au-delà, on ne recopie pas la liste entière : on en donne le début et on dit
 # combien manque, pour que le modèle sache qu'il ne voit pas tout.
@@ -133,6 +137,60 @@ def _abreger(valeur: Any) -> Any:
     if isinstance(valeur, dict):
         return {k: _abreger(v) for k, v in valeur.items() if not _vide(v)}
     return valeur
+
+
+_NUMERO_DE_LIGNE = re.compile(r"^\[(\d+)\]", re.M)
+
+
+def _renumeroter(
+    contenu: str,
+    sources: list[dict[str, Any]],
+    deja: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Une seconde recherche ne recommence pas à [1] : ses numéros suivent, et
+    une page déjà vue garde son premier numéro (revue du 20/09 : deux
+    recherches rendaient deux pastilles vers le même article)."""
+    from diapason.tools.web_search import url_canonique
+
+    connus = {url_canonique(str(d.get("url") or "")): d["ref"] for d in deja}
+    prochain = len(deja) + 1
+    correspondance: dict[int, int] = {}
+    nouvelles: list[dict[str, Any]] = []
+    for src in sources:
+        if not isinstance(src, dict) or not isinstance(src.get("ref"), int):
+            continue
+        cle = url_canonique(str(src.get("url") or ""))
+        if cle in connus:
+            correspondance[src["ref"]] = connus[cle]
+            continue
+        correspondance[src["ref"]] = prochain
+        connus[cle] = prochain
+        nouvelles.append({**src, "ref": prochain})
+        prochain += 1
+    if not correspondance:
+        return contenu, []
+    texte = _NUMERO_DE_LIGNE.sub(
+        lambda m: f"[{correspondance.get(int(m.group(1)), int(m.group(1)))}]",
+        contenu,
+    )
+    return texte, nouvelles
+
+
+def _controle_des_sources(
+    reponse: str, corpus: str, question: str
+) -> list[ToolStreamEvent]:
+    """Le signal de fin de tour : ce que la réponse affirme sans source.
+
+    Un événement à part, pas un jeton : revue du 20/09 — un jeton entrait
+    dans le texte copié, dans conversations.db et dans l'historique que le
+    modèle relit au tour suivant.
+    """
+    if not corpus.strip():
+        return []
+    manquants = elements_hors_sources(reponse, corpus, question)
+    if not manquants:
+        return []
+    return [ToolStreamEvent("verification", {"nonRetrouves": manquants})]
 
 
 def observation(resultat: Any) -> str:
@@ -252,6 +310,14 @@ async def stream_with_tools(
     # quelque chose lève la retenue.
     recherche_tentee = False
     verification_faite = False
+    # Les sources numérotées des recherches du tour (pastilles [N] dans
+    # l'interface) et leur texte, pour le contrôle a posteriori : ce que la
+    # réponse affirme et que les sources ne portent pas est signalé (20/09).
+    sources_du_tour: list[dict[str, Any]] = []
+    corpus_sources = ""
+    question_courante = next(
+        (m.content or "" for m in reversed(messages) if m.role == Role.USER), ""
+    )
     deja_vus: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
@@ -469,6 +535,11 @@ async def stream_with_tools(
             if not appels:
                 # Une coupure ou un arrêt de sécurité n'autorise pas une
                 # nouvelle génération destinée à contourner cet arrêt.
+                if actualite:
+                    for evt in _controle_des_sources(
+                        "".join(morceaux), corpus_sources, question_courante
+                    ):
+                        yield evt
                 return
         if not appels:
             # La PROMESSE SANS L'ACTE, version chat : « je regarde tes
@@ -552,6 +623,14 @@ async def stream_with_tools(
                 logger.warning("chat promise without action, retrying with a summons")
                 tours_actions += 1
                 continue
+            if actualite:
+                # Seule une question d'actualité a reçu la consigne de s'en
+                # tenir aux sources ; juger une recette sur ce critère
+                # signalait « Ricardo Larrivée » (revue du 20/09).
+                for evt in _controle_des_sources(
+                    texte_du_tour, corpus_sources, question_courante
+                ):
+                    yield evt
             return
         if dernier_tour:
             if any(
@@ -624,6 +703,11 @@ async def stream_with_tools(
                 continue
             deja_vus.add(signature)
 
+            if actualite and nom == "web_search":
+                # Fraîcheur et vertical décidés par le code, pas par le 9b :
+                # sans eux, la page Wikipédia de Trudeau sortait en tête (20/09).
+                arguments = completer_arguments(arguments, question_courante)
+
             yield ToolStreamEvent("tool_start", {"tool": nom, "arguments": arguments})
 
             un_outil_a_tourne = True
@@ -648,6 +732,14 @@ async def stream_with_tools(
                 recherche_tentee = True
                 if recherche_concluante(nom, succes, contenu):
                     verification_faite = True
+                    meta = getattr(resultat, "metadata", None) or {}
+                    contenu, nouvelles = _renumeroter(
+                        contenu, meta.get("sources") or [], sources_du_tour
+                    )
+                    if nouvelles:
+                        sources_du_tour.extend(nouvelles)
+                        yield ToolStreamEvent("sources", list(nouvelles))
+                    corpus_sources += "\n" + contenu
 
             contenu = _tronquer(contenu)
 

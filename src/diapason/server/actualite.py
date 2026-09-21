@@ -24,9 +24,11 @@ au tour même, et vérifier qu'il l'a fait. Trois pièces :
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from collections.abc import Sequence
+from typing import Any
 
 from diapason.core.types import Message, Role
 
@@ -128,7 +130,8 @@ CONSIGNE = (
     "Cette question porte sur une réalité qui a pu changer depuis ton "
     "entraînement : une fonction en cours, un prix, un résultat, une date. "
     "Appelle web_search maintenant avec une requête précise, puis réponds "
-    "d'après les résultats en donnant la date de l'information et sa source. "
+    "d'après les résultats : cite chaque fait par le numéro de sa source, "
+    "comme [1], et donne la date de l'information quand elle est indiquée. "
     "Si la recherche ne rend rien d'utile, dis que tu n'as pas pu vérifier — "
     "ne réponds pas de mémoire à cette question."
 )
@@ -160,3 +163,161 @@ def consigne_actualite(
 ) -> list[Message]:
     """La consigne au tour courant, après la demande, comme le rappel des questions."""
     return [*messages, Message(role=Role.SYSTEM, content=texte)]
+
+
+# Ce qui se périme en jours (météo, résultats, cours), et ce qui relève des
+# journaux plutôt que du web général.
+_TRES_FRAIS = re.compile(
+    r"\b(?:aujourd.hui|hier|ce (?:soir|matin|week.end)|cette (?:semaine|nuit)|"
+    r"meteo|temperature|pleuvoir|pluie|neige|scores?|matchs?|cours (?:du|de l')|"
+    r"bourse|today|tonight|weather|right now)\b"
+)
+_JOURNAUX = re.compile(
+    r"\b(?:meteo|pleuvoir|pluie|neige|elections?|sondages?|nouvelles|actualites?|"
+    r"news|que se passe.t.il|qu'arrive.t.il|quoi de neuf|matchs?|coupe|"
+    r"championnats?|finales?|scores?|quel temps|greves?|manifestations?|"
+    r"seismes?|ouragans?|incendies?)\b"
+)
+
+
+def parametres_de_recherche(question: str) -> dict[str, Any]:
+    """Fraîcheur et vertical décidés par le code, pas par le modèle.
+
+    Une semaine pour ce qui se périme en jours, un an pour un titulaire ou
+    une version ; les journaux d'abord pour ce qui fait l'actualité. Le
+    modèle peut préciser davantage, jamais relâcher : ces clés ne sont posées
+    que si l'appel ne les porte pas déjà.
+    """
+    plat = _normaliser(question).replace("’", "'")
+    parametres: dict[str, Any] = {
+        "recency": "week" if _TRES_FRAIS.search(plat) else "year"
+    }
+    if _JOURNAUX.search(plat):
+        parametres["news"] = True
+    return parametres
+
+
+_FRAICHEURS_ORDONNEES = ("day", "week", "month", "year")
+
+
+def completer_arguments(arguments: str, question: str) -> str:
+    """Pose recency/news sur un appel web_search ; le modèle précise, jamais ne relâche.
+
+    Revue du 20/09 : `recency: "recent"` (invalide) partait sans fraîcheur,
+    `month` remplaçait la semaine décidée par le code, `news: false` éteignait
+    le vertical. Le plus strict des deux gagne ; l'invalide vaut absent.
+    """
+    try:
+        donnees = json.loads(arguments) if arguments else {}
+    except (ValueError, TypeError):
+        return arguments
+    if not isinstance(donnees, dict):
+        return arguments
+    voulu = parametres_de_recherche(question)
+    du_modele = str(donnees.get("recency") or "").lower()
+    if du_modele not in _FRAICHEURS_ORDONNEES:
+        donnees["recency"] = voulu["recency"]
+    else:
+        donnees["recency"] = min(
+            du_modele, voulu["recency"], key=_FRAICHEURS_ORDONNEES.index
+        )
+    if voulu.get("news"):
+        donnees["news"] = True
+    return json.dumps(donnees, ensure_ascii=False)
+
+
+# Ce que la réponse affirme et que les sources ne portent pas : années,
+# nombres à unité, suites de mots capitalisés (noms propres). Un signal,
+# jamais un verdict — les flexions et les traductions font des faux positifs.
+_ANNEE = re.compile(r"\b(?:19|20)\d\d\b")
+# Revue du 20/09 : « 2,75 % », « 1,63 $ », « 18 °C » — le \b final exigeait une
+# lettre après le symbole ; ce sont pourtant les valeurs qui changent le plus.
+_NOMBRE = re.compile(
+    r"\b\d+(?:[.,]\d+)?\s?(?:%|\$|€|°\s?[CF]?|km|kg|ans?|millions?|milliards?)(?!\w)"
+)
+_NOM_PROPRE = re.compile(
+    r"\b[A-ZÀ-Ý][\wÀ-ÿ'’-]+(?:\s+(?:d[eu]s?|de la|du|la|le|van|von|el|al))?"
+    r"(?:\s+[A-ZÀ-Ý][\wÀ-ÿ'’-]+)+\b"
+)
+
+
+# Un début de phrase porte une majuscule sans être un nom : « Le Canada »,
+# « Selon Radio-Canada ». On retire ces têtes avant de juger la suite.
+_TETES_COMMUNES = frozenset(
+    "le la les un une des du de d' au aux ce cette ces cet il elle ils elles on "
+    "en et ou mais donc or ni car si selon depuis dans pour par sur sous avec "
+    "sans apres avant quand comme voici voila c'est il y a the a an in on at "
+    "actuellement aujourd'hui cependant toutefois pourtant ainsi alors puis "
+    "ensuite enfin aussi encore hier demain maintenant notamment effectivement "
+    "bref oui non d'apres selon premier premiere ministre president presidente "
+    "monsieur madame m. mme dr".split()
+)
+
+
+def _sans_tete_commune(nom: str) -> str:
+    mots = nom.split()
+    while mots and _normaliser(mots[0]) in _TETES_COMMUNES:
+        mots = mots[1:]
+    return " ".join(mots) if len(mots) >= 2 else ""
+
+
+def _nom_retrouve(nom: str, corpus: str) -> bool:
+    """Un nom est retrouvé si une suite de deux de ses mots l'est, ou son dernier
+    mot seul (le patronyme) — « Actuellement Mark Carney » ne doit pas alerter
+    quand les sources disent « Mark Carney » (revue du 20/09)."""
+    mots = [_normaliser(m) for m in nom.split()]
+    if _normaliser(nom) in corpus:
+        return True
+    for i in range(len(mots) - 1):
+        if f"{mots[i]} {mots[i + 1]}" in corpus:
+            return True
+    dernier = mots[-1] if mots else ""
+    if len(dernier) < 4:
+        return False
+    return re.search(rf"\b{re.escape(dernier)}\b", corpus) is not None
+
+
+def _compacter(valeur: str) -> str:
+    """« 2,75 % » et « 2.75% » sont la même valeur."""
+    return re.sub(r"\s+", "", _normaliser(valeur)).replace(",", ".")
+
+
+def _valeur_retrouvee(valeur: str, corpus_compact: str) -> bool:
+    """« 5 % » n'est pas dans « 2,75 % » : la valeur doit commencer à un chiffre
+    qui n'en prolonge pas un autre."""
+    motif = r"(?<![\d.])" + re.escape(_compacter(valeur)) + r"(?!\d)"
+    return re.search(motif, corpus_compact) is not None
+
+
+def elements_hors_sources(reponse: str, sources: str, question: str = "") -> list[str]:
+    """Les affirmations datées ou nommées de la réponse absentes des sources.
+
+    Les mots de la question ne comptent pas (ils viennent de Carlito), ni
+    l'année du jour (le contexte MAINTENANT la donne au modèle).
+    """
+    if not reponse.strip() or not sources.strip():
+        return []
+    from datetime import date
+
+    corpus = _normaliser(sources) + "\n" + _normaliser(question)
+    corpus_compact = _compacter(sources) + "\n" + _compacter(question)
+    annee_du_jour = str(date.today().year)
+    candidats: list[str] = []
+    candidats += [a for a in _ANNEE.findall(reponse) if a != annee_du_jour]
+    candidats += [m.strip() for m in _NOMBRE.findall(reponse)]
+    # Un mot seul en début de phrase porte aussi une majuscule : on ne retient
+    # que les suites d'au moins deux mots capitalisés (Mark Carney, Coupe Stanley).
+    for m in _NOM_PROPRE.finditer(reponse):
+        nom = _sans_tete_commune(m.group(0).strip())
+        if nom:
+            candidats.append(nom)
+    manquants: list[str] = []
+    for c in candidats:
+        if c in manquants:
+            continue
+        if c[0].isdigit():
+            if not _valeur_retrouvee(c, corpus_compact):
+                manquants.append(c)
+        elif not _nom_retrouve(c, corpus):
+            manquants.append(c)
+    return manquants[:6]

@@ -17,6 +17,7 @@ import type { ChatMessage } from '../../types';
 import { copierMessage } from './copieMessage';
 import { lireQuestions, texteQuestions } from '../../lib/questionsChat';
 import { QuestionsDiscussion } from './QuestionsDiscussion';
+import { lignesDeSources } from './sourcesDeReponse';
 
 function stripThinkTags(text: string): string {
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
@@ -126,6 +127,7 @@ function CopyMessageButton({ content, rendu }: {
 }
 
 export const MessageBubble = memo(function MessageBubble({ message, isLive = false, cible = false }: Props) {
+  const { t } = useTranslation();
   const rendu = useRef<HTMLDivElement>(null);
   const isUser = message.role === 'user';
   // `data-message-id` : la cible du défilement « au message » (sauteur,
@@ -149,6 +151,8 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
     }
     return m;
   }, [message.researchSources]);
+
+  const lignes = useMemo(() => lignesDeSources(message.researchSources), [message.researchSources]);
 
   const rehypePlugins = useMemo(() => {
     const base: any[] = [[rehypeHighlight, { detect: true }], rehypeKatex];
@@ -216,6 +220,33 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
           >
             {cleanContent}
           </ReactMarkdown>
+        </div>
+      )}
+
+      {/* Sources d'une recherche (20/09/2026) : toutes, cliquables, datées. */}
+      {!message.isResearch && lignes.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          {lignes.map((l) => (
+            <a
+              key={l.ref}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={l.titre || l.url}
+              className="inline-flex items-center gap-1 min-w-0 max-w-full hover:underline"
+            >
+              <span className="research-citation">{l.ref}</span>
+              <span className="truncate">{l.domaine}</span>
+              {l.date && <span className="opacity-70 whitespace-nowrap">· {l.date}</span>}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Ce que la réponse affirme sans source (20/09/2026) : un signal, pas un verdict. */}
+      {message.verification && message.verification.nonRetrouves.length > 0 && (
+        <div className="mt-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+          ⚠︎ {t('chat.verification.nonRetrouves')} {message.verification.nonRetrouves.join(', ')}
         </div>
       )}
 

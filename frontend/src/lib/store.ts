@@ -264,6 +264,7 @@ interface AppState {
     researchTraces?: ResearchSearchTrace[],
     researchSources?: ResearchSource[],
     questions?: ChatMessage['questions'],
+    verification?: ChatMessage['verification'],
   ) => void;
   setStreamState: (state: Partial<StreamState>) => void;
   resetStream: () => void;
@@ -605,6 +606,7 @@ export const useAppStore = create<AppState>((set, get) => {
       researchTraces?: ResearchSearchTrace[],
       researchSources?: ResearchSource[],
       questions?: ChatMessage['questions'],
+      verification?: ChatMessage['verification'],
     ) => {
       const store = copieConversations();
       const original = store.conversations[conversationId];
@@ -623,6 +625,7 @@ export const useAppStore = create<AppState>((set, get) => {
         if (researchTraces) lastMsg.researchTraces = researchTraces.map((trace) => ({ ...trace }));
         if (researchSources) lastMsg.researchSources = researchSources;
         if (questions) lastMsg.questions = questions;
+        if (verification) lastMsg.verification = verification;
         conv.updatedAt = dateEcriture(conv.updatedAt);
         saveConversations(store, get().streamState.isStreaming);
         // Chaque jeton reposait `messages` = le fil en flux, même après

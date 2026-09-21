@@ -131,6 +131,9 @@ export interface ChatMessage {
   audio?: { url: string };
   questions?: import('../lib/questionsChat').QuestionsChat;
   questionReply?: import('../lib/questionsChat').ReponsesQuestions;
+  // 20/09/2026 : ce que la réponse affirme et que ses sources ne portent pas
+  // (années, valeurs, noms) — un signal du serveur, jamais dans le texte.
+  verification?: { nonRetrouves: string[] };
 }
 
 export interface Conversation {

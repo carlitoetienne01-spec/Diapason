@@ -199,6 +199,69 @@ la réponse finale — un modèle qui lit les résultats et n'en tient pas
 compte, ou invente une source, n'est pas rattrapé ; la voix et le chemin
 non diffusé n'ont pas cette garde.
 
+### Le socle des recherches véridiques — 20 septembre, nuit
+
+L'outil cherchait avec les réglages par défaut de `ddgs` : région
+`us-en`, aucune fraîcheur, pas de vertical actualités, cinq extraits sans
+date, moteur tiré au hasard. Sondé le soir même : le moteur `duckduckgo`
+(texte) refusait la région `ca-fr` (« No results found »), `brave`
+répondait ; les trois moteurs d'actualités rendaient des dates. Quatre
+pièces, sans clé API ni réseau en plus :
+
+1. **Résultats datés, régionaux, nommés** (`tools/web_search.py`) : région
+   `ca-fr` par défaut (`DIAPASON_SEARCH_REGION`), paramètres `recency` et
+   `news`, chaîne fixe de moteurs (brave, duckduckgo, yahoo, mojeek ; pour
+   les journaux duckduckgo, bing, yahoo) où un moteur muet cède au suivant,
+   filtres relâchés plan par plan, seconde page sous trois résultats,
+   dédoublonnage par URL canonique. Chaque résultat sort numéroté
+   « [N] Titre — média · date » ; le moteur qui a répondu est dans la carte.
+2. **Fraîcheur décidée par le code** (`actualite.py`) : une question
+   d'actualité reçoit `recency=year` (une semaine pour ce qui se périme en
+   jours : météo, scores, cours) et `news` pour ce qui fait l'actualité ;
+   le modèle peut préciser, jamais relâcher.
+3. **Sources cliquables** : la consigne demande de citer par numéro ; un
+   événement SSE `sources` porte la liste ; les pastilles `[N]` (déjà là
+   pour Deep Research) et une ligne « 1 · ledevoir.com · 18 sept. 2026 »
+   sous la bulle rendent chaque affirmation vérifiable d'un clic. Une
+   seconde recherche continue la numérotation.
+4. **Contrôle a posteriori** : années, valeurs (« 5 % », « 250 $ », « 18 °C »)
+   et noms propres de la réponse sont cherchés dans les sources et la
+   question ; ce qui n'y est pas arrive par un événement SSE `verification`
+   et s'affiche sous la bulle — « ⚠︎ Non retrouvé dans les sources : Justin
+   Trudeau ». Un événement, pas un jeton : dans le texte, il se copiait et
+   le modèle le relisait au tour suivant. Un signal, pas un verdict : l'année
+   du jour (elle vient du contexte MAINTENANT), les têtes de phrase
+   (« Actuellement Mark Carney ») et les mots de la question ne comptent
+   pas ; seules les questions d'actualité, qui ont reçu la consigne de s'en
+   tenir aux sources, sont contrôlées.
+
+Mesuré, 9b, préfixe chaud : « Qui est le président actuel du Canada ? » →
+`web_search("président actuel du Canada 2026", recency=year)`, cinq
+sources Wikipédia numérotées, « Le Canada n'a pas de président. Le chef de
+l'État est le gouverneur général, tandis que le chef du gouvernement est le
+premier ministre [1][5]. En septembre 2026, c'est Mark Carney qui occupe le
+poste [3]. » ; « Qui est le premier ministre du Canada ? » 11,4 s de premier
+texte, 14,1 s au total ; une question stable 3,8 s. « Quel temps fait-il
+aujourd'hui à Ottawa ? » → vertical actualités, cinq articles datés, aucune
+donnée météo dedans, et le modèle le dit : « La recherche n'a pas retourné
+de données météo pour Ottawa. » — honnête ; une source météo (palier pro)
+reste à brancher. Coût d'une recherche sans résultat, après la revue du
+20/09 : un budget de 12 s pour toute la chaîne (`BUDGET_S`), 5 s par
+moteur, un moteur qui lève est écarté pour tous les plans — avant : quatre
+moteurs × trois plans + pages 2, jusqu'à quinze appels (60–75 s) qu'un
+exécuteur à 30 s tranchait sans un mot. Zéro moteur joint est une panne
+(`success=False`, « aucun moteur n'a répondu »), des moteurs qui répondent
+vide sont un vide. La carte décrit chaque plan qui a répondu (moteur,
+catégorie, filtres, nombre) au lieu de prêter les filtres d'un plan au
+moteur d'un autre ; le modèle ne peut que resserrer `recency`/`news`,
+jamais les relâcher ; une page vue par deux recherches garde sa première
+pastille ; les dates se lisent dans le fuseau du poste. Limites : les
+résultats « texte » de ddgs n'ont pas de date, seuls les journaux en
+portent ; `recency=year` filtre la date de la page, pas celle du fait — une
+page de référence stable peut passer derrière trois pages fraîches ; le
+contrôle a posteriori ignore les mots seuls et les flexions ; brave ne lit
+que le pays de `ca-fr`, la langue n'atteint que les moteurs de secours.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

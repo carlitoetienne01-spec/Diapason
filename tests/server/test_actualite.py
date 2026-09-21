@@ -192,7 +192,9 @@ class TestLaVerificationAuFilDuChat:
         premier_prompt = moteur.appels[0][0]
         assert premier_prompt[-1].role == Role.SYSTEM
         assert premier_prompt[-1].content == CONSIGNE, "la consigne suit la demande"
-        assert liste[0].executions == [{"query": "premier ministre Canada 2026"}]
+        assert liste[0].executions == [
+            {"query": "premier ministre Canada 2026", "recency": "year"}
+        ], "la fraîcheur est posée par le code : un an pour un titulaire"
         assert texte(evts) == "Mark Carney, selon les résultats du 20 sept. 2026."
         assert len(moteur.appels) == 2, "un appel, une réponse : rien de plus"
 
@@ -363,3 +365,226 @@ class TestCeQuiVautVerification:
         assert all(
             msg.content != CONSIGNE_FERME for msgs, _ in moteur.appels for msg in msgs
         ), "aucune relance ferme sur un cadrage"
+
+
+class TestLesSourcesEtLeControle:
+    """Socle du 20/09 : résultats numérotés, pastilles [N], contrôle a posteriori."""
+
+    def test_les_parametres_suivent_la_question(self):
+        from diapason.server.actualite import (
+            completer_arguments,
+            parametres_de_recherche,
+        )
+
+        assert parametres_de_recherche("Qui est le premier ministre du Canada ?") == {
+            "recency": "year"
+        }
+        assert parametres_de_recherche("Quel temps fait-il aujourd’hui à Ottawa ?") == {
+            "recency": "week",
+            "news": True,
+        }
+        assert parametres_de_recherche("Qui a gagné le match hier ?") == {
+            "recency": "week",
+            "news": True,
+        }
+        # Le modèle peut préciser davantage, jamais relâcher.
+        assert json.loads(
+            completer_arguments(
+                '{"query": "x", "recency": "day"}', "Va-t-il pleuvoir ?"
+            )
+        ) == {"query": "x", "recency": "day", "news": True}
+        assert completer_arguments("pas du json", "Qui ?") == "pas du json"
+
+    def test_ce_que_la_reponse_affirme_sans_source_est_signale(self):
+        from diapason.server.actualite import elements_hors_sources
+
+        sources = (
+            "[1] Carney assermenté — Le Devoir · 2026-09-18\n"
+            "Extrait: Mark Carney a été assermenté 24e premier ministre en mars 2025."
+        )
+        assert elements_hors_sources(
+            "Justin Trudeau, en poste depuis 2015.", sources, "Qui est le PM ?"
+        ) == ["2015", "Justin Trudeau"]
+        assert (
+            elements_hors_sources(
+                "Le Canada n'a pas de président. Selon Radio-Canada, Mark Carney "
+                "dirige le pays depuis 2025 [1].",
+                sources,
+                "Qui est le président du Canada ?",
+            )
+            == []
+        ), "les têtes de phrase, les mots de la question et les faits sourcés passent"
+        assert elements_hors_sources("", sources) == []
+        assert elements_hors_sources("Mark Carney.", "") == []
+
+    def test_les_valeurs_a_symbole_et_les_tetes_de_phrase(self):
+        """Revue du 20/09 : « 5 % » n'était jamais vu ; « Actuellement Mark
+        Carney » était signalé alors que les sources disaient Mark Carney."""
+        from datetime import date
+
+        from diapason.server.actualite import elements_hors_sources
+
+        sources = (
+            "[1] Taux — Banque du Canada · 2026-09-18\nExtrait: taux directeur "
+            "maintenu à 2,75 %. Mark Carney est premier ministre depuis mars 2025. "
+            "L'essence est à 1,63 $ et il fait 18 °C."
+        )
+        assert elements_hors_sources("Le taux est de 5 % [1].", sources) == ["5 %"]
+        assert elements_hors_sources("Le billet coûte 250 $ [1].", sources) == ["250 $"]
+        assert (
+            elements_hors_sources(
+                "Le taux est à 2,75 % [1], l'essence à 1,63 $, il fait 18°C.", sources
+            )
+            == []
+        ), "la même valeur sous une autre typographie est retrouvée"
+        assert (
+            elements_hors_sources(
+                "Actuellement Mark Carney est premier ministre [1]. Le Premier "
+                "Ministre Mark Carney l'a redit. D'après Le Devoir, c'est acquis.",
+                sources,
+            )
+            == []
+        ), "une tête de phrase ou un titre devant un nom retrouvé n'alerte pas"
+        annee = str(date.today().year)
+        assert elements_hors_sources(f"En {annee}, Mark Carney [1].", sources) == [], (
+            "l'année du jour vient du contexte MAINTENANT, pas d'une source"
+        )
+
+    def test_le_modele_precise_mais_ne_relache_jamais(self):
+        from diapason.server.actualite import completer_arguments
+
+        pleuvoir = "Va-t-il pleuvoir ce soir ?"
+        assert json.loads(
+            completer_arguments('{"query":"x","recency":"recent"}', pleuvoir)
+        ) == {
+            "query": "x",
+            "recency": "week",
+            "news": True,
+        }, "une fraîcheur invalide vaut absente"
+        assert json.loads(
+            completer_arguments(
+                '{"query":"x","recency":"month","news":false}', pleuvoir
+            )
+        ) == {"query": "x", "recency": "week", "news": True}, (
+            "un mois ne remplace pas la semaine décidée par le code, ni news=false"
+        )
+        assert json.loads(
+            completer_arguments('{"query":"x","recency":"day"}', "Qui est le PM ?")
+        ) == {"query": "x", "recency": "day"}, "plus strict que le code : gardé"
+
+    @pytest.mark.asyncio
+    async def test_les_sources_arrivent_numerotees_et_le_signal_ferme_le_tour(self):
+        class Recherche(Outil):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_search",
+                    content=(
+                        "[1] Carney assermenté — Le Devoir · 2026-09-18\n"
+                        "Source: https://ledevoir.com/a\nExtrait: Mark Carney, 24e PM."
+                    ),
+                    success=True,
+                    metadata={
+                        "engine": "duckduckgo/news",
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Carney assermenté",
+                                "url": "https://ledevoir.com/a",
+                                "date": "2026-09-18",
+                                "sender": "Le Devoir",
+                            }
+                        ],
+                    },
+                )
+
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web()])],
+                [
+                    StreamChunk(
+                        content="Mark Carney [1], qui a succédé à Justin Trudeau.",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(moteur, liste, QUESTION)
+        sources = [e.data for e in evts if e.kind == "sources"]
+        assert sources == [
+            [
+                {
+                    "ref": 1,
+                    "title": "Carney assermenté",
+                    "url": "https://ledevoir.com/a",
+                    "date": "2026-09-18",
+                    "sender": "Le Devoir",
+                }
+            ]
+        ], "l'interface reçoit la liste pour ses pastilles"
+        assert texte(evts) == "Mark Carney [1], qui a succédé à Justin Trudeau.", (
+            "le signal n'entre pas dans le texte : il se copierait et se relirait"
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"nonRetrouves": ["Justin Trudeau"]}
+        ]
+        message_outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
+        assert '"sources"' not in (message_outil.content or ""), (
+            "la liste structurée n'est pas recopiée au modèle : le texte est numéroté"
+        )
+
+    @pytest.mark.asyncio
+    async def test_une_seconde_recherche_continue_la_numerotation(self):
+        class Recherche(Outil):
+            def execute(self, **params):
+                self.executions.append(params)
+                page = "x" if params.get("query") == "a" else "y"
+                return ToolResult(
+                    tool_name="web_search",
+                    content=(
+                        f"[1] Titre — site.ca\nSource: https://site.ca/{page}\n"
+                        "Extrait: …\n\n[2] Doublon — site.ca\n"
+                        "Source: https://site.ca/x?utm_source=z\nExtrait: …"
+                    ),
+                    success=True,
+                    metadata={
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Titre",
+                                "url": f"https://site.ca/{page}",
+                            },
+                            {
+                                "ref": 2,
+                                "title": "Doublon",
+                                "url": "https://site.ca/x?utm_source=z",
+                            },
+                        ]
+                    },
+                )
+
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("a", ident="w1")])],
+                [StreamChunk(tool_calls=[appel_web("b", ident="w2")])],
+                [StreamChunk(content="Réponse [2].", finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(moteur, liste, QUESTION)
+        refs = [
+            s["ref"]
+            for lot in (e.data for e in evts if e.kind == "sources")
+            for s in lot
+        ]
+        # 1re recherche : x → [1] ; x?utm → même page, aucun nouveau numéro.
+        # 2de recherche : y → [2] ; x?utm → reprend [1].
+        assert refs == [1, 2], "une page déjà vue garde son premier numéro"
+        second = [m for m in moteur.appels[2][0] if m.role == Role.TOOL][-1]
+        assert (second.content or "").startswith("[2] Titre"), (
+            "le texte lu par le modèle porte le même numéro que la pastille"
+        )
+        assert "[1] Doublon" in (second.content or ""), (
+            "la page déjà connue est renumérotée vers sa première pastille"
+        )
