@@ -73,6 +73,9 @@ def date_locale(brute: str) -> str:
     """AAAA-MM-JJ dans le fuseau du poste ; ddgs rend de l'UTC.
 
     Revue du 20/09 : « 1 hour ago » lu à 23:50 à Ottawa donnait le lendemain.
+    Revue du 21/09 : la ``published_date`` de Tavily est en RFC 2822 (« Tue,
+    11 Mar 2025 17:00:00 GMT ») et devenait « Tue, 11 Ma » — une forme que
+    l'analyseur de web_read ne lit pas vaut « pas de date ».
     """
     texte = str(brute or "").strip()
     if not texte:
@@ -82,10 +85,86 @@ def date_locale(brute: str) -> str:
 
         instant = datetime.fromisoformat(texte.replace("Z", "+00:00"))
     except ValueError:
-        return texte[:10]
+        age, _reste = date_en_tete(texte + " - ")
+        if age:
+            return age
+        from diapason.tools.web_read import date_iso
+
+        return date_iso(texte)
     if instant.tzinfo is not None:
         instant = instant.astimezone()
     return instant.date().isoformat()
+
+
+# 21/09/2026 : les extraits de brave (texte) commencent par l'âge de la
+# page — « 19 hours ago - », « August 14, 2026 - », « 2 days ago - » — et
+# ddgs ne remplit ``date`` que pour les actualités. Cinq résultats sur
+# « premier ministre du Canada 2026 » portaient tous une date dans leur
+# extrait et aucune dans leur en-tête : le modèle ne pouvait pas les
+# départager, et le code ne pouvait pas mesurer leur fraîcheur.
+_AGE_RELATIF = re.compile(
+    r"^\s*(?:(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago|"
+    r"il y a\s+(\d+)\s+(s|sec|min|h|heures?|j|jours?|semaines?|mois|ans?))"
+    r"\s*[-—·:]\s+",
+    re.I,
+)
+# Seule la forme que brave émet (« August 14, 2026 - ») : un extrait qui
+# COMMENCE par une date française ou ISO (« 14 mars 2025 - jour de
+# l'assermentation… ») est du texte, pas un en-tête (revue du 21/09).
+_DATE_EN_TETE = re.compile(r"^\s*([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\s+-\s+")
+_JOURS_PAR_UNITE = {
+    "second": 0,
+    "minute": 0,
+    "hour": 0,
+    "day": 1,
+    "week": 7,
+    "month": 30,
+    "year": 365,
+    "s": 0,
+    "sec": 0,
+    "min": 0,
+    "h": 0,
+    "heure": 0,
+    "j": 1,
+    "jour": 1,
+    "semaine": 7,
+    "mois": 30,
+    "an": 365,
+}
+
+
+def _singulier(unite: str) -> str:
+    """« heures » → « heure », « jours » → « jour » ; « s » et « mois » restent."""
+    unite = unite.lower()
+    return unite if unite in ("s", "mois") else unite.rstrip("s")
+
+
+def date_en_tete(extrait: str) -> tuple[str, str]:
+    """(date AAAA-MM-JJ ou "", extrait sans son en-tête de date).
+
+    Un âge relatif (« 2 days ago ») se compte depuis aujourd'hui, au jour
+    près ; un mois vaut trente jours et un an trois cent soixante-cinq : c'est
+    l'âge que brave affiche, pas une date de publication, et il sert à
+    mesurer la fraîcheur, pas à la citer au jour près.
+    """
+    texte = str(extrait or "")
+    m = _AGE_RELATIF.match(texte)
+    if m:
+        from datetime import date, timedelta
+
+        nombre, unite = (
+            (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        )
+        jours = int(nombre) * _JOURS_PAR_UNITE[_singulier(unite)]
+        return (date.today() - timedelta(days=jours)).isoformat(), texte[m.end() :]
+    m = _DATE_EN_TETE.match(texte)
+    if m:
+        from diapason.tools.web_read import date_iso
+
+        iso = date_iso(m.group(1))
+        if iso:
+            return iso, texte[m.end() :]
+    return "", texte
 
 
 def _normaliser_resultats(brut: list[dict[str, Any]], categorie: str) -> list[dict]:
@@ -94,12 +173,16 @@ def _normaliser_resultats(brut: list[dict[str, Any]], categorie: str) -> list[di
         url = str(r.get("url") or r.get("href") or "").strip()
         if not url:
             continue
+        extrait = str(r.get("body") or r.get("content") or "").strip()
+        date = date_locale(r.get("date"))
+        if not date:
+            date, extrait = date_en_tete(extrait)
         resultats.append(
             {
                 "title": str(r.get("title") or "Sans titre").strip(),
                 "url": url,
-                "snippet": str(r.get("body") or r.get("content") or "").strip(),
-                "date": date_locale(r.get("date")),
+                "snippet": extrait.strip(),
+                "date": date,
                 "source": str(r.get("source") or "").strip() or domaine(url),
                 "kind": "news" if categorie == "news" else "web",
             }

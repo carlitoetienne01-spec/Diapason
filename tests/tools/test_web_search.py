@@ -755,11 +755,140 @@ class TestLeBudgetEtLesPannes:
 
         assert date_locale("2026-09-18") == "2026-09-18"
         assert date_locale("") == ""
-        assert date_locale("il y a 3 h") == "il y a 3 h"
+        from datetime import date as _date
+
+        assert date_locale("il y a 3 h") == _date.today().isoformat(), (
+            "un âge relatif devient une date ; « il y a 3 h » n'est pas un en-tête"
+        )
+        assert date_locale("il y a 2 jours") == (
+            _date.fromordinal(_date.today().toordinal() - 2).isoformat()
+        )
         # Un instant UTC se lit dans le fuseau du poste, jamais tronqué en UTC.
         from datetime import datetime, timezone
 
         instant = datetime(2026, 9, 21, 3, 50, tzinfo=timezone.utc)
         assert (
             date_locale(instant.isoformat()) == instant.astimezone().date().isoformat()
+        )
+
+
+class TestLaDateEnTeteDesExtraits:
+    """21/09/2026 : brave (texte) ne date pas ses résultats, mais chaque extrait
+    commence par l'âge de la page — « 19 hours ago - », « August 14, 2026 - ».
+    Cinq extraits datés, aucune date dans l'en-tête : le modèle ne pouvait pas
+    les départager et le code ne pouvait pas mesurer leur fraîcheur."""
+
+    def test_un_age_relatif_se_compte_depuis_aujourd_hui(self):
+        from datetime import date, timedelta
+
+        from diapason.tools.web_search import date_en_tete
+
+        aujourd_hui = date.today()
+        assert date_en_tete("19 hours ago - In 2025, Carney campaigned.") == (
+            aujourd_hui.isoformat(),
+            "In 2025, Carney campaigned.",
+        ), "des heures, c'est aujourd'hui"
+        assert date_en_tete("2 days ago - Trudeau announced.") == (
+            (aujourd_hui - timedelta(days=2)).isoformat(),
+            "Trudeau announced.",
+        )
+        assert (
+            date_en_tete("3 weeks ago — texte")[0]
+            == (aujourd_hui - timedelta(days=21)).isoformat()
+        )
+        assert (
+            date_en_tete("1 month ago - texte")[0]
+            == (aujourd_hui - timedelta(days=30)).isoformat()
+        ), "un mois vaut trente jours : un âge, pas une date"
+
+    def test_une_date_absolue_anglaise(self):
+        from diapason.tools.web_search import date_en_tete
+
+        assert date_en_tete("August 14, 2026 - ↑ « À propos »") == (
+            "2026-08-14",
+            "↑ « À propos »",
+        )
+
+    def test_seule_la_forme_de_brave_est_un_en_tete(self):
+        """Revue du 21/09 : « 14 mars 2025 - jour de l'assermentation » est du
+        texte qui commence par une date, pas un en-tête — le lire comme tel
+        datait la page du fait qu'elle raconte."""
+        from diapason.tools.web_search import date_en_tete
+
+        assert date_en_tete("14 mars 2025 - jour de l'assermentation") == (
+            "",
+            "14 mars 2025 - jour de l'assermentation",
+        )
+        assert date_en_tete("2026-09-02 · Annonce") == ("", "2026-09-02 · Annonce")
+
+    def test_sans_en_tete_l_extrait_reste_entier(self):
+        from diapason.tools.web_search import date_en_tete
+
+        assert date_en_tete("Le 14 mars 2025, Carney a prêté serment.") == (
+            "",
+            "Le 14 mars 2025, Carney a prêté serment.",
+        ), "une date au milieu d'une phrase n'est pas un en-tête"
+        assert date_en_tete("") == ("", "")
+        assert date_en_tete("06/17/2016 - Drupal") == ("", "06/17/2016 - Drupal"), (
+            "une forme ambiguë n'est jamais devinée"
+        )
+
+    def test_les_resultats_texte_prennent_la_date_de_leur_extrait(self):
+        from datetime import date
+
+        from diapason.tools.web_search import _normaliser_resultats
+
+        [texte, actualite] = _normaliser_resultats(
+            [
+                {"title": "A", "href": "https://a.ca", "body": "19 hours ago - Corps."},
+                {
+                    "title": "B",
+                    "url": "https://b.ca",
+                    "body": "2 days ago - Corps.",
+                    "date": "2026-09-01T10:00:00+00:00",
+                },
+            ],
+            "text",
+        )
+        assert texte["date"] == date.today().isoformat()
+        assert texte["snippet"] == "Corps.", "l'en-tête ne se lit pas deux fois"
+        assert actualite["date"] == "2026-09-01", (
+            "une date fournie par le moteur gagne sur l'âge de l'extrait"
+        )
+        assert actualite["snippet"] == "2 days ago - Corps.", (
+            "l'extrait d'un résultat déjà daté n'est pas retouché"
+        )
+
+    def test_la_date_apparait_dans_l_en_tete_numerote(self):
+        from datetime import date
+
+        from diapason.tools.web_search import _normaliser_resultats, formater
+
+        bloc = formater(
+            _normaliser_resultats(
+                [
+                    {
+                        "title": "A",
+                        "href": "https://a.ca/x",
+                        "body": "5 days ago - Corps.",
+                    }
+                ],
+                "text",
+            )
+        )
+        attendu = date.fromordinal(date.today().toordinal() - 5).isoformat()
+        assert bloc.splitlines()[0] == f"[1] A — a.ca · {attendu}", (
+            "la date est dans l'en-tête que lit le modèle"
+        )
+
+
+class TestLaDateDeTavily:
+    def test_le_rfc_2822_de_tavily_est_lu_entier(self):
+        """Revue du 21/09 : « Tue, 11 Mar 2025 17:00:00 GMT » devenait
+        « Tue, 11 Ma »."""
+        from diapason.tools.web_search import date_locale
+
+        assert date_locale("Tue, 11 Mar 2025 17:00:00 GMT") == "2025-03-11"
+        assert date_locale("n'importe quoi") == "", (
+            "une forme inconnue vaut pas de date"
         )
