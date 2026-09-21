@@ -43,6 +43,11 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.web_read  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import diapason.tools.code_interpreter  # noqa: F401
 except ImportError:
     pass

@@ -81,6 +81,12 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     # au lieu de réserver ce talent au brief du matin (Atlas, 24/08/2026).
     "digest_collect",
     "web_search",
+    # 21/09/2026 : cinq extraits sur « premier ministre du Canada », aucun ne
+    # nommait le titulaire ; la page du poste le dit. Lire une page entière
+    # (texte principal, titre, date) est un outil, pas un tour de passe-passe
+    # « une URL dans la requête » : le modèle peut le demander, et le code le
+    # fait seul pour un titulaire (agentic_stream._lire_la_page).
+    "web_read",
     "find_files",
     "open_anything",
     "app_search",

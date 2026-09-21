@@ -76,6 +76,12 @@ static SINK_POLICY: Lazy<HashMap<&'static str, HashSet<TaintLabel>>> = Lazy::new
         "web_search",
         HashSet::from([TaintLabel::Pii, TaintLabel::Secret]),
     );
+    // 21/09/2026 : web_read lit une page dont l'URL vient du modèle — même
+    // porte de sortie que web_search, même interdit (parité avec taint.py).
+    m.insert(
+        "web_read",
+        HashSet::from([TaintLabel::Pii, TaintLabel::Secret]),
+    );
     m.insert("channel_send", HashSet::from([TaintLabel::Secret]));
     m.insert("code_interpreter", HashSet::from([TaintLabel::Secret]));
     m
@@ -161,6 +167,12 @@ mod tests {
         let taint = TaintSet::from_labels(&[TaintLabel::Pii, TaintLabel::Secret]);
         let result = check_taint("web_search", &taint);
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_web_read_est_une_porte_de_sortie_comme_web_search() {
+        let taint = TaintSet::from_labels(&[TaintLabel::Pii]);
+        assert!(check_taint("web_read", &taint).is_some());
     }
 
     #[test]

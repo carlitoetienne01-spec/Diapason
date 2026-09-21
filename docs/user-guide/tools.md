@@ -187,7 +187,8 @@ All built-in tools are registered via `@ToolRegistry.register()` and are availab
 | **Code** | `code_interpreter` | Execute Python code in a sandboxed subprocess |
 | **Code** | `code_interpreter_docker` | Execute Python code in a disposable Docker container |
 | **Code** | `repl` | Persistent Python REPL with state across calls |
-| **Search** | `web_search` | Web search returning result summaries |
+| **Search** | `web_search` | Web search returning numbered, dated results `[N]` |
+| **Search** | `web_read` | Read one page: main text, title, publication date |
 | **File I/O** | `file_read` | Read file contents with safety validations |
 | **HTTP** | `http_request` | Make HTTP requests with SSRF protection |
 | **Memory** | `retrieval` | Search the memory backend for relevant context |
@@ -379,9 +380,38 @@ Searches the web and returns a result summary. Useful for queries that need curr
 
 **Parameters:**
 
-| Parameter | Type   | Required | Description                              |
-|-----------|--------|----------|------------------------------------------|
-| `query`   | string | Yes      | Search query string                      |
+| Parameter     | Type    | Required | Description                                        |
+|---------------|---------|----------|----------------------------------------------------|
+| `query`       | string  | Yes      | Search query string                                |
+| `max_results` | integer | No       | Maximum results (default 5)                        |
+| `recency`     | string  | No       | `day`, `week`, `month` or `year`                   |
+| `news`        | boolean | No       | Search news outlets first (dated articles)         |
+
+Results are numbered `[N]` with source domain and date; the chat cites them
+by number and shows them as clickable pills. Region follows
+`DIAPASON_SEARCH_REGION` (default `ca-fr`).
+
+### WebRead
+
+**Registry key:** `web_read` | **Category:** `search`
+
+Reads one web page and returns its main text (navigation, footers and cookie
+banners removed; tables kept as `a | b | c` rows), its title and its
+publication/modification dates (JSON-LD, `<meta>`, `<time>`, then the HTTP
+`Last-Modified` header — an ambiguous date is reported as none, never
+guessed). Use it after `web_search` when the extracts do not state the fact
+asked. For a question about an office holder, the chat reads the page of the
+office on its own after the first search (shown as `web_read · auto`).
+
+**Parameters:**
+
+| Parameter | Type   | Required | Description                                          |
+|-----------|--------|----------|------------------------------------------------------|
+| `url`     | string | Yes      | Page URL (http/https; private addresses are refused)  |
+| `focus`   | string | No       | Words to look for; passages around them come first   |
+
+The output is capped at 3 600 characters; the page is one `[N]` source like
+a search result.
 
 ### CodeInterpreter
 

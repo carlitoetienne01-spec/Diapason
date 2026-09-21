@@ -1979,6 +1979,7 @@ speech-wake = [
 ]
 tools-search = [
     { name = "ddgs" },
+    { name = "lxml" },
     { name = "tavily-python" },
 ]
 voice-local = [
@@ -2036,6 +2037,7 @@ requires-dist = [
     { name = "kokoro", marker = "extra == 'voice-local'", specifier = ">=0.9" },
     { name = "line-bot-sdk", marker = "extra == 'channel-line'", specifier = ">=3.0" },
     { name = "litellm", marker = "extra == 'inference-litellm'", specifier = ">=1.40" },
+    { name = "lxml", marker = "extra == 'tools-search'", specifier = ">=6.1.0" },
     { name = "mastodon-py", marker = "extra == 'channel-mastodon'", specifier = ">=1.8" },
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.12.6" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },

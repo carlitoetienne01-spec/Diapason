@@ -48,6 +48,7 @@ class TaintSet:
 # be passed to that tool.
 SINK_POLICY: Dict[str, Set[TaintLabel]] = {
     "web_search": {TaintLabel.PII, TaintLabel.SECRET},
+    "web_read": {TaintLabel.PII, TaintLabel.SECRET},
     "channel_send": {TaintLabel.SECRET},
     "code_interpreter": {TaintLabel.SECRET},
 }

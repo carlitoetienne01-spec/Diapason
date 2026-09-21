@@ -105,4 +105,8 @@ telemetry/vllm_metrics.py
 tools/audio_tool.py
 tools/http_request.py
 tools/image_tool.py
+# tools/web_read.py — GET d'une page publique nommée par le modèle ou par le
+# code (la page d'une fonction après une recherche, 21/09/2026) ; check_ssrf
+# avant chaque saut de redirection, 2 Mo, 10 s ; rien d'autre que l'URL ne part.
+tools/web_read.py
 tools/web_search.py

@@ -66,6 +66,14 @@ class TestCheckTaint:
         assert result is not None
         assert "secret" in result.lower()
 
+    def test_web_read_est_une_porte_de_sortie_comme_web_search(self):
+        """21/09/2026 : l'URL lue vient du modèle — un secret ou une donnée
+        personnelle n'y passe pas plus que dans une requête de recherche."""
+        for label in (TaintLabel.PII, TaintLabel.SECRET):
+            assert check_taint("web_read", TaintSet.from_labels(label)) is not None, (
+                f"{label} doit être refusé pour web_read"
+            )
+
     def test_secret_blocked_for_channel_send(self):
         ts = TaintSet.from_labels(TaintLabel.SECRET)
         result = check_taint("channel_send", ts)

@@ -216,6 +216,7 @@ DEFAULT_TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "file_read": [Capability.FILE_READ],
     "file_write": [Capability.FILE_WRITE],
     "web_search": [Capability.NETWORK_FETCH],
+    "web_read": [Capability.NETWORK_FETCH],
     "http_request": [Capability.NETWORK_FETCH],
     "code_interpreter": [Capability.CODE_EXECUTE],
     "repl": [Capability.CODE_EXECUTE],
