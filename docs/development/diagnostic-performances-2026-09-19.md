@@ -529,6 +529,28 @@ plan sans redescendre sur le web général) ; une page vue par les deux
 requêtes passe en tête et prend la date de l'article. Mesuré : huit
 résultats en 1,5 s au lieu de cinq en 1,3 s.
 
+### Le banc de sept questions — 21 septembre, soir
+
+Sept questions d'actualité, 9b, préfixe chaud : maire d'Ottawa (Mark
+Sutcliffe), première ministre du Québec (Christine Fréchette), président
+des États-Unis, pape (Léon XIV), dernière version de macOS — justes et
+vérifiées, 12 à 17 s. Deux non-réponses honnêtes mais mal traitées : « Qui
+a gagné la Coupe Stanley en 2026 ? » → « les résultats ne mentionnent pas
+le vainqueur … il semble que les finales n'aient pas encore eu lieu »
+(faux) sous un badge VERT avec trois [N] ; « taux d'inflation » → « Je vais
+relancer la recherche » — puis rien (la sommation anti-promesse ne joue
+plus après qu'un outil a tourné). Deux pièces : `est_une_non_reponse` (la
+réponse qui avoue n'avoir pas trouvé n'est jamais « vérifiée », jugée sur
+le DERNIER passage — « je dois lire la page… » puis le chiffre est une
+réponse), et une seconde recherche, une fois, avec une autre requête ou
+une lecture (`CONSIGNE_AUTRE_REQUETE`), qui s'ajoute sous ce qui est
+affiché. Rejoué : inflation → lecture d'une page, troisième requête,
+« 3,0 % en août 2026 [10][14] » ; Coupe Stanley → seconde requête en
+anglais, neuf sources dont nhl.com, mais le vainqueur toujours pas dans
+les extraits — badge partiel, aveu prononcé. Et « Pape à Paris : où voir
+Léon XIV… » (sortiraparis) passait pour la page du poste : seuls les sites
+de référence comptent désormais.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

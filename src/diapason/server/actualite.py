@@ -685,6 +685,21 @@ def _situe(ressort: set[str], en_tete_plat: str) -> bool:
 
 
 _LISTE = re.compile(r"^(?:liste|list of)\b")
+_DOMAINES_DE_REFERENCE = (
+    "wikipedia.org",
+    ".gc.ca",
+    "canada.ca",
+    "quebec.ca",
+    "gouv.qc.ca",
+    "ottawa.ca",
+    "montreal.ca",
+    "toronto.ca",
+    "vatican.va",
+    "elysee.fr",
+    "gouvernement.fr",
+    "whitehouse.gov",
+    "un.org",
+)
 
 
 def page_de_reference(sources: Sequence[dict[str, Any]], question: str) -> str:
@@ -711,9 +726,12 @@ def page_de_reference(sources: Sequence[dict[str, Any]], question: str) -> str:
         # ministre du Canada — Wikipédia »), ou un site de référence qui la
         # porte (pm.gc.ca). Essai du 21/09 : « Le premier ministre Carney
         # rencontre… » d'un journal était lu comme la page du poste.
-        de_reference = "wikipedia.org" in url or ".gc.ca" in url or "canada.ca" in url
+        # Banc du 21/09 : « Pape à Paris : où voir Léon XIV… » (sortiraparis)
+        # commençait par la fonction et passait pour la page du poste. Seuls
+        # les sites de référence comptent.
+        de_reference = any(d in url for d in _DOMAINES_DE_REFERENCE)
         m = fonction.search(titre)
-        if m and not _LISTE.match(titre) and (m.start() == 0 or de_reference):
+        if m and not _LISTE.match(titre) and de_reference:
             score = sum(1 for m in mots if m in titre)
             if meilleure is None or score > meilleure[0]:
                 meilleure = (score, rang, url)
@@ -1132,17 +1150,49 @@ DE_MEMOIRE = "memory"
 _CITATION = re.compile(r"\[(\d+)\]")
 
 
+# La réponse dit elle-même qu'elle n'a pas trouvé (banc du 21/09 : « Les
+# résultats de la recherche ne mentionnent pas le vainqueur de la Coupe
+# Stanley 2026 … il faudrait attendre » sous un badge vert, avec trois [N]).
+_NON_REPONSE = re.compile(
+    r"ne (?:mentionnent|donnent|precisent|indiquent|permettent|contiennent)"
+    r"(?: toujours| plus| donc| malheureusement)? pas|"
+    r"n'(?:ai|a|ont) pas (?:trouve|pu trouver|permis)|"
+    r"aucun(?:e)? (?:resultat|source|information|donnee|article) ne|"
+    r"pas de (?:donnees?|resultats?|chiffres?|informations?) (?:precis|exact|sur|pour)|"
+    r"je n'ai pas pu|il faudrait (?:attendre|chercher|consulter)|"
+    r"je dois (?:lire|chercher|relancer)|je vais relancer|"
+    r"n'est pas (?:mentionne|indique|precise|confirme)|"
+    r"do not mention|could not find|no result"
+)
+CONSIGNE_AUTRE_REQUETE = (
+    "Les résultats ne donnaient pas le fait demandé. Appelle web_search "
+    "maintenant avec une requête DIFFÉRENTE — d'autres mots, en anglais, ou "
+    "le nom du site officiel — ou web_read sur la source la plus prometteuse, "
+    "sans écrire de texte avant l'appel ; puis réponds d'après les nouveaux "
+    "résultats en citant [N], ou dis que tu n'as pas trouvé. Ne suppose rien "
+    "sur ce qui a eu lieu ou non."
+)
+
+
+def est_une_non_reponse(reponse: str) -> bool:
+    """La réponse avoue ne pas avoir trouvé le fait dans les sources."""
+    return _NON_REPONSE.search(_plat(reponse)) is not None
+
+
 def niveau_de_verification(
     reponse: str,
     sources: Sequence[dict[str, Any]],
     verification_faite: bool,
     signal: dict[str, Any] | None = None,
+    dernier_passage: str | None = None,
 ) -> str:
     """verified / partial / memory.
 
     De mémoire tant qu'aucune recherche n'a rendu quelque chose ; partiel
     quand la réponse ne cite aucune source, cite un numéro qui n'existe pas,
-    ou que le contrôle a relevé quelque chose ; vérifié sinon.
+    ou que le contrôle a relevé quelque chose ; vérifié sinon. La
+    non-réponse se juge sur le DERNIER passage : « je dois lire la page… »
+    suivi du chiffre trouvé est une réponse (banc du 21/09).
     """
     if not verification_faite:
         return DE_MEMOIRE
@@ -1152,6 +1202,9 @@ def niveau_de_verification(
         return PARTIEL
     # « [1] » tout seul n'est pas une réponse vérifiée (revue du 21/09).
     if not _CITATION.sub("", reponse or "").strip():
+        return PARTIEL
+    # Une réponse qui dit n'avoir pas trouvé n'est pas vérifiée, même citée.
+    if est_une_non_reponse(dernier_passage if dernier_passage is not None else reponse):
         return PARTIEL
     if signal and (
         signal.get("notFound")

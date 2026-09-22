@@ -40,6 +40,7 @@ from diapason.server.actualite import (
     AVERTISSEMENT,
     AVERTISSEMENT_RECHERCHE,
     AVEU,
+    CONSIGNE_AUTRE_REQUETE,
     CONSIGNE_DEMANDEE,
     CONSIGNE_FERME,
     completer_arguments,
@@ -47,6 +48,7 @@ from diapason.server.actualite import (
     desaccord_sur_le_titulaire,
     elements_hors_sources,
     est_une_demande_de_verification,
+    est_une_non_reponse,
     niveau_de_verification,
     note_avant_redaction,
     page_de_reference,
@@ -169,6 +171,7 @@ def _controle_des_sources(
     recherche_tentee: bool = False,
     verification_faite: bool = False,
     controle_lexical: bool = True,
+    dernier_passage: str | None = None,
 ) -> list[ToolStreamEvent]:
     """Le signal de fin de tour d'une question d'actualité : le niveau de
     vérification (calculé par le code, jamais déclaré par le modèle), ce que
@@ -190,7 +193,7 @@ def _controle_des_sources(
         if desaccord:
             signal["disagreement"] = desaccord
     signal["level"] = niveau_de_verification(
-        reponse, sources, verification_faite, signal
+        reponse, sources, verification_faite, signal, dernier_passage
     )
     signal["searchTried"] = bool(recherche_tentee)
     return [ToolStreamEvent("verification", signal)]
@@ -414,6 +417,7 @@ async def stream_with_tools(
     elif actualite:
         travail = consigne_actualite(travail)
     relance_actualite_faite = False
+    relance_recherche_faite = False
     # Revue du 20/09 : « un outil a tourné » ne vaut pas vérification —
     # current_time, ou un web_search sans résultat, laissaient passer la
     # réponse de mémoire comme vérifiée. Seule une recherche qui a rendu
@@ -657,6 +661,7 @@ async def stream_with_tools(
                         sources=sources_du_tour,
                         recherche_tentee=recherche_tentee,
                         verification_faite=verification_faite,
+                        dernier_passage="".join(morceaux),
                     ):
                         yield evt
                     return
@@ -684,15 +689,35 @@ async def stream_with_tools(
                         recherche_tentee=recherche_tentee,
                         verification_faite=verification_faite,
                         controle_lexical=actualite,
+                        dernier_passage="".join(morceaux),
                     ):
                         yield evt
                 return
         if not appels:
+            texte_du_tour = "".join(morceaux)
+            if (
+                actualite
+                and verification_faite
+                and not relance_recherche_faite
+                and tours_actions < max_tool_turns
+                and est_une_non_reponse(texte_du_tour)
+            ):
+                # Banc du 21/09 : « Les résultats ne mentionnent pas le
+                # vainqueur … il faudrait attendre » — puis rien, ou « Je vais
+                # relancer la recherche » sans la relancer. Une seconde
+                # recherche, avec une autre requête, une fois ; ce qui est
+                # déjà affiché reste, la suite s'ajoute dessous.
+                relance_recherche_faite = True
+                travail.append(Message(role=Role.ASSISTANT, content=texte_du_tour))
+                travail.append(
+                    Message(role=Role.SYSTEM, content=CONSIGNE_AUTRE_REQUETE)
+                )
+                tours_actions += 1
+                continue
             # La PROMESSE SANS L'ACTE, version chat : « je regarde tes
             # tâches » sans appel d'outil. La promesse est déjà partie dans
             # le flux — la livraison la suit après le séparateur \n\n, et
             # les événements tool_start rendent la reprise visible.
-            texte_du_tour = "".join(morceaux)
             if (
                 interactive_questions
                 and raison_arret == "stop"
@@ -783,6 +808,7 @@ async def stream_with_tools(
                     recherche_tentee=recherche_tentee,
                     verification_faite=verification_faite,
                     controle_lexical=actualite,
+                    dernier_passage=texte_du_tour,
                 ):
                     yield evt
             return

@@ -2121,3 +2121,174 @@ class TestLaPageDuPosteEstUnePageDeReference:
         assert page_de_reference(sources[:1], PREMIER_MINISTRE) == "", (
             "sans page de référence, rien : la presse n'est pas la page du poste"
         )
+
+
+class TestLaNonReponse:
+    """Banc du 21/09 : « Les résultats ne mentionnent pas le vainqueur de la
+    Coupe Stanley 2026 … il faudrait attendre » sous un badge vert, avec
+    trois [N] ; « Je vais relancer la recherche » — puis rien."""
+
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            "Les résultats de la recherche ne mentionnent pas le vainqueur [1][4].",
+            "Je n'ai pas trouvé le chiffre exact dans les sources [2].",
+            "Aucune source ne donne le taux pour septembre [1].",
+            "Je vais relancer la recherche avec une requête ciblée.",
+            "The results do not mention the winner [1].",
+        ],
+    )
+    def test_ce_qui_est_une_non_reponse(self, texte):
+        from diapason.server.actualite import (
+            est_une_non_reponse,
+            niveau_de_verification,
+        )
+
+        assert est_une_non_reponse(texte)
+        assert niveau_de_verification(
+            texte, [{"ref": 1}, {"ref": 2}, {"ref": 4}], True
+        ) == ("partial"), (
+            "une réponse qui dit n'avoir pas trouvé n'est pas vérifiée, même citée"
+        )
+
+    def test_une_reponse_qui_repond_n_en_est_pas_une(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        assert not est_une_non_reponse("Les Panthers de la Floride ont gagné [1].")
+        assert not est_une_non_reponse("Mark Carney [2], depuis le 14 mars 2025.")
+
+    @pytest.mark.asyncio
+    async def test_une_seconde_recherche_avec_une_autre_requete_une_fois(self):
+        from diapason.server.actualite import CONSIGNE_AUTRE_REQUETE
+
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("gagnant Coupe Stanley 2026")])],
+                [
+                    StreamChunk(
+                        content="Les résultats ne mentionnent pas le vainqueur [1].",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        tool_calls=[appel_web("Stanley Cup 2026 champion", "w2")]
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content=(
+                            "Les résultats ne mentionnent toujours pas "
+                            "le vainqueur [2]."
+                        ),
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(moteur, liste, "Qui a gagné la Coupe Stanley en 2026 ?")
+        assert [p.get("query") for p in liste[0].executions] == [
+            "gagnant Coupe Stanley 2026",
+            "Stanley Cup 2026 champion",
+        ], "une seconde recherche, avec une autre requête"
+        relance = [m.content for m in moteur.appels[2][0] if m.role == Role.SYSTEM]
+        assert CONSIGNE_AUTRE_REQUETE in relance
+        assert moteur.appels[2][0][-2].role == Role.ASSISTANT, (
+            "ce qui est déjà affiché reste dans le fil"
+        )
+        assert len(moteur.appels) == 4, "une seule relance, jamais une boucle"
+        assert texte(evts) == (
+            "Les résultats ne mentionnent pas le vainqueur [1].\n\n"
+            "Les résultats ne mentionnent toujours pas le vainqueur [2]."
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "partial", "searchTried": True}
+        ], "deux aveux, pas de vérification"
+
+
+class TestLaPageDuPosteRefuseLaPresse:
+    def test_un_titre_qui_commence_par_la_fonction_ne_suffit_pas(self):
+        """Banc du 21/09 : « Pape à Paris : où voir Léon XIV… » (sortiraparis)
+        était lu comme la page du poste."""
+        from diapason.server.actualite import page_de_reference
+
+        sources = [
+            {
+                "ref": 3,
+                "title": "Pape à Paris : où voir Léon XIV en papamobile",
+                "url": "https://www.sortiraparis.com/x",
+            }
+        ]
+        assert page_de_reference(sources, "Qui est le pape ?") == ""
+        sources.append(
+            {
+                "ref": 4,
+                "title": "Pape — Wikipédia",
+                "url": "https://fr.wikipedia.org/wiki/Pape",
+            }
+        )
+        assert page_de_reference(sources, "Qui est le pape ?").endswith("/wiki/Pape")
+
+
+class TestLaNonReponseSeJugeSurLeDernierPassage:
+    @pytest.mark.asyncio
+    async def test_je_dois_lire_la_page_puis_le_chiffre_est_une_reponse(self):
+        """Banc du 21/09 : « les extraits ne donnent pas le chiffre exact. Je
+        dois lire la page… » puis « 3,0 % en août 2026 [10] » — partiel, alors
+        que la bulle finit par répondre."""
+        liste = [Recherche("web_search")]
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("inflation Canada 2026")])],
+                [
+                    StreamChunk(
+                        content="Les extraits ne donnent pas le chiffre exact [1]."
+                    ),
+                    StreamChunk(
+                        tool_calls=[appel_web("inflation Canada août 2026", "w2")]
+                    ),
+                ],
+                [
+                    StreamChunk(
+                        content="Le taux d'inflation était de 3,0 % en août 2026 [2].",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur, liste, "Quel est le taux d'inflation au Canada ?"
+        )
+        signal = [e.data for e in evts if e.kind == "verification"]
+        assert signal and signal[0]["level"] != "memory"
+        assert signal[0].get("notFound") == ["3,0 %"], (
+            "le chiffre n'est pas dans les sources factices : signalé"
+        )
+        assert signal[0]["level"] == "partial", (
+            "signalé, donc partiel — pas la non-réponse"
+        )
+        # Sans l'élément hors sources, la bulle vaut vérifiée : le dernier
+        # passage répond.
+        from diapason.server.actualite import niveau_de_verification
+
+        assert (
+            niveau_de_verification(
+                texte(evts),
+                [{"ref": 1}, {"ref": 2}],
+                True,
+                {},
+                dernier_passage="Le taux d'inflation était de 3,0 % en août 2026 [2].",
+            )
+            == "verified"
+        )
+        assert (
+            niveau_de_verification(
+                texte(evts),
+                [{"ref": 1}, {"ref": 2}],
+                True,
+                {},
+                dernier_passage="Les extraits ne donnent toujours pas le chiffre [2].",
+            )
+            == "partial"
+        )
