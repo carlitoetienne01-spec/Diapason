@@ -1,5 +1,8 @@
 site_name: Diapason
-site_url: https://carlitoetienne01-spec.github.io/Diapason/
+# 22/09/2026 : la racine du domaine porte la vitrine française ; les guides,
+# en anglais, vivent sous /docs/. L'ancienne URL GitHub Pages ne publie plus
+# (le workflow docs est sauté faute de runner).
+site_url: https://diapason.flashprime.online/docs/
 site_description: Personal AI, On Personal Devices
 site_author: Diapason Contributors
 repo_url: https://github.com/carlitoetienne01-spec/Diapason
@@ -140,6 +143,24 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/carlitoetienne01-spec/Diapason
+
+# Ce que le site NE publie PAS. 22/09/2026 : le site est devenu public sur
+# diapason.flashprime.online, et nos notes de travail s'y sont retrouvées —
+# les relevés de performance de la machine de Carlito, les audits du
+# maillage, un document de conception non commité. Elles restent dans le
+# dépôt, pour qui les cherche ; elles ne s'adressent pas à quelqu'un venu
+# télécharger l'application. Le guide de contribution et les validations
+# techniques, eux, restent publiés : ils s'adressent aux contributeurs.
+exclude_docs: |
+  development/conversations-sync.md
+  development/diagnostic-performances-*.md
+  development/discussion-verre-satine.md
+  development/mesures-performances-*.json
+  development/mini-panneau-responsive.md
+  development/questions-interactives-chat.md
+  development/talk-resonance.md
+  development/terminal-discussion.md
+  spatial-mesh/
 
 nav:
   - Home: index.md

@@ -1,0 +1,220 @@
+/* Diapason — page d'accueil publique.
+ *
+ * L'atelier du facteur d'instruments, pas le laboratoire d'IA : encre
+ * gris-bleu, papier froid, un seul accent de laiton. Le nom est un objet —
+ * un diapason donne le la, et ne résonne que posé contre un corps. C'est
+ * l'argument du produit, et c'est le motif de la page : une ligne de
+ * référence sous le titre, qui s'immobilise une fois au chargement. */
+
+:root {
+  --encre:        #17191c;
+  --encre-douce:  #3d444b;
+  --acier:        #6e7b85;
+  --papier:       #fbfaf8;
+  --papier-creux: #f1efeb;
+  --laiton:       #a9793c;
+  --trait:        rgba(23, 25, 28, 0.13);
+
+  --titrage: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --lecture: 'Newsreader', Georgia, 'Times New Roman', serif;
+
+  --colonne: 40rem;
+  --marge: clamp(1.25rem, 5vw, 5rem);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --encre:        #ece9e3;
+    --encre-douce:  #b3aea6;
+    --acier:        #8b949c;
+    --papier:       #15171a;
+    --papier-creux: #1c1f23;
+    --laiton:       #cf9d55;
+    --trait:        rgba(236, 233, 227, 0.16);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--encre);
+  font-family: var(--lecture);
+  font-size: clamp(1.0625rem, 0.4vw + 1rem, 1.1875rem);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration-color: var(--laiton); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--laiton); outline-offset: 3px; border-radius: 2px; }
+
+.saut {
+  position: absolute; left: -9999px;
+  background: var(--encre); color: var(--papier);
+  padding: 0.6rem 1rem; z-index: 10;
+}
+.saut:focus { left: var(--marge); top: 0.6rem; }
+
+/* ---------- barre ---------- */
+
+.barre {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1.5rem; flex-wrap: wrap;
+  padding: 1.6rem var(--marge);
+  border-bottom: 1px solid var(--trait);
+}
+.marque {
+  font-family: var(--titrage);
+  font-weight: 700; font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.barre nav { display: flex; gap: 1.5rem; font-size: 0.95rem; color: var(--encre-douce); }
+
+/* ---------- ouverture ---------- */
+
+.ouverture { padding: clamp(3.5rem, 11vh, 7rem) var(--marge) clamp(3rem, 8vh, 5rem); }
+
+h1 {
+  font-family: var(--titrage);
+  font-weight: 700;
+  font-size: clamp(2.35rem, 7.2vw, 5.1rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin: 0;
+  max-width: 18ch;
+  text-wrap: balance;
+}
+
+/* La ligne de référence : elle vibre une fois, puis tient. */
+.resonance {
+  display: block;
+  width: min(100%, 34rem);
+  height: 24px;
+  margin: 2.1rem 0 1.9rem;
+}
+.resonance path { fill: none; stroke: var(--trait); stroke-width: 1; }
+.resonance .onde {
+  stroke: var(--laiton);
+  stroke-width: 1.5;
+  transform-origin: left center;
+  animation: amortir 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes amortir {
+  0%   { transform: scaleY(1);    opacity: 0.95; }
+  70%  { transform: scaleY(0.18); opacity: 0.7; }
+  100% { transform: scaleY(0);    opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resonance .onde { animation: none; transform: scaleY(0); opacity: 0.55; }
+}
+
+.promesse {
+  max-width: var(--colonne);
+  font-size: 1.22em;
+  font-weight: 300;
+  margin: 0 0 2.6rem;
+}
+
+/* ---------- téléchargements ---------- */
+
+.telechargements { display: flex; flex-wrap: wrap; gap: 0.9rem; }
+
+.bouton {
+  display: block;
+  padding: 0.95rem 1.5rem;
+  background: var(--encre);
+  color: var(--papier);
+  font-family: var(--titrage);
+  font-weight: 500;
+  font-size: 1.02rem;
+  text-decoration: none;
+  transition: background 140ms ease;
+}
+.bouton span {
+  display: block;
+  font-family: var(--lecture);
+  font-weight: 300;
+  font-size: 0.82rem;
+  opacity: 0.72;
+  margin-top: 0.2rem;
+}
+.bouton:hover { background: var(--laiton); }
+.bouton.second { background: transparent; color: var(--encre); box-shadow: inset 0 0 0 1px var(--trait); }
+.bouton.second:hover { background: var(--papier-creux); box-shadow: inset 0 0 0 1px var(--laiton); }
+
+.version { font-size: 0.92rem; color: var(--acier); margin: 1.3rem 0 0; }
+
+/* ---------- sections ---------- */
+
+section + section { border-top: 1px solid var(--trait); }
+
+.franchise, .capacites, .exigences {
+  padding: clamp(3rem, 7vh, 4.5rem) var(--marge);
+}
+
+h2 {
+  font-family: var(--titrage);
+  font-weight: 700;
+  font-size: clamp(1.45rem, 2.6vw, 1.95rem);
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  margin: 0 0 1.5rem;
+  max-width: 22ch;
+}
+
+.franchise { background: var(--papier-creux); }
+.franchise p { max-width: var(--colonne); margin: 0 0 1.1rem; }
+.franchise strong { font-weight: 400; box-shadow: inset 0 -0.42em 0 rgba(169, 121, 60, 0.22); }
+
+.capacites dl {
+  margin: 0;
+  display: grid;
+  gap: 2.2rem 3rem;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  max-width: 62rem;
+}
+.capacites dt {
+  font-family: var(--titrage);
+  font-weight: 500;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.4rem;
+}
+.capacites dd { margin: 0; color: var(--encre-douce); font-size: 0.98em; }
+
+.exigences ul { list-style: none; margin: 0; padding: 0; max-width: var(--colonne); }
+.exigences li {
+  display: flex; gap: 1rem; flex-wrap: wrap;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--trait);
+}
+.exigences li span {
+  font-family: var(--titrage);
+  font-weight: 500;
+  font-size: 0.9rem;
+  min-width: 6.5rem;
+  color: var(--acier);
+  padding-top: 0.15em;
+}
+.exigences .note { max-width: var(--colonne); color: var(--acier); font-size: 0.94rem; margin: 1.4rem 0 0; }
+
+/* ---------- pied ---------- */
+
+footer {
+  border-top: 1px solid var(--trait);
+  padding: 2.4rem var(--marge) 3rem;
+  color: var(--encre-douce);
+  font-size: 0.94rem;
+}
+footer p { max-width: var(--colonne); margin: 0 0 0.8rem; }
+.signature { color: var(--acier); font-style: italic; }
+
+/* Sur un téléphone, deux boutons de largeurs différentes font un bord en
+ * escalier ; à cette largeur ils prennent la colonne entière. */
+@media (max-width: 30rem) {
+  .telechargements { display: grid; gap: 0.7rem; }
+  .bouton { text-align: center; }
+}

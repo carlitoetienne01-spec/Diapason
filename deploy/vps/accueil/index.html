@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diapason — ton assistant tourne sur ta machine</title>
+<meta name="description" content="Un assistant personnel dont le modèle, la voix et la vision s'exécutent sur ton ordinateur. Rien n'est envoyé à un serveur. Pour macOS et Windows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&display=swap">
+<link rel="stylesheet" href="accueil.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎵</text></svg>">
+</head>
+<body>
+
+<a class="saut" href="#principal">Aller au contenu</a>
+
+<header class="barre">
+  <a class="marque" href="/">Diapason</a>
+  <nav>
+    <a href="/docs/">Guides</a>
+    <a href="https://github.com/carlitoetienne01-spec/Diapason">Code source</a>
+  </nav>
+</header>
+
+<main id="principal">
+
+  <section class="ouverture">
+    <h1>Ton assistant tourne sur ta&nbsp;machine.<br>Rien n'en sort.</h1>
+
+    <svg class="resonance" viewBox="0 0 600 24" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 12 H600" />
+      <path class="onde" d="M0 12 q12 -9 24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0" />
+    </svg>
+
+    <p class="promesse">Le modèle qui répond, la voix qui t'écoute et la vision qui lit ton
+    écran s'exécutent chez toi. Il n'y a pas de serveur à qui parler.</p>
+
+    <div class="telechargements">
+      <a class="bouton" href="https://github.com/carlitoetienne01-spec/Diapason/releases/latest/download/Diapason_1.0.4_aarch64.dmg">
+        Télécharger pour Mac
+        <span>Apple Silicon · 11,6 Mo</span>
+      </a>
+      <a class="bouton second" href="https://github.com/carlitoetienne01-spec/Diapason/releases/latest/download/Diapason_1.0.4_x64-setup.exe">
+        Télécharger pour Windows
+        <span>Windows 10 et 11 · 9,4 Mo</span>
+      </a>
+    </div>
+    <p class="version">Version 1.0.4, publiée le 14 septembre 2026.
+    <a href="https://github.com/carlitoetienne01-spec/Diapason/releases">Toutes les versions</a></p>
+  </section>
+
+  <section class="franchise">
+    <h2>Ce qui se passe au premier lancement</h2>
+    <p>L'application que tu télécharges est une fenêtre de douze mégaoctets. Ce qui la
+    fait fonctionner s'installe au premier démarrage, tout seul, avec un écran de
+    progression : le moteur qui exécute le modèle, le modèle lui-même — environ cinq
+    gigaoctets — et le serveur qui les relie.</p>
+    <p>Compte dix à vingt minutes selon ta connexion, et huit gigaoctets d'espace libre.
+    Ensuite, plus rien à télécharger. <strong>Tu peux couper le réseau : il répond quand
+    même.</strong></p>
+  </section>
+
+  <section class="capacites">
+    <h2>Ce qu'il sait faire</h2>
+    <dl>
+      <div>
+        <dt>Répondre — et dire quand il ne sait pas</dt>
+        <dd>Pour une question d'actualité, il cherche sur le web, cite ses sources et
+        affiche d'où vient chaque affirmation. Quand il n'a pas trouvé, il le dit au lieu
+        de l'inventer.</dd>
+      </div>
+      <div>
+        <dt>T'écouter</dt>
+        <dd>Dicte à voix haute, il répond à voix haute. La transcription se fait sur ta
+        machine : l'audio ne quitte pas l'ordinateur, et le micro ne s'arme que lorsque
+        tu le demandes.</dd>
+      </div>
+      <div>
+        <dt>Regarder ton écran, quand tu lui demandes</dt>
+        <dd>Sur Mac, il peut lire la fenêtre au premier plan pour t'aider sur ce que tu
+        fais. À la demande, jamais en continu — et le voyant vert dit la vérité.</dd>
+      </div>
+      <div>
+        <dt>Tenir tes projets</dt>
+        <dd>Tâches, échéances, budget, habitudes. Tes affaires vivent dans une base de
+        données sur ton disque, que tu peux ouvrir, copier ou effacer sans demander
+        la permission à personne.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="exigences">
+    <h2>Ce que ça demande</h2>
+    <ul>
+      <li><span>Mac</span> Apple Silicon (M1 ou plus récent), macOS 13 et suivants</li>
+      <li><span>Windows</span> 10 ou 11, 64 bits</li>
+      <li><span>Mémoire</span> 16 Go confortables, 8 Go au minimum</li>
+      <li><span>Disque</span> 8 Go libres pour le modèle</li>
+    </ul>
+    <p class="note">Pas encore de version pour les Mac Intel ni pour Linux. Les
+    installateurs sont construits sur une seule machine Apple Silicon.</p>
+  </section>
+
+</main>
+
+<footer>
+  <p><a href="/docs/">Guides et documentation</a> — en anglais.
+  <a href="https://github.com/carlitoetienne01-spec/Diapason">Code source</a>, sous
+  licence Apache&nbsp;2.0.</p>
+  <p class="signature">Diapason donne le la : une référence stable, posée contre ton
+  ordinateur pour résonner.</p>
+</footer>
+
+</body>
+</html>

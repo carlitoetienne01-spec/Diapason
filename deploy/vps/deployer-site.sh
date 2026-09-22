@@ -18,8 +18,22 @@ case "$RACINE" in
   *) echo "✗ RACINE inattendue : $RACINE" >&2; exit 1 ;;
 esac
 
-echo "→ construction de la documentation"
+# Le site se construit depuis l'ARBRE DE TRAVAIL : tout ce qui traîne dans
+# docs/ part en ligne, commité ou non. Le 22/09/2026, le document de
+# conception d'une autre session — non commité, absent de GitHub — s'est
+# retrouvé publié. Une session ne publie plus sans savoir ce qu'elle publie.
 cd "$DEPOT"
+sales="$(git status --porcelain -- docs/ | head -20)"
+if [ -n "$sales" ]; then
+  echo "⚠ docs/ porte des modifications non commitées — elles PARTIRONT en ligne :"
+  echo "$sales" | sed 's/^/    /'
+  if [ "${DIAPASON_PUBLIER_QUAND_MEME:-}" != "1" ]; then
+    echo "  Relance avec DIAPASON_PUBLIER_QUAND_MEME=1 si c'est voulu." >&2
+    exit 1
+  fi
+fi
+
+echo "→ construction de la documentation"
 .venv/bin/python -m mkdocs build --clean --quiet
 
 taille="$(du -sh site | cut -f1)"
@@ -28,7 +42,13 @@ echo "  $fichiers fichiers, $taille"
 
 echo "→ publication vers $HOTE:$RACINE"
 ssh "$HOTE" "mkdir -p $RACINE /var/www/diapason-acme && chown -R www-data:www-data $RACINE /var/www/diapason-acme"
-rsync -az --delete --info=stats1 "$DEPOT/site/" "$HOTE:$RACINE/"
+# Pas de « --info=… » : le rsync livré avec macOS (openrsync) ne le connaît
+# pas et sort sur son mode d'emploi — transfert vide, sans erreur lisible
+# si la sortie est filtrée (22/09/2026).
+# Les guides sous docs/, la vitrine à la racine. L'exclusion est vitale :
+# sans elle, le --delete de la vitrine emporterait les 945 fichiers des guides.
+rsync -az --delete --stats "$DEPOT/site/" "$HOTE:$RACINE/docs/" | grep -E "files transferred|Total transferred" || true
+rsync -az --delete --exclude "/docs" --stats "$DEPOT/deploy/vps/accueil/" "$HOTE:$RACINE/" | grep -E "files transferred|Total transferred" || true
 ssh "$HOTE" "chown -R www-data:www-data $RACINE"
 
 echo "→ vérification"
