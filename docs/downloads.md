@@ -191,7 +191,7 @@ diapason chat
 
 !!! info "Un moteur d'inférence est nécessaire"
     La CLI a besoin d'un moteur d'inférence en marche (Ollama, par exemple). Voir
-    le [guide d'installation](getting-started/installation.md#setting-up-an-inference-backend)
+    le [guide d'installation](getting-started/installation.md#mettre-en-place-un-moteur-d-inference-setting-up-an-inference-backend)
     pour la marche à suivre.
 
 ---

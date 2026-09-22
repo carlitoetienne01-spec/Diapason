@@ -208,7 +208,7 @@ response = j.ask(
 print(response)
 ```
 
-Voir [Les outils du planificateur](tools.md#scheduler-tools) pour la référence complète des paramètres.
+Voir [Les outils du planificateur](tools.md#les-outils-de-planification) pour la référence complète des paramètres.
 
 ---
 
@@ -235,6 +235,6 @@ default_agent = "simple"
 
 ## Voir aussi
 
-- [Référence des outils du planificateur](tools.md#scheduler-tools) — le détail des paramètres des outils MCP
+- [Référence des outils du planificateur](tools.md#les-outils-de-planification) — le détail des paramètres des outils MCP
 - [Architecture : la logique agentique](../architecture/agents.md) — comment le planificateur s'intègre aux agents
 - [Déploiement : systemd](../deployment/systemd.md) — faire tourner le planificateur comme service système

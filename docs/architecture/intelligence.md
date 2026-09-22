@@ -172,7 +172,7 @@ Ces champs fixent les paramètres d'échantillonnage par défaut de chaque appel
 | `stop_sequences` | `str` | `""` | Chaînes d'arrêt séparées par des virgules. La génération s'arrête dès qu'une de ces chaînes apparaît dans la sortie. |
 
 !!! note "Déménagé depuis Agent"
-    Les paramètres de génération (`temperature`, `max_tokens`) vivaient auparavant sous `[agent]` dans le fichier de configuration. Ils vivent désormais sous `[intelligence]`. Les anciennes configurations qui les portent sous `[agent]` sont migrées automatiquement au chargement. Voir le [guide de migration de la configuration](../getting-started/configuration.md#migration-guide) pour le détail.
+    Les paramètres de génération (`temperature`, `max_tokens`) vivaient auparavant sous `[agent]` dans le fichier de configuration. Ils vivent désormais sous `[intelligence]`. Les anciennes configurations qui les portent sous `[agent]` sont migrées automatiquement au chargement. Voir le [guide de migration de la configuration](../getting-started/configuration.md#guide-de-migration) pour le détail.
 
 ### La configuration TOML
 

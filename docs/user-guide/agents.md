@@ -118,7 +118,7 @@ class BaseAgent(ABC):
 
 L'attribut de classe `accepts_tools` décide si un agent peut recevoir des outils, par `--tools` en ligne de commande ou par `tools=` dans le SDK. Les agents dont `accepts_tools = False` ignorent les arguments d'outils.
 
-`BaseAgent` fournit aussi des méthodes utilitaires concrètes (`_emit_turn_start`, `_emit_turn_end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`) dont les sous-classes se servent pour ne pas dupliquer la logique commune. Le détail est dans la [documentation d'architecture](../architecture/agents.md#baseagent-abc).
+`BaseAgent` fournit aussi des méthodes utilitaires concrètes (`_emit_turn_start`, `_emit_turn_end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`) dont les sous-classes se servent pour ne pas dupliquer la logique commune. Le détail est dans la [documentation d'architecture](../architecture/agents.md#la-classe-abstraite-baseagent).
 
 **ToolUsingAgent** est une classe de base intermédiaire (elle dérive de `BaseAgent`) qui pose `accepts_tools = True` et ajoute un `ToolExecutor` ainsi qu'une limite de boucle `max_turns`. Tous les agents qui se servent d'outils dérivent de cette classe.
 

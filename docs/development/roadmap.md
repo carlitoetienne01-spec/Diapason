@@ -9,7 +9,7 @@ Voici les domaines où le développement est actif et où une contribution chang
 - **Routage attentif à l'énergie** — se servir de la consommation électrique relevée par la télémétrie pour optimiser l'efficacité énergétique, en plus de la latence et de la qualité
 - **Un écosystème de greffons** — des moteurs, des outils et des agents proposés par la communauté, distribués comme paquets Python
 - **Mémoire fédérée** — des dorsales de mémoire qui se synchronisent d'un appareil à l'autre
-- **Recherche de configuration guidée par un LLM :** l'apprentissage du harnais piloté par un modèle de pointe — un modèle de pointe analyse tes traces et propose des améliorations de configuration. Voir le [guide d'utilisation](../user-guide/llm-guided-spec-search.md) et l'[architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
+- **Recherche de configuration guidée par un LLM :** l'apprentissage du harnais piloté par un modèle de pointe — un modèle de pointe analyse tes traces et propose des améliorations de configuration. Voir le [guide d'utilisation](../user-guide/llm-guided-spec-search.md) et l'[architecture](../architecture/learning.md#la-recherche-de-specification-guidee-par-llm-apprentissage-de-harnais-pilote-par-la-frontiere).
 
 ---
 

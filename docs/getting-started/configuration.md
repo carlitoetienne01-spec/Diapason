@@ -605,7 +605,7 @@ enforce_tool_confirmation = true
 | `scan_output` | booléen | `true` | Analyser ou non la sortie du modèle. |
 | `secret_scanner` | booléen | `true` | Activer la détection de secrets (clés d'API, jetons, mots de passe). |
 | `pii_scanner` | booléen | `true` | Activer la détection de données personnelles (courriels, numéros d'assurance sociale, cartes bancaires). |
-| `enforce_tool_confirmation` | booléen | `true` | Accepté mais **pas appliqué pour l'instant**. Que tu sois consulté ou non dépend du point d'entrée. Voir [Accès système](../user-guide/system-access.md#confirmation-behaviour). |
+| `enforce_tool_confirmation` | booléen | `true` | Accepté mais **pas appliqué pour l'instant**. Que tu sois consulté ou non dépend du point d'entrée. Voir [Accès système](../user-guide/system-access.md#le-comportement-de-confirmation). |
 
 !!! tip "Choisir un mode de sécurité"
     Prends `"warn"` pendant le développement, pour voir ce qui serait signalé sans rien casser.

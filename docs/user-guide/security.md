@@ -395,7 +395,7 @@ enforce_tool_confirmation = true
 | `secret_scanner` | `bool` | `true` | Passe `SecretScanner` sur tout le texte |
 | `pii_scanner` | `bool` | `true` | Passe `PIIScanner` sur tout le texte |
 | `audit_log_path` | `str` | `~/.diapason/audit.db` | Le chemin du journal d'audit SQLite |
-| `enforce_tool_confirmation` | `bool` | `true` | Accepté par le chargeur, mais **pas appliqué aujourd'hui**. Voir [L'accès système](system-access.md#confirmation-behaviour) pour savoir quand les demandes de confirmation ont vraiment lieu |
+| `enforce_tool_confirmation` | `bool` | `true` | Accepté par le chargeur, mais **pas appliqué aujourd'hui**. Voir [L'accès système](system-access.md#le-comportement-de-confirmation) pour savoir quand les demandes de confirmation ont vraiment lieu |
 
 !!! tip "Commence en warn, resserre ensuite"
     `mode = "warn"` est un bon point de départ : il te laisse observer quels motifs se déclenchent sans perturber l'usage normal. Passe à `"redact"` une fois que tu es sûr que l'analyseur ne produit pas trop de faux positifs pour ton usage.
