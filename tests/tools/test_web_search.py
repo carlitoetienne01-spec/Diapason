@@ -666,8 +666,8 @@ class TestLaRechercheDateeEtNommee:
         from diapason.tools.web_search import domaine, url_canonique
 
         assert url_canonique("https://WWW.Site.ca/page/?utm_campaign=x&b=2#frag") == (
-            "https://www.site.ca/page?b=2"
-        )
+            "https://site.ca/page?b=2"
+        ), "www.nhl.com et nhl.com sont la même page (revue du 21/09 : lue deux fois)"
         assert url_canonique("https://site.ca/") == "https://site.ca/"
         assert domaine("https://www.ledevoir.com/x") == "ledevoir.com"
         assert domaine("pas une url") == ""
@@ -714,19 +714,25 @@ class TestLeBudgetEtLesPannes:
         mock_ddgs = sys.modules["ddgs"].DDGS.return_value
         appels = []
 
-        def lent(query, **kw):
-            appels.append(kw.get("backend"))
-            horloge["t"] += 2.0  # chaque moteur coûte deux secondes fictives
-            return []
+        def lent(categorie):
+            def _lent(query, **kw):
+                appels.append((categorie, kw.get("backend")))
+                horloge["t"] += 2.0  # chaque moteur coûte deux secondes fictives
+                return []
 
-        mock_ddgs.text.side_effect = lent
-        mock_ddgs.news.side_effect = lent
+            return _lent
+
+        mock_ddgs.text.side_effect = lent("text")
+        mock_ddgs.news.side_effect = lent("news")
         import time as _time
 
         monkeypatch.setattr(_time, "monotonic", lambda: horloge["t"])
         resultat = outil.execute(query="q", recency="year", news=True)
         assert resultat.success and resultat.content == "No results found."
-        assert len(appels) <= 3, "le budget arrête la chaîne, pas l'exécuteur à 30 s"
+        # Deux chaînes en parallèle depuis P4 (la principale en actualités, la
+        # variante texte) : chacune s'arrête au budget, pas à l'exécuteur à 30 s.
+        assert len([a for a in appels if a[0] == "news"]) <= 3
+        assert len([a for a in appels if a[0] == "text"]) <= 3
 
     def test_aucun_moteur_joint_est_une_panne_pas_un_vide(self, monkeypatch):
         outil, _ = TestLaRechercheDateeEtNommee._outil(monkeypatch, {})
@@ -900,7 +906,9 @@ class TestLaDateDeTavily:
 class TestLaVarianteActualites:
     """P4 (21/09/2026) : une requête texte reçoit aussi, en parallèle, le
     vertical actualités — des articles datés quand le web général rend trois
-    pages du même site. Bornée à trois résultats ; l'échec ne coûte rien."""
+    pages du même site ; bornée à trois résultats. Et une requête actualités
+    reçoit le web général (pages de référence), à pleine largeur. L'échec de
+    la variante ne coûte rien."""
 
     def test_les_articles_dates_s_ajoutent_et_la_page_commune_passe_en_tete(
         self, monkeypatch
@@ -978,15 +986,28 @@ class TestLaVarianteActualites:
         resultat = outil.execute(query="q")
         assert resultat.success and resultat.metadata["numResults"] == 1
 
-    def test_une_requete_deja_en_actualites_n_a_pas_de_variante(self, monkeypatch):
+    def test_une_requete_en_actualites_recoit_sa_variante_texte_pleine_largeur(
+        self, monkeypatch
+    ):
+        """Revue du 21/09 (22 h) : le test s'appelait « n'a pas de variante »
+        et restait vert en ne comptant que les appels news ; et la variante
+        texte, plafonnée à trois, rendait deux pages de moins que l'ancienne
+        chaîne actualités→texte quand le vertical actualités était vide."""
         outil, mock_ddgs = TestLaRechercheDateeEtNommee._outil(
             monkeypatch,
             {
-                ("news", "duckduckgo"): [
-                    {"title": f"A{i}", "url": f"https://a.example/{i}", "body": "…"}
-                    for i in range(3)
-                ]
+                ("news", "duckduckgo"): [],
+                ("text", "brave"): [
+                    {"title": f"T{i}", "url": f"https://t.example/{i}", "body": "…"}
+                    for i in range(5)
+                ],
             },
         )
-        outil.execute(query="q", news=True)
-        assert mock_ddgs.news.call_count == 1
+        resultat = outil.execute(query="q", news=True, max_results=5)
+        assert mock_ddgs.text.call_count >= 1, "la variante texte existe"
+        assert resultat.metadata["numResults"] == 5, (
+            "actualités vides : le web général rend la pleine largeur, pas trois"
+        )
+        assert any(pl.get("variant") for pl in resultat.metadata["plans"]), (
+            "les pages texte viennent de la variante, et le plan le dit"
+        )

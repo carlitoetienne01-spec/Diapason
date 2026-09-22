@@ -62,7 +62,11 @@ def url_canonique(url: str) -> str:
         sorted((k, v) for k, v in parse_qsl(parts.query) if not _UTM.match(k))
     )
     chemin = parts.path.rstrip("/") or "/"
-    return urlunsplit(("https", parts.netloc.lower(), chemin, query, ""))
+    hote = parts.netloc.lower()
+    # www.nhl.com et nhl.com sont la même page (revue du 21/09 : lue deux fois).
+    if hote.startswith("www."):
+        hote = hote[4:]
+    return urlunsplit(("https", hote, chemin, query, ""))
 
 
 def domaine(url: str) -> str:
@@ -360,8 +364,11 @@ class WebSearchTool(BaseTool):
     ) -> tuple[list[dict], list[dict[str, Any]], int]:
         """Résultats, plans qui ont répondu, nombre de moteurs joints.
 
-        Chaîne de plans, du plus précis au plus large : actualités puis texte,
-        avec fraîcheur et région, puis sans fraîcheur, puis sans région. Un
+        Chaîne de plans, du plus précis au plus large : actualités puis texte
+        (ou l'un des deux seulement — depuis le 21/09 chaque passe de
+        _rechercher_avec_variante ne descend qu'un vertical, l'autre est sa
+        variante), avec fraîcheur et région, puis sans fraîcheur, puis sans
+        région. Un
         moteur qui lève est écarté pour tous les plans suivants ; le budget
         BUDGET_S borne l'ensemble. Le premier plan qui rend quelque chose
         gagne, complété d'une seconde page sous trois résultats. Chaque plan
@@ -379,8 +386,8 @@ class WebSearchTool(BaseTool):
         if actualites:
             plans.append(("news", MOTEURS_ACTUALITES, fraicheur, self._region))
         if not seulement_actualites:
-            # La variante actualités d'une requête texte (P4) ne redescend
-            # pas sur le web général : la principale s'en charge déjà.
+            # La variante d'une requête (P4) ne descend pas sur l'autre
+            # vertical : la principale s'en charge déjà.
             plans.append(("text", MOTEURS_TEXTE, fraicheur, self._region))
             if fraicheur:
                 plans.append(("text", MOTEURS_TEXTE, None, self._region))
@@ -455,32 +462,45 @@ class WebSearchTool(BaseTool):
         """La requête, et EN PARALLÈLE sa variante mécanique (P4 du jury,
         21/09/2026) : une requête texte reçoit aussi le vertical actualités —
         des articles datés, quand le web général rend trois pages du même
-        site. Jamais une reformulation par le modèle, qui dérive du sens.
-        Bornée : une variante, VARIANTE_RESULTATS résultats, le même budget ;
-        l'échec de la variante ne coûte rien. Les pages vues par les deux
-        passent en tête — c'est ce que deux requêtes s'accordent à dire.
+        site — et une requête actualités reçoit le web général, qui a les
+        pages de référence. Jamais une reformulation par le modèle, qui
+        dérive du sens. Bornée : une variante, VARIANTE_RESULTATS résultats,
+        le même budget ; l'échec de la variante ne coûte rien. Les pages vues
+        par les deux passent en tête — c'est ce que deux requêtes s'accordent
+        à dire.
         """
-        if actualites:
-            return self._ddgs_search(
-                query, max_results, fraicheur=fraicheur, actualites=True
-            )
         from concurrent.futures import ThreadPoolExecutor
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        # Symétrique (essai du 21/09) : « gagnant Coupe Stanley 2026 » en
+        # actualités ne rendait que des articles de septembre sur les
+        # contrats ; le web général avait la page « Finale de la Coupe
+        # Stanley 2026 ». Une requête actualités reçoit sa variante texte.
+        # La variante texte d'une requête actualités a la pleine largeur :
+        # avant le 21/09 la chaîne descendait sur le texte quand le vertical
+        # actualités était vide, et rendait max_results pages ; plafonnée à
+        # VARIANTE_RESULTATS elle n'en rendait plus que trois (revue du
+        # 21/09, 22 h). La variante actualités d'une requête texte reste
+        # bornée : des articles en complément, pas un second lot.
+        largeur_variante = max_results if actualites else VARIANTE_RESULTATS
+        # Pas de « with » : sa sortie attend la variante, et le délai de
+        # variante.result() ne bornait rien (revue du 21/09, 22 h).
+        pool = ThreadPoolExecutor(max_workers=2)
+        try:
             principale = pool.submit(
                 self._ddgs_search,
                 query,
                 max_results,
                 fraicheur=fraicheur,
-                actualites=False,
+                actualites=actualites,
+                seulement_actualites=actualites,
             )
             variante = pool.submit(
                 self._ddgs_search,
                 query,
-                VARIANTE_RESULTATS,
+                largeur_variante,
                 fraicheur=fraicheur,
-                actualites=True,
-                seulement_actualites=True,
+                actualites=not actualites,
+                seulement_actualites=not actualites,
             )
             resultats, plans, joints = principale.result()
             try:
@@ -490,6 +510,8 @@ class WebSearchTool(BaseTool):
             except Exception as exc:  # noqa: BLE001 - la variante est un bonus
                 logger.debug("web_search variante : %s", exc)
                 return resultats, plans, joints
+        finally:
+            pool.shutdown(wait=False)
         joints += joints_variante
         if not autres:
             return resultats, plans, joints
