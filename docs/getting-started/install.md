@@ -2,12 +2,12 @@
 
 !!! danger "Les commandes d'une ligne ci-dessous ne fonctionnent pas"
 
-    Elles vont chercher un script sur GitHub Pages. **Ce dépôt est privé** :
+    Elles vont chercher un script sur GitHub Pages. **Ce dépôt est privé** :
     Pages ne publie rien, et ces URL rendent une page d'erreur — que `iex` ou
-    `bash` exécuteraient. Vérifié le 26 août 2026 : 404 sur `install.sh`, sur
+    `bash` exécuteraient. Vérifié le 26 août 2026 : 404 sur `install.sh`, sur
     `install.ps1`, et sur la racine du site.
 
-    Tant que le dépôt reste privé, **clonez d'abord, exécutez ensuite** :
+    Tant que le dépôt reste privé, **clone d'abord, exécute ensuite** :
 
     ```bash
     gh auth login
@@ -15,140 +15,140 @@
     cd Diapason && make setup          # macOS, Linux, WSL2
     ```
 
-    Sur Windows natif, voir [Native Windows install](windows-native.md), dont
-    la procédure est à jour.
+    Sur Windows natif, voir [Installation sur Windows natif](windows-native.md),
+    dont la procédure est à jour.
 
 
-## Platform-specific guides
+## Les guides par plateforme
 
-| Platform | Invocation depuis le clone authentifié | Detailed guide |
+| Plateforme | Invocation depuis le clone authentifié | Guide détaillé |
 |---|---|---|
-| **macOS** | `bash scripts/install/install.sh` | [macOS install](macos.md) |
-| **Linux** | `bash scripts/install/install.sh` | [Linux install](linux.md) |
-| **WSL2 on Windows** | `bash scripts/install/install.sh` (dans Ubuntu) | [WSL2 install](wsl2.md) |
-| **Native Windows** | `.\deploy\windows\install.ps1` | [Native Windows install](windows-native.md) |
-| **Desktop GUI** | aucune release publiée ; construire depuis le clone | [État Tauri](../user-guide/desktop-tauri.md) |
+| **macOS** | `bash scripts/install/install.sh` | [Installation macOS](macos.md) |
+| **Linux** | `bash scripts/install/install.sh` | [Installation Linux](linux.md) |
+| **WSL2 sur Windows** | `bash scripts/install/install.sh` (dans Ubuntu) | [Installation WSL2](wsl2.md) |
+| **Windows natif** | `.\deploy\windows\install.ps1` | [Installation sur Windows natif](windows-native.md) |
+| **Interface de bureau** | aucune version publiée ; construire depuis le clone | [État Tauri](../user-guide/desktop-tauri.md) |
 
-The bash and PowerShell installers do the same thing on their respective hosts. The rest of this page documents the bash installer in detail; the [native Windows guide](windows-native.md) is the equivalent reference for PowerShell.
+Les installateurs bash et PowerShell font la même chose, chacun sur son système. La suite de cette page décrit l'installateur bash en détail ; le [guide Windows natif](windows-native.md) est la référence équivalente pour PowerShell.
 
-## Bash installer
+## L'installateur bash
 
 ```bash
 bash scripts/install/install.sh
 ```
 
-The installer downloads everything for you — including [uv](https://docs.astral.sh/uv/)
-(the Python package manager), the Python venv, Ollama, and a small starter
-model. **You don't need to install uv or any other prerequisite first.**
+L'installateur télécharge tout pour toi — dont [uv](https://docs.astral.sh/uv/)
+(le gestionnaire de paquets Python), l'environnement virtuel Python, Ollama et un
+petit modèle de départ. **Tu n'as rien à installer au préalable, pas même uv.**
 
 !!! warning "Publication future"
     La construction MkDocs copie toujours les scripts vers `install.sh` et
     `install.ps1`, afin qu'ils soient prêts le jour où Pages sera réellement
-    publié. Aujourd'hui ces URL rendent 404 : le fichier local du clone est la
+    publié. Aujourd'hui ces URL rendent 404 : le fichier local du clone est la
     seule source exécutable annoncée.
 
-About 3 minutes on a typical broadband connection. Type `diapason` to start chatting.
+Environ 3 minutes sur une connexion haut débit ordinaire. Tape `diapason` pour commencer à discuter.
 
-## What the installer does
+## Ce que fait l'installateur
 
-| Phase | Step | Where |
+| Phase | Étape | Où |
 |---|---|---|
-| Foreground | Install `uv` (Python package manager) | `~/.cargo/bin/` or `~/.local/bin/` |
-| Foreground | Clone Diapason repo | `~/.diapason/src/` |
-| Foreground | Create Python 3.11 venv | `~/.diapason/.venv/` |
-| Foreground | `uv pip install -e .` (editable install) | venv |
-| Foreground | Install Ollama | system default |
-| Foreground | Start `ollama serve` | systemd-user / launchd / nohup |
-| Foreground | Pull `qwen3.5:2b` (~1.5 GB) | Ollama's model store |
-| Foreground | Write `config.toml` (auto-detected hardware + engine + model) | `~/.diapason/config.toml` |
-| Foreground | Symlink `diapason` and `diapason-uninstall` | `~/.local/bin/` |
-| Foreground | Add `~/.local/bin` to PATH if missing (with on-screen notice) | `~/.bashrc` or `~/.zshrc` |
-| Background | Install Rust toolchain via rustup | `~/.cargo/` |
-| Background | Build the maturin extension (memory + security features) | venv |
-| Background | Pull hardware-tier and tier+1 models | Ollama's model store |
+| Premier plan | Installe `uv` (le gestionnaire de paquets Python) | `~/.cargo/bin/` ou `~/.local/bin/` |
+| Premier plan | Clone le dépôt Diapason | `~/.diapason/src/` |
+| Premier plan | Crée l'environnement virtuel Python 3.11 | `~/.diapason/.venv/` |
+| Premier plan | `uv pip install -e .` (installation éditable) | l'environnement virtuel |
+| Premier plan | Installe Ollama | emplacement par défaut du système |
+| Premier plan | Démarre `ollama serve` | systemd-user / launchd / nohup |
+| Premier plan | Télécharge `qwen3.5:2b` (~1,5 Go) | la réserve de modèles d'Ollama |
+| Premier plan | Écrit `config.toml` (matériel détecté, moteur et modèle) | `~/.diapason/config.toml` |
+| Premier plan | Crée les liens `diapason` et `diapason-uninstall` | `~/.local/bin/` |
+| Premier plan | Ajoute `~/.local/bin` au PATH s'il y manque (avec un avis à l'écran) | `~/.bashrc` ou `~/.zshrc` |
+| Arrière-plan | Installe la chaîne d'outils Rust via rustup | `~/.cargo/` |
+| Arrière-plan | Construit l'extension maturin (mémoire et sécurité) | l'environnement virtuel |
+| Arrière-plan | Télécharge les modèles du palier matériel et du palier au-dessus | la réserve de modèles d'Ollama |
 
-## What the installer does NOT touch
+## Ce que l'installateur ne touche PAS
 
-- Your existing Python installations
-- Your `~/.bashrc` / `~/.zshrc` other than appending one PATH line (with on-screen notice)
-- Your existing Ollama models
-- Any other tool or dotfile
+- Tes installations Python existantes
+- Ton `~/.bashrc` / `~/.zshrc`, hormis une ligne de PATH ajoutée à la fin (avec un avis à l'écran)
+- Tes modèles Ollama existants
+- Tout autre outil ou fichier de configuration
 
-## Idempotent re-runs
+## Relancer sans risque
 
-Re-running the local script is safe. The installer reads `~/.diapason/.state/install-state.json` and skips completed steps. If your venv got nuked, re-running heals it.
+Relancer le script local ne casse rien. L'installateur lit `~/.diapason/.state/install-state.json` et saute les étapes déjà faites. Si ton environnement virtuel a été détruit, une relance le répare.
 
-## Cloud quick-path
+## Le chemin rapide vers le cloud
 
-If any of these env vars are set when you install or run `diapason init`, the installer/init proposes cloud as the default and writes the matching provider into `config.toml`:
+Si l'une de ces variables d'environnement est posée au moment de l'installation ou de `diapason init`, l'installateur (ou `init`) propose le cloud par défaut et écrit le fournisseur correspondant dans `config.toml` :
 
 - `OPENROUTER_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
-- `GOOGLE_API_KEY` (or `GEMINI_API_KEY`)
+- `GOOGLE_API_KEY` (ou `GEMINI_API_KEY`)
 
-Local-first remains the default when no key is in env. Precedence is OpenRouter > Anthropic > OpenAI > Google.
+Le local d'abord reste le défaut tant qu'aucune clé n'est dans l'environnement. L'ordre de priorité est OpenRouter > Anthropic > OpenAI > Google.
 
-## Flags
+## Les drapeaux
 
-| Flag | Effect |
+| Drapeau | Effet |
 |---|---|
-| `--minimal` | Skip the foreground model pull. First chat will need to wait for the bg pull to finish. |
-| `--no-bg-orchestrator` | Don't detach the background work pipeline. (Mostly for testing.) |
-| `--force` | Re-run all steps even if `install-state.json` says they're done. |
+| `--minimal` | Saute le téléchargement du modèle au premier plan. La première discussion devra attendre la fin du téléchargement en arrière-plan. |
+| `--no-bg-orchestrator` | Ne détache pas la chaîne de travail d'arrière-plan. (Surtout pour les tests.) |
+| `--force` | Rejoue toutes les étapes, même celles qu'`install-state.json` dit terminées. |
 
-## Environment overrides
+## Les variables d'environnement
 
-| Variable | Default | Purpose |
+| Variable | Défaut | Rôle |
 |---|---|---|
-| `DIAPASON_HOME` | `$HOME/.diapason` | Install location. |
-| `DIAPASON_REPO_URL` | `https://github.com/carlitoetienne01-spec/Diapason.git` | Source repo for the clone step. |
+| `DIAPASON_HOME` | `$HOME/.diapason` | Où installer. |
+| `DIAPASON_REPO_URL` | `https://github.com/carlitoetienne01-spec/Diapason.git` | Le dépôt source de l'étape de clonage. |
 
-## Uninstall
+## Désinstaller
 
 ```bash
 diapason-uninstall
 ```
 
-Removes `~/.diapason/`, `~/.local/bin/diapason`, and `~/.local/bin/diapason-uninstall`. Leaves Ollama, uv, and the Rust toolchain in place (they may be used by other tools); the script prints removal hints.
+Retire `~/.diapason/`, `~/.local/bin/diapason` et `~/.local/bin/diapason-uninstall`. Laisse Ollama, uv et la chaîne d'outils Rust en place (d'autres outils s'en servent peut-être) ; le script affiche les indications pour les retirer.
 
-## Updating
+## Mettre à jour
 
 ```bash
 diapason update
 ```
 
-Pulls the latest source, refreshes the editable install, and rebuilds the Rust extension in the background. Models are not touched.
+Récupère les dernières sources, rafraîchit l'installation éditable et reconstruit l'extension Rust en arrière-plan. Les modèles ne sont pas touchés.
 
-## Troubleshooting
+## Dépannage
 
-### "command not found: diapason"
+### « command not found: diapason »
 
-`~/.local/bin` isn't on your PATH. Run `source ~/.bashrc` (or `~/.zshrc`) or open a new terminal.
+`~/.local/bin` n'est pas dans ton PATH. Lance `source ~/.bashrc` (ou `~/.zshrc`), ou ouvre un nouveau terminal.
 
-### "memory features unavailable"
+### « memory features unavailable »
 
-Rust extension hasn't finished building yet (or failed). Check status:
+L'extension Rust n'a pas fini de se construire — ou sa construction a échoué. Regarde où ça en est :
 
 ```bash
 diapason doctor
 ```
 
-Manually retry:
+Pour relancer à la main :
 
 ```bash
 ~/.diapason/.scripts/install-rust.sh && ~/.diapason/.scripts/build-extension.sh
 ```
 
-### A bigger model failed to download
+### Le téléchargement d'un gros modèle a échoué
 
-Check status and retry:
+Regarde où ça en est, puis relance :
 
 ```bash
 diapason doctor
 ~/.diapason/.scripts/pull-model.sh qwen3.5:9b
 ```
 
-### Behind a corporate proxy
+### Derrière un proxy d'entreprise
 
-Set `HTTPS_PROXY` and `CURL_CA_BUNDLE` in your environment before running the installer.
+Pose `HTTPS_PROXY` et `CURL_CA_BUNDLE` dans ton environnement avant de lancer l'installateur.

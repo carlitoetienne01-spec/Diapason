@@ -1,16 +1,16 @@
-# systemd Service (Linux)
+# Service systemd (Linux)
 
-Diapason includes a systemd unit file for running the API server as a managed background service on Linux. This provides automatic startup on boot, crash recovery, and integration with standard Linux service management tools.
+Diapason est livré avec un fichier d'unité systemd qui fait tourner le serveur d'API comme un service d'arrière-plan géré, sous Linux. Tu y gagnes le démarrage automatique au boot, la reprise après plantage, et l'intégration aux outils habituels de gestion de services Linux.
 
-## Prerequisites
+## Ce qu'il faut avant
 
-Before installing the service, ensure that:
+Avant d'installer le service, assure-toi que :
 
-1. Diapason is installed in a virtual environment at `/opt/diapason/.venv` (or adjust paths accordingly).
-2. A dedicated `diapason` system user exists (recommended for security).
-3. An inference engine (such as Ollama) is running and accessible.
+1. Diapason est installé dans un environnement virtuel à `/opt/diapason/.venv` (ou ajuste les chemins en conséquence).
+2. Un utilisateur système dédié `diapason` existe (recommandé, pour la sécurité).
+3. Un moteur d'inférence (Ollama, par exemple) tourne et est joignable.
 
-Create the user and installation directory:
+Crée l'utilisateur et le répertoire d'installation :
 
 ```bash
 sudo useradd --system --create-home --home-dir /opt/diapason diapason
@@ -19,11 +19,12 @@ sudo -u diapason git clone https://github.com/carlitoetienne01-spec/Diapason.git
 cd /opt/diapason/Diapason && sudo -u diapason uv sync --extra server
 ```
 
-## Installing the Service
+## Installer le service
 
-The unit binds `0.0.0.0`, so an **API key is required** — and the unit
-declares `EnvironmentFile=/etc/diapason/env` (no `-` prefix), so it will
-**fail to start** until that file exists with a key. Create it first:
+L'unité écoute sur `0.0.0.0`, donc **une clé d'API est obligatoire** — et l'unité
+déclare `EnvironmentFile=/etc/diapason/env` (sans préfixe `-`), elle **refusera
+donc de démarrer** tant que ce fichier n'existe pas avec une clé dedans. Crée-le
+d'abord :
 
 ```bash
 sudo mkdir -p /etc/diapason
@@ -31,7 +32,7 @@ echo "DIAPASON_API_KEY=$(diapason auth generate-key)" | sudo tee /etc/diapason/e
 sudo chmod 600 /etc/diapason/env
 ```
 
-Then copy the unit file, reload the daemon, and enable the service:
+Copie ensuite le fichier d'unité, recharge le démon et active le service :
 
 ```bash
 sudo cp deploy/systemd/diapason.service /etc/systemd/system/
@@ -40,19 +41,19 @@ sudo systemctl enable diapason
 sudo systemctl start diapason
 ```
 
-Clients must send `Authorization: Bearer <key>` on `/v1/*` and `/api/*`
-requests. (If you instead bind to `127.0.0.1`, the key is optional and you
-can drop the `EnvironmentFile` line.)
+Les clients doivent envoyer `Authorization: Bearer <key>` sur les requêtes
+`/v1/*` et `/api/*`. (Si tu écoutes plutôt sur `127.0.0.1`, la clé est
+facultative et tu peux retirer la ligne `EnvironmentFile`.)
 
-Verify it is running:
+Vérifie qu'il tourne :
 
 ```bash
 sudo systemctl status diapason
 ```
 
-## Service File Reference
+## Référence du fichier de service
 
-The provided unit file at `deploy/systemd/diapason.service`:
+Le fichier d'unité fourni, à `deploy/systemd/diapason.service` :
 
 ```ini
 [Unit]
@@ -72,55 +73,55 @@ Environment=HOME=/opt/diapason
 WantedBy=multi-user.target
 ```
 
-### `[Unit]` Section
+### La section `[Unit]`
 
-| Directive     | Value              | Description                                                                 |
+| Directive     | Valeur             | Description                                                                 |
 |---------------|--------------------|-----------------------------------------------------------------------------|
-| `Description` | `Diapason API Server` | Human-readable name shown in `systemctl status` and logs.              |
-| `After`       | `network.target`   | Delays startup until the network stack is available, since the server binds to a network socket and may need to reach a remote engine. |
+| `Description` | `Diapason API Server` | Nom lisible, affiché dans `systemctl status` et dans les journaux.     |
+| `After`       | `network.target`   | Retarde le démarrage jusqu'à ce que la pile réseau soit disponible, puisque le serveur écoute sur une socket réseau et peut avoir besoin de joindre un moteur distant. |
 
-### `[Service]` Section
+### La section `[Service]`
 
-| Directive          | Value                                                              | Description                                                                                     |
+| Directive          | Valeur                                                             | Description                                                                                     |
 |--------------------|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| `Type`             | `simple`                                                           | The process started by `ExecStart` is the main service process. systemd considers the service started immediately. |
-| `User`             | `diapason`                                                       | Runs the server as the `diapason` user rather than root, limiting the blast radius of any security issue. |
-| `WorkingDirectory` | `/opt/diapason`                                                  | Sets the working directory for the process. This is where Diapason looks for local files and writes data. |
-| `ExecStart`        | `/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000` | The command to start the server. Uses the full path to the `diapason` binary inside the virtual environment. |
-| `Restart`          | `on-failure`                                                       | Automatically restarts the service if it exits with a non-zero exit code. Does not restart on clean shutdown (`systemctl stop`). |
-| `RestartSec`       | `5`                                                                | Waits 5 seconds before attempting a restart, preventing rapid restart loops if the service crashes immediately on startup. |
-| `Environment`      | `HOME=/opt/diapason`                                             | Sets the `HOME` environment variable so Diapason finds its configuration at `~/.diapason/config.toml` (resolving to `/opt/diapason/.diapason/config.toml`). |
+| `Type`             | `simple`                                                           | Le processus lancé par `ExecStart` est le processus principal du service. systemd considère le service démarré immédiatement. |
+| `User`             | `diapason`                                                       | Fait tourner le serveur sous l'utilisateur `diapason` plutôt que root, ce qui limite les dégâts en cas de faille. |
+| `WorkingDirectory` | `/opt/diapason`                                                  | Fixe le répertoire de travail du processus. C'est là que Diapason cherche ses fichiers locaux et écrit ses données. |
+| `ExecStart`        | `/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000` | La commande qui démarre le serveur. Elle passe par le chemin complet du binaire `diapason` dans l'environnement virtuel. |
+| `Restart`          | `on-failure`                                                       | Redémarre le service tout seul s'il sort avec un code de sortie non nul. Pas de redémarrage après un arrêt propre (`systemctl stop`). |
+| `RestartSec`       | `5`                                                                | Attend 5 secondes avant de tenter un redémarrage, ce qui évite les boucles de redémarrage rapide quand le service plante dès le lancement. |
+| `Environment`      | `HOME=/opt/diapason`                                             | Fixe la variable d'environnement `HOME` pour que Diapason trouve sa configuration à `~/.diapason/config.toml` (soit `/opt/diapason/.diapason/config.toml`). |
 
-### `[Install]` Section
+### La section `[Install]`
 
-| Directive    | Value               | Description                                                                                 |
+| Directive    | Valeur              | Description                                                                                 |
 |--------------|---------------------|---------------------------------------------------------------------------------------------|
-| `WantedBy`   | `multi-user.target` | The service starts when the system reaches multi-user mode (standard boot target for servers). `systemctl enable` creates a symlink under this target. |
+| `WantedBy`   | `multi-user.target` | Le service démarre quand le système atteint le mode multi-utilisateur (la cible de démarrage standard des serveurs). `systemctl enable` crée un lien symbolique sous cette cible. |
 
-## Configuration Options
+## Les options de configuration
 
-### Changing the Bind Address and Port
+### Changer l'adresse d'écoute et le port
 
-Edit the `ExecStart` line to change the host or port:
+Modifie la ligne `ExecStart` pour changer l'hôte ou le port :
 
 ```ini
 ExecStart=/opt/diapason/.venv/bin/diapason serve --host 127.0.0.1 --port 9000
 ```
 
 !!! tip
-    Binding to `127.0.0.1` restricts access to localhost only. Use this when running behind a reverse proxy like Nginx or Caddy.
+    Écouter sur `127.0.0.1` réserve l'accès à la machine locale. À utiliser derrière un proxy inverse comme Nginx ou Caddy.
 
-### Setting the Engine and Model
+### Fixer le moteur et le modèle
 
-Pass additional flags to `diapason serve`:
+Passe des drapeaux supplémentaires à `diapason serve` :
 
 ```ini
 ExecStart=/opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000 --engine ollama --model qwen3:8b
 ```
 
-### Adding Environment Variables
+### Ajouter des variables d'environnement
 
-Add multiple `Environment` directives or use `EnvironmentFile` for complex configurations:
+Ajoute plusieurs directives `Environment`, ou passe par `EnvironmentFile` pour les configurations compliquées :
 
 ```ini
 [Service]
@@ -129,16 +130,16 @@ Environment=DIAPASON_ENGINE_DEFAULT=vllm
 Environment=DIAPASON_OLLAMA_HOST=http://localhost:11434
 ```
 
-Or load from a file:
+Ou charge-les depuis un fichier :
 
 ```ini
 [Service]
 EnvironmentFile=/opt/diapason/.env
 ```
 
-### Changing the User
+### Changer l'utilisateur
 
-If you prefer a different service user, update both the `User` directive and the paths:
+Si tu préfères un autre utilisateur de service, mets à jour la directive `User` et les chemins :
 
 ```ini
 [Service]
@@ -148,63 +149,63 @@ ExecStart=/home/myuser/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8
 Environment=HOME=/home/myuser/diapason
 ```
 
-### Using a Configuration File
+### Utiliser un fichier de configuration
 
-Ensure the configuration file exists at the path where `HOME` points:
+Assure-toi que le fichier de configuration existe là où pointe `HOME` :
 
 ```bash
 sudo -u diapason mkdir -p /opt/diapason/.diapason
 sudo -u diapason cp config.toml /opt/diapason/.diapason/config.toml
 ```
 
-The server reads `~/.diapason/config.toml` on startup, where `~` resolves from the `HOME` environment variable.
+Le serveur lit `~/.diapason/config.toml` au démarrage, où `~` se résout depuis la variable d'environnement `HOME`.
 
-## Viewing Logs
+## Lire les journaux
 
-Diapason logs are captured by journald. View them with `journalctl`:
+Les journaux de Diapason sont récupérés par journald. Consulte-les avec `journalctl` :
 
 ```bash
-# View all logs for the service
+# Voir tous les journaux du service
 sudo journalctl -u diapason
 
-# Follow logs in real time
+# Suivre les journaux en direct
 sudo journalctl -u diapason -f
 
-# View logs since the last boot
+# Voir les journaux depuis le dernier démarrage
 sudo journalctl -u diapason -b
 
-# View logs from the last hour
+# Voir les journaux de la dernière heure
 sudo journalctl -u diapason --since "1 hour ago"
 
-# View only error-level messages
+# Ne voir que les messages de niveau erreur
 sudo journalctl -u diapason -p err
 ```
 
-## Managing the Service
+## Gérer le service
 
-### Start, Stop, and Restart
+### Démarrer, arrêter, redémarrer
 
 ```bash
-# Start the service
+# Démarrer le service
 sudo systemctl start diapason
 
-# Stop the service
+# Arrêter le service
 sudo systemctl stop diapason
 
-# Restart the service (stop + start)
+# Redémarrer le service (arrêt + démarrage)
 sudo systemctl restart diapason
 
-# Reload configuration without full restart (sends SIGHUP)
+# Recharger la configuration sans redémarrage complet (envoie SIGHUP)
 sudo systemctl reload-or-restart diapason
 ```
 
-### Check Status
+### Vérifier l'état
 
 ```bash
 sudo systemctl status diapason
 ```
 
-Example output:
+Exemple de sortie :
 
 ```
 ● diapason.service - Diapason API Server
@@ -218,28 +219,28 @@ Example output:
              └─12345 /opt/diapason/.venv/bin/python /opt/diapason/.venv/bin/diapason serve --host 0.0.0.0 --port 8000
 ```
 
-### Enable and Disable on Boot
+### Activer et désactiver le démarrage au boot
 
 ```bash
-# Enable automatic start on boot
+# Activer le démarrage automatique au boot
 sudo systemctl enable diapason
 
-# Disable automatic start on boot
+# Désactiver le démarrage automatique au boot
 sudo systemctl disable diapason
 ```
 
-### Apply Changes After Editing the Unit File
+### Appliquer les changements après modification du fichier d'unité
 
-After modifying `/etc/systemd/system/diapason.service`, reload the systemd daemon and restart the service:
+Après avoir modifié `/etc/systemd/system/diapason.service`, recharge le démon systemd et redémarre le service :
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl restart diapason
 ```
 
-## Running Alongside Ollama
+## Tourner aux côtés d'Ollama
 
-If Ollama is also managed via systemd, you can add an ordering dependency so the Diapason service waits for Ollama to start:
+Si Ollama est lui aussi géré par systemd, tu peux ajouter une dépendance d'ordre pour que le service Diapason attende le démarrage d'Ollama :
 
 ```ini
 [Unit]
@@ -250,8 +251,8 @@ Requires=ollama.service
 
 | Directive  | Description                                                              |
 |------------|--------------------------------------------------------------------------|
-| `After`    | Ensures Diapason starts after Ollama.                                  |
-| `Requires` | If Ollama fails to start, Diapason will not start either.              |
+| `After`    | Garantit que Diapason démarre après Ollama.                            |
+| `Requires` | Si Ollama ne démarre pas, Diapason ne démarrera pas non plus.          |
 
 !!! note
-    Use `Wants` instead of `Requires` if you want Diapason to start even when Ollama is unavailable (for example, if you plan to start Ollama manually later).
+    Utilise `Wants` plutôt que `Requires` si tu veux que Diapason démarre même quand Ollama n'est pas disponible (par exemple si tu comptes lancer Ollama à la main plus tard).

@@ -1,50 +1,50 @@
-# Intelligence Primitive
+# La primitive Intelligence
 
-The Intelligence primitive represents **the model** — its identity, weights, quantization format, fallback chain, and the catalog of well-known models with detailed metadata. It no longer contains routing logic; query analysis and model selection have moved to the [Learning primitive](learning.md).
+La primitive Intelligence représente **le modèle** — son identité, ses poids, son format de quantification, sa chaîne de repli, et le catalogue des modèles connus avec leurs métadonnées détaillées. Elle ne porte plus la logique de routage : l'analyse des requêtes et la sélection du modèle ont déménagé dans la [primitive Apprentissage](learning.md).
 
 ---
 
-## Purpose
+## Son rôle
 
-The Intelligence primitive answers a single question: *what is the model?* It maintains a catalog of known models with metadata (parameter count, context length, VRAM requirements, supported engines) and provides helpers for registering built-in models and merging models discovered from running engines at runtime.
+La primitive Intelligence répond à une seule question : *quel est le modèle ?* Elle tient un catalogue des modèles connus avec leurs métadonnées (nombre de paramètres, longueur de contexte, besoins en VRAM, moteurs compatibles) et offre des fonctions d'aide pour enregistrer les modèles intégrés et y fusionner les modèles découverts à l'exécution auprès des moteurs en marche.
 
-The primitive provides three key capabilities:
+Elle apporte trois capacités clés :
 
-1. **Model catalog** -- a registry of well-known models with metadata (parameter count, context length, VRAM requirements, supported engines)
-2. **Auto-discovery** -- merging models discovered from running engines into the catalog
-3. **Model configuration** -- `IntelligenceConfig` captures the local model's identity, weight paths, quantization, and preferred engine
+1. **Le catalogue de modèles** — un registre des modèles connus avec leurs métadonnées (nombre de paramètres, longueur de contexte, besoins en VRAM, moteurs compatibles)
+2. **La découverte automatique** — la fusion, dans le catalogue, des modèles découverts auprès des moteurs en marche
+3. **La configuration du modèle** — `IntelligenceConfig` porte l'identité du modèle local, les chemins de ses poids, sa quantification et son moteur préféré
 
-!!! info "Routing has moved"
-    Query analysis (`build_routing_context`) and model selection (`HeuristicRouter`, `RouterPolicy` ABC) now live in the [Learning primitive](learning.md). Backward-compatible re-exports remain in `intelligence/_stubs.py` and `intelligence/router.py` so existing code continues to work.
+!!! info "Le routage a déménagé"
+    L'analyse des requêtes (`build_routing_context`) et la sélection du modèle (`HeuristicRouter`, l'ABC `RouterPolicy`) vivent désormais dans la [primitive Apprentissage](learning.md). Des ré-exports de compatibilité ascendante restent dans `intelligence/_stubs.py` et `intelligence/router.py`, pour que le code existant continue de fonctionner.
 
 ---
 
 ## ModelSpec
 
-Every model in the system is described by a `ModelSpec` dataclass, defined in `core/types.py`:
+Tout modèle du système est décrit par une dataclass `ModelSpec`, définie dans `core/types.py` :
 
 ```python
 @dataclass(slots=True)
 class ModelSpec:
-    model_id: str                              # Unique identifier (e.g., "qwen3:8b")
-    name: str                                  # Human-readable name
-    parameter_count_b: float                   # Total parameters in billions
-    context_length: int                        # Maximum context window (tokens)
-    active_parameter_count_b: Optional[float]  # MoE active params (None for dense)
-    quantization: Quantization                 # Quantization format (none, fp8, int4, etc.)
-    min_vram_gb: float                         # Minimum VRAM required
-    supported_engines: Sequence[str]           # Which engines can run this model
-    provider: str                              # Model provider (e.g., "alibaba", "meta")
-    requires_api_key: bool                     # Whether cloud API key is needed
-    metadata: Dict[str, Any]                   # Additional metadata (pricing, architecture)
+    model_id: str                              # Identifiant unique (par exemple "qwen3:8b")
+    name: str                                  # Nom lisible par un humain
+    parameter_count_b: float                   # Nombre total de paramètres, en milliards
+    context_length: int                        # Fenêtre de contexte maximale (en jetons)
+    active_parameter_count_b: Optional[float]  # Paramètres actifs MoE (None si le modèle est dense)
+    quantization: Quantization                 # Format de quantification (none, fp8, int4, etc.)
+    min_vram_gb: float                         # VRAM minimale requise
+    supported_engines: Sequence[str]           # Moteurs capables de faire tourner ce modèle
+    provider: str                              # Fournisseur du modèle (par exemple "alibaba", "meta")
+    requires_api_key: bool                     # Faut-il une clé d'API distante
+    metadata: Dict[str, Any]                   # Métadonnées supplémentaires (tarif, architecture)
 ```
 
-Models are registered in the `ModelRegistry`:
+Les modèles s'enregistrent dans le `ModelRegistry` :
 
 ```python
 from diapason.core.registry import ModelRegistry
 
-# Register a model
+# Enregistrer un modèle
 ModelRegistry.register_value("qwen3:8b", ModelSpec(
     model_id="qwen3:8b",
     name="Qwen3 8B",
@@ -57,13 +57,13 @@ ModelRegistry.register_value("qwen3:8b", ModelSpec(
 
 ---
 
-## Model Catalog
+## Le catalogue de modèles
 
-The built-in model catalog is defined in `intelligence/model_catalog.py` as the `BUILTIN_MODELS` list. It includes models across three categories:
+Le catalogue intégré est défini dans `intelligence/model_catalog.py`, sous la forme de la liste `BUILTIN_MODELS`. Il couvre trois catégories de modèles :
 
-### Local Models -- Dense
+### Les modèles locaux — denses
 
-| Model ID | Name | Parameters | Context | Supported Engines |
+| ID du modèle | Nom | Paramètres | Contexte | Moteurs compatibles |
 |----------|------|-----------|---------|-------------------|
 | `qwen3:8b` | Qwen3 8B | 8.2B | 32K | vLLM, Ollama, llama.cpp, SGLang |
 | `qwen3:32b` | Qwen3 32B | 32B | 32K | Ollama, vLLM |
@@ -72,109 +72,109 @@ The built-in model catalog is defined in `intelligence/model_catalog.py` as the 
 | `deepseek-coder-v2:16b` | DeepSeek Coder V2 16B | 16B | 128K | Ollama, vLLM |
 | `mistral:7b` | Mistral 7B | 7B | 32K | Ollama, vLLM, llama.cpp |
 
-### Local Models -- Mixture of Experts (MoE)
+### Les modèles locaux — mélange d'experts (MoE)
 
-| Model ID | Name | Total / Active Params | Context | Min VRAM |
+| ID du modèle | Nom | Paramètres totaux / actifs | Contexte | VRAM minimale |
 |----------|------|----------------------|---------|----------|
-| `gpt-oss:120b` | GPT-OSS 120B | 117B / 5.1B | 128K | 12 GB |
-| `glm-4.7-flash` | GLM 4.7 Flash | 30B / 3B | 128K | 8 GB |
-| `trinity-mini` | Trinity Mini | 26B / 3B | 128K | 8 GB |
+| `gpt-oss:120b` | GPT-OSS 120B | 117B / 5.1B | 128K | 12 Go |
+| `glm-4.7-flash` | GLM 4.7 Flash | 30B / 3B | 128K | 8 Go |
+| `trinity-mini` | Trinity Mini | 26B / 3B | 128K | 8 Go |
 
-### Cloud Models
+### Les modèles distants
 
-| Model ID | Provider | Context | Pricing (input/output per 1M tokens) |
+| ID du modèle | Fournisseur | Contexte | Tarif (entrée/sortie par million de jetons) |
 |----------|----------|---------|--------------------------------------|
-| `gpt-4o` | OpenAI | 128K | $2.50 / $10.00 |
-| `gpt-4o-mini` | OpenAI | 128K | $0.15 / $0.60 |
-| `gpt-5-mini` | OpenAI | 400K | $0.25 / $2.00 |
-| `claude-sonnet-4-20250514` | Anthropic | 200K | $3.00 / $15.00 |
-| `claude-opus-4-20250514` | Anthropic | 200K | $15.00 / $75.00 |
-| `claude-opus-4-6` | Anthropic | 200K | $5.00 / $25.00 |
-| `gemini-2.5-pro` | Google | 1M | $1.25 / $10.00 |
-| `gemini-2.5-flash` | Google | 1M | $0.30 / $2.50 |
+| `gpt-4o` | OpenAI | 128K | 2,50 $ / 10,00 $ |
+| `gpt-4o-mini` | OpenAI | 128K | 0,15 $ / 0,60 $ |
+| `gpt-5-mini` | OpenAI | 400K | 0,25 $ / 2,00 $ |
+| `claude-sonnet-4-20250514` | Anthropic | 200K | 3,00 $ / 15,00 $ |
+| `claude-opus-4-20250514` | Anthropic | 200K | 15,00 $ / 75,00 $ |
+| `claude-opus-4-6` | Anthropic | 200K | 5,00 $ / 25,00 $ |
+| `gemini-2.5-pro` | Google | 1M | 1,25 $ / 10,00 $ |
+| `gemini-2.5-flash` | Google | 1M | 0,30 $ / 2,50 $ |
 
-### Registering Built-in Models
+### Enregistrer les modèles intégrés
 
-The `register_builtin_models()` function populates the `ModelRegistry` with all built-in models. It skips models that are already registered, making it safe to call multiple times:
+La fonction `register_builtin_models()` peuple le `ModelRegistry` avec tous les modèles intégrés. Elle saute ceux qui sont déjà enregistrés : on peut donc l'appeler plusieurs fois sans risque.
 
 ```python
 from diapason.intelligence import register_builtin_models
 
 register_builtin_models()
-# All BUILTIN_MODELS are now in ModelRegistry
+# Tous les BUILTIN_MODELS sont maintenant dans le ModelRegistry
 ```
 
 ---
 
-## Auto-Discovery: Merging Runtime Models
+## La découverte automatique : fusionner les modèles trouvés à l'exécution
 
-When engines are discovered at runtime, they report models that may not be in the built-in catalog. The `merge_discovered_models()` function creates minimal `ModelSpec` entries for these:
+Quand les moteurs sont découverts à l'exécution, ils annoncent des modèles qui ne sont pas forcément au catalogue intégré. La fonction `merge_discovered_models()` leur crée des entrées `ModelSpec` minimales :
 
 ```python
 from diapason.intelligence import merge_discovered_models
 
-# Models reported by Ollama that aren't in the catalog
+# Les modèles annoncés par Ollama qui ne sont pas au catalogue
 merge_discovered_models("ollama", ["phi3:3.8b", "codellama:7b"])
 ```
 
-For each model ID not already in the registry, a `ModelSpec` is created with the model ID as both the `model_id` and `name`, with zero-value defaults for unknown fields. This ensures the routing system can still select from all available models, even ones it has no metadata for.
+Pour chaque identifiant de modèle absent du registre, une `ModelSpec` est créée avec l'identifiant du modèle à la fois comme `model_id` et comme `name`, et des valeurs nulles par défaut pour les champs inconnus. Le système de routage peut ainsi choisir parmi tous les modèles disponibles, même ceux dont il n'a aucune métadonnée.
 
 ---
 
 ## IntelligenceConfig
 
-The `IntelligenceConfig` dataclass (in `core/config.py`) captures the full identity of the model the system is configured to use, as well as the default sampling parameters for generation:
+La dataclass `IntelligenceConfig` (dans `core/config.py`) porte l'identité complète du modèle que le système est configuré pour utiliser, ainsi que les paramètres d'échantillonnage par défaut de la génération :
 
 ```python
 @dataclass(slots=True)
 class IntelligenceConfig:
-    """The model — identity, paths, quantization, fallback chain, and generation defaults."""
+    """Le modèle — identité, chemins, quantification, chaîne de repli et défauts de génération."""
 
-    default_model: str = ""       # Primary model key (e.g., "qwen3:8b")
-    fallback_model: str = ""      # Fallback when default is unavailable
-    model_path: str = ""          # Local weights (HF repo, GGUF file, etc.)
-    checkpoint_path: str = ""     # Checkpoint/adapter path (e.g., LoRA)
+    default_model: str = ""       # Clé du modèle principal (par exemple "qwen3:8b")
+    fallback_model: str = ""      # Repli quand le modèle par défaut est indisponible
+    model_path: str = ""          # Poids locaux (dépôt HF, fichier GGUF, etc.)
+    checkpoint_path: str = ""     # Chemin du point de contrôle ou de l'adaptateur (LoRA, par exemple)
     quantization: str = "none"    # none, fp8, int8, int4, gguf_q4, gguf_q8
-    preferred_engine: str = ""    # Override engine for this model (e.g., "vllm")
+    preferred_engine: str = ""    # Impose un moteur pour ce modèle (par exemple "vllm")
     provider: str = ""            # local, openai, anthropic, google
-    # Generation defaults (overridable per-call)
+    # Défauts de génération (chaque appel peut les écraser)
     temperature: float = 0.7
     max_tokens: int = 1024
     top_p: float = 0.9
     top_k: int = 40
     repetition_penalty: float = 1.0
-    stop_sequences: str = ""      # Comma-separated stop strings
+    stop_sequences: str = ""      # Chaînes d'arrêt séparées par des virgules
 ```
 
-### Model Identity Fields
+### Les champs d'identité du modèle
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `default_model` | `str` | `""` | Primary model registry key. Resolved at startup; overrides any engine default. |
-| `fallback_model` | `str` | `""` | Used when the default model is not available on any running engine. |
-| `model_path` | `str` | `""` | Path or HuggingFace repo ID for local weights (e.g., `"./models/qwen3-8b.gguf"` or `"Qwen/Qwen3-8B"`). |
-| `checkpoint_path` | `str` | `""` | Path to a fine-tuned checkpoint or LoRA adapter directory. |
-| `quantization` | `str` | `"none"` | Quantization format. Accepted values: `none`, `fp8`, `int8`, `int4`, `gguf_q4`, `gguf_q8`. |
-| `preferred_engine` | `str` | `""` | When set, `SystemBuilder`, `sdk.py`, and `cli/ask.py` use this engine key instead of `config.engine.default`. |
-| `provider` | `str` | `""` | Model provider hint: `local`, `openai`, `anthropic`, `google`. Used by the Cloud engine backend to route API calls. |
+| `default_model` | `str` | `""` | La clé du modèle principal dans le registre. Résolue au démarrage ; elle l'emporte sur tout défaut du moteur. |
+| `fallback_model` | `str` | `""` | Utilisé quand le modèle par défaut n'est disponible sur aucun moteur en marche. |
+| `model_path` | `str` | `""` | Chemin ou identifiant de dépôt HuggingFace des poids locaux (`"./models/qwen3-8b.gguf"` ou `"Qwen/Qwen3-8B"`, par exemple). |
+| `checkpoint_path` | `str` | `""` | Chemin d'un point de contrôle affiné ou d'un dossier d'adaptateur LoRA. |
+| `quantization` | `str` | `"none"` | Format de quantification. Valeurs acceptées : `none`, `fp8`, `int8`, `int4`, `gguf_q4`, `gguf_q8`. |
+| `preferred_engine` | `str` | `""` | Quand il est posé, `SystemBuilder`, `sdk.py` et `cli/ask.py` prennent cette clé de moteur au lieu de `config.engine.default`. |
+| `provider` | `str` | `""` | Indice sur le fournisseur du modèle : `local`, `openai`, `anthropic`, `google`. Le moteur Cloud s'en sert pour router les appels d'API. |
 
-### Generation Default Fields
+### Les champs de défauts de génération
 
-These fields set the default sampling parameters for every inference call. Individual calls can override them by passing keyword arguments to `engine.generate()`.
+Ces champs fixent les paramètres d'échantillonnage par défaut de chaque appel d'inférence. Un appel donné peut les écraser en passant des arguments nommés à `engine.generate()`.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `temperature` | `float` | `0.7` | Sampling temperature. Lower values produce more deterministic output; higher values increase diversity. |
-| `max_tokens` | `int` | `1024` | Maximum number of tokens to generate per call. |
-| `top_p` | `float` | `0.9` | Nucleus sampling probability mass. At each step, only tokens comprising the top-p probability mass are considered. |
-| `top_k` | `int` | `40` | Top-k sampling: only consider the top-k most likely tokens at each step. |
-| `repetition_penalty` | `float` | `1.0` | Penalize repeated token sequences. Values greater than 1.0 reduce repetition. |
-| `stop_sequences` | `str` | `""` | Comma-separated stop strings. Generation halts when any stop string appears in the output. |
+| `temperature` | `float` | `0.7` | Température d'échantillonnage. Plus elle est basse, plus la sortie est déterministe ; plus elle est haute, plus elle varie. |
+| `max_tokens` | `int` | `1024` | Nombre maximum de jetons à générer par appel. |
+| `top_p` | `float` | `0.9` | Masse de probabilité de l'échantillonnage par noyau. À chaque étape, seuls les jetons qui composent la masse top-p sont considérés. |
+| `top_k` | `int` | `40` | Échantillonnage top-k : à chaque étape, seuls les k jetons les plus probables sont considérés. |
+| `repetition_penalty` | `float` | `1.0` | Pénalise les suites de jetons répétées. Au-delà de 1.0, la répétition diminue. |
+| `stop_sequences` | `str` | `""` | Chaînes d'arrêt séparées par des virgules. La génération s'arrête dès qu'une de ces chaînes apparaît dans la sortie. |
 
-!!! note "Moved from Agent"
-    Generation parameters (`temperature`, `max_tokens`) previously lived under `[agent]` in the config file. They now live under `[intelligence]`. Old configs with these fields under `[agent]` are automatically migrated at load time. See the [configuration migration guide](../getting-started/configuration.md#migration-guide) for details.
+!!! note "Déménagé depuis Agent"
+    Les paramètres de génération (`temperature`, `max_tokens`) vivaient auparavant sous `[agent]` dans le fichier de configuration. Ils vivent désormais sous `[intelligence]`. Les anciennes configurations qui les portent sous `[agent]` sont migrées automatiquement au chargement. Voir le [guide de migration de la configuration](../getting-started/configuration.md#migration-guide) pour le détail.
 
-### TOML Configuration
+### La configuration TOML
 
 ```toml
 [intelligence]
@@ -187,30 +187,30 @@ max_tokens = 1024
 # repetition_penalty = 1.0
 # stop_sequences = ""
 
-# Local weight overrides (optional)
+# Pour imposer des poids locaux (facultatif)
 # model_path = "./models/qwen3-8b-instruct.gguf"
 # checkpoint_path = "./checkpoints/my-lora"
 # quantization = "gguf_q4"
 
-# Engine selection for this model (takes priority over [engine].default)
+# Le moteur choisi pour ce modèle (prioritaire sur [engine].default)
 # preferred_engine = "vllm"
 
-# Provider for cloud models
+# Le fournisseur, pour les modèles distants
 # provider = "openai"
 ```
 
-### Engine Selection Priority
+### L'ordre de priorité du choix du moteur
 
-When resolving which engine to use, `SystemBuilder`, `sdk.py`, and `cli/ask.py` check `config.intelligence.preferred_engine` before `config.engine.default`:
+Au moment de décider quel moteur utiliser, `SystemBuilder`, `sdk.py` et `cli/ask.py` regardent `config.intelligence.preferred_engine` avant `config.engine.default` :
 
 ```
-1. Explicit --engine CLI flag or engine_key= SDK parameter
-2. config.intelligence.preferred_engine  ← new field
+1. L'option --engine de la CLI, ou le paramètre engine_key= du SDK
+2. config.intelligence.preferred_engine  ← le nouveau champ
 3. config.engine.default
-4. First healthy engine discovered at runtime
+4. Le premier moteur en bonne santé découvert à l'exécution
 ```
 
-This lets you pin a specific model to a specific engine without changing the global engine default. For example, a GGUF quantized model can be pinned to `llamacpp` while the global default remains `ollama`:
+Tu peux ainsi épingler un modèle donné à un moteur donné sans toucher au moteur par défaut du système. Un modèle quantifié en GGUF, par exemple, peut être épinglé à `llamacpp` pendant que le défaut global reste `ollama` :
 
 ```toml
 [engine]
@@ -225,23 +225,23 @@ preferred_engine = "llamacpp"
 
 ---
 
-## Public API
+## L'API publique
 
-`intelligence/__init__.py` exports exactly three names:
+`intelligence/__init__.py` exporte exactement trois noms :
 
 ```python
 from diapason.intelligence import (
-    BUILTIN_MODELS,           # List[ModelSpec] — the full built-in catalog
+    BUILTIN_MODELS,           # List[ModelSpec] — le catalogue intégré complet
     merge_discovered_models,  # (engine_key, model_ids) -> None
     register_builtin_models,  # () -> None
 )
 ```
 
-### Backward-Compatibility Shims
+### Les cales de compatibilité ascendante
 
-The following names are still importable from `diapason.intelligence` via shim modules, but their canonical locations have moved:
+Les noms suivants restent importables depuis `diapason.intelligence` par des modules-cales, mais leur emplacement canonique a changé :
 
-| Name | Old location | Canonical location |
+| Nom | Ancien emplacement | Emplacement canonique |
 |------|-------------|-------------------|
 | `RouterPolicy` | `intelligence/_stubs.py` | `learning/_stubs.py` |
 | `QueryAnalyzer` | `intelligence/_stubs.py` | `learning/_stubs.py` |
@@ -249,10 +249,10 @@ The following names are still importable from `diapason.intelligence` via shim m
 | `build_routing_context` | `intelligence/router.py` | `learning/router.py` |
 | `DefaultQueryAnalyzer` | `intelligence/router.py` | `learning/router.py` |
 
-New code should import from the canonical `learning.*` locations. The shims in `intelligence/_stubs.py` and `intelligence/router.py` are retained for backward compatibility only.
+Le code neuf doit importer depuis les emplacements canoniques `learning.*`. Les cales de `intelligence/_stubs.py` et `intelligence/router.py` ne sont gardées que pour la compatibilité ascendante.
 
 ---
 
-## Integration with Learning
+## L'intégration avec Apprentissage
 
-The Learning primitive consumes the model catalog to make routing decisions. The `HeuristicRouter` and `TraceDrivenPolicy` both read `ModelRegistry` to compare model sizes when selecting between candidates. See the [Learning & Traces](learning.md) documentation for full details on routing policies, the `RouterPolicy` ABC, and the trace-driven feedback loop.
+La primitive Apprentissage consomme le catalogue de modèles pour prendre ses décisions de routage. `HeuristicRouter` et `TraceDrivenPolicy` lisent tous deux le `ModelRegistry` pour comparer les tailles des modèles au moment de départager des candidats. Voir la documentation [Apprentissage et traces](learning.md) pour tout le détail des politiques de routage, de l'ABC `RouterPolicy` et de la boucle de rétroaction guidée par les traces.

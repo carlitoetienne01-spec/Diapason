@@ -1,21 +1,21 @@
-# External MCP Server Integration
+# Se brancher à des serveurs MCP externes
 
-Diapason can extend agent capabilities by connecting to external [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers. This allows agents to use tools provided by services like Home Assistant, databases, custom APIs, or any MCP-compatible server -- without writing custom tool code.
+Diapason sait étendre les capacités de ses agents en se connectant à des serveurs [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) externes. Tes agents utilisent alors les outils offerts par des services comme Home Assistant, des bases de données, des API maison ou n'importe quel serveur compatible MCP — sans que tu écrives une ligne de code d'outil.
 
-## How It Works
+## Comment ça marche
 
-When Diapason starts, it reads the `[tools.mcp]` section in `config.toml`. For each configured server, it:
+Au démarrage, Diapason lit la section `[tools.mcp]` de `config.toml`. Pour chaque serveur configuré, il :
 
-1. Opens a connection using the appropriate transport (Streamable HTTP or stdio).
-2. Performs the MCP initialize handshake (protocol version negotiation and `initialized` notification).
-3. Discovers available tools via `tools/list`.
-4. Wraps each discovered tool as a standard `BaseTool` so agents can call them like any built-in tool.
+1. Ouvre une connexion avec le transport qui convient (Streamable HTTP ou stdio).
+2. Exécute la poignée de main MCP `initialize` (négociation de la version du protocole, puis notification `initialized`).
+3. Découvre les outils disponibles avec `tools/list`.
+4. Enveloppe chaque outil découvert dans un `BaseTool` standard, pour que les agents l'appellent comme n'importe quel outil intégré.
 
-If a server is unreachable or returns an error, Diapason logs a warning and continues loading the remaining servers. One broken server does not prevent other tools from being available.
+Si un serveur est injoignable ou renvoie une erreur, Diapason écrit un avertissement dans les journaux et continue de charger les autres. Un serveur cassé ne prive pas les autres outils d'exister.
 
-## Configuration
+## La configuration
 
-External MCP servers are configured in `config.toml` under `[tools.mcp]`:
+Les serveurs MCP externes se configurent dans `config.toml`, sous `[tools.mcp]` :
 
 ```toml
 [tools.mcp]
@@ -23,33 +23,33 @@ enabled = true
 servers = '[{"name": "homeassistant", "url": "http://172.16.3.1:9583/private_abc123"}]'
 ```
 
-The `servers` value is a **JSON-encoded string** containing an array of server objects. Each object defines one external MCP server.
+La valeur de `servers` est une **chaîne encodée en JSON** contenant un tableau d'objets serveur. Chaque objet décrit un serveur MCP externe.
 
 !!! note
-    The value must be a JSON string (with single-quote TOML delimiters around it), not a native TOML array. This is because the configuration system passes it through as a single string field.
+    La valeur doit être une chaîne JSON (entourée des guillemets simples de TOML), pas un tableau TOML natif. La raison : le système de configuration la transmet telle quelle, comme un champ texte unique.
 
-## Server Config Schema
+## Le schéma d'un serveur
 
-Each server object supports the following fields:
+Chaque objet serveur accepte les champs suivants :
 
-| Field            | Type           | Required | Description                                              |
-|------------------|----------------|----------|----------------------------------------------------------|
-| `name`           | string         | No       | Human-readable name used in log messages. Defaults to `<unnamed>`. |
-| `url`            | string         | No*      | URL for Streamable HTTP transport.                       |
-| `command`         | string         | No*      | Command to launch a stdio-based MCP server.              |
-| `args`           | list of strings| No       | Arguments passed to the stdio command.                   |
-| `include_tools`  | list of strings| No       | Whitelist of tool names to import. Only these tools are loaded. |
-| `exclude_tools`  | list of strings| No       | Blacklist of tool names to skip. All other tools are loaded. |
+| Champ            | Type              | Requis | Description                                              |
+|------------------|-------------------|--------|----------------------------------------------------------|
+| `name`           | chaîne            | Non    | Nom lisible, utilisé dans les messages de journal. Vaut `<unnamed>` par défaut. |
+| `url`            | chaîne            | Non*   | URL du transport Streamable HTTP.                        |
+| `command`        | chaîne            | Non*   | Commande à lancer pour un serveur MCP en stdio.          |
+| `args`           | liste de chaînes  | Non    | Arguments passés à la commande stdio.                    |
+| `include_tools`  | liste de chaînes  | Non    | Liste blanche des noms d'outils à importer. Seuls ceux-là sont chargés. |
+| `exclude_tools`  | liste de chaînes  | Non    | Liste noire des noms d'outils à écarter. Tous les autres sont chargés. |
 
-*Either `url` or `command` must be provided. If neither is set, the server is skipped with a warning.
+*Il faut fournir `url` **ou** `command`. Si aucun des deux n'est présent, le serveur est ignoré avec un avertissement.
 
-When both `include_tools` and `exclude_tools` are specified, the whitelist is applied first, then the blacklist filters the result.
+Quand `include_tools` et `exclude_tools` sont tous les deux donnés, la liste blanche s'applique d'abord, puis la liste noire filtre le résultat.
 
-## Examples
+## Des exemples
 
-### Home Assistant via Streamable HTTP
+### Home Assistant par Streamable HTTP
 
-Connect to the [ha-mcp](https://github.com/tevonsb/ha-mcp) Home Assistant add-on:
+Se brancher au module complémentaire Home Assistant [ha-mcp](https://github.com/tevonsb/ha-mcp) :
 
 ```toml
 [tools.mcp]
@@ -57,11 +57,11 @@ enabled = true
 servers = '[{"name": "homeassistant", "url": "http://172.16.3.1:9583/private_abc123"}]'
 ```
 
-This discovers all HA tools (entity control, automations, history, etc.) and makes them available to agents.
+Tous les outils HA sont alors découverts (contrôle des entités, automatisations, historique, etc.) et mis à la disposition des agents.
 
-### Stdio Server
+### Un serveur stdio
 
-Launch a local MCP server as a subprocess:
+Lancer un serveur MCP local comme sous-processus :
 
 ```toml
 [tools.mcp]
@@ -69,9 +69,9 @@ enabled = true
 servers = '[{"name": "myserver", "command": "python", "args": ["-m", "my_mcp_server"]}]'
 ```
 
-Diapason starts the process automatically, communicates via JSON-RPC over stdin/stdout, and terminates it on shutdown.
+Diapason démarre le processus tout seul, dialogue avec lui en JSON-RPC sur stdin/stdout, et le termine à l'extinction.
 
-### Multiple Servers
+### Plusieurs serveurs
 
 ```toml
 [tools.mcp]
@@ -79,9 +79,9 @@ enabled = true
 servers = '[{"name": "homeassistant", "url": "http://172.16.3.1:9583/private_abc123"}, {"name": "database", "command": "db-mcp-server", "args": ["--db", "postgres://localhost/mydb"]}]'
 ```
 
-### Tool Filtering
+### Filtrer les outils
 
-When a server exposes many tools but you only need a few, use `include_tools` to whitelist:
+Quand un serveur expose des dizaines d'outils et que tu n'en veux que quelques-uns, dresse une liste blanche avec `include_tools` :
 
 ```toml
 [tools.mcp]
@@ -89,7 +89,7 @@ enabled = true
 servers = '[{"name": "ha", "url": "http://172.16.3.1:9583/private_abc123", "include_tools": ["hassTurnOn", "hassTurnOff", "hassGetState"]}]'
 ```
 
-To load everything except specific tools, use `exclude_tools`:
+Pour tout charger sauf certains outils, passe par `exclude_tools` :
 
 ```toml
 [tools.mcp]
@@ -97,62 +97,62 @@ enabled = true
 servers = '[{"name": "ha", "url": "http://172.16.3.1:9583/private_abc123", "exclude_tools": ["hassCreateBackup", "hassDeleteBackup"]}]'
 ```
 
-## Transport Types
+## Les types de transport
 
 ### Streamable HTTP
 
-Used when the `url` field is set. The transport sends JSON-RPC requests as HTTP POST to the given URL using `httpx`. It tracks the `Mcp-Session-Id` header across requests as required by the MCP Streamable HTTP specification.
+Utilisé quand le champ `url` est rempli. Le transport envoie les requêtes JSON-RPC en HTTP POST vers l'URL donnée, avec `httpx`. Il suit l'en-tête `Mcp-Session-Id` d'une requête à l'autre, comme l'exige la spécification MCP Streamable HTTP.
 
-**When to use:** Remote MCP servers, services running as HTTP endpoints (e.g., Home Assistant MCP add-on, cloud-hosted MCP servers).
+**Quand s'en servir :** serveurs MCP distants, services exposés comme points d'accès HTTP (le module complémentaire MCP de Home Assistant, un serveur MCP hébergé dans le nuage, par exemple).
 
-**Connection parameters:**
+**Paramètres de connexion :**
 
-- Connect timeout: 10 seconds
-- Request timeout: 60 seconds
+- Délai de connexion : 10 secondes
+- Délai de requête : 60 secondes
 
 ### Stdio
 
-Used when the `command` field is set. Diapason spawns the command as a subprocess and communicates via JSON-RPC lines on stdin/stdout.
+Utilisé quand le champ `command` est rempli. Diapason lance la commande comme sous-processus et dialogue avec elle en lignes JSON-RPC sur stdin/stdout.
 
-**When to use:** Local MCP servers distributed as CLI tools, development/testing, servers that require filesystem access on the same machine.
+**Quand s'en servir :** serveurs MCP locaux distribués comme outils en ligne de commande, développement et tests, serveurs qui ont besoin d'accéder aux fichiers de la même machine.
 
-!!! info "SSETransport alias"
-    `SSETransport` is provided as a backward-compatible alias for `StreamableHTTPTransport`. Both refer to the same implementation.
+!!! info "L'alias SSETransport"
+    `SSETransport` existe comme alias rétrocompatible de `StreamableHTTPTransport`. Les deux désignent la même implémentation.
 
-## Error Handling
+## Le traitement des erreurs
 
-Diapason handles MCP server failures gracefully:
+Diapason encaisse les défaillances d'un serveur MCP sans broncher :
 
-- **Server unreachable:** A warning is logged and the server is skipped. All other servers and built-in tools continue to load normally.
-- **Timeout:** HTTP requests time out after 60 seconds. The server is skipped with a warning.
-- **Invalid config:** If the `servers` JSON is malformed or a server entry has neither `url` nor `command`, a warning is logged and that entry is skipped.
-- **Tool discovery failure:** If `tools/list` fails on a server, the error is caught and the server is skipped.
-- **Runtime tool call failure:** If a tool call to an external MCP server fails at runtime, it returns a `ToolResult` with `success=False` and the error message.
+- **Serveur injoignable :** un avertissement est écrit dans les journaux et le serveur est ignoré. Tous les autres serveurs et les outils intégrés continuent de se charger normalement.
+- **Délai dépassé :** les requêtes HTTP expirent au bout de 60 secondes. Le serveur est ignoré avec un avertissement.
+- **Configuration invalide :** si le JSON de `servers` est mal formé, ou si une entrée n'a ni `url` ni `command`, un avertissement est écrit et l'entrée est ignorée.
+- **Échec de la découverte d'outils :** si `tools/list` échoue sur un serveur, l'erreur est attrapée et le serveur est ignoré.
+- **Échec d'un appel d'outil à l'exécution :** si un appel d'outil vers un serveur MCP externe échoue à l'exécution, il rend un `ToolResult` avec `success=False` et le message d'erreur.
 
-No single server failure causes Diapason to crash or prevents other tools from working.
+La défaillance d'un serveur, quelle qu'elle soit, ne fait jamais planter Diapason et n'empêche pas les autres outils de fonctionner.
 
-## Troubleshooting
+## En cas de problème
 
-### Server not discovered
+### Le serveur n'est pas découvert
 
-1. Check that `[tools.mcp]` has `enabled = true`.
-2. Verify the `servers` JSON is valid. A common mistake is using TOML arrays instead of a JSON string.
-3. Check the Diapason logs for warnings like `Failed to discover external MCP tools`.
+1. Vérifie que `[tools.mcp]` porte bien `enabled = true`.
+2. Vérifie que le JSON de `servers` est valide. L'erreur classique : écrire un tableau TOML au lieu d'une chaîne JSON.
+3. Cherche dans les journaux de Diapason les avertissements du genre `Failed to discover external MCP tools`.
 
-### Connection refused / timeout
+### Connexion refusée ou délai dépassé
 
-1. Verify the server is running and reachable from the Diapason host: `curl -v http://host:port/`.
-2. Check firewall rules between the Diapason container and the MCP server.
-3. For Docker deployments, ensure both containers are on the same network or use host IPs.
+1. Vérifie que le serveur tourne et qu'il est joignable depuis la machine qui fait tourner Diapason : `curl -v http://host:port/`.
+2. Vérifie les règles de pare-feu entre le conteneur Diapason et le serveur MCP.
+3. Avec Docker, assure-toi que les deux conteneurs sont sur le même réseau, ou utilise les adresses IP de l'hôte.
 
-### Tools not appearing
+### Les outils n'apparaissent pas
 
-1. Run with debug logging to see which tools were discovered.
-2. Check if `include_tools` or `exclude_tools` filters are too restrictive.
-3. Verify the MCP server actually exposes tools via `tools/list` (some servers only expose resources or prompts).
+1. Relance avec les journaux en mode débogage pour voir quels outils ont été découverts.
+2. Regarde si les filtres `include_tools` ou `exclude_tools` ne sont pas trop serrés.
+3. Vérifie que le serveur MCP expose réellement des outils par `tools/list` (certains n'exposent que des ressources ou des prompts).
 
-### Stdio server crashes immediately
+### Le serveur stdio plante aussitôt
 
-1. Test the command manually: `python -m my_mcp_server` should start and wait for input on stdin.
-2. Check stderr output in the Diapason logs for error messages from the subprocess.
-3. Ensure all dependencies for the MCP server are installed in the same environment.
+1. Teste la commande à la main : `python -m my_mcp_server` doit démarrer et attendre une entrée sur stdin.
+2. Regarde la sortie d'erreur du sous-processus dans les journaux de Diapason.
+3. Assure-toi que toutes les dépendances du serveur MCP sont installées dans le même environnement.

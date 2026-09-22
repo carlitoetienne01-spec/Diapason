@@ -1,17 +1,17 @@
-# Simple Chat
+# Discussion simple
 
-A lightweight conversational AI with no tools and no agent overhead. This is the simplest possible Diapason setup: just Ollama and a local model. Ideal for general-purpose chat, Q&A, brainstorming, and getting started quickly.
+Une IA conversationnelle légère, sans outils et sans la machinerie d'un agent. C'est la configuration Diapason la plus simple qui soit : Ollama et un modèle local, rien de plus. Idéale pour discuter de tout et de rien, poser des questions, brasser des idées et démarrer vite.
 
-## Quickstart (3 minutes)
+## Démarrage rapide (3 minutes)
 
-### 1. Install Ollama and pull a model
+### 1. Installer Ollama et télécharger un modèle
 
 ```bash
-# Install Ollama: https://ollama.com
+# Installe Ollama : https://ollama.com
 ollama pull qwen3.5:4b
 ```
 
-### 2. Install and initialize Diapason
+### 2. Installer et initialiser Diapason
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -20,136 +20,136 @@ uv sync
 diapason init --preset chat-simple
 ```
 
-### 3. Ask a question
+### 3. Poser une question
 
 ```bash
-diapason ask "What is quantum computing?"
+diapason ask "Qu'est-ce que l'informatique quantique ?"
 ```
 
-That's it. No API keys, no tools, no cloud -- just a local model answering your questions.
+C'est tout. Aucune clé d'API, aucun outil, aucun nuage — juste un modèle local qui répond à tes questions.
 
-## CLI Commands
+## Les commandes de la CLI
 
 ```bash
-# Single question
-diapason ask "Explain the difference between TCP and UDP"
+# Une seule question
+diapason ask "Explique la différence entre TCP et UDP"
 
-# Interactive chat session (multi-turn conversation)
+# Une session de discussion interactive (conversation à plusieurs tours)
 diapason chat
 
-# Start the API server for the browser or desktop app
+# Démarrer le serveur d'API pour l'app navigateur ou l'app de bureau
 diapason serve
 
-# Override the model for a single query
-diapason ask -m qwen3.5:9b "Explain general relativity"
+# Changer de modèle pour une seule question
+diapason ask -m qwen3.5:9b "Explique la relativité générale"
 
-# Adjust temperature (0.0 = deterministic, 1.0 = creative)
-diapason ask -t 0.2 "List the planets in our solar system"
+# Régler la température (0.0 = déterministe, 1.0 = créatif)
+diapason ask -t 0.2 "Liste les planètes du système solaire"
 
-# Output raw JSON
-diapason ask --json "What is 2+2?"
+# Rendre le JSON brut
+diapason ask --json "Combien font 2+2 ?"
 ```
 
-## Configuration Reference
+## Référence de configuration
 
-The preset writes this to `~/.diapason/config.toml`:
+Le préréglage écrit ceci dans `~/.diapason/config.toml` :
 
 ```toml
 [engine]
 default = "ollama"
 
 [intelligence]
-default_model = "qwen3.5:4b"       # Fast and lightweight
-# default_model = "qwen3.5:9b"     # Better quality
-# default_model = "llama3.1:8b"    # Alternative model
+default_model = "qwen3.5:4b"       # Rapide et léger
+# default_model = "qwen3.5:9b"     # Meilleure qualité
+# default_model = "llama3.1:8b"    # Un autre modèle
 
 [agent]
-default_agent = "simple"            # Single-turn, no tools
+default_agent = "simple"            # Un seul tour, aucun outil
 
 [server]
 host = "0.0.0.0"
 port = 8000
 ```
 
-### Model options
+### Le choix du modèle
 
-| Model | Parameters | Speed | Quality | Best for |
-|-------|-----------|-------|---------|----------|
-| `qwen3.5:4b` | 4B | Fast | Good | Quick answers, lightweight hardware |
-| `qwen3.5:9b` | 9B | Balanced | Better | General-purpose chat, explanations |
-| `qwen3.5:35b` | 35B | Slower | Best | Complex reasoning, detailed analysis |
-| `llama3.1:8b` | 8B | Balanced | Good | Alternative if you prefer Meta models |
+| Modèle | Paramètres | Vitesse | Qualité | Pour quoi |
+|--------|-----------|---------|---------|-----------|
+| `qwen3.5:4b` | 4B | Rapide | Bonne | Réponses rapides, machine modeste |
+| `qwen3.5:9b` | 9B | Équilibrée | Meilleure | Discussion générale, explications |
+| `qwen3.5:35b` | 35B | Plus lente | La meilleure | Raisonnement complexe, analyse détaillée |
+| `llama3.1:8b` | 8B | Équilibrée | Bonne | Une autre voie si tu préfères les modèles Meta |
 
-To switch models, either edit `~/.diapason/config.toml` or override per-query:
+Pour changer de modèle, modifie `~/.diapason/config.toml` ou remplace-le question par question :
 
 ```bash
-diapason ask -m qwen3.5:35b "Write a detailed comparison of REST and GraphQL"
+diapason ask -m qwen3.5:35b "Écris une comparaison détaillée de REST et de GraphQL"
 ```
 
-To pull a new model:
+Pour télécharger un nouveau modèle :
 
 ```bash
 ollama pull qwen3.5:35b
 ```
 
-## Using the Browser App
+## Utiliser l'app navigateur
 
-Start the backend server and the React frontend with one command:
+Démarre le serveur et l'interface React en une seule commande :
 
 ```bash
 ./scripts/quickstart.sh
 ```
 
-This opens [http://localhost:5173](http://localhost:5173) in your browser with a full chat interface, streaming responses, and an energy monitoring dashboard.
+Ça ouvre [http://localhost:5173](http://localhost:5173) dans ton navigateur, avec l'interface de discussion complète, les réponses au fil de l'eau et le tableau de bord de consommation.
 
-To run just the API server (for use with the desktop app or external clients):
+Pour ne lancer que le serveur d'API (pour l'app de bureau ou pour des clients externes) :
 
 ```bash
 diapason serve
 ```
 
-The server is OpenAI-compatible, so any client that works with the OpenAI API can point to `http://localhost:8000/v1`.
+Le serveur est compatible OpenAI : n'importe quel client qui fonctionne avec l'API OpenAI peut pointer vers `http://localhost:8000/v1`.
 
-## Using the Desktop App
+## Utiliser l'app de bureau
 
-1. Start the backend: `diapason serve` (or `./scripts/quickstart.sh`).
-2. Build the desktop app from the authenticated checkout. No release is
-   currently published; on Carlito's Mac, use `./scripts/install-desktop.sh`.
-3. The app connects to `http://localhost:8000` automatically.
+1. Démarre le serveur : `diapason serve` (ou `./scripts/quickstart.sh`).
+2. Construis l'app de bureau depuis le dépôt authentifié. Aucune version n'est
+   publiée pour l'instant ; sur le Mac de Carlito, lance `./scripts/install-desktop.sh`.
+3. L'app se connecte toute seule à `http://localhost:8000`.
 
-## Switching Models
+## Changer de modèle
 
-You can change the default model at any time:
+Tu peux changer le modèle par défaut quand tu veux :
 
-**Edit the config:**
+**Modifier la configuration :**
 
 ```bash
-# Open the config file
+# Ouvrir le fichier de configuration
 ${EDITOR:-nano} ~/.diapason/config.toml
-# Change default_model to your preferred model
+# Remplacer default_model par le modèle de ton choix
 ```
 
-**Pull and switch in one step:**
+**Télécharger et basculer d'un coup :**
 
 ```bash
 ollama pull deepseek-r1:14b
-diapason ask -m deepseek-r1:14b "Hello"
+diapason ask -m deepseek-r1:14b "Bonjour"
 ```
 
-**Use an environment variable:**
+**Passer par une variable d'environnement :**
 
 ```bash
-DIAPASON_MODEL=qwen3.5:9b diapason ask "Hello"
+DIAPASON_MODEL=qwen3.5:9b diapason ask "Bonjour"
 ```
 
-## Troubleshooting
+## Dépannage
 
-**"No running engine found"** -- Make sure Ollama is running. Start it with `ollama serve` or open the Ollama desktop app.
+**« No running engine found »** — assure-toi qu'Ollama tourne. Démarre-le avec `ollama serve` ou ouvre l'app de bureau Ollama.
 
-**"Model not found"** -- Pull the model first with `ollama pull <model-name>`. List available models with `ollama list`.
+**« Model not found »** — télécharge d'abord le modèle avec `ollama pull <nom-du-modèle>`. Liste les modèles disponibles avec `ollama list`.
 
-**Slow responses** -- Use a smaller model (`qwen3.5:4b`). Check available memory; models need RAM roughly equal to their parameter count in GB (e.g., 9B model needs ~9 GB).
+**Les réponses sont lentes** — prends un modèle plus petit (`qwen3.5:4b`). Vérifie la mémoire disponible : un modèle a besoin d'à peu près autant de Go de mémoire vive qu'il compte de milliards de paramètres (un modèle 9B demande environ 9 Go).
 
-**Want to add tools later?** -- Switch to the [Code Assistant](code-assistant.md) or [Deep Research](deep-research.md) config. Simple chat is intentionally minimal.
+**Tu veux ajouter des outils plus tard ?** — bascule sur la configuration [Assistant de code](code-assistant.md) ou [Recherche approfondie](deep-research.md). La discussion simple est minimale à dessein.
 
-**Browser app not loading** -- Make sure both the backend (`diapason serve`) and frontend are running. The `./scripts/quickstart.sh` script starts both automatically.
+**L'app navigateur ne charge pas** — assure-toi que le serveur (`diapason serve`) et l'interface tournent tous les deux. Le script `./scripts/quickstart.sh` démarre les deux tout seul.

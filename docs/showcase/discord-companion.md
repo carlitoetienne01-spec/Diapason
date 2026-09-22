@@ -1,34 +1,34 @@
 ---
-title: Discord Companion
-description: Diapason answers questions in your private Discord while you sleep — reads your notes, checks your calendar, schedules things
+title: Compagnon Discord
+description: Diapason répond à tes questions dans ton Discord privé pendant que tu dors — il lit tes notes, consulte ton agenda, planifie des rendez-vous
 ---
 
-# 💬 Discord Companion — a personal assistant that lives in my Discord
+# 💬 Compagnon Discord — un assistant personnel qui vit dans mon Discord
 
 <figure markdown>
-  ![Diapason answering a Discord DM about the user's calendar and notes](../assets/showcase/discord-companion.png){ .showcase-screenshot loading=lazy }
-  <figcaption>I DM'd Diapason from my phone at midnight. It checked my Google Calendar, cross-referenced a note from last week, and answered — running on the Mac mini in my closet.</figcaption>
+  ![Diapason répond à un message privé Discord au sujet de l'agenda et des notes de l'utilisateur](../assets/showcase/discord-companion.png){ .showcase-screenshot loading=lazy }
+  <figcaption>Je lui ai écrit en privé depuis mon téléphone, à minuit. Il a consulté mon Google Calendar, l'a recoupé avec une note de la semaine dernière, et il a répondu — en tournant sur le Mac mini au fond de mon placard.</figcaption>
 </figure>
 
-I have a private Discord server with two channels and one user (me). Diapason lives there. I can DM it from my phone, my laptop, or my watch — anywhere Discord runs. Sample things I've asked it this week:
+J'ai un serveur Discord privé, avec deux salons et un seul utilisateur (moi). Diapason y habite. Je peux lui écrire en privé depuis mon téléphone, mon portable ou ma montre — partout où Discord tourne. Quelques exemples de ce que je lui ai demandé cette semaine :
 
-- "What's the address of the place I had that meeting last Tuesday?" → Diapason searches my calendar + meeting notes, replies in 4 seconds.
-- "Reply to Mom's text from earlier saying I'll call tomorrow at 7." → drafts a reply, asks me to confirm, sends.
-- "Add 'Sam's birthday is March 12' to my long-term memory." → updates `MEMORY.md`, confirms.
-- "Summarize the last hour of conversation in `#deploys-prod`." → reads the Slack channel via MCP, summarizes.
+- « Quelle est l'adresse de l'endroit où j'avais cette réunion mardi dernier ? » → Diapason cherche dans mon agenda et mes notes de réunion, répond en 4 secondes.
+- « Réponds au message de maman de tout à l'heure : dis-lui que je l'appelle demain à 7 h. » → il rédige une réponse, me demande de confirmer, envoie.
+- « Ajoute “l'anniversaire de Sam est le 12 mars” à ma mémoire de longue durée. » → il met à jour `MEMORY.md`, confirme.
+- « Résume la dernière heure de conversation dans `#deploys-prod`. » → il lit le salon Slack via MCP, résume.
 
-I used to use my phone's voice assistant for this. The two differences that matter: **Diapason answers in three sentences, not one,** and **it actually has my context** — my notes, my calendar, my projects, my history.
+Avant, je me servais de l'assistant vocal de mon téléphone pour ça. Les deux différences qui comptent : **Diapason répond en trois phrases, pas en une**, et **il a vraiment mon contexte** — mes notes, mon agenda, mes projets, mon historique.
 
-## Why it's nice
+## Pourquoi c'est agréable
 
-- **Latency feels like talking to a person.** Local inference on a modest GPU is 5–10× faster than round-tripping to a cloud API. Question to answer in 3 seconds.
-- **The Discord interface is multi-device for free.** Same conversation thread on my phone, laptop, watch — no special app to install.
-- **It's already private.** A Discord server I run, talking to a model on a machine I own. The data trail is two endpoints I control.
+- **La latence est celle d'une conversation avec quelqu'un.** L'inférence locale sur une carte graphique modeste est 5 à 10 fois plus rapide qu'un aller-retour vers une API distante. De la question à la réponse : 3 secondes.
+- **L'interface Discord est multi-appareils sans rien faire.** Le même fil de conversation sur mon téléphone, mon portable, ma montre — aucune app particulière à installer.
+- **C'est déjà privé.** Un serveur Discord que je tiens moi-même, qui parle à un modèle sur une machine qui m'appartient. La trace des données passe par deux points, et les deux sont à moi.
 
-## How I set this up
+## Comment je l'ai mis en place
 
-→ **[Tutorial: Messaging Hub](../tutorials/messaging-hub.md)** is the closest match — same channel-adapter + orchestrator-agent pattern, with Discord substituted for Slack.
+→ **[Tutoriel : Centre de messagerie](../tutorials/messaging-hub.md)** est ce qui s'en rapproche le plus — même schéma adaptateur de canal + agent orchestrateur, avec Discord à la place de Slack.
 
-→ **[Channel docs](../user-guide/cli.md)** walks through Discord/Slack/Telegram/WhatsApp setup. Discord is two environment variables and a bot token.
+→ **[La documentation des canaux](../user-guide/cli.md)** détaille la mise en place de Discord, Slack, Telegram et WhatsApp. Pour Discord, c'est deux variables d'environnement et un jeton de bot.
 
-→ **[MCP integration guide](../user-guide/cli.md)** if you want Diapason to reach into Notion, Linear, Gmail, etc.
+→ **[Le guide d'intégration MCP](../user-guide/cli.md)** si tu veux que Diapason aille chercher dans Notion, Linear, Gmail, etc.

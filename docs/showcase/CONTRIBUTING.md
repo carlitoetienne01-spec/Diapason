@@ -1,104 +1,104 @@
 ---
-title: Contributing a Showcase Entry
-description: How to add your setup to the Diapason Showcase
+title: Contribuer une entrée à la Galerie
+description: Comment ajouter ton montage à la Galerie de Diapason
 ---
 
-# Contributing a Showcase Entry
+# Contribuer une entrée à la Galerie
 
-The Showcase exists for one reason: to help a confused, curious, *non-technical* reader figure out whether Diapason is worth their weekend. That goal sets every editorial choice on this page.
+La Galerie existe pour une seule raison : aider un lecteur perdu, curieux et *non technique* à décider si Diapason mérite son week-end. Ce but commande tous les choix éditoriaux de cette page.
 
-## The format
+## Le format
 
 ```markdown
 ---
-title: <Your Title — short, capitalized>
-description: <One sentence. The hook a stranger sees in search results.>
+title: <Ton titre — court, avec une majuscule>
+description: <Une phrase. L'accroche qu'un inconnu voit dans les résultats de recherche.>
 ---
 
-# <emoji> <One-sentence hook — what it does FOR you, in plain English>
+# <emoji> <Une phrase d'accroche — ce que ça fait POUR toi, en français simple>
 
 <figure markdown>
-  ![<alt text>](../assets/showcase/<your-image>.png){ .showcase-screenshot loading=lazy }
-  <figcaption>A one-sentence caption that adds context the image can't show on its own.</figcaption>
+  ![<texte alternatif>](../assets/showcase/<ton-image>.png){ .showcase-screenshot loading=lazy }
+  <figcaption>Une légende d'une phrase, qui ajoute le contexte que l'image ne peut pas montrer toute seule.</figcaption>
 </figure>
 
-<2–3 short paragraphs of context: when do you use this, what changed for
-you, what the experience feels like. Concrete > abstract. "I read it on
-my phone before coffee" > "improves morning productivity."
+<2 ou 3 paragraphes courts de contexte : quand est-ce que tu t'en sers, ce qui a
+changé pour toi, l'effet que ça fait à l'usage. Concret > abstrait. « Je le lis
+sur mon téléphone avant le café » > « améliore la productivité matinale ».
 
-A bulleted list of two or three CONCRETE OUTCOMES works well — your
-calendar, your inbox, your code. Specific verbs and proper nouns.>
+Une liste à puces de deux ou trois RÉSULTATS CONCRETS marche bien — ton agenda,
+ta boîte de réception, ton code. Des verbes précis et des noms propres.>
 
-## Why it's nice
+## Pourquoi c'est agréable
 
-- **<one-line benefit>.** <one or two sentences of evidence>
-- **<one-line benefit>.** <one or two sentences of evidence>
-- **<one-line benefit>.** <one or two sentences of evidence>
+- **<un bénéfice en une ligne>.** <une ou deux phrases de preuve>
+- **<un bénéfice en une ligne>.** <une ou deux phrases de preuve>
+- **<un bénéfice en une ligne>.** <une ou deux phrases de preuve>
 
-## How I set this up
+## Comment je l'ai mis en place
 
-→ **[Tutorial: <name>](../tutorials/<file>.md)** is the closest match.
+→ **[Tutoriel : <nom>](../tutorials/<fichier>.md)** est ce qui s'en rapproche le plus.
 
-→ **[Recipe: <name>](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/recipes/data)** if you want the exact config.
+→ **[Recette : <nom>](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/recipes/data)** si tu veux la configuration exacte.
 
-→ **[<one more related doc>](../<path>.md)** if the reader is going deeper.
+→ **[<un document lié de plus>](../<chemin>.md)** si le lecteur veut aller plus loin.
 ```
 
-## Editorial conventions
+## Les conventions éditoriales
 
-These are guardrails, not rules. Break them if you have a reason.
+Ce sont des garde-fous, pas des règles. Enfreins-les si tu as une raison.
 
-### Lead with the outcome, not the technology
+### Commence par le résultat, pas par la technique
 
-❌ "Multi-channel routing with MCP-backed memory and an orchestrator agent."<br>
-✅ "Diapason answers my Discord messages while I sleep."
+❌ « Routage multicanal avec mémoire adossée à MCP et agent orchestrateur. »<br>
+✅ « Diapason répond à mes messages Discord pendant que je dors. »
 
-The reader doesn't know what an "orchestrator agent" is yet. They know what a Discord message is.
+Le lecteur ne sait pas encore ce qu'est un « agent orchestrateur ». Il sait ce qu'est un message Discord.
 
-### Show one screenshot. Make it the headline.
+### Montre une seule capture. Fais-en le titre.
 
-A single, large, *interesting* screenshot beats five small ones. Crop it to show the result, not the UI chrome. If you can convey it in an image, don't write the paragraph.
+Une capture unique, grande et *intéressante*, vaut mieux que cinq petites. Recadre-la sur le résultat, pas sur l'habillage de l'interface. Si une image peut le dire, n'écris pas le paragraphe.
 
-**Screenshot specs:**
+**Le cahier des charges de la capture :**
 
-- 1600×1000 PNG, sRGB, no alpha
-- File path: `docs/assets/showcase/<your-slug>.png`
-- Redact: real email addresses, API keys, personal phone numbers, conversation partners' faces or full names (unless they've signed off)
-- Keep: model names, timestamps, dollar amounts, emoji reactions, your own first name
+- PNG 1600 × 1000, sRGB, sans canal alpha
+- Chemin du fichier : `docs/assets/showcase/<ton-slug>.png`
+- À masquer : les vraies adresses de courriel, les clés d'API, les numéros de téléphone personnels, les visages et les noms complets de tes interlocuteurs (sauf s'ils ont donné leur accord)
+- À garder : les noms de modèles, les horodatages, les montants, les réactions emoji, ton propre prénom
 
-### Specific over impressive
+### Précis plutôt qu'impressionnant
 
-❌ "Saves significant time every morning."<br>
-✅ "Cut my morning catch-up from 25 minutes to 2."
+❌ « Fait gagner un temps considérable chaque matin. »<br>
+✅ « Mon rattrapage du matin est passé de 25 minutes à 2. »
 
-Numbers, durations, dollar amounts, and named tools build trust. Adjectives don't.
+Les nombres, les durées, les montants et les outils nommés inspirent confiance. Les adjectifs, non.
 
-### Three paragraphs is plenty
+### Trois paragraphes, c'est bien assez
 
-A reader who wants more clicks the "How I set this up →" link at the bottom. Showcase pages are a funnel into the docs, not a replacement for them. If you find yourself explaining configuration in the showcase entry, that material belongs in the linked tutorial.
+Le lecteur qui en veut plus clique sur le lien « Comment je l'ai mis en place → » en bas de page. Les pages de la Galerie sont un entonnoir vers la documentation, pas un substitut. Si tu te retrouves à expliquer une configuration dans ton entrée, cette matière appartient au tutoriel lié.
 
-### "Why it's nice" is for the experience, not the architecture
+### « Pourquoi c'est agréable » parle de l'expérience, pas de l'architecture
 
-The bullets under **Why it's nice** should answer "what's different *for you*?" — not "what's different about how the framework works?". Save the architecture talk for the linked docs.
+Les puces sous **Pourquoi c'est agréable** doivent répondre à « qu'est-ce qui change *pour toi* ? » — pas à « qu'est-ce qui change dans le fonctionnement du cadre ? ». Garde le discours d'architecture pour les documents liés.
 
-❌ "Uses local SQLite for state with WAL mode for concurrent reads."<br>
-✅ "I can read my own memory file in a text editor. I can delete a line and the memory is gone."
+❌ « Utilise SQLite en local pour l'état, en mode WAL pour les lectures concurrentes. »<br>
+✅ « Je peux lire mon propre fichier de mémoire dans un éditeur de texte. Je peux en supprimer une ligne, et le souvenir a disparu. »
 
-### Every entry must end with at least one "How I set this up →" link
+### Toute entrée doit finir par au moins un lien « Comment je l'ai mis en place → »
 
-If there isn't a relevant tutorial yet, link to the closest [User Guide](../user-guide/cli.md) and open an issue noting that the tutorial is missing. We will write it.
+S'il n'existe pas encore de tutoriel pertinent, pointe vers le [guide d'utilisation](../user-guide/cli.md) le plus proche et ouvre un ticket disant que le tutoriel manque. On l'écrira.
 
-## Submitting
+## Proposer ton entrée
 
-1. **Fork** the repo and create a branch: `docs/showcase-<your-slug>`.
-2. **Add** your markdown file at `docs/showcase/<your-slug>.md` and screenshot at `docs/assets/showcase/<your-slug>.png`.
-3. **Add a tile** to the grid in `docs/showcase/index.md` (matches the existing pattern — emoji + title + 1-sentence summary + `[:octicons-arrow-right-24: See it](<your-slug>.md)`).
-4. **Open a PR** with the title `docs(showcase): <your title>`. Tag a maintainer if you'd like editorial feedback before merge.
+1. **Duplique** le dépôt (fork) et crée une branche : `docs/showcase-<ton-slug>`.
+2. **Ajoute** ton fichier markdown dans `docs/showcase/<ton-slug>.md` et ta capture dans `docs/assets/showcase/<ton-slug>.png`.
+3. **Ajoute une tuile** à la grille de `docs/showcase/index.md` (sur le modèle des tuiles existantes — emoji + titre + résumé d'une phrase + `[:octicons-arrow-right-24: See it](<ton-slug>.md)`).
+4. **Ouvre une pull request** intitulée `docs(showcase): <ton titre>`. Mentionne un mainteneur si tu veux un retour éditorial avant la fusion.
 
-## Where this goes after merge
+## Où ça va une fois fusionné
 
-Hannah and the docs team post merged showcase entries to **`#config-showcase`** in [the Diapason Discord](https://discord.gg/diapason). You'll get tagged in the post — you don't have to do it yourself.
+Hannah et l'équipe documentation publient les entrées fusionnées dans **`#config-showcase`**, sur [le Discord de Diapason](https://discord.gg/diapason). Tu seras mentionné dans le message — tu n'as pas à le faire toi-même.
 
-## Questions, drafts, half-finished ideas
+## Questions, brouillons, idées à moitié faites
 
-Drop them in **`#config-showcase`** on Discord *before* opening a PR. Editorial feedback is faster on chat than in a PR review, and you'll save yourself a round of revisions.
+Dépose-les dans **`#config-showcase`** sur Discord *avant* d'ouvrir une pull request. Le retour éditorial va plus vite en discussion qu'en revue de pull request, et tu t'épargneras un tour de corrections.

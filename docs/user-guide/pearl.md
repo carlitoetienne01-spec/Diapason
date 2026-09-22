@@ -1,22 +1,23 @@
-# Pearl CLI Integration
+# L'intégration de Pearl à la ligne de commande
 
-Diapason includes a thin `diapason pearl` wrapper for Pearl's native command
-line tools. It does not replace Pearl's node or wallet; it makes the common
-commands discoverable from the same CLI users use for mining.
+Diapason embarque un mince enrobage `diapason pearl` autour des outils en ligne
+de commande natifs de Pearl. Il ne remplace ni le nœud ni le portefeuille de
+Pearl ; il rend les commandes courantes trouvables depuis la ligne de commande
+qui te sert déjà à miner.
 
-## Binary Discovery
+## Trouver les binaires
 
-`diapason pearl` looks for `pearld`, `oyster`, and `prlctl` on `PATH`, then under
-`$PEARL_HOME/bin`.
+`diapason pearl` cherche `pearld`, `oyster` et `prlctl` dans le `PATH`, puis
+sous `$PEARL_HOME/bin`.
 
 ```bash
 export PEARL_HOME=/path/to/pearl
 diapason pearl doctor
 ```
 
-## Native Pass-Through
+## Passer la main aux commandes natives
 
-Use pass-through commands when you need the full Pearl surface:
+Passe la main quand tu as besoin de toute la surface de Pearl :
 
 ```bash
 diapason pearl node -- --help
@@ -24,21 +25,23 @@ diapason pearl wallet -- --help
 diapason pearl ctl -- --help
 ```
 
-These map directly to:
+Ces commandes renvoient directement à :
 
-| Diapason command | Pearl binary |
+| Commande Diapason | Binaire Pearl |
 |---|---|
 | `diapason pearl node` | `pearld` |
 | `diapason pearl wallet` | `oyster` |
 | `diapason pearl ctl` | `prlctl` |
 
-The command format is always `diapason pearl <command>`. Pearl-native arguments
-go after that command. Use `--` before Pearl arguments when the arguments begin
-with dashes and you want to make the pass-through boundary explicit.
+La commande prend toujours la forme `diapason pearl <command>`. Les arguments
+natifs de Pearl viennent après cette commande. Mets `--` devant eux quand ils
+commencent par des tirets et que tu veux marquer explicitement où passe la
+frontière.
 
-## Wallet Address Helper
+## L'aide à la génération d'adresse
 
-If Oyster is already running, generate a mining address through wallet RPC:
+Si Oyster tourne déjà, génère une adresse de minage par le RPC du
+portefeuille :
 
 ```bash
 diapason pearl address \
@@ -47,12 +50,13 @@ diapason pearl address \
   -s localhost:44207
 ```
 
-The helper uses `prlctl --wallet` and defaults to `--notls`, which matches the
-local validation flow. Use `--tls --skipverify` if your Oyster RPC endpoint is
-serving TLS with a local certificate.
+Cette aide s'appuie sur `prlctl --wallet` et prend `--notls` par défaut, ce qui
+correspond au parcours de validation local. Utilise `--tls --skipverify` si ton
+point d'accès RPC Oyster sert du TLS avec un certificat local.
 
-## Boundary
+## La frontière
 
-`diapason mine` is the Diapason mining lifecycle. `diapason pearl` is an escape
-hatch to Pearl's native node, wallet, and RPC tools. For advanced node or
-wallet administration, Pearl's own help output is the source of truth.
+`diapason mine` porte le cycle de vie du minage côté Diapason. `diapason pearl`
+est une porte de sortie vers les outils natifs de Pearl — le nœud, le
+portefeuille et le RPC. Pour l'administration avancée d'un nœud ou d'un
+portefeuille, c'est l'aide de Pearl elle-même qui fait foi.

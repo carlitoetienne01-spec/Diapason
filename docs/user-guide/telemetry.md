@@ -1,36 +1,36 @@
-# Telemetry & Traces
+# Télémétrie et traces
 
-Diapason has two complementary observability systems: **telemetry** for per-inference metrics and **traces** for full interaction-level recording. Together, they provide comprehensive insight into system behavior and power the learning system's routing policy updates.
+Diapason a deux systèmes d'observation complémentaires : la **télémétrie**, pour les mesures prises à chaque inférence, et les **traces**, qui enregistrent une interaction entière. Ensemble, ils donnent une vue complète du comportement du système et alimentent les mises à jour de la politique d'aiguillage du système d'apprentissage.
 
 ---
 
-## Telemetry
+## La télémétrie
 
-The telemetry system records metrics for every inference call -- latency, token counts, cost, and energy consumption. Data is stored in SQLite and can be queried, exported, and aggregated.
+Le système de télémétrie enregistre des mesures pour chaque appel d'inférence — latence, nombre de jetons, coût et consommation d'énergie. Les données sont rangées dans SQLite ; tu peux les interroger, les exporter et les agréger.
 
 ### TelemetryRecord
 
-Each inference call produces a `TelemetryRecord` with the following fields:
+Chaque appel d'inférence produit un `TelemetryRecord` avec les champs suivants :
 
-| Field                | Type             | Description                              |
+| Champ                | Type             | Description                              |
 |----------------------|------------------|------------------------------------------|
-| `timestamp`          | `float`          | Unix timestamp of the call               |
-| `model_id`           | `str`            | Model identifier                         |
-| `engine`             | `str`            | Engine backend used                      |
-| `agent`              | `str`            | Agent used (if any)                      |
-| `prompt_tokens`      | `int`            | Input tokens consumed                    |
-| `completion_tokens`  | `int`            | Output tokens generated                  |
-| `total_tokens`       | `int`            | Total tokens (prompt + completion)       |
-| `latency_seconds`    | `float`          | Wall-clock inference time                |
-| `ttft`               | `float`          | Time to first token                      |
-| `cost_usd`           | `float`          | Estimated cost in USD                    |
-| `energy_joules`      | `float`          | Estimated energy consumption             |
-| `power_watts`        | `float`          | Power draw during inference              |
-| `metadata`           | `dict[str, Any]` | Additional metadata                      |
+| `timestamp`          | `float`          | Horodatage Unix de l'appel               |
+| `model_id`           | `str`            | Identifiant du modèle                    |
+| `engine`             | `str`            | Moteur d'inférence utilisé               |
+| `agent`              | `str`            | Agent utilisé (s'il y en a un)           |
+| `prompt_tokens`      | `int`            | Jetons consommés en entrée               |
+| `completion_tokens`  | `int`            | Jetons générés en sortie                 |
+| `total_tokens`       | `int`            | Jetons au total (prompt + complétion)    |
+| `latency_seconds`    | `float`          | Temps d'inférence à l'horloge            |
+| `ttft`               | `float`          | Délai jusqu'au premier jeton             |
+| `cost_usd`           | `float`          | Coût estimé, en dollars US               |
+| `energy_joules`      | `float`          | Consommation d'énergie estimée           |
+| `power_watts`        | `float`          | Puissance appelée pendant l'inférence    |
+| `metadata`           | `dict[str, Any]` | Métadonnées supplémentaires              |
 
 ### TelemetryStore
 
-The `TelemetryStore` is an append-only SQLite database that persists telemetry records. It integrates with the event bus to capture records automatically.
+Le `TelemetryStore` est une base SQLite en ajout seul qui conserve les enregistrements de télémétrie. Il se branche sur le bus d'événements pour les capturer tout seul.
 
 ```python
 from diapason.telemetry.store import TelemetryStore
@@ -40,197 +40,197 @@ bus = EventBus()
 store = TelemetryStore(db_path="~/.diapason/telemetry.db")
 store.subscribe_to_bus(bus)
 
-# Records are now captured automatically when TELEMETRY_RECORD events fire.
-# No manual recording needed -- instrumented_generate() handles this.
+# Les enregistrements sont capturés tout seuls dès qu'un TELEMETRY_RECORD part.
+# Rien à enregistrer à la main — instrumented_generate() s'en charge.
 
 store.close()
 ```
 
-The store subscribes to `TELEMETRY_RECORD` events on the event bus. When the `instrumented_generate()` wrapper is used (which happens automatically in both CLI and SDK), telemetry records are published and stored without any manual intervention.
+Le magasin s'abonne aux événements `TELEMETRY_RECORD` du bus. Dès que l'enveloppe `instrumented_generate()` est utilisée (ce qui arrive tout seul, aussi bien en ligne de commande que dans le SDK), les enregistrements de télémétrie sont publiés et rangés sans que tu aies à intervenir.
 
 ### `instrumented_generate()`
 
-This wrapper function calls `engine.generate()` and automatically publishes telemetry events:
+Cette fonction d'enveloppe appelle `engine.generate()` et publie automatiquement les événements de télémétrie :
 
-1. Publishes `INFERENCE_START` with model and engine info.
-2. Calls the engine and measures wall-clock latency.
-3. Extracts token usage from the engine response.
-4. Creates a `TelemetryRecord` from the measurements.
-5. Publishes `INFERENCE_END` and `TELEMETRY_RECORD` events.
+1. Elle publie `INFERENCE_START`, avec le modèle et le moteur.
+2. Elle appelle le moteur et mesure la latence à l'horloge.
+3. Elle extrait la consommation de jetons de la réponse du moteur.
+4. Elle construit un `TelemetryRecord` à partir des mesures.
+5. Elle publie les événements `INFERENCE_END` et `TELEMETRY_RECORD`.
 
-All CLI commands and SDK methods use this wrapper, so telemetry is recorded transparently.
+Toutes les commandes de la CLI et toutes les méthodes du SDK passent par cette enveloppe : la télémétrie s'enregistre sans que rien ne le montre.
 
 ### TelemetryAggregator
 
-The `TelemetryAggregator` provides read-only query and aggregation methods over stored telemetry data.
+Le `TelemetryAggregator` offre des méthodes de lecture seule pour interroger et agréger les données de télémétrie déjà rangées.
 
 ```python
 from diapason.telemetry.aggregator import TelemetryAggregator
 
 agg = TelemetryAggregator(db_path="~/.diapason/telemetry.db")
 
-# Overall summary
+# Le résumé global
 summary = agg.summary()
-print(f"Total calls: {summary.total_calls}")
-print(f"Total tokens: {summary.total_tokens}")
-print(f"Total cost: ${summary.total_cost:.6f}")
+print(f"Appels au total : {summary.total_calls}")
+print(f"Jetons au total : {summary.total_tokens}")
+print(f"Coût total : {summary.total_cost:.6f} $")
 
-# Per-model breakdown
+# Le détail par modèle
 for ms in agg.per_model_stats():
-    print(f"  {ms.model_id}: {ms.call_count} calls, {ms.avg_latency:.3f}s avg")
+    print(f"  {ms.model_id} : {ms.call_count} appels, {ms.avg_latency:.3f} s en moyenne")
 
-# Per-engine breakdown
+# Le détail par moteur
 for es in agg.per_engine_stats():
-    print(f"  {es.engine}: {es.call_count} calls, {es.total_tokens} tokens")
+    print(f"  {es.engine} : {es.call_count} appels, {es.total_tokens} jetons")
 
-# Top models by usage
+# Les modèles les plus utilisés
 top = agg.top_models(n=5)
 
-# Export raw records
+# Exporter les enregistrements bruts
 records = agg.export_records()
 
-# Time-range filtering (Unix timestamps)
+# Filtrer sur une plage de temps (horodatages Unix)
 recent = agg.summary(since=1700000000.0)
 
-# Clear all records
+# Effacer tous les enregistrements
 count = agg.clear()
-print(f"Deleted {count} records")
+print(f"{count} enregistrements supprimés")
 
 agg.close()
 ```
 
-#### Aggregation Methods
+#### Les méthodes d'agrégation
 
-| Method              | Returns            | Description                                |
+| Méthode             | Rend               | Description                                |
 |---------------------|--------------------|--------------------------------------------|
-| `summary()`         | `AggregatedStats`  | Total calls, tokens, cost, latency + per-model and per-engine breakdowns |
-| `per_model_stats()` | `list[ModelStats]`  | Call count, tokens, latency, cost grouped by model |
-| `per_engine_stats()`| `list[EngineStats]` | Call count, tokens, latency, cost grouped by engine |
-| `top_models(n)`     | `list[ModelStats]`  | Top N models by call count                 |
-| `export_records()`  | `list[dict]`        | All records as plain dictionaries          |
-| `record_count()`    | `int`               | Total number of stored records             |
-| `clear()`           | `int`               | Delete all records, return count           |
+| `summary()`         | `AggregatedStats`  | Appels, jetons, coût et latence au total, plus le détail par modèle et par moteur |
+| `per_model_stats()` | `list[ModelStats]`  | Nombre d'appels, jetons, latence et coût, groupés par modèle |
+| `per_engine_stats()`| `list[EngineStats]` | Nombre d'appels, jetons, latence et coût, groupés par moteur |
+| `top_models(n)`     | `list[ModelStats]`  | Les N modèles les plus appelés             |
+| `export_records()`  | `list[dict]`        | Tous les enregistrements, en dictionnaires simples |
+| `record_count()`    | `int`               | Nombre total d'enregistrements rangés      |
+| `clear()`           | `int`               | Efface tous les enregistrements et rend leur nombre |
 
-All query methods accept optional `since` and `until` parameters (Unix timestamps) for time-range filtering.
+Toutes les méthodes d'interrogation acceptent les paramètres facultatifs `since` et `until` (des horodatages Unix) pour filtrer sur une plage de temps.
 
-#### Data Classes
+#### Les classes de données
 
-**ModelStats:**
+**ModelStats :**
 
-| Field              | Type    | Description                    |
+| Champ              | Type    | Description                    |
 |--------------------|---------|--------------------------------|
-| `model_id`         | `str`   | Model identifier               |
-| `call_count`       | `int`   | Total inference calls          |
-| `total_tokens`     | `int`   | Total tokens processed         |
-| `prompt_tokens`    | `int`   | Total input tokens             |
-| `completion_tokens`| `int`   | Total output tokens            |
-| `total_latency`    | `float` | Sum of all latencies           |
-| `avg_latency`      | `float` | Average latency per call       |
-| `total_cost`       | `float` | Total cost in USD              |
+| `model_id`         | `str`   | Identifiant du modèle          |
+| `call_count`       | `int`   | Appels d'inférence au total    |
+| `total_tokens`     | `int`   | Jetons traités au total        |
+| `prompt_tokens`    | `int`   | Jetons d'entrée au total       |
+| `completion_tokens`| `int`   | Jetons de sortie au total      |
+| `total_latency`    | `float` | Somme de toutes les latences   |
+| `avg_latency`      | `float` | Latence moyenne par appel      |
+| `total_cost`       | `float` | Coût total, en dollars US      |
 
-**EngineStats:**
+**EngineStats :**
 
-| Field           | Type    | Description                    |
+| Champ           | Type    | Description                    |
 |-----------------|---------|--------------------------------|
-| `engine`        | `str`   | Engine identifier              |
-| `call_count`    | `int`   | Total inference calls          |
-| `total_tokens`  | `int`   | Total tokens processed         |
-| `total_latency` | `float` | Sum of all latencies           |
-| `avg_latency`   | `float` | Average latency per call       |
-| `total_cost`    | `float` | Total cost in USD              |
+| `engine`        | `str`   | Identifiant du moteur          |
+| `call_count`    | `int`   | Appels d'inférence au total    |
+| `total_tokens`  | `int`   | Jetons traités au total        |
+| `total_latency` | `float` | Somme de toutes les latences   |
+| `avg_latency`   | `float` | Latence moyenne par appel      |
+| `total_cost`    | `float` | Coût total, en dollars US      |
 
-**AggregatedStats:**
+**AggregatedStats :**
 
-| Field           | Type               | Description                    |
-|-----------------|--------------------|--------------------------------|
-| `total_calls`   | `int`              | Total inference calls          |
-| `total_tokens`  | `int`              | Total tokens across all models |
-| `total_cost`    | `float`            | Total cost in USD              |
-| `total_latency` | `float`            | Total latency in seconds       |
-| `per_model`     | `list[ModelStats]`  | Breakdown by model             |
-| `per_engine`    | `list[EngineStats]` | Breakdown by engine            |
+| Champ           | Type               | Description                          |
+|-----------------|--------------------|--------------------------------------|
+| `total_calls`   | `int`              | Appels d'inférence au total          |
+| `total_tokens`  | `int`              | Jetons au total, tous modèles confondus |
+| `total_cost`    | `float`            | Coût total, en dollars US            |
+| `total_latency` | `float`            | Latence totale, en secondes          |
+| `per_model`     | `list[ModelStats]`  | Le détail par modèle                 |
+| `per_engine`    | `list[EngineStats]` | Le détail par moteur                 |
 
-### CLI Commands
+### Les commandes de la CLI
 
 ```bash
-# Show aggregated statistics
+# Afficher les statistiques agrégées
 diapason telemetry stats
-diapason telemetry stats -n 5          # Top 5 models only
+diapason telemetry stats -n 5          # Les 5 premiers modèles seulement
 
-# Export records
-diapason telemetry export              # JSON to stdout
-diapason telemetry export -f csv       # CSV to stdout
-diapason telemetry export -o data.json # JSON to file
+# Exporter les enregistrements
+diapason telemetry export              # JSON sur la sortie standard
+diapason telemetry export -f csv       # CSV sur la sortie standard
+diapason telemetry export -o data.json # JSON dans un fichier
 diapason telemetry export -f csv -o metrics.csv
 
-# Clear all records
-diapason telemetry clear               # With confirmation prompt
-diapason telemetry clear --yes         # Without confirmation
+# Effacer tous les enregistrements
+diapason telemetry clear               # Avec demande de confirmation
+diapason telemetry clear --yes         # Sans confirmation
 ```
 
 ---
 
-## Traces
+## Les traces
 
-While telemetry captures per-inference metrics, the trace system records **complete interaction sequences** -- the full chain of steps an agent takes to handle a query. Traces are the primary input to the learning system.
+Là où la télémétrie prend des mesures à chaque inférence, le système de traces enregistre des **séquences d'interaction entières** — toute la chaîne d'étapes qu'un agent suit pour traiter une question. Les traces sont la matière première du système d'apprentissage.
 
-### What is a Trace?
+### Qu'est-ce qu'une trace ?
 
-A `Trace` captures the entire lifecycle of handling a user query:
+Une `Trace` capture tout le cycle de vie du traitement d'une question :
 
-| Field                    | Type               | Description                                   |
-|--------------------------|--------------------|-----------------------------------------------|
-| `trace_id`               | `str`              | Unique identifier (auto-generated)            |
-| `query`                  | `str`              | The original user query                       |
-| `agent`                  | `str`              | Agent that handled the query                  |
-| `model`                  | `str`              | Model used for inference                      |
-| `engine`                 | `str`              | Engine backend used                           |
-| `steps`                  | `list[TraceStep]`  | Ordered list of processing steps              |
-| `result`                 | `str`              | Final response content                        |
-| `outcome`                | `str` or `None`    | `"success"`, `"failure"`, or `None` (unknown) |
-| `feedback`               | `float` or `None`  | User quality score [0, 1]                     |
-| `started_at`             | `float`            | Unix timestamp when processing began          |
-| `ended_at`               | `float`            | Unix timestamp when processing ended          |
-| `total_tokens`           | `int`              | Total tokens across all steps                 |
-| `total_latency_seconds`  | `float`            | Total latency across all steps                |
-| `metadata`               | `dict[str, Any]`   | Additional metadata                           |
+| Champ                    | Type               | Description                                    |
+|--------------------------|--------------------|------------------------------------------------|
+| `trace_id`               | `str`              | Identifiant unique (généré tout seul)          |
+| `query`                  | `str`              | La question d'origine                          |
+| `agent`                  | `str`              | L'agent qui a traité la question               |
+| `model`                  | `str`              | Le modèle utilisé pour l'inférence             |
+| `engine`                 | `str`              | Le moteur d'inférence utilisé                  |
+| `steps`                  | `list[TraceStep]`  | La liste ordonnée des étapes de traitement     |
+| `result`                 | `str`              | Le contenu de la réponse finale                |
+| `outcome`                | `str` ou `None`    | `"success"`, `"failure"`, ou `None` (inconnu)  |
+| `feedback`               | `float` ou `None`  | Note de qualité donnée par l'utilisateur, entre 0 et 1 |
+| `started_at`             | `float`            | Horodatage Unix du début du traitement         |
+| `ended_at`               | `float`            | Horodatage Unix de la fin du traitement        |
+| `total_tokens`           | `int`              | Jetons au total, toutes étapes confondues      |
+| `total_latency_seconds`  | `float`            | Latence totale, toutes étapes confondues       |
+| `metadata`               | `dict[str, Any]`   | Métadonnées supplémentaires                    |
 
-### Trace vs Telemetry
+### Trace et télémétrie : la différence
 
-| Aspect         | Telemetry                              | Traces                                       |
-|----------------|----------------------------------------|----------------------------------------------|
-| **Scope**      | Single inference call                  | Full interaction (multiple steps)            |
-| **Granularity**| Per-call metrics                       | Step-by-step sequence                        |
-| **Purpose**    | Performance monitoring, cost tracking  | Learning, routing optimization, debugging    |
-| **Data**       | Latency, tokens, cost, energy          | Route, retrieve, generate, tool_call, respond |
-| **Storage**    | Flat table of records                  | Traces table + steps table                   |
+| Aspect          | Télémétrie                               | Traces                                        |
+|-----------------|------------------------------------------|-----------------------------------------------|
+| **Portée**      | Un seul appel d'inférence                | L'interaction entière (plusieurs étapes)      |
+| **Granularité** | Des mesures par appel                    | Une séquence, étape par étape                 |
+| **Rôle**        | Surveiller les performances, suivre le coût | Apprendre, optimiser l'aiguillage, déboguer |
+| **Données**     | Latence, jetons, coût, énergie           | Route, récupération, génération, appel d'outil, réponse |
+| **Rangement**   | Une table plate d'enregistrements        | Une table de traces + une table d'étapes      |
 
 ### TraceStep
 
-Each step in a trace records a single action the agent took.
+Chaque étape d'une trace enregistre une action que l'agent a menée.
 
-| Field              | Type             | Description                              |
+| Champ              | Type             | Description                              |
 |--------------------|------------------|------------------------------------------|
-| `step_type`        | `StepType`       | Type of step (see below)                 |
-| `timestamp`        | `float`          | When the step occurred                   |
-| `duration_seconds` | `float`          | How long the step took                   |
-| `input`            | `dict[str, Any]` | Input data for the step                  |
-| `output`           | `dict[str, Any]` | Output data from the step                |
-| `metadata`         | `dict[str, Any]` | Additional metadata                      |
+| `step_type`        | `StepType`       | Le type d'étape (voir ci-dessous)        |
+| `timestamp`        | `float`          | Le moment où l'étape a eu lieu           |
+| `duration_seconds` | `float`          | Le temps qu'elle a pris                  |
+| `input`            | `dict[str, Any]` | Les données d'entrée de l'étape          |
+| `output`           | `dict[str, Any]` | Les données de sortie de l'étape         |
+| `metadata`         | `dict[str, Any]` | Métadonnées supplémentaires              |
 
 ### StepType
 
-| Type         | Description                                      | Example Input                | Example Output                     |
+| Type         | Description                                      | Exemple d'entrée             | Exemple de sortie                  |
 |--------------|--------------------------------------------------|------------------------------|------------------------------------|
-| `route`      | Model/agent selection decision                   | `{"query_type": "math"}`     | `{"model": "qwen3:8b"}`           |
-| `retrieve`   | Memory search for context                        | `{"query": "topic"}`         | `{"num_results": 3}`               |
-| `generate`   | LLM inference call                               | `{"model": "qwen3:8b"}`     | `{"tokens": 128}`                  |
-| `tool_call`  | Tool execution                                   | `{"tool": "calculator"}`     | `{"success": true}`                |
-| `respond`    | Final response to the user                       | `{}`                         | `{"content": "...", "turns": 2}`   |
+| `route`      | Décision de choix du modèle ou de l'agent        | `{"query_type": "math"}`     | `{"model": "qwen3:8b"}`           |
+| `retrieve`   | Recherche en mémoire pour du contexte            | `{"query": "topic"}`         | `{"num_results": 3}`               |
+| `generate`   | Appel d'inférence au modèle                      | `{"model": "qwen3:8b"}`     | `{"tokens": 128}`                  |
+| `tool_call`  | Exécution d'un outil                             | `{"tool": "calculator"}`     | `{"success": true}`                |
+| `respond`    | Réponse finale rendue à l'utilisateur            | `{}`                         | `{"content": "...", "turns": 2}`   |
 
 ### TraceCollector
 
-The `TraceCollector` wraps any `BaseAgent` to automatically record a `Trace` for every `run()` call. It subscribes to event bus events during execution and converts them into `TraceStep` objects.
+Le `TraceCollector` enveloppe n'importe quel `BaseAgent` pour enregistrer tout seul une `Trace` à chaque appel de `run()`. Il s'abonne aux événements du bus pendant l'exécution et les convertit en objets `TraceStep`.
 
 ```python
 from diapason.agents.orchestrator import OrchestratorAgent
@@ -244,38 +244,38 @@ store = TraceStore(db_path="./traces.db")
 agent = OrchestratorAgent(engine, model, tools=tools, bus=bus)
 collector = TraceCollector(agent, store=store, bus=bus)
 
-# The trace is recorded automatically
-result = collector.run("What is 2+2?")
+# La trace s'enregistre toute seule
+result = collector.run("Combien font 2+2 ?")
 print(result.content)
-# Trace is now saved to the store and published on the bus
+# La trace est maintenant dans le magasin, et publiée sur le bus
 ```
 
-**How the collector works:**
+**Comment le collecteur travaille :**
 
-1. Subscribes to `INFERENCE_START`, `INFERENCE_END`, `TOOL_CALL_START`, `TOOL_CALL_END`, and `MEMORY_RETRIEVE` events.
-2. Executes the wrapped agent's `run()` method.
-3. Converts captured events into `TraceStep` objects with timing data.
-4. Appends a final `RESPOND` step with the result.
-5. Builds a complete `Trace` object and saves it to the `TraceStore`.
-6. Publishes a `TRACE_COMPLETE` event on the bus.
-7. Unsubscribes from events after the run completes.
+1. Il s'abonne aux événements `INFERENCE_START`, `INFERENCE_END`, `TOOL_CALL_START`, `TOOL_CALL_END` et `MEMORY_RETRIEVE`.
+2. Il exécute la méthode `run()` de l'agent qu'il enveloppe.
+3. Il convertit les événements capturés en objets `TraceStep`, avec leurs temps.
+4. Il ajoute une dernière étape `RESPOND` portant le résultat.
+5. Il construit un objet `Trace` complet et l'enregistre dans le `TraceStore`.
+6. Il publie un événement `TRACE_COMPLETE` sur le bus.
+7. Il se désabonne des événements une fois l'exécution terminée.
 
 ### TraceStore
 
-The `TraceStore` is an SQLite-backed database for persisting complete traces with their steps.
+Le `TraceStore` est une base adossée à SQLite qui conserve les traces entières, avec leurs étapes.
 
 ```python
 from diapason.traces.store import TraceStore
 
 store = TraceStore(db_path="./traces.db")
 
-# Save a trace
+# Enregistrer une trace
 store.save(trace)
 
-# Get a specific trace
+# Récupérer une trace précise
 trace = store.get("abc123def456")
 
-# List traces with filters
+# Lister les traces avec des filtres
 traces = store.list_traces(
     agent="orchestrator",
     model="qwen3:8b",
@@ -284,140 +284,140 @@ traces = store.list_traces(
     limit=50,
 )
 
-# Count total traces
+# Compter les traces
 count = store.count()
 
-# Subscribe to event bus for automatic saving
+# S'abonner au bus d'événements pour un enregistrement automatique
 store.subscribe_to_bus(bus)
 
 store.close()
 ```
 
-#### Filtering Options
+#### Les options de filtrage
 
-| Parameter | Type    | Description                              |
-|-----------|---------|------------------------------------------|
-| `agent`   | `str`   | Filter by agent ID                       |
-| `model`   | `str`   | Filter by model ID                       |
-| `outcome` | `str`   | Filter by outcome (`"success"`, `"failure"`) |
-| `since`   | `float` | Start of time range (Unix timestamp)     |
-| `until`   | `float` | End of time range (Unix timestamp)       |
-| `limit`   | `int`   | Maximum number of traces to return (default: 100) |
+| Paramètre | Type    | Description                                     |
+|-----------|---------|-------------------------------------------------|
+| `agent`   | `str`   | Filtrer par identifiant d'agent                 |
+| `model`   | `str`   | Filtrer par identifiant de modèle               |
+| `outcome` | `str`   | Filtrer par issue (`"success"`, `"failure"`)    |
+| `since`   | `float` | Début de la plage de temps (horodatage Unix)    |
+| `until`   | `float` | Fin de la plage de temps (horodatage Unix)      |
+| `limit`   | `int`   | Nombre maximum de traces à rendre (100 par défaut) |
 
 ### TraceAnalyzer
 
-The `TraceAnalyzer` provides read-only aggregated statistics over stored traces. These statistics are used by the learning system to update routing policies.
+Le `TraceAnalyzer` offre des statistiques agrégées, en lecture seule, sur les traces rangées. Ce sont elles que le système d'apprentissage utilise pour mettre à jour les politiques d'aiguillage.
 
 ```python
 from diapason.traces.analyzer import TraceAnalyzer
 
 analyzer = TraceAnalyzer(store=trace_store)
 
-# Overall summary
+# Le résumé global
 summary = analyzer.summary()
-print(f"Total traces: {summary.total_traces}")
-print(f"Total steps: {summary.total_steps}")
-print(f"Avg steps/trace: {summary.avg_steps_per_trace:.1f}")
-print(f"Avg latency: {summary.avg_latency:.3f}s")
-print(f"Success rate: {summary.success_rate:.1%}")
-print(f"Step distribution: {summary.step_type_distribution}")
+print(f"Traces au total : {summary.total_traces}")
+print(f"Étapes au total : {summary.total_steps}")
+print(f"Étapes par trace en moyenne : {summary.avg_steps_per_trace:.1f}")
+print(f"Latence moyenne : {summary.avg_latency:.3f} s")
+print(f"Taux de réussite : {summary.success_rate:.1%}")
+print(f"Répartition des étapes : {summary.step_type_distribution}")
 
-# Per-route statistics (model + agent combinations)
+# Les statistiques par route (les couples modèle + agent)
 for rs in analyzer.per_route_stats():
-    print(f"  {rs.model}/{rs.agent}: {rs.count} traces, "
-          f"{rs.avg_latency:.3f}s avg, {rs.success_rate:.1%} success")
+    print(f"  {rs.model}/{rs.agent} : {rs.count} traces, "
+          f"{rs.avg_latency:.3f} s en moyenne, {rs.success_rate:.1%} de réussite")
 
-# Per-tool statistics
+# Les statistiques par outil
 for ts in analyzer.per_tool_stats():
-    print(f"  {ts.tool_name}: {ts.call_count} calls, "
-          f"{ts.avg_latency:.3f}s avg, {ts.success_rate:.1%} success")
+    print(f"  {ts.tool_name} : {ts.call_count} appels, "
+          f"{ts.avg_latency:.3f} s en moyenne, {ts.success_rate:.1%} de réussite")
 
-# Find traces matching query characteristics
+# Retrouver les traces selon les caractéristiques de la question
 code_traces = analyzer.traces_for_query_type(has_code=True)
 short_traces = analyzer.traces_for_query_type(max_length=100)
 
-# Export traces as plain dicts
+# Exporter les traces en dictionnaires simples
 exported = analyzer.export_traces(limit=500)
 ```
 
-#### Analysis Methods
+#### Les méthodes d'analyse
 
-| Method                    | Returns            | Description                                          |
+| Méthode                   | Rend               | Description                                          |
 |---------------------------|--------------------|------------------------------------------------------|
-| `summary()`               | `TraceSummary`     | Overall statistics: counts, averages, distributions  |
-| `per_route_stats()`       | `list[RouteStats]` | Stats grouped by (model, agent) combinations         |
-| `per_tool_stats()`        | `list[ToolStats]`  | Stats grouped by tool name                           |
-| `traces_for_query_type()` | `list[Trace]`      | Filter traces by query characteristics               |
-| `export_traces()`         | `list[dict]`       | Export traces as serializable dictionaries           |
+| `summary()`               | `TraceSummary`     | Les statistiques d'ensemble : comptes, moyennes, répartitions |
+| `per_route_stats()`       | `list[RouteStats]` | Les statistiques groupées par couple (modèle, agent) |
+| `per_tool_stats()`        | `list[ToolStats]`  | Les statistiques groupées par nom d'outil            |
+| `traces_for_query_type()` | `list[Trace]`      | Filtrer les traces selon les caractéristiques de la question |
+| `export_traces()`         | `list[dict]`       | Exporter les traces en dictionnaires sérialisables   |
 
-All analysis methods accept optional `since` and `until` parameters for time-range filtering.
+Toutes les méthodes d'analyse acceptent les paramètres facultatifs `since` et `until` pour filtrer sur une plage de temps.
 
-#### Data Classes
+#### Les classes de données
 
-**TraceSummary:**
+**TraceSummary :**
 
-| Field                    | Type            | Description                              |
-|--------------------------|-----------------|------------------------------------------|
-| `total_traces`           | `int`           | Total number of traces                   |
-| `total_steps`            | `int`           | Total steps across all traces            |
-| `avg_steps_per_trace`    | `float`         | Average number of steps per trace        |
-| `avg_latency`            | `float`         | Average total latency per trace          |
-| `avg_tokens`             | `float`         | Average tokens per trace                 |
-| `success_rate`           | `float`         | Fraction of evaluated traces that succeeded |
-| `step_type_distribution` | `dict[str, int]`| Count of each step type                  |
+| Champ                    | Type            | Description                                  |
+|--------------------------|-----------------|----------------------------------------------|
+| `total_traces`           | `int`           | Nombre total de traces                       |
+| `total_steps`            | `int`           | Étapes au total, toutes traces confondues    |
+| `avg_steps_per_trace`    | `float`         | Nombre moyen d'étapes par trace              |
+| `avg_latency`            | `float`         | Latence totale moyenne par trace             |
+| `avg_tokens`             | `float`         | Jetons moyens par trace                      |
+| `success_rate`           | `float`         | Part des traces évaluées qui ont réussi      |
+| `step_type_distribution` | `dict[str, int]`| Le compte de chaque type d'étape             |
 
-**RouteStats:**
+**RouteStats :**
 
-| Field          | Type           | Description                              |
-|----------------|----------------|------------------------------------------|
-| `model`        | `str`          | Model identifier                         |
-| `agent`        | `str`          | Agent identifier                         |
-| `count`        | `int`          | Number of traces for this route          |
-| `avg_latency`  | `float`        | Average latency for this route           |
-| `avg_tokens`   | `float`        | Average tokens for this route            |
-| `success_rate` | `float`        | Success rate for this route              |
-| `avg_feedback` | `float` or `None` | Average user feedback (if available)  |
+| Champ          | Type              | Description                                    |
+|----------------|-------------------|------------------------------------------------|
+| `model`        | `str`             | Identifiant du modèle                          |
+| `agent`        | `str`             | Identifiant de l'agent                         |
+| `count`        | `int`             | Nombre de traces pour cette route              |
+| `avg_latency`  | `float`           | Latence moyenne pour cette route               |
+| `avg_tokens`   | `float`           | Jetons moyens pour cette route                 |
+| `success_rate` | `float`           | Taux de réussite de cette route                |
+| `avg_feedback` | `float` ou `None` | Retour moyen de l'utilisateur (s'il y en a un) |
 
-**ToolStats:**
+**ToolStats :**
 
-| Field          | Type    | Description                              |
+| Champ          | Type    | Description                              |
 |----------------|---------|------------------------------------------|
-| `tool_name`    | `str`   | Tool identifier                          |
-| `call_count`   | `int`   | Number of times the tool was called      |
-| `avg_latency`  | `float` | Average execution latency                |
-| `success_rate` | `float` | Fraction of successful executions        |
+| `tool_name`    | `str`   | Identifiant de l'outil                   |
+| `call_count`   | `int`   | Nombre de fois où l'outil a été appelé   |
+| `avg_latency`  | `float` | Latence d'exécution moyenne              |
+| `success_rate` | `float` | Part des exécutions réussies             |
 
 ---
 
-## Data Flow
+## Le cheminement des données
 
-The following diagram shows how telemetry and trace data flows through the system:
+Le schéma suivant montre par où passent les données de télémétrie et de trace :
 
 ```
-User Query
+Question de l'utilisateur
     |
     v
-Agent.run()  -->  EventBus  -->  TraceCollector (captures steps)
+Agent.run()  -->  EventBus  -->  TraceCollector (capture les étapes)
     |                   |
     v                   v
-Engine.generate()  TelemetryStore (captures per-call metrics)
+Engine.generate()  TelemetryStore (capture les mesures par appel)
     |
     v
 instrumented_generate()
     |
-    +---> INFERENCE_START event
-    +---> INFERENCE_END event
-    +---> TELEMETRY_RECORD event
+    +---> événement INFERENCE_START
+    +---> événement INFERENCE_END
+    +---> événement TELEMETRY_RECORD
     |
     v
 TraceCollector
     |
-    +---> Builds Trace with TraceSteps
-    +---> Saves to TraceStore
-    +---> Publishes TRACE_COMPLETE event
+    +---> Construit la Trace et ses TraceStep
+    +---> Enregistre dans le TraceStore
+    +---> Publie l'événement TRACE_COMPLETE
     |
     v
-TraceAnalyzer / TelemetryAggregator  -->  Learning System
+TraceAnalyzer / TelemetryAggregator  -->  Système d'apprentissage
 ```
 
-Both systems operate transparently -- no manual instrumentation is needed when using the CLI or SDK, as they automatically set up the event bus and telemetry store.
+Les deux systèmes travaillent sans rien demander : tu n'as aucune instrumentation à poser à la main quand tu passes par la CLI ou le SDK, puisqu'ils mettent en place le bus d'événements et le magasin de télémétrie tout seuls.

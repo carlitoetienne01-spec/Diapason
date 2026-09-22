@@ -1,29 +1,29 @@
-# Channels & Connectors
+# Canaux et connecteurs
 
-Diapason has two types of integrations:
+Diapason a deux types d'intégrations :
 
-- **Data connectors** — read-only access to your personal data (Gmail, iMessage, Google Drive, etc.) so your agent can search and research across them
-- **Messaging channels** — ways to talk TO your agent from your phone or other platforms (iMessage/SMS, Slack)
+- **Les connecteurs de données** — un accès en lecture seule à tes données personnelles (Gmail, iMessage, Google Drive, etc.) pour que ton agent puisse y chercher et y enquêter
+- **Les canaux de messagerie** — des façons de parler À ton agent depuis ton téléphone ou d'autres plateformes (iMessage/SMS, Slack)
 
 ---
 
-# Messaging Channels
+# Les canaux de messagerie
 
-## iMessage & SMS (via SendBlue)
+## iMessage et SMS (par SendBlue)
 
-**What it does:** Gives your agent a phone number. Text it from any phone (iPhone via iMessage, Android via SMS) and the agent responds.
+**Ce que ça fait :** ça donne un numéro de téléphone à ton agent. Écris-lui depuis n'importe quel téléphone (iMessage sur iPhone, SMS sur Android) et il te répond.
 
-### Setup
+### La mise en place
 
-1. **Create a SendBlue account:** [sendblue.com](https://www.sendblue.com/) — free tier available
-2. **Get your API credentials:** Dashboard → API Keys → copy **API Key ID** and **API Secret Key**
-3. **Note your SendBlue phone number** — this is the number people text to reach your agent
-4. **Connect in Diapason:**
-   - Desktop/Browser: Agents → your agent → **Messaging** tab → iMessage/SMS → enter API Key ID, API Secret Key, and phone number
-   - The agent will send an "ack" message and a test to verify it works
-5. **Set up the webhook** so incoming texts reach your agent:
-   - You need a public URL — use [ngrok](https://ngrok.com/) to tunnel to your local server: `ngrok http 9001`
-   - Register the webhook URL with SendBlue:
+1. **Crée un compte SendBlue :** [sendblue.com](https://www.sendblue.com/) — il existe une offre gratuite
+2. **Récupère tes identifiants d'API :** tableau de bord → API Keys → copie l'**API Key ID** et l'**API Secret Key**
+3. **Note ton numéro de téléphone SendBlue** — c'est le numéro auquel on écrit pour joindre ton agent
+4. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → ton agent → onglet **Canaux de messagerie** → iMessage/SMS → saisis l'API Key ID, l'API Secret Key et le numéro de téléphone
+   - L'agent envoie un accusé de réception puis un message de test pour vérifier que ça marche
+5. **Installe le webhook** pour que les textos entrants arrivent jusqu'à ton agent :
+   - Il te faut une URL publique — sers-toi de [ngrok](https://ngrok.com/) pour percer un tunnel vers ton serveur local : `ngrok http 9001`
+   - Enregistre l'URL du webhook auprès de SendBlue :
    ```bash
    curl -X PUT https://api.sendblue.co/api/account/webhooks \
      -H "sb-api-key-id: YOUR_KEY" \
@@ -32,34 +32,34 @@ Diapason has two types of integrations:
      -d '{"webhooks": {"receive": ["https://YOUR-NGROK-URL.ngrok-free.dev/webhooks/sendblue"]}}'
    ```
 
-### How it works
+### Comment ça marche
 
-- Someone texts your SendBlue number → SendBlue sends a webhook to your server
-- Agent replies "Message received! Working on it now..." instantly
-- Agent researches your data (15-60s) → sends the response as iMessage or SMS
-- iMessage (blue bubbles) for Apple devices, SMS (green) for Android — automatic
+- Quelqu'un écrit à ton numéro SendBlue → SendBlue envoie un webhook à ton serveur
+- L'agent répond aussitôt « Message received! Working on it now... »
+- L'agent fouille tes données (15 à 60 s) → il envoie la réponse en iMessage ou en SMS
+- iMessage (bulles bleues) pour les appareils Apple, SMS (vertes) pour Android — automatiquement
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| No response after texting | Check ngrok is running and webhook URL is registered |
-| "Disconnected" in Messaging tab | Click Reconnect — server may have restarted |
-| ngrok URL changed | Re-register the webhook URL with SendBlue (see step 5) |
-| Messages only work one-way | Free tier requires contacts to text the number first |
+| Aucune réponse après un texto | Vérifie que ngrok tourne et que l'URL du webhook est bien enregistrée |
+| « Disconnected » dans l'onglet Canaux de messagerie | Clique sur Reconnecter — le serveur a peut-être redémarré |
+| L'URL ngrok a changé | Réenregistre l'URL du webhook auprès de SendBlue (voir l'étape 5) |
+| Les messages ne passent que dans un sens | L'offre gratuite exige que le contact écrive au numéro en premier |
 
 ---
 
 ## Slack
 
-**What it does:** DM your agent in Slack and get research responses in the thread.
+**Ce que ça fait :** tu écris à ton agent en MP dans Slack et tu reçois ses réponses d'enquête dans le fil.
 
-### Setup
+### La mise en place
 
-The fastest way is to use the App Manifest — paste this JSON to configure everything at once:
+Le plus rapide est de passer par le manifeste d'app — colle ce JSON et tout est configuré d'un coup :
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest**
-2. Select your workspace, then paste this manifest:
+1. Va sur [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest**
+2. Sélectionne ton espace de travail, puis colle ce manifeste :
 
 ```json
 {
@@ -88,171 +88,171 @@ The fastest way is to use the App Manifest — paste this JSON to configure ever
 }
 ```
 
-3. Click **Create** → **Install to Workspace** → **Allow**
-4. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth & Permissions**
-5. Go to **Basic Information** → **App-Level Tokens** → **Generate Token** → add `connections:write` scope → copy the token (`xapp-...`)
-6. **Connect in Diapason:**
-   - Desktop/Browser: Agents → your agent → **Messaging** tab → Slack → paste both tokens
-   - CLI: tokens are stored when you bind the channel
+3. Clique sur **Create** → **Install to Workspace** → **Allow**
+4. Copie le **Bot User OAuth Token** (`xoxb-...`) depuis **OAuth & Permissions**
+5. Va dans **Basic Information** → **App-Level Tokens** → **Generate Token** → ajoute la portée `connections:write` → copie le jeton (`xapp-...`)
+6. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → ton agent → onglet **Canaux de messagerie** → Slack → colle les deux jetons
+   - CLI : les jetons sont enregistrés au moment où tu relies le canal
 
-### How it works
+### Comment ça marche
 
-- You DM @Diapason in Slack → Socket Mode receives the event in real-time
-- Agent replies "Message received! Working on it now..." in a **thread** under your message
-- Agent researches (15-60s) → response appears in the same thread
-- If processing takes >60s: "Still working! Will reply ASAP" in the thread
-- All responses use Slack formatting (*bold*, _italic_, `code`, lists)
+- Tu écris à @Diapason en MP dans Slack → le mode Socket reçoit l'événement en direct
+- L'agent répond « Message received! Working on it now... » dans un **fil** sous ton message
+- L'agent enquête (15 à 60 s) → la réponse apparaît dans le même fil
+- Si le traitement dépasse 60 s : « Still working! Will reply ASAP » dans le fil
+- Toutes les réponses utilisent la mise en forme Slack (*gras*, _italique_, `code`, listes)
 
-### Important Notes
+### À ne pas oublier
 
-- **Reinstall after changes:** Every time you add scopes or events, reinstall the app
-- **App Token vs Bot Token:** Bot Token (`xoxb-`) for API calls, App Token (`xapp-`) for Socket Mode. You need both.
-- **Don't use Event Subscriptions UI for Request URL:** With Socket Mode, you don't need one. Use the App Manifest method above.
+- **Réinstalle après chaque changement :** chaque fois que tu ajoutes une portée ou un événement, réinstalle l'app
+- **Jeton d'app et jeton de bot :** le jeton de bot (`xoxb-`) sert aux appels d'API, le jeton d'app (`xapp-`) au mode Socket. Il te faut les deux.
+- **N'utilise pas l'interface Event Subscriptions pour la Request URL :** avec le mode Socket, elle ne sert à rien. Passe par le manifeste d'app ci-dessus.
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Sending messages to this app has been turned off" | App Home → enable Messages Tab → "Allow users to send messages" |
-| Bot doesn't respond | Check Socket Mode is enabled + `message.im` event is subscribed + app was reinstalled |
-| "missing_scope" error | Add the scope → reinstall the app |
-| Bot not visible in Slack | Click "+" next to Direct Messages → search "Diapason" |
-| Event Subscriptions won't save | Use the App Manifest method (avoids Request URL requirement) |
+| « Sending messages to this app has been turned off » | App Home → active Messages Tab → « Allow users to send messages » |
+| Le bot ne répond pas | Vérifie que le mode Socket est activé, que l'événement `message.im` est souscrit et que l'app a été réinstallée |
+| Erreur « missing_scope » | Ajoute la portée → réinstalle l'app |
+| Le bot est invisible dans Slack | Clique sur le « + » à côté de Direct Messages → cherche « Diapason » |
+| Event Subscriptions refuse d'enregistrer | Passe par le manifeste d'app (ça évite l'exigence de Request URL) |
 
 ---
 
-# Data Connectors
+# Les connecteurs de données
 
 ## Gmail
 
-**What it indexes:** Email messages and threads from your Gmail inbox.
+**Ce qu'il indexe :** les courriels et les fils de discussion de ta boîte Gmail.
 
-### Setup (App Password — recommended)
+### La mise en place (mot de passe d'application — recommandé)
 
-1. **Enable 2-Factor Authentication** on your Google account:
-   [Open Google Security Settings →](https://myaccount.google.com/signinoptions/two-step-verification)
+1. **Active la double authentification** sur ton compte Google :
+   [Ouvrir les réglages de sécurité Google →](https://myaccount.google.com/signinoptions/two-step-verification)
 
-2. **Generate an App Password** for "Mail":
-   [Open App Passwords →](https://myaccount.google.com/apppasswords)
-   - Select "Mail" as the app
-   - Copy the 16-character password (e.g. `qpde kebj evhy zljc`)
+2. **Génère un mot de passe d'application** pour « Mail » :
+   [Ouvrir les mots de passe d'application →](https://myaccount.google.com/apppasswords)
+   - Choisis « Mail » comme application
+   - Copie le mot de passe de 16 caractères (`qpde kebj evhy zljc`, par exemple)
 
-3. **Connect in Diapason:**
-   - Desktop/Browser: Agents → your agent → Channels tab → Gmail → Reconnect
-   - CLI: `uv run diapason connect gmail_imap`
-   - Enter your email address and the app password
+3. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → ton agent → onglet Canaux → Gmail → Reconnecter
+   - CLI : `uv run diapason connect gmail_imap`
+   - Saisis ton adresse courriel et le mot de passe d'application
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "App Passwords" page not available | Enable 2-Factor Authentication first |
-| Login failed | Make sure you're using the app password, not your regular Google password |
-| No emails syncing | Check that IMAP is enabled: [Gmail Settings → Forwarding and POP/IMAP](https://mail.google.com/mail/u/0/#settings/fwdandpop) |
-| Only getting recent emails | By default, the last 500 emails are synced. Increase with `max_messages` config |
+| La page « App Passwords » n'est pas accessible | Active d'abord la double authentification |
+| La connexion échoue | Assure-toi d'utiliser le mot de passe d'application, et non ton mot de passe Google habituel |
+| Aucun courriel ne se synchronise | Vérifie qu'IMAP est activé : [Réglages Gmail → Transfert et POP/IMAP](https://mail.google.com/mail/u/0/#settings/fwdandpop) |
+| Seuls les courriels récents arrivent | Par défaut, les 500 derniers courriels sont synchronisés. Augmente ce nombre avec le réglage `max_messages` |
 
 ---
 
 ## Google Drive
 
-**What it indexes:** Documents, Sheets, PDFs, and other files from your Drive.
+**Ce qu'il indexe :** les documents, les feuilles de calcul, les PDF et les autres fichiers de ton Drive.
 
-### Setup
+### La mise en place
 
-1. **Go to Google Cloud Console** and create a project (or use an existing one):
-   [Create Project →](https://console.cloud.google.com/projectcreate)
+1. **Va sur la Google Cloud Console** et crée un projet (ou reprends-en un existant) :
+   [Créer un projet →](https://console.cloud.google.com/projectcreate)
 
-2. **Enable the Google Drive API:**
-   [Enable Drive API →](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+2. **Active l'API Google Drive :**
+   [Activer l'API Drive →](https://console.cloud.google.com/apis/library/drive.googleapis.com)
 
-3. **Create OAuth credentials:**
-   [Open Credentials →](https://console.cloud.google.com/apis/credentials)
-   - Click "Create Credentials" → "OAuth 2.0 Client ID"
-   - Choose "Desktop app" as the application type
-   - Copy the **Client ID** and **Client Secret**
+3. **Crée des identifiants OAuth :**
+   [Ouvrir Credentials →](https://console.cloud.google.com/apis/credentials)
+   - Clique sur « Create Credentials » → « OAuth 2.0 Client ID »
+   - Choisis « Desktop app » comme type d'application
+   - Copie le **Client ID** et le **Client Secret**
 
-4. **Add yourself as a test user** (required while app is unverified):
-   [Open OAuth Consent Screen →](https://console.cloud.google.com/apis/credentials/consent)
-   - Scroll to "Test users" → click "+ Add Users"
-   - Add your Gmail address (e.g. `you@gmail.com`)
+4. **Ajoute-toi comme utilisateur de test** (obligatoire tant que l'app n'est pas vérifiée) :
+   [Ouvrir OAuth Consent Screen →](https://console.cloud.google.com/apis/credentials/consent)
+   - Descends jusqu'à « Test users » → clique sur « + Add Users »
+   - Ajoute ton adresse Gmail (`toi@gmail.com`, par exemple)
 
-5. **Add the redirect URI:**
-   [Open Credentials →](https://console.cloud.google.com/apis/credentials)
-   - Click your OAuth Client → Authorized redirect URIs
-   - Add: `http://localhost:8789/callback`
+5. **Ajoute l'URI de redirection :**
+   [Ouvrir Credentials →](https://console.cloud.google.com/apis/credentials)
+   - Clique sur ton client OAuth → Authorized redirect URIs
+   - Ajoute : `http://localhost:8789/callback`
 
-6. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Google Drive → paste Client ID and Client Secret
-   - Your browser will open Google's consent page → grant read-only access
-   - You'll see "Authorization successful!" → Drive data starts syncing
+6. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Google Drive → colle le Client ID et le Client Secret
+   - Ton navigateur ouvre la page de consentement de Google → accorde l'accès en lecture seule
+   - Tu vois « Authorization successful! » → les données du Drive commencent à se synchroniser
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Access blocked: app has not completed verification" | Add your email as a test user (step 4 above) |
-| "Error 400: redirect_uri_mismatch" | Add `http://localhost:8789/callback` as an authorized redirect URI (step 5) |
-| "Error 403: access_denied" | Make sure you selected "Desktop app" when creating the OAuth client |
-| Connected but 0 files | Check that you granted Drive read access in the consent screen. Try reconnecting. |
-| Token expired | Access tokens expire after 1 hour. Reconnect to get a new one. (Auto-refresh coming soon.) |
+| « Access blocked: app has not completed verification » | Ajoute ton adresse comme utilisateur de test (étape 4 ci-dessus) |
+| « Error 400: redirect_uri_mismatch » | Ajoute `http://localhost:8789/callback` aux URI de redirection autorisées (étape 5) |
+| « Error 403: access_denied » | Assure-toi d'avoir choisi « Desktop app » à la création du client OAuth |
+| Connecté mais 0 fichier | Vérifie que tu as bien accordé l'accès en lecture au Drive sur l'écran de consentement. Essaie de te reconnecter. |
+| Jeton expiré | Les jetons d'accès expirent au bout d'une heure. Reconnecte-toi pour en obtenir un nouveau. (Le rafraîchissement automatique arrive bientôt.) |
 
 ---
 
-## Google Calendar
+## Google Agenda
 
-**What it indexes:** Events, meetings, and calendar entries.
+**Ce qu'il indexe :** les événements, les réunions et les entrées d'agenda.
 
-### Setup
+### La mise en place
 
-Same as Google Drive — use the same Google Cloud project and OAuth client.
+Comme pour Google Drive — reprends le même projet Google Cloud et le même client OAuth.
 
-1. **Enable the Google Calendar API:**
-   [Enable Calendar API →](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)
+1. **Active l'API Google Calendar :**
+   [Activer l'API Calendar →](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)
 
-2. Follow steps 3-6 from the Google Drive section above (same Client ID/Secret works)
+2. Suis les étapes 3 à 6 de la section Google Drive ci-dessus (le même Client ID / Client Secret fait l'affaire)
 
-### Troubleshooting
+### Quand ça coince
 
-Same as Google Drive. Additionally:
+Comme pour Google Drive. Et en plus :
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| Only seeing primary calendar | The connector reads all calendars you have access to |
-| Missing shared calendars | Shared calendars from other users may require additional permissions |
+| Seul l'agenda principal apparaît | Le connecteur lit tous les agendas auxquels tu as accès |
+| Les agendas partagés manquent | Les agendas partagés par d'autres personnes peuvent exiger des permissions supplémentaires |
 
 ---
 
 ## Google Contacts
 
-**What it indexes:** People, phone numbers, emails, and contact information.
+**Ce qu'il indexe :** les personnes, les numéros de téléphone, les adresses courriel et les coordonnées.
 
-### Setup
+### La mise en place
 
-Same as Google Drive — use the same Google Cloud project and OAuth client.
+Comme pour Google Drive — reprends le même projet Google Cloud et le même client OAuth.
 
-1. **Enable the People API:**
-   [Enable People API →](https://console.cloud.google.com/apis/library/people.googleapis.com)
+1. **Active l'API People :**
+   [Activer l'API People →](https://console.cloud.google.com/apis/library/people.googleapis.com)
 
-2. Follow steps 3-6 from the Google Drive section above
+2. Suis les étapes 3 à 6 de la section Google Drive ci-dessus
 
 ---
 
 ## Slack
 
-Slack serves two purposes in Diapason:
+Slack joue deux rôles dans Diapason :
 
-- **Data source** — indexes channel messages, DMs, and threads so your agent can search them
-- **Messaging channel** — lets you DM your agent directly in Slack
+- **Source de données** — il indexe les messages des canaux, les MP et les fils pour que ton agent puisse y chercher
+- **Canal de messagerie** — il te laisse écrire à ton agent en MP, directement dans Slack
 
-We recommend creating **one Slack app** that handles both. The App Manifest below includes all scopes needed.
+On recommande de créer **une seule app Slack** qui fait les deux. Le manifeste ci-dessous contient toutes les portées nécessaires.
 
-### Quick Setup (App Manifest — recommended)
+### La mise en place rapide (manifeste d'app — recommandé)
 
-1. **Go to [Slack App Settings →](https://api.slack.com/apps)**
+1. **Va sur les [réglages des apps Slack →](https://api.slack.com/apps)**
 
-2. **Create New App → "From an app manifest"** → select your workspace
+2. **Create New App → « From an app manifest »** → sélectionne ton espace de travail
 
-3. **Paste this JSON manifest** (includes all scopes for data source + messaging):
+3. **Colle ce manifeste JSON** (il contient toutes les portées pour la source de données et la messagerie) :
 
    ```json
    {
@@ -285,271 +285,271 @@ We recommend creating **one Slack app** that handles both. The App Manifest belo
    }
    ```
 
-4. **Review and click Create**
+4. **Relis, puis clique sur Create**
 
-5. **Install the app:** Install App → Install to Workspace → Authorize
+5. **Installe l'app :** Install App → Install to Workspace → Authorize
 
-6. **Copy the Bot Token:** Go to OAuth & Permissions → copy the **Bot User OAuth Token** (`xoxb-...`)
+6. **Copie le jeton de bot :** va dans OAuth & Permissions → copie le **Bot User OAuth Token** (`xoxb-...`)
 
-7. **Create an App-Level Token (for DMs):**
-   - Go to Basic Information → App-Level Tokens → Generate Token
-   - Name it "socket" → add the `connections:write` scope → Generate
-   - Copy the token (`xapp-...`)
+7. **Crée un jeton d'app (pour les MP) :**
+   - Va dans Basic Information → App-Level Tokens → Generate Token
+   - Nomme-le « socket » → ajoute la portée `connections:write` → Generate
+   - Copie le jeton (`xapp-...`)
 
-8. **(Optional) Set the app icon:**
-   - Go to Basic Information → Display Information
-   - Upload the [Diapason icon](https://github.com/carlitoetienne01-spec/Diapason/blob/main/assets/diapason-slack-icon.jpg)
+8. **(Facultatif) Mets l'icône de l'app :**
+   - Va dans Basic Information → Display Information
+   - Importe l'[icône Diapason](https://github.com/carlitoetienne01-spec/Diapason/blob/main/assets/diapason-slack-icon.jpg)
 
-### Required Bot Token Scopes (reference)
+### Les portées requises pour le jeton de bot (référence)
 
-| Scope | Purpose |
-|-------|---------|
-| `channels:read` | List public channels |
-| `channels:history` | Read public channel messages |
-| `channels:join` | Auto-join public channels for indexing |
-| `groups:read` | List private channels |
-| `groups:history` | Read private channel messages |
-| `im:read` | List DM conversations |
-| `im:write` | Open DM conversations |
-| `im:history` | Read DM history + receive DM events |
-| `mpim:read` | List group DMs |
-| `mpim:history` | Read group DM messages |
-| `chat:write` | Send messages and responses |
-| `users:read` | Look up user info |
-| `app_mentions:read` | See @mentions of the bot |
-
-**App-Level Token scope:** `connections:write` (required for Socket Mode / DMs)
-
-### Connecting in Diapason
-
-**As a data source** (read channel messages):
-- Desktop/Browser: Data Sources → Slack → paste the bot token (`xoxb-...`)
-- CLI: `uv run diapason connect slack`
-
-**As a messaging channel** (DM your agent):
-- Desktop/Browser: Data Sources → Messaging Channels → Slack → Set Up
-- Enter both the **Bot Token** (`xoxb-...`) and **App Token** (`xapp-...`)
-- Or: Agents → select agent → Messaging Channels → Slack → Set Up
-
-**DM your agent:**
-- In Slack, find **Diapason** under Apps (or Direct Messages)
-- If you don't see it: click "+" next to Direct Messages → search "Diapason"
-- Send a message → the agent responds in a thread
-
-### Important Notes
-
-- **Reinstall after scope changes:** Every time you add new scopes or change event subscriptions, you MUST reinstall the app.
-- **App-Level Token vs Bot Token:** The Bot Token (`xoxb-`) is for API calls. The App Token (`xapp-`) is for Socket Mode. You need both for DMs to work.
-- **Channel visibility:** The bot can only read channels it's been added to. Invite it with `/invite @Diapason` in each channel you want indexed.
-- **Thread replies:** If you reply in a thread, the bot sees it. New top-level messages also work.
-
-### Troubleshooting
-
-| Issue | Solution |
+| Portée | À quoi elle sert |
 |-------|----------|
-| "not_allowed_token_type" | Use the **Bot** token (`xoxb-...`), not a user token (`xoxp-`) or session token (`xoxe-`) |
-| "Sending messages to this app has been turned off" | Go to App Home → enable "Messages Tab" → check "Allow users to send messages from the messages tab" |
-| Bot doesn't respond to DMs | Make sure Socket Mode is enabled, `message.im` event is subscribed, and the app was reinstalled after changes |
-| "missing_scope" error | Add the missing scope in OAuth & Permissions → Reinstall the app |
-| Bot not visible in Slack | Go to Install App → Reinstall to Workspace |
-| No messages found (data source) | The bot can only see channels it's been added to. Invite it: `/invite @Diapason` in the channel |
-| Socket Mode connects but no events received | Verify `message.im` is in the manifest's `bot_events`, reinstall the app |
+| `channels:read` | Lister les canaux publics |
+| `channels:history` | Lire les messages des canaux publics |
+| `channels:join` | Rejoindre automatiquement les canaux publics pour les indexer |
+| `groups:read` | Lister les canaux privés |
+| `groups:history` | Lire les messages des canaux privés |
+| `im:read` | Lister les conversations en MP |
+| `im:write` | Ouvrir une conversation en MP |
+| `im:history` | Lire l'historique des MP et recevoir les événements de MP |
+| `mpim:read` | Lister les MP de groupe |
+| `mpim:history` | Lire les messages des MP de groupe |
+| `chat:write` | Envoyer des messages et des réponses |
+| `users:read` | Consulter les infos d'un utilisateur |
+| `app_mentions:read` | Voir les @mentions du bot |
+
+**La portée du jeton d'app :** `connections:write` (indispensable au mode Socket et aux MP)
+
+### Le branchement dans Diapason
+
+**Comme source de données** (lire les messages des canaux) :
+- Bureau/navigateur : Sources de données → Slack → colle le jeton de bot (`xoxb-...`)
+- CLI : `uv run diapason connect slack`
+
+**Comme canal de messagerie** (écrire à ton agent en MP) :
+- Bureau/navigateur : Sources de données → Canaux de messagerie → Slack → Configurer
+- Saisis le **jeton de bot** (`xoxb-...`) et le **jeton d'app** (`xapp-...`)
+- Ou bien : Agents → choisis l'agent → Canaux de messagerie → Slack → Configurer
+
+**Écrire à ton agent en MP :**
+- Dans Slack, trouve **Diapason** sous Apps (ou sous Direct Messages)
+- Si tu ne le vois pas : clique sur le « + » à côté de Direct Messages → cherche « Diapason »
+- Envoie un message → l'agent répond dans un fil
+
+### À ne pas oublier
+
+- **Réinstalle après un changement de portées :** chaque fois que tu ajoutes une portée ou que tu changes les souscriptions d'événements, tu DOIS réinstaller l'app.
+- **Jeton d'app et jeton de bot :** le jeton de bot (`xoxb-`) sert aux appels d'API. Le jeton d'app (`xapp-`) sert au mode Socket. Il te faut les deux pour que les MP fonctionnent.
+- **La visibilité des canaux :** le bot ne peut lire que les canaux où il a été ajouté. Invite-le avec `/invite @Diapason` dans chaque canal que tu veux indexer.
+- **Les réponses en fil :** si tu réponds dans un fil, le bot le voit. Les nouveaux messages de premier niveau marchent aussi.
+
+### Quand ça coince
+
+| Le pépin | Que faire |
+|-------|----------|
+| « not_allowed_token_type » | Utilise le jeton de **bot** (`xoxb-...`), pas un jeton d'utilisateur (`xoxp-`) ni un jeton de session (`xoxe-`) |
+| « Sending messages to this app has been turned off » | Va dans App Home → active « Messages Tab » → coche « Allow users to send messages from the messages tab » |
+| Le bot ne répond pas aux MP | Assure-toi que le mode Socket est activé, que l'événement `message.im` est souscrit, et que l'app a été réinstallée après les changements |
+| Erreur « missing_scope » | Ajoute la portée manquante dans OAuth & Permissions → réinstalle l'app |
+| Le bot est invisible dans Slack | Va dans Install App → Reinstall to Workspace |
+| Aucun message trouvé (source de données) | Le bot ne voit que les canaux où il a été ajouté. Invite-le : `/invite @Diapason` dans le canal |
+| Le mode Socket se connecte mais ne reçoit aucun événement | Vérifie que `message.im` figure bien dans les `bot_events` du manifeste, puis réinstalle l'app |
 
 ---
 
 ## Notion
 
-**What it indexes:** Pages, databases, and their content.
+**Ce qu'il indexe :** les pages, les bases de données et leur contenu.
 
-### Setup
+### La mise en place
 
-1. **Create an internal integration:**
-   [Open Notion Integrations →](https://www.notion.so/profile/integrations)
-   - Click "New integration"
-   - Name it (e.g. "Diapason")
-   - Select your workspace
-   - Copy the **Internal Integration Secret** (starts with `ntn_`)
+1. **Crée une intégration interne :**
+   [Ouvrir les intégrations Notion →](https://www.notion.so/profile/integrations)
+   - Clique sur « New integration »
+   - Donne-lui un nom (« Diapason », par exemple)
+   - Sélectionne ton espace de travail
+   - Copie l'**Internal Integration Secret** (il commence par `ntn_`)
 
-2. **Share pages with your integration:**
-   - Open any Notion page you want indexed
-   - Click "..." (top right) → "Connections" → find your integration → click it
-   - Repeat for each page or database
+2. **Partage des pages avec ton intégration :**
+   - Ouvre une page Notion que tu veux indexer
+   - Clique sur « ... » (en haut à droite) → « Connections » → trouve ton intégration → clique dessus
+   - Recommence pour chaque page ou base de données
 
-3. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Notion → paste the token
-   - CLI: `uv run diapason connect notion`
+3. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Notion → colle le jeton
+   - CLI : `uv run diapason connect notion`
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| 0 pages found | You must explicitly share pages with the integration (step 2). The integration can only see pages you've connected. |
-| Missing database content | Share the database page itself, not just individual entries |
-| Token expired | Notion integration tokens don't expire. If it stops working, regenerate at the integrations page. |
+| 0 page trouvée | Il faut partager les pages explicitement avec l'intégration (étape 2). Elle ne voit que les pages que tu lui as connectées. |
+| Le contenu d'une base de données manque | Partage la page de la base elle-même, pas seulement des entrées isolées |
+| Jeton expiré | Les jetons d'intégration Notion n'expirent pas. Si ça s'arrête de marcher, régénère-le sur la page des intégrations. |
 
 ---
 
 ## Granola
 
-**What it indexes:** AI meeting notes and transcripts from the Granola app.
+**Ce qu'il indexe :** les notes de réunion et les transcriptions générées par l'app Granola.
 
-### Setup
+### La mise en place
 
-1. **Open the Granola desktop app** → Settings → API
-2. **Copy your API key** (starts with `grn_`)
-3. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Granola → paste the key
-   - CLI: `uv run diapason connect granola`
+1. **Ouvre l'app de bureau Granola** → Settings → API
+2. **Copie ta clé d'API** (elle commence par `grn_`)
+3. **Branche-la dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Granola → colle la clé
+   - CLI : `uv run diapason connect granola`
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| No API key in settings | Granola API is available on Business and Enterprise plans |
-| 0 meeting notes | Check that you have meetings recorded in Granola |
+| Aucune clé d'API dans les réglages | L'API Granola n'existe que sur les offres Business et Enterprise |
+| 0 note de réunion | Vérifie que tu as bien des réunions enregistrées dans Granola |
 
 ---
 
 ## Apple Notes
 
-**What it indexes:** Notes from the macOS Notes app.
+**Ce qu'il indexe :** les notes de l'app Notes de macOS.
 
-### Setup (automatic)
+### La mise en place (automatique)
 
-1. **Grant Full Disk Access** to your terminal app:
-   - Open System Settings → Privacy & Security → Full Disk Access
-   - Enable access for Terminal, iTerm, Warp, or the Diapason desktop app
+1. **Accorde l'Accès complet au disque** à ton app de terminal :
+   - Ouvre Réglages Système → Confidentialité et sécurité → Accès complet au disque
+   - Active l'accès pour Terminal, iTerm, Warp ou l'app de bureau Diapason
 
-2. Apple Notes is detected automatically when Full Disk Access is granted
+2. Apple Notes est détecté tout seul une fois l'Accès complet au disque accordé
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Not connected" despite Full Disk Access | Restart your terminal app after granting access |
-| Notes content is garbled | Some very old notes may have encoding issues. Most notes should be clean. |
-| Missing notes | Only notes stored locally or in iCloud are indexed. Notes in third-party accounts (Gmail, Exchange) may not appear. |
+| « Non connecté » malgré l'Accès complet au disque | Relance ton app de terminal après avoir accordé l'accès |
+| Le contenu des notes est illisible | Quelques très vieilles notes peuvent avoir des soucis d'encodage. La plupart passent proprement. |
+| Des notes manquent | Seules les notes stockées en local ou dans iCloud sont indexées. Celles qui vivent dans un compte tiers (Gmail, Exchange) peuvent ne pas apparaître. |
 
 ---
 
 ## iMessage
 
-**What it indexes:** Text messages from the macOS Messages app.
+**Ce qu'il indexe :** les messages texte de l'app Messages de macOS.
 
-### Setup (automatic)
+### La mise en place (automatique)
 
-Same as Apple Notes — requires Full Disk Access.
+Comme Apple Notes — il faut l'Accès complet au disque.
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Not connected" | Grant Full Disk Access (see Apple Notes above) |
-| Very slow sync | iMessage databases can be large (50K+ messages). First sync may take 10-30 seconds. |
-| Missing recent messages | Messages sync from the local database. If Messages.app hasn't synced from iCloud yet, recent messages may be missing. |
+| « Non connecté » | Accorde l'Accès complet au disque (voir Apple Notes ci-dessus) |
+| Synchronisation très lente | Les bases iMessage peuvent être énormes (plus de 50 000 messages). La première synchronisation peut prendre de 10 à 30 secondes. |
+| Les messages récents manquent | Les messages viennent de la base locale. Si Messages.app n'a pas encore fait sa synchronisation iCloud, les messages récents peuvent manquer. |
 
 ---
 
 ## Outlook / Microsoft 365
 
-**What it indexes:** Email messages via IMAP.
+**Ce qu'il indexe :** les courriels, par IMAP.
 
-### Setup
+### La mise en place
 
-1. **Enable 2-Factor Authentication** on your Microsoft account:
-   [Open Microsoft Security →](https://account.microsoft.com/security)
+1. **Active la double authentification** sur ton compte Microsoft :
+   [Ouvrir la sécurité Microsoft →](https://account.microsoft.com/security)
 
-2. **Generate an App Password:**
-   - Go to Security → Advanced security options → App passwords
-   - Create a new app password
+2. **Génère un mot de passe d'application :**
+   - Va dans Sécurité → Options de sécurité avancées → Mots de passe d'application
+   - Crée un nouveau mot de passe d'application
 
-3. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Outlook → enter email + app password
-   - CLI: `uv run diapason connect outlook`
+3. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Outlook → saisis l'adresse courriel et le mot de passe d'application
+   - CLI : `uv run diapason connect outlook`
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| Login failed | Use the app password, not your regular Microsoft password |
-| "Authentication failed" | Some Microsoft 365 organizations disable IMAP. Check with your IT admin. |
-| Only getting Inbox | Currently only the Inbox folder is synced |
+| La connexion échoue | Utilise le mot de passe d'application, pas ton mot de passe Microsoft habituel |
+| « Authentication failed » | Certaines organisations Microsoft 365 désactivent IMAP. Demande à ton administrateur informatique. |
+| Seule la boîte de réception arrive | Pour l'instant, seul le dossier Boîte de réception est synchronisé |
 
 ---
 
 ## Obsidian
 
-**What it indexes:** Markdown files from your Obsidian vault.
+**Ce qu'il indexe :** les fichiers Markdown de ton coffre Obsidian.
 
-### Setup
+### La mise en place
 
-1. Find your Obsidian vault folder (the folder containing the `.obsidian` directory)
-2. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Obsidian → paste the vault path
-   - CLI: `uv run diapason connect obsidian --path /path/to/vault`
+1. Trouve le dossier de ton coffre Obsidian (celui qui contient le répertoire `.obsidian`)
+2. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Obsidian → colle le chemin du coffre
+   - CLI : `uv run diapason connect obsidian --path /path/to/vault`
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Not connected" | Double-check the path exists and contains a `.obsidian` folder |
-| Missing files | Only `.md`, `.markdown`, and `.txt` files are indexed. Binary files and images are skipped. |
-| Slow sync for large vaults | Vaults with 1000+ files may take a minute to sync |
+| « Non connecté » | Revérifie que le chemin existe et qu'il contient bien un dossier `.obsidian` |
+| Des fichiers manquent | Seuls les fichiers `.md`, `.markdown` et `.txt` sont indexés. Les fichiers binaires et les images sont ignorés. |
+| Synchronisation lente pour les gros coffres | Un coffre de plus de 1000 fichiers peut mettre une minute à se synchroniser |
 
 ---
 
 ## Dropbox
 
-**What it indexes:** Files and documents from your Dropbox.
+**Ce qu'il indexe :** les fichiers et les documents de ton Dropbox.
 
-### Setup
+### La mise en place
 
-1. **Create a Dropbox app:**
-   [Open Dropbox App Console →](https://www.dropbox.com/developers/apps/create)
-   - Choose "Scoped access" → "Full Dropbox"
+1. **Crée une app Dropbox :**
+   [Ouvrir la Dropbox App Console →](https://www.dropbox.com/developers/apps/create)
+   - Choisis « Scoped access » → « Full Dropbox »
 
-2. **Set permissions:**
-   - Under Permissions tab, enable `files.metadata.read` and `files.content.read`
+2. **Règle les permissions :**
+   - Dans l'onglet Permissions, active `files.metadata.read` et `files.content.read`
 
-3. **Generate an access token:**
-   - Go to Settings tab → "Generated access token" → Generate
+3. **Génère un jeton d'accès :**
+   - Va dans l'onglet Settings → « Generated access token » → Generate
 
-4. **Connect in Diapason:**
-   - Desktop/Browser: Agents → Channels tab → Dropbox → paste the token
-   - CLI: `uv run diapason connect dropbox`
+4. **Branche-le dans Diapason :**
+   - Bureau/navigateur : Agents → onglet Canaux → Dropbox → colle le jeton
+   - CLI : `uv run diapason connect dropbox`
 
-### Troubleshooting
+### Quand ça coince
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Invalid access token" | Dropbox short-lived tokens expire after 4 hours. Generate a new one. |
-| Missing files | Check that you enabled the correct permissions (step 2) |
+| « Invalid access token » | Les jetons courts de Dropbox expirent au bout de 4 heures. Génères-en un nouveau. |
+| Des fichiers manquent | Vérifie que tu as bien activé les bonnes permissions (étape 2) |
 
 ---
 
-## General Troubleshooting
+## Quand ça coince, en général
 
-### All connectors
+### Pour tous les connecteurs
 
-| Issue | Solution |
+| Le pépin | Que faire |
 |-------|----------|
-| "Connected — no data synced yet" | The connector authenticated but hasn't synced. Try running `uv run diapason deep-research-setup --skip-chat` to trigger a sync. |
-| Data seems stale | Connectors sync on demand. Run the setup command or click "Reconnect" to re-sync. |
-| Want to reset a connector | Click "Reconnect" in the Channels tab, or delete the credential file at `~/.diapason/connectors/{connector}.json` |
+| « Connecté — aucune donnée synchronisée » | Le connecteur s'est authentifié mais n'a pas encore synchronisé. Lance `uv run diapason deep-research-setup --skip-chat` pour déclencher une synchronisation. |
+| Les données semblent périmées | Les connecteurs synchronisent à la demande. Lance la commande de mise en place ou clique sur « Reconnecter » pour resynchroniser. |
+| Tu veux remettre un connecteur à zéro | Clique sur « Reconnecter » dans l'onglet Canaux, ou supprime le fichier d'identifiants `~/.diapason/connectors/{connector}.json` |
 
-### Where credentials are stored
+### Où sont rangés les identifiants
 
-All credentials are saved locally at `~/.diapason/connectors/` with file permissions `0600` (owner-only read/write). No credentials are sent to any server — everything stays on your device.
+Tous les identifiants sont enregistrés en local dans `~/.diapason/connectors/`, avec les permissions de fichier `0600` (lecture et écriture pour le propriétaire seulement). Aucun identifiant n'est envoyé à un serveur — tout reste sur ta machine.
 
 ```
 ~/.diapason/connectors/
-├── gmail_imap.json    # Gmail email + app password
-├── gdrive.json        # Google Drive OAuth tokens
-├── gcalendar.json     # Google Calendar OAuth tokens
-├── gcontacts.json     # Google Contacts OAuth tokens
-├── slack.json         # Slack bot token
-├── notion.json        # Notion integration token
-├── granola.json       # Granola API key
-├── outlook.json       # Outlook email + app password
-└── dropbox.json       # Dropbox access token
+├── gmail_imap.json    # Adresse Gmail + mot de passe d'application
+├── gdrive.json        # Jetons OAuth Google Drive
+├── gcalendar.json     # Jetons OAuth Google Agenda
+├── gcontacts.json     # Jetons OAuth Google Contacts
+├── slack.json         # Jeton de bot Slack
+├── notion.json        # Jeton d'intégration Notion
+├── granola.json       # Clé d'API Granola
+├── outlook.json       # Adresse Outlook + mot de passe d'application
+└── dropbox.json       # Jeton d'accès Dropbox
 ```

@@ -1,96 +1,97 @@
 ---
 title: Configuration
-description: Complete reference for Diapason configuration
+description: La référence complète de la configuration de Diapason
 ---
 
 # Configuration
 
-Diapason uses a TOML configuration file to control engine selection, model identity, memory backends, agent behavior, and more. This page is the complete reference for every configuration option, organized by primitive.
+Diapason lit un fichier de configuration TOML : il y trouve le moteur d'inférence à employer, l'identité du modèle, les backends de mémoire, le comportement de l'agent, et le reste. Cette page est la référence complète de chaque option, organisée par primitive.
 
-## Config File Location
+## Où vit le fichier de configuration
 
-The configuration file lives at:
+Le fichier de configuration se trouve ici :
 
 ```
 ~/.diapason/config.toml
 ```
 
-Diapason creates the `~/.diapason/` directory and populates it with a default config when you run `diapason init`.
+Diapason crée le dossier `~/.diapason/` et y dépose une configuration par défaut quand tu lances `diapason init`.
 
-## Relocating the Diapason directory
+## Déplacer le dossier Diapason
 
-Diapason keeps **all** of its state — config, databases, caches, logs,
-credentials, skills, recipes, connectors — under a **single root** so it never
-clutters your home directory beyond one folder. By default that root is
-`~/.diapason`, but you can move it.
+Diapason garde **tout** son état — configuration, bases de données, caches, journaux,
+identifiants, compétences, recettes, connecteurs — sous une **racine unique**, pour ne
+jamais encombrer ton dossier personnel au-delà d'un seul répertoire. Par défaut cette
+racine est `~/.diapason`, mais tu peux la déplacer.
 
-The root is resolved in priority order:
+La racine est résolue dans cet ordre de priorité :
 
-1. **`$DIAPASON_HOME`** — explicit override. Honored by both the installer
-   and the Python runtime.
-2. **`$XDG_DATA_HOME/diapason`** — used when `$XDG_DATA_HOME` is set (a single
-   `diapason` directory nested under it, per the XDG Base Directory spec).
-3. **`~/.diapason`** — the default. With no environment variables set, the
-   resolved path is exactly this, so existing installs are untouched.
+1. **`$DIAPASON_HOME`** — la substitution explicite. Respectée par l'installateur
+   comme par l'exécution Python.
+2. **`$XDG_DATA_HOME/diapason`** — utilisée quand `$XDG_DATA_HOME` est défini (un seul
+   dossier `diapason` imbriqué dessous, selon la spécification XDG Base Directory).
+3. **`~/.diapason`** — le défaut. Sans aucune variable d'environnement, le chemin résolu
+   est exactement celui-là : les installations existantes ne bougent pas.
 
 ```bash
-# Relocate the whole install + runtime tree at install time:
+# Déplacer tout l'arbre d'installation et d'exécution au moment de l'installation :
 DIAPASON_HOME=~/apps/diapason curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 
-# Or for a single run / your shell profile:
+# Ou pour un seul lancement / dans ton profil shell :
 export DIAPASON_HOME=~/apps/diapason
 ```
 
-Confirm where your data lives with:
+Pour savoir où vivent tes données :
 
 ```bash
 diapason config path
 ```
 
 !!! note "Migration"
-    Because the default is unchanged, **no data migration is required** for
-    existing installs. If you set `DIAPASON_HOME` (or `XDG_DATA_HOME`) on a
-    machine that already has data in `~/.diapason`, Diapason will look in
-    the new location and not see your old data — move it yourself if you want
-    to keep it: `mv ~/.diapason "$DIAPASON_HOME"`.
+    Le défaut n'ayant pas changé, **aucune migration de données n'est nécessaire** pour
+    les installations existantes. Si tu définis `DIAPASON_HOME` (ou `XDG_DATA_HOME`) sur
+    une machine qui a déjà des données dans `~/.diapason`, Diapason regardera au nouvel
+    endroit et ne verra pas les anciennes — déplace-les toi-même si tu veux les garder :
+    `mv ~/.diapason "$DIAPASON_HOME"`.
 
-`$DIAPASON_CONFIG` still points at an explicit `config.toml` file
-independently of the root, if you need to override just the config file path.
+`$DIAPASON_CONFIG` continue de pointer vers un fichier `config.toml` précis,
+indépendamment de la racine, si tu n'as besoin de changer que le chemin du fichier de
+configuration.
 
-## Generating Configuration
+## Générer la configuration
 
-### First-Time Setup
+### La première fois
 
 ```bash
 diapason init
 ```
 
-This command:
+Cette commande :
 
-1. Runs hardware auto-detection (GPU vendor/model/VRAM, CPU brand/cores, RAM)
-2. Selects the recommended engine based on your hardware
-3. Writes `~/.diapason/config.toml` with sensible defaults
+1. Lance la détection automatique du matériel (fabricant / modèle / VRAM du GPU, marque et cœurs du processeur, mémoire vive)
+2. Choisit le moteur recommandé pour ton matériel
+3. Écrit `~/.diapason/config.toml` avec des valeurs par défaut raisonnables
 
-### Regenerating Configuration
+### Régénérer la configuration
 
-To overwrite an existing config:
+Pour écraser une configuration existante :
 
 ```bash
 diapason init --force
 ```
 
 !!! warning
-    `--force` overwrites your existing config file. Back up your config first if you have custom settings.
+    `--force` écrase ton fichier de configuration. Sauvegarde-le d'abord si tu y as mis des réglages personnels.
 
-## Configuration Sections
+## Les sections de configuration
 
-The config file is organized into TOML sections corresponding to the five primitives. Every field has a default value, so you only need to specify values you want to change.
+Le fichier est organisé en sections TOML qui correspondent aux cinq primitives. Chaque champ a une valeur par défaut : tu n'as à indiquer que ce que tu veux changer.
 
 ---
 
-### `[engine]` — Inference Engine
+### `[engine]` — le moteur d'inférence
 
-Controls which inference engine is used and how each engine is reached. Engine settings are now **nested** under per-engine sub-sections instead of flat fields.
+Détermine quel moteur d'inférence est utilisé et comment on le joint. Les réglages d'un moteur vivent désormais dans une **sous-section imbriquée** propre à ce moteur, au lieu de champs à plat.
 
 ```toml
 [engine]
@@ -110,48 +111,48 @@ host = "http://localhost:30000"
 # binary_path = ""
 ```
 
-**`[engine]` top-level:**
+**`[engine]`, au premier niveau :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default` | string | Auto-detected | Default engine backend. One of: `ollama`, `vllm`, `llamacpp`, `sglang`, `cloud`. Set automatically by `diapason init` based on hardware detection. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `default` | chaîne | détecté automatiquement | Le moteur par défaut. Au choix : `ollama`, `vllm`, `llamacpp`, `sglang`, `cloud`. Rempli automatiquement par `diapason init` d'après la détection du matériel. |
 
-**`[engine.ollama]`:**
+**`[engine.ollama]` :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `host` | string | `http://localhost:11434` | Base URL for the Ollama API server. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `host` | chaîne | `http://localhost:11434` | L'URL de base du serveur d'API Ollama. |
 
-**`[engine.vllm]`:**
+**`[engine.vllm]` :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `host` | string | `http://localhost:8000` | Base URL for the vLLM OpenAI-compatible server. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `host` | chaîne | `http://localhost:8000` | L'URL de base du serveur vLLM compatible OpenAI. |
 
-**`[engine.sglang]`:**
+**`[engine.sglang]` :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `host` | string | `http://localhost:30000` | Base URL for the SGLang server. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `host` | chaîne | `http://localhost:30000` | L'URL de base du serveur SGLang. |
 
-**`[engine.llamacpp]`:**
+**`[engine.llamacpp]` :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `host` | string | `http://localhost:8080` | Base URL for the llama.cpp HTTP server (`llama-server`). |
-| `binary_path` | string | `""` | Path to the llama.cpp binary, if not on `$PATH`. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `host` | chaîne | `http://localhost:8080` | L'URL de base du serveur HTTP de llama.cpp (`llama-server`). |
+| `binary_path` | chaîne | `""` | Le chemin du binaire llama.cpp, s'il n'est pas dans `$PATH`. |
 
-!!! tip "Engine fallback"
-    If the configured default engine is unreachable, Diapason automatically probes all registered engines and falls back to any healthy one.
+!!! tip "Repli sur un autre moteur"
+    Si le moteur par défaut est injoignable, Diapason sonde automatiquement tous les moteurs enregistrés et se rabat sur le premier en bonne santé.
 
-!!! note "Backward compatibility"
-    The old flat field names (`ollama_host`, `vllm_host`, `llamacpp_host`, `llamacpp_path`, `sglang_host`) are still accepted as backward-compatible properties. New configurations should use the nested sub-section format.
+!!! note "Compatibilité ascendante"
+    Les anciens noms de champs à plat (`ollama_host`, `vllm_host`, `llamacpp_host`, `llamacpp_path`, `sglang_host`) restent acceptés par compatibilité. Une nouvelle configuration doit utiliser les sous-sections imbriquées.
 
 ---
 
-### `[intelligence]` — Model Identity and Generation Defaults
+### `[intelligence]` — l'identité du modèle et les valeurs de génération par défaut
 
-Controls which model is used, its weight paths, quantization, and the default sampling parameters for generation. Generation parameters such as `temperature` and `max_tokens` now live here rather than under `[agent]`.
+Détermine quel modèle est utilisé, où sont ses poids, sa quantification, et les paramètres d'échantillonnage par défaut pour la génération. Les paramètres de génération comme `temperature` et `max_tokens` vivent ici, et non plus sous `[agent]`.
 
 ```toml
 [intelligence]
@@ -170,43 +171,43 @@ max_tokens = 1024
 # stop_sequences = ""
 ```
 
-**Model identity fields:**
+**Les champs d'identité du modèle :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default_model` | string | `""` | Preferred model identifier (e.g., `qwen3:8b`). When empty, the router policy selects the model dynamically. |
-| `fallback_model` | string | `""` | Model to use if the default is unavailable. |
-| `model_path` | string | `""` | Path or HuggingFace repo ID for local weights (e.g., `"./models/qwen3-8b.gguf"` or `"Qwen/Qwen3-8B"`). |
-| `checkpoint_path` | string | `""` | Path to a fine-tuned checkpoint or LoRA adapter directory. |
-| `quantization` | string | `"none"` | Quantization format. Accepted values: `none`, `fp8`, `int8`, `int4`, `gguf_q4`, `gguf_q8`. |
-| `preferred_engine` | string | `""` | Override engine for this model (e.g., `"vllm"`). Takes priority over `engine.default`. |
-| `provider` | string | `""` | Model provider hint: `local`, `openai`, `anthropic`, `google`, `minimax`. Used by the Cloud engine to route API calls. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `default_model` | chaîne | `""` | L'identifiant du modèle préféré (par ex. `qwen3:8b`). Laissé vide, c'est la politique de routage qui choisit le modèle à la volée. |
+| `fallback_model` | chaîne | `""` | Le modèle à employer si le modèle par défaut est indisponible. |
+| `model_path` | chaîne | `""` | Le chemin ou l'identifiant de dépôt HuggingFace des poids locaux (par ex. `"./models/qwen3-8b.gguf"` ou `"Qwen/Qwen3-8B"`). |
+| `checkpoint_path` | chaîne | `""` | Le chemin d'un point de contrôle affiné ou d'un dossier d'adaptateur LoRA. |
+| `quantization` | chaîne | `"none"` | Le format de quantification. Valeurs acceptées : `none`, `fp8`, `int8`, `int4`, `gguf_q4`, `gguf_q8`. |
+| `preferred_engine` | chaîne | `""` | Force un moteur pour ce modèle (par ex. `"vllm"`). Prend le pas sur `engine.default`. |
+| `provider` | chaîne | `""` | Indication de fournisseur du modèle : `local`, `openai`, `anthropic`, `google`, `minimax`. Sert au moteur Cloud pour aiguiller les appels d'API. |
 
-**Generation default fields** (overridable per-call):
+**Les valeurs de génération par défaut** (chacune peut être redéfinie appel par appel) :
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `temperature` | float | `0.7` | Sampling temperature. Lower values produce more deterministic output. |
-| `max_tokens` | int | `1024` | Maximum number of tokens to generate per call. |
-| `top_p` | float | `0.9` | Nucleus sampling probability mass. |
-| `top_k` | int | `40` | Top-k sampling: only consider the top-k tokens at each step. |
-| `repetition_penalty` | float | `1.0` | Penalize repeated tokens. Values > 1 reduce repetition. |
-| `stop_sequences` | string | `""` | Comma-separated stop strings. Generation halts when any stop string is produced. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `temperature` | flottant | `0.7` | La température d'échantillonnage. Plus elle est basse, plus la sortie est déterministe. |
+| `max_tokens` | entier | `1024` | Le nombre maximum de jetons à produire par appel. |
+| `top_p` | flottant | `0.9` | La masse de probabilité pour l'échantillonnage par noyau. |
+| `top_k` | entier | `40` | Échantillonnage top-k : à chaque pas, seuls les k meilleurs jetons sont retenus. |
+| `repetition_penalty` | flottant | `1.0` | Pénalise les jetons répétés. Au-dessus de 1, la répétition diminue. |
+| `stop_sequences` | chaîne | `""` | Les chaînes d'arrêt, séparées par des virgules. La génération s'interrompt dès que l'une d'elles est produite. |
 
-When both `default_model` and `fallback_model` are empty, Diapason uses the configured router policy (see `[learning]`) to select a model from those available on the active engine.
+Quand `default_model` et `fallback_model` sont tous deux vides, Diapason s'en remet à la politique de routage configurée (voir `[learning]`) pour choisir un modèle parmi ceux que le moteur actif propose.
 
-### Engine Selection Priority
+### Priorité de sélection du moteur
 
-When resolving which engine to use for a model, `SystemBuilder`, `sdk.py`, and `cli/ask.py` check fields in this order:
+Pour décider quel moteur servira un modèle, `SystemBuilder`, `sdk.py` et `cli/ask.py` regardent dans cet ordre :
 
 ```
-1. Explicit --engine CLI flag or engine_key= SDK parameter
+1. L'option --engine de la CLI ou le paramètre engine_key= du SDK
 2. config.intelligence.preferred_engine
 3. config.engine.default
-4. First healthy engine discovered at runtime
+4. Le premier moteur en bonne santé découvert à l'exécution
 ```
 
-This lets you pin a specific model to a specific engine without changing the global engine default:
+Tu peux ainsi épingler un modèle précis à un moteur précis sans toucher au moteur par défaut :
 
 ```toml
 [engine]
@@ -221,9 +222,9 @@ preferred_engine = "llamacpp"
 
 ---
 
-### `[agent]` — Agent Behavior
+### `[agent]` — le comportement de l'agent
 
-Controls the default agent, turn limits, tool selection, system prompt, and memory context injection.
+Détermine l'agent par défaut, le nombre de tours, le choix des outils, l'invite système et l'injection du contexte mémoire.
 
 ```toml
 [agent]
@@ -236,30 +237,30 @@ max_turns = 10
 context_from_memory = true
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default_agent` | string | `"simple"` | Default agent to use. Available: `simple`, `orchestrator`, `react`, `operative`, `monitor_operative`. |
-| `max_turns` | int | `10` | Maximum number of tool-calling turns for the orchestrator agent before it must produce a final answer. |
-| `tools` | string | `""` | Comma-separated list of tools to enable by default (e.g., `"calculator,think"`). |
-| `objective` | string | `""` | Concise purpose string for routing, learning, and documentation. |
-| `system_prompt` | string | `""` | Inline system prompt. Takes precedence over `system_prompt_path` when set. |
-| `system_prompt_path` | string | `""` | Path to a system prompt file (`.txt` or `.md`). |
-| `context_from_memory` | bool | `true` | Whether to automatically inject relevant memory context into queries. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `default_agent` | chaîne | `"simple"` | L'agent employé par défaut. Disponibles : `simple`, `orchestrator`, `react`, `operative`, `monitor_operative`. |
+| `max_turns` | entier | `10` | Le nombre maximum de tours d'appel d'outils pour l'agent orchestrateur avant qu'il doive rendre une réponse finale. |
+| `tools` | chaîne | `""` | La liste des outils actifs par défaut, séparés par des virgules (par ex. `"calculator,think"`). |
+| `objective` | chaîne | `""` | Une phrase brève disant le but, pour le routage, l'apprentissage et la documentation. |
+| `system_prompt` | chaîne | `""` | L'invite système écrite sur place. Quand elle est renseignée, elle l'emporte sur `system_prompt_path`. |
+| `system_prompt_path` | chaîne | `""` | Le chemin d'un fichier d'invite système (`.txt` ou `.md`). |
+| `context_from_memory` | booléen | `true` | Injecter ou non automatiquement le contexte mémoire pertinent dans les requêtes. |
 
-!!! note "Generation parameters moved"
-    `temperature` and `max_tokens` have moved from `[agent]` to `[intelligence]`. Old configs with these fields under `[agent]` are automatically migrated to `[intelligence]` at load time.
+!!! note "Les paramètres de génération ont déménagé"
+    `temperature` et `max_tokens` sont passés de `[agent]` à `[intelligence]`. Les anciennes configurations qui les portent sous `[agent]` sont migrées automatiquement vers `[intelligence]` au chargement.
 
-!!! note "Backward compatibility"
-    The old field name `default_tools` is still accepted as a backward-compatible property for `tools`. New configurations should use `tools`.
+!!! note "Compatibilité ascendante"
+    L'ancien nom `default_tools` reste accepté par compatibilité à la place de `tools`. Une nouvelle configuration doit utiliser `tools`.
 
-!!! info "Context injection"
-    When `context_from_memory = true` and documents have been indexed, every query automatically searches memory for relevant chunks and prepends them as system context. This gives the model access to your indexed knowledge base without any extra steps. Disable with `--no-context` on the CLI or `context=False` in the SDK.
+!!! info "Injection de contexte"
+    Quand `context_from_memory = true` et que des documents ont été indexés, chaque requête cherche d'elle-même les fragments pertinents en mémoire et les place en tête comme contexte système. Le modèle accède ainsi à ta base de connaissances indexée sans aucune manœuvre. Pour désactiver : `--no-context` sur la CLI, ou `context=False` dans le SDK.
 
 ---
 
-### `[learning]` — Learning Policies
+### `[learning]` — les politiques d'apprentissage
 
-Controls whether the learning system is enabled and configures per-primitive policies through nested sub-sections.
+Détermine si le système d'apprentissage est actif et configure les politiques de chaque primitive par des sous-sections imbriquées.
 
 ```toml
 [learning]
@@ -284,74 +285,74 @@ policy = "heuristic"
 # efficiency_weight = 0.1
 ```
 
-**`[learning]` top-level:**
+**`[learning]`, au premier niveau :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether the learning system is active. |
-| `update_interval` | int | `100` | Number of traces between automatic policy updates. |
-| `auto_update` | bool | `false` | Whether to trigger policy updates automatically when the interval is reached. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `false` | Si le système d'apprentissage est actif. |
+| `update_interval` | entier | `100` | Le nombre de traces entre deux mises à jour automatiques des politiques. |
+| `auto_update` | booléen | `false` | Déclencher ou non les mises à jour de politique dès que l'intervalle est atteint. |
 
-**`[learning.routing]` — Router policy:**
+**`[learning.routing]` — la politique de routage :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `policy` | string | `"heuristic"` | Router policy for model selection. Available: `heuristic`, `learned` (trace-driven), `sft` (supervised fine-tuning), `grpo` (RL stub). |
-| `min_samples` | int | `5` | Minimum number of traces required before trusting a learned routing decision. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `policy` | chaîne | `"heuristic"` | La politique de routage pour le choix du modèle. Disponibles : `heuristic`, `learned` (guidée par les traces), `sft` (affinage supervisé), `grpo` (ébauche d'apprentissage par renforcement). |
+| `min_samples` | entier | `5` | Le nombre minimum de traces requis avant de faire confiance à une décision de routage apprise. |
 
-**`[learning.intelligence]` — Intelligence learning policy:**
+**`[learning.intelligence]` — la politique d'apprentissage de l'intelligence :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `policy` | string | `"none"` | Intelligence learning policy. Available: `none`, `sft`. Use `sft` to learn model routing from accumulated traces. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `policy` | chaîne | `"none"` | La politique d'apprentissage de l'intelligence. Disponibles : `none`, `sft`. Choisis `sft` pour apprendre le routage des modèles à partir des traces accumulées. |
 
-**`[learning.agent]` — Agent learning policy:**
+**`[learning.agent]` — la politique d'apprentissage de l'agent :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `policy` | string | `"none"` | Agent learning policy. Available: `none`, `agent_advisor`, `icl_updater`. |
-| `max_icl_examples` | int | `20` | Maximum number of in-context examples to maintain in the ICL example library. |
-| `advisor_confidence_threshold` | float | `0.7` | Minimum confidence score for the advisor to recommend a strategy change. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `policy` | chaîne | `"none"` | La politique d'apprentissage de l'agent. Disponibles : `none`, `agent_advisor`, `icl_updater`. |
+| `max_icl_examples` | entier | `20` | Le nombre maximum d'exemples en contexte gardés dans la bibliothèque ICL. |
+| `advisor_confidence_threshold` | flottant | `0.7` | Le score de confiance minimum pour que le conseiller recommande un changement de stratégie. |
 
-**`[learning.metrics]` — Reward / optimization metric weights:**
+**`[learning.metrics]` — les poids des métriques de récompense et d'optimisation :**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `accuracy_weight` | float | `0.6` | Weight for outcome accuracy in the composite reward score. |
-| `latency_weight` | float | `0.2` | Weight for inference latency in the composite reward score. |
-| `cost_weight` | float | `0.1` | Weight for per-call cost in the composite reward score. |
-| `efficiency_weight` | float | `0.1` | Weight for token efficiency in the composite reward score. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `accuracy_weight` | flottant | `0.6` | Le poids de la justesse du résultat dans le score de récompense composite. |
+| `latency_weight` | flottant | `0.2` | Le poids de la latence d'inférence dans le score de récompense composite. |
+| `cost_weight` | flottant | `0.1` | Le poids du coût par appel dans le score de récompense composite. |
+| `efficiency_weight` | flottant | `0.1` | Le poids de l'efficacité en jetons dans le score de récompense composite. |
 
-**Router policies:**
+**Les politiques de routage :**
 
-| Policy | Description |
-|--------|-------------|
-| `heuristic` | Rule-based selection using 6 priority rules. Considers model availability, parameter count, context length, and query characteristics. Default. |
-| `learned` | Trace-driven policy that learns from past interaction outcomes stored in the trace system. |
-| `sft` | Supervised fine-tuning policy that learns routing from labeled trace data. |
-| `grpo` | Group Relative Policy Optimization stub for future RL-based routing. |
+| Politique | Description |
+|-----------|-------------|
+| `heuristic` | Choix par règles : 6 règles de priorité. Tient compte de la disponibilité du modèle, du nombre de paramètres, de la longueur de contexte et de la nature de la question. C'est le défaut. |
+| `learned` | Politique guidée par les traces, qui apprend des résultats des interactions passées conservées dans le système de traces. |
+| `sft` | Politique d'affinage supervisé, qui apprend le routage à partir de traces étiquetées. |
+| `grpo` | Ébauche de Group Relative Policy Optimization, pour un routage par renforcement à venir. |
 
-**Agent policies:**
+**Les politiques d'agent :**
 
-| Policy | Description |
-|--------|-------------|
-| `agent_advisor` | Advises on agent strategy (tool sets, turn limits) based on trace patterns. |
-| `icl_updater` | In-context learning updater — discovers reusable ICL examples and multi-tool skill sequences from traces. |
+| Politique | Description |
+|-----------|-------------|
+| `agent_advisor` | Conseille sur la stratégie de l'agent (jeux d'outils, nombre de tours) d'après les motifs relevés dans les traces. |
+| `icl_updater` | Mise à jour de l'apprentissage en contexte — repère dans les traces les exemples ICL réutilisables et les enchaînements de plusieurs outils. |
 
-You can also override the router policy per-query via the CLI:
+Tu peux aussi forcer la politique de routage pour une seule question depuis la CLI :
 
 ```bash
-diapason ask --router heuristic "Hello"
+diapason ask --router heuristic "Bonjour"
 ```
 
-!!! note "Backward compatibility"
-    The old flat field names `default_policy`, `intelligence_policy`, `agent_policy`, and the comma-separated `reward_weights` string are still accepted as backward-compatible properties. New configurations should use the nested sub-section format. The `tools_policy` field has been removed; use `learning.agent.policy = "icl_updater"` instead.
+!!! note "Compatibilité ascendante"
+    Les anciens noms à plat `default_policy`, `intelligence_policy`, `agent_policy`, ainsi que la chaîne `reward_weights` séparée par des virgules, restent acceptés par compatibilité. Une nouvelle configuration doit utiliser les sous-sections imbriquées. Le champ `tools_policy` a disparu : emploie `learning.agent.policy = "icl_updater"` à la place.
 
 ---
 
-### `[tools.storage]` — Storage Backend
+### `[tools.storage]` — le backend de stockage
 
-Controls the storage backend used for document memory and context injection. The `context_injection` field has moved to `agent.context_from_memory`.
+Détermine le backend de stockage employé pour la mémoire documentaire et l'injection de contexte. Le champ `context_injection` a déménagé vers `agent.context_from_memory`.
 
 ```toml
 [tools.storage]
@@ -364,51 +365,51 @@ chunk_size = 512
 chunk_overlap = 64
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default_backend` | string | `"sqlite"` | Storage backend. Available: `sqlite` (FTS5), `faiss`, `colbert`, `bm25`, `hybrid`. |
-| `db_path` | string | `~/.diapason/memory.db` | Path to the SQLite memory database. Used by the `sqlite` backend. |
-| `context_top_k` | int | `5` | Number of top memory results to inject as context. |
-| `context_min_score` | float | `0.1` | Minimum relevance score for a memory result to be included in context. |
-| `context_max_tokens` | int | `2048` | Maximum number of tokens to use for injected context. |
-| `chunk_size` | int | `512` | Size of document chunks (in tokens) when indexing documents. |
-| `chunk_overlap` | int | `64` | Overlap between adjacent chunks (in tokens) when indexing. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `default_backend` | chaîne | `"sqlite"` | Le backend de stockage. Disponibles : `sqlite` (FTS5), `faiss`, `colbert`, `bm25`, `hybrid`. |
+| `db_path` | chaîne | `~/.diapason/memory.db` | Le chemin de la base SQLite de mémoire. Utilisé par le backend `sqlite`. |
+| `context_top_k` | entier | `5` | Le nombre de meilleurs résultats de mémoire injectés comme contexte. |
+| `context_min_score` | flottant | `0.1` | Le score de pertinence minimum pour qu'un résultat entre dans le contexte. |
+| `context_max_tokens` | entier | `2048` | Le nombre maximum de jetons consacrés au contexte injecté. |
+| `chunk_size` | entier | `512` | La taille des fragments de document (en jetons) au moment de l'indexation. |
+| `chunk_overlap` | entier | `64` | Le recouvrement entre deux fragments voisins (en jetons) au moment de l'indexation. |
 
-**Memory backends:**
+**Les backends de mémoire :**
 
-| Backend | Extra Required | Description |
-|---------|---------------|-------------|
-| `sqlite` | None | SQLite with FTS5 full-text search. Zero dependencies. Default. |
-| `faiss` | `memory-faiss` | Facebook AI Similarity Search with sentence-transformer embeddings. |
-| `colbert` | `memory-colbert` | ColBERTv2 late-interaction retrieval. Requires PyTorch. |
-| `bm25` | `memory-bm25` | BM25 sparse retrieval via `rank-bm25`. |
-| `hybrid` | Depends on sub-backends | Reciprocal Rank Fusion combining multiple backends. |
+| Backend | Extra nécessaire | Description |
+|---------|------------------|-------------|
+| `sqlite` | aucun | SQLite avec la recherche plein texte FTS5. Aucune dépendance. C'est le défaut. |
+| `faiss` | `memory-faiss` | Facebook AI Similarity Search, avec des plongements sentence-transformer. |
+| `colbert` | `memory-colbert` | Recherche à interaction tardive ColBERTv2. Demande PyTorch. |
+| `bm25` | `memory-bm25` | Recherche creuse BM25 via `rank-bm25`. |
+| `hybrid` | selon les sous-backends | Fusion de rangs réciproques, qui combine plusieurs backends. |
 
-!!! note "Backward compatibility"
-    The `[memory]` TOML section is still supported and maps to `[tools.storage]`. New configurations should use `[tools.storage]`. The `context_injection` field under `[memory]` or `[tools.storage]` is automatically migrated to `agent.context_from_memory` at load time.
+!!! note "Compatibilité ascendante"
+    La section TOML `[memory]` est toujours prise en charge et correspond à `[tools.storage]`. Une nouvelle configuration doit utiliser `[tools.storage]`. Le champ `context_injection`, sous `[memory]` comme sous `[tools.storage]`, est migré automatiquement vers `agent.context_from_memory` au chargement.
 
 ---
 
 ### `[tools.mcp]` — MCP (Model Context Protocol)
 
-Controls the MCP server and external MCP tool provider integration. The MCP adapter supports protocol version 2025-11-25.
+Détermine le serveur MCP et le branchement des fournisseurs d'outils MCP externes. L'adaptateur MCP prend en charge la version 2025-11-25 du protocole.
 
 ```toml
 [tools.mcp]
 enabled = true
-# servers = ""  # JSON list of external MCP server configs
+# servers = ""  # liste JSON de configurations de serveurs MCP externes
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether to enable the MCP adapter for exposing and consuming tools via MCP. |
-| `servers` | string | `""` | JSON-encoded list of external MCP server configuration objects. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `true` | Activer ou non l'adaptateur MCP, qui expose et consomme des outils via MCP. |
+| `servers` | chaîne | `""` | La liste, encodée en JSON, des objets de configuration des serveurs MCP externes. |
 
 ---
 
-### `[server]` — API Server
+### `[server]` — le serveur d'API
 
-Controls the OpenAI-compatible API server started by `diapason serve`.
+Détermine le serveur d'API compatible OpenAI que `diapason serve` démarre.
 
 ```toml
 [server]
@@ -419,15 +420,15 @@ model = ""
 workers = 1
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `host` | string | `"0.0.0.0"` | Bind address for the server. Use `"127.0.0.1"` to restrict to localhost. |
-| `port` | int | `8000` | Port number for the server. |
-| `agent` | string | `"orchestrator"` | Agent to use for chat completion requests. |
-| `model` | string | `""` | Default model for the server. When empty, uses `intelligence.default_model` or the first available model. |
-| `workers` | int | `1` | Number of uvicorn worker processes. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `host` | chaîne | `"0.0.0.0"` | L'adresse d'écoute du serveur. Mets `"127.0.0.1"` pour le restreindre à la machine locale. |
+| `port` | entier | `8000` | Le port du serveur. |
+| `agent` | chaîne | `"orchestrator"` | L'agent employé pour les requêtes de complétion de discussion. |
+| `model` | chaîne | `""` | Le modèle par défaut du serveur. Laissé vide, il prend `intelligence.default_model`, ou le premier modèle disponible. |
+| `workers` | entier | `1` | Le nombre de processus uvicorn. |
 
-CLI options override config values:
+Les options de la CLI l'emportent sur les valeurs de la configuration :
 
 ```bash
 diapason serve --host 127.0.0.1 --port 9000 --model qwen3:8b --agent simple
@@ -435,9 +436,9 @@ diapason serve --host 127.0.0.1 --port 9000 --model qwen3:8b --agent simple
 
 ---
 
-### `[telemetry]` — Telemetry Persistence
+### `[telemetry]` — la conservation de la télémétrie
 
-Controls whether inference telemetry is recorded and where it is stored.
+Détermine si la télémétrie d'inférence est enregistrée, et où.
 
 ```toml
 [telemetry]
@@ -445,19 +446,19 @@ enabled = true
 db_path = "~/.diapason/telemetry.db"
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether to record telemetry for each inference call. Records timing, token counts, model, engine, and cost. |
-| `db_path` | string | `~/.diapason/telemetry.db` | Path to the SQLite telemetry database. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `true` | Enregistrer ou non la télémétrie de chaque appel d'inférence. Sont consignés les durées, le nombre de jetons, le modèle, le moteur et le coût. |
+| `db_path` | chaîne | `~/.diapason/telemetry.db` | Le chemin de la base SQLite de télémétrie. |
 
-!!! info "Telemetry is local-only"
-    All telemetry data is stored locally in a SQLite database. No data is ever sent to external services.
+!!! info "La télémétrie reste locale"
+    Toutes les données de télémétrie sont conservées chez toi, dans une base SQLite. Rien n'est jamais envoyé à un service extérieur.
 
 ---
 
-### `[traces]` — Trace Recording
+### `[traces]` — l'enregistrement des traces
 
-Controls the trace system that records full interaction sequences for the learning system.
+Détermine le système de traces, qui consigne les séquences d'interaction complètes pour le système d'apprentissage.
 
 ```toml
 [traces]
@@ -465,16 +466,16 @@ enabled = false
 db_path = "~/.diapason/traces.db"
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether to record traces for each agent interaction. |
-| `db_path` | string | `~/.diapason/traces.db` | Path to the SQLite trace database. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `false` | Enregistrer ou non une trace pour chaque interaction d'agent. |
+| `db_path` | chaîne | `~/.diapason/traces.db` | Le chemin de la base SQLite des traces. |
 
 ---
 
-### `[skills]` — Skills System
+### `[skills]` — le système de compétences
 
-Controls the skills system — reusable compositions of tools and agent instructions. Skills teach agents how to better use tools and improve their reasoning. See the [Skills User Guide](../user-guide/skills.md) for full documentation.
+Détermine le système de compétences — des compositions réutilisables d'outils et d'instructions d'agent. Une compétence apprend à un agent à mieux se servir des outils et à mieux raisonner. Voir le [guide des compétences](../user-guide/skills.md) pour la documentation complète.
 
 ```toml
 [skills]
@@ -487,19 +488,19 @@ max_depth = 5
 sandbox_dangerous = true
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether to enable the skills system. When disabled, no skills are loaded or exposed to agents. |
-| `skills_dir` | string | `~/.diapason/skills/` | Directory where skills are installed. |
-| `active` | string | `"*"` | Comma-separated list of skill names to activate, or `"*"` for all discovered skills. |
-| `auto_discover` | bool | `true` | Whether to scan `skills_dir` for skills on startup. |
-| `auto_sync` | bool | `false` | Whether to pull from configured sources on session start (checks freshness every 24h). |
-| `max_depth` | int | `5` | Maximum sub-skill nesting depth for composed skills. |
-| `sandbox_dangerous` | bool | `true` | Whether to warn about skills with dangerous capabilities (`shell:execute`, `network:listen`, `filesystem:write`). |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `true` | Activer ou non le système de compétences. Désactivé, aucune compétence n'est chargée ni proposée aux agents. |
+| `skills_dir` | chaîne | `~/.diapason/skills/` | Le dossier où les compétences sont installées. |
+| `active` | chaîne | `"*"` | La liste des noms de compétences à activer, séparés par des virgules, ou `"*"` pour toutes celles découvertes. |
+| `auto_discover` | booléen | `true` | Balayer ou non `skills_dir` au démarrage pour y trouver des compétences. |
+| `auto_sync` | booléen | `false` | Récupérer ou non les sources configurées au début d'une session (fraîcheur vérifiée toutes les 24 h). |
+| `max_depth` | entier | `5` | La profondeur maximale d'imbrication des sous-compétences dans une compétence composée. |
+| `sandbox_dangerous` | booléen | `true` | Avertir ou non au sujet des compétences aux capacités dangereuses (`shell:execute`, `network:listen`, `filesystem:write`). |
 
-#### `[[skills.sources]]` — Skill Import Sources
+#### `[[skills.sources]]` — les sources d'import de compétences
 
-Configure one or more skill sources for automatic import. Each `[[skills.sources]]` entry defines a source to pull from.
+Configure une ou plusieurs sources de compétences à importer automatiquement. Chaque entrée `[[skills.sources]]` définit une source où puiser.
 
 ```toml
 [[skills.sources]]
@@ -517,16 +518,16 @@ url = "https://github.com/myorg/internal-skills"
 auto_update = true
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `source` | string | `""` | Source type: `"hermes"`, `"openclaw"`, or `"github"`. |
-| `url` | string | `""` | Repository URL. Required when `source = "github"`. |
-| `filter` | table | `{}` | Filter criteria. Supported keys: `category` (list of strings), `search` (regex string). |
-| `auto_update` | bool | `false` | Whether to pull latest commits when syncing this source. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `source` | chaîne | `""` | Le type de source : `"hermes"`, `"openclaw"` ou `"github"`. |
+| `url` | chaîne | `""` | L'URL du dépôt. Obligatoire quand `source = "github"`. |
+| `filter` | table | `{}` | Les critères de filtrage. Clés acceptées : `category` (liste de chaînes), `search` (expression régulière). |
+| `auto_update` | booléen | `false` | Récupérer ou non les derniers commits lors de la synchronisation de cette source. |
 
-#### `[learning.skills]` — Skills Learning Loop
+#### `[learning.skills]` — la boucle d'apprentissage des compétences
 
-Controls the automatic optimization of skill descriptions and few-shot examples from trace data. Requires `[traces] enabled = true` to collect the traces that the optimizer analyzes.
+Détermine l'optimisation automatique des descriptions de compétences et de leurs exemples, à partir des traces. Demande `[traces] enabled = true` pour que l'optimiseur ait des traces à analyser.
 
 ```toml
 [learning.skills]
@@ -537,19 +538,19 @@ optimization_interval_seconds = 86400
 overlay_dir = "~/.diapason/learning/skills/"
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `auto_optimize` | bool | `false` | Whether to run skill optimization automatically after each learning cycle. |
-| `optimizer` | string | `"dspy"` | Optimization policy: `"dspy"` (bootstrap few-shot) or `"gepa"` (evolutionary). |
-| `min_traces_per_skill` | int | `20` | Minimum trace count for a skill to be eligible for optimization. |
-| `optimization_interval_seconds` | int | `86400` | Run optimization at most once per this interval (default: once per day). |
-| `overlay_dir` | string | `~/.diapason/learning/skills/` | Where optimized skill overlays are stored. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `auto_optimize` | booléen | `false` | Lancer ou non l'optimisation des compétences après chaque cycle d'apprentissage. |
+| `optimizer` | chaîne | `"dspy"` | La politique d'optimisation : `"dspy"` (amorçage par quelques exemples) ou `"gepa"` (évolutionnaire). |
+| `min_traces_per_skill` | entier | `20` | Le nombre de traces minimum pour qu'une compétence soit éligible à l'optimisation. |
+| `optimization_interval_seconds` | entier | `86400` | Ne lancer l'optimisation qu'une fois par intervalle (par défaut : une fois par jour). |
+| `overlay_dir` | chaîne | `~/.diapason/learning/skills/` | Où sont rangées les surcouches de compétences optimisées. |
 
 ---
 
-### `[channel]` — Channel Messaging
+### `[channel]` — la messagerie par canaux
 
-Controls the channel messaging bridge for multi-platform communication. Each supported platform has its own nested sub-section.
+Détermine la passerelle de messagerie qui relie Diapason à plusieurs plateformes. Chaque plateforme prise en charge a sa propre sous-section.
 
 ```toml
 [channel]
@@ -573,17 +574,17 @@ default_agent = "simple"
 # method = "POST"
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether to enable channel messaging support. |
-| `default_channel` | string | `""` | Default channel to use when not specified. |
-| `default_agent` | string | `"simple"` | Default agent for handling channel messages. |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `false` | Activer ou non la messagerie par canaux. |
+| `default_channel` | chaîne | `""` | Le canal employé quand aucun n'est précisé. |
+| `default_agent` | chaîne | `"simple"` | L'agent qui traite les messages des canaux. |
 
 ---
 
-### `[security]` — Security Guardrails
+### `[security]` — les garde-fous de sécurité
 
-Controls the security scanning pipeline for input/output content.
+Détermine la chaîne d'analyse de sécurité appliquée au contenu entrant et sortant.
 
 ```toml
 [security]
@@ -596,108 +597,108 @@ pii_scanner = true
 enforce_tool_confirmation = true
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether to enable security guardrails. |
-| `mode` | string | `"warn"` | Action on findings: `"warn"` (log only), `"redact"` (replace sensitive content), or `"block"` (raise error). |
-| `scan_input` | bool | `true` | Whether to scan user input messages. |
-| `scan_output` | bool | `true` | Whether to scan model output. |
-| `secret_scanner` | bool | `true` | Enable secret detection (API keys, tokens, passwords). |
-| `pii_scanner` | bool | `true` | Enable PII detection (emails, SSNs, credit cards). |
-| `enforce_tool_confirmation` | bool | `true` | Accepted but **not currently enforced**. Whether you get prompts depends on the entry point. See [System Access](../user-guide/system-access.md#confirmation-behaviour). |
+| Champ | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `enabled` | booléen | `true` | Activer ou non les garde-fous de sécurité. |
+| `mode` | chaîne | `"warn"` | Ce qui arrive en cas de trouvaille : `"warn"` (journaliser seulement), `"redact"` (remplacer le contenu sensible) ou `"block"` (lever une erreur). |
+| `scan_input` | booléen | `true` | Analyser ou non les messages entrants. |
+| `scan_output` | booléen | `true` | Analyser ou non la sortie du modèle. |
+| `secret_scanner` | booléen | `true` | Activer la détection de secrets (clés d'API, jetons, mots de passe). |
+| `pii_scanner` | booléen | `true` | Activer la détection de données personnelles (courriels, numéros d'assurance sociale, cartes bancaires). |
+| `enforce_tool_confirmation` | booléen | `true` | Accepté mais **pas appliqué pour l'instant**. Que tu sois consulté ou non dépend du point d'entrée. Voir [Accès système](../user-guide/system-access.md#confirmation-behaviour). |
 
-!!! tip "Choosing a security mode"
-    Use `"warn"` during development to see what would be flagged without disrupting output.
-    Use `"redact"` in production to automatically sanitize sensitive content.
-    Use `"block"` for strict environments where any sensitive data should halt generation.
+!!! tip "Choisir un mode de sécurité"
+    Prends `"warn"` pendant le développement, pour voir ce qui serait signalé sans rien casser.
+    Prends `"redact"` en production, pour nettoyer automatiquement le contenu sensible.
+    Prends `"block"` dans un environnement strict, où la moindre donnée sensible doit arrêter la génération.
 
 ---
 
-## Hardware Auto-Detection
+## Détection automatique du matériel
 
-When you run `diapason init`, Diapason probes your system to detect available hardware. The detection runs in this order:
+Quand tu lances `diapason init`, Diapason sonde ta machine pour repérer le matériel disponible. La détection se déroule dans cet ordre :
 
-### GPU Detection
+### Détection du GPU
 
-1. **NVIDIA GPU** — Checks for `nvidia-smi` on `$PATH`. If found, queries GPU name, VRAM (in MB), and GPU count via:
+1. **GPU NVIDIA** — cherche `nvidia-smi` dans `$PATH`. S'il est là, interroge le nom du GPU, la VRAM (en Mo) et le nombre de GPU avec :
 
     ```
     nvidia-smi --query-gpu=name,memory.total,count --format=csv,noheader,nounits
     ```
 
-2. **AMD GPU** — Checks for `rocm-smi` on `$PATH`. If found, queries the product name via:
+2. **GPU AMD** — cherche `rocm-smi` dans `$PATH`. S'il est là, interroge le nom du produit avec :
 
     ```
     rocm-smi --showproductname
     ```
 
-3. **Apple Silicon** — On macOS only. Runs `system_profiler SPDisplaysDataType` and looks for "Apple" in the chipset model line.
+3. **Apple Silicon** — sur macOS uniquement. Lance `system_profiler SPDisplaysDataType` et cherche « Apple » dans la ligne du modèle de puce.
 
-If none of these detect a GPU, the system is treated as CPU-only.
+Si rien de tout cela ne trouve de GPU, la machine est considérée comme n'ayant que son processeur.
 
-### CPU and RAM Detection
+### Détection du processeur et de la mémoire
 
-- **CPU brand**: Reads from `sysctl -n machdep.cpu.brand_string` on macOS, or parses `model name` from `/proc/cpuinfo` on Linux.
-- **CPU count**: Uses Python's `os.cpu_count()`.
-- **RAM**: Reads from `sysctl -n hw.memsize` on macOS, or parses `MemTotal` from `/proc/meminfo` on Linux.
+- **Marque du processeur** : lue dans `sysctl -n machdep.cpu.brand_string` sur macOS, ou extraite de `model name` dans `/proc/cpuinfo` sur Linux.
+- **Nombre de cœurs** : donné par `os.cpu_count()` de Python.
+- **Mémoire vive** : lue dans `sysctl -n hw.memsize` sur macOS, ou extraite de `MemTotal` dans `/proc/meminfo` sur Linux.
 
-### Detected Hardware Dataclass
+### La dataclass du matériel détecté
 
-The detection result is stored as a `HardwareInfo` dataclass:
+Le résultat de la détection est rangé dans une dataclass `HardwareInfo` :
 
 ```python
 @dataclass
 class HardwareInfo:
     platform: str      # "linux", "darwin", "windows"
-    cpu_brand: str     # e.g., "AMD EPYC 7763"
-    cpu_count: int     # e.g., 128
-    ram_gb: float      # e.g., 512.0
+    cpu_brand: str     # p. ex. "AMD EPYC 7763"
+    cpu_count: int     # p. ex. 128
+    ram_gb: float      # p. ex. 512.0
     gpu: GpuInfo | None
 
 @dataclass
 class GpuInfo:
     vendor: str             # "nvidia", "amd", "apple"
-    name: str               # e.g., "NVIDIA A100-SXM4-80GB"
-    vram_gb: float          # e.g., 80.0
-    compute_capability: str # (NVIDIA only)
-    count: int              # e.g., 8
+    name: str               # p. ex. "NVIDIA A100-SXM4-80GB"
+    vram_gb: float          # p. ex. 80.0
+    compute_capability: str # (NVIDIA seulement)
+    count: int              # p. ex. 8
 ```
 
 ---
 
-## Engine Recommendation Logic
+## Comment le moteur est recommandé
 
-Based on the detected hardware, `recommend_engine()` selects the optimal default engine:
+À partir du matériel détecté, `recommend_engine()` choisit le meilleur moteur par défaut :
 
 ```mermaid
 graph TD
-    A[detect_hardware] --> B{GPU detected?}
-    B -->|No| C[llamacpp]
-    B -->|Yes| D{GPU vendor?}
+    A[detect_hardware] --> B{Un GPU ?}
+    B -->|Non| C[llamacpp]
+    B -->|Oui| D{Quel fabricant ?}
     D -->|Apple| E[ollama]
-    D -->|NVIDIA| F{Datacenter GPU?}
+    D -->|NVIDIA| F{GPU de datacenter ?}
     D -->|AMD| G[vllm]
-    F -->|Yes: A100, H100, H200, L40, A10, A30| H[vllm]
-    F -->|No: consumer GPU| I[ollama]
+    F -->|Oui : A100, H100, H200, L40, A10, A30| H[vllm]
+    F -->|Non : GPU grand public| I[ollama]
 ```
 
-| Hardware | Recommended Engine | Reason |
-|----------|--------------------|--------|
-| No GPU | `llamacpp` | Efficient CPU inference with GGUF quantized models |
-| Apple Silicon | `ollama` | Native Metal acceleration, easy model management |
-| NVIDIA consumer GPU (RTX 3090, 4090, etc.) | `ollama` | Simple setup, good performance for single-user |
-| NVIDIA datacenter GPU (A100, H100, H200, L40, A10, A30) | `vllm` | High-throughput batched serving, continuous batching |
-| AMD GPU | `vllm` | ROCm support via vLLM |
+| Matériel | Moteur recommandé | Raison |
+|----------|-------------------|--------|
+| Pas de GPU | `llamacpp` | Inférence efficace sur processeur, avec des modèles quantifiés GGUF |
+| Apple Silicon | `ollama` | Accélération Metal native, gestion des modèles facile |
+| GPU NVIDIA grand public (RTX 3090, 4090, etc.) | `ollama` | Mise en route simple, bonnes performances pour un seul utilisateur |
+| GPU NVIDIA de datacenter (A100, H100, H200, L40, A10, A30) | `vllm` | Service par lots à haut débit, traitement par lots continu |
+| GPU AMD | `vllm` | Prise en charge de ROCm par vLLM |
 
 ---
 
-## Example Configurations
+## Exemples de configuration
 
-### Apple Silicon Mac
+### Mac Apple Silicon
 
 ```toml
 # ~/.diapason/config.toml
-# Apple Silicon MacBook Pro (M3 Max, 128 GB unified memory)
+# MacBook Pro Apple Silicon (M3 Max, 128 Go de mémoire unifiée)
 
 [engine]
 default = "ollama"
@@ -734,11 +735,11 @@ policy = "heuristic"
 enabled = true
 ```
 
-### NVIDIA Datacenter (Multi-GPU)
+### Datacenter NVIDIA (plusieurs GPU)
 
 ```toml
 # ~/.diapason/config.toml
-# 8x NVIDIA A100 80GB server
+# serveur à 8 NVIDIA A100 de 80 Go
 
 [engine]
 default = "vllm"
@@ -786,11 +787,11 @@ policy = "heuristic"
 enabled = true
 ```
 
-### CPU-Only (No GPU)
+### Processeur seul (pas de GPU)
 
 ```toml
 # ~/.diapason/config.toml
-# CPU-only machine
+# machine sans GPU
 
 [engine]
 default = "llamacpp"
@@ -830,11 +831,11 @@ policy = "heuristic"
 enabled = true
 ```
 
-### Trace-Driven Learning Enabled
+### Apprentissage guidé par les traces, activé
 
 ```toml
 # ~/.diapason/config.toml
-# Research setup with trace-driven learning active
+# installation de recherche, apprentissage guidé par les traces actif
 
 [engine]
 default = "ollama"
@@ -886,13 +887,13 @@ enabled = true
 
 ---
 
-## Migration Guide
+## Guide de migration
 
-If you have an existing `~/.diapason/config.toml` from a previous version, here is what changed and how to update it.
+Si tu as déjà un `~/.diapason/config.toml` d'une version précédente, voici ce qui a changé et comment le mettre à jour.
 
-### Engine: Nested Sub-Sections
+### Moteur : des sous-sections imbriquées
 
-=== "Old Format"
+=== "Ancien format"
 
     ```toml
     [engine]
@@ -902,7 +903,7 @@ If you have an existing `~/.diapason/config.toml` from a previous version, here 
     llamacpp_path = "/usr/local/bin/llama-server"
     ```
 
-=== "New Format"
+=== "Nouveau format"
 
     ```toml
     [engine]
@@ -919,11 +920,11 @@ If you have an existing `~/.diapason/config.toml` from a previous version, here 
     ```
 
 !!! note
-    The old flat names still work as backward-compatible properties. You only need to update your config if you want to use the new fields (e.g., `binary_path`).
+    Les anciens noms à plat fonctionnent toujours par compatibilité. Tu n'as à mettre ta configuration à jour que si tu veux employer les nouveaux champs (`binary_path`, par exemple).
 
-### Intelligence: Generation Parameters
+### Intelligence : les paramètres de génération
 
-=== "Old Format"
+=== "Ancien format"
 
     ```toml
     [agent]
@@ -931,7 +932,7 @@ If you have an existing `~/.diapason/config.toml` from a previous version, here 
     max_tokens = 1024
     ```
 
-=== "New Format"
+=== "Nouveau format"
 
     ```toml
     [intelligence]
@@ -940,29 +941,29 @@ If you have an existing `~/.diapason/config.toml` from a previous version, here 
     ```
 
 !!! note
-    Old configs with `temperature` or `max_tokens` under `[agent]` are automatically migrated to `[intelligence]` at load time. No manual update is required, but updating is recommended for clarity.
+    Les anciennes configurations qui portent `temperature` ou `max_tokens` sous `[agent]` sont migrées automatiquement vers `[intelligence]` au chargement. Aucune retouche à la main n'est nécessaire, mais la mise à jour rend les choses plus claires.
 
-### Agent: Renamed and Added Fields
+### Agent : des champs renommés et ajoutés
 
-=== "Old Format"
+=== "Ancien format"
 
     ```toml
     [agent]
     default_tools = "calculator,think"
     ```
 
-=== "New Format"
+=== "Nouveau format"
 
     ```toml
     [agent]
     tools = "calculator,think"
     ```
 
-The `default_tools` name still works via a backward-compatible property.
+Le nom `default_tools` fonctionne toujours, par compatibilité.
 
-### Memory: Context Injection Moved
+### Mémoire : l'injection de contexte a déménagé
 
-=== "Old Format"
+=== "Ancien format"
 
     ```toml
     [memory]
@@ -970,7 +971,7 @@ The `default_tools` name still works via a backward-compatible property.
     default_backend = "sqlite"
     ```
 
-=== "New Format"
+=== "Nouveau format"
 
     ```toml
     [agent]
@@ -981,11 +982,11 @@ The `default_tools` name still works via a backward-compatible property.
     ```
 
 !!! note
-    `context_injection` under `[memory]` or `[tools.storage]` is automatically migrated to `agent.context_from_memory` at load time.
+    `context_injection`, sous `[memory]` comme sous `[tools.storage]`, est migré automatiquement vers `agent.context_from_memory` au chargement.
 
-### Learning: Nested Sub-Sections
+### Apprentissage : des sous-sections imbriquées
 
-=== "Old Format"
+=== "Ancien format"
 
     ```toml
     [learning]
@@ -997,7 +998,7 @@ The `default_tools` name still works via a backward-compatible property.
     update_interval = 100
     ```
 
-=== "New Format"
+=== "Nouveau format"
 
     ```toml
     [learning]
@@ -1021,13 +1022,13 @@ The `default_tools` name still works via a backward-compatible property.
     ```
 
 !!! note
-    The flat field names `default_policy`, `intelligence_policy`, `agent_policy`, and `reward_weights` are still accepted as backward-compatible properties. The `tools_policy` field has been removed; use `learning.agent.policy = "icl_updater"` instead.
+    Les noms à plat `default_policy`, `intelligence_policy`, `agent_policy` et `reward_weights` restent acceptés par compatibilité. Le champ `tools_policy` a disparu : emploie `learning.agent.policy = "icl_updater"` à la place.
 
 ---
 
-## Programmatic Configuration
+## Configuration par programme
 
-You can configure Diapason entirely from Python without a TOML file:
+Tu peux configurer Diapason entièrement depuis Python, sans fichier TOML :
 
 ```python
 from diapason import Diapason
@@ -1066,11 +1067,11 @@ config = DiapasonConfig(
 )
 
 j = Diapason(config=config)
-response = j.ask("Hello")
+response = j.ask("Bonjour")
 j.close()
 ```
 
-Or load from a custom path:
+Ou charger depuis un chemin à toi :
 
 ```python
 j = Diapason(config_path="/path/to/my-config.toml")
@@ -1078,78 +1079,78 @@ j = Diapason(config_path="/path/to/my-config.toml")
 
 ---
 
-## Environment Variables
+## Variables d'environnement
 
-Diapason respects the following environment variables:
+Diapason tient compte des variables d'environnement suivantes :
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | API key for OpenAI cloud inference. Required for the `cloud` engine with OpenAI models. |
-| `ANTHROPIC_API_KEY` | API key for Anthropic cloud inference. Required for the `cloud` engine with Claude models. |
-| `GOOGLE_API_KEY` | API key for Google Gemini inference. Required for the `google` engine. |
-| `MINIMAX_API_KEY` | API key for MiniMax cloud inference. Required for the `cloud` engine with MiniMax models (MiniMax-M2.7, MiniMax-M2.7-highspeed, MiniMax-M2.5, MiniMax-M2.5-highspeed). |
-| `TAVILY_API_KEY` | API key for the Tavily web search tool. Required for the `web_search` tool. |
+| `OPENAI_API_KEY` | La clé d'API pour l'inférence dans le nuage chez OpenAI. Nécessaire au moteur `cloud` avec les modèles OpenAI. |
+| `ANTHROPIC_API_KEY` | La clé d'API pour l'inférence dans le nuage chez Anthropic. Nécessaire au moteur `cloud` avec les modèles Claude. |
+| `GOOGLE_API_KEY` | La clé d'API pour l'inférence Google Gemini. Nécessaire au moteur `google`. |
+| `MINIMAX_API_KEY` | La clé d'API pour l'inférence dans le nuage chez MiniMax. Nécessaire au moteur `cloud` avec les modèles MiniMax (MiniMax-M2.7, MiniMax-M2.7-highspeed, MiniMax-M2.5, MiniMax-M2.5-highspeed). |
+| `TAVILY_API_KEY` | La clé d'API de l'outil de recherche web Tavily. Nécessaire à l'outil `web_search`. |
 
-## Next Steps
+## Pour aller plus loin
 
-- [Quick Start](quickstart.md) — Run your first query
-- [CLI Reference](../user-guide/cli.md) — Full reference for all CLI commands
-- [Architecture Overview](../architecture/overview.md) — Understand how the pieces fit together
-- [Intelligence Primitive](../architecture/intelligence.md) — Model identity and generation defaults
-- [Learning & Traces](../architecture/learning.md) — Router policies and the trace-driven feedback loop
+- [Démarrage rapide](quickstart.md) — lance ta première question
+- [Référence de la CLI](../user-guide/cli.md) — toutes les commandes, en détail
+- [Vue d'ensemble de l'architecture](../architecture/overview.md) — comment les pièces s'emboîtent
+- [La primitive Intelligence](../architecture/intelligence.md) — l'identité du modèle et les valeurs de génération par défaut
+- [Apprentissage et traces](../architecture/learning.md) — les politiques de routage et la boucle de retour guidée par les traces
 
 ---
 
-## Learning & spec search
+## Apprentissage et recherche de spécification
 
-LLM-guided spec search uses a frontier model to automatically improve your local agent configuration. See the [user guide](../user-guide/llm-guided-spec-search.md) for a full walkthrough.
+La recherche de spécification guidée par un LLM emploie un modèle de pointe pour améliorer toute seule la configuration de ton agent local. Voir le [guide](../user-guide/llm-guided-spec-search.md) pour la marche à suivre complète.
 
 ### `[learning.spec_search]`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | bool | `true` | Gate the entire spec-search subsystem |
-| `autonomy_mode` | string | `"tiered"` | `auto`, `tiered`, or `manual` |
-| `teacher_model` | string | `"claude-opus-4-6"` | Frontier model for diagnosis and planning |
-| `max_cost_per_session_usd` | float | `5.0` | Per-session teacher API budget |
-| `max_tool_calls_per_diagnosis` | int | `30` | Max teacher tool calls in diagnosis phase |
+| Clé | Type | Défaut | Description |
+|-----|------|--------|-------------|
+| `enabled` | booléen | `true` | Ouvre ou ferme tout le sous-système de recherche de spécification |
+| `autonomy_mode` | chaîne | `"tiered"` | `auto`, `tiered` ou `manual` |
+| `teacher_model` | chaîne | `"claude-opus-4-6"` | Le modèle de pointe qui diagnostique et planifie |
+| `max_cost_per_session_usd` | flottant | `5.0` | Le budget d'API du modèle enseignant, par session |
+| `max_tool_calls_per_diagnosis` | entier | `30` | Le nombre maximum d'appels d'outils de l'enseignant en phase de diagnostic |
 
 ### `[learning.spec_search.triggers]`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `scheduled_enabled` | bool | `true` | Enable daily scheduled sessions |
-| `scheduled_cron` | string | `"0 3 * * *"` | Cron expression for scheduled trigger |
-| `scheduled_min_new_traces` | int | `20` | Minimum new traces to trigger |
-| `cluster_enabled` | bool | `true` | Enable failure cluster trigger |
-| `cluster_check_interval_minutes` | int | `60` | How often to check for clusters |
-| `cluster_min_size` | int | `5` | Minimum traces in a cluster |
-| `cluster_failure_threshold` | float | `0.3` | Feedback <= this counts as failure |
+| Clé | Type | Défaut | Description |
+|-----|------|--------|-------------|
+| `scheduled_enabled` | booléen | `true` | Active les sessions quotidiennes programmées |
+| `scheduled_cron` | chaîne | `"0 3 * * *"` | L'expression cron du déclenchement programmé |
+| `scheduled_min_new_traces` | entier | `20` | Le nombre minimum de traces nouvelles pour déclencher |
+| `cluster_enabled` | booléen | `true` | Active le déclenchement sur un amas d'échecs |
+| `cluster_check_interval_minutes` | entier | `60` | À quelle fréquence chercher des amas |
+| `cluster_min_size` | entier | `5` | Le nombre minimum de traces dans un amas |
+| `cluster_failure_threshold` | flottant | `0.3` | Un retour inférieur ou égal à cette valeur compte comme un échec |
 
 ### `[learning.spec_search.gate]`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `min_improvement` | float | `0.0` | Minimum overall score improvement to accept |
-| `max_regression` | float | `0.05` | Maximum per-cluster score drop before rejecting |
-| `benchmark_subsample_size` | int | `50` | Tasks per gate run |
-| `full_benchmark` | bool | `false` | Disable subsampling (slower, more accurate) |
+| Clé | Type | Défaut | Description |
+|-----|------|--------|-------------|
+| `min_improvement` | flottant | `0.0` | Le gain de score global minimum pour accepter |
+| `max_regression` | flottant | `0.05` | La chute de score maximale sur un amas avant de refuser |
+| `benchmark_subsample_size` | entier | `50` | Le nombre de tâches par passage du portier |
+| `full_benchmark` | booléen | `false` | Désactive l'échantillonnage (plus lent, plus juste) |
 
 ### `[learning.spec_search.benchmark]`
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `synthesis_feedback_threshold` | float | `0.7` | Min feedback for benchmark traces |
-| `max_benchmark_size` | int | `200` | Max tasks in the benchmark |
-| `auto_refresh` | bool | `true` | Auto-mine new high-feedback traces |
-| `max_synthesis_cost_usd_per_refresh` | float | `2.0` | Cost cap per benchmark refresh |
+| Clé | Type | Défaut | Description |
+|-----|------|--------|-------------|
+| `synthesis_feedback_threshold` | flottant | `0.7` | Le retour minimum pour qu'une trace entre dans le banc d'essai |
+| `max_benchmark_size` | entier | `200` | Le nombre maximum de tâches dans le banc d'essai |
+| `auto_refresh` | booléen | `true` | Extrait automatiquement les nouvelles traces bien notées |
+| `max_synthesis_cost_usd_per_refresh` | flottant | `2.0` | Le plafond de coût par rafraîchissement du banc d'essai |
 
 ### `[learning.spec_search.tier_overrides]`
 
-Override the default risk tier for any operation. Keys are operation names, values are tier strings (`auto`, `review`, `manual`).
+Change le palier de risque par défaut d'une opération. Les clés sont des noms d'opérations, les valeurs des noms de paliers (`auto`, `review`, `manual`).
 
 ```toml
 [learning.spec_search.tier_overrides]
-# patch_system_prompt = "auto"     # promote to auto after trust
+# patch_system_prompt = "auto"     # passer en auto une fois la confiance acquise
 # replace_system_prompt = "auto"
 ```

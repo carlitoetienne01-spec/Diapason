@@ -58,27 +58,30 @@ extra_css:
 plugins:
   - search:
       separator: '[\s\-\._]+'
-  # Bilingue (22/09/2026). Pendant le chantier de traduction l'anglais reste
-  # la langue par défaut — le site ne doit pas se casser entre deux pages —
-  # et le français vit sous /fr/. La bascule (français par défaut, anglais
-  # sous /en/) se fera d'un seul coup, quand les 102 pages seront traduites.
+  # Bilingue (22/09/2026). Le FRANÇAIS est la langue par défaut : le site
+  # s'adresse d'abord à des francophones, et c'est lui qui vit à la racine.
+  # L'anglais, sous /en/, reste pour les contributeurs d'un dépôt public.
+  # Chaque page française est `x.md`, son anglaise `x.en.md` — la bascule a
+  # échangé 84 paires de noms d'un seul coup, une fois toutes traduites.
   - i18n:
       docs_structure: suffix
       fallback_to_default: true
       reconfigure_material: true
       reconfigure_search: true
       languages:
-        - locale: en
-          name: English
-          default: true
-          build: true
         - locale: fr
           name: Français
+          default: true
           build: true
-          site_name: Diapason
           site_description: >-
             Un assistant personnel dont le modèle, la voix et la vision
             s'exécutent sur ta machine.
+        - locale: en
+          name: English
+          build: true
+          site_description: >-
+            A personal assistant whose model, voice and vision run on your
+            own machine.
   # `gen-files` retiré le 22/09/2026 : il fabriquait la référence d'API en
   # MÉMOIRE, et mkdocs-static-i18n ne voit pas les fichiers virtuels — la
   # référence disparaissait du site bilingue, avec 1 606 avertissements, quel

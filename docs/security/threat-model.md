@@ -1,59 +1,68 @@
-# Threat model
+# Modèle de menaces
 
-## Scope
+## Périmètre
 
-Diapason is a local-first assistant that can read files, execute code, access
-networks, call external models, and send messages when those tools are enabled.
-The protected assets are user data, credentials, local files, model context,
-audit integrity, and control of the host.
+Diapason est un assistant local d'abord qui peut lire des fichiers, exécuter du
+code, accéder au réseau, appeler des modèles externes et envoyer des messages
+quand les outils correspondants sont activés. Les biens à protéger sont tes
+données, tes identifiants, tes fichiers locaux, le contexte du modèle,
+l'intégrité de l'audit et le contrôle de la machine.
 
-## Trust boundaries
+## Frontières de confiance
 
-| Boundary | Untrusted input | Required control |
+| Frontière | Entrée non fiable | Contrôle exigé |
 |---|---|---|
-| Browser/desktop → local API | Requests, WebSockets | Bearer authentication, CORS allowlist, rate limit |
-| Prompt/model → tool executor | Tool name and arguments | Exact tool allowlist, capabilities, confirmation, timeout |
-| Device → network/cloud | Prompts, files, audio, screenshots | Local-only gate, SSRF checks, secret/PII boundary scan |
-| Runtime → filesystem/process | Paths and commands | Sensitive-file policy, capability check, confirmation, sandbox where configured |
-| Runtime → logs/traces | Results and metadata | Redaction before persistence, hashed security evidence, owner-only files |
-| Desktop webview → native host | Tauri commands | Narrow command surface and capability manifest; no shell plugin permission |
+| Navigateur/bureau → API locale | Requêtes, WebSockets | Authentification Bearer, liste d'autorisation CORS, limite de débit |
+| Prompt/modèle → exécuteur d'outils | Nom de l'outil et arguments | Liste d'autorisation par nom exact, capacités, confirmation, délai d'attente |
+| Appareil → réseau/cloud | Prompts, fichiers, audio, captures d'écran | Verrou « local seulement », contrôles SSRF, balayage des secrets et données personnelles à la frontière |
+| Exécution → système de fichiers/processus | Chemins et commandes | Politique des fichiers sensibles, contrôle de capacité, confirmation, bac à sable là où il est configuré |
+| Exécution → journaux/traces | Résultats et métadonnées | Caviardage avant écriture, preuves de sécurité hachées, fichiers lisibles du seul propriétaire |
+| WebView du bureau → hôte natif | Commandes Tauri | Surface de commandes étroite et manifeste de capacités ; aucune permission du plugin shell |
 
-## Main threats and mitigations
+## Principales menaces et parades
 
-- **Prompt injection and confused-deputy tool use:** tools are limited to the
-  configured set, capability grants are scoped to exact tool names, and
-  sensitive tools require approval.
-- **Credential or PII exfiltration:** local-only mode blocks remote paths by
-  default; outbound payloads and model traffic are scanned and redacted or
-  blocked according to profile.
-- **Unauthenticated local API access:** every server start resolves an explicit
-  key or creates a 256-bit owner-only key; HTTP and WebSocket data routes check
-  it.
-- **Abuse and resource exhaustion:** API and per-tool token buckets, tool
-  timeouts, request-size limits where endpoints define them, and constrained
-  concurrency.
-- **SSRF and unsafe file access:** URL destinations and sensitive paths are
-  checked before access.
-- **Secret leakage through observability:** audit entries store hashes and
-  lengths rather than matched values; tool events redact arguments and results.
-- **Native desktop privilege expansion:** the webview has no generic shell
-  execute, spawn, stdin, kill, or open permissions.
-- **Supply-chain compromise:** lockfiles are tracked; CI must run dependency,
-  secret, license, and provenance checks before release.
+- **Injection de prompt et usage d'outil par délégué abusé (confused deputy) :**
+  les outils sont bornés à l'ensemble configuré, les octrois de capacité portent
+  sur des noms d'outils exacts, et les outils sensibles demandent une
+  approbation.
+- **Exfiltration d'identifiants ou de données personnelles :** le mode « local
+  seulement » bloque par défaut les chemins distants ; les charges sortantes et
+  le trafic vers les modèles sont balayés puis caviardés ou bloqués selon le
+  profil.
+- **Accès non authentifié à l'API locale :** chaque démarrage du serveur résout
+  une clé explicite ou en crée une de 256 bits, lisible du seul propriétaire ;
+  les routes de données HTTP et WebSocket la vérifient.
+- **Abus et épuisement des ressources :** seaux à jetons au niveau de l'API et
+  par outil, délais d'attente sur les outils, limites de taille de requête là où
+  les routes en définissent, et concurrence bornée.
+- **SSRF et accès dangereux aux fichiers :** les destinations d'URL et les
+  chemins sensibles sont vérifiés avant tout accès.
+- **Fuite de secrets par l'observabilité :** les entrées d'audit enregistrent
+  des empreintes et des longueurs plutôt que les valeurs trouvées ; les
+  événements d'outil caviardent arguments et résultats.
+- **Élargissement des privilèges sur le bureau natif :** la WebView n'a aucune
+  permission générique d'exécution shell, ni spawn, stdin, kill ou open.
+- **Compromission de la chaîne d'approvisionnement :** les fichiers de
+  verrouillage sont suivis en dépôt ; la CI doit passer les contrôles de
+  dépendances, de secrets, de licences et de provenance avant une publication.
 
-## Security profiles
+## Profils de sécurité
 
-- `personal` (default): loopback server, local-only privacy, redaction, 60
-  requests/minute with burst 10, approval required for sensitive tools.
-- `shared`: loopback server with the same enforcement; administrators should
-  provide an explicit capability policy for multiple operators.
-- `server`: block mode, 30 requests/minute with burst 5. Exposure outside
-  loopback requires TLS at a reverse proxy and a managed secret.
+- `personal` (par défaut) : serveur sur la boucle locale, confidentialité
+  « local seulement », caviardage, 60 requêtes par minute avec une rafale de 10,
+  approbation exigée pour les outils sensibles.
+- `shared` : serveur sur la boucle locale avec la même application des règles ;
+  les administrateurs doivent fournir une politique de capacités explicite quand
+  plusieurs personnes l'utilisent.
+- `server` : mode blocage, 30 requêtes par minute avec une rafale de 5. Une
+  exposition hors de la boucle locale exige du TLS sur un proxy inverse et un
+  secret géré.
 
-## Residual risks
+## Risques résiduels
 
-Model output is untrusted, regex detection cannot recognize every secret,
-local code execution inherits the host user's authority unless sandboxing is
-enabled, and a compromised dependency can execute in-process. Release approval
-therefore requires no known High/Critical findings plus independent review for
-internet-exposed or high-value deployments.
+La sortie du modèle n'est pas fiable, la détection par expressions régulières ne
+reconnaît pas tous les secrets, l'exécution de code en local hérite des droits
+de l'utilisateur de la machine tant que le bac à sable n'est pas activé, et une
+dépendance compromise s'exécute dans le même processus. L'approbation d'une
+version exige donc qu'aucun constat de gravité High/Critical ne soit connu, plus
+une revue indépendante pour les déploiements exposés à Internet ou à fort enjeu.

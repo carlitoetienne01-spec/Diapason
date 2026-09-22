@@ -1,22 +1,22 @@
 ---
-title: Code Snippets
-description: Copy-paste patterns for common Diapason tasks
+title: Extraits de code
+description: Des motifs à copier-coller pour les tâches Diapason les plus courantes
 ---
 
-# Code Snippets
+# Extraits de code
 
-Ready-to-use patterns for the most common Diapason tasks. Each snippet is self-contained and copy-pasteable.
+Des motifs prêts à l'emploi pour les tâches Diapason les plus courantes. Chaque extrait se suffit à lui-même et se copie-colle tel quel.
 
-## Ask a Question (3 lines)
+## Poser une question (3 lignes)
 
 ```python
 from diapason import Diapason
 
 with Diapason() as j:
-    print(j.ask("What is the capital of France?"))
+    print(j.ask("Quelle est la capitale de la France ?"))
 ```
 
-## Stream Tokens (4 lines)
+## Recevoir les jetons au fil de l'eau (4 lignes)
 
 ```python
 import asyncio
@@ -24,68 +24,68 @@ from diapason import Diapason
 
 async def main():
     with Diapason() as j:
-        async for token in j.ask_stream("Tell me a story"):
+        async for token in j.ask_stream("Raconte-moi une histoire"):
             print(token, end="", flush=True)
 
 asyncio.run(main())
 ```
 
-## Agent with Tools (5 lines)
+## Un agent avec des outils (5 lignes)
 
 ```python
 from diapason import Diapason
 
 with Diapason() as j:
     result = j.ask_full(
-        "Search the web for the latest Python release",
+        "Cherche sur le web la dernière version de Python",
         agent="orchestrator",
         tools=["web_search", "think"],
     )
     print(result["content"])
 ```
 
-## Memory: Index + Search (6 lines)
+## Mémoire : indexer + chercher (6 lignes)
 
 ```python
 from diapason import Diapason
 
 with Diapason() as j:
     j.memory.index("./docs/", chunk_size=512)
-    results = j.memory.search("deployment options")
+    results = j.memory.search("options de déploiement")
     for r in results:
         print(f"[{r['score']:.3f}] {r['content'][:100]}")
 ```
 
-## Recipe TOML (4 lines)
+## Une recette TOML (4 lignes)
 
-Define an agent pipeline in TOML — no code required:
+Décris un enchaînement d'agents en TOML — sans écrire une ligne de code :
 
 ```toml
 [recipe]
 name = "research_assistant"
 agent = "orchestrator"
 tools = ["web_search", "think", "file_read"]
-prompt = "Research the given topic and write a summary."
+prompt = "Fais des recherches sur le sujet donné et rédige un résumé."
 ```
 
-Run with: `diapason compose run research_assistant "quantum computing advances"`
+Lance-la avec : `diapason compose run research_assistant "les avancées de l'informatique quantique"`
 
-## API Server (1 command)
+## Le serveur d'API (1 commande)
 
 ```bash
 diapason serve --port 8000 --engine ollama --model qwen3:8b
 ```
 
-Any OpenAI-compatible client works against this endpoint.
+N'importe quel client compatible OpenAI fonctionne avec ce point d'entrée.
 
-## Docker Deployment (2 commands)
+## Déploiement Docker (2 commandes)
 
 ```bash
 docker build -t diapason .
 docker run -p 8000:8000 diapason serve --host 0.0.0.0
 ```
 
-## Custom Tool (10 lines)
+## Un outil maison (10 lignes)
 
 ```python
 from diapason.core.registry import ToolRegistry
@@ -98,38 +98,38 @@ class MyTool(BaseTool):
 
     @property
     def spec(self):
-        return ToolSpec(name="my_tool", description="My custom tool",
+        return ToolSpec(name="my_tool", description="Mon outil maison",
                         parameters={"type": "object", "properties": {"input": {"type": "string"}}})
 
     def execute(self, **params):
-        return ToolResult(tool_name="my_tool", content=f"Processed: {params.get('input', '')}", success=True)
+        return ToolResult(tool_name="my_tool", content=f"Traité : {params.get('input', '')}", success=True)
 ```
 
-## Multi-Model Routing (5 lines)
+## Aiguiller entre plusieurs modèles (5 lignes)
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
-# Router automatically selects the best model per query
-simple = j.ask("What is 2+2?")            # routes to fast/cheap model
-complex = j.ask("Analyze this research paper...")  # routes to capable model
+# L'aiguilleur choisit tout seul le meilleur modèle pour chaque question
+simple = j.ask("Combien font 2+2 ?")            # part vers le modèle rapide et économe
+complex = j.ask("Analyse cet article de recherche...")  # part vers le modèle capable
 j.close()
 ```
 
-## Human-in-the-Loop Confirmation (6 lines)
+## Demander confirmation à l'humain (6 lignes)
 
 ```python
 from diapason import Diapason
 
 with Diapason() as j:
     result = j.ask_full(
-        "Delete old log files in /tmp",
+        "Supprime les vieux fichiers de journaux dans /tmp",
         agent="orchestrator",
         tools=["shell_exec", "file_read"],
     )
-    print(f"Agent took {result['turns']} turns")
+    print(f"L'agent a fait {result['turns']} tours")
     print(result["content"])
 ```
 
-Tools like `shell_exec` can be configured with `requires_confirmation: true` in TOML for interactive approval.
+Des outils comme `shell_exec` peuvent recevoir `requires_confirmation: true` dans le TOML pour demander ton accord avant d'agir.

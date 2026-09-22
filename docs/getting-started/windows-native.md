@@ -1,34 +1,37 @@
-# Native Windows (advanced)
+# Windows natif (avancé)
 
-Phase-1 of the native-Windows-support RFC (#298). Mirrors the Linux
-(systemd) and macOS (launchd) deployments — but for PowerShell, without
-WSL2 or Docker. Choose this over [WSL2](wsl2.md) only if you want to
-avoid a Linux VM; WSL2 remains the smoother experience for most users.
+Phase 1 de la RFC sur la prise en charge native de Windows (#298). Elle
+reprend les déploiements Linux (systemd) et macOS (launchd) — mais pour
+PowerShell, sans WSL2 ni Docker. Ne choisis cette voie plutôt que
+[WSL2](wsl2.md) que si tu tiens à éviter une machine virtuelle Linux ; WSL2
+reste le chemin le plus confortable pour la plupart des gens.
 
-## What you get
+## Ce que tu obtiens
 
-- A PowerShell installer that probes prerequisites, installs `uv`, clones the
-  repo, and installs the desktop/server dependencies without assuming Rust.
-- An optional Windows scheduled-task service equivalent to the systemd
-  unit and launchd plist.
-- Loopback default — the service binds `127.0.0.1` so no API key is
-  required.
+- Un installateur PowerShell qui sonde les prérequis, installe `uv`, clone le
+  dépôt et installe les dépendances du bureau et du serveur sans supposer que
+  Rust est là.
+- Un service Windows facultatif, sous forme de tâche planifiée, équivalent à
+  l'unité systemd et au plist launchd.
+- La boucle locale par défaut — le service écoute sur `127.0.0.1`, donc
+  aucune clé d'API n'est demandée.
 
-This is the native Python server and its browser interface. It is **not yet
-the Tauri `.msi` desktop application**; that artifact still requires a real
-Windows build and validation.
+C'est le serveur Python natif et son interface navigateur. Ce n'est **pas
+encore l'app de bureau Tauri `.msi`** ; cet artefact demande toujours une
+vraie construction Windows, et sa validation.
 
-## What you need
+## Ce qu'il te faut
 
-- Windows 10 1809+ or Windows 11.
-- Python 3.10 – 3.13 (Python 3.14 has no numpy Windows wheels yet —
-  see [#432](https://github.com/carlitoetienne01-spec/Diapason/issues/432)).
-- `git` on PATH.
-- ~5 GB free disk on `%LOCALAPPDATA%`.
+- Windows 10 1809 ou plus récent, ou Windows 11.
+- Python 3.10 – 3.13 (Python 3.14 n'a pas encore de wheels numpy pour
+  Windows — voir
+  [#432](https://github.com/carlitoetienne01-spec/Diapason/issues/432)).
+- `git` dans le PATH.
+- ~5 Go de disque libre sur `%LOCALAPPDATA%`.
 
-## Install
+## Installer
 
-In any PowerShell:
+Dans n'importe quel PowerShell :
 
 ```powershell
 # NE FONCTIONNE PAS : le dépôt est privé, cette URL rend 404.
@@ -40,74 +43,77 @@ In any PowerShell:
 #     -File "$env:LOCALAPPDATA\Diapason\src\deploy\windows\install.ps1"
 ```
 
-The installer will:
+L'installateur va :
 
-1. Refuse non-Windows hosts and old Windows builds.
-2. Confirm Python 3.10 – 3.13.
-3. Confirm `git`.
-4. Install `uv` if absent (via the official `astral.sh/uv` PowerShell
-   installer).
-5. Clone the repo to `%LOCALAPPDATA%\Diapason\src`.
-6. Run `uv sync --extra desktop`; build the native group only if Rust and the
-   Windows build tools are present.
-7. Install Ollama and the starter model when reachable.
-8. Prompt to register the scheduled-task service (skip with
+1. Refuser les hôtes qui ne sont pas Windows, et les vieilles versions de
+   Windows.
+2. Confirmer Python 3.10 – 3.13.
+3. Confirmer `git`.
+4. Installer `uv` s'il manque (par l'installateur PowerShell officiel
+   `astral.sh/uv`).
+5. Cloner le dépôt dans `%LOCALAPPDATA%\Diapason\src`.
+6. Lancer `uv sync --extra desktop` ; ne construire le groupe natif que si
+   Rust et les outils de compilation Windows sont présents.
+7. Installer Ollama et le modèle de départ s'ils sont joignables.
+8. Proposer d'enregistrer le service en tâche planifiée (à sauter avec
    `-SkipService`).
 
-## Run it
+## Le lancer
 
 ```powershell
 cd "$env:LOCALAPPDATA\Diapason\src"
 diapason serve
 ```
 
-Open `http://127.0.0.1:8000/health` to verify.
+Ouvre `http://127.0.0.1:8000/health` pour vérifier.
 
-## Scheduled-task service
+## Le service en tâche planifiée
 
-If you skipped the prompt during install, register the auto-start task
-manually:
+Si tu as sauté la question pendant l'installation, enregistre toi-même la
+tâche de démarrage automatique :
 
 ```powershell
 $srv = "$env:LOCALAPPDATA\Diapason\src\deploy\windows\diapason-service.ps1"
 powershell -ExecutionPolicy Bypass -File $srv install
 
-# Or keep the full API on loopback and expose only Mesh to paired devices:
+# Ou garde l'API complète sur la boucle locale et n'expose que le maillage
+# aux appareils appairés :
 powershell -ExecutionPolicy Bypass -File $srv install -MaillageReseau
 ```
 
-State:
+L'état :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File $srv status
 ```
 
-## Verify before calling it ready
+## Vérifier avant de dire que c'est prêt
 
-With the scheduled task running, execute the repository's read-only bench:
+La tâche planifiée en marche, lance le banc en lecture seule du dépôt :
 
 ```powershell
 $verify = "$env:LOCALAPPDATA\Diapason\src\deploy\windows\verify.ps1"
 powershell -ExecutionPolicy Bypass -File $verify -RequireNative -RequireMesh
 ```
 
-This is stricter than checking that a process exists. It imports the Python
-package and PyO3 extension, asks `/health`, verifies that port 8000 listens on
-loopback only, and proves that port 8001 contains a Mesh door while chat,
-health and documentation all return 404. `-Json` produces a report suitable
-for attaching to the Mac↔Windows validation notes.
+C'est plus strict que de constater qu'un processus existe. Le banc importe le
+paquet Python et l'extension PyO3, interroge `/health`, vérifie que le port
+8000 n'écoute que sur la boucle locale, et prouve que le port 8001 tient une
+porte du maillage pendant que le chat, la santé et la documentation rendent
+tous 404. `-Json` produit un rapport à joindre aux notes de validation
+Mac↔Windows.
 
-Remove:
+Retirer :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File $srv uninstall
 ```
 
-See [`deploy/windows/README.md`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/deploy/windows/README.md)
-for the LAN-exposed configuration and the parity table against
+Voir [`deploy/windows/README.md`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/deploy/windows/README.md)
+pour la configuration exposée au réseau local et le tableau de parité face à
 systemd / launchd.
 
-## See also
+## À lire aussi
 
-- [WSL2 install](wsl2.md) — the recommended Windows path.
-- [Full installer reference](install.md).
+- [Installation par WSL2](wsl2.md) — le chemin Windows recommandé.
+- [La référence complète de l'installateur](install.md).

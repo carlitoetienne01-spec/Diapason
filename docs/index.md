@@ -1,62 +1,46 @@
 ---
 title: Diapason
-description: Personal AI, On Personal Devices
+description: L'IA personnelle, sur des appareils personnels
 search:
   boost: 2
 hide:
   - navigation
 ---
 
-# Personal AI, On Personal Devices
+# L'IA personnelle, sur des appareils personnels
 
 <p class="hero-tagline">
-Diapason is a research framework for composable, on-device AI systems.
-Build personal AI that runs on your hardware. Cloud APIs are optional.
+Diapason est un cadre de recherche pour des systèmes d'IA composables qui tournent sur l'appareil.
+Construis une IA personnelle qui tourne sur ton matériel. Les API distantes sont facultatives.
 </p>
 
 <div class="grid cards" markdown>
 
--   :material-image-multiple:{ .lg .middle } **See what people use it for**
+-   :material-image-multiple:{ .lg .middle } **Ce que les gens en font**
 
     ---
 
-    A gallery of real setups — morning briefs that summarize your overnight Slack and email, a Discord companion that knows your calendar, a code reviewer that works at 30,000 feet. Outcome-first, with links to the docs that explain how to build each one.
+    Une galerie de montages réels — des points du matin qui résument ton Slack et tes courriels de la nuit, un compagnon Discord qui connaît ton agenda, un relecteur de code qui travaille à 10 000 mètres d'altitude. Le résultat d'abord, avec des liens vers la documentation qui explique comment construire chacun.
 
-    [:octicons-arrow-right-24: Browse the Showcase](showcase/index.md)
+    [:octicons-arrow-right-24: Parcourir la galerie](showcase/index.md)
 
 </div>
 
 ---
 
-## Why Diapason?
+## Pourquoi Diapason ?
 
-Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
+Les agents d'IA personnels explosent en popularité, mais presque tous font encore transiter l'intelligence par des API distantes. Ton IA « personnelle » continue de dépendre du serveur de quelqu'un d'autre. Dans le même temps, notre recherche [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) a montré que les modèles de langue locaux traitent déjà 88,7 % des questions de discussion et de raisonnement à un seul tour, avec une efficacité de l'intelligence multipliée par 5,3 entre 2023 et 2025. Les modèles et le matériel sont de plus en plus prêts. Ce qui manquait, c'est la pile logicielle qui rende praticable une IA personnelle locale d'abord.
 
-Diapason is that stack. It is a framework for local-first personal AI, built around three core ideas: shared primitives for building on-device agents; evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy; and a learning loop that improves models using local trace data. The goal is simple: make it possible to build personal AI agents that run locally by default, calling the cloud only when truly necessary. Diapason aims to be both a research platform and a production foundation for local AI, in the spirit of PyTorch.
+Diapason est cette pile. C'est un cadre pour une IA personnelle locale d'abord, bâti autour de trois idées : des primitives partagées pour construire des agents qui tournent sur l'appareil ; des évaluations qui traitent l'énergie, les FLOPs, la latence et le coût en dollars comme des contraintes de premier rang, au même titre que la justesse ; et une boucle d'apprentissage qui améliore les modèles à partir des traces locales. Le but est simple : rendre possibles des agents d'IA personnels qui tournent en local par défaut et ne font appel au distant que lorsque c'est vraiment nécessaire. Diapason veut être à la fois une plateforme de recherche et une fondation de production pour l'IA locale, dans l'esprit de PyTorch.
 
 ---
 
-## Get Started
+## Pour commencer
 
-=== "Browser App"
+=== "App navigateur"
 
-    Run the full chat UI locally with one script:
-
-    ```bash
-    git clone https://github.com/carlitoetienne01-spec/Diapason.git
-    cd Diapason
-    ./scripts/quickstart.sh
-    ```
-
-    This installs dependencies, starts Ollama + a local model, launches the backend
-    and frontend, and opens `http://localhost:5173` in your browser.
-
-=== "Desktop App"
-
-    The desktop app is a native window for the Diapason UI.
-    The backend (Ollama + inference) runs on your machine — start it first, then open the app.
-
-    **Step 1.** Start the backend:
+    Lance l'interface de discussion complète en local avec un seul script :
 
     ```bash
     git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -64,34 +48,50 @@ Diapason is that stack. It is a framework for local-first personal AI, built aro
     ./scripts/quickstart.sh
     ```
 
-    **Step 2.** Build and open the desktop app from the authenticated checkout.
+    Le script installe les dépendances, démarre Ollama et un modèle local, lance le
+    serveur et l'interface, puis ouvre `http://localhost:5173` dans ton navigateur.
 
-    No desktop release is currently published. On Carlito's Mac, the validated
-    path is `./scripts/install-desktop.sh`. Windows and Linux installers remain
-    unavailable until they have run on real machines. See the
-    [Downloads](downloads.md) page for the exact status.
+=== "App de bureau"
 
-    The app connects to `http://localhost:8000` automatically.
+    L'app de bureau est une fenêtre native pour l'interface de Diapason.
+    Le serveur (Ollama et l'inférence) tourne sur ta machine — démarre-le d'abord, puis ouvre l'app.
 
-    !!! warning "macOS first launch"
+    **Étape 1.** Démarre le serveur :
 
-        Run `xattr -cr /Applications/Diapason.app` if the app shows as "damaged".
+    ```bash
+    git clone https://github.com/carlitoetienne01-spec/Diapason.git
+    cd Diapason
+    ./scripts/quickstart.sh
+    ```
 
-=== "Python SDK"
+    **Étape 2.** Construis et ouvre l'app de bureau depuis le dépôt cloné.
+
+    Aucune version de bureau n'est publiée pour l'instant. Sur le Mac de Carlito, le
+    chemin validé est `./scripts/install-desktop.sh`. Les installateurs Windows et
+    Linux restent indisponibles tant qu'ils n'ont pas tourné sur de vraies machines.
+    La page [Téléchargements](downloads.md) donne l'état exact.
+
+    L'app se connecte toute seule à `http://localhost:8000`.
+
+    !!! warning "Premier lancement sur macOS"
+
+        Lance `xattr -cr /Applications/Diapason.app` si l'app s'affiche comme « endommagée ».
+
+=== "SDK Python"
 
     ```python
     from diapason import Diapason
 
-    j = Diapason()                              # auto-detect engine
-    response = j.ask("Explain quicksort.")
+    j = Diapason()                              # détection automatique du moteur
+    response = j.ask("Explique le tri rapide.")
     print(response)
     ```
 
-    For more control, use `ask_full()` to get usage stats, model info, and tool results:
+    Pour plus de contrôle, `ask_full()` rend les statistiques d'usage, les informations du modèle et les résultats d'outils :
 
     ```python
     result = j.ask_full(
-        "What is 2 + 2?",
+        "Combien font 2 + 2 ?",
         agent="orchestrator",
         tools=["calculator"],
     )
@@ -102,121 +102,121 @@ Diapason is that stack. It is a framework for local-first personal AI, built aro
 === "CLI"
 
     ```bash
-    diapason ask "What is the capital of France?"
+    diapason ask "Quelle est la capitale de la France ?"
 
-    diapason ask --agent orchestrator --tools calculator "What is 137 * 42?"
+    diapason ask --agent orchestrator --tools calculator "Combien font 137 * 42 ?"
 
     diapason serve --port 8000
 
     diapason memory index ./docs/
-    diapason memory search "configuration options"
+    diapason memory search "options de configuration"
     ```
 
 ---
 
-## Five Primitives for Personal AI
+## Cinq primitives pour l'IA personnelle
 
-Diapason is built around five composable layers. Each has a clean interface and can be swapped independently.
+Diapason est bâti sur cinq couches composables. Chacune a une interface nette et se remplace indépendamment des autres.
 
-1. **Intelligence** — Pick a model, or let Diapason pick one for your hardware. Manages the full catalog of local models across providers.
-2. **Engine** — The inference runtime: [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [llama.cpp](https://github.com/ggerganov/llama.cpp), cloud APIs, and more. Auto-detects your hardware and recommends the best fit.
-3. **Agents** — Multi-step reasoning with tool use. Eight built-in agent types from simple chat to orchestrated workflows.
-4. **Tools & Memory** — Web search, calculator, file I/O, code interpreter, retrieval, persistent local state, and any external MCP server.
-5. **Learning** — Your AI gets better over time. Every interaction generates traces that drive automatic improvements to model weights, prompts, and agent behavior.
+1. **Intelligence** — Choisis un modèle, ou laisse Diapason en choisir un pour ton matériel. Gère tout le catalogue des modèles locaux, tous fournisseurs confondus.
+2. **Moteur** — Le moteur d'inférence : [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [llama.cpp](https://github.com/ggerganov/llama.cpp), les API distantes, et d'autres. Détecte ton matériel tout seul et recommande ce qui lui convient le mieux.
+3. **Agents** — Un raisonnement en plusieurs étapes, avec des outils. Huit types d'agents intégrés, de la simple discussion aux workflows orchestrés.
+4. **Outils et mémoire** — Recherche web, calculatrice, lecture et écriture de fichiers, interpréteur de code, recherche documentaire, état local persistant, et n'importe quel serveur MCP externe.
+5. **Apprentissage** — Ton IA s'améliore avec le temps. Chaque interaction produit des traces qui pilotent l'amélioration automatique des poids du modèle, des prompts et du comportement des agents.
 
 ---
 
-## Key Features
+## Ce qu'elle sait faire
 
 <div class="grid cards" markdown>
 
--   **10+ Engine Backends**
+-   **Plus de 10 moteurs d'inférence**
 
     ---
 
-    [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [llama.cpp](https://github.com/ggerganov/llama.cpp), [MLX](https://github.com/ml-explore/mlx), [Exo](https://github.com/exo-explore/exo), [LiteLLM](https://github.com/BerriAI/litellm), cloud (OpenAI/Anthropic/Google), and more. Same `InferenceEngine` interface, swap freely.
+    [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [llama.cpp](https://github.com/ggerganov/llama.cpp), [MLX](https://github.com/ml-explore/mlx), [Exo](https://github.com/exo-explore/exo), [LiteLLM](https://github.com/BerriAI/litellm), le distant (OpenAI/Anthropic/Google), et d'autres. La même interface `InferenceEngine` : tu passes de l'un à l'autre librement.
 
--   **Automated Workflows**
-
-    ---
-
-    Cron-based agents that monitor, summarize, and act. Code review, email triage, research digests — running 24/7 on your hardware.
-
--   **Hardware-Aware**
+-   **Des workflows automatisés**
 
     ---
 
-    Auto-detects GPU vendor, model, and VRAM. Recommends the optimal engine for your hardware.
+    Des agents programmés par cron qui surveillent, résument et agissent. Relecture de code, tri des courriels, synthèses de recherche — en marche jour et nuit sur ton matériel.
 
--   **Offline-First**
-
-    ---
-
-    All core functionality works without a network connection. Cloud APIs are optional extras.
-
--   **OpenAI-Compatible API**
+-   **À l'écoute du matériel**
 
     ---
 
-    `diapason serve` starts a FastAPI server with SSE streaming. Drop-in replacement for OpenAI clients.
+    Détecte tout seul le fabricant de la carte graphique, son modèle et sa VRAM. Recommande le moteur optimal pour ton matériel.
 
--   **Energy & Cost Tracking**
+-   **Hors ligne d'abord**
 
     ---
 
-    Built-in telemetry for GPU power draw, token costs, and latency. See exactly what each query costs in watts and dollars.
+    Tout le cœur fonctionne sans connexion réseau. Les API distantes sont un supplément facultatif.
+
+-   **Une API compatible OpenAI**
+
+    ---
+
+    `diapason serve` démarre un serveur FastAPI avec des réponses au fil de l'eau en SSE. Un remplacement direct pour les clients OpenAI.
+
+-   **Suivi de l'énergie et du coût**
+
+    ---
+
+    Une télémétrie intégrée pour la consommation électrique de la carte graphique, le coût en jetons et la latence. Tu vois exactement ce que coûte chaque question, en watts et en dollars.
 
 </div>
 
 ---
 
-## Documentation
+## La documentation
 
 <div class="grid cards" markdown>
 
--   **[Getting Started](getting-started/installation.md)**
+-   **[Premiers pas](getting-started/installation.md)**
 
     ---
 
-    Install Diapason, configure your first engine, and run your first query.
+    Installe Diapason, configure ton premier moteur et lance ta première question.
 
--   **[User Guide](user-guide/cli.md)**
+-   **[Guide d'utilisation](user-guide/cli.md)**
 
     ---
 
-    CLI, Python SDK, and guides for [Morning Digest](user-guide/morning-digest.md), [Deep Research](user-guide/deep-research.md), [Code Assistant](user-guide/code-assistant.md), [Scheduled Monitor](user-guide/scheduled-monitor.md), [Simple Chat](user-guide/chat-simple.md), [Evaluations](user-guide/evaluations.md), agents, memory, tools, and telemetry.
+    La CLI, le SDK Python, et les guides du [point du matin](user-guide/morning-digest.md), de la [recherche approfondie](user-guide/deep-research.md), de l'[assistant de code](user-guide/code-assistant.md), de la [surveillance programmée](user-guide/scheduled-monitor.md), de la [discussion simple](user-guide/chat-simple.md), des [évaluations](user-guide/evaluations.md), des agents, de la mémoire, des outils et de la télémétrie.
 
 -   **[Architecture](architecture/overview.md)**
 
     ---
 
-    Five-primitive design, registry pattern, query flow, and cross-cutting learning.
+    Le dessin à cinq primitives, le motif du registre, le trajet d'une question et l'apprentissage transversal.
 
--   **[API Reference](api-reference/diapason/index.md)**
-
-    ---
-
-    Auto-generated reference for every module.
-
--   **[Deployment](deployment/docker.md)**
+-   **[Référence de l'API](api-reference/diapason/index.md)**
 
     ---
 
-    Docker, systemd, launchd. GPU-accelerated container images.
+    Une référence générée automatiquement pour chaque module.
 
--   **[Development](development/contributing.md)**
+-   **[Déploiement](deployment/docker.md)**
 
     ---
 
-    Contributing guide, extension patterns, roadmap, and changelog.
+    Docker, systemd, launchd. Des images de conteneur accélérées par la carte graphique.
+
+-   **[Développement](development/contributing.md)**
+
+    ---
+
+    Le guide de contribution, les motifs d'extension, la feuille de route et le journal des changements.
 
 </div>
 
-## Research
+## La recherche
 
-Diapason is part of [Intelligence Per Watt](https://www.intelligence-per-watt.ai/), a research initiative studying the efficiency of on-device AI systems. Developed at [Hazy Research](https://hazyresearch.stanford.edu/) and the [Scaling Intelligence Lab](https://scalingintelligence.stanford.edu/) at [Stanford SAIL](https://ai.stanford.edu/).
+Diapason fait partie d'[Intelligence Per Watt](https://www.intelligence-per-watt.ai/), une initiative de recherche qui étudie l'efficacité des systèmes d'IA qui tournent sur l'appareil. Développé au [Hazy Research](https://hazyresearch.stanford.edu/) et au [Scaling Intelligence Lab](https://scalingintelligence.stanford.edu/) du [Stanford SAIL](https://ai.stanford.edu/).
 
-Read the [blog post](https://diapason.stanford.edu/) for the full research motivation, architecture details, and experimental results.
+Le [billet de blog](https://diapason.stanford.edu/) donne la motivation de recherche complète, le détail de l'architecture et les résultats expérimentaux.
 
 ## Citation
 
@@ -232,7 +232,7 @@ Read the [blog post](https://diapason.stanford.edu/) for the full research motiv
 }
 ```
 
-## Sponsors
+## Les soutiens
 
 <p>
   <a href="https://www.laude.org/">Laude Institute</a> &bull;
@@ -244,4 +244,4 @@ Read the [blog post](https://diapason.stanford.edu/) for the full research motiv
   <a href="https://hai.stanford.edu/">Stanford HAI</a>
 </p>
 
-Follow [@DiapasonAI](https://x.com/DiapasonAI) on X for updates.
+Suis [@DiapasonAI](https://x.com/DiapasonAI) sur X pour les nouveautés.

@@ -1,70 +1,70 @@
 ---
-title: Skills
-description: Reusable compositions of tools and agent instructions — discover, import, optimize, and share
+title: Les compétences
+description: Des compositions réutilisables d'outils et d'instructions d'agent — les découvrir, les importer, les optimiser et les partager
 search.boost: 2.0
 ---
 
-# Skills
+# Les compétences
 
-Skills teach agents **how to better use tools and improve their reasoning**. They are reusable compositions of tools, sub-skills, and agent instructions that can be shared via public registries.
+Les compétences apprennent aux agents **à mieux se servir des outils et à mieux raisonner**. Ce sont des compositions réutilisables d'outils, de sous-compétences et d'instructions d'agent, qui se partagent par des registres publics.
 
-Every skill is a tool. Skills appear in a lightweight catalog in the agent's system prompt, and when the agent invokes one, its content (pipeline results, markdown instructions, or both) gets injected into the conversation context.
+Toute compétence est un outil. Les compétences apparaissent dans un catalogue léger, au sein du prompt système de l'agent ; quand l'agent en invoque une, son contenu (résultats de pipeline, instructions markdown, ou les deux) est injecté dans le contexte de la conversation.
 
-## Overview
+## Vue d'ensemble
 
-| Concept | Description |
+| Notion | Description |
 |---------|-------------|
-| **Skill** | A directory containing `skill.toml` (structured pipeline), `SKILL.md` (markdown instructions), or both |
-| **SkillManager** | Central coordinator for discovery, resolution, catalog generation, and tool wrapping |
-| **SkillTool** | Adapter that wraps any skill as a `BaseTool` so agents can invoke it |
-| **Overlay** | Sidecar file at `~/.diapason/learning/skills/` storing optimized descriptions and few-shot examples |
-| **Source** | A resolver for importing skills from Hermes Agent, OpenClaw, or any GitHub repo |
+| **Compétence** | Un dossier contenant `skill.toml` (pipeline structuré), `SKILL.md` (instructions markdown), ou les deux |
+| **SkillManager** | Le coordinateur central : découverte, résolution, génération du catalogue et habillage en outil |
+| **SkillTool** | L'adaptateur qui habille n'importe quelle compétence en `BaseTool`, pour que les agents puissent l'invoquer |
+| **Overlay** | Un fichier annexe dans `~/.diapason/learning/skills/`, qui garde les descriptions optimisées et les exemples few-shot |
+| **Source** | Un résolveur pour importer des compétences depuis Hermes Agent, OpenClaw ou n'importe quel dépôt GitHub |
 
-## Quick Start
+## Pour démarrer
 
 ```bash
-# List installed skills
+# Lister les compétences installées
 diapason skill list
 
-# Install a skill from Hermes Agent
+# Installer une compétence depuis Hermes Agent
 diapason skill install hermes:apple-notes
 
-# Bulk install a category
+# Installer toute une catégorie d'un coup
 diapason skill sync hermes --category research
 
-# Run a skill directly
+# Lancer une compétence directement
 diapason skill run math-solver -a expression="41 + 82"
 
-# See skill details
+# Voir le détail d'une compétence
 diapason skill info research-and-summarize
 ```
 
-## Skill Definition Format
+## Le format de définition d'une compétence
 
-A skill is a directory containing a `skill.toml`, a `SKILL.md`, or both.
+Une compétence est un dossier contenant un `skill.toml`, un `SKILL.md`, ou les deux.
 
-### Directory Structure
+### La structure du dossier
 
 ```
 research-and-summarize/
-├── SKILL.md              # Markdown instructions (loaded on invocation)
-├── skill.toml            # Structured pipeline steps
-├── templates/            # Optional Jinja2 templates
-├── scripts/              # Optional executable helpers
-├── references/           # Optional detailed docs
-├── assets/               # Optional static resources
-└── examples/             # Optional usage examples
+├── SKILL.md              # Instructions markdown (chargées à l'invocation)
+├── skill.toml            # Étapes du pipeline structuré
+├── templates/            # Gabarits Jinja2, facultatifs
+├── scripts/              # Aides exécutables, facultatives
+├── references/           # Documentation détaillée, facultative
+├── assets/               # Ressources statiques, facultatives
+└── examples/             # Exemples d'usage, facultatifs
 ```
 
-### skill.toml (Structured Pipeline)
+### `skill.toml` (le pipeline structuré)
 
-Pipeline skills define a sequence of tool calls that execute deterministically:
+Les compétences à pipeline définissent une suite d'appels d'outils qui s'exécutent de façon déterministe :
 
 ```toml
 [skill]
 name = "research-and-summarize"
 version = "0.1.0"
-description = "Search the web and produce a structured summary"
+description = "Cherche sur le web et produit un résumé structuré"
 author = "diapason"
 tags = ["research", "summarization"]
 required_capabilities = ["network:fetch"]
@@ -81,16 +81,16 @@ arguments_template = '{"text": "{search_results}"}'
 output_key = "summary"
 ```
 
-Steps can call tools (`tool_name`) or other skills (`skill_name`). Template placeholders like `{query}` become the skill's input parameters. Output keys chain between steps.
+Une étape peut appeler un outil (`tool_name`) ou une autre compétence (`skill_name`). Les emplacements de gabarit comme `{query}` deviennent les paramètres d'entrée de la compétence. Les clés de sortie s'enchaînent d'une étape à la suivante.
 
-### SKILL.md (Instructional Content)
+### `SKILL.md` (le contenu instructionnel)
 
-Instructional skills provide markdown guidance that agents follow using their other tools:
+Les compétences instructionnelles fournissent une consigne en markdown, que les agents suivent avec leurs autres outils :
 
 ```markdown
 ---
 name: code-explainer
-description: Explain code in plain language with examples
+description: Explique du code en langage clair, avec des exemples
 license: MIT
 metadata:
   diapason:
@@ -99,66 +99,67 @@ metadata:
     tags: [coding, explanation]
 ---
 
-When asked to explain code, follow this approach:
+Quand on te demande d'expliquer du code, procède ainsi :
 
-1. Identify the programming language
-2. Break the code into logical sections
-3. Explain each section in plain language
-4. Highlight any patterns, idioms, or potential issues
-5. Provide a one-sentence summary at the end
+1. Identifie le langage de programmation
+2. Découpe le code en sections logiques
+3. Explique chaque section en langage clair
+4. Signale les motifs, les idiomes et les problèmes éventuels
+5. Termine par un résumé d'une phrase
 ```
 
-The YAML frontmatter follows the [agentskills.io](https://agentskills.io/specification) open standard. Required fields: `name`, `description`. Optional: `license`, `compatibility`, `metadata`, `allowed-tools`.
+Le front-matter YAML suit le standard ouvert [agentskills.io](https://agentskills.io/specification). Champs obligatoires : `name`, `description`. Facultatifs : `license`, `compatibility`, `metadata`, `allowed-tools`.
 
-### What Happens on Invocation
+### Ce qui se passe à l'invocation
 
-| Skill has | On invocation |
+| La compétence a | À l'invocation |
 |-----------|---------------|
-| `skill.toml` steps only | Execute the pipeline, return results |
-| `SKILL.md` only | Return the markdown instructions — agent follows them in subsequent turns |
-| Both | Execute pipeline steps AND return the markdown guidance alongside results |
+| seulement des étapes `skill.toml` | Le pipeline s'exécute et rend ses résultats |
+| seulement un `SKILL.md` | Les instructions markdown sont rendues — l'agent les suit aux tours suivants |
+| les deux | Les étapes du pipeline s'exécutent ET la consigne markdown est rendue à côté des résultats |
 
-## Installing Skills
+## Installer des compétences
 
-### From Hermes Agent
+### Depuis Hermes Agent
 
 ```bash
-# Single skill
+# Une seule compétence
 diapason skill install hermes:apple-notes
 
-# Bulk install by category
+# Installation en masse, par catégorie
 diapason skill sync hermes --category research
 diapason skill sync hermes --category coding
-diapason skill sync hermes  # everything (~150 skills)
+diapason skill sync hermes  # tout (~150 compétences)
 ```
 
-### From OpenClaw
+### Depuis OpenClaw
 
 ```bash
-# Single skill (owner/slug format)
+# Une seule compétence (format propriétaire/slug)
 diapason skill install openclaw:0xv4l3nt1n3/etherscan
 
-# Bulk install with search filter
+# Installation en masse, avec un filtre de recherche
 diapason skill sync openclaw --search "web3|crypto"
 ```
 
-### From Any GitHub Repo
+### Depuis n'importe quel dépôt GitHub
 
 ```bash
 diapason skill install github:user/repo/path/to/skill --url https://github.com/user/repo
 ```
 
-For example, install the Hermes Tweet skill when you want an agent to search
-Twitter/X, read tweet replies, monitor tweets, export followers, and run
-gated post, reply, or DM workflows:
+Par exemple, installe la compétence Hermes Tweet quand tu veux qu'un agent cherche
+sur Twitter/X, lise les réponses à un tweet, surveille des tweets, exporte des
+abonnés et mène des workflows de publication, de réponse ou de message privé sous
+condition :
 
 ```bash
 diapason skill install github:Xquik-dev/hermes-tweet/skills/hermes-tweet --url https://github.com/Xquik-dev/hermes-tweet
 ```
 
-### Config-Driven Auto Import
+### L'import automatique par la configuration
 
-Add sources to `~/.diapason/config.toml` for automatic syncing:
+Ajoute des sources dans `~/.diapason/config.toml` pour une synchronisation automatique :
 
 ```toml
 [skills]
@@ -175,167 +176,167 @@ source = "openclaw"
 filter = { search = "web3|crypto" }
 ```
 
-When `auto_sync = true`, the SkillManager checks source freshness on each session start and pulls updates in the background.
+Quand `auto_sync = true`, le SkillManager vérifie la fraîcheur des sources au démarrage de chaque session et récupère les mises à jour en arrière-plan.
 
-### Managing Sources
+### Gérer les sources
 
 ```bash
-# List configured sources
+# Lister les sources configurées
 diapason skill sources
 
-# Update all configured sources
+# Mettre à jour toutes les sources configurées
 diapason skill update
 ```
 
-## How Agents Use Skills
+## Comment les agents se servent des compétences
 
-### Skill Catalog in the System Prompt
+### Le catalogue de compétences dans le prompt système
 
-All available skills appear as a lightweight XML catalog in the agent's system prompt:
+Toutes les compétences disponibles apparaissent sous forme d'un catalogue XML léger, dans le prompt système de l'agent :
 
 ```xml
 <available_skills>
-  <skill name="research-and-summarize" description="Search the web and produce a structured summary" />
-  <skill name="code-explainer" description="Explain code in plain language with examples" />
-  <skill name="math-solver" description="Solve a math problem step by step using the calculator" />
+  <skill name="research-and-summarize" description="Cherche sur le web et produit un résumé structuré" />
+  <skill name="code-explainer" description="Explique du code en langage clair, avec des exemples" />
+  <skill name="math-solver" description="Résout un problème de mathématiques pas à pas, avec la calculatrice" />
 </available_skills>
 ```
 
-The agent reads this catalog and decides when to invoke a skill based on the user's request.
+L'agent lit ce catalogue et décide quand invoquer une compétence, selon ce que demande l'utilisateur.
 
-### Invocation Control
+### Contrôler l'invocation
 
-Per-skill flags control visibility:
+Des drapeaux, compétence par compétence, en contrôlent la visibilité :
 
 ```toml
 [skill]
-user_invocable = true              # expose as CLI command (default: true)
-disable_model_invocation = false   # hide from agent catalog (default: false)
+user_invocable = true              # exposée comme commande CLI (défaut : true)
+disable_model_invocation = false   # cachée du catalogue de l'agent (défaut : false)
 ```
 
-| `user_invocable` | `disable_model_invocation` | CLI command? | Agent discovers? |
+| `user_invocable` | `disable_model_invocation` | Commande CLI ? | L'agent la découvre ? |
 |---|---|---|---|
-| true (default) | false (default) | Yes | Yes |
-| true | true | Yes | No |
-| false | false | No | Yes |
-| false | true | No | No (dormant) |
+| true (défaut) | false (défaut) | Oui | Oui |
+| true | true | Oui | Non |
+| false | false | Non | Oui |
+| false | true | Non | Non (dormante) |
 
-### Pipeline vs. Instructional Skills
+### Compétences à pipeline et compétences instructionnelles
 
-Agents handle both skill types correctly:
+Les agents gèrent correctement les deux types :
 
-- **Pipeline skills** (with `skill.toml` steps) execute deterministically and return computed results. The agent uses the result directly in its answer.
-- **Instructional skills** (with `SKILL.md` only) return markdown text describing HOW to accomplish a task. The agent reads the instructions and follows them using its other tools (web_search, shell_exec, calculator, etc.).
+- **Les compétences à pipeline** (avec des étapes `skill.toml`) s'exécutent de façon déterministe et rendent des résultats calculés. L'agent se sert du résultat directement dans sa réponse.
+- **Les compétences instructionnelles** (avec seulement un `SKILL.md`) rendent un texte markdown qui décrit COMMENT accomplir une tâche. L'agent lit les instructions et les suit avec ses autres outils (web_search, shell_exec, calculator, etc.).
 
-## Skill Discovery from Traces
+## Découvrir des compétences dans les traces
 
-Diapason can automatically mine your trace history for recurring tool sequences and surface them as candidate skills:
+Diapason sait fouiller tout seul ton historique de traces pour y repérer des suites d'outils récurrentes, et te les proposer comme compétences candidates :
 
 ```bash
-# Preview discovered patterns without writing
+# Aperçu des motifs découverts, sans rien écrire
 diapason skill discover --dry-run --min-frequency 3
 
-# Write discovered skills to ~/.diapason/skills/discovered/
+# Écrire les compétences découvertes dans ~/.diapason/skills/discovered/
 diapason skill discover
 ```
 
-Discovered skills land in `~/.diapason/skills/discovered/` and automatically appear in `diapason skill list` on the next session.
+Les compétences découvertes atterrissent dans `~/.diapason/skills/discovered/` et apparaissent d'elles-mêmes dans `diapason skill list` à la session suivante.
 
-## Skill Optimization
+## Optimiser les compétences
 
-### Optimizing with DSPy or GEPA
+### Optimiser avec DSPy ou GEPA
 
-The skills learning loop uses your trace history to optimize skill descriptions and extract few-shot examples:
+La boucle d'apprentissage des compétences se sert de ton historique de traces pour optimiser leurs descriptions et en extraire des exemples few-shot :
 
 ```bash
-# Preview what would be optimized
+# Aperçu de ce qui serait optimisé
 diapason optimize skills --dry-run
 
-# Run DSPy optimization
+# Lancer l'optimisation DSPy
 diapason optimize skills --policy dspy --min-traces 3
 
-# Run GEPA evolutionary optimization
+# Lancer l'optimisation évolutionnaire GEPA
 diapason optimize skills --policy gepa --min-traces 3
 
-# Inspect what optimization produced
+# Inspecter ce que l'optimisation a produit
 diapason skill show-overlay research-and-summarize
 ```
 
-Optimization results are stored as sidecar overlays at `~/.diapason/learning/skills/<skill-name>/optimized.toml`. They override the skill's description and add few-shot examples to the agent's system prompt. The original skill files are never modified.
+Les résultats de l'optimisation sont rangés dans des overlays annexes, à `~/.diapason/learning/skills/<skill-name>/optimized.toml`. Ils remplacent la description de la compétence et ajoutent des exemples few-shot au prompt système de l'agent. Les fichiers d'origine de la compétence ne sont jamais modifiés.
 
-### Auto-Optimization
+### L'optimisation automatique
 
-Enable automatic optimization in config:
+Active l'optimisation automatique dans la configuration :
 
 ```toml
 [learning.skills]
-auto_optimize = false       # set to true to enable
-optimizer = "dspy"          # "dspy" or "gepa"
+auto_optimize = false       # passe à true pour l'activer
+optimizer = "dspy"          # "dspy" ou "gepa"
 min_traces_per_skill = 20
 ```
 
-When enabled, the `LearningOrchestrator` runs skill optimization after each learning cycle.
+Une fois activée, le `LearningOrchestrator` lance l'optimisation des compétences après chaque cycle d'apprentissage.
 
-## Benchmarking Skills
+## Mesurer les compétences
 
-Measure whether skills improve agent performance:
+Pour savoir si les compétences améliorent vraiment les performances de l'agent :
 
 ```bash
-# Full sweep: 4 conditions × 3 seeds
+# Balayage complet : 4 conditions × 3 graines
 diapason bench skills
 
-# Smoke test: 4 conditions × 1 seed × 5 tasks
+# Test de fumée : 4 conditions × 1 graine × 5 tâches
 diapason bench skills --max-samples 5 --seeds 42
 
-# Single condition
+# Une seule condition
 diapason bench skills --condition skills_optimized_dspy
 ```
 
-The four benchmark conditions are:
+Les quatre conditions de mesure sont :
 
-| Condition | What it tests |
+| Condition | Ce qu'elle teste |
 |---|---|
-| `no_skills` | Skills disabled (control) |
-| `skills_on` | Skills enabled, no optimization |
-| `skills_optimized_dspy` | DSPy-optimized overlays |
-| `skills_optimized_gepa` | GEPA-optimized overlays |
+| `no_skills` | Compétences désactivées (le témoin) |
+| `skills_on` | Compétences activées, sans optimisation |
+| `skills_optimized_dspy` | Overlays optimisés par DSPy |
+| `skills_optimized_gepa` | Overlays optimisés par GEPA |
 
-Results are written to `docs/superpowers/results/pinchbench-skills-eval-{date}.md` with a summary table, per-task breakdown, deltas, and skill invocation counts.
+Les résultats sont écrits dans `docs/superpowers/results/pinchbench-skills-eval-{date}.md`, avec un tableau de synthèse, le détail par tâche, les écarts et le nombre d'invocations de chaque compétence.
 
-## Security & Trust
+## Sécurité et confiance
 
-### Trust Tiers
+### Les niveaux de confiance
 
-| Tier | Source | Verification | Runtime |
+| Niveau | Source | Vérification | À l'exécution |
 |------|--------|-------------|---------|
-| **Bundled** | Ships with Diapason | Implicit trust | Full access within declared capabilities |
-| **Indexed** | In official skill index, signed | SHA256 + Ed25519 | Capability-gated |
-| **Unreviewed** | Arbitrary GitHub URL | SHA256 only | Capability-gated + sandbox warning |
-| **Workspace** | Local `./skills/` directory | None (user code) | Trusted |
+| **Livrée** | Fournie avec Diapason | Confiance implicite | Accès complet, dans les limites des capacités déclarées |
+| **Indexée** | Dans l'index officiel des compétences, signée | SHA256 + Ed25519 | Sous contrôle de capacités |
+| **Non revue** | URL GitHub quelconque | SHA256 seulement | Sous contrôle de capacités + avertissement de bac à sable |
+| **Espace de travail** | Dossier local `./skills/` | Aucune (code de l'utilisateur) | De confiance |
 
-### Capability Enforcement
+### Le contrôle des capacités
 
-Skills declare required capabilities. At runtime, the SkillExecutor checks that each tool call falls within the skill's declared capabilities:
+Les compétences déclarent les capacités dont elles ont besoin. À l'exécution, le SkillExecutor vérifie que chaque appel d'outil reste dans les capacités déclarées par la compétence :
 
-- `network:fetch` — outbound HTTP requests
-- `filesystem:read` / `filesystem:write` — file access
-- `shell:execute` — run shell commands (dangerous)
-- `memory:read` / `memory:write` — memory backend access
-- `engine:inference` — LLM calls
+- `network:fetch` — requêtes HTTP sortantes
+- `filesystem:read` / `filesystem:write` — accès aux fichiers
+- `shell:execute` — lancer des commandes shell (dangereux)
+- `memory:read` / `memory:write` — accès au stockage de la mémoire
+- `engine:inference` — appels au modèle
 
-Skills declaring dangerous capabilities (`shell:execute`, `network:listen`, `filesystem:write`) trigger install-time warnings and sandbox recommendations.
+Une compétence qui déclare des capacités dangereuses (`shell:execute`, `network:listen`, `filesystem:write`) déclenche des avertissements au moment de l'installation et une recommandation de bac à sable.
 
-### Scripts
+### Les scripts
 
-Imported skills may include `scripts/` directories with executable code. These are **skipped by default** for security. Use `--with-scripts` to opt in:
+Une compétence importée peut contenir un dossier `scripts/` avec du code exécutable. Il est **ignoré par défaut**, par sécurité. Passe `--with-scripts` pour l'accepter :
 
 ```bash
 diapason skill install hermes:arxiv --with-scripts
 ```
 
-## Skill Composition
+## Composer des compétences
 
-Skills can invoke other skills as sub-steps:
+Une compétence peut en invoquer une autre comme sous-étape :
 
 ```toml
 [[skill.steps]]
@@ -344,70 +345,70 @@ arguments_template = '{"text": "{search_results}"}'
 output_key = "summary"
 ```
 
-The SkillManager builds a dependency graph at discovery time and validates:
+Le SkillManager construit un graphe de dépendances au moment de la découverte, et vérifie :
 
-1. **No cycles** — `A → B → C → A` is rejected with a clear error
-2. **Max depth** — default 5 levels (configurable)
-3. **Capability unions** — parent must declare all capabilities its children need
+1. **Aucun cycle** — `A → B → C → A` est rejeté avec une erreur claire
+2. **La profondeur maximale** — 5 niveaux par défaut (configurable)
+3. **L'union des capacités** — le parent doit déclarer toutes les capacités dont ses enfants ont besoin
 
-## Configuration Reference
+## Référence de configuration
 
-### `[skills]` Section
+### La section `[skills]`
 
 ```toml
 [skills]
-enabled = true                    # enable/disable the skill system
-skills_dir = "~/.diapason/skills/"  # where skills are installed
-active = "*"                      # which skills to activate ("*" = all)
-auto_discover = true              # scan skills_dir on startup
-auto_sync = false                 # pull from configured sources on startup
-max_depth = 5                     # max sub-skill nesting depth
-sandbox_dangerous = true          # warn about dangerous capabilities
+enabled = true                    # active ou coupe le système de compétences
+skills_dir = "~/.diapason/skills/"  # où les compétences sont installées
+active = "*"                      # les compétences à activer ("*" = toutes)
+auto_discover = true              # balaye skills_dir au démarrage
+auto_sync = false                 # récupère depuis les sources configurées au démarrage
+max_depth = 5                     # profondeur maximale d'imbrication des sous-compétences
+sandbox_dangerous = true          # avertit sur les capacités dangereuses
 ```
 
-### `[[skills.sources]]` Section
+### La section `[[skills.sources]]`
 
 ```toml
 [[skills.sources]]
-source = "hermes"                 # "hermes", "openclaw", or "github"
-url = ""                          # required when source = "github"
+source = "hermes"                 # "hermes", "openclaw" ou "github"
+url = ""                          # obligatoire quand source = "github"
 filter = { category = ["research", "coding"] }
-auto_update = true                # pull latest on sync
+auto_update = true                # récupère la dernière version à la synchronisation
 ```
 
-### `[learning.skills]` Section
+### La section `[learning.skills]`
 
 ```toml
 [learning.skills]
-auto_optimize = false             # opt-in automatic optimization
-optimizer = "dspy"                # "dspy" or "gepa"
-min_traces_per_skill = 20         # minimum traces before optimizing
-optimization_interval_seconds = 86400  # at most once per day
+auto_optimize = false             # optimisation automatique, sur demande explicite
+optimizer = "dspy"                # "dspy" ou "gepa"
+min_traces_per_skill = 20         # nombre minimal de traces avant d'optimiser
+optimization_interval_seconds = 86400  # au plus une fois par jour
 overlay_dir = "~/.diapason/learning/skills/"
 ```
 
-## Name Precedence
+## La priorité des noms
 
-When the same skill name exists in multiple locations, closest scope wins:
+Quand le même nom de compétence existe à plusieurs endroits, la portée la plus proche l'emporte :
 
-1. **Workspace** `./skills/` (highest priority)
-2. **User** `~/.diapason/skills/`
-3. **Bundled** (shipped with Diapason)
+1. **L'espace de travail** `./skills/` (priorité la plus haute)
+2. **L'utilisateur** `~/.diapason/skills/`
+3. **Les compétences livrées** (fournies avec Diapason)
 
-## CLI Reference
+## Référence de la ligne de commande
 
-| Command | Description |
+| Commande | Description |
 |---------|-------------|
-| `diapason skill list` | List installed skills |
-| `diapason skill info <name>` | Show detailed skill information |
-| `diapason skill run <name> [-a key=value]` | Execute a skill directly |
-| `diapason skill install <source>:<name>` | Install from Hermes, OpenClaw, or GitHub |
-| `diapason skill sync [<source>] [--category C]` | Bulk install + update from sources |
-| `diapason skill sources` | List configured skill sources |
-| `diapason skill update` | Pull latest from configured sources |
-| `diapason skill remove <name>` | Remove an installed skill |
-| `diapason skill search <query>` | Search the skill index |
-| `diapason skill discover [--dry-run]` | Mine traces for recurring tool patterns |
-| `diapason skill show-overlay <name>` | Inspect optimization output for a skill |
-| `diapason optimize skills [--policy dspy\|gepa]` | Optimize skill descriptions + few-shot examples |
-| `diapason bench skills [--condition C]` | Run the PinchBench skills benchmark |
+| `diapason skill list` | Liste les compétences installées |
+| `diapason skill info <name>` | Affiche le détail d'une compétence |
+| `diapason skill run <name> [-a key=value]` | Lance une compétence directement |
+| `diapason skill install <source>:<name>` | Installe depuis Hermes, OpenClaw ou GitHub |
+| `diapason skill sync [<source>] [--category C]` | Installe en masse et met à jour depuis les sources |
+| `diapason skill sources` | Liste les sources de compétences configurées |
+| `diapason skill update` | Récupère la dernière version depuis les sources configurées |
+| `diapason skill remove <name>` | Retire une compétence installée |
+| `diapason skill search <query>` | Cherche dans l'index des compétences |
+| `diapason skill discover [--dry-run]` | Fouille les traces pour y trouver des motifs d'outils récurrents |
+| `diapason skill show-overlay <name>` | Inspecte ce que l'optimisation a produit pour une compétence |
+| `diapason optimize skills [--policy dspy\|gepa]` | Optimise les descriptions de compétences et les exemples few-shot |
+| `diapason bench skills [--condition C]` | Lance le banc de mesure PinchBench des compétences |

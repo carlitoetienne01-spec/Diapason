@@ -1,32 +1,32 @@
-# Pearl coordination thread — draft
+# Fil de coordination avec Pearl — brouillon
 
-**For:** Posting on `pearl-research-labs/pearl` GitHub Discussions (Category: General / Q&A).
-**By:** Diapason team (Stanford Hazy Research); contact: [user fills in].
-**Status:** Draft — review and edit before posting.
+**Pour :** publication sur les GitHub Discussions de `pearl-research-labs/pearl` (catégorie : General / Q&A).
+**Par :** l'équipe Diapason (Stanford Hazy Research) ; contact : [user fills in].
+**Statut :** brouillon — à relire et à corriger avant publication.
 
 ---
 
-## Suggested title
+## Titre proposé
 
-> Apple Silicon support for Pearl mining — coordination & confirmation
+> Prise en charge d'Apple Silicon pour le minage Pearl — coordination et confirmation
 
-## Suggested body
+## Corps proposé
 
-Hi Pearl team — we're [Diapason](https://github.com/carlitoetienne01-spec/Diapason), a local-first personal AI agent framework from Stanford Hazy Research. We're working on a `mining` subsystem that lets OJ users mine Pearl through the agent framework. The first integration is the `vllm-miner`-on-H100/H200 path, which is straightforward. The second is Apple Silicon, where the situation is more interesting and we'd like to confirm a few things before we ship.
+Bonjour l'équipe Pearl — ici [Diapason](https://github.com/carlitoetienne01-spec/Diapason), un cadre d'agents d'IA personnels, local d'abord, issu de Stanford Hazy Research. Nous travaillons sur un sous-système `mining` qui permet aux utilisateurs d'OJ de miner Pearl au travers du cadre d'agents. La première intégration est le chemin `vllm-miner` sur H100/H200, et elle va de soi. La seconde est Apple Silicon, où la situation est plus intéressante et où nous aimerions confirmer deux ou trois choses avant de livrer.
 
-We have a v1 architecture that ships **today** using only your published Python packages (`py-pearl-mining`, `miner-base`, `pearl-gateway`) without any new code in your tree, plus an aspirational v2/v3 path that does involve potentially upstream contributions. Three asks below, plus a heads-up.
+Nous avons une architecture v1 qui sort **aujourd'hui** en n'utilisant que vos paquets Python déjà publiés (`py-pearl-mining`, `miner-base`, `pearl-gateway`), sans une ligne de code nouvelle dans votre arbre, plus un chemin v2/v3 ambitieux qui, lui, suppose d'éventuelles contributions en amont. Trois demandes ci-dessous, plus un signalement.
 
-### What we built and verified locally (no protocol changes; all upstream code paths)
+### Ce que nous avons construit et vérifié en local (aucun changement de protocole ; rien que des chemins de code en amont)
 
-We read the Pearl source carefully — particularly:
+Nous avons lu attentivement les sources de Pearl — en particulier :
 
-- `zk-pow/src/api/verify.rs` — the validator
-- `zk-pow/src/ffi/mine.rs` — the pure-Rust `mine()` function
-- `zk-pow/src/circuit/pearl_noise.rs` — noise generation
-- `py-pearl-mining/` — the PyO3 bindings exposing the above to Python
-- `miner/miner-base/src/miner_base/noisy_gemm.py` — the PyTorch NoisyGEMM reference
+- `zk-pow/src/api/verify.rs` — le validateur
+- `zk-pow/src/ffi/mine.rs` — la fonction `mine()` tout en Rust
+- `zk-pow/src/circuit/pearl_noise.rs` — la génération du bruit
+- `py-pearl-mining/` — les liaisons PyO3 qui exposent ce qui précède à Python
+- `miner/miner-base/src/miner_base/noisy_gemm.py` — la référence PyTorch NoisyGEMM
 
-…and then we built `py-pearl-mining` from source on an Apple Silicon M2 Max (macOS 26.4, Python 3.12, Rust 1.94). It produced `py_pearl_mining-0.1.0-cp312-abi3-macosx_11_0_arm64.whl` in ~56 seconds. We installed it and ran the `mine()` + `verify_plain_proof()` cycle from `tests/test_python_api.py`:
+…puis nous avons construit `py-pearl-mining` depuis les sources sur un Apple Silicon M2 Max (macOS 26.4, Python 3.12, Rust 1.94). La construction a produit `py_pearl_mining-0.1.0-cp312-abi3-macosx_11_0_arm64.whl` en ~56 secondes. Nous l'avons installé, puis lancé le cycle `mine()` + `verify_plain_proof()` de `tests/test_python_api.py` :
 
 ```
 running mine(m=256, n=128, k=1024, rank=32) on Apple Silicon CPU…
@@ -34,58 +34,58 @@ running mine(m=256, n=128, k=1024, rank=32) on Apple Silicon CPU…
   verify_plain_proof: ok=True, msg='Mining solution verified successfully'
 ```
 
-So our v1 plan is: ship a CPU-mining mode for OJ users on Apple Silicon (and potentially other non-CUDA platforms) that wraps `pearl_mining.mine()` and your `pearl-gateway` as a subprocess. **We're not modifying anything in Pearl's tree for v1.** Just consuming what you've already published.
+Notre plan v1 est donc celui-ci : livrer aux utilisateurs d'OJ sur Apple Silicon (et potentiellement sur d'autres plateformes sans CUDA) un mode de minage CPU qui enveloppe `pearl_mining.mine()` et votre `pearl-gateway` lancé comme sous-processus. **Nous ne modifions rien dans l'arbre de Pearl pour la v1.** Nous consommons seulement ce que vous avez déjà publié.
 
-### Three asks
+### Trois demandes
 
-**1. Protocol acceptance confirmation.**
+**1. Confirmation de l'acceptation par le protocole.**
 
-Reading the validator path, we believe `verify_block` and `verify_plain_proof` accept any `PlainProof` produced by a correct implementation, regardless of which hardware produced it. The plonky2 STARK and the difficulty check don't reference hardware.
+À la lecture du chemin de validation, nous pensons que `verify_block` et `verify_plain_proof` acceptent n'importe quelle `PlainProof` produite par une implémentation correcte, quel que soit le matériel qui l'a produite. Le STARK plonky2 et le contrôle de difficulté ne font aucune référence au matériel.
 
-**Could you confirm in writing that blocks mined via the pure-Rust `mine()` path (from a non-CUDA host like Apple Silicon) will be accepted by Pearl validators on testnet and mainnet?** We don't expect surprises here, but it's load-bearing for our spec and we want to record your sign-off before we ship.
+**Pourriez-vous confirmer par écrit que les blocs minés par le chemin `mine()` tout en Rust (depuis une machine sans CUDA, comme Apple Silicon) seront acceptés par les validateurs Pearl sur le testnet et sur le mainnet ?** Nous n'attendons pas de surprise ici, mais c'est porteur pour notre spec et nous voulons consigner votre accord avant de livrer.
 
-**2. Heads-up: your `Taskfile.yml` restricts `build:miner` to `[linux, windows]`.**
+**2. Signalement : votre `Taskfile.yml` restreint `build:miner` à `[linux, windows]`.**
 
-That makes total sense for the GPU miner (CUDA + vLLM is Linux-only). But the `py-pearl-mining` and `miner-base` packages don't actually need that restriction — they install fine on macOS. We're working around the gate by installing the individual packages directly. Two questions:
+Cela se comprend parfaitement pour le mineur GPU (CUDA + vLLM, c'est Linux et rien d'autre). Mais les paquets `py-pearl-mining` et `miner-base` n'ont pas réellement besoin de cette restriction — ils s'installent très bien sur macOS. Nous contournons le verrou en installant les paquets un par un. Deux questions :
 
-   - Is the `[linux, windows]` restriction load-bearing in some way we don't see (e.g., do you intend `py-pearl-mining` to remain a CUDA-bound dependency long-term)?
-   - Would you be open to a small PR that splits `build:miner-cpu` (cross-platform) from `build:miner-gpu` (Linux + CUDA)? It would help downstream consumers like us — and any hobbyist who wants to experiment with `pearl_mining.mine()` on whatever hardware they own.
+   - La restriction `[linux, windows]` est-elle porteuse d'une manière qui nous échappe (comptez-vous par exemple garder `py-pearl-mining` lié à CUDA sur le long terme) ?
+   - Seriez-vous ouverts à une petite PR qui sépare `build:miner-cpu` (multiplateforme) de `build:miner-gpu` (Linux + CUDA) ? Cela aiderait les consommateurs en aval comme nous — et tout amateur qui veut expérimenter `pearl_mining.mine()` sur le matériel qu'il possède.
 
-**3. PyPI publication of `py-pearl-mining` / `miner-base` / `pearl-gateway`.**
+**3. Publication sur PyPI de `py-pearl-mining` / `miner-base` / `pearl-gateway`.**
 
-Do you have a roadmap for publishing these as PyPI wheels (`pip install py-pearl-mining` etc.)? Today we'd vendor a pinned commit and `maturin build` locally, which works but is brittle. If a 2026 PyPI publication is plausible, we'd defer the local-build code path; if it's not on the roadmap, we'll plan for the long-term local-build path.
+Avez-vous une feuille de route pour publier ces paquets en wheels PyPI (`pip install py-pearl-mining`, etc.) ? Aujourd'hui, nous embarquerions un commit épinglé et un `maturin build` en local : cela marche, mais c'est fragile. Si une publication sur PyPI en 2026 est plausible, nous repousserions le chemin de construction locale ; si elle n'est pas à la feuille de route, nous prévoirons ce chemin pour le long terme.
 
-### Aspirational (v2 / v3) — context only, no asks yet
+### Ambitions (v2 / v3) — contexte seulement, aucune demande pour l'instant
 
-Once v1 ships, we'd like to explore Apple-native acceleration:
+Une fois la v1 livrée, nous aimerions explorer une accélération native Apple :
 
-- **v2:** Use PyTorch MPS to GPU-accelerate `miner-base.NoisyGemm` on Apple Silicon. Could potentially become a plugin into `mlx-lm` or `llama-cpp-python` so a Mac user's *inference* matmuls do mining work — same "useful work" framing as your vllm-miner. We don't need anything from Pearl for this; we'd build it on top of your existing PyTorch reference.
-- **v3 (only if v2 isn't enough):** A native Metal Shading Language port of NoisyGEMM, paralleling `pearl-gemm/`. That would be a real upstream contribution candidate (`pearl/miner/pearl-gemm-metal/`), and we'd want to coordinate with you before starting kernel work to avoid duplicate effort.
+- **v2 :** se servir de PyTorch MPS pour accélérer `miner-base.NoisyGemm` sur le GPU d'Apple Silicon. Cela pourrait devenir un greffon dans `mlx-lm` ou `llama-cpp-python`, de sorte que les multiplications de matrices de l'*inférence* d'un utilisateur Mac fassent le travail de minage — le même cadrage « travail utile » que votre vllm-miner. Nous n'avons besoin de rien de la part de Pearl pour cela ; nous le construirions par-dessus votre référence PyTorch existante.
+- **v3 (seulement si la v2 ne suffit pas) :** un portage natif de NoisyGEMM en Metal Shading Language, en parallèle de `pearl-gemm/`. Ce serait un vrai candidat à une contribution en amont (`pearl/miner/pearl-gemm-metal/`), et nous voudrions nous coordonner avec vous avant de commencer le travail sur le noyau, pour éviter de faire deux fois la même chose.
 
-If you're already building Apple Silicon support internally (or have someone planning it), please tell us — we'd rather coordinate than duplicate.
+Si vous construisez déjà la prise en charge d'Apple Silicon en interne (ou si quelqu'un chez vous la prépare), dites-le-nous — nous préférons nous coordonner plutôt que dupliquer.
 
-### Logistics
+### Logistique
 
-- License compatibility: Pearl is ISC; Diapason is Apache-2.0. We don't see any conflict for either consumption (v1) or contribution (v3), but please flag if you do.
-- CLA: do you require one for upstream contributions? Not blocking v1 — just want to know for v3.
-- Preferred coordination channel: this Discussion thread, a Discord, an email? We're happy to use whatever works for you.
+- Compatibilité des licences : Pearl est sous ISC, Diapason sous Apache-2.0. Nous ne voyons de conflit ni pour la consommation (v1) ni pour la contribution (v3), mais signalez-le si vous en voyez un.
+- CLA : en exigez-vous un pour les contributions en amont ? Cela ne bloque pas la v1 — nous voulons simplement savoir pour la v3.
+- Canal de coordination préféré : ce fil de Discussion, un Discord, un courriel ? Nous prendrons volontiers celui qui vous arrange.
 
-Thanks for building this — Proof-of-Useful-Work via matmul is genuinely interesting and we're excited to bring more (slower!) hardware to the network.
+Merci d'avoir construit tout cela — la preuve de travail utile par multiplication de matrices est vraiment intéressante, et l'idée d'amener au réseau du matériel supplémentaire (et plus lent !) nous enthousiasme.
 
-— [user name], on behalf of Diapason
+— [user name], au nom de Diapason
 
 ---
 
-## Notes for the user before posting
+## Notes à lire avant de publier
 
-- Replace `[user fills in]` with your contact info, `[user name]` with your name.
-- The architecture/perf claims are all backed by code + an actual local build; you can stand behind them.
-- "Heads-up" framing on the `Taskfile.yml` is intentional — we're not asking them to *change* it, just flagging the friction point in case they want to.
-- Don't post until OJ Spec A is at least branch-pushed (which it is, PR #310) — it gives Pearl a way to see the broader integration we're building.
-- When their reply lands, update Spec B §10 (open questions 1, 5, 7) and §11 (cross-references → coordination thread URL).
+- Remplace `[user fills in]` par tes coordonnées et `[user name]` par ton nom.
+- Les affirmations sur l'architecture et les performances s'appuient toutes sur du code et sur une vraie construction locale : tu peux les assumer.
+- Le cadrage en « signalement » du `Taskfile.yml` est délibéré — on ne leur demande pas de le *changer*, on pointe le frottement au cas où ils le voudraient.
+- Ne publie pas avant que la Spec A d'OJ soit au moins poussée sur une branche (c'est fait : PR #310) — cela donne à Pearl un moyen de voir l'intégration plus large que nous construisons.
+- Quand leur réponse arrive, mets à jour la Spec B §10 (questions ouvertes 1, 5 et 7) et le §11 (renvois → URL du fil de coordination).
 
-## Possible Pearl responses to anticipate
+## Les réponses possibles de Pearl, à anticiper
 
-- **Best case:** "Confirmed, looks great, we don't have an Apple Silicon plan, please do it." — proceed with §13.
-- **Middle case:** "Confirmed, but we have a Metal port in flight." — coordinate, share Spec B §6.1, decide upstream-vs-fork. v1 (CPU) is unaffected.
-- **Worst case:** "We'd prefer downstream non-CUDA mining stay disabled for now." — unlikely given their `pearl-gateway` README explicitly anticipates "plugins for other LLM inference libraries", but if it happens, this becomes a much harder problem and we'd need to revisit.
+- **Meilleur cas :** « Confirmé, ça a l'air très bien, nous n'avons pas de plan Apple Silicon, allez-y. » — on poursuit avec le §13.
+- **Cas intermédiaire :** « Confirmé, mais un portage Metal est en cours chez nous. » — se coordonner, partager la Spec B §6.1, trancher entre l'amont et le fork. La v1 (CPU) n'est pas touchée.
+- **Pire cas :** « Nous préférons que le minage sans CUDA en aval reste désactivé pour l'instant. » — peu probable, leur README de `pearl-gateway` annonçant explicitement des « greffons pour d'autres bibliothèques d'inférence LLM » ; mais si cela arrive, le problème devient bien plus dur et il faudra tout reconsidérer.

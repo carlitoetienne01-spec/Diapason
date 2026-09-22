@@ -1,27 +1,29 @@
-# Migration to Diapason
+# Migration vers Diapason
 
-Diapason `1.0.0` is the first release of the Diapason product line. Git history
-and legal provenance are preserved; active product names, package metadata,
-services, documentation, and release URLs use Diapason.
+Diapason `1.0.0` est la première version de la gamme de produits Diapason.
+L'historique Git et la provenance légale sont conservés ; les noms de produit
+actifs, les métadonnées de paquet, les services, la documentation et les URL de
+publication, eux, utilisent Diapason.
 
-Run an audit without changing local state:
+Lance un audit sans rien changer à l'état local :
 
 ```bash
 diapason migrate --check
 ```
 
-Apply safe directory and launchd renames:
+Applique les renommages sûrs de dossiers et d'agents launchd :
 
 ```bash
 diapason migrate --apply
 ```
 
-Environment variables use the `DIAPASON_` prefix. Legacy `OPENJARVIS_` and
-`JARVIS_` names remain readable through Diapason `1.x`, with the Diapason name
-taking precedence when both are set. The migration command reports variables
-that must be renamed in shell profiles, CI secrets, containers, and services.
+Les variables d'environnement utilisent le préfixe `DIAPASON_`. Les anciens noms
+`OPENJARVIS_` et `JARVIS_` restent lisibles pendant toute la série `1.x` de
+Diapason, et le nom Diapason l'emporte quand les deux sont définis. La commande
+de migration signale les variables qu'il faut renommer dans les profils de shell,
+les secrets de CI, les conteneurs et les services.
 
-The canonical project identity is
-[`carlitoetienne01-spec/Diapason`](https://github.com/carlitoetienne01-spec/Diapason). New
-releases use one version across Python, frontend, desktop, and protocol
-metadata.
+L'identité canonique du projet est
+[`carlitoetienne01-spec/Diapason`](https://github.com/carlitoetienne01-spec/Diapason).
+Les nouvelles versions portent un seul et même numéro pour Python, l'interface,
+le bureau et les métadonnées de protocole.

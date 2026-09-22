@@ -1,34 +1,35 @@
-# WSL2 Install
+# Installation sous WSL2
 
-Diapason on Windows installs two ways: **WSL2** (this page — the
-recommended path; identical to native Linux) or **[native Windows
-(advanced)](windows-native.md)** (Phase-1; PowerShell installer, no
-WSL2 / no Docker). Pick WSL2 for the smoothest experience.
+Sous Windows, Diapason s'installe de deux façons : par **WSL2** (cette
+page — la voie recommandée ; identique à Linux natif) ou en
+**[Windows natif (avancé)](windows-native.md)** (phase 1 ; installateur
+PowerShell, sans WSL2 ni Docker). Prends WSL2 pour le chemin le plus
+confortable.
 
-## One-time WSL setup
+## La préparation de WSL, une fois pour toutes
 
-In an admin PowerShell:
+Dans un PowerShell administrateur :
 
 ```powershell
 wsl --install
 ```
 
-Then open the Ubuntu (or Debian) shell that gets installed.
+Ouvre ensuite le shell Ubuntu (ou Debian) qui vient d'être installé.
 
-## Install Diapason
+## Installer Diapason
 
 ```bash
 curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 ```
 
-About 3 minutes. Type `diapason` to start.
+Environ 3 minutes. Tape `diapason` pour démarrer.
 
-## WSL-specific notes
+## Ce qui est propre à WSL
 
-- The installer detects WSL via `/proc/sys/kernel/osrelease` and uses `nohup ollama serve &` instead of systemd to start the Ollama daemon (WSL2 doesn't ship systemd by default).
-- The first time you run `diapason`, the WSL kernel may show a "process running in background" notification — that's the bg-orchestrator detaching. It's expected.
-- Models are stored in WSL's filesystem (`~/.diapason/`), not your Windows drive. To free up space later: `diapason-uninstall` removes everything.
+- L'installateur détecte WSL par `/proc/sys/kernel/osrelease` et démarre le démon Ollama avec `nohup ollama serve &` plutôt qu'avec systemd (WSL2 n'embarque pas systemd par défaut).
+- Au premier lancement de `diapason`, le noyau WSL peut afficher une notification « process running in background » — c'est l'orchestrateur d'arrière-plan qui se détache. C'est normal.
+- Les modèles vivent dans le système de fichiers de WSL (`~/.diapason/`), pas sur ton disque Windows. Pour récupérer de la place plus tard : `diapason-uninstall` retire tout.
 
-## See also
+## Voir aussi
 
-- [Full installer reference](install.md)
+- [La référence complète de l'installateur](install.md)

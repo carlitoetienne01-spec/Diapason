@@ -1,39 +1,39 @@
 # Agents
 
-Agents are the agentic logic layer of Diapason. They determine how a query is processed -- whether it goes directly to a model, through a tool-calling loop, via ReAct reasoning, CodeAct code execution, recursive decomposition, or an external agent runtime. All agents implement the `BaseAgent` ABC and are registered via the `AgentRegistry`.
+Les agents sont la couche de logique agentique de Diapason. Ce sont eux qui décident comment une question est traitée — envoyée directement à un modèle, passée dans une boucle d'appel d'outils, raisonnée façon ReAct, exécutée comme du code façon CodeAct, décomposée récursivement, ou confiée à un environnement d'agent externe. Tous les agents implémentent la classe abstraite `BaseAgent` et sont enregistrés dans l'`AgentRegistry`.
 
-## Overview
+## Vue d'ensemble
 
-| Agent               | Registry Key      | `accepts_tools` | Multi-turn | Description                                  |
-|---------------------|-------------------|-----------------|------------|----------------------------------------------|
-| `SimpleAgent`       | `simple`          | No              | No         | Single-turn query-to-response                |
-| `OrchestratorAgent` | `orchestrator`    | Yes             | Yes        | Multi-turn tool-calling loop (function_calling + structured) |
-| `NativeReActAgent`  | `native_react`    | Yes             | Yes        | Thought-Action-Observation loop              |
-| `NativeOpenHandsAgent` | `native_openhands` | Yes          | Yes        | CodeAct-style code execution + tool calls    |
-| `RLMAgent`          | `rlm`             | Yes             | Yes        | Recursive LM with persistent REPL            |
-| `OpenHandsAgent`    | `openhands`       | No              | Yes        | Wraps real openhands-sdk                     |
-| `ClaudeCodeAgent`   | `claude_code`     | No              | Yes        | Claude Agent SDK via Node.js subprocess       |
-| `OpenCodeAgent`     | `opencode`        | No              | Yes        | [opencode](https://opencode.ai) coding agent on your local engine |
-| `OperativeAgent`    | `operative`       | Yes             | Yes        | Persistent scheduled agent with state management |
-| `MonitorOperativeAgent` | `monitor_operative` | Yes        | Yes        | Long-horizon agent with 4 configurable strategy axes |
+| Agent               | Clé de registre   | `accepts_tools` | Multi-tours | Description                                  |
+|---------------------|-------------------|-----------------|-------------|----------------------------------------------|
+| `SimpleAgent`       | `simple`          | Non             | Non         | Question-réponse en un seul tour             |
+| `OrchestratorAgent` | `orchestrator`    | Oui             | Oui         | Boucle d'appel d'outils multi-tours (function_calling + structured) |
+| `NativeReActAgent`  | `native_react`    | Oui             | Oui         | Boucle Pensée-Action-Observation             |
+| `NativeOpenHandsAgent` | `native_openhands` | Oui         | Oui         | Exécution de code façon CodeAct + appels d'outils |
+| `RLMAgent`          | `rlm`             | Oui             | Oui         | Modèle récursif avec REPL persistant         |
+| `OpenHandsAgent`    | `openhands`       | Non             | Oui         | Enveloppe le vrai openhands-sdk              |
+| `ClaudeCodeAgent`   | `claude_code`     | Non             | Oui         | Claude Agent SDK via un sous-processus Node.js |
+| `OpenCodeAgent`     | `opencode`        | Non             | Oui         | L'agent de code [opencode](https://opencode.ai) sur ton moteur local |
+| `OperativeAgent`    | `operative`       | Oui             | Oui         | Agent planifié persistant, avec gestion d'état |
+| `MonitorOperativeAgent` | `monitor_operative` | Oui       | Oui         | Agent de longue haleine, avec 4 axes de stratégie configurables |
 
 ---
 
-## Persistent Persona: SOUL.md, MEMORY.md, USER.md
+## Le persona persistant : SOUL.md, MEMORY.md, USER.md
 
-Every agent's system prompt is assembled at conversation start by the `SystemPromptBuilder`, which injects up to three optional Markdown files -- the **persistent persona**. They are plain text you own and edit, loaded at the start of each conversation. There is no vector database or embedding cache behind them.
+Le prompt système de chaque agent est assemblé au début de la conversation par le `SystemPromptBuilder`, qui y injecte jusqu'à trois fichiers Markdown facultatifs — le **persona persistant**. Ce sont des fichiers en texte brut, à toi, que tu modifies, et qui sont chargés au début de chaque conversation. Il n'y a derrière eux ni base vectorielle ni cache d'embeddings.
 
-| File | What it holds | Example line |
-|------|---------------|--------------|
-| `SOUL.md` | How the agent should behave -- tone, length, what to push back on | `Be concise. Challenge weak assumptions.` |
-| `MEMORY.md` | Facts about you, your projects, your preferences | `I deploy to Postgres, never MySQL.` |
-| `USER.md` | Who you are -- role, team, context | `Backend engineer at Acme, on the payments team.` |
+| Fichier | Ce qu'il contient | Exemple de ligne |
+|---------|-------------------|------------------|
+| `SOUL.md` | Comment l'agent doit se comporter — le ton, la longueur, ce sur quoi il doit te contredire | `Sois concis. Conteste les hypothèses fragiles.` |
+| `MEMORY.md` | Des faits sur toi, tes projets, tes préférences | `Je déploie sur Postgres, jamais sur MySQL.` |
+| `USER.md` | Qui tu es — ton rôle, ton équipe, ton contexte | `Ingénieur back-end chez Acme, dans l'équipe paiements.` |
 
-This persona is distinct from the retrieval [memory backend](memory.md): the persona is always-on Markdown context loaded into the prompt, while the memory backend is searchable long-term storage the agent queries on demand.
+Ce persona est distinct du [moteur de mémoire](memory.md) et de sa recherche : le persona est un contexte Markdown toujours actif, chargé dans le prompt, tandis que le moteur de mémoire est un stockage de longue durée, interrogeable, que l'agent consulte à la demande.
 
-### Where they live
+### Où ils vivent
 
-By default the files are read from the config directory:
+Par défaut, les fichiers sont lus depuis le dossier de configuration :
 
 ```
 ~/.diapason/SOUL.md
@@ -41,27 +41,27 @@ By default the files are read from the config directory:
 ~/.diapason/USER.md
 ```
 
-(The config directory honors `$DIAPASON_HOME` / `$XDG_DATA_HOME` when set.) The paths are configurable under `[memory_files]`:
+(Le dossier de configuration respecte `$DIAPASON_HOME` / `$XDG_DATA_HOME` quand ils sont définis.) Les chemins se configurent sous `[memory_files]` :
 
 ```toml
 [memory_files]
 soul_path    = "~/.diapason/SOUL.md"
 memory_path  = "~/.diapason/MEMORY.md"
 user_path    = "~/.diapason/USER.md"
-persona_name = ""    # optional named persona -- see below
+persona_name = ""    # persona nommé, facultatif — voir plus bas
 ```
 
-### How they're loaded
+### Comment ils sont chargés
 
-At the start of each conversation, `SystemPromptBuilder` reads each file as UTF-8 and adds its contents as a section of the system prompt, after the agent template and before the skill catalog:
+Au début de chaque conversation, `SystemPromptBuilder` lit chaque fichier en UTF-8 et ajoute son contenu comme une section du prompt système, après le gabarit de l'agent et avant le catalogue de compétences :
 
-- **All three are optional.** A missing or empty file is skipped, so any subset works and an install with no persona files behaves exactly as before.
-- **Edits apply to the next conversation.** The files are read once when a conversation's prompt is built, so there is no restart or re-indexing -- edit or delete a line and it takes effect the next time you start a conversation.
-- **Each section is length-capped.** Files are truncated to a per-section character budget so a large `MEMORY.md` cannot crowd out the rest of the prompt.
+- **Les trois sont facultatifs.** Un fichier absent ou vide est ignoré : n'importe quel sous-ensemble fonctionne, et une installation dépourvue de fichiers de persona se comporte exactement comme avant.
+- **Les modifications prennent effet à la conversation suivante.** Les fichiers sont lus une seule fois, quand le prompt d'une conversation est construit : rien à redémarrer, rien à réindexer — modifie ou supprime une ligne, et elle s'applique dès la prochaine conversation que tu démarres.
+- **Chaque section est bornée en longueur.** Les fichiers sont tronqués selon un budget de caractères par section, pour qu'un gros `MEMORY.md` ne puisse pas chasser le reste du prompt.
 
-### Named personas
+### Les personas nommés
 
-A single install can answer as different personas without changing global config. A named persona lives in its own directory:
+Une même installation peut répondre sous plusieurs personas sans toucher à la configuration globale. Un persona nommé vit dans son propre dossier :
 
 ```
 ~/.diapason/personas/<name>/SOUL.md
@@ -69,24 +69,24 @@ A single install can answer as different personas without changing global config
 ~/.diapason/personas/<name>/USER.md
 ```
 
-Select one per invocation, or opt out entirely:
+Choisis-en un à chaque appel, ou renonce complètement :
 
 ```bash
-diapason ask --persona work  "summarize my open PRs"
-diapason ask --persona none  "what is 2 + 2?"     # inject no persona
+diapason ask --persona work  "résume mes PR ouvertes"
+diapason ask --persona none  "combien font 2 + 2 ?"     # n'injecte aucun persona
 ```
 
-Set `persona_name` under `[memory_files]` to make a named persona the default. `persona_name = "none"` (equivalently `--persona none`) disables persona injection for that run.
+Définis `persona_name` sous `[memory_files]` pour faire d'un persona nommé celui par défaut. `persona_name = "none"` (ce qui revient à `--persona none`) désactive l'injection de persona pour cette exécution.
 
-### Editing them
+### Les modifier
 
-`SOUL.md`, `MEMORY.md`, and `USER.md` are plain Markdown -- open them in any editor. `MEMORY.md` and `USER.md` can also be updated by the agent itself through the `memory_manage` and `user_profile_manage` tools when those are enabled, so the agent can record a new fact mid-conversation. These tools always target the default `MEMORY.md` and `USER.md` (under `~/.diapason/`), never a named persona's copies -- edit those by hand.
+`SOUL.md`, `MEMORY.md` et `USER.md` sont du Markdown ordinaire — ouvre-les dans n'importe quel éditeur. `MEMORY.md` et `USER.md` peuvent aussi être mis à jour par l'agent lui-même, par les outils `memory_manage` et `user_profile_manage` quand ils sont activés : l'agent peut donc noter un fait nouveau au milieu d'une conversation. Ces outils visent toujours les `MEMORY.md` et `USER.md` par défaut (sous `~/.diapason/`), jamais les copies d'un persona nommé — celles-là, modifie-les à la main.
 
 ---
 
 ## BaseAgent ABC
 
-All agents extend the abstract `BaseAgent` class.
+Tous les agents dérivent de la classe abstraite `BaseAgent`.
 
 ```python
 from abc import ABC, abstractmethod
@@ -113,273 +113,273 @@ class BaseAgent(ABC):
         context: AgentContext | None = None,
         **kwargs,
     ) -> AgentResult:
-        """Execute the agent on the given input."""
+        """Exécute l'agent sur l'entrée donnée."""
 ```
 
-The `accepts_tools` class attribute controls whether an agent can receive tools via `--tools` on the CLI or `tools=` in the SDK. Agents with `accepts_tools = False` ignore tool arguments.
+L'attribut de classe `accepts_tools` décide si un agent peut recevoir des outils, par `--tools` en ligne de commande ou par `tools=` dans le SDK. Les agents dont `accepts_tools = False` ignorent les arguments d'outils.
 
-`BaseAgent` also provides concrete helper methods (`_emit_turn_start`, `_emit_turn_end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`) that subclasses use to avoid duplicating common logic. See the [architecture docs](../architecture/agents.md#baseagent-abc) for details.
+`BaseAgent` fournit aussi des méthodes utilitaires concrètes (`_emit_turn_start`, `_emit_turn_end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`) dont les sous-classes se servent pour ne pas dupliquer la logique commune. Le détail est dans la [documentation d'architecture](../architecture/agents.md#baseagent-abc).
 
-**ToolUsingAgent** is an intermediate base class (extends `BaseAgent`) that sets `accepts_tools = True` and adds a `ToolExecutor` and `max_turns` loop limit. All tool-using agents extend this class.
+**ToolUsingAgent** est une classe de base intermédiaire (elle dérive de `BaseAgent`) qui pose `accepts_tools = True` et ajoute un `ToolExecutor` ainsi qu'une limite de boucle `max_turns`. Tous les agents qui se servent d'outils dérivent de cette classe.
 
 ### AgentContext
 
-The runtime context handed to an agent on each invocation.
+Le contexte d'exécution remis à un agent à chaque appel.
 
-| Field            | Type               | Description                                    |
+| Champ            | Type               | Description                                    |
 |------------------|--------------------|------------------------------------------------|
-| `conversation`   | `Conversation`     | Message history (pre-filled with context if memory injection is active) |
-| `tools`          | `list[str]`        | Tool names available to the agent              |
-| `memory_results` | `list[Any]`        | Pre-fetched memory retrieval results           |
-| `metadata`       | `dict[str, Any]`   | Arbitrary metadata for the run                 |
+| `conversation`   | `Conversation`     | L'historique des messages (pré-rempli avec le contexte si l'injection de mémoire est active) |
+| `tools`          | `list[str]`        | Les noms des outils dont l'agent dispose       |
+| `memory_results` | `list[Any]`        | Les résultats de mémoire récupérés à l'avance  |
+| `metadata`       | `dict[str, Any]`   | Des métadonnées libres pour l'exécution        |
 
 ### AgentResult
 
-The result returned after an agent completes a run.
+Le résultat rendu quand un agent a fini son exécution.
 
-| Field          | Type               | Description                                    |
+| Champ          | Type               | Description                                    |
 |----------------|--------------------|------------------------------------------------|
-| `content`      | `str`              | The final response text                        |
-| `tool_results` | `list[ToolResult]` | Results from tool executions during the run    |
-| `turns`        | `int`              | Number of turns (inference calls) taken        |
-| `metadata`     | `dict[str, Any]`   | Arbitrary metadata about the run               |
+| `content`      | `str`              | Le texte de la réponse finale                  |
+| `tool_results` | `list[ToolResult]` | Les résultats des outils exécutés pendant l'exécution |
+| `turns`        | `int`              | Le nombre de tours (d'appels d'inférence) effectués |
+| `metadata`     | `dict[str, Any]`   | Des métadonnées libres sur l'exécution         |
 
 ---
 
 ## SimpleAgent
 
-The `SimpleAgent` is a single-turn agent that sends the query directly to the inference engine and returns the response. It does not support tool calling.
+Le `SimpleAgent` est un agent à un seul tour : il envoie la question directement au moteur d'inférence et rend la réponse. Il ne gère pas l'appel d'outils.
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds a message list from the conversation context (if provided) plus the user query.
-2. Calls the inference engine via `_generate()`.
-3. Returns the response as an `AgentResult` with `turns=1`.
+1. Il construit une liste de messages à partir du contexte de conversation (s'il y en a un) et de la question de l'utilisateur.
+2. Il appelle le moteur d'inférence via `_generate()`.
+3. Il rend la réponse sous forme d'`AgentResult`, avec `turns=1`.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter     | Type              | Default | Description                        |
+| Paramètre     | Type              | Défaut  | Description                        |
 |---------------|-------------------|---------|------------------------------------|
-| `engine`      | `InferenceEngine` | --      | The inference engine to use        |
-| `model`       | `str`             | --      | Model identifier                   |
-| `bus`         | `EventBus`        | `None`  | Event bus for telemetry            |
-| `temperature` | `float`           | `0.7`   | Sampling temperature               |
-| `max_tokens`  | `int`             | `1024`  | Maximum tokens to generate         |
+| `engine`      | `InferenceEngine` | --      | Le moteur d'inférence à utiliser   |
+| `model`       | `str`             | --      | L'identifiant du modèle            |
+| `bus`         | `EventBus`        | `None`  | Le bus d'événements pour la télémétrie |
+| `temperature` | `float`           | `0.7`   | La température d'échantillonnage   |
+| `max_tokens`  | `int`             | `1024`  | Le nombre maximum de jetons à produire |
 
-**When to use:** For straightforward question-answering without tool calling or multi-turn reasoning.
+**Quand s'en servir :** pour de la question-réponse directe, sans appel d'outils ni raisonnement sur plusieurs tours.
 
 ---
 
 ## OrchestratorAgent
 
-The `OrchestratorAgent` is a multi-turn agent that implements a tool-calling loop. It is the primary agent for queries that require computation, knowledge retrieval, or structured reasoning. Extends `ToolUsingAgent`.
+L'`OrchestratorAgent` est un agent multi-tours qui met en œuvre une boucle d'appel d'outils. C'est l'agent principal pour les questions qui demandent un calcul, une recherche de connaissances ou un raisonnement structuré. Il dérive de `ToolUsingAgent`.
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds the initial message list from context and the user query.
-2. Sends messages with tool definitions (OpenAI function-calling format) to the engine.
-3. If the engine responds with `tool_calls`, the `ToolExecutor` dispatches each call.
-4. Tool results are appended as `TOOL` messages and the loop continues.
-5. If no `tool_calls` are returned, the response is treated as the final answer.
-6. The loop stops after `max_turns` iterations (default: 10), returning whatever content is available along with a `max_turns_exceeded` metadata flag.
+1. Il construit la liste de messages initiale à partir du contexte et de la question de l'utilisateur.
+2. Il envoie les messages au moteur, accompagnés des définitions d'outils (au format function-calling d'OpenAI).
+3. Si le moteur répond avec des `tool_calls`, le `ToolExecutor` répartit chaque appel.
+4. Les résultats d'outils sont ajoutés comme messages `TOOL`, et la boucle continue.
+5. Si aucun `tool_calls` n'est rendu, la réponse est tenue pour la réponse finale.
+6. La boucle s'arrête après `max_turns` itérations (10 par défaut) et rend le contenu disponible, assorti du drapeau de métadonnée `max_turns_exceeded`.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter       | Type              | Default | Description                          |
+| Paramètre       | Type              | Défaut  | Description                          |
 |-----------------|-------------------|---------|--------------------------------------|
-| `engine`        | `InferenceEngine` | --      | The inference engine to use          |
-| `model`         | `str`             | --      | Model identifier                     |
-| `tools`         | `list[BaseTool]`  | `[]`    | Tool instances to make available     |
-| `bus`           | `EventBus`        | `None`  | Event bus for telemetry              |
-| `max_turns`     | `int`             | `10`    | Maximum number of tool-calling turns |
-| `temperature`   | `float`           | `0.7`   | Sampling temperature                 |
-| `max_tokens`    | `int`             | `1024`  | Maximum tokens to generate           |
-| `mode`          | `str`             | `"function_calling"` | Tool-calling mode (`function_calling` or `structured`) |
-| `system_prompt` | `str`             | `None`  | Custom system prompt                 |
+| `engine`        | `InferenceEngine` | --      | Le moteur d'inférence à utiliser     |
+| `model`         | `str`             | --      | L'identifiant du modèle              |
+| `tools`         | `list[BaseTool]`  | `[]`    | Les instances d'outils à mettre à disposition |
+| `bus`           | `EventBus`        | `None`  | Le bus d'événements pour la télémétrie |
+| `max_turns`     | `int`             | `10`    | Le nombre maximum de tours d'appel d'outils |
+| `temperature`   | `float`           | `0.7`   | La température d'échantillonnage     |
+| `max_tokens`    | `int`             | `1024`  | Le nombre maximum de jetons à produire |
+| `mode`          | `str`             | `"function_calling"` | Le mode d'appel d'outils (`function_calling` ou `structured`) |
+| `system_prompt` | `str`             | `None`  | Un prompt système personnalisé       |
 
-**When to use:** For queries that need calculation, memory search, sub-model calls, file reading, or multi-step reasoning.
+**Quand s'en servir :** pour les questions qui demandent un calcul, une recherche en mémoire, des appels à un sous-modèle, la lecture de fichiers ou un raisonnement en plusieurs étapes.
 
-!!! info "Tool-Calling Loop"
-    The orchestrator follows the OpenAI function-calling convention. The engine must support returning `tool_calls` in its response for the loop to engage. If tools are provided but the engine does not return any tool calls, the agent behaves like a single-turn agent.
+!!! info "La boucle d'appel d'outils"
+    L'orchestrateur suit la convention function-calling d'OpenAI. Pour que la boucle s'enclenche, le moteur doit savoir renvoyer des `tool_calls` dans sa réponse. Si des outils sont fournis mais que le moteur ne renvoie aucun appel d'outil, l'agent se comporte comme un agent à un seul tour.
 
 ---
 
 ## NativeReActAgent
 
-The `NativeReActAgent` implements a **Thought-Action-Observation** loop following the ReAct pattern. It prompts the LLM to produce structured output (`Thought:`, `Action:`, `Action Input:`, `Final Answer:`) and parses the response to drive tool execution. Extends `ToolUsingAgent`.
+Le `NativeReActAgent` met en œuvre une boucle **Pensée-Action-Observation**, suivant le motif ReAct. Il demande au modèle de produire une sortie structurée (`Thought:`, `Action:`, `Action Input:`, `Final Answer:`) et analyse la réponse pour déclencher l'exécution des outils. Il dérive de `ToolUsingAgent`.
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds a system prompt with enriched tool descriptions (names, parameter schemas, categories) via `build_tool_descriptions()`. Parsing is case-insensitive.
-2. Generates a response and parses the ReAct-structured output.
-3. If a `Final Answer:` is found, returns it.
-4. If an `Action:` is found, executes the tool and feeds the result back as an `Observation:`.
-5. Loops until a final answer is produced or `max_turns` is exceeded.
+1. Il construit un prompt système avec des descriptions d'outils enrichies (noms, schémas de paramètres, catégories) via `build_tool_descriptions()`. L'analyse ne tient pas compte de la casse.
+2. Il produit une réponse et analyse la sortie structurée ReAct.
+3. S'il y trouve un `Final Answer:`, il le rend.
+4. S'il y trouve une `Action:`, il exécute l'outil et réinjecte le résultat comme `Observation:`.
+5. Il boucle jusqu'à ce qu'une réponse finale soit produite, ou que `max_turns` soit dépassé.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter     | Type              | Default | Description                        |
+| Paramètre     | Type              | Défaut  | Description                        |
 |---------------|-------------------|---------|------------------------------------|
-| `engine`      | `InferenceEngine` | --      | The inference engine to use        |
-| `model`       | `str`             | --      | Model identifier                   |
-| `tools`       | `list[BaseTool]`  | `[]`    | Tool instances to make available   |
-| `bus`         | `EventBus`        | `None`  | Event bus for telemetry            |
-| `max_turns`   | `int`             | `10`    | Maximum number of reasoning turns  |
-| `temperature` | `float`           | `0.7`   | Sampling temperature               |
-| `max_tokens`  | `int`             | `1024`  | Maximum tokens to generate         |
+| `engine`      | `InferenceEngine` | --      | Le moteur d'inférence à utiliser   |
+| `model`       | `str`             | --      | L'identifiant du modèle            |
+| `tools`       | `list[BaseTool]`  | `[]`    | Les instances d'outils à mettre à disposition |
+| `bus`         | `EventBus`        | `None`  | Le bus d'événements pour la télémétrie |
+| `max_turns`   | `int`             | `10`    | Le nombre maximum de tours de raisonnement |
+| `temperature` | `float`           | `0.7`   | La température d'échantillonnage   |
+| `max_tokens`  | `int`             | `1024`  | Le nombre maximum de jetons à produire |
 
-**When to use:** For queries that benefit from explicit step-by-step reasoning with tool use, where you want visibility into the agent's thought process.
+**Quand s'en servir :** pour les questions qui gagnent à un raisonnement explicite, étape par étape, avec usage d'outils — quand tu veux voir le cheminement de pensée de l'agent.
 
-!!! note "Backward compatibility"
-    The registry alias `"react"` maps to `NativeReActAgent`. The old import `from diapason.agents.react import ReActAgent` also still works.
+!!! note "Compatibilité ascendante"
+    L'alias de registre `"react"` pointe vers `NativeReActAgent`. L'ancien import `from diapason.agents.react import ReActAgent` fonctionne encore.
 
 ---
 
 ## NativeOpenHandsAgent
 
-The `NativeOpenHandsAgent` is a CodeAct-style agent that generates and executes Python code alongside structured tool calls. It can also pre-fetch URL content from user input to provide direct context to the LLM. Extends `ToolUsingAgent`.
+Le `NativeOpenHandsAgent` est un agent façon CodeAct : il produit et exécute du code Python, à côté d'appels d'outils structurés. Il peut aussi aller chercher à l'avance le contenu des URL présentes dans l'entrée de l'utilisateur, pour donner au modèle un contexte direct. Il dérive de `ToolUsingAgent`.
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds a detailed system prompt with enriched tool descriptions (via shared `build_tool_descriptions()` builder) and code execution instructions.
-2. Pre-fetches any URLs in the user input, inlining the content directly.
-3. For each turn, generates a response and attempts to extract code blocks or tool calls.
-4. Code is executed via `code_interpreter`; tool calls are dispatched via `ToolExecutor`.
-5. If neither is found, returns the content as the final answer.
+1. Il construit un prompt système détaillé, avec des descriptions d'outils enrichies (via le constructeur partagé `build_tool_descriptions()`) et des instructions d'exécution de code.
+2. Il va chercher à l'avance les URL présentes dans l'entrée de l'utilisateur, et en insère le contenu directement.
+3. À chaque tour, il produit une réponse et tente d'en extraire des blocs de code ou des appels d'outils.
+4. Le code est exécuté par `code_interpreter` ; les appels d'outils sont répartis par `ToolExecutor`.
+5. S'il ne trouve ni l'un ni l'autre, il rend le contenu comme réponse finale.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter     | Type              | Default | Description                        |
+| Paramètre     | Type              | Défaut  | Description                        |
 |---------------|-------------------|---------|------------------------------------|
-| `engine`      | `InferenceEngine` | --      | The inference engine to use        |
-| `model`       | `str`             | --      | Model identifier                   |
-| `tools`       | `list[BaseTool]`  | `[]`    | Tool instances to make available   |
-| `bus`         | `EventBus`        | `None`  | Event bus for telemetry            |
-| `max_turns`   | `int`             | `3`     | Maximum number of turns            |
-| `temperature` | `float`           | `0.7`   | Sampling temperature               |
-| `max_tokens`  | `int`             | `2048`  | Maximum tokens to generate         |
+| `engine`      | `InferenceEngine` | --      | Le moteur d'inférence à utiliser   |
+| `model`       | `str`             | --      | L'identifiant du modèle            |
+| `tools`       | `list[BaseTool]`  | `[]`    | Les instances d'outils à mettre à disposition |
+| `bus`         | `EventBus`        | `None`  | Le bus d'événements pour la télémétrie |
+| `max_turns`   | `int`             | `3`     | Le nombre maximum de tours         |
+| `temperature` | `float`           | `0.7`   | La température d'échantillonnage   |
+| `max_tokens`  | `int`             | `2048`  | Le nombre maximum de jetons à produire |
 
-**When to use:** For queries involving URL content, code execution, or tasks where the LLM can write and run Python to solve the problem.
+**Quand s'en servir :** pour les questions qui portent sur le contenu d'une URL, pour de l'exécution de code, ou pour les tâches où le modèle peut écrire et lancer du Python afin de résoudre le problème.
 
 ---
 
 ## RLMAgent
 
-The `RLMAgent` implements recursive decomposition via a persistent REPL, based on the RLM paper. Context is stored as a Python variable rather than injected into the prompt, enabling processing of arbitrarily long inputs through recursive sub-LM calls. Extends `ToolUsingAgent`.
+Le `RLMAgent` met en œuvre la décomposition récursive au moyen d'un REPL persistant, d'après l'article RLM. Le contexte est rangé dans une variable Python plutôt qu'injecté dans le prompt, ce qui permet de traiter des entrées de longueur quelconque par des appels récursifs à un sous-modèle. Il dérive de `ToolUsingAgent`.
 
-**How it works:**
+**Comment il marche :**
 
-1. Creates a persistent REPL with `llm_query()` and `llm_batch()` callbacks.
-2. Injects context from `AgentContext` into the REPL as a variable.
-3. Generates code and executes it in the REPL.
-4. If `FINAL(value)` is called, returns the value as the final answer.
-5. If no code block is found, treats the content as a direct text answer.
+1. Il crée un REPL persistant, doté des rappels `llm_query()` et `llm_batch()`.
+2. Il injecte le contexte venu d'`AgentContext` dans le REPL, sous forme de variable.
+3. Il produit du code et l'exécute dans le REPL.
+4. Si `FINAL(value)` est appelé, il rend cette valeur comme réponse finale.
+5. S'il ne trouve aucun bloc de code, il traite le contenu comme une réponse textuelle directe.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter          | Type              | Default            | Description                        |
+| Paramètre          | Type              | Défaut             | Description                        |
 |--------------------|-------------------|--------------------|-------------------------------------|
-| `engine`           | `InferenceEngine` | --                 | The inference engine to use        |
-| `model`            | `str`             | --                 | Model identifier                   |
-| `tools`            | `list[BaseTool]`  | `[]`               | Tool instances (optional)          |
-| `bus`              | `EventBus`        | `None`             | Event bus for telemetry            |
-| `max_turns`        | `int`             | `10`               | Maximum number of code-execute turns |
-| `temperature`      | `float`           | `0.7`              | Sampling temperature               |
-| `max_tokens`       | `int`             | `2048`             | Maximum tokens to generate         |
-| `sub_model`        | `str`             | same as `model`    | Model for sub-LM calls            |
-| `sub_temperature`  | `float`           | `0.3`              | Temperature for sub-LM calls       |
-| `sub_max_tokens`   | `int`             | `1024`             | Max tokens for sub-LM calls        |
-| `max_output_chars` | `int`             | `10000`            | Max REPL output characters         |
-| `system_prompt`    | `str`             | `RLM_SYSTEM_PROMPT` | Override the system prompt         |
+| `engine`           | `InferenceEngine` | --                 | Le moteur d'inférence à utiliser   |
+| `model`            | `str`             | --                 | L'identifiant du modèle            |
+| `tools`            | `list[BaseTool]`  | `[]`               | Les instances d'outils (facultatif) |
+| `bus`              | `EventBus`        | `None`             | Le bus d'événements pour la télémétrie |
+| `max_turns`        | `int`             | `10`               | Le nombre maximum de tours d'exécution de code |
+| `temperature`      | `float`           | `0.7`              | La température d'échantillonnage   |
+| `max_tokens`       | `int`             | `2048`             | Le nombre maximum de jetons à produire |
+| `sub_model`        | `str`             | identique à `model` | Le modèle des appels au sous-modèle |
+| `sub_temperature`  | `float`           | `0.3`              | La température des appels au sous-modèle |
+| `sub_max_tokens`   | `int`             | `1024`             | Les jetons maximum des appels au sous-modèle |
+| `max_output_chars` | `int`             | `10000`            | Le nombre maximum de caractères en sortie du REPL |
+| `system_prompt`    | `str`             | `RLM_SYSTEM_PROMPT` | Remplace le prompt système         |
 
-**When to use:** For long-context tasks that benefit from recursive decomposition, such as summarizing large documents, processing structured data, or tasks that require programmatic manipulation of context.
+**Quand s'en servir :** pour les tâches à long contexte qui gagnent à une décomposition récursive — résumer de gros documents, traiter des données structurées, ou tout ce qui demande de manipuler le contexte par programme.
 
 ---
 
 ## OpenHandsAgent (SDK)
 
-The `OpenHandsAgent` wraps the real `openhands-sdk` package for AI-driven software development. Extends `BaseAgent` directly (tool management is handled by the SDK internally).
+L'`OpenHandsAgent` enveloppe le vrai paquet `openhands-sdk`, pour du développement logiciel piloté par l'IA. Il dérive directement de `BaseAgent` (la gestion des outils est assurée en interne par le SDK).
 
-**How it works:**
+**Comment il marche :**
 
-1. Imports `openhands.sdk` at runtime.
-2. Creates an LLM, Agent, and Conversation from the SDK.
-3. Sends the input and runs the conversation.
-4. Returns the final message content.
+1. Il importe `openhands.sdk` à l'exécution.
+2. Il crée un LLM, un Agent et une Conversation issus du SDK.
+3. Il envoie l'entrée et déroule la conversation.
+4. Il rend le contenu du message final.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter     | Type              | Default       | Description                        |
+| Paramètre     | Type              | Défaut        | Description                        |
 |---------------|-------------------|---------------|------------------------------------|
-| `engine`      | `InferenceEngine` | --            | The inference engine (fallback)    |
-| `model`       | `str`             | --            | Model identifier                   |
-| `bus`         | `EventBus`        | `None`        | Event bus for telemetry            |
-| `temperature` | `float`           | `0.7`         | Sampling temperature               |
-| `max_tokens`  | `int`             | `1024`        | Maximum tokens to generate         |
-| `workspace`   | `str`             | `os.getcwd()` | Working directory for the agent    |
-| `api_key`     | `str`             | `$LLM_API_KEY`| API key for the LLM provider      |
+| `engine`      | `InferenceEngine` | --            | Le moteur d'inférence (solution de repli) |
+| `model`       | `str`             | --            | L'identifiant du modèle            |
+| `bus`         | `EventBus`        | `None`        | Le bus d'événements pour la télémétrie |
+| `temperature` | `float`           | `0.7`         | La température d'échantillonnage   |
+| `max_tokens`  | `int`             | `1024`        | Le nombre maximum de jetons à produire |
+| `workspace`   | `str`             | `os.getcwd()` | Le dossier de travail de l'agent   |
+| `api_key`     | `str`             | `$LLM_API_KEY`| La clé d'API du fournisseur de LLM |
 
-**When to use:** For software development tasks (debugging, code editing, test fixing) where the OpenHands SDK provides a full development agent runtime.
+**Quand s'en servir :** pour les tâches de développement logiciel (débogage, édition de code, réparation de tests) où le SDK OpenHands fournit un environnement d'agent de développement complet.
 
-!!! warning "Optional dependency"
-    Requires `openhands-sdk` (`uv sync --extra openhands`) and Python 3.12+.
+!!! warning "Dépendance facultative"
+    Nécessite `openhands-sdk` (`uv sync --extra openhands`) et Python 3.12 ou plus.
 
 ---
 
-## Using Agents
+## Se servir des agents
 
-### Via CLI
+### En ligne de commande
 
 ```bash
-# Simple agent
-diapason ask --agent simple "What is the capital of France?"
+# L'agent simple
+diapason ask --agent simple "Quelle est la capitale de la France ?"
 
-# Orchestrator with tools
-diapason ask --agent orchestrator --tools calculator,think "What is sqrt(256)?"
+# L'orchestrateur, avec des outils
+diapason ask --agent orchestrator --tools calculator,think "Combien vaut sqrt(256) ?"
 
 # NativeReActAgent
-diapason ask --agent native_react --tools calculator "What is 2+2?"
+diapason ask --agent native_react --tools calculator "Combien font 2+2 ?"
 
-# ReAct alias (same as native_react)
-diapason ask --agent react --tools calculator,think "Solve step by step: 15% of 340"
+# L'alias ReAct (identique à native_react)
+diapason ask --agent react --tools calculator,think "Résous étape par étape : 15 % de 340"
 
 # NativeOpenHandsAgent
-diapason ask --agent native_openhands --tools calculator,web_search "Summarize example.com"
+diapason ask --agent native_openhands --tools calculator,web_search "Résume example.com"
 
 # RLMAgent
-diapason ask --agent rlm "Summarize this long document"
+diapason ask --agent rlm "Résume ce long document"
 
-# OpenHands SDK agent
-diapason ask --agent openhands "Fix the bug in test_utils.py"
+# L'agent OpenHands (SDK)
+diapason ask --agent openhands "Corrige le bug dans test_utils.py"
 ```
 
-### Via Python SDK
+### Par le SDK Python
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
 
-# Simple agent
-response = j.ask("Hello", agent="simple")
+# L'agent simple
+response = j.ask("Bonjour", agent="simple")
 
-# Orchestrator with tools
+# L'orchestrateur, avec des outils
 response = j.ask(
-    "Calculate 15% of 340",
+    "Calcule 15 % de 340",
     agent="orchestrator",
     tools=["calculator"],
 )
 
-# NativeReActAgent with tools
+# NativeReActAgent, avec des outils
 response = j.ask(
-    "What is sqrt(256)?",
+    "Combien vaut sqrt(256) ?",
     agent="native_react",
     tools=["calculator", "think"],
 )
 
-# Full result with tool details
+# Le résultat complet, avec le détail des outils
 result = j.ask_full(
-    "What is the square root of 144?",
+    "Quelle est la racine carrée de 144 ?",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
@@ -394,149 +394,150 @@ j.close()
 
 ## ClaudeCodeAgent
 
-The `ClaudeCodeAgent` wraps the `@anthropic-ai/claude-code` SDK via a bundled Node.js subprocess bridge. Unlike the other agents, inference is handled entirely by the Claude Agent SDK -- the `engine` parameter is accepted only for `BaseAgent` interface conformance and is not used.
+Le `ClaudeCodeAgent` enveloppe le SDK `@anthropic-ai/claude-code` par un pont vers un sous-processus Node.js livré avec Diapason. Contrairement aux autres agents, l'inférence est entièrement prise en charge par le Claude Agent SDK — le paramètre `engine` n'est accepté que pour respecter l'interface de `BaseAgent`, et il n'est pas utilisé.
 
-!!! warning "Requirements"
-    Requires Node.js 22+ on `PATH` and an `ANTHROPIC_API_KEY` environment variable (or pass `api_key=` directly). The bundled runner is auto-installed to `~/.diapason/claude_code_runner/` on first use via `npm install`.
+!!! warning "Ce qu'il faut"
+    Nécessite Node.js 22 ou plus dans le `PATH`, et une variable d'environnement `ANTHROPIC_API_KEY` (ou passe `api_key=` directement). Le lanceur livré avec Diapason s'installe tout seul dans `~/.diapason/claude_code_runner/` au premier usage, par `npm install`.
 
-**How it works:**
+**Comment il marche :**
 
-1. On first call, copies the bundled `claude_code_runner/` to `~/.diapason/claude_code_runner/` and runs `npm install --production` if `node_modules` is missing.
-2. Builds a JSON request payload (prompt, API key, workspace, allowed tools, system prompt, session ID) and sends it to `stdin` of a `node dist/index.js` subprocess.
-3. The Node.js runner calls the Claude Agent SDK and writes sentinel-delimited JSON to `stdout`.
-4. The Python side parses the output between `---DIAPASON_OUTPUT_START---` and `---DIAPASON_OUTPUT_END---` markers, extracting content, tool results, and metadata.
-5. Returns an `AgentResult` with `turns=1`.
+1. Au premier appel, il copie le `claude_code_runner/` livré avec Diapason vers `~/.diapason/claude_code_runner/` et lance `npm install --production` si `node_modules` manque.
+2. Il construit une charge utile de requête JSON (prompt, clé d'API, espace de travail, outils autorisés, prompt système, identifiant de session) et l'envoie sur le `stdin` d'un sous-processus `node dist/index.js`.
+3. Le lanceur Node.js appelle le Claude Agent SDK et écrit sur `stdout` du JSON délimité par des sentinelles.
+4. Côté Python, la sortie comprise entre les marqueurs `---DIAPASON_OUTPUT_START---` et `---DIAPASON_OUTPUT_END---` est analysée : contenu, résultats d'outils et métadonnées en sont extraits.
+5. Il rend un `AgentResult` avec `turns=1`.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter        | Type              | Default             | Description                                      |
+| Paramètre        | Type              | Défaut              | Description                                      |
 |------------------|-------------------|---------------------|--------------------------------------------------|
-| `engine`         | `InferenceEngine` | --                  | Accepted for interface conformance; not used     |
-| `model`          | `str`             | --                  | Accepted for interface conformance; not used     |
-| `bus`            | `EventBus`        | `None`              | Event bus for telemetry                          |
-| `temperature`    | `float`           | `0.7`               | Accepted for interface conformance; not used     |
-| `max_tokens`     | `int`             | `1024`              | Accepted for interface conformance; not used     |
-| `api_key`        | `str`             | `$ANTHROPIC_API_KEY`| Anthropic API key                                |
-| `workspace`      | `str`             | `os.getcwd()`       | Working directory for the Claude agent           |
-| `session_id`     | `str`             | `""`                | Optional session ID for conversation continuity  |
-| `allowed_tools`  | `list[str]`       | `None` (all)        | Claude Code tool names to allow                  |
-| `system_prompt`  | `str`             | `""`                | Additional system prompt for the agent           |
-| `timeout`        | `int`             | `300`               | Subprocess timeout in seconds                    |
+| `engine`         | `InferenceEngine` | --                  | Accepté pour respecter l'interface ; non utilisé |
+| `model`          | `str`             | --                  | Accepté pour respecter l'interface ; non utilisé |
+| `bus`            | `EventBus`        | `None`              | Le bus d'événements pour la télémétrie           |
+| `temperature`    | `float`           | `0.7`               | Accepté pour respecter l'interface ; non utilisé |
+| `max_tokens`     | `int`             | `1024`              | Accepté pour respecter l'interface ; non utilisé |
+| `api_key`        | `str`             | `$ANTHROPIC_API_KEY`| La clé d'API Anthropic                           |
+| `workspace`      | `str`             | `os.getcwd()`       | Le dossier de travail de l'agent Claude          |
+| `session_id`     | `str`             | `""`                | Un identifiant de session facultatif, pour la continuité de la conversation |
+| `allowed_tools`  | `list[str]`       | `None` (tous)       | Les noms des outils Claude Code à autoriser      |
+| `system_prompt`  | `str`             | `""`                | Un prompt système supplémentaire pour l'agent    |
+| `timeout`        | `int`             | `300`               | Le délai d'attente du sous-processus, en secondes |
 
-**When to use:** For software engineering tasks where the Claude Agent SDK's built-in tools (code editing, bash execution, file operations) provide capabilities beyond what Diapason tool-calling agents support.
+**Quand s'en servir :** pour les tâches de génie logiciel où les outils intégrés du Claude Agent SDK (édition de code, exécution shell, opérations sur les fichiers) offrent des capacités que les agents à outils de Diapason n'ont pas.
 
 ```python
 from diapason.agents.claude_code import ClaudeCodeAgent
 
 agent = ClaudeCodeAgent(
-    engine=None,          # not used
-    model="",             # not used
+    engine=None,          # non utilisé
+    model="",             # non utilisé
     workspace="/path/to/project",
     allowed_tools=["Read", "Write", "Bash"],
     timeout=120,
 )
-result = agent.run("Add type hints to all functions in utils.py")
+result = agent.run("Ajoute des annotations de type à toutes les fonctions de utils.py")
 print(result.content)
 ```
 
 ```bash
-# Via CLI
-diapason ask --agent claude_code "Refactor the tests to use pytest fixtures"
+# En ligne de commande
+diapason ask --agent claude_code "Refactorise les tests pour qu'ils utilisent des fixtures pytest"
 ```
 
 !!! info "accepts_tools = False"
-    `ClaudeCodeAgent` does not accept Diapason tools via `--tools`. Tool access for the Claude agent is configured separately via the `allowed_tools` constructor parameter, which passes tool names understood by the Claude Agent SDK itself.
+    Le `ClaudeCodeAgent` n'accepte pas les outils Diapason par `--tools`. L'accès aux outils de l'agent Claude se règle à part, par le paramètre de constructeur `allowed_tools`, qui transmet des noms d'outils compris par le Claude Agent SDK lui-même.
 
 ---
 
 ## OpenCodeAgent
 
-The `OpenCodeAgent` delegates coding tasks to [opencode](https://opencode.ai), the open-source coding agent, running it **on your local engine**. opencode handles the agentic loop, file edits, and tool use; Diapason supplies the model — keeping coding-agent work local-first.
+L'`OpenCodeAgent` délègue les tâches de code à [opencode](https://opencode.ai), l'agent de code open-source, en le faisant tourner **sur ton moteur local**. opencode s'occupe de la boucle agentique, des modifications de fichiers et de l'usage des outils ; Diapason fournit le modèle — le travail d'agent de code reste ainsi local d'abord.
 
-!!! warning "Requirements"
-    Requires the `opencode` binary on `PATH` (`npm i -g opencode-ai` or `brew install anomalyco/tap/opencode`). It is **not** bundled; `run()` returns a clear error if it is missing. No `ANTHROPIC_API_KEY` needed — inference goes through your Diapason engine.
+!!! warning "Ce qu'il faut"
+    Nécessite le binaire `opencode` dans le `PATH` (`npm i -g opencode-ai` ou `brew install anomalyco/tap/opencode`). Il n'est **pas** livré avec Diapason ; `run()` rend une erreur claire s'il manque. Aucune `ANTHROPIC_API_KEY` n'est nécessaire — l'inférence passe par ton moteur Diapason.
 
-**How it works:**
+**Comment il marche :**
 
-1. Derives an OpenAI-compatible base URL from the `engine` (e.g. Ollama/vLLM/llama.cpp at `<host>/v1`) and writes an `opencode.json` in the workspace registering it as an `@ai-sdk/openai-compatible` provider (`diapason/<model>`).
-2. Spawns a headless `opencode serve` (loopback, random port) and waits for `/global/health`.
-3. Creates a session (`POST /session`) and sends the task (`POST /session/{id}/message`) with `model={providerID, modelID}` and the selected `agent` (`build` or `plan`).
-4. Parses the returned message `parts` — text parts → `content`, tool parts → `tool_results` — into an `AgentResult`.
-5. `close()` disposes the session/server.
+1. Il déduit du `engine` une URL de base compatible OpenAI (Ollama, vLLM ou llama.cpp à `<host>/v1`, par exemple) et écrit dans l'espace de travail un `opencode.json` qui l'enregistre comme fournisseur `@ai-sdk/openai-compatible` (`diapason/<model>`).
+2. Il lance un `opencode serve` sans interface (en boucle locale, sur un port tiré au hasard) et attend `/global/health`.
+3. Il crée une session (`POST /session`) et envoie la tâche (`POST /session/{id}/message`) avec `model={providerID, modelID}` et l'`agent` choisi (`build` ou `plan`).
+4. Il analyse les `parts` du message rendu — les parties texte vers `content`, les parties outil vers `tool_results` — pour en faire un `AgentResult`.
+5. `close()` libère la session et le serveur.
 
-**Constructor parameters (selected):**
+**Paramètres du constructeur (une sélection) :**
 
-| Parameter           | Type              | Default          | Description                                              |
+| Paramètre           | Type              | Défaut           | Description                                              |
 |---------------------|-------------------|------------------|----------------------------------------------------------|
-| `engine`            | `InferenceEngine` | --               | Used to derive the local OpenAI-compatible provider URL  |
-| `model`             | `str`             | --               | Model id served at the provider (e.g. `qwen3:8b`)        |
-| `workspace`         | `str`             | `os.getcwd()`    | Directory opencode operates in                           |
-| `agent`             | `str`             | `"build"`        | opencode agent: `build` (full access) or `plan` (read-only) |
-| `provider_base_url` | `str`             | derived          | Override the engine-derived OpenAI base URL              |
-| `provider_id`       | `str`             | `"diapason"`   | opencode provider id to register/use                     |
-| `model_id`          | `str`             | `model`          | Model id within the provider                             |
-| `server_password`   | `str`             | `$OPENCODE_SERVER_PASSWORD` | Optional basic-auth for the opencode server   |
-| `timeout`           | `int`             | `600`            | HTTP timeout in seconds                                  |
+| `engine`            | `InferenceEngine` | --               | Sert à déduire l'URL du fournisseur local compatible OpenAI |
+| `model`             | `str`             | --               | L'identifiant du modèle servi par le fournisseur (`qwen3:8b`, par exemple) |
+| `workspace`         | `str`             | `os.getcwd()`    | Le dossier dans lequel opencode travaille                |
+| `agent`             | `str`             | `"build"`        | L'agent opencode : `build` (accès complet) ou `plan` (lecture seule) |
+| `provider_base_url` | `str`             | déduite          | Remplace l'URL de base OpenAI déduite du moteur          |
+| `provider_id`       | `str`             | `"diapason"`   | L'identifiant de fournisseur opencode à enregistrer et utiliser |
+| `model_id`          | `str`             | `model`          | L'identifiant du modèle chez le fournisseur              |
+| `server_password`   | `str`             | `$OPENCODE_SERVER_PASSWORD` | Une authentification basique facultative pour le serveur opencode |
+| `timeout`           | `int`             | `600`            | Le délai d'attente HTTP, en secondes                     |
 
 ```python
 from diapason.agents.opencode import OpenCodeAgent
 
 agent = OpenCodeAgent(engine, "qwen3:8b", workspace="/path/to/project", agent="build")
-result = agent.run("Add type hints to utils.py and run the tests")
+result = agent.run("Ajoute des annotations de type à utils.py et lance les tests")
 print(result.content)
 agent.close()
 ```
 
 ```bash
-# Via CLI (opencode must be installed)
-diapason ask --agent opencode "Refactor the parser to use a state machine"
+# En ligne de commande (opencode doit être installé)
+diapason ask --agent opencode "Refactorise le parseur pour qu'il utilise une machine à états"
 ```
 
-!!! tip "Pass-through providers"
-    If the `engine` has no derivable base URL, pass `model` as `provider/model` (e.g. `ollama/llama3`) and opencode resolves it from its own configuration — no `opencode.json` is written.
+!!! tip "Les fournisseurs traversants"
+    Si aucune URL de base ne peut être déduite du `engine`, passe `model` sous la forme `provider/model` (`ollama/llama3`, par exemple) : opencode le résout depuis sa propre configuration, et aucun `opencode.json` n'est écrit.
 
-!!! warning "Model capability matters"
-    opencode's agentic loop (planning + correct tool calls + multi-step
-    follow-through) needs a reasonably capable model. In testing, a **27B**
-    local model (Qwen3.5-27B served via vLLM) solved a 7-task coding suite
-    cleanly (create / edit / bug-fix / implement-to-pass-tests / multi-file,
-    verified by running the code and tests). An **8B** model (qwen3:8b) was
-    unreliable — malformed tool calls, syntactically broken code, and
-    half-finished tasks. Prefer a capable local model (or a cloud model) for
-    real coding work.
+!!! warning "La capacité du modèle compte"
+    La boucle agentique d'opencode (planifier, appeler correctement les outils,
+    mener à terme plusieurs étapes) demande un modèle raisonnablement capable.
+    À l'essai, un modèle local **27B** (Qwen3.5-27B servi par vLLM) a résolu
+    proprement une suite de 7 tâches de code (création, modification, correction
+    de bug, implémentation jusqu'à faire passer les tests, multi-fichiers —
+    vérifié en lançant le code et les tests). Un modèle **8B** (qwen3:8b) s'est
+    montré peu fiable : appels d'outils mal formés, code syntaxiquement cassé,
+    tâches à moitié faites. Pour du vrai travail de code, préfère un modèle
+    local capable (ou un modèle distant).
 
 ---
 
 ## OperativeAgent
 
-The `OperativeAgent` is a persistent, scheduled autonomous agent with built-in session persistence and state recall. Designed for "Operators" -- autonomous agents that run on a schedule with automatic state management between ticks. Extends `ToolUsingAgent`.
+L'`OperativeAgent` est un agent autonome, persistant et planifié, avec persistance de session et rappel d'état intégrés. Il est conçu pour les « opérateurs » — des agents autonomes qui tournent à intervalles réguliers, avec gestion automatique de l'état d'un battement à l'autre. Il dérive de `ToolUsingAgent`.
 
-**How it works:**
+**Comment il marche :**
 
-1. **Session loading** -- restores conversation history from previous ticks via the session store.
-2. **State recall** -- retrieves previous state JSON from the memory backend.
-3. **System prompt injection** -- injects the operator's protocol instructions.
-4. **Tool loop** -- standard function-calling loop (same as OrchestratorAgent).
-5. **Session save** -- persists the tick's prompt and response to the session store.
-6. **State persistence** -- auto-persists state if the agent did not explicitly store it via the `memory_store` tool.
+1. **Chargement de la session** — il restaure l'historique de conversation des battements précédents depuis le magasin de sessions.
+2. **Rappel d'état** — il récupère le JSON d'état précédent depuis le moteur de mémoire.
+3. **Injection du prompt système** — il injecte les instructions de protocole de l'opérateur.
+4. **Boucle d'outils** — la boucle function-calling standard (la même que celle de l'OrchestratorAgent).
+5. **Enregistrement de la session** — il consigne le prompt et la réponse du battement dans le magasin de sessions.
+6. **Persistance de l'état** — il enregistre l'état automatiquement si l'agent ne l'a pas fait explicitement via l'outil `memory_store`.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter        | Type              | Default | Description                                      |
+| Paramètre        | Type              | Défaut  | Description                                      |
 |------------------|-------------------|---------|--------------------------------------------------|
-| `engine`         | `InferenceEngine` | --      | The inference engine to use                      |
-| `model`          | `str`             | --      | Model identifier                                 |
-| `tools`          | `list[BaseTool]`  | `[]`    | Tool instances to make available                 |
-| `bus`            | `EventBus`        | `None`  | Event bus for telemetry                          |
-| `max_turns`      | `int`             | `20`    | Maximum number of tool-calling turns             |
-| `temperature`    | `float`           | `0.3`   | Sampling temperature                             |
-| `max_tokens`     | `int`             | `2048`  | Maximum tokens to generate                       |
-| `system_prompt`  | `str`             | `None`  | Custom system prompt for the operator            |
-| `operator_id`    | `str`             | `None`  | Unique ID for session and state persistence      |
-| `session_store`  | `Any`             | `None`  | Session store backend for conversation history   |
-| `memory_backend` | `Any`             | `None`  | Memory backend for state recall and persistence  |
+| `engine`         | `InferenceEngine` | --      | Le moteur d'inférence à utiliser                 |
+| `model`          | `str`             | --      | L'identifiant du modèle                          |
+| `tools`          | `list[BaseTool]`  | `[]`    | Les instances d'outils à mettre à disposition    |
+| `bus`            | `EventBus`        | `None`  | Le bus d'événements pour la télémétrie           |
+| `max_turns`      | `int`             | `20`    | Le nombre maximum de tours d'appel d'outils      |
+| `temperature`    | `float`           | `0.3`   | La température d'échantillonnage                 |
+| `max_tokens`     | `int`             | `2048`  | Le nombre maximum de jetons à produire           |
+| `system_prompt`  | `str`             | `None`  | Un prompt système personnalisé pour l'opérateur  |
+| `operator_id`    | `str`             | `None`  | L'identifiant unique pour la persistance de la session et de l'état |
+| `session_store`  | `Any`             | `None`  | Le magasin de sessions pour l'historique de conversation |
+| `memory_backend` | `Any`             | `None`  | Le moteur de mémoire pour le rappel et la persistance de l'état |
 
-**When to use:** For autonomous agents that run on a schedule (e.g., via `TaskScheduler`) and need to maintain state between invocations. The agent automatically manages session history and state persistence across ticks.
+**Quand s'en servir :** pour les agents autonomes qui tournent à intervalles réguliers (via `TaskScheduler`, par exemple) et doivent garder un état entre deux appels. L'agent gère tout seul l'historique de session et la persistance de l'état d'un battement à l'autre.
 
 ```python
 from diapason.agents.operative import OperativeAgent
@@ -548,62 +549,62 @@ agent = OperativeAgent(
     operator_id="daily-report",
     session_store=session_store,
     memory_backend=memory_backend,
-    system_prompt="You are a daily report agent. Gather and summarize news.",
+    system_prompt="Tu es un agent de rapport quotidien. Rassemble et résume l'actualité.",
 )
-result = agent.run("Generate today's report")
+result = agent.run("Produis le rapport du jour")
 ```
 
 ```bash
-# Via CLI
-diapason ask --agent operative "Check system status"
+# En ligne de commande
+diapason ask --agent operative "Vérifie l'état du système"
 ```
 
 ---
 
 ## MonitorOperativeAgent
 
-The `MonitorOperativeAgent` is a long-horizon agent with four configurable strategy axes for managing information across turns and sessions. It extends `ToolUsingAgent` with strategy-driven observation compression, memory extraction, retrieval, and task decomposition. It also inherits cross-session state persistence from the OperativeAgent pattern.
+Le `MonitorOperativeAgent` est un agent de longue haleine, doté de quatre axes de stratégie configurables pour gérer l'information d'un tour et d'une session à l'autre. Il étend `ToolUsingAgent` avec une compression des observations, une extraction en mémoire, une récupération et une décomposition des tâches, toutes pilotées par la stratégie. Il hérite aussi de la persistance d'état entre sessions du motif OperativeAgent.
 
-**Strategy axes:**
+**Les axes de stratégie :**
 
-| Axis | Valid Values | Default | Description |
-|------|-------------|---------|-------------|
-| `memory_extraction` | `causality_graph`, `scratchpad`, `structured_json`, `none` | `causality_graph` | How findings are persisted to memory |
-| `observation_compression` | `summarize`, `truncate`, `none` | `summarize` | How tool outputs are compressed before being added to context |
-| `retrieval_strategy` | `hybrid_with_self_eval`, `keyword`, `semantic`, `none` | `hybrid_with_self_eval` | How prior context is recalled at the start of each run |
-| `task_decomposition` | `phased`, `monolithic`, `hierarchical` | `phased` | How complex tasks are broken down |
+| Axe | Valeurs admises | Défaut | Description |
+|-----|-----------------|--------|-------------|
+| `memory_extraction` | `causality_graph`, `scratchpad`, `structured_json`, `none` | `causality_graph` | Comment les constats sont consignés en mémoire |
+| `observation_compression` | `summarize`, `truncate`, `none` | `summarize` | Comment les sorties d'outils sont compressées avant d'entrer dans le contexte |
+| `retrieval_strategy` | `hybrid_with_self_eval`, `keyword`, `semantic`, `none` | `hybrid_with_self_eval` | Comment le contexte antérieur est rappelé au début de chaque exécution |
+| `task_decomposition` | `phased`, `monolithic`, `hierarchical` | `phased` | Comment les tâches complexes sont découpées |
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds a system prompt with strategy configuration and tool descriptions.
-2. Recalls previous state from the memory backend.
-3. Loads session history from previous ticks.
-4. Runs a function-calling tool loop, applying the configured strategies:
-    - **Observation compression**: Long tool outputs are summarized (via LLM) or truncated before being added to the message context.
-    - **Memory extraction**: After each tool call, findings are extracted and stored according to the memory strategy (causal relationships, scratchpad notes, or structured JSON).
-5. Saves the session and auto-persists state.
+1. Il construit un prompt système avec la configuration de stratégie et les descriptions d'outils.
+2. Il rappelle l'état précédent depuis le moteur de mémoire.
+3. Il charge l'historique de session des battements précédents.
+4. Il déroule une boucle d'outils function-calling, en appliquant les stratégies configurées :
+    - **Compression des observations** : les longues sorties d'outils sont résumées (par le modèle) ou tronquées avant d'entrer dans le contexte de messages.
+    - **Extraction en mémoire** : après chaque appel d'outil, les constats sont extraits et rangés selon la stratégie de mémoire (relations causales, notes de brouillon, ou JSON structuré).
+5. Il enregistre la session et consigne l'état automatiquement.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter                | Type              | Default                   | Description                                      |
+| Paramètre                | Type              | Défaut                    | Description                                      |
 |--------------------------|-------------------|---------------------------|--------------------------------------------------|
-| `engine`                 | `InferenceEngine` | --                        | The inference engine to use                      |
-| `model`                  | `str`             | --                        | Model identifier                                 |
-| `tools`                  | `list[BaseTool]`  | `[]`                      | Tool instances to make available                 |
-| `bus`                    | `EventBus`        | `None`                    | Event bus for telemetry                          |
-| `max_turns`              | `int`             | `25`                      | Maximum number of tool-calling turns             |
-| `temperature`            | `float`           | `0.3`                     | Sampling temperature                             |
-| `max_tokens`             | `int`             | `4096`                    | Maximum tokens to generate                       |
-| `system_prompt`          | `str`             | `None`                    | Custom system prompt (overrides default)         |
-| `memory_extraction`      | `str`             | `"causality_graph"`       | Memory extraction strategy                       |
-| `observation_compression`| `str`             | `"summarize"`             | Observation compression strategy                 |
-| `retrieval_strategy`     | `str`             | `"hybrid_with_self_eval"` | Retrieval strategy                               |
-| `task_decomposition`     | `str`             | `"phased"`                | Task decomposition strategy                      |
-| `operator_id`            | `str`             | `None`                    | Unique ID for session and state persistence      |
-| `session_store`          | `Any`             | `None`                    | Session store backend for conversation history   |
-| `memory_backend`         | `Any`             | `None`                    | Memory backend for state and finding persistence |
+| `engine`                 | `InferenceEngine` | --                        | Le moteur d'inférence à utiliser                 |
+| `model`                  | `str`             | --                        | L'identifiant du modèle                          |
+| `tools`                  | `list[BaseTool]`  | `[]`                      | Les instances d'outils à mettre à disposition    |
+| `bus`                    | `EventBus`        | `None`                    | Le bus d'événements pour la télémétrie           |
+| `max_turns`              | `int`             | `25`                      | Le nombre maximum de tours d'appel d'outils      |
+| `temperature`            | `float`           | `0.3`                     | La température d'échantillonnage                 |
+| `max_tokens`             | `int`             | `4096`                    | Le nombre maximum de jetons à produire           |
+| `system_prompt`          | `str`             | `None`                    | Un prompt système personnalisé (remplace celui par défaut) |
+| `memory_extraction`      | `str`             | `"causality_graph"`       | La stratégie d'extraction en mémoire             |
+| `observation_compression`| `str`             | `"summarize"`             | La stratégie de compression des observations     |
+| `retrieval_strategy`     | `str`             | `"hybrid_with_self_eval"` | La stratégie de récupération                     |
+| `task_decomposition`     | `str`             | `"phased"`                | La stratégie de décomposition des tâches         |
+| `operator_id`            | `str`             | `None`                    | L'identifiant unique pour la persistance de la session et de l'état |
+| `session_store`          | `Any`             | `None`                    | Le magasin de sessions pour l'historique de conversation |
+| `memory_backend`         | `Any`             | `None`                    | Le moteur de mémoire pour la persistance de l'état et des constats |
 
-**When to use:** For long-horizon benchmark evaluation and complex multi-step tasks that benefit from configurable strategies for memory management, context compression, and task decomposition. Particularly useful for benchmarks like GAIA, FRAMES, and LifelongAgent where strategy selection impacts performance.
+**Quand s'en servir :** pour l'évaluation sur des bancs d'essai de longue haleine et les tâches complexes en plusieurs étapes, qui gagnent à des stratégies configurables de gestion de la mémoire, de compression du contexte et de décomposition des tâches. Particulièrement utile sur des bancs comme GAIA, FRAMES et LifelongAgent, où le choix de stratégie pèse sur les résultats.
 
 ```python
 from diapason.agents.monitor_operative import MonitorOperativeAgent
@@ -620,41 +621,41 @@ agent = MonitorOperativeAgent(
     session_store=session_store,
     memory_backend=memory_backend,
 )
-result = agent.run("Investigate the root cause of the production outage")
+result = agent.run("Cherche la cause première de la panne en production")
 ```
 
 ```bash
-# Via CLI
-diapason ask --agent monitor_operative "Analyze the security audit findings"
+# En ligne de commande
+diapason ask --agent monitor_operative "Analyse les constats de l'audit de sécurité"
 ```
 
 ---
 
 ## SandboxedAgent
 
-`SandboxedAgent` is a transparent wrapper that runs **any** `BaseAgent` inside a Docker (or Podman) container. It follows the same wrapper pattern as `GuardrailsEngine` -- the inner agent's configuration is serialized and sent to the container's stdin, and the result is read back from stdout.
+Le `SandboxedAgent` est une enveloppe transparente qui exécute **n'importe quel** `BaseAgent` à l'intérieur d'un conteneur Docker (ou Podman). Il suit le même motif d'enveloppe que `GuardrailsEngine` — la configuration de l'agent interne est sérialisée et envoyée sur le stdin du conteneur, et le résultat est relu sur son stdout.
 
-See also the [`ContainerRunner`](#containerrunner) reference below, which manages the container lifecycle.
+Voir aussi la référence [`ContainerRunner`](#containerrunner) plus bas, qui gère le cycle de vie du conteneur.
 
-**How it works:**
+**Comment il marche :**
 
-1. Builds a JSON payload with the prompt, wrapped agent ID, and model.
-2. Invokes `ContainerRunner.run()`, which starts a container with `--network none` and `--rm`, writes the payload to stdin, and waits for JSON output on stdout.
-3. Mount paths are validated against a configurable allowlist before the container is started.
-4. Parses the sentinel-delimited output and returns an `AgentResult`.
+1. Il construit une charge utile JSON avec le prompt, l'identifiant de l'agent enveloppé et le modèle.
+2. Il appelle `ContainerRunner.run()`, qui démarre un conteneur avec `--network none` et `--rm`, écrit la charge utile sur stdin et attend une sortie JSON sur stdout.
+3. Les chemins montés sont confrontés à une liste blanche configurable avant que le conteneur ne démarre.
+4. Il analyse la sortie délimitée par des sentinelles et rend un `AgentResult`.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter              | Type              | Default      | Description                                       |
+| Paramètre              | Type              | Défaut       | Description                                       |
 |------------------------|-------------------|--------------|---------------------------------------------------|
-| `agent`                | `BaseAgent`       | --           | The wrapped agent to execute inside the container |
-| `runner`               | `ContainerRunner` | --           | Container runner managing Docker lifecycle        |
-| `engine`               | `InferenceEngine` | `None`       | Override engine (defaults to wrapped agent's)     |
-| `model`                | `str`             | `""`         | Override model (defaults to wrapped agent's)      |
-| `workspace`            | `str`             | `""`         | Working directory inside the container            |
-| `mounts`               | `list[str]`       | `[]`         | Host paths to bind-mount (read-only)              |
-| `secrets`              | `dict[str, str]`  | `{}`         | Injected into payload (not environment variables) |
-| `bus`                  | `EventBus`        | `None`       | Event bus for telemetry                           |
+| `agent`                | `BaseAgent`       | --           | L'agent enveloppé, à exécuter dans le conteneur   |
+| `runner`               | `ContainerRunner` | --           | Le lanceur de conteneur qui gère le cycle de vie Docker |
+| `engine`               | `InferenceEngine` | `None`       | Remplace le moteur (par défaut, celui de l'agent enveloppé) |
+| `model`                | `str`             | `""`         | Remplace le modèle (par défaut, celui de l'agent enveloppé) |
+| `workspace`            | `str`             | `""`         | Le dossier de travail à l'intérieur du conteneur  |
+| `mounts`               | `list[str]`       | `[]`         | Les chemins de l'hôte à monter (en lecture seule) |
+| `secrets`              | `dict[str, str]`  | `{}`         | Injectés dans la charge utile (pas dans les variables d'environnement) |
+| `bus`                  | `EventBus`        | `None`       | Le bus d'événements pour la télémétrie            |
 
 ```python
 from diapason.sandbox import ContainerRunner, SandboxedAgent
@@ -671,26 +672,26 @@ agent = SandboxedAgent(
     runner=runner,
     mounts=["/home/user/data"],
 )
-result = agent.run("Summarize the CSV files in /home/user/data")
+result = agent.run("Résume les fichiers CSV de /home/user/data")
 ```
 
 ---
 
 ## ContainerRunner
 
-`ContainerRunner` manages the Docker (or Podman) container lifecycle for sandboxed execution. It is used directly by `SandboxedAgent` but can also be used standalone.
+Le `ContainerRunner` gère le cycle de vie du conteneur Docker (ou Podman) pour l'exécution en bac à sable. Le `SandboxedAgent` s'en sert directement, mais il s'utilise aussi tout seul.
 
-**Constructor parameters:**
+**Paramètres du constructeur :**
 
-| Parameter              | Type   | Default                      | Description                                    |
+| Paramètre              | Type   | Défaut                       | Description                                    |
 |------------------------|--------|------------------------------|------------------------------------------------|
-| `image`                | `str`  | `"diapason-sandbox:latest"`| Docker image to run                            |
-| `timeout`              | `int`  | `300`                        | Max container execution time in seconds        |
-| `mount_allowlist_path` | `str`  | `""`                         | Path to JSON mount-allowlist file              |
-| `max_concurrent`       | `int`  | `5`                          | Max concurrent containers (informational)      |
-| `runtime`              | `str`  | `"docker"`                   | Container runtime binary (`docker` or `podman`)|
+| `image`                | `str`  | `"diapason-sandbox:latest"`| L'image Docker à lancer                        |
+| `timeout`              | `int`  | `300`                        | La durée maximale d'exécution du conteneur, en secondes |
+| `mount_allowlist_path` | `str`  | `""`                         | Le chemin du fichier JSON de liste blanche des montages |
+| `max_concurrent`       | `int`  | `5`                          | Le nombre maximum de conteneurs simultanés (indicatif) |
+| `runtime`              | `str`  | `"docker"`                   | Le binaire d'exécution de conteneurs (`docker` ou `podman`) |
 
-**Mount allowlist format:**
+**Format de la liste blanche des montages :**
 
 ```json title="mount_allowlist.json"
 {
@@ -702,27 +703,27 @@ result = agent.run("Summarize the CSV files in /home/user/data")
 }
 ```
 
-If `mount_allowlist_path` is not set, no root restriction is applied. Blocked patterns always include `.ssh`, `.env`, `*.pem`, `*.key`, credential files, and cloud config directories by default.
+Si `mount_allowlist_path` n'est pas défini, aucune restriction de racine n'est appliquée. Les motifs bloqués comprennent toujours, par défaut, `.ssh`, `.env`, `*.pem`, `*.key`, les fichiers d'identifiants et les dossiers de configuration des services cloud.
 
-!!! warning "Docker required"
-    `ContainerRunner` raises `RuntimeError` if the configured runtime (`docker` or `podman`) is not found on `PATH`.
+!!! warning "Docker est nécessaire"
+    Le `ContainerRunner` lève une `RuntimeError` si le moteur d'exécution configuré (`docker` ou `podman`) est introuvable dans le `PATH`.
 
 ---
 
-## Agent Registration
+## L'enregistrement des agents
 
-Agents are registered via the `@AgentRegistry.register()` decorator. This makes them discoverable by name at runtime:
+Les agents s'enregistrent par le décorateur `@AgentRegistry.register()`, ce qui les rend trouvables par leur nom à l'exécution :
 
 ```python
 from diapason.core.registry import AgentRegistry
 
-# Check if an agent is registered
+# Vérifier qu'un agent est enregistré
 AgentRegistry.contains("orchestrator")  # True
 
-# Get the agent class
+# Récupérer la classe de l'agent
 agent_cls = AgentRegistry.get("orchestrator")
 
-# List all registered agent keys
+# Lister toutes les clés d'agents enregistrées
 AgentRegistry.keys()
 # ["simple", "orchestrator", "native_react", "react", "native_openhands",
 #  "rlm", "openhands", "claude_code", "operative", "monitor_operative"]
@@ -730,69 +731,69 @@ AgentRegistry.keys()
 
 ---
 
-## Event Bus Integration
+## L'intégration au bus d'événements
 
-All agents publish events on the `EventBus` when a bus is provided:
+Tous les agents publient des événements sur l'`EventBus` quand un bus leur est fourni :
 
-| Event                   | When                                                |
+| Événement               | Quand                                               |
 |-------------------------|-----------------------------------------------------|
-| `AGENT_TURN_START`      | At the beginning of a run (via `_emit_turn_start`)  |
-| `AGENT_TURN_END`        | At the end of a run (via `_emit_turn_end`)          |
-| `TOOL_CALL_START`       | Before each tool execution (`ToolUsingAgent` subclasses) |
-| `TOOL_CALL_END`         | After each tool execution (`ToolUsingAgent` subclasses)  |
+| `AGENT_TURN_START`      | Au début d'une exécution (via `_emit_turn_start`)   |
+| `AGENT_TURN_END`        | À la fin d'une exécution (via `_emit_turn_end`)     |
+| `TOOL_CALL_START`       | Avant chaque exécution d'outil (sous-classes de `ToolUsingAgent`) |
+| `TOOL_CALL_END`         | Après chaque exécution d'outil (sous-classes de `ToolUsingAgent`) |
 
-!!! info "Inference events"
-    `INFERENCE_START` / `INFERENCE_END` events are published by the `InstrumentedEngine` wrapper, not by agents directly. This keeps telemetry opt-in and transparent to agent code.
+!!! info "Les événements d'inférence"
+    Les événements `INFERENCE_START` / `INFERENCE_END` sont publiés par l'enveloppe `InstrumentedEngine`, pas par les agents eux-mêmes. La télémétrie reste ainsi facultative et transparente pour le code des agents.
 
-These events enable the telemetry and trace systems to record detailed interaction data automatically.
+Ces événements permettent aux systèmes de télémétrie et de traces d'enregistrer automatiquement le détail des interactions.
 
 ---
 
-## Managed Agent Streaming
+## Le flux des agents gérés
 
-The Managed Agent API (`/v1/managed-agents/{id}/messages`) supports **real LLM token streaming** via SSE. Send a message with `stream: true` to receive the model's response tokens as they are generated, rather than waiting for the full response.
+L'API des agents gérés (`/v1/managed-agents/{id}/messages`) sait diffuser **les vrais jetons du modèle** au fil de l'eau, par SSE. Envoie un message avec `stream: true` pour recevoir les jetons de la réponse à mesure qu'ils sont produits, au lieu d'attendre la réponse entière.
 
-### How It Works
+### Comment ça marche
 
-The streaming endpoint calls `engine.stream_full()` directly, which yields `StreamChunk` objects containing content tokens, tool-call fragments, and finish reasons. This provides genuine token-by-token streaming from the LLM -- not a post-hoc word replay.
+Le point d'entrée de diffusion appelle directement `engine.stream_full()`, qui produit des objets `StreamChunk` contenant des jetons de contenu, des fragments d'appels d'outils et des motifs de fin. C'est un vrai flux jeton par jeton venu du modèle — pas un rejeu mot à mot après coup.
 
-For multi-turn tool-calling agents, the streaming loop automatically:
+Pour les agents multi-tours qui appellent des outils, la boucle de diffusion, d'elle-même :
 
-1. Yields content tokens to the client as they arrive.
-2. Accumulates tool-call fragments (OpenAI sends these incrementally).
-3. Executes tools when `finish_reason="tool_calls"` is received.
-4. Emits tool results as named SSE events (`event: tool_result`).
-5. Feeds results back to the LLM for the next turn.
-6. Repeats until the model produces a final text response or `max_turns` is reached.
+1. Transmet les jetons de contenu au client à mesure qu'ils arrivent.
+2. Accumule les fragments d'appels d'outils (OpenAI les envoie par morceaux).
+3. Exécute les outils dès réception de `finish_reason="tool_calls"`.
+4. Émet les résultats d'outils sous forme d'événements SSE nommés (`event: tool_result`).
+5. Réinjecte les résultats dans le modèle pour le tour suivant.
+6. Recommence jusqu'à ce que le modèle produise une réponse textuelle finale, ou que `max_turns` soit atteint.
 
-### Streaming Messages
+### Diffuser des messages
 
 ```bash
 curl -N -X POST http://localhost:8000/v1/managed-agents/{id}/messages \
   -H "Content-Type: application/json" \
-  -d '{"content": "What is 2+2?", "stream": true}'
+  -d '{"content": "Combien font 2+2 ?", "stream": true}'
 ```
 
-The response follows the OpenAI SSE format:
+La réponse suit le format SSE d'OpenAI :
 
-1. **Content chunks** -- `data: {"choices": [{"delta": {"content": "token"}}]}`
-2. **Tool calls** (if the model requests tool use) -- `event: tool_calls\ndata: {"calls": [{"tool_name": "...", "arguments": "..."}]}`
-3. **Tool results** -- `event: tool_result\ndata: {"tool_name": "...", "output": "..."}`
-4. **Final chunk** -- `data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}`
-5. **Done sentinel** -- `data: [DONE]`
+1. **Les morceaux de contenu** — `data: {"choices": [{"delta": {"content": "token"}}]}`
+2. **Les appels d'outils** (si le modèle demande à se servir d'un outil) — `event: tool_calls\ndata: {"calls": [{"tool_name": "...", "arguments": "..."}]}`
+3. **Les résultats d'outils** — `event: tool_result\ndata: {"tool_name": "...", "output": "..."}`
+4. **Le morceau final** — `data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}`
+5. **La sentinelle de fin** — `data: [DONE]`
 
-When `stream: false` (the default), the endpoint behaves exactly as before -- the message is queued and the agent must be triggered separately via `/run`.
+Avec `stream: false` (le défaut), le point d'entrée se comporte exactement comme avant — le message est mis en file, et l'agent doit être déclenché à part, par `/run`.
 
-### Behavior Details
+### Le détail du comportement
 
-- The user message is always stored in the database before streaming starts.
-- After streaming completes, the full collected response is persisted as an `agent_to_user` message.
-- Conversation history from prior messages is automatically loaded as LLM context.
-- The engine's `stream_full()` method is used for real token streaming. Engines that do not override it fall back to the default implementation which wraps the plain `stream()` method.
-- If the engine is not available on the server, a `503` error is returned.
-- Tool execution during streaming uses the `ToolRegistry` to find and instantiate tools.
+- Le message de l'utilisateur est toujours rangé en base avant que la diffusion commence.
+- Une fois la diffusion terminée, la réponse complète ainsi rassemblée est consignée comme message `agent_to_user`.
+- L'historique des messages précédents est chargé automatiquement comme contexte du modèle.
+- C'est la méthode `stream_full()` du moteur qui assure le vrai flux de jetons. Les moteurs qui ne la redéfinissent pas retombent sur l'implémentation par défaut, laquelle enveloppe la méthode `stream()` ordinaire.
+- Si le moteur n'est pas disponible sur le serveur, une erreur `503` est rendue.
+- Pendant la diffusion, l'exécution des outils passe par le `ToolRegistry` pour trouver et instancier les outils.
 
-### Python Example
+### Exemple en Python
 
 ```python
 import httpx
@@ -800,7 +801,7 @@ import httpx
 with httpx.stream(
     "POST",
     "http://localhost:8000/v1/managed-agents/{id}/messages",
-    json={"content": "Summarize today's news", "stream": True},
+    json={"content": "Résume l'actualité du jour", "stream": True},
 ) as response:
     for line in response.iter_lines():
         if line.startswith("data:") and "[DONE]" not in line:

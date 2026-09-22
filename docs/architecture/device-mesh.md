@@ -1,56 +1,57 @@
-# Device Mesh
+# Le maillage d'appareils
 
-The Device Mesh lets a user's own devices act on each other's behalf: *« ouvre mes tâches sur mon PC »* typed on a laptop opens a screen on the desktop, and a reminder created on a Mac appears on a phone.
+Le maillage d'appareils laisse les appareils d'un même propriétaire agir l'un pour l'autre : *« ouvre mes tâches sur mon PC »*, tapé sur un portable, ouvre un écran sur le poste de bureau, et un rappel créé sur un Mac apparaît sur un téléphone.
 
-It is a **fleet of one owner**. There is no server, no account, and no notion of sharing between people. Every device holds the same private data and the same authority; the mesh only carries intent between them.
+C'est une **flotte d'un seul propriétaire**. Pas de serveur, pas de compte, aucune notion de partage entre personnes. Chaque appareil détient les mêmes données privées et la même autorité ; le maillage ne fait que porter l'intention de l'un à l'autre.
 
 ---
 
-## Trust model
+## Le modèle de confiance
 
-A device is in the fleet or it is not. There is no partial membership.
+Un appareil est dans la flotte ou il n'y est pas. Il n'existe pas d'appartenance partielle.
 
-| Concept | Meaning |
+| Notion | Ce qu'elle veut dire |
 |---|---|
-| **Owner id** | Names the fleet. Minted once, propagated by pairing. A command carrying a different owner id is refused without further examination. |
-| **Device id** | `sha256(public_key)[:24]`, prefixed `dev_`. Derived, never asserted — a device cannot choose its own name in the protocol sense. |
-| **Trust level** | `TRUSTED` after redeeming an invitation; `REVOKED` after the user removes it. Revocation is terminal: the only way back is to forget the device entirely and pair it again. |
-| **Capabilities** | What the device may be asked to do. Always the **intersection** of what it declares and what its platform ceiling allows (`capabilities.py`), never the union. |
+| **Identifiant de propriétaire** | Nomme la flotte. Frappé une seule fois, propagé par l'appairage. Une commande qui porte un autre identifiant de propriétaire est refusée sans plus d'examen. |
+| **Identifiant d'appareil** | `sha256(public_key)[:24]`, préfixé `dev_`. Dérivé, jamais affirmé — un appareil ne peut pas choisir son propre nom, au sens du protocole. |
+| **Niveau de confiance** | `TRUSTED` une fois l'invitation consommée ; `REVOKED` après que l'utilisateur l'a retiré. La révocation est terminale : le seul retour en arrière est d'oublier entièrement l'appareil et de l'appairer à nouveau. |
+| **Capacités** | Ce qu'on a le droit de lui demander. Toujours l'**intersection** de ce qu'il déclare et de ce que le plafond de sa plateforme autorise (`capabilities.py`), jamais l'union. |
 
-Pairing is mutual and short-lived. The host mints a single-use invitation (10 minutes); the joining device redeems it with its public key, and receives the host's identity and address in the same response. Both sides now hold each other's public key, which is the only credential the mesh ever uses afterwards.
+L'appairage est mutuel et de courte durée. L'hôte frappe une invitation à usage unique (10 minutes) ; l'appareil qui rejoint la consomme avec sa clé publique, et reçoit dans la même réponse l'identité et l'adresse de l'hôte. Les deux côtés détiennent désormais la clé publique de l'autre, et c'est le seul justificatif dont le maillage se serve ensuite.
 
-### The platform ceiling
+### Le plafond de la plateforme
 
-`PLATFORM_CAPABILITIES` in `capabilities.py` is the answer to "what could this class of device honour even in principle". iOS, iPadOS and Android exclude host automation and `desktop.open`; `WEB` is client-only; an unrecognised platform falls to a read-only floor.
+`PLATFORM_CAPABILITIES`, dans `capabilities.py`, répond à la question « qu'est-ce que cette classe d'appareils pourrait honorer, ne serait-ce qu'en principe ». iOS, iPadOS et Android excluent l'automatisation de l'hôte et `desktop.open` ; `WEB` est client seulement ; une plateforme non reconnue retombe sur un plancher en lecture seule.
 
-Filesystem access is not a ceiling question. No verb in this vocabulary grants it on any platform — `filesystem.workspace.read` / `.write` were removed on 25 August 2026, having never been declared by any client — and `FORBIDDEN_PARAMETER_NAMES` in `tools.py` refuses a `path` parameter structurally. File *transfer* is a separate subsystem (`/v1/mesh/files`) with its own session, guarded by a signed offer and a session token rather than by a capability.
+L'accès au système de fichiers n'est pas une question de plafond. Aucun verbe de ce vocabulaire ne l'accorde, sur aucune plateforme — `filesystem.workspace.read` / `.write` ont été retirés le 25 août 2026, sans qu'aucun client les ait jamais déclarés — et `FORBIDDEN_PARAMETER_NAMES`, dans `tools.py`, refuse structurellement un paramètre `path`. Le *transfert* de fichiers est un sous-système à part (`/v1/mesh/files`), avec sa propre session, gardé par une offre signée et un jeton de session plutôt que par une capacité.
 
-This is enforced at every point a device could try to widen its own grant — pairing, an explicit declaration, a presence beacon, a poll — because a check that exists at only one of those is a check that will eventually be bypassed by the others.
+C'est vérifié à chaque endroit où un appareil pourrait tenter d'élargir son propre droit — l'appairage, une déclaration explicite, une balise de présence, une relève — parce qu'un contrôle qui n'existe qu'à un seul de ces endroits est un contrôle que les autres finiront par contourner.
 
 ---
 
-## What can be commanded
+## Ce qu'on peut commander
 
-The remote catalogue is closed and small (`tools.py`):
+Le catalogue distant est fermé et court (`tools.py`) :
 
-| Tool | Effect | Offline policy |
+| Outil | Effet | Politique hors ligne |
 |---|---|---|
-| `app.navigate` | Open a screen named by a `success://` route | `REQUIRE_ONLINE` |
-| `app.show_resource` | Show one task, project, note or habit | `QUEUE_UNTIL_EXPIRATION` |
-| `app.open` | Bring the app to the front | `REQUIRE_ONLINE` |
-| `notifications.show` | Display a notification | `QUEUE_UNTIL_EXPIRATION` |
-| `desktop.open` | Open an app, URL, file or search on the target **computer** | `REQUIRE_ONLINE` |
+| `app.navigate` | Ouvre un écran désigné par une route `success://` | `REQUIRE_ONLINE` |
+| `app.show_resource` | Affiche une tâche, un projet, une note ou une habitude | `QUEUE_UNTIL_EXPIRATION` |
+| `app.open` | Met l'application au premier plan | `REQUIRE_ONLINE` |
+| `notifications.show` | Affiche une notification | `QUEUE_UNTIL_EXPIRATION` |
+| `desktop.open` | Ouvre une app, une URL, un fichier ou une recherche sur l'**ordinateur** visé | `REQUIRE_ONLINE` |
 
-`desktop.open` is the only verb that leaves the application to drive the
-**desktop**, and the only one with an open-ended target. Two consequences,
-both settled on 25 August 2026: it declares `requires_confirmation`, so the
-receiver refuses an envelope that does not attest the user agreed — which is
-what finally makes check 10 of `verify_command` a live check rather than a
-documented one; and it is **not offered to the model** (`_HORS_PORTEE_DU_MODELE`
-in `tools/mesh_tools.py`), because a sentence should not grant more power over
-a distant machine than the same sentence grants locally.
+`desktop.open` est le seul verbe qui sort de l'application pour piloter le
+**bureau**, et le seul dont la cible n'a pas de bornes. Deux conséquences,
+tranchées toutes les deux le 25 août 2026 : il déclare `requires_confirmation`,
+si bien que le récepteur refuse une enveloppe qui n'atteste pas l'accord de
+l'utilisateur — c'est ce qui fait enfin du contrôle n° 10 de `verify_command` un
+contrôle vivant plutôt qu'un contrôle documenté ; et il n'est **pas proposé au
+modèle** (`_HORS_PORTEE_DU_MODELE` dans `tools/mesh_tools.py`), parce qu'une
+phrase ne doit pas donner plus de pouvoir sur une machine lointaine que la même
+phrase n'en donne ici.
 
-Each tool declares typed parameters, and a structural guard refuses any tool whose parameters include a passthrough name — `command`, `path`, `url`, `sql`, `script`, `eval` and the rest:
+Chaque outil déclare des paramètres typés, et un garde structurel refuse tout outil dont les paramètres portent un nom de passe-plat — `command`, `path`, `url`, `sql`, `script`, `eval` et les autres :
 
 ```python
 FORBIDDEN_PARAMETER_NAMES = frozenset({
@@ -59,117 +60,117 @@ FORBIDDEN_PARAMETER_NAMES = frozenset({
 })
 ```
 
-The point is not that today's four tools are safe. It is that the *next* tool cannot quietly be a shell wearing a costume.
+Ce qui compte n'est pas que les quatre outils d'aujourd'hui soient sûrs. C'est que le *prochain* outil ne puisse pas être, en douce, un shell déguisé.
 
 ---
 
-## The command envelope
+## L'enveloppe de commande
 
-Every command is an Ed25519-signed envelope. `verify_command()` runs eleven checks in a deliberate order:
+Chaque commande est une enveloppe signée en Ed25519. `verify_command()` enchaîne onze contrôles dans un ordre voulu :
 
-1. protocol version
-2. owner — same fleet
-3. destination — addressed to us
-4. origin — a device we know, trust, and hold a key for
-5. expiry, with bounded clock tolerance in both directions
-6. signature, over the envelope minus itself
-7. the tool exists in the catalogue
-8. arguments match the tool's declared shape
-9. capabilities — what *this* device can honour
-10. confirmation — an impactful tool may not run unconfirmed
-11. **nonce spent, last**
+1. la version du protocole
+2. le propriétaire — la même flotte
+3. la destination — c'est bien à nous qu'elle s'adresse
+4. l'origine — un appareil qu'on connaît, à qui on fait confiance, et dont on détient une clé
+5. l'expiration, avec une tolérance d'horloge bornée dans les deux sens
+6. la signature, sur l'enveloppe moins elle-même
+7. l'outil existe dans le catalogue
+8. les arguments correspondent à la forme déclarée par l'outil
+9. les capacités — ce que **cet** appareil-ci peut honorer
+10. la confirmation — un outil à conséquences ne tourne pas sans confirmation
+11. **le nonce dépensé, en dernier**
 
-The order carries meaning. Cheap structural checks come first so a misaddressed command never reaches the cryptography. The nonce is spent **last** so a command rejected for any other reason does not burn a nonce the legitimate sender still needs.
+L'ordre porte un sens. Les contrôles structurels, qui ne coûtent rien, passent en premier : une commande mal adressée n'atteint ainsi jamais la cryptographie. Le nonce est dépensé **en dernier** pour qu'une commande rejetée pour n'importe quelle autre raison ne brûle pas un nonce dont l'expéditeur légitime a encore besoin.
 
-`NonceStore.spend()` uses a `PRIMARY KEY` insert as its atomic test — two racing deliveries of the same command cannot both succeed, because only one insert can win.
+`NonceStore.spend()` se sert d'une insertion en `PRIMARY KEY` comme test atomique — deux livraisons concurrentes de la même commande ne peuvent pas réussir toutes les deux, puisqu'une seule insertion peut gagner.
 
 ---
 
-## Two transports
+## Deux transports
 
-The mesh has to reach two very different kinds of device, and one shape does not fit both.
+Le maillage doit atteindre deux sortes d'appareils très différentes, et une seule forme ne convient pas aux deux.
 
-### Push — computers
+### La poussée — les ordinateurs
 
-A machine with a reachable address is dialled directly: the sender POSTs the signed envelope to `POST /v1/mesh/commands/deliver`. Lowest latency, and the sender learns the outcome in the same round trip.
+Une machine dont l'adresse est joignable est appelée directement : l'expéditeur POSTe l'enveloppe signée vers `POST /v1/mesh/commands/deliver`. C'est la latence la plus basse, et l'expéditeur apprend l'issue dans le même aller-retour.
 
-The address is learned from the device itself and is a promise: `local_address()` reports where the process is *actually* listening, never a guess from configuration. A server bound to loopback advertises loopback, even though a LAN address would look more useful — peers off that machine genuinely cannot reach it, and telling them otherwise sends commands into the void and has them reported as delivered.
+L'adresse est apprise de l'appareil lui-même, et c'est une promesse : `local_address()` rapporte là où le processus écoute *réellement*, jamais une supposition tirée de la configuration. Un serveur lié à la boucle locale annonce la boucle locale, même si une adresse du réseau local aurait l'air plus utile — les pairs qui ne sont pas sur cette machine ne peuvent véritablement pas l'atteindre, et leur dire autre chose envoie des commandes dans le vide et les fait déclarer livrées.
 
-### Pull — phones and tablets
+### La relève — les téléphones et les tablettes
 
-Succès Flutter runs on devices that cannot be dialled: no stable address, a carrier NAT in the way, and an operating system that suspends the app whenever the user looks away. The direction flips. The device asks:
+Succès Flutter tourne sur des appareils qu'on ne peut pas appeler : pas d'adresse stable, un NAT d'opérateur en travers du chemin, et un système d'exploitation qui suspend l'application dès que l'utilisateur regarde ailleurs. Le sens s'inverse. C'est l'appareil qui demande :
 
 ```
-POST /v1/mesh/commands/poll   → { commands: [...signed envelopes...] }
-POST /v1/mesh/commands/ack    → what it did with them
+POST /v1/mesh/commands/poll   → { commands: [...enveloppes signées...] }
+POST /v1/mesh/commands/ack    → ce qu'il en a fait
 ```
 
-Two consequences fall out of this rather than being designed in:
+Deux conséquences en découlent, plutôt que d'y avoir été mises :
 
-- **The poll is the heartbeat.** A device asking for its commands has proved it is awake more convincingly than any beacon could, so the same request records presence.
-- **A queued command is not a failed one.** A phone polling every few seconds collects within seconds, so `« elle n'a pas été effectuée »` would be a lie.
+- **La relève est le battement de cœur.** Un appareil qui demande ses commandes a prouvé qu'il est éveillé mieux qu'aucune balise ne saurait le faire : la même requête enregistre donc la présence.
+- **Une commande mise en attente n'est pas une commande ratée.** Un téléphone qui relève toutes les quelques secondes la ramasse en quelques secondes, donc `« elle n'a pas été effectuée »` serait un mensonge.
 
-A device is treated as pull-mode when it has *told us so* by polling (`transport == "pull"`), never inferred from the absence of an address — a desktop that has simply not announced yet also has no address and will never come to fetch.
+Un appareil est traité en mode relève quand il nous l'a *dit* en relevant (`transport == "pull"`), jamais par déduction depuis l'absence d'adresse — un poste de bureau qui ne s'est simplement pas encore annoncé n'a pas d'adresse non plus, et lui ne viendra jamais chercher quoi que ce soit.
 
 ---
 
-## Presence
+## La présence
 
-Presence is **derived, never stored as a state**. `presence_of()` reads the last-seen timestamp and returns one of four states:
+La présence est **dérivée, jamais rangée comme un état**. `presence_of()` lit l'horodatage de dernière vue et rend l'un de quatre états :
 
-| State | Age of last contact |
+| État | Âge du dernier contact |
 |---|---|
 | `ONLINE` | ≤ 45 s |
 | `IDLE` | ≤ 5 min |
 | `BACKGROUND` | ≤ 30 min |
-| `OFFLINE` | beyond, or revoked |
+| `OFFLINE` | au-delà, ou révoqué |
 
-A revoked device is `OFFLINE` regardless of how recently it was seen.
+Un appareil révoqué est `OFFLINE`, si récemment qu'on l'ait vu.
 
-Devices announce themselves with the same credential they use to command — an Ed25519 signature — because a joining device never holds this machine's API key. Replay is stopped by **monotonicity** rather than nonces: a beacon must be strictly newer than the last accepted one. A heartbeat every fifteen seconds would mint 5 760 nonces per device per day to protect a message whose entire content is "still here"; one integer per device refuses the same attack for nothing.
-
----
-
-## The honesty contract
-
-The rule the whole system exists to keep:
-
-> A command that was merely queued must never be reported as done.
-
-Every terminal status carries a French sentence true of that status and no other, and `dispatch.py` is deliberately the only place that decides what the user is told.
-
-| Situation | What the user reads |
-|---|---|
-| Delivered and executed | *« C'est fait. »* |
-| Device asleep, tool needs it awake | *« … est hors ligne : cette action demande un appareil actif, elle n'a pas été effectuée. »* |
-| Device awake but unreachable on the network | *« … n'a pas pu être joint : … »* |
-| Device asleep, tool can wait | *« … est hors ligne : la commande est en attente et partira dès son retour. »* |
-| Polling device, awake | *« C'est prêt pour … : l'appareil le récupérera dans quelques secondes. »* |
-| Polling device, asleep | *« … : l'appareil le récupérera à son réveil. »* |
-
-The distinctions are not decoration. "Offline" and "unreachable" call for different things from the user — waiting versus checking the network — and being told the wrong one wastes their time on the wrong machine.
+Les appareils s'annoncent avec le même justificatif que celui qui leur sert à commander — une signature Ed25519 — parce qu'un appareil qui rejoint la flotte ne détient jamais la clé d'API de cette machine. Le rejeu est arrêté par la **monotonie** plutôt que par des nonces : une balise doit être strictement plus récente que la dernière acceptée. Un battement de cœur toutes les quinze secondes frapperait 5 760 nonces par appareil et par jour pour protéger un message dont tout le contenu est « je suis toujours là » ; un seul entier par appareil refuse la même attaque pour rien.
 
 ---
 
-## Security boundary
+## Le contrat d'honnêteté
 
-### Routes outside the API key wall
+La règle pour laquelle tout le système existe :
 
-Five routes are reachable without the local API key, because the device calling them has never had it:
+> Une commande qui n'a fait que se mettre en attente ne doit jamais être annoncée comme faite.
 
-| Route | Credential |
+Chaque statut terminal porte une phrase française vraie de ce statut-là et d'aucun autre, et `dispatch.py` est délibérément le seul endroit qui décide de ce qu'on dit à l'utilisateur.
+
+| Situation | Ce que l'utilisateur lit |
 |---|---|
-| `POST /v1/mesh/pairings/redeem` | the one-time invitation |
-| `POST /v1/mesh/commands/deliver` | Ed25519 signature over the envelope |
-| `POST /v1/mesh/presence` | Ed25519 signature over the beacon |
-| `POST /v1/mesh/commands/poll` | Ed25519 signature over the poll |
-| `POST /v1/mesh/commands/ack` | Ed25519 signature over the results |
+| Livrée et exécutée | *« C'est fait. »* |
+| Appareil endormi, l'outil le veut éveillé | *« … est hors ligne : cette action demande un appareil actif, elle n'a pas été effectuée. »* |
+| Appareil éveillé mais injoignable sur le réseau | *« … n'a pas pu être joint : … »* |
+| Appareil endormi, l'outil peut attendre | *« … est hors ligne : la commande est en attente et partira dès son retour. »* |
+| Appareil en relève, éveillé | *« C'est prêt pour … : l'appareil le récupérera dans quelques secondes. »* |
+| Appareil en relève, endormi | *« … : l'appareil le récupérera à son réveil. »* |
 
-A signature proves more than a shared secret would: it says *which* device, and it binds the exact contents. The seven checks common to the last four live in one place (`signed.py`) so there is exactly one copy to get right.
+Ces distinctions ne sont pas décoratives. « Hors ligne » et « injoignable » appellent de l'utilisateur deux choses différentes — attendre, ou aller vérifier le réseau — et s'entendre dire la mauvaise, c'est perdre son temps sur la mauvaise machine.
 
-### The local-only exemption
+---
 
-Diapason's `local_only` mode is fail-closed: nothing leaves the machine. The mesh holds one documented exemption, and both halves are required:
+## La frontière de sécurité
+
+### Les routes hors du mur de la clé d'API
+
+Cinq routes sont joignables sans la clé d'API locale, parce que l'appareil qui les appelle ne l'a jamais eue :
+
+| Route | Justificatif |
+|---|---|
+| `POST /v1/mesh/pairings/redeem` | l'invitation à usage unique |
+| `POST /v1/mesh/commands/deliver` | signature Ed25519 sur l'enveloppe |
+| `POST /v1/mesh/presence` | signature Ed25519 sur la balise |
+| `POST /v1/mesh/commands/poll` | signature Ed25519 sur la relève |
+| `POST /v1/mesh/commands/ack` | signature Ed25519 sur les résultats |
+
+Une signature prouve plus qu'un secret partagé ne le ferait : elle dit *quel* appareil, et elle lie le contenu exact. Les sept contrôles communs aux quatre dernières vivent au même endroit (`signed.py`), pour qu'il n'y ait qu'une seule copie à réussir.
+
+### L'exemption du mode local seul
+
+Le mode `local_only` de Diapason est en échec fermé : rien ne quitte la machine. Le maillage tient une exemption, documentée, et ses deux moitiés sont exigées :
 
 ```python
 if (device or {}).get("trustLevel") != "TRUSTED":
@@ -178,52 +179,53 @@ if not address_is_private(address):
     raise LocalOnlyError(...)
 ```
 
-A paired, trusted device at a private address is the user's own other computer, not "elsewhere". Anything failing either half is refused exactly as before. `mesh/transport.py` and `mesh/beacon.py` are listed in `tests/privacy/outbound_manifest.txt`, and the ratchet test fails in both directions if that stops being true.
+Un appareil appairé et de confiance, à une adresse privée, c'est l'autre ordinateur de l'utilisateur, pas « ailleurs ». Tout ce qui manque l'une ou l'autre moitié est refusé exactement comme avant. `mesh/transport.py` et `mesh/beacon.py` sont listés dans `tests/privacy/outbound_manifest.txt`, et le test à cliquet échoue dans les deux sens si cela cesse d'être vrai.
 
-### What the assistant can do
+### Ce que l'assistant peut faire
 
-The chat assistant sees two tools, split deliberately: `mesh_devices` only looks, `mesh_send` acts. Both entered `_TROUSSE_ASSISTANT` on 25 August 2026 — until then this paragraph described an intention, not the code: the tools were registered and handed to nobody, so « ouvre mes tâches sur mon PC » had no path at all. A test now guards their presence, mirroring the one that guards their absence in voice.
+L'assistant de discussion voit deux outils, séparés à dessein : `mesh_devices` ne fait que regarder, `mesh_send` agit. Tous les deux sont entrés dans `_TROUSSE_ASSISTANT` le 25 août 2026 — jusque-là, ce paragraphe décrivait une intention, pas le code : les outils étaient enregistrés et remis à personne, si bien que « ouvre mes tâches sur mon PC » n'avait aucun chemin du tout. Un test garde maintenant leur présence, en miroir de celui qui garde leur absence dans la voix.
 
-`mesh_send` declares `risk: "outward_action"`. It is **not** in the live-voice allow-list (`speech/realtime/tools.py`), because that path runs its tools directly rather than through `ToolExecutor`, where the approval system lives. A tripwire test enforces this and says when to delete itself.
-
----
-
-## Known limits
-
-- **The server binds `127.0.0.1` by default**, so the mesh does not yet cross machines without the user opening the network interface. That is a security decision that belongs to them.
-- **`execute_voice_tool` bypasses `ToolExecutor`**, and therefore approvals. This must be fixed before any `remote.*` tool is exposed to the voice path.
-- **The inbox queue is in-process memory**, capped at 16 entries. A backend restart loses whatever was waiting for the desktop shell to collect.
-- **Joining is one-way in the UI.** The host can mint an invitation from the
-  Devices page; nothing there redeems one. The guest path lives in the CLI
-  (`diapason mesh join <address> <code>`) and in `mesh/join.py`. Before
-  25 August 2026 it did not exist at all in this repository, which is why the
-  only paired peers were created by the Flutter client.
-- **There is no file transfer.** This is a mesh of *commands*: stateless,
-  short-lived, signed envelopes. A resumable transfer needs a session
-  lifecycle that neither `commands.py` nor `queue.py` carries — and it must
-  not be bolted onto the command envelope, since adding a signed field breaks
-  every phone in the field.
-- **Envelopes are signed, not encrypted.** On a trusted LAN that is enough;
-  it stops being enough the day a relay exists.
+`mesh_send` déclare `risk: "outward_action"`. Il n'est **pas** dans la liste d'autorisation de la voix en direct (`speech/realtime/tools.py`), parce que ce chemin-là exécute ses outils directement plutôt que par `ToolExecutor`, où vit le système d'approbation. Un test-fusible impose cela, et dit quand se supprimer lui-même.
 
 ---
 
-## Files
+## Les limites connues
 
-| Module | Responsibility |
+- **Le serveur se lie à `127.0.0.1` par défaut**, donc le maillage ne franchit pas encore les machines sans que l'utilisateur ouvre l'interface réseau. C'est une décision de sécurité, et elle lui appartient.
+- **`execute_voice_tool` court-circuite `ToolExecutor`**, et donc les approbations. Il faut corriger cela avant d'exposer le moindre outil `remote.*` au chemin de la voix.
+- **La file d'attente de la boîte de réception vit en mémoire, dans le processus**, plafonnée à 16 entrées. Un redémarrage du backend perd tout ce qui attendait d'être ramassé par le shell du bureau.
+- **Rejoindre est à sens unique dans l'interface.** L'hôte peut frapper une
+  invitation depuis la page Appareils ; rien là-bas n'en consomme une. Le chemin
+  de l'invité vit dans la CLI (`diapason mesh join <address> <code>`) et dans
+  `mesh/join.py`. Avant le 25 août 2026, il n'existait pas du tout dans ce
+  dépôt, et c'est pourquoi les seuls pairs appairés avaient été créés par le
+  client Flutter.
+- **Il n'y a pas de transfert de fichiers.** C'est un maillage de *commandes* :
+  des enveloppes signées, sans état, de courte vie. Un transfert reprenable
+  demande un cycle de vie de session que ni `commands.py` ni `queue.py` ne
+  porte — et il ne faut pas le boulonner sur l'enveloppe de commande, puisque
+  ajouter un champ signé casse tous les téléphones déjà sur le terrain.
+- **Les enveloppes sont signées, pas chiffrées.** Sur un réseau local de
+  confiance, cela suffit ; cela cesse de suffire le jour où un relais existe.
+
+---
+
+## Les fichiers
+
+| Module | Responsabilité |
 |---|---|
-| `identity.py` | keys, device id, canonical bytes, envelope signing |
-| `registry.py` | paired devices, invitations, trust, revocation |
-| `capabilities.py` | the platform ceiling |
-| `presence.py` | derived presence |
-| `commands.py` | the envelope, its eleven checks, nonces |
-| `tools.py` | the closed remote catalogue |
-| `queue.py` | durable command queue |
-| `transport.py` | LAN delivery and the local-only exemption |
-| `beacon.py` | outgoing and incoming presence |
-| `pull.py` | poll and acknowledgement, for devices that fetch |
-| `signed.py` | the seven checks shared by device-signed requests |
-| `dispatch.py` | sending, and what the user is told |
-| `executor.py` | running a verified command here |
-| `resolver.py` | *« sur mon PC »* → a device id, or a question |
-| `routes.py` | the HTTP surface |
+| `identity.py` | les clés, l'identifiant d'appareil, les octets canoniques, la signature des enveloppes |
+| `registry.py` | les appareils appairés, les invitations, la confiance, la révocation |
+| `capabilities.py` | le plafond de la plateforme |
+| `presence.py` | la présence dérivée |
+| `commands.py` | l'enveloppe, ses onze contrôles, les nonces |
+| `tools.py` | le catalogue distant, fermé |
+| `queue.py` | la file d'attente durable des commandes |
+| `transport.py` | la livraison sur le réseau local, et l'exemption du mode local seul |
+| `beacon.py` | la présence sortante et entrante |
+| `pull.py` | la relève et l'accusé de réception, pour les appareils qui viennent chercher |
+| `signed.py` | les sept contrôles partagés par les requêtes signées par un appareil |
+| `dispatch.py` | l'envoi, et ce qu'on dit à l'utilisateur |
+| `executor.py` | l'exécution ici d'une commande vérifiée |
+| `resolver.py` | *« sur mon PC »* → un identifiant d'appareil, ou une question |
+| `routes.py` | la surface HTTP |

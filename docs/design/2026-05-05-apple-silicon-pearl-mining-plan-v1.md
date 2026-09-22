@@ -1,87 +1,89 @@
-# Apple Silicon Pearl mining v1 — implementation plan
+# Minage Pearl sur Apple Silicon v1 — plan de mise en œuvre
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Pour les agents autonomes :** SOUS-COMPÉTENCE REQUISE : utilise `superpowers:subagent-driven-development` (recommandé) ou `superpowers:executing-plans` pour mettre ce plan en œuvre tâche par tâche. Les étapes utilisent la syntaxe à cases à cocher (`- [ ]`) pour le suivi.
 
-**Goal:** Implement the v1 `cpu-pearl` mining provider — decoupled CPU mining for Apple Silicon (and any non-CUDA host where Pearl's pure-Rust miner builds), wrapping upstream `pearl_mining.mine()` and Pearl's `pearl-gateway` as subprocess.
+**Objectif :** mettre en œuvre le fournisseur de minage `cpu-pearl` v1 — du minage CPU découplé pour Apple Silicon (et pour tout hôte sans CUDA où le mineur pur Rust de Pearl se construit), qui enveloppe le `pearl_mining.mine()` amont et lance le `pearl-gateway` de Pearl comme sous-processus.
 
-**Architecture:** New provider `CpuPearlProvider` in `src/diapason/mining/cpu_pearl.py`, registered as `"cpu-pearl"` via `MinerRegistry`. The provider's `start()` launches two subprocesses: (1) Pearl's `pearl-gateway` Python service (talks to user's `pearld`), and (2) a small Python miner-loop that polls gateway for `getMiningInfo`, calls `pearl_mining.mine()`, and submits via `submitPlainProof`. Reuses Spec A's `MiningProvider` ABC, `MinerRegistry`, sidecar at `~/.diapason/runtime/mining.json`, telemetry adapter, and CLI surface (`diapason mine init|start|stop|status|doctor`) — all unchanged.
+**Architecture :** un nouveau fournisseur `CpuPearlProvider` dans `src/diapason/mining/cpu_pearl.py`, enregistré sous `"cpu-pearl"` via `MinerRegistry`. Le `start()` du fournisseur lance deux sous-processus : (1) le service Python `pearl-gateway` de Pearl (qui parle au `pearld` de l'utilisateur), et (2) une petite boucle de minage Python qui interroge la passerelle avec `getMiningInfo`, appelle `pearl_mining.mine()` et soumet via `submitPlainProof`. Réutilise l'ABC `MiningProvider` de la spec A, `MinerRegistry`, le fichier d'accompagnement (sidecar) `~/.diapason/runtime/mining.json`, l'adaptateur de télémétrie et la surface CLI (`diapason mine init|start|stop|status|doctor`) — tout cela inchangé.
 
-**Tech Stack:** Python 3.10+, `py-pearl-mining` (Rust+PyO3), `miner-base` (PyTorch), `pearl-gateway` (Python+JSON-RPC), `subprocess.Popen`, pytest with `unittest.mock`, ruff. References Pearl repo (`pearl-research-labs/pearl`) at a pinned commit/tag stored in `mining/_constants.py`.
+**Pile technique :** Python 3.10+, `py-pearl-mining` (Rust+PyO3), `miner-base` (PyTorch), `pearl-gateway` (Python+JSON-RPC), `subprocess.Popen`, pytest avec `unittest.mock`, ruff. S'appuie sur le dépôt Pearl (`pearl-research-labs/pearl`) à un commit/tag figé, stocké dans `mining/_constants.py`.
 
-**Hard prerequisite:** Spec A's plan (`docs/design/2026-05-05-vllm-pearl-mining-integration-plan.md`) **must be executed first**. v1 reuses Spec A's `MiningProvider` ABC, registry, sidecar shape, telemetry adapter, mining-config dataclass, and CLI surface. If Spec A isn't merged, stop here and execute Spec A first; do not duplicate that infrastructure in this plan.
+**Prérequis ferme :** le plan de la spec A (`docs/design/2026-05-05-vllm-pearl-mining-integration-plan.md`) **doit être exécuté d'abord**. La v1 réutilise l'ABC `MiningProvider` de la spec A, son registre, la forme de son sidecar, son adaptateur de télémétrie, sa dataclass de configuration de minage et sa surface CLI. Si la spec A n'est pas fusionnée, arrête-toi ici et exécute-la d'abord ; ne redouble pas cette infrastructure dans ce plan.
 
 ---
 
-## File structure (new files only — Spec A files unchanged)
+## Structure des fichiers (nouveaux fichiers seulement — les fichiers de la spec A ne bougent pas)
 
 ```
 src/diapason/mining/
-    cpu_pearl.py             # CpuPearlProvider — implements MiningProvider ABC for CPU
-    _pearl_subprocess.py     # PearlSubprocessLauncher — gateway + miner-loop subprocess management
-    _install.py              # Helpers: detect upstream packages, build-from-pin fallback
-    _miner_loop_main.py      # Subprocess entry point: poll gateway, call pearl_mining.mine, submit
+    cpu_pearl.py             # CpuPearlProvider — implémente l'ABC MiningProvider pour le CPU
+    _pearl_subprocess.py     # PearlSubprocessLauncher — gère les sous-processus passerelle + boucle de minage
+    _install.py              # Aides : détecter les paquets amont, repli par construction depuis la référence figée
+    _miner_loop_main.py      # Point d'entrée du sous-processus : interroger la passerelle, appeler pearl_mining.mine, soumettre
 
 tests/mining/
-    test_cpu_pearl.py        # CpuPearlProvider unit tests (capability detection, lifecycle)
-    test_pearl_subprocess.py # Subprocess launcher unit tests (mocked Popen)
-    test_install.py          # Install detection / build helper tests
-    test_miner_loop.py       # Miner-loop unit tests (mocked gateway socket)
+    test_cpu_pearl.py        # Tests unitaires de CpuPearlProvider (détection de capacité, cycle de vie)
+    test_pearl_subprocess.py # Tests unitaires du lanceur de sous-processus (Popen simulé)
+    test_install.py          # Tests de la détection d'installation / de l'aide à la construction
+    test_miner_loop.py       # Tests unitaires de la boucle de minage (socket de passerelle simulée)
     fixtures/
-        gateway_mining_info.json    # Captured getMiningInfo RPC response
-        gateway_submit_ok.json      # Captured submitPlainProof OK response
-        gateway_submit_rejected.json # Captured submitPlainProof rejection
+        gateway_mining_info.json    # Réponse RPC getMiningInfo capturée
+        gateway_submit_ok.json      # Réponse OK de submitPlainProof capturée
+        gateway_submit_rejected.json # Rejet de submitPlainProof capturé
 
 docs/user-guide/
-    mining-apple-silicon.md  # User-facing guide
+    mining-apple-silicon.md  # Guide destiné à l'utilisateur
 
-# Modified files
-pyproject.toml               # Add `mining-pearl-cpu` extra
-src/diapason/mining/__init__.py  # Soft-import cpu_pearl
-src/diapason/mining/_constants.py  # Add PEARL_PINNED_REF and helper constants
+# Fichiers modifiés
+pyproject.toml               # Ajoute l'extra `mining-pearl-cpu`
+src/diapason/mining/__init__.py  # Import souple de cpu_pearl
+src/diapason/mining/_constants.py  # Ajoute PEARL_PINNED_REF et les constantes annexes
 ```
 
 ---
 
-## Task 1: Bootstrap — pinned ref and constants
+## Tâche 1 : amorçage — référence figée et constantes
 
-**Files:**
-- Modify: `src/diapason/mining/_constants.py:1-N` (created in Spec A)
+**Fichiers :**
+- Modifier : `src/diapason/mining/_constants.py:1-N` (créé dans la spec A)
 
-This task adds Pearl-version pinning and CPU-specific constants that the rest of the provider references. Spec A already created `_constants.py` with `PEARL_PINNED_REF` and `PEARL_REPO`; reuse those. We only add the new `cpu-pearl`-specific values.
+Cette tâche ajoute le figement de la version de Pearl et les constantes propres au CPU auxquelles le reste du fournisseur se réfère. La spec A a déjà créé `_constants.py` avec `PEARL_PINNED_REF` et `PEARL_REPO` ; réutilise-les. On n'ajoute que les nouvelles valeurs propres à `cpu-pearl`.
 
-- [ ] **Step 1: Read Spec A's `_constants.py` to learn the existing shape**
+- [ ] **Étape 1 : lire le `_constants.py` de la spec A pour en connaître la forme**
 
-Run: `cat src/diapason/mining/_constants.py`
+Lance : `cat src/diapason/mining/_constants.py`
 
-Expected: file contains `PEARL_REPO`, `PEARL_PINNED_REF`, `PEARL_IMAGE_TAG`. If missing, **stop and execute Spec A first.**
+Attendu : le fichier contient `PEARL_REPO`, `PEARL_PINNED_REF`, `PEARL_IMAGE_TAG`. S'ils manquent, **arrête-toi et exécute d'abord la spec A.**
 
-- [ ] **Step 2: Add CPU-specific constants**
+- [ ] **Étape 2 : ajouter les constantes propres au CPU**
 
-Append to `src/diapason/mining/_constants.py`:
+Ajoute à la fin de `src/diapason/mining/_constants.py` :
 
 ```python
-# ── cpu-pearl provider (v1, Apple Silicon and other non-CUDA hosts) ────────────
+# ── fournisseur cpu-pearl (v1, Apple Silicon et autres hôtes sans CUDA) ───────
 
-# Default mining-loop matrix shapes. These are the same values used by Pearl's
-# upstream test_python_api.py — known to produce a valid proof per call at test
-# difficulty. Real difficulty is set per-block by the network and we can't
-# control that; the only knob we expose is the matmul shape, which determines
-# search space size per `mine()` call.
+# Formes de matrices par défaut pour la boucle de minage. Ce sont les valeurs
+# qu'emploie le test_python_api.py amont de Pearl — connues pour produire une
+# preuve valide par appel, à la difficulté de test. La vraie difficulté est
+# fixée bloc par bloc par le réseau et nous n'y pouvons rien ; le seul bouton
+# que nous exposons est la forme du matmul, qui détermine la taille de
+# l'espace de recherche par appel à `mine()`.
 CPU_PEARL_DEFAULT_M = 256
 CPU_PEARL_DEFAULT_N = 128
 CPU_PEARL_DEFAULT_K = 1024
 CPU_PEARL_DEFAULT_RANK = 32
 
-# Pattern lists copied verbatim from upstream Pearl tests.
+# Listes de motifs recopiées mot pour mot depuis les tests amont de Pearl.
 CPU_PEARL_DEFAULT_ROWS_PATTERN = [0, 8, 64, 72]
 CPU_PEARL_DEFAULT_COLS_PATTERN = [0, 1, 8, 9, 32, 33, 40, 41]
 
-# Local clone path used by _install.py build-from-pin fallback. Only created
-# when Pearl wheels are not yet on PyPI.
+# Chemin du clone local qu'emploie le repli de _install.py. Créé seulement
+# quand les wheels Pearl ne sont pas encore sur PyPI.
 CPU_PEARL_LOCAL_CLONE_DIR = "~/.diapason/cache/pearl"
 
-# Names of the Pearl Python packages we depend on, in install order.
-# These are the packages we install from local paths (or PyPI when published).
+# Noms des paquets Python Pearl dont nous dépendons, dans l'ordre
+# d'installation. Ce sont les paquets que nous installons depuis des chemins
+# locaux (ou depuis PyPI une fois publiés).
 PEARL_CPU_PACKAGES = (
     "py-pearl-mining",
     "miner-utils",
@@ -90,83 +92,86 @@ PEARL_CPU_PACKAGES = (
 )
 ```
 
-- [ ] **Step 3: Run lint**
+- [ ] **Étape 3 : lancer le lint**
 
-Run: `uv run ruff check src/diapason/mining/_constants.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/_constants.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 4: Commit**
+- [ ] **Étape 4 : committer**
 
 ```bash
 git add src/diapason/mining/_constants.py
-git commit -m "feat(mining): add cpu-pearl constants (Spec B v1 task 1)"
+git commit -m "feat(mining): constantes cpu-pearl (spec B v1, tâche 1)"
 ```
 
 ---
 
-## Task 2: Add `mining-pearl-cpu` optional extra
+## Tâche 2 : ajouter l'extra optionnel `mining-pearl-cpu`
 
-**Files:**
-- Modify: `pyproject.toml`
+**Fichiers :**
+- Modifier : `pyproject.toml`
 
-- [ ] **Step 1: Locate existing `mining-pearl` extra**
+- [ ] **Étape 1 : repérer l'extra `mining-pearl` existant**
 
-Run: `grep -n "mining-pearl" pyproject.toml`
-Expected: at least one match for `mining-pearl = [...]` from Spec A.
+Lance : `grep -n "mining-pearl" pyproject.toml`
+Attendu : au moins une correspondance pour `mining-pearl = [...]`, venue de la spec A.
 
-- [ ] **Step 2: Add `mining-pearl-cpu` extra**
+- [ ] **Étape 2 : ajouter l'extra `mining-pearl-cpu`**
 
-Add under `[project.optional-dependencies]`:
+Ajoute sous `[project.optional-dependencies]` :
 
 ```toml
 mining-pearl-cpu = [
-    # Pearl's pure-Rust miner exposed to Python. Today: install from a local
-    # path or git URL. When Pearl publishes to PyPI, this becomes a normal
-    # version pin (see CPU_PEARL_LOCAL_CLONE_DIR in _constants.py).
+    # Le mineur pur Rust de Pearl, exposé à Python. Aujourd'hui : installation
+    # depuis un chemin local ou une URL git. Quand Pearl publiera sur PyPI,
+    # ceci deviendra une simple version épinglée (voir
+    # CPU_PEARL_LOCAL_CLONE_DIR dans _constants.py).
     "py-pearl-mining ; sys_platform == 'darwin' or sys_platform == 'linux'",
-    # PyTorch reference of NoisyGEMM — used for parity validation only,
-    # not required at runtime, but the install verifies torch builds OK.
+    # Référence PyTorch de NoisyGEMM — sert seulement à valider la parité, pas
+    # nécessaire à l'exécution, mais l'installation vérifie que torch se
+    # construit correctement.
     "miner-base ; sys_platform == 'darwin' or sys_platform == 'linux'",
-    # JSON-RPC server that talks to pearld and brokers shares for the miner.
+    # Serveur JSON-RPC qui parle à pearld et sert d'intermédiaire pour les
+    # parts du mineur.
     "pearl-gateway ; sys_platform == 'darwin' or sys_platform == 'linux'",
 ]
 ```
 
-The `sys_platform` markers exclude Windows for now; v1 doesn't claim Windows support, and we don't want to accidentally hand a broken install to a Windows user.
+Les marqueurs `sys_platform` écartent Windows pour l'instant ; la v1 ne prétend pas prendre Windows en charge, et nous ne voulons pas livrer par accident une installation cassée à quelqu'un sous Windows.
 
-- [ ] **Step 3: Run lint and resolve check**
+- [ ] **Étape 3 : lancer le lint et la vérification de résolution**
 
-Run:
+Lance :
 ```bash
 uv run ruff check pyproject.toml || true
 uv lock --check 2>&1 | tail -5
 ```
 
-Expected: ruff has nothing to say about pyproject.toml. `uv lock --check` may fail because we haven't installed the actual packages yet — that's expected. Note the failure mode for Task 4.
+Attendu : ruff n'a rien à dire sur pyproject.toml. `uv lock --check` peut échouer parce que les vrais paquets ne sont pas encore installés — c'est normal. Note le mode d'échec pour la tâche 4.
 
-- [ ] **Step 4: Commit**
+- [ ] **Étape 4 : committer**
 
 ```bash
 git add pyproject.toml
-git commit -m "feat(mining): add mining-pearl-cpu optional extra (Spec B v1 task 2)"
+git commit -m "feat(mining): extra optionnel mining-pearl-cpu (spec B v1, tâche 2)"
 ```
 
 ---
 
-## Task 3: Install detection helper (`_install.py`)
+## Tâche 3 : aide à la détection de l'installation (`_install.py`)
 
-**Files:**
-- Create: `src/diapason/mining/_install.py`
-- Test: `tests/mining/test_install.py`
+**Fichiers :**
+- Créer : `src/diapason/mining/_install.py`
+- Tester : `tests/mining/test_install.py`
 
-`_install.py` answers a single question: are the Pearl Python packages installed in the current environment? Used by `cpu_pearl.detect()` and `mine doctor`. Also exposes a hint string telling the user how to install if not.
+`_install.py` répond à une seule question : les paquets Python Pearl sont-ils installés dans l'environnement courant ? Utilisé par `cpu_pearl.detect()` et par `mine doctor`. Expose aussi une chaîne d'indication qui dit à l'utilisateur comment installer, le cas échéant.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Étape 1 : écrire le test qui échoue**
 
-Create `tests/mining/test_install.py`:
+Crée `tests/mining/test_install.py` :
 
 ```python
-"""Tests for diapason.mining._install."""
+"""Tests de diapason.mining._install."""
 from __future__ import annotations
 
 import sys
@@ -186,10 +191,11 @@ def test_pearl_packages_available_returns_false_when_pearl_mining_missing():
 
 
 def test_pearl_packages_available_returns_true_when_all_present():
-    """When all three importable, returns True."""
+    """Quand les trois sont importables, renvoie True."""
     from diapason.mining import _install
 
-    # Install three fake modules so importlib.util.find_spec returns truthy.
+    # Installe trois faux modules pour que importlib.util.find_spec renvoie
+    # une valeur vraie.
     import types
     fakes = {
         name: types.ModuleType(name)
@@ -200,7 +206,7 @@ def test_pearl_packages_available_returns_true_when_all_present():
 
 
 def test_install_hint_is_actionable():
-    """The hint string must include the extra name and the build-from-pin path."""
+    """L'indication doit nommer l'extra et le chemin de construction depuis la référence figée."""
     from diapason.mining._install import install_hint
 
     h = install_hint()
@@ -208,22 +214,23 @@ def test_install_hint_is_actionable():
     assert "uv sync" in h or "pip install" in h
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Étape 2 : lancer le test pour vérifier qu'il échoue**
 
-Run: `uv run pytest tests/mining/test_install.py -v`
-Expected: FAIL — `ImportError: cannot import name '_install' from 'diapason.mining'`
+Lance : `uv run pytest tests/mining/test_install.py -v`
+Attendu : ÉCHEC — `ImportError: cannot import name '_install' from 'diapason.mining'`
 
-- [ ] **Step 3: Write `_install.py`**
+- [ ] **Étape 3 : écrire `_install.py`**
 
-Create `src/diapason/mining/_install.py`:
+Crée `src/diapason/mining/_install.py` :
 
 ```python
-"""Detection and install hints for the upstream Pearl Python packages.
+"""Détection et indications d'installation des paquets Python Pearl amont.
 
-The cpu-pearl provider depends on three upstream packages: ``pearl_mining``,
-``pearl_gateway``, and ``miner_base``. They are not on PyPI as of 2026-05; the
-implementation plan covers a build-from-pin fallback. This module is the
-single source of truth for "is the user's environment ready?".
+Le fournisseur cpu-pearl dépend de trois paquets amont : ``pearl_mining``,
+``pearl_gateway`` et ``miner_base``. Ils ne sont pas sur PyPI en mai 2026 ; le
+plan de mise en œuvre prévoit un repli par construction depuis la référence
+figée. Ce module est la source unique de vérité pour savoir si
+l'environnement de l'utilisateur est prêt.
 """
 from __future__ import annotations
 
@@ -231,15 +238,15 @@ import importlib.util
 
 
 def _module_available(name: str) -> bool:
-    """True if ``import name`` would succeed in the current environment."""
+    """True si ``import name`` réussirait dans l'environnement courant."""
     return importlib.util.find_spec(name) is not None
 
 
 def pearl_packages_available() -> bool:
-    """All three Pearl Python packages importable.
+    """Les trois paquets Python Pearl sont importables.
 
-    Returns False if any are missing. Use ``install_hint()`` to surface the
-    next step to the user.
+    Renvoie False si l'un d'eux manque. Emploie ``install_hint()`` pour montrer
+    l'étape suivante à l'utilisateur.
     """
     return all(
         _module_available(m)
@@ -248,50 +255,52 @@ def pearl_packages_available() -> bool:
 
 
 def install_hint() -> str:
-    """Human-readable instruction for installing the Pearl packages.
+    """Instruction lisible pour installer les paquets Pearl.
 
-    Today (no PyPI publication) we point at the optional extra. When Pearl
-    publishes wheels, the message stays correct because the extra still works.
+    Aujourd'hui (rien n'est publié sur PyPI) nous pointons vers l'extra
+    optionnel. Quand Pearl publiera des wheels, le message restera juste,
+    puisque l'extra marchera toujours.
     """
     return (
-        "install with `uv sync --extra mining-pearl-cpu`. "
-        "If Pearl wheels are not on PyPI yet, see "
-        "tools/pearl-reference-oracle/README.md for the build-from-pin path."
+        "installe avec `uv sync --extra mining-pearl-cpu`. "
+        "Si les wheels Pearl ne sont pas encore sur PyPI, voir "
+        "tools/pearl-reference-oracle/README.md pour la construction depuis "
+        "la référence figée."
     )
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Étape 4 : lancer le test pour vérifier qu'il passe**
 
-Run: `uv run pytest tests/mining/test_install.py -v`
-Expected: PASS — all three tests green.
+Lance : `uv run pytest tests/mining/test_install.py -v`
+Attendu : SUCCÈS — les trois tests au vert.
 
-- [ ] **Step 5: Commit**
+- [ ] **Étape 5 : committer**
 
 ```bash
 git add src/diapason/mining/_install.py tests/mining/test_install.py
-git commit -m "feat(mining): pearl-packages availability detection (Spec B v1 task 3)"
+git commit -m "feat(mining): détection des paquets Pearl disponibles (spec B v1, tâche 3)"
 ```
 
 ---
 
-## Task 4: Build-from-pin fallback in `_install.py`
+## Tâche 4 : repli par construction depuis la référence figée dans `_install.py`
 
-**Files:**
-- Modify: `src/diapason/mining/_install.py`
-- Modify: `tests/mining/test_install.py`
+**Fichiers :**
+- Modifier : `src/diapason/mining/_install.py`
+- Modifier : `tests/mining/test_install.py`
 
-Until Pearl publishes to PyPI, users have to build `py-pearl-mining` from source. This task adds a helper that does so on first `mine init`. Mocked in tests; only really invoked in a real terminal.
+Tant que Pearl ne publie pas sur PyPI, il faut construire `py-pearl-mining` depuis les sources. Cette tâche ajoute une aide qui le fait au premier `mine init`. Simulée dans les tests ; réellement appelée seulement dans un vrai terminal.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Étape 1 : écrire les tests qui échouent**
 
-Append to `tests/mining/test_install.py`:
+Ajoute à la fin de `tests/mining/test_install.py` :
 
 ```python
 import subprocess
 
 
 def test_build_from_pin_clones_when_missing(tmp_path, monkeypatch):
-    """If the local cache dir is empty, build_from_pin clones first."""
+    """Si le dossier de cache local est vide, build_from_pin clone d'abord."""
     from diapason.mining import _install
 
     cache_dir = tmp_path / "pearl"
@@ -305,13 +314,14 @@ def test_build_from_pin_clones_when_missing(tmp_path, monkeypatch):
 
     _install.build_from_pin(pinned_ref="abc123")
 
-    # First call must be `git clone`; second call(s) the maturin/uv install.
+    # Le premier appel doit être `git clone` ; le ou les suivants,
+    # l'installation maturin/uv.
     assert calls[0][:2] == ["git", "clone"]
     assert "abc123" in " ".join(calls[1]) or "abc123" in " ".join(calls[0])
 
 
 def test_build_from_pin_skips_clone_when_present(tmp_path, monkeypatch):
-    """If the cache already has the .git dir, skip the clone."""
+    """Si le cache contient déjà le dossier .git, on saute le clone."""
     from diapason.mining import _install
 
     cache_dir = tmp_path / "pearl"
@@ -326,19 +336,19 @@ def test_build_from_pin_skips_clone_when_present(tmp_path, monkeypatch):
 
     _install.build_from_pin(pinned_ref="abc123")
 
-    # No git clone, but checkout + build.
+    # Pas de git clone, mais un checkout puis la construction.
     assert not any(c[:2] == ["git", "clone"] for c in calls)
     assert any(c[:2] == ["git", "checkout"] for c in calls)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Étape 2 : lancer les tests pour vérifier qu'ils échouent**
 
-Run: `uv run pytest tests/mining/test_install.py -v`
-Expected: FAIL — `AttributeError: module 'diapason.mining._install' has no attribute 'build_from_pin'`
+Lance : `uv run pytest tests/mining/test_install.py -v`
+Attendu : ÉCHEC — `AttributeError: module 'diapason.mining._install' has no attribute 'build_from_pin'`
 
-- [ ] **Step 3: Implement `build_from_pin`**
+- [ ] **Étape 3 : implémenter `build_from_pin`**
 
-Append to `src/diapason/mining/_install.py`:
+Ajoute à la fin de `src/diapason/mining/_install.py` :
 
 ```python
 import os
@@ -354,15 +364,15 @@ from ._constants import (
 
 
 def _resolve_clone_dir() -> Path:
-    """Return the directory the Pearl clone lives in. Override in tests."""
+    """Renvoie le dossier où vit le clone de Pearl. À remplacer dans les tests."""
     return Path(os.path.expanduser(CPU_PEARL_LOCAL_CLONE_DIR))
 
 
 def build_from_pin(pinned_ref: str = PEARL_PINNED_REF) -> Path:
-    """Clone Pearl at ``pinned_ref`` and install the Pearl Python packages.
+    """Clone Pearl à ``pinned_ref`` et installe les paquets Python Pearl.
 
-    Idempotent: if the clone exists, fetch + checkout instead of re-cloning.
-    Returns the resolved clone directory.
+    Idempotent : si le clone existe, on fait fetch + checkout au lieu de
+    recloner. Renvoie le dossier de clone résolu.
     """
     clone_dir = _resolve_clone_dir()
     if not (clone_dir / ".git").is_dir():
@@ -372,23 +382,24 @@ def build_from_pin(pinned_ref: str = PEARL_PINNED_REF) -> Path:
         subprocess.check_call(["git", "fetch", "--all"], cwd=clone_dir)
     subprocess.check_call(["git", "checkout", pinned_ref], cwd=clone_dir)
 
-    # Build py-pearl-mining (Rust extension) via maturin
+    # Construit py-pearl-mining (extension Rust) avec maturin
     py_pearl_mining_dir = clone_dir / "py-pearl-mining"
     subprocess.check_call(
         ["maturin", "build", "--release", "--interpreter", "python"],
         cwd=py_pearl_mining_dir,
     )
 
-    # Find the wheel that maturin produced and install it, plus the pure-Python
-    # packages from their source directories.
+    # Retrouve la wheel produite par maturin et l'installe, avec les paquets
+    # purement Python depuis leurs dossiers source.
     wheels_dir = py_pearl_mining_dir / "target" / "wheels"
     wheels = sorted(wheels_dir.glob("py_pearl_mining-*.whl"))
     if not wheels:
-        raise RuntimeError(f"maturin produced no wheel in {wheels_dir}")
+        raise RuntimeError(f"maturin n'a produit aucune wheel dans {wheels_dir}")
     wheel_path = wheels[-1]
 
-    # Install in dependency order. The `--no-deps` keeps uv from re-resolving
-    # workspace siblings; we install them one by one.
+    # Installe dans l'ordre des dépendances. Le `--no-deps` empêche uv de
+    # re-résoudre les paquets frères de l'espace de travail ; on les installe
+    # un par un.
     subprocess.check_call(["uv", "pip", "install", "--no-deps", str(wheel_path)])
     for pkg_name in ("miner-utils", "pearl-gateway", "miner-base"):
         pkg_dir = clone_dir / "miner" / pkg_name
@@ -400,39 +411,39 @@ def build_from_pin(pinned_ref: str = PEARL_PINNED_REF) -> Path:
     return clone_dir
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Étape 4 : lancer les tests pour vérifier qu'ils passent**
 
-Run: `uv run pytest tests/mining/test_install.py -v`
-Expected: PASS — all five tests green.
+Lance : `uv run pytest tests/mining/test_install.py -v`
+Attendu : SUCCÈS — les cinq tests au vert.
 
-- [ ] **Step 5: Lint**
+- [ ] **Étape 5 : lint**
 
-Run: `uv run ruff check src/diapason/mining/_install.py tests/mining/test_install.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/_install.py tests/mining/test_install.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 6: Commit**
+- [ ] **Étape 6 : committer**
 
 ```bash
 git add src/diapason/mining/_install.py tests/mining/test_install.py
-git commit -m "feat(mining): build-from-pin fallback for Pearl wheels (Spec B v1 task 4)"
+git commit -m "feat(mining): repli de construction des wheels Pearl depuis la référence figée (spec B v1, tâche 4)"
 ```
 
 ---
 
-## Task 5: `_miner_loop_main.py` — the CPU mining loop subprocess entry point
+## Tâche 5 : `_miner_loop_main.py` — le point d'entrée du sous-processus de minage CPU
 
-**Files:**
-- Create: `src/diapason/mining/_miner_loop_main.py`
-- Test: `tests/mining/test_miner_loop.py`
+**Fichiers :**
+- Créer : `src/diapason/mining/_miner_loop_main.py`
+- Tester : `tests/mining/test_miner_loop.py`
 
-This is the *meaty* task. The miner-loop subprocess connects to `pearl-gateway` over JSON-RPC TCP, polls `getMiningInfo`, calls `pearl_mining.mine()`, and submits via `submitPlainProof`. Single file, no class hierarchy — it's just an event loop.
+C'est la tâche *consistante*. Le sous-processus de la boucle de minage se connecte à `pearl-gateway` en JSON-RPC sur TCP, interroge `getMiningInfo`, appelle `pearl_mining.mine()` et soumet via `submitPlainProof`. Un seul fichier, aucune hiérarchie de classes — c'est juste une boucle d'événements.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Étape 1 : écrire le test qui échoue**
 
-Create `tests/mining/test_miner_loop.py`:
+Crée `tests/mining/test_miner_loop.py` :
 
 ```python
-"""Tests for diapason.mining._miner_loop_main."""
+"""Tests de diapason.mining._miner_loop_main."""
 from __future__ import annotations
 
 import asyncio
@@ -445,7 +456,7 @@ import pytest
 
 @pytest.fixture
 def fake_mining_info_response():
-    """Mock getMiningInfo response — base64-encoded incomplete header + target."""
+    """Réponse getMiningInfo simulée — en-tête incomplet en base64 + cible."""
     return {
         "jsonrpc": "2.0",
         "id": 1,
@@ -466,7 +477,7 @@ def test_decode_mining_info_returns_header_and_target(fake_mining_info_response)
 
 
 def test_encode_plain_proof_round_trips():
-    """We can encode a PlainProof to base64 and the bytes are non-empty."""
+    """On encode une PlainProof en base64 et les octets ne sont pas vides."""
     from diapason.mining._miner_loop_main import _encode_plain_proof
 
     fake_proof = MagicMock()
@@ -476,7 +487,7 @@ def test_encode_plain_proof_round_trips():
 
 
 def test_jsonrpc_envelope_shape():
-    """The JSON-RPC envelope conforms to gateway's JSON_RPC_SCHEMA."""
+    """L'enveloppe JSON-RPC est conforme au JSON_RPC_SCHEMA de la passerelle."""
     from diapason.mining._miner_loop_main import _make_request
 
     req = _make_request("getMiningInfo", {}, request_id=42)
@@ -486,31 +497,31 @@ def test_jsonrpc_envelope_shape():
     assert req["params"] == {}
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Étape 2 : lancer les tests pour vérifier qu'ils échouent**
 
-Run: `uv run pytest tests/mining/test_miner_loop.py -v`
-Expected: FAIL — module does not exist.
+Lance : `uv run pytest tests/mining/test_miner_loop.py -v`
+Attendu : ÉCHEC — le module n'existe pas.
 
-- [ ] **Step 3: Implement the helpers**
+- [ ] **Étape 3 : implémenter les fonctions d'aide**
 
-Create `src/diapason/mining/_miner_loop_main.py`:
+Crée `src/diapason/mining/_miner_loop_main.py` :
 
 ```python
-"""CPU mining-loop subprocess entry point.
+"""Point d'entrée du sous-processus de la boucle de minage CPU.
 
-Run with:
+Se lance avec :
     python -m diapason.mining._miner_loop_main \
         --gateway-host 127.0.0.1 --gateway-port 8337 \
         --m 256 --n 128 --k 1024 --rank 32
 
-Connects to pearl-gateway, polls for work, runs pearl_mining.mine(),
-submits proofs back. Designed to be killed via SIGTERM by the parent
-provider; no graceful shutdown handshake — Pearl's gateway tolerates
-client disconnects cleanly.
+Se connecte à pearl-gateway, réclame du travail, lance pearl_mining.mine() et
+renvoie les preuves. Prévu pour être tué par SIGTERM depuis le fournisseur
+parent ; pas de poignée de main d'arrêt — la passerelle de Pearl encaisse
+proprement la déconnexion d'un client.
 
-This module is the subprocess; the parent OJ process never imports
-it directly (it spawns it via ``python -m``). That keeps the parent's
-import graph free of pearl_mining (which is an optional dependency).
+Ce module EST le sous-processus ; le processus OJ parent ne l'importe jamais
+directement (il le lance par ``python -m``). Cela garde le graphe d'import du
+parent libre de pearl_mining, qui est une dépendance optionnelle.
 """
 from __future__ import annotations
 
@@ -526,32 +537,32 @@ logger = logging.getLogger("diapason.mining.miner_loop")
 
 
 def _make_request(method: str, params: dict[str, Any], request_id: int) -> dict[str, Any]:
-    """Build a JSON-RPC 2.0 request envelope matching gateway's schema."""
+    """Construit une enveloppe de requête JSON-RPC 2.0 au schéma de la passerelle."""
     return {"jsonrpc": "2.0", "method": method, "params": params, "id": request_id}
 
 
 def _decode_mining_info(result: dict[str, Any]) -> tuple[bytes, int]:
-    """Decode getMiningInfo result into (incomplete_header_bytes, target)."""
+    """Décode le résultat de getMiningInfo en (incomplete_header_bytes, target)."""
     header_b64 = result["incomplete_header_bytes"]
     target = int(result["target"])
     return base64.b64decode(header_b64), target
 
 
 def _encode_plain_proof(plain_proof: Any) -> str:
-    """Serialize a PlainProof to base64 for submitPlainProof."""
+    """Sérialise une PlainProof en base64 pour submitPlainProof."""
     return base64.b64encode(plain_proof.serialize()).decode()
 
 
 async def _read_response(reader: asyncio.StreamReader) -> dict[str, Any]:
-    """Read one line of JSON-RPC response from the gateway socket."""
+    """Lit une ligne de réponse JSON-RPC sur la socket de la passerelle."""
     line = await reader.readline()
     if not line:
-        raise ConnectionError("gateway closed the connection")
+        raise ConnectionError("la passerelle a fermé la connexion")
     return json.loads(line)
 
 
 async def _send_request(writer: asyncio.StreamWriter, request: dict[str, Any]) -> None:
-    """Write one JSON-RPC request followed by newline."""
+    """Écrit une requête JSON-RPC suivie d'un saut de ligne."""
     writer.write(json.dumps(request).encode() + b"\n")
     await writer.drain()
 
@@ -567,18 +578,19 @@ async def _mine_one_round(
     k: int,
     rank: int,
 ) -> bool:
-    """Get work, mine, submit. Return True on accepted proof, False otherwise."""
-    # 1. Ask the gateway for work
+    """Prend du travail, mine, soumet. True si la preuve est acceptée, False sinon."""
+    # 1. Réclame du travail à la passerelle
     await _send_request(writer, _make_request("getMiningInfo", {}, request_id))
     info_response = await _read_response(reader)
     if "error" in info_response:
-        logger.warning("getMiningInfo error: %s", info_response["error"])
+        logger.warning("erreur getMiningInfo : %s", info_response["error"])
         return False
     header_bytes, target = _decode_mining_info(info_response["result"])
 
-    # 2. Convert header_bytes back into IncompleteBlockHeader and run mine().
-    #    Pearl's IncompleteBlockHeader exposes from_bytes() in py-pearl-mining;
-    #    if the API name differs, fix this on first integration test.
+    # 2. Reconvertit header_bytes en IncompleteBlockHeader et lance mine().
+    #    L'IncompleteBlockHeader de Pearl expose from_bytes() dans
+    #    py-pearl-mining ; si le nom de l'API diffère, corrige-le au premier
+    #    test d'intégration.
     header = pearl_mining_module.IncompleteBlockHeader.from_bytes(header_bytes)
     mining_config = _build_mining_config(pearl_mining_module, k=k, rank=rank)
 
@@ -586,7 +598,7 @@ async def _mine_one_round(
         m, n, k, header, mining_config, signal_range=None, wrong_jackpot_hash=False
     )
 
-    # 3. Submit the proof
+    # 3. Soumet la preuve
     submit_params = {
         "plain_proof": _encode_plain_proof(plain_proof),
         "mining_job": {
@@ -597,13 +609,13 @@ async def _mine_one_round(
     await _send_request(writer, _make_request("submitPlainProof", submit_params, request_id + 1))
     submit_response = await _read_response(reader)
     if "error" in submit_response:
-        logger.warning("submitPlainProof rejected: %s", submit_response["error"])
+        logger.warning("submitPlainProof rejeté : %s", submit_response["error"])
         return False
     return True
 
 
 def _build_mining_config(pearl_mining_module: Any, *, k: int, rank: int):
-    """Build the upstream MiningConfiguration with default patterns."""
+    """Construit la MiningConfiguration amont avec les motifs par défaut."""
     from ._constants import (
         CPU_PEARL_DEFAULT_COLS_PATTERN,
         CPU_PEARL_DEFAULT_ROWS_PATTERN,
@@ -642,12 +654,12 @@ async def _main_loop(args: argparse.Namespace) -> None:
                     k=args.k,
                     rank=args.rank,
                 )
-            except Exception:  # noqa: BLE001 — log and try again
-                logger.exception("mining round failed; retrying after backoff")
+            except Exception:  # noqa: BLE001 — journalise et réessaie
+                logger.exception("tour de minage échoué ; nouvelle tentative après pause")
                 await asyncio.sleep(1.0)
                 continue
             if accepted:
-                logger.info("share accepted")
+                logger.info("part acceptée")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -673,39 +685,39 @@ if __name__ == "__main__":
         sys.exit(0)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Étape 4 : lancer les tests pour vérifier qu'ils passent**
 
-Run: `uv run pytest tests/mining/test_miner_loop.py -v`
-Expected: PASS — three tests green.
+Lance : `uv run pytest tests/mining/test_miner_loop.py -v`
+Attendu : SUCCÈS — les trois tests au vert.
 
-- [ ] **Step 5: Lint**
+- [ ] **Étape 5 : lint**
 
-Run: `uv run ruff check src/diapason/mining/_miner_loop_main.py tests/mining/test_miner_loop.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/_miner_loop_main.py tests/mining/test_miner_loop.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 6: Commit**
+- [ ] **Étape 6 : committer**
 
 ```bash
 git add src/diapason/mining/_miner_loop_main.py tests/mining/test_miner_loop.py
-git commit -m "feat(mining): cpu miner-loop subprocess entry point (Spec B v1 task 5)"
+git commit -m "feat(mining): point d'entrée du sous-processus de minage CPU (spec B v1, tâche 5)"
 ```
 
 ---
 
-## Task 6: Subprocess launcher (`_pearl_subprocess.py`)
+## Tâche 6 : lanceur de sous-processus (`_pearl_subprocess.py`)
 
-**Files:**
-- Create: `src/diapason/mining/_pearl_subprocess.py`
-- Test: `tests/mining/test_pearl_subprocess.py`
+**Fichiers :**
+- Créer : `src/diapason/mining/_pearl_subprocess.py`
+- Tester : `tests/mining/test_pearl_subprocess.py`
 
-The launcher manages the *two* subprocesses — `pearl-gateway` and the miner-loop — as a unit. Lifecycle: `start()`, `stop()`, `is_running()`. No PID-file shenanigans here; we hold `Popen` objects in memory while the OJ process is alive.
+Le lanceur gère les *deux* sous-processus — `pearl-gateway` et la boucle de minage — comme un tout. Cycle de vie : `start()`, `stop()`, `is_running()`. Pas de bricolage de fichiers PID ici ; on garde les objets `Popen` en mémoire tant que le processus OJ est vivant.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Étape 1 : écrire le test qui échoue**
 
-Create `tests/mining/test_pearl_subprocess.py`:
+Crée `tests/mining/test_pearl_subprocess.py` :
 
 ```python
-"""Tests for diapason.mining._pearl_subprocess."""
+"""Tests de diapason.mining._pearl_subprocess."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -716,7 +728,7 @@ import pytest
 @pytest.fixture
 def fake_popen():
     p = MagicMock()
-    p.poll.return_value = None  # still running
+    p.poll.return_value = None  # tourne toujours
     p.pid = 12345
     return p
 
@@ -736,7 +748,7 @@ def test_launcher_start_spawns_two_processes(fake_popen, tmp_path):
             log_dir=tmp_path,
         )
         launcher.start(m=256, n=128, k=1024, rank=32)
-        assert mock_popen.call_count == 2  # gateway + miner-loop
+        assert mock_popen.call_count == 2  # passerelle + boucle de minage
 
 
 def test_launcher_stop_terminates_both(fake_popen, tmp_path):
@@ -762,7 +774,7 @@ def test_launcher_is_running_false_when_either_exited(fake_popen, tmp_path):
     from diapason.mining._pearl_subprocess import PearlSubprocessLauncher
 
     fake_dead = MagicMock()
-    fake_dead.poll.return_value = 1  # exited
+    fake_dead.poll.return_value = 1  # terminé
     fake_dead.pid = 12346
 
     with patch("subprocess.Popen", side_effect=[fake_popen, fake_dead]):
@@ -780,26 +792,27 @@ def test_launcher_is_running_false_when_either_exited(fake_popen, tmp_path):
         assert launcher.is_running() is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Étape 2 : lancer les tests pour vérifier qu'ils échouent**
 
-Run: `uv run pytest tests/mining/test_pearl_subprocess.py -v`
-Expected: FAIL — module does not exist.
+Lance : `uv run pytest tests/mining/test_pearl_subprocess.py -v`
+Attendu : ÉCHEC — le module n'existe pas.
 
-- [ ] **Step 3: Implement `PearlSubprocessLauncher`**
+- [ ] **Étape 3 : implémenter `PearlSubprocessLauncher`**
 
-Create `src/diapason/mining/_pearl_subprocess.py`:
+Crée `src/diapason/mining/_pearl_subprocess.py` :
 
 ```python
-"""Subprocess launcher for the cpu-pearl provider.
+"""Lanceur de sous-processus pour le fournisseur cpu-pearl.
 
-Manages two subprocesses:
-- ``pearl-gateway`` (Pearl's Python service), which talks to pearld and
-  brokers shares from the miner.
-- ``diapason.mining._miner_loop_main`` (this repo), which polls the gateway
-  and runs ``pearl_mining.mine()``.
+Gère deux sous-processus :
+- ``pearl-gateway`` (le service Python de Pearl), qui parle à pearld et sert
+  d'intermédiaire pour les parts du mineur.
+- ``diapason.mining._miner_loop_main`` (ce dépôt), qui interroge la passerelle
+  et lance ``pearl_mining.mine()``.
 
-Lifecycle is in-memory: while this object lives, both subprocesses live.
-The provider holds it; sidecar JSON records PIDs for crash recovery.
+Le cycle de vie est en mémoire : tant que cet objet vit, les deux
+sous-processus vivent. Le fournisseur le détient ; le JSON du sidecar note les
+PID pour la reprise après plantage.
 """
 from __future__ import annotations
 
@@ -848,8 +861,8 @@ class PearlSubprocessLauncher:
     def start(self, *, m: int, n: int, k: int, rank: int) -> None:
         env = self._build_gateway_env()
 
-        # Spawn gateway. ``pearl-gateway`` is the console-script entry point
-        # exposed by the pearl_gateway package's pyproject.toml.
+        # Lance la passerelle. ``pearl-gateway`` est le point d'entrée console
+        # qu'expose le pyproject.toml du paquet pearl_gateway.
         gateway_log = (self.log_dir / "pearl-gateway.log").open("a", buffering=1)
         gateway = subprocess.Popen(
             ["pearl-gateway"],
@@ -858,7 +871,7 @@ class PearlSubprocessLauncher:
             stderr=subprocess.STDOUT,
         )
 
-        # Spawn miner-loop pointed at the gateway.
+        # Lance la boucle de minage, pointée vers la passerelle.
         miner_log = (self.log_dir / "cpu-pearl-miner.log").open("a", buffering=1)
         miner_loop = subprocess.Popen(
             [
@@ -887,7 +900,7 @@ class PearlSubprocessLauncher:
     def stop(self) -> None:
         if self._handles is None:
             return
-        # Stop miner-loop first, then gateway.
+        # Arrête d'abord la boucle de minage, puis la passerelle.
         for proc, grace in (
             (self._handles.miner_loop, _MINER_LOOP_TERMINATE_GRACE_SECONDS),
             (self._handles.gateway, _GATEWAY_TERMINATE_GRACE_SECONDS),
@@ -925,90 +938,90 @@ class PearlSubprocessLauncher:
                 "PEARLD_RPC_USER": self.pearld_rpc_user,
                 "PEARLD_RPC_PASSWORD": self.pearld_rpc_password,
                 "PEARLD_MINING_ADDRESS": self.wallet_address,
-                # tell pearl-gateway to use TCP for miner RPC, matching what the
-                # miner-loop subprocess connects to.
+                # dit à pearl-gateway d'employer TCP pour le RPC du mineur,
+                # ce à quoi se connecte le sous-processus de la boucle.
                 "MINER_RPC_TRANSPORT": "tcp",
             }
         )
         return env
 ```
 
-> **Note on env var names:** The exact names pearl-gateway reads (`PEARL_GATEWAY_HOST`, `PEARL_GATEWAY_PORT`, etc.) come from `pearl/miner/pearl-gateway/src/pearl_gateway/config.py`. Verify on first integration: open that file, copy the actual `Field(env=...)` names into the `_build_gateway_env` dict above. If the names differ, this is a one-line fix per env var; the surrounding lifecycle is unaffected.
+> **Note sur les noms de variables d'environnement :** les noms exacts que lit pearl-gateway (`PEARL_GATEWAY_HOST`, `PEARL_GATEWAY_PORT`, etc.) viennent de `pearl/miner/pearl-gateway/src/pearl_gateway/config.py`. Vérifie-les à la première intégration : ouvre ce fichier et recopie les vrais noms `Field(env=...)` dans le dictionnaire `_build_gateway_env` ci-dessus. Si les noms diffèrent, c'est une correction d'une ligne par variable ; le cycle de vie autour n'est pas touché.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Étape 4 : lancer les tests pour vérifier qu'ils passent**
 
-Run: `uv run pytest tests/mining/test_pearl_subprocess.py -v`
-Expected: PASS — three tests green.
+Lance : `uv run pytest tests/mining/test_pearl_subprocess.py -v`
+Attendu : SUCCÈS — les trois tests au vert.
 
-- [ ] **Step 5: Lint**
+- [ ] **Étape 5 : lint**
 
-Run: `uv run ruff check src/diapason/mining/_pearl_subprocess.py tests/mining/test_pearl_subprocess.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/_pearl_subprocess.py tests/mining/test_pearl_subprocess.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 6: Commit**
+- [ ] **Étape 6 : committer**
 
 ```bash
 git add src/diapason/mining/_pearl_subprocess.py tests/mining/test_pearl_subprocess.py
-git commit -m "feat(mining): pearl subprocess launcher (Spec B v1 task 6)"
+git commit -m "feat(mining): lanceur de sous-processus Pearl (spec B v1, tâche 6)"
 ```
 
 ---
 
-## Task 7: Verify env var names against pearl-gateway config
+## Tâche 7 : vérifier les noms de variables d'environnement contre la configuration de pearl-gateway
 
-**Files:**
-- Modify: `src/diapason/mining/_pearl_subprocess.py`
+**Fichiers :**
+- Modifier : `src/diapason/mining/_pearl_subprocess.py`
 
-This is a one-shot research-and-fix task to make Task 6's env names match Pearl's actual config.
+Tâche ponctuelle de recherche-et-correction, pour que les noms devinés à la tâche 6 correspondent à la vraie configuration de Pearl.
 
-- [ ] **Step 1: Locate pearl-gateway config**
+- [ ] **Étape 1 : localiser la configuration de pearl-gateway**
 
-Run: `find ~/.diapason/cache/pearl/miner/pearl-gateway -name config.py -path '*pearl_gateway*' 2>/dev/null || find / -name config.py -path '*pearl_gateway*' 2>/dev/null | head -3`
+Lance : `find ~/.diapason/cache/pearl/miner/pearl-gateway -name config.py -path '*pearl_gateway*' 2>/dev/null || find / -name config.py -path '*pearl_gateway*' 2>/dev/null | head -3`
 
-Expected: `pearl-gateway/src/pearl_gateway/config.py` (path depends on where Pearl was cloned). If the file isn't on disk yet, run `python -m diapason.mining._install` (added in Task 4) or clone Pearl manually first.
+Attendu : `pearl-gateway/src/pearl_gateway/config.py` (le chemin dépend de l'endroit où Pearl a été cloné). Si le fichier n'est pas encore sur le disque, lance `python -m diapason.mining._install` (ajouté à la tâche 4), ou clone Pearl à la main d'abord.
 
-- [ ] **Step 2: Read the config file**
+- [ ] **Étape 2 : lire le fichier de configuration**
 
-Look for `Field(env=...)` annotations on `MinerSettings` / `PearlGatewayConfig`. List every env var name it accepts.
+Cherche les annotations `Field(env=...)` sur `MinerSettings` / `PearlGatewayConfig`. Relève tous les noms de variables d'environnement qu'il accepte.
 
-Run: `grep -nE 'env\s*=' <path-to-pearl-gateway/config.py> | head -20`
+Lance : `grep -nE 'env\s*=' <chemin-vers-pearl-gateway/config.py> | head -20`
 
-Expected output: lines like `Field(default="...", env="PEARL_GATEWAY_HOST")` showing the canonical names.
+Sortie attendue : des lignes comme `Field(default="...", env="PEARL_GATEWAY_HOST")`, qui montrent les noms canoniques.
 
-- [ ] **Step 3: Replace the env-var names in `_build_gateway_env`**
+- [ ] **Étape 3 : remplacer les noms de variables dans `_build_gateway_env`**
 
-Open `src/diapason/mining/_pearl_subprocess.py` and replace each guessed env name with the actual one. Keep the dict structure; only the keys change.
+Ouvre `src/diapason/mining/_pearl_subprocess.py` et remplace chaque nom deviné par le vrai. Garde la structure du dictionnaire ; seules les clés changent.
 
-If a name we expected is missing (e.g., pearl-gateway doesn't have a separate `*_METRICS_PORT`), drop the line rather than carry a no-op env var.
+Si un nom attendu n'existe pas (par exemple si pearl-gateway n'a pas de `*_METRICS_PORT` séparé), supprime la ligne plutôt que de traîner une variable sans effet.
 
-- [ ] **Step 4: Re-run tests**
+- [ ] **Étape 4 : relancer les tests**
 
-Run: `uv run pytest tests/mining/test_pearl_subprocess.py -v`
-Expected: PASS — same three tests, no regressions (the test mocks Popen, so env-var-name changes don't affect them).
+Lance : `uv run pytest tests/mining/test_pearl_subprocess.py -v`
+Attendu : SUCCÈS — les trois mêmes tests, aucune régression (le test simule Popen, donc un changement de nom de variable ne l'atteint pas).
 
-- [ ] **Step 5: Commit**
+- [ ] **Étape 5 : committer**
 
 ```bash
 git add src/diapason/mining/_pearl_subprocess.py
-git commit -m "fix(mining): align env var names with pearl-gateway config (Spec B v1 task 7)"
+git commit -m "fix(mining): aligner les noms de variables sur la configuration de pearl-gateway (spec B v1, tâche 7)"
 ```
 
 ---
 
-## Task 8: `CpuPearlProvider` — capability detection
+## Tâche 8 : `CpuPearlProvider` — détection de capacité
 
-**Files:**
-- Create: `src/diapason/mining/cpu_pearl.py`
-- Test: `tests/mining/test_cpu_pearl.py`
+**Fichiers :**
+- Créer : `src/diapason/mining/cpu_pearl.py`
+- Tester : `tests/mining/test_cpu_pearl.py`
 
-Implements the `MiningProvider.detect()` classmethod from Spec A's ABC. This is the first thing `mine doctor` and `mine init` ask. Engine-independent: returns supported on any darwin/linux host with Pearl packages installed.
+Implémente la méthode de classe `MiningProvider.detect()` de l'ABC de la spec A. C'est la première chose que demandent `mine doctor` et `mine init`. Indépendant du moteur : renvoie « pris en charge » sur tout hôte darwin/linux où les paquets Pearl sont installés.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Étape 1 : écrire les tests qui échouent**
 
-Create `tests/mining/test_cpu_pearl.py`:
+Crée `tests/mining/test_cpu_pearl.py` :
 
 ```python
-"""Tests for diapason.mining.cpu_pearl.CpuPearlProvider."""
+"""Tests de diapason.mining.cpu_pearl.CpuPearlProvider."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -1018,7 +1031,7 @@ import pytest
 
 @pytest.fixture
 def darwin_apple_hw():
-    """A HardwareInfo describing an Apple Silicon Mac."""
+    """Un HardwareInfo décrivant un Mac Apple Silicon."""
     from diapason.mining._stubs import HardwareInfo, GpuInfo
 
     return HardwareInfo(
@@ -1030,7 +1043,7 @@ def darwin_apple_hw():
 
 @pytest.fixture
 def linux_nvidia_hw():
-    """A HardwareInfo describing an H100 box."""
+    """Un HardwareInfo décrivant une machine H100."""
     from diapason.mining._stubs import HardwareInfo, GpuInfo
 
     return HardwareInfo(
@@ -1042,7 +1055,7 @@ def linux_nvidia_hw():
 
 @pytest.fixture
 def windows_hw():
-    """A HardwareInfo describing a Windows host (unsupported in v1)."""
+    """Un HardwareInfo décrivant un hôte Windows (non pris en charge en v1)."""
     from diapason.mining._stubs import HardwareInfo
 
     return HardwareInfo(platform="win32", cpu_arch="x86_64", gpu=None)
@@ -1060,7 +1073,7 @@ def test_detect_supported_on_apple_silicon(darwin_apple_hw):
 
 
 def test_detect_supported_on_linux_too(linux_nvidia_hw):
-    """v1 cpu-pearl is engine-independent and platform-loose."""
+    """La v1 de cpu-pearl est indépendante du moteur et peu exigeante sur la plateforme."""
     from diapason.mining.cpu_pearl import CpuPearlProvider
 
     with patch(
@@ -1094,24 +1107,26 @@ def test_detect_unsupported_when_pearl_not_installed(darwin_apple_hw):
         assert "mining-pearl-cpu" in cap.reason
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Étape 2 : lancer les tests pour vérifier qu'ils échouent**
 
-Run: `uv run pytest tests/mining/test_cpu_pearl.py -v`
-Expected: FAIL — `CpuPearlProvider` not found.
+Lance : `uv run pytest tests/mining/test_cpu_pearl.py -v`
+Attendu : ÉCHEC — `CpuPearlProvider` introuvable.
 
-- [ ] **Step 3: Implement the provider's `detect`**
+- [ ] **Étape 3 : implémenter le `detect` du fournisseur**
 
-Create `src/diapason/mining/cpu_pearl.py`:
+Crée `src/diapason/mining/cpu_pearl.py` :
 
 ```python
-"""CPU-based Pearl mining provider (decoupled from inference).
+"""Fournisseur de minage Pearl sur CPU (découplé de l'inférence).
 
-Spec B v1: wraps Pearl's pure-Rust ``mine()`` function via py-pearl-mining
-and runs Pearl's pearl-gateway as a sibling subprocess. Works on any host
-where py-pearl-mining builds — verified on macOS arm64 (M2 Max) in Spec B.
+Spec B v1 : enveloppe la fonction ``mine()`` pure Rust de Pearl via
+py-pearl-mining et lance le pearl-gateway de Pearl comme sous-processus frère.
+Marche sur tout hôte où py-pearl-mining se construit — vérifié sur macOS
+arm64 (M2 Max) dans la spec B.
 
-Engine-independent: this provider does not plug into the user's inference
-stack. The user keeps using whatever engine they want; mining runs alongside.
+Indépendant du moteur : ce fournisseur ne se branche pas sur la pile
+d'inférence de l'utilisateur. L'utilisateur garde le moteur qu'il veut ; le
+minage tourne à côté.
 """
 from __future__ import annotations
 
@@ -1124,55 +1139,56 @@ class CpuPearlProvider(MiningProvider):
 
     @classmethod
     def detect(cls, hw: HardwareInfo, engine_id: str, model: str) -> MiningCapabilities:
-        # v1 platform gate: only darwin and linux. Windows requires more
-        # investigation (Pearl's miner Taskfile excludes Windows from the
-        # cpu-mining install path even though the algorithm itself is portable).
+        # Verrou de plateforme v1 : darwin et linux seulement. Windows demande
+        # plus d'enquête (le Taskfile du mineur de Pearl écarte Windows du
+        # chemin d'installation du minage CPU, même si l'algorithme lui-même
+        # est portable).
         if hw.platform not in {"darwin", "linux"}:
             return MiningCapabilities(
                 supported=False,
-                reason=f"v1 cpu-pearl supports darwin/linux only; this host is '{hw.platform}'",
+                reason=f"la v1 de cpu-pearl ne gère que darwin/linux ; cet hôte est '{hw.platform}'",
             )
         if not _install.pearl_packages_available():
             return MiningCapabilities(
                 supported=False,
-                reason=f"Pearl Python packages not installed — {_install.install_hint()}",
+                reason=f"paquets Python Pearl non installés — {_install.install_hint()}",
             )
-        # No engine_id check: cpu-pearl is decoupled from inference.
-        # Hashrate estimate is deferred to a one-shot calibration during
-        # `mine init` (Task 9 lifecycle integration).
+        # Pas de contrôle d'engine_id : cpu-pearl est découplé de l'inférence.
+        # L'estimation du taux de hachage est reportée à un étalonnage unique
+        # pendant `mine init` (intégration du cycle de vie, tâche 9).
         return MiningCapabilities(supported=True)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Étape 4 : lancer les tests pour vérifier qu'ils passent**
 
-Run: `uv run pytest tests/mining/test_cpu_pearl.py -v`
-Expected: PASS — four tests green.
+Lance : `uv run pytest tests/mining/test_cpu_pearl.py -v`
+Attendu : SUCCÈS — les quatre tests au vert.
 
-- [ ] **Step 5: Lint**
+- [ ] **Étape 5 : lint**
 
-Run: `uv run ruff check src/diapason/mining/cpu_pearl.py tests/mining/test_cpu_pearl.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/cpu_pearl.py tests/mining/test_cpu_pearl.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 6: Commit**
+- [ ] **Étape 6 : committer**
 
 ```bash
 git add src/diapason/mining/cpu_pearl.py tests/mining/test_cpu_pearl.py
-git commit -m "feat(mining): cpu-pearl provider capability detection (Spec B v1 task 8)"
+git commit -m "feat(mining): détection de capacité du fournisseur cpu-pearl (spec B v1, tâche 8)"
 ```
 
 ---
 
-## Task 9: `CpuPearlProvider` — start/stop/is_running/stats
+## Tâche 9 : `CpuPearlProvider` — start/stop/is_running/stats
 
-**Files:**
-- Modify: `src/diapason/mining/cpu_pearl.py`
-- Modify: `tests/mining/test_cpu_pearl.py`
+**Fichiers :**
+- Modifier : `src/diapason/mining/cpu_pearl.py`
+- Modifier : `tests/mining/test_cpu_pearl.py`
 
-Wire the provider lifecycle methods to the subprocess launcher and Spec A's sidecar / telemetry adapter.
+Relie les méthodes de cycle de vie du fournisseur au lanceur de sous-processus, ainsi qu'au sidecar et à l'adaptateur de télémétrie de la spec A.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Étape 1 : écrire les tests qui échouent**
 
-Append to `tests/mining/test_cpu_pearl.py`:
+Ajoute à la fin de `tests/mining/test_cpu_pearl.py` :
 
 ```python
 def test_start_writes_sidecar_and_returns_running(darwin_apple_hw, tmp_path, monkeypatch):
@@ -1219,24 +1235,24 @@ def test_start_writes_sidecar_and_returns_running(darwin_apple_hw, tmp_path, mon
         assert '"provider": "cpu-pearl"' in sidecar_text
         assert "11111" in sidecar_text
         assert "22222" in sidecar_text
-        # secret must NOT appear in sidecar
+        # le secret ne doit PAS apparaître dans le sidecar
         assert "secret" not in sidecar_text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Étape 2 : lancer le test pour vérifier qu'il échoue**
 
-Run: `uv run pytest tests/mining/test_cpu_pearl.py::test_start_writes_sidecar_and_returns_running -v`
-Expected: FAIL — `start`, `is_running` not implemented.
+Lance : `uv run pytest tests/mining/test_cpu_pearl.py::test_start_writes_sidecar_and_returns_running -v`
+Attendu : ÉCHEC — `start` et `is_running` ne sont pas implémentés.
 
-- [ ] **Step 3: Implement lifecycle methods**
+- [ ] **Étape 3 : implémenter les méthodes de cycle de vie**
 
-Replace `src/diapason/mining/cpu_pearl.py` with the full implementation:
+Remplace `src/diapason/mining/cpu_pearl.py` par l'implémentation complète :
 
 ```python
-"""CPU-based Pearl mining provider (decoupled from inference).
+"""Fournisseur de minage Pearl sur CPU (découplé de l'inférence).
 
-Spec B v1: wraps Pearl's pure-Rust ``mine()`` function via py-pearl-mining
-and runs Pearl's pearl-gateway as a sibling subprocess.
+Spec B v1 : enveloppe la fonction ``mine()`` pure Rust de Pearl via
+py-pearl-mining et lance le pearl-gateway de Pearl comme sous-processus frère.
 """
 from __future__ import annotations
 
@@ -1279,12 +1295,12 @@ class CpuPearlProvider(MiningProvider):
         if hw.platform not in {"darwin", "linux"}:
             return MiningCapabilities(
                 supported=False,
-                reason=f"v1 cpu-pearl supports darwin/linux only; this host is '{hw.platform}'",
+                reason=f"la v1 de cpu-pearl ne gère que darwin/linux ; cet hôte est '{hw.platform}'",
             )
         if not _install.pearl_packages_available():
             return MiningCapabilities(
                 supported=False,
-                reason=f"Pearl Python packages not installed — {_install.install_hint()}",
+                reason=f"paquets Python Pearl non installés — {_install.install_hint()}",
             )
         return MiningCapabilities(supported=True)
 
@@ -1330,9 +1346,9 @@ class CpuPearlProvider(MiningProvider):
         if not self.is_running() or self._launcher is None:
             return MiningStats(provider_id=self.provider_id)
 
-        # Spec A's gateway-metrics adapter handles the parsing. Read once,
-        # parse, return. Reuse the same adapter the vllm-pearl provider uses;
-        # the metric names are identical.
+        # L'adaptateur de métriques de passerelle de la spec A fait l'analyse.
+        # Lire une fois, analyser, renvoyer. On réutilise l'adaptateur du
+        # fournisseur vllm-pearl ; les noms de métriques sont identiques.
         from ._gateway_metrics import parse_gateway_metrics
 
         try:
@@ -1346,7 +1362,7 @@ class CpuPearlProvider(MiningProvider):
         except Exception as e:  # noqa: BLE001
             return MiningStats(
                 provider_id=self.provider_id,
-                last_error=f"gateway metrics unreachable: {e}",
+                last_error=f"métriques de la passerelle injoignables : {e}",
             )
         return parse_gateway_metrics(text, provider_id=self.provider_id)
 
@@ -1375,45 +1391,45 @@ class CpuPearlProvider(MiningProvider):
         sp.write_text(json.dumps(sidecar, indent=2))
 ```
 
-- [ ] **Step 4: Run tests**
+- [ ] **Étape 4 : lancer les tests**
 
-Run: `uv run pytest tests/mining/test_cpu_pearl.py -v`
-Expected: PASS — five tests green.
+Lance : `uv run pytest tests/mining/test_cpu_pearl.py -v`
+Attendu : SUCCÈS — les cinq tests au vert.
 
-- [ ] **Step 5: Lint**
+- [ ] **Étape 5 : lint**
 
-Run: `uv run ruff check src/diapason/mining/cpu_pearl.py`
-Expected: no errors.
+Lance : `uv run ruff check src/diapason/mining/cpu_pearl.py`
+Attendu : aucune erreur.
 
-- [ ] **Step 6: Commit**
+- [ ] **Étape 6 : committer**
 
 ```bash
 git add src/diapason/mining/cpu_pearl.py tests/mining/test_cpu_pearl.py
-git commit -m "feat(mining): cpu-pearl provider lifecycle (Spec B v1 task 9)"
+git commit -m "feat(mining): cycle de vie du fournisseur cpu-pearl (spec B v1, tâche 9)"
 ```
 
 ---
 
-## Task 10: Register `CpuPearlProvider` in `MinerRegistry`
+## Tâche 10 : enregistrer `CpuPearlProvider` dans `MinerRegistry`
 
-**Files:**
-- Modify: `src/diapason/mining/__init__.py`
+**Fichiers :**
+- Modifier : `src/diapason/mining/__init__.py`
 
-`MinerRegistry` exists from Spec A; we just need to call `register("cpu-pearl")` at module-load time and survive the autouse `clear_registries` fixture in `tests/conftest.py` via the `ensure_registered()` pattern.
+`MinerRegistry` existe depuis la spec A ; il suffit d'appeler `register("cpu-pearl")` au chargement du module et de survivre à la fixture autouse `clear_registries` de `tests/conftest.py` grâce au motif `ensure_registered()`.
 
-- [ ] **Step 1: Read Spec A's existing `__init__.py`**
+- [ ] **Étape 1 : lire le `__init__.py` existant de la spec A**
 
-Run: `cat src/diapason/mining/__init__.py`
+Lance : `cat src/diapason/mining/__init__.py`
 
-Expected: file already imports `vllm_pearl` and exposes `ensure_registered`. We mirror the same pattern for cpu_pearl.
+Attendu : le fichier importe déjà `vllm_pearl` et expose `ensure_registered`. On calque le même motif pour cpu_pearl.
 
-- [ ] **Step 2: Add cpu_pearl registration**
+- [ ] **Étape 2 : ajouter l'enregistrement de cpu_pearl**
 
-Append to `src/diapason/mining/__init__.py` (or modify if Spec A already defined `ensure_registered`):
+Ajoute à la fin de `src/diapason/mining/__init__.py` (ou modifie, si la spec A a déjà défini `ensure_registered`) :
 
 ```python
 def _register_cpu_pearl() -> None:
-    """Register CpuPearlProvider in MinerRegistry. Idempotent."""
+    """Enregistre CpuPearlProvider dans MinerRegistry. Idempotent."""
     from diapason.core.registry import MinerRegistry  # type: ignore
 
     if MinerRegistry.contains("cpu-pearl"):
@@ -1421,235 +1437,247 @@ def _register_cpu_pearl() -> None:
     try:
         from .cpu_pearl import CpuPearlProvider
     except ImportError:
-        # py-pearl-mining etc. not installed — that's fine, the provider
-        # only registers when the optional extra is in. detect() will
-        # surface a clear "install with --extra mining-pearl-cpu" message.
+        # py-pearl-mining et consorts ne sont pas installés — ce n'est pas
+        # grave, le fournisseur ne s'enregistre que si l'extra optionnel est
+        # présent. detect() affichera un message clair disant d'installer
+        # avec --extra mining-pearl-cpu.
         return
     MinerRegistry.register("cpu-pearl")(CpuPearlProvider)
 
 
-# Call at import time so the registry is populated as soon as diapason.mining
-# is imported. The conftest autouse fixture clears registries between tests; we
-# rely on _register_cpu_pearl being called again from `ensure_registered`.
+# Appelé à l'import pour que le registre soit peuplé dès que diapason.mining
+# est importé. La fixture autouse de conftest vide les registres entre les
+# tests ; on compte sur le rappel de _register_cpu_pearl depuis
+# `ensure_registered`.
 _register_cpu_pearl()
 
 
 def ensure_registered() -> None:
-    """Re-register all mining providers — used by tests that clear the registry."""
-    _register_vllm_pearl()  # added by Spec A
+    """Réenregistre tous les fournisseurs de minage — pour les tests qui vident le registre."""
+    _register_vllm_pearl()  # ajouté par la spec A
     _register_cpu_pearl()
 ```
 
-- [ ] **Step 3: Run all mining tests**
+- [ ] **Étape 3 : lancer tous les tests de minage**
 
-Run: `uv run pytest tests/mining/ -v`
-Expected: PASS — every test from this plan plus Spec A's tests still green.
+Lance : `uv run pytest tests/mining/ -v`
+Attendu : SUCCÈS — tous les tests de ce plan, plus ceux de la spec A, toujours au vert.
 
-- [ ] **Step 4: Run a broader test sweep to catch regressions**
+- [ ] **Étape 4 : passer un balayage plus large pour attraper les régressions**
 
-Run: `uv run pytest tests/ -v --co -q | tail -30; uv run pytest tests/ -x -q 2>&1 | tail -30`
-Expected: same number of passing tests as before this task.
+Lance : `uv run pytest tests/ -v --co -q | tail -30; uv run pytest tests/ -x -q 2>&1 | tail -30`
+Attendu : le même nombre de tests réussis qu'avant cette tâche.
 
-- [ ] **Step 5: Commit**
+- [ ] **Étape 5 : committer**
 
 ```bash
 git add src/diapason/mining/__init__.py
-git commit -m "feat(mining): register cpu-pearl provider (Spec B v1 task 10)"
+git commit -m "feat(mining): enregistrer le fournisseur cpu-pearl (spec B v1, tâche 10)"
 ```
 
 ---
 
-## Task 11: User-facing documentation
+## Tâche 11 : documentation destinée à l'utilisateur
 
-**Files:**
-- Create: `docs/user-guide/mining-apple-silicon.md`
+**Fichiers :**
+- Créer : `docs/user-guide/mining-apple-silicon.md`
 
-The honest user guide. Set expectations correctly; don't oversell hashrate.
+Le guide honnête. Cale les attentes au bon niveau ; ne survends pas le taux de hachage.
 
-- [ ] **Step 1: Write the doc**
+- [ ] **Étape 1 : écrire le document**
 
-Create `docs/user-guide/mining-apple-silicon.md`:
+Crée `docs/user-guide/mining-apple-silicon.md` :
 
 ````markdown
-# Mining Pearl on Apple Silicon (and other CPU hosts)
+# Miner Pearl sur Apple Silicon (et autres hôtes CPU)
 
-Diapason can mine the [Pearl](https://github.com/pearl-research-labs/pearl) chain
-on Apple Silicon Macs (M1/M2/M3/M4) using the `cpu-pearl` provider. **This is
-v1**: decoupled CPU mining. Your existing local LLM workflow (Ollama, MLX-LM,
-llama.cpp, vLLM) is untouched; mining runs in the background as a separate
-process.
+Diapason peut miner la chaîne [Pearl](https://github.com/pearl-research-labs/pearl)
+sur les Mac Apple Silicon (M1/M2/M3/M4) grâce au fournisseur `cpu-pearl`. **C'est
+la v1** : du minage CPU découplé. Ton flux de travail LLM local habituel (Ollama,
+MLX-LM, llama.cpp, vLLM) n'est pas touché ; le minage tourne en arrière-plan,
+dans un processus séparé.
 
-## Honest expectations
+## Des attentes honnêtes
 
-**Hashrate on Apple Silicon CPU is far below what an H100 produces with
-Pearl's `vllm-miner`.** A rough rule of thumb (subject to network difficulty):
+**Le taux de hachage d'un CPU Apple Silicon est très loin de ce que produit une
+H100 avec le `vllm-miner` de Pearl.** Un ordre de grandeur approximatif, qui
+dépend de la difficulté du réseau :
 
-- M2 Max / M4 Max: ≪ 1 share per second at typical mainnet difficulty
-- H100 with `vllm-miner`: meaningfully higher, plus the mining work is
-  amortized over real LLM inference
+- M2 Max / M4 Max : ≪ 1 part par seconde à la difficulté habituelle du réseau principal
+- H100 avec `vllm-miner` : nettement plus, et le travail de minage est amorti
+  sur de vraies inférences LLM
 
-If you want to mine for yield, this isn't the path. If you want to participate
-in the network from the hardware you own, with no special hardware purchase,
-this is the path.
+Si tu veux miner pour le rendement, ce n'est pas le bon chemin. Si tu veux
+participer au réseau avec le matériel que tu possèdes déjà, sans rien acheter de
+spécial, c'est celui-là.
 
-A future v2 will add Apple-GPU acceleration via PyTorch MPS or a custom MLX
-plugin. v3 may add a native Metal kernel. **Neither is shipped today.**
+Une v2 ajoutera l'accélération par le GPU Apple, via PyTorch MPS ou un greffon
+MLX maison. Une v3 pourrait ajouter un noyau Metal natif. **Ni l'une ni l'autre
+n'est livrée aujourd'hui.**
 
-## Prerequisites
+## Prérequis
 
-- macOS arm64 (M1, M2, M3, M4) — or Linux x86_64 / aarch64
-- Python 3.12 (`brew install python@3.12` or use `uv venv --python 3.12`)
-- Rust toolchain (`brew install rust` or `curl https://sh.rustup.rs -sSf | sh`)
-- Your own running [`pearld`](https://github.com/pearl-research-labs/pearl#node)
-  node, RPC reachable on `http://localhost:44107`
-- A Pearl Taproot wallet address from `oyster` (Pearl's wallet CLI)
-- ~1 GB free disk for the Pearl source clone and build artifacts
+- macOS arm64 (M1, M2, M3, M4) — ou Linux x86_64 / aarch64
+- Python 3.12 (`brew install python@3.12`, ou `uv venv --python 3.12`)
+- La chaîne d'outils Rust (`brew install rust`, ou `curl https://sh.rustup.rs -sSf | sh`)
+- Ton propre nœud [`pearld`](https://github.com/pearl-research-labs/pearl#node)
+  en marche, RPC joignable sur `http://localhost:44107`
+- Une adresse de portefeuille Pearl Taproot, obtenue avec `oyster` (la CLI de
+  portefeuille de Pearl)
+- ~1 Go de disque libre pour le clone des sources Pearl et les artefacts de
+  construction
 
-## Install
+## Installer
 
 ```bash
-# from your Diapason repo
+# depuis ton dépôt Diapason
 uv sync --extra mining-pearl-cpu
 ```
 
-If Pearl wheels are not yet on PyPI (still true as of 2026-05-05), `uv sync`
-will fail because none of the packages exist there. Until publication, build
-locally:
+Si les wheels Pearl ne sont pas encore sur PyPI (toujours vrai au 5 mai 2026),
+`uv sync` échouera parce qu'aucun des paquets n'y existe. En attendant la
+publication, construis en local :
 
 ```bash
-diapason mine init    # OJ will detect the missing wheels and offer to build
-                    # via the build-from-pin path; takes ~3-5 minutes on
-                    # first run, mostly compiling Rust
+diapason mine init    # OJ détectera les wheels manquantes et proposera de
+                    # construire depuis la référence figée ; compte 3 à
+                    # 5 minutes au premier lancement, surtout de la
+                    # compilation Rust
 ```
 
-`mine init` will:
-1. Clone Pearl at the version OJ has tested against
-2. Run `maturin build --release` for `py-pearl-mining`
-3. Install the resulting wheel + the `miner-base`, `pearl-gateway` packages
-4. Walk you through wallet address / pearld RPC config
-5. Run a calibration to estimate your share-per-hour rate
+`mine init` va :
+1. Cloner Pearl à la version contre laquelle OJ a été testé
+2. Lancer `maturin build --release` pour `py-pearl-mining`
+3. Installer la wheel produite, plus les paquets `miner-base` et `pearl-gateway`
+4. T'accompagner dans la configuration de l'adresse de portefeuille et du RPC pearld
+5. Lancer un étalonnage pour estimer ton nombre de parts par heure
 
-## Run
+## Lancer
 
 ```bash
-# start mining
+# démarrer le minage
 diapason mine start
 
-# check live status
+# voir l'état en direct
 diapason mine status
 
-# capability matrix (great when something goes wrong)
+# matrice des capacités (précieuse quand quelque chose cloche)
 diapason mine doctor
 
-# stop mining
+# arrêter le minage
 diapason mine stop
 
-# tail logs
+# suivre les journaux
 diapason mine logs -f
 ```
 
-## Reading `mine doctor`
+## Lire `mine doctor`
 
-Each row is one check. `✓` means the check passed; `✗` shows the actionable fix.
+Chaque ligne est un contrôle. `✓` veut dire qu'il est passé ; `✗` montre la
+correction à faire.
 
 ```
 $ diapason mine doctor
-Hardware
-  GPU vendor          apple                            ✓
-  Apple chip          M2 Max                           ✓
-Pearl install
-  py-pearl-mining     0.1.0 (cp312-abi3-macos-arm64)   ✓
-  miner-base          0.1.0                            ✓
-  pearl-gateway       0.1.0                            ✓
-Pearl node
-  RPC                 http://localhost:44107           ✓
-  Block height        442107 (synced)                  ✓
-Wallet
-  Address format      prl1q...                         ✓
-Provider capability
-  cpu-pearl           SUPPORTED  (calibrated 0.X share/h on M2 Max)
+Matériel
+  Fabricant du GPU     apple                            ✓
+  Puce Apple           M2 Max                           ✓
+Installation Pearl
+  py-pearl-mining      0.1.0 (cp312-abi3-macos-arm64)   ✓
+  miner-base           0.1.0                            ✓
+  pearl-gateway        0.1.0                            ✓
+Nœud Pearl
+  RPC                  http://localhost:44107           ✓
+  Hauteur de bloc      442107 (synchronisé)             ✓
+Portefeuille
+  Format d'adresse     prl1q...                         ✓
+Capacité du fournisseur
+  cpu-pearl            PRIS EN CHARGE  (étalonné à 0,X part/h sur M2 Max)
 Notes
-  - This is decoupled mining: your normal LLM inference is unaffected
-  - Hashrate is far below H100 mining; see this doc above
-  - Metal-accelerated mining: planned for v2; not available yet
+  - C'est du minage découplé : ton inférence LLM habituelle n'est pas touchée
+  - Le taux de hachage est très loin de celui d'une H100 ; voir plus haut
+  - Minage accéléré par Metal : prévu pour la v2, pas encore disponible
 Session
-  Sidecar             absent (not running)
+  Sidecar              absent (à l'arrêt)
 ```
 
-## Limitations
+## Limites
 
-- **Windows is not supported in v1.** Pearl's pure-Rust miner builds on
-  Windows in principle but the cross-platform install path is untested. Use
-  WSL2 if you must.
-- **No coupling to inference yet.** v1 is a separate process; your CPU does
-  mining, your GPU does inference. They don't share work. v2 changes this.
-- **No PyTorch-MPS yet.** v1 stays on the CPU path. v2 will move the math
-  to MPS for Apple-GPU acceleration.
-- **No multi-host pool.** Solo mining only. The pool work is a separate spec
+- **Windows n'est pas pris en charge en v1.** Le mineur pur Rust de Pearl se
+  construit sur Windows en principe, mais le chemin d'installation
+  multiplateforme n'est pas testé. Passe par WSL2 s'il le faut.
+- **Aucun couplage à l'inférence pour l'instant.** La v1 est un processus
+  séparé : ton CPU mine, ton GPU fait l'inférence. Ils ne partagent pas le
+  travail. La v2 change cela.
+- **Pas encore de PyTorch-MPS.** La v1 reste sur le chemin CPU. La v2 déplacera
+  les calculs vers MPS pour accélérer avec le GPU Apple.
+- **Pas de pool multi-machines.** Minage solo seulement. Le travail sur les
+  pools est une spec à part
   ([Spec A §8.5](../design/2026-05-05-vllm-pearl-mining-integration-design.md)).
 
-## Troubleshooting
+## Dépannage
 
-| Symptom | Likely cause | Fix |
+| Symptôme | Cause probable | Correction |
 |---|---|---|
-| `mine doctor` says `Pearl Python packages not installed` | Wheels not built yet | Run `diapason mine init` |
-| `pearl-gateway` log shows `connection refused` to `http://localhost:44107` | `pearld` not running | Start `pearld` per Pearl's README |
-| `mine status` shows `last_error: gateway metrics unreachable` | `pearl-gateway` crashed | Check `~/.diapason/logs/mining/pearl-gateway.log` |
-| Build fails with `error: linker 'cc' not found` | Xcode CLT not installed | `xcode-select --install` |
-| `maturin build` complains about `tikv-jemallocator` | macOS SDK too old | Update macOS / Xcode |
+| `mine doctor` dit `paquets Python Pearl non installés` | Les wheels ne sont pas encore construites | Lance `diapason mine init` |
+| Le journal de `pearl-gateway` montre `connection refused` vers `http://localhost:44107` | `pearld` ne tourne pas | Démarre `pearld` selon le README de Pearl |
+| `mine status` montre `last_error: métriques de la passerelle injoignables` | `pearl-gateway` a planté | Regarde `~/.diapason/logs/mining/pearl-gateway.log` |
+| La construction échoue avec `error: linker 'cc' not found` | Les outils en ligne de commande Xcode ne sont pas installés | `xcode-select --install` |
+| `maturin build` se plaint de `tikv-jemallocator` | SDK macOS trop ancien | Mets macOS / Xcode à jour |
 
-For anything not on this list, capture `~/.diapason/logs/mining/` and open
-an issue at https://github.com/carlitoetienne01-spec/Diapason/issues.
+Pour tout ce qui n'est pas dans cette liste, récupère `~/.diapason/logs/mining/`
+et ouvre un ticket sur https://github.com/carlitoetienne01-spec/Diapason/issues.
 
-## What changes in v2 / v3
+## Ce qui change en v2 / v3
 
-- **v2 (months):** PyTorch-MPS acceleration plus optional plugin into MLX-LM
-  or `llama-cpp-python`. Same `cpu-pearl` config; users opt in via a new
-  `apple-mps-pearl` provider when v2 ships.
-- **v3 (only if v2 perf is insufficient):** Native Metal kernel as a Pearl
-  upstream contribution. No user-visible change other than higher hashrate.
+- **v2 (quelques mois) :** accélération PyTorch-MPS, plus un greffon optionnel
+  dans MLX-LM ou `llama-cpp-python`. Même configuration `cpu-pearl` ; on y passe
+  via un nouveau fournisseur `apple-mps-pearl` quand la v2 sortira.
+- **v3 (seulement si les performances de la v2 ne suffisent pas) :** un noyau
+  Metal natif, contribué en amont chez Pearl. Aucun changement visible pour
+  l'utilisateur, à part un taux de hachage plus élevé.
 ````
 
-- [ ] **Step 2: Lint markdown**
+- [ ] **Étape 2 : lint du markdown**
 
-Run: `uv run ruff check docs/user-guide/mining-apple-silicon.md 2>&1 | tail -5 || true`
+Lance : `uv run ruff check docs/user-guide/mining-apple-silicon.md 2>&1 | tail -5 || true`
 
-(Ruff doesn't lint markdown; the command is a no-op. Just verify the file exists and renders.)
+(Ruff ne vérifie pas le markdown ; la commande ne fait rien. Vérifie simplement que le fichier existe et s'affiche.)
 
-Run: `head -20 docs/user-guide/mining-apple-silicon.md`
-Expected: the title line and intro paragraph.
+Lance : `head -20 docs/user-guide/mining-apple-silicon.md`
+Attendu : la ligne de titre et le paragraphe d'introduction.
 
-- [ ] **Step 3: Commit**
+- [ ] **Étape 3 : committer**
 
 ```bash
 git add docs/user-guide/mining-apple-silicon.md
-git commit -m "docs: user guide for Apple Silicon Pearl mining (Spec B v1 task 11)"
+git commit -m "docs: guide du minage Pearl sur Apple Silicon (spec B v1, tâche 11)"
 ```
 
 ---
 
-## Task 12: Final integration smoke test (manual / `live` marker)
+## Tâche 12 : test de fumée d'intégration final (manuel / marqueur `live`)
 
-**Files:**
-- Modify: `tests/mining/test_cpu_pearl.py`
+**Fichiers :**
+- Modifier : `tests/mining/test_cpu_pearl.py`
 
-A real end-to-end test that starts the provider on the dev machine, runs for ~30 s, asserts at least one mining round completed. Marked `live` so it's gated behind `pytest -m live` and excluded from default CI.
+Un vrai test de bout en bout qui démarre le fournisseur sur la machine de développement, tourne une trentaine de secondes et vérifie qu'au moins un tour de minage a eu lieu. Marqué `live` pour rester derrière `pytest -m live` et sortir de la CI par défaut.
 
-- [ ] **Step 1: Append the live test**
+- [ ] **Étape 1 : ajouter le test réel**
 
-Append to `tests/mining/test_cpu_pearl.py`:
+Ajoute à la fin de `tests/mining/test_cpu_pearl.py` :
 
 ```python
 @pytest.mark.live
 @pytest.mark.slow
 def test_provider_runs_end_to_end_on_this_host(tmp_path, monkeypatch):
-    """Live test: start provider, run for 30 s, assert mining loop produced output.
+    """Test réel : démarre le fournisseur, tourne 30 s, vérifie que la boucle a produit quelque chose.
 
-    Requires:
-    - py-pearl-mining built and installed
-    - pearl-gateway and miner-base installed
-    - either pearld running OR a stub gateway environment (latter is harder
-      to set up; for v1 we rely on pearld being available locally)
+    Exige :
+    - py-pearl-mining construit et installé
+    - pearl-gateway et miner-base installés
+    - soit pearld en marche, soit un environnement de passerelle bouchonné (ce
+      dernier est plus dur à monter ; en v1 on compte sur pearld disponible
+      en local)
     """
     pytest.importorskip("pearl_mining")
     pytest.importorskip("pearl_gateway")
@@ -1671,7 +1699,7 @@ def test_provider_runs_end_to_end_on_this_host(tmp_path, monkeypatch):
         provider="cpu-pearl",
         wallet_address="prl1q" + "0" * 32,
         extra={
-            "gateway_port": 18337,  # high port to avoid conflict with real session
+            "gateway_port": 18337,  # port haut, pour ne pas heurter une vraie session
             "metrics_port": 18339,
             "pearld_rpc_url": "http://localhost:44107",
             "pearld_rpc_user": "rpcuser",
@@ -1697,115 +1725,115 @@ def test_provider_runs_end_to_end_on_this_host(tmp_path, monkeypatch):
             print(f"--- {log_file.name} ---")
             print(log_file.read_text()[:2000])
 
-    assert saw_running, "provider never reported is_running"
+    assert saw_running, "le fournisseur n'a jamais signalé is_running"
 ```
 
-- [ ] **Step 2: Run the live test (only on a host with the full Pearl stack)**
+- [ ] **Étape 2 : lancer le test réel (seulement sur un hôte avec la pile Pearl complète)**
 
-Run: `uv run pytest tests/mining/test_cpu_pearl.py::test_provider_runs_end_to_end_on_this_host -v -m live`
-Expected: PASS if the host has Pearl installed and `pearld` running. Skipped via `importorskip` otherwise.
+Lance : `uv run pytest tests/mining/test_cpu_pearl.py::test_provider_runs_end_to_end_on_this_host -v -m live`
+Attendu : SUCCÈS si l'hôte a Pearl installé et `pearld` en marche. Sauté par `importorskip` sinon.
 
-- [ ] **Step 3: Verify default CI run still excludes it**
+- [ ] **Étape 3 : vérifier que la CI par défaut l'exclut toujours**
 
-Run: `uv run pytest tests/mining/ -v -m "not live and not cloud"`
-Expected: every other test in this plan still passes; the live test is collected-but-deselected.
+Lance : `uv run pytest tests/mining/ -v -m "not live and not cloud"`
+Attendu : tous les autres tests du plan passent toujours ; le test réel est collecté mais désélectionné.
 
-- [ ] **Step 4: Commit**
+- [ ] **Étape 4 : committer**
 
 ```bash
 git add tests/mining/test_cpu_pearl.py
-git commit -m "test(mining): live end-to-end smoke test for cpu-pearl (Spec B v1 task 12)"
+git commit -m "test(mining): test de fumée de bout en bout pour cpu-pearl (spec B v1, tâche 12)"
 ```
 
 ---
 
-## Task 13: REVIEW.md and CLAUDE.md updates
+## Tâche 13 : mises à jour de REVIEW.md et CLAUDE.md
 
-**Files:**
-- Modify: `CLAUDE.md`
-- Modify: `REVIEW.md` (if Spec A added it; else skip)
+**Fichiers :**
+- Modifier : `CLAUDE.md`
+- Modifier : `REVIEW.md` (si la spec A l'a ajouté ; sinon, sauter)
 
-Tiny pointers so future agents discover the cpu-pearl path.
+De tout petits panneaux indicateurs, pour que les futurs agents trouvent le chemin cpu-pearl.
 
-- [ ] **Step 1: Add a paragraph to CLAUDE.md `## Architecture` section**
+- [ ] **Étape 1 : ajouter un paragraphe à la section `## Architecture` de CLAUDE.md**
 
-Find the `mining` paragraph that Spec A added. Append:
+Trouve le paragraphe `mining` qu'a ajouté la spec A. Ajoute à la suite :
 
 ```
-The `mining` subsystem also includes the `cpu-pearl` provider (Spec B v1) for
-non-CUDA hosts including Apple Silicon. It runs Pearl's pure-Rust `mine()`
-function via `py-pearl-mining` plus Pearl's `pearl-gateway` as a sibling
-subprocess; decoupled from inference (the user's MLX/Ollama/llamacpp engine
-is untouched). Future v2 (Apple-GPU acceleration via PyTorch MPS) and v3
-(native Metal kernel) are tracked in
+Le sous-système `mining` comprend aussi le fournisseur `cpu-pearl` (spec B v1)
+pour les hôtes sans CUDA, Apple Silicon compris. Il lance la fonction `mine()`
+pure Rust de Pearl via `py-pearl-mining`, plus le `pearl-gateway` de Pearl comme
+sous-processus frère ; découplé de l'inférence (le moteur MLX/Ollama/llamacpp de
+l'utilisateur n'est pas touché). La v2 à venir (accélération par le GPU Apple via
+PyTorch MPS) et la v3 (noyau Metal natif) sont suivies dans
 docs/design/2026-05-05-apple-silicon-pearl-mining-design.md.
 ```
 
-- [ ] **Step 2: Add a row to REVIEW.md "Registry compliance" if that section exists**
+- [ ] **Étape 2 : ajouter une ligne à la section « Registry compliance » de REVIEW.md, si elle existe**
 
-Run: `grep -n "MinerRegistry" REVIEW.md 2>/dev/null || echo "no row yet"`
+Lance : `grep -n "MinerRegistry" REVIEW.md 2>/dev/null || echo "pas encore de ligne"`
 
-If a row exists from Spec A, add a sibling row noting that `cpu-pearl` is the second registered provider and reviewers should check both `_register_vllm_pearl` and `_register_cpu_pearl` are called from `ensure_registered`.
+Si une ligne existe depuis la spec A, ajoute-lui une sœur qui note que `cpu-pearl` est le deuxième fournisseur enregistré, et que les relecteurs doivent vérifier que `_register_vllm_pearl` et `_register_cpu_pearl` sont tous deux appelés depuis `ensure_registered`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Étape 3 : committer**
 
 ```bash
-git add CLAUDE.md REVIEW.md 2>/dev/null  # REVIEW.md may not exist; that's fine
-git commit -m "docs: point at cpu-pearl provider in CLAUDE.md (Spec B v1 task 13)"
+git add CLAUDE.md REVIEW.md 2>/dev/null  # REVIEW.md peut ne pas exister ; ce n'est pas grave
+git commit -m "docs: pointer vers le fournisseur cpu-pearl dans CLAUDE.md (spec B v1, tâche 13)"
 ```
 
 ---
 
-## Self-review checklist
+## Liste de contrôle d'autorelecture
 
-Run through each of these against the final plan:
+Passe chacun de ces points sur le plan final :
 
-**1. Spec coverage** — Spec B §13 sections vs. tasks:
+**1. Couverture de la spec** — les sections §13 de la spec B face aux tâches :
 
-- §13.1 Architecture (subprocess + provider + sidecar) → Tasks 5, 6, 9
-- §13.2 Module layout → Tasks 5, 6, 8, 9, 10
-- §13.3 Optional extra → Task 2
-- §13.4 Capability detection → Task 8
-- §13.5 Lifecycle → Tasks 6, 7, 9
-- §13.6 Configuration → reuses Spec A; documented in user guide (Task 11)
-- §13.7 Doctor surface → Spec A's `mine doctor` already; cpu-pearl row populated by Task 9's `stats()` plus the new capability detection from Task 8. *(No separate task needed; integrates via the existing CLI.)*
-- §13.8 Anti-goals → enforced by what the plan does NOT do (no MLX plugin, no Metal, no inference coupling)
-- §13.9 Exit criteria → Task 12 (live smoke), Task 11 (docs); the testnet block-find item is operational, not a code task
-- §13.10 v2/v3 — explicitly out of scope, mentioned in user-guide
+- §13.1 Architecture (sous-processus + fournisseur + sidecar) → tâches 5, 6, 9
+- §13.2 Disposition des modules → tâches 5, 6, 8, 9, 10
+- §13.3 Extra optionnel → tâche 2
+- §13.4 Détection de capacité → tâche 8
+- §13.5 Cycle de vie → tâches 6, 7, 9
+- §13.6 Configuration → réutilise la spec A ; documenté dans le guide utilisateur (tâche 11)
+- §13.7 Surface de doctor → le `mine doctor` de la spec A existe déjà ; la ligne cpu-pearl est remplie par le `stats()` de la tâche 9 et par la détection de capacité de la tâche 8. *(Pas de tâche séparée ; l'intégration passe par la CLI existante.)*
+- §13.8 Anti-objectifs → garantis par ce que le plan ne fait PAS (pas de greffon MLX, pas de Metal, pas de couplage à l'inférence)
+- §13.9 Critères de sortie → tâche 12 (fumée réelle), tâche 11 (docs) ; trouver un bloc sur le réseau de test relève de l'exploitation, pas du code
+- §13.10 v2/v3 — explicitement hors périmètre, mentionné dans le guide utilisateur
 
-**2. Type consistency check:**
+**2. Contrôle de cohérence des types :**
 
-- `MiningProvider`, `MinerRegistry`, `MiningCapabilities`, `MiningConfig`, `MiningStats`, `HardwareInfo` — all from Spec A's `_stubs.py`. Used identically across Tasks 8–10.
-- `provider_id = "cpu-pearl"` — used in Tasks 8, 9, 10.
-- Sidecar key names (`provider`, `wallet_address`, `gateway_url`, `metrics_url`, `gateway_pid`, `miner_loop_pid`, `started_at`) — defined in Task 9's `_write_sidecar` and read in Task 12's assertion.
-- `_install.pearl_packages_available()` and `_install.install_hint()` — defined in Task 3, used in Task 8.
-- `_install.build_from_pin()` — defined in Task 4, called from `mine init` orchestration in Spec A's plan.
+- `MiningProvider`, `MinerRegistry`, `MiningCapabilities`, `MiningConfig`, `MiningStats`, `HardwareInfo` — tous issus du `_stubs.py` de la spec A. Employés à l'identique dans les tâches 8 à 10.
+- `provider_id = "cpu-pearl"` — employé aux tâches 8, 9, 10.
+- Les noms de clés du sidecar (`provider`, `wallet_address`, `gateway_url`, `metrics_url`, `gateway_pid`, `miner_loop_pid`, `started_at`) — définis dans le `_write_sidecar` de la tâche 9 et relus par l'assertion de la tâche 12.
+- `_install.pearl_packages_available()` et `_install.install_hint()` — définis à la tâche 3, employés à la tâche 8.
+- `_install.build_from_pin()` — défini à la tâche 4, appelé depuis l'orchestration de `mine init` du plan de la spec A.
 
-**3. Placeholder scan:**
+**3. Balayage des trous laissés en attente :**
 
-- No "TBD", "TODO", "implement later" in any code block.
-- One spot deliberately marked as "research-and-fix": Task 7 verifies env var names against Pearl's config. The fix is mechanical (replace strings); the research is bounded (read one Pearl file).
-- `_pearl_subprocess.py` env var names in Task 6 are best-guesses and refined by Task 7. This is not a placeholder — Task 7 is the explicit fix.
+- Aucun « TBD », « TODO » ni « à implémenter plus tard » dans les blocs de code.
+- Un seul endroit est volontairement marqué « recherche-et-correction » : la tâche 7 vérifie les noms de variables d'environnement contre la configuration de Pearl. La correction est mécanique (remplacer des chaînes) ; la recherche est bornée (lire un fichier de Pearl).
+- Les noms de variables d'environnement de `_pearl_subprocess.py`, à la tâche 6, sont les meilleures suppositions et la tâche 7 les affine. Ce n'est pas un trou laissé en attente — la tâche 7 est la correction explicite.
 
-**4. Reuses from Spec A (sanity check — these must already exist):**
+**4. Ce qui est réutilisé de la spec A (contrôle de bon sens — tout cela doit déjà exister) :**
 
-- `MiningProvider` ABC at `src/diapason/mining/_stubs.py`
-- `MinerRegistry` class at `src/diapason/core/registry.py`
-- `MiningConfig`, `MiningCapabilities`, `MiningStats`, `HardwareInfo` dataclasses
-- Sidecar location convention `~/.diapason/runtime/mining.json`
-- `parse_gateway_metrics` adapter
-- `mine init|start|stop|status|doctor` CLI subcommands
+- l'ABC `MiningProvider` dans `src/diapason/mining/_stubs.py`
+- la classe `MinerRegistry` dans `src/diapason/core/registry.py`
+- les dataclasses `MiningConfig`, `MiningCapabilities`, `MiningStats`, `HardwareInfo`
+- la convention d'emplacement du sidecar `~/.diapason/runtime/mining.json`
+- l'adaptateur `parse_gateway_metrics`
+- les sous-commandes CLI `mine init|start|stop|status|doctor`
 
-If any of these are missing when you start Task 1, **stop and execute Spec A first.** Do not duplicate that infrastructure here.
+Si l'un d'eux manque au moment d'attaquer la tâche 1, **arrête-toi et exécute d'abord la spec A.** Ne redouble pas cette infrastructure ici.
 
 ---
 
-## Execution handoff
+## Passation d'exécution
 
-Plan complete and saved to `docs/design/2026-05-05-apple-silicon-pearl-mining-plan-v1.md`. Two execution options:
+Plan terminé, enregistré dans `docs/design/2026-05-05-apple-silicon-pearl-mining-plan-v1.md`. Deux façons de l'exécuter :
 
-**1. Subagent-Driven (recommended)** — Dispatch a fresh subagent per task with two-stage review. Good for parallelizing review and execution, and the tasks here are well-bounded.
+**1. Par sous-agents (recommandé)** — dépêche un sous-agent neuf par tâche, avec une relecture en deux temps. Bon pour paralléliser relecture et exécution, et les tâches d'ici sont bien bornées.
 
-**2. Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`. Faster end-to-end, batches review at checkpoints.
+**2. Exécution en ligne** — exécute les tâches dans cette session avec `superpowers:executing-plans`. Plus rapide de bout en bout, la relecture est groupée aux points de contrôle.
 
-The user is doing subagent-driven for Spec A (per their direction). The same approach makes sense for Spec B v1 once Spec A's plan completes; the dependency makes them naturally sequential.
+L'utilisateur fait la spec A par sous-agents (selon sa consigne). La même approche vaut pour la spec B v1 une fois le plan de la spec A terminé ; la dépendance les rend naturellement séquentielles.

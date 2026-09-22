@@ -1,27 +1,27 @@
 ---
-title: Messaging Hub
-description: Smart inbox with message triage and auto-replies across channels
+title: Centre de messagerie
+description: Une boîte de réception intelligente : triage des messages et réponses automatiques sur tous les canaux
 ---
 
-# Messaging Hub
+# Centre de messagerie
 
-This tutorial walks through `examples/messaging_hub/smart_inbox.py` — a script that connects Diapason to messaging platforms, triages incoming messages by priority, drafts context-aware replies, and produces end-of-day summaries. It demonstrates channel integration, structured agent output, and memory-backed aggregation across multiple messages.
+Ce tutoriel parcourt `examples/messaging_hub/smart_inbox.py` — un script qui relie Diapason aux plateformes de messagerie, trie les messages entrants par priorité, rédige des réponses qui tiennent compte du contexte et produit un résumé de fin de journée. Il montre l'intégration des canaux, la sortie structurée d'un agent et l'agrégation adossée à la mémoire sur plusieurs messages.
 
-!!! tip "Prerequisites"
-    - Python 3.10 or later
-    - Diapason installed: `uv sync --extra dev` from the repository root
-    - An inference engine running (Ollama with `qwen3:8b` pulled, or cloud API keys)
-    - For live channel mode: channel-specific credentials (see [Setting Up Real Channels](#setting-up-real-channels))
+!!! tip "Prérequis"
+    - Python 3.10 ou plus récent
+    - Diapason installé : `uv sync --extra dev` depuis la racine du dépôt
+    - Un moteur d'inférence en marche (Ollama avec `qwen3:8b` téléchargé, ou une clé d'API cloud)
+    - Pour le mode canal réel : les identifiants propres au canal (voir [Brancher de vrais canaux](#setting-up-real-channels))
 
-## Quick Start: Demo Mode
+## Démarrage rapide : le mode démo
 
-Demo mode processes five sample messages with no channel setup or credentials required. It is the fastest way to see the triage pipeline in action:
+Le mode démo traite cinq messages d'exemple, sans aucune configuration de canal ni identifiants. C'est le chemin le plus court pour voir la chaîne de triage à l'œuvre :
 
 ```bash title="Terminal"
 python examples/messaging_hub/smart_inbox.py --demo
 ```
 
-Expected output (abbreviated):
+Sortie attendue (abrégée) :
 
 ```
 Smart Inbox — Demo Mode
@@ -51,40 +51,40 @@ Processing 5 messages...
 Generating end-of-day summary...
 ```
 
-Override the model or engine:
+Pour imposer un autre modèle ou un autre moteur :
 
 ```bash title="Terminal"
 python examples/messaging_hub/smart_inbox.py --demo --model gpt-4o --engine cloud
 ```
 
-## How Message Classification Works
+## Comment se fait la classification des messages
 
-Each incoming message goes through a structured prompt that asks the agent to output exactly two fields — a category and a reply — in a parseable format. The script then extracts those fields and builds a triage table.
+Chaque message entrant passe par un prompt structuré qui demande à l'agent de rendre exactement deux champs — une catégorie et une réponse — dans un format analysable. Le script extrait ensuite ces champs et bâtit la table de triage.
 
 ```mermaid
 graph TD
-    A[Incoming message] --> B[OrchestratorAgent]
-    B --> C{think tool: internal reasoning}
-    C --> D{memory_store: persist context}
-    D --> E[Structured response]
-    E --> F{Parse CATEGORY and REPLY}
-    F -->|URGENT| G[Flag for immediate attention]
-    F -->|ACTION_REQUIRED| H[Add to action list]
-    F -->|FYI| I[Log for reference]
-    F -->|SPAM| J[Discard]
-    G --> K[Triage table]
+    A[Message entrant] --> B[OrchestratorAgent]
+    B --> C{outil think : raisonnement interne}
+    C --> D{memory_store : garder le contexte}
+    D --> E[Réponse structurée]
+    E --> F{Analyse de CATEGORY et REPLY}
+    F -->|URGENT| G[Marqué pour attention immédiate]
+    F -->|ACTION_REQUIRED| H[Ajouté à la liste d'actions]
+    F -->|FYI| I[Consigné pour référence]
+    F -->|SPAM| J[Écarté]
+    G --> K[Table de triage]
     H --> K
     I --> K
     J --> K
-    K --> L[memory_search: cross-reference]
-    L --> M[End-of-day summary]
+    K --> L[memory_search : recoupement]
+    L --> M[Résumé de fin de journée]
 ```
 
-After all messages are processed, a second orchestrator call uses `memory_search` to retrieve the stored triage log and produces a grouped summary with open action items highlighted.
+Une fois tous les messages traités, un second appel à l'orchestrateur se sert de `memory_search` pour retrouver le journal de triage enregistré et produit un résumé groupé qui met en avant les actions restées ouvertes.
 
-## The Classification Prompt
+## Le prompt de classification
 
-The agent receives a structured prompt that specifies the output format exactly. This makes the response reliably parseable without a complex schema:
+L'agent reçoit un prompt structuré qui fixe le format de sortie au détail près. La réponse en devient analysable de façon fiable, sans schéma compliqué :
 
 ```python title="examples/messaging_hub/smart_inbox.py"
 CLASSIFICATION_PROMPT = (
@@ -98,28 +98,28 @@ CLASSIFICATION_PROMPT = (
 )
 ```
 
-The `think` tool lets the agent reason internally before committing to a category, and `memory_store` persists each classification so the summary prompt can reference the full triage log.
+L'outil `think` laisse l'agent raisonner en interne avant de s'arrêter sur une catégorie, et `memory_store` garde chaque classification pour que le prompt du résumé puisse s'appuyer sur tout le journal de triage.
 
-## Setting Up Real Channels
+## Brancher de vrais canaux
 
 === "Slack"
 
-    1. Add the Slack MCP server to your configuration:
+    1. Ajoute le serveur MCP de Slack à ta configuration :
 
         ```bash title="Terminal"
         diapason add slack
         ```
 
-    2. Set your credentials in `.env` (gitignored):
+    2. Pose tes identifiants dans `.env` (ignoré par git) :
 
         ```bash title=".env"
         SLACK_BOT_TOKEN=xoxb-...
         SLACK_APP_TOKEN=xapp-...
         ```
 
-    3. Invite the bot to the target Slack channel in the Slack workspace settings.
+    3. Invite le bot dans le canal Slack visé, depuis les réglages de l'espace de travail Slack.
 
-    4. Run the script in live channel mode:
+    4. Lance le script en mode canal réel :
 
         ```bash title="Terminal"
         python examples/messaging_hub/smart_inbox.py --channel slack
@@ -127,35 +127,35 @@ The `think` tool lets the agent reason internally before committing to a categor
 
 === "WhatsApp"
 
-    1. Ensure Node.js 22 or later is installed.
+    1. Assure-toi que Node.js 22 ou plus récent est installé.
 
-    2. Configure the WhatsApp Baileys bridge. See the [channel documentation](../architecture/overview.md) for full setup steps.
+    2. Configure le pont WhatsApp Baileys. Voir la [documentation des canaux](../architecture/overview.md) pour la mise en place complète.
 
-    3. Start the bridge — it will print a QR code. Scan it with the WhatsApp mobile app to authenticate.
+    3. Démarre le pont — il affiche un QR code. Scanne-le avec l'app mobile WhatsApp pour t'authentifier.
 
-    4. Run the script:
+    4. Lance le script :
 
         ```bash title="Terminal"
         python examples/messaging_hub/smart_inbox.py --channel whatsapp
         ```
 
-=== "Other Channels"
+=== "Les autres canaux"
 
-    Diapason supports LINE, Viber, Mastodon, Rocket.Chat, Zulip, XMPP, Twitch, Nostr, and more. List all available channels:
+    Diapason prend en charge LINE, Viber, Mastodon, Rocket.Chat, Zulip, XMPP, Twitch, Nostr, et d'autres encore. Pour lister tous les canaux disponibles :
 
     ```bash title="Terminal"
     diapason channel list
     diapason channel status
     ```
 
-    Each channel requires its own environment variables. Run `diapason add <channel>` where available to auto-generate the configuration template.
+    Chaque canal réclame ses propres variables d'environnement. Lance `diapason add <channel>` quand c'est disponible pour générer le gabarit de configuration.
 
-!!! warning "Live channel mode"
-    Live channel mode requires channel credentials and the corresponding channel subsystem to be running. Use `--demo` to verify the triage logic before connecting to a real channel.
+!!! warning "Le mode canal réel"
+    Le mode canal réel demande les identifiants du canal et le sous-système de canal correspondant en marche. Sers-toi de `--demo` pour vérifier la logique de triage avant de te brancher à un vrai canal.
 
-## Channel Configuration via TOML
+## Configurer le canal en TOML
 
-The `messaging.toml` recipe in `examples/messaging_hub/` captures the agent and channel defaults declaratively:
+La recette `messaging.toml` de `examples/messaging_hub/` fixe les valeurs par défaut de l'agent et du canal de façon déclarative :
 
 ```toml title="examples/messaging_hub/messaging.toml"
 [channel]
@@ -168,9 +168,9 @@ temperature = 0.3
 tools = ["think", "memory_store", "memory_search"]
 ```
 
-You can load this recipe programmatically:
+Tu peux charger cette recette par programme :
 
-```python title="Loading the messaging recipe"
+```python title="Charger la recette de messagerie"
 from diapason.recipes import load_recipe
 from diapason import SystemBuilder
 
@@ -180,11 +180,11 @@ response = system.ask(CLASSIFICATION_PROMPT.format(message=incoming_message))
 system.close()
 ```
 
-## Adding Custom Triage Rules
+## Ajouter tes propres règles de triage
 
-Extend the classification categories by editing `CLASSIFICATION_PROMPT`. For example, to add a `FOLLOW_UP` category for messages that need a response within 48 hours:
+Élargis les catégories de classification en modifiant `CLASSIFICATION_PROMPT`. Par exemple, pour ajouter une catégorie `FOLLOW_UP` aux messages qui attendent une réponse sous 48 heures :
 
-```python title="Custom classification prompt" hl_lines="2"
+```python title="Prompt de classification personnalisé" hl_lines="2"
 CLASSIFICATION_PROMPT = (
     "Classify into: URGENT, ACTION_REQUIRED, FOLLOW_UP, FYI, or SPAM.\n"
     "Then draft a short reply if appropriate (not for SPAM).\n\n"
@@ -195,21 +195,21 @@ CLASSIFICATION_PROMPT = (
 )
 ```
 
-You can also add domain rules in the system prompt via `messaging.toml` — for instance, routing any message containing "P0" or "incident" directly to URGENT regardless of phrasing.
+Tu peux aussi poser des règles métier dans le prompt système via `messaging.toml` — par exemple aiguiller directement vers URGENT tout message contenant « P0 » ou « incident », quelle que soit la tournure.
 
-## Scheduling the Daily Summary
+## Programmer le résumé quotidien
 
-After processing all messages, the end-of-day summary call runs immediately in the script. For production use, schedule it independently via the Diapason scheduler:
+Une fois tous les messages traités, l'appel du résumé de fin de journée part tout de suite dans le script. En production, programme-le à part avec le programmateur de Diapason :
 
 ```bash title="Terminal"
 diapason scheduler create "Daily inbox summary" \
     --type cron --value "0 17 * * *"
 ```
 
-Or use the operator recipe pattern to run a persistent triage agent on a schedule. See the operator recipes in `src/diapason/recipes/data/operators/` for ready-made examples.
+Ou reprends le motif des recettes d'opérateur pour faire tourner un agent de triage persistant sur un horaire. Voir les recettes d'opérateur dans `src/diapason/recipes/data/operators/` pour des exemples tout faits.
 
-## See Also
+## Voir aussi
 
-- [Architecture: Agents](../architecture/agents.md) — `OrchestratorAgent` and the multi-turn tool loop
-- [Architecture: Tools and Memory](../architecture/memory.md) — `memory_store`, `memory_search`, and the storage backends
-- [Tutorials: Scheduled Personal Ops](scheduled-ops.md) — combining scripts with the cron scheduler
+- [Architecture : les agents](../architecture/agents.md) — `OrchestratorAgent` et la boucle d'outils multi-tours
+- [Architecture : les outils et la mémoire](../architecture/memory.md) — `memory_store`, `memory_search` et les moteurs de stockage
+- [Tutoriels : les opérations personnelles programmées](scheduled-ops.md) — combiner les scripts avec le programmateur cron

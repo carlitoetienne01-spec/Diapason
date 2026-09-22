@@ -1,34 +1,34 @@
 ---
-title: Memory That Doesn't Reset
-description: Tell Diapason something once. It remembers — three months later, across every conversation
+title: Une mémoire qui ne repart pas de zéro
+description: Dis quelque chose une fois à Diapason. Il s'en souvient — trois mois plus tard, dans toutes les conversations
 ---
 
-# 🧠 Memory That Doesn't Reset — Diapason actually knows me
+# 🧠 Une mémoire qui ne repart pas de zéro — Diapason me connaît vraiment
 
 <figure markdown>
-  ![Diapason remembering a user preference three months later](../assets/showcase/persistent-memory.png){ .showcase-screenshot loading=lazy }
-  <figcaption>Three months after I mentioned the allergy in passing, Diapason brings it up — unprompted — while helping me pick a birthday-dinner restaurant.</figcaption>
+  ![Diapason se souvient d'une préférence trois mois plus tard](../assets/showcase/persistent-memory.png){ .showcase-screenshot loading=lazy }
+  <figcaption>Trois mois après que j'ai mentionné l'allergie au détour d'une phrase, Diapason la remet sur la table — sans qu'on lui demande — pendant qu'il m'aide à choisir un restaurant pour un dîner d'anniversaire.</figcaption>
 </figure>
 
-I mentioned to Diapason once, in a throwaway sentence in April, that I'm allergic to shellfish. In July, when I asked it to help me pick a restaurant for my partner's birthday, it volunteered "you'll want to filter for menus that have non-shellfish options" — without being reminded, in a totally different conversation, on a different topic.
+J'ai dit une fois à Diapason, dans une phrase jetée en avril, que je suis allergique aux fruits de mer. En juillet, quand je lui ai demandé de m'aider à choisir un restaurant pour l'anniversaire de ma compagne, il a lancé de lui-même « tu voudras filtrer sur les cartes qui proposent autre chose que des fruits de mer » — sans rappel, dans une conversation totalement différente, sur un tout autre sujet.
 
-That's not magic. The trick is that Diapason writes to three plain markdown files in my home directory whenever it learns something worth remembering:
+Ce n'est pas de la magie. L'astuce, c'est que Diapason écrit dans trois simples fichiers markdown de mon dossier personnel chaque fois qu'il apprend quelque chose qui mérite d'être retenu :
 
-- `SOUL.md` — how I want it to behave (tone, length, what to push back on)
-- `MEMORY.md` — facts about me, my projects, my preferences
-- `USER.md` — who I am: my role, my team, my context
+- `SOUL.md` — comment je veux qu'il se comporte (ton, longueur, ce sur quoi il doit me contredire)
+- `MEMORY.md` — des faits sur moi, mes projets, mes préférences
+- `USER.md` — qui je suis : mon rôle, mon équipe, mon contexte
 
-Every new conversation starts by reading those three files. I can open them in any text editor. I can delete a line and the memory is gone. The whole thing is `~6 KB` of markdown. No vector DB, no embedding cache, no opaque "personalization layer."
+Chaque nouvelle conversation commence par la lecture de ces trois fichiers. Je peux les ouvrir dans n'importe quel éditeur de texte. Je peux supprimer une ligne, et le souvenir disparaît. Le tout fait `~6 KB` de markdown. Pas de base vectorielle, pas de cache d'embeddings, pas de « couche de personnalisation » opaque.
 
-## Why it's nice
+## Pourquoi c'est agréable
 
-- **It's auditable.** I can read what Diapason "knows" about me in 30 seconds. Most personal-AI products literally can't tell you.
-- **It's portable.** I keep my three files in iCloud Drive. When I set up Diapason on a new machine, my memory comes with me — without re-onboarding.
-- **It compounds.** After two weeks Diapason stopped re-asking what my code style is. After six weeks it stopped re-asking who's on my team. The conversations get shorter because the context is already there.
-- **It can't drift.** Vector retrieval can confidently surface the wrong "memory" and you'd never know. Plain markdown that I can read can't lie about what it contains.
+- **C'est vérifiable.** Je peux lire ce que Diapason « sait » de moi en 30 secondes. La plupart des produits d'IA personnelle en sont littéralement incapables.
+- **C'est transportable.** Je garde mes trois fichiers dans iCloud Drive. Quand j'installe Diapason sur une nouvelle machine, ma mémoire me suit — sans tout reprendre depuis le début.
+- **Ça s'accumule.** Au bout de deux semaines, Diapason a cessé de me redemander quel est mon style de code. Au bout de six semaines, il a cessé de redemander qui est dans mon équipe. Les conversations raccourcissent parce que le contexte est déjà là.
+- **Ça ne peut pas dériver.** Une recherche vectorielle peut remonter avec aplomb le mauvais « souvenir » sans que tu n'en saches jamais rien. Du markdown ordinaire que je peux lire ne peut pas mentir sur ce qu'il contient.
 
-## How I set this up
+## Comment j'ai mis ça en place
 
-→ **[User Guide: Agents](../user-guide/agents.md)** explains the persistent-agent pattern, including how `SOUL.md` / `MEMORY.md` / `USER.md` are loaded at conversation start.
+→ **[Guide de l'utilisateur : les agents](../user-guide/agents.md)** explique le motif de l'agent persistant, et notamment comment `SOUL.md` / `MEMORY.md` / `USER.md` sont chargés au début d'une conversation.
 
-→ **[Tutorial: Deep Research Assistant](../tutorials/deep-research.md)** uses the same persistent-memory primitive — a good place to see it in action with code.
+→ **[Tutoriel : assistant de recherche approfondie](../tutorials/deep-research.md)** repose sur la même primitive de mémoire persistante — un bon endroit pour la voir à l'œuvre, avec du code.

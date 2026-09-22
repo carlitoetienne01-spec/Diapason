@@ -1,17 +1,17 @@
-# Agentic Logic Primitive
+# La primitive de logique agentique
 
-The Agentic Logic primitive provides **pluggable agents** that handle queries with varying levels of sophistication -- from simple single-turn responses to multi-turn tool-calling loops, ReAct-style reasoning, CodeAct code execution, recursive decomposition, and external agent communication.
+La primitive de logique agentique fournit des **agents interchangeables** qui traitent les questions avec des degrés de sophistication variables — de la simple réponse en un tour aux boucles d'appel d'outils multi-tours, au raisonnement façon ReAct, à l'exécution de code façon CodeAct, à la décomposition récursive et à la communication avec des agents externes.
 
 ---
 
-## BaseAgent ABC
+## La classe abstraite BaseAgent
 
-All agents implement the `BaseAgent` abstract base class, which provides both the `run()` contract and concrete helper methods that eliminate boilerplate in subclasses:
+Tous les agents implémentent la classe de base abstraite `BaseAgent`, qui fournit à la fois le contrat `run()` et des méthodes concrètes qui évitent de réécrire le même code dans chaque sous-classe :
 
 ```python
 class BaseAgent(ABC):
     agent_id: str
-    accepts_tools: bool = False  # overridden by ToolUsingAgent
+    accepts_tools: bool = False  # redéfini par ToolUsingAgent
 
     def __init__(
         self,
@@ -30,63 +30,63 @@ class BaseAgent(ABC):
         context: Optional[AgentContext] = None,
         **kwargs: Any,
     ) -> AgentResult:
-        """Execute the agent on *input* and return an AgentResult."""
+        """Exécute l'agent sur *input* et renvoie un AgentResult."""
 ```
 
-### Class Attribute: `accepts_tools`
+### L'attribut de classe `accepts_tools`
 
-The `accepts_tools` class attribute (default `False`) enables the CLI and SDK to auto-detect which agents support tool-passing. Agents that set `accepts_tools = True` can receive `--tools` on the CLI and `tools=` in the SDK.
+L'attribut de classe `accepts_tools` (`False` par défaut) permet à la CLI et au SDK de détecter tout seuls quels agents acceptent qu'on leur passe des outils. Les agents qui posent `accepts_tools = True` peuvent recevoir `--tools` en ligne de commande et `tools=` dans le SDK.
 
-### Concrete Helper Methods
+### Les méthodes concrètes d'aide
 
-`BaseAgent` provides five concrete helpers that subclasses use to avoid duplicating common logic:
+`BaseAgent` fournit cinq méthodes concrètes dont les sous-classes se servent pour ne pas dupliquer la logique commune :
 
-| Helper | Purpose |
+| Méthode | À quoi elle sert |
 |--------|---------|
-| `_emit_turn_start(input)` | Publish `AGENT_TURN_START` on the event bus |
-| `_emit_turn_end(**data)` | Publish `AGENT_TURN_END` on the event bus |
-| `_build_messages(input, context, *, system_prompt)` | Assemble the message list from optional system prompt, conversation context, and user input |
-| `_generate(messages, **extra_kwargs)` | Call `engine.generate()` with stored defaults (model, temperature, max_tokens) |
-| `_max_turns_result(tool_results, turns, content)` | Build the standard `AgentResult` for when `max_turns` is exceeded |
-| `_strip_think_tags(text)` | Remove `<think>...</think>` blocks from model output (static method) |
+| `_emit_turn_start(input)` | Publie `AGENT_TURN_START` sur le bus d'événements |
+| `_emit_turn_end(**data)` | Publie `AGENT_TURN_END` sur le bus d'événements |
+| `_build_messages(input, context, *, system_prompt)` | Assemble la liste des messages à partir du prompt système facultatif, du contexte de conversation et de la question de l'utilisateur |
+| `_generate(messages, **extra_kwargs)` | Appelle `engine.generate()` avec les valeurs par défaut mémorisées (modèle, température, nombre maximum de jetons) |
+| `_max_turns_result(tool_results, turns, content)` | Construit l'`AgentResult` standard pour le cas où `max_turns` est dépassé |
+| `_strip_think_tags(text)` | Retire les blocs `<think>...</think>` de la sortie du modèle (méthode statique) |
 
-### The `run()` Contract
+### Le contrat `run()`
 
-The `run()` method is the single entry point for all agent implementations. It receives:
+La méthode `run()` est le point d'entrée unique de toutes les implémentations d'agent. Elle reçoit :
 
-- **`input`** -- The user's query text
-- **`context`** -- An optional `AgentContext` with conversation history, tool names, and memory results
-- **`**kwargs`** -- Additional implementation-specific parameters
+- **`input`** — le texte de la question de l'utilisateur
+- **`context`** — un `AgentContext` facultatif, avec l'historique de la conversation, les noms d'outils et les résultats de mémoire
+- **`**kwargs`** — les paramètres supplémentaires propres à l'implémentation
 
-It returns an `AgentResult` containing the response content, any tool results, the number of turns taken, and metadata.
+Elle renvoie un `AgentResult` contenant le contenu de la réponse, les éventuels résultats d'outils, le nombre de tours effectués et des métadonnées.
 
-### Supporting Dataclasses
+### Les dataclasses associées
 
 ```python
 @dataclass(slots=True)
 class AgentContext:
-    conversation: Conversation    # Prior messages for multi-turn context
-    tools: List[str]              # Available tool names
-    memory_results: List[Any]     # Pre-fetched memory search results
-    metadata: Dict[str, Any]      # Arbitrary key-value pairs
+    conversation: Conversation    # Messages antérieurs, pour le contexte multi-tours
+    tools: List[str]              # Noms des outils disponibles
+    memory_results: List[Any]     # Résultats de recherche mémoire récupérés d'avance
+    metadata: Dict[str, Any]      # Paires clé-valeur arbitraires
 
 @dataclass(slots=True)
 class AgentResult:
-    content: str                  # The agent's response text
-    tool_results: List[ToolResult]  # Results from tool invocations
-    turns: int                    # Number of inference turns taken
-    metadata: Dict[str, Any]      # Arbitrary metadata
+    content: str                  # Le texte de la réponse de l'agent
+    tool_results: List[ToolResult]  # Résultats des invocations d'outils
+    turns: int                    # Nombre de tours d'inférence effectués
+    metadata: Dict[str, Any]      # Métadonnées arbitraires
 ```
 
 ---
 
 ## ToolUsingAgent
 
-`ToolUsingAgent` is an intermediate base class for agents that accept and use tools. It extends `BaseAgent` with:
+`ToolUsingAgent` est une classe de base intermédiaire pour les agents qui acceptent et utilisent des outils. Elle étend `BaseAgent` avec :
 
-- **`accepts_tools = True`** -- Enables CLI/SDK tool introspection
-- **`ToolExecutor`** -- Initialized from the provided tool list, handles dispatch with JSON argument parsing, latency tracking, and event bus integration
-- **`max_turns`** -- Configurable loop iteration limit (default: 10)
+- **`accepts_tools = True`** — active l'introspection des outils par la CLI et le SDK
+- **`ToolExecutor`** — initialisé depuis la liste d'outils fournie, il prend en charge l'aiguillage avec l'analyse des arguments JSON, le suivi de la latence et l'intégration au bus d'événements
+- **`max_turns`** — la limite d'itérations de la boucle, configurable (10 par défaut)
 
 ```python
 class ToolUsingAgent(BaseAgent):
@@ -105,93 +105,93 @@ class ToolUsingAgent(BaseAgent):
     ) -> None: ...
 ```
 
-All tool-using agents (`OrchestratorAgent`, `NativeReActAgent`, `NativeOpenHandsAgent`, `RLMAgent`) extend this class.
+Tous les agents qui utilisent des outils (`OrchestratorAgent`, `NativeReActAgent`, `NativeOpenHandsAgent`, `RLMAgent`) étendent cette classe.
 
-!!! info "Agents that bypass ToolUsingAgent"
-    Some agents extend `BaseAgent` directly and set `accepts_tools = False`: `SimpleAgent` (single-turn, no tools), `OpenHandsAgent` (tool management is handled by the openhands-sdk), and `ClaudeCodeAgent` (tools are managed by the Claude Agent SDK). `SandboxedAgent` also extends `BaseAgent` directly because it wraps another agent rather than calling tools itself.
+!!! info "Les agents qui contournent ToolUsingAgent"
+    Certains agents étendent `BaseAgent` directement et posent `accepts_tools = False` : `SimpleAgent` (un seul tour, pas d'outils), `OpenHandsAgent` (la gestion des outils revient à openhands-sdk) et `ClaudeCodeAgent` (les outils sont gérés par le Claude Agent SDK). `SandboxedAgent` étend lui aussi `BaseAgent` directement, parce qu'il enveloppe un autre agent au lieu d'appeler des outils lui-même.
 
 ---
 
-## Choosing an Agent
+## Choisir un agent
 
-Start here. Pick the simplest agent that handles your task — simpler agents are faster, use fewer tokens, and are easier to debug. Reach for more complex agents only when the task demands it.
+Commence ici. Prends l'agent le plus simple qui fasse le travail — les agents simples sont plus rapides, consomment moins de jetons et se déboguent plus facilement. Ne va chercher un agent plus complexe que si la tâche l'exige.
 
-| Use case | Agent | Why |
+| Cas d'usage | Agent | Pourquoi |
 |---|---|---|
-| Simple Q&A, single-turn | `simple` | No overhead, one inference call |
-| Multi-step with tools (calculator, search, files) | `orchestrator` | Function-calling loop, most compatible with OpenAI-format models |
-| Explicit reasoning chains | `native_react` | Thought-Action-Observation loop based on [ReAct (Yao et al., 2023)](https://arxiv.org/abs/2210.03629); reasoning traces are visible and debuggable |
-| Code generation + execution | `native_openhands` | CodeAct pattern inspired by [OpenHands (Wang et al., 2024)](https://arxiv.org/abs/2407.16741); generates and executes Python inline |
-| Long documents, recursive decomposition | `rlm` | Stores context in a persistent REPL, decomposes via recursive sub-LM calls |
-| Untrusted inputs | `sandboxed` wrapping any agent | Container isolation with network disabled and mount allowlists |
+| Question-réponse simple, en un tour | `simple` | Aucun surcoût, un seul appel d'inférence |
+| Plusieurs étapes avec des outils (calculatrice, recherche, fichiers) | `orchestrator` | Boucle d'appel de fonctions, la plus compatible avec les modèles au format OpenAI |
+| Chaînes de raisonnement explicites | `native_react` | Boucle Pensée-Action-Observation fondée sur [ReAct (Yao et coll., 2023)](https://arxiv.org/abs/2210.03629) ; les traces de raisonnement sont visibles et déboguables |
+| Génération et exécution de code | `native_openhands` | Motif CodeAct inspiré d'[OpenHands (Wang et coll., 2024)](https://arxiv.org/abs/2407.16741) ; génère et exécute du Python en ligne |
+| Longs documents, décomposition récursive | `rlm` | Range le contexte dans un REPL persistant, décompose par des appels récursifs à un sous-modèle |
+| Entrées non fiables | `sandboxed` enveloppant n'importe quel agent | Isolation par conteneur, réseau coupé et listes blanches de montages |
 
-**General guidance:** `orchestrator` is the default for most tool-using tasks. Use `native_react` when you want visible reasoning traces (e.g., for debugging or auditing agent behavior). Use `native_openhands` when the task involves writing and running code. Use `rlm` when context is too long to fit in a single prompt window.
+**Conseil général :** `orchestrator` est le choix par défaut pour la plupart des tâches qui utilisent des outils. Prends `native_react` quand tu veux voir les traces de raisonnement (pour déboguer ou auditer le comportement de l'agent, par exemple). Prends `native_openhands` quand la tâche consiste à écrire et à lancer du code. Prends `rlm` quand le contexte est trop long pour tenir dans une seule fenêtre de prompt.
 
 ---
 
-## Agent Implementations
+## Les implémentations d'agents
 
 ### SimpleAgent
 
-**Registry key:** `simple`
+**Clé de registre :** `simple`
 
-The simplest agent implementation -- a single-turn, no-tool query-to-response pipeline. Extends `BaseAgent` directly (does not accept tools).
+L'implémentation la plus simple — une chaîne question-réponse en un seul tour, sans outils. Étend `BaseAgent` directement (n'accepte pas d'outils).
 
 ```mermaid
 graph LR
-    Q["User Query"] --> M["Build Messages"]
+    Q["Question de l'utilisateur"] --> M["Construire les messages"]
     M --> E["Engine.generate()"]
     E --> R["AgentResult"]
 ```
 
-How it works:
+Comment ça marche :
 
-1. Calls `_emit_turn_start()` to publish `AGENT_TURN_START` on the event bus
-2. Calls `_build_messages()` to assemble the message list from conversation context plus user input
-3. Calls `_generate()` to invoke the engine with stored defaults
-4. Calls `_emit_turn_end()` and returns an `AgentResult` with `turns=1`
+1. Appelle `_emit_turn_start()` pour publier `AGENT_TURN_START` sur le bus d'événements
+2. Appelle `_build_messages()` pour assembler la liste des messages à partir du contexte de conversation et de la question de l'utilisateur
+3. Appelle `_generate()` pour invoquer le moteur avec les valeurs par défaut mémorisées
+4. Appelle `_emit_turn_end()` et renvoie un `AgentResult` avec `turns=1`
 
 ```python
 from diapason.agents.simple import SimpleAgent
 
 agent = SimpleAgent(engine, model="qwen3:8b", bus=bus)
-result = agent.run("What is the capital of France?")
-print(result.content)  # "The capital of France is Paris."
+result = agent.run("Quelle est la capitale de la France ?")
+print(result.content)  # « La capitale de la France est Paris. »
 ```
 
 ### OrchestratorAgent
 
-**Registry key:** `orchestrator`
+**Clé de registre :** `orchestrator`
 
-A multi-turn agent that implements a **tool-calling loop**. Extends `ToolUsingAgent`. The LLM can request tool invocations, and the results are fed back for further processing until the model produces a final text response.
+Un agent multi-tours qui met en œuvre une **boucle d'appel d'outils**. Étend `ToolUsingAgent`. Le modèle peut demander des invocations d'outils, et les résultats lui sont renvoyés pour la suite du traitement, jusqu'à ce qu'il produise une réponse textuelle finale.
 
-Supports two modes:
+Deux modes sont gérés :
 
-- **`function_calling`** (default) -- Uses OpenAI function-calling format via `ToolExecutor.get_openai_tools()`
-- **`structured`** -- Uses structured output format for models that support it
+- **`function_calling`** (par défaut) — utilise le format d'appel de fonctions d'OpenAI, via `ToolExecutor.get_openai_tools()`
+- **`structured`** — utilise le format de sortie structurée, pour les modèles qui le prennent en charge
 
 ```mermaid
 graph TD
-    Q["User Query"] --> BUILD["Build messages +<br/>tool definitions"]
-    BUILD --> GEN["Engine.generate()<br/>with tools"]
-    GEN --> CHECK{"Tool calls<br/>in response?"}
-    CHECK -->|No| DONE["Return final answer"]
-    CHECK -->|Yes| EXEC["Execute each tool<br/>via ToolExecutor"]
-    EXEC --> APPEND["Append tool results<br/>to messages"]
-    APPEND --> MAXCHECK{"Max turns<br/>exceeded?"}
-    MAXCHECK -->|No| GEN
-    MAXCHECK -->|Yes| TIMEOUT["Return with<br/>max_turns_exceeded"]
+    Q["Question de l'utilisateur"] --> BUILD["Construire les messages<br/>+ les définitions d'outils"]
+    BUILD --> GEN["Engine.generate()<br/>avec les outils"]
+    GEN --> CHECK{"Des appels d'outils<br/>dans la réponse ?"}
+    CHECK -->|Non| DONE["Rendre la réponse finale"]
+    CHECK -->|Oui| EXEC["Exécuter chaque outil<br/>via ToolExecutor"]
+    EXEC --> APPEND["Ajouter les résultats d'outils<br/>aux messages"]
+    APPEND --> MAXCHECK{"Nombre de tours<br/>dépassé ?"}
+    MAXCHECK -->|Non| GEN
+    MAXCHECK -->|Oui| TIMEOUT["Rendre avec<br/>max_turns_exceeded"]
 ```
 
-How it works:
+Comment ça marche :
 
-1. Builds initial messages from context and user input
-2. Converts available tools to OpenAI function-calling format via `ToolExecutor.get_openai_tools()`
-3. Enters a loop (up to `max_turns` iterations):
-    - Calls `engine.generate()` with messages and tool definitions
-    - If the response contains `tool_calls`, executes each tool and appends the results as `TOOL` messages
-    - If no `tool_calls` are present, returns the content as the final answer
-4. If `max_turns` is exceeded, returns the last content or a warning message
+1. Construit les messages initiaux à partir du contexte et de la question de l'utilisateur
+2. Convertit les outils disponibles au format d'appel de fonctions d'OpenAI, via `ToolExecutor.get_openai_tools()`
+3. Entre dans une boucle (jusqu'à `max_turns` itérations) :
+    - Appelle `engine.generate()` avec les messages et les définitions d'outils
+    - Si la réponse contient des `tool_calls`, exécute chaque outil et ajoute les résultats comme messages `TOOL`
+    - S'il n'y a aucun `tool_calls`, rend le contenu comme réponse finale
+4. Si `max_turns` est dépassé, rend le dernier contenu ou un message d'avertissement
 
 ```python
 from diapason.agents.orchestrator import OrchestratorAgent
@@ -205,42 +205,42 @@ agent = OrchestratorAgent(
     bus=bus,
     max_turns=10,
 )
-result = agent.run("What is 2^10 + 3^5?")
-# The agent may call the calculator tool, get "1267", then respond
+result = agent.run("Combien font 2^10 + 3^5 ?")
+# L'agent peut appeler l'outil calculatrice, obtenir « 1267 », puis répondre
 ```
 
 ### NativeReActAgent
 
-**Registry key:** `native_react` (alias: `react`)
+**Clé de registre :** `native_react` (alias : `react`)
 
-A ReAct (Reasoning + Acting) agent that implements a **Thought-Action-Observation** loop. Extends `ToolUsingAgent`. The LLM is prompted to output structured text with `Thought:`, `Action:`, `Action Input:`, and `Final Answer:` fields, which the agent parses to drive tool execution.
+Un agent ReAct (Reasoning + Acting) qui met en œuvre une boucle **Pensée-Action-Observation**. Étend `ToolUsingAgent`. Le modèle est invité à produire du texte structuré avec les champs `Thought:`, `Action:`, `Action Input:` et `Final Answer:`, que l'agent analyse pour piloter l'exécution des outils.
 
 ```mermaid
 graph TD
-    Q["User Query"] --> SYS["Build system prompt<br/>with tool descriptions"]
-    SYS --> GEN["Generate response"]
-    GEN --> PARSE["Parse ReAct output"]
-    PARSE --> FINAL{"Final Answer?"}
-    FINAL -->|Yes| DONE["Return answer"]
-    FINAL -->|No| ACTION{"Has Action?"}
-    ACTION -->|No| DONE2["Return content as-is"]
-    ACTION -->|Yes| EXEC["Execute tool<br/>via ToolExecutor<br/>(case-insensitive)"]
-    EXEC --> OBS["Append Observation"]
-    OBS --> MAXCHECK{"Max turns<br/>exceeded?"}
-    MAXCHECK -->|No| GEN
-    MAXCHECK -->|Yes| TIMEOUT["Return max_turns_result"]
+    Q["Question de l'utilisateur"] --> SYS["Construire le prompt système<br/>avec les descriptions d'outils"]
+    SYS --> GEN["Générer la réponse"]
+    GEN --> PARSE["Analyser la sortie ReAct"]
+    PARSE --> FINAL{"Final Answer ?"}
+    FINAL -->|Oui| DONE["Rendre la réponse"]
+    FINAL -->|Non| ACTION{"Une Action ?"}
+    ACTION -->|Non| DONE2["Rendre le contenu tel quel"]
+    ACTION -->|Oui| EXEC["Exécuter l'outil<br/>via ToolExecutor<br/>(sans tenir compte de la casse)"]
+    EXEC --> OBS["Ajouter l'Observation"]
+    OBS --> MAXCHECK{"Nombre de tours<br/>dépassé ?"}
+    MAXCHECK -->|Non| GEN
+    MAXCHECK -->|Oui| TIMEOUT["Rendre max_turns_result"]
 ```
 
-How it works:
+Comment ça marche :
 
-1. Builds a system prompt with enriched tool descriptions via `build_tool_descriptions()`. Parsing is case-insensitive.
-2. Generates a response and parses the ReAct-structured output
-3. If a `Final Answer:` is found, returns it
-4. If an `Action:` is found, executes the tool and feeds the result back as an `Observation:`
-5. Loops until a final answer is produced or `max_turns` is exceeded
+1. Construit un prompt système avec des descriptions d'outils enrichies, via `build_tool_descriptions()`. L'analyse ne tient pas compte de la casse.
+2. Génère une réponse et analyse la sortie structurée ReAct
+3. Si un `Final Answer:` est trouvé, le rend
+4. Si une `Action:` est trouvée, exécute l'outil et lui renvoie le résultat sous forme d'`Observation:`
+5. Boucle jusqu'à ce qu'une réponse finale soit produite ou que `max_turns` soit dépassé
 
-!!! note "Backward compatibility"
-    The old `from diapason.agents.react import ReActAgent` import path still works via a backward-compat shim. The registry alias `"react"` also maps to `NativeReActAgent`.
+!!! note "Compatibilité ascendante"
+    L'ancien chemin d'import `from diapason.agents.react import ReActAgent` fonctionne toujours, par une passerelle de compatibilité. L'alias de registre `"react"` pointe lui aussi vers `NativeReActAgent`.
 
 ```python
 from diapason.agents.native_react import NativeReActAgent
@@ -251,25 +251,25 @@ agent = NativeReActAgent(
     tools=[CalculatorTool(), ThinkTool()],
     max_turns=10,
 )
-result = agent.run("What is the square root of 256?")
+result = agent.run("Quelle est la racine carrée de 256 ?")
 ```
 
 ### NativeOpenHandsAgent
 
-**Registry key:** `native_openhands`
+**Clé de registre :** `native_openhands`
 
-A CodeAct-style agent that generates and executes Python code. Extends `ToolUsingAgent`. It can also invoke tools via structured `Action:` / `Action Input:` output. URLs in the input are automatically pre-fetched and inlined for the LLM.
+Un agent façon CodeAct, qui génère et exécute du code Python. Étend `ToolUsingAgent`. Il peut aussi invoquer des outils par une sortie structurée `Action:` / `Action Input:`. Les URL présentes dans l'entrée sont récupérées d'avance et insérées telles quelles pour le modèle.
 
-How it works:
+Comment ça marche :
 
-1. Builds a detailed system prompt with enriched tool descriptions (via shared `build_tool_descriptions()` builder) and code execution instructions
-2. Pre-fetches any URLs in the user input, inlining the content directly
-3. For each turn:
-    - Generates a response and strips `<think>` tags
-    - If a `\`\`\`python` code block is found, executes it via `code_interpreter`
-    - If an `Action:` / `Action Input:` is found, dispatches the tool
-    - If neither is found, returns the content as the final answer
-4. Handles context window overflow with automatic truncation
+1. Construit un prompt système détaillé, avec des descriptions d'outils enrichies (via le constructeur partagé `build_tool_descriptions()`) et les consignes d'exécution de code
+2. Récupère d'avance les URL présentes dans l'entrée de l'utilisateur et en insère le contenu directement
+3. À chaque tour :
+    - Génère une réponse et retire les balises `<think>`
+    - Si un bloc de code `\`\`\`python` est trouvé, l'exécute via `code_interpreter`
+    - Si un `Action:` / `Action Input:` est trouvé, aiguille vers l'outil
+    - Si ni l'un ni l'autre n'est trouvé, rend le contenu comme réponse finale
+4. Gère le dépassement de la fenêtre de contexte par une troncature automatique
 
 ```python
 from diapason.agents.native_openhands import NativeOpenHandsAgent
@@ -281,47 +281,47 @@ agent = NativeOpenHandsAgent(
     max_turns=3,
     max_tokens=2048,
 )
-result = agent.run("Summarize https://example.com/article")
+result = agent.run("Résume https://example.com/article")
 ```
 
 ### RLMAgent
 
-**Registry key:** `rlm`
+**Clé de registre :** `rlm`
 
-A Recursive Language Model agent based on the [RLM paper](https://arxiv.org/abs/2512.24601). Instead of passing long context directly in the LLM prompt, RLM stores context as a Python variable in a persistent REPL. A "Root LM" writes Python code to inspect, decompose, and process context using recursive sub-LM calls via `llm_query()` and `llm_batch()`. Extends `ToolUsingAgent`.
+Un agent à modèle de langue récursif, fondé sur l'[article RLM](https://arxiv.org/abs/2512.24601). Plutôt que de passer un long contexte directement dans le prompt du modèle, RLM le range dans une variable Python d'un REPL persistant. Un « modèle racine » écrit du code Python pour inspecter, décomposer et traiter le contexte à l'aide d'appels récursifs à un sous-modèle, via `llm_query()` et `llm_batch()`. Étend `ToolUsingAgent`.
 
 ```mermaid
 graph TD
-    Q["User Query +<br/>Context"] --> REPL["Create persistent REPL<br/>(context stored as variable)"]
-    REPL --> GEN["Generate code"]
-    GEN --> CODE{"Code block<br/>found?"}
-    CODE -->|No| DONE["Return content<br/>as final answer"]
-    CODE -->|Yes| EXEC["Execute in REPL"]
-    EXEC --> TERM{"FINAL() called?"}
-    TERM -->|Yes| RESULT["Return final answer"]
-    TERM -->|No| FEED["Feed output back<br/>as user message"]
-    FEED --> MAXCHECK{"Max turns<br/>exceeded?"}
-    MAXCHECK -->|No| GEN
-    MAXCHECK -->|Yes| TIMEOUT["Return max_turns_result"]
+    Q["Question de l'utilisateur<br/>+ contexte"] --> REPL["Créer un REPL persistant<br/>(le contexte devient une variable)"]
+    REPL --> GEN["Générer du code"]
+    GEN --> CODE{"Un bloc de code<br/>trouvé ?"}
+    CODE -->|Non| DONE["Rendre le contenu<br/>comme réponse finale"]
+    CODE -->|Oui| EXEC["Exécuter dans le REPL"]
+    EXEC --> TERM{"FINAL() appelé ?"}
+    TERM -->|Oui| RESULT["Rendre la réponse finale"]
+    TERM -->|Non| FEED["Renvoyer la sortie<br/>comme message utilisateur"]
+    FEED --> MAXCHECK{"Nombre de tours<br/>dépassé ?"}
+    MAXCHECK -->|Non| GEN
+    MAXCHECK -->|Oui| TIMEOUT["Rendre max_turns_result"]
 ```
 
-How it works:
+Comment ça marche :
 
-1. Creates a persistent REPL with `llm_query()` and `llm_batch()` callbacks. Tool descriptions are injected via the shared `build_tool_descriptions()` builder when tools are provided.
-2. Injects context from `AgentContext` metadata or memory results into the REPL as a variable
-3. Generates code and executes it in the REPL
-4. If `FINAL(value)` or `FINAL_VAR("name")` is called, returns the final answer
-5. If no code block is found, treats the content as a direct answer
+1. Crée un REPL persistant avec les rappels `llm_query()` et `llm_batch()`. Les descriptions d'outils y sont injectées par le constructeur partagé `build_tool_descriptions()` quand des outils sont fournis.
+2. Injecte dans le REPL, sous forme de variable, le contexte venu des métadonnées de l'`AgentContext` ou des résultats de mémoire
+3. Génère du code et l'exécute dans le REPL
+4. Si `FINAL(value)` ou `FINAL_VAR("name")` est appelé, rend la réponse finale
+5. Si aucun bloc de code n'est trouvé, traite le contenu comme une réponse directe
 
-The agent supports configurable sub-model parameters for recursive calls:
+L'agent accepte des paramètres configurables pour le sous-modèle des appels récursifs :
 
-| Parameter | Default | Description |
+| Paramètre | Défaut | Description |
 |-----------|---------|-------------|
-| `sub_model` | same as `model` | Model for sub-LM calls |
-| `sub_temperature` | `0.3` | Temperature for sub-LM calls |
-| `sub_max_tokens` | `1024` | Max tokens for sub-LM calls |
-| `max_output_chars` | `10000` | Max REPL output characters |
-| `system_prompt` | `RLM_SYSTEM_PROMPT` | Override the system prompt |
+| `sub_model` | le même que `model` | Modèle des appels au sous-modèle |
+| `sub_temperature` | `0.3` | Température des appels au sous-modèle |
+| `sub_max_tokens` | `1024` | Nombre maximum de jetons des appels au sous-modèle |
+| `max_output_chars` | `10000` | Nombre maximum de caractères en sortie du REPL |
+| `system_prompt` | `RLM_SYSTEM_PROMPT` | Remplace le prompt système |
 
 ```python
 from diapason.agents.rlm import RLMAgent
@@ -330,27 +330,27 @@ agent = RLMAgent(
     engine,
     model="qwen3:8b",
     max_turns=10,
-    sub_model="qwen3:1.7b",  # smaller model for sub-queries
+    sub_model="qwen3:1.7b",  # un modèle plus petit pour les sous-questions
     sub_temperature=0.3,
 )
-result = agent.run("Summarize this document", context=ctx)
+result = agent.run("Résume ce document", context=ctx)
 ```
 
 ### OpenHandsAgent (SDK)
 
-**Registry key:** `openhands`
+**Clé de registre :** `openhands`
 
-A thin wrapper around the real `openhands-sdk` package for AI-driven software development tasks. Extends `BaseAgent` directly (does not use `ToolUsingAgent` since tool management is handled by the SDK).
+Une fine enveloppe autour du vrai paquet `openhands-sdk`, pour les tâches de développement logiciel pilotées par l'IA. Étend `BaseAgent` directement (n'utilise pas `ToolUsingAgent`, puisque la gestion des outils revient au SDK).
 
-!!! warning "Optional dependency"
-    This agent requires the `openhands-sdk` package (`uv sync --extra openhands`). The SDK requires Python 3.12+.
+!!! warning "Dépendance facultative"
+    Cet agent réclame le paquet `openhands-sdk` (`uv sync --extra openhands`). Le SDK exige Python 3.12+.
 
-How it works:
+Comment ça marche :
 
-1. Imports `openhands.sdk` at runtime (lazy import)
-2. Creates an LLM, Agent, and Conversation from the SDK
-3. Sends the user input as a message and runs the conversation
-4. Extracts the final message content from the conversation
+1. Importe `openhands.sdk` à l'exécution (import paresseux)
+2. Crée un LLM, un Agent et une Conversation depuis le SDK
+3. Envoie l'entrée de l'utilisateur comme message et fait tourner la conversation
+4. Extrait le contenu du message final de la conversation
 
 ```python
 from diapason.agents.openhands import OpenHandsAgent
@@ -361,79 +361,79 @@ agent = OpenHandsAgent(
     workspace="/path/to/project",
     api_key="sk-...",
 )
-result = agent.run("Fix the failing test in test_utils.py")
+result = agent.run("Corrige le test qui échoue dans test_utils.py")
 ```
 
 ### ClaudeCodeAgent
 
-**Registry key:** `claude_code`
+**Clé de registre :** `claude_code`
 
-Wraps the `@anthropic-ai/claude-code` SDK via a bundled Node.js subprocess bridge. Unlike every other agent, inference is handled entirely by the Claude Agent SDK -- the Diapason inference engine is not used. This makes `ClaudeCodeAgent` a true external agent, similar in spirit to `OpenHandsAgent` but implemented via subprocess rather than an importable Python SDK.
+Enveloppe le SDK `@anthropic-ai/claude-code` par un pont en sous-processus Node.js, livré avec lui. Contrairement à tous les autres agents, l'inférence est entièrement prise en charge par le Claude Agent SDK — le moteur d'inférence de Diapason n'est pas utilisé. `ClaudeCodeAgent` est donc un véritable agent externe, dans le même esprit qu'`OpenHandsAgent`, mais mis en œuvre par un sous-processus plutôt que par un SDK Python importable.
 
 ```mermaid
 graph LR
-    Q["User Query"] --> PY["Python: build JSON request"]
-    PY --> SPAWN["Spawn: node dist/index.js"]
-    SPAWN --> NODE["Node.js runner<br/>@anthropic-ai/claude-code SDK"]
-    NODE --> SDK["Claude Agent SDK<br/>(cloud inference)"]
+    Q["Question de l'utilisateur"] --> PY["Python : construire la requête JSON"]
+    PY --> SPAWN["Lancer : node dist/index.js"]
+    SPAWN --> NODE["Exécuteur Node.js<br/>SDK @anthropic-ai/claude-code"]
+    NODE --> SDK["Claude Agent SDK<br/>(inférence dans le nuage)"]
     SDK --> NODE
-    NODE --> JSON["Sentinel-delimited JSON<br/>on stdout"]
-    JSON --> PARSE["Python: parse output"]
+    NODE --> JSON["JSON délimité par des sentinelles<br/>sur la sortie standard"]
+    JSON --> PARSE["Python : analyser la sortie"]
     PARSE --> R["AgentResult"]
 ```
 
-How it works:
+Comment ça marche :
 
-1. On first call, copies the bundled `claude_code_runner/` to `~/.diapason/claude_code_runner/` and runs `npm install --production` if `node_modules` is absent
-2. Builds a JSON request with `prompt`, `api_key`, `workspace`, `allowed_tools`, `system_prompt`, and `session_id`
-3. Spawns `node dist/index.js` and writes the request to stdin
-4. Reads stdout and extracts the JSON payload between `---DIAPASON_OUTPUT_START---` and `---DIAPASON_OUTPUT_END---` sentinels
-5. Falls back to treating all stdout as plain text content if sentinels are absent
+1. Au premier appel, copie le `claude_code_runner/` livré avec lui vers `~/.diapason/claude_code_runner/` et lance `npm install --production` si `node_modules` est absent
+2. Construit une requête JSON avec `prompt`, `api_key`, `workspace`, `allowed_tools`, `system_prompt` et `session_id`
+3. Lance `node dist/index.js` et écrit la requête sur son entrée standard
+4. Lit la sortie standard et en extrait la charge JSON comprise entre les sentinelles `---DIAPASON_OUTPUT_START---` et `---DIAPASON_OUTPUT_END---`
+5. À défaut de sentinelles, traite toute la sortie standard comme du contenu en texte brut
 
-!!! warning "Requires Node.js 22+"
-    `ClaudeCodeAgent` raises `RuntimeError` at `run()` time if `node` is not found on `PATH`. An `ANTHROPIC_API_KEY` environment variable is required for the Claude Agent SDK to authenticate.
+!!! warning "Node.js 22+ obligatoire"
+    `ClaudeCodeAgent` lève `RuntimeError` au moment du `run()` si `node` est introuvable dans le `PATH`. Une variable d'environnement `ANTHROPIC_API_KEY` est nécessaire pour que le Claude Agent SDK s'authentifie.
 
 ```python
 from diapason.agents.claude_code import ClaudeCodeAgent
 
 agent = ClaudeCodeAgent(
-    engine=None,   # not used
-    model="",      # not used
+    engine=None,   # inutilisé
+    model="",      # inutilisé
     workspace="/path/to/project",
     timeout=120,
 )
-result = agent.run("Add type hints to all functions in utils.py")
+result = agent.run("Ajoute des annotations de type à toutes les fonctions de utils.py")
 ```
 
-### SandboxedAgent and ContainerRunner
+### SandboxedAgent et ContainerRunner
 
-`SandboxedAgent` and `ContainerRunner` together implement **container-isolated agent execution** following the `GuardrailsEngine` wrapper pattern. `SandboxedAgent` wraps any `BaseAgent` and delegates execution to a Docker (or Podman) container managed by `ContainerRunner`.
+`SandboxedAgent` et `ContainerRunner` mettent en œuvre ensemble l'**exécution d'agents isolée par conteneur**, sur le modèle d'enveloppe de `GuardrailsEngine`. `SandboxedAgent` enveloppe n'importe quel `BaseAgent` et délègue l'exécution à un conteneur Docker (ou Podman) piloté par `ContainerRunner`.
 
 ```mermaid
 graph LR
-    Q["User Query"] --> SA["SandboxedAgent.run()"]
+    Q["Question de l'utilisateur"] --> SA["SandboxedAgent.run()"]
     SA --> CR["ContainerRunner.run()"]
-    CR --> VALIDATE["Validate mounts<br/>vs allowlist"]
+    CR --> VALIDATE["Valider les montages<br/>face à la liste blanche"]
     VALIDATE --> DOCKER["docker run --rm<br/>--network none<br/>-i image"]
-    DOCKER --> STDIN["Write JSON payload<br/>to stdin"]
-    STDIN --> CONTAINER["Container: run agent,<br/>write output to stdout"]
-    CONTAINER --> PARSE["Parse sentinel-<br/>delimited JSON"]
+    DOCKER --> STDIN["Écrire la charge JSON<br/>sur l'entrée standard"]
+    STDIN --> CONTAINER["Conteneur : lancer l'agent,<br/>écrire la sortie sur stdout"]
+    CONTAINER --> PARSE["Analyser le JSON délimité<br/>par des sentinelles"]
     PARSE --> R["AgentResult"]
 ```
 
-**ContainerRunner** manages the full container lifecycle:
+**ContainerRunner** gère tout le cycle de vie du conteneur :
 
-- Validates mount paths against a `MountAllowlist` before container start (raises `ValueError` for blocked or out-of-root paths)
-- Constructs `docker run --rm --network none -i <image>` with validated read-only bind mounts
-- Sends a JSON payload to container stdin (prompt, agent ID, model, and optional secrets)
-- Reads stdout and parses sentinel-delimited JSON output
-- On timeout, force-kills the container via `docker rm -f`
-- `cleanup_orphans()` removes any stale containers labelled `diapason-sandbox=true`
+- Valide les chemins de montage face à une `MountAllowlist` avant de démarrer le conteneur (lève `ValueError` pour un chemin bloqué ou hors de la racine)
+- Construit `docker run --rm --network none -i <image>` avec les montages liés en lecture seule, une fois validés
+- Envoie une charge JSON sur l'entrée standard du conteneur (le prompt, l'identifiant de l'agent, le modèle et d'éventuels secrets)
+- Lit la sortie standard et analyse le JSON délimité par des sentinelles
+- En cas de dépassement du délai, tue le conteneur de force par `docker rm -f`
+- `cleanup_orphans()` supprime les conteneurs restés en plan portant l'étiquette `diapason-sandbox=true`
 
-**Mount security** (`sandbox/mount_security.py`) enforces two independent checks on every mount path:
+**La sécurité des montages** (`sandbox/mount_security.py`) impose deux contrôles indépendants sur chaque chemin monté :
 
-1. **Blocked patterns:** Path components are matched against `DEFAULT_BLOCKED_PATTERNS` (`.ssh`, `.env`, `*.pem`, `*.key`, cloud configs, etc.). A match raises `ValueError`.
-2. **Allowed roots:** If `roots` are configured in the allowlist, the resolved path must be under one of them. An empty `roots` list allows any non-blocked path.
+1. **Motifs bloqués :** les composants du chemin sont confrontés à `DEFAULT_BLOCKED_PATTERNS` (`.ssh`, `.env`, `*.pem`, `*.key`, configurations de services dans le nuage, etc.). Une correspondance lève `ValueError`.
+2. **Racines autorisées :** si des `roots` sont configurées dans la liste blanche, le chemin résolu doit se trouver sous l'une d'elles. Une liste `roots` vide autorise n'importe quel chemin non bloqué.
 
 ```python
 from diapason.sandbox import ContainerRunner, SandboxedAgent
@@ -443,24 +443,24 @@ runner = ContainerRunner(
     timeout=60,
     runtime="docker",
 )
-# Wrap any BaseAgent
+# Enveloppe n'importe quel BaseAgent
 inner = SimpleAgent(engine, model="qwen3:8b")
 sandboxed = SandboxedAgent(
     agent=inner,
     runner=runner,
     mounts=["/home/user/data"],
 )
-result = sandboxed.run("Summarize the reports in /home/user/data")
+result = sandboxed.run("Résume les rapports dans /home/user/data")
 ```
 
 !!! warning "accepts_tools = False"
-    `SandboxedAgent` does not accept tools via `--tools` or `tools=`. Tool calling within the sandbox is the responsibility of the wrapped inner agent.
+    `SandboxedAgent` n'accepte pas d'outils par `--tools` ni par `tools=`. L'appel d'outils à l'intérieur du bac à sable revient à l'agent intérieur qu'il enveloppe.
 
 ---
 
-## Tool System Integration
+## L'intégration au système d'outils
 
-All `ToolUsingAgent` subclasses use the `ToolExecutor` to dispatch tool calls. The tool system is built on the `BaseTool` ABC:
+Toutes les sous-classes de `ToolUsingAgent` passent par le `ToolExecutor` pour aiguiller les appels d'outils. Le système d'outils est bâti sur la classe abstraite `BaseTool` :
 
 ```python
 class BaseTool(ABC):
@@ -469,29 +469,29 @@ class BaseTool(ABC):
     @property
     @abstractmethod
     def spec(self) -> ToolSpec:
-        """Return the tool specification."""
+        """Renvoie la spécification de l'outil."""
 
     @abstractmethod
     def execute(self, **params: Any) -> ToolResult:
-        """Execute the tool with the given parameters."""
+        """Exécute l'outil avec les paramètres donnés."""
 
     def to_openai_function(self) -> Dict[str, Any]:
-        """Convert to OpenAI function-calling format."""
+        """Convertit au format d'appel de fonctions d'OpenAI."""
 ```
 
-### Built-in Tools
+### Les outils intégrés
 
-| Tool | Registry Key | Description |
+| Outil | Clé de registre | Description |
 |------|-------------|-------------|
-| `CalculatorTool` | `calculator` | AST-based safe expression evaluator |
-| `ThinkTool` | `think` | Reasoning scratchpad (returns input as-is) |
-| `RetrievalTool` | `retrieval` | Memory search via a memory backend |
-| `LLMTool` | `llm` | Sub-model calls (query a different model) |
-| `FileReadTool` | `file_read` | Safe file reading with path validation |
+| `CalculatorTool` | `calculator` | Évaluateur d'expressions sûr, fondé sur l'AST |
+| `ThinkTool` | `think` | Brouillon de raisonnement (rend l'entrée telle quelle) |
+| `RetrievalTool` | `retrieval` | Recherche en mémoire, par un moteur de mémoire |
+| `LLMTool` | `llm` | Appels à un sous-modèle (interroger un autre modèle) |
+| `FileReadTool` | `file_read` | Lecture de fichier sûre, avec validation du chemin |
 
 ### ToolExecutor
 
-The `ToolExecutor` handles tool dispatch with JSON argument parsing, latency tracking, and event bus integration:
+Le `ToolExecutor` prend en charge l'aiguillage des outils, avec l'analyse des arguments JSON, le suivi de la latence et l'intégration au bus d'événements :
 
 ```python
 class ToolExecutor:
@@ -500,44 +500,44 @@ class ToolExecutor:
         self._bus = bus
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
-        """Parse arguments, dispatch to tool, measure latency, emit events."""
+        """Analyse les arguments, aiguille vers l'outil, mesure la latence, émet les événements."""
 
     def get_openai_tools(self) -> List[Dict[str, Any]]:
-        """Return tools in OpenAI function-calling format."""
+        """Rend les outils au format d'appel de fonctions d'OpenAI."""
 ```
 
-For each tool call:
+Pour chaque appel d'outil :
 
-1. Looks up the tool by name
-2. Parses the JSON arguments string
-3. Publishes `TOOL_CALL_START` on the event bus
-4. Executes the tool with timing
-5. Publishes `TOOL_CALL_END` with success status and latency
-6. Returns the `ToolResult`
+1. Cherche l'outil par son nom
+2. Analyse la chaîne d'arguments JSON
+3. Publie `TOOL_CALL_START` sur le bus d'événements
+4. Exécute l'outil en le chronométrant
+5. Publie `TOOL_CALL_END` avec le statut de réussite et la latence
+6. Rend le `ToolResult`
 
 ---
 
-## Event Bus Integration
+## L'intégration au bus d'événements
 
-All agents integrate with the `EventBus` for telemetry and trace collection:
+Tous les agents s'intègrent à l'`EventBus`, pour la télémétrie et la collecte de traces :
 
-| Event | Published By | When |
+| Événement | Publié par | Quand |
 |-------|-------------|------|
-| `AGENT_TURN_START` | All agents (via `_emit_turn_start` helper) | Before starting query processing |
-| `AGENT_TURN_END` | All agents (via `_emit_turn_end` helper) | After producing a response |
-| `TOOL_CALL_START` | ToolExecutor (all `ToolUsingAgent` subclasses) | Before executing a tool |
-| `TOOL_CALL_END` | ToolExecutor (all `ToolUsingAgent` subclasses) | After executing a tool |
+| `AGENT_TURN_START` | Tous les agents (par la méthode `_emit_turn_start`) | Avant de commencer à traiter la question |
+| `AGENT_TURN_END` | Tous les agents (par la méthode `_emit_turn_end`) | Après avoir produit une réponse |
+| `TOOL_CALL_START` | ToolExecutor (toutes les sous-classes de `ToolUsingAgent`) | Avant d'exécuter un outil |
+| `TOOL_CALL_END` | ToolExecutor (toutes les sous-classes de `ToolUsingAgent`) | Après avoir exécuté un outil |
 
-!!! info "Inference events"
-    `INFERENCE_START` and `INFERENCE_END` events are published by the `InstrumentedEngine` wrapper (in `telemetry/instrumented_engine.py`), not by agents directly. This keeps telemetry opt-in and transparent to agent code.
+!!! info "Les événements d'inférence"
+    Les événements `INFERENCE_START` et `INFERENCE_END` sont publiés par l'enveloppe `InstrumentedEngine` (dans `telemetry/instrumented_engine.py`), pas par les agents eux-mêmes. La télémétrie reste ainsi facultative et transparente pour le code des agents.
 
-These events are consumed by the `TelemetryStore` (for metrics) and `TraceCollector` (for interaction traces).
+Ces événements sont consommés par le `TelemetryStore` (pour les métriques) et le `TraceCollector` (pour les traces d'interaction).
 
 ---
 
-## Agent Registration
+## L'enregistrement des agents
 
-Agents are registered via the `@AgentRegistry.register("name")` decorator:
+Les agents s'enregistrent par le décorateur `@AgentRegistry.register("nom")` :
 
 ```python
 from diapason.core.registry import AgentRegistry
@@ -551,7 +551,7 @@ class MyAgent(BaseAgent):
         ...
 ```
 
-To list all registered agents:
+Pour lister tous les agents enregistrés :
 
 ```python
 from diapason.core.registry import AgentRegistry
@@ -560,7 +560,7 @@ print(AgentRegistry.keys())
 # ("simple", "orchestrator", "native_react", "react", "native_openhands", "rlm", "openhands")
 ```
 
-To instantiate an agent by key:
+Pour instancier un agent à partir de sa clé :
 
 ```python
 agent = AgentRegistry.create("orchestrator", engine, model, tools=tools, bus=bus)

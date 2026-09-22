@@ -1,101 +1,101 @@
 ---
-title: Skills Workflow
-description: End-to-end tutorial — install skills, use them with an agent, discover patterns from traces, and optimize with DSPy
+title: Le flux de travail des compétences
+description: Tutoriel de bout en bout — installer des compétences, s'en servir avec un agent, découvrir des motifs dans les traces et optimiser avec DSPy
 ---
 
-# Skills Workflow Tutorial
+# Tutoriel : le flux de travail des compétences
 
-This tutorial walks through the complete skills lifecycle: installing skills from public sources, using them with a local agent, discovering patterns from trace history, and optimizing skill descriptions with DSPy. By the end you will have a working skills setup that improves over time.
+Ce tutoriel parcourt tout le cycle de vie d'une compétence : l'installer depuis une source publique, s'en servir avec un agent local, découvrir des motifs dans l'historique des traces, et optimiser les descriptions de compétences avec DSPy. À la fin, tu auras une installation de compétences qui marche et qui s'améliore avec le temps.
 
-!!! note "Before you begin"
-    This tutorial assumes Diapason is installed with Ollama running and a model available (e.g., `qwen3.5:9b`). If you have not completed setup yet, start with the [Quick Start guide](../getting-started/quickstart.md).
+!!! note "Avant de commencer"
+    Ce tutoriel suppose que Diapason est installé, qu'Ollama tourne et qu'un modèle est disponible (`qwen3.5:9b`, par exemple). Si tu n'as pas encore fait l'installation, commence par le [guide de démarrage rapide](../getting-started/quickstart.md).
 
-## Step 1: Install Skills from Hermes Agent
+## Étape 1 : installer des compétences depuis Hermes Agent
 
-Diapason can import skills from the [Hermes Agent](https://github.com/NousResearch/hermes-agent) skill library maintained by NousResearch. Let's install a few useful ones.
+Diapason sait importer des compétences depuis la bibliothèque [Hermes Agent](https://github.com/NousResearch/hermes-agent), maintenue par NousResearch. Installons-en quelques-unes d'utiles.
 
 ```bash
-# Install individual skills
+# Installer des compétences une par une
 diapason skill install hermes:arxiv
 diapason skill install hermes:github-pr-workflow
 
-# Or bulk install an entire category
+# Ou installer toute une catégorie d'un coup
 diapason skill sync hermes --category research
 ```
 
-The first install clones the Hermes repo to `~/.diapason/skill-cache/hermes/` (one-time, ~5s). Subsequent installs reuse the cache.
+La première installation clone le dépôt Hermes dans `~/.diapason/skill-cache/hermes/` (une seule fois, environ 5 s). Les suivantes réutilisent le cache.
 
-Verify what's installed:
+Vérifie ce qui est installé :
 
 ```bash
 diapason skill list
 ```
 
-You should see a table with each skill's name, description, version, and tags.
+Tu devrais voir un tableau avec, pour chaque compétence, son nom, sa description, sa version et ses étiquettes.
 
-## Step 2: Inspect an Installed Skill
+## Étape 2 : inspecter une compétence installée
 
-Let's look at what the `arxiv` skill contains:
+Regardons ce que contient la compétence `arxiv` :
 
 ```bash
 diapason skill info arxiv
 ```
 
-This shows the skill's metadata — author, description, tags, capabilities, whether it has structured steps or markdown instructions, and its invocation flags.
+S'affichent alors les métadonnées de la compétence — auteur, description, étiquettes, capacités, présence d'étapes structurées ou d'instructions markdown, et ses drapeaux d'invocation.
 
-You can also inspect the raw SKILL.md:
+Tu peux aussi regarder le `SKILL.md` brut :
 
 ```bash
 cat ~/.diapason/skills/hermes/arxiv/SKILL.md | head -40
 ```
 
-The `.source` file records provenance:
+Le fichier `.source` garde la provenance :
 
 ```bash
 cat ~/.diapason/skills/hermes/arxiv/.source
 ```
 
-This shows the source (`hermes:arxiv`), the git commit it was imported from, which tool names were translated (e.g., `Edit→file_edit`), and the install timestamp.
+On y lit la source (`hermes:arxiv`), le commit git dont elle a été importée, les noms d'outils qui ont été traduits (`Edit→file_edit`, par exemple) et la date d'installation.
 
-## Step 3: Use Skills with an Agent
+## Étape 3 : se servir des compétences avec un agent
 
-Now let's ask the agent a question that should trigger skill usage:
+Posons maintenant à l'agent une question qui devrait déclencher l'usage d'une compétence :
 
 ```bash
-diapason ask "Use the code-explainer skill to explain this Python code: for i in range(5): print(i*2)" \
+diapason ask "Sers-toi de la compétence code-explainer pour expliquer ce code Python : for i in range(5): print(i*2)" \
   --engine ollama --model qwen3.5:9b
 ```
 
-The agent will:
-1. See the skill catalog in its system prompt
-2. Decide to invoke `skill_code-explainer`
-3. Receive the markdown instructions from the skill
-4. Follow the 5-step pattern to explain the code
+L'agent va :
+1. Voir le catalogue de compétences dans son prompt système
+2. Décider d'invoquer `skill_code-explainer`
+3. Recevoir les instructions markdown de la compétence
+4. Suivre le motif en cinq étapes pour expliquer le code
 
-Try a pipeline skill too:
+Essaie aussi une compétence à pipeline :
 
 ```bash
-diapason ask "Use the math-solver skill to compute 17 * 23" \
+diapason ask "Sers-toi de la compétence math-solver pour calculer 17 * 23" \
   --engine ollama --model qwen3.5:9b
 ```
 
-This time the agent invokes `skill_math-solver`, which executes a deterministic pipeline (calling the `calculator` tool internally) and returns the computed result directly.
+Cette fois, l'agent invoque `skill_math-solver`, qui exécute un pipeline déterministe (il appelle l'outil `calculator` en interne) et rend directement le résultat calculé.
 
-## Step 4: Create Your Own Skill
+## Étape 4 : créer ta propre compétence
 
-Create a new skill directory:
+Crée un dossier pour une nouvelle compétence :
 
 ```bash
 mkdir -p ~/.diapason/skills/my-reviewer
 ```
 
-Write a SKILL.md:
+Écris un `SKILL.md` :
 
 ```bash
 cat > ~/.diapason/skills/my-reviewer/SKILL.md << 'EOF'
 ---
 name: my-reviewer
-description: Review code changes with a security-first approach
+description: Relit des changements de code, la sécurité d'abord
 license: MIT
 metadata:
   diapason:
@@ -104,98 +104,98 @@ metadata:
     tags: [coding, review, security]
 ---
 
-When asked to review code, follow this approach:
+Quand on te demande de relire du code, procède ainsi :
 
-1. **Security scan first** — check for injection vulnerabilities, hardcoded secrets, unsafe deserialization
-2. **Correctness** — verify logic, edge cases, error handling
-3. **Style** — naming, structure, consistency with surrounding code
-4. **Summary** — one paragraph with the verdict: approve, request changes, or block
+1. **Balayage de sécurité d'abord** — cherche les failles d'injection, les secrets écrits en dur, les désérialisations dangereuses
+2. **Correction** — vérifie la logique, les cas limites, la gestion des erreurs
+3. **Style** — nommage, structure, cohérence avec le code alentour
+4. **Résumé** — un paragraphe avec le verdict : approuver, demander des changements, ou bloquer
 
-Always start with security. If you find a security issue, flag it as BLOCKING regardless of other concerns.
+Commence toujours par la sécurité. Si tu trouves un problème de sécurité, signale-le comme BLOQUANT, quelles que soient les autres remarques.
 EOF
 ```
 
-Verify it's discovered:
+Vérifie qu'elle est bien découverte :
 
 ```bash
 diapason skill list
 ```
 
-You should see `my-reviewer` in the table. Try it:
+Tu devrais voir `my-reviewer` dans le tableau. Essaie-la :
 
 ```bash
-diapason ask "Use the my-reviewer skill to review this function: def login(user, pwd): return db.query(f'SELECT * FROM users WHERE name={user} AND pass={pwd}')" \
+diapason ask "Sers-toi de la compétence my-reviewer pour relire cette fonction : def login(user, pwd): return db.query(f'SELECT * FROM users WHERE name={user} AND pass={pwd}')" \
   --engine ollama --model qwen3.5:9b
 ```
 
-The agent should follow the security-first approach and flag the SQL injection vulnerability.
+L'agent devrait suivre l'approche « sécurité d'abord » et signaler la faille d'injection SQL.
 
-## Step 5: Generate Traces
+## Étape 5 : produire des traces
 
-For the learning loop to work, we need traces. Run several queries that use skills:
+Pour que la boucle d'apprentissage fonctionne, il faut des traces. Lance plusieurs requêtes qui se servent des compétences :
 
 ```bash
-# Generate a few traces
-diapason ask "Use math-solver to compute 100 / 7"
-diapason ask "Use code-explainer to explain: lambda x: x**2"
-diapason ask "Use my-reviewer to review: def add(a,b): return a+b"
-diapason ask "Use math-solver to compute 2**10"
-diapason ask "Use code-explainer to explain: [x for x in range(10) if x % 2 == 0]"
+# Produire quelques traces
+diapason ask "Sers-toi de math-solver pour calculer 100 / 7"
+diapason ask "Sers-toi de code-explainer pour expliquer : lambda x: x**2"
+diapason ask "Sers-toi de my-reviewer pour relire : def add(a,b): return a+b"
+diapason ask "Sers-toi de math-solver pour calculer 2**10"
+diapason ask "Sers-toi de code-explainer pour expliquer : [x for x in range(10) if x % 2 == 0]"
 ```
 
-Each query produces a trace in `~/.diapason/traces.db` with skill metadata tags (`skill`, `skill_source`, `skill_kind`).
+Chaque requête produit une trace dans `~/.diapason/traces.db`, avec les étiquettes de métadonnées de la compétence (`skill`, `skill_source`, `skill_kind`).
 
-## Step 6: Discover Patterns from Traces
+## Étape 6 : découvrir des motifs dans les traces
 
-Mine the trace store for recurring tool sequences:
+Fouille le stock de traces pour y repérer des suites d'outils récurrentes :
 
 ```bash
-# Preview without writing
+# Aperçu, sans rien écrire
 diapason skill discover --dry-run --min-frequency 2
 
-# Write discovered patterns as skill manifests
+# Écrire les motifs découverts en manifestes de compétence
 diapason skill discover --min-frequency 2
 ```
 
-Discovered skills land in `~/.diapason/skills/discovered/` and automatically appear in `diapason skill list` on the next session.
+Les compétences découvertes atterrissent dans `~/.diapason/skills/discovered/` et apparaissent d'elles-mêmes dans `diapason skill list` à la session suivante.
 
-## Step 7: Optimize Skills with DSPy
+## Étape 7 : optimiser les compétences avec DSPy
 
-Once you have enough traces (at least 3-5 per skill), run the optimizer:
+Une fois que tu as assez de traces (au moins 3 à 5 par compétence), lance l'optimiseur :
 
 ```bash
-# Preview what would be optimized
+# Aperçu de ce qui serait optimisé
 diapason optimize skills --dry-run
 
-# Run DSPy optimization
+# Lancer l'optimisation DSPy
 diapason optimize skills --policy dspy --min-traces 3
 ```
 
-This produces overlay files at `~/.diapason/learning/skills/<skill-name>/optimized.toml` with improved descriptions and few-shot examples extracted from your best traces.
+Cela produit des fichiers overlay à `~/.diapason/learning/skills/<skill-name>/optimized.toml`, avec des descriptions améliorées et des exemples few-shot tirés de tes meilleures traces.
 
-Inspect what was produced:
+Inspecte ce qui a été produit :
 
 ```bash
 diapason skill show-overlay math-solver
 diapason skill show-overlay code-explainer
 ```
 
-The next time you run a query, the agent sees the optimized descriptions and few-shot examples in its system prompt.
+À la requête suivante, l'agent voit les descriptions optimisées et les exemples few-shot dans son prompt système.
 
-## Step 8: Benchmark the Impact
+## Étape 8 : mesurer l'impact
 
-Run a quick benchmark to see if skills + optimization actually help:
+Lance une mesure rapide pour voir si les compétences et leur optimisation aident vraiment :
 
 ```bash
-# Smoke test: 4 conditions × 1 seed × 5 tasks
+# Test de fumée : 4 conditions × 1 graine × 5 tâches
 diapason bench skills --max-samples 5 --seeds 42
 ```
 
-This runs the PinchBench benchmark in four conditions (no skills, skills on, DSPy-optimized, GEPA-optimized) and produces a markdown report at `docs/superpowers/results/`.
+Cela lance la mesure PinchBench dans quatre conditions (sans compétences, compétences activées, optimisées par DSPy, optimisées par GEPA) et produit un rapport markdown dans `docs/superpowers/results/`.
 
-## Step 9: Configure Auto-Import and Auto-Optimization
+## Étape 9 : configurer l'import et l'optimisation automatiques
 
-For a hands-off experience, add this to `~/.diapason/config.toml`:
+Pour que tout se fasse sans toi, ajoute ceci à `~/.diapason/config.toml` :
 
 ```toml
 [skills]
@@ -213,24 +213,24 @@ optimizer = "dspy"
 min_traces_per_skill = 20
 ```
 
-Now skills are automatically synced from Hermes on session start, and the optimizer runs after each learning cycle when enough traces accumulate.
+Désormais, les compétences se synchronisent d'elles-mêmes depuis Hermes au démarrage de la session, et l'optimiseur tourne après chaque cycle d'apprentissage dès qu'assez de traces se sont accumulées.
 
-## What You Learned
+## Ce que tu as appris
 
-| Concept | What you did |
+| Notion | Ce que tu as fait |
 |---------|-------------|
-| **Installing skills** | `diapason skill install hermes:arxiv` — imported from public sources |
-| **Using skills** | `diapason ask "Use the code-explainer skill..."` — agent invokes skills as tools |
-| **Creating skills** | Wrote a `SKILL.md` with YAML frontmatter and markdown instructions |
-| **Generating traces** | Ran skill-using queries to populate the trace store |
-| **Discovering patterns** | `diapason skill discover` — mined traces for recurring tool sequences |
-| **Optimizing skills** | `diapason optimize skills --policy dspy` — improved descriptions + few-shot examples |
-| **Benchmarking** | `diapason bench skills` — measured the impact across 4 conditions |
-| **Auto configuration** | Added `[skills]` and `[learning.skills]` config sections |
+| **Installer des compétences** | `diapason skill install hermes:arxiv` — importées depuis des sources publiques |
+| **S'en servir** | `diapason ask "Sers-toi de la compétence code-explainer..."` — l'agent invoque les compétences comme des outils |
+| **En créer** | Écrire un `SKILL.md` avec du front-matter YAML et des instructions markdown |
+| **Produire des traces** | Lancer des requêtes qui se servent des compétences, pour remplir le stock de traces |
+| **Découvrir des motifs** | `diapason skill discover` — fouiller les traces pour y repérer des suites d'outils récurrentes |
+| **Optimiser les compétences** | `diapason optimize skills --policy dspy` — descriptions améliorées et exemples few-shot |
+| **Mesurer** | `diapason bench skills` — mesurer l'impact sur 4 conditions |
+| **Configurer l'automatique** | Ajouter les sections `[skills]` et `[learning.skills]` à la configuration |
 
-## Next Steps
+## Pour aller plus loin
 
-- Browse the [full skills user guide](../user-guide/skills.md) for all CLI commands and configuration options
-- Read the [skills architecture](../architecture/skills.md) for the technical deep-dive
-- Explore the [Hermes Agent skill library](https://github.com/NousResearch/hermes-agent/tree/main/skills) for more skills to install
-- Try [OpenClaw skills](https://github.com/openclaw/skills) for community-contributed skills
+- Parcours le [guide complet des compétences](../user-guide/skills.md) pour toutes les commandes CLI et les options de configuration
+- Lis l'[architecture des compétences](../architecture/skills.md) pour le détail technique
+- Explore la [bibliothèque de compétences Hermes Agent](https://github.com/NousResearch/hermes-agent/tree/main/skills) pour en installer d'autres
+- Essaie les [compétences OpenClaw](https://github.com/openclaw/skills), contribuées par la communauté

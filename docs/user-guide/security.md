@@ -1,12 +1,12 @@
-# Security
+# La sécurité
 
-Diapason enables security enforcement on a fresh installation. It scans prompts and model outputs, protects device-exit boundaries, authenticates the local API, limits request and tool rates, applies capability policy, requires approval for sensitive tools, and records tamper-evident audit metadata without persisting matched secrets.
+Diapason active ses contrôles de sécurité dès l'installation. Il analyse les prompts et les sorties du modèle, protège les frontières de sortie d'appareil, authentifie l'API locale, limite le débit des requêtes et des outils, applique la politique de capacités, exige une approbation pour les outils sensibles, et enregistre des métadonnées d'audit qui rendent toute falsification visible — sans jamais conserver les secrets détectés.
 
 ---
 
-## Overview
+## Le tour d'horizon
 
-The security module has four independently usable components:
+Le module de sécurité compte quatre composants utilisables indépendamment :
 
 <div class="grid cards" markdown>
 
@@ -14,33 +14,33 @@ The security module has four independently usable components:
 
     ---
 
-    Wraps any `InferenceEngine` with pre- and post-call scanning. Supports WARN, REDACT, and BLOCK modes.
+    Enveloppe n'importe quel `InferenceEngine` d'une analyse avant et après l'appel. Trois modes : WARN, REDACT et BLOCK.
 
-    [:octicons-arrow-right-24: Jump to GuardrailsEngine](#guardrailsengine)
+    [:octicons-arrow-right-24: Aller à GuardrailsEngine](#guardrailsengine)
 
 - :material-key-remove: **SecretScanner**
 
     ---
 
-    Detects API keys, tokens, passwords, and connection strings in text.
+    Détecte dans le texte les clés d'API, les jetons, les mots de passe et les chaînes de connexion.
 
-    [:octicons-arrow-right-24: Jump to SecretScanner](#secretscanner)
+    [:octicons-arrow-right-24: Aller à SecretScanner](#secretscanner)
 
 - :material-account-lock: **PIIScanner**
 
     ---
 
-    Detects email addresses, SSNs, credit card numbers, phone numbers, and public IPs.
+    Détecte les adresses courriel, les numéros de sécurité sociale, les numéros de carte bancaire, les numéros de téléphone et les adresses IP publiques.
 
-    [:octicons-arrow-right-24: Jump to PIIScanner](#piiscanner)
+    [:octicons-arrow-right-24: Aller à PIIScanner](#piiscanner)
 
-- :material-file-lock: **File Policy**
+- :material-file-lock: **La politique des fichiers**
 
     ---
 
-    Blocks access to `.env`, `*.pem`, `id_rsa`, and other credential files.
+    Bloque l'accès à `.env`, `*.pem`, `id_rsa` et aux autres fichiers de secrets.
 
-    [:octicons-arrow-right-24: Jump to File Policy](#file-policy)
+    [:octicons-arrow-right-24: Aller à la politique des fichiers](#file-policy)
 
 </div>
 
@@ -48,19 +48,19 @@ The security module has four independently usable components:
 
 ## GuardrailsEngine
 
-`GuardrailsEngine` wraps any `InferenceEngine` and scans both the input messages and the output content. It is not registered in `EngineRegistry` — you create it directly by wrapping an existing engine instance.
+`GuardrailsEngine` enveloppe n'importe quel `InferenceEngine` et analyse à la fois les messages d'entrée et le contenu de sortie. Il n'est pas enregistré dans `EngineRegistry` — tu le crées directement, en enveloppant une instance de moteur existante.
 
-### Modes
+### Les modes
 
-| Mode | Constant | Behavior |
+| Mode | Constante | Comportement |
 |------|----------|----------|
-| Warn | `RedactionMode.WARN` | Publish a `SECURITY_ALERT` event but pass the text through unchanged. Default. |
-| Redact | `RedactionMode.REDACT` | Replace matches with `[REDACTED:pattern_name]` before passing to/from the engine. |
-| Block | `RedactionMode.BLOCK` | Raise `SecurityBlockError` immediately when findings are detected. |
+| Warn | `RedactionMode.WARN` | Publie un événement `SECURITY_ALERT` mais laisse passer le texte tel quel. C'est le mode par défaut. |
+| Redact | `RedactionMode.REDACT` | Remplace les correspondances par `[REDACTED:pattern_name]` avant de les passer au moteur, et à la sortie du moteur. |
+| Block | `RedactionMode.BLOCK` | Lève `SecurityBlockError` dès qu'une détection a lieu. |
 
-### Basic Usage
+### L'usage de base
 
-=== "Warn mode (default)"
+=== "Le mode warn (par défaut)"
 
     ```python title="warn_mode.py"
     from diapason.engine.ollama import OllamaEngine
@@ -71,15 +71,15 @@ The security module has four independently usable components:
     engine = OllamaEngine()
     guarded = GuardrailsEngine(engine)  # (1)!
 
-    messages = [Message(role=Role.USER, content="My API key is sk-abc123xyz")]
+    messages = [Message(role=Role.USER, content="Ma clé d'API est sk-abc123xyz")]
     response = guarded.generate(messages, model="qwen3:8b")
-    # The key is logged as a warning but the text is passed unchanged
+    # La clé est consignée comme un avertissement, mais le texte passe inchangé
     print(response["content"])
     ```
 
-    1. Defaults to `mode=RedactionMode.WARN`, `scan_input=True`, `scan_output=True`.
+    1. Par défaut : `mode=RedactionMode.WARN`, `scan_input=True`, `scan_output=True`.
 
-=== "Redact mode"
+=== "Le mode redact"
 
     ```python title="redact_mode.py"
     from diapason.engine.ollama import OllamaEngine
@@ -90,14 +90,14 @@ The security module has four independently usable components:
     engine = OllamaEngine()
     guarded = GuardrailsEngine(engine, mode=RedactionMode.REDACT)  # (1)!
 
-    messages = [Message(role=Role.USER, content="My key is sk-abc123xyz, help me debug")]
+    messages = [Message(role=Role.USER, content="Ma clé est sk-abc123xyz, aide-moi à déboguer")]
     response = guarded.generate(messages, model="qwen3:8b")
-    # Input sent to engine: "My key is [REDACTED:openai_key], help me debug"
+    # Entrée envoyée au moteur : "Ma clé est [REDACTED:openai_key], aide-moi à déboguer"
     ```
 
-    1. Sensitive patterns in input messages are replaced before reaching the model.
+    1. Les motifs sensibles des messages d'entrée sont remplacés avant d'atteindre le modèle.
 
-=== "Block mode"
+=== "Le mode block"
 
     ```python title="block_mode.py"
     from diapason.engine.ollama import OllamaEngine
@@ -112,42 +112,42 @@ The security module has four independently usable components:
         messages = [Message(role=Role.USER, content="AKIA1234567890ABCDEF")]
         guarded.generate(messages, model="qwen3:8b")
     except SecurityBlockError as exc:
-        print(f"Blocked: {exc}")
-        # Blocked: Security scan blocked input: 1 finding(s) detected
+        print(f"Bloqué : {exc}")
+        # Bloqué : Security scan blocked input: 1 finding(s) detected
     ```
 
-### Constructor Parameters
+### Les paramètres du constructeur
 
-| Parameter | Type | Default | Description |
+| Paramètre | Type | Défaut | Description |
 |-----------|------|---------|-------------|
-| `engine` | `InferenceEngine` | — | The wrapped inference engine |
-| `scanners` | `list[BaseScanner]` | `[SecretScanner(), PIIScanner()]` | Scanners to run |
-| `mode` | `RedactionMode` | `WARN` | Action on findings |
-| `scan_input` | `bool` | `True` | Scan input messages |
-| `scan_output` | `bool` | `True` | Scan output content |
-| `bus` | `EventBus` | `None` | Event bus for security events |
+| `engine` | `InferenceEngine` | — | Le moteur d'inférence enveloppé |
+| `scanners` | `list[BaseScanner]` | `[SecretScanner(), PIIScanner()]` | Les analyseurs à lancer |
+| `mode` | `RedactionMode` | `WARN` | L'action quand il y a une détection |
+| `scan_input` | `bool` | `True` | Analyser les messages d'entrée |
+| `scan_output` | `bool` | `True` | Analyser le contenu de sortie |
+| `bus` | `EventBus` | `None` | Le bus d'événements pour les événements de sécurité |
 
-### Event Bus Integration
+### L'intégration au bus d'événements
 
-When a `bus` is provided, `GuardrailsEngine` publishes events on every scan result:
+Quand un `bus` est fourni, `GuardrailsEngine` publie un événement à chaque résultat d'analyse :
 
-| Event | When |
+| Événement | Quand |
 |-------|------|
-| `SECURITY_ALERT` | Findings detected in WARN or REDACT mode |
-| `SECURITY_BLOCK` | Findings detected in BLOCK mode |
+| `SECURITY_ALERT` | Une détection en mode WARN ou REDACT |
+| `SECURITY_BLOCK` | Une détection en mode BLOCK |
 
-You can subscribe to these events with an `AuditLogger` to build a persistent security event log. See [Audit Logger](#audit-logger) below.
+Tu peux t'abonner à ces événements avec un `AuditLogger` pour bâtir un journal persistant des événements de sécurité. Voir [Le journal d'audit](#audit-logger) plus bas.
 
-### Custom Scanners
+### Des analyseurs sur mesure
 
-You can pass any set of `BaseScanner` subclasses to restrict or extend scanning:
+Tu peux passer n'importe quel jeu de sous-classes de `BaseScanner` pour restreindre ou étendre l'analyse :
 
 ```python title="custom_scanners.py"
 from diapason.security.guardrails import GuardrailsEngine
 from diapason.security.scanner import SecretScanner
 from diapason.security.types import RedactionMode
 
-# Only scan for secrets, skip PII
+# N'analyser que les secrets, laisser de côté les données personnelles
 guarded = GuardrailsEngine(
     engine,
     scanners=[SecretScanner()],
@@ -155,84 +155,85 @@ guarded = GuardrailsEngine(
 )
 ```
 
-### Streaming
+### Le fil de l'eau
 
-When output scanning is enabled, `GuardrailsEngine.stream()` and
-`stream_full()` buffer the completion, scan it, and only then release clean or
-sanitized content. This deliberately trades first-token latency for a strict
-guarantee that a secret split across token boundaries is not emitted before
-the scanner can evaluate it. Set `scan_output = false` only in an explicitly
-trusted local deployment that accepts this risk.
+Quand l'analyse de la sortie est active, `GuardrailsEngine.stream()` et
+`stream_full()` mettent la complétion en tampon, l'analysent, et ne relâchent
+qu'ensuite le contenu propre ou assaini. Ce choix sacrifie délibérément la
+latence du premier jeton contre une garantie stricte : un secret coupé en deux
+par une frontière de jetons n'est jamais émis avant que l'analyseur ait pu
+l'évaluer. Ne mets `scan_output = false` que dans un déploiement local
+explicitement de confiance, qui accepte ce risque.
 
 ---
 
 ## SecretScanner
 
-`SecretScanner` detects API keys, tokens, passwords, and other credentials using regex patterns. Each pattern has an associated `ThreatLevel`.
+`SecretScanner` détecte les clés d'API, les jetons, les mots de passe et les autres secrets à l'aide d'expressions régulières. Chaque motif porte un `ThreatLevel`.
 
-### Pattern Reference
+### La référence des motifs
 
-| Pattern Name | Threat Level | Matches |
+| Nom du motif | Niveau de menace | Ce qu'il attrape |
 |---|---|---|
-| `openai_key` | CRITICAL | `sk-` followed by 20+ alphanumeric chars |
-| `anthropic_key` | CRITICAL | `sk-ant-` followed by 20+ chars |
-| `aws_access_key` | CRITICAL | `AKIA` followed by 16 uppercase alphanumeric chars |
-| `github_token` | CRITICAL | `ghp_`, `gho_`, `ghs_`, `ghr_`, `github_pat_` followed by 36+ chars |
-| `stripe_key` | CRITICAL | `sk_live_`, `sk_test_`, `pk_live_`, `pk_test_` followed by 20+ chars |
-| `private_key` | CRITICAL | PEM private key header `-----BEGIN PRIVATE KEY-----` |
+| `openai_key` | CRITICAL | `sk-` suivi d'au moins 20 caractères alphanumériques |
+| `anthropic_key` | CRITICAL | `sk-ant-` suivi d'au moins 20 caractères |
+| `aws_access_key` | CRITICAL | `AKIA` suivi de 16 caractères alphanumériques majuscules |
+| `github_token` | CRITICAL | `ghp_`, `gho_`, `ghs_`, `ghr_`, `github_pat_` suivis d'au moins 36 caractères |
+| `stripe_key` | CRITICAL | `sk_live_`, `sk_test_`, `pk_live_`, `pk_test_` suivis d'au moins 20 caractères |
+| `private_key` | CRITICAL | L'en-tête de clé privée PEM `-----BEGIN PRIVATE KEY-----` |
 | `password_assignment` | HIGH | `password = "..."`, `passwd: "..."`, etc. |
-| `db_connection_string` | HIGH | `postgres://`, `mysql://`, `mongodb://`, `redis://` URLs |
-| `slack_token` | HIGH | `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-`, `xoxs-` followed by token |
+| `db_connection_string` | HIGH | Les URL `postgres://`, `mysql://`, `mongodb://`, `redis://` |
+| `slack_token` | HIGH | `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-`, `xoxs-` suivis du jeton |
 | `generic_api_key` | HIGH | `api_key = "..."`, `secret_key = "..."`, `auth_token = "..."` |
 
-### Direct Usage
+### L'usage direct
 
 ```python title="secret_scanner.py"
 from diapason.security.scanner import SecretScanner
 
 scanner = SecretScanner()
 
-# Scan text
-result = scanner.scan("My key is sk-abc123xyz789 and it is secret")
+# Analyser le texte
+result = scanner.scan("Ma clé est sk-abc123xyz789 et elle est secrète")
 print(result.clean)           # False
 print(result.highest_threat)  # ThreatLevel.CRITICAL
 for finding in result.findings:
-    print(f"  {finding.pattern_name}: {finding.description} at [{finding.start}:{finding.end}]")
+    print(f"  {finding.pattern_name} : {finding.description} en [{finding.start}:{finding.end}]")
 
-# Redact text
-clean = scanner.redact("Token: sk-abc123xyz789")  # gitleaks:allow
-print(clean)  # Token: [REDACTED:openai_key]
+# Caviarder le texte
+clean = scanner.redact("Jeton : sk-abc123xyz789")  # gitleaks:allow
+print(clean)  # Jeton : [REDACTED:openai_key]
 ```
 
 ---
 
 ## PIIScanner
 
-`PIIScanner` detects personally identifiable information using regex patterns calibrated for common US formats.
+`PIIScanner` détecte les données personnelles identifiantes à l'aide d'expressions régulières calibrées pour les formats américains courants.
 
-### Pattern Reference
+### La référence des motifs
 
-| Pattern Name | Threat Level | Matches |
+| Nom du motif | Niveau de menace | Ce qu'il attrape |
 |---|---|---|
-| `us_ssn` | CRITICAL | `XXX-XX-XXXX` format Social Security Numbers |
-| `credit_card_visa` | CRITICAL | Visa card numbers (16 digits starting with 4) |
-| `credit_card_mastercard` | CRITICAL | Mastercard numbers (16 digits starting with 51–55) |
-| `credit_card_amex` | CRITICAL | Amex numbers (15 digits starting with 34 or 37) |
-| `email` | MEDIUM | Standard email addresses |
-| `us_phone` | MEDIUM | US phone numbers in common formats |
-| `ipv4_public` | LOW | Public IPv4 addresses (excludes RFC1918 ranges) |
+| `us_ssn` | CRITICAL | Les numéros de sécurité sociale américains, au format `XXX-XX-XXXX` |
+| `credit_card_visa` | CRITICAL | Les numéros de carte Visa (16 chiffres commençant par 4) |
+| `credit_card_mastercard` | CRITICAL | Les numéros Mastercard (16 chiffres commençant par 51 à 55) |
+| `credit_card_amex` | CRITICAL | Les numéros Amex (15 chiffres commençant par 34 ou 37) |
+| `email` | MEDIUM | Les adresses courriel standard |
+| `us_phone` | MEDIUM | Les numéros de téléphone américains, dans les formats courants |
+| `ipv4_public` | LOW | Les adresses IPv4 publiques (les plages RFC1918 sont exclues) |
 
-!!! note "Private IP addresses"
-    The `ipv4_public` pattern intentionally excludes private ranges (10.x.x.x, 172.16–31.x.x, 192.168.x.x, 127.x.x.x). Internal IP addresses are not considered sensitive by default.
+!!! note "Les adresses IP privées"
+    Le motif `ipv4_public` exclut volontairement les plages privées (10.x.x.x, 172.16–31.x.x, 192.168.x.x, 127.x.x.x). Une adresse IP interne n'est pas considérée comme sensible par défaut.
 
-### Direct Usage
+### L'usage direct
 
 ```python title="pii_scanner.py"
 from diapason.security.scanner import PIIScanner
 
 scanner = PIIScanner()
 
-text = "Contact john@example.com or call 555-867-5309"
+text = "Écris à john@example.com ou appelle le 555-867-5309"
 result = scanner.scan(text)
 
 for finding in result.findings:
@@ -242,43 +243,43 @@ for finding in result.findings:
 
 clean = scanner.redact(text)
 print(clean)
-# Contact [REDACTED:email] or call [REDACTED:us_phone]
+# Écris à [REDACTED:email] ou appelle le [REDACTED:us_phone]
 ```
 
 ---
 
-## File Policy
+## La politique des fichiers {#file-policy}
 
-The file policy module prevents access to credential and key files. It is used internally by `FileReadTool` and the memory ingest path, but you can use it directly.
+Le module de politique des fichiers empêche l'accès aux fichiers de secrets et de clés. Il est utilisé en interne par `FileReadTool` et par le chemin d'ingestion de la mémoire, mais tu peux t'en servir directement.
 
-### Sensitive File Patterns
+### Les motifs de fichiers sensibles
 
-The `DEFAULT_SENSITIVE_PATTERNS` frozenset contains the following glob patterns:
+Le frozenset `DEFAULT_SENSITIVE_PATTERNS` contient les motifs glob suivants :
 
-| Pattern | Description |
+| Motif | Description |
 |---------|-------------|
-| `.env`, `.env.*`, `*.env` | Environment variable files |
-| `.secret`, `*.secrets` | Generic secret files |
-| `credentials.*` | Credential files |
-| `*.pem`, `*.key` | TLS/SSL certificates and private keys |
-| `*.p12`, `*.pfx`, `*.jks` | PKCS and Java keystore files |
-| `id_rsa`, `id_ed25519` | SSH private key files |
-| `.htpasswd` | Apache password files |
-| `.pgpass` | PostgreSQL password files |
-| `.netrc` | FTP/SSH credential files |
+| `.env`, `.env.*`, `*.env` | Les fichiers de variables d'environnement |
+| `.secret`, `*.secrets` | Les fichiers de secrets génériques |
+| `credentials.*` | Les fichiers d'identifiants |
+| `*.pem`, `*.key` | Les certificats TLS/SSL et les clés privées |
+| `*.p12`, `*.pfx`, `*.jks` | Les fichiers PKCS et les magasins de clés Java |
+| `id_rsa`, `id_ed25519` | Les clés privées SSH |
+| `.htpasswd` | Les fichiers de mots de passe Apache |
+| `.pgpass` | Les fichiers de mots de passe PostgreSQL |
+| `.netrc` | Les fichiers d'identifiants FTP/SSH |
 
-### Usage
+### L'usage
 
 ```python title="file_policy.py"
 from pathlib import Path
 from diapason.security.file_policy import is_sensitive_file, filter_sensitive_paths
 
-# Check a single file
+# Vérifier un seul fichier
 print(is_sensitive_file(".env"))           # True
 print(is_sensitive_file("server.key"))     # True
 print(is_sensitive_file("README.md"))      # False
 
-# Filter a list of paths
+# Filtrer une liste de chemins
 paths = [
     Path("README.md"),
     Path(".env"),
@@ -289,17 +290,17 @@ safe = filter_sensitive_paths(paths)
 print(safe)  # [PosixPath('README.md'), PosixPath('src/main.py')]
 ```
 
-### Integration with FileReadTool
+### L'intégration avec FileReadTool
 
-The built-in `FileReadTool` automatically calls `is_sensitive_file()` before reading any path. Attempts to read sensitive files raise an error rather than returning the file content. This behavior cannot be disabled at the tool level — configure the agent not to have `FileReadTool` if you need unrestricted file access.
+Le `FileReadTool` intégré appelle `is_sensitive_file()` avant de lire le moindre chemin. Une tentative de lecture d'un fichier sensible lève une erreur au lieu de rendre le contenu du fichier. Ce comportement ne se désactive pas au niveau de l'outil — si tu as besoin d'un accès aux fichiers sans restriction, configure l'agent sans `FileReadTool`.
 
 ---
 
-## Audit Logger
+## Le journal d'audit {#audit-logger}
 
-The `AuditLogger` persists security events to an append-only SQLite database. It can subscribe to the event bus to capture events automatically, or you can call `log()` manually.
+`AuditLogger` conserve les événements de sécurité dans une base SQLite en ajout seul. Il peut s'abonner au bus d'événements pour les capter tout seul, ou tu peux appeler `log()` à la main.
 
-### Event Bus Integration (Automatic)
+### L'intégration au bus d'événements (automatique)
 
 ```python title="audit_bus.py"
 from diapason.core.events import EventBus
@@ -310,7 +311,7 @@ from diapason.engine.ollama import OllamaEngine
 
 bus = EventBus()
 
-# AuditLogger subscribes to SECURITY_SCAN, SECURITY_ALERT, SECURITY_BLOCK
+# AuditLogger s'abonne à SECURITY_SCAN, SECURITY_ALERT et SECURITY_BLOCK
 audit = AuditLogger(db_path="~/.diapason/audit.db", bus=bus)
 
 engine = OllamaEngine()
@@ -320,10 +321,10 @@ guarded = GuardrailsEngine(
     bus=bus,
 )
 
-# Security events are now persisted automatically
+# Les événements de sécurité sont maintenant conservés tout seuls
 ```
 
-### Manual Logging
+### L'enregistrement à la main
 
 ```python title="audit_manual.py"
 import time
@@ -342,34 +343,34 @@ event = SecurityEvent(
 audit.log(event)
 ```
 
-### Querying the Audit Log
+### Interroger le journal d'audit
 
 ```python title="audit_query.py"
 from diapason.security.audit import AuditLogger
 
 audit = AuditLogger(db_path="~/.diapason/audit.db")
 
-# Recent events
+# Les événements récents
 events = audit.query(limit=20)
 
-# Filter by event type
+# Filtrer par type d'événement
 secret_events = audit.query(event_type="secret_detected")
 
-# Filter by time range
+# Filtrer par intervalle de temps
 import time
-recent = audit.query(since=time.time() - 3600)  # last hour
+recent = audit.query(since=time.time() - 3600)  # la dernière heure
 
-# Count total events
-print(f"Total events: {audit.count()}")
+# Compter tous les événements
+print(f"Total des événements : {audit.count()}")
 
 audit.close()
 ```
 
 ---
 
-## Configuration
+## La configuration
 
-Security settings live in the `[security]` section of `~/.diapason/config.toml`.
+Les réglages de sécurité vivent dans la section `[security]` de `~/.diapason/config.toml`.
 
 ```toml title="~/.diapason/config.toml"
 [security]
@@ -383,27 +384,27 @@ audit_log_path = "~/.diapason/audit.db"
 enforce_tool_confirmation = true
 ```
 
-### Configuration Reference
+### La référence de configuration
 
-| Key | Type | Default | Description |
+| Clé | Type | Défaut | Description |
 |-----|------|---------|-------------|
-| `enabled` | `bool` | `true` | Enable the security subsystem |
-| `scan_input` | `bool` | `true` | Scan user input messages |
-| `scan_output` | `bool` | `true` | Scan model output content |
-| `mode` | `str` | `"warn"` | Action on findings: `warn`, `redact`, or `block` |
-| `secret_scanner` | `bool` | `true` | Run `SecretScanner` on all text |
-| `pii_scanner` | `bool` | `true` | Run `PIIScanner` on all text |
-| `audit_log_path` | `str` | `~/.diapason/audit.db` | Path to the SQLite audit log |
-| `enforce_tool_confirmation` | `bool` | `true` | Accepted by the loader but **not currently enforced**. See [System Access](system-access.md#confirmation-behaviour) for when prompts actually happen |
+| `enabled` | `bool` | `true` | Active le sous-système de sécurité |
+| `scan_input` | `bool` | `true` | Analyse les messages entrés par l'utilisateur |
+| `scan_output` | `bool` | `true` | Analyse le contenu sorti du modèle |
+| `mode` | `str` | `"warn"` | L'action quand il y a une détection : `warn`, `redact` ou `block` |
+| `secret_scanner` | `bool` | `true` | Passe `SecretScanner` sur tout le texte |
+| `pii_scanner` | `bool` | `true` | Passe `PIIScanner` sur tout le texte |
+| `audit_log_path` | `str` | `~/.diapason/audit.db` | Le chemin du journal d'audit SQLite |
+| `enforce_tool_confirmation` | `bool` | `true` | Accepté par le chargeur, mais **pas appliqué aujourd'hui**. Voir [L'accès système](system-access.md#confirmation-behaviour) pour savoir quand les demandes de confirmation ont vraiment lieu |
 
-!!! tip "Start with warn, tighten later"
-    `mode = "warn"` is a good starting point. It lets you observe what patterns are being triggered without disrupting normal usage. Switch to `"redact"` once you are satisfied that the scanner isn't producing too many false positives for your workload.
+!!! tip "Commence en warn, resserre ensuite"
+    `mode = "warn"` est un bon point de départ : il te laisse observer quels motifs se déclenchent sans perturber l'usage normal. Passe à `"redact"` une fois que tu es sûr que l'analyseur ne produit pas trop de faux positifs pour ton usage.
 
 ---
 
-## Writing a Custom Scanner
+## Écrire son propre analyseur
 
-Implement `BaseScanner` and pass an instance to `GuardrailsEngine`:
+Implémente `BaseScanner` et passe une instance à `GuardrailsEngine` :
 
 ```python title="custom_scanner.py"
 import re
@@ -412,7 +413,7 @@ from diapason.security.types import ScanFinding, ScanResult, ThreatLevel
 
 
 class InternalUrlScanner(BaseScanner):
-    """Detect internal service URLs that should not be shared externally."""
+    """Détecte les URL de services internes qui ne doivent pas sortir."""
 
     scanner_id = "internal_urls"
 
@@ -427,7 +428,7 @@ class InternalUrlScanner(BaseScanner):
                 threat_level=ThreatLevel.MEDIUM,
                 start=match.start(),
                 end=match.end(),
-                description="Internal service URL",
+                description="URL de service interne",
             ))
         return ScanResult(findings=findings)
 
@@ -435,7 +436,7 @@ class InternalUrlScanner(BaseScanner):
         return self.PATTERN.sub("[REDACTED:internal_url]", text)
 
 
-# Use with GuardrailsEngine
+# À utiliser avec GuardrailsEngine
 from diapason.security.guardrails import GuardrailsEngine
 from diapason.security.types import RedactionMode
 
@@ -448,9 +449,9 @@ guarded = GuardrailsEngine(
 
 ---
 
-## See Also
+## Voir aussi
 
-- [Architecture: Security](../architecture/security.md) — pipeline design, event flow, and file policy integration
-- [API Reference: Security](../api-reference/diapason/security/index.md) — full class and function signatures
-- [Tools](tools.md) — how `FileReadTool` uses file policy
-- [Configuration](../getting-started/configuration.md) — full config reference
+- [Architecture : la sécurité](../architecture/security.md) — la conception du pipeline, le flux d'événements et l'intégration de la politique des fichiers
+- [Référence d'API : security](../api-reference/diapason/security/index.md) — toutes les signatures de classes et de fonctions
+- [Les outils](tools.md) — comment `FileReadTool` se sert de la politique des fichiers
+- [La configuration](../getting-started/configuration.md) — la référence de configuration complète

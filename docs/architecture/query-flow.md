@@ -1,157 +1,157 @@
-# Query Flow
+# Le parcours d'une question
 
-This page traces the end-to-end journey of a user query through the Diapason system, from the moment it enters the CLI or SDK to the final response and telemetry recording.
+Cette page suit le trajet complet d'une question d'utilisateur à travers Diapason, depuis le moment où elle entre par la ligne de commande ou par le SDK jusqu'à la réponse finale et à son enregistrement dans la télémétrie.
 
 ---
 
-## Sequence Diagram
+## Le diagramme de séquence
 
 ```mermaid
 sequenceDiagram
-    actor User
+    actor User as Utilisateur
     participant CLI as CLI / SDK
-    participant CFG as Config & Discovery
-    participant LRN as Learning (Router)
+    participant CFG as Configuration et découverte
+    participant LRN as Apprentissage (aiguilleur)
     participant AGT as Agent
-    participant MEM as Memory Backend
-    participant CTX as Context Injection
-    participant ENG as Inference Engine
-    participant TEL as Telemetry
-    participant TRC as Trace Collector
+    participant MEM as Moteur de mémoire
+    participant CTX as Injection du contexte
+    participant ENG as Moteur d'inférence
+    participant TEL as Télémétrie
+    participant TRC as Collecteur de traces
 
-    User->>CLI: diapason ask "query" / j.ask("query")
+    User->>CLI: diapason ask "question" / j.ask("question")
     CLI->>CFG: load_config()
-    CFG-->>CLI: DiapasonConfig (hardware, engine defaults)
+    CFG-->>CLI: DiapasonConfig (matériel, défauts du moteur)
 
     CLI->>CFG: get_engine(config)
     CFG-->>CLI: (engine_key, engine_instance)
 
     CLI->>CFG: discover_engines() + discover_models()
-    CFG-->>CLI: available models per engine
+    CFG-->>CLI: modèles disponibles par moteur
 
-    alt Model not specified
+    alt Aucun modèle précisé
         CLI->>LRN: select_model(RoutingContext)
-        LRN-->>CLI: model_key (e.g., "qwen3:8b")
+        LRN-->>CLI: model_key (par exemple "qwen3:8b")
     end
 
-    alt Agent mode (--agent flag)
+    alt Mode agent (drapeau --agent)
         CLI->>AGT: agent.run(query, context)
         AGT->>MEM: retrieve(query, top_k=5)
         MEM-->>AGT: RetrievalResult[]
         AGT->>CTX: inject_context(query, messages, backend)
-        CTX-->>AGT: messages with context prepended
+        CTX-->>AGT: messages avec le contexte en tête
 
-        loop Tool-calling loop (max_turns)
+        loop Boucle d'appel d'outils (max_turns)
             AGT->>ENG: generate(messages, model, tools)
             ENG-->>AGT: {content, tool_calls, usage}
-            opt Tool calls present
+            opt Des appels d'outils sont présents
                 AGT->>AGT: ToolExecutor.execute(tool_call)
-                AGT->>AGT: Append tool results to messages
+                AGT->>AGT: Ajouter les résultats d'outils aux messages
             end
         end
 
         AGT-->>CLI: AgentResult(content, tool_results, turns)
-    else Direct mode (no agent)
+    else Mode direct (sans agent)
         CLI->>MEM: retrieve(query)
         MEM-->>CLI: RetrievalResult[]
         CLI->>CTX: inject_context(query, messages, backend)
-        CTX-->>CLI: messages with context
+        CTX-->>CLI: messages avec le contexte
 
         CLI->>ENG: instrumented_generate(messages, model)
         ENG-->>CLI: {content, usage}
     end
 
-    CLI->>TEL: TelemetryStore records metrics
-    CLI->>TRC: TraceCollector saves Trace
-    CLI-->>User: Response text
+    CLI->>TEL: TelemetryStore enregistre les mesures
+    CLI->>TRC: TraceCollector enregistre la Trace
+    CLI-->>User: Le texte de la réponse
 ```
 
 ---
 
-## Direct Mode vs Agent Mode
+## Le mode direct et le mode agent
 
-Diapason supports two query processing paths, selected by the `--agent` CLI flag or the `agent` parameter in the SDK.
+Diapason traite une question par deux chemins possibles, choisis par le drapeau `--agent` en ligne de commande ou par le paramètre `agent` du SDK.
 
-### Direct Mode (Default)
+### Le mode direct (celui par défaut)
 
-In direct mode, the query goes straight to the inference engine with optional memory context. This is the simplest path -- one inference call, no tool loop.
+En mode direct, la question part droit au moteur d'inférence, avec le contexte mémoire en option. C'est le chemin le plus court : un seul appel d'inférence, aucune boucle d'outils.
 
 ```bash
-# CLI
-diapason ask "What is the capital of France?"
+# En ligne de commande
+diapason ask "Quelle est la capitale de la France ?"
 
-# SDK
+# Dans le SDK
 j = Diapason()
-response = j.ask("What is the capital of France?")
+response = j.ask("Quelle est la capitale de la France ?")
 ```
 
-### Agent Mode
+### Le mode agent
 
-In agent mode, the query is handled by a named agent that can perform multiple inference rounds and invoke tools. The `OrchestratorAgent` is the most common choice, enabling a multi-turn tool-calling loop.
+En mode agent, la question est prise en charge par un agent nommé, capable d'enchaîner plusieurs tours d'inférence et d'appeler des outils. L'`OrchestratorAgent` est le choix le plus courant : il ouvre une boucle d'appel d'outils sur plusieurs tours.
 
 ```bash
-# CLI
-diapason ask --agent orchestrator --tools calculator,think "What is 2^10 + 3^5?"
+# En ligne de commande
+diapason ask --agent orchestrator --tools calculator,think "Combien font 2^10 + 3^5 ?"
 
-# SDK
-response = j.ask("What is 2^10 + 3^5?", agent="orchestrator", tools=["calculator"])
+# Dans le SDK
+response = j.ask("Combien font 2^10 + 3^5 ?", agent="orchestrator", tools=["calculator"])
 ```
 
 ---
 
-## Step-by-Step Walkthrough
+## Le parcours, étape par étape
 
-### Step 1: Configuration Loading
+### Étape 1 : le chargement de la configuration
 
-The journey begins with loading the system configuration:
+Tout commence par le chargement de la configuration du système :
 
 ```python
-config = load_config()  # Reads ~/.diapason/config.toml
+config = load_config()  # Lit ~/.diapason/config.toml
 ```
 
-This step:
+Cette étape :
 
-- Detects system hardware (GPU vendor/model, CPU, RAM)
-- Recommends the best inference engine for the detected hardware
-- Overlays any user overrides from the TOML file
-- Returns a `DiapasonConfig` dataclass with all settings
+- Détecte le matériel de la machine (fabricant et modèle de la carte graphique, processeur, mémoire vive)
+- Recommande le moteur d'inférence le mieux adapté au matériel détecté
+- Superpose les réglages que tu as écrits toi-même dans le fichier TOML
+- Rend une dataclass `DiapasonConfig` portant tous les réglages
 
-### Step 2: Engine Discovery
+### Étape 2 : la découverte du moteur
 
-Next, the system finds a running inference engine:
+Le système cherche ensuite un moteur d'inférence en marche :
 
 ```python
 resolved = get_engine(config, engine_key)
-# Returns (engine_key, engine_instance) or None
+# Rend (engine_key, engine_instance), ou None
 ```
 
-The discovery process:
+La découverte se déroule ainsi :
 
-1. If a specific engine was requested (`--engine` flag), try that engine
-2. Otherwise, try the default engine from config (e.g., `"ollama"`)
-3. If the default is unhealthy, probe all registered engines and use the first healthy one
-4. If no engine is available, exit with an error message
+1. Si un moteur précis a été demandé (drapeau `--engine`), essayer celui-là
+2. Sinon, essayer le moteur par défaut de la configuration (`"ollama"`, par exemple)
+3. Si le moteur par défaut ne répond pas, sonder tous les moteurs enregistrés et prendre le premier en bonne santé
+4. Si aucun moteur n'est disponible, s'arrêter avec un message d'erreur
 
-### Step 3: Model Discovery and Registration
+### Étape 3 : la découverte des modèles et leur enregistrement
 
-Once an engine is found, the system discovers available models:
+Une fois le moteur trouvé, le système découvre les modèles disponibles :
 
 ```python
-register_builtin_models()          # Register known models (catalog)
+register_builtin_models()          # Enregistre les modèles connus (le catalogue)
 all_engines = discover_engines(config)
 all_models = discover_models(all_engines)
 for ek, model_ids in all_models.items():
-    merge_discovered_models(ek, model_ids)  # Register runtime-discovered models
+    merge_discovered_models(ek, model_ids)  # Enregistre les modèles découverts à l'exécution
 ```
 
-### Step 4: Model Routing
+### Étape 4 : l'aiguillage du modèle
 
-If no model was explicitly specified, the router policy selects one:
+Si aucun modèle n'a été précisé explicitement, la politique d'aiguillage en choisit un :
 
 ```python
 from diapason.learning import ensure_registered
 from diapason.learning.router import build_routing_context
-ensure_registered()  # Ensure learning policies are registered
+ensure_registered()  # S'assure que les politiques d'apprentissage sont enregistrées
 
 policy_key = router_policy or config.learning.routing.policy
 router_cls = RouterPolicyRegistry.get(policy_key)
@@ -165,31 +165,31 @@ ctx = build_routing_context(query_text)
 model_name = router.select_model(ctx)
 ```
 
-The `build_routing_context()` function (in `learning/router.py`) analyzes the query for code patterns, math keywords, length, and urgency. The router then applies its rules (heuristic or learned) to select the optimal model.
+La fonction `build_routing_context()` (dans `learning/router.py`) examine la question : motifs de code, mots-clés mathématiques, longueur, urgence. L'aiguilleur applique ensuite ses règles — heuristiques ou apprises — pour choisir le modèle le mieux adapté.
 
-### Step 5: Memory Context Injection
+### Étape 5 : l'injection du contexte mémoire
 
-If memory context injection is enabled (default: `true`) and the memory backend has indexed documents:
+Si l'injection du contexte mémoire est active (`true` par défaut) et que le moteur de mémoire a des documents indexés :
 
 ```python
 backend = _get_memory_backend(config)
 if backend is not None:
     ctx_cfg = ContextConfig(
-        top_k=config.memory.context_top_k,        # Default: 5
-        min_score=config.memory.context_min_score,  # Default: 0.1
-        max_context_tokens=config.memory.context_max_tokens,  # Default: 2048
+        top_k=config.memory.context_top_k,        # Défaut : 5
+        min_score=config.memory.context_min_score,  # Défaut : 0.1
+        max_context_tokens=config.memory.context_max_tokens,  # Défaut : 2048
     )
     messages = inject_context(query_text, messages, backend, config=ctx_cfg)
 ```
 
-This retrieves relevant chunks from the memory backend and prepends a system message with the retrieved context and source attribution.
+Les morceaux pertinents sont extraits du moteur de mémoire et placés en tête, dans un message système qui porte le contexte retrouvé et l'indication de sa source.
 
-!!! tip "Disabling context injection"
-    Use `--no-context` on the CLI or `context=False` in the SDK to skip memory context injection.
+!!! tip "Couper l'injection du contexte"
+    Passe `--no-context` en ligne de commande, ou `context=False` dans le SDK, pour sauter l'injection du contexte mémoire.
 
-### Step 6: Inference Generation
+### Étape 6 : la génération
 
-**In direct mode**, the query is sent to the engine via the instrumented wrapper:
+**En mode direct**, la question part au moteur par l'enveloppe instrumentée :
 
 ```python
 result = instrumented_generate(
@@ -201,30 +201,30 @@ result = instrumented_generate(
 )
 ```
 
-The `instrumented_generate()` wrapper:
+L'enveloppe `instrumented_generate()` :
 
-1. Publishes `INFERENCE_START` on the event bus
-2. Records the start time
-3. Calls `engine.generate()`
-4. Records end time, calculates latency
-5. Publishes `INFERENCE_END` with timing and token counts
-6. Publishes `TELEMETRY_RECORD` with the full `TelemetryRecord`
+1. Publie `INFERENCE_START` sur le bus d'événements
+2. Note l'heure de départ
+3. Appelle `engine.generate()`
+4. Note l'heure de fin et calcule la latence
+5. Publie `INFERENCE_END`, avec les durées et le compte de jetons
+6. Publie `TELEMETRY_RECORD`, avec le `TelemetryRecord` complet
 
-**In agent mode**, the agent manages inference calls internally, potentially making multiple rounds with tool calls in between.
+**En mode agent**, l'agent gère lui-même ses appels d'inférence et peut enchaîner plusieurs tours, avec des appels d'outils entre deux.
 
-### Step 7: Tool Execution (Agent Mode Only)
+### Étape 7 : l'exécution des outils (en mode agent seulement)
 
-When the `OrchestratorAgent` receives tool calls in the model's response:
+Quand l'`OrchestratorAgent` trouve des appels d'outils dans la réponse du modèle :
 
-1. Each tool call is dispatched to the `ToolExecutor`
-2. The executor publishes `TOOL_CALL_START`, executes the tool, publishes `TOOL_CALL_END`
-3. Tool results are appended to the message history as `TOOL` messages
-4. The updated messages are sent back to the engine for the next round
-5. This loop continues until the model responds without tool calls or `max_turns` is reached
+1. Chaque appel d'outil est confié au `ToolExecutor`
+2. L'exécuteur publie `TOOL_CALL_START`, lance l'outil, puis publie `TOOL_CALL_END`
+3. Les résultats d'outils sont ajoutés à l'historique des messages, sous la forme de messages `TOOL`
+4. Les messages ainsi complétés repartent au moteur pour le tour suivant
+5. La boucle continue jusqu'à ce que le modèle réponde sans appel d'outil, ou que `max_turns` soit atteint
 
-### Step 8: Telemetry Recording
+### Étape 8 : l'enregistrement de la télémétrie
 
-After every inference call, a `TelemetryRecord` is created and persisted:
+Après chaque appel d'inférence, un `TelemetryRecord` est créé puis conservé :
 
 ```python
 @dataclass(slots=True)
@@ -235,7 +235,7 @@ class TelemetryRecord:
     completion_tokens: int
     total_tokens: int
     latency_seconds: float
-    ttft: float              # Time to first token
+    ttft: float              # Délai jusqu'au premier jeton
     cost_usd: float
     energy_joules: float
     power_watts: float
@@ -244,33 +244,33 @@ class TelemetryRecord:
     metadata: Dict[str, Any]
 ```
 
-The `TelemetryStore` subscribes to `TELEMETRY_RECORD` events on the EventBus and writes records to `~/.diapason/telemetry.db`.
+Le `TelemetryStore` s'abonne aux événements `TELEMETRY_RECORD` de l'EventBus et écrit les enregistrements dans `~/.diapason/telemetry.db`.
 
-### Step 9: Trace Recording
+### Étape 9 : l'enregistrement de la trace
 
-When a `TraceCollector` is wrapping the agent, a complete `Trace` is built from the events captured during execution:
+Quand un `TraceCollector` enveloppe l'agent, une `Trace` complète est bâtie à partir des événements capturés pendant l'exécution :
 
-1. All `INFERENCE_START`/`END` events become `GENERATE` steps
-2. All `TOOL_CALL_START`/`END` events become `TOOL_CALL` steps
-3. All `MEMORY_RETRIEVE` events become `RETRIEVE` steps
-4. A final `RESPOND` step captures the output
-5. The trace is saved to the `TraceStore` and `TRACE_COMPLETE` is published
+1. Tous les événements `INFERENCE_START`/`END` deviennent des étapes `GENERATE`
+2. Tous les événements `TOOL_CALL_START`/`END` deviennent des étapes `TOOL_CALL`
+3. Tous les événements `MEMORY_RETRIEVE` deviennent des étapes `RETRIEVE`
+4. Une dernière étape `RESPOND` capture la sortie
+5. La trace est enregistrée dans le `TraceStore`, et `TRACE_COMPLETE` est publié
 
-### Step 10: Response Delivery
+### Étape 10 : la remise de la réponse
 
-The final response is delivered to the user:
+La réponse finale est remise à l'utilisateur :
 
-- **CLI:** Printed to stdout (or as JSON with `--json`)
-- **SDK:** Returned as a string from `ask()` or as a dict from `ask_full()`
+- **En ligne de commande :** écrite sur la sortie standard (ou en JSON avec `--json`)
+- **Dans le SDK :** rendue comme chaîne par `ask()`, ou comme dict par `ask_full()`
 
 ---
 
-## EventBus Activity During a Query
+## Ce qui passe sur l'EventBus pendant une question
 
-The following events are published during a typical query in agent mode:
+Voici les événements publiés au cours d'une question ordinaire, en mode agent :
 
 ```
-AGENT_TURN_START    {agent: "orchestrator", input: "What is 2+2?"}
+AGENT_TURN_START    {agent: "orchestrator", input: "Combien font 2+2 ?"}
 INFERENCE_START     {model: "qwen3:8b", engine: "ollama", turn: 1}
 INFERENCE_END       {model: "qwen3:8b", engine: "ollama", turn: 1}
 TELEMETRY_RECORD    {model_id: "qwen3:8b", latency: 0.8, tokens: 150}
@@ -285,29 +285,29 @@ TRACE_COMPLETE      {trace: Trace(...)}
 
 ---
 
-## SDK Query Flow
+## Le parcours d'une question dans le SDK
 
-The `Diapason` class in `sdk.py` provides the same query flow through a Python API:
+La classe `Diapason`, dans `sdk.py`, offre le même parcours par une API Python :
 
 ```python
 from diapason import Diapason
 
 j = Diapason(model="qwen3:8b", engine_key="ollama")
 
-# Direct mode
-response = j.ask("Hello")
+# Le mode direct
+response = j.ask("Bonjour")
 
-# Agent mode with tools
+# Le mode agent, avec des outils
 response = j.ask(
-    "What is 2^10?",
+    "Combien font 2^10 ?",
     agent="orchestrator",
     tools=["calculator"],
 )
 
-# Full result with metadata
-result = j.ask_full("Hello")
+# Le résultat complet, avec ses métadonnées
+result = j.ask_full("Bonjour")
 # {
-#     "content": "Hello! How can I help you?",
+#     "content": "Bonjour ! Comment puis-je t'aider ?",
 #     "usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25},
 #     "model": "qwen3:8b",
 #     "engine": "ollama",
@@ -316,4 +316,4 @@ result = j.ask_full("Hello")
 j.close()
 ```
 
-The SDK handles lazy engine initialization, telemetry setup, memory context injection, and resource cleanup internally. The `ask()` method delegates to `ask_full()` and extracts just the content string.
+Le SDK s'occupe tout seul de l'initialisation paresseuse du moteur, de la mise en place de la télémétrie, de l'injection du contexte mémoire et de la libération des ressources. La méthode `ask()` délègue à `ask_full()` et n'en extrait que la chaîne de contenu.

@@ -1,8 +1,8 @@
-# Showcase screenshots
+# Captures d'écran de la Galerie
 
-This directory holds the hero screenshot for each Showcase entry in `docs/showcase/`. Convention is one file per entry, named to match the entry's slug:
+Ce dossier contient la capture d'écran principale de chaque entrée de la Galerie, dans `docs/showcase/`. La convention est d'un fichier par entrée, nommé d'après le *slug* de l'entrée :
 
-| Entry | Screenshot path |
+| Entrée | Chemin de la capture |
 |---|---|
 | `docs/showcase/morning-brief.md` | `morning-brief.png` |
 | `docs/showcase/persistent-memory.md` | `persistent-memory.png` |
@@ -10,36 +10,36 @@ This directory holds the hero screenshot for each Showcase entry in `docs/showca
 | `docs/showcase/discord-companion.md` | `discord-companion.png` |
 | `docs/showcase/coding-assistant.md` | `coding-assistant.png` |
 
-## Conventions
+## Les conventions
 
 | | |
 |---|---|
-| Format | PNG, sRGB, no alpha channel |
-| Size | 1600×1000 (4:2.5 — wider than 16:9, so screenshots don't get letterboxed in the docs grid) |
-| File size | Under 400 KB after `pngquant --quality 70-90 --speed 1` |
-| Loading | All `<img>` and `<figure>` tags in showcase pages use `loading=lazy` — these images are below the fold on the gallery page |
+| Format | PNG, sRGB, sans canal alpha |
+| Dimensions | 1600 × 1000 (4:2.5 — plus large que le 16:9, pour que les captures ne se retrouvent pas encadrées de bandes noires dans la grille de la documentation) |
+| Poids | Moins de 400 Ko après `pngquant --quality 70-90 --speed 1` |
+| Chargement | Toutes les balises `<img>` et `<figure>` des pages de la Galerie utilisent `loading=lazy` — ces images sont sous la ligne de flottaison de la page galerie |
 
-## What to redact
+## Ce qu'il faut masquer
 
-- Real email addresses
-- API keys, OAuth tokens, anything starting with `sk-`, `ghp_`, `xox`, `eyJ`
-- Personal phone numbers
-- Conversation partners' faces or full names (unless they've signed off)
-- File paths that include other people's home directories
+- Les vraies adresses courriel
+- Les clés d'API, les jetons OAuth, tout ce qui commence par `sk-`, `ghp_`, `xox`, `eyJ`
+- Les numéros de téléphone personnels
+- Le visage ou le nom complet de tes interlocuteurs (à moins qu'ils n'aient donné leur accord)
+- Les chemins de fichiers qui contiennent le dossier personnel de quelqu'un d'autre
 
-## What to keep
+## Ce qu'il faut garder
 
-- Model names ("llama3.1:8b", "qwen2.5:14b") — they're informative
-- Timestamps — proves the screenshot is recent
-- Dollar amounts on the savings dashboard — the whole point
-- Emoji reactions, your own first name, your own avatar
+- Les noms de modèles (« llama3.1:8b », « qwen2.5:14b ») — ils sont informatifs
+- Les horodatages — ils prouvent que la capture est récente
+- Les montants en dollars sur le tableau de bord des économies — c'est tout l'intérêt
+- Les réactions emoji, ton propre prénom, ton propre avatar
 
-## Placeholder PNGs
+## Les PNG de remplacement
 
-This directory ships with no images on the initial PR. The Showcase pages reference image paths that don't exist yet — MkDocs will render a broken-image placeholder, and the figcaption still conveys what should be there. Real screenshots arrive in follow-up PRs as Showcase entries are populated with each contributor's actual setup.
+Ce dossier est livré sans aucune image dans la première PR. Les pages de la Galerie pointent vers des chemins d'images qui n'existent pas encore — MkDocs affichera un espace réservé d'image cassée, et la légende dit quand même ce qui devrait s'y trouver. Les vraies captures arrivent dans les PR suivantes, au fur et à mesure que les entrées de la Galerie se remplissent avec le montage réel de chaque contributeur.
 
-If you're contributing the first real entry, drop your PNG at `docs/assets/showcase/<your-slug>.png` in the same PR that adds your markdown page. The image filename must match the slug used in the showcase page's `<img>` reference.
+Si tu proposes la première vraie entrée, dépose ton PNG dans `docs/assets/showcase/<ton-slug>.png`, dans la même PR que celle qui ajoute ta page markdown. Le nom du fichier image doit correspondre au *slug* utilisé dans la balise `<img>` de la page de la Galerie.
 
-## Regenerating screenshots in bulk
+## Régénérer les captures en lot
 
-A future enhancement (tracked as PR #3 in the showcase-tier roadmap) will add `scripts/showcase/regen_screenshots.py` — a Playwright-driven pipeline that boots a demo `diapason serve` against a sealed config and captures fresh screenshots for every showcase entry on each release tag. Until that lands, screenshots are contributed manually by each Showcase author.
+Une amélioration à venir (suivie comme PR #3 dans la feuille de route du niveau Galerie) ajoutera `scripts/showcase/regen_screenshots.py` — une chaîne pilotée par Playwright qui démarre un `diapason serve` de démonstration sur une configuration scellée et capture des captures fraîches pour chaque entrée de la Galerie, à chaque tag de version. En attendant, les captures sont fournies à la main par chaque auteur de la Galerie.

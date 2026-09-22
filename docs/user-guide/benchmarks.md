@@ -1,21 +1,21 @@
-# Benchmarks
+# Les mesures de performance
 
-The benchmarking framework measures inference engine performance with reproducible, standardized tests. It includes built-in benchmarks for latency and throughput, a suite runner for batch execution, and support for custom benchmarks.
+Le cadre de mesure évalue les performances d'un moteur d'inférence par des tests reproductibles et normalisés. Il embarque des mesures de latence et de débit, un lanceur de suite pour les enchaîner, et de quoi ajouter tes propres mesures.
 
-## Overview
+## Vue d'ensemble
 
-Diapason ships with two benchmarks:
+Diapason est livré avec deux mesures :
 
-| Benchmark     | Registry Key   | Measures                                      |
+| Mesure        | Clé de registre | Ce qu'elle mesure                             |
 |---------------|----------------|-----------------------------------------------|
-| **Latency**   | `latency`      | Per-call inference latency (mean, p50, p95, min, max) |
-| **Throughput**| `throughput`    | Tokens per second throughput                  |
+| **Latence**   | `latency`      | La latence d'inférence par appel (moyenne, p50, p95, min, max) |
+| **Débit**     | `throughput`    | Le débit, en jetons par seconde               |
 
 ---
 
-## BaseBenchmark ABC
+## La classe abstraite BaseBenchmark
 
-All benchmarks implement the `BaseBenchmark` abstract base class.
+Toutes les mesures implémentent la classe de base abstraite `BaseBenchmark`.
 
 ```python
 from abc import ABC, abstractmethod
@@ -27,12 +27,12 @@ class BaseBenchmark(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """Short identifier for this benchmark."""
+        """Identifiant court de cette mesure."""
 
     @property
     @abstractmethod
     def description(self) -> str:
-        """Human-readable description of what this benchmark measures."""
+        """Description lisible de ce que cette mesure évalue."""
 
     @abstractmethod
     def run(
@@ -42,44 +42,44 @@ class BaseBenchmark(ABC):
         *,
         num_samples: int = 10,
     ) -> BenchmarkResult:
-        """Execute the benchmark and return results."""
+        """Exécute la mesure et rend les résultats."""
 ```
 
 ### BenchmarkResult
 
-Each benchmark run produces a `BenchmarkResult`:
+Chaque passage produit un `BenchmarkResult` :
 
-| Field            | Type             | Description                              |
+| Champ            | Type             | Description                              |
 |------------------|------------------|------------------------------------------|
-| `benchmark_name` | `str`            | Name of the benchmark                    |
-| `model`          | `str`            | Model used                               |
-| `engine`         | `str`            | Engine backend used                      |
-| `metrics`        | `dict[str, float]` | Key-value pairs of measured metrics    |
-| `metadata`       | `dict[str, Any]` | Additional metadata                      |
-| `samples`        | `int`            | Number of samples run                    |
-| `errors`         | `int`            | Number of errors encountered             |
+| `benchmark_name` | `str`            | Le nom de la mesure                      |
+| `model`          | `str`            | Le modèle utilisé                        |
+| `engine`         | `str`            | Le moteur utilisé                        |
+| `metrics`        | `dict[str, float]` | Les métriques mesurées, par couples clé-valeur |
+| `metadata`       | `dict[str, Any]` | Des métadonnées supplémentaires          |
+| `samples`        | `int`            | Le nombre d'échantillons lancés          |
+| `errors`         | `int`            | Le nombre d'erreurs rencontrées          |
 
 ---
 
-## Built-in Benchmarks
+## Les mesures fournies
 
-### Latency Benchmark
+### La mesure de latence
 
-Measures per-call inference latency using short, fixed prompts. Each sample sends a simple prompt to the engine and measures wall-clock time.
+Mesure la latence d'inférence appel par appel, avec des prompts courts et fixes. Chaque échantillon envoie un prompt simple au moteur et chronomètre le temps réel écoulé.
 
-**Prompts used:** The benchmark rotates through a set of short canned prompts ("Hello", "What is 2+2?", "Explain gravity in one sentence") to keep input variation consistent across runs.
+**Les prompts utilisés :** la mesure fait tourner un petit jeu de prompts courts et figés (« Hello », « What is 2+2? », « Explain gravity in one sentence ») pour que la variation de l'entrée reste la même d'un passage à l'autre.
 
-**Metrics produced:**
+**Les métriques produites :**
 
-| Metric          | Description                                         |
+| Métrique        | Description                                         |
 |-----------------|-----------------------------------------------------|
-| `mean_latency`  | Average latency across all successful samples       |
-| `p50_latency`   | Median latency (50th percentile)                    |
-| `p95_latency`   | 95th percentile latency (tail performance)          |
-| `min_latency`   | Fastest single call                                 |
-| `max_latency`   | Slowest single call                                 |
+| `mean_latency`  | La latence moyenne sur tous les échantillons réussis |
+| `p50_latency`   | La latence médiane (50ᵉ centile)                    |
+| `p95_latency`   | La latence au 95ᵉ centile (le comportement de queue) |
+| `min_latency`   | L'appel le plus rapide                              |
+| `max_latency`   | L'appel le plus lent                                |
 
-**Example output:**
+**Exemple de sortie :**
 
 ```
 latency (10 samples, 0 errors)
@@ -90,19 +90,19 @@ latency (10 samples, 0 errors)
   max_latency:  0.4200
 ```
 
-### Throughput Benchmark
+### La mesure de débit
 
-Measures inference throughput in tokens per second. Each sample sends a longer prompt ("Write a short paragraph about artificial intelligence") and measures both the time taken and the number of completion tokens generated.
+Mesure le débit d'inférence en jetons par seconde. Chaque échantillon envoie un prompt plus long (« Write a short paragraph about artificial intelligence ») et mesure à la fois le temps pris et le nombre de jetons de complétion générés.
 
-**Metrics produced:**
+**Les métriques produites :**
 
-| Metric                | Description                                    |
+| Métrique              | Description                                    |
 |-----------------------|------------------------------------------------|
-| `tokens_per_second`   | Total completion tokens / total time           |
-| `total_tokens`        | Total completion tokens across all samples     |
-| `total_time_seconds`  | Total wall-clock time across all samples       |
+| `tokens_per_second`   | Total des jetons de complétion / temps total   |
+| `total_tokens`        | Total des jetons de complétion, tous échantillons confondus |
+| `total_time_seconds`  | Temps réel total, tous échantillons confondus  |
 
-**Example output:**
+**Exemple de sortie :**
 
 ```
 throughput (10 samples, 0 errors)
@@ -113,31 +113,31 @@ throughput (10 samples, 0 errors)
 
 ---
 
-## Interpreting Results
+## Lire les résultats
 
-### Latency Metrics
+### Les métriques de latence
 
-- **mean_latency:** The average response time. Use this for general performance comparison.
-- **p50_latency (median):** The typical response time. Less affected by outliers than the mean.
-- **p95_latency:** The worst-case response time for 95% of requests. Critical for user experience -- if this is too high, some users will experience noticeable delays.
-- **min/max_latency:** The best and worst individual calls. A large gap between min and max indicates inconsistent performance.
+- **mean_latency :** le temps de réponse moyen. Sers-t'en pour comparer les performances d'ensemble.
+- **p50_latency (la médiane) :** le temps de réponse habituel. Moins sensible aux valeurs extrêmes que la moyenne.
+- **p95_latency :** le pire temps de réponse pour 95 % des requêtes. Décisif pour l'expérience — s'il est trop haut, une partie des utilisateurs subira des délais visibles.
+- **min/max_latency :** le meilleur et le pire appel isolé. Un grand écart entre les deux signale des performances irrégulières.
 
-!!! tip "What to look for"
-    A healthy setup has `p95 / p50 < 2`. If the p95 is much higher than the median, investigate whether the engine is experiencing contention, thermal throttling, or memory pressure.
+!!! tip "Ce qu'il faut regarder"
+    Une installation en bonne santé a `p95 / p50 < 2`. Si le p95 dépasse largement la médiane, cherche du côté de la contention du moteur, du bridage thermique ou de la pression mémoire.
 
-### Throughput Metrics
+### Les métriques de débit
 
-- **tokens_per_second:** The main throughput indicator. Higher is better. Typical ranges:
-    - CPU-only: 5-20 tokens/second
-    - Consumer GPU (RTX 3060-4090): 30-100 tokens/second
-    - Data-center GPU (A100, H100): 100-500+ tokens/second
-- **total_tokens / total_time:** The raw data behind the throughput calculation. Useful for verifying that the engine is generating meaningful output (not returning empty responses).
+- **tokens_per_second :** l'indicateur principal de débit. Plus c'est haut, mieux c'est. Les ordres de grandeur habituels :
+    - Processeur seul : 5 à 20 jetons par seconde
+    - Carte graphique grand public (RTX 3060-4090) : 30 à 100 jetons par seconde
+    - Carte graphique de centre de données (A100, H100) : 100 à plus de 500 jetons par seconde
+- **total_tokens / total_time :** les données brutes derrière le calcul du débit. Utiles pour vérifier que le moteur génère vraiment quelque chose (et ne rend pas des réponses vides).
 
 ---
 
 ## BenchmarkSuite
 
-The `BenchmarkSuite` class runs a collection of benchmarks and provides aggregation and serialization utilities.
+La classe `BenchmarkSuite` lance un ensemble de mesures et offre de quoi les agréger et les sérialiser.
 
 ```python
 from diapason.bench._stubs import BenchmarkSuite
@@ -146,34 +146,34 @@ from diapason.bench.throughput import ThroughputBenchmark
 
 suite = BenchmarkSuite([LatencyBenchmark(), ThroughputBenchmark()])
 
-# Run all benchmarks
+# Lancer toutes les mesures
 results = suite.run_all(engine, model, num_samples=20)
 
-# Serialize to JSONL (one JSON object per line)
+# Sérialiser en JSONL (un objet JSON par ligne)
 jsonl = suite.to_jsonl(results)
 
-# Get a summary dict
+# Obtenir un dictionnaire de résumé
 summary = suite.summary(results)
 ```
 
-### Methods
+### Les méthodes
 
-| Method                  | Returns            | Description                              |
+| Méthode                 | Rend               | Description                              |
 |-------------------------|--------------------|--------------------------------------------|
-| `run_all(engine, model, num_samples=10)` | `list[BenchmarkResult]` | Run all benchmarks sequentially |
-| `to_jsonl(results)`     | `str`              | Serialize results to JSONL format        |
-| `summary(results)`      | `dict[str, Any]`   | Create a summary dictionary              |
+| `run_all(engine, model, num_samples=10)` | `list[BenchmarkResult]` | Lance toutes les mesures l'une après l'autre |
+| `to_jsonl(results)`     | `str`              | Sérialise les résultats au format JSONL  |
+| `summary(results)`      | `dict[str, Any]`   | Construit un dictionnaire de résumé      |
 
-### JSONL Format
+### Le format JSONL
 
-Each line in the JSONL output is a JSON object:
+Chaque ligne de la sortie JSONL est un objet JSON :
 
 ```json
 {"benchmark_name": "latency", "model": "qwen3:8b", "engine": "ollama", "metrics": {"mean_latency": 0.234, "p50_latency": 0.21, "p95_latency": 0.38, "min_latency": 0.15, "max_latency": 0.42}, "metadata": {}, "samples": 10, "errors": 0}
 {"benchmark_name": "throughput", "model": "qwen3:8b", "engine": "ollama", "metrics": {"tokens_per_second": 45.67, "total_tokens": 1250.0, "total_time_seconds": 27.36}, "metadata": {}, "samples": 10, "errors": 0}
 ```
 
-### Summary Format
+### Le format du résumé
 
 ```json
 {
@@ -201,50 +201,50 @@ Each line in the JSONL output is a JSON object:
 
 ---
 
-## CLI Usage
+## En ligne de commande
 
 ```bash
-# Run all benchmarks with default settings (10 samples)
+# Lancer toutes les mesures avec les réglages par défaut (10 échantillons)
 diapason bench run
 
-# Run with more samples for better statistical accuracy
+# Lancer avec plus d'échantillons, pour une meilleure précision statistique
 diapason bench run -n 50
 
-# Run only the latency benchmark
+# Lancer seulement la mesure de latence
 diapason bench run -b latency
 
-# Run only the throughput benchmark with 20 samples
+# Lancer seulement la mesure de débit, sur 20 échantillons
 diapason bench run -b throughput -n 20
 
-# Specify model and engine
+# Choisir le modèle et le moteur
 diapason bench run -m qwen3:8b -e ollama
 
-# Output JSON summary to stdout
+# Afficher le résumé JSON sur la sortie standard
 diapason bench run --json
 
-# Write JSONL results to a file
+# Écrire les résultats JSONL dans un fichier
 diapason bench run -o results.jsonl
 
-# Combine options
+# Combiner les options
 diapason bench run -b latency -n 100 -m qwen3:8b --json -o latency.jsonl
 ```
 
-| Option                     | Type   | Default | Description                              |
-|----------------------------|--------|---------|------------------------------------------|
-| `-m`, `--model MODEL`      | string | auto    | Model to benchmark                       |
-| `-e`, `--engine ENGINE`    | string | auto    | Engine backend                           |
-| `-n`, `--samples N`        | int    | `10`    | Number of samples per benchmark          |
-| `-b`, `--benchmark NAME`   | string | all     | Specific benchmark to run (`latency` or `throughput`) |
-| `-o`, `--output PATH`      | path   | none    | Write JSONL results to file              |
-| `--json`                   | flag   | off     | Output JSON summary to stdout            |
+| Option                     | Type    | Défaut    | Description                              |
+|----------------------------|---------|-----------|------------------------------------------|
+| `-m`, `--model MODEL`      | chaîne  | auto      | Modèle à mesurer                         |
+| `-e`, `--engine ENGINE`    | chaîne  | auto      | Moteur d'inférence                       |
+| `-n`, `--samples N`        | entier  | `10`      | Nombre d'échantillons par mesure         |
+| `-b`, `--benchmark NAME`   | chaîne  | toutes    | Mesure précise à lancer (`latency` ou `throughput`) |
+| `-o`, `--output PATH`      | chemin  | aucun     | Écrit les résultats JSONL dans un fichier |
+| `--json`                   | drapeau | désactivé | Affiche le résumé JSON sur la sortie standard |
 
 ---
 
-## Adding Custom Benchmarks
+## Ajouter tes propres mesures
 
-Create a custom benchmark by subclassing `BaseBenchmark` and registering it with the `BenchmarkRegistry`.
+Pour créer une mesure à toi, dérive `BaseBenchmark` et enregistre-la auprès du `BenchmarkRegistry`.
 
-### Step 1: Implement the Benchmark
+### Étape 1 : écrire la mesure
 
 ```python
 import time
@@ -255,7 +255,7 @@ from diapason.engine._stubs import InferenceEngine
 
 
 class ContextLengthBenchmark(BaseBenchmark):
-    """Measures how latency scales with input length."""
+    """Mesure comment la latence évolue avec la longueur de l'entrée."""
 
     @property
     def name(self) -> str:
@@ -263,7 +263,7 @@ class ContextLengthBenchmark(BaseBenchmark):
 
     @property
     def description(self) -> str:
-        return "Measures latency scaling with increasing input length"
+        return "Mesure l'évolution de la latence quand l'entrée s'allonge"
 
     def run(
         self,
@@ -296,18 +296,18 @@ class ContextLengthBenchmark(BaseBenchmark):
         )
 ```
 
-### Step 2: Register the Benchmark
+### Étape 2 : enregistrer la mesure
 
-Use the `ensure_registered()` pattern to survive registry clearing in tests:
+Passe par le motif `ensure_registered()`, qui survit au vidage du registre dans les tests :
 
 ```python
 def ensure_registered() -> None:
-    """Register the benchmark if not already present."""
+    """Enregistre la mesure si elle n'y est pas déjà."""
     if not BenchmarkRegistry.contains("context_length"):
         BenchmarkRegistry.register_value("context_length", ContextLengthBenchmark)
 ```
 
-Alternatively, use the decorator at class definition time:
+Tu peux sinon utiliser le décorateur à la définition de la classe :
 
 ```python
 @BenchmarkRegistry.register("context_length")
@@ -315,18 +315,18 @@ class ContextLengthBenchmark(BaseBenchmark):
     ...
 ```
 
-!!! info "The `ensure_registered()` Pattern"
-    The `ensure_registered()` function is preferred over the decorator for benchmark modules because it survives registry clearing during testing. The built-in `latency` and `throughput` benchmarks both use this pattern. The benchmark CLI command calls `ensure_registered()` before looking up benchmarks.
+!!! info "Le motif `ensure_registered()`"
+    La fonction `ensure_registered()` est préférée au décorateur dans les modules de mesure, parce qu'elle survit au vidage du registre pendant les tests. Les mesures fournies `latency` et `throughput` l'emploient toutes les deux. La commande de mesure appelle `ensure_registered()` avant d'aller chercher les mesures.
 
-### Step 3: Use Your Benchmark
+### Étape 3 : te servir de ta mesure
 
-Once registered, your benchmark is available through the CLI:
+Une fois enregistrée, ta mesure est accessible en ligne de commande :
 
 ```bash
 diapason bench run -b context_length
 ```
 
-And through the `BenchmarkSuite`:
+Et par le `BenchmarkSuite` :
 
 ```python
 from diapason.core.registry import BenchmarkRegistry

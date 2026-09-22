@@ -1,49 +1,54 @@
 ---
-title: Code Companion
-description: Code review, debugging, and test generation with ReAct agents
+title: Compagnon de code
+description: Revue de code, débogage et génération de tests avec des agents ReAct
 ---
 
-# Code Companion
+# Compagnon de code
 
-This tutorial walks through `examples/code_companion/` — three developer-focused scripts that use a `native_react` (ReAct) agent to automate common coding tasks: reviewing pull request diffs, investigating errors, and generating tests. Each script adapts the same core pattern to a different workflow, making it easy to extend for your own code intelligence use cases.
+Ce tutoriel parcourt `examples/code_companion/` — trois scripts pour développeurs qui s'appuient sur un agent `native_react` (ReAct) pour automatiser des tâches de code courantes : relire le diff d'une pull request, enquêter sur une erreur, générer des tests. Chacun adapte le même motif de base à un flux de travail différent, ce qui le rend facile à étendre à tes propres usages d'intelligence sur le code.
 
-!!! tip "Prerequisites"
-    - Python 3.10 or later
-    - Diapason installed: `uv sync --extra dev` from the repository root
-    - An inference engine running — Ollama locally or a cloud API key in `.env`
-    - For `reviewer.py` and `code_review.py`: a git repository with at least two branches or commits
+!!! tip "Prérequis"
+    - Python 3.10 ou plus récent
+    - Diapason installé : `uv sync --extra dev` depuis la racine du dépôt
+    - Un moteur d'inférence en marche — Ollama en local, ou une clé d'API cloud dans `.env`
+    - Pour `reviewer.py` et `code_review.py` : un dépôt git avec au moins deux branches ou deux commits
 
-## The Three Scripts
+## Les trois scripts
 
-| Script | Purpose | Tools Used |
+| Script | À quoi il sert | Outils utilisés |
 |---|---|---|
-| `reviewer.py` | Review a git diff between two branches | `git_diff`, `git_log`, `file_read`, `think` |
-| `debugger.py` | Investigate an error and propose a fix | `file_read`, `shell_exec`, `think` |
-| `test_gen.py` | Generate comprehensive tests for a Python module | `file_read`, `think`, `file_write` |
+| `reviewer.py` | Relire un diff git entre deux branches | `git_diff`, `git_log`, `file_read`, `think` |
+| `debugger.py` | Enquêter sur une erreur et proposer un correctif | `file_read`, `shell_exec`, `think` |
+| `test_gen.py` | Générer des tests complets pour un module Python | `file_read`, `think`, `file_write` |
 
-All three use the `native_react` agent with the same SDK pattern. The difference is which tools are provided and how the prompt is structured.
+Les trois emploient l'agent `native_react` avec le même motif SDK. Ce qui change, c'est la panoplie d'outils fournie et la façon dont le prompt est construit.
 
-## The ReAct Agent Loop
+## La boucle de l'agent ReAct
 
-The `native_react` agent implements the Thought-Action-Observation cycle. Rather than producing a single response, it iterates until it has gathered enough information:
+L'agent `native_react` met en œuvre le cycle Pensée-Action-Observation. Au lieu de produire une seule réponse, il itère jusqu'à avoir réuni assez d'informations :
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Thought: Receive task prompt
-    Thought --> Action: Decide which tool to call
-    Action --> Observation: Execute tool, receive result
-    Observation --> Thought: Feed result back into context
-    Thought --> FinalAnswer: Sufficient information gathered
+    state "Pensée" as Thought
+    state "Action" as Action
+    state "Observation" as Observation
+    state "Réponse finale" as FinalAnswer
+
+    [*] --> Thought: Reçoit le prompt de la tâche
+    Thought --> Action: Choisit l'outil à appeler
+    Action --> Observation: Exécute l'outil, reçoit le résultat
+    Observation --> Thought: Réinjecte le résultat dans le contexte
+    Thought --> FinalAnswer: Assez d'informations réunies
     FinalAnswer --> [*]
 ```
 
-This loop lets the agent adaptively explore the codebase. For example, the reviewer might read a diff, notice a suspicious function call, then read the source of that function before making its assessment — without any of that branching logic being hardcoded in the script.
+Cette boucle permet à l'agent d'explorer le code au fil de ce qu'il trouve. Le relecteur peut par exemple lire un diff, remarquer un appel de fonction suspect, puis aller lire le source de cette fonction avant de rendre son verdict — sans qu'aucune de ces bifurcations ne soit écrite en dur dans le script.
 
-## Core SDK Pattern
+## Le motif de base du SDK
 
-All three scripts follow the same structure. Understanding this pattern lets you adapt it to any code intelligence task:
+Les trois scripts suivent la même structure. Une fois ce motif compris, tu peux l'adapter à n'importe quelle tâche d'intelligence sur le code :
 
-```python title="Core SDK pattern" hl_lines="4 5 6"
+```python title="Le motif de base du SDK" hl_lines="4 5 6"
 from diapason import Diapason
 
 j = Diapason(model="qwen3:8b", engine_key="ollama")  # (1)!
@@ -58,118 +63,118 @@ finally:
     j.close()  # (5)!
 ```
 
-1. Both `model` and `engine_key` are optional. Omitting them uses auto-detected defaults from `~/.diapason/config.toml`.
-2. The prompt describes the task in detail, including what tools to use, what steps to follow, and what the output structure should look like.
-3. `"native_react"` selects the `NativeReActAgent`. The alias `"react"` also works.
-4. The tool list is passed directly. Any registered tool name is valid — run `diapason agent info native_react` to see all available tools.
-5. Always call `j.close()` to release engine resources. A `try/finally` block ensures cleanup even if the agent raises an exception.
+1. `model` et `engine_key` sont tous deux facultatifs. Sans eux, ce sont les valeurs par défaut détectées toutes seules dans `~/.diapason/config.toml` qui s'appliquent.
+2. Le prompt décrit la tâche en détail : quels outils employer, quelles étapes suivre, à quoi doit ressembler la sortie.
+3. `"native_react"` choisit le `NativeReActAgent`. L'alias `"react"` marche aussi.
+4. La liste d'outils est passée telle quelle. N'importe quel nom d'outil enregistré convient — lance `diapason agent info native_react` pour voir tout ce qui est disponible.
+5. Appelle toujours `j.close()` pour libérer les ressources du moteur. Un bloc `try/finally` garantit le nettoyage même si l'agent lève une exception.
 
-## Code Review
+## La revue de code
 
-The `reviewer.py` script reviews the diff between two git refs and produces structured feedback with issues, suggestions, and an overall verdict.
+Le script `reviewer.py` relit le diff entre deux références git et rend un retour structuré : les problèmes trouvés, des suggestions et un verdict d'ensemble.
 
 ```bash title="Terminal"
-# Review a feature branch against main (default)
+# Relire une branche de fonctionnalité contre main (le défaut)
 python examples/code_companion/reviewer.py --branch feature-x
 
-# Review a specific commit range
+# Relire une plage de commits précise
 python examples/code_companion/reviewer.py --branch HEAD --base develop
 
-# Use a cloud model for larger diffs
+# Un modèle cloud pour les gros diffs
 python examples/code_companion/reviewer.py \
     --branch feature-x --model gpt-4o --engine cloud
 ```
 
-The agent follows a four-step process:
+L'agent procède en quatre étapes :
 
-1. Call `git_diff` to see what changed between the two refs
-2. Call `git_log` to understand the commit history and intent
-3. Call `file_read` on any files that need more context
-4. Call `think` to reason about code quality, bugs, and design decisions
+1. Appeler `git_diff` pour voir ce qui a changé entre les deux références
+2. Appeler `git_log` pour comprendre l'historique des commits et l'intention
+3. Appeler `file_read` sur les fichiers qui demandent plus de contexte
+4. Appeler `think` pour raisonner sur la qualité du code, les bugs et les choix de conception
 
-The final output is structured with four sections: **Summary**, **Issues Found**, **Suggestions**, and **Overall Assessment** (APPROVE, REQUEST CHANGES, or COMMENT).
+La sortie finale tient en quatre sections : **Résumé**, **Problèmes trouvés**, **Suggestions** et **Verdict d'ensemble** (APPROVE, REQUEST CHANGES ou COMMENT).
 
-| Flag | Default | Description |
+| Option | Défaut | Description |
 |---|---|---|
-| `--branch` | `HEAD` | Branch or commit to review |
-| `--base` | `main` | Base branch to diff against |
-| `--model` | `qwen3:8b` | Model identifier |
-| `--engine` | `ollama` | Engine backend |
+| `--branch` | `HEAD` | Branche ou commit à relire |
+| `--base` | `main` | Branche de référence pour le diff |
+| `--model` | `qwen3:8b` | Identifiant du modèle |
+| `--engine` | `ollama` | Moteur d'inférence |
 
-## Debug Assistant
+## L'assistant de débogage
 
-The `debugger.py` script takes an error message, optionally a file path, and produces a root cause analysis with a concrete fix.
+Le script `debugger.py` prend un message d'erreur, éventuellement un chemin de fichier, et rend une analyse de la cause racine assortie d'un correctif concret.
 
 ```bash title="Terminal"
-# Investigate a TypeError
+# Enquêter sur un TypeError
 python examples/code_companion/debugger.py \
     --error "TypeError: NoneType has no attribute 'split'"
 
-# Provide the file where the error occurred for faster analysis
+# Donner le fichier où l'erreur s'est produite accélère l'analyse
 python examples/code_companion/debugger.py \
     --error "KeyError: 'user_id'" \
     --file src/app/views.py
 
-# Use a cloud model for complex stack traces
+# Un modèle cloud pour les traces d'appels compliquées
 python examples/code_companion/debugger.py \
     --error "Segfault in libfoo.so" \
     --model gpt-4o --engine cloud
 ```
 
-The agent uses `file_read` to examine the relevant source, `shell_exec` to run diagnostic commands (grep for symbols, check imports, inspect directory contents), and `think` to reason about root causes before proposing a fix.
+L'agent se sert de `file_read` pour examiner le source concerné, de `shell_exec` pour lancer des commandes de diagnostic (chercher un symbole au grep, vérifier les imports, inspecter le contenu d'un dossier) et de `think` pour raisonner sur les causes racines avant de proposer un correctif.
 
-!!! note "shell_exec safety"
-    The `shell_exec` tool runs commands in the current working directory. In production deployments, `ToolExecutor` enforces RBAC capability policies — ensure the `shell_exec` capability is permitted for the agent's role. See [Architecture: Security](../architecture/security.md).
+!!! note "La sûreté de shell_exec"
+    L'outil `shell_exec` lance ses commandes dans le dossier de travail courant. En production, `ToolExecutor` applique les politiques de capacités RBAC — assure-toi que la capacité `shell_exec` est autorisée pour le rôle de l'agent. Voir [Architecture : la sécurité](../architecture/security.md).
 
-The output has three sections: **Root Cause**, **Proposed Fix** (concrete code change), and **Prevention** (type hints, validation, tests).
+La sortie tient en trois sections : **Cause racine**, **Correctif proposé** (un vrai changement de code) et **Prévention** (annotations de type, validation, tests).
 
-| Flag | Default | Description |
+| Option | Défaut | Description |
 |---|---|---|
-| `--error` | (required) | Error message or stack trace |
-| `--file` | (none) | Optional file path where the error occurred |
-| `--model` | `qwen3:8b` | Model identifier |
-| `--engine` | `ollama` | Engine backend |
+| `--error` | (obligatoire) | Message d'erreur ou trace d'appels |
+| `--file` | (aucun) | Chemin facultatif du fichier où l'erreur s'est produite |
+| `--model` | `qwen3:8b` | Identifiant du modèle |
+| `--engine` | `ollama` | Moteur d'inférence |
 
-## Test Generator
+## Le générateur de tests
 
-The `test_gen.py` script reads a Python module, reasons about its public interface, and writes a complete test file.
+Le script `test_gen.py` lit un module Python, raisonne sur son interface publique et écrit un fichier de tests complet.
 
 ```bash title="Terminal"
-# Generate pytest tests for a module
+# Générer des tests pytest pour un module
 python examples/code_companion/test_gen.py \
     --module src/diapason/tools/calculator.py
 
-# Use unittest and specify the output file
+# Utiliser unittest et choisir le fichier produit
 python examples/code_companion/test_gen.py \
     --module src/diapason/tools/calculator.py \
     --framework unittest \
     --output tests/test_calculator_generated.py
 ```
 
-The agent reads the module with `file_read`, uses `think` to plan test cases (happy paths, edge cases, error handling, boundary conditions), reads any related base classes for context, then writes the complete test file with `file_write`.
+L'agent lit le module avec `file_read`, se sert de `think` pour planifier les cas de test (chemins nominaux, cas limites, gestion des erreurs, valeurs de bord), va lire les classes de base concernées pour le contexte, puis écrit le fichier de tests complet avec `file_write`.
 
-!!! note "Output path default"
-    If `--output` is not specified, the generated file is saved as `test_<module_name>.py` in the current working directory. The script prints the output path when done.
+!!! note "Le chemin de sortie par défaut"
+    Sans `--output`, le fichier produit est enregistré sous `test_<module_name>.py` dans le dossier de travail courant. Le script affiche le chemin quand il a fini.
 
-The generated tests follow these guidelines (enforced via the prompt):
+Les tests produits suivent ces règles (imposées par le prompt) :
 
-- Every public function and method has at least one test
-- Each test has a docstring explaining what it verifies
-- Edge cases are covered: empty input, `None`, large values, invalid types
-- External dependencies are mocked with `unittest.mock`
-- The file is self-contained and runnable with `pytest` or `unittest` without modification
+- Chaque fonction et chaque méthode publique a au moins un test
+- Chaque test porte une docstring qui dit ce qu'il vérifie
+- Les cas limites sont couverts : entrée vide, `None`, grandes valeurs, types invalides
+- Les dépendances externes sont simulées avec `unittest.mock`
+- Le fichier se suffit à lui-même et tourne tel quel avec `pytest` ou `unittest`, sans retouche
 
-| Flag | Default | Description |
+| Option | Défaut | Description |
 |---|---|---|
-| `--module` | (required) | Path to the Python module |
-| `--framework` | `pytest` | Test framework (`pytest` or `unittest`) |
-| `--output` | `test_<name>.py` | Output file path |
-| `--model` | `qwen3:8b` | Model identifier |
-| `--engine` | `ollama` | Engine backend |
+| `--module` | (obligatoire) | Chemin du module Python |
+| `--framework` | `pytest` | Cadre de test (`pytest` ou `unittest`) |
+| `--output` | `test_<name>.py` | Chemin du fichier produit |
+| `--model` | `qwen3:8b` | Identifiant du modèle |
+| `--engine` | `ollama` | Moteur d'inférence |
 
-## Engine Selection
+## Le choix du moteur
 
-=== "Ollama (local)"
+=== "Ollama (en local)"
 
     ```bash title="Terminal"
     ollama serve
@@ -177,42 +182,42 @@ The generated tests follow these guidelines (enforced via the prompt):
     python examples/code_companion/reviewer.py --branch feature-x
     ```
 
-=== "Cloud API"
+=== "API cloud"
 
     ```bash title="Terminal"
-    source .env  # load OPENAI_API_KEY or similar
+    source .env  # charge OPENAI_API_KEY ou l'équivalent
     python examples/code_companion/reviewer.py \
         --branch feature-x \
         --model gpt-4o \
         --engine cloud
     ```
 
-## Customization
+## Personnaliser
 
-### Change the tool set
+### Changer la panoplie d'outils
 
-Edit the `tools` list in any script to add or remove tools. For example, to let the reviewer also search the web for known security advisories related to dependencies it sees in the diff:
+Modifie la liste `tools` dans n'importe quel script pour ajouter ou retirer des outils. Par exemple, pour que le relecteur puisse aussi chercher sur le web les avis de sécurité connus sur les dépendances qu'il voit passer dans le diff :
 
 ```python
 tools = ["git_diff", "git_log", "file_read", "think", "web_search"]
 ```
 
-### Adjust the prompt
+### Ajuster le prompt
 
-Each script contains a `prompt` string that instructs the agent what to do and what to produce. Modify it to match your team's conventions — different review sections, specific coding standards, or a particular output format for downstream tooling.
+Chaque script contient une chaîne `prompt` qui dit à l'agent quoi faire et quoi produire. Adapte-la aux conventions de ton équipe — d'autres sections de revue, des normes de code précises, ou un format de sortie particulier pour l'outillage en aval.
 
-### Add memory
+### Ajouter la mémoire
 
-For multi-session workflows (e.g., a reviewer that remembers previous assessments of the same files), add `"memory_store"` and `"memory_search"` to the tool list and update the prompt to use them:
+Pour les flux de travail qui s'étalent sur plusieurs sessions (un relecteur qui se souvient de ses verdicts précédents sur les mêmes fichiers, par exemple), ajoute `"memory_store"` et `"memory_search"` à la liste d'outils, puis mets le prompt à jour pour qu'il s'en serve :
 
 ```python
 tools = ["git_diff", "git_log", "file_read", "think",
          "memory_store", "memory_search"]
 ```
 
-## See Also
+## Voir aussi
 
-- [Architecture: Agents](../architecture/agents.md) — `NativeReActAgent` internals and the Thought-Action-Observation loop
-- [Architecture: Tools and Memory](../architecture/memory.md) — git tools, file tools, shell tools, and the `ToolExecutor` dispatch pipeline
-- [Architecture: Security](../architecture/security.md) — RBAC capability policies for `shell_exec` and other privileged tools
-- [Tutorials: Deep Research Assistant](deep-research.md) — the same SDK pattern with the `OrchestratorAgent` and web/memory tools
+- [Architecture : les agents](../architecture/agents.md) — les rouages de `NativeReActAgent` et la boucle Pensée-Action-Observation
+- [Architecture : les outils et la mémoire](../architecture/memory.md) — les outils git, les outils de fichiers, les outils shell et la chaîne d'aiguillage de `ToolExecutor`
+- [Architecture : la sécurité](../architecture/security.md) — les politiques de capacités RBAC pour `shell_exec` et les autres outils privilégiés
+- [Tutoriels : l'assistant de recherche approfondie](deep-research.md) — le même motif SDK avec l'`OrchestratorAgent` et les outils web/mémoire

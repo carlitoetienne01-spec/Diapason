@@ -1,120 +1,127 @@
-# Telemetry
+# Télémétrie
 
-Diapason ships **anonymous usage telemetry** by default so the team can
-see where the product breaks, what features people actually use, and
-how to make it better. This page documents exactly what is and isn't
-collected, where the data goes, and how to opt out.
+Diapason envoie par défaut une **télémétrie d'usage anonyme**, pour que
+l'équipe voie où le produit casse, quelles fonctionnalités servent vraiment,
+et comment l'améliorer. Cette page dit exactement ce qui est collecté et ce
+qui ne l'est pas, où vont les données, et comment s'y soustraire.
 
-## TL;DR
+## En bref
 
-- **On by default**, anonymous, no chat content.
-- **Anonymous** — one random UUID per install, no email, no name, no IP.
-- **No chat content, ever.** Only counts, timings, and feature names.
-- **Self-hosted backend** on the Diapason team's PostHog instance —
-  data is not sold or shared with third parties.
-- **365-day retention**, after which events are deleted automatically.
+- **Activée par défaut**, anonyme, aucun contenu de discussion.
+- **Anonyme** — un UUID tiré au hasard par installation, pas d'adresse
+  courriel, pas de nom, pas d'IP.
+- **Aucun contenu de discussion, jamais.** Seulement des comptes, des durées
+  et des noms de fonctionnalités.
+- **Backend auto-hébergé** sur l'instance PostHog de l'équipe Diapason —
+  les données ne sont ni vendues ni partagées avec des tiers.
+- **Conservation 365 jours**, après quoi les événements sont supprimés
+  automatiquement.
 
-## What we collect
+## Ce qu'on collecte
 
-### Lifecycle events
+### Les événements du cycle de vie
 
-| Event | Source | Why we send it |
+| Événement | Source | Pourquoi on l'envoie |
 |---|---|---|
-| `install_started` | `install.sh` | Top of install funnel |
-| `install_stage_completed` | `install.sh` | Per-stage timing — where do people drop off? |
-| `install_completed` | `install.sh` | Did the install succeed? |
-| `install_failed` | `install.sh` | Which stage failed, and on what OS |
+| `install_started` | `install.sh` | Le haut de l'entonnoir d'installation |
+| `install_stage_completed` | `install.sh` | Le temps par étape — où les gens abandonnent-ils ? |
+| `install_completed` | `install.sh` | L'installation a-t-elle réussi ? |
+| `install_failed` | `install.sh` | Quelle étape a échoué, et sur quel système |
 | `app_opened` | Backend + frontend | DAU / WAU / MAU |
-| `setup_completed` | Frontend | First-run wizard finished |
-| `first_chat_sent` | Backend | First-ever message — activation |
-| `uninstall_started` | `uninstall.sh` (if user runs it) | Churn signal |
+| `setup_completed` | Frontend | L'assistant de premier lancement est allé au bout |
+| `first_chat_sent` | Backend | Le tout premier message — l'activation |
+| `uninstall_started` | `uninstall.sh` (si tu le lances) | Un signal d'abandon |
 
-### Usage events
+### Les événements d'usage
 
-| Event | Why we send it |
+| Événement | Pourquoi on l'envoie |
 |---|---|
-| `chat_session_ended` | Aggregated per-session: turn count, tokens, latency, tool count |
-| `tool_first_used` | Which built-in tools are actually adopted |
-| `model_changed` | How often users switch models |
-| `feature_used` | Which features get traffic, which don't |
-| `connector_auth_completed` | Which connectors people set up |
-| `error_shown_to_user` | User-visible error class (not stack trace) |
-| `feedback_submitted` | Was a rating given? Was a comment included? |
-| `settings_changed` | Which settings get toggled |
-| `usage_daily_summary` | Once-per-day aggregated counts |
+| `chat_session_ended` | Agrégé par session : nombre de tours, jetons, latence, nombre d'outils |
+| `tool_first_used` | Quels outils intégrés sont vraiment adoptés |
+| `model_changed` | À quelle fréquence on change de modèle |
+| `feature_used` | Quelles fonctionnalités ont du trafic, lesquelles n'en ont pas |
+| `connector_auth_completed` | Quels connecteurs les gens configurent |
+| `error_shown_to_user` | La classe d'erreur vue par l'utilisateur (pas la trace d'appels) |
+| `feedback_submitted` | Une note a-t-elle été donnée ? Un commentaire était-il joint ? |
+| `settings_changed` | Quels réglages sont basculés |
+| `usage_daily_summary` | Des comptes agrégés, une fois par jour |
 
-The canonical, authoritative list with every property name and its
-type validator lives in
+La liste canonique qui fait foi, avec chaque nom de propriété et son
+validateur de type, vit dans
 [`src/diapason/analytics/events.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/events.py).
-That file is the only place new events can be added — PR review is
-the gate.
+Ce fichier est le seul endroit où de nouveaux événements peuvent être
+ajoutés — la relecture de PR fait le portier.
 
-## What we never collect
+## Ce qu'on ne collecte jamais
 
-Hard guardrails, enforced by code:
+Des garde-fous durs, imposés par le code :
 
-- **Chat content** — prompts, model outputs, system messages, tool args.
-- **File paths** — anything matching `~/`, `$HOME`, `/Users/<name>`, `/home/<name>`, `file://`.
-- **Emails, names, phone numbers, addresses.**
-- **IP addresses** (IPv4 + IPv6). PostHog's IP geo lookup is disabled server-side too.
-- **MAC addresses, hardware serials, drive UUIDs.**
-- **Stack traces** — only error class enums.
-- **API keys, OAuth tokens, JWTs, bearer tokens, password assignments** —
-  matched and dropped at value level.
-- **Hostnames** that look personal (e.g. `alice-macbook.local`).
-- **Lists, dicts, sets** — composite values are never sent so PII can't
-  smuggle through inside containers.
+- **Le contenu des discussions** — prompts, sorties du modèle, messages système, arguments d'outils.
+- **Les chemins de fichiers** — tout ce qui correspond à `~/`, `$HOME`, `/Users/<name>`, `/home/<name>`, `file://`.
+- **Les adresses courriel, les noms, les numéros de téléphone, les adresses postales.**
+- **Les adresses IP** (IPv4 + IPv6). La géolocalisation par IP de PostHog est désactivée côté serveur aussi.
+- **Les adresses MAC, les numéros de série du matériel, les UUID de disques.**
+- **Les traces d'appels** — seulement des énumérations de classes d'erreur.
+- **Les clés d'API, les jetons OAuth, les JWT, les jetons bearer, les affectations de mot de passe** —
+  repérés et jetés au niveau de la valeur.
+- **Les noms d'hôte** qui ont l'air personnels (`alice-macbook.local`, par exemple).
+- **Les listes, les dictionnaires, les ensembles** — les valeurs composites ne
+  partent jamais, pour qu'aucune donnée personnelle ne puisse se glisser en
+  fraude à l'intérieur d'un conteneur.
 
-Two independent filters run before every event leaves the machine:
+Deux filtres indépendants tournent avant que le moindre événement quitte la machine :
 
-1. [`src/diapason/analytics/redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/redaction.py) — value-level pattern matching (20+ regexes for PII).
-2. [`src/diapason/analytics/events.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/events.py) — structural allowlist (event name + property name + type validator).
+1. [`src/diapason/analytics/redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/redaction.py) — la correspondance de motifs au niveau de la valeur (plus de 20 expressions régulières pour les données personnelles).
+2. [`src/diapason/analytics/events.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/src/diapason/analytics/events.py) — la liste d'autorisation structurelle (nom d'événement + nom de propriété + validateur de type).
 
-Any failure at either layer → the event or property is silently
-dropped. Tests covering the patterns: [`tests/analytics/test_redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/tests/analytics/test_redaction.py).
+Le moindre échec dans l'une ou l'autre couche → l'événement ou la propriété
+est jeté en silence. Les tests qui couvrent les motifs : [`tests/analytics/test_redaction.py`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/tests/analytics/test_redaction.py).
 
-## Where the data goes
+## Où vont les données
 
-- **Today** (alpha): PostHog Cloud (US region) free tier. Disclosed
-  here for transparency.
-- **Production target**: A self-hosted PostHog instance at
-  `analytics.diapason.ai`, Hetzner US-East. Single-tenant, operated
-  by the Diapason team.
-- **Never** sold, shared with advertisers, or used for anything other
-  than improving Diapason.
+- **Aujourd'hui** (alpha) : PostHog Cloud (région US), offre gratuite.
+  Indiqué ici par souci de transparence.
+- **La cible en production** : une instance PostHog auto-hébergée à
+  `analytics.diapason.ai`, chez Hetzner US-East. Mono-locataire, opérée par
+  l'équipe Diapason.
+- **Jamais** vendues, jamais partagées avec des annonceurs, jamais utilisées
+  pour autre chose que l'amélioration de Diapason.
 
-## Retention
+## La conservation
 
-- Default retention: **365 days**, then events are deleted by PostHog
-  automatically.
-- `diapason analytics reset-id` lets you orphan all of your past events
-  by generating a fresh anonymous ID for future events.
+- Conservation par défaut : **365 jours**, après quoi PostHog supprime les
+  événements tout seul.
+- `diapason analytics reset-id` rend orphelins tous tes événements passés,
+  en générant un identifiant anonyme neuf pour les suivants.
 
-## How identity works
+## Comment fonctionne l'identité
 
-A single UUID v4 is generated on first install and stored at
-`~/.diapason/anon_id`. The install script, backend, and frontend all
-read the same file so events across the full lifecycle tie to one
-person — without us ever knowing who that person is.
+Un seul UUID v4 est généré à la première installation et rangé dans
+`~/.diapason/anon_id`. Le script d'installation, le backend et le frontend
+lisent tous le même fichier : les événements de tout le cycle de vie se
+rattachent ainsi à une seule personne — sans qu'on sache jamais qui est
+cette personne.
 
-Delete the file (`rm ~/.diapason/anon_id`) and a fresh UUID will be
-generated next time the app runs. The previous UUID and its events
-are then orphaned.
+Supprime le fichier (`rm ~/.diapason/anon_id`) et un UUID neuf sera généré au
+prochain lancement de l'app. L'UUID précédent et ses événements deviennent
+alors orphelins.
 
-## For researchers and contributors
+## Pour les chercheurs et les contributeurs
 
-- **Adding an event**: edit `src/diapason/analytics/events.py`,
-  declare the spec, then update this page. PR review enforces both.
-- **Adding a PII pattern**: edit `src/diapason/analytics/redaction.py`
-  and add a test case in `tests/analytics/test_redaction.py`.
-- **Inspecting what your install sends**: run with
-  `DIAPASON_LOG_LEVEL=DEBUG` and grep for `Analytics`. You'll see
-  every event name and (redacted) property dict before it ships.
+- **Ajouter un événement** : modifie `src/diapason/analytics/events.py`,
+  déclare la spécification, puis mets cette page à jour. La relecture de PR
+  impose les deux.
+- **Ajouter un motif de donnée personnelle** : modifie
+  `src/diapason/analytics/redaction.py` et ajoute un cas de test dans
+  `tests/analytics/test_redaction.py`.
+- **Inspecter ce que ton installation envoie** : lance avec
+  `DIAPASON_LOG_LEVEL=DEBUG` et filtre sur `Analytics`. Tu verras chaque nom
+  d'événement et son dictionnaire de propriétés (expurgé) avant qu'il parte.
 
-## Related
+## À voir aussi
 
-- Local telemetry (FLOPs, energy, latency stored in
-  `~/.diapason/telemetry.db`) is a **separate** subsystem documented
-  in [`src/diapason/telemetry/`](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/telemetry). It
-  never leaves the machine and is controlled by `[telemetry]` (not
-  `[analytics]`) in `config.toml`.
+- La télémétrie locale (FLOPs, énergie, latence rangés dans
+  `~/.diapason/telemetry.db`) est un sous-système **distinct**, documenté
+  dans [`src/diapason/telemetry/`](https://github.com/carlitoetienne01-spec/Diapason/tree/main/src/diapason/telemetry). Elle
+  ne quitte jamais la machine et se règle par `[telemetry]` (et non
+  `[analytics]`) dans `config.toml`.

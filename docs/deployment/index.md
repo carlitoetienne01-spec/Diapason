@@ -1,34 +1,35 @@
 ---
-title: Deployment
-description: Deploy Diapason in production environments
+title: Déploiement
+description: Déployer Diapason en production
 ---
 
-# Deployment
+# Déploiement
 
-Diapason supports multiple deployment strategies for different environments
-and scales.
+Diapason se déploie de plusieurs façons, selon l'environnement et l'échelle.
 
 ## Docker
 
-The recommended way to deploy Diapason in production. Multi-stage builds
-with CPU and GPU (NVIDIA CUDA, AMD ROCm) variants.
+La façon recommandée de déployer Diapason en production. Construction
+multi-étapes, avec des variantes processeur et carte graphique (NVIDIA CUDA,
+AMD ROCm).
 
-[:octicons-arrow-right-24: Docker deployment](docker.md)
+[:octicons-arrow-right-24: Déploiement Docker](docker.md)
 
 ## systemd (Linux)
 
-Run Diapason as a managed system service on Linux servers.
+Faire tourner Diapason comme service système géré sur un serveur Linux.
 
-[:octicons-arrow-right-24: systemd setup](systemd.md)
+[:octicons-arrow-right-24: Mise en place de systemd](systemd.md)
 
 ## launchd (macOS)
 
-Register Diapason as a launch agent on macOS.
+Déclarer Diapason comme agent de lancement sur macOS.
 
-[:octicons-arrow-right-24: launchd setup](launchd.md)
+[:octicons-arrow-right-24: Mise en place de launchd](launchd.md)
 
-## API Server
+## Le serveur d'API
 
-Run Diapason as an OpenAI-compatible HTTP server via `diapason serve`.
+Faire tourner Diapason comme serveur HTTP compatible OpenAI, avec
+`diapason serve`.
 
-[:octicons-arrow-right-24: API server guide](api-server.md)
+[:octicons-arrow-right-24: Guide du serveur d'API](api-server.md)

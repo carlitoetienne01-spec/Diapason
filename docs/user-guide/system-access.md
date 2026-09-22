@@ -1,31 +1,33 @@
-# System Access
+# L'accès au système
 
-How to give an agent access to the machine it runs on, and where the real
-limits are.
+Comment donner à un agent l'accès à la machine où il tourne, et où sont les
+vraies limites.
 
 !!! warning
-    `shell_exec` runs arbitrary commands as your user. There is no command
-    allowlist, no denylist, and no sandbox unless you turn one on. An agent
-    holding this tool can do anything you can do from a terminal.
+    `shell_exec` lance des commandes arbitraires sous ton compte. Il n'y a ni
+    liste d'autorisation, ni liste d'interdiction, ni bac à sable tant que tu
+    n'en actives pas un. Un agent qui tient cet outil peut tout ce que tu peux
+    faire depuis un terminal.
 
 ---
 
-## Start here: you probably have no tools enabled
+## Commence ici : tu n'as probablement aucun outil activé
 
-If the agent tells you it can't run commands or read files, that's usually not
-a permissions problem. It means no tools were enabled in the first place.
+Si l'agent te dit qu'il ne peut pas lancer de commandes ni lire de fichiers, ce
+n'est en général pas un problème de permissions. C'est qu'aucun outil n'a été
+activé au départ.
 
-Tools come from `tools.enabled`, falling back to `agent.tools`. Both default to
-empty, and an empty value builds the agent with **zero tools**. Nothing is
-enabled by default.
+Les outils viennent de `tools.enabled`, à défaut de `agent.tools`. Les deux sont
+vides par défaut, et une valeur vide construit l'agent avec **zéro outil**. Rien
+n'est activé par défaut.
 
-First check whether you have a config file at all:
+Commence par vérifier que tu as bien un fichier de configuration :
 
 ```bash
 cat ~/.diapason/config.toml
 ```
 
-If it isn't there, that's your answer. Create it:
+S'il n'est pas là, tu as ta réponse. Crée-le :
 
 ```toml
 [engine]
@@ -41,10 +43,10 @@ default_agent = "orchestrator"
 enabled = ["shell_exec", "file_read", "file_write", "think"]
 ```
 
-There's a fuller version at
+Une version plus complète existe dans
 `configs/diapason/examples/full-system-access.toml`.
 
-Then confirm the list actually resolved:
+Vérifie ensuite que la liste s'est bien résolue :
 
 ```bash
 python -c "from diapason.core.config import load_config; print(load_config().tools.enabled)"
@@ -52,160 +54,168 @@ python -c "from diapason.core.config import load_config; print(load_config().too
 
 ---
 
-## What the tools reach
+## Ce que les outils atteignent
 
-| Tool | Scope |
+| Outil | Portée |
 |------|-------|
-| `shell_exec` | Any command, as your user. 30s default timeout, 300s max, output capped at 100 KB per stream. |
-| `file_read` | Any readable path. 1 MB cap. |
-| `file_write` | Any writable path. 10 MB cap, can create parent directories. |
-| `apply_patch` | Applies unified diffs to any path. |
-| `code_interpreter` | Python in a subprocess, behind a coarse pattern blocklist. |
+| `shell_exec` | N'importe quelle commande, sous ton compte. Délai d'attente de 30 s par défaut, 300 s au maximum, sortie plafonnée à 100 Ko par flux. |
+| `file_read` | N'importe quel chemin lisible. Plafond de 1 Mo. |
+| `file_write` | N'importe quel chemin où l'on peut écrire. Plafond de 10 Mo, peut créer les dossiers parents. |
+| `apply_patch` | Applique des diffs unifiés à n'importe quel chemin. |
+| `code_interpreter` | Du Python dans un sous-processus, derrière une liste d'interdiction de motifs grossière. |
 
-`file_read` and `file_write` take an `allowed_dirs` argument that limits them to
-a set of directories, but no config key populates it. When it's empty every path
-is allowed. If you want a filesystem jail today, use the container sandbox
-instead of relying on these tools to enforce one.
+`file_read` et `file_write` prennent un argument `allowed_dirs` qui les borne à
+un ensemble de dossiers, mais aucune clé de configuration ne le remplit. Quand il
+est vide, tous les chemins passent. Si tu veux aujourd'hui une prison de système
+de fichiers, sers-toi du bac à sable en conteneur plutôt que de compter sur ces
+outils pour en tenir une.
 
-### Sensitive filenames
+### Les noms de fichiers sensibles
 
-`file_read` and `file_write` refuse names matching a short glob list: `.env`,
-`*.pem`, `id_rsa`, `credentials.*` and a dozen or so others. It matches on the
-filename only, not the path or the contents, and only those two tools consult
-it. `shell_exec`, `apply_patch` and `code_interpreter` skip it entirely, so
-`cat ~/.ssh/id_rsa` through `shell_exec` works fine. Treat it as protection
-against fat fingers, not as a security boundary.
+`file_read` et `file_write` refusent les noms qui collent à une courte liste de
+motifs : `.env`, `*.pem`, `id_rsa`, `credentials.*` et une douzaine d'autres. La
+comparaison porte sur le nom du fichier seul, pas sur le chemin ni sur le
+contenu, et seuls ces deux outils la consultent. `shell_exec`, `apply_patch` et
+`code_interpreter` la sautent complètement : un `cat ~/.ssh/id_rsa` passé par
+`shell_exec` fonctionne très bien. Vois-y une protection contre les doigts qui
+ripent, pas une frontière de sécurité.
 
 ---
 
-## Confirmation behaviour
+## Le comportement de confirmation
 
-`shell_exec`, `git_commit` and `agent_kill` are marked `requires_confirmation`.
-What that translates to depends entirely on how you launched the agent:
+`shell_exec`, `git_commit` et `agent_kill` sont marqués `requires_confirmation`.
+Ce que cela donne dépend entièrement de la façon dont tu as lancé l'agent :
 
-| Entry point | Behaviour |
+| Point d'entrée | Comportement |
 |-------------|-----------|
-| `diapason chat` | Prompts before each call. |
-| `diapason ask` | Auto-approves. |
-| `diapason agent ask` | Auto-approves. Pass `--no-yes` if you want prompts. |
-| HTTP server, desktop app | Auto-approves. Tools you added to an agent's toolkit count as pre-approved. |
-| Embedded via `SystemBuilder` | No callback is wired, so these tools fail closed. |
+| `diapason chat` | Demande avant chaque appel. |
+| `diapason ask` | Approuve tout seul. |
+| `diapason agent ask` | Approuve tout seul. Passe `--no-yes` si tu veux qu'il demande. |
+| Serveur HTTP, app de bureau | Approuve tout seul. Les outils que tu as ajoutés à la trousse d'un agent comptent comme approuvés d'avance. |
+| Intégré via `SystemBuilder` | Aucun rappel n'est branché : ces outils échouent en se fermant. |
 
-That last row catches people out. If `shell_exec` returns "requires
-confirmation but no confirmation callback is available", you're constructing the
-agent yourself and need to pass a `confirm_callback`.
+C'est la dernière ligne qui attrape du monde. Si `shell_exec` rend
+« requires confirmation but no confirmation callback is available », c'est que tu
+construis l'agent toi-même et qu'il te faut passer un `confirm_callback`.
 
-!!! note "`enforce_tool_confirmation` doesn't do anything"
-    The config loader accepts `security.enforce_tool_confirmation`, but nothing
-    on the tool execution path reads it. Setting it won't change confirmation
-    behaviour anywhere. Use the table above instead.
+!!! note "`enforce_tool_confirmation` ne fait rien"
+    Le chargeur de configuration accepte `security.enforce_tool_confirmation`,
+    mais rien sur le chemin d'exécution des outils ne le lit. La poser ne
+    changera le comportement de confirmation nulle part. Fie-toi plutôt au
+    tableau ci-dessus.
 
 ---
 
-## macOS: Full Disk Access
+## macOS : l'accès complet au disque
 
-On macOS the operating system is the real boundary, not the config. Shell
-access and ordinary file access start working as soon as you enable the tools.
-TCC-protected data does not: Messages, Mail, Photos, Safari history, Contacts
-and Calendar all stay locked, and no config key will change that.
+Sur macOS, la vraie frontière est le système d'exploitation, pas la
+configuration. L'accès au shell et l'accès ordinaire aux fichiers se mettent à
+marcher dès que tu actives les outils. Les données protégées par TCC, non :
+Messages, Mail, Photos, l'historique de Safari, Contacts et Calendrier restent
+verrouillés, et aucune clé de configuration n'y changera rien.
 
-Grant Full Disk Access to whichever process hosts the backend. Child processes
-inherit it:
+Donne l'accès complet au disque au processus qui héberge le serveur, quel qu'il
+soit. Les processus fils en héritent :
 
-| How you run Diapason | Grant access to |
+| Comment tu lances Diapason | Donne l'accès à |
 |------------------------|-----------------|
-| CLI (`diapason ask`, `diapason chat`) | Your terminal (Terminal, iTerm, Warp) |
-| Desktop app | `Diapason.app`, which spawns `diapason serve` beneath it |
-| launchd (`deploy/launchd/com.diapason.serve.plist`) | The `diapason` binary, as its own entry |
+| La CLI (`diapason ask`, `diapason chat`) | Ton terminal (Terminal, iTerm, Warp) |
+| L'app de bureau | `Diapason.app`, qui lance `diapason serve` sous elle |
+| launchd (`deploy/launchd/com.diapason.serve.plist`) | Le binaire `diapason`, comme sa propre entrée |
 
-System Settings, then Privacy & Security, then Full Disk Access, then **+**.
+Réglages Système, puis Confidentialité et sécurité, puis Accès complet au
+disque, puis **+**.
 
-A launchd daemon gets its own TCC context, so granting access to Terminal does
-nothing for it. Add `/usr/local/bin/diapason` separately.
+Un démon launchd a son propre contexte TCC : donner l'accès au Terminal ne lui
+sert à rien. Ajoute `/usr/local/bin/diapason` à part.
 
-To check whether the grant took:
+Pour vérifier que l'autorisation a bien pris :
 
 ```bash
 head -c 16 ~/Library/Messages/chat.db >/dev/null 2>&1 \
-  && echo "granted" || echo "denied"
+  && echo "accordé" || echo "refusé"
 ```
 
-Restart the host process after you change the setting.
+Redémarre le processus hôte après avoir changé le réglage.
 
-### Driving Mac apps
+### Piloter les apps du Mac
 
-AppleScript works through `shell_exec`:
+AppleScript passe par `shell_exec` :
 
 ```
 osascript -e 'tell application "Music" to play'
 ```
 
-macOS asks for Automation permission once per target app, the first time you
-touch it.
+macOS demande l'autorisation d'automatisation une fois par app visée, la
+première fois que tu y touches.
 
 ---
 
-## What you can't do
+## Ce que tu ne peux pas faire
 
-There's no general computer use: Diapason does not move the pointer, and it
-sends keystrokes only where you asked it to (dictation paste, `paste_to_frontmost`).
+Il n'y a pas d'usage général de l'ordinateur : Diapason ne bouge pas le
+pointeur, et il n'envoie de frappes clavier que là où tu le lui as demandé (le
+collage de la dictée, `paste_to_frontmost`).
 
-It *can* look, and you should know exactly how much:
+Il *peut* regarder, et tu dois savoir exactement jusqu'où :
 
-- **Desktop state** — the frontmost app, the apps that are running, the title
-  of the front window, and, when a browser is in front, the title of its
-  active tab. One AppleScript pass through System Events, cached for a few
-  seconds, and it rides along in the model's context on every turn.
-- **The screen itself** — `screen_describe` takes a screenshot and sends it to
-  a *local* vision model, and only after you authorise the capture. It is off
-  until you set `[desktop.vision] enabled = true`.
+- **L'état du bureau** — l'app au premier plan, les apps qui tournent, le titre
+  de la fenêtre de devant et, quand un navigateur est devant, le titre de son
+  onglet actif. Un seul passage AppleScript par System Events, gardé en cache
+  quelques secondes, et il voyage dans le contexte du modèle à chaque tour.
+- **L'écran lui-même** — `screen_describe` prend une capture et l'envoie à un
+  modèle de vision *local*, et seulement après que tu as autorisé la capture.
+  C'est éteint tant que tu n'as pas posé `[desktop.vision] enabled = true`.
 
-Both stay on the machine. Window titles can be revealing (a document name, a
-subject line), so if that is more than you want, turn off `[desktop.vision]`
-and see `[privacy] local_only`.
+Les deux restent sur la machine. Un titre de fenêtre peut en dire long (le nom
+d'un document, l'objet d'un message) : si c'est plus que ce que tu veux, coupe
+`[desktop.vision]` et regarde `[privacy] local_only`.
 
-The `click` and `type` actions you'll find are Playwright, scoped to a browser
-page rather than the desktop.
+Les actions `click` et `type` que tu croiseras sont celles de Playwright,
+bornées à une page de navigateur et non au bureau.
 
-Some of this is reachable through `shell_exec` if you bring the tooling
-yourself. `screencapture` will take screenshots once you've granted Screen
-Recording, and something like `cliclick` will move the pointer. That gets you
-scripted actions. It doesn't get you an agent that looks at the screen and
-works out where to click.
+Une partie de tout ça est atteignable par `shell_exec` si tu apportes
+l'outillage toi-même. `screencapture` prendra des captures une fois
+l'enregistrement de l'écran accordé, et quelque chose comme `cliclick` bougera
+le pointeur. Ça te donne des actions scriptées. Ça ne te donne pas un agent qui
+regarde l'écran et trouve tout seul où cliquer.
 
 ---
 
-## Narrowing access
+## Restreindre l'accès
 
-Access widens and narrows through `tools.enabled`. Drop entries to take
-capabilities away. That list is the whole grant.
+L'accès s'élargit et se restreint par `tools.enabled`. Retire des entrées pour
+enlever des capacités. Cette liste, c'est tout ce qui est accordé.
 
-Two additional isolation controls are available. Capabilities are enabled and
-deny-by-default; container isolation remains an explicit deployment choice:
+Deux contrôles d'isolation supplémentaires existent. Les capacités sont actives
+et refusent par défaut ; l'isolation en conteneur, elle, reste un choix de
+déploiement explicite :
 
 ```toml
 [sandbox]
-enabled = true          # run tools inside a container (opt-in)
+enabled = true          # lance les outils dans un conteneur (sur demande)
 runtime = "docker"
 
 [security.capabilities]
-enabled = true          # RBAC over declared tool capabilities (default)
-default_deny = true     # unmatched capabilities are refused (default)
+enabled = true          # RBAC sur les capacités d'outils déclarées (défaut)
+default_deny = true     # les capacités non appariées sont refusées (défaut)
 policy_path = "~/.diapason/policy.json"
 ```
 
-When no administrator policy file is supplied, Diapason grants only the
-capabilities declared by the tools explicitly selected for that agent. An
-administrator-provided policy is never widened automatically.
+Quand aucun fichier de politique d'administrateur n'est fourni, Diapason
+n'accorde que les capacités déclarées par les outils explicitement choisis pour
+cet agent. Une politique fournie par un administrateur n'est jamais élargie
+automatiquement.
 
-For anything untrusted, reach for `docker_shell_exec` and
-`code_interpreter_docker` rather than the host-side versions.
+Pour tout ce qui n'est pas de confiance, prends `docker_shell_exec` et
+`code_interpreter_docker` plutôt que leurs versions côté hôte.
 
 ---
 
-## See also
+## Voir aussi
 
-- [Security](security.md) for scanners, the audit log and guardrails
-- [Tools](tools.md) for the full registry
-- [Code Assistant](code-assistant.md) for a narrower shell-enabled setup
-- [External MCP Servers](mcp-external-servers.md) for capabilities Diapason doesn't ship
+- [La sécurité](security.md) — les scanners, le journal d'audit et les garde-fous
+- [Les outils](tools.md) — le registre complet
+- [L'assistant de code](code-assistant.md) — une installation plus étroite, avec le shell activé
+- [Les serveurs MCP externes](mcp-external-servers.md) — les capacités que Diapason ne livre pas

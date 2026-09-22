@@ -1,26 +1,34 @@
-# macOS Install
+# Installation sur macOS
 
 ```bash
 curl -fsSL https://carlitoetienne01-spec.github.io/Diapason/install.sh | bash
 ```
 
-Works on Intel and Apple Silicon. The installer auto-detects your CPU/GPU.
+Fonctionne sur Intel comme sur Apple Silicon. L'installateur détecte tout seul ton
+processeur et ta carte graphique.
 
-## Prerequisites
+## Les prérequis
 
-If you've never run `git` or `curl` on this Mac, macOS will prompt you to install the Xcode Command Line Tools the first time you run them. Accept the prompt; that gives you both.
+Si tu n'as jamais lancé `git` ni `curl` sur ce Mac, macOS te proposera d'installer
+les Xcode Command Line Tools au premier appel. Accepte la proposition ; elle
+t'installe les deux d'un coup.
 
-If you'd rather pre-install:
+Si tu préfères les installer d'avance :
 
 ```bash
 xcode-select --install
 ```
 
-## Apple Silicon notes
+## Notes sur Apple Silicon
 
-- The installer picks `mlx` as the recommended engine via the standard hardware-detect path, but the foreground default is still Ollama for compatibility. Switch later with `diapason init --force` and pick `mlx` if you've installed `mlx-lm`.
-- Unified memory is reported as "VRAM" by the installer — that's intentional; on Apple Silicon, system RAM is what GPU-accelerated models can use.
+- L'installateur retient `mlx` comme moteur d'inférence recommandé, par la
+  détection matérielle habituelle, mais le défaut affiché reste Ollama, par
+  compatibilité. Tu peux changer plus tard avec `diapason init --force` et
+  choisir `mlx` si tu as installé `mlx-lm`.
+- L'installateur annonce la mémoire unifiée comme de la « VRAM » — c'est voulu :
+  sur Apple Silicon, c'est la mémoire vive du système que les modèles accélérés
+  par le GPU peuvent utiliser.
 
-## See also
+## Voir aussi
 
-- [Full installer reference](install.md)
+- [La référence complète de l'installateur](install.md)

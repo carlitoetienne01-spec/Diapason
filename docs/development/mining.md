@@ -1,24 +1,26 @@
-# Adding a Mining Provider
+# Ajouter un fournisseur de minage
 
-The `diapason.mining` subsystem follows the same registry pattern as engines,
-agents, tools, memory, and channels. New mining paths should be provider
-modules, not special cases in the CLI or engine layer.
+Le sous-système `diapason.mining` suit le même motif de registre que les
+moteurs, les agents, les outils, la mémoire et les canaux. Un nouveau chemin de
+minage doit être un module de fournisseur, pas un cas particulier dans la CLI
+ou dans la couche moteur.
 
-## Provider Contract
+## Le contrat d'un fournisseur
 
-Every provider implements `diapason.mining.MiningProvider`:
+Chaque fournisseur implémente `diapason.mining.MiningProvider` :
 
-- `detect(hw, engine_id, model)` is pure capability detection. It must not
-  start subprocesses, hit the network, or mutate state.
-- `start(config)` owns provider lifecycle setup and writes the mining sidecar
-  when it changes inference routing.
-- `stop()` tears down provider-owned processes or containers.
-- `is_running()` answers from provider-owned state.
-- `stats()` returns `MiningStats` using the provider's most stable telemetry
-  surface.
+- `detect(hw, engine_id, model)` ne fait que détecter des capacités. Il ne doit
+  ni lancer de sous-processus, ni toucher au réseau, ni modifier d'état.
+- `start(config)` prend en charge la mise en route du fournisseur et écrit le
+  sidecar de minage lorsqu'il change le routage de l'inférence.
+- `stop()` démonte les processus ou les conteneurs qui appartiennent au
+  fournisseur.
+- `is_running()` répond à partir de l'état que le fournisseur possède.
+- `stats()` rend un `MiningStats` bâti sur la surface de télémétrie la plus
+  stable du fournisseur.
 
-Register providers through `MinerRegistry` and expose idempotent
-`ensure_registered()`:
+Enregistre les fournisseurs par `MinerRegistry` et expose un
+`ensure_registered()` idempotent :
 
 ```python
 from diapason.core.registry import MinerRegistry
@@ -29,56 +31,60 @@ def ensure_registered() -> None:
         MinerRegistry.register_value("my-provider", MyProvider)
 ```
 
-`tests/conftest.py` clears registries between tests, so test fixtures and CLI
-entry points should call `ensure_registered()` before relying on a provider.
+`tests/conftest.py` vide les registres entre les tests : les fixtures de test
+et les points d'entrée de la CLI doivent donc appeler `ensure_registered()`
+avant de compter sur un fournisseur.
 
-## Optional Dependencies
+## Les dépendances optionnelles
 
-Provider dependencies belong in scoped extras:
+Les dépendances d'un fournisseur vivent dans des extras délimités :
 
-- `mining-pearl-vllm` for the NVIDIA/vLLM Docker provider
-- Future Apple work should use a separate extra such as `mining-pearl-metal`
-  or `mining-pearl-cpu`
+- `mining-pearl-vllm` pour le fournisseur Docker NVIDIA/vLLM
+- Le travail Apple à venir doit utiliser un extra distinct, par exemple
+  `mining-pearl-metal` ou `mining-pearl-cpu`
 
-Avoid a generic `mining-pearl` extra until there is a shared dependency set
-that every provider actually needs.
+Évite un extra générique `mining-pearl` tant qu'il n'existe pas un jeu de
+dépendances communes dont chaque fournisseur a réellement besoin.
 
-## Sidecar Contract
+## Le contrat du sidecar
 
-The runtime sidecar lives at `~/.diapason/runtime/mining.json`. Engine
-handoff is data-driven:
+Le sidecar d'exécution vit dans `~/.diapason/runtime/mining.json`. Le passage
+de relais au moteur est piloté par les données :
 
-- If the sidecar has `vllm_endpoint`, engine discovery registers
+- Si le sidecar porte `vllm_endpoint`, la découverte des moteurs enregistre
   `vllm-pearl-mining`.
-- If a future provider mines alongside the user's normal engine, it should omit
-  `vllm_endpoint`; engine discovery will ignore it.
+- Si un futur fournisseur mine à côté du moteur habituel de l'utilisateur, il
+  doit omettre `vllm_endpoint` ; la découverte des moteurs l'ignorera.
 
-Do not branch on `provider == "vllm-pearl"` in generic code. Branch on sidecar
-shape or provider capability.
+Ne branche pas sur `provider == "vllm-pearl"` dans du code générique. Branche
+sur la forme du sidecar ou sur la capacité du fournisseur.
 
-## Apple Silicon Handoff
+## Le relais Apple Silicon
 
-The Apple Silicon effort should add its own provider module and reuse:
+Le chantier Apple Silicon doit ajouter son propre module de fournisseur et
+réutiliser :
 
 - `MiningProvider`
 - `MinerRegistry`
 - `MiningConfig`
 - `MiningStats`
 - `Sidecar`
-- `diapason mine doctor` capability iteration
+- le parcours des capacités de `diapason mine doctor`
 
-That work should not need to rewrite the NVIDIA provider, CLI group, telemetry
-collector, or engine sidecar handoff.
+Ce travail ne doit avoir à réécrire ni le fournisseur NVIDIA, ni le groupe de
+commandes de la CLI, ni le collecteur de télémétrie, ni le relais du sidecar
+vers le moteur.
 
-## NVIDIA Release Gate
+## Le verrou de publication NVIDIA
 
-The NVIDIA provider is not considered economically proven until the H100/H200
-runbook passes on real hardware. See
-[`mining-nvidia-validation.md`](./mining-nvidia-validation.md) for the required
-commands, artifacts, and pass criteria.
+Le fournisseur NVIDIA n'est pas tenu pour économiquement prouvé tant que le
+runbook H100/H200 n'est pas passé sur du vrai matériel. Voir
+[`mining-nvidia-validation.md`](./mining-nvidia-validation.md) pour les
+commandes, les artefacts et les critères de réussite exigés.
 
-## Model Enablement
+## L'activation des modèles
 
-New Pearl-compatible language models are tracked separately from provider
-support. See [`pearl-model-enablement.md`](./pearl-model-enablement.md) for the
-conversion and validation checklist.
+Les nouveaux modèles de langue compatibles Pearl sont suivis à part du support
+des fournisseurs. Voir
+[`pearl-model-enablement.md`](./pearl-model-enablement.md) pour la liste de
+contrôle de conversion et de validation.

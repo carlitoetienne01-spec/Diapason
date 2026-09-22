@@ -1,79 +1,84 @@
-# ACE optimizer (Agentic Context Engineering)
+# L'optimiseur ACE (Agentic Context Engineering)
 
-Diapason supports [ACE](https://github.com/ace-agent/ace) as a third
-optimizer alongside DSPy and GEPA. Where DSPy bootstraps few-shot
-examples and GEPA evolves prompts via reflective mutation, **ACE
-evolves a textual *playbook*** — annotated natural-language strategies
-the agent reads at inference time. The playbook is updated by a
-Generator / Reflector / Curator triad of LLM calls.
+Diapason prend en charge [ACE](https://github.com/ace-agent/ace) comme
+troisième optimiseur, aux côtés de DSPy et GEPA. Là où DSPy amorce des
+exemples few-shot et où GEPA fait évoluer les prompts par mutation
+réflexive, **ACE fait évoluer un *playbook* textuel** — des stratégies
+en langage naturel, annotées, que l'agent lit au moment de l'inférence.
+Le playbook est tenu à jour par une triade d'appels au modèle :
+Generator, Reflector, Curator.
 
-## When to pick ACE
+## Quand choisir ACE
 
-| Task shape | DSPy | GEPA | ACE |
+| Forme de la tâche | DSPy | GEPA | ACE |
 |---|---|---|---|
-| Single-turn QA with crisp metric | strong | strong | weaker |
-| Long-running agent that should accumulate guidance | weak | medium | strong |
-| Open-domain where strategies matter more than templates | weak | medium | strong |
-| When you want to *read* what the optimizer learned | medium | medium | strong |
+| Question-réponse en un tour, avec une métrique nette | fort | fort | plus faible |
+| Agent au long cours qui doit accumuler des consignes | faible | moyen | fort |
+| Domaine ouvert, où les stratégies comptent plus que les gabarits | faible | moyen | fort |
+| Quand tu veux *lire* ce que l'optimiseur a appris | moyen | moyen | fort |
 
-ACE's headline artifact is `final_playbook.txt` — a human-readable
-file like:
+Le produit phare d'ACE, c'est `final_playbook.txt` — un fichier
+lisible par un humain, dans ce genre :
 
 ```
 ## STRATEGIES & INSIGHTS
-[str-00001] helpful=5 harmful=0 :: When the user asks for unit
-                                   conversion, prefer the exact
-                                   rational form before rounding.
-[str-00002] helpful=3 harmful=1 :: Cite a primary source before
-                                   stating a date claim.
+[str-00001] helpful=5 harmful=0 :: Quand l'utilisateur demande une
+                                   conversion d'unités, préférer la
+                                   forme rationnelle exacte avant
+                                   d'arrondir.
+[str-00002] helpful=3 harmful=1 :: Citer une source primaire avant
+                                   d'affirmer une date.
 ```
 
-If reading those strategies feels like the form of "what learning
-should produce" for your task, ACE is the right choice.
+Si lire ces stratégies ressemble à la forme de « ce que
+l'apprentissage devrait produire » pour ta tâche, ACE est le bon
+choix.
 
-## Setup
+## L'installation
 
-ACE is **not on PyPI** as of Diapason v1.0.1, and the upstream
-repository is structured as a research codebase (multiple top-level
-directories) rather than a Python package. There's no `learning-ace`
-extra for that reason. Install ACE manually instead:
+ACE **n'est pas sur PyPI** à l'heure de Diapason v1.0.1, et le dépôt
+amont est organisé comme une base de code de recherche (plusieurs
+dossiers à la racine) plutôt que comme un paquet Python. C'est pour
+cela qu'il n'existe pas d'extra `learning-ace`. Installe plutôt ACE à
+la main :
 
 ```bash
-# 1. Clone ACE somewhere outside your Diapason checkout
+# 1. Cloner ACE quelque part en dehors de ta copie de Diapason
 git clone https://github.com/ace-agent/ace.git ~/code/ace
 cd ~/code/ace
-curl -LsSf https://astral.sh/uv/install.sh | sh   # if you don't have uv
+curl -LsSf https://astral.sh/uv/install.sh | sh   # si tu n'as pas uv
 uv sync
 
-# 2. Make ACE's src/ importable from your Diapason venv
+# 2. Rendre le src/ d'ACE importable depuis le venv de Diapason
 echo "$HOME/code/ace/src" > \
   "$(python -c 'import site; print(site.getsitepackages()[0])')/ace.pth"
 
-# 3. Set the API key for whichever provider ACE will call
+# 3. Poser la clé d'API du fournisseur qu'ACE va appeler
 cp ~/code/ace/.env.example ~/code/ace/.env
-# Edit ~/code/ace/.env to set API_KEY for your chosen provider.
+# Modifie ~/code/ace/.env pour y poser API_KEY pour le fournisseur choisi.
 
-# 4. Verify the import resolves from Diapason's venv
+# 4. Vérifier que l'import se résout depuis le venv de Diapason
 python -c "from diapason.learning.agents.ace_optimizer import HAS_ACE; print(HAS_ACE)"
 # True
 ```
 
-If `HAS_ACE` prints `False`, the `.pth` file isn't being picked up —
-verify the path matches `site.getsitepackages()[0]` for the same
-Python interpreter you're using to run Diapason.
+Si `HAS_ACE` affiche `False`, c'est que le fichier `.pth` n'est pas
+pris en compte — vérifie que le chemin correspond bien à
+`site.getsitepackages()[0]` pour le même interpréteur Python que celui
+avec lequel tu fais tourner Diapason.
 
-## Configuration
+## La configuration
 
-ACE is configured under `[learning.agent.ace]` in your Diapason
-config TOML:
+ACE se configure sous `[learning.agent.ace]`, dans ton TOML de
+configuration Diapason :
 
 ```toml
 [learning.agent]
 policy = "ace"
 
 [learning.agent.ace]
-# ACE's three roles. Empty = inherit from the intelligence primitive's
-# default cloud model.
+# Les trois rôles d'ACE. Vide = hérite du modèle distant par défaut de
+# la primitive Intelligence.
 generator_model = "claude-opus-4-7"
 reflector_model = "claude-opus-4-7"
 curator_model = "claude-sonnet-4-6"
@@ -86,50 +91,57 @@ playbook_token_budget = 80000
 max_tokens = 4096
 
 task_name = "diapason"
-save_dir = ""               # default: ~/.diapason/learning/ace/<task>/
+save_dir = ""               # par défaut : ~/.diapason/learning/ace/<task>/
 
 min_traces = 20
 ```
 
-## Running
+## Le lancement
 
-Once configured, the same orchestrator that runs DSPy / GEPA also runs
-ACE — pick it via the `policy` field above. To force a one-shot run:
+Une fois configuré, le même orchestrateur qui lance DSPy et GEPA lance
+aussi ACE — choisis-le par le champ `policy` ci-dessus. Pour forcer un
+lancement unique :
 
 ```bash
 diapason optimize agent --policy ace
 ```
 
-ACE writes intermediate state and the final playbook to `save_dir`.
-The Diapason runtime will pick up the playbook on next agent start
-(via the same sidecar overlay mechanism the Skills System uses).
+ACE écrit son état intermédiaire et le playbook final dans `save_dir`.
+Diapason reprendra le playbook au prochain démarrage de l'agent (par
+le même mécanisme d'overlay annexe que celui qu'utilise le système de
+compétences).
 
-## Trace adapter behavior
+## Le comportement de l'adaptateur de traces
 
-Diapason traces are adapted into ACE's `train_samples` /
-`val_samples` / `test_samples` format via a 70 / 15 / 15 split
-(order-preserving for reproducibility). Each trace becomes a
-`{question: trace.query, ground_truth_answer: trace.result}` sample.
-Traces with empty `query` or `result` are dropped before splitting.
+Les traces de Diapason sont converties au format `train_samples` /
+`val_samples` / `test_samples` d'ACE par une découpe 70 / 15 / 15 (qui
+préserve l'ordre, pour la reproductibilité). Chaque trace devient un
+échantillon `{question: trace.query, ground_truth_answer:
+trace.result}`. Les traces dont le `query` ou le `result` est vide
+sont écartées avant la découpe.
 
-The `DataProcessor` ACE expects is built from `_TraceDataProcessor`
-in `src/diapason/learning/agents/ace_optimizer.py` — it does a
-case-insensitive substring match for `answer_is_correct` and averages
-that for aggregate accuracy. If you're optimizing for a domain where
-substring matching is the wrong correctness signal (math problems,
-code, structured outputs), subclass `_TraceDataProcessor` and pass it
-through your own callsite to `ACEAgentOptimizer.optimize()`.
+Le `DataProcessor` qu'attend ACE est bâti à partir de
+`_TraceDataProcessor`, dans
+`src/diapason/learning/agents/ace_optimizer.py` — il fait une
+recherche de sous-chaîne insensible à la casse pour
+`answer_is_correct`, et en prend la moyenne comme justesse globale. Si
+tu optimises pour un domaine où la sous-chaîne est le mauvais signal
+de justesse (problèmes de maths, code, sorties structurées), dérive
+`_TraceDataProcessor` et passe-le depuis ton propre appelant à
+`ACEAgentOptimizer.optimize()`.
 
-## Limitations in v1.0.1
+## Les limites en v1.0.1
 
-- **No automatic install.** Document above is the only path.
-- **The trace adapter uses substring correctness.** Override for
-  domain-specific scoring.
-- **Single provider per run.** ACE assigns the same `api_provider` to
-  all three roles. To mix providers, run ACE outside Diapason and
-  hand-deliver the resulting playbook into `save_dir`.
+- **Pas d'installation automatique.** Le document ci-dessus est le
+  seul chemin.
+- **L'adaptateur de traces juge la justesse par sous-chaîne.**
+  Redéfinis-le pour un score propre à ton domaine.
+- **Un seul fournisseur par lancement.** ACE attribue le même
+  `api_provider` aux trois rôles. Pour en mélanger plusieurs, lance
+  ACE hors de Diapason et dépose toi-même le playbook obtenu dans
+  `save_dir`.
 
-These will get revisited once ACE publishes a PyPI package or stable
-provider interface — track
-[ace-agent/ace#issues](https://github.com/ace-agent/ace/issues) for
-upstream changes that would let us tighten the wrapper.
+Tout cela sera repris le jour où ACE publiera un paquet PyPI ou une
+interface de fournisseur stable — suis
+[ace-agent/ace#issues](https://github.com/ace-agent/ace/issues) pour
+les changements amont qui nous permettraient de resserrer l'enveloppe.

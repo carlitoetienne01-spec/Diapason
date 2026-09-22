@@ -1,83 +1,83 @@
-# Memory
+# La mémoire
 
-The memory system provides persistent, searchable document storage for retrieval-augmented generation (RAG). It supports multiple retrieval backends, a configurable chunking pipeline, document ingestion from files and directories, and automatic context injection into prompts.
+Le système de mémoire offre un stockage de documents persistant et cherchable, pour la génération augmentée par récupération (RAG). Il accepte plusieurs moteurs de récupération, une chaîne de découpage configurable, l'ingestion de documents depuis des fichiers et des dossiers, et l'injection automatique de contexte dans les prompts.
 
-## Architecture
+## L'architecture
 
 ```
-Documents  -->  Chunking Pipeline  -->  Memory Backend  -->  Context Injection  -->  Prompt
-  (files)       (split + overlap)      (store + index)      (retrieve + format)    (to LLM)
+Documents   -->  Découpage              -->  Moteur de mémoire   -->  Injection de contexte     -->  Prompt
+(fichiers)       (morceaux + recouvr.)       (stockage + index)       (récup. + mise en forme)       (vers le modèle)
 ```
 
 ---
 
-## MemoryBackend ABC
+## La classe abstraite `MemoryBackend`
 
-All memory backends implement the `MemoryBackend` abstract base class.
+Tous les moteurs de mémoire implémentent la classe de base abstraite `MemoryBackend`.
 
 ```python
 class MemoryBackend(ABC):
     backend_id: str
 
     def store(self, content: str, *, source: str = "", metadata: dict | None = None) -> str:
-        """Persist content and return a unique document ID."""
+        """Conserve le contenu et rend un identifiant de document unique."""
 
     def retrieve(self, query: str, *, top_k: int = 5, **kwargs) -> list[RetrievalResult]:
-        """Search for query and return the top-k results."""
+        """Cherche la question et rend les top_k meilleurs résultats."""
 
     def delete(self, doc_id: str) -> bool:
-        """Delete a document by ID. Return True if it existed."""
+        """Supprime un document par son identifiant. Rend True s'il existait."""
 
     def clear(self) -> None:
-        """Remove all stored documents."""
+        """Retire tous les documents stockés."""
 ```
 
 ### RetrievalResult
 
-Each retrieval returns a list of `RetrievalResult` objects:
+Chaque récupération rend une liste d'objets `RetrievalResult` :
 
-| Field      | Type             | Description                                |
+| Champ      | Type             | Description                                |
 |------------|------------------|--------------------------------------------|
-| `content`  | `str`            | The retrieved text chunk                   |
-| `score`    | `float`          | Relevance score (higher is better)         |
-| `source`   | `str`            | Originating file path or identifier        |
-| `metadata` | `dict[str, Any]` | Additional metadata (chunk index, etc.)    |
+| `content`  | `str`            | Le morceau de texte récupéré               |
+| `score`    | `float`          | Score de pertinence (plus il est haut, mieux c'est) |
+| `source`   | `str`            | Chemin du fichier d'origine, ou identifiant |
+| `metadata` | `dict[str, Any]` | Métadonnées supplémentaires (numéro du morceau, etc.) |
 
 ---
 
-## Backends
+## Les moteurs
 
-### SQLite / FTS5 (Default)
+### SQLite / FTS5 (par défaut)
 
-**Registry key:** `sqlite`
+**Clé de registre :** `sqlite`
 
-The default backend using SQLite's built-in FTS5 full-text search extension. Zero external dependencies -- uses Python's standard `sqlite3` module.
+Le moteur par défaut, qui se sert de l'extension de recherche plein texte FTS5 intégrée à SQLite. Aucune dépendance extérieure — il passe par le module `sqlite3` de la bibliothèque standard de Python.
 
-- **Scoring:** BM25 ranking via FTS5 MATCH queries
-- **Persistence:** SQLite database file (default: `~/.diapason/memory.db`)
-- **Dependencies:** None (built into Python)
+- **Score :** classement BM25 par les requêtes `MATCH` de FTS5
+- **Persistance :** un fichier de base SQLite (`~/.diapason/memory.db` par défaut)
+- **Dépendances :** aucune (c'est dans Python)
 
 ```python
 from diapason.core.registry import MemoryRegistry
 
 backend = MemoryRegistry.create("sqlite", db_path="./memory.db")
-doc_id = backend.store("Hello world", source="test.txt")
-results = backend.retrieve("hello")
+doc_id = backend.store("Bonjour tout le monde", source="test.txt")
+results = backend.retrieve("bonjour")
 backend.close()
 ```
 
-!!! tip "When to use SQLite/FTS5"
-    Use this backend when you want zero-configuration setup, keyword-based search is sufficient, and you need persistent storage across restarts. It works well for small to medium document collections.
+!!! tip "Quand prendre SQLite/FTS5"
+    Prends ce moteur quand tu veux une installation sans configuration, que la recherche par mots-clés te suffit et qu'il te faut un stockage qui survit aux redémarrages. Il tient très bien sur des collections de documents petites à moyennes.
 
 ### FAISS
 
-**Registry key:** `faiss`
+**Clé de registre :** `faiss`
 
-Dense neural retrieval using Facebook AI Similarity Search. Embeds documents and queries into dense vectors and retrieves by cosine similarity.
+Récupération neuronale dense, par Facebook AI Similarity Search. Les documents et les questions sont plongés en vecteurs denses, et la récupération se fait par similarité cosinus.
 
-- **Scoring:** Cosine similarity via inner-product search on L2-normalized vectors
-- **Persistence:** In-memory only (data is lost on restart)
-- **Dependencies:** `faiss-cpu` (or `faiss-gpu`), `sentence-transformers`
+- **Score :** similarité cosinus, par recherche en produit scalaire sur des vecteurs normalisés en L2
+- **Persistance :** en mémoire vive seulement (tout est perdu au redémarrage)
+- **Dépendances :** `faiss-cpu` (ou `faiss-gpu`), `sentence-transformers`
 
 ```bash
 uv sync --extra memory-faiss
@@ -85,22 +85,22 @@ uv sync --extra memory-faiss
 
 ```python
 backend = MemoryRegistry.create("faiss")
-doc_id = backend.store("Neural networks are computational models")
-results = backend.retrieve("deep learning architectures")
+doc_id = backend.store("Les réseaux de neurones sont des modèles de calcul")
+results = backend.retrieve("architectures d'apprentissage profond")
 ```
 
-!!! tip "When to use FAISS"
-    Use this backend when you need semantic search (finding conceptually similar content even without exact keyword matches). Best for use cases where you can re-index on each run since data is not persisted.
+!!! tip "Quand prendre FAISS"
+    Prends ce moteur quand il te faut une recherche sémantique — trouver un contenu proche par le sens, même sans mot-clé en commun. Il convient surtout aux usages où tu peux réindexer à chaque lancement, puisque rien n'est conservé.
 
 ### ColBERTv2
 
-**Registry key:** `colbert`
+**Clé de registre :** `colbert`
 
-Late-interaction retrieval using ColBERT's token-level embeddings with MaxSim scoring. Provides the highest retrieval quality among the available backends.
+Récupération à interaction tardive, par les plongements au grain du jeton de ColBERT et le score MaxSim. C'est la meilleure qualité de récupération parmi les moteurs offerts.
 
-- **Scoring:** MaxSim -- for each query token, take the maximum cosine similarity across all document tokens, then sum
-- **Persistence:** In-memory only
-- **Dependencies:** `colbert-ai`, `torch`
+- **Score :** MaxSim — pour chaque jeton de la question, on prend la similarité cosinus maximale sur tous les jetons du document, puis on somme
+- **Persistance :** en mémoire vive seulement
+- **Dépendances :** `colbert-ai`, `torch`
 
 ```bash
 uv sync --extra memory-colbert
@@ -114,23 +114,23 @@ backend = MemoryRegistry.create(
 )
 ```
 
-| Parameter    | Default                    | Description                         |
+| Paramètre    | Défaut                     | Description                         |
 |--------------|----------------------------|-------------------------------------|
-| `checkpoint` | `"colbert-ir/colbertv2.0"` | ColBERT model checkpoint            |
-| `device`     | `"cpu"`                    | Computation device (`cpu` or `cuda`) |
+| `checkpoint` | `"colbert-ir/colbertv2.0"` | Point de contrôle du modèle ColBERT |
+| `device`     | `"cpu"`                    | Appareil de calcul (`cpu` ou `cuda`) |
 
-!!! tip "When to use ColBERTv2"
-    Use this backend when retrieval quality is the top priority and you have the compute resources for it. The checkpoint is lazily loaded on first use to avoid slow imports. Best for research and evaluation workloads.
+!!! tip "Quand prendre ColBERTv2"
+    Prends ce moteur quand la qualité de récupération passe avant tout et que tu as la puissance de calcul pour la payer. Le point de contrôle n'est chargé qu'au premier usage, pour éviter des imports lents. C'est le bon choix pour la recherche et l'évaluation.
 
 ### BM25
 
-**Registry key:** `bm25`
+**Clé de registre :** `bm25`
 
-Classic probabilistic ranking using the BM25 Okapi algorithm. In-memory implementation using the `rank_bm25` library.
+Le classement probabiliste classique, par l'algorithme BM25 Okapi. Implémentation en mémoire vive, avec la bibliothèque `rank_bm25`.
 
-- **Scoring:** BM25 Okapi term-frequency scoring
-- **Persistence:** In-memory only
-- **Dependencies:** `rank-bm25`
+- **Score :** BM25 Okapi, sur la fréquence des termes
+- **Persistance :** en mémoire vive seulement
+- **Dépendances :** `rank-bm25`
 
 ```bash
 uv sync --extra memory-bm25
@@ -138,22 +138,22 @@ uv sync --extra memory-bm25
 
 ```python
 backend = MemoryRegistry.create("bm25")
-backend.store("Python is a programming language", source="intro.txt")
-results = backend.retrieve("programming language")
+backend.store("Python est un langage de programmation", source="intro.txt")
+results = backend.retrieve("langage de programmation")
 ```
 
-!!! tip "When to use BM25"
-    Use this backend when you want classic keyword-based retrieval without database dependencies. Useful as the sparse component in a hybrid retrieval setup.
+!!! tip "Quand prendre BM25"
+    Prends ce moteur quand tu veux la récupération classique par mots-clés, sans dépendre d'une base de données. Il sert bien de composante creuse dans une récupération hybride.
 
-### Hybrid (RRF Fusion)
+### Hybride (fusion RRF)
 
-**Registry key:** `hybrid`
+**Clé de registre :** `hybrid`
 
-Combines a sparse retriever and a dense retriever using Reciprocal Rank Fusion (RRF). Documents are stored in both sub-backends, and retrieval results are merged.
+Combine un récupérateur creux et un récupérateur dense par la fusion de rangs réciproques (RRF). Les documents sont stockés dans les deux sous-moteurs, et les résultats de récupération sont fusionnés.
 
-- **Scoring:** `RRF_score(d) = sum(weight_i / (k + rank_i(d)))` across both ranked lists
-- **Persistence:** Depends on sub-backends
-- **Dependencies:** Depends on sub-backends
+- **Score :** `RRF_score(d) = sum(weight_i / (k + rank_i(d)))`, sur les deux listes classées
+- **Persistance :** celle des sous-moteurs
+- **Dépendances :** celles des sous-moteurs
 
 ```python
 from diapason.tools.storage.bm25 import BM25Memory
@@ -172,132 +172,132 @@ backend = MemoryRegistry.create(
 )
 ```
 
-!!! note "Backward compatibility"
-    The old `from diapason.memory.bm25 import BM25Memory` still works via backward-compatibility shims, but new code should use the canonical `diapason.tools.storage.*` imports.
+!!! note "Compatibilité ascendante"
+    L'ancien `from diapason.memory.bm25 import BM25Memory` marche encore, par des cales de compatibilité, mais le code neuf passe par les imports canoniques `diapason.tools.storage.*`.
 
-| Parameter       | Default | Description                              |
-|-----------------|---------|------------------------------------------|
-| `sparse`        | --      | Sparse retrieval backend (e.g., BM25)    |
-| `dense`         | --      | Dense retrieval backend (e.g., FAISS)    |
-| `k`             | `60`    | RRF constant                             |
-| `sparse_weight` | `1.0`   | Weight for sparse retriever results      |
-| `dense_weight`  | `1.0`   | Weight for dense retriever results       |
+| Paramètre       | Défaut | Description                                    |
+|-----------------|--------|------------------------------------------------|
+| `sparse`        | —      | Moteur de récupération creux (BM25, par exemple) |
+| `dense`         | —      | Moteur de récupération dense (FAISS, par exemple) |
+| `k`             | `60`   | La constante RRF                               |
+| `sparse_weight` | `1.0`  | Poids des résultats du récupérateur creux      |
+| `dense_weight`  | `1.0`  | Poids des résultats du récupérateur dense      |
 
-The hybrid backend over-fetches (3x `top_k`) from each sub-backend before applying fusion to improve result quality.
+Le moteur hybride sur-récupère — 3 fois `top_k` — dans chaque sous-moteur avant d'appliquer la fusion, pour améliorer la qualité des résultats.
 
-!!! tip "When to use Hybrid"
-    Use this backend when you want the best of both keyword matching and semantic similarity. The RRF fusion approach is robust and does not require tuning score distributions across different retrieval methods.
-
----
-
-## Backend Comparison
-
-| Backend     | Search Type       | Persistence | Dependencies         | Quality  | Speed    |
-|-------------|-------------------|-------------|----------------------|----------|----------|
-| SQLite/FTS5 | Keyword (BM25)    | Yes         | None                 | Good     | Fast     |
-| FAISS       | Dense (cosine)    | No          | faiss, transformers  | Better   | Fast     |
-| ColBERTv2   | Late interaction  | No          | colbert-ai, torch    | Best     | Slower   |
-| BM25        | Keyword (Okapi)   | No          | rank-bm25            | Good     | Fast     |
-| Hybrid      | Fusion (RRF)      | Mixed       | Sub-backend deps     | Better   | Medium   |
+!!! tip "Quand prendre l'hybride"
+    Prends ce moteur quand tu veux le meilleur des deux mondes : la correspondance de mots-clés et la similarité de sens. L'approche RRF est robuste et n'oblige pas à accorder entre elles des distributions de score venues de méthodes de récupération différentes.
 
 ---
 
-## Chunking Pipeline
+## Comparer les moteurs
 
-Documents are split into chunks before storage using a configurable pipeline. The chunker respects paragraph boundaries when possible.
+| Moteur      | Type de recherche  | Persistance | Dépendances          | Qualité    | Vitesse   |
+|-------------|--------------------|-------------|----------------------|------------|-----------|
+| SQLite/FTS5 | Mots-clés (BM25)   | Oui         | Aucune               | Bonne      | Rapide    |
+| FAISS       | Dense (cosinus)    | Non         | faiss, transformers  | Meilleure  | Rapide    |
+| ColBERTv2   | Interaction tardive | Non        | colbert-ai, torch    | La meilleure | Plus lent |
+| BM25        | Mots-clés (Okapi)  | Non         | rank-bm25            | Bonne      | Rapide    |
+| Hybride     | Fusion (RRF)       | Variable    | Celles des sous-moteurs | Meilleure | Moyenne  |
+
+---
+
+## La chaîne de découpage
+
+Les documents sont découpés en morceaux avant d'être stockés, par une chaîne configurable. Le découpeur respecte les frontières de paragraphe quand il le peut.
 
 ### ChunkConfig
 
-| Field           | Type  | Default | Description                              |
+| Champ           | Type  | Défaut  | Description                              |
 |-----------------|-------|---------|------------------------------------------|
-| `chunk_size`    | `int` | `512`   | Target chunk size in whitespace tokens   |
-| `chunk_overlap` | `int` | `64`    | Overlap between consecutive chunks       |
-| `min_chunk_size`| `int` | `50`    | Minimum chunk size (smaller chunks are discarded) |
+| `chunk_size`    | `int` | `512`   | Taille visée d'un morceau, en jetons séparés par des espaces |
+| `chunk_overlap` | `int` | `64`    | Recouvrement entre deux morceaux consécutifs |
+| `min_chunk_size`| `int` | `50`    | Taille minimale d'un morceau (les plus petits sont jetés) |
 
-### How Chunking Works
+### Comment le découpage se passe
 
-1. The document is split into paragraphs (separated by double newlines).
-2. Paragraphs are accumulated until the token count exceeds `chunk_size`.
-3. The accumulated content is emitted as a chunk.
-4. The last `chunk_overlap` tokens are retained as context for the next chunk.
-5. Paragraphs exceeding `chunk_size` are split into fixed-size windows with overlap.
+1. Le document est découpé en paragraphes (séparés par deux sauts de ligne).
+2. Les paragraphes sont accumulés jusqu'à ce que le nombre de jetons dépasse `chunk_size`.
+3. Le contenu accumulé est émis comme un morceau.
+4. Les `chunk_overlap` derniers jetons sont gardés comme contexte pour le morceau suivant.
+5. Un paragraphe qui dépasse à lui seul `chunk_size` est découpé en fenêtres de taille fixe, avec recouvrement.
 
-### Chunk Output
+### Ce que produit le découpage
 
-Each chunk is a `Chunk` object with:
+Chaque morceau est un objet `Chunk` qui porte :
 
-| Field      | Type             | Description                              |
+| Champ      | Type             | Description                              |
 |------------|------------------|------------------------------------------|
-| `content`  | `str`            | The chunk text                           |
-| `source`   | `str`            | Originating file path                    |
-| `offset`   | `int`            | Token offset within the document         |
-| `index`    | `int`            | Sequential chunk index                   |
-| `metadata` | `dict[str, Any]` | Additional metadata                      |
+| `content`  | `str`            | Le texte du morceau                      |
+| `source`   | `str`            | Chemin du fichier d'origine              |
+| `offset`   | `int`            | Décalage en jetons dans le document      |
+| `index`    | `int`            | Numéro d'ordre du morceau                |
+| `metadata` | `dict[str, Any]` | Métadonnées supplémentaires              |
 
 ---
 
-## Document Ingestion
+## L'ingestion des documents
 
-The `ingest_path()` function reads files or recursively walks directories, producing chunks ready for storage.
+La fonction `ingest_path()` lit un fichier ou parcourt récursivement un dossier, et produit des morceaux prêts à être stockés.
 
-### Supported File Types
+### Les types de fichiers acceptés
 
 | Type     | Extensions                                                  |
 |----------|-------------------------------------------------------------|
-| Text     | `.txt` and other plain text files                           |
+| Texte    | `.txt` et les autres fichiers en texte brut                 |
 | Markdown | `.md`, `.markdown`, `.mdx`                                  |
-| Code     | `.py`, `.js`, `.ts`, `.rs`, `.go`, `.java`, `.c`, `.cpp`, `.rb`, `.sh`, `.yaml`, `.json`, `.html`, `.css`, and more |
-| PDF      | `.pdf` (requires `pdfplumber`: `uv sync --extra memory-pdf`) |
+| Code     | `.py`, `.js`, `.ts`, `.rs`, `.go`, `.java`, `.c`, `.cpp`, `.rb`, `.sh`, `.yaml`, `.json`, `.html`, `.css`, et d'autres |
+| PDF      | `.pdf` (demande `pdfplumber` : `uv sync --extra memory-pdf`) |
 
-### Automatic Skipping
+### Ce qui est sauté automatiquement
 
-The ingestion pipeline automatically skips:
+La chaîne d'ingestion saute d'elle-même :
 
-- Hidden files and directories (starting with `.`)
-- Common non-content directories: `__pycache__`, `node_modules`, `.venv`, `.git`, etc.
-- Binary files: images, audio, video, archives, compiled files
-- Files that cannot be read (permission errors, encoding issues)
+- Les fichiers et dossiers cachés (ceux qui commencent par `.`)
+- Les dossiers courants sans contenu utile : `__pycache__`, `node_modules`, `.venv`, `.git`, etc.
+- Les fichiers binaires : images, audio, vidéo, archives, fichiers compilés
+- Les fichiers illisibles (droits refusés, problèmes d'encodage)
 
-### Usage
+### Comment s'en servir
 
 ```python
 from pathlib import Path
 from diapason.tools.storage.chunking import ChunkConfig
 from diapason.tools.storage.ingest import ingest_path
 
-# Default chunking
+# Découpage par défaut
 chunks = ingest_path(Path("./docs/"))
 
-# Custom chunking
+# Découpage sur mesure
 config = ChunkConfig(chunk_size=256, chunk_overlap=32)
 chunks = ingest_path(Path("./notes.md"), config=config)
 
-print(f"Produced {len(chunks)} chunks")
+print(f"{len(chunks)} morceaux produits")
 for chunk in chunks[:3]:
-    print(f"  [{chunk.index}] {chunk.source}: {chunk.content[:60]}...")
+    print(f"  [{chunk.index}] {chunk.source} : {chunk.content[:60]}...")
 ```
 
 ---
 
-## Context Injection
+## L'injection de contexte
 
-When memory context injection is enabled (the default), queries are automatically augmented with relevant retrieved documents before being sent to the model. Each retrieved passage includes source attribution.
+Quand l'injection de contexte mémoire est active — elle l'est par défaut —, les questions sont enrichies automatiquement des documents pertinents récupérés, avant d'être envoyées au modèle. Chaque passage récupéré porte la mention de sa source.
 
 ### ContextConfig
 
-| Field               | Type    | Default | Description                                      |
+| Champ               | Type    | Défaut  | Description                                      |
 |---------------------|---------|---------|--------------------------------------------------|
-| `enabled`           | `bool`  | `True`  | Whether context injection is active              |
-| `top_k`             | `int`   | `5`     | Number of results to retrieve                    |
-| `min_score`         | `float` | `0.1`   | Minimum relevance score threshold                |
-| `max_context_tokens`| `int`   | `2048`  | Maximum total tokens in injected context         |
+| `enabled`           | `bool`  | `True`  | Si l'injection de contexte est active            |
+| `top_k`             | `int`   | `5`     | Nombre de résultats à récupérer                  |
+| `min_score`         | `float` | `0.1`   | Seuil minimal de score de pertinence             |
+| `max_context_tokens`| `int`   | `2048`  | Nombre maximum de jetons dans le contexte injecté |
 
-### How It Works
+### Comment ça marche
 
-1. The user's query is searched against the memory backend.
-2. Results below `min_score` are filtered out.
-3. Results are truncated to fit within `max_context_tokens`.
-4. A system message is prepended to the conversation with the formatted context:
+1. La question de l'utilisateur est cherchée dans le moteur de mémoire.
+2. Les résultats sous `min_score` sont écartés.
+3. Les résultats sont tronqués pour tenir dans `max_context_tokens`.
+4. Un message système est mis en tête de la conversation, avec le contexte mis en forme :
 
 ```
 The following context was retrieved from the knowledge base.
@@ -308,61 +308,61 @@ Use it to inform your response, citing sources where applicable:
 [Source: docs/config.md] Configuration is stored in TOML format...
 ```
 
-### Disabling Context Injection
+### Couper l'injection de contexte
 
-=== "CLI"
+=== "En ligne de commande"
 
     ```bash
-    diapason ask --no-context "Tell me about Python"
+    diapason ask --no-context "Parle-moi de Python"
     ```
 
-=== "Python SDK"
+=== "SDK Python"
 
     ```python
-    response = j.ask("Tell me about Python", context=False)
+    response = j.ask("Parle-moi de Python", context=False)
     ```
 
 ---
 
-## CLI Usage
+## En ligne de commande
 
 ```bash
-# Index a directory
+# Indexer un dossier
 diapason memory index ./docs/
 
-# Index with custom chunking
+# Indexer avec un découpage sur mesure
 diapason memory index ./notes/ --chunk-size 256 --chunk-overlap 32
 
-# Search the memory store
-diapason memory search "machine learning"
+# Chercher dans la mémoire
+diapason memory search "apprentissage automatique"
 
-# Search with more results
-diapason memory search -k 10 "neural networks"
+# Chercher en demandant plus de résultats
+diapason memory search -k 10 "réseaux de neurones"
 
-# Show memory statistics
+# Afficher les statistiques de la mémoire
 diapason memory stats
 ```
 
-## SDK Usage
+## Avec le SDK
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
 
-# Index documents
+# Indexer des documents
 result = j.memory.index("./docs/", chunk_size=512, chunk_overlap=64)
-print(f"Indexed {result['chunks']} chunks")
+print(f"{result['chunks']} morceaux indexés")
 
-# Search
+# Chercher
 results = j.memory.search("configuration", top_k=3)
 for r in results:
-    print(f"  [{r['score']:.4f}] {r['source']}: {r['content'][:80]}...")
+    print(f"  [{r['score']:.4f}] {r['source']} : {r['content'][:80]}...")
 
-# Statistics
+# Les statistiques
 stats = j.memory.stats()
-print(f"Backend: {stats['backend']}, Documents: {stats.get('count', 'N/A')}")
+print(f"Moteur : {stats['backend']}, Documents : {stats.get('count', 'N/A')}")
 
-# Clean up
+# Ranger derrière soi
 j.close()
 ```

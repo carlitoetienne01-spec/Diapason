@@ -1,205 +1,205 @@
-# Evaluations
+# Évaluations
 
-The Diapason evaluation framework (`diapason.evals`) measures model **correctness and accuracy** on academic datasets. It ships inside the main `diapason` package (at `src/diapason/evals/`) and is designed specifically for research workflows where you need reproducible, dataset-driven quality assessments.
+Le cadre d'évaluation de Diapason (`diapason.evals`) mesure la **justesse et l'exactitude** d'un modèle sur des jeux de données académiques. Il est livré dans le paquet principal `diapason` (sous `src/diapason/evals/`) et il est fait pour les travaux de recherche, là où il te faut des mesures de qualité reproductibles et pilotées par les données.
 
-!!! info "Evals vs. Benchmarks"
-    Diapason has two distinct measurement systems that complement each other:
+!!! info "Évaluations et benchmarks"
+    Diapason mesure de deux façons distinctes, qui se complètent :
 
-    | System | Module | Measures | Entry Point |
+    | Système | Module | Ce qu'il mesure | Point d'entrée |
     |--------|--------|----------|-------------|
-    | **Evaluations** | `diapason.evals` | Correctness on academic datasets (accuracy, pass rate) | `diapason eval` |
-    | **Benchmarks** | `diapason.bench` | Engine performance (latency, throughput) | `diapason bench` |
+    | **Évaluations** | `diapason.evals` | La justesse sur des jeux de données académiques (exactitude, taux de réussite) | `diapason eval` |
+    | **Benchmarks** | `diapason.bench` | La performance du moteur (latence, débit) | `diapason bench` |
 
-    Use evaluations to answer "does this model get the right answer?" and benchmarks to answer "how fast does this model respond?". See the [Benchmarks guide](benchmarks.md) for the performance measurement system.
+    Les évaluations répondent à « ce modèle donne-t-il la bonne réponse ? » ; les benchmarks répondent à « en combien de temps répond-il ? ». Le système de mesure de performance est décrit dans le [guide des benchmarks](benchmarks.md).
 
 ---
 
-> **Tip:** LLM-guided spec search uses this same eval infrastructure to gate edits against your personal benchmark. See [LLM-guided spec search](llm-guided-spec-search.md).
+> **Astuce :** la recherche de spécification guidée par LLM s'appuie sur cette même infrastructure d'évaluation pour filtrer les modifications contre ton banc de référence personnel. Voir [Recherche de spécification guidée par LLM](llm-guided-spec-search.md).
 
 ## Installation
 
-The evaluation framework is part of the main `diapason` package — no separate install or extra is required. The standard dev setup is enough:
+Le cadre d'évaluation fait partie du paquet `diapason` — rien à installer à part, aucun extra à ajouter. L'installation de développement habituelle suffit :
 
 ```bash
 uv sync --extra dev
 ```
 
-The framework's core dependencies (`click`, `datasets`, `rich`) are base dependencies of `diapason`. Two optional extras enable experiment tracking integrations:
+Ses dépendances de base (`click`, `datasets`, `rich`) sont déjà des dépendances de `diapason`. Deux extras facultatifs activent le suivi d'expériences :
 
 ```bash
-uv sync --extra dev --extra eval-wandb     # Weights & Biases run tracking
-uv sync --extra dev --extra eval-sheets    # Google Sheets results export
+uv sync --extra dev --extra eval-wandb     # suivi des exécutions par Weights & Biases
+uv sync --extra dev --extra eval-sheets    # export des résultats vers Google Sheets
 ```
 
-!!! note "Python version requirement"
-    Python 3.10 requires the `tomli` package for TOML config parsing. `diapason` declares it as a conditional dependency, so it is installed automatically.
+!!! note "La version de Python compte"
+    Python 3.10 a besoin du paquet `tomli` pour lire les configurations TOML. `diapason` le déclare comme dépendance conditionnelle : il s'installe tout seul.
 
-## Entry Points
+## Points d'entrée
 
-Two equivalent entry points expose the framework:
+Deux points d'entrée équivalents exposent le cadre :
 
-| Command | Surface |
+| Commande | Surface |
 |---------|---------|
-| `diapason eval {list,run,compare,report}` | Canonical CLI. `run` covers the common options; `compare` and `report` post-process result files. |
-| `python -m diapason.evals {list,run,run-all,summarize,reparse-judge}` | Full research surface, including judge configuration, the agentic runner, and episode mode. |
+| `diapason eval {list,run,compare,report}` | La CLI canonique. `run` couvre les options courantes ; `compare` et `report` retraitent les fichiers de résultats. |
+| `python -m diapason.evals {list,run,run-all,summarize,reparse-judge}` | La surface de recherche complète : configuration du juge, exécuteur agentique, mode épisode. |
 
-The `diapason-eval` console script is an alias for `python -m diapason.evals` — same commands, same options. This guide uses `diapason eval` wherever its option set suffices and the module form for research-only options.
+Le script console `diapason-eval` est un alias de `python -m diapason.evals` — mêmes commandes, mêmes options. Ce guide utilise `diapason eval` partout où ses options suffisent, et la forme module pour les options réservées à la recherche.
 
 ---
 
-## Datasets
+## Jeux de données
 
-The framework ships with **40 registered benchmarks** covering academic reasoning, agentic tasks, coding, retrieval, conversation quality, and practical use-case benchmarks. Datasets are grouped by category below; `uv run python -m diapason.evals list` prints the authoritative registry.
+Le cadre est livré avec **40 benchmarks enregistrés**, couvrant le raisonnement académique, les tâches agentiques, le code, la recherche documentaire, la qualité de conversation et des usages métier. Ils sont regroupés par catégorie ci-dessous ; `uv run python -m diapason.evals list` affiche le registre qui fait foi.
 
-### Use-Case Benchmarks
+### Les benchmarks métier
 
-These benchmarks evaluate models on practical tasks that mirror real Diapason use cases.
+Ceux-là évaluent les modèles sur des tâches concrètes, proches des usages réels de Diapason.
 
-| Dataset | Key | Description |
+| Jeu de données | Clé | Description |
 |---------|-----|-------------|
-| **CodingAssistant** | `coding_assistant` | Bug-fix coding assistant (test-based) |
-| **SecurityScanner** | `security_scanner` | Security vulnerability scanner |
-| **DailyDigest** | `daily_digest` | Daily briefing generation |
-| **DocQA** | `doc_qa` | Document-grounded QA with citations |
-| **BrowserAssistant** | `browser_assistant` | Web research with fact verification |
-| **EmailTriage** | `email_triage` | Email triage classification + draft |
-| **MorningBrief** | `morning_brief` | Morning briefing generation |
-| **ResearchMining** | `research_mining` | Research synthesis + accuracy |
-| **KnowledgeBase** | `knowledge_base` | Document-grounded retrieval QA |
-| **CodingTask** | `coding_task` | Function-level code generation |
+| **CodingAssistant** | `coding_assistant` | Assistant de code qui corrige des bugs (vérifié par des tests) |
+| **SecurityScanner** | `security_scanner` | Détecteur de failles de sécurité |
+| **DailyDigest** | `daily_digest` | Génération du point quotidien |
+| **DocQA** | `doc_qa` | Questions-réponses ancrées dans un document, avec citations |
+| **BrowserAssistant** | `browser_assistant` | Recherche web avec vérification des faits |
+| **EmailTriage** | `email_triage` | Tri des courriels : classement et brouillon de réponse |
+| **MorningBrief** | `morning_brief` | Génération du point du matin |
+| **ResearchMining** | `research_mining` | Synthèse de recherche et exactitude |
+| **KnowledgeBase** | `knowledge_base` | Questions-réponses par recherche dans des documents |
+| **CodingTask** | `coding_task` | Génération de code à l'échelle d'une fonction |
 
-### Academic Benchmarks
+### Les benchmarks académiques
 
-These benchmarks measure reasoning and knowledge on established academic datasets.
+Ceux-là mesurent le raisonnement et les connaissances sur des jeux de données académiques établis.
 
-| Dataset | Key | Category | Description |
+| Jeu de données | Clé | Catégorie | Description |
 |---------|-----|----------|-------------|
-| **SuperGPQA** | `supergpqa` | reasoning | Graduate-level multiple-choice across scientific disciplines |
-| **GPQA** | `gpqa` | reasoning | Graduate-level MCQ (Diamond, Extended, Main variants) |
-| **MMLU-Pro** | `mmlu-pro` | reasoning | Enhanced MMLU multiple-choice |
-| **MATH-500** | `math500` | reasoning | Competition-level math problems |
-| **NaturalReasoning** | `natural-reasoning` | reasoning | Natural language reasoning |
-| **HLE** | `hle` | reasoning | Humanity's Last Exam hard challenges |
-| **LiveResearchBench** | `liveresearchbench` | reasoning | Recent research comprehension (Salesforce) |
-| **SimpleQA** | `simpleqa` | chat | Short-form factual question answering |
-| **IPW** | `ipw` | chat | Intelligence Per Watt mixed benchmark |
+| **SuperGPQA** | `supergpqa` | reasoning | Questions à choix multiples de niveau doctoral, toutes disciplines scientifiques |
+| **GPQA** | `gpqa` | reasoning | QCM de niveau doctoral (variantes Diamond, Extended, Main) |
+| **MMLU-Pro** | `mmlu-pro` | reasoning | QCM MMLU enrichi |
+| **MATH-500** | `math500` | reasoning | Problèmes de mathématiques de niveau concours |
+| **NaturalReasoning** | `natural-reasoning` | reasoning | Raisonnement en langue naturelle |
+| **HLE** | `hle` | reasoning | Les épreuves difficiles de Humanity's Last Exam |
+| **LiveResearchBench** | `liveresearchbench` | reasoning | Compréhension de travaux de recherche récents (Salesforce) |
+| **SimpleQA** | `simpleqa` | chat | Questions factuelles à réponse courte |
+| **IPW** | `ipw` | chat | Benchmark mixte « intelligence par watt » |
 
-### Agent Benchmarks
+### Les benchmarks d'agents
 
-These benchmarks test multi-step agent capabilities including tool use, code generation, and long-horizon planning.
+Ceux-là éprouvent les capacités d'agent en plusieurs étapes : appel d'outils, génération de code, planification à long terme.
 
-| Dataset | Key | Category | Description |
+| Jeu de données | Clé | Catégorie | Description |
 |---------|-----|----------|-------------|
-| **GAIA** | `gaia` | agentic | Multi-step tasks with file I/O, calculations, web lookup |
-| **SWE-bench** | `swebench` | agentic | Real-world GitHub code patches |
-| **SWEfficiency** | `swefficiency` | agentic | Software optimization tasks |
-| **TerminalBench** | `terminalbench` | agentic | Terminal-based task completion |
-| **TerminalBench Native** | `terminalbench-native` | agentic | TerminalBench with native Docker execution |
-| **TerminalBench V2.1** | `terminalbench-v2.1` | agentic | TB v2.1 Harbor-style Docker tasks |
-| **PinchBench** | `pinchbench` | agentic | Real-world agent tasks |
-| **TauBench** | `taubench` | agentic | Multi-turn customer service |
-| **DeepResearchBench** | `liveresearch` | agentic | Deep research report generation |
-| **DeepResearchBench (alias)** | `deepresearch` | agentic | Same benchmark as `liveresearch` |
-| **ToolCall-15** | `toolcall15` | agentic | Tool calling benchmark |
-| **LifelongAgent** | `lifelong-agent` | agentic | Sequential task learning across sessions |
-| **PaperArena** | `paperarena` | agentic | Scientific paper analysis |
-| **DeepPlanning** | `deepplanning` | agentic | Shopping constraint planning |
-| **LogHub** | `loghub` | agentic | Log anomaly detection |
-| **AMA-Bench** | `ama-bench` | agentic | Agent memory assessment |
-| **WebChoreArena** | `webchorearena` | agentic | Web chore tasks |
-| **WorkArena** | `workarena` | agentic | WorkArena++ enterprise workflows |
+| **GAIA** | `gaia` | agentic | Tâches en plusieurs étapes : lecture de fichiers, calculs, recherche web |
+| **SWE-bench** | `swebench` | agentic | Vrais correctifs de code venus de GitHub |
+| **SWEfficiency** | `swefficiency` | agentic | Tâches d'optimisation logicielle |
+| **TerminalBench** | `terminalbench` | agentic | Tâches à accomplir dans un terminal |
+| **TerminalBench Native** | `terminalbench-native` | agentic | TerminalBench, exécuté nativement dans Docker |
+| **TerminalBench V2.1** | `terminalbench-v2.1` | agentic | Tâches Docker de style Harbor (TB v2.1) |
+| **PinchBench** | `pinchbench` | agentic | Tâches d'agent tirées du réel |
+| **TauBench** | `taubench` | agentic | Service client sur plusieurs tours |
+| **DeepResearchBench** | `liveresearch` | agentic | Génération de rapports de recherche approfondie |
+| **DeepResearchBench (alias)** | `deepresearch` | agentic | Le même benchmark que `liveresearch` |
+| **ToolCall-15** | `toolcall15` | agentic | Benchmark d'appel d'outils |
+| **LifelongAgent** | `lifelong-agent` | agentic | Apprentissage de tâches successives d'une session à l'autre |
+| **PaperArena** | `paperarena` | agentic | Analyse d'articles scientifiques |
+| **DeepPlanning** | `deepplanning` | agentic | Planification d'achats sous contraintes |
+| **LogHub** | `loghub` | agentic | Détection d'anomalies dans les journaux |
+| **AMA-Bench** | `ama-bench` | agentic | Évaluation de la mémoire d'un agent |
+| **WebChoreArena** | `webchorearena` | agentic | Corvées web |
+| **WorkArena** | `workarena` | agentic | Les workflows d'entreprise de WorkArena++ |
 
-Both `liveresearch` and `deepresearch` are registered keys for the DeepResearchBench report-generation benchmark.
+`liveresearch` et `deepresearch` sont deux clés enregistrées pour le même benchmark de génération de rapports, DeepResearchBench.
 
-### Coding Benchmarks
+### Les benchmarks de code
 
-| Dataset | Key | Category | Description |
+| Jeu de données | Clé | Catégorie | Description |
 |---------|-----|----------|-------------|
-| **LiveCodeBench** | `livecodebench` | coding | Competitive programming |
+| **LiveCodeBench** | `livecodebench` | coding | Programmation compétitive |
 
-### Retrieval Benchmarks
+### Les benchmarks de recherche documentaire
 
-| Dataset | Key | Category | Description |
+| Jeu de données | Clé | Catégorie | Description |
 |---------|-----|----------|-------------|
-| **FRAMES** | `frames` | rag | Multi-hop factual retrieval across Wikipedia articles |
+| **FRAMES** | `frames` | rag | Recherche factuelle à plusieurs sauts, à travers des articles de Wikipédia |
 
-### Conversation Benchmarks
+### Les benchmarks de conversation
 
-| Dataset | Key | Category | Description |
+| Jeu de données | Clé | Catégorie | Description |
 |---------|-----|----------|-------------|
-| **WildChat** | `wildchat` | chat | Real user conversation quality (pairwise LLM judge) |
+| **WildChat** | `wildchat` | chat | Qualité des conversations d'utilisateurs réels (comparaison par paire, jugée par un LLM) |
 
 ---
 
-### Dataset Details
+### Le détail des jeux de données
 
-**SuperGPQA** is a large-scale multiple-choice benchmark spanning graduate-level questions across scientific disciplines. Each sample has a question, a set of lettered options, and a reference answer letter.
+**SuperGPQA** est un grand benchmark à choix multiples, couvrant des questions de niveau doctoral dans les disciplines scientifiques. Chaque échantillon porte une question, un jeu d'options désignées par des lettres, et la lettre de la réponse de référence.
 
-**GAIA** is an agentic benchmark requiring models to complete multi-step tasks that may involve file reading, calculations, and web lookup. Questions are drawn from the 2023 GAIA challenge set.
+**GAIA** est un benchmark agentique : le modèle doit mener à bien des tâches en plusieurs étapes, qui peuvent demander de lire un fichier, de calculer ou de chercher sur le web. Les questions viennent du jeu d'épreuves GAIA de 2023.
 
-**FRAMES** tests multi-hop factual retrieval. Each question requires synthesizing information across multiple Wikipedia articles, making it a strong probe of retrieval-augmented generation capability.
+**FRAMES** éprouve la recherche factuelle à plusieurs sauts. Chaque question demande de recouper plusieurs articles de Wikipédia : c'est une bonne sonde de la génération augmentée par recherche.
 
-**WildChat** uses real user conversations filtered to English single-turn exchanges. The reference answer is the original assistant response from the dataset; the model under evaluation is compared against it by an LLM judge.
+**WildChat** part de vraies conversations d'utilisateurs, filtrées pour ne garder que les échanges en anglais à un seul tour. La réponse de référence est la réponse d'assistant d'origine du jeu de données ; le modèle évalué lui est comparé par un LLM juge.
 
-!!! tip "GAIA dataset access"
-    The GAIA dataset requires a HuggingFace account and acceptance of the dataset's terms of use. The loader downloads the full dataset snapshot on first use and caches it at `~/.cache/gaia_benchmark/`. Subsequent runs use the local cache.
+!!! tip "Accéder au jeu de données GAIA"
+    GAIA demande un compte HuggingFace et l'acceptation de ses conditions d'utilisation. Le chargeur télécharge l'instantané complet du jeu de données au premier usage et le met en cache dans `~/.cache/gaia_benchmark/`. Les exécutions suivantes se servent du cache local.
 
 ---
 
-## Use-Case Eval Configs
+## Les configurations d'évaluation métier
 
-The framework includes two pre-built configs for evaluating models on the five core use-case benchmarks (coding_assistant, security_scanner, daily_digest, doc_qa, browser_assistant).
+Le cadre embarque deux configurations toutes faites pour évaluer des modèles sur les cinq benchmarks métier principaux (coding_assistant, security_scanner, daily_digest, doc_qa, browser_assistant).
 
-### Cloud models
+### Les modèles distants
 
 ```bash
 uv run diapason eval run --config src/diapason/evals/configs/use_case_v2_cloud.toml
 ```
 
-This config evaluates **6 cloud models** (Claude Opus 4.6, Claude Haiku 4.5, Gemini 3.1 Pro, Gemini 3.1 Flash Lite, GPT-5.4, GPT-5 Mini) against all 5 use-case benchmarks with 30 samples each, producing a 6x5 = 30-run matrix. Results are written to `results/use-cases-v2-cloud/`.
+Cette configuration évalue **6 modèles distants** (Claude Opus 4.6, Claude Haiku 4.5, Gemini 3.1 Pro, Gemini 3.1 Flash Lite, GPT-5.4, GPT-5 Mini) sur les 5 benchmarks métier, 30 échantillons chacun : une matrice de 6 × 5 = 30 exécutions. Les résultats sont écrits dans `results/use-cases-v2-cloud/`.
 
-### Local models
+### Les modèles locaux
 
 ```bash
 uv run diapason eval run --config src/diapason/evals/configs/use_case_v2_local.toml
 ```
 
-This config evaluates **5 local models** via Ollama (Qwen3.5 122B-A10B, GPT-OSS 120B, GLM4, Qwen3.5 35B-A3B, GLM-4.7-Flash) against the same 5 benchmarks, producing a 5x5 = 25-run matrix. Uses 2 workers (suitable for single-GPU setups). Results are written to `results/use-cases-v2-local/`.
+Cette configuration évalue **5 modèles locaux** par Ollama (Qwen3.5 122B-A10B, GPT-OSS 120B, GLM4, Qwen3.5 35B-A3B, GLM-4.7-Flash) sur les mêmes 5 benchmarks : une matrice de 5 × 5 = 25 exécutions. Elle utilise 2 fils, ce qui convient à une machine à un seul GPU. Les résultats sont écrits dans `results/use-cases-v2-local/`.
 
-!!! tip "Customizing use-case evals"
-    Copy one of the `use_case_v2_*.toml` configs and modify the `[[models]]` entries to evaluate your own models. The five use-case benchmarks use synthetic datasets (no HuggingFace download required) and run quickly with 30 samples each.
+!!! tip "Adapter les évaluations métier"
+    Copie l'une des configurations `use_case_v2_*.toml` et modifie les blocs `[[models]]` pour évaluer tes propres modèles. Les cinq benchmarks métier utilisent des jeux de données synthétiques — rien à télécharger depuis HuggingFace — et vont vite avec 30 échantillons chacun.
 
 ---
 
-## Inference Backends
+## Les moteurs d'inférence
 
-Every evaluation run routes model calls through one of four backends:
+Toute évaluation achemine ses appels de modèle par l'un des quatre moteurs d'inférence :
 
-| Backend | Key | Description |
+| Moteur | Clé | Description |
 |---------|-----|-------------|
-| **diapason-direct** | `diapason-direct` | Engine-level inference via `SystemBuilder`. Works for local (Ollama, vLLM, llama.cpp) and cloud models. |
-| **diapason-agent** | `diapason-agent` | Agent-level inference with tool calling. Uses `DiapasonSystem.ask()` with the specified agent and tools. |
-| **hermes** | `hermes` | Real Hermes Agent (Nous Research) via subprocess. Requires `--base-url` and `--api-key`. |
-| **openclaw** | `openclaw` | Real OpenClaw via Node subprocess. Requires `--base-url` and `--api-key`. |
+| **diapason-direct** | `diapason-direct` | Inférence au niveau du moteur, via `SystemBuilder`. Fonctionne pour les modèles locaux (Ollama, vLLM, llama.cpp) comme distants. |
+| **diapason-agent** | `diapason-agent` | Inférence au niveau de l'agent, avec appel d'outils. Passe par `DiapasonSystem.ask()` avec l'agent et les outils indiqués. |
+| **hermes** | `hermes` | Le vrai Hermes Agent (Nous Research), lancé en sous-processus. Demande `--base-url` et `--api-key`. |
+| **openclaw** | `openclaw` | Le vrai OpenClaw, lancé en sous-processus Node. Demande `--base-url` et `--api-key`. |
 
-Use `diapason-direct` for most evaluations. Use `diapason-agent` when the benchmark requires tool use — for example, GAIA tasks that reference files that must be read with `file_read`, or arithmetic tasks that benefit from `calculator`.
+Prends `diapason-direct` pour la plupart des évaluations. Prends `diapason-agent` quand le benchmark exige des outils — par exemple les tâches GAIA qui renvoient à des fichiers qu'il faut lire avec `file_read`, ou les tâches de calcul qui gagnent à passer par `calculator`.
 
-The `hermes` and `openclaw` backends shell out to external agent frameworks and need an OpenAI-compatible endpoint for their model calls: pass `--base-url`/`--api-key`, set the `DIAPASON_BACKEND_BASE_URL`/`DIAPASON_BACKEND_API_KEY` environment variables, or add a `[backend.external]` section to your config (see [Config Reference](#backendexternal)).
+Les moteurs `hermes` et `openclaw` délèguent le travail à des cadres d'agents externes, et ceux-ci ont besoin d'un point d'accès compatible OpenAI pour leurs appels de modèle : passe `--base-url`/`--api-key`, pose les variables d'environnement `DIAPASON_BACKEND_BASE_URL`/`DIAPASON_BACKEND_API_KEY`, ou ajoute une section `[backend.external]` à ta configuration (voir la [référence de configuration](#backendexternal)).
 
 !!! note "TerminalBench Native"
-    `diapason eval run --backend` additionally accepts `terminalbench-native`, a Docker-based execution backend used by the TerminalBench Native benchmark.
+    `diapason eval run --backend` accepte en plus `terminalbench-native`, un moteur d'exécution fondé sur Docker, utilisé par le benchmark TerminalBench Native.
 
 ---
 
-## CLI Usage
+## L'usage en ligne de commande
 
-### List available benchmarks and backends
+### Lister les benchmarks et les moteurs disponibles
 
 ```bash
 uv run python -m diapason.evals list
 ```
 
-Abridged output (40 benchmarks, 4 backends):
+Sortie abrégée (40 benchmarks, 4 moteurs) :
 
 ```
                          Available Benchmarks
@@ -221,94 +221,94 @@ Abridged output (40 benchmarks, 4 backends):
 └───────────────┴──────────────────────────────────────────────────┘
 ```
 
-`diapason eval list` prints a similar table but currently shows a curated subset of the registry; the module form above is the authoritative listing.
+`diapason eval list` affiche un tableau semblable, mais n'en montre pour l'instant qu'une sélection ; c'est la forme module ci-dessus qui fait foi.
 
-### Run a single benchmark
+### Lancer un seul benchmark
 
 ```bash
-# Evaluate qwen3:8b on SuperGPQA (engine-level, 10 samples)
+# Évaluer qwen3:8b sur SuperGPQA (au niveau du moteur, 10 échantillons)
 uv run diapason eval run -b supergpqa -m qwen3:8b -n 10
 
-# Evaluate GPT-5 Mini on GAIA using the agent backend with tools
+# Évaluer GPT-5 Mini sur GAIA, avec le moteur agent et des outils
 uv run diapason eval run -b gaia -m gpt-5-mini --backend diapason-agent \
     --agent orchestrator --tools calculator,file_read -n 50
 
-# Run FRAMES with the vLLM engine, write output to a file
+# Lancer FRAMES avec le moteur vLLM, en écrivant la sortie dans un fichier
 uv run diapason eval run -b frames -m llama3:70b -e vllm \
     -o results/frames_llama70b.jsonl
 
-# Run WildChat with a higher temperature for chat quality
+# Lancer WildChat à une température plus haute, pour la qualité de discussion
 uv run diapason eval run -b wildchat -m qwen3:8b --temperature 0.7 -n 100
 ```
 
-#### `diapason eval run` option reference
+#### Les options de `diapason eval run`
 
-| Option | Short | Type | Default | Description |
+| Option | Court | Type | Défaut | Description |
 |--------|-------|------|---------|-------------|
-| `--config` | `-c` | path | — | TOML config file; when provided, `-b` and `-m` are not required |
-| `--benchmark` | `-b` | str | required* | Any registered benchmark key (see `... list`) |
-| `--model` | `-m` | str | required* | Model identifier (e.g., `qwen3:8b`, `gpt-5-mini`) |
-| `--max-samples` | `-n` | int | all | Limit the number of samples evaluated |
-| `--backend` | | choice | `diapason-direct` | `diapason-direct`, `diapason-agent`, `hermes`, `openclaw`, or `terminalbench-native` |
-| `--base-url` | | str | — | OpenAI-compatible endpoint URL (env: `DIAPASON_BACKEND_BASE_URL`) |
-| `--api-key` | | str | — | API key for the endpoint (env: `DIAPASON_BACKEND_API_KEY`) |
-| `--agent` | | str | — | Agent name for `diapason-agent` backend (e.g., `orchestrator`) |
-| `--engine` | `-e` | str | auto | Engine key (`ollama`, `vllm`, `cloud`, ...) |
-| `--tools` | | str | `""` | Comma-separated tool names (e.g., `calculator,file_read`) |
-| `--telemetry/--no-telemetry` | | flag | off | Enable telemetry collection during eval |
-| `--gpu-metrics/--no-gpu-metrics` | | flag | off | Enable GPU metric polling |
-| `--seed` | | int | `42` | Random seed for dataset shuffling |
-| `--temperature` | | float | `0.0` | Generation temperature |
-| `--max-tokens` | | int | `2048` | Maximum output tokens |
-| `--model-filter` | | str | — | Filter models by name substring (multi-model configs) |
-| `--output` | `-o` | path | auto-generated | Output JSONL file path |
-| `--wandb-project` / `--wandb-entity` / `--wandb-tags` / `--wandb-group` | | str | `""` | Weights & Biases tracking (requires `eval-wandb` extra) |
-| `--sheets-id` / `--sheets-worksheet` / `--sheets-creds` | | str | `""` | Google Sheets export (requires `eval-sheets` extra) |
-| `--verbose` | `-v` | flag | off | Enable debug logging |
+| `--config` | `-c` | chemin | — | Fichier de configuration TOML ; quand il est fourni, `-b` et `-m` ne sont plus requis |
+| `--benchmark` | `-b` | str | requis* | N'importe quelle clé de benchmark enregistrée (voir `... list`) |
+| `--model` | `-m` | str | requis* | Identifiant du modèle (par ex. `qwen3:8b`, `gpt-5-mini`) |
+| `--max-samples` | `-n` | int | tous | Limite le nombre d'échantillons évalués |
+| `--backend` | | choix | `diapason-direct` | `diapason-direct`, `diapason-agent`, `hermes`, `openclaw` ou `terminalbench-native` |
+| `--base-url` | | str | — | URL du point d'accès compatible OpenAI (variable : `DIAPASON_BACKEND_BASE_URL`) |
+| `--api-key` | | str | — | Clé d'API du point d'accès (variable : `DIAPASON_BACKEND_API_KEY`) |
+| `--agent` | | str | — | Nom de l'agent pour le moteur `diapason-agent` (par ex. `orchestrator`) |
+| `--engine` | `-e` | str | auto | Clé du moteur (`ollama`, `vllm`, `cloud`, …) |
+| `--tools` | | str | `""` | Noms d'outils séparés par des virgules (par ex. `calculator,file_read`) |
+| `--telemetry/--no-telemetry` | | drapeau | désactivé | Active la collecte de télémétrie pendant l'évaluation |
+| `--gpu-metrics/--no-gpu-metrics` | | drapeau | désactivé | Active le relevé des métriques GPU |
+| `--seed` | | int | `42` | Graine aléatoire pour le brassage du jeu de données |
+| `--temperature` | | float | `0.0` | Température de génération |
+| `--max-tokens` | | int | `2048` | Nombre maximal de jetons en sortie |
+| `--model-filter` | | str | — | Filtre les modèles sur un morceau de leur nom (configurations multi-modèles) |
+| `--output` | `-o` | chemin | automatique | Chemin du fichier JSONL de sortie |
+| `--wandb-project` / `--wandb-entity` / `--wandb-tags` / `--wandb-group` | | str | `""` | Suivi Weights & Biases (demande l'extra `eval-wandb`) |
+| `--sheets-id` / `--sheets-worksheet` / `--sheets-creds` | | str | `""` | Export vers Google Sheets (demande l'extra `eval-sheets`) |
+| `--verbose` | `-v` | drapeau | désactivé | Active les journaux de débogage |
 
-*Required when `--config` is not provided.
+*Requis quand `--config` n'est pas fourni.
 
-#### Research-only options (`python -m diapason.evals run`)
+#### Les options réservées à la recherche (`python -m diapason.evals run`)
 
-The module CLI accepts everything above plus research-grade options that `diapason eval run` does not expose:
+La CLI module accepte tout ce qui précède, plus des options de recherche que `diapason eval run` n'expose pas :
 
-| Option | Short | Type | Default | Description |
+| Option | Court | Type | Défaut | Description |
 |--------|-------|------|---------|-------------|
-| `--max-workers` | `-w` | int | `4` | Parallel evaluation workers |
-| `--judge-model` | | str | `gpt-5-mini-2025-08-07` | LLM used for judge-based scoring (see `--help` for the current default) |
-| `--judge-engine` | | str | `cloud` | Engine key for the LLM judge; use `vllm` to judge locally |
-| `--split` | | str | dataset default | Override the dataset split |
-| `--compact` | | flag | off | Dense single-table output |
-| `--trace-detail` | | flag | off | Full per-step trace listing |
-| `--agentic` | | flag | off | Use `AgenticRunner` for multi-turn agent execution |
-| `--episode-mode` | | flag | off | Sequential episode processing with lifelong learning (required for `lifelong-agent` and similar benchmarks) |
-| `--concurrency` | | int | `1` | Parallel query execution (AgenticRunner only) |
-| `--query-timeout` | | float | — | Per-query wall-clock timeout in seconds (AgenticRunner only) |
+| `--max-workers` | `-w` | int | `4` | Fils d'évaluation en parallèle |
+| `--judge-model` | | str | `gpt-5-mini-2025-08-07` | LLM utilisé pour la notation par juge (le défaut courant est donné par `--help`) |
+| `--judge-engine` | | str | `cloud` | Clé du moteur du LLM juge ; `vllm` pour juger en local |
+| `--split` | | str | défaut du jeu de données | Remplace la tranche du jeu de données |
+| `--compact` | | drapeau | désactivé | Sortie dense, en un seul tableau |
+| `--trace-detail` | | drapeau | désactivé | Trace complète, étape par étape |
+| `--agentic` | | drapeau | désactivé | Passe par `AgenticRunner` pour une exécution d'agent sur plusieurs tours |
+| `--episode-mode` | | drapeau | désactivé | Traitement séquentiel par épisodes, avec apprentissage continu (requis pour `lifelong-agent` et les benchmarks du même genre) |
+| `--concurrency` | | int | `1` | Exécution des requêtes en parallèle (`AgenticRunner` seulement) |
+| `--query-timeout` | | float | — | Délai maximal par requête, en secondes de temps réel (`AgenticRunner` seulement) |
 
-Note: the module CLI's `--backend` choice covers `diapason-direct`, `diapason-agent`, `hermes`, and `openclaw`; `terminalbench-native` as a backend is available via `diapason eval run` and TOML configs.
+À noter : le `--backend` de la CLI module couvre `diapason-direct`, `diapason-agent`, `hermes` et `openclaw` ; `terminalbench-native` comme moteur n'est accessible que par `diapason eval run` et par les configurations TOML.
 
-### Run all benchmarks at once
+### Lancer tous les benchmarks d'un coup
 
-The `run-all` command (module CLI only) evaluates a single model against **every registered benchmark** sequentially and writes results to an output directory:
+La commande `run-all` (CLI module seulement) évalue un seul modèle contre **tous les benchmarks enregistrés**, l'un après l'autre, et écrit les résultats dans un dossier de sortie :
 
 ```bash
 uv run python -m diapason.evals run-all -m qwen3:8b
 
-# With options
+# Avec des options
 uv run python -m diapason.evals run-all -m gpt-5-mini -n 100 --output-dir results/gpt5mini/
 ```
 
-Output files are written as `{output_dir}/{benchmark}_{model-slug}.jsonl`. The model slug replaces `/` and `:` with `-`, so `qwen3:8b` becomes `qwen3-8b`.
+Les fichiers sont écrits sous la forme `{output_dir}/{benchmark}_{model-slug}.jsonl`. Le « slug » du modèle remplace `/` et `:` par `-` : `qwen3:8b` devient donc `qwen3-8b`.
 
-### Summarize results
+### Résumer les résultats
 
-After a run, inspect a JSONL results file:
+Après une exécution, inspecte un fichier de résultats JSONL :
 
 ```bash
 uv run python -m diapason.evals summarize results/supergpqa_qwen3-8b.jsonl
 ```
 
-Output:
+Sortie :
 
 ```
 File:      results/supergpqa_qwen3-8b.jsonl
@@ -321,28 +321,28 @@ Accuracy:  0.7222
 Errors:    2
 ```
 
-The module CLI also provides `reparse-judge`, which re-parses stored judge output in a results file and recovers records whose judge verdicts initially failed to parse — useful after improving the judge-output parser without re-running inference.
+La CLI module fournit aussi `reparse-judge` : elle relit les sorties de juge stockées dans un fichier de résultats et récupère les enregistrements dont le verdict n'avait pas pu être analysé — utile après avoir amélioré l'analyseur, sans relancer l'inférence.
 
-### Compare and report
+### Comparer et rapporter
 
-`diapason eval` adds two post-processing commands for result files:
+`diapason eval` ajoute deux commandes de retraitement des fichiers de résultats :
 
 ```bash
-# Side-by-side metric comparison across runs
+# Comparaison des métriques côte à côte, entre plusieurs exécutions
 uv run diapason eval compare results/supergpqa_qwen3-8b.jsonl results/supergpqa_gpt-5-mini.jsonl
 
-# Detailed report (accuracy, latency, cost, per-subject breakdown) for one run
+# Rapport détaillé (exactitude, latence, coût, répartition par sujet) pour une exécution
 uv run diapason eval report results/supergpqa_qwen3-8b.jsonl
 ```
 
 ---
 
-## Evaluating an Already-Running Endpoint
+## Évaluer un point d'accès déjà en marche
 
-If you already have an OpenAI-compatible server running — `diapason serve`, vLLM, SGLang, llama.cpp's server, or a hosted endpoint — point an eval directly at it with `--base-url` and `--api-key`:
+Si un serveur compatible OpenAI tourne déjà — `diapason serve`, vLLM, SGLang, le serveur de llama.cpp, ou un point d'accès hébergé —, pointe l'évaluation dessus avec `--base-url` et `--api-key` :
 
 ```bash
-# A vLLM server is already serving Qwen/Qwen3-8B on a GPU node:
+# Un serveur vLLM sert déjà Qwen/Qwen3-8B sur un nœud GPU :
 #   vllm serve Qwen/Qwen3-8B --port 8000
 uv run diapason eval run -b supergpqa -m Qwen/Qwen3-8B \
     --base-url http://gpu-node:8000/v1 \
@@ -350,7 +350,7 @@ uv run diapason eval run -b supergpqa -m Qwen/Qwen3-8B \
     -n 50
 ```
 
-The `-m` value must match a model id the server reports at `GET /v1/models`. Both flags fall back to the `DIAPASON_BACKEND_BASE_URL` and `DIAPASON_BACKEND_API_KEY` environment variables, so CI jobs can set them once:
+La valeur de `-m` doit correspondre à un identifiant de modèle annoncé par le serveur sur `GET /v1/models`. Les deux options retombent sur les variables d'environnement `DIAPASON_BACKEND_BASE_URL` et `DIAPASON_BACKEND_API_KEY` : un job de CI peut donc les poser une fois pour toutes :
 
 ```bash
 export DIAPASON_BACKEND_BASE_URL=http://gpu-node:8000/v1
@@ -358,77 +358,77 @@ export DIAPASON_BACKEND_API_KEY=local-key
 uv run diapason eval run -b gaia -m Qwen/Qwen3-8B --backend diapason-agent -n 25
 ```
 
-For the external `hermes` and `openclaw` backends these values are **required** (the foreign frameworks need an endpoint to send model calls to).
+Pour les moteurs externes `hermes` et `openclaw`, ces valeurs sont **obligatoires** : ces cadres étrangers ont besoin d'un point d'accès où envoyer leurs appels de modèle.
 
-!!! tip "Engine-level alternative for vLLM"
-    The vLLM engine also honors the `VLLM_HOST` environment variable (default `http://localhost:8000`):
+!!! tip "Autre voie pour vLLM, au niveau du moteur"
+    Le moteur vLLM respecte aussi la variable d'environnement `VLLM_HOST` (par défaut `http://localhost:8000`) :
 
     ```bash
     VLLM_HOST=http://gpu-node:8000 uv run python -m diapason.evals run \
         -b supergpqa -m Qwen/Qwen3-8B -e vllm -n 50
     ```
 
-    `VLLM_HOST` is process-global — if the candidate and the judge both use the `vllm` engine, they share the same endpoint. Prefer `--base-url` when you need them separate.
+    `VLLM_HOST` vaut pour tout le processus : si le modèle candidat et le juge passent tous deux par le moteur `vllm`, ils partagent le même point d'accès. Quand il te les faut séparés, passe par `--base-url`.
 
 ---
 
-## TOML Config System
+## Le système de configuration TOML
 
-For research workflows that compare multiple models across multiple benchmarks, use a TOML config file to define the evaluation as a **models x benchmarks matrix**. This is the recommended approach for systematic evaluations.
+Pour comparer plusieurs modèles sur plusieurs benchmarks, décris l'évaluation dans un fichier TOML, comme une **matrice modèles × benchmarks**. C'est la voie recommandée pour une évaluation systématique.
 
-### Running from a config
+### Lancer depuis une configuration
 
 ```bash
 uv run diapason eval run --config src/diapason/evals/configs/full-suite.toml
 ```
 
-When `--config` is provided, the `-b`/`--benchmark` and `-m`/`--model` options are not required. All settings come from the config file. The CLI expands the matrix, prints a progress table, and writes results to the configured `output_dir`.
+Quand `--config` est fourni, `-b`/`--benchmark` et `-m`/`--model` ne sont plus requis : tous les réglages viennent du fichier. La CLI déploie la matrice, affiche un tableau d'avancement et écrit les résultats dans l'`output_dir` configuré.
 
-### Config file format
+### Le format du fichier de configuration
 
-A config file has six sections: `[meta]`, `[defaults]`, `[judge]`, `[run]`, `[[models]]`, and `[[benchmarks]]`. Only `[[models]]` and `[[benchmarks]]` are required — all other sections are optional and fall back to built-in defaults.
+Un fichier de configuration a six sections : `[meta]`, `[defaults]`, `[judge]`, `[run]`, `[[models]]` et `[[benchmarks]]`. Seules `[[models]]` et `[[benchmarks]]` sont obligatoires — les autres sont facultatives et retombent sur les défauts internes.
 
 ```toml title="src/diapason/evals/configs/full-suite.toml"
-# Suite-level metadata (optional)
+# Métadonnées de la suite (facultatif)
 [meta]
 name = "full-suite-v1"
-description = "Evaluate all benchmarks against production models"
+description = "Évaluer tous les benchmarks contre les modèles de production"
 
-# Default generation parameters (optional)
+# Paramètres de génération par défaut (facultatif)
 [defaults]
 temperature = 0.0
 max_tokens = 2048
 
-# LLM judge configuration (optional)
+# Configuration du LLM juge (facultatif)
 [judge]
 model = "gpt-4o"
 temperature = 0.0
 max_tokens = 1024
 
-# Execution settings (optional)
+# Réglages d'exécution (facultatif)
 [run]
 max_workers = 4
 output_dir = "results/"
 seed = 42
 
-# --- Models (one [[models]] block per model) ---
+# --- Les modèles (un bloc [[models]] par modèle) ---
 
 [[models]]
 name = "qwen3:8b"
 engine = "ollama"
-temperature = 0.3    # overrides [defaults] for this model
+temperature = 0.3    # remplace [defaults] pour ce modèle
 max_tokens = 4096
 
 [[models]]
 name = "gpt-4o"
-provider = "openai"  # uses cloud engine
+provider = "openai"  # passe par le moteur cloud
 
 [[models]]
 name = "llama3:70b"
 engine = "vllm"
 temperature = 0.1
 
-# --- Benchmarks (one [[benchmarks]] block per benchmark) ---
+# --- Les benchmarks (un bloc [[benchmarks]] par benchmark) ---
 
 [[benchmarks]]
 name = "supergpqa"
@@ -442,7 +442,7 @@ backend = "diapason-agent"
 agent = "orchestrator"
 tools = ["file_read", "calculator"]
 max_samples = 50
-judge_model = "claude-sonnet-4-20250514"  # override judge for this benchmark
+judge_model = "claude-sonnet-4-20250514"  # un autre juge pour ce benchmark
 
 [[benchmarks]]
 name = "frames"
@@ -453,24 +453,24 @@ max_samples = 100
 name = "wildchat"
 backend = "diapason-direct"
 max_samples = 150
-temperature = 0.7   # override temperature for this benchmark
+temperature = 0.7   # température propre à ce benchmark
 ```
 
-This config produces 3 models x 4 benchmarks = **12 evaluation runs**.
+Cette configuration produit 3 modèles × 4 benchmarks = **12 exécutions d'évaluation**.
 
-### Merge precedence
+### L'ordre de préséance
 
-Settings are resolved with the following precedence, from highest to lowest:
+Les réglages sont résolus dans cet ordre, du plus fort au plus faible :
 
 ```
-benchmark-level  >  model-level  >  [defaults]  >  built-in defaults
+niveau benchmark  >  niveau modèle  >  [defaults]  >  défauts internes
 ```
 
-For example, `temperature` is resolved as: use `[defaults].temperature` (0.0), then apply `[[models]].temperature` if set (0.3 for qwen3:8b), then override with `[[benchmarks]].temperature` if set (0.7 for wildchat). The WildChat run with qwen3:8b therefore runs at `temperature = 0.7`.
+Par exemple, `temperature` se résout ainsi : partir de `[defaults].temperature` (0.0), puis appliquer `[[models]].temperature` s'il est posé (0.3 pour qwen3:8b), puis le remplacer par `[[benchmarks]].temperature` s'il est posé (0.7 pour wildchat). L'exécution de WildChat avec qwen3:8b tourne donc à `temperature = 0.7`.
 
-### Minimal config
+### La configuration minimale
 
-A config requires only one `[[models]]` and one `[[benchmarks]]` entry:
+Une configuration n'exige qu'une entrée `[[models]]` et une entrée `[[benchmarks]]` :
 
 ```toml title="src/diapason/evals/configs/minimal.toml"
 [[models]]
@@ -480,14 +480,14 @@ name = "qwen3:8b"
 name = "supergpqa"
 ```
 
-This runs SuperGPQA against qwen3:8b with all default settings. Use this as a starting point when iterating on a single model or dataset.
+Elle lance SuperGPQA contre qwen3:8b avec tous les réglages par défaut. C'est le point de départ quand tu itères sur un seul modèle ou un seul jeu de données.
 
-### Single-run config with full options
+### Une exécution unique, avec toutes les options
 
 ```toml title="src/diapason/evals/configs/single-run.toml"
 [meta]
 name = "single-run-example"
-description = "Evaluate SuperGPQA with a single model and full configuration"
+description = "Évaluer SuperGPQA avec un seul modèle et une configuration complète"
 
 [defaults]
 temperature = 0.0
@@ -518,119 +518,119 @@ split = "train"
 
 ---
 
-## Config Reference
+## Référence de configuration
 
 ### `[meta]`
 
-Suite-level metadata. Neither field affects evaluation behavior; both are used in CLI output and summary files.
+Les métadonnées de la suite. Aucun des deux champs ne change le comportement de l'évaluation ; ils servent à l'affichage de la CLI et aux fichiers de résumé.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `name` | str | `""` | Suite name shown in CLI output |
-| `description` | str | `""` | Human-readable description |
+| `name` | str | `""` | Nom de la suite, affiché par la CLI |
+| `description` | str | `""` | Description en clair |
 
 ### `[defaults]`
 
-Default generation parameters applied to every run unless overridden at the model or benchmark level.
+Les paramètres de génération appliqués à toute exécution, sauf s'ils sont remplacés au niveau du modèle ou du benchmark.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `temperature` | float | `0.0` | Sampling temperature |
-| `max_tokens` | int | `2048` | Maximum output tokens |
+| `temperature` | float | `0.0` | Température d'échantillonnage |
+| `max_tokens` | int | `2048` | Nombre maximal de jetons en sortie |
 
 ### `[judge]`
 
-Configuration for the LLM used as a judge in GAIA, FRAMES, and WildChat scoring.
+La configuration du LLM qui sert de juge pour la notation de GAIA, FRAMES et WildChat.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `model` | str | `"gpt-5-mini-2025-08-07"` | Judge model identifier |
-| `engine` | str | `None` | Engine key for the judge (e.g., `"vllm"` to judge locally; defaults to cloud) |
-| `provider` | str | `None` | Provider override (e.g., `"openai"`) |
-| `temperature` | float | `0.0` | Judge sampling temperature |
-| `max_tokens` | int | `1024` | Maximum judge output tokens |
+| `model` | str | `"gpt-5-mini-2025-08-07"` | Identifiant du modèle juge |
+| `engine` | str | `None` | Clé du moteur du juge (par ex. `"vllm"` pour juger en local ; par défaut, le cloud) |
+| `provider` | str | `None` | Fournisseur imposé (par ex. `"openai"`) |
+| `temperature` | float | `0.0` | Température d'échantillonnage du juge |
+| `max_tokens` | int | `1024` | Nombre maximal de jetons produits par le juge |
 
-!!! warning "Judge model costs"
-    Every sample that requires LLM-based scoring makes a separate call to the judge model. For large runs with hundreds of samples, judge costs can exceed evaluation costs. GAIA, FRAMES, and WildChat all require a judge; SuperGPQA uses an LLM to extract the answer letter, then compares it against the reference without a separate judge call.
+!!! warning "Ce que coûte le modèle juge"
+    Chaque échantillon noté par un LLM déclenche un appel distinct au modèle juge. Sur de grosses exécutions, à plusieurs centaines d'échantillons, le juge peut coûter plus cher que l'évaluation elle-même. GAIA, FRAMES et WildChat demandent tous un juge ; SuperGPQA, lui, se sert d'un LLM pour extraire la lettre de la réponse, puis la compare à la référence sans appel de juge supplémentaire.
 
 ### `[run]`
 
-Execution settings that apply to the entire suite.
+Les réglages d'exécution qui valent pour toute la suite.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `max_workers` | int | `4` | Number of parallel evaluation threads |
-| `output_dir` | str | `"results/"` | Directory where JSONL and summary files are written |
-| `seed` | int | `42` | Random seed for dataset shuffling |
-| `telemetry` | bool | `false` | Enable GPU telemetry capture (energy, power, utilization, throughput) |
-| `gpu_metrics` | bool | `false` | Enable GPU metric polling via `pynvml` (requires `pynvml` or `nvidia-ml-py`) |
-| `warmup_samples` | int | `0` | Untimed warmup samples before measurement |
-| `energy_vendor` | str | `""` | GPU energy vendor override |
-| `max_turns` | int | `None` | Maximum agent turns per query |
-| `wandb_project` / `wandb_entity` / `wandb_tags` / `wandb_group` | str | `""` | Weights & Biases tracking |
-| `sheets_spreadsheet_id` / `sheets_worksheet` / `sheets_credentials_path` | str | `""` / `"Results"` / `""` | Google Sheets export |
+| `max_workers` | int | `4` | Nombre de fils d'évaluation en parallèle |
+| `output_dir` | str | `"results/"` | Dossier où sont écrits les fichiers JSONL et les résumés |
+| `seed` | int | `42` | Graine aléatoire pour le brassage du jeu de données |
+| `telemetry` | bool | `false` | Active la capture de télémétrie GPU (énergie, puissance, utilisation, débit) |
+| `gpu_metrics` | bool | `false` | Active le relevé des métriques GPU par `pynvml` (demande `pynvml` ou `nvidia-ml-py`) |
+| `warmup_samples` | int | `0` | Échantillons de chauffe, non chronométrés, avant la mesure |
+| `energy_vendor` | str | `""` | Fournisseur d'énergie GPU imposé |
+| `max_turns` | int | `None` | Nombre maximal de tours d'agent par requête |
+| `wandb_project` / `wandb_entity` / `wandb_tags` / `wandb_group` | str | `""` | Suivi Weights & Biases |
+| `sheets_spreadsheet_id` / `sheets_worksheet` / `sheets_credentials_path` | str | `""` / `"Results"` / `""` | Export vers Google Sheets |
 
 ### `[backend.external]`
 
-Endpoint settings for the `hermes` and `openclaw` backends. Environment variables override TOML values.
+Les réglages de point d'accès des moteurs `hermes` et `openclaw`. Les variables d'environnement l'emportent sur les valeurs du TOML.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `base_url` | str | `None` | OpenAI-compatible endpoint URL (env: `DIAPASON_BACKEND_BASE_URL`) |
-| `api_key` | str | `None` | API key for the endpoint (env: `DIAPASON_BACKEND_API_KEY`) |
+| `base_url` | str | `None` | URL du point d'accès compatible OpenAI (variable : `DIAPASON_BACKEND_BASE_URL`) |
+| `api_key` | str | `None` | Clé d'API du point d'accès (variable : `DIAPASON_BACKEND_API_KEY`) |
 
 ### `[[models]]`
 
-One block per model. The `name` field is required.
+Un bloc par modèle. Le champ `name` est obligatoire.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `name` | str | required | Model identifier (e.g., `"qwen3:8b"`, `"gpt-5-mini"`) |
-| `engine` | str | `None` | Engine key to use (`"ollama"`, `"vllm"`, `"cloud"`, ...) |
-| `provider` | str | `None` | Provider override for cloud models (e.g., `"openai"`) |
-| `temperature` | float | `None` | Override `[defaults].temperature` for this model |
-| `max_tokens` | int | `None` | Override `[defaults].max_tokens` for this model |
-| `param_count_b` | float | `0.0` | Total model parameter count in billions (for MFU/MBU computation) |
-| `active_params_b` | float | `None` | Active parameters per token in billions (for MoE models; defaults to `param_count_b`) |
-| `gpu_peak_tflops` | float | `0.0` | GPU peak FP16 TFLOPS (e.g., 312.0 for A100 SXM) |
-| `gpu_peak_bandwidth_gb_s` | float | `0.0` | GPU peak memory bandwidth in GB/s (e.g., 2039.0 for A100 SXM) |
-| `num_gpus` | int | `1` | Number of GPUs used (for tensor-parallel inference) |
+| `name` | str | requis | Identifiant du modèle (par ex. `"qwen3:8b"`, `"gpt-5-mini"`) |
+| `engine` | str | `None` | Clé du moteur à utiliser (`"ollama"`, `"vllm"`, `"cloud"`, …) |
+| `provider` | str | `None` | Fournisseur imposé pour les modèles distants (par ex. `"openai"`) |
+| `temperature` | float | `None` | Remplace `[defaults].temperature` pour ce modèle |
+| `max_tokens` | int | `None` | Remplace `[defaults].max_tokens` pour ce modèle |
+| `param_count_b` | float | `0.0` | Nombre total de paramètres du modèle, en milliards (pour le calcul du MFU et du MBU) |
+| `active_params_b` | float | `None` | Paramètres actifs par jeton, en milliards (modèles MoE ; vaut `param_count_b` par défaut) |
+| `gpu_peak_tflops` | float | `0.0` | TFLOPS FP16 crête du GPU (par ex. 312.0 pour une A100 SXM) |
+| `gpu_peak_bandwidth_gb_s` | float | `0.0` | Bande passante mémoire crête du GPU, en Go/s (par ex. 2039.0 pour une A100 SXM) |
+| `num_gpus` | int | `1` | Nombre de GPU utilisés (inférence en parallélisme de tenseurs) |
 
 ### `[[benchmarks]]`
 
-One block per benchmark. The `name` field is required.
+Un bloc par benchmark. Le champ `name` est obligatoire.
 
-| Field | Type | Default | Description |
+| Champ | Type | Défaut | Description |
 |-------|------|---------|-------------|
-| `name` | str | required | Any registered benchmark key (see `uv run python -m diapason.evals list`) |
-| `backend` | str | `"diapason-direct"` | `diapason-direct`, `diapason-agent`, `hermes`, `openclaw`, or `terminalbench-native` |
-| `max_samples` | int | `None` | Limit number of samples; `None` evaluates the full dataset |
-| `split` | str | `None` | Override the default dataset split |
-| `subset` | str | `None` | Dataset subset/variant (benchmark-specific) |
-| `record_ids` | list[str] | `None` | Evaluate only these record ids |
-| `agent` | str | `None` | Agent name for `diapason-agent` backend (e.g., `"orchestrator"`) |
-| `tools` | list[str] | `[]` | Tool names for `diapason-agent` backend |
-| `judge_model` | str | `None` | Override `[judge].model` for this benchmark only |
-| `temperature` | float | `None` | Override temperature for this benchmark (highest precedence) |
-| `max_tokens` | int | `None` | Override max tokens for this benchmark (highest precedence) |
+| `name` | str | requis | N'importe quelle clé de benchmark enregistrée (voir `uv run python -m diapason.evals list`) |
+| `backend` | str | `"diapason-direct"` | `diapason-direct`, `diapason-agent`, `hermes`, `openclaw` ou `terminalbench-native` |
+| `max_samples` | int | `None` | Limite le nombre d'échantillons ; `None` évalue tout le jeu de données |
+| `split` | str | `None` | Remplace la tranche par défaut du jeu de données |
+| `subset` | str | `None` | Sous-ensemble ou variante du jeu de données (propre à chaque benchmark) |
+| `record_ids` | list[str] | `None` | N'évaluer que ces identifiants d'enregistrement |
+| `agent` | str | `None` | Nom de l'agent pour le moteur `diapason-agent` (par ex. `"orchestrator"`) |
+| `tools` | list[str] | `[]` | Noms des outils pour le moteur `diapason-agent` |
+| `judge_model` | str | `None` | Remplace `[judge].model` pour ce seul benchmark |
+| `temperature` | float | `None` | Remplace la température pour ce benchmark (préséance maximale) |
+| `max_tokens` | int | `None` | Remplace le nombre maximal de jetons pour ce benchmark (préséance maximale) |
 
 ---
 
-## Output Format
+## Le format de sortie
 
-### JSONL results file
+### Le fichier de résultats JSONL
 
-Each completed sample is appended to the output JSONL file immediately after scoring. The file path is either specified with `-o`/`--output`, or auto-generated as `{output_dir}/{benchmark}_{model-slug}.jsonl`.
+Chaque échantillon terminé est ajouté au fichier JSONL de sortie dès qu'il est noté. Le chemin du fichier est soit donné par `-o`/`--output`, soit généré automatiquement sous la forme `{output_dir}/{benchmark}_{model-slug}.jsonl`.
 
-Each line is a JSON object with the following fields:
+Chaque ligne est un objet JSON, avec les champs suivants :
 
-```json title="results/supergpqa_qwen3-8b.jsonl (one line per sample)"
+```json title="results/supergpqa_qwen3-8b.jsonl (une ligne par échantillon)"
 {
   "record_id": "supergpqa-42",
   "benchmark": "supergpqa",
   "model": "qwen3:8b",
   "backend": "diapason-direct",
-  "model_answer": "The answer is C because...",
+  "model_answer": "La réponse est C, parce que…",
   "is_correct": true,
   "score": 1.0,
   "latency_seconds": 1.34,
@@ -651,34 +651,34 @@ Each line is a JSON object with the following fields:
 }
 ```
 
-| Field | Type | Description |
+| Champ | Type | Description |
 |-------|------|-------------|
-| `record_id` | str | Unique sample identifier |
-| `benchmark` | str | Benchmark name |
-| `model` | str | Model identifier |
-| `backend` | str | Backend used |
-| `model_answer` | str | Raw model output |
-| `is_correct` | bool or null | Scoring result (`null` if unscored) |
-| `score` | float or null | Numeric score (1.0 correct, 0.0 incorrect, `null` unscored) |
-| `latency_seconds` | float | Inference latency |
-| `prompt_tokens` | int | Input tokens consumed |
-| `completion_tokens` | int | Output tokens generated |
-| `cost_usd` | float | Estimated cost in USD |
-| `error` | str or null | Error message if the sample failed |
-| `scoring_metadata` | dict | Scorer-specific details (extracted letters, judge output, etc.) |
-| `ttft` | float | Time to first token in seconds (0.0 if unavailable) |
-| `energy_joules` | float | GPU energy consumed for this sample (joules) |
-| `power_watts` | float | Average GPU power draw during inference (watts) |
-| `gpu_utilization_pct` | float | Average GPU utilization percentage |
-| `throughput_tok_per_sec` | float | Output token throughput (tokens/sec) |
-| `mfu_pct` | float | Model FLOPs Utilization percentage (requires model hardware params) |
-| `mbu_pct` | float | Memory Bandwidth Utilization percentage (requires model hardware params) |
-| `ipw` | float | Intelligence Per Watt: `accuracy / power_watts` (0 if incorrect or no power data) |
-| `ipj` | float | Intelligence Per Joule: `accuracy / energy_joules` (0 if incorrect or no energy data) |
+| `record_id` | str | Identifiant unique de l'échantillon |
+| `benchmark` | str | Nom du benchmark |
+| `model` | str | Identifiant du modèle |
+| `backend` | str | Moteur utilisé |
+| `model_answer` | str | La sortie brute du modèle |
+| `is_correct` | bool ou null | Résultat de la notation (`null` si non noté) |
+| `score` | float ou null | Note chiffrée (1.0 juste, 0.0 faux, `null` non noté) |
+| `latency_seconds` | float | Latence de l'inférence |
+| `prompt_tokens` | int | Jetons consommés en entrée |
+| `completion_tokens` | int | Jetons produits en sortie |
+| `cost_usd` | float | Coût estimé, en dollars américains |
+| `error` | str ou null | Message d'erreur si l'échantillon a échoué |
+| `scoring_metadata` | dict | Détails propres au correcteur (lettres extraites, sortie du juge, etc.) |
+| `ttft` | float | Temps jusqu'au premier jeton, en secondes (0.0 si indisponible) |
+| `energy_joules` | float | Énergie GPU consommée par cet échantillon (joules) |
+| `power_watts` | float | Puissance GPU moyenne pendant l'inférence (watts) |
+| `gpu_utilization_pct` | float | Pourcentage moyen d'utilisation du GPU |
+| `throughput_tok_per_sec` | float | Débit de jetons en sortie (jetons par seconde) |
+| `mfu_pct` | float | Taux d'utilisation des FLOPs du modèle, en pourcentage (demande les paramètres matériels du modèle) |
+| `mbu_pct` | float | Taux d'utilisation de la bande passante mémoire, en pourcentage (demande les paramètres matériels du modèle) |
+| `ipw` | float | Intelligence par watt : `accuracy / power_watts` (0 si la réponse est fausse ou si la puissance n'est pas mesurée) |
+| `ipj` | float | Intelligence par joule : `accuracy / energy_joules` (0 si la réponse est fausse ou si l'énergie n'est pas mesurée) |
 
-### Summary JSON file
+### Le fichier de résumé JSON
 
-After all samples complete, a summary file is written alongside the JSONL at `{output_path}.summary.json`:
+Une fois tous les échantillons traités, un fichier de résumé est écrit à côté du JSONL, en `{output_path}.summary.json` :
 
 ```json title="results/supergpqa_qwen3-8b.jsonl.summary.json"
 {
@@ -712,46 +712,46 @@ After all samples complete, a summary file is written alongside the JSONL at `{o
 }
 ```
 
-When `telemetry = true` and `gpu_metrics = true` are set in `[run]`, the summary includes `MetricStats` (mean, median, min, max, std) for every telemetry metric plus `total_energy_joules`. These stats are `null` when no values are available for that metric.
+Quand `telemetry = true` et `gpu_metrics = true` sont posés dans `[run]`, le résumé contient un `MetricStats` (moyenne, médiane, min, max, écart-type) pour chaque métrique de télémétrie, plus `total_energy_joules`. Ces statistiques valent `null` quand la métrique n'a aucune valeur.
 
-The `per_subject` breakdown groups results by the dataset's subject or category field, which varies per benchmark:
+La répartition `per_subject` groupe les résultats par le champ de sujet ou de catégorie du jeu de données, qui change d'un benchmark à l'autre :
 
-- **SuperGPQA**: `subfield`, `field`, or `discipline`
-- **GAIA**: difficulty level (`level_1`, `level_2`, `level_3`)
-- **FRAMES**: reasoning type(s) (e.g., `temporal`, `intersection`)
-- **WildChat**: always `"conversation"`
+- **SuperGPQA** : `subfield`, `field` ou `discipline`
+- **GAIA** : le niveau de difficulté (`level_1`, `level_2`, `level_3`)
+- **FRAMES** : le ou les types de raisonnement (par ex. `temporal`, `intersection`)
+- **WildChat** : toujours `"conversation"`
 
 ---
 
-## Scoring Methods
+## Les méthodes de notation
 
-Each benchmark uses a scorer tuned to its answer format.
+Chaque benchmark a un correcteur accordé à son format de réponse.
 
-### SuperGPQA: LLM-assisted MCQ extraction
+### SuperGPQA : extraction de QCM assistée par LLM
 
-SuperGPQA responses are free-form text that must contain one of the valid option letters (A, B, C, D, ...). The scorer uses the judge LLM to extract the final answer letter from the model's response, then compares it against the reference letter with exact string matching.
+Les réponses de SuperGPQA sont du texte libre, qui doit contenir l'une des lettres d'option valides (A, B, C, D, …). Le correcteur demande au LLM juge d'extraire la lettre de la réponse finale, puis la compare à la lettre de référence, caractère pour caractère.
 
-The judge is prompted with the original problem and the model's response and asked to return only a single letter. This handles cases where the model reasons extensively before stating its final answer.
+Le juge reçoit l'énoncé d'origine et la réponse du modèle, et on lui demande de ne rendre qu'une seule lettre. Cela couvre le cas du modèle qui raisonne longuement avant d'énoncer sa réponse finale.
 
 ```
 is_correct = extracted_letter == reference_letter
 ```
 
-Scoring metadata includes: `reference_letter`, `candidate_letter`, and `valid_letters`.
+Les métadonnées de notation contiennent `reference_letter`, `candidate_letter` et `valid_letters`.
 
-### GAIA: Normalized exact match with LLM fallback
+### GAIA : correspondance exacte normalisée, avec repli sur le LLM
 
-GAIA answers are typically numbers, short phrases, or comma-separated lists. The scorer applies a normalization pass before comparison:
+Les réponses de GAIA sont le plus souvent des nombres, des expressions courtes ou des listes séparées par des virgules. Le correcteur normalise avant de comparer :
 
-- **Numbers**: strips `$`, `%`, `,` and converts to float for comparison
-- **Lists**: splits on `,`/`;` and compares element-by-element (with per-element type detection)
-- **Strings**: lowercases, strips whitespace and punctuation
+- **Les nombres** : retrait de `$`, `%` et `,`, puis conversion en flottant pour la comparaison
+- **Les listes** : découpage sur `,`/`;` et comparaison élément par élément (avec détection du type de chaque élément)
+- **Les chaînes** : passage en minuscules, retrait des espaces et de la ponctuation
 
-If the normalized exact match fails, the scorer falls back to the judge LLM, which returns a structured response with `extracted_final_answer`, `reasoning`, and `correct: yes/no`. The LLM fallback handles cases like unit variations, alternative phrasings, and equivalent but differently-formatted answers.
+Si la correspondance exacte échoue après normalisation, le correcteur se replie sur le LLM juge, qui rend une réponse structurée avec `extracted_final_answer`, `reasoning` et `correct: yes/no`. Ce repli rattrape les différences d'unités, les formulations autres, et les réponses équivalentes mais écrites autrement.
 
-### FRAMES: LLM-as-judge (factual correctness)
+### FRAMES : le LLM en juge (justesse factuelle)
 
-FRAMES uses an LLM judge that evaluates semantic equivalence between the model's answer and the ground truth. The judge receives the question, ground truth, and predicted answer, then responds with a structured verdict:
+FRAMES passe par un LLM juge, qui évalue l'équivalence de sens entre la réponse du modèle et la vérité de référence. Le juge reçoit la question, la vérité de référence et la réponse prédite, puis rend un verdict structuré :
 
 ```
 extracted_final_answer: <extracted answer>
@@ -759,42 +759,42 @@ reasoning: <brief explanation>
 correct: yes / no
 ```
 
-The scorer parses the `correct:` line and falls back to presence of `TRUE`/`FALSE` tokens if the structured format is missing.
+Le correcteur lit la ligne `correct:` et, si le format structuré manque, se rabat sur la présence des jetons `TRUE`/`FALSE`.
 
-### WildChat: Pairwise LLM comparison
+### WildChat : comparaison par paire, jugée par un LLM
 
-WildChat does not have a single "correct" answer — it measures chat response quality. The scorer runs a **dual pairwise comparison**:
+WildChat n'a pas de réponse « juste » unique : il mesure la qualité d'une réponse de discussion. Le correcteur lance une **double comparaison par paire** :
 
-1. The judge evaluates (model answer as A, reference as B) and returns a verdict token such as `[[A>>B]]`, `[[A>B]]`, `[[A=B]]`, `[[B>A]]`, or `[[B>>A]]`.
-2. The judge then evaluates (reference as A, model answer as B) and returns another verdict.
+1. Le juge évalue le couple (réponse du modèle en A, référence en B) et rend un jeton de verdict : `[[A>>B]]`, `[[A>B]]`, `[[A=B]]`, `[[B>A]]` ou `[[B>>A]]`.
+2. Le juge évalue ensuite le couple inverse (référence en A, réponse du modèle en B) et rend un second verdict.
 
-The model is considered to have passed (`is_correct = True`) if it wins or ties in either comparison. The dual comparison reduces positional bias in the judge.
+Le modèle est réputé avoir réussi (`is_correct = True`) s'il gagne ou fait match nul dans l'une ou l'autre des comparaisons. La double comparaison réduit le biais de position du juge.
 
-The judge uses a multi-step rubric that distinguishes subjective queries (scored on correctness, helpfulness, relevance, conciseness, and creativity) from objective/technical queries (scored on correctness only).
+Le juge suit une grille en plusieurs étapes, qui sépare les demandes subjectives — notées sur la justesse, l'utilité, la pertinence, la concision et la créativité — des demandes objectives ou techniques, notées sur la seule justesse.
 
-!!! tip "Interpreting WildChat accuracy"
-    A WildChat accuracy score of 0.50 means the model matched or beat the reference response in half of comparisons. Because the reference response comes from the original dataset (which may include responses from capable models), a score above 0.50 indicates strong chat quality for that sample set.
+!!! tip "Lire une exactitude WildChat"
+    Une exactitude WildChat de 0,50 veut dire que le modèle a égalé ou battu la réponse de référence dans la moitié des comparaisons. Comme la réponse de référence vient du jeu de données d'origine — qui peut contenir des réponses de modèles très capables —, un score au-dessus de 0,50 signale une bonne qualité de discussion sur cet échantillonnage.
 
 ---
 
-## Parallel Execution
+## L'exécution en parallèle
 
-The `EvalRunner` processes samples concurrently using a `ThreadPoolExecutor`. Results are flushed to the JSONL file incrementally as each sample completes, so you can inspect partial results during a long run.
+`EvalRunner` traite les échantillons en concurrence, par un `ThreadPoolExecutor`. Les résultats sont écrits au fil de l'eau dans le fichier JSONL, à mesure que chaque échantillon se termine : tu peux donc regarder les résultats partiels pendant une longue exécution.
 
 ```bash
-# Use more workers for faster evaluation (if the engine supports concurrent requests)
+# Plus de fils, évaluation plus rapide (si le moteur encaisse les requêtes en parallèle)
 uv run python -m diapason.evals run -b supergpqa -m qwen3:8b -w 8 -n 500
 ```
 
-!!! warning "Worker count and engine load"
-    Higher worker counts increase throughput only if the inference engine can handle concurrent requests. Local Ollama instances typically handle 1-2 concurrent requests. Cloud APIs (OpenAI, Anthropic) can handle higher concurrency. Set `-w` based on your engine's actual parallelism.
+!!! warning "Nombre de fils et charge du moteur"
+    Augmenter le nombre de fils n'augmente le débit que si le moteur d'inférence encaisse des requêtes concurrentes. Une instance Ollama locale en tient 1 à 2. Les API distantes (OpenAI, Anthropic) en tiennent bien plus. Règle `-w` sur le parallélisme réel de ton moteur.
 
 ---
 
-## See Also
+## Voir aussi
 
-- [Benchmarks](benchmarks.md) — Measure inference engine latency and throughput
-- [Telemetry & Traces](telemetry.md) — Record and analyze inference metrics from production use
-- [Agents](agents.md) — Configure the `OrchestratorAgent` used by `diapason-agent` backend
-- [Tools](tools.md) — Available tools for agent-backed evaluations
-- [Python SDK](python-sdk.md) — Programmatic access to Diapason inference and agents
+- [Benchmarks](benchmarks.md) — Mesurer la latence et le débit du moteur d'inférence
+- [Télémétrie et traces](telemetry.md) — Enregistrer et analyser les métriques d'inférence venues de l'usage réel
+- [Agents](agents.md) — Configurer l'`OrchestratorAgent` utilisé par le moteur `diapason-agent`
+- [Outils](tools.md) — Les outils disponibles pour les évaluations avec agent
+- [SDK Python](python-sdk.md) — Accès par programme à l'inférence et aux agents de Diapason

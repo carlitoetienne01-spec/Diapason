@@ -1,10 +1,10 @@
-# Scheduled Monitor
+# La veille programmée
 
-A persistent operative agent that runs on a cron schedule, maintains state across runs, and uses memory to track changes over time. Ideal for daily inbox monitoring, recurring status checks, and long-running research projects.
+Un agent `operative` persistant, qui tourne sur un horaire cron, garde son état d'une exécution à l'autre et se sert de la mémoire pour suivre ce qui change au fil du temps. Parfait pour surveiller ta boîte de réception chaque jour, pour les vérifications d'état qui reviennent et pour les projets de recherche au long cours.
 
-## Quickstart (5 minutes)
+## Démarrage rapide (5 minutes)
 
-### 1. Install and initialize
+### 1. Installer et initialiser
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -13,96 +13,96 @@ uv sync --extra dev
 diapason init --preset scheduled-monitor
 ```
 
-This writes a pre-configured `~/.diapason/config.toml` for the operative agent with scheduling support.
+Cela écrit un `~/.diapason/config.toml` préconfiguré pour l'agent `operative`, avec la programmation activée.
 
-### 2. Start a local LLM via Ollama
+### 2. Lancer un modèle local avec Ollama
 
 ```bash
-# Install Ollama: https://ollama.com
+# Installe Ollama : https://ollama.com
 ollama pull qwen3.5:9b
 ```
 
-### 3. Index your data
+### 3. Indexer tes données
 
 ```bash
 diapason memory index ~/Documents/
 ```
 
-The operative agent uses memory to track state across runs, so indexing your data gives it context for the first run.
+L'agent `operative` se sert de la mémoire pour garder son état d'une exécution à l'autre : indexer tes données lui donne du contexte dès la première.
 
-### 4. Create a scheduled task
+### 4. Créer une tâche programmée
 
 ```bash
 diapason scheduler start
 
 diapason scheduler create \
-  --prompt "Check for new emails about Project X and update your notes" \
+  --prompt "Vérifie s'il y a de nouveaux courriels au sujet du Projet X et mets tes notes à jour" \
   --schedule "0 9 * * 1-5" \
   --agent operative \
   --tools "knowledge_search,knowledge_sql,memory_store,think"
 ```
 
-This creates a task that runs at 9 AM every weekday. The operative agent will search your indexed data, process new information, and store notes in memory for the next run.
+Cela crée une tâche qui tourne à 9 h tous les jours de semaine. L'agent `operative` cherchera dans tes données indexées, traitera ce qui est nouveau et rangera ses notes en mémoire pour l'exécution suivante.
 
-## How Scheduling Works
+## Comment fonctionne la programmation
 
-The scheduler uses cron expressions to trigger agent runs at specified intervals. Each run is an independent agent session, but the operative agent persists state between sessions.
+Le programmateur se sert d'expressions cron pour déclencher les exécutions de l'agent aux intervalles indiqués. Chaque exécution est une session d'agent indépendante, mais l'agent `operative`, lui, garde son état d'une session à l'autre.
 
-### Cron expression reference
+### Mémento des expressions cron
 
 ```
  .------------ minute (0-59)
- | .---------- hour (0-23)
- | | .-------- day of month (1-31)
- | | | .------ month (1-12)
- | | | | .---- day of week (0-6, 0=Sunday)
+ | .---------- heure (0-23)
+ | | .-------- jour du mois (1-31)
+ | | | .------ mois (1-12)
+ | | | | .---- jour de la semaine (0-6, 0 = dimanche)
  | | | | |
  * * * * *
 ```
 
-Common examples:
+Des exemples courants :
 
-| Expression | Meaning |
+| Expression | Ce qu'elle veut dire |
 |------------|---------|
-| `0 9 * * 1-5` | 9 AM, Monday through Friday |
-| `0 6 * * *` | 6 AM every day |
-| `*/30 * * * *` | Every 30 minutes |
-| `0 9,17 * * *` | 9 AM and 5 PM daily |
-| `0 8 1 * *` | 8 AM on the 1st of every month |
+| `0 9 * * 1-5` | 9 h, du lundi au vendredi |
+| `0 6 * * *` | 6 h tous les jours |
+| `*/30 * * * *` | Toutes les 30 minutes |
+| `0 9,17 * * *` | 9 h et 17 h tous les jours |
+| `0 8 1 * *` | 8 h le 1er de chaque mois |
 
-### CLI commands
+### Les commandes de la CLI
 
 ```bash
-# Start the scheduler daemon
+# Démarrer le démon programmateur
 diapason scheduler start
 
-# Create a new scheduled task
+# Créer une tâche programmée
 diapason scheduler create \
-  --prompt "Summarize any new research papers in my library" \
+  --prompt "Résume les nouveaux articles de recherche de ma bibliothèque" \
   --schedule "0 8 * * *" \
   --agent operative
 
-# List all scheduled tasks
+# Lister toutes les tâches programmées
 diapason scheduler list
 
-# View task details and run history
+# Voir le détail d'une tâche et l'historique de ses exécutions
 diapason scheduler status <task-id>
 
-# Pause / resume / delete a task
+# Mettre en pause / reprendre / supprimer une tâche
 diapason scheduler pause <task-id>
 diapason scheduler resume <task-id>
 diapason scheduler delete <task-id>
 
-# Run a task immediately (outside its schedule)
+# Lancer une tâche tout de suite (hors de son horaire)
 diapason scheduler run <task-id>
 
-# Stop the scheduler daemon
+# Arrêter le démon programmateur
 diapason scheduler stop
 ```
 
-## Configuration Reference
+## Référence de la configuration
 
-The preset writes this to `~/.diapason/config.toml`:
+Le préréglage écrit ceci dans `~/.diapason/config.toml` :
 
 ```toml
 [engine]
@@ -115,7 +115,7 @@ temperature = 0.3
 [agent]
 default_agent = "operative"
 max_turns = 20
-context_from_memory = true          # Inject relevant memory into context
+context_from_memory = true          # Injecte la mémoire pertinente dans le contexte
 
 [tools]
 enabled = ["knowledge_search", "knowledge_sql", "scan_chunks", "memory_store", "memory_search", "think", "web_search"]
@@ -124,78 +124,78 @@ enabled = ["knowledge_search", "knowledge_sql", "scan_chunks", "memory_store", "
 default_backend = "sqlite"
 ```
 
-### Key settings
+### Les réglages qui comptent
 
-| Setting | Default | Description |
+| Réglage | Défaut | Description |
 |---------|---------|-------------|
-| `intelligence.default_model` | `qwen3.5:9b` | The model used for reasoning. |
-| `intelligence.temperature` | `0.3` | Low temperature for consistent, factual outputs across runs. |
-| `agent.default_agent` | `operative` | Persistent agent that maintains state between sessions. |
-| `agent.max_turns` | `20` | High turn limit for thorough processing of accumulated data. |
-| `agent.context_from_memory` | `true` | Automatically injects relevant memory chunks into the agent's context. |
-| `tools.enabled` | 7 tools | Search, store, scan, and reason tools for reading and writing to the knowledge base. |
+| `intelligence.default_model` | `qwen3.5:9b` | Le modèle qui raisonne. |
+| `intelligence.temperature` | `0.3` | Une température basse, pour des sorties constantes et factuelles d'une exécution à l'autre. |
+| `agent.default_agent` | `operative` | L'agent persistant, qui garde son état d'une session à l'autre. |
+| `agent.max_turns` | `20` | Une limite de tours élevée, pour traiter à fond les données accumulées. |
+| `agent.context_from_memory` | `true` | Injecte automatiquement les morceaux de mémoire pertinents dans le contexte de l'agent. |
+| `tools.enabled` | 7 outils | De quoi chercher, ranger, parcourir et raisonner — lire et écrire dans la base de connaissances. |
 
-### Tools explained
+### Ce que font les outils
 
-| Tool | What it does |
+| Outil | Ce qu'il fait |
 |------|-------------|
-| `knowledge_search` | Semantic search across indexed documents. |
-| `knowledge_sql` | Structured queries against the document store. |
-| `scan_chunks` | Browse through document chunks sequentially. |
-| `memory_store` | Write new facts and notes to the knowledge base. |
-| `memory_search` | Search previously stored agent notes. |
-| `think` | Internal reasoning scratchpad for planning. |
-| `web_search` | Search the web for supplementary information. |
+| `knowledge_search` | Recherche sémantique dans les documents indexés. |
+| `knowledge_sql` | Requêtes structurées sur le magasin de documents. |
+| `scan_chunks` | Parcourt les morceaux de documents un à un. |
+| `memory_store` | Écrit de nouveaux faits et de nouvelles notes dans la base de connaissances. |
+| `memory_search` | Cherche dans les notes déjà rangées par l'agent. |
+| `think` | Brouillon de raisonnement interne, pour planifier. |
+| `web_search` | Cherche sur le web ce qui manque. |
 
-## Example Use Cases
+## Des exemples d'usage
 
-### Daily inbox monitor
+### La veille quotidienne de la boîte de réception
 
 ```bash
 diapason scheduler create \
-  --prompt "Review my recent emails. Flag anything urgent and summarize the rest. Store a daily summary." \
+  --prompt "Relis mes courriels récents. Signale ce qui est urgent et résume le reste. Range un résumé quotidien." \
   --schedule "0 9 * * 1-5" \
   --agent operative \
   --tools "knowledge_search,memory_store,think"
 ```
 
-### Research tracker
+### Le suivi de la recherche
 
 ```bash
 diapason scheduler create \
-  --prompt "Search for new papers related to 'efficient transformers'. Compare with papers I've already indexed and note what's new." \
+  --prompt "Cherche les nouveaux articles autour de 'efficient transformers'. Compare-les à ceux que j'ai déjà indexés et note ce qui est nouveau." \
   --schedule "0 8 * * 1" \
   --agent operative \
   --tools "knowledge_search,web_search,memory_store,think"
 ```
 
-### Status reporter
+### Le rapport d'avancement
 
 ```bash
 diapason scheduler create \
-  --prompt "Check the project status documents and generate a weekly progress summary. Note any blockers." \
+  --prompt "Regarde les documents d'état du projet et produis un résumé hebdomadaire de l'avancement. Note ce qui bloque." \
   --schedule "0 17 * * 5" \
   --agent operative \
   --tools "knowledge_search,knowledge_sql,memory_store,think"
 ```
 
-## How State Persistence Works
+## Comment l'état survit d'une exécution à l'autre
 
-The operative agent differs from other agents in that it maintains state across runs:
+L'agent `operative` se distingue des autres agents en ceci : il garde son état d'une exécution à l'autre.
 
-- **Memory storage**: The agent uses the `memory_store` tool to save notes, summaries, and observations. These persist in the local SQLite database and are available in future runs.
-- **Context injection**: With `context_from_memory = true`, the agent automatically receives relevant context from previous runs when it starts a new session.
-- **Accumulated knowledge**: Over time, the agent builds a progressively richer understanding of your data. A Monday run can reference notes from the previous Friday.
-- **All data stays local**: State is stored in `~/.diapason/` using the configured memory backend. Nothing leaves your machine.
+- **Le rangement en mémoire** : l'agent se sert de l'outil `memory_store` pour garder ses notes, ses résumés et ses observations. Tout cela persiste dans la base SQLite locale et reste disponible aux exécutions suivantes.
+- **L'injection du contexte** : avec `context_from_memory = true`, l'agent reçoit automatiquement le contexte pertinent des exécutions précédentes quand il ouvre une nouvelle session.
+- **Le savoir accumulé** : au fil du temps, l'agent se construit une compréhension de plus en plus riche de tes données. Une exécution du lundi peut se référer aux notes du vendredi précédent.
+- **Tout reste chez toi** : l'état est rangé dans `~/.diapason/`, par le moteur de mémoire configuré. Rien ne quitte ta machine.
 
-## Troubleshooting
+## Quand ça coince
 
-**"Scheduler not running"** -- Start the scheduler daemon with `diapason scheduler start`. It must be running for scheduled tasks to execute.
+**« Scheduler not running »** — démarre le démon programmateur avec `diapason scheduler start`. Il doit tourner pour que les tâches programmées s'exécutent.
 
-**Task doesn't run on time** -- Check that Ollama is running (`ollama serve`). The scheduler triggers the agent, but the agent needs an inference engine. Verify the schedule with `diapason scheduler status <task-id>`.
+**La tâche ne part pas à l'heure** — vérifie qu'Ollama tourne (`ollama serve`). Le programmateur déclenche l'agent, mais l'agent a besoin d'un moteur d'inférence. Contrôle l'horaire avec `diapason scheduler status <task-id>`.
 
-**Agent produces inconsistent results** -- Keep `temperature` at `0.3` or lower for scheduled tasks. Higher temperatures introduce randomness that compounds across runs.
+**L'agent rend des résultats qui varient** — garde `temperature` à `0.3` ou plus bas pour les tâches programmées. Une température plus haute introduit un hasard qui s'accumule d'une exécution à l'autre.
 
-**Memory grows too large** -- Periodically review with `diapason memory stats`. Clear old entries with `diapason memory clear --before 2026-01-01` if needed.
+**La mémoire grossit trop** — passe-la en revue de temps en temps avec `diapason memory stats`. Efface les vieilles entrées avec `diapason memory clear --before 2026-01-01` si besoin.
 
-**Agent runs too long** -- Reduce `max_turns` or simplify the prompt. The operative agent is thorough and may use all available turns.
+**L'agent tourne trop longtemps** — baisse `max_turns` ou simplifie le prompt. L'agent `operative` est minutieux et peut consommer tous les tours qu'on lui laisse.

@@ -1,12 +1,12 @@
-# Memory Primitive
+# La primitive Mémoire
 
-The Memory primitive provides **persistent, searchable storage** for documents and knowledge. It enables context injection -- retrieving relevant information from indexed documents and prepending it to prompts so the LLM can answer questions grounded in specific content.
+La primitive Memory fournit un **stockage persistant et interrogeable** pour les documents et la connaissance. C'est elle qui rend possible l'injection de contexte : retrouver l'information pertinente dans les documents indexés et la placer en tête du prompt, pour que le modèle réponde en s'appuyant sur un contenu précis.
 
 ---
 
-## MemoryBackend ABC
+## La classe abstraite MemoryBackend
 
-All memory backends implement the `MemoryBackend` abstract base class:
+Tous les backends de mémoire implémentent la classe de base abstraite `MemoryBackend` :
 
 ```python
 class MemoryBackend(ABC):
@@ -20,7 +20,7 @@ class MemoryBackend(ABC):
         source: str = "",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Persist *content* and return a unique document id."""
+        """Persiste *content* et renvoie un identifiant de document unique."""
 
     @abstractmethod
     def retrieve(
@@ -30,90 +30,90 @@ class MemoryBackend(ABC):
         top_k: int = 5,
         **kwargs: Any,
     ) -> List[RetrievalResult]:
-        """Search for *query* and return the top-k results."""
+        """Cherche *query* et renvoie les top-k meilleurs résultats."""
 
     @abstractmethod
     def delete(self, doc_id: str) -> bool:
-        """Delete a document by id. Return True if it existed."""
+        """Supprime un document par son identifiant. Renvoie True s'il existait."""
 
     @abstractmethod
     def clear(self) -> None:
-        """Remove all stored documents."""
+        """Retire tous les documents stockés."""
 ```
 
 ### RetrievalResult
 
-Search results are returned as `RetrievalResult` objects:
+Les résultats de recherche sont renvoyés sous forme d'objets `RetrievalResult` :
 
 ```python
 @dataclass(slots=True)
 class RetrievalResult:
-    content: str                  # The document text
-    score: float = 0.0            # Relevance score (higher is better)
-    source: str = ""              # Originating file path or identifier
+    content: str                  # Le texte du document
+    score: float = 0.0            # Score de pertinence (plus il est haut, mieux c'est)
+    source: str = ""              # Chemin du fichier d'origine, ou identifiant
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```
 
 ---
 
-## Backend Comparison
+## Comparer les backends
 
-| Backend | Registry Key | Index Type | Extra Dependencies | GPU Required | Quality | Speed | Persistence |
+| Backend | Clé du registre | Type d'index | Dépendances supplémentaires | GPU requis | Qualité | Vitesse | Persistance |
 |---------|-------------|-----------|-------------------|-------------|---------|-------|-------------|
-| **SQLite/FTS5** | `sqlite` | Full-text (BM25) | None | No | Good | Fast | Disk (SQLite) |
-| **FAISS** | `faiss` | Dense vector | `faiss-cpu`, `sentence-transformers` | Optional | Very Good | Fast | In-memory |
-| **ColBERTv2** | `colbert` | Late interaction | `colbert-ai`, `torch` | Optional | Excellent | Slower | In-memory |
-| **BM25** | `bm25` | Term-frequency | `rank-bm25` | No | Good | Fast | In-memory |
-| **Hybrid** | `hybrid` | RRF fusion | Depends on sub-backends | Depends | Best | Moderate | Depends |
+| **SQLite/FTS5** | `sqlite` | Plein texte (BM25) | aucune | non | bonne | rapide | Disque (SQLite) |
+| **FAISS** | `faiss` | Vecteurs denses | `faiss-cpu`, `sentence-transformers` | facultatif | très bonne | rapide | En mémoire |
+| **ColBERTv2** | `colbert` | Interaction tardive | `colbert-ai`, `torch` | facultatif | excellente | plus lente | En mémoire |
+| **BM25** | `bm25` | Fréquence des termes | `rank-bm25` | non | bonne | rapide | En mémoire |
+| **Hybride** | `hybrid` | Fusion RRF | selon les sous-backends | variable | la meilleure | moyenne | variable |
 
-### SQLite/FTS5 (Default)
+### SQLite/FTS5 (le défaut)
 
-The zero-dependency default backend. Uses SQLite's built-in FTS5 extension for full-text search with BM25 ranking.
+Le backend par défaut, celui qui n'exige aucune dépendance. Il se sert de l'extension FTS5 intégrée à SQLite pour faire de la recherche plein texte avec un classement BM25.
 
-- **Storage:** Documents stored in a `documents` table with automatic FTS5 indexing via triggers
-- **Search:** FTS5 `MATCH` queries with BM25 ranking (more negative rank = better match, converted to positive scores)
-- **Query escaping:** Each word is quoted to avoid FTS5 syntax errors
-- **Persistence:** Data persists across restarts in `~/.diapason/memory.db`
+- **Stockage :** les documents sont rangés dans une table `documents`, indexée automatiquement par FTS5 au moyen de déclencheurs
+- **Recherche :** des requêtes `MATCH` FTS5 avec classement BM25 (plus le rang est négatif, meilleure est la correspondance ; il est converti en score positif)
+- **Échappement des requêtes :** chaque mot est mis entre guillemets pour éviter les erreurs de syntaxe FTS5
+- **Persistance :** les données survivent aux redémarrages, dans `~/.diapason/memory.db`
 
 ### FAISS
 
-Dense retrieval using Facebook AI Similarity Search. Documents are embedded into vector space and searched via cosine similarity.
+Recherche dense au moyen de Facebook AI Similarity Search. Les documents sont plongés dans un espace vectoriel et retrouvés par similarité cosinus.
 
-- **Index type:** `IndexFlatIP` (inner-product, equivalent to cosine similarity when vectors are L2-normalized)
-- **Embedding model:** `all-MiniLM-L6-v2` by default (384-dim, ~22 MB)
-- **Deletion:** Soft-delete (documents are marked as deleted but remain in the index)
-- **Persistence:** In-memory only -- data is lost on restart
+- **Type d'index :** `IndexFlatIP` (produit scalaire, équivalent à la similarité cosinus quand les vecteurs sont normalisés en L2)
+- **Modèle de plongement :** `all-MiniLM-L6-v2` par défaut (384 dimensions, ~22 Mo)
+- **Suppression :** suppression douce (les documents sont marqués comme supprimés mais restent dans l'index)
+- **Persistance :** en mémoire seulement — les données sont perdues au redémarrage
 
 ### ColBERTv2
 
-Late interaction retrieval using token-level embeddings with MaxSim scoring. Provides the highest retrieval quality at the cost of higher latency.
+Recherche à interaction tardive, fondée sur des plongements au niveau du jeton et un score MaxSim. C'est la meilleure qualité de recherche, au prix d'une latence plus élevée.
 
-- **Scoring:** For each query token, finds the maximum cosine similarity across all document tokens, then sums across query tokens
-- **Checkpoint:** `colbert-ir/colbertv2.0` (lazily loaded on first use)
-- **Persistence:** In-memory only
+- **Score :** pour chaque jeton de la requête, on retient la similarité cosinus maximale parmi tous les jetons du document, puis on somme sur les jetons de la requête
+- **Point de contrôle :** `colbert-ir/colbertv2.0` (chargé paresseusement au premier usage)
+- **Persistance :** en mémoire seulement
 
-!!! warning "Heavy dependencies"
-    ColBERTv2 requires `colbert-ai` and `torch`, which are large packages. Install with:
+!!! warning "Des dépendances lourdes"
+    ColBERTv2 réclame `colbert-ai` et `torch`, qui sont de gros paquets. Installe-les ainsi :
     `uv sync --extra memory-colbert`
 
 ### BM25
 
-Classic Okapi BM25 probabilistic ranking function using the `rank_bm25` library.
+La fonction de classement probabiliste Okapi BM25, dans sa forme classique, via la bibliothèque `rank_bm25`.
 
-- **Tokenization:** Lowercase whitespace split
-- **Index:** Rebuilt on every `store()` and `delete()` operation
-- **Filtering:** Results are filtered to require at least one shared token with the query (handles edge cases where BM25 assigns IDF=0)
-- **Persistence:** In-memory only
+- **Découpage en jetons :** passage en minuscules et séparation sur les espaces
+- **Index :** reconstruit à chaque opération `store()` et `delete()`
+- **Filtrage :** les résultats sont filtrés pour exiger au moins un jeton commun avec la requête (cela couvre les cas limites où BM25 attribue IDF=0)
+- **Persistance :** en mémoire seulement
 
-### Hybrid (RRF Fusion)
+### Hybride (fusion RRF)
 
-Combines a sparse retriever and a dense retriever using Reciprocal Rank Fusion:
+Combine un chercheur creux et un chercheur dense au moyen de la fusion de rangs réciproques :
 
 $$\text{RRF}(d) = \sum_{i} \frac{w_i}{k + \text{rank}_i(d)}$$
 
-- **Sub-backends:** Any two `MemoryBackend` implementations (e.g., SQLite + FAISS)
-- **Over-fetch:** Retrieves `top_k * 3` results from each sub-backend for better fusion
-- **Configurable:** RRF constant `k` (default 60) and per-backend weights
+- **Sous-backends :** deux implémentations quelconques de `MemoryBackend` (SQLite + FAISS, par exemple)
+- **Sur-extraction :** `top_k * 3` résultats sont demandés à chaque sous-backend, pour une meilleure fusion
+- **Configurable :** la constante RRF `k` (60 par défaut) et le poids de chaque backend
 
 ```python
 from diapason.tools.storage.sqlite import SQLiteMemory
@@ -124,27 +124,27 @@ hybrid = HybridMemory(
     sparse=SQLiteMemory(db_path="memory.db"),
     dense=FAISSMemory(),
     sparse_weight=1.0,
-    dense_weight=1.5,  # Weight dense retrieval more heavily
+    dense_weight=1.5,  # Donner plus de poids à la recherche dense
 )
 ```
 
-!!! note "Backward compatibility"
-    The old imports (e.g., `from diapason.memory.sqlite import SQLiteMemory`) still work via backward-compatibility shims in the `memory/` package, but the canonical location is now `diapason.tools.storage.*`.
+!!! note "Compatibilité ascendante"
+    Les anciens imports (`from diapason.memory.sqlite import SQLiteMemory`, par exemple) fonctionnent toujours, grâce à des cales de compatibilité dans le paquet `memory/` — mais l'emplacement canonique est désormais `diapason.tools.storage.*`.
 
 ---
 
-## Chunking Pipeline
+## La chaîne de découpage en fragments
 
-Large documents are split into manageable chunks before storage. The chunking pipeline is defined in `tools/storage/chunking.py` (previously `memory/chunking.py`).
+Les gros documents sont découpés en fragments maniables avant d'être stockés. Cette chaîne est définie dans `tools/storage/chunking.py` (autrefois `memory/chunking.py`).
 
 ### ChunkConfig
 
 ```python
 @dataclass(slots=True)
 class ChunkConfig:
-    chunk_size: int = 512      # Maximum tokens per chunk (whitespace-split)
-    chunk_overlap: int = 64    # Tokens to overlap between consecutive chunks
-    min_chunk_size: int = 50   # Minimum tokens for a chunk to be kept
+    chunk_size: int = 512      # Nombre maximum de jetons par fragment (séparés par les espaces)
+    chunk_overlap: int = 64    # Jetons à faire recouvrir entre deux fragments voisins
+    min_chunk_size: int = 50   # Nombre minimum de jetons pour qu'un fragment soit gardé
 ```
 
 ### Chunk
@@ -152,22 +152,22 @@ class ChunkConfig:
 ```python
 @dataclass(slots=True)
 class Chunk:
-    content: str               # The chunk text
-    source: str = ""           # Originating file path
-    offset: int = 0            # Token offset within the original document
-    index: int = 0             # Chunk index (0, 1, 2, ...)
+    content: str               # Le texte du fragment
+    source: str = ""           # Chemin du fichier d'origine
+    offset: int = 0            # Décalage en jetons dans le document d'origine
+    index: int = 0             # Numéro du fragment (0, 1, 2, ...)
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```
 
-### Chunking Algorithm
+### L'algorithme de découpage
 
-The `chunk_text()` function splits text using paragraph boundaries:
+La fonction `chunk_text()` découpe le texte en s'appuyant sur les frontières de paragraphe :
 
-1. Split the document on double newlines (`\n\n`) into paragraphs
-2. Accumulate paragraphs into the current chunk until `chunk_size` is exceeded
-3. When a chunk is full, flush it and keep the last `chunk_overlap` tokens as overlap for the next chunk
-4. If a single paragraph exceeds `chunk_size`, split it into fixed-size windows with overlap
-5. Discard chunks smaller than `min_chunk_size`
+1. Découper le document sur les doubles sauts de ligne (`\n\n`), en paragraphes
+2. Accumuler les paragraphes dans le fragment courant jusqu'à dépasser `chunk_size`
+3. Quand un fragment est plein, le vider et garder les derniers `chunk_overlap` jetons comme recouvrement pour le fragment suivant
+4. Si un seul paragraphe dépasse `chunk_size`, le découper en fenêtres de taille fixe avec recouvrement
+5. Jeter les fragments plus petits que `min_chunk_size`
 
 ```python
 from diapason.tools.storage.chunking import chunk_text, ChunkConfig
@@ -178,44 +178,44 @@ chunks = chunk_text(document_text, source="docs/guide.md", config=config)
 
 ---
 
-## Document Ingestion
+## L'ingestion des documents
 
-The `tools/storage/ingest.py` module (previously `memory/ingest.py`) handles reading files and directories into chunks.
+Le module `tools/storage/ingest.py` (autrefois `memory/ingest.py`) se charge de lire les fichiers et les dossiers pour en faire des fragments.
 
-### File Type Detection
+### La détection du type de fichier
 
-| Extension | Detected Type |
+| Extension | Type détecté |
 |-----------|--------------|
 | `.md`, `.markdown`, `.mdx` | `markdown` |
 | `.pdf` | `pdf` |
-| `.py`, `.js`, `.ts`, `.rs`, `.go`, `.java`, `.c`, `.cpp`, `.yaml`, `.json`, `.html`, `.css`, ... | `code` |
-| Everything else | `text` |
+| `.py`, `.js`, `.ts`, `.rs`, `.go`, `.java`, `.c`, `.cpp`, `.yaml`, `.json`, `.html`, `.css`, … | `code` |
+| Tout le reste | `text` |
 
 ### `ingest_path(path, config=None)`
 
-Ingests a file or directory into chunks:
+Ingère un fichier ou un dossier sous forme de fragments :
 
-- **Single file:** Reads the file, detects its type, and chunks the content
-- **Directory:** Recursively walks the tree, skipping:
-    - Hidden directories (starting with `.`)
-    - Common non-content directories (`__pycache__`, `node_modules`, `.git`, `.venv`, etc.)
-    - Binary files (images, audio, video, archives, compiled files)
-    - Hidden files (starting with `.`)
+- **Un seul fichier :** le fichier est lu, son type détecté, et son contenu découpé
+- **Un dossier :** l'arborescence est parcourue récursivement, en sautant :
+    - Les dossiers cachés (ceux qui commencent par `.`)
+    - Les dossiers sans contenu utile (`__pycache__`, `node_modules`, `.git`, `.venv`, etc.)
+    - Les fichiers binaires (images, audio, vidéo, archives, fichiers compilés)
+    - Les fichiers cachés (ceux qui commencent par `.`)
 
 ```python
 from pathlib import Path
 from diapason.tools.storage.ingest import ingest_path
 
-# Ingest a single file
+# Ingérer un seul fichier
 chunks = ingest_path(Path("docs/guide.md"))
 
-# Ingest an entire directory
+# Ingérer un dossier entier
 chunks = ingest_path(Path("./docs/"))
 ```
 
-### PDF Support
+### La prise en charge des PDF
 
-PDF files are read using `pdfplumber`, extracting text from each page and joining with double newlines. This requires the optional `pdfplumber` dependency:
+Les fichiers PDF sont lus avec `pdfplumber` : le texte est extrait page par page, puis raccordé par des doubles sauts de ligne. Cela réclame la dépendance facultative `pdfplumber` :
 
 ```bash
 uv sync --extra memory-pdf
@@ -223,58 +223,58 @@ uv sync --extra memory-pdf
 
 ---
 
-## Embeddings
+## Les plongements
 
-Dense retrieval backends (FAISS, ColBERT) require text embeddings. The `tools/storage/embeddings.py` module (previously `memory/embeddings.py`) provides the `Embedder` ABC and a default implementation.
+Les backends de recherche dense (FAISS, ColBERT) ont besoin de plongements de texte. Le module `tools/storage/embeddings.py` (autrefois `memory/embeddings.py`) fournit la classe abstraite `Embedder` et une implémentation par défaut.
 
-### Embedder ABC
+### La classe abstraite Embedder
 
 ```python
 class Embedder(ABC):
     @abstractmethod
     def embed(self, texts: list[str]) -> Any:
-        """Embed texts and return a numpy array of shape (n, dim)."""
+        """Plonge les textes et renvoie un tableau numpy de forme (n, dim)."""
 
     @abstractmethod
     def dim(self) -> int:
-        """Return the dimensionality of the embedding vectors."""
+        """Renvoie la dimension des vecteurs de plongement."""
 ```
 
 ### SentenceTransformerEmbedder
 
-The default embedder wraps the `sentence-transformers` library:
+Le plongeur par défaut enveloppe la bibliothèque `sentence-transformers` :
 
-- **Default model:** `all-MiniLM-L6-v2` (384 dimensions, ~22 MB)
-- **Output:** NumPy arrays of shape `(n, dim)`
+- **Modèle par défaut :** `all-MiniLM-L6-v2` (384 dimensions, ~22 Mo)
+- **Sortie :** des tableaux NumPy de forme `(n, dim)`
 
 ```python
 from diapason.tools.storage.embeddings import SentenceTransformerEmbedder
 
 embedder = SentenceTransformerEmbedder(model_name="all-MiniLM-L6-v2")
-vectors = embedder.embed(["Hello world", "How are you?"])
-# Shape: (2, 384)
+vectors = embedder.embed(["Bonjour tout le monde", "Comment ça va ?"])
+# Forme : (2, 384)
 ```
 
 ---
 
-## Context Injection
+## L'injection de contexte
 
-The context injection pipeline retrieves relevant documents and prepends them to the prompt with source attribution. This is defined in `tools/storage/context.py` (previously `memory/context.py`).
+La chaîne d'injection de contexte retrouve les documents pertinents et les place en tête du prompt, en indiquant leur source. Elle est définie dans `tools/storage/context.py` (autrefois `memory/context.py`).
 
 ### ContextConfig
 
 ```python
 @dataclass(slots=True)
 class ContextConfig:
-    enabled: bool = True           # Whether context injection is active
-    top_k: int = 5                 # Maximum results to retrieve
-    min_score: float = 0.1         # Minimum relevance score threshold
-    max_context_tokens: int = 2048 # Maximum tokens of context to inject
+    enabled: bool = True           # L'injection de contexte est-elle active
+    top_k: int = 5                 # Nombre maximum de résultats à retrouver
+    min_score: float = 0.1         # Seuil minimum de score de pertinence
+    max_context_tokens: int = 2048 # Nombre maximum de jetons de contexte à injecter
 ```
 
 ### `inject_context()`
 
-The main function for context injection:
+La fonction principale de l'injection de contexte :
 
 ```python
 def inject_context(
@@ -286,40 +286,40 @@ def inject_context(
 ) -> List[Message]:
 ```
 
-How it works:
+Comment ça marche :
 
-1. Retrieves results from the memory backend using the query
-2. Filters results below `min_score`
-3. Truncates to `max_context_tokens` (approximate token count via whitespace split)
-4. Formats results with source attribution tags: `[Source: docs/guide.md] The content...`
-5. Creates a system message with the formatted context
-6. Returns a **new** message list with the context message prepended
+1. Les résultats sont retrouvés dans le backend de mémoire à partir de la requête
+2. Les résultats sous `min_score` sont écartés
+3. Le tout est tronqué à `max_context_tokens` (le compte de jetons est approché par une séparation sur les espaces)
+4. Les résultats sont mis en forme avec une étiquette d'attribution de source : `[Source: docs/guide.md] Le contenu...`
+5. Un message système est créé avec le contexte ainsi mis en forme
+6. Une **nouvelle** liste de messages est renvoyée, le message de contexte en tête
 
 ```python
 from diapason.tools.storage.context import inject_context, ContextConfig
 
 config = ContextConfig(top_k=3, min_score=0.2)
-messages = inject_context("What is the API?", messages, backend, config=config)
+messages = inject_context("Qu'est-ce que l'API ?", messages, backend, config=config)
 ```
 
-### Source Attribution
+### L'attribution des sources
 
-Context is injected as a system message with clear source tags:
+Le contexte est injecté sous forme de message système, avec des étiquettes de source explicites :
 
 ```
-The following context was retrieved from the knowledge base. Use it to
-inform your response, citing sources where applicable:
+Le contexte suivant a été retrouvé dans la base de connaissances. Sers-t'en
+pour nourrir ta réponse, en citant les sources quand c'est pertinent :
 
-[Source: docs/api.md] The API exposes a /v1/chat/completions endpoint...
+[Source: docs/api.md] L'API expose un point d'entrée /v1/chat/completions...
 
-[Source: docs/setup.md] To configure the API server, edit config.toml...
+[Source: docs/setup.md] Pour configurer le serveur d'API, modifie config.toml...
 ```
 
 ---
 
-## Backend Registration
+## L'enregistrement des backends
 
-Memory backends are registered via the `@MemoryRegistry.register("name")` decorator:
+Les backends de mémoire s'enregistrent au moyen du décorateur `@MemoryRegistry.register("nom")` :
 
 ```python
 from diapason.core.registry import MemoryRegistry
@@ -335,7 +335,7 @@ class MyMemoryBackend(MemoryBackend):
     def clear(self) -> None: ...
 ```
 
-The default backend is configured in `~/.diapason/config.toml`. Storage settings live under `[tools.storage]`, and context injection is controlled by `agent.context_from_memory`:
+Le backend par défaut se configure dans `~/.diapason/config.toml`. Les réglages de stockage vivent sous `[tools.storage]`, et l'injection de contexte est commandée par `agent.context_from_memory` :
 
 ```toml
 [agent]
@@ -351,5 +351,5 @@ chunk_size = 512
 chunk_overlap = 64
 ```
 
-!!! note "Backward compatibility"
-    The `[memory]` TOML section is still accepted as a backward-compatible alias for `[tools.storage]`. The old `context_injection` field is automatically migrated to `agent.context_from_memory` at load time.
+!!! note "Compatibilité ascendante"
+    La section TOML `[memory]` est toujours acceptée : elle vaut alias de `[tools.storage]`, par compatibilité ascendante. L'ancien champ `context_injection` est migré automatiquement vers `agent.context_from_memory` au chargement.

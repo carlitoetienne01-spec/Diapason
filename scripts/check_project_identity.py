@@ -34,7 +34,12 @@ ALLOWED_LEGACY_PATHS = {
     "scripts/quickstart.sh",
     "scripts/install/diapason-wrapper.sh",
     "scripts/install/diapason-uninstall.sh",
+    # La page de migration porte l'ancien nom par nature : elle explique
+    # comment venir de là. Le site est bilingue depuis le 22/09/2026, et
+    # l'anglaise a pris le suffixe .en — sans cette seconde ligne, le
+    # contrôle d'identité refusait la bascule.
     "docs/getting-started/migration-to-diapason.md",
+    "docs/getting-started/migration-to-diapason.en.md",
     "src/diapason/cli/migrate_cmd.py",
 }
 ALLOWED_LEGACY_PREFIXES = ("tests/",)

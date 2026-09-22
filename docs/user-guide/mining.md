@@ -1,31 +1,34 @@
-# Pearl Mining
+# Le minage Pearl
 
-Diapason can mine the Pearl Proof-of-Useful-Work chain through local LLM
-inference. The primary v1 path supports NVIDIA H100/H200 hosts running vLLM
-with Pearl's Docker miner. The consolidated Pearl integration also includes
-experimental Apple Silicon and CPU providers through the same `MiningProvider`
-registry.
+Diapason sait miner la chaîne Pearl — une chaîne à preuve de travail utile
+(Proof-of-Useful-Work) — par de l'inférence LLM locale. Le chemin principal de
+la v1 vise les machines NVIDIA H100/H200 qui font tourner vLLM avec le mineur
+Docker de Pearl. L'intégration Pearl consolidée comprend aussi des fournisseurs
+Apple Silicon et CPU expérimentaux, offerts par le même registre
+`MiningProvider`.
 
-## Prerequisites
+## Prérequis
 
-| Requirement | v1 expectation |
+| Ce qu'il faut | Ce qu'attend la v1 |
 |---|---|
-| GPU | NVIDIA H100 or H200, sm_90a class, at least 70 GB VRAM |
-| OS | Linux with `nvidia-container-toolkit` configured |
-| Docker | Docker 24+ with GPU runtime access |
-| Disk | At least 200 GB free for the 70B model and build cache |
-| Pearl node | Reachable `pearld` JSON-RPC endpoint, default `http://localhost:44107` |
-| Wallet | Pearl address beginning with `prl1q` or `prl1p` |
+| GPU | NVIDIA H100 ou H200, classe sm_90a, au moins 70 Go de VRAM |
+| Système | Linux avec `nvidia-container-toolkit` configuré |
+| Docker | Docker 24+ avec accès au runtime GPU |
+| Disque | Au moins 200 Go libres pour le modèle 70B et le cache de construction |
+| Nœud Pearl | Un point d'accès JSON-RPC `pearld` joignable, `http://localhost:44107` par défaut |
+| Portefeuille | Une adresse Pearl commençant par `prl1q` ou `prl1p` |
 
-The default vLLM config uses `gpu_memory_utilization = 0.96` and
-`max_model_len = 8192` for the Pearl 70B mining model on H100/H200 80 GB GPUs.
+La configuration vLLM par défaut utilise `gpu_memory_utilization = 0.96` et
+`max_model_len = 8192` pour le modèle de minage Pearl 70B, sur les GPU
+H100/H200 de 80 Go.
 
-To generate a wallet address with Pearl's Oyster wallet, run Pearl's wallet
-daemon and query it with `prlctl --wallet --skipverify -s localhost:44207
-getnewaddress`. Do not reuse a wallet whose mnemonic has been pasted into logs,
-chat, or issue trackers.
+Pour obtenir une adresse de portefeuille avec Oyster, le portefeuille de Pearl,
+lance le démon de portefeuille de Pearl et interroge-le avec `prlctl --wallet
+--skipverify -s localhost:44207 getnewaddress`. Ne réutilise pas un
+portefeuille dont la phrase mnémonique a été collée dans un journal, une
+conversation ou un gestionnaire de tickets.
 
-## Quick Start
+## Démarrage rapide
 
 ```bash
 uv sync --extra mining-pearl-vllm
@@ -37,50 +40,54 @@ uv run diapason mine start
 uv run diapason mine status
 ```
 
-`mine init` writes a `[mining]` config section and resolves the Pearl Docker
-image. If Pearl has not published a suitable image for the pinned ref,
-Diapason falls back to building from the pinned Pearl source checkout. First
-builds can take 30-60 minutes.
+`mine init` écrit une section de configuration `[mining]` et résout l'image
+Docker de Pearl. Si Pearl n'a pas publié d'image convenable pour la référence
+épinglée, Diapason se rabat sur une construction depuis la copie épinglée des
+sources de Pearl. Une première construction peut prendre de 30 à 60 minutes.
 
-On a shared NVIDIA host, restrict the miner to idle GPUs:
+Sur une machine NVIDIA partagée, restreins le mineur aux GPU inoccupés :
 
 ```bash
 uv run diapason mine init --cuda-visible-devices 0
 ```
 
-This writes `[mining.extra].cuda_visible_devices`, which `mine start` passes to
-Docker instead of exposing every GPU on the machine.
+Cela écrit `[mining.extra].cuda_visible_devices`, que `mine start` passe à
+Docker au lieu d'exposer tous les GPU de la machine.
 
-## Commands
+## Les commandes
 
-- `diapason mine models` lists Pearl model support status.
-- `diapason mine inspect-model` checks a Pearl model artifact before GPU launch.
-- `diapason mine doctor` prints hardware, Docker, Pearl node, wallet, provider,
-  and session checks.
-- `diapason mine init` writes the local mining config and resolves the image.
-- `diapason mine start` launches the Pearl miner container and writes the runtime
-  sidecar.
-- `diapason mine stop` stops the provider and removes the sidecar.
-- `diapason mine status` reads live gateway metrics.
-- `diapason mine attach` writes a sidecar for a miner you launched manually.
-- `diapason mine logs` prints the Docker container log tail.
-- `diapason mine validate-model` probes the active vLLM miner and gateway before
-  promoting a planned Pearl model to validated.
+- `diapason mine models` liste l'état de prise en charge des modèles Pearl.
+- `diapason mine inspect-model` vérifie l'artefact d'un modèle Pearl avant de
+  lancer le GPU.
+- `diapason mine doctor` affiche les contrôles du matériel, de Docker, du nœud
+  Pearl, du portefeuille, du fournisseur et de la session.
+- `diapason mine init` écrit la configuration de minage locale et résout
+  l'image.
+- `diapason mine start` lance le conteneur du mineur Pearl et écrit le sidecar
+  d'exécution.
+- `diapason mine stop` arrête le fournisseur et retire le sidecar.
+- `diapason mine status` lit les métriques de la passerelle en direct.
+- `diapason mine attach` écrit un sidecar pour un mineur que tu as lancé à la
+  main.
+- `diapason mine logs` affiche la fin du journal du conteneur Docker.
+- `diapason mine validate-model` sonde le mineur vLLM actif et la passerelle
+  avant de faire passer un modèle Pearl prévu au rang de validé.
 
-## Model Support
+## Les modèles pris en charge
 
-Run:
+Lance :
 
 ```bash
 diapason mine models
 ```
 
-Diapason only lists Pearl-compatible models published by the Pearl Research
-Labs Hugging Face org. Raw Hugging Face base models such as
-`meta-llama/Llama-3.3-70B-Instruct` or `google/gemma-4-31B-it` are not mineable
-by themselves; they need corresponding `pearl-ai/*-pearl` variants.
+Diapason ne liste que les modèles compatibles Pearl publiés par
+l'organisation Hugging Face de Pearl Research Labs. Les modèles de base bruts
+de Hugging Face, comme `meta-llama/Llama-3.3-70B-Instruct` ou
+`google/gemma-4-31B-it`, ne minent rien par eux-mêmes : il leur faut la
+variante `pearl-ai/*-pearl` correspondante.
 
-The supported Pearl model ids are:
+Les identifiants de modèles Pearl pris en charge sont :
 
 ```text
 pearl-ai/Llama-3.3-70B-Instruct-pearl
@@ -88,11 +95,12 @@ pearl-ai/Gemma-4-31B-it-pearl
 pearl-ai/Llama-3.1-8B-Instruct-pearl
 ```
 
-`pearl-ai/Llama-3.3-70B-Instruct-pearl` is the default validated model.
-Additional public `pearl-ai/*` artifacts may remain marked `planned` until they
-pass the Diapason H100/H200 validation run.
+`pearl-ai/Llama-3.3-70B-Instruct-pearl` est le modèle validé par défaut.
+D'autres artefacts publics `pearl-ai/*` peuvent rester marqués `planned` tant
+qu'ils n'ont pas passé la campagne de validation Diapason sur H100/H200.
 
-When validating a Pearl org model on a mining host, run:
+Pour valider un modèle de l'organisation Pearl sur une machine de minage,
+lance :
 
 ```bash
 diapason mine inspect-model \
@@ -102,40 +110,42 @@ diapason mine inspect-model \
 diapason mine validate-model \
   --model pearl-ai/Gemma-4-31B-it-pearl \
   --allow-planned \
-  --prompt "Say hello in one sentence." \
+  --prompt "Dis bonjour en une phrase." \
   --output gemma-4-31b-pearl-validation.json
 ```
 
-Attach the JSON artifact to the validation issue when promoting additional
-models.
+Joins l'artefact JSON au ticket de validation quand tu fais promouvoir
+d'autres modèles.
 
-## v1 Scope
+## Le périmètre de la v1
 
-v1 is solo mining only. Diapason does not take fees, custody funds, generate
-wallet keys, run pools, or operate `pearld`. Users provide their own Pearl node
-and payout address.
+La v1 ne fait que du minage en solo. Diapason ne prélève aucune commission, ne
+garde aucun fonds, ne génère aucune clé de portefeuille, n'opère ni pool ni
+`pearld`. Tu fournis ton propre nœud Pearl et ton adresse de versement.
 
-Unsupported in this PR:
+Ce que cette PR ne prend pas en charge :
 
-- Pool mining and the future 20% Diapason fee model
-- AMD GPU mining and non-Pearl backends
-- RTX 4090 or other non-Hopper NVIDIA GPUs
-- Wallet generation or transaction signing inside Diapason
+- Le minage en pool et le futur modèle de commission Diapason à 20 %
+- Le minage sur GPU AMD et les moteurs autres que Pearl
+- Les RTX 4090 et les autres GPU NVIDIA qui ne sont pas de génération Hopper
+- La génération de portefeuille ou la signature de transaction depuis Diapason
 
-## Troubleshooting
+## Dépannage
 
-Run:
+Lance :
 
 ```bash
 uv run diapason mine doctor
 ```
 
-Read the rows top-down. Fix the first failing dependency before retrying
-`mine start`. A Mac or AMD machine should fail honestly at provider capability;
-those paths are expected to land as separate providers.
+Lis les lignes de haut en bas. Corrige la première dépendance en échec avant de
+relancer `mine start`. Un Mac ou une machine AMD doit échouer honnêtement au
+contrôle de capacité du fournisseur : ces chemins-là arriveront sous forme de
+fournisseurs distincts.
 
-## Production Readiness
+## Prêt pour la production
 
-The NVIDIA path requires one real H100/H200 validation run before it should be
-marketed as a proven earning path. The developer runbook is
+Le chemin NVIDIA réclame une vraie campagne de validation sur H100/H200 avant
+qu'on puisse l'annoncer comme un moyen éprouvé de gagner quelque chose. Le
+guide pour développeurs est
 [`../development/mining-nvidia-validation.md`](../development/mining-nvidia-validation.md).

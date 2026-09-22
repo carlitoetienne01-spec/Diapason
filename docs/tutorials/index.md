@@ -1,70 +1,70 @@
 ---
-title: Tutorials
-description: Step-by-step guides for building with Diapason
+title: Tutoriels
+description: Des guides pas à pas pour construire avec Diapason
 ---
 
-# Tutorials
+# Tutoriels
 
-Hands-on guides that walk through building real applications with Diapason. Each tutorial includes a standalone script you can run immediately, a TOML recipe for configuration, and a detailed walkthrough of the concepts involved.
+Des guides pratiques qui construisent de vraies applications avec Diapason. Chaque tutoriel fournit un script autonome que tu peux lancer tout de suite, une recette TOML pour la configuration, et une explication détaillée des notions en jeu.
 
-!!! note "Before you begin"
-    All tutorials assume Diapason is installed and an inference engine is running. If you have not completed setup yet, start with the [Quick Start guide](../getting-started/quickstart.md).
+!!! note "Avant de commencer"
+    Tous les tutoriels supposent que Diapason est installé et qu'un moteur d'inférence tourne. Si tu n'as pas encore fait l'installation, commence par le [guide de démarrage rapide](../getting-started/quickstart.md).
 
 <div class="grid cards" markdown>
 
-- :material-magnify:{ .lg .middle } **Deep Research Assistant**
+- :material-magnify:{ .lg .middle } **Assistant de recherche approfondie**
 
     ---
 
-    Multi-source research with a memory-augmented orchestrator agent. Searches the web, stores findings across turns, cross-references sources, and produces a cited report.
+    De la recherche multi-sources avec un agent orchestrateur doté de mémoire. Il fouille le web, garde ses trouvailles d'un tour à l'autre, recoupe ses sources et produit un rapport sourcé.
 
-    [:octicons-arrow-right-24: Get started](deep-research.md)
+    [:octicons-arrow-right-24: Commencer](deep-research.md)
 
-- :material-clock-outline:{ .lg .middle } **Scheduled Personal Ops**
-
-    ---
-
-    Autonomous agents on cron schedules for recurring personal tasks — morning news digests, weekly code reviews, and gym schedule checks.
-
-    [:octicons-arrow-right-24: Get started](scheduled-ops.md)
-
-- :material-message-outline:{ .lg .middle } **Messaging Hub**
+- :material-clock-outline:{ .lg .middle } **Opérations personnelles programmées**
 
     ---
 
-    Smart inbox assistant that triages messages by priority, drafts context-aware replies, and produces end-of-day summaries across Slack, WhatsApp, and other channels.
+    Des agents autonomes sur des horaires cron pour les tâches personnelles qui reviennent — revue de presse du matin, relecture de code hebdomadaire, vérification des horaires de la salle de sport.
 
-    [:octicons-arrow-right-24: Get started](messaging-hub.md)
+    [:octicons-arrow-right-24: Commencer](scheduled-ops.md)
 
-- :material-code-braces:{ .lg .middle } **Code Companion**
-
-    ---
-
-    Code review, debugging, and test generation using a ReAct agent that reads source files, runs commands, and reasons step by step before producing structured output.
-
-    [:octicons-arrow-right-24: Get started](code-companion.md)
-
-- :material-puzzle:{ .lg .middle } **Skills Workflow**
+- :material-message-outline:{ .lg .middle } **Centre de messagerie**
 
     ---
 
-    Install skills from Hermes Agent, use them with a local agent, discover patterns from traces, optimize with DSPy, and benchmark the impact — the complete skills lifecycle.
+    Un assistant de boîte de réception qui trie les messages par priorité, rédige des réponses qui tiennent compte du contexte et produit un résumé de fin de journée, sur Slack, WhatsApp et les autres canaux.
 
-    [:octicons-arrow-right-24: Get started](skills-workflow.md)
+    [:octicons-arrow-right-24: Commencer](messaging-hub.md)
+
+- :material-code-braces:{ .lg .middle } **Compagnon de code**
+
+    ---
+
+    Relecture de code, débogage et génération de tests avec un agent ReAct qui lit les fichiers source, lance des commandes et raisonne étape par étape avant de produire une sortie structurée.
+
+    [:octicons-arrow-right-24: Commencer](code-companion.md)
+
+- :material-puzzle:{ .lg .middle } **Le flux de travail des compétences**
+
+    ---
+
+    Installer des compétences depuis Hermes Agent, s'en servir avec un agent local, découvrir des motifs dans les traces, optimiser avec DSPy et mesurer le gain — tout le cycle de vie d'une compétence.
+
+    [:octicons-arrow-right-24: Commencer](skills-workflow.md)
 
 </div>
 
-## What You Will Learn
+## Ce que tu vas apprendre
 
-Each tutorial demonstrates a different combination of Diapason primitives working together:
+Chaque tutoriel met en scène une combinaison différente des primitives de Diapason :
 
-| Tutorial | Agent | Key Primitives |
+| Tutoriel | Agent | Primitives principales |
 |---|---|---|
-| Deep Research | `orchestrator` | Engine, Agents, Tools (web + memory), Recipes |
-| Scheduled Ops | `orchestrator`, `native_react` | Agents, Tools, Scheduler |
-| Messaging Hub | `orchestrator` | Agents, Tools (memory), Channels |
-| Code Companion | `native_react` | Agents, Tools (git + file + shell) |
+| Recherche approfondie | `orchestrator` | Moteur, Agents, Outils (web + mémoire), Recettes |
+| Opérations programmées | `orchestrator`, `native_react` | Agents, Outils, Programmateur |
+| Centre de messagerie | `orchestrator` | Agents, Outils (mémoire), Canaux |
+| Compagnon de code | `native_react` | Agents, Outils (git + fichiers + shell) |
 
-## Estimated Time
+## Temps estimé
 
-Each tutorial takes approximately 15-30 minutes to complete end-to-end, including setup and running the scripts. The TOML configuration sections and customization tips are optional reading for when you adapt the pattern to your own use case.
+Compte 15 à 30 minutes par tutoriel de bout en bout, installation et exécution des scripts comprises. Les sections sur la configuration TOML et les conseils de personnalisation sont à lire plus tard, quand tu adapteras le motif à ton propre usage.

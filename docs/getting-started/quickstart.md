@@ -1,130 +1,131 @@
 ---
-title: Quick Start
-description: Get up and running with Diapason in minutes
+title: Démarrage rapide
+description: Mettre Diapason en marche en quelques minutes
 search:
   boost: 3
 ---
 
-# Quick Start
+# Démarrage rapide
 
-!!! tip "Running `diapason` commands"
-    Every `diapason ...` example below assumes you have either activated the project venv
-    (`source .venv/bin/activate`) or are prefixing each command with `uv run`. A bare
-    `diapason init --preset ...` from a fresh clone will fail with `command not found`.
+!!! tip "Lancer les commandes `diapason`"
+    Chaque exemple `diapason ...` ci-dessous suppose que tu as activé le venv du projet
+    (`source .venv/bin/activate`) ou que tu préfixes chaque commande par `uv run`. Un
+    `diapason init --preset ...` tout nu, depuis un clone frais, échoue sur un
+    `command not found`.
 
-## What You Can Build
+## Ce que tu peux construire
 
-Diapason is a modular AI assistant framework. Here's what developers build with it:
+Diapason est un cadriciel modulaire d'assistant IA. Voici ce que les développeurs en font :
 
-=== "Chat with Any Model"
-
-    ```bash
-    diapason ask "Explain quantum entanglement" -m qwen3.5:4b   # use qwen3.5:9b or larger on GPU
-    ```
-
-=== "Agent + Tools"
+=== "Discuter avec n'importe quel modèle"
 
     ```bash
-    diapason ask --agent orchestrator --tools calculator,web_search "What is the GDP of France in USD?"
+    diapason ask "Explique l'intrication quantique" -m qwen3.5:4b   # prends qwen3.5:9b ou plus gros sur GPU
     ```
 
-=== "Index Docs & Ask"
+=== "Agent + outils"
+
+    ```bash
+    diapason ask --agent orchestrator --tools calculator,web_search "Quel est le PIB de la France en dollars américains ?"
+    ```
+
+=== "Indexer des documents et poser une question"
 
     ```bash
     diapason memory index ./docs/
-    diapason ask "How do I configure the engine?"
+    diapason ask "Comment configurer le moteur ?"
     ```
 
-    !!! warning "Requires the Rust extension"
-        `diapason memory index` and `diapason memory search` import `diapason_rust`. If you
-        skipped the `uv run maturin develop -m rust/crates/diapason-python/Cargo.toml`
-        step in [Installation](installation.md), these commands fail with
-        `ModuleNotFoundError: No module named 'diapason_rust'`. Build the extension
-        once and any preset (including `deep-research`) will work.
+    !!! warning "L'extension Rust est nécessaire"
+        `diapason memory index` et `diapason memory search` importent `diapason_rust`. Si tu
+        as sauté l'étape `uv run maturin develop -m rust/crates/diapason-python/Cargo.toml`
+        de l'[installation](installation.md), ces commandes échouent sur un
+        `ModuleNotFoundError: No module named 'diapason_rust'`. Construis l'extension
+        une fois, et n'importe quel préréglage (`deep-research` compris) marchera.
 
-=== "5-Line Python SDK"
+=== "Le SDK Python en 5 lignes"
 
     ```python
     from diapason import Diapason
     with Diapason() as j:
-        print(j.ask("Hello!"))
+        print(j.ask("Bonjour !"))
     ```
 
-=== "API Server"
+=== "Serveur d'API"
 
     ```bash
     diapason serve --port 8000
-    # Now use any OpenAI-compatible client
+    # Sers-toi ensuite de n'importe quel client compatible OpenAI
     ```
 
-=== "Morning Digest"
+=== "Le point du matin"
 
     ```bash
     cp configs/diapason/examples/morning-digest-mac.toml ~/.diapason/config.toml
-    diapason connect gdrive       # one OAuth flow for Gmail, Calendar, Tasks
+    diapason connect gdrive       # un seul passage OAuth pour Gmail, Agenda et Tâches
     CARTESIA_API_KEY="..." diapason digest --fresh
-    # Plays a spoken daily briefing with your email, calendar, health, and news
+    # Lit à voix haute le point du jour : courriels, agenda, santé et actualités
     ```
 
-=== "Deep Research"
+=== "Recherche approfondie"
 
     ```bash
     diapason init --preset deep-research
     diapason memory index ~/Documents/papers/
-    diapason ask "Summarize all documents about transformer architectures"
-    # Multi-hop search across your indexed docs with citations
+    diapason ask "Résume tous les documents sur les architectures transformeur"
+    # Recherche à sauts multiples dans tes documents indexés, avec les sources
     ```
 
-=== "Code Assistant"
+=== "Assistant de code"
 
     ```bash
     diapason init --preset code-assistant
-    diapason ask "Write a Python script that parses CSV files"
-    # Orchestrator agent with code execution, file I/O, and shell access
+    diapason ask "Écris un script Python qui analyse des fichiers CSV"
+    # L'agent orchestrator, avec exécution de code, lecture et écriture de fichiers, et accès au shell
     ```
 
-=== "Scheduled Monitor"
+=== "Surveillance programmée"
 
     ```bash
     diapason init --preset scheduled-monitor
     diapason memory index ~/Documents/
     diapason scheduler start
     diapason scheduler create \
-      --prompt "Check for new emails about Project X" \
+      --prompt "Cherche les nouveaux courriels au sujet du Projet X" \
       --schedule "0 9 * * 1-5" --agent operative
-    # Persistent agent that runs on a cron schedule
+    # Un agent persistant, lancé selon une programmation cron
     ```
 
-For complete copy-paste patterns, see [Code Snippets](snippets.md).
+Pour des motifs complets à copier-coller, voir [Extraits de code](snippets.md).
 
-## Starter Configs
+## Les configurations de départ
 
-Copy one of these to `~/.diapason/config.toml` to get a pre-configured setup:
+Copie l'une d'elles dans `~/.diapason/config.toml` pour obtenir un montage déjà réglé :
 
-| Config | For | What it does |
+| Configuration | Pour | Ce qu'elle fait |
 |--------|-----|-------------|
-| [`chat-simple.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/chat-simple.toml) | Any machine | Lightweight chat, no tools -- simplest setup |
-| [`code-assistant.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/code-assistant.toml) | Any machine | Orchestrator agent with code execution, file I/O, shell |
-| [`deep-research.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/deep-research.toml) | Any machine | Multi-hop research across indexed documents with citations |
-| [`scheduled-monitor.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/scheduled-monitor.toml) | Any machine | Persistent operative agent on a cron schedule |
-| [`morning-digest-mac.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-mac.toml) | Mac (Apple Silicon) | Daily spoken briefing from email, calendar, health, news |
-| [`morning-digest-linux.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-linux.toml) | Linux / GPU server | Same, with vLLM support |
-| [`morning-digest-minimal.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-minimal.toml) | Any machine | Just Gmail + Calendar |
+| [`chat-simple.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/chat-simple.toml) | N'importe quelle machine | Discussion légère, sans outils — le montage le plus simple |
+| [`code-assistant.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/code-assistant.toml) | N'importe quelle machine | L'agent orchestrator, avec exécution de code, fichiers et shell |
+| [`deep-research.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/deep-research.toml) | N'importe quelle machine | Recherche à sauts multiples dans les documents indexés, avec les sources |
+| [`scheduled-monitor.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/scheduled-monitor.toml) | N'importe quelle machine | L'agent operative, persistant, sur une programmation cron |
+| [`morning-digest-mac.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-mac.toml) | Mac (Apple Silicon) | Le point du jour à voix haute : courriels, agenda, santé, actualités |
+| [`morning-digest-linux.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-linux.toml) | Linux / serveur GPU | Le même, avec la prise en charge de vLLM |
+| [`morning-digest-minimal.toml`](https://github.com/carlitoetienne01-spec/Diapason/blob/main/configs/diapason/examples/morning-digest-minimal.toml) | N'importe quelle machine | Gmail et Agenda, rien de plus |
 
-Or generate a config with digest included:
+Ou génère une configuration qui inclut déjà le point du matin :
 
 ```bash
 diapason init --digest
 ```
 
-This guide walks through the core workflows of Diapason: the browser app, CLI, Python SDK, agents with tools, memory, benchmarks, and the API server.
+Ce guide parcourt les usages de fond de Diapason : l'app navigateur, la CLI, le SDK Python, les agents avec outils, la mémoire, les mesures de performance et le serveur d'API.
 
-!!! info "Prerequisites"
-    Make sure you have [installed Diapason](installation.md) and have at least one inference backend running (e.g., `ollama serve`).
+!!! info "Ce qu'il te faut d'abord"
+    Assure-toi d'avoir [installé Diapason](installation.md) et d'avoir au moins un moteur d'inférence en marche (`ollama serve`, par exemple).
 
-## Browser App
+## L'app navigateur
 
-The quickest way to experience Diapason is the full chat UI running in your browser:
+Le chemin le plus rapide pour découvrir Diapason, c'est l'interface de discussion complète dans ton navigateur :
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -132,36 +133,36 @@ cd Diapason
 ./scripts/quickstart.sh
 ```
 
-This launches the backend API server and a React frontend at [http://localhost:5173](http://localhost:5173).
-You get a ChatGPT-like interface with streaming responses, tool use, energy monitoring, and a telemetry dashboard — all running locally on your hardware.
+Cela démarre le serveur d'API et une interface React sur [http://localhost:5173](http://localhost:5173).
+Tu obtiens une interface façon ChatGPT, avec des réponses au fil de l'eau, l'usage des outils, le suivi de consommation et un tableau de bord de télémétrie — le tout sur ta machine.
 
-Web search is available through the built-in DuckDuckGo fallback. To use
-Tavily, add `TAVILY_API_KEY` under **Settings → Tools → Web Search** after the
-app starts, or export it before starting quickstart:
+La recherche web fonctionne par le repli DuckDuckGo intégré. Pour utiliser
+Tavily, ajoute `TAVILY_API_KEY` sous **Réglages → Outils → Recherche web** une fois
+l'app démarrée, ou exporte-la avant de lancer quickstart :
 
 ```bash
 export TAVILY_API_KEY="tvly-..."
 ./scripts/quickstart.sh
 ```
 
-The script does not automatically source `.env` files. Run `source .env`
-first if that is where you keep the key. Stop any existing Diapason server
-before restarting so it inherits the updated environment.
+Le script ne source pas les fichiers `.env` tout seul. Lance `source .env`
+d'abord si c'est là que tu gardes la clé. Arrête tout serveur Diapason déjà en
+marche avant de relancer, pour qu'il hérite de l'environnement à jour.
 
-To stop all services, press ++ctrl+c++ in the terminal.
+Pour arrêter tous les services, presse ++ctrl+c++ dans le terminal.
 
-!!! tip "Environment variable"
-    Set `DIAPASON_MODEL` to change the default model: `DIAPASON_MODEL=deepseek-r1:14b ./scripts/quickstart.sh`
+!!! tip "Variable d'environnement"
+    Pose `DIAPASON_MODEL` pour changer le modèle par défaut : `DIAPASON_MODEL=deepseek-r1:14b ./scripts/quickstart.sh`
 
-## Initialize Configuration
+## Initialiser la configuration
 
-Start by detecting your hardware and generating a configuration file:
+Commence par détecter ton matériel et générer un fichier de configuration :
 
 ```bash
 diapason init
 ```
 
-This runs hardware auto-detection (GPU vendor, VRAM, CPU, RAM) and writes a config file to `~/.diapason/config.toml` with sensible defaults for your system. It also selects the recommended inference engine.
+Cela lance la détection automatique du matériel (fabricant de la carte graphique, VRAM, processeur, mémoire vive) et écrit un fichier de configuration dans `~/.diapason/config.toml`, avec des valeurs raisonnables pour ton système. La commande choisit aussi le moteur d'inférence recommandé.
 
 ```
 Detecting hardware...
@@ -173,179 +174,179 @@ Detecting hardware...
 Config written successfully.
 ```
 
-To overwrite an existing config:
+Pour écraser une configuration existante :
 
 ```bash
 diapason init --force
 ```
 
-See [Configuration](configuration.md) for the full config reference.
+Voir [Configuration](configuration.md) pour la référence complète.
 
-## Your First Question
+## Ta première question
 
-### Via CLI
+### Depuis la CLI
 
-The simplest way to interact with Diapason is the `ask` command:
+Le plus simple, pour parler à Diapason, c'est la commande `ask` :
 
 ```bash
-diapason ask "What is the capital of France?"
+diapason ask "Quelle est la capitale de la France ?"
 ```
 
-Diapason will auto-detect a running engine, select a model using the configured router policy, and return the response.
+Diapason détecte tout seul un moteur en marche, choisit un modèle selon la politique de routage configurée et rend la réponse.
 
-#### CLI Options
+#### Les options de la CLI
 
-| Option | Description | Example |
+| Option | Description | Exemple |
 |--------|-------------|---------|
-| `-m`, `--model` | Override model selection | `diapason ask -m qwen3:8b "Hello"` |
-| `-e`, `--engine` | Force a specific engine | `diapason ask -e ollama "Hello"` |
-| `-t`, `--temperature` | Sampling temperature (default: 0.7) | `diapason ask -t 0.2 "Hello"` |
-| `--max-tokens` | Max tokens to generate (default: 1024) | `diapason ask --max-tokens 2048 "Hello"` |
-| `--json` | Output raw JSON result | `diapason ask --json "Hello"` |
-| `--no-stream` | Disable streaming | `diapason ask --no-stream "Hello"` |
-| `--no-context` | Disable memory context injection | `diapason ask --no-context "Hello"` |
-| `-a`, `--agent` | Use an agent | `diapason ask -a orchestrator "Hello"` |
-| `--tools` | Comma-separated tools | `diapason ask --tools calculator,think "2+2"` |
-| `--router` | Router policy for model selection | `diapason ask --router heuristic "Hello"` |
+| `-m`, `--model` | Remplace le choix du modèle | `diapason ask -m qwen3:8b "Bonjour"` |
+| `-e`, `--engine` | Force un moteur précis | `diapason ask -e ollama "Bonjour"` |
+| `-t`, `--temperature` | Température d'échantillonnage (défaut : 0.7) | `diapason ask -t 0.2 "Bonjour"` |
+| `--max-tokens` | Nombre maximum de jetons à générer (défaut : 1024) | `diapason ask --max-tokens 2048 "Bonjour"` |
+| `--json` | Rend le résultat JSON brut | `diapason ask --json "Bonjour"` |
+| `--no-stream` | Coupe le fil de l'eau | `diapason ask --no-stream "Bonjour"` |
+| `--no-context` | Coupe l'injection du contexte mémoire | `diapason ask --no-context "Bonjour"` |
+| `-a`, `--agent` | Utilise un agent | `diapason ask -a orchestrator "Bonjour"` |
+| `--tools` | Outils séparés par des virgules | `diapason ask --tools calculator,think "2+2"` |
+| `--router` | Politique de routage pour le choix du modèle | `diapason ask --router heuristic "Bonjour"` |
 
-### Via Python SDK
+### Depuis le SDK Python
 
-The `Diapason` class provides a high-level Python interface:
+La classe `Diapason` offre une interface Python de haut niveau :
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
-response = j.ask("What is the capital of France?")
+response = j.ask("Quelle est la capitale de la France ?")
 print(response)
 j.close()
 ```
 
-For detailed results including token usage and model info:
+Pour un résultat détaillé, avec la consommation de jetons et les informations de modèle :
 
 ```python
-result = j.ask_full("What is the capital of France?")
-print(result["content"])  # The response text
-print(result["model"])    # Model that handled the query
-print(result["engine"])   # Engine that ran inference
-print(result["usage"])    # Token usage statistics
+result = j.ask_full("Quelle est la capitale de la France ?")
+print(result["content"])  # Le texte de la réponse
+print(result["model"])    # Le modèle qui a traité la question
+print(result["engine"])   # Le moteur qui a fait l'inférence
+print(result["usage"])    # Les statistiques de consommation de jetons
 ```
 
-#### SDK Constructor Options
+#### Les options du constructeur du SDK
 
 ```python
-# Use default config (auto-detected hardware, ~/.diapason/config.toml)
+# Utiliser la configuration par défaut (matériel détecté, ~/.diapason/config.toml)
 j = Diapason()
 
-# Override the model
+# Imposer le modèle
 j = Diapason(model="qwen3:8b")
 
-# Override the engine
+# Imposer le moteur
 j = Diapason(engine_key="ollama")
 
-# Use a custom config file
+# Utiliser un fichier de configuration à soi
 j = Diapason(config_path="/path/to/config.toml")
 ```
 
-!!! warning "Always call `close()`"
-    The `Diapason` instance holds references to telemetry stores and memory backends. Call `j.close()` when you are done to release resources.
+!!! warning "Appelle toujours `close()`"
+    L'instance `Diapason` garde des références vers les dépôts de télémétrie et les backends de mémoire. Appelle `j.close()` quand tu as fini, pour libérer les ressources.
 
-## Using Agents with Tools
+## Se servir des agents et de leurs outils
 
-Agents add multi-turn reasoning and tool-calling capabilities. The `orchestrator` agent runs a tool-calling loop, invoking tools as needed to answer the query.
+Les agents ajoutent le raisonnement sur plusieurs tours et l'appel d'outils. L'agent `orchestrator` fait tourner une boucle d'appel d'outils, et invoque ce qu'il faut pour répondre à la question.
 
-### Available Agents
+### Les agents disponibles
 
 | Agent | Description |
 |-------|-------------|
-| `simple` | Single-turn, no tools. Sends the query directly to the model. |
-| `orchestrator` | Multi-turn tool-calling loop. Invokes tools iteratively until it has an answer. |
-| `custom` | Template for user-defined agent logic. |
-| `operative` | Task-oriented agent with structured planning and execution. |
+| `simple` | Un seul tour, sans outils. Envoie la question droit au modèle. |
+| `orchestrator` | Boucle d'appel d'outils sur plusieurs tours. Invoque les outils l'un après l'autre jusqu'à tenir une réponse. |
+| `custom` | Un gabarit pour ta propre logique d'agent. |
+| `operative` | Agent orienté tâches, avec planification et exécution structurées. |
 
-### Available Built-in Tools
+### Les outils intégrés
 
-| Tool | Description |
+| Outil | Description |
 |------|-------------|
-| `calculator` | Safe mathematical expression evaluation (ast-based). |
-| `think` | Reasoning scratchpad for chain-of-thought. |
-| `retrieval` | Search the memory store for relevant context. |
-| `llm` | Make sub-queries to another model. |
-| `file_read` | Read files with path validation. |
-| `web_search` | Web search via the Tavily API (requires `tools-search` extra). |
+| `calculator` | Évaluation sûre d'expressions mathématiques (fondée sur l'AST). |
+| `think` | Brouillon de raisonnement, pour la chaîne de pensée. |
+| `retrieval` | Cherche dans la mémoire le contexte pertinent. |
+| `llm` | Pose des sous-questions à un autre modèle. |
+| `file_read` | Lit des fichiers, avec validation du chemin. |
+| `web_search` | Recherche web par l'API Tavily (réclame l'extra `tools-search`). |
 
-### CLI Example
+### Exemple en CLI
 
 ```bash
-diapason ask --agent orchestrator --tools calculator,think "What is 137 * 42?"
+diapason ask --agent orchestrator --tools calculator,think "Combien font 137 * 42 ?"
 ```
 
-### SDK Example
+### Exemple avec le SDK
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
 result = j.ask_full(
-    "What is the square root of 144?",
+    "Quelle est la racine carrée de 144 ?",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
 print(result["content"])
-print(result["tool_results"])  # List of tool invocations and results
-print(result["turns"])         # Number of agent turns
+print(result["tool_results"])  # La liste des appels d'outils et de leurs résultats
+print(result["turns"])         # Le nombre de tours d'agent
 j.close()
 ```
 
-## Memory: Indexing and Search
+## La mémoire : indexer et chercher
 
-The memory system lets you index documents and inject relevant context into queries automatically.
+Le système de mémoire te laisse indexer des documents, puis injecte automatiquement le contexte pertinent dans tes questions.
 
-### Index Documents
+### Indexer des documents
 
-Index a file or directory. Diapason chunks the content and stores it in the configured memory backend (SQLite/FTS5 by default).
+Indexe un fichier ou un dossier. Diapason découpe le contenu en morceaux et les range dans le backend de mémoire configuré (SQLite/FTS5 par défaut).
 
 === "CLI"
 
     ```bash
-    # Index a directory
+    # Indexer un dossier
     diapason memory index ./docs/
 
-    # Index a single file with custom chunk size
+    # Indexer un seul fichier, avec une taille de morceau à soi
     diapason memory index ./paper.txt --chunk-size 256 --chunk-overlap 32
     ```
 
-=== "Python SDK"
+=== "SDK Python"
 
     ```python
     from diapason import Diapason
 
     j = Diapason()
     result = j.memory.index("./docs/", chunk_size=512, chunk_overlap=64)
-    print(f"Indexed {result['chunks']} chunks")
+    print(f"{result['chunks']} morceaux indexés")
     j.close()
     ```
 
-### Search Memory
+### Chercher dans la mémoire
 
-Query the memory store to find relevant chunks:
+Interroge la mémoire pour trouver les morceaux pertinents :
 
 === "CLI"
 
     ```bash
-    diapason memory search "configuration options"
-    diapason memory search -k 10 "how to deploy"
+    diapason memory search "options de configuration"
+    diapason memory search -k 10 "comment déployer"
     ```
 
-=== "Python SDK"
+=== "SDK Python"
 
     ```python
-    results = j.memory.search("configuration options", top_k=5)
+    results = j.memory.search("options de configuration", top_k=5)
     for r in results:
         print(f"[{r['score']:.4f}] {r['source']}: {r['content'][:100]}")
     ```
 
-### Check Memory Statistics
+### Consulter les statistiques de la mémoire
 
 === "CLI"
 
@@ -353,58 +354,58 @@ Query the memory store to find relevant chunks:
     diapason memory stats
     ```
 
-=== "Python SDK"
+=== "SDK Python"
 
     ```python
     stats = j.memory.stats()
-    print(f"Backend: {stats['backend']}, Documents: {stats.get('count', 'N/A')}")
+    print(f"Backend : {stats['backend']}, documents : {stats.get('count', 'N/A')}")
     ```
 
-### Automatic Context Injection
+### L'injection automatique de contexte
 
-When you have indexed documents, Diapason automatically injects relevant context into your queries. The memory system searches for chunks matching your query and prepends them as system context before sending to the model.
+Quand tu as indexé des documents, Diapason injecte tout seul le contexte pertinent dans tes questions. Le système de mémoire cherche les morceaux qui correspondent à la question et les place en tête, comme contexte système, avant l'envoi au modèle.
 
-To disable this behavior:
+Pour couper ce comportement :
 
 === "CLI"
 
     ```bash
-    diapason ask --no-context "Hello"
+    diapason ask --no-context "Bonjour"
     ```
 
-=== "Python SDK"
+=== "SDK Python"
 
     ```python
-    response = j.ask("Hello", context=False)
+    response = j.ask("Bonjour", context=False)
     ```
 
-Context injection is controlled by `agent.context_from_memory` in `config.toml`. The retrieval parameters (`context_top_k`, `context_min_score`, `context_max_tokens`) live under `[tools.storage]`. See [Configuration](configuration.md) for details.
+L'injection de contexte est pilotée par `agent.context_from_memory` dans `config.toml`. Les paramètres de récupération (`context_top_k`, `context_min_score`, `context_max_tokens`) vivent sous `[tools.storage]`. Voir [Configuration](configuration.md) pour le détail.
 
-## Model Management
+## La gestion des modèles
 
-### List Available Models
+### Lister les modèles disponibles
 
-See all models available on running engines:
+Voir tous les modèles offerts par les moteurs en marche :
 
 ```bash
 diapason model list
 ```
 
-This produces a table showing each model, its engine, parameter count, context length, and VRAM requirements.
+Cela produit une table qui montre chaque modèle, son moteur, son nombre de paramètres, sa longueur de contexte et la VRAM nécessaire.
 
-### Get Model Details
+### Obtenir le détail d'un modèle
 
 ```bash
 diapason model info qwen3:8b
 ```
 
-### Pull a Model (Ollama)
+### Télécharger un modèle (Ollama)
 
 ```bash
 diapason model pull qwen3:8b
 ```
 
-### SDK Model Listing
+### Lister les modèles depuis le SDK
 
 ```python
 from diapason import Diapason
@@ -412,39 +413,39 @@ from diapason import Diapason
 j = Diapason()
 models = j.list_models()
 engines = j.list_engines()
-print(f"Models: {models}")
-print(f"Engines: {engines}")
+print(f"Modèles : {models}")
+print(f"Moteurs : {engines}")
 j.close()
 ```
 
-## Running Benchmarks
+## Mesurer les performances
 
-The benchmarking framework measures inference latency and throughput against your engine.
+Le cadriciel de mesure évalue la latence et le débit de l'inférence sur ton moteur.
 
-=== "All benchmarks"
+=== "Toutes les mesures"
 
     ```bash
     diapason bench run
     ```
 
-=== "Specific benchmark"
+=== "Une mesure précise"
 
     ```bash
     diapason bench run -b latency
     diapason bench run -b throughput
     ```
 
-=== "Custom options"
+=== "Des options à soi"
 
     ```bash
-    # 20 samples, JSON output
+    # 20 échantillons, sortie JSON
     diapason bench run -n 20 --json
 
-    # Specific model and engine, write to file
+    # Un modèle et un moteur précis, écriture dans un fichier
     diapason bench run -m qwen3:8b -e ollama -o results.jsonl
     ```
 
-Example output:
+Exemple de sortie :
 
 ```
 Running 2 benchmark(s) on ollama/qwen3:8b (10 samples)...
@@ -462,38 +463,38 @@ throughput (10 samples, 0 errors)
   total_seconds: 100.0000
 ```
 
-## Starting the API Server
+## Démarrer le serveur d'API
 
-Diapason provides an OpenAI-compatible API server for integration with existing tools and frontends.
+Diapason offre un serveur d'API compatible OpenAI, pour s'intégrer aux outils et aux interfaces qui existent déjà.
 
-!!! note "Requires the `server` extra"
+!!! note "L'extra `server` est nécessaire"
     ```bash
     uv sync --extra server
     ```
 
-### Start the Server
+### Démarrer le serveur
 
 ```bash
 diapason serve --port 8000
 ```
 
-With custom options:
+Avec des options à soi :
 
 ```bash
 diapason serve --host 0.0.0.0 --port 8000 --engine ollama --model qwen3:8b --agent orchestrator
 ```
 
-### API Endpoints
+### Les routes de l'API
 
-| Endpoint | Method | Description |
+| Route | Méthode | Description |
 |----------|--------|-------------|
-| `/v1/chat/completions` | `POST` | Chat completions (streaming and non-streaming) |
-| `/v1/models` | `GET` | List available models |
-| `/health` | `GET` | Health check |
+| `/v1/chat/completions` | `POST` | Complétions de discussion (au fil de l'eau ou non) |
+| `/v1/models` | `GET` | Liste les modèles disponibles |
+| `/health` | `GET` | Contrôle de santé |
 
-### Use with Any OpenAI-Compatible Client
+### Se servir de n'importe quel client compatible OpenAI
 
-Once the server is running, point any OpenAI-compatible client at it:
+Une fois le serveur en marche, pointe n'importe quel client compatible OpenAI dessus :
 
 ```python
 from openai import OpenAI
@@ -501,87 +502,87 @@ from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="not-needed")
 response = client.chat.completions.create(
     model="qwen3:8b",
-    messages=[{"role": "user", "content": "Hello!"}],
+    messages=[{"role": "user", "content": "Bonjour !"}],
 )
 print(response.choices[0].message.content)
 ```
 
-Or with `curl`:
+Ou avec `curl` :
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3:8b",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "messages": [{"role": "user", "content": "Bonjour !"}]
   }'
 ```
 
-## Telemetry
+## La télémétrie
 
-Diapason records telemetry for every inference call (timing, tokens, cost). View aggregated statistics:
+Diapason enregistre la télémétrie de chaque appel d'inférence (durées, jetons, coût). Pour voir les statistiques agrégées :
 
 ```bash
 diapason telemetry stats
 ```
 
-Export telemetry data:
+Exporter les données de télémétrie :
 
 ```bash
 diapason telemetry export --format json
 diapason telemetry export --format csv -o telemetry.csv
 ```
 
-Clear all telemetry records:
+Effacer tous les enregistrements de télémétrie :
 
 ```bash
 diapason telemetry clear --yes
 ```
 
-## Complete Working Example
+## Un exemple complet, de bout en bout
 
-Here is a complete end-to-end session combining multiple features:
+Voici une séance complète, qui combine plusieurs fonctions :
 
 ```python
 from diapason import Diapason
 
-# Initialize with defaults (auto-detect hardware and engine)
+# Initialiser avec les valeurs par défaut (matériel et moteur détectés tout seuls)
 j = Diapason()
 
-# 1. Index some documentation
+# 1. Indexer de la documentation
 index_result = j.memory.index("./docs/", chunk_size=512)
-print(f"Indexed {index_result['chunks']} chunks from {index_result['path']}")
+print(f"{index_result['chunks']} morceaux indexés depuis {index_result['path']}")
 
-# 2. Search memory
-results = j.memory.search("how to configure engines")
+# 2. Chercher dans la mémoire
+results = j.memory.search("comment configurer les moteurs")
 for r in results:
     print(f"  [{r['score']:.3f}] {r['source']}")
 
-# 3. Ask a question (memory context is injected automatically)
-answer = j.ask("How do I configure the Ollama engine host?")
-print(f"\nAnswer: {answer}")
+# 3. Poser une question (le contexte mémoire est injecté tout seul)
+answer = j.ask("Comment configurer l'hôte du moteur Ollama ?")
+print(f"\nRéponse : {answer}")
 
-# 4. Use an agent with tools
+# 4. Utiliser un agent avec des outils
 calc_result = j.ask_full(
-    "Calculate the compound interest on $10,000 at 5% for 10 years",
+    "Calcule les intérêts composés sur 10 000 $ à 5 % pendant 10 ans",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
-print(f"\nCalculation: {calc_result['content']}")
-print(f"Tools used: {[t['tool_name'] for t in calc_result['tool_results']]}")
-print(f"Agent turns: {calc_result['turns']}")
+print(f"\nCalcul : {calc_result['content']}")
+print(f"Outils utilisés : {[t['tool_name'] for t in calc_result['tool_results']]}")
+print(f"Tours d'agent : {calc_result['turns']}")
 
-# 5. List available models
+# 5. Lister les modèles disponibles
 models = j.list_models()
-print(f"\nAvailable models: {models}")
+print(f"\nModèles disponibles : {models}")
 
-# 6. Clean up
+# 6. Faire le ménage
 j.close()
 ```
 
-## Next Steps
+## Pour aller plus loin
 
-- [Configuration](configuration.md) — Fine-tune engine hosts, model routing, memory settings, and more
-- [CLI Reference](../user-guide/cli.md) — Full reference for all CLI commands and options
-- [Python SDK](../user-guide/python-sdk.md) — Detailed SDK documentation
-- [Architecture Overview](../architecture/overview.md) — Understand the five-primitive design
+- [Configuration](configuration.md) — Régler finement les hôtes de moteur, le routage des modèles, la mémoire, et le reste
+- [Référence de la ligne de commande](../user-guide/cli.md) — La référence complète des commandes et de leurs options
+- [SDK Python](../user-guide/python-sdk.md) — La documentation détaillée du SDK
+- [Vue d'ensemble de l'architecture](../architecture/overview.md) — Comprendre la conception à cinq primitives

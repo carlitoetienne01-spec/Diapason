@@ -1,22 +1,22 @@
 ---
 title: Installation
-description: Get Diapason running — browser app, desktop app, CLI, or Python SDK
+description: Mettre Diapason en marche — app navigateur, app de bureau, CLI ou SDK Python
 search:
   boost: 3
 ---
 
 # Installation
 
-Diapason runs entirely on your hardware. Choose the interface that fits your workflow.
+Diapason tourne entièrement sur ta machine. Choisis l'interface qui te convient.
 
 ---
 
-## Browser App
+## L'app navigateur
 
-Run the full chat UI in your browser. Everything stays local — the backend runs on
-your machine and the frontend connects via `localhost`.
+Lance l'interface de discussion complète dans ton navigateur. Tout reste local — le
+serveur tourne sur ta machine et l'interface s'y connecte par `localhost`.
 
-### One-command setup
+### Installation en une commande
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -24,19 +24,19 @@ cd Diapason
 ./scripts/quickstart.sh
 ```
 
-The script handles everything:
+Le script s'occupe de tout :
 
-1. Checks for Python 3.10+ and Node.js 18+
-2. Installs Ollama if not present and pulls a starter model
-3. Installs Python and frontend dependencies
-4. Starts the backend API server and frontend dev server
-5. Opens `http://localhost:5173` in your browser
+1. Vérifie que Python 3.10+ et Node.js 18+ sont présents
+2. Installe Ollama s'il manque et télécharge un premier modèle
+3. Installe les dépendances Python et celles de l'interface
+4. Démarre le serveur d'API et le serveur de développement de l'interface
+5. Ouvre `http://localhost:5173` dans ton navigateur
 
-### Manual setup
+### Installation pas à pas
 
-If you prefer to run each step yourself:
+Si tu préfères faire chaque étape toi-même :
 
-=== "Step 1: Clone and install"
+=== "Étape 1 : cloner et installer"
 
     ```bash
     git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -46,43 +46,44 @@ If you prefer to run each step yourself:
     cd frontend && npm install && cd ..
     ```
 
-    !!! note "Prerequisites"
-        Requires [Rust](https://rustup.rs/) (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`).
-        On Python 3.14+, set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` before the `maturin` command.
+    !!! note "Ce qu'il te faut d'abord"
+        [Rust](https://rustup.rs/) est nécessaire (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`).
+        Sur Python 3.14+, pose `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` avant la commande `maturin`.
 
-=== "Step 2: Start Ollama"
+=== "Étape 2 : démarrer Ollama"
 
     ```bash
-    # Install from https://ollama.com if not already installed
+    # À installer depuis https://ollama.com si ce n'est pas déjà fait
     ollama serve &
     ollama pull qwen3:0.6b
     ```
 
-=== "Step 3: Start backend"
+=== "Étape 3 : démarrer le serveur"
 
     ```bash
     uv run diapason serve --port 8000
     ```
 
-=== "Step 4: Start frontend"
+=== "Étape 4 : démarrer l'interface"
 
     ```bash
     cd frontend
     npm run dev
     ```
 
-Then open [http://localhost:5173](http://localhost:5173).
+Ouvre ensuite [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## Desktop App
+## L'app de bureau
 
-The desktop app is a native window for the Diapason chat UI. All inference and backend
-processing happens on your local machine — the app connects to the backend you start locally.
+L'app de bureau est une fenêtre native pour l'interface de discussion de Diapason.
+L'inférence et tout le traitement se font sur ta machine — l'app se connecte au
+serveur que tu démarres chez toi.
 
-### Setup
+### Mise en place
 
-**Step 1.** Start the backend (same as Browser App):
+**Étape 1.** Démarre le serveur (comme pour l'app navigateur) :
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -90,32 +91,32 @@ cd Diapason
 ./scripts/quickstart.sh
 ```
 
-**Step 2.** Build and open the desktop app from the authenticated checkout.
+**Étape 2.** Construis et ouvre l'app de bureau depuis le clone authentifié.
 
-There is currently no published installer: the GitHub Releases list is empty,
-and the former `desktop-v1.0.2` links did not exist. On macOS, use the validated
-local installer:
+Il n'y a pour l'instant aucun installateur publié : la liste des releases GitHub
+est vide, et les anciens liens `desktop-v1.0.2` n'existaient pas. Sur macOS,
+sers-toi de l'installateur local, celui qui est vérifié :
 
 ```bash
 ./scripts/install-desktop.sh
 ```
 
-On Windows, run `deploy/windows/install.ps1` first. It prepares the backend at
-`%LOCALAPPDATA%\Diapason\src`; the Tauri application now detects that exact
-location. A distributable `.msi` will only be advertised after a build and
-end-to-end run on the real Windows PC.
+Sur Windows, lance d'abord `deploy/windows/install.ps1`. Il prépare le serveur
+dans `%LOCALAPPDATA%\Diapason\src` ; l'application Tauri détecte désormais cet
+emplacement exact. Un `.msi` distribuable ne sera annoncé qu'après une
+construction et un essai de bout en bout sur le vrai PC Windows.
 
-The app connects to an existing `http://localhost:8000` server or starts the
-backend from the installed project.
+L'app se connecte à un serveur `http://localhost:8000` déjà en marche, ou démarre
+celui du projet installé.
 
-!!! warning "macOS: \"app is damaged\""
-    If macOS says the app is damaged, clear the Gatekeeper quarantine flag:
+!!! warning "macOS : « l'app est endommagée »"
+    Si macOS dit que l'app est endommagée, lève le drapeau de quarantaine de Gatekeeper :
     ```bash
     xattr -cr /Applications/Diapason.app
     ```
-    This is normal for open-source apps distributed outside the App Store.
+    C'est le cas courant des apps open-source distribuées hors de l'App Store.
 
-### Build from source
+### Construire depuis les sources
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -124,16 +125,16 @@ npm install
 npm run tauri:build
 ```
 
-The built installer will be in `frontend/src-tauri/target/release/bundle/`.
+L'installateur construit se trouvera dans `frontend/src-tauri/target/release/bundle/`.
 
 ---
 
-## CLI
+## La ligne de commande
 
-The command-line interface is the fastest way to interact with Diapason
-programmatically. Every feature is accessible from the terminal.
+La ligne de commande est le chemin le plus direct pour se servir de Diapason par
+programme. Tout est accessible depuis le terminal.
 
-### Install
+### Installer
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -142,21 +143,21 @@ uv sync
 uv run maturin develop -m rust/crates/diapason-python/Cargo.toml
 ```
 
-Requires [Rust](https://rustup.rs/). On Python 3.14+, set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` before the `maturin` command.
+[Rust](https://rustup.rs/) est nécessaire. Sur Python 3.14+, pose `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` avant la commande `maturin`.
 
-### Verify
+### Vérifier
 
 ```bash
 diapason --version
 # diapason, version 0.1.0
 ```
 
-### First commands
+### Premières commandes
 
 ```bash
-diapason ask "What is the capital of France?"
+diapason ask "Quelle est la capitale de la France ?"
 
-diapason ask --agent orchestrator --tools calculator "What is 137 * 42?"
+diapason ask --agent orchestrator --tools calculator "Combien font 137 * 42 ?"
 
 diapason serve --port 8000
 
@@ -167,17 +168,17 @@ diapason model list
 diapason chat
 ```
 
-!!! info "Inference backend required"
-    The CLI requires a running inference backend (e.g., Ollama). See
-    [Setting up an inference backend](#setting-up-an-inference-backend) below.
+!!! info "Un moteur d'inférence est nécessaire"
+    La CLI a besoin d'un moteur d'inférence en marche (Ollama, par exemple). Voir
+    [Mettre en place un moteur d'inférence](#setting-up-an-inference-backend) plus bas.
 
 ---
 
-## Python SDK
+## Le SDK Python
 
-For programmatic access, the `Diapason` class provides a high-level sync API.
+Pour un accès par programme, la classe `Diapason` offre une API synchrone de haut niveau.
 
-### Install
+### Installer
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -186,34 +187,34 @@ uv sync
 uv run maturin develop -m rust/crates/diapason-python/Cargo.toml
 ```
 
-Requires [Rust](https://rustup.rs/). On Python 3.14+, set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` before the `maturin` command.
+[Rust](https://rustup.rs/) est nécessaire. Sur Python 3.14+, pose `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` avant la commande `maturin`.
 
-### Quick example
+### Exemple minimal
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
-print(j.ask("Explain quicksort in two sentences."))
+print(j.ask("Explique le tri rapide en deux phrases."))
 j.close()
 ```
 
-### With agents and tools
+### Avec des agents et des outils
 
 ```python
 result = j.ask_full(
-    "What is the square root of 144?",
+    "Quelle est la racine carrée de 144 ?",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
-print(result["content"])       # "12"
-print(result["tool_results"])  # tool invocations
-print(result["turns"])         # number of agent turns
+print(result["content"])       # « 12 »
+print(result["tool_results"])  # les appels d'outils
+print(result["turns"])         # le nombre de tours d'agent
 ```
 
-### Composition layer
+### La couche de composition
 
-For full control, use the `SystemBuilder`:
+Pour tout contrôler, passe par `SystemBuilder` :
 
 ```python
 from diapason import SystemBuilder
@@ -229,108 +230,108 @@ system = (
     .build()
 )
 
-result = system.ask("Summarize the latest AI news.")
+result = system.ask("Résume l'actualité de l'IA.")
 system.close()
 ```
 
-See the [Python SDK guide](../user-guide/python-sdk.md) for the full API reference.
+Voir le [guide du SDK Python](../user-guide/python-sdk.md) pour la référence complète de l'API.
 
 ---
 
-## Requirements
+## Ce qu'il te faut
 
-| Requirement | Version | Install | Notes |
+| Il te faut | Version | Installation | Remarques |
 |-------------|---------|---------|-------|
-| Python | 3.10–3.13 | [python.org](https://www.python.org/downloads/) | Required. 3.14+ not yet supported (a core dependency lacks 3.14 wheels). |
-| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or `brew install uv` (macOS) | Python package & project manager |
-| Git | any | [git-scm.com](https://git-scm.com/) or `brew install git` (macOS) | Required |
-| Rust | stable | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | Required for the Rust extension |
-| Inference backend | any | See [below](#setting-up-an-inference-backend) | At least one of Ollama, vLLM, llama.cpp, SGLang, or a cloud API |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org/) or `brew install node` (macOS) | Required for the browser UI; 22+ for the WhatsApp Baileys channel bridge |
+| Python | 3.10–3.13 | [python.org](https://www.python.org/downloads/) | Obligatoire. 3.14+ pas encore pris en charge (une dépendance centrale n'a pas de wheels 3.14). |
+| uv | la dernière | `curl -LsSf https://astral.sh/uv/install.sh \| sh` ou `brew install uv` (macOS) | Gestionnaire de paquets et de projets Python |
+| Git | n'importe laquelle | [git-scm.com](https://git-scm.com/) ou `brew install git` (macOS) | Obligatoire |
+| Rust | stable | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | Obligatoire pour l'extension Rust |
+| Moteur d'inférence | n'importe lequel | Voir [plus bas](#setting-up-an-inference-backend) | Au moins l'un parmi Ollama, vLLM, llama.cpp, SGLang, ou une API distante |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org/) ou `brew install node` (macOS) | Obligatoire pour l'interface navigateur ; 22+ pour la passerelle du canal WhatsApp Baileys |
 
-!!! tip "macOS users"
-    See the [macOS Installation Guide](macos.md) for a complete step-by-step walkthrough
-    covering Homebrew, uv, Rust, llama.cpp, and common pitfalls.
+!!! tip "Sous macOS"
+    Voir le [guide d'installation macOS](macos.md) pour une marche à suivre complète,
+    pas à pas : Homebrew, uv, Rust, llama.cpp et les pièges courants.
 
-## Optional Extras
+## Les extras facultatifs
 
-Diapason uses optional extras to keep the base installation lightweight.
+Diapason se sert d'extras facultatifs pour garder l'installation de base légère.
 
-### Inference Backends
+### Les moteurs d'inférence
 
-| Extra | Install Command | Description |
+| Extra | Commande d'installation | Description |
 |-------|----------------|-------------|
-| `inference-cloud` | `uv sync --extra inference-cloud` | OpenAI and Anthropic APIs |
-| `inference-google` | `uv sync --extra inference-google` | Google Gemini API |
+| `inference-cloud` | `uv sync --extra inference-cloud` | Les API d'OpenAI et d'Anthropic |
+| `inference-google` | `uv sync --extra inference-google` | L'API Google Gemini |
 
-!!! note "Ollama, vLLM, and llama.cpp are HTTP-based"
-    These engines have no additional Python dependencies — Diapason communicates over HTTP. You still need the engine software running on your machine.
+!!! note "Ollama, vLLM et llama.cpp passent par HTTP"
+    Ces moteurs n'ajoutent aucune dépendance Python — Diapason leur parle en HTTP. Il te faut quand même le logiciel du moteur en marche sur ta machine.
 
-### Memory Backends
+### Les moteurs de mémoire
 
-| Extra | Install Command | Description |
+| Extra | Commande d'installation | Description |
 |-------|----------------|-------------|
-| `memory-faiss` | `uv sync --extra memory-faiss` | FAISS vector store |
-| `memory-colbert` | `uv sync --extra memory-colbert` | ColBERTv2 late-interaction retrieval |
-| `memory-bm25` | `uv sync --extra memory-bm25` | BM25 sparse retrieval |
+| `memory-faiss` | `uv sync --extra memory-faiss` | Base vectorielle FAISS |
+| `memory-colbert` | `uv sync --extra memory-colbert` | Recherche à interaction tardive ColBERTv2 |
+| `memory-bm25` | `uv sync --extra memory-bm25` | Recherche creuse BM25 |
 
-!!! tip "SQLite memory is always available"
-    The default SQLite/FTS5 memory backend requires no additional dependencies.
+!!! tip "La mémoire SQLite est toujours là"
+    Le moteur de mémoire SQLite/FTS5 par défaut n'a besoin d'aucune dépendance supplémentaire.
 
-### Server & Other
+### Le serveur, et le reste
 
-| Extra | Install Command | Description |
+| Extra | Commande d'installation | Description |
 |-------|----------------|-------------|
-| `desktop` | `uv sync --extra desktop` | Desktop/API server plus local speech input |
-| `server` | `uv sync --extra server` | OpenAI-compatible API server (`diapason serve`) |
-| `dev` | `uv sync --extra dev` | Development and testing tools |
-| `docs` | `uv sync --extra docs` | Documentation build tools |
+| `desktop` | `uv sync --extra desktop` | Le serveur de bureau et d'API, avec l'entrée vocale locale |
+| `server` | `uv sync --extra server` | Le serveur d'API compatible OpenAI (`diapason serve`) |
+| `dev` | `uv sync --extra dev` | Les outils de développement et de test |
+| `docs` | `uv sync --extra docs` | Les outils de construction de la documentation |
 
-Combine extras:
+On peut les combiner :
 
 ```bash
 uv sync --extra desktop --extra memory-faiss --extra inference-cloud
 ```
 
-## Setting Up an Inference Backend
+## Mettre en place un moteur d'inférence {#setting-up-an-inference-backend}
 
-Diapason requires at least one inference backend. Choose the one that matches your hardware.
+Diapason a besoin d'au moins un moteur d'inférence. Choisis celui qui va avec ta machine.
 
-### Ollama (Recommended)
+### Ollama (recommandé)
 
-The easiest way to get started. Handles model downloading and serving automatically.
+Le plus simple pour commencer. Il télécharge les modèles et les sert tout seul.
 
-1. Install from [ollama.com](https://ollama.com)
-2. Start the server and pull a model:
+1. Installe-le depuis [ollama.com](https://ollama.com)
+2. Démarre le serveur et télécharge un modèle :
 
     ```bash
     ollama serve
     ollama pull qwen3:0.6b
     ```
 
-3. Verify: `diapason model list`
+3. Vérifie : `diapason model list`
 
-!!! tip "Best for: Apple Silicon Macs, consumer NVIDIA GPUs, CPU-only systems"
+!!! tip "Le meilleur choix pour : les Mac Apple Silicon, les cartes NVIDIA grand public, les machines sans carte graphique"
 
 ### vLLM
 
-High-throughput serving optimized for datacenter GPUs.
+Un service à haut débit, optimisé pour les cartes graphiques de centre de données.
 
-1. Install following the [official guide](https://docs.vllm.ai)
-2. Start: `vllm serve Qwen/Qwen2.5-7B-Instruct`
-3. Auto-detected at `http://localhost:8000`
+1. Installe-le en suivant le [guide officiel](https://docs.vllm.ai)
+2. Démarre-le : `vllm serve Qwen/Qwen2.5-7B-Instruct`
+3. Détecté tout seul sur `http://localhost:8000`
 
-!!! tip "Best for: NVIDIA datacenter GPUs (A100, H100), AMD GPUs"
+!!! tip "Le meilleur choix pour : les cartes NVIDIA de centre de données (A100, H100), les cartes AMD"
 
 ### llama.cpp
 
-Efficient CPU and GPU inference with GGUF quantized models.
+Une inférence efficace sur processeur comme sur carte graphique, avec des modèles quantifiés GGUF.
 
-1. Build from [github.com/ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
-2. Start: `llama-server -m /path/to/model.gguf --port 8080`
-3. Auto-detected at `http://localhost:8080`
+1. Construis-le depuis [github.com/ggerganov/llama.cpp](https://github.com/ggerganov/llama.cpp)
+2. Démarre-le : `llama-server -m /path/to/model.gguf --port 8080`
+3. Détecté tout seul sur `http://localhost:8080`
 
-### Cloud APIs
+### Les API distantes
 
 ```bash
 uv sync --extra inference-cloud --extra inference-google
@@ -338,7 +339,7 @@ export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-## Next Steps
+## Pour aller plus loin
 
-- [Quick Start](quickstart.md) — Run your first query
-- [Configuration](configuration.md) — Customize engine hosts, model routing, memory, and more
+- [Démarrage rapide](quickstart.md) — lance ta première question
+- [Configuration](configuration.md) — règle les hôtes des moteurs, l'aiguillage des modèles, la mémoire et le reste

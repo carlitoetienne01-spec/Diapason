@@ -1,10 +1,10 @@
-# Code Assistant
+# Assistant de code
 
-An orchestrator agent with code execution, file I/O, and shell access. It can write scripts, read and explain code, run tests, fix bugs, and execute shell commands -- all locally on your machine.
+Un agent orchestrator qui exécute du code, lit et écrit des fichiers et accède au shell. Il sait écrire des scripts, lire et expliquer du code, lancer des tests, corriger des bugs et exécuter des commandes shell — le tout en local, sur ta machine.
 
-## Quickstart (5 minutes)
+## Démarrage rapide (5 minutes)
 
-### 1. Install and initialize
+### 1. Installer et initialiser
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -13,48 +13,48 @@ uv sync --extra dev
 diapason init --preset code-assistant
 ```
 
-This writes a pre-configured `~/.diapason/config.toml` for the code assistant.
+Cela écrit un `~/.diapason/config.toml` déjà réglé pour l'assistant de code.
 
-### 2. Start a local LLM via Ollama
+### 2. Démarrer un modèle local avec Ollama
 
 ```bash
-# Install Ollama: https://ollama.com
+# Installe Ollama depuis https://ollama.com
 ollama pull qwen3.5:9b
 ```
 
-### 3. Ask a coding question
+### 3. Poser une question de code
 
 ```bash
-diapason ask "Write a Python script that reads a CSV file and prints the top 5 rows"
+diapason ask "Écris un script Python qui lit un fichier CSV et affiche les 5 premières lignes"
 ```
 
-The orchestrator agent will plan the approach, write the code, and can execute it if you approve.
+L'agent orchestrator prévoit la marche à suivre, écrit le code, et peut l'exécuter si tu l'y autorises.
 
-## CLI Commands
+## Les commandes de la CLI
 
 ```bash
-# Ask a coding question (uses orchestrator agent by default with this config)
-diapason ask "Write a Python script that parses JSON from stdin"
+# Poser une question de code (avec cette configuration, l'agent orchestrator est pris par défaut)
+diapason ask "Écris un script Python qui analyse du JSON lu sur l'entrée standard"
 
-# Read and explain existing code
-diapason ask "Read main.py and explain the architecture"
+# Lire et expliquer du code existant
+diapason ask "Lis main.py et explique-moi l'architecture"
 
-# Fix a bug
-diapason ask "Find and fix the bug in test_utils.py"
+# Corriger un bug
+diapason ask "Trouve et corrige le bug dans test_utils.py"
 
-# Run tests
-diapason ask "Run the test suite and summarize any failures"
+# Lancer les tests
+diapason ask "Lance la suite de tests et résume les échecs"
 
-# Explicitly specify agent and tools
-diapason ask --agent orchestrator --tools code_interpreter "Calculate the first 20 Fibonacci numbers"
+# Nommer explicitement l'agent et les outils
+diapason ask --agent orchestrator --tools code_interpreter "Calcule les 20 premiers nombres de Fibonacci"
 
-# Interactive chat for iterative coding
+# Discussion interactive, pour coder par allers-retours
 diapason chat
 ```
 
-## Configuration Reference
+## Référence de configuration
 
-The preset writes this to `~/.diapason/config.toml`:
+Le préréglage écrit ceci dans `~/.diapason/config.toml` :
 
 ```toml
 [engine]
@@ -62,76 +62,76 @@ default = "ollama"
 
 [intelligence]
 default_model = "qwen3.5:9b"
-# default_model = "qwen3.5:35b"    # Better for complex code tasks
+# default_model = "qwen3.5:35b"    # Mieux pour les tâches de code difficiles
 
 [agent]
-default_agent = "orchestrator"      # Multi-turn with tool selection
+default_agent = "orchestrator"      # Plusieurs tours, avec choix des outils
 max_turns = 10
 
 [tools]
 enabled = ["code_interpreter", "file_read", "file_write", "shell_exec", "web_search", "think", "calculator"]
 ```
 
-### Key settings
+### Les réglages qui comptent
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `intelligence.default_model` | `qwen3.5:9b` | The model for code generation. Use `qwen3.5:35b` for complex tasks like refactoring or multi-file changes. |
-| `agent.default_agent` | `orchestrator` | Multi-turn agent that picks tools iteratively until it has an answer. |
-| `agent.max_turns` | `10` | Maximum tool-calling iterations. Increase for multi-step tasks. |
-| `tools.enabled` | 7 tools | `code_interpreter` (execute Python), `file_read`, `file_write`, `shell_exec` (run shell commands), `web_search`, `think`, `calculator`. |
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| `intelligence.default_model` | `qwen3.5:9b` | Le modèle qui génère le code. Prends `qwen3.5:35b` pour les tâches difficiles : réusinage, changements répartis sur plusieurs fichiers. |
+| `agent.default_agent` | `orchestrator` | L'agent multi-tours, qui choisit ses outils au fil des tours jusqu'à tenir une réponse. |
+| `agent.max_turns` | `10` | Nombre maximum de tours d'appel d'outils. À augmenter pour les tâches en plusieurs étapes. |
+| `tools.enabled` | 7 outils | `code_interpreter` (exécute du Python), `file_read`, `file_write`, `shell_exec` (lance des commandes shell), `web_search`, `think`, `calculator`. |
 
-### Tools explained
+### Les outils, en détail
 
-| Tool | What it does |
+| Outil | Ce qu'il fait |
 |------|-------------|
-| `code_interpreter` | Executes Python code in a sandboxed environment and returns output. |
-| `file_read` | Reads files with path validation. The agent can inspect source code, configs, logs. |
-| `file_write` | Writes or modifies files. The agent can create scripts, patch code, write configs. |
-| `shell_exec` | Runs shell commands (e.g., `git status`, `pytest`, `ls`). |
-| `web_search` | Searches the web for documentation, Stack Overflow answers, etc. |
-| `think` | Internal reasoning scratchpad for planning multi-step solutions. |
-| `calculator` | Evaluates mathematical expressions. |
+| `code_interpreter` | Exécute du code Python dans un bac à sable et rend la sortie. |
+| `file_read` | Lit des fichiers, chemin validé. L'agent peut inspecter le code source, les configurations, les journaux. |
+| `file_write` | Écrit ou modifie des fichiers. L'agent peut créer des scripts, corriger du code, écrire des configurations. |
+| `shell_exec` | Lance des commandes shell (`git status`, `pytest`, `ls`, par exemple). |
+| `web_search` | Cherche sur le web de la documentation, des réponses Stack Overflow, etc. |
+| `think` | Brouillon de raisonnement interne, pour préparer une solution en plusieurs étapes. |
+| `calculator` | Évalue des expressions mathématiques. |
 
-## Example Tasks
+## Des exemples de tâches
 
 ```bash
-# Write a new script
-diapason ask "Write a Python script that converts YAML to JSON"
+# Écrire un nouveau script
+diapason ask "Écris un script Python qui convertit du YAML en JSON"
 
-# Explain existing code
-diapason ask "Read src/diapason/core/events.py and explain the EventBus pattern"
+# Expliquer du code existant
+diapason ask "Lis src/diapason/core/events.py et explique-moi le motif EventBus"
 
-# Debug a failing test
-diapason ask "Run pytest tests/test_memory.py -v and fix any failures"
+# Déboguer un test qui échoue
+diapason ask "Lance pytest tests/test_memory.py -v et corrige les échecs"
 
-# Refactor code
-diapason ask "Read utils.py and refactor the parse_config function to use dataclasses"
+# Réusiner du code
+diapason ask "Lis utils.py et réusine la fonction parse_config avec des dataclasses"
 
-# Generate tests
-diapason ask "Read src/diapason/tools/calculator.py and write unit tests for it"
+# Générer des tests
+diapason ask "Lis src/diapason/tools/calculator.py et écris-en les tests unitaires"
 
-# Shell tasks
-diapason ask "Find all Python files larger than 100KB in this repo"
+# Tâches shell
+diapason ask "Trouve tous les fichiers Python de plus de 100 Ko dans ce dépôt"
 ```
 
-## Safety Notes
+## Notes de sécurité
 
-The `shell_exec` and `code_interpreter` tools execute real commands on your machine. Keep these in mind:
+Les outils `shell_exec` et `code_interpreter` exécutent de vraies commandes sur ta machine. À garder en tête :
 
-- **shell_exec** runs commands in your current user context. It can read, write, and delete files. Avoid running the agent on directories containing sensitive data without reviewing tool calls.
-- **code_interpreter** executes Python code. It has access to your Python environment and installed packages.
-- The agent asks for confirmation before executing potentially destructive commands when running in interactive mode (`diapason chat`).
-- For stronger isolation, use the sandboxed agent: `diapason ask --agent sandboxed --tools code_interpreter "..."`, which runs inside a Docker/Podman container.
+- **shell_exec** lance les commandes avec ton compte utilisateur. Il peut lire, écrire et supprimer des fichiers. Évite de faire travailler l'agent dans un dossier contenant des données sensibles sans relire ses appels d'outils.
+- **code_interpreter** exécute du code Python. Il a accès à ton environnement Python et aux paquets installés.
+- En mode interactif (`diapason chat`), l'agent demande confirmation avant d'exécuter une commande potentiellement destructrice.
+- Pour un cloisonnement plus fort, passe par l'agent `sandboxed` : `diapason ask --agent sandboxed --tools code_interpreter "..."`, qui tourne dans un conteneur Docker/Podman.
 
-## Troubleshooting
+## Dépannage
 
-**"Tool not found: code_interpreter"** -- Make sure your `config.toml` includes `code_interpreter` in the `tools.enabled` list.
+**« Tool not found: code_interpreter »** — vérifie que ton `config.toml` contient bien `code_interpreter` dans la liste `tools.enabled`.
 
-**Agent loops without progress** -- Increase `max_turns` if the task is complex, or use a larger model (`qwen3.5:35b`). The 9b model handles most single-file tasks; multi-file refactoring benefits from more parameters.
+**L'agent tourne en rond sans avancer** — augmente `max_turns` si la tâche est difficile, ou prends un modèle plus gros (`qwen3.5:35b`). Le 9b suffit à la plupart des tâches sur un seul fichier ; un réusinage réparti sur plusieurs fichiers profite d'un nombre de paramètres plus élevé.
 
-**Shell command fails** -- The `shell_exec` tool runs commands relative to where you launched `diapason`. Use `cd /path && command` in your prompt if needed, or run `diapason` from the project directory.
+**Une commande shell échoue** — l'outil `shell_exec` lance les commandes depuis le dossier où tu as démarré `diapason`. Écris `cd /chemin && commande` dans ton prompt si besoin, ou lance `diapason` depuis le dossier du projet.
 
-**Web search not working** -- Install with `uv sync --extra tools-search` and set `TAVILY_API_KEY`.
+**La recherche web ne marche pas** — installe avec `uv sync --extra tools-search` et renseigne `TAVILY_API_KEY`.
 
-**Code execution hangs** -- The `code_interpreter` has a default timeout. Long-running scripts will be terminated. Break large tasks into smaller steps.
+**L'exécution de code reste bloquée** — `code_interpreter` a un délai d'attente par défaut. Un script trop long est interrompu. Découpe les grosses tâches en étapes plus petites.

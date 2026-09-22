@@ -1,15 +1,15 @@
 ---
-title: Python SDK
-description: High-level Python interface for local inference, memory, and agent workflows
+title: SDK Python
+description: Interface Python de haut niveau pour l'inférence locale, la mémoire et les flux d'agents
 search:
   boost: 2
 ---
 
-# Python SDK
+# SDK Python
 
-The Diapason Python SDK provides a high-level interface for interacting with local inference engines, managing memory, and running agent workflows. The primary entry point is the `Diapason` class.
+Le SDK Python de Diapason offre une interface de haut niveau pour parler aux moteurs d'inférence locaux, gérer la mémoire et faire tourner des flux d'agents. Le point d'entrée principal est la classe `Diapason`.
 
-## Installation
+## L'installation
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -17,22 +17,22 @@ cd Diapason
 uv sync
 ```
 
-## Quick Start
+## Démarrage rapide
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
-response = j.ask("What is the capital of France?")
+response = j.ask("Quelle est la capitale de la France ?")
 print(response)
 j.close()
 ```
 
 ---
 
-## Diapason Class
+## La classe Diapason
 
-### Constructor
+### Le constructeur
 
 ```python
 Diapason(
@@ -44,44 +44,44 @@ Diapason(
 )
 ```
 
-| Parameter     | Type             | Default | Description                                                    |
+| Paramètre     | Type             | Défaut  | Description                                                    |
 |---------------|------------------|---------|----------------------------------------------------------------|
-| `config`      | `DiapasonConfig`   | `None`  | Provide a pre-built configuration object                       |
-| `config_path` | `str`            | `None`  | Path to a TOML configuration file                              |
-| `engine_key`  | `str`            | `None`  | Override the engine backend (`"ollama"`, `"vllm"`, etc.)       |
-| `model`       | `str`            | `None`  | Override the default model (e.g., `"qwen3:8b"`)               |
+| `config`      | `DiapasonConfig` | `None`  | Fournir un objet de configuration déjà construit               |
+| `config_path` | `str`            | `None`  | Chemin vers un fichier de configuration TOML                   |
+| `engine_key`  | `str`            | `None`  | Imposer le moteur d'inférence (`"ollama"`, `"vllm"`, etc.)     |
+| `model`       | `str`            | `None`  | Imposer le modèle par défaut (`"qwen3:8b"`, par exemple)       |
 
-If no `config` or `config_path` is provided, the SDK loads configuration from the default location (`~/.diapason/config.toml`), falling back to built-in defaults.
+Sans `config` ni `config_path`, le SDK lit la configuration à l'emplacement par défaut (`~/.diapason/config.toml`), et retombe sur les valeurs intégrées.
 
-**Examples:**
+**Des exemples :**
 
 ```python
-# Default configuration — auto-detects engine
+# La configuration par défaut — le moteur est détecté tout seul
 j = Diapason()
 
-# Override the model
+# Imposer le modèle
 j = Diapason(model="qwen3:8b")
 
-# Override the engine
+# Imposer le moteur
 j = Diapason(engine_key="ollama")
 
-# Load from a specific config file
+# Lire un fichier de configuration précis
 j = Diapason(config_path="/path/to/config.toml")
 ```
 
-### Properties
+### Les propriétés
 
-| Property  | Type           | Description                       |
-|-----------|----------------|-----------------------------------|
-| `config`  | `DiapasonConfig` | The active configuration object   |
-| `version` | `str`          | The Diapason version string     |
-| `memory`  | `MemoryHandle` | Proxy for memory operations       |
+| Propriété | Type             | Description                        |
+|-----------|------------------|------------------------------------|
+| `config`  | `DiapasonConfig` | L'objet de configuration actif     |
+| `version` | `str`            | La chaîne de version de Diapason   |
+| `memory`  | `MemoryHandle`   | Le relais des opérations de mémoire |
 
 ---
 
-## `ask()` Method
+## La méthode `ask()`
 
-Send a query and receive a plain-text response.
+Envoie une question et rend une réponse en texte simple.
 
 ```python
 ask(
@@ -96,39 +96,39 @@ ask(
 ) -> str
 ```
 
-| Parameter     | Type         | Default | Description                                          |
+| Paramètre     | Type         | Défaut  | Description                                          |
 |---------------|--------------|---------|------------------------------------------------------|
-| `query`       | `str`        | --      | The question or prompt to send                       |
-| `model`       | `str`        | `None`  | Override the model for this call                     |
-| `agent`       | `str`        | `None`  | Route through an agent (`"simple"`, `"orchestrator"`) |
-| `tools`       | `list[str]`  | `None`  | Tool names to enable (requires agent mode)           |
-| `temperature` | `float`      | `0.7`   | Sampling temperature                                 |
-| `max_tokens`  | `int`        | `1024`  | Maximum tokens to generate                           |
-| `context`     | `bool`       | `True`  | Whether to inject memory context                     |
+| `query`       | `str`        | --      | La question ou le prompt à envoyer                   |
+| `model`       | `str`        | `None`  | Imposer le modèle pour cet appel                     |
+| `agent`       | `str`        | `None`  | Faire passer par un agent (`"simple"`, `"orchestrator"`) |
+| `tools`       | `list[str]`  | `None`  | Noms d'outils à activer (demande le mode agent)      |
+| `temperature` | `float`      | `0.7`   | Température d'échantillonnage                        |
+| `max_tokens`  | `int`        | `1024`  | Nombre maximum de jetons à générer                   |
+| `context`     | `bool`       | `True`  | Injecter ou non le contexte mémoire                  |
 
-**Returns:** A `str` containing the model's response text.
+**Rend :** une chaîne `str` qui porte le texte de la réponse du modèle.
 
-**Examples:**
+**Des exemples :**
 
 ```python
-# Simple query
-response = j.ask("What is machine learning?")
+# Une question simple
+response = j.ask("Qu'est-ce que l'apprentissage automatique ?")
 
-# Override model for this call
-response = j.ask("Hello", model="llama3.2:3b")
+# Imposer le modèle pour cet appel
+response = j.ask("Bonjour", model="llama3.2:3b")
 
-# Disable memory context injection
-response = j.ask("Tell me about Python", context=False)
+# Couper l'injection du contexte mémoire
+response = j.ask("Parle-moi de Python", context=False)
 
-# Adjust generation parameters
-response = j.ask("Write a haiku", temperature=0.3, max_tokens=50)
+# Ajuster les paramètres de génération
+response = j.ask("Écris un haïku", temperature=0.3, max_tokens=50)
 ```
 
 ---
 
-## `ask_full()` Method
+## La méthode `ask_full()`
 
-Send a query and receive a detailed result dictionary with metadata.
+Envoie une question et rend un dictionnaire de résultat détaillé, avec ses métadonnées.
 
 ```python
 ask_full(
@@ -143,34 +143,34 @@ ask_full(
 ) -> dict[str, Any]
 ```
 
-The parameters are identical to `ask()`.
+Les paramètres sont les mêmes que ceux d'`ask()`.
 
-**Returns:** A dictionary with the following keys:
+**Rend :** un dictionnaire dont les clés sont les suivantes.
 
-=== "Direct Mode"
+=== "Mode direct"
 
-    | Key       | Type   | Description                              |
+    | Clé       | Type   | Description                              |
     |-----------|--------|------------------------------------------|
-    | `content` | `str`  | The response text                        |
-    | `usage`   | `dict` | Token usage (`prompt_tokens`, `completion_tokens`, `total_tokens`) |
-    | `model`   | `str`  | The model used                           |
-    | `engine`  | `str`  | The engine backend used                  |
+    | `content` | `str`  | Le texte de la réponse                   |
+    | `usage`   | `dict` | La consommation de jetons (`prompt_tokens`, `completion_tokens`, `total_tokens`) |
+    | `model`   | `str`  | Le modèle utilisé                        |
+    | `engine`  | `str`  | Le moteur d'inférence utilisé            |
 
-=== "Agent Mode"
+=== "Mode agent"
 
-    | Key            | Type         | Description                              |
+    | Clé            | Type         | Description                              |
     |----------------|--------------|------------------------------------------|
-    | `content`      | `str`        | The response text                        |
-    | `usage`        | `dict`       | Token usage (may be empty in agent mode) |
-    | `tool_results` | `list[dict]` | Tool execution results                   |
-    | `turns`        | `int`        | Number of agent turns taken              |
-    | `model`        | `str`        | The model used                           |
-    | `engine`       | `str`        | The engine backend used                  |
+    | `content`      | `str`        | Le texte de la réponse                   |
+    | `usage`        | `dict`       | La consommation de jetons (peut être vide en mode agent) |
+    | `tool_results` | `list[dict]` | Les résultats d'exécution des outils     |
+    | `turns`        | `int`        | Le nombre de tours faits par l'agent     |
+    | `model`        | `str`        | Le modèle utilisé                        |
+    | `engine`       | `str`        | Le moteur d'inférence utilisé            |
 
-**Example:**
+**Un exemple :**
 
 ```python
-result = j.ask_full("What is 2+2?")
+result = j.ask_full("Combien font 2+2 ?")
 print(result["content"])       # "4"
 print(result["model"])         # "qwen3:8b"
 print(result["engine"])        # "ollama"
@@ -179,50 +179,50 @@ print(result["usage"])         # {"prompt_tokens": 10, ...}
 
 ---
 
-## Agent Mode
+## Le mode agent
 
-Pass the `agent` parameter to route queries through an agent. Agents can manage multi-turn conversations and use tools.
+Passe le paramètre `agent` pour faire passer les questions par un agent. Les agents savent mener des conversations sur plusieurs tours et utiliser des outils.
 
 ```python
-# Simple agent — single turn, no tools
-response = j.ask("Hello", agent="simple")
+# L'agent simple — un seul tour, pas d'outils
+response = j.ask("Bonjour", agent="simple")
 
-# Orchestrator agent — multi-turn with tool calling
+# L'agent orchestrator — plusieurs tours, avec appels d'outils
 response = j.ask(
-    "What is sqrt(144) + 3^2?",
+    "Combien font sqrt(144) + 3^2 ?",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
 ```
 
-When using agent mode with `ask_full()`, the result includes `tool_results` showing each tool invocation:
+En mode agent avec `ask_full()`, le résultat porte `tool_results`, qui montre chaque appel d'outil :
 
 ```python
 result = j.ask_full(
-    "Calculate 15% of 340",
+    "Calcule 15 % de 340",
     agent="orchestrator",
     tools=["calculator"],
 )
 
-print(result["content"])       # "15% of 340 is 51.0"
+print(result["content"])       # "15 % de 340 font 51.0"
 print(result["turns"])         # 2
 print(result["tool_results"])
 # [{"tool_name": "calculator", "content": "51.0", "success": True}]
 ```
 
-Available agents: `simple`, `orchestrator`, `operative`, `monitor_operative`
+Les agents offerts : `simple`, `orchestrator`, `operative`, `monitor_operative`
 
-Available tools: `calculator`, `think`, `retrieval`, `llm`, `file_read`
+Les outils offerts : `calculator`, `think`, `retrieval`, `llm`, `file_read`
 
 ---
 
 ## MemoryHandle
 
-The `Diapason.memory` attribute provides a `MemoryHandle` for document indexing, search, and statistics. The memory backend is lazily initialized on first use.
+L'attribut `Diapason.memory` donne un `MemoryHandle` pour indexer des documents, les chercher et en tirer des statistiques. Le moteur de mémoire ne s'initialise qu'à la première utilisation.
 
 ### `index()`
 
-Index a file or directory into the memory store.
+Indexe un fichier ou un dossier dans la mémoire.
 
 ```python
 index(
@@ -233,26 +233,26 @@ index(
 ) -> dict[str, Any]
 ```
 
-| Parameter       | Type  | Default | Description                           |
-|-----------------|-------|---------|---------------------------------------|
-| `path`          | `str` | --      | Path to a file or directory to index  |
-| `chunk_size`    | `int` | `512`   | Chunk size in tokens                  |
-| `chunk_overlap` | `int` | `64`    | Overlap between chunks in tokens      |
+| Paramètre       | Type  | Défaut  | Description                              |
+|-----------------|-------|---------|------------------------------------------|
+| `path`          | `str` | --      | Chemin du fichier ou du dossier à indexer |
+| `chunk_size`    | `int` | `512`   | Taille des fragments, en jetons          |
+| `chunk_overlap` | `int` | `64`    | Recouvrement entre fragments, en jetons  |
 
-**Returns:** A dictionary with `chunks` (count), `doc_ids` (list), and `path`.
+**Rend :** un dictionnaire avec `chunks` (le nombre), `doc_ids` (la liste) et `path`.
 
 ```python
 result = j.memory.index("./docs/")
-print(f"Indexed {result['chunks']} chunks")
-# Indexed 42 chunks
+print(f"{result['chunks']} fragments indexés")
+# 42 fragments indexés
 
-# Custom chunking parameters
+# Des paramètres de fragmentation sur mesure
 result = j.memory.index("./notes/", chunk_size=256, chunk_overlap=32)
 ```
 
 ### `search()`
 
-Search the memory store for relevant chunks.
+Cherche dans la mémoire les fragments pertinents.
 
 ```python
 search(
@@ -262,37 +262,37 @@ search(
 ) -> list[dict[str, Any]]
 ```
 
-| Parameter | Type  | Default | Description                    |
-|-----------|-------|---------|--------------------------------|
-| `query`   | `str` | --      | The search query               |
-| `top_k`   | `int` | `5`     | Number of results to return    |
+| Paramètre | Type  | Défaut  | Description                     |
+|-----------|-------|---------|---------------------------------|
+| `query`   | `str` | --      | La requête de recherche         |
+| `top_k`   | `int` | `5`     | Le nombre de résultats à rendre |
 
-**Returns:** A list of dictionaries, each containing `content`, `score`, `source`, and `metadata`.
+**Rend :** une liste de dictionnaires, chacun portant `content`, `score`, `source` et `metadata`.
 
 ```python
-results = j.memory.search("neural networks")
+results = j.memory.search("réseaux de neurones")
 for r in results:
-    print(f"[{r['score']:.4f}] {r['source']}: {r['content'][:80]}...")
+    print(f"[{r['score']:.4f}] {r['source']} : {r['content'][:80]}...")
 ```
 
 ### `stats()`
 
-Return memory backend statistics.
+Rend les statistiques du moteur de mémoire.
 
 ```python
 stats() -> dict[str, Any]
 ```
 
-**Returns:** A dictionary with `backend` (name) and `count` (document count, if available).
+**Rend :** un dictionnaire avec `backend` (le nom) et `count` (le nombre de documents, s'il est connu).
 
 ```python
 info = j.memory.stats()
-print(f"Backend: {info['backend']}, Documents: {info.get('count', 'N/A')}")
+print(f"Moteur : {info['backend']}, Documents : {info.get('count', 'N/D')}")
 ```
 
 ### `close()`
 
-Release the memory backend and its resources.
+Libère le moteur de mémoire et ses ressources.
 
 ```python
 j.memory.close()
@@ -300,11 +300,11 @@ j.memory.close()
 
 ---
 
-## Model and Engine Discovery
+## Découvrir les modèles et les moteurs
 
 ### `list_models()`
 
-Return a list of model identifiers available on the active engine.
+Rend la liste des identifiants de modèles offerts par le moteur actif.
 
 ```python
 models = j.list_models()
@@ -313,7 +313,7 @@ print(models)  # ["qwen3:8b", "llama3.2:3b", ...]
 
 ### `list_engines()`
 
-Return a list of registered engine keys.
+Rend la liste des clés de moteurs enregistrées.
 
 ```python
 engines = j.list_engines()
@@ -322,23 +322,23 @@ print(engines)  # ["ollama", "vllm", "llamacpp", ...]
 
 ---
 
-## Resource Management
+## La gestion des ressources
 
 ### `close()`
 
-Release all resources held by the `Diapason` instance, including the memory backend, telemetry store, and engine connection.
+Libère toutes les ressources tenues par l'instance `Diapason` : le moteur de mémoire, le magasin de télémétrie et la connexion au moteur d'inférence.
 
 ```python
 j.close()
 ```
 
-!!! tip "Context Manager Pattern"
-    While `Diapason` does not implement `__enter__`/`__exit__` directly, you should always call `close()` when done to free database connections and other resources:
+!!! tip "Le motif du gestionnaire de contexte"
+    `Diapason` n'implémente pas `__enter__`/`__exit__` directement : appelle toujours `close()` quand tu as fini, pour libérer les connexions aux bases et le reste des ressources.
 
     ```python
     j = Diapason()
     try:
-        response = j.ask("Hello")
+        response = j.ask("Bonjour")
         print(response)
     finally:
         j.close()
@@ -346,40 +346,40 @@ j.close()
 
 ---
 
-## Complete Example
+## Un exemple complet
 
 ```python
 from diapason import Diapason
 
-# Initialize with auto-detected engine
+# Démarrer avec le moteur détecté tout seul
 j = Diapason(model="qwen3:8b")
 
-# Index documents for context-augmented responses
+# Indexer des documents pour enrichir les réponses de contexte
 result = j.memory.index("./docs/")
-print(f"Indexed {result['chunks']} chunks from {result['path']}")
+print(f"{result['chunks']} fragments indexés depuis {result['path']}")
 
-# Simple query with memory context
-response = j.ask("What are the main features?")
+# Une question simple, avec le contexte mémoire
+response = j.ask("Quelles sont les principales fonctionnalités ?")
 print(response)
 
-# Detailed query with agent and tools
+# Une question détaillée, avec agent et outils
 full_result = j.ask_full(
-    "Calculate the square root of 256 and add 10",
+    "Calcule la racine carrée de 256 et ajoute 10",
     agent="orchestrator",
     tools=["calculator"],
 )
-print(f"Answer: {full_result['content']}")
-print(f"Turns: {full_result['turns']}")
-print(f"Tools used: {[t['tool_name'] for t in full_result['tool_results']]}")
+print(f"Réponse : {full_result['content']}")
+print(f"Tours : {full_result['turns']}")
+print(f"Outils utilisés : {[t['tool_name'] for t in full_result['tool_results']]}")
 
-# Search memory directly
+# Chercher directement dans la mémoire
 results = j.memory.search("configuration")
 for r in results:
     print(f"  [{r['score']:.3f}] {r['source']}")
 
-# List available models
-print("Models:", j.list_models())
+# Lister les modèles offerts
+print("Modèles :", j.list_models())
 
-# Clean up
+# Faire le ménage
 j.close()
 ```

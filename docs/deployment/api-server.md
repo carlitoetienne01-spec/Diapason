@@ -1,10 +1,10 @@
-# API Server
+# Le serveur d'API
 
-Diapason includes an OpenAI-compatible API server built on FastAPI and uvicorn. It exposes chat completion, model listing, and health check endpoints, making it a drop-in replacement for the OpenAI API when working with local models.
+Diapason embarque un serveur d'API compatible OpenAI, bâti sur FastAPI et uvicorn. Il expose des routes de complétion de discussion, de liste des modèles et de vérification de santé : c'est un remplacement direct de l'API OpenAI quand tu travailles avec des modèles locaux.
 
-## Starting the Server
+## Lancer le serveur
 
-The server requires the `[server]` extra (FastAPI + uvicorn):
+Le serveur réclame l'extra `[server]` (FastAPI + uvicorn) :
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -12,29 +12,29 @@ cd Diapason
 uv sync --extra server
 ```
 
-Start with default settings:
+Lance-le avec les réglages par défaut :
 
 ```bash
 diapason serve
 ```
 
-The server reads defaults from `~/.diapason/config.toml` and auto-detects available engines and models. Override any option via CLI flags:
+Le serveur lit ses valeurs par défaut dans `~/.diapason/config.toml` et détecte tout seul les moteurs et les modèles disponibles. Chaque option se remplace par un drapeau en ligne de commande :
 
 ```bash
 diapason serve --host 0.0.0.0 --port 8000 --engine ollama --model qwen3:8b --agent orchestrator
 ```
 
-### CLI Options
+### Les options de la ligne de commande
 
-| Option               | Description                                                                  | Default           |
+| Option               | Description                                                                  | Défaut           |
 |----------------------|------------------------------------------------------------------------------|--------------------|
-| `--host`             | Network address to bind to                                                   | From config (`0.0.0.0`) |
-| `--port`             | Port number to listen on                                                     | From config (`8000`)    |
-| `-e` / `--engine`    | Inference engine backend (`ollama`, `vllm`, `llamacpp`, `sglang`)            | Auto-detected      |
-| `-m` / `--model`     | Default model for completions                                                | First available     |
-| `-a` / `--agent`     | Agent for non-streaming requests (`simple`, `orchestrator`, `react`, `openhands`) | From config (`orchestrator`) |
+| `--host`             | Adresse réseau sur laquelle écouter                                          | Depuis la config (`0.0.0.0`) |
+| `--port`             | Port d'écoute                                                                | Depuis la config (`8000`)    |
+| `-e` / `--engine`    | Moteur d'inférence (`ollama`, `vllm`, `llamacpp`, `sglang`)                  | Détecté automatiquement      |
+| `-m` / `--model`     | Modèle par défaut pour les complétions                                       | Le premier disponible     |
+| `-a` / `--agent`     | Agent pour les requêtes hors fil de l'eau (`simple`, `orchestrator`, `react`, `openhands`) | Depuis la config (`orchestrator`) |
 
-On startup, the server prints a summary:
+Au démarrage, le serveur affiche un résumé :
 
 ```
 Starting Diapason API server
@@ -44,23 +44,23 @@ Starting Diapason API server
   URL:    http://0.0.0.0:8000
 ```
 
-!!! warning "Server dependency check"
-    If the `[server]` extra is not installed, `diapason serve` exits with a clear error message explaining how to install the required dependencies.
+!!! warning "Vérification des dépendances du serveur"
+    Si l'extra `[server]` n'est pas installé, `diapason serve` s'arrête avec un message d'erreur clair qui explique comment installer les dépendances nécessaires.
 
-## Endpoints
+## Les routes
 
 ### `POST /v1/chat/completions`
 
-The primary endpoint for generating chat completions. Accepts the same request format as the OpenAI Chat Completions API.
+La route principale, celle qui engendre les complétions de discussion. Elle accepte le même format de requête que l'API Chat Completions d'OpenAI.
 
-#### Request Body
+#### Le corps de la requête
 
 ```json
 {
   "model": "qwen3:8b",
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What is the capital of France?"}
+    {"role": "system", "content": "Tu es un assistant serviable."},
+    {"role": "user", "content": "Quelle est la capitale de la France ?"}
   ],
   "temperature": 0.7,
   "max_tokens": 1024,
@@ -69,26 +69,26 @@ The primary endpoint for generating chat completions. Accepts the same request f
 }
 ```
 
-| Parameter     | Type              | Default | Description                                                  |
+| Paramètre     | Type              | Défaut  | Description                                                  |
 |---------------|-------------------|---------|--------------------------------------------------------------|
-| `model`       | `string`          | --      | **Required.** Model identifier to use for generation.        |
-| `messages`    | `array`           | --      | **Required.** Array of message objects with `role` and `content`. |
-| `temperature` | `float`           | `0.7`   | Sampling temperature (0.0 to 2.0).                           |
-| `max_tokens`  | `integer`         | `1024`  | Maximum number of tokens to generate.                        |
-| `stream`      | `boolean`         | `false` | Whether to stream the response via SSE.                      |
-| `tools`       | `array` or `null` | `null`  | Tool definitions in OpenAI function-calling format.          |
+| `model`       | `string`          | —       | **Obligatoire.** Identifiant du modèle à utiliser pour la génération. |
+| `messages`    | `array`           | —       | **Obligatoire.** Tableau d'objets message, avec `role` et `content`. |
+| `temperature` | `float`           | `0.7`   | Température d'échantillonnage (de 0.0 à 2.0).                |
+| `max_tokens`  | `integer`         | `1024`  | Nombre maximum de jetons à générer.                          |
+| `stream`      | `boolean`         | `false` | Rendre ou non la réponse au fil de l'eau, par SSE.           |
+| `tools`       | `array` ou `null` | `null`  | Définitions d'outils, au format function-calling d'OpenAI.   |
 
-Each message object:
+Chaque objet message :
 
-| Field          | Type              | Description                                           |
+| Champ          | Type              | Description                                           |
 |----------------|-------------------|-------------------------------------------------------|
-| `role`         | `string`          | One of `system`, `user`, `assistant`, or `tool`.      |
-| `content`      | `string`          | The message content.                                  |
-| `name`         | `string` or `null`| Optional name for the message author.                 |
-| `tool_calls`   | `array` or `null` | Tool calls made by the assistant (in assistant messages). |
-| `tool_call_id` | `string` or `null`| ID of the tool call this message responds to (in tool messages). |
+| `role`         | `string`          | L'un de `system`, `user`, `assistant` ou `tool`.      |
+| `content`      | `string`          | Le contenu du message.                                |
+| `name`         | `string` ou `null`| Nom facultatif de l'auteur du message.                |
+| `tool_calls`   | `array` ou `null` | Les appels d'outils faits par l'assistant (dans les messages `assistant`). |
+| `tool_call_id` | `string` ou `null`| Identifiant de l'appel d'outil auquel ce message répond (dans les messages `tool`). |
 
-#### Response (Non-Streaming)
+#### La réponse (hors fil de l'eau)
 
 ```json
 {
@@ -101,7 +101,7 @@ Each message object:
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "The capital of France is Paris.",
+        "content": "La capitale de la France est Paris.",
         "tool_calls": null
       },
       "finish_reason": "stop"
@@ -115,11 +115,11 @@ Each message object:
 }
 ```
 
-When an agent is configured on the server, non-streaming requests are routed through the agent, which can perform multi-turn reasoning with tool calls before returning a final response. When no agent is configured, requests go directly to the inference engine.
+Quand un agent est configuré sur le serveur, les requêtes hors fil de l'eau passent par lui : il peut raisonner sur plusieurs tours, avec des appels d'outils, avant de rendre une réponse finale. Sans agent configuré, les requêtes vont droit au moteur d'inférence.
 
-#### Tool Calls
+#### Les appels d'outils
 
-When `tools` are provided in the request, the engine may return `tool_calls` in the assistant message:
+Quand la requête porte des `tools`, le moteur peut rendre des `tool_calls` dans le message de l'assistant :
 
 ```json
 {
@@ -147,9 +147,9 @@ When `tools` are provided in the request, the engine may return `tool_calls` in 
 
 ### `GET /v1/models`
 
-Lists all models available on the configured inference engine.
+Liste tous les modèles disponibles sur le moteur d'inférence configuré.
 
-#### Response
+#### La réponse
 
 ```json
 {
@@ -173,19 +173,19 @@ Lists all models available on the configured inference engine.
 
 ### `GET /health`
 
-Health check endpoint that verifies the inference engine is responsive.
+La route de vérification de santé : elle confirme que le moteur d'inférence répond.
 
-#### Response (Healthy)
+#### La réponse (en bonne santé)
 
-HTTP 200:
+HTTP 200 :
 
 ```json
 {"status": "ok"}
 ```
 
-#### Response (Unhealthy)
+#### La réponse (en panne)
 
-HTTP 503:
+HTTP 503 :
 
 ```json
 {"detail": "Engine unhealthy"}
@@ -193,13 +193,13 @@ HTTP 503:
 
 ### `GET /dashboard`
 
-Serves the built-in Savings Dashboard, an HTML page that displays real-time statistics on inference calls served locally and estimated cost savings compared to cloud API providers. The dashboard auto-refreshes every 5 seconds by polling the `/v1/savings` endpoint.
+Sert le tableau de bord des économies, une page HTML qui affiche en direct le compte des appels d'inférence servis en local et l'économie estimée par rapport aux fournisseurs d'API dans le nuage. Le tableau de bord se rafraîchit tout seul toutes les 5 secondes en interrogeant la route `/v1/savings`.
 
 ### `GET /v1/channels`
 
-List registered channel backends and their connection status.
+Liste les canaux enregistrés et leur état de connexion.
 
-#### Response
+#### La réponse
 
 ```json
 {
@@ -209,18 +209,18 @@ List registered channel backends and their connection status.
 
 ### `POST /v1/channels/send`
 
-Send a message to a specific channel.
+Envoie un message vers un canal précis.
 
-#### Request Body
+#### Le corps de la requête
 
 ```json
 {
   "target": "slack",
-  "message": "Hello from Diapason!"
+  "message": "Bonjour depuis Diapason !"
 }
 ```
 
-#### Response
+#### La réponse
 
 ```json
 {
@@ -231,9 +231,9 @@ Send a message to a specific channel.
 
 ### `GET /v1/channels/status`
 
-Show connection status for all configured channels.
+Montre l'état de connexion de tous les canaux configurés.
 
-#### Response
+#### La réponse
 
 ```json
 {
@@ -245,21 +245,21 @@ Show connection status for all configured channels.
 }
 ```
 
-!!! note "Channel endpoints"
-    Channel endpoints require `[channel] enabled = true` in your config and platform-specific credentials configured in `[channel.<platform>]` sub-sections. When not configured, `GET /v1/channels` returns an empty list and other channel endpoints return 503.
+!!! note "Les routes de canaux"
+    Les routes de canaux exigent `[channel] enabled = true` dans ta configuration, et les identifiants propres à chaque plateforme dans les sous-sections `[channel.<platform>]`. Sans configuration, `GET /v1/channels` rend une liste vide et les autres routes de canaux répondent 503.
 
-## Streaming via SSE
+## Le fil de l'eau par SSE
 
-When `"stream": true` is set in the request, the server returns a `text/event-stream` response using Server-Sent Events (SSE). The response follows the same format as the OpenAI streaming API.
+Quand la requête porte `"stream": true`, le serveur rend une réponse `text/event-stream` en Server-Sent Events (SSE). Le format suit celui de l'API de streaming d'OpenAI.
 
-Each event is a `data:` line containing a JSON chunk, followed by a blank line:
+Chaque événement est une ligne `data:` contenant un fragment JSON, suivie d'une ligne vide :
 
 ```
 data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100800,"model":"qwen3:8b","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100800,"model":"qwen3:8b","choices":[{"index":0,"delta":{"content":"The"},"finish_reason":null}]}
+data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100800,"model":"qwen3:8b","choices":[{"index":0,"delta":{"content":"La"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100800,"model":"qwen3:8b","choices":[{"index":0,"delta":{"content":" capital"},"finish_reason":null}]}
+data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100800,"model":"qwen3:8b","choices":[{"index":0,"delta":{"content":" capitale"},"finish_reason":null}]}
 
 ...
 
@@ -268,20 +268,20 @@ data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1740100
 data: [DONE]
 ```
 
-The stream follows this sequence:
+Le flux suit toujours cet ordre :
 
-1. **Role chunk** -- first chunk contains `"delta": {"role": "assistant"}` with no content.
-2. **Content chunks** -- subsequent chunks each contain a `"delta": {"content": "..."}` with one or more tokens.
-3. **Finish chunk** -- a chunk with an empty `delta` and `"finish_reason": "stop"`.
-4. **Done signal** -- the literal string `data: [DONE]` indicates the stream is complete.
+1. **Le fragment de rôle** — le premier fragment porte `"delta": {"role": "assistant"}`, sans contenu.
+2. **Les fragments de contenu** — chacun des fragments suivants porte un `"delta": {"content": "..."}` avec un ou plusieurs jetons.
+3. **Le fragment de fin** — un fragment au `delta` vide, avec `"finish_reason": "stop"`.
+4. **Le signal de clôture** — la chaîne littérale `data: [DONE]` dit que le flux est terminé.
 
-Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` for proper SSE behavior.
+Les en-têtes de réponse portent `Cache-Control: no-cache` et `Connection: keep-alive`, comme l'exige le SSE.
 
-## Client Examples
+## Des exemples de clients
 
 === "curl"
 
-    **Non-streaming request:**
+    **Une requête hors fil de l'eau :**
 
     ```bash
     curl http://localhost:8000/v1/chat/completions \
@@ -289,14 +289,14 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
       -d '{
         "model": "qwen3:8b",
         "messages": [
-          {"role": "user", "content": "Explain quantum computing in one paragraph."}
+          {"role": "user", "content": "Explique en un paragraphe ce que sont les ordinateurs quantiques."}
         ],
         "temperature": 0.7,
         "max_tokens": 256
       }'
     ```
 
-    **Streaming request:**
+    **Une requête au fil de l'eau :**
 
     ```bash
     curl http://localhost:8000/v1/chat/completions \
@@ -305,19 +305,19 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
       -d '{
         "model": "qwen3:8b",
         "messages": [
-          {"role": "user", "content": "Write a haiku about programming."}
+          {"role": "user", "content": "Écris un haïku sur la programmation."}
         ],
         "stream": true
       }'
     ```
 
-    **List models:**
+    **Lister les modèles :**
 
     ```bash
     curl http://localhost:8000/v1/models
     ```
 
-    **Health check:**
+    **Vérifier la santé :**
 
     ```bash
     curl http://localhost:8000/health
@@ -325,32 +325,32 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
 
 === "Python (openai)"
 
-    The OpenAI Python library works as a drop-in client by pointing `base_url` at the local server:
+    La bibliothèque Python d'OpenAI sert de client direct : il suffit de pointer `base_url` sur le serveur local.
 
     ```python
     from openai import OpenAI
 
     client = OpenAI(
         base_url="http://localhost:8000/v1",
-        api_key="not-needed",  # Required by the library but not validated
+        api_key="not-needed",  # Exigée par la bibliothèque, mais jamais vérifiée
     )
 
-    # Non-streaming
+    # Hors fil de l'eau
     response = client.chat.completions.create(
         model="qwen3:8b",
         messages=[
-            {"role": "user", "content": "What is the capital of France?"}
+            {"role": "user", "content": "Quelle est la capitale de la France ?"}
         ],
         temperature=0.7,
         max_tokens=256,
     )
     print(response.choices[0].message.content)
 
-    # Streaming
+    # Au fil de l'eau
     stream = client.chat.completions.create(
         model="qwen3:8b",
         messages=[
-            {"role": "user", "content": "Write a short poem about AI."}
+            {"role": "user", "content": "Écris un court poème sur l'IA."}
         ],
         stream=True,
     )
@@ -359,7 +359,7 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
             print(chunk.choices[0].delta.content, end="", flush=True)
     print()
 
-    # List models
+    # Lister les modèles
     models = client.models.list()
     for model in models.data:
         print(model.id)
@@ -367,7 +367,7 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
 
 === "Python (httpx)"
 
-    Using `httpx` for direct HTTP requests:
+    Avec `httpx`, pour des requêtes HTTP directes :
 
     ```python
     import httpx
@@ -375,13 +375,13 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
 
     BASE_URL = "http://localhost:8000"
 
-    # Non-streaming request
+    # Une requête hors fil de l'eau
     response = httpx.post(
         f"{BASE_URL}/v1/chat/completions",
         json={
             "model": "qwen3:8b",
             "messages": [
-                {"role": "user", "content": "What is the capital of France?"}
+                {"role": "user", "content": "Quelle est la capitale de la France ?"}
             ],
             "temperature": 0.7,
             "max_tokens": 256,
@@ -390,14 +390,14 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
     data = response.json()
     print(data["choices"][0]["message"]["content"])
 
-    # Streaming request
+    # Une requête au fil de l'eau
     with httpx.stream(
         "POST",
         f"{BASE_URL}/v1/chat/completions",
         json={
             "model": "qwen3:8b",
             "messages": [
-                {"role": "user", "content": "Write a haiku about code."}
+                {"role": "user", "content": "Écris un haïku sur le code."}
             ],
             "stream": True,
         },
@@ -410,19 +410,19 @@ Response headers include `Cache-Control: no-cache` and `Connection: keep-alive` 
                     print(content, end="", flush=True)
     print()
 
-    # List models
+    # Lister les modèles
     response = httpx.get(f"{BASE_URL}/v1/models")
     for model in response.json()["data"]:
         print(model["id"])
 
-    # Health check
+    # Vérifier la santé
     response = httpx.get(f"{BASE_URL}/health")
     print(response.json())
     ```
 
-## Configuration via `config.toml`
+## La configuration par `config.toml`
 
-The `[server]` section of `~/.diapason/config.toml` controls default server behavior:
+La section `[server]` de `~/.diapason/config.toml` commande le comportement par défaut du serveur :
 
 ```toml
 [server]
@@ -433,25 +433,25 @@ model = ""
 workers = 1
 ```
 
-| Key       | Type      | Default         | Description                                                                |
+| Clé       | Type      | Défaut          | Description                                                                |
 |-----------|-----------|-----------------|----------------------------------------------------------------------------|
-| `host`    | `string`  | `"0.0.0.0"`    | Network address to bind to. Use `"127.0.0.1"` for localhost-only access.   |
-| `port`    | `integer` | `8000`          | Port number.                                                               |
-| `agent`   | `string`  | `"orchestrator"`| Default agent for non-streaming requests. Set to `""` for direct engine mode. |
-| `model`   | `string`  | `""`            | Default model name. When empty, falls back to `[intelligence] default_model` or the first model discovered on the engine. |
-| `workers` | `integer` | `1`             | Number of uvicorn workers (for future use).                                |
+| `host`    | `string`  | `"0.0.0.0"`    | Adresse réseau sur laquelle écouter. Mets `"127.0.0.1"` pour n'accepter que les connexions locales. |
+| `port`    | `integer` | `8000`          | Le port d'écoute.                                                          |
+| `agent`   | `string`  | `"orchestrator"`| Agent par défaut pour les requêtes hors fil de l'eau. Mets `""` pour aller droit au moteur. |
+| `model`   | `string`  | `""`            | Nom du modèle par défaut. À vide, on se rabat sur `[intelligence] default_model`, puis sur le premier modèle trouvé sur le moteur. |
+| `workers` | `integer` | `1`             | Nombre de processus uvicorn (réservé pour plus tard).                      |
 
-CLI flags override config file values. For example, `diapason serve --port 9000` overrides the `port` setting in the config file.
+Les drapeaux de la ligne de commande l'emportent sur le fichier de configuration. Par exemple, `diapason serve --port 9000` passe outre le réglage `port` du fichier.
 
-The server also reads from other config sections at startup:
+Au démarrage, le serveur lit aussi d'autres sections de la configuration :
 
-- **`[engine]`** -- determines which inference backend to connect to and its host URL.
-- **`[intelligence]`** -- provides the fallback `default_model` when no model is specified.
-- **`[agent]`** -- supplies `max_turns` for multi-turn agents like `orchestrator`.
+- **`[engine]`** — dit à quel moteur d'inférence se connecter, et sur quelle URL.
+- **`[intelligence]`** — fournit le `default_model` de repli quand aucun modèle n'est précisé.
+- **`[agent]`** — fournit `max_turns` pour les agents à plusieurs tours, comme `orchestrator`.
 
-## Running Behind a Reverse Proxy
+## Derrière un proxy inverse
 
-For production deployments, run Diapason behind a reverse proxy like Nginx or Caddy for TLS termination, rate limiting, and authentication.
+En production, fais tourner Diapason derrière un proxy inverse comme Nginx ou Caddy : terminaison TLS, limitation de débit et authentification.
 
 ### Nginx
 
@@ -470,7 +470,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # SSE streaming support
+        # Le fil de l'eau SSE
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 300s;
@@ -478,8 +478,8 @@ server {
 }
 ```
 
-!!! important "Disable buffering for SSE"
-    The `proxy_buffering off` directive is critical for streaming responses. Without it, Nginx buffers the SSE chunks and delivers them in batches, defeating the purpose of streaming.
+!!! important "Coupe la mise en tampon pour le SSE"
+    La directive `proxy_buffering off` est décisive pour les réponses au fil de l'eau. Sans elle, Nginx met les fragments SSE en tampon et les livre par paquets — ce qui vide le fil de l'eau de tout son sens.
 
 ### Caddy
 
@@ -491,17 +491,17 @@ diapason.example.com {
 }
 ```
 
-The `flush_interval -1` setting disables response buffering, which is required for SSE streaming.
+Le réglage `flush_interval -1` coupe la mise en tampon des réponses, ce qu'exige le fil de l'eau SSE.
 
-### Bind to Localhost
+### Se lier à localhost
 
-When running behind a reverse proxy, bind the server to `127.0.0.1` so it only accepts connections from the proxy:
+Derrière un proxy inverse, lie le serveur à `127.0.0.1` pour qu'il n'accepte que les connexions du proxy :
 
 ```bash
 diapason serve --host 127.0.0.1 --port 8000
 ```
 
-Or in `config.toml`:
+Ou dans `config.toml` :
 
 ```toml
 [server]

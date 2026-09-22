@@ -1,48 +1,48 @@
 ---
-title: Deep Research Assistant
-description: Build a multi-source research agent with memory-augmented orchestration
+title: Assistant de recherche approfondie
+description: Construis un agent de recherche multi-sources, orchestré et doté de mémoire
 ---
 
-# Deep Research Assistant
+# Assistant de recherche approfondie
 
-This tutorial walks through `examples/deep_research/research.py` — a standalone script that uses an orchestrator agent to research a topic, gather sources across multiple tool-calling turns, and produce a cited report. It demonstrates how to compose web search, memory, and file output into a single coherent research workflow.
+Ce tutoriel parcourt `examples/deep_research/research.py` — un script autonome qui confie à un agent orchestrateur la recherche sur un sujet, la collecte de sources au fil de plusieurs tours d'appels d'outils, et la production d'un rapport sourcé. Il montre comment composer la recherche web, la mémoire et l'écriture de fichiers en un seul flux de recherche cohérent.
 
-!!! tip "Prerequisites"
-    - Python 3.10 or later
-    - Diapason installed: run `uv sync --extra dev` from the repository root
-    - An inference engine running — either Ollama locally (see below) or a cloud API key in your `.env` file
+!!! tip "Prérequis"
+    - Python 3.10 ou plus récent
+    - Diapason installé : `uv sync --extra dev` depuis la racine du dépôt
+    - Un moteur d'inférence en marche — Ollama en local (voir plus bas), ou une clé d'API cloud dans ton fichier `.env`
 
-## Quick Start
+## Démarrage rapide
 
-Run the research script from the repository root, passing your topic as a positional argument:
+Lance le script de recherche depuis la racine du dépôt, en passant ton sujet en argument positionnel :
 
 ```bash title="Terminal"
-python examples/deep_research/research.py "quantum computing advances 2026"
+python examples/deep_research/research.py "avancées de l'informatique quantique 2026"
 ```
 
-Save the report to a file:
+Enregistrer le rapport dans un fichier :
 
 ```bash title="Terminal"
-python examples/deep_research/research.py "quantum computing advances 2026" \
+python examples/deep_research/research.py "avancées de l'informatique quantique 2026" \
     --output report.md
 ```
 
-Use a cloud model instead of a local engine:
+Se servir d'un modèle cloud plutôt que d'un moteur local :
 
 ```bash title="Terminal"
-source .env  # load API keys
-python examples/deep_research/research.py "climate policy trends" \
+source .env  # charge les clés d'API
+python examples/deep_research/research.py "tendances des politiques climatiques" \
     --model gpt-4o --engine cloud --max-turns 20
 ```
 
-## How It Works
+## Comment ça marche
 
-The script creates a `Diapason` instance and delegates the research task to an `OrchestratorAgent` with five tools wired in. The orchestrator iterates through multiple tool-calling turns, deciding at each step whether to search, store, think, or synthesize.
+Le script crée une instance `Diapason` et délègue la tâche de recherche à un `OrchestratorAgent` câblé avec cinq outils. L'orchestrateur enchaîne plusieurs tours d'appels d'outils et décide à chaque étape s'il faut chercher, stocker, réfléchir ou synthétiser.
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant J as Diapason SDK
+    participant U as Utilisateur
+    participant J as SDK Diapason
     participant O as OrchestratorAgent
     participant W as web_search
     participant T as think
@@ -50,27 +50,27 @@ sequenceDiagram
     participant MQ as memory_search
     participant F as file_write
 
-    U->>J: research.py "quantum computing"
+    U->>J: research.py "informatique quantique"
     J->>O: ask(prompt, agent="orchestrator", tools=[...])
-    loop Up to max_turns iterations
-        O->>W: search("quantum computing 2026")
-        W-->>O: search results
-        O->>T: think(reasoning about findings)
-        T-->>O: structured thoughts
-        O->>MS: store(key finding)
-        MS-->>O: stored
-        O->>MQ: search(earlier findings)
-        MQ-->>O: related context
+    loop Jusqu'à max_turns itérations
+        O->>W: search("informatique quantique 2026")
+        W-->>O: résultats de recherche
+        O->>T: think(raisonnement sur les trouvailles)
+        T-->>O: pensées structurées
+        O->>MS: store(trouvaille clé)
+        MS-->>O: stocké
+        O->>MQ: search(trouvailles précédentes)
+        MQ-->>O: contexte lié
     end
     O->>F: file_write(report.md)
-    F-->>O: saved
-    O-->>J: final report with citations
-    J-->>U: print report
+    F-->>O: enregistré
+    O-->>J: rapport final avec citations
+    J-->>U: affiche le rapport
 ```
 
-Each turn the orchestrator decides which tool to call based on what it has learned so far. The `think` tool lets the model reason without side effects, while `memory_store` and `memory_search` provide persistent scratch space across turns — so a finding from turn 3 can still inform the synthesis in turn 12.
+À chaque tour, l'orchestrateur choisit l'outil à appeler d'après ce qu'il a appris jusque-là. L'outil `think` laisse le modèle raisonner sans effet de bord, tandis que `memory_store` et `memory_search` offrent un brouillon persistant d'un tour à l'autre — une trouvaille du tour 3 peut donc encore nourrir la synthèse du tour 12.
 
-## The Script
+## Le script
 
 ```python title="examples/deep_research/research.py" hl_lines="9 10 11 12 13"
 from diapason import Diapason
@@ -80,7 +80,7 @@ tools = ["web_search", "think", "file_write", "memory_store", "memory_search"]
 j = Diapason(model="qwen3:8b", engine_key="ollama")  # (1)!
 try:
     response = j.ask(
-        "Research the following topic in depth and produce a report:\n\nquantum computing",
+        "Fais une recherche approfondie sur le sujet suivant et produis un rapport :\n\ninformatique quantique",
         agent="orchestrator",     # (2)!
         tools=tools,              # (3)!
         system_prompt=...,        # (4)!
@@ -91,107 +91,107 @@ finally:
     j.close()
 ```
 
-1. Creates a `Diapason` instance targeting the local Ollama engine with `qwen3:8b`. Both parameters are optional — omitting them uses auto-detected defaults from `~/.diapason/config.toml`.
-2. Selects the `OrchestratorAgent`, which runs a multi-turn tool-calling loop rather than a single round-trip.
-3. The tool list is passed directly to the agent. All five tools are registered in the tool registry and need no further configuration.
-4. The system prompt instructs the model to cite sources and distinguish facts from emerging claims.
-5. The loop terminates after 15 tool-calling turns or when the agent decides it has enough information.
+1. Crée une instance `Diapason` pointée sur le moteur Ollama local avec `qwen3:8b`. Les deux paramètres sont facultatifs — sans eux, ce sont les valeurs par défaut détectées toutes seules dans `~/.diapason/config.toml` qui s'appliquent.
+2. Choisit l'`OrchestratorAgent`, qui mène une boucle d'appels d'outils sur plusieurs tours plutôt qu'un seul aller-retour.
+3. La liste d'outils est passée telle quelle à l'agent. Les cinq outils sont enregistrés dans le registre d'outils et ne demandent aucune autre configuration.
+4. Le prompt système demande au modèle de citer ses sources et de distinguer les faits des affirmations encore fragiles.
+5. La boucle s'arrête après 15 tours d'appels d'outils, ou quand l'agent estime qu'il en sait assez.
 
-## Engine Configuration
+## Le choix du moteur
 
-=== "Ollama (local)"
+=== "Ollama (en local)"
 
-    Start the Ollama daemon and pull the model before running the script:
+    Démarre le démon Ollama et télécharge le modèle avant de lancer le script :
 
     ```bash title="Terminal"
     ollama serve
     ollama pull qwen3:8b
-    python examples/deep_research/research.py "your topic here"
+    python examples/deep_research/research.py "ton sujet ici"
     ```
 
-    No flags needed — `--engine ollama` and `--model qwen3:8b` are the defaults.
+    Aucune option à passer — `--engine ollama` et `--model qwen3:8b` sont les valeurs par défaut.
 
-=== "Cloud API"
+=== "API cloud"
 
-    Set your API key in `.env`, then pass `--engine cloud` and the appropriate model identifier:
+    Mets ta clé d'API dans `.env`, puis passe `--engine cloud` et l'identifiant de modèle qui convient :
 
     ```bash title="Terminal"
-    # .env (in the repository root, gitignored)
+    # .env (à la racine du dépôt, ignoré par git)
     OPENAI_API_KEY=sk-...
 
     source .env
-    python examples/deep_research/research.py "your topic" \
+    python examples/deep_research/research.py "ton sujet" \
         --model gpt-4o --engine cloud
     ```
 
 === "vLLM"
 
-    If you are running a vLLM inference server (e.g., on a multi-GPU node):
+    Si tu fais tourner un serveur d'inférence vLLM (sur une machine multi-GPU, par exemple) :
 
     ```bash title="Terminal"
-    python examples/deep_research/research.py "your topic" \
+    python examples/deep_research/research.py "ton sujet" \
         --model meta-llama/Meta-Llama-3-8B-Instruct \
         --engine vllm
     ```
 
-    Make sure `VLLM_BASE_URL` is set in `.env` pointing to your vLLM server.
+    Assure-toi que `VLLM_BASE_URL` est défini dans `.env` et pointe vers ton serveur vLLM.
 
-## Configuration Reference
+## Référence de configuration
 
-| Flag | Default | Description |
+| Option | Défaut | Description |
 |---|---|---|
-| `--model` | `qwen3:8b` | Model identifier passed to the engine |
-| `--engine` | `ollama` | Engine backend (`ollama`, `cloud`, `vllm`, `llamacpp`, `mlx`) |
-| `--max-turns` | `15` | Maximum orchestrator loop iterations |
-| `--output` | (none) | File path to save the final report; if omitted, prints to stdout |
+| `--model` | `qwen3:8b` | Identifiant de modèle passé au moteur |
+| `--engine` | `ollama` | Moteur d'inférence (`ollama`, `cloud`, `vllm`, `llamacpp`, `mlx`) |
+| `--max-turns` | `15` | Nombre maximum d'itérations de la boucle de l'orchestrateur |
+| `--output` | (aucun) | Chemin du fichier où enregistrer le rapport final ; sans lui, le rapport est affiché sur la sortie standard |
 
-## Recipe-Driven Configuration
+## La configuration par recette
 
-The companion `research.toml` in `examples/deep_research/` expresses the same setup declaratively. You can load it programmatically with `load_recipe()` and pass the result to `SystemBuilder`:
+Le fichier `research.toml` qui l'accompagne, dans `examples/deep_research/`, exprime la même configuration de façon déclarative. Tu peux le charger par programme avec `load_recipe()` et passer le résultat à `SystemBuilder` :
 
-```python title="Using the recipe"
+```python title="Se servir de la recette"
 from diapason.recipes import load_recipe
 from diapason import SystemBuilder
 
 recipe = load_recipe("examples/deep_research/research.toml")
 system = SystemBuilder(**recipe.to_builder_kwargs()).build()
-response = system.ask("quantum computing advances 2026")
+response = system.ask("avancées de l'informatique quantique 2026")
 system.close()
 ```
 
-This is useful when you want to version-control the research configuration, share it with collaborators, or feed it to the `diapason eval` runner for benchmarking.
+C'est pratique quand tu veux versionner la configuration de recherche, la partager avec d'autres, ou la donner au lanceur `diapason eval` pour mesurer les performances.
 
-## Customization
+## Personnaliser
 
-### Swap the agent
+### Changer d'agent
 
-Replace `"orchestrator"` with `"native_react"` for a Thought-Action-Observation loop, or `"native_openhands"` for a CodeAct-style agent that can write and execute code:
+Remplace `"orchestrator"` par `"native_react"` pour une boucle Pensée-Action-Observation, ou par `"native_openhands"` pour un agent façon CodeAct, capable d'écrire et d'exécuter du code :
 
 ```python
 response = j.ask(prompt, agent="native_react", tools=tools)
 ```
 
-### Add more tools
+### Ajouter des outils
 
-Append any registered tool name to the `tools` list. For example, to also query a local knowledge base:
+Ajoute à la liste `tools` le nom de n'importe quel outil enregistré. Par exemple, pour interroger aussi une base de connaissances locale :
 
 ```python
 tools = ["web_search", "think", "file_write",
          "memory_store", "memory_search", "knowledge_graph_query"]
 ```
 
-Run `diapason agent info orchestrator` to see the full tool catalog.
+Lance `diapason agent info orchestrator` pour voir le catalogue complet des outils.
 
-### Adjust temperature
+### Ajuster la température
 
-Lower values (0.2) produce more focused, factual reports. Higher values (0.7-0.8) encourage broader exploration and more creative synthesis:
+Les valeurs basses (0,2) donnent des rapports plus resserrés et plus factuels. Les valeurs hautes (0,7-0,8) encouragent une exploration plus large et une synthèse plus créative :
 
 ```bash title="Terminal"
-python examples/deep_research/research.py "your topic" --max-turns 20
+python examples/deep_research/research.py "ton sujet" --max-turns 20
 ```
 
-## See Also
+## Voir aussi
 
-- [Architecture: Agents](../architecture/agents.md) — agent hierarchy (`BaseAgent`, `ToolUsingAgent`, `OrchestratorAgent`) and the `accepts_tools` mechanism
-- [Architecture: Tools and Memory](../architecture/memory.md) — tool registry, MCP adapter, and the `ToolExecutor` dispatch pipeline
-- [Getting Started: Configuration](../getting-started/configuration.md) — how to configure engines and models in `~/.diapason/config.toml`
+- [Architecture : les agents](../architecture/agents.md) — la hiérarchie des agents (`BaseAgent`, `ToolUsingAgent`, `OrchestratorAgent`) et le mécanisme `accepts_tools`
+- [Architecture : les outils et la mémoire](../architecture/memory.md) — le registre d'outils, l'adaptateur MCP et la chaîne d'aiguillage de `ToolExecutor`
+- [Premiers pas : la configuration](../getting-started/configuration.md) — comment configurer les moteurs et les modèles dans `~/.diapason/config.toml`

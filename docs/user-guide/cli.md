@@ -1,37 +1,37 @@
-# CLI Reference
+# Référence de la ligne de commande
 
-Diapason provides a command-line interface through the `diapason` command. Built on [Click](https://click.palletsprojects.com/), it offers subcommands for querying models, managing memory, running benchmarks, and serving an OpenAI-compatible API.
+Diapason s'utilise en ligne de commande par la commande `diapason`. Bâtie sur [Click](https://click.palletsprojects.com/), elle offre des sous-commandes pour interroger les modèles, gérer la mémoire, mesurer les performances et servir une API compatible OpenAI.
 
-## Global Options
+## Les options globales
 
 ```bash
-diapason --version   # Print the Diapason version
-diapason --help      # Show top-level help with all subcommands
+diapason --version   # Affiche la version de Diapason
+diapason --help      # Affiche l'aide générale, avec toutes les sous-commandes
 ```
 
 ## `diapason init`
 
-Detect local hardware (CPU, GPU, RAM) and generate a configuration file at `~/.diapason/config.toml`.
+Détecte le matériel de la machine (processeur, carte graphique, mémoire vive) et écrit un fichier de configuration dans `~/.diapason/config.toml`.
 
 ```bash
-diapason init           # Interactive — refuses to overwrite existing config
-diapason init --force   # Overwrite existing config without prompting
+diapason init           # Interactif — refuse d'écraser une config existante
+diapason init --force   # Écrase la config existante sans rien demander
 ```
 
 | Option    | Description                                   |
 |-----------|-----------------------------------------------|
-| `--force` | Overwrite existing configuration without prompting |
+| `--force` | Écrase la configuration existante sans rien demander |
 
-The `init` command auto-detects:
+La commande `init` détecte toute seule :
 
-- **Platform** (Linux, macOS, Windows)
-- **CPU** brand and core count
-- **RAM** in GB
-- **GPU** vendor, model, VRAM, and count (via `nvidia-smi`, `rocm-smi`, or `system_profiler`)
+- **La plateforme** (Linux, macOS, Windows)
+- **Le processeur** : marque et nombre de cœurs
+- **La mémoire vive**, en Go
+- **La carte graphique** : fabricant, modèle, VRAM et nombre d'unités (via `nvidia-smi`, `rocm-smi` ou `system_profiler`)
 
-Based on the detected hardware, it recommends an appropriate inference engine and writes a pre-configured TOML file.
+D'après ce qu'elle a trouvé, elle recommande un moteur d'inférence adapté et écrit un fichier TOML préconfiguré.
 
-**Example output:**
+**Exemple de sortie :**
 
 ```
 Detecting hardware...
@@ -47,117 +47,122 @@ Config written successfully.
 
 ## `diapason ask`
 
-Send a query to the inference engine (directly or through an agent) and print the response.
+Envoie une question au moteur d'inférence (directement ou par un agent) et affiche la réponse.
 
 ```bash
-diapason ask "What is the capital of France?"
+diapason ask "Quelle est la capitale de la France ?"
 ```
 
-### Options
+### Les options
 
-| Option                        | Type    | Default    | Description                                           |
+| Option                        | Type    | Défaut     | Description                                           |
 |-------------------------------|---------|------------|-------------------------------------------------------|
-| `-m`, `--model MODEL`         | string  | auto       | Model to use for inference                             |
-| `-e`, `--engine ENGINE`       | string  | auto       | Engine backend (ollama, vllm, llamacpp, etc.)          |
-| `-t`, `--temperature TEMP`    | float   | `0.7`      | Sampling temperature                                   |
-| `--max-tokens N`              | int     | `1024`     | Maximum tokens to generate                             |
-| `--json`                      | flag    | off        | Output raw JSON result instead of plain text           |
-| `--no-stream`                 | flag    | off        | Disable streaming (synchronous mode)                   |
-| `--no-context`                | flag    | off        | Disable memory context injection                       |
-| `-a`, `--agent AGENT`         | string  | none       | Agent to use (`simple`, `orchestrator`)                |
-| `--tools TOOLS`               | string  | none       | Comma-separated tool names to enable                   |
-| `-i`, `--image PATH`          | path    | none       | Image file for a vision model (e.g. `gemma3:4b`); repeatable |
-| `-S`, `--screen`              | flag    | off        | Capture the current screen and send it to the vision model  |
+| `-m`, `--model MODEL`         | chaîne  | auto       | Modèle à utiliser pour l'inférence                     |
+| `-e`, `--engine ENGINE`       | chaîne  | auto       | Moteur d'inférence (ollama, vllm, llamacpp, etc.)      |
+| `-t`, `--temperature TEMP`    | flottant| `0.7`      | Température d'échantillonnage                          |
+| `--max-tokens N`              | entier  | `1024`     | Nombre maximum de jetons à générer                     |
+| `--json`                      | drapeau | désactivé  | Rend le résultat JSON brut au lieu du texte simple     |
+| `--no-stream`                 | drapeau | désactivé  | Coupe le fil de l'eau (mode synchrone)                 |
+| `--no-context`                | drapeau | désactivé  | Coupe l'injection du contexte mémoire                  |
+| `-a`, `--agent AGENT`         | chaîne  | aucun      | Agent à utiliser (`simple`, `orchestrator`)            |
+| `--tools TOOLS`               | chaîne  | aucun      | Noms d'outils à activer, séparés par des virgules      |
+| `-i`, `--image PATH`          | chemin  | aucun      | Fichier image pour un modèle de vision (`gemma3:4b`, par exemple) ; répétable |
+| `-S`, `--screen`              | drapeau | désactivé  | Capture l'écran courant et l'envoie au modèle de vision |
 
-### Direct Mode vs Agent Mode
+### Le mode direct et le mode agent
 
-**Direct mode** (default) sends the query straight to the inference engine:
-
-```bash
-diapason ask "Explain quantum computing"
-```
-
-**Agent mode** routes the query through an agent that can use tools and manage multi-turn interactions:
+**Le mode direct** (celui par défaut) envoie la question droit au moteur d'inférence :
 
 ```bash
-diapason ask --agent orchestrator "What is 2+2?"
-diapason ask --agent orchestrator --tools calculator,think "Calculate sqrt(144) + 3^2"
-diapason ask --agent simple "Hello"
+diapason ask "Explique l'informatique quantique"
 ```
 
-### Usage Examples
+**Le mode agent** la fait passer par un agent, qui peut utiliser des outils et mener plusieurs tours :
 
 ```bash
-# Basic query
-diapason ask "What is machine learning?"
-
-# Specify a model
-diapason ask -m qwen3:8b "Summarize this concept"
-
-# Use the orchestrator agent with tools
-diapason ask --agent orchestrator --tools calculator "What is 15% of 340?"
-
-# Get JSON output
-diapason ask --json "Hello"
-
-# Disable memory context injection
-diapason ask --no-context "Tell me about Python"
-
-# Set maximum token generation
-diapason ask --max-tokens 2048 "Write a detailed essay about AI"
+diapason ask --agent orchestrator "Combien font 2+2 ?"
+diapason ask --agent orchestrator --tools calculator,think "Calcule sqrt(144) + 3^2"
+diapason ask --agent simple "Bonjour"
 ```
 
-### Vision Input
-
-Vision-capable models (such as `gemma3:4b`) can read images alongside your
-text prompt. Attach one or more image files with `-i`/`--image`, or capture
-the current screen with `-S`/`--screen`:
+### Des exemples
 
 ```bash
-# Ask about a local image
-diapason ask -i screenshot.png "What is shown in this image?"
+# Une question simple
+diapason ask "Qu'est-ce que l'apprentissage automatique ?"
 
-# Send multiple images (the flag is repeatable)
-diapason ask -i chart-a.png -i chart-b.png "Compare these two charts"
+# Choisir le modèle
+diapason ask -m qwen3:8b "Résume ce concept"
 
-# Capture the current screen and ask about it
-diapason ask --screen "Summarize what's on my screen"
+# L'agent orchestrator, avec des outils
+diapason ask --agent orchestrator --tools calculator "Combien font 15 % de 340 ?"
+
+# Obtenir la sortie en JSON
+diapason ask --json "Bonjour"
+
+# Couper l'injection du contexte mémoire
+diapason ask --no-context "Parle-moi de Python"
+
+# Fixer le nombre maximum de jetons générés
+diapason ask --max-tokens 2048 "Écris une dissertation détaillée sur l'IA"
 ```
 
-Vision runs in **direct mode** only. If you also pass `--agent`, the image is
-ignored and a note is printed — re-run with `--agent ""` to force direct mode.
+### Les images en entrée
 
-The Ollama context window can be tuned for large images or long prompts with
-the `DIAPASON_NUM_CTX` environment variable (default `16384`):
+Les modèles capables de vision (`gemma3:4b`, par exemple) savent lire des images
+en plus de ta question. Joins une ou plusieurs images avec `-i`/`--image`, ou
+capture l'écran courant avec `-S`/`--screen` :
 
 ```bash
-DIAPASON_NUM_CTX=8192 diapason ask --screen "What's on my screen?"
+# Interroger une image du disque
+diapason ask -i screenshot.png "Que montre cette image ?"
+
+# Envoyer plusieurs images (l'option est répétable)
+diapason ask -i chart-a.png -i chart-b.png "Compare ces deux graphiques"
+
+# Capturer l'écran courant et l'interroger
+diapason ask --screen "Résume ce qu'il y a sur mon écran"
 ```
 
-For the server, set it once in `config.toml` instead — `[intelligence]
-num_ctx = 32768` — so the desktop chat keeps room for its history after the
-10 000-token tool prefix (see `docs/development/diagnostic-performances-2026-09-19.md`).
-The environment variable still wins when both are set.
+La vision ne marche qu'en **mode direct**. Si tu passes aussi `--agent`, l'image
+est ignorée et une note te le dit — relance avec `--agent ""` pour forcer le mode
+direct.
 
-Weather questions read Environment Canada's 7-day forecast page for the
-city named in the question; when no city is named, the chat uses `[tools]
-ville = "Ottawa"` from `config.toml` (any city of
-`server/sources_officielles.py`'s table). With no city configured, the
-question must name one — Diapason never guesses a place.
+La fenêtre de contexte d'Ollama s'ajuste pour les grandes images ou les longues
+questions, avec la variable d'environnement `DIAPASON_NUM_CTX` (`16384` par
+défaut) :
 
-!!! note "Keep vision on-device"
-    Images are sensitive. Diapason prints a privacy warning before sending
-    an image to a non-local engine, so a screenshot never leaves your machine
-    unnoticed. Use a local engine (e.g. `ollama` with `gemma3:4b`) to keep
-    vision fully local.
+```bash
+DIAPASON_NUM_CTX=8192 diapason ask --screen "Qu'y a-t-il sur mon écran ?"
+```
 
-### JSON Output Format
+Pour le serveur, pose-la plutôt une fois pour toutes dans `config.toml` —
+`[intelligence] num_ctx = 32768` — pour que la discussion de l'app de bureau
+garde de la place pour son historique après le préfixe d'outils de 10 000 jetons
+(voir `docs/development/diagnostic-performances-2026-09-19.md`). La variable
+d'environnement l'emporte quand les deux sont posées.
 
-When using `--json` in **direct mode**, the output includes:
+Les questions de météo lisent la page des prévisions sur sept jours
+d'Environnement Canada pour la ville nommée dans la question ; quand aucune ville
+n'est nommée, la discussion prend `[tools] ville = "Ottawa"` dans `config.toml`
+(n'importe quelle ville de la table de `server/sources_officielles.py`). Sans
+ville configurée, la question doit en nommer une — Diapason ne devine jamais un
+lieu.
+
+!!! note "Garder la vision sur la machine"
+    Les images sont sensibles. Diapason affiche un avertissement de
+    confidentialité avant d'envoyer une image à un moteur qui n'est pas local :
+    une capture d'écran ne quitte donc jamais ta machine sans que tu le voies.
+    Utilise un moteur local (`ollama` avec `gemma3:4b`, par exemple) pour garder
+    la vision entièrement chez toi.
+
+### Le format de la sortie JSON
+
+Avec `--json` en **mode direct**, la sortie contient :
 
 ```json
 {
-  "content": "The response text...",
+  "content": "Le texte de la réponse…",
   "usage": {
     "prompt_tokens": 12,
     "completion_tokens": 85,
@@ -166,11 +171,11 @@ When using `--json` in **direct mode**, the output includes:
 }
 ```
 
-When using `--json` in **agent mode**, the output includes:
+Avec `--json` en **mode agent**, elle contient :
 
 ```json
 {
-  "content": "The response text...",
+  "content": "Le texte de la réponse…",
   "turns": 3,
   "tool_results": [
     {
@@ -186,17 +191,17 @@ When using `--json` in **agent mode**, the output includes:
 
 ## `diapason model`
 
-Manage and inspect language models available on running engines.
+Gère et inspecte les modèles de langue offerts par les moteurs en marche.
 
 ### `diapason model list`
 
-List all models available from running inference engines, displayed as a Rich table with model parameters, context length, and VRAM requirements.
+Liste tous les modèles offerts par les moteurs d'inférence en marche, dans une table Rich : nombre de paramètres, longueur de contexte et VRAM nécessaire.
 
 ```bash
 diapason model list
 ```
 
-**Example output:**
+**Exemple de sortie :**
 
 ```
            Available Models
@@ -210,13 +215,13 @@ diapason model list
 
 ### `diapason model info <model>`
 
-Show detailed information about a specific model.
+Affiche le détail d'un modèle donné.
 
 ```bash
 diapason model info qwen3:8b
 ```
 
-**Example output:**
+**Exemple de sortie :**
 
 ```
 ┌─ Qwen 3 8B ──────────────────────────────┐
@@ -234,20 +239,20 @@ diapason model info qwen3:8b
 
 ### `diapason model pull <model>`
 
-Download a model via Ollama. Shows a progress bar during download.
+Télécharge un modèle par Ollama. Une barre de progression suit le téléchargement.
 
 ```bash
 diapason model pull qwen3:8b
 ```
 
 !!! note
-    The `pull` command requires a running Ollama instance. It connects to the Ollama API at the host configured in your `config.toml`.
+    La commande `pull` a besoin d'une instance Ollama en marche. Elle se connecte à l'API d'Ollama, à l'hôte configuré dans ton `config.toml`.
 
 ---
 
 ## `diapason pearl`
 
-Access Pearl's native node, wallet, and RPC tools from the Diapason CLI.
+Accède aux outils natifs de Pearl — le nœud, le portefeuille et le RPC — depuis la ligne de commande de Diapason.
 
 ```bash
 diapason pearl doctor
@@ -257,30 +262,31 @@ diapason pearl ctl -- <prlctl args>
 diapason pearl address
 ```
 
-All Pearl wrapper commands use the `diapason pearl <command>` shape. The
-pass-through commands map to Pearl's native binaries:
+Toutes les commandes d'enrobage de Pearl prennent la forme
+`diapason pearl <command>`. Celles qui passent la main renvoient aux binaires
+natifs de Pearl :
 
-| Diapason command | Pearl binary | Use |
+| Commande Diapason | Binaire Pearl | Usage |
 |--------------------|--------------|-----|
-| `diapason pearl doctor` | n/a | Check whether `pearld`, `oyster`, and `prlctl` are discoverable |
-| `diapason pearl node` | `pearld` | Run the Pearl full node |
-| `diapason pearl wallet` | `oyster` | Run the Oyster wallet daemon |
-| `diapason pearl ctl` | `prlctl` | Query Pearl node or wallet RPC |
-| `diapason pearl address` | `prlctl --wallet getnewaddress` | Generate a wallet address from Oyster |
+| `diapason pearl doctor` | aucun | Vérifie que `pearld`, `oyster` et `prlctl` sont trouvables |
+| `diapason pearl node` | `pearld` | Fait tourner le nœud complet Pearl |
+| `diapason pearl wallet` | `oyster` | Fait tourner le démon de portefeuille Oyster |
+| `diapason pearl ctl` | `prlctl` | Interroge le RPC du nœud ou du portefeuille Pearl |
+| `diapason pearl address` | `prlctl --wallet getnewaddress` | Génère une adresse de portefeuille avec Oyster |
 
-Use `PEARL_HOME=/path/to/pearl` or `--pearl-home /path/to/pearl` if Pearl's
-`bin/` directory is not on `PATH`. See the [Pearl CLI guide](pearl.md) for
-examples.
+Utilise `PEARL_HOME=/path/to/pearl` ou `--pearl-home /path/to/pearl` si le
+dossier `bin/` de Pearl n'est pas dans le `PATH`. Voir le
+[guide de la ligne de commande Pearl](pearl.md) pour des exemples.
 
 ---
 
 ## `diapason memory`
 
-Manage the document memory store for retrieval-augmented generation.
+Gère la mémoire documentaire qui sert à la génération augmentée par récupération.
 
 ### `diapason memory index <path>`
 
-Index documents from a file or directory into the memory store.
+Indexe dans la mémoire les documents d'un fichier ou d'un dossier.
 
 ```bash
 diapason memory index ./docs/
@@ -289,137 +295,137 @@ diapason memory index ./data/ --chunk-size 256 --chunk-overlap 32
 diapason memory index ./docs/ --backend sqlite
 ```
 
-| Option                      | Type   | Default | Description                          |
+| Option                      | Type   | Défaut  | Description                          |
 |-----------------------------|--------|---------|--------------------------------------|
-| `--backend`, `-b`           | string | config  | Override the default memory backend  |
-| `--chunk-size`              | int    | `512`   | Chunk size in tokens                 |
-| `--chunk-overlap`           | int    | `64`    | Overlap between chunks in tokens     |
+| `--backend`, `-b`           | chaîne | config  | Remplace le moteur de mémoire par défaut |
+| `--chunk-size`              | entier | `512`   | Taille des morceaux, en jetons       |
+| `--chunk-overlap`           | entier | `64`    | Recouvrement entre morceaux, en jetons |
 
-The ingestion pipeline supports text, markdown, code files, and PDF (with `pdfplumber` installed). Binary files and hidden directories are automatically skipped.
+La chaîne d'ingestion accepte le texte, le markdown, les fichiers de code et le PDF (avec `pdfplumber` installé). Les fichiers binaires et les dossiers cachés sont sautés automatiquement.
 
 ### `diapason memory search <query>`
 
-Search the memory store for relevant document chunks.
+Cherche dans la mémoire les morceaux de documents pertinents.
 
 ```bash
-diapason memory search "machine learning basics"
-diapason memory search -k 10 "neural networks"
+diapason memory search "les bases de l'apprentissage automatique"
+diapason memory search -k 10 "réseaux de neurones"
 diapason memory search --backend faiss "embeddings"
 ```
 
-| Option             | Type   | Default | Description                          |
+| Option             | Type   | Défaut  | Description                          |
 |--------------------|--------|---------|--------------------------------------|
-| `--top-k`, `-k`    | int    | `5`     | Number of results to return          |
-| `--backend`, `-b`  | string | config  | Override the default memory backend  |
+| `--top-k`, `-k`    | entier | `5`     | Nombre de résultats à rendre         |
+| `--backend`, `-b`  | chaîne | config  | Remplace le moteur de mémoire par défaut |
 
-Results are displayed in a table with rank, score, source file, and a content preview.
+Les résultats s'affichent dans une table : rang, score, fichier source et un aperçu du contenu.
 
 ### `diapason memory stats`
 
-Show memory store statistics including document count and database size.
+Affiche les statistiques de la mémoire : nombre de documents et taille de la base.
 
 ```bash
 diapason memory stats
 diapason memory stats --backend sqlite
 ```
 
-| Option             | Type   | Default | Description                          |
+| Option             | Type   | Défaut  | Description                          |
 |--------------------|--------|---------|--------------------------------------|
-| `--backend`, `-b`  | string | config  | Override the default memory backend  |
+| `--backend`, `-b`  | chaîne | config  | Remplace le moteur de mémoire par défaut |
 
 ---
 
 ## `diapason telemetry`
 
-Query and manage inference telemetry data stored in SQLite.
+Interroge et gère les données de télémétrie d'inférence, stockées en SQLite.
 
 ### `diapason telemetry stats`
 
-Show aggregated telemetry statistics including total calls, tokens, cost, and latency, broken down by model and engine.
+Affiche les statistiques agrégées — nombre d'appels, jetons, coût et latence — détaillées par modèle et par moteur.
 
 ```bash
 diapason telemetry stats
-diapason telemetry stats -n 5    # Show top 5 models
+diapason telemetry stats -n 5    # Les 5 premiers modèles
 ```
 
-| Option          | Type | Default | Description                   |
-|-----------------|------|---------|-------------------------------|
-| `-n`, `--top`   | int  | `10`    | Number of top models to show  |
+| Option          | Type   | Défaut | Description                   |
+|-----------------|--------|--------|-------------------------------|
+| `-n`, `--top`   | entier | `10`   | Nombre de modèles de tête à afficher |
 
 ### `diapason telemetry export`
 
-Export raw telemetry records in JSON or CSV format.
+Exporte les enregistrements bruts de télémétrie, en JSON ou en CSV.
 
 ```bash
-diapason telemetry export                          # JSON to stdout
-diapason telemetry export --format csv             # CSV to stdout
-diapason telemetry export --format json -o data.json  # JSON to file
-diapason telemetry export -f csv -o metrics.csv    # CSV to file
+diapason telemetry export                          # JSON sur la sortie standard
+diapason telemetry export --format csv             # CSV sur la sortie standard
+diapason telemetry export --format json -o data.json  # JSON dans un fichier
+diapason telemetry export -f csv -o metrics.csv    # CSV dans un fichier
 ```
 
-| Option                | Type   | Default  | Description                     |
+| Option                | Type   | Défaut   | Description                     |
 |-----------------------|--------|----------|---------------------------------|
-| `-f`, `--format`      | choice | `json`   | Output format: `json` or `csv`  |
-| `-o`, `--output`      | path   | stdout   | Output file path                |
+| `-f`, `--format`      | choix  | `json`   | Format de sortie : `json` ou `csv` |
+| `-o`, `--output`      | chemin | stdout   | Chemin du fichier de sortie     |
 
 ### `diapason telemetry clear`
 
-Delete all telemetry records from the database.
+Supprime de la base tous les enregistrements de télémétrie.
 
 ```bash
-diapason telemetry clear         # Interactive confirmation
-diapason telemetry clear --yes   # Skip confirmation
+diapason telemetry clear         # Demande confirmation
+diapason telemetry clear --yes   # Sans confirmation
 ```
 
-| Option         | Type | Default | Description                   |
-|----------------|------|---------|-------------------------------|
-| `-y`, `--yes`  | flag | off     | Skip confirmation prompt      |
+| Option         | Type    | Défaut    | Description                   |
+|----------------|---------|-----------|-------------------------------|
+| `-y`, `--yes`  | drapeau | désactivé | Passe la demande de confirmation |
 
 !!! warning
-    This permanently deletes all stored telemetry data. Use `--yes` to skip the confirmation prompt in automated scripts.
+    Cela supprime définitivement toutes les données de télémétrie stockées. Utilise `--yes` pour passer la confirmation dans un script automatisé.
 
 ---
 
 ## `diapason bench`
 
-Run inference benchmarks against a running engine.
+Mesure les performances d'inférence d'un moteur en marche.
 
 ### `diapason bench run`
 
-Execute benchmarks and report results.
+Lance les mesures et rend les résultats.
 
 ```bash
-diapason bench run                               # Run all benchmarks, 10 samples
-diapason bench run -n 20                         # 20 samples per benchmark
-diapason bench run -b latency                    # Only the latency benchmark
-diapason bench run -b throughput -n 50 --json    # Throughput, 50 samples, JSON output
-diapason bench run -o results.jsonl              # Write JSONL results to file
-diapason bench run -m qwen3:8b -e ollama         # Specific model and engine
+diapason bench run                               # Toutes les mesures, 10 échantillons
+diapason bench run -n 20                         # 20 échantillons par mesure
+diapason bench run -b latency                    # Seulement la latence
+diapason bench run -b throughput -n 50 --json    # Débit, 50 échantillons, sortie JSON
+diapason bench run -o results.jsonl              # Écrit les résultats JSONL dans un fichier
+diapason bench run -m qwen3:8b -e ollama         # Un modèle et un moteur précis
 ```
 
-| Option                     | Type   | Default | Description                              |
-|----------------------------|--------|---------|------------------------------------------|
-| `-m`, `--model MODEL`      | string | auto    | Model to benchmark                       |
-| `-e`, `--engine ENGINE`    | string | auto    | Engine backend                           |
-| `-n`, `--samples N`        | int    | `10`    | Number of samples per benchmark          |
-| `-b`, `--benchmark NAME`   | string | all     | Specific benchmark to run                |
-| `-o`, `--output PATH`      | path   | none    | Write JSONL results to file              |
-| `--json`                   | flag   | off     | Output JSON summary to stdout            |
+| Option                     | Type    | Défaut    | Description                              |
+|----------------------------|---------|-----------|------------------------------------------|
+| `-m`, `--model MODEL`      | chaîne  | auto      | Modèle à mesurer                         |
+| `-e`, `--engine ENGINE`    | chaîne  | auto      | Moteur d'inférence                       |
+| `-n`, `--samples N`        | entier  | `10`      | Nombre d'échantillons par mesure         |
+| `-b`, `--benchmark NAME`   | chaîne  | toutes    | Mesure précise à lancer                  |
+| `-o`, `--output PATH`      | chemin  | aucun     | Écrit les résultats JSONL dans un fichier |
+| `--json`                   | drapeau | désactivé | Affiche le résumé JSON sur la sortie standard |
 
-Available benchmarks:
+Les mesures disponibles :
 
-- **latency** -- Measures per-call inference latency (mean, p50, p95, min, max)
-- **throughput** -- Measures tokens-per-second throughput
+- **latency** — la latence d'inférence par appel (moyenne, p50, p95, min, max)
+- **throughput** — le débit, en jetons par seconde
 
 ---
 
 ## `diapason channel`
 
-Manage messaging channels for multi-platform communication. Channels connect directly to platform APIs (Telegram, Discord, Slack, etc.) -- no gateway required.
+Gère les canaux de messagerie, pour parler sur plusieurs plateformes. Les canaux se connectent directement aux API des plateformes (Telegram, Discord, Slack, etc.) — aucune passerelle n'est nécessaire.
 
 ### `diapason channel list`
 
-List registered channel backends and their connection status.
+Liste les canaux enregistrés et leur état de connexion.
 
 ```bash
 diapason channel list
@@ -427,144 +433,147 @@ diapason channel list
 
 ### `diapason channel send`
 
-Send a message to a specific channel.
+Envoie un message à un canal précis.
 
 ```bash
-diapason channel send slack "Hello from Diapason!"
-diapason channel send discord "Build complete"
+diapason channel send slack "Bonjour de la part de Diapason !"
+diapason channel send discord "Construction terminée"
 ```
 
 | Argument    | Type   | Description                          |
 |-------------|--------|--------------------------------------|
-| `TARGET`    | string | Channel name to send to              |
-| `MESSAGE`   | string | Message content                      |
+| `TARGET`    | chaîne | Nom du canal destinataire            |
+| `MESSAGE`   | chaîne | Contenu du message                   |
 
 ### `diapason channel status`
 
-Show connection status for configured channels.
+Affiche l'état de connexion des canaux configurés.
 
 ```bash
 diapason channel status
 ```
 
-!!! note "Channel Dependencies"
-    Each channel requires its platform-specific credentials (bot tokens, API keys) configured in the `[channel.<platform>]` section of your config. See [Configuration](../getting-started/configuration.md) for details.
+!!! note "Ce dont chaque canal a besoin"
+    Chaque canal réclame les identifiants de sa plateforme (jetons de robot, clés d'API), configurés dans la section `[channel.<platform>]` de ta config. Voir [Configuration](../getting-started/configuration.md) pour le détail.
 
 ---
 
 ## `diapason serve`
 
-Start an OpenAI-compatible API server.
+Démarre un serveur d'API compatible OpenAI.
 
 ```bash
-diapason serve                                      # Default host/port from config
-diapason serve --port 8000                          # Custom port
-diapason serve --model qwen3:8b                     # Specify default model
-diapason serve --agent orchestrator                 # Route requests through an agent
+diapason serve                                      # Hôte et port par défaut, pris dans la config
+diapason serve --port 8000                          # Un autre port
+diapason serve --model qwen3:8b                     # Choisir le modèle par défaut
+diapason serve --agent orchestrator                 # Faire passer les requêtes par un agent
 
-# Let your other devices reach this machine — mesh routes only, on a
-# second socket. The full application stays on 127.0.0.1.
-diapason serve --lan-host 0.0.0.0                   # Mesh on 0.0.0.0:8001
-diapason serve --lan-host 0.0.0.0 --lan-port 8123   # …on another port
+# Laisse tes autres appareils joindre cette machine — les routes du maillage
+# seules, sur un second socket. L'application entière reste sur 127.0.0.1.
+diapason serve --lan-host 0.0.0.0                   # Maillage sur 0.0.0.0:8001
+diapason serve --lan-host 0.0.0.0 --lan-port 8123   # …sur un autre port
 ```
 
-| Option                   | Type   | Default | Description                              |
-|--------------------------|--------|---------|------------------------------------------|
-| `--host HOST`            | string | config  | Bind address for the **full** application |
-| `--port PORT`            | int    | config  | Port number                              |
-| `--lan-host HOST`        | string | none    | Listen address of the **mesh alone**, on a second socket (e.g. `0.0.0.0`). Omitted: no second socket at all |
-| `--lan-port PORT`        | int    | `8001`  | Port of that second socket. Must differ from `--port` |
-| `-e`, `--engine ENGINE`  | string | auto    | Engine backend                           |
-| `-m`, `--model MODEL`    | string | config  | Default model for inference              |
-| `-a`, `--agent AGENT`    | string | none    | Agent for non-streaming requests         |
+| Option                   | Type    | Défaut | Description                              |
+|--------------------------|---------|--------|------------------------------------------|
+| `--host HOST`            | chaîne  | config | Adresse d'écoute de l'application **entière** |
+| `--port PORT`            | entier  | config | Numéro de port                           |
+| `--lan-host HOST`        | chaîne  | aucun  | Adresse d'écoute du **maillage seul**, sur un second socket (`0.0.0.0`, par exemple). Omise : pas de second socket du tout |
+| `--lan-port PORT`        | entier  | `8001` | Port de ce second socket. Doit différer de `--port` |
+| `-e`, `--engine ENGINE`  | chaîne  | auto   | Moteur d'inférence                       |
+| `-m`, `--model MODEL`    | chaîne  | config | Modèle par défaut pour l'inférence       |
+| `-a`, `--agent AGENT`    | chaîne  | aucun  | Agent pour les requêtes hors fil de l'eau |
 
-!!! note "Server Dependencies"
-    The `serve` command requires the server extra:
+!!! note "Ce dont le serveur a besoin"
+    La commande `serve` réclame l'extra `server` :
 
     ```bash
     uv sync --extra server
     ```
 
-    This installs FastAPI, uvicorn, and related dependencies.
+    Cela installe FastAPI, uvicorn et leurs dépendances.
 
-### Two sockets, one process
+### Deux sockets, un seul processus {#two-sockets-one-process}
 
-`--host` carries the whole application and is meant to stay on `127.0.0.1`.
-`--lan-host` opens a *second* socket that mounts nine mesh routes and nothing
-else (`create_lan_app` in `src/diapason/server/app.py`):
+`--host` porte toute l'application, et a vocation à rester sur `127.0.0.1`.
+`--lan-host` ouvre un *second* socket, qui monte neuf routes de maillage et rien
+d'autre (`create_lan_app` dans `src/diapason/server/app.py`) :
 
-| Method | Path                                    | Description                       |
+| Méthode | Chemin                                  | Description                       |
 |--------|-----------------------------------------|-----------------------------------|
-| POST   | `/v1/mesh/pairings/redeem`              | Redeem an invitation code         |
-| POST   | `/v1/mesh/commands/deliver`             | Deliver a command to this device  |
-| POST   | `/v1/mesh/commands/poll`                | Poll for commands addressed here  |
-| POST   | `/v1/mesh/commands/ack`                 | Acknowledge a command             |
-| POST   | `/v1/mesh/presence`                     | Presence beat from a peer         |
-| POST   | `/v1/mesh/files/offer`                  | Offer a file, open a session      |
-| POST   | `/v1/mesh/files/{session_id}/chunk`     | Push one encrypted chunk          |
-| POST   | `/v1/mesh/files/{session_id}/finish`    | Verify the digest, reveal the file |
-| POST   | `/v1/mesh/files/{session_id}/status`    | Which chunks are still missing (resume) |
+| POST   | `/v1/mesh/pairings/redeem`              | Consommer un code d'invitation    |
+| POST   | `/v1/mesh/commands/deliver`             | Remettre une commande à cet appareil |
+| POST   | `/v1/mesh/commands/poll`                | Relever les commandes adressées ici |
+| POST   | `/v1/mesh/commands/ack`                 | Accuser réception d'une commande  |
+| POST   | `/v1/mesh/presence`                     | Battement de présence d'un pair   |
+| POST   | `/v1/mesh/files/offer`                  | Proposer un fichier, ouvrir une session |
+| POST   | `/v1/mesh/files/{session_id}/chunk`     | Pousser un morceau chiffré        |
+| POST   | `/v1/mesh/files/{session_id}/finish`    | Vérifier l'empreinte, révéler le fichier |
+| POST   | `/v1/mesh/files/{session_id}/status`    | Quels morceaux manquent encore (reprise) |
 
-A few consequences worth knowing before you open that port:
+Quelques conséquences à connaître avant d'ouvrir ce port :
 
-- `POST /v1/chat/completions` on the mesh socket answers **404**, not 401 — the
-  route is not mounted there at all. Chat, speech and Succès stay on `--host`.
-- Those nine routes authenticate by **Ed25519 device signature**, invitation or
-  session token — *not* by the local API key.
-- The second socket serves no `/docs`, `/redoc` or OpenAPI schema.
-- Both sockets run in a **single process**: the command inbox and the transfer
-  sessions live in memory, and two processes would lose them.
-- `--lan-port` equal to `--port` is refused before anything starts (exit code
-  `2`): on macOS both would bind silently, on Linux the second would fail.
-- When a second socket exists, it is the address peers are told to use — the
-  mesh beacon announces `--lan-host:--lan-port`, not the loopback pair.
+- `POST /v1/chat/completions` sur le socket du maillage répond **404**, pas 401 —
+  la route n'y est pas montée du tout. La discussion, la voix et Succès restent
+  sur `--host`.
+- Ces neuf routes s'authentifient par **signature d'appareil Ed25519**, par
+  invitation ou par jeton de session — *pas* par la clé d'API locale.
+- Le second socket ne sert ni `/docs`, ni `/redoc`, ni de schéma OpenAPI.
+- Les deux sockets tournent dans un **seul processus** : la boîte aux lettres des
+  commandes et les sessions de transfert vivent en mémoire, et deux processus les
+  perdraient.
+- Un `--lan-port` égal à `--port` est refusé avant que quoi que ce soit ne
+  démarre (code de sortie `2`) : sur macOS les deux se lieraient en silence, sur
+  Linux le second échouerait.
+- Quand un second socket existe, c'est l'adresse qu'on donne aux pairs — la
+  balise du maillage annonce `--lan-host:--lan-port`, pas la paire de bouclage.
 
-Startup prints the mesh line on its own line, before the `Starting Diapason API server` block:
+Au démarrage, la ligne du maillage s'affiche seule, avant le bloc `Starting Diapason API server` :
 
 ```
   Maillage : http://0.0.0.0:8001 — neuf routes, créance d'appareil exigée
 ```
 
-`--host 0.0.0.0` still exists and still puts the *entire* API on the network,
-protected only by the local API key. Prefer `--lan-host` unless you genuinely
-want every route reachable.
+`--host 0.0.0.0` existe toujours, et met toujours l'API *entière* sur le réseau,
+protégée par la seule clé d'API locale. Préfère `--lan-host`, à moins de vouloir
+vraiment que toutes les routes soient joignables.
 
-### API Endpoints
+### Les routes de l'API
 
-The server exposes the following OpenAI-compatible endpoints:
+Le serveur expose les routes compatibles OpenAI suivantes :
 
-| Method | Path                     | Description                    |
+| Méthode | Chemin                   | Description                    |
 |--------|--------------------------|--------------------------------|
-| POST   | `/v1/chat/completions`   | Chat completions (streaming & non-streaming) |
-| GET    | `/v1/models`             | List available models          |
-| GET    | `/health`                | Health check                   |
-| GET    | `/v1/channels`           | List available messaging channels    |
-| POST   | `/v1/channels/send`      | Send a message to a channel          |
-| GET    | `/v1/channels/status`    | Channel bridge connection status     |
+| POST   | `/v1/chat/completions`   | Complétions de discussion (au fil de l'eau ou non) |
+| GET    | `/v1/models`             | Liste les modèles disponibles  |
+| GET    | `/health`                | Contrôle de santé              |
+| GET    | `/v1/channels`           | Liste les canaux de messagerie disponibles |
+| POST   | `/v1/channels/send`      | Envoie un message à un canal   |
+| GET    | `/v1/channels/status`    | État de connexion du pont de canaux |
 
-**Example with curl:**
+**Exemple avec curl :**
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "qwen3:8b",
-    "messages": [{"role": "user", "content": "Hello!"}]
+    "messages": [{"role": "user", "content": "Bonjour !"}]
   }'
 ```
 
-When an agent is configured (e.g., `--agent orchestrator`), non-streaming requests are routed through the agent with access to all registered tools. For tool-capable agents (`orchestrator`, `react`, `openhands`), all registered tools are automatically loaded and made available.
+Quand un agent est configuré (`--agent orchestrator`, par exemple), les requêtes hors fil de l'eau passent par l'agent, avec accès à tous les outils enregistrés. Pour les agents capables d'outils (`orchestrator`, `react`, `openhands`), tous les outils enregistrés sont chargés et mis à disposition automatiquement.
 
 ---
 
 ## `diapason serve-service`
 
-Keep the API server running at login, as a macOS LaunchAgent. All subcommands
-exit with an error on any other platform.
+Garde le serveur d'API en marche dès l'ouverture de session, comme LaunchAgent
+macOS. Toutes les sous-commandes sortent en erreur sur une autre plateforme.
 
 ```bash
-diapason serve-service install                    # 127.0.0.1:8000, at every login
-diapason serve-service install --maillage-reseau  # …plus the mesh on 0.0.0.0:8001
+diapason serve-service install                    # 127.0.0.1:8000, à chaque ouverture de session
+diapason serve-service install --maillage-reseau  # …plus le maillage sur 0.0.0.0:8001
 diapason serve-service status
 diapason serve-service restart
 diapason serve-service logs --lines 100
@@ -573,51 +582,51 @@ diapason serve-service uninstall
 
 ### `diapason serve-service install`
 
-| Option              | Type   | Default     | Description                                    |
-|---------------------|--------|-------------|------------------------------------------------|
-| `--host HOST`       | string | `127.0.0.1` | Bind address of the full application. A non-loopback value is **refused** |
-| `--port PORT`       | int    | `8000`      | Port of the full application                   |
-| `--maillage-reseau` | flag   | off         | Also open the mesh socket on `0.0.0.0`         |
-| `--lan-port PORT`   | int    | `8001`      | Port of that mesh socket                       |
+| Option              | Type    | Défaut      | Description                                    |
+|---------------------|---------|-------------|------------------------------------------------|
+| `--host HOST`       | chaîne  | `127.0.0.1` | Adresse d'écoute de l'application entière. Une valeur hors bouclage est **refusée** |
+| `--port PORT`       | entier  | `8000`      | Port de l'application entière                  |
+| `--maillage-reseau` | drapeau | désactivé   | Ouvre aussi le socket du maillage sur `0.0.0.0` |
+| `--lan-port PORT`   | entier  | `8001`      | Port de ce socket de maillage                  |
 
-`--maillage-reseau` adds `--lan-host 0.0.0.0 --lan-port <port>` to the `serve`
-command line written into the plist — the nine mesh routes, device signature
-required. The full application stays on the loopback either way. Installing
-prints a warning first, because any machine on your network will be able to
-reach that port.
+`--maillage-reseau` ajoute `--lan-host 0.0.0.0 --lan-port <port>` à la ligne de
+commande `serve` écrite dans le plist — les neuf routes du maillage, signature
+d'appareil exigée. L'application entière reste sur le bouclage dans les deux cas.
+L'installation affiche d'abord un avertissement, parce que n'importe quelle
+machine de ton réseau pourra joindre ce port.
 
-!!! warning "`--allow-network` is gone"
-    The old `--allow-network` put the **entire** API on the network. It no
-    longer installs anything: the command fails, names `--maillage-reseau` as
-    its replacement, and exits non-zero. It fails rather than aliasing quietly
-    — the same command must not start doing something else without saying so.
+!!! warning "`--allow-network` n'existe plus"
+    L'ancien `--allow-network` mettait l'API **entière** sur le réseau. Il
+    n'installe plus rien : la commande échoue, nomme `--maillage-reseau` comme
+    remplaçante et sort en non-zéro. Elle échoue plutôt que d'aliaser en silence
+    — une même commande ne doit pas se mettre à faire autre chose sans le dire.
 
-Other refusals, all before anything is installed:
+Les autres refus, tous avant la moindre installation :
 
-- `--host` anywhere but `127.0.0.1`, `localhost` or `::1`.
-- `--lan-port` equal to `--port` when `--maillage-reseau` is set.
-- `--port` already served by something that is not this agent. Installing means
-  *launching* (the plist carries `RunAtLoad`), so a second server on the same
-  port would be a silent duplicate. Re-installing over Diapason's own service
-  is allowed — launchd replaces a job of the same label.
+- `--host` ailleurs que `127.0.0.1`, `localhost` ou `::1`.
+- `--lan-port` égal à `--port` quand `--maillage-reseau` est posé.
+- `--port` déjà servi par autre chose que cet agent. Installer, c'est *lancer*
+  (le plist porte `RunAtLoad`) : un second serveur sur le même port serait un
+  doublon silencieux. Réinstaller par-dessus le service de Diapason lui-même est
+  permis — launchd remplace un job de même étiquette.
 
-`status` reports four separate facts: whether the LaunchAgent is loaded, where its plist lives,
-whether `http://127.0.0.1:8000/health` actually answers, and where the logs
-are. Loaded is not the same as answering. See the
-[launchd deployment guide](../deployment/launchd.md) for the plist itself.
+`status` rend compte de quatre faits distincts : si le LaunchAgent est chargé, où
+vit son plist, si `http://127.0.0.1:8000/health` répond vraiment, et où sont les
+journaux. Chargé n'est pas la même chose que répond. Voir le
+[guide de déploiement launchd](../deployment/launchd.md) pour le plist lui-même.
 
 ---
 
 ## `diapason mesh`
 
-The fleet of paired devices: join one, see who is in it, send a file to it.
-Pairing is invitation-based — the host machine shows a code under
-**Appareils → Ajouter un appareil** (the Devices page), and the guest
-redeems it here.
+La flotte des appareils appairés : la rejoindre, voir qui en fait partie, lui
+envoyer un fichier. L'appairage se fait par invitation — la machine hôte affiche
+un code sous **Appareils → Ajouter un appareil** (la page Appareils), et l'invité
+le consomme ici.
 
 ### `diapason mesh join`
 
-Join another Diapason's fleet.
+Rejoindre la flotte d'un autre Diapason.
 
 ```bash
 diapason mesh join 192.168.0.5:8000 ABCD-1234
@@ -626,39 +635,39 @@ diapason mesh join 192.168.0.5:8001 ABCD-1234 --address 192.168.0.9:8001
 
 | Argument  | Type   | Description                                           |
 |-----------|--------|-------------------------------------------------------|
-| `HOST`    | string | The other machine's address, e.g. `192.168.0.5:8000`  |
-| `TOKEN`   | string | The invitation code it shows in Appareils → Ajouter un appareil |
+| `HOST`    | chaîne | L'adresse de l'autre machine, `192.168.0.5:8000` par exemple |
+| `TOKEN`   | chaîne | Le code d'invitation qu'elle affiche sous Appareils → Ajouter un appareil |
 
-| Option            | Type   | Default | Description                                          |
+| Option            | Type   | Défaut  | Description                                          |
 |-------------------|--------|---------|------------------------------------------------------|
-| `--address ADDR`  | string | guessed | The address **this** device is reachable at          |
+| `--address ADDR`  | chaîne | deviné  | L'adresse à laquelle **cet** appareil est joignable  |
 
-On success it prints the host's fleet identity, its device id, its address,
-and the capabilities granted so far — or `rien pour l'instant` when none were,
-rather than letting you assume a permission you did not receive. A refused
-pairing exits `1`.
+Quand ça marche, la commande affiche l'identité de flotte de l'hôte, son
+identifiant d'appareil, son adresse et les capacités accordées jusque-là — ou
+`rien pour l'instant` quand aucune ne l'a été, plutôt que de te laisser supposer
+une permission que tu n'as pas reçue. Un appairage refusé sort en `1`.
 
-`HOST` may be the mesh socket as well as the main one: `pairings/redeem` is one
-of the nine routes carried there. A device whose registry already holds at least one
-non-revoked device — whatever its trust level — refuses to join a *different*
-fleet; so does one whose registry cannot be read at all. Adopting another
-fleet identity would lose every peer it has at once, so the command stops
-and you decide.
+`HOST` peut être le socket du maillage aussi bien que le principal :
+`pairings/redeem` est l'une des neuf routes qu'il porte. Un appareil dont le
+registre contient déjà au moins un appareil non révoqué — quel que soit son
+niveau de confiance — refuse de rejoindre une *autre* flotte ; celui dont le
+registre est illisible aussi. Adopter une autre identité de flotte perdrait tous
+ses pairs d'un coup, alors la commande s'arrête et c'est toi qui décides.
 
 ### `diapason mesh devices`
 
-List the devices of the fleet, with their presence.
+Liste les appareils de la flotte, avec leur présence.
 
 ```bash
 diapason mesh devices
-diapason mesh devices --all   # include revoked devices
+diapason mesh devices --all   # y compris les appareils révoqués
 ```
 
-Columns: name, platform, trust level, presence, device id.
+Les colonnes : nom, plateforme, niveau de confiance, présence, identifiant d'appareil.
 
 ### `diapason mesh send`
 
-Send a file to a device of the fleet.
+Envoie un fichier à un appareil de la flotte.
 
 ```bash
 diapason mesh send ~/Documents/rapport.pdf "mon PC"
@@ -667,35 +676,37 @@ diapason mesh send ./photo.jpg "mon téléphone"
 
 | Argument   | Type | Description                                                  |
 |------------|------|--------------------------------------------------------------|
-| `FICHIER`  | path | The file to send. Must exist and not be a directory          |
-| `APPAREIL` | string | The target, designated the way the mesh resolver reads it: by name (`"PC du bureau"`) or by kind (`"mon téléphone"`). A device id is **not** accepted — the resolver matches names, device types and platforms only |
+| `FICHIER`  | chemin | Le fichier à envoyer. Doit exister et ne pas être un dossier |
+| `APPAREIL` | chaîne | La cible, désignée comme le résolveur du maillage la lit : par nom (`"PC du bureau"`) ou par type (`"mon téléphone"`). Un identifiant d'appareil n'est **pas** accepté — le résolveur ne rapproche que des noms, des types d'appareils et des plateformes |
 
-The command takes no options. What it does, in order:
+La commande ne prend aucune option. Ce qu'elle fait, dans l'ordre :
 
-1. Reads the registry and keeps only `TRUSTED` devices. With none paired it
-   says so and exits `1`.
-2. Resolves `APPAREIL` through the mesh resolver. A phrase that designates two
-   devices is **refused, never settled at random**; so is one that matches
-   nothing, or that means this very machine. The resolver's own sentence is
-   printed verbatim and the command exits `1`.
-3. Prints the file name and its human-readable size, then a
-   `n/total morceaux` counter as the chunks go out.
-4. Prints the receiver's message: green when the transfer landed
-   (`COMPLETE`, or `ALREADY_PRESENT` when content-deduplication found the file
-   already there, whole and verified), yellow for any other status. When the
-   receiver reports a path, it is shown as `chez <device> : <path>`.
+1. Lit le registre et ne garde que les appareils `TRUSTED`. Si aucun n'est
+   appairé, elle le dit et sort en `1`.
+2. Résout `APPAREIL` par le résolveur du maillage. Une formule qui désigne deux
+   appareils est **refusée, jamais tranchée au hasard** ; de même pour celle qui
+   ne correspond à rien, ou qui désigne cette machine-ci. La phrase du résolveur
+   s'affiche telle quelle et la commande sort en `1`.
+3. Affiche le nom du fichier et sa taille lisible, puis un compteur
+   `n/total morceaux` à mesure que les morceaux partent.
+4. Affiche le message du récepteur : vert quand le transfert est arrivé
+   (`COMPLETE`, ou `ALREADY_PRESENT` quand la déduplication par contenu a trouvé
+   le fichier déjà là, entier et vérifié), jaune pour tout autre statut. Quand le
+   récepteur rend un chemin, il s'affiche sous la forme `chez <device> : <path>`.
 
-A refusal from the recipient or the transport is relayed as it stands, in red,
-with exit code `1` — it knows why, the sender does not.
+Un refus du destinataire ou du transport est relayé tel quel, en rouge, avec le
+code de sortie `1` — lui sait pourquoi, l'expéditeur non.
 
-This is the first production caller of the file-transfer core: the peer must
-be reachable, which on a real network means it runs `diapason serve` with
-`--lan-host` (see [Two sockets, one process](#two-sockets-one-process)).
+C'est le premier appelant en production du cœur de transfert de fichiers : le
+pair doit être joignable, ce qui sur un vrai réseau veut dire qu'il fait tourner
+`diapason serve` avec `--lan-host` (voir
+[Deux sockets, un seul processus](#two-sockets-one-process)).
 
 ### `diapason mesh whoami`
 
-Print this device's identity in the fleet: device id and name, platform, fleet
-(owner) id, and the **public** key. The private key appears nowhere.
+Affiche l'identité de cet appareil dans la flotte : identifiant et nom
+d'appareil, plateforme, identifiant de flotte (celui du propriétaire) et la clé
+**publique**. La clé privée n'apparaît nulle part.
 
 ```bash
 diapason mesh whoami
@@ -703,14 +714,14 @@ diapason mesh whoami
 
 ---
 
-## LLM-guided spec search (no CLI yet)
+## La recherche de spécification guidée par LLM (pas encore de commande)
 
-LLM-guided spec search (the frontier-driven harness-learning subsystem)
-is exposed as a Python library only — there is currently no top-level
-`diapason` subcommand for it. Construct a `SpecSearchOrchestrator`
-directly from `diapason.learning.spec_search.orchestrator` and call
-`.run(trigger)` with a trigger from
-`diapason.learning.spec_search.triggers`. See
+La recherche de spécification guidée par LLM (le sous-système d'apprentissage de
+harnais piloté par la frontière) n'est exposée que comme bibliothèque Python — il
+n'existe pour l'instant aucune sous-commande `diapason` de premier niveau.
+Construis directement un `SpecSearchOrchestrator` depuis
+`diapason.learning.spec_search.orchestrator` et appelle `.run(trigger)` avec un
+déclencheur de `diapason.learning.spec_search.triggers`. Voir
 [`docs/user-guide/llm-guided-spec-search.md`](llm-guided-spec-search.md)
-for the architecture and the building blocks
-(`splits.py`, external corpora, `external_adapter`).
+pour l'architecture et les briques
+(`splits.py`, corpus externes, `external_adapter`).

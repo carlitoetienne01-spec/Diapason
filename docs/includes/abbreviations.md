@@ -1,13 +1,13 @@
-*[ABC]: Abstract Base Class
-*[FTS5]: Full-Text Search version 5
-*[GRPO]: Group Relative Policy Optimization
-*[RRF]: Reciprocal Rank Fusion
-*[SSE]: Server-Sent Events
-*[VRAM]: Video Random Access Memory
-*[MoE]: Mixture of Experts
-*[GGUF]: GPT-Generated Unified Format
-*[MCP]: Model Context Protocol
-*[SDK]: Software Development Kit
-*[CLI]: Command-Line Interface
-*[API]: Application Programming Interface
-*[LLM]: Large Language Model
+*[ABC]: Classe de base abstraite (Abstract Base Class)
+*[FTS5]: Recherche plein texte, version 5 (Full-Text Search 5)
+*[GRPO]: Optimisation de politique relative au groupe (Group Relative Policy Optimization)
+*[RRF]: Fusion par rangs réciproques (Reciprocal Rank Fusion)
+*[SSE]: Événements envoyés par le serveur (Server-Sent Events)
+*[VRAM]: Mémoire vive de la carte graphique (Video Random Access Memory)
+*[MoE]: Mélange d'experts (Mixture of Experts)
+*[GGUF]: Format unifié généré par GPT (GPT-Generated Unified Format)
+*[MCP]: Protocole de contexte de modèle (Model Context Protocol)
+*[SDK]: Trousse de développement logiciel (Software Development Kit)
+*[CLI]: Interface en ligne de commande (Command-Line Interface)
+*[API]: Interface de programmation applicative (Application Programming Interface)
+*[LLM]: Grand modèle de langue (Large Language Model)

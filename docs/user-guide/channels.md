@@ -1,78 +1,78 @@
-# Channels
+# Canaux
 
-The channels module lets Diapason send and receive messages through external messaging platforms. Each platform has a dedicated channel implementation that connects directly to the platform's API -- there is no intermediate gateway.
+Le module des canaux permet à Diapason d'envoyer et de recevoir des messages par des plateformes de messagerie externes. Chaque plateforme a sa propre implémentation de canal, qui se connecte directement à l'API de la plateforme — il n'y a aucune passerelle intermédiaire.
 
-!!! note "Channels are disabled by default"
-    The `[channel]` config section defaults to `enabled = false`. You must set `enabled = true` and configure platform-specific credentials before channel features become active.
+!!! note "Les canaux sont désactivés par défaut"
+    La section `[channel]` de la configuration vaut `enabled = false` par défaut. Tu dois poser `enabled = true` et configurer les identifiants propres à chaque plateforme avant que les fonctions de canal s'activent.
 
 ---
 
-## Overview
+## Vue d'ensemble
 
-Channel messaging is built around the `BaseChannel` ABC. Each platform (Telegram, Discord, Slack, WhatsApp, etc.) has its own implementation registered via `@ChannelRegistry.register("name")`. Channels connect directly to their platform APIs, register handlers for incoming messages, and send outgoing messages.
+La messagerie par canaux est bâtie autour de la classe abstraite `BaseChannel`. Chaque plateforme (Telegram, Discord, Slack, WhatsApp, etc.) a son implémentation, enregistrée par `@ChannelRegistry.register("name")`. Les canaux se connectent directement aux API de leur plateforme, enregistrent des gestionnaires pour les messages entrants et envoient les messages sortants.
 
 ```mermaid
 graph LR
-    A[Your Code] -->|send| B[TelegramChannel / DiscordChannel / SlackChannel / ...]
-    B -->|Platform API| C[Telegram / Discord / Slack / ...]
-    C -->|incoming messages| B
-    B -->|on_message handlers| D[Your Handlers]
+    A[Ton code] -->|envoi| B[TelegramChannel / DiscordChannel / SlackChannel / ...]
+    B -->|API de la plateforme| C[Telegram / Discord / Slack / ...]
+    C -->|messages entrants| B
+    B -->|gestionnaires on_message| D[Tes gestionnaires]
 ```
 
 ---
 
-## Supported Channels
+## Les canaux pris en charge
 
-| Channel | Registry Key | Platform | Pip Extra | Auth |
+| Canal | Clé de registre | Plateforme | Extra pip | Authentification |
 |---------|-------------|----------|-----------|------|
-| `SendBlueChannel` | `sendblue` | SendBlue iMessage/SMS API | — | API key + secret |
-| `TelegramChannel` | `telegram` | Telegram Bot API | `channel-telegram` | Bot token |
-| `DiscordChannel` | `discord` | Discord Bot API | `channel-discord` | Bot token |
-| `SlackChannel` | `slack` | Slack Web API | `channel-slack` | Bot + App tokens |
-| `WhatsAppChannel` | `whatsapp` | WhatsApp Business API | — | API token |
-| `WhatsAppBaileysChannel` | `whatsapp_baileys` | WhatsApp (Baileys) | — | QR code auth |
-| `WebhookChannel` | `webhook` | Generic HTTP webhook | — | URL + optional secret |
-| `EmailChannel` | `email` | SMTP/IMAP email | — | Email credentials |
+| `SendBlueChannel` | `sendblue` | API iMessage/SMS de SendBlue | — | Clé d'API + secret |
+| `TelegramChannel` | `telegram` | API des robots Telegram | `channel-telegram` | Jeton de robot |
+| `DiscordChannel` | `discord` | API des robots Discord | `channel-discord` | Jeton de robot |
+| `SlackChannel` | `slack` | API web de Slack | `channel-slack` | Jetons de robot et d'application |
+| `WhatsAppChannel` | `whatsapp` | API WhatsApp Business | — | Jeton d'API |
+| `WhatsAppBaileysChannel` | `whatsapp_baileys` | WhatsApp (Baileys) | — | Authentification par code QR |
+| `WebhookChannel` | `webhook` | Webhook HTTP générique | — | URL + secret facultatif |
+| `EmailChannel` | `email` | Courriel SMTP/IMAP | — | Identifiants de courriel |
 | `SignalChannel` | `signal` | Signal Messenger | — | Signal CLI |
-| `GoogleChatChannel` | `google_chat` | Google Chat | — | Service account |
-| `IRCChannel` | `irc` | IRC | — | Server credentials |
-| `WebChatChannel` | `webchat` | Browser-based chat | — | None |
-| `TeamsChannel` | `teams` | Microsoft Teams | — | Bot credentials |
-| `MatrixChannel` | `matrix` | Matrix protocol | — | Homeserver + token |
-| `MattermostChannel` | `mattermost` | Mattermost | — | Bot token |
-| `FeishuChannel` | `feishu` | Feishu/Lark | — | App credentials |
-| `BlueBubblesChannel` | `bluebubbles` | iMessage (BlueBubbles) | — | BlueBubbles server |
-| `LineChannel` | `line` | LINE Messaging API | `channel-line` | Channel access token |
-| `ViberChannel` | `viber` | Viber Bot API | `channel-viber` | Auth token |
-| `MessengerChannel` | `messenger` | Facebook Messenger | `channel-messenger` | Page access token |
-| `RedditChannel` | `reddit` | Reddit API | `channel-reddit` | OAuth credentials |
-| `MastodonChannel` | `mastodon` | Mastodon API | `channel-mastodon` | Access token |
-| `XMPPChannel` | `xmpp` | XMPP/Jabber | `channel-xmpp` | JID + password |
-| `RocketChatChannel` | `rocketchat` | Rocket.Chat API | `channel-rocketchat` | User credentials |
-| `ZulipChannel` | `zulip` | Zulip API | `channel-zulip` | Bot email + API key |
-| `TwitchChannel` | `twitch` | Twitch IRC/API | `channel-twitch` | OAuth token |
-| `NostrChannel` | `nostr` | Nostr protocol | `channel-nostr` | Private key (nsec) |
+| `GoogleChatChannel` | `google_chat` | Google Chat | — | Compte de service |
+| `IRCChannel` | `irc` | IRC | — | Identifiants du serveur |
+| `WebChatChannel` | `webchat` | Discussion dans le navigateur | — | Aucune |
+| `TeamsChannel` | `teams` | Microsoft Teams | — | Identifiants du robot |
+| `MatrixChannel` | `matrix` | Protocole Matrix | — | Homeserver + jeton |
+| `MattermostChannel` | `mattermost` | Mattermost | — | Jeton de robot |
+| `FeishuChannel` | `feishu` | Feishu/Lark | — | Identifiants d'application |
+| `BlueBubblesChannel` | `bluebubbles` | iMessage (BlueBubbles) | — | Serveur BlueBubbles |
+| `LineChannel` | `line` | API de messagerie LINE | `channel-line` | Jeton d'accès au canal |
+| `ViberChannel` | `viber` | API des robots Viber | `channel-viber` | Jeton d'authentification |
+| `MessengerChannel` | `messenger` | Facebook Messenger | `channel-messenger` | Jeton d'accès à la page |
+| `RedditChannel` | `reddit` | API de Reddit | `channel-reddit` | Identifiants OAuth |
+| `MastodonChannel` | `mastodon` | API de Mastodon | `channel-mastodon` | Jeton d'accès |
+| `XMPPChannel` | `xmpp` | XMPP/Jabber | `channel-xmpp` | JID + mot de passe |
+| `RocketChatChannel` | `rocketchat` | API de Rocket.Chat | `channel-rocketchat` | Identifiants utilisateur |
+| `ZulipChannel` | `zulip` | API de Zulip | `channel-zulip` | Courriel du robot + clé d'API |
+| `TwitchChannel` | `twitch` | IRC/API de Twitch | `channel-twitch` | Jeton OAuth |
+| `NostrChannel` | `nostr` | Protocole Nostr | `channel-nostr` | Clé privée (nsec) |
 
 ---
 
-## Using a Channel
+## Se servir d'un canal
 
-### Connecting
+### Se connecter
 
 ```python title="connect.py"
 from diapason.channels.telegram import TelegramChannel
 
 channel = TelegramChannel(
-    bot_token="YOUR_BOT_TOKEN",  # (1)!
+    bot_token="TON_JETON_DE_ROBOT",  # (1)!
 )
 channel.connect()
 
 print(channel.status())  # ChannelStatus.CONNECTED
 ```
 
-1. Falls back to the `TELEGRAM_BOT_TOKEN` environment variable if not provided.
+1. Retombe sur la variable d'environnement `TELEGRAM_BOT_TOKEN` quand il n'est pas fourni.
 
-### Sending Messages
+### Envoyer des messages
 
 ```python title="send_message.py"
 from diapason.channels.telegram import TelegramChannel
@@ -80,24 +80,24 @@ from diapason.channels.telegram import TelegramChannel
 channel = TelegramChannel()
 channel.connect()
 
-# Send to a chat by ID
+# Envoyer à une discussion, par son identifiant
 ok = channel.send(
     "123456789",
-    "Analysis complete. Results are ready.",
-    conversation_id="thread-abc123",  # optional, for threading
+    "Analyse terminée. Les résultats sont prêts.",
+    conversation_id="thread-abc123",  # facultatif, pour le fil de discussion
 )
 
 if ok:
-    print("Message delivered")
+    print("Message remis")
 else:
-    print("Delivery failed")
+    print("La remise a échoué")
 
 channel.disconnect()
 ```
 
-### Receiving Messages
+### Recevoir des messages
 
-Register handler callbacks before calling `connect()`. Each handler receives a `ChannelMessage` and can optionally return a reply string.
+Enregistre les fonctions de rappel avant d'appeler `connect()`. Chaque gestionnaire reçoit un `ChannelMessage` et peut, s'il le veut, rendre une chaîne en réponse.
 
 ```python title="receive_messages.py"
 from diapason.channels._stubs import ChannelMessage
@@ -107,7 +107,7 @@ channel = DiscordChannel()
 
 
 def handle_incoming(msg: ChannelMessage) -> None:
-    print(f"[{msg.channel}] {msg.sender}: {msg.content}")
+    print(f"[{msg.channel}] {msg.sender} : {msg.content}")
     print(f"  conversation_id={msg.conversation_id}")
     print(f"  message_id={msg.message_id}")
 
@@ -115,14 +115,14 @@ def handle_incoming(msg: ChannelMessage) -> None:
 channel.on_message(handle_incoming)  # (1)!
 channel.connect()                    # (2)!
 
-# Messages now arrive asynchronously via the background listener thread
-# Your main thread can continue doing other work
+# Les messages arrivent maintenant de façon asynchrone, par le fil d'écoute
+# en arrière-plan. Ton fil principal peut continuer à faire autre chose.
 ```
 
-1. Register one or more handlers. All registered handlers are called for every incoming message.
-2. `connect()` starts the background listener thread after establishing the platform connection.
+1. Enregistre un ou plusieurs gestionnaires. Tous les gestionnaires enregistrés sont appelés pour chaque message entrant.
+2. `connect()` démarre le fil d'écoute en arrière-plan une fois la connexion à la plateforme établie.
 
-### Listing Available Channels
+### Lister les canaux disponibles
 
 ```python title="list_channels.py"
 from diapason.channels.slack import SlackChannel
@@ -133,35 +133,35 @@ channels = channel.list_channels()
 print(channels)  # ["general", "random", "dev"]
 ```
 
-### Disconnecting
+### Se déconnecter
 
 ```python title="disconnect.py"
 channel.disconnect()
-# Stops the listener thread and closes the platform connection
-# Status becomes ChannelStatus.DISCONNECTED
+# Arrête le fil d'écoute et ferme la connexion à la plateforme.
+# L'état devient ChannelStatus.DISCONNECTED
 ```
 
 ---
 
-## ChannelMessage Fields
+## Les champs de `ChannelMessage`
 
-Every incoming message is delivered to handlers as a `ChannelMessage` dataclass.
+Chaque message entrant est remis aux gestionnaires sous la forme d'une dataclasse `ChannelMessage`.
 
-| Field | Type | Description |
+| Champ | Type | Description |
 |-------|------|-------------|
-| `channel` | `str` | Name of the channel the message arrived on |
-| `sender` | `str` | Identifier of the message sender |
-| `content` | `str` | Message text |
-| `message_id` | `str` | Unique message identifier (may be empty) |
-| `conversation_id` | `str` | Thread/conversation identifier (may be empty) |
-| `session_id` | `str` | Session identifier (may be empty) |
-| `metadata` | `dict[str, Any]` | Additional platform-specific metadata |
+| `channel` | `str` | Nom du canal par lequel le message est arrivé |
+| `sender` | `str` | Identifiant de l'expéditeur du message |
+| `content` | `str` | Texte du message |
+| `message_id` | `str` | Identifiant unique du message (peut être vide) |
+| `conversation_id` | `str` | Identifiant du fil ou de la conversation (peut être vide) |
+| `session_id` | `str` | Identifiant de session (peut être vide) |
+| `metadata` | `dict[str, Any]` | Métadonnées supplémentaires, propres à la plateforme |
 
 ---
 
-## Event Bus Integration
+## L'intégration au bus d'événements
 
-Pass an `EventBus` to publish channel events to the rest of the system:
+Passe un `EventBus` pour publier les événements de canal au reste du système :
 
 ```python title="channel_events.py"
 from diapason.core.events import EventBus, EventType
@@ -171,11 +171,11 @@ bus = EventBus()
 
 
 def on_received(event):
-    print(f"Message received on {event.data['channel']}: {event.data['content']}")
+    print(f"Message reçu sur {event.data['channel']} : {event.data['content']}")
 
 
 def on_sent(event):
-    print(f"Message sent to {event.data['channel']}")
+    print(f"Message envoyé à {event.data['channel']}")
 
 
 bus.subscribe(EventType.CHANNEL_MESSAGE_RECEIVED, on_received)
@@ -185,31 +185,31 @@ channel = TelegramChannel(bus=bus)
 channel.connect()
 ```
 
-| Event | Published When | Data Keys |
+| Événement | Publié quand | Clés de données |
 |-------|----------------|-----------|
-| `CHANNEL_MESSAGE_RECEIVED` | A message arrives from the platform | `channel`, `sender`, `content`, `message_id` |
-| `CHANNEL_MESSAGE_SENT` | A message is successfully sent | `channel`, `content`, `conversation_id` |
+| `CHANNEL_MESSAGE_RECEIVED` | Un message arrive de la plateforme | `channel`, `sender`, `content`, `message_id` |
+| `CHANNEL_MESSAGE_SENT` | Un message part avec succès | `channel`, `content`, `conversation_id` |
 
 ---
 
-## CLI Commands
+## Les commandes en ligne de commande
 
-The `diapason channel` subcommand group provides quick access to channel operations.
+Le groupe de sous-commandes `diapason channel` donne un accès rapide aux opérations sur les canaux.
 
-### List Channels
+### Lister les canaux
 
 ```bash
 diapason channel list
 ```
 
-### Send a Message
+### Envoyer un message
 
 ```bash
-# Send to a channel by name
-diapason channel send telegram "Build completed successfully"
+# Envoyer à un canal, par son nom
+diapason channel send telegram "Construction terminée avec succès"
 ```
 
-### Show Status
+### Afficher l'état
 
 ```bash
 diapason channel status
@@ -217,13 +217,13 @@ diapason channel status
 
 ---
 
-## API Server Endpoints
+## Les routes du serveur d'API
 
-When `diapason serve` is running, three channel endpoints are available. Channels must be configured and enabled in `[channel]` for these endpoints to return data.
+Quand `diapason serve` tourne, trois routes de canal sont disponibles. Les canaux doivent être configurés et activés dans `[channel]` pour que ces routes rendent des données.
 
 ### `GET /v1/channels`
 
-Returns the list of registered channels and their status.
+Rend la liste des canaux enregistrés et leur état.
 
 ```bash
 curl http://localhost:8000/v1/channels
@@ -236,30 +236,30 @@ curl http://localhost:8000/v1/channels
 }
 ```
 
-If no channels are configured:
+Si aucun canal n'est configuré :
 ```json
 {"channels": [], "message": "No channels configured"}
 ```
 
 ### `POST /v1/channels/send`
 
-Send a message to a channel.
+Envoie un message à un canal.
 
 ```bash
 curl -X POST http://localhost:8000/v1/channels/send \
   -H "Content-Type: application/json" \
-  -d '{"channel": "telegram", "content": "Hello!", "conversation_id": "conv-1"}'
+  -d '{"channel": "telegram", "content": "Bonjour !", "conversation_id": "conv-1"}'
 ```
 
 ```json
 {"status": "sent", "channel": "telegram"}
 ```
 
-Required fields: `channel`, `content`. `conversation_id` is optional.
+Champs obligatoires : `channel`, `content`. `conversation_id` est facultatif.
 
 ### `GET /v1/channels/status`
 
-Returns the connection status for each configured channel.
+Rend l'état de connexion de chaque canal configuré.
 
 ```bash
 curl http://localhost:8000/v1/channels/status
@@ -269,13 +269,13 @@ curl http://localhost:8000/v1/channels/status
 {"status": "connected"}
 ```
 
-Possible values: `connected`, `disconnected`, `connecting`, `error`, `not_configured`.
+Les valeurs possibles : `connected`, `disconnected`, `connecting`, `error`, `not_configured`.
 
 ---
 
-## Configuration
+## La configuration
 
-Channel settings live in the `[channel]` section of `~/.diapason/config.toml`. Each platform has its own nested sub-section.
+Les réglages des canaux vivent dans la section `[channel]` de `~/.diapason/config.toml`. Chaque plateforme a sa propre sous-section imbriquée.
 
 ```toml title="~/.diapason/config.toml"
 [channel]
@@ -284,31 +284,31 @@ default_channel = ""
 default_agent = "simple"
 
 [channel.telegram]
-bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
+bot_token = "TON_JETON_DE_ROBOT_TELEGRAM"
 
 [channel.discord]
-bot_token = "YOUR_DISCORD_BOT_TOKEN"
+bot_token = "TON_JETON_DE_ROBOT_DISCORD"
 
 [channel.slack]
-bot_token = "YOUR_SLACK_BOT_TOKEN"
-app_token = "YOUR_SLACK_APP_TOKEN"
+bot_token = "TON_JETON_DE_ROBOT_SLACK"
+app_token = "TON_JETON_D_APPLICATION_SLACK"
 ```
 
-### Configuration Reference
+### La référence de configuration
 
-| Key | Type | Default | Description |
+| Clé | Type | Défaut | Description |
 |-----|------|---------|-------------|
-| `enabled` | `bool` | `false` | Enable channel messaging |
-| `default_channel` | `str` | `""` | Default channel to use when not specified |
-| `default_agent` | `str` | `simple` | Agent to use for handling inbound messages |
+| `enabled` | `bool` | `false` | Active la messagerie par canaux |
+| `default_channel` | `str` | `""` | Canal utilisé par défaut quand aucun n'est précisé |
+| `default_agent` | `str` | `simple` | Agent chargé de traiter les messages entrants |
 
-Platform-specific settings are configured in nested sub-sections (e.g., `[channel.telegram]`, `[channel.discord]`).
+Les réglages propres à chaque plateforme se configurent dans les sous-sections imbriquées (`[channel.telegram]`, `[channel.discord]`, par exemple).
 
 ---
 
-## Complete Example
+## Un exemple complet
 
-This example connects a Telegram channel, registers a handler that echoes messages back, sends a test message, and then disconnects after a short wait.
+Cet exemple connecte un canal Telegram, enregistre un gestionnaire qui renvoie les messages en écho, envoie un message d'essai, puis se déconnecte après une courte attente.
 
 ```python title="full_example.py"
 import time
@@ -318,7 +318,7 @@ from diapason.core.events import EventBus
 
 bus = EventBus()
 channel = TelegramChannel(
-    bot_token="YOUR_BOT_TOKEN",
+    bot_token="TON_JETON_DE_ROBOT",
     bus=bus,
 )
 
@@ -327,191 +327,191 @@ received_messages = []
 
 def on_message(msg: ChannelMessage) -> None:
     received_messages.append(msg)
-    print(f"Received from {msg.sender} on #{msg.channel}: {msg.content}")
+    print(f"Reçu de {msg.sender} sur #{msg.channel} : {msg.content}")
 
 
 channel.on_message(on_message)
 channel.connect()
 
-# List available channels
+# Lister les canaux disponibles
 channels = channel.list_channels()
-print(f"Available channels: {channels}")
+print(f"Canaux disponibles : {channels}")
 
-# Send a message
+# Envoyer un message
 if channels:
-    channel.send(channels[0], "Hello from Diapason!")
+    channel.send(channels[0], "Bonjour de la part de Diapason !")
 
-# Wait for incoming messages
+# Attendre les messages entrants
 time.sleep(10)
 
 channel.disconnect()
-print(f"Total messages received: {len(received_messages)}")
+print(f"Total de messages reçus : {len(received_messages)}")
 ```
 
 ---
 
 ## SendBlue (iMessage / SMS)
 
-`SendBlueChannel` is registered as `"sendblue"` in `ChannelRegistry` and gives your agent a **dedicated phone number** that people can text via iMessage (blue bubbles) or SMS. It uses the [SendBlue API](https://docs.sendblue.com/) -- no Apple hardware or BlueBubbles server required.
+`SendBlueChannel` est enregistré sous `"sendblue"` dans le `ChannelRegistry` et donne à ton agent un **numéro de téléphone dédié**, auquel les gens peuvent écrire par iMessage (les bulles bleues) ou par SMS. Il passe par l'[API SendBlue](https://docs.sendblue.com/) — aucun matériel Apple ni serveur BlueBubbles n'est nécessaire.
 
-### How It Works
+### Comment ça marche
 
 ```
-Your phone  ──text──▶  SendBlue  ──webhook──▶  ngrok tunnel  ──▶  Diapason
-                                                                       │
-Your phone  ◀──iMessage──  SendBlue  ◀──API call──  DeepResearch agent ◀┘
+Ton téléphone  ──texto──▶  SendBlue  ──webhook──▶  tunnel ngrok  ──▶  Diapason
+                                                                              │
+Ton téléphone  ◀──iMessage──  SendBlue  ◀──appel d'API──  agent DeepResearch ◀┘
 ```
 
-When someone texts the SendBlue number, SendBlue POSTs the message to your webhook. Diapason sends an immediate "Message received!" acknowledgment, runs the DeepResearch agent, and sends the response back via iMessage.
+Quand quelqu'un écrit au numéro SendBlue, SendBlue POSTe le message à ton webhook. Diapason envoie aussitôt un accusé « Message received! », fait tourner l'agent DeepResearch, et renvoie la réponse par iMessage.
 
-### Setup (Browser UI)
+### L'installation (par l'interface du navigateur)
 
-The easiest way is through the Agents UI:
+Le plus simple passe par l'interface des Agents :
 
-1. Go to **Agents → your agent → Messaging** tab
-2. Click **Set Up** on "iMessage / SMS"
-3. Click **Open SendBlue signup** -- create a free account (no credit card required)
-4. In the SendBlue dashboard, copy your **API Key ID** and **API Secret Key**
-5. Paste them into the form and click **Verify & Find Number**
-6. If on the free tier (shared line), copy the phone number shown under "Send from" in your SendBlue dashboard and paste it
-7. Click **Activate Phone Number**
+1. Va dans **Agents → ton agent → onglet Canaux de messagerie**
+2. Clique **Configurer** sur « iMessage / SMS »
+3. Clique **Ouvrir l'inscription SendBlue** — crée un compte gratuit (aucune carte de crédit demandée)
+4. Dans le tableau de bord SendBlue, copie ton **API Key ID** et ta **API Secret Key**
+5. Colle-les dans le formulaire et clique **Vérifier et trouver le numéro**
+6. Sur l'offre gratuite (ligne partagée), copie le numéro de téléphone affiché sous « Send from » dans ton tableau de bord SendBlue et colle-le
+7. Clique **Activer le numéro**
 
-### Tunnel Setup (Required)
+### Le tunnel (obligatoire)
 
-Since Diapason runs locally, you need a tunnel so SendBlue can reach your webhook:
+Comme Diapason tourne chez toi, il te faut un tunnel pour que SendBlue puisse joindre ton webhook :
 
 ```bash
-# Install ngrok (one time)
+# Installer ngrok (une seule fois)
 brew install ngrok
 
-# Sign up at https://dashboard.ngrok.com/signup (free)
-# Then configure your auth token:
-ngrok config add-authtoken YOUR_TOKEN
+# Inscris-toi sur https://dashboard.ngrok.com/signup (gratuit)
+# Puis configure ton jeton d'authentification :
+ngrok config add-authtoken TON_JETON
 
-# Start the tunnel (keep this running)
+# Démarrer le tunnel (à laisser tourner)
 ngrok http 8222
 ```
 
-Register the ngrok URL as your SendBlue webhook. You can do this via the API:
+Enregistre l'URL ngrok comme webhook SendBlue. Tu peux le faire par l'API :
 
 ```bash
 curl -X PUT https://api.sendblue.co/api/account/webhooks \
-  -H "sb-api-key-id: YOUR_KEY" \
-  -H "sb-api-secret-key: YOUR_SECRET" \
+  -H "sb-api-key-id: TA_CLE" \
+  -H "sb-api-secret-key: TON_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"webhooks": {"receive": ["https://YOUR-NGROK-URL.ngrok-free.dev/webhooks/sendblue"]}}'
+  -d '{"webhooks": {"receive": ["https://TON-URL-NGROK.ngrok-free.dev/webhooks/sendblue"]}}'
 ```
 
-Or set it in the SendBlue dashboard under **Webhooks**.
+Ou pose-le dans le tableau de bord SendBlue, sous **Webhooks**.
 
-### SendBlue Free Tier Notes
+### Ce qu'il faut savoir de l'offre gratuite de SendBlue
 
-- **Shared line**: Your agent uses a shared phone number (no dedicated number)
-- **Verified contacts only**: Recipients must be added as verified contacts in the SendBlue dashboard first
-- **10 contacts max**: Free tier allows up to 10 verified contacts
-- **iMessage preferred**: SendBlue sends via iMessage when possible, falls back to SMS
+- **Ligne partagée** : ton agent se sert d'un numéro de téléphone partagé (pas de numéro dédié)
+- **Contacts vérifiés seulement** : les destinataires doivent d'abord être ajoutés comme contacts vérifiés dans le tableau de bord SendBlue
+- **10 contacts au plus** : l'offre gratuite accepte jusqu'à 10 contacts vérifiés
+- **iMessage d'abord** : SendBlue envoie par iMessage quand c'est possible, et retombe sur le SMS
 
-To get a dedicated number, upgrade to a paid SendBlue plan.
+Pour obtenir un numéro dédié, passe à une offre SendBlue payante.
 
-### Programmatic Setup
+### L'installation par programme
 
 ```python title="sendblue_setup.py"
 from diapason.channels.sendblue import SendBlueChannel
 
 channel = SendBlueChannel(
-    api_key_id="YOUR_API_KEY_ID",         # or SENDBLUE_API_KEY_ID env var
-    api_secret_key="YOUR_API_SECRET_KEY", # or SENDBLUE_API_SECRET_KEY env var
-    from_number="+16452468235",           # or SENDBLUE_FROM_NUMBER env var
+    api_key_id="TON_API_KEY_ID",           # ou la variable SENDBLUE_API_KEY_ID
+    api_secret_key="TA_API_SECRET_KEY",    # ou la variable SENDBLUE_API_SECRET_KEY
+    from_number="+16452468235",            # ou la variable SENDBLUE_FROM_NUMBER
 )
 channel.connect()
 
-# Send a message
-ok = channel.send("+15551234567", "Hello from Diapason!")
+# Envoyer un message
+ok = channel.send("+15551234567", "Bonjour de la part de Diapason !")
 ```
 
-### Webhook Endpoint
+### La route du webhook
 
-The server exposes `POST /webhooks/sendblue` which:
+Le serveur expose `POST /webhooks/sendblue`, qui :
 
-1. Sends an instant acknowledgment: "Message received! Researching your data now..."
-2. Routes the message to the DeepResearch agent via the ChannelBridge
-3. If processing takes >45 seconds, sends: "Still working -- complex query, hang tight..."
-4. Sends the full research response back via iMessage/SMS
+1. Envoie un accusé immédiat : « Message received! Researching your data now... »
+2. Achemine le message vers l'agent DeepResearch, par le `ChannelBridge`
+3. Si le traitement dépasse 45 secondes, envoie : « Still working -- complex query, hang tight... »
+4. Renvoie la réponse de recherche complète par iMessage/SMS
 
-### Constructor Parameters
+### Les paramètres du constructeur
 
-| Parameter | Type | Default | Description |
+| Paramètre | Type | Défaut | Description |
 |-----------|------|---------|-------------|
-| `api_key_id` | `str` | `""` | SendBlue API key ID (falls back to `SENDBLUE_API_KEY_ID` env var) |
-| `api_secret_key` | `str` | `""` | SendBlue API secret key (falls back to `SENDBLUE_API_SECRET_KEY` env var) |
-| `from_number` | `str` | `""` | SendBlue phone number to send from (falls back to `SENDBLUE_FROM_NUMBER` env var) |
-| `webhook_secret` | `str` | `""` | Optional secret for verifying incoming webhook requests |
-| `bus` | `EventBus` | `None` | Event bus for publishing channel events |
+| `api_key_id` | `str` | `""` | Identifiant de clé d'API SendBlue (retombe sur la variable `SENDBLUE_API_KEY_ID`) |
+| `api_secret_key` | `str` | `""` | Clé secrète d'API SendBlue (retombe sur la variable `SENDBLUE_API_SECRET_KEY`) |
+| `from_number` | `str` | `""` | Numéro de téléphone SendBlue d'où partent les messages (retombe sur la variable `SENDBLUE_FROM_NUMBER`) |
+| `webhook_secret` | `str` | `""` | Secret facultatif, pour vérifier les requêtes de webhook entrantes |
+| `bus` | `EventBus` | `None` | Bus d'événements pour publier les événements de canal |
 
-### Configuration
+### La configuration
 
 ```toml title="~/.diapason/config.toml"
 [channel.sendblue]
-api_key_id = "YOUR_API_KEY_ID"
-api_secret_key = "YOUR_API_SECRET_KEY"
+api_key_id = "TON_API_KEY_ID"
+api_secret_key = "TA_API_SECRET_KEY"
 from_number = "+16452468235"
 ```
 
-### CLI Usage
+### En ligne de commande
 
 ```bash
-# Set credentials via environment variables
-export SENDBLUE_API_KEY_ID="your_key"
-export SENDBLUE_API_SECRET_KEY="your_secret"
+# Poser les identifiants par des variables d'environnement
+export SENDBLUE_API_KEY_ID="ta_cle"
+export SENDBLUE_API_SECRET_KEY="ton_secret"
 export SENDBLUE_FROM_NUMBER="+16452468235"
 
-# Check channel status
+# Vérifier l'état du canal
 diapason channel status --channel-type sendblue
 
-# Send a message
-diapason channel send sendblue "+15551234567" "Hello from Diapason!"
+# Envoyer un message
+diapason channel send sendblue "+15551234567" "Bonjour de la part de Diapason !"
 ```
 
-### Server Restart Behavior
+### Ce qui se passe au redémarrage du serveur
 
-SendBlue bindings are **automatically restored on server restart**. When `diapason serve` starts:
+Les liaisons SendBlue sont **rétablies automatiquement au redémarrage du serveur**. Quand `diapason serve` démarre :
 
-1. The server checks the database for existing SendBlue channel bindings
-2. Re-creates the `SendBlueChannel` instance with stored credentials
-3. Re-wires the `ChannelBridge` with a `DeepResearchAgent`
-4. Incoming webhooks resume working immediately
+1. Le serveur cherche dans la base les liaisons de canal SendBlue existantes
+2. Il recrée l'instance de `SendBlueChannel` avec les identifiants conservés
+3. Il recâble le `ChannelBridge` avec un `DeepResearchAgent`
+4. Les webhooks entrants se remettent à marcher aussitôt
 
-**However, if using ngrok:** The tunnel URL changes on every ngrok restart. You must re-register the new URL with SendBlue:
+**En revanche, si tu utilises ngrok :** l'URL du tunnel change à chaque redémarrage de ngrok. Tu dois réenregistrer la nouvelle URL auprès de SendBlue :
 
 ```bash
-# Start ngrok (get new URL)
+# Démarrer ngrok (nouvelle URL)
 ngrok http 8222
 
-# Register the new webhook URL
+# Enregistrer la nouvelle URL de webhook
 curl -X PUT https://api.sendblue.co/api/account/webhooks \
-  -H "sb-api-key-id: YOUR_KEY" \
-  -H "sb-api-secret-key: YOUR_SECRET" \
+  -H "sb-api-key-id: TA_CLE" \
+  -H "sb-api-secret-key: TON_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"webhooks": {"receive": ["https://NEW-NGROK-URL.ngrok-free.dev/webhooks/sendblue"]}}'
+  -d '{"webhooks": {"receive": ["https://NOUVELLE-URL-NGROK.ngrok-free.dev/webhooks/sendblue"]}}'
 ```
 
-!!! tip "Stable tunnel URL"
-    Ngrok paid plans provide a fixed subdomain that persists across restarts. Alternatively, use [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) for a free, stable URL.
+!!! tip "Une URL de tunnel stable"
+    Les offres ngrok payantes donnent un sous-domaine fixe, qui survit aux redémarrages. Autrement, sers-toi de [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) pour une URL stable et gratuite.
 
-### Troubleshooting
+### Dépannage
 
-| Symptom | Cause | Fix |
+| Symptôme | Cause | Remède |
 |---------|-------|-----|
-| "Message received!" ack sent but no response | DeepResearch agent timed out or errored | Check server logs for errors |
-| No ack, no response | Webhook URL not reachable | Verify ngrok is running; re-register webhook URL |
-| "Disconnected" badge in Messaging tab | Server restarted without restoring bindings | Click "Reconnect" in the UI |
-| SendBlue returns 401 | Invalid API credentials | Re-enter API key and secret in Messaging tab |
-| "Contacts must text this number first" | Free tier requires verified contacts | Add the recipient in SendBlue dashboard under Contacts |
-| Messages arrive but are not processed | Channel bridge not wired | Remove and re-add the SendBlue binding in Messaging tab |
+| L'accusé « Message received! » part, mais aucune réponse ne suit | L'agent DeepResearch a dépassé son délai ou a échoué | Regarde les journaux du serveur |
+| Ni accusé, ni réponse | L'URL du webhook n'est pas joignable | Vérifie que ngrok tourne ; réenregistre l'URL du webhook |
+| Badge « Déconnecté » dans l'onglet Canaux de messagerie | Le serveur a redémarré sans rétablir les liaisons | Clique « Reconnecter » dans l'interface |
+| SendBlue rend un 401 | Identifiants d'API invalides | Ressaisis la clé et le secret d'API dans l'onglet Canaux de messagerie |
+| « Contacts must text this number first » | L'offre gratuite exige des contacts vérifiés | Ajoute le destinataire dans le tableau de bord SendBlue, sous Contacts |
+| Les messages arrivent mais ne sont pas traités | Le pont de canal n'est pas câblé | Retire puis rajoute la liaison SendBlue dans l'onglet Canaux de messagerie |
 
-### Health Check
+### Le contrôle de santé
 
-The server exposes `GET /v1/channels/sendblue/health` which returns:
+Le serveur expose `GET /v1/channels/sendblue/health`, qui rend :
 
 ```json
 {
@@ -521,38 +521,38 @@ The server exposes `GET /v1/channels/sendblue/health` which returns:
 }
 ```
 
-If `ready` is `false`, the Messaging tab shows a "Disconnected" badge with a "Reconnect" button.
+Quand `ready` vaut `false`, l'onglet Canaux de messagerie affiche un badge « Déconnecté » avec un bouton « Reconnecter ».
 
 ---
 
 ## WhatsAppBaileysChannel
 
-`WhatsAppBaileysChannel` is registered as `"whatsapp_baileys"` in `ChannelRegistry` and provides **bidirectional WhatsApp messaging** using the Baileys protocol. It spawns a Node.js bridge subprocess that handles QR-code authentication, incoming message forwarding, and outbound message delivery.
+`WhatsAppBaileysChannel` est enregistré sous `"whatsapp_baileys"` dans le `ChannelRegistry` et offre une **messagerie WhatsApp bidirectionnelle**, par le protocole Baileys. Il lance un sous-processus de pont Node.js, qui s'occupe de l'authentification par code QR, du renvoi des messages entrants et de la remise des messages sortants.
 
-!!! warning "Node.js 22+ required"
-    The Baileys bridge is a compiled Node.js application bundled inside the package. It is auto-installed to `~/.diapason/whatsapp_baileys_bridge/` on first `connect()` call. If `node` is not found on `PATH`, `connect()` logs an error and sets the channel to `ChannelStatus.ERROR`.
+!!! warning "Node.js 22+ obligatoire"
+    Le pont Baileys est une application Node.js compilée, livrée dans le paquet. Il s'installe tout seul dans `~/.diapason/whatsapp_baileys_bridge/` au premier appel de `connect()`. Si `node` est introuvable dans le `PATH`, `connect()` consigne une erreur et met le canal en `ChannelStatus.ERROR`.
 
-!!! note "WhatsApp account required"
-    WhatsApp does not offer an official API for personal accounts. Baileys operates on the WhatsApp Web protocol. You must scan a QR code with your WhatsApp mobile app to authenticate on first use.
+!!! note "Un compte WhatsApp est nécessaire"
+    WhatsApp n'offre aucune API officielle pour les comptes personnels. Baileys s'appuie sur le protocole de WhatsApp Web. Tu dois scanner un code QR avec l'app WhatsApp de ton téléphone pour t'authentifier la première fois.
 
-### Connecting
+### Se connecter
 
 ```python title="whatsapp_connect.py"
 from diapason.channels.whatsapp_baileys import WhatsAppBaileysChannel
 
 channel = WhatsAppBaileysChannel(
-    assistant_name="Diapason",           # (1)!
+    assistant_name="Diapason",         # (1)!
     assistant_has_own_number=False,    # (2)!
 )
-channel.connect()  # spawns the Node.js bridge subprocess
+channel.connect()  # lance le sous-processus du pont Node.js
 ```
 
-1. Display name used in conversation context.
-2. Set `True` if the assistant has a dedicated WhatsApp number and should not filter its own messages.
+1. Le nom affiché dans le contexte de la conversation.
+2. Pose `True` si l'assistant a un numéro WhatsApp dédié et ne doit pas filtrer ses propres messages.
 
-On first connection, the bridge will print a QR code to the terminal. Scan it with the WhatsApp app on your phone to authenticate. Authentication state is saved to `~/.diapason/whatsapp_baileys_bridge/auth/` and reused on subsequent connections.
+À la première connexion, le pont affiche un code QR dans le terminal. Scanne-le avec l'app WhatsApp de ton téléphone pour t'authentifier. L'état d'authentification est enregistré dans `~/.diapason/whatsapp_baileys_bridge/auth/` et réutilisé aux connexions suivantes.
 
-### Receiving Messages
+### Recevoir des messages
 
 ```python title="whatsapp_receive.py"
 from diapason.channels._stubs import ChannelMessage
@@ -563,71 +563,72 @@ channel = WhatsAppBaileysChannel()
 
 def on_message(msg: ChannelMessage) -> None:
     print(f"[{msg.sender}] {msg.content}")
-    # msg.conversation_id is the WhatsApp JID (e.g. "15551234567@s.whatsapp.net")
+    # msg.conversation_id est le JID WhatsApp (« 15551234567@s.whatsapp.net »)
 
 
 channel.on_message(on_message)
 channel.connect()
 
-# Background reader thread is running; your code continues here
+# Le fil de lecture en arrière-plan tourne ; ton code continue ici
 ```
 
-### Sending Messages
+### Envoyer des messages
 
-Messages are addressed by WhatsApp **JID** (Jabber ID) -- the canonical identifier for a WhatsApp contact or group.
+Les messages s'adressent par **JID** WhatsApp (Jabber ID) — l'identifiant canonique d'un contact ou d'un groupe WhatsApp.
 
 ```python title="whatsapp_send.py"
-# Individual contact JID format: <country-code><number>@s.whatsapp.net
-# Group JID format: <group-id>@g.us
+# Format du JID d'un contact : <indicatif-pays><numéro>@s.whatsapp.net
+# Format du JID d'un groupe : <identifiant-du-groupe>@g.us
 
 ok = channel.send(
-    "15551234567@s.whatsapp.net",      # JID of the recipient
-    "Hello from Diapason!",
+    "15551234567@s.whatsapp.net",      # le JID du destinataire
+    "Bonjour de la part de Diapason !",
 )
 
 if not ok:
-    print("Send failed -- check that the bridge is connected")
+    print("L'envoi a échoué — vérifie que le pont est connecté")
 ```
 
-### Disconnecting
+### Se déconnecter
 
 ```python title="whatsapp_disconnect.py"
 channel.disconnect()
-# Sends disconnect command to bridge, terminates subprocess, stops reader thread
+# Envoie la commande de déconnexion au pont, termine le sous-processus,
+# arrête le fil de lecture
 ```
 
-### Constructor Parameters
+### Les paramètres du constructeur
 
-| Parameter                  | Type       | Default     | Description                                            |
+| Paramètre                  | Type       | Défaut      | Description                                            |
 |----------------------------|------------|-------------|--------------------------------------------------------|
-| `auth_dir`                 | `str`      | `~/.diapason/whatsapp_baileys_bridge/auth` | Baileys auth state directory |
-| `assistant_name`           | `str`      | `"Diapason"`  | Display name for the assistant                         |
-| `assistant_has_own_number` | `bool`     | `False`     | Whether the assistant has a dedicated WhatsApp number  |
-| `bus`                      | `EventBus` | `None`      | Event bus for publishing channel events                |
+| `auth_dir`                 | `str`      | `~/.diapason/whatsapp_baileys_bridge/auth` | Dossier de l'état d'authentification Baileys |
+| `assistant_name`           | `str`      | `"Diapason"` | Nom affiché de l'assistant                            |
+| `assistant_has_own_number` | `bool`     | `False`     | Si l'assistant a un numéro WhatsApp dédié             |
+| `bus`                      | `EventBus` | `None`      | Bus d'événements pour publier les événements de canal  |
 
-### Bridge Events
+### Les événements du pont
 
-The Node.js bridge communicates with Python via JSON lines on stdio. Python interprets the following event types:
+Le pont Node.js parle à Python par des lignes JSON sur l'entrée-sortie standard. Python interprète les types d'événements suivants :
 
-| Bridge event type | Effect                                                      |
+| Type d'événement du pont | Effet                                                    |
 |-------------------|-------------------------------------------------------------|
-| `status`          | Updates `ChannelStatus` (`connected` / `disconnected`)      |
-| `qr`              | Logs "QR code received -- scan to authenticate"             |
-| `message`         | Dispatches to all registered `on_message` handlers          |
-| `error`           | Logs the error and sets status to `ChannelStatus.ERROR`     |
+| `status`          | Met à jour le `ChannelStatus` (`connected` / `disconnected`) |
+| `qr`              | Consigne « QR code received -- scan to authenticate »        |
+| `message`         | Distribue à tous les gestionnaires `on_message` enregistrés  |
+| `error`           | Consigne l'erreur et met l'état à `ChannelStatus.ERROR`      |
 
-### Event Bus Integration
+### L'intégration au bus d'événements
 
-When a `bus` is provided, `WhatsAppBaileysChannel` publishes the same events as other channels:
+Quand un `bus` est fourni, `WhatsAppBaileysChannel` publie les mêmes événements que les autres canaux :
 
-| Event | Published When | Data Keys |
+| Événement | Publié quand | Clés de données |
 |-------|----------------|-----------|
-| `CHANNEL_MESSAGE_RECEIVED` | An inbound WhatsApp message arrives | `channel`, `sender`, `content`, `message_id` |
-| `CHANNEL_MESSAGE_SENT` | A message is successfully sent | `channel`, `content`, `conversation_id` |
+| `CHANNEL_MESSAGE_RECEIVED` | Un message WhatsApp entrant arrive | `channel`, `sender`, `content`, `message_id` |
+| `CHANNEL_MESSAGE_SENT` | Un message part avec succès | `channel`, `content`, `conversation_id` |
 
-### Configuration
+### La configuration
 
-WhatsApp Baileys channel settings live in the `[channel.whatsapp_baileys]` subsection:
+Les réglages du canal WhatsApp Baileys vivent dans la sous-section `[channel.whatsapp_baileys]` :
 
 ```toml title="~/.diapason/config.toml"
 [channel.whatsapp_baileys]
@@ -638,9 +639,9 @@ assistant_has_own_number = false
 
 ---
 
-## See Also
+## À lire aussi
 
-- [Architecture: Channels](../architecture/channels.md) -- listener loop internals and channel design
-- [API Reference: Channels](../api-reference/diapason/channels/index.md) -- full class and type signatures
-- [Getting Started: Configuration](../getting-started/configuration.md) -- full config reference
-- [User Guide: Agents](agents.md) -- agent system documentation
+- [Architecture : les canaux](../architecture/channels.md) — les rouages de la boucle d'écoute et la conception des canaux
+- [Référence d'API : les canaux](../api-reference/diapason/channels/index.md) — les signatures complètes des classes et des types
+- [Démarrer : la configuration](../getting-started/configuration.md) — la référence complète de la configuration
+- [Guide d'utilisation : les agents](agents.md) — la documentation du système d'agents

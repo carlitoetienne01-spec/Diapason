@@ -1,57 +1,59 @@
-# Docker Deployment
+# Le déploiement avec Docker
 
-Diapason provides Docker images for both CPU-only and GPU-accelerated deployments, along with a Docker Compose configuration that bundles the API server with an Ollama inference backend.
+Diapason fournit des images Docker pour les déploiements sur processeur seul comme pour ceux accélérés par carte graphique, ainsi qu'une configuration Docker Compose qui réunit le serveur d'API et un moteur d'inférence Ollama.
 
-## Quick Start
+## Démarrer vite
 
-The container binds `0.0.0.0`, so an **API key is required** — the server
-refuses to start on a non-loopback address without one. Set it first:
+Le conteneur écoute sur `0.0.0.0` : une **clé d'API est donc obligatoire** — le
+serveur refuse de démarrer sur une adresse autre que la boucle locale sans clé.
+Pose-la d'abord :
 
 ```bash
 cd deploy/docker
 cp .env.example .env
-echo "DIAPASON_API_KEY=$(diapason auth generate-key)" > .env   # or paste your own
+echo "DIAPASON_API_KEY=$(diapason auth generate-key)" > .env   # ou colle la tienne
 ```
 
-Then start both the API server and an Ollama backend with Docker Compose:
+Lance ensuite le serveur d'API et le moteur Ollama d'un seul coup avec Docker Compose :
 
 ```bash
 docker compose up -d
 ```
 
-`docker compose` reads `DIAPASON_API_KEY` from `.env` (or your shell
-environment) and fails fast if it is unset. Clients must then send
-`Authorization: Bearer <key>` on `/v1/*` and `/api/*` requests.
+`docker compose` lit `DIAPASON_API_KEY` dans `.env` (ou dans l'environnement de
+ton shell) et échoue tout de suite si elle n'est pas posée. Les clients doivent
+ensuite envoyer `Authorization: Bearer <key>` sur les requêtes `/v1/*` et
+`/api/*`.
 
-This brings up two services:
+Deux services se lèvent :
 
 | Service  | Port  | Description                        |
 |----------|-------|------------------------------------|
-| `diapason` | 8000  | Diapason API server              |
-| `ollama` | 11434 | Ollama inference engine            |
+| `diapason` | 8000  | Le serveur d'API Diapason        |
+| `ollama` | 11434 | Le moteur d'inférence Ollama       |
 
-Verify the server is running:
+Vérifie que le serveur tourne :
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-Expected response:
+Réponse attendue :
 
 ```json
 {"status": "ok"}
 ```
 
-## Docker Images
+## Les images Docker
 
-### CPU-Only Image (`Dockerfile`)
+### L'image processeur seul (`Dockerfile`)
 
-The default `Dockerfile` uses a multi-stage build based on `python:3.12-slim` to produce a minimal image.
+Le `Dockerfile` par défaut passe par une construction multi-étages fondée sur `python:3.12-slim`, pour produire une image minimale.
 
-**Build stages:**
+**Les étapes de construction :**
 
-1. **Builder stage** -- installs `uv` and the `diapason[server]` package (which includes FastAPI, uvicorn, and all server dependencies) from the project source.
-2. **Runtime stage** -- copies only the installed Python packages and application code from the builder, keeping the final image small.
+1. **L'étape builder** — installe `uv` et le paquet `diapason[server]` (qui embarque FastAPI, uvicorn et toutes les dépendances du serveur) depuis les sources du projet.
+2. **L'étape runtime** — ne copie que les paquets Python installés et le code de l'application depuis l'étape précédente, ce qui garde l'image finale petite.
 
 ```dockerfile
 FROM python:3.12-slim AS builder
@@ -75,21 +77,21 @@ ENTRYPOINT ["diapason"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Build it manually:
+Construis-la à la main :
 
 ```bash
 docker build -t diapason:latest .
 ```
 
-Run it standalone:
+Lance-la toute seule :
 
 ```bash
 docker run -d -p 8000:8000 diapason:latest
 ```
 
-### GPU Image (`Dockerfile.gpu`)
+### L'image GPU (`Dockerfile.gpu`)
 
-The GPU image is built on `nvidia/cuda:12.4.0-runtime-ubuntu22.04` and includes the CUDA 12.4 runtime libraries, enabling GPU-accelerated inference when paired with a GPU-capable engine like vLLM or SGLang.
+L'image GPU est bâtie sur `nvidia/cuda:12.4.0-runtime-ubuntu22.04` et embarque les bibliothèques d'exécution de CUDA 12.4 : elle permet l'inférence accélérée par carte graphique, associée à un moteur qui sait s'en servir comme vLLM ou SGLang.
 
 ```dockerfile
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS builder
@@ -121,24 +123,24 @@ ENTRYPOINT ["diapason"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-Build the GPU image:
+Construis l'image GPU :
 
 ```bash
 docker build -f Dockerfile.gpu -t diapason:gpu .
 ```
 
-Run with GPU access (requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
+Lance-la avec l'accès à la carte graphique (il faut le [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)) :
 
 ```bash
 docker run -d --gpus all -p 8000:8000 diapason:gpu
 ```
 
-!!! note "NVIDIA Container Toolkit required"
-    The host machine must have the NVIDIA Container Toolkit installed for `--gpus` to work. See the [NVIDIA installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) for setup instructions.
+!!! note "Le NVIDIA Container Toolkit est requis"
+    La machine hôte doit avoir le NVIDIA Container Toolkit installé pour que `--gpus` fonctionne. Voir le [guide d'installation NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) pour la marche à suivre.
 
-## Docker Compose Configuration
+## La configuration Docker Compose
 
-The `docker-compose.yml` defines a complete deployment with the Diapason API server and an Ollama backend:
+Le `docker-compose.yml` décrit un déploiement complet, avec le serveur d'API Diapason et un moteur Ollama :
 
 ```yaml
 version: "3.9"
@@ -169,28 +171,28 @@ volumes:
   ollama-models:
 ```
 
-### Environment Variables
+### Les variables d'environnement
 
-The `diapason` service is configured through environment variables:
+Le service `diapason` se configure par des variables d'environnement :
 
-| Variable                      | Description                                             | Default                    |
+| Variable                      | Description                                             | Défaut                     |
 |-------------------------------|---------------------------------------------------------|----------------------------|
-| `DIAPASON_ENGINE_DEFAULT`   | Inference engine backend to use                         | `ollama`                   |
-| `DIAPASON_OLLAMA_HOST`      | URL of the Ollama server (uses Docker service name)     | `http://ollama:11434`      |
+| `DIAPASON_ENGINE_DEFAULT`   | Le moteur d'inférence à utiliser                        | `ollama`                   |
+| `DIAPASON_OLLAMA_HOST`      | L'URL du serveur Ollama (par le nom de service Docker)  | `http://ollama:11434`      |
 
-### Volumes
+### Les volumes
 
-The `ollama-models` named volume persists downloaded models across container restarts, so models do not need to be re-pulled after a `docker compose down` / `docker compose up` cycle.
+Le volume nommé `ollama-models` conserve les modèles téléchargés d'un redémarrage de conteneur à l'autre : il n'y a pas à les retélécharger après un cycle `docker compose down` / `docker compose up`.
 
-### Service Dependencies
+### Les dépendances entre services
 
-The `diapason` service declares `depends_on: ollama`, ensuring the Ollama container starts before the API server. Both services use `restart: unless-stopped` to automatically recover from crashes.
+Le service `diapason` déclare `depends_on: ollama`, ce qui garantit que le conteneur Ollama démarre avant le serveur d'API. Les deux services emploient `restart: unless-stopped` pour se relever tout seuls après un plantage.
 
-## Custom Configuration
+## La configuration sur mesure
 
-### Mounting a Configuration File
+### Monter un fichier de configuration
 
-To use a custom `config.toml`, mount it into the container at the expected path (`~/.diapason/config.toml`, which is `/root/.diapason/config.toml` in the container):
+Pour utiliser un `config.toml` à toi, monte-le dans le conteneur au chemin attendu (`~/.diapason/config.toml`, qui devient `/root/.diapason/config.toml` dans le conteneur) :
 
 ```yaml
 services:
@@ -210,14 +212,14 @@ services:
     restart: unless-stopped
 ```
 
-### Persisting Data
+### Conserver les données
 
-To persist telemetry data, memory databases, and trace records across container restarts, mount the entire Diapason data directory:
+Pour conserver les données de télémétrie, les bases de mémoire et les enregistrements de traces d'un redémarrage de conteneur à l'autre, monte tout le dossier de données de Diapason :
 
 ```yaml
 services:
   diapason:
-    # ... other config ...
+    # ... le reste de la config ...
     volumes:
       - diapason-data:/root/.diapason
 
@@ -226,16 +228,16 @@ volumes:
   diapason-data:
 ```
 
-This preserves:
+Ce qui est ainsi préservé :
 
-- `telemetry.db` -- inference call telemetry records
-- `memory.db` -- the default SQLite memory backend
-- `traces.db` -- interaction trace records
-- `config.toml` -- user configuration
+- `telemetry.db` — les relevés de télémétrie des appels d'inférence
+- `memory.db` — la mémoire SQLite par défaut
+- `traces.db` — les enregistrements de traces d'interaction
+- `config.toml` — la configuration de l'utilisateur
 
-### Using the GPU Image with Compose
+### Utiliser l'image GPU avec Compose
 
-To use the GPU Dockerfile in your Compose setup, change the `dockerfile` field and add GPU resource reservations:
+Pour employer le Dockerfile GPU dans ton montage Compose, change le champ `dockerfile` et ajoute les réservations de ressources GPU :
 
 ```yaml
 services:
@@ -260,32 +262,32 @@ services:
     restart: unless-stopped
 ```
 
-## Health Check
+## La vérification de santé
 
-The API server exposes a `GET /health` endpoint that checks whether the underlying inference engine is responsive:
+Le serveur d'API expose une route `GET /health` qui vérifie si le moteur d'inférence sous-jacent répond :
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-A healthy response returns HTTP 200:
+En bonne santé, il rend un HTTP 200 :
 
 ```json
 {"status": "ok"}
 ```
 
-An unhealthy engine returns HTTP 503:
+Un moteur en panne rend un HTTP 503 :
 
 ```json
 {"detail": "Engine unhealthy"}
 ```
 
-You can integrate this into your Docker Compose healthcheck:
+Tu peux brancher tout ça sur le `healthcheck` de ton Docker Compose :
 
 ```yaml
 services:
   diapason:
-    # ... other config ...
+    # ... le reste de la config ...
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -294,27 +296,27 @@ services:
       start_period: 15s
 ```
 
-## Building Custom Images
+## Construire des images sur mesure
 
-### Adding Extra Dependencies
+### Ajouter des dépendances
 
-To include additional engine backends (such as vLLM or ColBERT memory), modify the install command in the Dockerfile:
+Pour inclure d'autres moteurs d'inférence (vLLM, par exemple) ou la mémoire ColBERT, modifie la commande d'installation dans le Dockerfile :
 
 ```dockerfile
 RUN pip install --no-cache-dir uv && \
     uv pip install --system ".[server,inference-vllm,memory-colbert]"
 ```
 
-### Overriding the Default Command
+### Remplacer la commande par défaut
 
-The entrypoint is `diapason` and the default command is `serve --host 0.0.0.0 --port 8000`. Override the command to change server options:
+Le point d'entrée est `diapason` et la commande par défaut est `serve --host 0.0.0.0 --port 8000`. Remplace la commande pour changer les options du serveur :
 
 ```bash
 docker run -d -p 9000:9000 diapason:latest \
   serve --host 0.0.0.0 --port 9000 --engine ollama --model qwen3:8b
 ```
 
-Or in Docker Compose:
+Ou dans Docker Compose :
 
 ```yaml
 services:
@@ -325,25 +327,25 @@ services:
       - "9000:9000"
 ```
 
-### Available CLI Options for `diapason serve`
+### Les options de ligne de commande de `diapason serve`
 
 | Option               | Description                                         |
 |----------------------|-----------------------------------------------------|
-| `--host`             | Bind address (default: from config, typically `0.0.0.0`) |
-| `--port`             | Port number (default: from config, typically `8000`)     |
-| `-e` / `--engine`    | Engine backend (`ollama`, `vllm`, `llamacpp`, `sglang`)  |
-| `-m` / `--model`     | Default model name                                       |
-| `-a` / `--agent`     | Agent for non-streaming requests (`simple`, `orchestrator`, `react`, `openhands`) |
+| `--host`             | Adresse d'écoute (défaut : depuis la config, en général `0.0.0.0`) |
+| `--port`             | Numéro de port (défaut : depuis la config, en général `8000`)      |
+| `-e` / `--engine`    | Moteur d'inférence (`ollama`, `vllm`, `llamacpp`, `sglang`)  |
+| `-m` / `--model`     | Nom du modèle par défaut                                 |
+| `-a` / `--agent`     | Agent pour les requêtes hors fil de l'eau (`simple`, `orchestrator`, `react`, `openhands`) |
 
-## Pulling Models
+## Récupérer les modèles
 
-After starting the Ollama container, you need to pull at least one model before the API server can serve requests:
+Une fois le conteneur Ollama démarré, il te faut récupérer au moins un modèle avant que le serveur d'API puisse répondre aux requêtes :
 
 ```bash
 docker compose exec ollama ollama pull qwen3:8b
 ```
 
-Verify models are available through the API:
+Vérifie que les modèles sont visibles par l'API :
 
 ```bash
 curl http://localhost:8000/v1/models

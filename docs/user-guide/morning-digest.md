@@ -1,10 +1,10 @@
-# Morning Digest
+# Le point du matin
 
-A personalized daily briefing that collects data from your connected services, synthesizes a spoken narrative with a local LLM, and delivers it as audio via text-to-speech.
+Un briefing quotidien personnalisé : il collecte les données de tes services connectés, en fait un récit parlé avec un modèle local, et te le livre en audio par la synthèse vocale.
 
-## Quickstart (5 minutes)
+## Démarrage rapide (5 minutes)
 
-### 1. Install and set up Diapason
+### 1. Installer et préparer Diapason
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -12,16 +12,16 @@ cd Diapason
 uv sync --extra dev
 ```
 
-### 2. Start a local LLM via Ollama
+### 2. Démarrer un modèle local avec Ollama
 
 ```bash
-# Install Ollama: https://ollama.com
-ollama pull qwen3.5:9b    # or any model you prefer
+# Installer Ollama : https://ollama.com
+ollama pull qwen3.5:9b    # ou n'importe quel modèle qui te plaît
 ```
 
-### 3. Configure the digest
+### 3. Configurer le point du matin
 
-Edit `~/.diapason/config.toml`:
+Modifie `~/.diapason/config.toml` :
 
 ```toml
 [engine]
@@ -32,12 +32,12 @@ default_model = "qwen3.5:9b"
 
 [digest]
 enabled = true
-schedule = "0 6 * * *"          # 6 AM daily (cron syntax)
+schedule = "0 6 * * *"          # tous les jours à 6 h (syntaxe cron)
 timezone = "America/Los_Angeles"
 persona = "diapason"
-honorific = "sir"               # or "ma'am", "boss", etc.
-tts_backend = "cartesia"        # or "openai"
-voice_id = "c8f7835e-28a3-4f0c-80d7-c1302ac62aae"  # Alistair (British male)
+honorific = "sir"               # ou "ma'am", "boss", etc.
+tts_backend = "cartesia"        # ou "openai"
+voice_id = "c8f7835e-28a3-4f0c-80d7-c1302ac62aae"  # Alistair (voix masculine britannique)
 voice_speed = 1.2
 sections = ["health", "messages", "calendar", "world"]
 
@@ -54,16 +54,16 @@ sources = ["gcalendar"]
 sources = ["weather", "hackernews", "news_rss"]
 ```
 
-### 4. Connect your data sources
+### 4. Connecter tes sources de données
 
 ```bash
-# Google (one flow covers Gmail, Calendar, Tasks, Contacts, Drive)
+# Google (un seul flux couvre Gmail, Agenda, Tâches, Contacts et Drive)
 diapason connect gdrive
-# Paste: <client_id>:<client_secret> — browser opens automatically
+# Colle : <client_id>:<client_secret> — le navigateur s'ouvre tout seul
 
-# Oura Ring (personal access token)
+# Oura Ring (jeton d'accès personnel)
 diapason connect oura
-# Paste your token from https://cloud.ouraring.com/personal-access-tokens
+# Colle ton jeton, pris sur https://cloud.ouraring.com/personal-access-tokens
 
 # Spotify
 diapason connect spotify
@@ -72,16 +72,16 @@ diapason connect spotify
 diapason connect strava
 ```
 
-For Weather, GitHub, and News — save credential files directly:
+Pour la météo, GitHub et les actualités, écris directement les fichiers d'identifiants :
 
 ```bash
-# Weather (OpenWeatherMap — free at https://openweathermap.org/api)
-echo '{"api_key": "YOUR_KEY", "location": "San Francisco,CA,US"}' > ~/.diapason/connectors/weather.json
+# Météo (OpenWeatherMap — gratuit sur https://openweathermap.org/api)
+echo '{"api_key": "TA_CLE", "location": "San Francisco,CA,US"}' > ~/.diapason/connectors/weather.json
 
-# GitHub notifications (token from https://github.com/settings/tokens)
-echo '{"token": "ghp_YOUR_TOKEN"}' > ~/.diapason/connectors/github.json
+# Notifications GitHub (jeton à créer sur https://github.com/settings/tokens)
+echo '{"token": "ghp_TON_JETON"}' > ~/.diapason/connectors/github.json
 
-# News RSS (no auth needed — configure your feeds)
+# Flux RSS d'actualités (aucune authentification — choisis tes flux)
 cat > ~/.diapason/connectors/news_rss.json << 'EOF'
 {"feeds": [
   {"name": "Arxiv CS.AI", "url": "https://rss.arxiv.org/rss/cs.AI"},
@@ -92,87 +92,90 @@ cat > ~/.diapason/connectors/news_rss.json << 'EOF'
 EOF
 ```
 
-Hacker News, iMessage, and Apple Music work automatically on macOS with no setup.
+Hacker News, iMessage et Apple Music fonctionnent tout seuls sur macOS, sans rien configurer.
 
-### 5. Set your TTS API key
+### 5. Poser ta clé d'API pour la synthèse vocale
 
 ```bash
-# Cartesia (sign up at https://play.cartesia.ai)
+# Cartesia (inscription sur https://play.cartesia.ai)
 export CARTESIA_API_KEY="sk_car_..."
 
-# Or OpenAI (https://platform.openai.com/api-keys)
+# Ou OpenAI (https://platform.openai.com/api-keys)
 export OPENAI_API_KEY="sk-proj-..."
 ```
 
-### 6. Run your first digest
+### 6. Lancer ton premier point du matin
 
 ```bash
 CARTESIA_API_KEY="sk_car_..." diapason digest --fresh
 ```
 
-The digest will:
-1. Collect data from all connected sources
-2. Synthesize a spoken briefing with Qwen3.5 9B
-3. Generate audio with the Cartesia Alistair voice
-4. Print the text and play the audio
+Le point du matin va :
 
-## CLI Commands
+1. Collecter les données de toutes les sources connectées
+2. En faire un briefing parlé avec Qwen3.5 9B
+3. Produire l'audio avec la voix Alistair de Cartesia
+4. Afficher le texte et jouer l'audio
+
+## Les commandes
 
 ```bash
-diapason digest --fresh          # Generate a new digest now
-diapason digest                  # Show today's cached digest
-diapason digest --text-only      # Print text without audio
-diapason digest --history        # Show past digests
-diapason digest --schedule "0 6 * * *"   # Set daily schedule
-diapason digest --schedule off   # Disable schedule
-diapason digest --schedule       # Show current schedule
+diapason digest --fresh          # Génère un nouveau point, maintenant
+diapason digest                  # Affiche le point du jour déjà en cache
+diapason digest --text-only      # Affiche le texte sans l'audio
+diapason digest --history        # Affiche les points précédents
+diapason digest --schedule "0 6 * * *"   # Règle la programmation quotidienne
+diapason digest --schedule off   # Désactive la programmation
+diapason digest --schedule       # Affiche la programmation en cours
 ```
 
-## Saying "Good morning"
+## Dire « Good morning »
 
-When chatting with Diapason (via CLI, desktop, or browser), saying "Good morning" or "morning digest" automatically triggers the digest — no need to use the `digest` command explicitly.
+Quand tu discutes avec Diapason (en ligne de commande, dans l'app de bureau ou dans le navigateur), dire « Good morning » ou « morning digest » déclenche le point du matin tout seul — pas besoin de passer explicitement par la commande `digest`.
 
-## Configuration Reference
+## Référence de la configuration
 
-### Sections
+### Les sections
 
-The `sections` list controls what the digest covers, in order of priority:
+La liste `sections` décide de ce que couvre le point du matin, par ordre de priorité :
 
-| Section | Sources | What it provides |
+| Section | Sources | Ce qu'elle apporte |
 |---------|---------|-----------------|
-| `health` | `oura`, `apple_health`, `strava` | Sleep, readiness, activity, workouts |
-| `messages` | `gmail`, `google_tasks`, `slack`, `notion`, `imessage`, `github_notifications` | Email triage, tasks, texts, Slack, PRs |
-| `calendar` | `gcalendar` | Today's events and schedule |
-| `world` | `weather`, `hackernews`, `news_rss` | Weather forecast, tech news, RSS feeds |
-| `music` | `spotify`, `apple_music` | Recently played tracks (opt-in) |
+| `health` | `oura`, `apple_health`, `strava` | Sommeil, forme, activité, séances |
+| `messages` | `gmail`, `google_tasks`, `slack`, `notion`, `imessage`, `github_notifications` | Tri des courriels, tâches, SMS, Slack, PR |
+| `calendar` | `gcalendar` | Les événements et l'emploi du temps du jour |
+| `world` | `weather`, `hackernews`, `news_rss` | Prévisions météo, actualité tech, flux RSS |
+| `music` | `spotify`, `apple_music` | Les morceaux écoutés récemment (à activer soi-même) |
 
-### TTS Voices
+### Les voix de la synthèse vocale
 
-**Cartesia** (recommended — natural, expressive):
-| Voice | ID | Description |
+**Cartesia** (recommandé — naturel, expressif) :
+
+| Voix | Identifiant | Description |
 |-------|----|-------------|
-| Alistair | `c8f7835e-28a3-4f0c-80d7-c1302ac62aae` | Sophisticated British male |
-| Benedict | `3c0f09d6-e0d7-499c-a594-70c5b7b93048` | Polished, formal British male |
-| Harrison | `df89f42f-f285-4613-adbf-14eedcec4c9e` | Crisp, professional British male |
-| Sterling | `b134c304-d095-4d2b-a77a-914f5e8e84e7` | Deep, commanding, dignified |
+| Alistair | `c8f7835e-28a3-4f0c-80d7-c1302ac62aae` | Voix masculine britannique, raffinée |
+| Benedict | `3c0f09d6-e0d7-499c-a594-70c5b7b93048` | Voix masculine britannique, policée et formelle |
+| Harrison | `df89f42f-f285-4613-adbf-14eedcec4c9e` | Voix masculine britannique, nette et professionnelle |
+| Sterling | `b134c304-d095-4d2b-a77a-914f5e8e84e7` | Grave, assurée, digne |
 
-**OpenAI TTS**:
-| Voice | Description |
+**Synthèse vocale d'OpenAI** :
+
+| Voix | Description |
 |-------|-------------|
-| `onyx` | Deep male |
-| `nova` | Female, warm |
-| `alloy` | Neutral |
-| `shimmer` | Female, expressive |
+| `onyx` | Masculine, grave |
+| `nova` | Féminine, chaleureuse |
+| `alloy` | Neutre |
+| `shimmer` | Féminine, expressive |
 
-### Persona
+### Le personnage
 
-The `persona` field loads a prompt file from `configs/diapason/prompts/personas/{name}.md`. The default `diapason` persona delivers briefings with dry British wit, prioritizes urgent items, and interprets health data as trends rather than raw numbers.
+Le champ `persona` charge un fichier de prompt depuis `configs/diapason/prompts/personas/{name}.md`. Le personnage `diapason`, celui par défaut, livre ses briefings avec un humour britannique pince-sans-rire, fait passer l'urgent devant, et lit les données de santé comme des tendances plutôt que comme des chiffres bruts.
 
-To create a custom persona, add a new `.md` file in the personas directory.
+Pour créer ton propre personnage, ajoute un nouveau fichier `.md` dans le dossier des personas.
 
-### News Feeds
+### Les flux d'actualités
 
-Add any RSS or Atom feed to `~/.diapason/connectors/news_rss.json`:
+Ajoute n'importe quel flux RSS ou Atom à `~/.diapason/connectors/news_rss.json` :
 
 ```json
 {"feeds": [
@@ -186,33 +189,33 @@ Add any RSS or Atom feed to `~/.diapason/connectors/news_rss.json`:
 ]}
 ```
 
-## API Endpoints
+## Les routes d'API
 
-The digest is also available via the FastAPI server:
+Le point du matin est aussi disponible par le serveur FastAPI :
 
 ```bash
-diapason serve  # Start the server
+diapason serve  # Démarre le serveur
 
-# GET  /api/digest           — Get today's digest text
-# GET  /api/digest/audio     — Stream the digest audio (MP3)
-# POST /api/digest/generate  — Force re-generation
-# GET  /api/digest/history   — Past digests
-# GET  /api/digest/schedule  — Current schedule config
-# POST /api/digest/schedule  — Update schedule {"enabled": true, "cron": "0 6 * * *"}
+# GET  /api/digest           — Le texte du point du jour
+# GET  /api/digest/audio     — Diffuse l'audio du point (MP3)
+# POST /api/digest/generate  — Force une nouvelle génération
+# GET  /api/digest/history   — Les points précédents
+# GET  /api/digest/schedule  — La programmation en cours
+# POST /api/digest/schedule  — Modifie la programmation {"enabled": true, "cron": "0 6 * * *"}
 ```
 
-## Frontend
+## L'interface
 
-The desktop and browser apps show an inline audio player when a digest is generated. The "Connect" buttons in the setup wizard handle OAuth flows automatically — click to connect, authorize in the browser popup, done.
+L'app de bureau et l'app navigateur affichent un lecteur audio dans le fil dès qu'un point du matin est généré. Les boutons « Connecter » de l'assistant de configuration s'occupent des flux OAuth tout seuls : tu cliques, tu autorises dans la fenêtre du navigateur, c'est fini.
 
-## Troubleshooting
+## En cas de problème
 
-**"No digest for today"** — Run `diapason digest --fresh` to generate one.
+**« Aucun point pour aujourd'hui »** — Lance `diapason digest --fresh` pour en générer un.
 
-**Empty sections** — Check connector status with `diapason connect --list`. Ensure tokens haven't expired (Google/Spotify tokens expire after 1 hour and are auto-refreshed on next use).
+**Des sections vides** — Vérifie l'état des connecteurs avec `diapason connect --list`. Assure-toi que les jetons n'ont pas expiré (ceux de Google et de Spotify expirent au bout d'une heure et sont renouvelés tout seuls à l'utilisation suivante).
 
-**Weather not working** — OpenWeatherMap API keys can take up to 2 hours to activate after creation. Use the format `City,State,Country` (e.g., `Palo Alto,CA,US`).
+**La météo ne marche pas** — Une clé d'API OpenWeatherMap peut mettre jusqu'à deux heures à s'activer après sa création. Utilise le format `Ville,Région,Pays` (`Palo Alto,CA,US`, par exemple).
 
-**GitHub 403** — Your personal access token needs the `notifications` permission under Account permissions (not Repository permissions).
+**Un 403 de GitHub** — Ton jeton d'accès personnel a besoin de la permission `notifications` sous « Account permissions », et non sous « Repository permissions ».
 
-**Audio not playing** — Ensure `CARTESIA_API_KEY` or `OPENAI_API_KEY` is set. Check credits at https://play.cartesia.ai or https://platform.openai.com.
+**L'audio ne se joue pas** — Vérifie que `CARTESIA_API_KEY` ou `OPENAI_API_KEY` est bien posée. Vérifie aussi tes crédits sur https://play.cartesia.ai ou https://platform.openai.com.

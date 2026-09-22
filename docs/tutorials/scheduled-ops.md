@@ -1,56 +1,56 @@
 ---
-title: Scheduled Personal Ops
-description: Run autonomous agents on cron schedules for recurring personal tasks
+title: Opérations personnelles programmées
+description: Faire tourner des agents autonomes sur des horaires cron pour les tâches personnelles qui reviennent
 ---
 
-# Scheduled Personal Ops
+# Opérations personnelles programmées
 
-This tutorial walks through `examples/scheduled_ops/` — three scripts that run autonomous agents on cron-like schedules to handle recurring personal tasks. Together they demonstrate how to combine the `Diapason` SDK, the scheduler CLI, and the Python `TaskScheduler` API to build a personal operations layer that runs in the background.
+Ce tutoriel parcourt `examples/scheduled_ops/` — trois scripts qui font tourner des agents autonomes sur des horaires à la cron pour prendre en charge les tâches personnelles qui reviennent. Ensemble, ils montrent comment combiner le SDK `Diapason`, la CLI du programmateur et l'API Python `TaskScheduler` pour bâtir une couche d'opérations personnelles qui tourne en arrière-plan.
 
-!!! tip "Prerequisites"
-    - Python 3.10 or later
-    - Diapason installed: `uv sync --extra dev` from the repository root
-    - An inference engine running (Ollama with `qwen3:8b` pulled, or a cloud API key)
-    - For full cron expression support, install `croniter`: `uv add croniter`
+!!! tip "Prérequis"
+    - Python 3.10 ou plus récent
+    - Diapason installé : `uv sync --extra dev` depuis la racine du dépôt
+    - Un moteur d'inférence en marche (Ollama avec `qwen3:8b` téléchargé, ou une clé d'API cloud)
+    - Pour la prise en charge complète des expressions cron, installe `croniter` : `uv add croniter`
 
-## The Three Scripts
+## Les trois scripts
 
-| Script | Agent | Tools | Default Schedule | Purpose |
+| Script | Agent | Outils | Horaire par défaut | À quoi il sert |
 |---|---|---|---|---|
-| `daily_digest.py` | `orchestrator` | `web_search`, `think` | Daily 9:00 AM | Search and summarize top news for chosen topics |
-| `code_review.py` | `native_react` | `git_log`, `git_diff`, `file_read`, `think` | Monday 8:00 AM | Review the past week of commits in a repository |
-| `gym_scheduler.py` | `orchestrator` | `web_search`, `think` | MWF 6:00 AM | Check gym hours and class availability |
+| `daily_digest.py` | `orchestrator` | `web_search`, `think` | Tous les jours à 9 h | Chercher et résumer l'actualité sur les sujets choisis |
+| `code_review.py` | `native_react` | `git_log`, `git_diff`, `file_read`, `think` | Le lundi à 8 h | Relire la semaine de commits écoulée dans un dépôt |
+| `gym_scheduler.py` | `orchestrator` | `web_search`, `think` | Lun/mer/ven à 6 h | Vérifier les horaires de la salle et les places en cours |
 
-Each script follows the same SDK pattern: create a `Diapason` instance, call `j.ask()` with an agent and tools, print the result, and close the instance. The schedule is managed externally by the Diapason scheduler daemon.
+Chaque script suit le même motif SDK : créer une instance `Diapason`, appeler `j.ask()` avec un agent et des outils, afficher le résultat, fermer l'instance. L'horaire, lui, est géré de l'extérieur par le démon programmateur de Diapason.
 
-## Quick Start: Run Scripts Manually
+## Démarrage rapide : lancer les scripts à la main
 
-Test each script without a running scheduler by invoking it directly:
+Teste chaque script sans programmateur en marche, en l'appelant directement :
 
 ```bash title="Terminal"
-# Morning news digest for AI and robotics
+# Résumé matinal de l'actualité sur l'IA et la robotique
 uv run python examples/scheduled_ops/daily_digest.py --topics "AI,robotics"
 
-# Code review for the current repository (last 7 days of commits)
+# Revue de code du dépôt courant (les 7 derniers jours de commits)
 uv run python examples/scheduled_ops/code_review.py --repo-path .
 
-# Gym schedule check
+# Vérification des horaires de la salle de sport
 uv run python examples/scheduled_ops/gym_scheduler.py --gym "24 Hour Fitness"
 ```
 
-All scripts accept `--model` and `--engine` flags:
+Tous les scripts acceptent les drapeaux `--model` et `--engine` :
 
 ```bash title="Terminal"
 uv run python examples/scheduled_ops/daily_digest.py \
     --model qwen3:8b --engine ollama --topics "AI,finance"
 ```
 
-## How the Scheduler Works
+## Comment fonctionne le programmateur
 
 ```mermaid
 graph TD
-    A[diapason scheduler start] --> B[Scheduler Daemon]
-    B --> C{Cron trigger fires}
+    A[diapason scheduler start] --> B[Démon programmateur]
+    B --> C{Le déclencheur cron se lève}
     C -->|0 9 * * *| D[daily_digest.py]
     C -->|0 8 * * 1| E[code_review.py]
     C -->|0 6 * * 1,3,5| F[gym_scheduler.py]
@@ -59,48 +59,48 @@ graph TD
     F --> G
     G --> I[web_search + think]
     H --> J[git_diff + git_log + file_read + think]
-    I --> K[Output / Channel]
+    I --> K[Sortie / Canal]
     J --> K
 ```
 
-The scheduler daemon reads registered tasks from SQLite, fires them at the correct time, and passes the configured prompt to the agent. Each script can also be run directly — the scheduler is only needed for recurring, unattended operation.
+Le démon programmateur lit les tâches enregistrées dans SQLite, les déclenche à l'heure dite et passe à l'agent le prompt configuré. Chaque script peut aussi se lancer directement — le programmateur ne sert qu'au fonctionnement récurrent et sans surveillance.
 
-## Set Up Schedules with the CLI
+## Poser les horaires avec la CLI
 
-Register each script as a recurring task using `diapason scheduler create`:
+Enregistre chaque script comme tâche récurrente avec `diapason scheduler create` :
 
 ```bash title="Terminal"
-# Morning digest every day at 9 AM
+# Résumé matinal tous les jours à 9 h
 diapason scheduler create "Run daily news digest" \
     --type cron --value "0 9 * * *"
 
-# Weekly code review every Monday at 8 AM
+# Revue de code hebdomadaire, tous les lundis à 8 h
 diapason scheduler create "Run weekly code review" \
     --type cron --value "0 8 * * 1"
 
-# Gym check on Monday, Wednesday, Friday at 6 AM
+# Vérification de la salle les lundi, mercredi et vendredi à 6 h
 diapason scheduler create "Check gym schedule" \
     --type cron --value "0 6 * * 1,3,5"
 ```
 
-Then start the scheduler daemon in the foreground (or as a background service):
+Démarre ensuite le démon programmateur au premier plan (ou comme service en arrière-plan) :
 
 ```bash title="Terminal"
 diapason scheduler start
 ```
 
-List registered tasks at any time:
+Liste les tâches enregistrées quand tu veux :
 
 ```bash title="Terminal"
 diapason scheduler list
 ```
 
-!!! note "Cron expression syntax"
-    Diapason uses standard five-field cron syntax: `minute hour day-of-month month day-of-week`. Install `croniter` (`uv add croniter`) for full expression support including ranges and step values. Without it, basic `hour:minute` patterns still work.
+!!! note "La syntaxe des expressions cron"
+    Diapason emploie la syntaxe cron standard à cinq champs : `minute heure jour-du-mois mois jour-de-la-semaine`. Installe `croniter` (`uv add croniter`) pour la prise en charge complète des expressions, plages et pas compris. Sans lui, les motifs simples `heure:minute` fonctionnent quand même.
 
-## Configure Schedules with TOML
+## Configurer les horaires en TOML
 
-The `schedules.toml` file in `examples/scheduled_ops/` defines all three schedules declaratively. This is convenient for version-controlling your personal ops configuration or sharing it across machines:
+Le fichier `schedules.toml` de `examples/scheduled_ops/` définit les trois horaires de façon déclarative. Pratique pour versionner la configuration de tes opérations personnelles, ou pour la partager d'une machine à l'autre :
 
 ```toml title="examples/scheduled_ops/schedules.toml"
 [schedules.daily_digest]
@@ -122,20 +122,20 @@ description = "Gym hours and class check"
 script = "gym_scheduler.py"
 ```
 
-Point your own tooling or a custom loader at this file to register tasks in bulk.
+Pointe ton propre outillage, ou un chargeur maison, sur ce fichier pour enregistrer les tâches en lot.
 
-## Register Tasks via the Python API
+## Enregistrer des tâches par l'API Python
 
-The `gym_scheduler.py` script includes a `--register` flag that demonstrates programmatic task registration using `TaskScheduler` directly:
+Le script `gym_scheduler.py` porte un drapeau `--register` qui montre l'enregistrement d'une tâche par programme, en passant directement par `TaskScheduler` :
 
 ```bash title="Terminal"
 uv run python examples/scheduled_ops/gym_scheduler.py \
     --register --gym "Planet Fitness"
 ```
 
-The equivalent Python code:
+Le code Python équivalent :
 
-```python title="Programmatic task registration"
+```python title="Enregistrement d'une tâche par programme"
 from diapason.scheduler import TaskScheduler
 from diapason.scheduler.store import SchedulerStore
 
@@ -149,20 +149,20 @@ task = scheduler.create_task(  # (1)!
     agent="orchestrator",
     tools="web_search,think",
 )
-print(f"Task registered: {task.id}")
-print(f"Next run:        {task.next_run}")
+print(f"Tâche enregistrée  : {task.id}")
+print(f"Prochain lancement : {task.next_run}")
 ```
 
-1. `create_task()` persists the task to SQLite and computes the next trigger time. The scheduler daemon picks it up without a restart.
+1. `create_task()` écrit la tâche dans SQLite et calcule l'heure du prochain déclenchement. Le démon programmateur la reprend sans redémarrer.
 
-## The Daily Digest Script
+## Le script du résumé quotidien
 
-The digest script is the simplest of the three. It builds a date-stamped prompt and passes it to an orchestrator with `web_search` and `think`:
+Le script du résumé est le plus simple des trois. Il construit un prompt daté et le passe à un orchestrateur muni de `web_search` et de `think` :
 
 ```python title="examples/scheduled_ops/daily_digest.py" hl_lines="5 6 7 8"
 from diapason import Diapason
 
-j = Diapason()  # uses defaults from ~/.diapason/config.toml
+j = Diapason()  # reprend les valeurs par défaut de ~/.diapason/config.toml
 response = j.ask(
     f"Today is {today}. Search and summarize the top news on: {topics}",
     agent="orchestrator",
@@ -171,45 +171,45 @@ response = j.ask(
 j.close()
 ```
 
-The orchestrator searches for each topic in a separate turn, uses `think` to synthesize across topics, and returns a structured digest with bullet-point summaries and a one-paragraph outlook.
+L'orchestrateur cherche chaque sujet dans un tour distinct, se sert de `think` pour faire la synthèse d'un sujet à l'autre, et rend un résumé structuré : des points par sujet et une perspective en un paragraphe.
 
-## Send Results to a Channel
+## Envoyer les résultats vers un canal
 
-To route script output to Slack or any other supported channel, pipe stdout through `diapason channel send`:
+Pour aiguiller la sortie d'un script vers Slack ou n'importe quel autre canal pris en charge, passe la sortie standard dans `diapason channel send` :
 
 ```bash title="Terminal"
 uv run python examples/scheduled_ops/daily_digest.py \
     --topics "AI,finance" | diapason channel send slack
 ```
 
-Or add channel output inside the script:
+Ou ajoute la sortie vers le canal à l'intérieur du script :
 
-```python title="In-script channel output"
+```python title="Sortie vers un canal depuis le script"
 from diapason.channels import ChannelRegistry
 
 channel = ChannelRegistry.create("slack", webhook_url="https://hooks.slack.com/...")
 channel.send(response)
 ```
 
-List all available channels:
+Liste tous les canaux disponibles :
 
 ```bash title="Terminal"
 diapason channel list
 ```
 
-!!! warning "Channel credentials"
-    Live channel output requires channel-specific credentials. Run `diapason add slack` (or the relevant provider) to set up the MCP server and credential store, then configure environment variables in your `.env` file before starting the scheduler daemon.
+!!! warning "Les identifiants des canaux"
+    Une sortie réelle vers un canal demande les identifiants propres à ce canal. Lance `diapason add slack` (ou le fournisseur voulu) pour poser le serveur MCP et le coffre à identifiants, puis règle les variables d'environnement dans ton fichier `.env` avant de démarrer le démon programmateur.
 
-## Customization Tips
+## Conseils de personnalisation
 
-- **Change topics**: Pass `--topics "finance,healthcare,sports"` to `daily_digest.py` for a different digest.
-- **Review window**: Pass `--days 14` to `code_review.py` for a two-week review cycle instead of one week.
-- **Swap agents**: Replace `orchestrator` with `native_react` in any script to compare agent behavior on the same task.
-- **Add file output**: Append `"file_write"` to the `tools` list and update the prompt to save reports to disk instead of printing them.
-- **One-time tasks**: Use `--type once --value "2026-04-01T09:00:00"` with `diapason scheduler create` for non-recurring tasks.
+- **Changer les sujets** : passe `--topics "finance,healthcare,sports"` à `daily_digest.py` pour un autre résumé.
+- **La fenêtre de revue** : passe `--days 14` à `code_review.py` pour un cycle de revue de deux semaines au lieu d'une.
+- **Échanger les agents** : remplace `orchestrator` par `native_react` dans n'importe quel script pour comparer le comportement des agents sur la même tâche.
+- **Écrire dans un fichier** : ajoute `"file_write"` à la liste `tools` et mets le prompt à jour pour enregistrer les rapports sur le disque au lieu de les afficher.
+- **Les tâches uniques** : emploie `--type once --value "2026-04-01T09:00:00"` avec `diapason scheduler create` pour les tâches qui ne se répètent pas.
 
-## See Also
+## Voir aussi
 
-- [Architecture: Agents](../architecture/agents.md) — `OrchestratorAgent` and `NativeReActAgent` internals
-- [Architecture: Tools and Memory](../architecture/memory.md) — tool registry and `ToolExecutor`
-- [Getting Started: Configuration](../getting-started/configuration.md) — engine and model defaults
+- [Architecture : les agents](../architecture/agents.md) — les rouages de `OrchestratorAgent` et de `NativeReActAgent`
+- [Architecture : les outils et la mémoire](../architecture/memory.md) — le registre d'outils et `ToolExecutor`
+- [Démarrer : la configuration](../getting-started/configuration.md) — le moteur et le modèle par défaut

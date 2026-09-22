@@ -1,147 +1,147 @@
-# Roadmap
+# Feuille de route
 
-## Current Focus Areas
+## Les chantiers du moment
 
-These are the areas where active development is happening and contributions are most impactful:
+Voici les domaines où le développement est actif et où une contribution change le plus de choses :
 
-- **Post-training data** — building datasets and training pipelines from execution traces to improve agent routing and tool selection
-- **Multi-model orchestration pipelines** — coordinating multiple models within a single query (e.g., small model for classification, large model for generation)
-- **Energy-aware routing** — using power consumption data from telemetry to optimize for energy efficiency alongside latency and quality
-- **Plugin ecosystem** — community-contributed engines, tools, and agents distributed as Python packages
-- **Federated memory** — memory backends that synchronize across devices
-- **LLM-guided spec search:** Frontier-driven harness learning — a frontier model analyzes your traces and proposes config improvements. See [user guide](../user-guide/llm-guided-spec-search.md) and [architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
-
----
-
-## How to Get Involved
-
-1. Browse the workstreams below for an item that interests you
-2. Check if a [GitHub issue](https://github.com/carlitoetienne01-spec/Diapason/issues) already exists for it — if not, [open one](https://github.com/carlitoetienne01-spec/Diapason/issues/new/choose)
-3. Comment **"take"** on the issue to get auto-assigned
-4. Read the [Contributing Guide](https://github.com/carlitoetienne01-spec/Diapason/blob/main/CONTRIBUTING.md) for development setup and PR process
+- **Données de post-entraînement** — construire des jeux de données et des chaînes d'entraînement à partir des traces d'exécution, pour améliorer le routage des agents et le choix des outils
+- **Chaînes d'orchestration multi-modèles** — faire travailler plusieurs modèles sur une même question (un petit modèle pour classer, un gros pour générer, par exemple)
+- **Routage attentif à l'énergie** — se servir de la consommation électrique relevée par la télémétrie pour optimiser l'efficacité énergétique, en plus de la latence et de la qualité
+- **Un écosystème de greffons** — des moteurs, des outils et des agents proposés par la communauté, distribués comme paquets Python
+- **Mémoire fédérée** — des dorsales de mémoire qui se synchronisent d'un appareil à l'autre
+- **Recherche de configuration guidée par un LLM :** l'apprentissage du harnais piloté par un modèle de pointe — un modèle de pointe analyse tes traces et propose des améliorations de configuration. Voir le [guide d'utilisation](../user-guide/llm-guided-spec-search.md) et l'[architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
 
 ---
 
-## Workstreams
+## Comment participer
 
-Diapason development is organized into **five independent workstreams**. Contributors can pick any track that matches their skills and interests — workstreams are designed to be worked on in parallel without blocking each other.
+1. Parcours les chantiers ci-dessous et repère une entrée qui t'intéresse
+2. Regarde si un [ticket GitHub](https://github.com/carlitoetienne01-spec/Diapason/issues) existe déjà pour elle — sinon, [ouvres-en un](https://github.com/carlitoetienne01-spec/Diapason/issues/new/choose)
+3. Commente **« take »** sur le ticket pour qu'il te soit attribué automatiquement
+4. Lis le [guide de contribution](https://github.com/carlitoetienne01-spec/Diapason/blob/main/CONTRIBUTING.md) pour l'installation de l'environnement de développement et le processus de pull request
 
-Every item carries a maturity tag:
+---
 
-| Tag | Meaning | Contributor guidance |
+## Les chantiers
+
+Le développement de Diapason est réparti en **cinq chantiers indépendants**. Tu peux prendre celui qui correspond à tes compétences et à tes envies — ils sont faits pour avancer en parallèle, sans se bloquer les uns les autres.
+
+Chaque entrée porte une étiquette de maturité :
+
+| Étiquette | Ce qu'elle veut dire | Ce que tu peux faire |
 |-----|---------|---------------------|
-| **Ready** | Well-scoped, implementation path is clear | Pick it up — check [issues](https://github.com/carlitoetienne01-spec/Diapason/issues) for a spec or write one |
-| **Design Needed** | Concept is clear but needs a spec before code | Start a [design discussion](https://github.com/carlitoetienne01-spec/Diapason/discussions) or draft an RFC |
-| **Research-Stage** | Exploratory, needs investigation before designing | Read the relevant papers, prototype, share findings |
-| ~~**Done**~~ | Shipped since this page was written | Nothing to do — the row is kept, struck through, so nobody rebuilds it |
+| **Prêt** | Bien délimité, le chemin d'implémentation est clair | Prends-le — cherche une spec dans les [tickets](https://github.com/carlitoetienne01-spec/Diapason/issues), ou écris-en une |
+| **À concevoir** | L'idée est claire, mais il faut une spec avant d'écrire du code | Ouvre une [discussion de conception](https://github.com/carlitoetienne01-spec/Diapason/discussions) ou rédige une RFC |
+| **En recherche** | Exploratoire, à creuser avant de concevoir | Lis les articles qui s'y rapportent, prototype, partage ce que tu trouves |
+| ~~**Fait**~~ | Livré depuis l'écriture de cette page | Rien à faire — la ligne reste, barrée, pour que personne ne le reconstruise |
 
-A roadmap that still advertises finished work is worse than one that is out
-of date: it sends a contributor to rebuild something that already exists, and
-they only find out at review time. Struck-through rows say what landed and
-where, so the claim can be checked in one `grep`.
+Une feuille de route qui annonce encore du travail déjà fait est pire qu'une
+feuille de route périmée : elle envoie quelqu'un reconstruire ce qui existe
+déjà, et il ne l'apprend qu'à la relecture. Les lignes barrées disent ce qui a
+été livré et où, pour que l'affirmation se vérifie en un seul `grep`.
 
 ---
 
-### Workstream 1: Continuous Operators & Agents
+### Chantier 1 : opérateurs continus et agents
 
-Operators are Diapason's key differentiator — persistent, scheduled, stateful agents that run autonomously on personal devices. The current tick-based architecture (OperatorManager → TaskScheduler → AgentExecutor → OperativeAgent) is solid but needs hardening for truly long-horizon autonomy.
+Les opérateurs sont ce qui distingue Diapason — des agents persistants, programmés, dotés d'un état, qui tournent seuls sur des appareils personnels. L'architecture actuelle, rythmée par des tics (OperatorManager → TaskScheduler → AgentExecutor → OperativeAgent), est solide, mais demande à être durcie pour une autonomie vraiment longue.
 
-#### Where you can help
+#### Là où tu peux aider
 
-| Item | Maturity | Details |
+| Entrée | Maturité | Détails |
 |------|----------|---------|
-| Operator health checks & heartbeat monitoring | **Ready** | Add liveness probes to OperatorManager; surface in `diapason operators status`. Detect stalled operators beyond the existing reconciliation loop. |
-| Metrics collection for operator manifests | **Ready** | Half-built, which is worse than untouched: `OperatorManager.collect_metrics()` exists and reads the manifest's `metrics` list, but **nothing calls it** — zero call sites in `src/` and `tests/`. The remaining work is not to write the collector, it is to wire it to a tick and to `diapason operators status`. Check the call sites before starting. |
-| ~~Capability policy enforcement~~ | **Done** | Landed as `operators/capability_guard.py`, checked in `activate()` and `run_once()`. Note that the advice in this row was wrong and would have shipped a broken feature: connecting straight to `CapabilityPolicy` refuses *every* operator on a default install, because the grants an operator runs under are the ones `ToolExecutor` gives itself at construction — which has not happened yet at activation. The guard therefore checks the vocabulary and consistency with the named tools on every install, and consults the policy only when an administrator supplied one. |
-| Rate limiting per operator | **Ready** | Prevent runaway operators from hammering inference. Add configurable rate limits to OperatorManager. |
-| Operator composition / chaining | **Design Needed** | Express dependencies between operators (operator A feeds results to operator B). Requires design for data passing and scheduling semantics. |
-| Event-driven operators | **Design Needed** | Operators that trigger on EventBus events (e.g., new file indexed, channel message received) rather than only cron/interval schedules. |
-| Operator versioning & rollback | **Design Needed** | Run v2 of an operator alongside v1. Roll back automatically on repeated failures. |
-| Self-improving operators via Learning | **Research-Stage** | Operators that use trace feedback to tune their own prompts, tool selection, and routing policies through the Learning primitive. |
+| Contrôles de santé et suivi du battement de cœur des opérateurs | **Prêt** | Ajouter des sondes de vivacité à OperatorManager ; les faire remonter dans `diapason operators status`. Détecter les opérateurs figés au-delà de la boucle de réconciliation existante. |
+| Collecte de métriques pour les manifestes d'opérateurs | **Prêt** | À moitié fait, ce qui est pire que pas commencé : `OperatorManager.collect_metrics()` existe et lit la liste `metrics` du manifeste, mais **rien ne l'appelle** — aucun site d'appel dans `src/` ni dans `tests/`. Ce qui reste n'est pas d'écrire le collecteur, c'est de le brancher sur un tic et sur `diapason operators status`. Vérifie les sites d'appel avant de commencer. |
+| ~~Application de la politique de capacités~~ | **Fait** | Livré sous la forme de `operators/capability_guard.py`, vérifié dans `activate()` et dans `run_once()`. À noter : le conseil que portait cette ligne était faux et aurait livré une fonctionnalité cassée — se brancher directement sur `CapabilityPolicy` refuse *tous* les opérateurs sur une installation par défaut, parce que les autorisations sous lesquelles un opérateur tourne sont celles que `ToolExecutor` se donne à sa construction, laquelle n'a pas encore eu lieu au moment de l'activation. Le garde vérifie donc le vocabulaire et la cohérence avec les outils nommés à chaque installation, et ne consulte la politique que si un administrateur en a fourni une. |
+| Limitation de débit par opérateur | **Prêt** | Empêcher un opérateur emballé de marteler l'inférence. Ajouter des limites de débit configurables à OperatorManager. |
+| Composition et chaînage d'opérateurs | **À concevoir** | Exprimer des dépendances entre opérateurs (l'opérateur A passe ses résultats à l'opérateur B). Demande de concevoir le passage des données et la sémantique d'ordonnancement. |
+| Opérateurs déclenchés par événement | **À concevoir** | Des opérateurs qui se déclenchent sur les événements de l'EventBus (un nouveau fichier indexé, un message reçu sur un canal) et pas seulement sur un cron ou un intervalle. |
+| Versionnage et retour en arrière des opérateurs | **À concevoir** | Faire tourner la v2 d'un opérateur à côté de la v1. Revenir automatiquement en arrière après des échecs répétés. |
+| Des opérateurs qui s'améliorent seuls, par Learning | **En recherche** | Des opérateurs qui se servent du retour des traces pour ajuster leurs propres prompts, leur choix d'outils et leurs politiques de routage, à travers la primitive Learning. |
 
 ---
 
-### Workstream 2: Mobile & Messaging Clients
+### Chantier 2 : clients mobiles et messagerie
 
-Personal AI must be accessible from the devices people actually carry. Diapason runs on laptops, workstations, and servers — users interact via their phones.
+Une IA personnelle doit être joignable depuis les appareils que les gens ont vraiment sur eux. Diapason tourne sur des portables, des stations de travail et des serveurs — mais on s'en sert depuis son téléphone.
 
-**Currently supported:**
+**Ce qui marche aujourd'hui :**
 
-- **iMessage + SMS** via SendBlue — bidirectional, auto-detects iMessage vs SMS, thread replies, progress updates
-- **Slack** via Socket Mode (slack-bolt) — bidirectional DMs, thread replies, Slack formatting, progress updates
-- **Desktop/Browser** — Interact tab with real-time streaming, tool progress, telemetry footer
+- **iMessage et SMS** par SendBlue — bidirectionnel, détection automatique entre iMessage et SMS, réponses dans le fil, avancement en direct
+- **Slack** par Socket Mode (slack-bolt) — messages privés bidirectionnels, réponses dans le fil, mise en forme Slack, avancement en direct
+- **Bureau et navigateur** — l'onglet Interact, avec le fil de l'eau en direct, l'avancement des outils et le pied de page de télémétrie
 
-#### Where you can help
+#### Là où tu peux aider
 
-| Item | Maturity | Details |
+| Entrée | Maturité | Détails |
 |------|----------|---------|
-| WhatsApp via Meta Cloud API | **Design Needed** | Baileys protocol is blocked by WhatsApp (405 errors). Need to implement via the official Meta WhatsApp Business API. Requires Meta Business account registration. |
-| WhatsApp via Baileys (workaround) | **Blocked** | WhatsApp is actively blocking unofficial Baileys connections (405 Method Not Allowed). Monitor the [Baileys repo](https://github.com/WhiskeySockets/Baileys) for protocol updates. |
-| Slack rich messages (Block Kit) | **Ready** | Current Slack responses use mrkdwn formatting. Add Block Kit support for structured responses with buttons, sections, and attachments. **Good first issue.** |
-| Unified notification system | **Design Needed** | Push notifications when operators complete tasks or need user attention. Requires per-channel notification adapters. |
-| Signal bidirectional | **Design Needed** | Currently send-only via signal-cli REST API. Add incoming message listener with background polling. |
-| Voice interface | **Research-Stage** | Speech-to-text (Whisper) → agent → text-to-speech loop over phone channels. Existing `speech/` module provides a foundation. |
-| Auto-restore channels on restart | **Ready** | Slack daemon and SendBlue auto-restore from saved bindings on server restart. Need to make this more robust for edge cases. |
+| WhatsApp par l'API Meta Cloud | **À concevoir** | Le protocole Baileys est bloqué par WhatsApp (erreurs 405). Il faut passer par l'API officielle Meta WhatsApp Business. Demande l'inscription d'un compte Meta Business. |
+| WhatsApp par Baileys (contournement) | **Bloqué** | WhatsApp bloque activement les connexions Baileys non officielles (405 Method Not Allowed). Surveille le [dépôt Baileys](https://github.com/WhiskeySockets/Baileys) pour les évolutions du protocole. |
+| Messages riches Slack (Block Kit) | **Prêt** | Les réponses Slack actuelles utilisent la mise en forme mrkdwn. Ajouter la prise en charge de Block Kit, pour des réponses structurées avec boutons, sections et pièces jointes. **Bon premier ticket.** |
+| Système de notifications unifié | **À concevoir** | Des notifications poussées quand un opérateur finit une tâche ou réclame ton attention. Demande un adaptateur de notification par canal. |
+| Signal en bidirectionnel | **À concevoir** | Aujourd'hui en envoi seul, par l'API REST signal-cli. Ajouter une écoute des messages entrants, avec relève en arrière-plan. |
+| Interface vocale | **En recherche** | Une boucle parole-vers-texte (Whisper) → agent → texte-vers-parole sur les canaux téléphoniques. Le module `speech/` existant sert de socle. |
+| Restauration automatique des canaux au redémarrage | **Prêt** | Le démon Slack et SendBlue se restaurent tout seuls depuis les liaisons enregistrées quand le serveur redémarre. Il faut rendre ça plus solide dans les cas limites. |
 
 ---
 
-### Workstream 3: Secure Cloud Collaboration
+### Chantier 3 : collaboration sécurisée avec le cloud
 
-Personal AI's core tension: local models preserve privacy but lack capability; cloud models are powerful but require trusting a provider with your data. This workstream resolves that through **Minions-style collaborative inference** (local handles context, cloud handles reasoning) and **TEE-based confidential computing** (cloud cannot see your data even during inference).
+La tension au cœur de l'IA personnelle : les modèles locaux préservent la vie privée mais manquent de capacité ; les modèles du cloud sont puissants mais obligent à confier tes données à un fournisseur. Ce chantier résout ça par une **inférence collaborative à la Minions** (le local s'occupe du contexte, le cloud du raisonnement) et par du **calcul confidentiel fondé sur les TEE** (le cloud ne voit pas tes données, même pendant l'inférence).
 
-**References:**
+**Références :**
 
 - [Minions: Cost-Efficient Local-Cloud LLM Collaboration](https://github.com/HazyResearch/minions)
 - [TEE for Confidential AI Inference](https://openreview.net/forum?id=ey87M5iKcX) ([PDF](https://openreview.net/pdf?id=ey87M5iKcX))
 
-#### Where you can help
+#### Là où tu peux aider
 
-| Item | Maturity | Details |
+| Entrée | Maturité | Détails |
 |------|----------|---------|
-| Query complexity analyzer | **Ready** | Classify incoming queries by difficulty to decide local vs. cloud routing. Extends the existing `MultiEngine` routing logic. |
-| ~~Cost tracking per-query~~ | **Mostly done** | Wired end to end: `estimate_cost()` in `engine/cloud.py` → the response's `cost_usd` → `telemetry/instrumented_engine.py` and `wrapper.py` → the `cost_usd` column → `aggregator.py`. An unpriced model reports `$0.00` **and logs a warning**, because zero is indistinguishable from a free local run. What remains is narrower than the original item: one non-OpenAI path in `cloud.py` still hardcodes `0.0` instead of calling `estimate_cost()`. |
-| Redaction-before-cloud pipeline | **Ready** | Wire the existing `GuardrailsEngine` in REDACT mode as a mandatory pre-step before any cloud transmission. |
-| Minion protocol (sequential) | **Design Needed** | Local model extracts and summarizes long context → cloud model reasons over the compressed result. Native reimplementation of the core [Minions](https://github.com/HazyResearch/minions) idea. |
-| Minion protocol (parallel) | **Design Needed** | Local and cloud models work simultaneously on different aspects of a query; results are merged. Requires a new `HybridInferenceEngine` abstraction. |
-| TEE attestation verification | **Design Needed** | Verify that cloud inference ran inside a trusted execution environment via cryptographic attestation. |
-| Taint tracking across local/cloud boundary | **Design Needed** | The `TaintSet` already tracks PII/Secret labels. Add routing enforcement so tainted data only routes to attested TEE endpoints. |
-| Speculative decoding (local draft + cloud verify) | **Research-Stage** | Local model generates candidate tokens; cloud model validates in parallel for latency reduction. |
+| Analyseur de complexité des requêtes | **Prêt** | Classer les questions entrantes par difficulté, pour décider du routage vers le local ou vers le cloud. Prolonge la logique de routage de `MultiEngine`. |
+| ~~Suivi du coût par requête~~ | **Presque fait** | Branché de bout en bout : `estimate_cost()` dans `engine/cloud.py` → le `cost_usd` de la réponse → `telemetry/instrumented_engine.py` et `wrapper.py` → la colonne `cost_usd` → `aggregator.py`. Un modèle sans tarif rapporte `$0.00` **et consigne un avertissement**, parce que zéro ne se distingue pas d'un tour local gratuit. Ce qui reste est plus étroit que l'entrée d'origine : dans `cloud.py`, un chemin non-OpenAI écrit encore `0.0` en dur au lieu d'appeler `estimate_cost()`. |
+| Chaîne de caviardage avant envoi au cloud | **Prêt** | Brancher le `GuardrailsEngine` existant en mode REDACT comme étape obligatoire avant toute transmission vers le cloud. |
+| Protocole Minion (séquentiel) | **À concevoir** | Le modèle local extrait et résume un contexte long → le modèle du cloud raisonne sur le résultat compressé. Réimplémentation native de l'idée centrale de [Minions](https://github.com/HazyResearch/minions). |
+| Protocole Minion (parallèle) | **À concevoir** | Le modèle local et celui du cloud travaillent en même temps sur des aspects différents d'une même question ; les résultats sont fusionnés. Demande une nouvelle abstraction `HybridInferenceEngine`. |
+| Vérification de l'attestation TEE | **À concevoir** | Vérifier par attestation cryptographique que l'inférence du cloud s'est déroulée dans un environnement d'exécution de confiance. |
+| Suivi de teinte à la frontière local / cloud | **À concevoir** | Le `TaintSet` suit déjà les étiquettes PII et Secret. Ajouter une contrainte de routage, pour que les données teintées n'aillent que vers des points d'accès TEE attestés. |
+| Décodage spéculatif (brouillon local, vérification dans le cloud) | **En recherche** | Le modèle local produit des jetons candidats ; celui du cloud les valide en parallèle, pour réduire la latence. |
 
 ---
 
-### Workstream 4: Tutorials & Documentation
+### Chantier 4 : tutoriels et documentation
 
-Diapason has reference docs and four tutorials, but critical gaps remain in continuous agents, LM evaluation, learning approaches, and custom tools. Video tutorials are scoped as a contributor opportunity — written tutorials come first, with video scripts included so anyone can record.
+Diapason a une documentation de référence et quatre tutoriels, mais il reste des trous importants sur les agents continus, l'évaluation des modèles de langue, les approches d'apprentissage et les outils sur mesure. Les tutoriels vidéo sont pensés comme une occasion de contribuer — les tutoriels écrits viennent d'abord, avec leur script vidéo, pour que n'importe qui puisse enregistrer.
 
-#### Where you can help
+#### Là où tu peux aider
 
-| Item | Maturity | Details |
+| Entrée | Maturité | Détails |
 |------|----------|---------|
-| "Building Continuous Agents" tutorial | **Ready** | Writing an operator TOML manifest, activating it, session persistence across ticks, daemon mode. Example: a research operator that monitors arxiv daily. |
-| "Adding Custom Tools" tutorial | **Ready** | Implementing `BaseTool`, registering via `ToolRegistry`, wiring into agents. Example: a weather API tool. **Good first issue.** |
-| "Testing & Comparing LMs" tutorial | **Ready** | Running benchmarks, comparing local vs. cloud models, interpreting telemetry (latency, cost, energy per token). Uses the existing `bench/` framework. |
-| Per-platform installation guides | **Ready** | Expand `installation.md` with platform-specific walkthroughs: macOS + Ollama, Ubuntu + NVIDIA + vLLM, Windows + Ollama, Raspberry Pi. **Good first issue.** |
-| "Learning & Model Selection" tutorial | **Design Needed** | Router policies (heuristic, learned, GRPO), proposed approaches like Thompson Sampling, trace-based reward signals. |
-| Video tutorial infrastructure | **Design Needed** | Establish recording workflow, hosting (YouTube), MkDocs embedding. Write video scripts alongside written tutorials. |
-| Interactive Jupyter notebook tutorials | **Design Needed** | Notebook versions of key tutorials for exploratory, cell-by-cell learning. |
+| Tutoriel « Construire des agents continus » | **Prêt** | Écrire un manifeste d'opérateur en TOML, l'activer, la persistance de session d'un tic à l'autre, le mode démon. Exemple : un opérateur de veille qui surveille arxiv chaque jour. |
+| Tutoriel « Ajouter ses propres outils » | **Prêt** | Implémenter `BaseTool`, l'enregistrer par `ToolRegistry`, le brancher aux agents. Exemple : un outil d'API météo. **Bon premier ticket.** |
+| Tutoriel « Tester et comparer les modèles de langue » | **Prêt** | Lancer des bancs d'essai, comparer les modèles locaux et ceux du cloud, lire la télémétrie (latence, coût, énergie par jeton). S'appuie sur le cadre `bench/` existant. |
+| Guides d'installation par plateforme | **Prêt** | Étoffer `installation.md` avec des marches à suivre propres à chaque plateforme : macOS + Ollama, Ubuntu + NVIDIA + vLLM, Windows + Ollama, Raspberry Pi. **Bon premier ticket.** |
+| Tutoriel « Apprentissage et choix du modèle » | **À concevoir** | Les politiques du routeur (heuristique, apprise, GRPO), les approches proposées comme l'échantillonnage de Thompson, les signaux de récompense tirés des traces. |
+| De quoi produire des tutoriels vidéo | **À concevoir** | Mettre en place le processus d'enregistrement, l'hébergement (YouTube), l'intégration dans MkDocs. Écrire les scripts vidéo en même temps que les tutoriels écrits. |
+| Tutoriels interactifs en carnet Jupyter | **À concevoir** | Des versions carnet des tutoriels clés, pour apprendre cellule par cellule, en explorant. |
 
 ---
 
-### Workstream 5: Hardware Breadth
+### Chantier 5 : couvrir plus de matériel
 
-Personal AI means running on the hardware people actually own. Each new hardware target expands who can use Diapason and generates data for the research agenda (energy, cost, latency tradeoffs across silicon).
+Une IA personnelle, c'est une IA qui tourne sur le matériel que les gens possèdent vraiment. Chaque nouvelle cible matérielle élargit le cercle de ceux qui peuvent se servir de Diapason, et produit des données pour le programme de recherche (les arbitrages entre énergie, coût et latence d'une puce à l'autre).
 
-Adding a new hardware target involves up to four components: hardware detection in `core/config.py`, an inference engine adapter in `engine/`, an energy monitor in `telemetry/`, and an entry in the GPU specs database in `telemetry/gpu_monitor.py`.
+Ajouter une cible matérielle touche jusqu'à quatre morceaux : la détection du matériel dans `core/config.py`, un adaptateur de moteur d'inférence dans `engine/`, un moniteur d'énergie dans `telemetry/`, et une entrée dans la base de caractéristiques de cartes graphiques, dans `telemetry/gpu_monitor.py`.
 
-#### Where you can help
+#### Là où tu peux aider
 
-| Item | Maturity | Details |
+| Entrée | Maturité | Détails |
 |------|----------|---------|
-| AMD Ryzen AI iGPU path | **Ready** | Strix Point RDNA 3.5 iGPU handles 7-8B via Vulkan. llama.cpp Vulkan backend works today. Needs hardware detection and energy monitor. **Good first issue.** |
-| ~~GPU specs database expansion~~ | **Done** | The three targets named here have landed in `GPU_SPECS` (`telemetry/gpu_monitor.py`): Arc B580/B570, Jetson Orin NX, Snapdragon X Elite/X Plus — alongside NVIDIA, AMD and Apple Silicon. Adding a *new* chip remains a good first issue; these three are no longer it. |
-| Intel Arc GPU (B580/B570) | **Design Needed** | 12GB VRAM, ~$250 consumer GPU. Viable for 7-8B models. Engine path: IPEX-LLM or llama.cpp SYCL backend. |
-| NVIDIA Jetson Orin | **Design Needed** | Best-in-class edge device. Orin NX 16GB handles 7-8B models at 15-25 tok/s. Needs hardware detection, energy monitor (tegrastats), deployment guide. |
-| Qualcomm Snapdragon X Elite NPU | **Design Needed** | 45 TOPS, Windows Arm laptops. ONNX Runtime + QNN Execution Provider is the viable path. |
-| Intel Lunar Lake NPU via OpenVINO | **Design Needed** | 48 TOPS — most mature NPU software stack for x86 laptops. New engine wrapping OpenVINO GenAI. |
-| Raspberry Pi 5 | **Design Needed** | CPU-only via llama.cpp ARM NEON for 1-3B models. $100 entry point for hobbyists. |
-| Unified hardware benchmark suite | **Design Needed** | Standardized benchmark that runs the same workloads across all supported hardware, producing comparable energy/latency/throughput/cost numbers. |
+| Le chemin iGPU AMD Ryzen AI | **Prêt** | L'iGPU RDNA 3.5 de Strix Point encaisse du 7-8B par Vulkan. La dorsale Vulkan de llama.cpp fonctionne dès aujourd'hui. Il manque la détection du matériel et le moniteur d'énergie. **Bon premier ticket.** |
+| ~~Élargir la base de caractéristiques des cartes graphiques~~ | **Fait** | Les trois cibles nommées ici sont arrivées dans `GPU_SPECS` (`telemetry/gpu_monitor.py`) : Arc B580/B570, Jetson Orin NX, Snapdragon X Elite/X Plus — aux côtés de NVIDIA, AMD et Apple Silicon. Ajouter une *nouvelle* puce reste un bon premier ticket ; ces trois-là ne le sont plus. |
+| Carte graphique Intel Arc (B580/B570) | **À concevoir** | 12 Go de VRAM, une carte grand public à ~250 $. Tenable pour des modèles de 7-8B. Côté moteur : IPEX-LLM ou la dorsale SYCL de llama.cpp. |
+| NVIDIA Jetson Orin | **À concevoir** | Ce qui se fait de mieux en périphérie. L'Orin NX 16 Go tient des modèles de 7-8B à 15-25 jetons/s. Il manque la détection du matériel, un moniteur d'énergie (tegrastats) et un guide de déploiement. |
+| NPU Qualcomm Snapdragon X Elite | **À concevoir** | 45 TOPS, sur les portables Windows Arm. Le chemin tenable : ONNX Runtime + QNN Execution Provider. |
+| NPU Intel Lunar Lake par OpenVINO | **À concevoir** | 48 TOPS — la pile logicielle NPU la plus mûre pour les portables x86. Un nouveau moteur enveloppant OpenVINO GenAI. |
+| Raspberry Pi 5 | **À concevoir** | Processeur seul, par llama.cpp ARM NEON, pour des modèles de 1-3B. Un point d'entrée à 100 $ pour les bricoleurs. |
+| Une suite de bancs d'essai matériels unifiée | **À concevoir** | Un banc d'essai normalisé qui fait tourner les mêmes charges sur tout le matériel pris en charge, et produit des chiffres d'énergie, de latence, de débit et de coût comparables. |

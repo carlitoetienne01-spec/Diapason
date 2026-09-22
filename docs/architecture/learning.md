@@ -1,80 +1,80 @@
-# Learning & Traces
+# Apprentissage et traces
 
-The Learning system is a **cross-cutting concern** that connects all five primitives through trace-driven feedback. It determines which model handles each query (router policies), records the full interaction as a trace, analyzes outcomes, and updates policies based on what worked.
+Le système d'apprentissage est une **préoccupation transversale** : il relie les cinq primitives par une rétroaction fondée sur les traces. Il décide quel modèle traite chaque requête (les politiques de routage), enregistre l'interaction entière sous forme de trace, analyse les résultats et met à jour les politiques d'après ce qui a marché.
 
 ---
 
-## LearningPolicy ABC Taxonomy
+## La taxonomie des ABC LearningPolicy
 
-The learning system defines a hierarchy of learning policy ABCs. The base `LearningPolicy` ABC is specialized into two sub-ABCs corresponding to the two learnable concerns:
+Le système d'apprentissage définit une hiérarchie d'ABC de politiques d'apprentissage. L'ABC de base `LearningPolicy` se spécialise en deux sous-ABC, une par domaine qui s'apprend :
 
-| ABC | Concern | Description |
+| ABC | Domaine | Description |
 |-----|---------|-------------|
-| `IntelligenceLearningPolicy` | Model routing | Determines which model handles a query (replaces the legacy `RouterPolicy`) |
-| `AgentLearningPolicy` | Agent behavior | Advises on agent strategy (e.g., ICL examples, tool selection, turn limits) |
+| `IntelligenceLearningPolicy` | Routage des modèles | Décide quel modèle traite une requête (remplace l'ancienne `RouterPolicy`) |
+| `AgentLearningPolicy` | Comportement de l'agent | Conseille sur la stratégie de l'agent (exemples ICL, choix des outils, nombre de tours, par exemple) |
 
-All learning policies are registered in the `LearningRegistry` (in `core/registry.py`).
+Toutes les politiques d'apprentissage sont enregistrées dans le `LearningRegistry` (dans `core/registry.py`).
 
-## RouterPolicy ABC
+## L'ABC RouterPolicy
 
-The `RouterPolicy` ABC and the `QueryAnalyzer` ABC are defined in `learning/_stubs.py`:
+L'ABC `RouterPolicy` et l'ABC `QueryAnalyzer` sont définies dans `learning/_stubs.py` :
 
 ```python
 # learning/_stubs.py
 class RouterPolicy(ABC):
     @abstractmethod
     def select_model(self, context: RoutingContext) -> str:
-        """Return the model registry key best suited for *context*."""
+        """Rend la clé de registre du modèle la mieux adaptée à *context*."""
 
 class QueryAnalyzer(ABC):
     @abstractmethod
     def analyze(self, query: str) -> RoutingContext:
-        """Analyze a raw query string and return a RoutingContext."""
+        """Analyse une requête brute et rend un RoutingContext."""
 ```
 
-!!! note "Backward compatibility"
-    The canonical locations are now `diapason.learning._stubs` (for `RouterPolicy` and `QueryAnalyzer`) and `diapason.core.types` (for `RoutingContext`). The old `diapason.intelligence._stubs` import path still works via a backward-compatibility shim, but new code should import from `diapason.learning._stubs`.
+!!! note "Compatibilité ascendante"
+    Les emplacements canoniques sont désormais `diapason.learning._stubs` (pour `RouterPolicy` et `QueryAnalyzer`) et `diapason.core.types` (pour `RoutingContext`). L'ancien chemin d'import `diapason.intelligence._stubs` fonctionne toujours, par une cale de compatibilité ascendante, mais le code neuf doit importer depuis `diapason.learning._stubs`.
 
 ### RoutingContext
 
-The `RoutingContext` dataclass is now defined in `core/types.py` (moved from `learning/_stubs.py`):
+La dataclass `RoutingContext` est maintenant définie dans `core/types.py` (déplacée depuis `learning/_stubs.py`) :
 
 ```python
 # core/types.py
 @dataclass(slots=True)
 class RoutingContext:
-    query: str = ""            # The raw query text
-    query_length: int = 0      # Character count
-    has_code: bool = False     # Whether code patterns were detected
-    has_math: bool = False     # Whether math keywords were detected
-    language: str = "en"       # Detected language
-    urgency: float = 0.5      # 0 = low priority, 1 = real-time
+    query: str = ""            # Le texte brut de la requête
+    query_length: int = 0      # Nombre de caractères
+    has_code: bool = False     # Des motifs de code ont-ils été détectés
+    has_math: bool = False     # Des mots-clés mathématiques ont-ils été détectés
+    language: str = "en"       # Langue détectée
+    urgency: float = 0.5      # 0 = faible priorité, 1 = temps réel
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```
 
 ---
 
-## RouterPolicyRegistry & LearningRegistry
+## RouterPolicyRegistry et LearningRegistry
 
-Router policies are registered in the `RouterPolicyRegistry` and selected at runtime. Additionally, the `LearningRegistry` (in `core/registry.py`) manages the broader set of learning policies across the taxonomy.
+Les politiques de routage sont enregistrées dans le `RouterPolicyRegistry` et choisies à l'exécution. En plus, le `LearningRegistry` (dans `core/registry.py`) gère l'ensemble plus large des politiques d'apprentissage de toute la taxonomie.
 
-The system ships with these router policies:
+Le système est livré avec ces politiques de routage :
 
-| Registry Key | Policy Class | Status | Description |
+| Clé de registre | Classe de politique | État | Description |
 |-------------|-------------|--------|-------------|
-| `heuristic` | `HeuristicRouter` | Active | Rule-based routing with 6 priority rules |
-| `learned` | `TraceDrivenPolicy` | Active | Learns from trace outcomes |
-| `grpo` | `GRPORouterPolicy` | Stub | Placeholder for future RL training |
-| `sft` | `SFTRouterPolicy` | Active | Trace-driven routing policy (learns query→model mapping); `SFTPolicy` is a backward-compat alias |
+| `heuristic` | `HeuristicRouter` | Actif | Routage par règles, six règles de priorité |
+| `learned` | `TraceDrivenPolicy` | Actif | Apprend des résultats consignés dans les traces |
+| `grpo` | `GRPORouterPolicy` | Ébauche | Emplacement réservé à un futur entraînement par renforcement |
+| `sft` | `SFTRouterPolicy` | Actif | Politique de routage guidée par les traces (apprend l'association requête→modèle) ; `SFTPolicy` est un alias de compatibilité ascendante |
 
-And these additional learning policies (registered in `LearningRegistry`):
+Et ces politiques d'apprentissage supplémentaires (enregistrées dans le `LearningRegistry`) :
 
-| Registry Key | Policy Class | Taxonomy | Description |
+| Clé de registre | Classe de politique | Taxonomie | Description |
 |-------------|-------------|----------|-------------|
-| `agent_advisor` | `AgentAdvisorPolicy` | `AgentLearningPolicy` | Advises on agent strategy based on trace patterns |
-| `icl_updater` | `ICLUpdaterPolicy` | `AgentLearningPolicy` | In-context learning updater — discovers ICL examples and multi-tool skills from traces |
+| `agent_advisor` | `AgentAdvisorPolicy` | `AgentLearningPolicy` | Conseille sur la stratégie de l'agent d'après les motifs relevés dans les traces |
+| `icl_updater` | `ICLUpdaterPolicy` | `AgentLearningPolicy` | Mise à jour par apprentissage en contexte — découvre dans les traces des exemples ICL et des savoir-faire multi-outils |
 
-Users select a policy via `config.toml` or the `--router` CLI flag:
+On choisit une politique dans `config.toml` ou avec le drapeau `--router` de la CLI :
 
 ```toml
 [learning.routing]
@@ -82,45 +82,45 @@ policy = "heuristic"
 ```
 
 ```bash
-diapason ask --router learned "What is the capital of France?"
+diapason ask --router learned "Quelle est la capitale de la France ?"
 ```
 
-### The `ensure_registered()` Pattern
+### Le motif `ensure_registered()`
 
-Learning modules use a lazy registration pattern to survive registry clearing in tests:
+Les modules d'apprentissage s'enregistrent paresseusement, pour survivre au vidage du registre dans les tests :
 
 ```python
 def ensure_registered() -> None:
-    """Register TraceDrivenPolicy if not already present."""
+    """Enregistre TraceDrivenPolicy si elle n'y est pas déjà."""
     if not RouterPolicyRegistry.contains("learned"):
         RouterPolicyRegistry.register_value("learned", TraceDrivenPolicy)
 
-ensure_registered()  # Called at module import time
+ensure_registered()  # Appelé au moment de l'import du module
 ```
 
-This ensures that policies are available even after `RouterPolicyRegistry.clear()` is called in test teardown, because re-importing the module re-registers them.
+Ainsi les politiques restent disponibles même après un `RouterPolicyRegistry.clear()` en fin de test : réimporter le module les réenregistre.
 
 ---
 
-## HeuristicRouter (Heuristic Policy)
+## HeuristicRouter (la politique heuristique)
 
-The `HeuristicRouter` is the default routing policy. It is defined in `learning/router.py` and applies six static priority rules to select the best model based on query characteristics.
+Le `HeuristicRouter` est la politique de routage par défaut. Défini dans `learning/router.py`, il applique six règles de priorité statiques pour choisir le meilleur modèle selon les caractéristiques de la requête.
 
-### Routing Rules
+### Les règles de routage
 
-| Priority | Rule | Condition | Action |
+| Priorité | Règle | Condition | Action |
 |----------|------|-----------|--------|
-| 1 | Code detection | Query contains code patterns (backticks, `def`, `class`, `import`, `function`, `=>`, etc.) | Prefer model with "code" or "coder" in name; fall back to largest model |
-| 2 | Math detection | Query contains math keywords (`solve`, `integral`, `equation`, `calculate`, `compute`, etc.) | Select the largest available model |
-| 3 | Short query | Query length < 50 characters, no code/math | Select the smallest available model (faster response) |
-| 4 | Long/complex query | Query length > 500 characters OR contains reasoning keywords (`explain`, `analyze`, `compare`, `step-by-step`, etc.) | Select the largest available model |
-| 5 | High urgency | `urgency > 0.8` | Override to smallest model (fastest response) |
-| 6 | Default fallback | None of the above match | Use `default_model`, then `fallback_model`, then first available |
+| 1 | Détection de code | La requête contient des motifs de code (accents graves, `def`, `class`, `import`, `function`, `=>`, etc.) | Préférer un modèle dont le nom contient « code » ou « coder » ; sinon, se rabattre sur le plus gros modèle |
+| 2 | Détection mathématique | La requête contient des mots-clés mathématiques (`solve`, `integral`, `equation`, `calculate`, `compute`, etc.) | Choisir le plus gros modèle disponible |
+| 3 | Requête courte | Moins de 50 caractères, ni code ni mathématiques | Choisir le plus petit modèle disponible (réponse plus rapide) |
+| 4 | Requête longue ou complexe | Plus de 500 caractères OU présence de mots-clés de raisonnement (`explain`, `analyze`, `compare`, `step-by-step`, etc.) | Choisir le plus gros modèle disponible |
+| 5 | Urgence élevée | `urgency > 0.8` | Impose le plus petit modèle (la réponse la plus rapide) |
+| 6 | Repli par défaut | Aucune des règles ci-dessus ne s'applique | Utiliser `default_model`, puis `fallback_model`, puis le premier disponible |
 
-!!! note "Priority 5 overrides all others"
-    The urgency check (rule 5) is evaluated **first** in the code — if urgency exceeds 0.8, the router immediately returns the smallest model regardless of query content.
+!!! note "La priorité 5 l'emporte sur toutes les autres"
+    Le contrôle d'urgence (règle 5) est évalué **en premier** dans le code — si l'urgence dépasse 0,8, le routeur rend immédiatement le plus petit modèle, quel que soit le contenu de la requête.
 
-### Usage
+### L'utilisation
 
 ```python
 from diapason.learning.router import HeuristicRouter, build_routing_context
@@ -132,12 +132,12 @@ router = HeuristicRouter(
 )
 
 ctx = build_routing_context("Write a Python function to sort a list")
-model = router.select_model(ctx)  # Returns "deepseek-coder-v2:16b" (has "coder")
+model = router.select_model(ctx)  # Rend "deepseek-coder-v2:16b" (son nom contient "coder")
 ```
 
 ### build_routing_context()
 
-The `build_routing_context()` function (in `learning/router.py`) analyzes a raw query string and produces a `RoutingContext` dataclass:
+La fonction `build_routing_context()` (dans `learning/router.py`) analyse une requête brute et produit une dataclass `RoutingContext` :
 
 ```python
 from diapason.learning.router import build_routing_context
@@ -149,20 +149,20 @@ ctx = build_routing_context("```python\ndef hello():\n    pass\n```")
 # ctx.has_code = True, ctx.has_math = False
 ```
 
-**Code detection** uses regex patterns matching:
+**La détection de code** s'appuie sur des expressions régulières qui reconnaissent :
 
-- Backtick code blocks (` ``` ` or `` `inline` ``)
-- Language keywords (`def`, `class`, `import`, `function`, `const`, `var`, `let`)
-- Syntax patterns (`if (`, `->`, `=>`, `{ }`, `for x in`, `#include`, `System.out`)
+- Les blocs de code entre accents graves (` ``` ` ou `` `inline` ``)
+- Les mots-clés de langage (`def`, `class`, `import`, `function`, `const`, `var`, `let`)
+- Les motifs de syntaxe (`if (`, `->`, `=>`, `{ }`, `for x in`, `#include`, `System.out`)
 
-**Math detection** uses regex patterns matching:
+**La détection mathématique** s'appuie sur des expressions régulières qui reconnaissent :
 
-- Mathematical terms (`solve`, `integral`, `equation`, `proof`, `derivative`, `matrix`)
-- Computational keywords (`calculate`, `compute`, `sigma`, `sum`, `limit`, `probability`)
+- Les termes mathématiques (`solve`, `integral`, `equation`, `proof`, `derivative`, `matrix`)
+- Les mots-clés de calcul (`calculate`, `compute`, `sigma`, `sum`, `limit`, `probability`)
 
-### Registration
+### L'enregistrement
 
-The `heuristic_policy.py` module wires `HeuristicRouter` into the `RouterPolicyRegistry`:
+Le module `heuristic_policy.py` branche `HeuristicRouter` dans le `RouterPolicyRegistry` :
 
 ```python
 # learning/heuristic_policy.py
@@ -175,33 +175,33 @@ ensure_registered()
 
 ---
 
-## TraceDrivenPolicy (Learned Policy)
+## TraceDrivenPolicy (la politique apprise)
 
-The `TraceDrivenPolicy` learns from historical traces to determine which model performs best for different types of queries. Unlike the heuristic router's static rules, this policy adapts based on actual outcomes.
+La `TraceDrivenPolicy` apprend de l'historique des traces quel modèle se comporte le mieux pour chaque type de requête. Là où le routeur heuristique applique des règles figées, cette politique s'adapte aux résultats réellement obtenus.
 
-### Query Classification
+### La classification des requêtes
 
-Queries are classified into broad categories for grouping:
+Les requêtes sont rangées dans de grandes catégories, pour être regroupées :
 
-| Category | Condition |
+| Catégorie | Condition |
 |----------|-----------|
-| `code` | Contains code patterns (backticks, `def`, `class`, `import`, `function`) |
-| `math` | Contains math keywords (`solve`, `integral`, `equation`, `calculate`, `compute`) |
-| `short` | Query length < 50 characters |
-| `long` | Query length > 500 characters |
-| `general` | None of the above |
+| `code` | Contient des motifs de code (accents graves, `def`, `class`, `import`, `function`) |
+| `math` | Contient des mots-clés mathématiques (`solve`, `integral`, `equation`, `calculate`, `compute`) |
+| `short` | Moins de 50 caractères |
+| `long` | Plus de 500 caractères |
+| `general` | Aucune des précédentes |
 
-### Model Selection
+### Le choix du modèle
 
-When `select_model()` is called:
+Quand `select_model()` est appelée :
 
-1. Classify the query into a category
-2. If the policy map has an entry for this category **and** the confidence (sample count) exceeds `min_samples` (default: 5), use the learned model
-3. Otherwise, fall back to: `default_model` -> `fallback_model` -> first available model
+1. Classe la requête dans une catégorie
+2. Si la carte de politique a une entrée pour cette catégorie **et** que la confiance (le nombre d'échantillons) dépasse `min_samples` (5 par défaut), utilise le modèle appris
+3. Sinon, se rabat sur : `default_model` -> `fallback_model` -> le premier modèle disponible
 
-### Batch Updates via `update_from_traces()`
+### Les mises à jour par lot avec `update_from_traces()`
 
-The primary update mechanism reads all traces from a `TraceAnalyzer` and recomputes the policy map:
+Le mécanisme principal lit toutes les traces d'un `TraceAnalyzer` et recalcule la carte de politique :
 
 ```python
 from diapason.learning.trace_policy import TraceDrivenPolicy
@@ -216,24 +216,24 @@ policy = TraceDrivenPolicy(
     default_model="qwen3:8b",
 )
 
-# Recompute routing decisions from trace history
+# Recalcule les décisions de routage d'après l'historique des traces
 result = policy.update_from_traces()
 # {"updated": True, "query_classes": 3, "total_traces": 150, "changes": {...}}
 ```
 
-The update algorithm:
+L'algorithme de mise à jour :
 
-1. Fetches all traces (optionally filtered by time range)
-2. Groups traces by query classification
-3. For each query class, scores each model using a **composite score**:
-    - 60% success rate (fraction of traces with `outcome="success"`)
-    - 40% average feedback score (user quality ratings)
-4. Selects the model with the highest composite score for each query class
-5. Returns a summary of changes
+1. Récupère toutes les traces (filtrées sur une plage de temps, au besoin)
+2. Groupe les traces par classification de requête
+3. Pour chaque classe de requête, note chaque modèle avec un **score composite** :
+    - 60 % le taux de succès (la part des traces dont `outcome` vaut `"success"`)
+    - 40 % la note de retour moyenne (les appréciations de qualité de l'utilisateur)
+4. Retient, pour chaque classe de requête, le modèle au score composite le plus élevé
+5. Rend un résumé des changements
 
-### Online Updates via `observe()`
+### Les mises à jour en ligne avec `observe()`
 
-For real-time policy updates after every interaction:
+Pour mettre la politique à jour en temps réel après chaque interaction :
 
 ```python
 policy.observe(
@@ -244,17 +244,17 @@ policy.observe(
 )
 ```
 
-The online update uses a conservative strategy: it only switches the preferred model for a query class when the new model shows clearly better outcomes (`feedback > 0.7`) and the existing policy has fewer than `min_samples` observations.
+La mise à jour en ligne reste prudente : elle ne change le modèle préféré d'une classe de requête que si le nouveau donne des résultats nettement meilleurs (`feedback > 0.7`) et que la politique existante compte moins de `min_samples` observations.
 
 ---
 
-## SFTRouterPolicy (Trace-Driven Router)
+## SFTRouterPolicy (le routeur guidé par les traces)
 
-The `SFTRouterPolicy` (in `learning/sft_policy.py`) is an `IntelligenceLearningPolicy` that learns routing decisions from historical traces. It analyzes trace outcomes, groups by query class (code, math, short, long, general), and builds a `query_class → model` mapping from the highest-scoring model per class. A backward-compatible alias `SFTPolicy = SFTRouterPolicy` is provided for code that used the old name.
+La `SFTRouterPolicy` (dans `learning/sft_policy.py`) est une `IntelligenceLearningPolicy` qui apprend ses décisions de routage de l'historique des traces. Elle analyse les résultats des traces, les groupe par classe de requête (`code`, `math`, `short`, `long`, `general`) et construit une association `query_class → model` à partir du modèle le mieux noté de chaque classe. Un alias de compatibilité ascendante, `SFTPolicy = SFTRouterPolicy`, reste offert au code qui utilisait l'ancien nom.
 
 ```python
 from diapason.learning.sft_policy import SFTRouterPolicy
-# or via the backward-compat alias:
+# ou par l'alias de compatibilité ascendante :
 from diapason.learning.sft_policy import SFTPolicy
 ```
 
@@ -262,7 +262,7 @@ from diapason.learning.sft_policy import SFTPolicy
 
 ## AgentAdvisorPolicy
 
-The `AgentAdvisorPolicy` (in `learning/agent_advisor.py`) is an `AgentLearningPolicy` that advises on agent strategy -- for example, recommending tool sets, turn limits, or agent type -- based on patterns observed in historical traces.
+La `AgentAdvisorPolicy` (dans `learning/agent_advisor.py`) est une `AgentLearningPolicy` qui conseille sur la stratégie de l'agent -- recommander un jeu d'outils, un nombre de tours maximum ou un type d'agent, par exemple -- d'après les motifs observés dans l'historique des traces.
 
 ```python
 from diapason.learning.agent_advisor import AgentAdvisorPolicy
@@ -272,7 +272,7 @@ from diapason.learning.agent_advisor import AgentAdvisorPolicy
 
 ## ICLUpdaterPolicy
 
-The `ICLUpdaterPolicy` (in `learning/icl_updater.py`) is an `AgentLearningPolicy` that uses in-context learning to discover reusable examples and multi-tool skill sequences from traces. It analyzes successful tool-call patterns to recommend ICL examples and skill libraries that update agent behavior.
+L'`ICLUpdaterPolicy` (dans `learning/icl_updater.py`) est une `AgentLearningPolicy` qui se sert de l'apprentissage en contexte pour découvrir dans les traces des exemples réutilisables et des enchaînements de savoir-faire multi-outils. Elle analyse les suites d'appels d'outils qui ont réussi pour recommander des exemples ICL et des bibliothèques de savoir-faire qui modifient le comportement de l'agent.
 
 ```python
 from diapason.learning.icl_updater import ICLUpdaterPolicy
@@ -280,24 +280,24 @@ from diapason.learning.icl_updater import ICLUpdaterPolicy
 
 ---
 
-## GRPORouterPolicy (Stub)
+## GRPORouterPolicy (ébauche)
 
-The `GRPORouterPolicy` is a placeholder for future reinforcement learning-based routing. Currently, calling `select_model()` raises `NotImplementedError`:
+La `GRPORouterPolicy` est un emplacement réservé à un futur routage par apprentissage par renforcement. Pour l'instant, appeler `select_model()` lève `NotImplementedError` :
 
 ```python
 class GRPORouterPolicy(RouterPolicy):
     def select_model(self, context: RoutingContext) -> str:
         raise NotImplementedError(
-            "GRPORouterPolicy is not yet implemented. "
-            "GRPO training will be available in a future phase."
+            "GRPORouterPolicy n'est pas encore implémentée. "
+            "L'entraînement GRPO arrivera dans une phase ultérieure."
         )
 ```
 
 ---
 
-## RewardFunction ABC
+## L'ABC RewardFunction
 
-The `RewardFunction` ABC defines how to score completed inferences for use in training:
+L'ABC `RewardFunction` définit comment noter une inférence terminée, en vue de l'entraînement :
 
 ```python
 class RewardFunction(ABC):
@@ -309,18 +309,18 @@ class RewardFunction(ABC):
         response: str,
         **kwargs: Any,
     ) -> float:
-        """Return a reward in [0, 1]."""
+        """Rend une récompense dans [0, 1]."""
 ```
 
 ### HeuristicRewardFunction
 
-The built-in reward function computes a weighted combination of three factors:
+La fonction de récompense intégrée calcule une combinaison pondérée de trois facteurs :
 
-| Factor | Weight (default) | Normalization | Score Range |
+| Facteur | Poids (défaut) | Normalisation | Plage du score |
 |--------|-----------------|---------------|-------------|
-| **Latency** | 0.4 | `1 - (latency / max_latency)` | 0 = 30s+, 1 = instant |
-| **Cost** | 0.3 | `1 - (cost / max_cost)` | 0 = $0.01+, 1 = free |
-| **Efficiency** | 0.3 | `completion_tokens / total_tokens` | 0 = all prompt, 1 = all completion |
+| **Latence** | 0.4 | `1 - (latency / max_latency)` | 0 = 30 s et plus, 1 = instantané |
+| **Coût** | 0.3 | `1 - (cost / max_cost)` | 0 = 0,01 $ et plus, 1 = gratuit |
+| **Efficacité** | 0.3 | `completion_tokens / total_tokens` | 0 = tout en prompt, 1 = tout en complétion |
 
 ```python
 from diapason.learning.heuristic_reward import HeuristicRewardFunction
@@ -329,63 +329,63 @@ reward_fn = HeuristicRewardFunction(
     weight_latency=0.4,
     weight_cost=0.3,
     weight_efficiency=0.3,
-    max_latency=30.0,   # seconds
+    max_latency=30.0,   # secondes
     max_cost=0.01,       # USD
 )
 
 reward = reward_fn.compute(
     context=routing_context,
     model_key="qwen3:8b",
-    response="The answer is 42.",
+    response="La réponse est 42.",
     latency_seconds=1.2,
     cost_usd=0.0,
     prompt_tokens=50,
     completion_tokens=10,
 )
-# Returns a float in [0, 1]
+# Rend un flottant dans [0, 1]
 ```
 
 ---
 
-## Trace System
+## Le système de traces
 
-The trace system records the full sequence of steps in every agent interaction, providing the raw data that the learning system uses to improve.
+Le système de traces enregistre la suite complète des étapes de chaque interaction d'agent : c'est la matière première dont le système d'apprentissage se sert pour progresser.
 
 ### TraceStore
 
-`TraceStore` is an append-only SQLite store for interaction traces:
+`TraceStore` est un magasin SQLite en ajout seul, pour les traces d'interaction :
 
 ```python
 from diapason.traces.store import TraceStore
 
 store = TraceStore("~/.diapason/traces.db")
-store.save(trace)                          # Persist a complete trace
-trace = store.get("abc123")                # Retrieve by trace ID
-traces = store.list_traces(                # Query with filters
+store.save(trace)                          # Persiste une trace complète
+trace = store.get("abc123")                # Retrouve une trace par son identifiant
+traces = store.list_traces(                # Interroge avec des filtres
     agent="orchestrator",
     model="qwen3:8b",
     outcome="success",
     since=1700000000.0,
     limit=100,
 )
-count = store.count()                      # Total trace count
+count = store.count()                      # Nombre total de traces
 ```
 
-**Database schema:**
+**Le schéma de la base :**
 
-- `traces` table -- one row per interaction (trace_id, query, agent, model, engine, result, outcome, feedback, timing, tokens, metadata)
-- `trace_steps` table -- one row per step within a trace (step_type, timestamp, duration, input, output, metadata)
+- la table `traces` -- une ligne par interaction (trace_id, query, agent, model, engine, result, outcome, feedback, timing, tokens, metadata)
+- la table `trace_steps` -- une ligne par étape d'une trace (step_type, timestamp, duration, input, output, metadata)
 
-**EventBus integration:** The store can subscribe to `TRACE_COMPLETE` events for automatic persistence:
+**L'intégration à l'EventBus :** le magasin peut s'abonner aux événements `TRACE_COMPLETE` pour persister automatiquement :
 
 ```python
 store.subscribe_to_bus(bus)
-# Any TRACE_COMPLETE event will now auto-save the trace
+# Tout événement TRACE_COMPLETE enregistre désormais la trace tout seul
 ```
 
 ### TraceCollector
 
-`TraceCollector` wraps any `BaseAgent` and automatically records a `Trace` for every `run()` call:
+`TraceCollector` enveloppe n'importe quel `BaseAgent` et enregistre automatiquement une `Trace` à chaque appel de `run()` :
 
 ```python
 from diapason.traces.collector import TraceCollector
@@ -393,53 +393,53 @@ from diapason.traces.collector import TraceCollector
 agent = OrchestratorAgent(engine, model, tools=tools, bus=bus)
 collector = TraceCollector(agent, store=trace_store, bus=bus)
 
-result = collector.run("What is 2+2?")
-# Trace is automatically saved to trace_store
+result = collector.run("Combien font 2+2 ?")
+# La trace est enregistrée toute seule dans trace_store
 ```
 
-How it works:
+Comment ça marche :
 
-1. Subscribes to EventBus events before running the agent:
-    - `INFERENCE_START` / `INFERENCE_END` -- creates `GENERATE` steps
-    - `TOOL_CALL_START` / `TOOL_CALL_END` -- creates `TOOL_CALL` steps
-    - `MEMORY_RETRIEVE` -- creates `RETRIEVE` steps
-2. Runs the wrapped agent's `run()` method
-3. Unsubscribes from events
-4. Adds a final `RESPOND` step
-5. Builds a `Trace` object with all collected steps
-6. Saves to the `TraceStore` and publishes `TRACE_COMPLETE`
+1. S'abonne aux événements de l'EventBus avant de lancer l'agent :
+    - `INFERENCE_START` / `INFERENCE_END` -- crée des étapes `GENERATE`
+    - `TOOL_CALL_START` / `TOOL_CALL_END` -- crée des étapes `TOOL_CALL`
+    - `MEMORY_RETRIEVE` -- crée des étapes `RETRIEVE`
+2. Lance la méthode `run()` de l'agent enveloppé
+3. Se désabonne des événements
+4. Ajoute une dernière étape `RESPOND`
+5. Construit un objet `Trace` avec toutes les étapes recueillies
+6. L'enregistre dans le `TraceStore` et publie `TRACE_COMPLETE`
 
 ### TraceAnalyzer
 
-`TraceAnalyzer` provides a read-only query layer over stored traces, computing aggregated statistics:
+`TraceAnalyzer` offre une couche de lecture seule au-dessus des traces stockées, et calcule des statistiques agrégées :
 
 ```python
 from diapason.traces.analyzer import TraceAnalyzer
 
 analyzer = TraceAnalyzer(store)
 
-# Overall summary
+# Le résumé d'ensemble
 summary = analyzer.summary()
 # TraceSummary(total_traces=150, avg_latency=2.3, success_rate=0.85, ...)
 
-# Stats grouped by (model, agent) routing decisions
+# Statistiques groupées par décision de routage (model, agent)
 route_stats = analyzer.per_route_stats()
 # [RouteStats(model="qwen3:8b", agent="orchestrator", count=45, avg_latency=1.8, ...), ...]
 
-# Stats grouped by tool
+# Statistiques groupées par outil
 tool_stats = analyzer.per_tool_stats()
 # [ToolStats(tool_name="calculator", call_count=23, avg_latency=0.01, success_rate=1.0), ...]
 
-# Find traces matching query characteristics
+# Trouver les traces qui correspondent à certaines caractéristiques de requête
 code_traces = analyzer.traces_for_query_type(has_code=True)
 
-# Export traces as plain dicts (for JSON serialization)
+# Exporter les traces en dictionnaires simples (pour la sérialisation JSON)
 exported = analyzer.export_traces(limit=1000)
 ```
 
-**Computed statistics:**
+**Les statistiques calculées :**
 
-| Dataclass | Fields |
+| Dataclass | Champs |
 |-----------|--------|
 | `TraceSummary` | total_traces, total_steps, avg_steps_per_trace, avg_latency, avg_tokens, success_rate, step_type_distribution |
 | `RouteStats` | model, agent, count, avg_latency, avg_tokens, success_rate, avg_feedback |
@@ -447,30 +447,30 @@ exported = analyzer.export_traces(limit=1000)
 
 ---
 
-## The Learning Loop
+## La boucle d'apprentissage
 
-The trace-driven learning loop connects all the pieces:
+La boucle d'apprentissage guidée par les traces relie toutes les pièces :
 
 ```mermaid
 graph TB
-    subgraph "Runtime"
-        Q["User Query"] --> AGT["Agent executes"]
-        AGT --> ENG["Engine generates"]
-        ENG --> RESP["Response returned"]
+    subgraph "Exécution"
+        Q["Requête de l'utilisateur"] --> AGT["L'agent exécute"]
+        AGT --> ENG["Le moteur génère"]
+        ENG --> RESP["La réponse est rendue"]
     end
 
-    subgraph "Recording"
-        AGT -.->|"events"| COL["TraceCollector"]
-        ENG -.->|"events"| COL
-        COL -->|"save"| STO["TraceStore<br/>(SQLite)"]
+    subgraph "Enregistrement"
+        AGT -.->|"événements"| COL["TraceCollector"]
+        ENG -.->|"événements"| COL
+        COL -->|"enregistre"| STO["TraceStore<br/>(SQLite)"]
     end
 
-    subgraph "Analysis"
-        STO -->|"read"| ANA["TraceAnalyzer"]
-        ANA -->|"summary(),<br/>per_route_stats()"| STATS["Aggregated<br/>Statistics"]
+    subgraph "Analyse"
+        STO -->|"lit"| ANA["TraceAnalyzer"]
+        ANA -->|"summary(),<br/>per_route_stats()"| STATS["Statistiques<br/>agrégées"]
     end
 
-    subgraph "Learning"
+    subgraph "Apprentissage"
         STATS -->|"update_from_traces()"| POL["TraceDrivenPolicy"]
         POL -->|"select_model()"| Q
     end
@@ -480,33 +480,33 @@ graph TB
     style POL fill:#fff3e0
 ```
 
-### Step-by-step cycle:
+### Le cycle pas à pas :
 
-1. **Query arrives** -- The system needs to select a model
-2. **Router policy selects model** -- `TraceDrivenPolicy.select_model()` checks the learned policy map; falls back to heuristic if insufficient data
-3. **Agent executes** -- The agent processes the query, calling tools and memory as needed
-4. **Events captured** -- The `TraceCollector` captures all events (inference, tool calls, memory retrieval) during execution
-5. **Trace saved** -- A complete `Trace` with all `TraceStep` objects is saved to `TraceStore`
-6. **Analysis** -- Periodically, `TraceAnalyzer` computes aggregate statistics from stored traces
-7. **Policy update** -- `TraceDrivenPolicy.update_from_traces()` recomputes the `query_class -> model` mapping based on success rates and feedback scores
-8. **Better routing** -- The next query benefits from the updated routing decisions
+1. **La requête arrive** -- le système doit choisir un modèle
+2. **La politique de routage choisit le modèle** -- `TraceDrivenPolicy.select_model()` consulte la carte de politique apprise ; faute de données suffisantes, elle se rabat sur l'heuristique
+3. **L'agent exécute** -- l'agent traite la requête, en appelant les outils et la mémoire au besoin
+4. **Les événements sont captés** -- le `TraceCollector` capte tous les événements de l'exécution (inférence, appels d'outils, récupération en mémoire)
+5. **La trace est enregistrée** -- une `Trace` complète, avec tous ses objets `TraceStep`, est enregistrée dans le `TraceStore`
+6. **Analyse** -- de temps en temps, le `TraceAnalyzer` calcule les statistiques agrégées des traces stockées
+7. **Mise à jour de la politique** -- `TraceDrivenPolicy.update_from_traces()` recalcule l'association `query_class -> model` d'après les taux de succès et les notes de retour
+8. **Un meilleur routage** -- la requête suivante profite des décisions de routage mises à jour
 
-### Trace Data Model
+### Le modèle de données d'une trace
 
-Each interaction produces a `Trace` containing multiple `TraceStep` objects:
+Chaque interaction produit une `Trace` qui contient plusieurs objets `TraceStep` :
 
 ```
 Trace
   trace_id: "a1b2c3d4e5f6"
-  query: "What is 2+2?"
+  query: "Combien font 2+2 ?"
   agent: "orchestrator"
   model: "qwen3:8b"
   engine: "ollama"
   steps:
-    [0] GENERATE  -- model inference, 0.8s, 150 tokens
-    [1] TOOL_CALL -- calculator, 0.01s, success
-    [2] GENERATE  -- model inference, 0.5s, 80 tokens
-    [3] RESPOND   -- final answer
+    [0] GENERATE  -- inférence du modèle, 0,8 s, 150 jetons
+    [1] TOOL_CALL -- calculator, 0,01 s, success
+    [2] GENERATE  -- inférence du modèle, 0,5 s, 80 jetons
+    [3] RESPOND   -- réponse finale
   result: "2+2 = 4"
   outcome: "success"
   feedback: 1.0
@@ -514,99 +514,100 @@ Trace
   total_tokens: 230
 ```
 
-**Step types:**
+**Les types d'étape :**
 
-| StepType | Description | Created By |
+| StepType | Description | Créé par |
 |----------|-------------|------------|
-| `ROUTE` | Model selection decision | Router policy |
-| `RETRIEVE` | Memory search | Memory backend |
-| `GENERATE` | LLM inference call | Engine |
-| `TOOL_CALL` | Tool execution | ToolExecutor |
-| `RESPOND` | Final response | TraceCollector |
+| `ROUTE` | Décision de choix du modèle | La politique de routage |
+| `RETRIEVE` | Recherche en mémoire | Le moteur de mémoire |
+| `GENERATE` | Appel d'inférence au LLM | Le moteur |
+| `TOOL_CALL` | Exécution d'un outil | ToolExecutor |
+| `RESPOND` | Réponse finale | TraceCollector |
 
 ---
 
-## Optimization Framework
+## Le cadre d'optimisation
 
-The optimization subsystem (`learning/optimize/`) provides LLM-guided search
-over Diapason's 5-primitive configuration space. It automates finding optimal
-configurations for accuracy, latency, cost, and energy consumption.
+Le sous-système d'optimisation (`learning/optimize/`) offre une recherche guidée
+par LLM dans l'espace de configuration des cinq primitives de Diapason. Il
+automatise la recherche des configurations optimales en justesse, en latence, en
+coût et en consommation d'énergie.
 
-### Components
+### Les composants
 
-| Component | Description |
+| Composant | Description |
 |-----------|-------------|
-| `SearchSpace` | Defines tunable dimensions across all 5 primitives |
-| `LLMOptimizer` | Proposes configurations using an LLM backend |
-| `OptimizationEngine` | Orchestrates the propose-evaluate-analyze loop |
-| `OptimizationStore` | SQLite-backed persistence for trials and runs |
-| `TrialRunner` | Evaluates proposed configurations against benchmarks |
+| `SearchSpace` | Définit les dimensions réglables des cinq primitives |
+| `LLMOptimizer` | Propose des configurations grâce à un moteur LLM |
+| `OptimizationEngine` | Orchestre la boucle proposer–évaluer–analyser |
+| `OptimizationStore` | Persistance SQLite des essais et des campagnes |
+| `TrialRunner` | Évalue les configurations proposées sur les mesures de référence |
 
-### Pareto Frontier
+### La frontière de Pareto
 
-The engine computes a Pareto frontier across multiple objectives
-(accuracy vs latency vs cost), identifying configurations where no single
-metric can be improved without degrading another.
+Le moteur calcule une frontière de Pareto sur plusieurs objectifs (justesse
+contre latence contre coût) : il y repère les configurations où aucune métrique
+ne peut s'améliorer sans en dégrader une autre.
 
-### Rust Backend
+### Le pendant Rust
 
-The optimization framework has full Rust parity via the `diapason-learning`
-crate, with PyO3 bindings exposing `OptimizationStore` and `LLMOptimizer`
-to Python.
+Le cadre d'optimisation a son équivalent Rust complet dans la caisse
+`diapason-learning`, dont les liaisons PyO3 exposent `OptimizationStore` et
+`LLMOptimizer` à Python.
 
 ---
 
-## LLM-Guided Spec Search (Frontier-Driven Harness Learning)
+## La recherche de spécification guidée par LLM (apprentissage de harnais piloté par la frontière)
 
-LLM-guided spec search uses a frontier closed-source model (the "teacher") as a meta-engineer for the local student's full harness — not just its weights. Instead of pushing knowledge into a small model's weights, we push a frontier model's engineering judgement into the surrounding configuration: prompts, routing, agent class, tool availability, and tool descriptions.
+La recherche de spécification guidée par LLM se sert d'un modèle propriétaire de frontière (le « professeur ») comme méta-ingénieur du harnais entier de l'élève local — pas seulement de ses poids. Plutôt que de pousser du savoir dans les poids d'un petit modèle, on pousse le jugement d'ingénierie d'un modèle de frontière dans la configuration qui l'entoure : les prompts, le routage, la classe d'agent, les outils disponibles et leurs descriptions.
 
-### Where it lives
+### Où ça vit
 
-`learning/spec_search/` is the fifth subsystem within the Learning pillar, alongside `learning/routing/`, `learning/optimize/`, `learning/training/`, and `learning/intelligence/`.
+`learning/spec_search/` est le cinquième sous-système du pilier Apprentissage, aux côtés de `learning/routing/`, `learning/optimize/`, `learning/training/` et `learning/intelligence/`.
 
-### Four-phase loop
+### La boucle en quatre phases
 
 ```
-Trigger → Diagnose → Plan → Execute → Record
+Déclencheur → Diagnostiquer → Planifier → Exécuter → Consigner
 ```
 
-1. **Diagnose** — TeacherAgent (frontier model with diagnostic tools) analyzes traces, runs student/teacher comparisons, identifies 2-5 failure clusters with evidence.
-2. **Plan** — LearningPlanner converts diagnosis into a typed LearningPlan with deterministic risk tier assignment and patch/replace downgrade.
-3. **Execute** — Per-edit loop: EditApplier validates + applies, BenchmarkGate scores, CheckpointStore commits or rolls back.
-4. **Record** — LearningSession persisted to SQLite + JSON artifact.
+1. **Diagnostiquer** — le TeacherAgent (un modèle de frontière muni d'outils de diagnostic) analyse les traces, compare l'élève et le professeur, et dégage de deux à cinq groupes d'échecs, preuves à l'appui.
+2. **Planifier** — le LearningPlanner transforme le diagnostic en un LearningPlan typé, avec attribution déterministe du palier de risque et rétrogradation d'un remplacement en correctif.
+3. **Exécuter** — boucle par édition : l'EditApplier valide puis applique, le BenchmarkGate note, le CheckpointStore entérine ou revient en arrière.
+4. **Consigner** — la LearningSession est persistée en SQLite et en artefact JSON.
 
-### Key components
+### Les composants clés
 
-| Component | Module | Purpose |
+| Composant | Module | Rôle |
 |-----------|--------|---------|
-| `SpecSearchOrchestrator` | `orchestrator.py` | Top-level session driver |
-| `TeacherAgent` | `diagnose/teacher_agent.py` | Frontier model tool-calling loop |
-| `DiagnosisRunner` | `diagnose/runner.py` | Phase 1 orchestration |
-| `LearningPlanner` | `plan/planner.py` | Diagnosis → typed LearningPlan |
-| `EditApplier` + registry | `execute/base.py` | Abstract applier interface |
-| `BenchmarkGate` | `gate/benchmark_gate.py` | Benchmark-based accept/reject |
-| `CheckpointStore` | `checkpoint/store.py` | Git-backed config rollback |
-| `SessionStore` | `storage/session_store.py` | SQLite session persistence |
+| `SpecSearchOrchestrator` | `orchestrator.py` | Le pilote de session, au sommet |
+| `TeacherAgent` | `diagnose/teacher_agent.py` | La boucle d'appels d'outils du modèle de frontière |
+| `DiagnosisRunner` | `diagnose/runner.py` | L'orchestration de la phase 1 |
+| `LearningPlanner` | `plan/planner.py` | Diagnostic → LearningPlan typé |
+| `EditApplier` + registre | `execute/base.py` | L'interface abstraite d'application |
+| `BenchmarkGate` | `gate/benchmark_gate.py` | Accepte ou rejette d'après les mesures |
+| `CheckpointStore` | `checkpoint/store.py` | Retour en arrière de la config, adossé à Git |
+| `SessionStore` | `storage/session_store.py` | Persistance SQLite des sessions |
 
-### Relationship to existing subsystems
+### Le rapport avec les sous-systèmes existants
 
-| Existing | Relationship |
+| Existant | Relation |
 |----------|-------------|
-| `LearningOrchestrator` | Sibling — stays untouched |
-| `LLMOptimizer` / `OptimizationStore` | Sibling — grid-search vs root-cause |
-| `LearnedRouterPolicy` | Reused — routing edits update it |
-| `TraceJudge` | Reused — benchmark scoring |
-| `PersonalBenchmarkSynthesizer` | Extended — auto-refresh, gold answers |
-| `TraceStore` | Reused — read-only access from diagnostic tools |
+| `LearningOrchestrator` | Voisin — on n'y touche pas |
+| `LLMOptimizer` / `OptimizationStore` | Voisins — recherche en grille contre recherche de cause |
+| `LearnedRouterPolicy` | Réutilisé — les éditions de routage le mettent à jour |
+| `TraceJudge` | Réutilisé — la notation des mesures |
+| `PersonalBenchmarkSynthesizer` | Étendu — rafraîchissement automatique, réponses de référence |
+| `TraceStore` | Réutilisé — accès en lecture seule depuis les outils de diagnostic |
 
-### Risk tier system
+### Le système de paliers de risque
 
-Every edit is assigned a tier from a deterministic lookup table:
+Chaque édition reçoit un palier, pris dans une table de correspondance déterministe :
 
-| Tier | Ops | Behavior |
+| Palier | Opérations | Comportement |
 |------|-----|----------|
-| `auto` | Model routing/params, tool add/remove/description, agent params | Apply if gate passes |
-| `review` | System prompt edits, agent class, few-shot exemplars | Queue for user approval |
-| `manual` | LoRA fine-tuning (v2) | Never auto-apply |
+| `auto` | Routage et paramètres du modèle, ajout, retrait ou description d'un outil, paramètres de l'agent | Appliquer si le contrôle passe |
+| `review` | Éditions du prompt système, classe d'agent, exemples few-shot | Mettre en file d'attente pour approbation de l'utilisateur |
+| `manual` | Réglage fin LoRA (v2) | Ne jamais appliquer automatiquement |
 
-See [LLM-guided spec search guide](../user-guide/llm-guided-spec-search.md) for the architecture and the building blocks.
+Voir le [guide de la recherche de spécification guidée par LLM](../user-guide/llm-guided-spec-search.md) pour l'architecture et les briques.

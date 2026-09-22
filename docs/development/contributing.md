@@ -1,21 +1,21 @@
-# Contributing Guide
+# Guide de contribution
 
-This guide covers how to set up a development environment, run tests, and
-contribute code to Diapason.
+Ce guide explique comment mettre en place un environnement de développement,
+lancer les tests et contribuer du code à Diapason.
 
 ---
 
-## Development Setup
+## Mettre en place l'environnement de développement
 
-### Prerequisites
+### Les prérequis
 
-| Requirement | Version | Notes |
+| Prérequis | Version | Notes |
 |---|---|---|
-| Python | 3.10+ | Required |
-| [uv](https://docs.astral.sh/uv/) | Latest | Package manager |
-| Node.js | 22+ | Only needed for ClaudeCodeAgent and WhatsApp channel |
+| Python | 3.10+ | Obligatoire |
+| [uv](https://docs.astral.sh/uv/) | La dernière | Gestionnaire de paquets |
+| Node.js | 22+ | Nécessaire seulement pour ClaudeCodeAgent et le canal WhatsApp |
 
-### Clone and Install
+### Cloner et installer
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -23,47 +23,47 @@ cd Diapason
 uv sync --extra dev
 ```
 
-This installs the package in editable mode along with all development
-dependencies (pytest, ruff, respx, pytest-asyncio, pytest-cov).
+Le paquet s'installe en mode éditable, avec toutes les dépendances de
+développement (pytest, ruff, respx, pytest-asyncio, pytest-cov).
 
-!!! tip "Optional extras"
-    Install additional extras for specific backends you want to work on:
+!!! tip "Les extras optionnels"
+    Installe les extras des composants sur lesquels tu veux travailler :
 
     ```bash
-    # Memory backends
+    # Les mémoires
     uv sync --extra dev --extra memory-faiss --extra memory-colbert --extra memory-bm25
 
-    # Cloud inference
+    # L'inférence cloud
     uv sync --extra dev --extra inference-cloud --extra inference-google
 
-    # API server
+    # Le serveur d'API
     uv sync --extra dev --extra server
 
-    # Documentation
+    # La documentation
     uv sync --extra dev --extra docs
     ```
 
-### Verify Installation
+### Vérifier l'installation
 
 ```bash
-uv run diapason --version   # Should print 0.1.0
-uv run diapason --help      # Show all subcommands
+uv run diapason --version   # Doit afficher 0.1.0
+uv run diapason --help      # Affiche toutes les sous-commandes
 ```
 
 ---
 
-## Running Tests
+## Lancer les tests
 
-Diapason uses [pytest](https://docs.pytest.org/) with approximately 1,000+
-tests organized by module.
+Diapason utilise [pytest](https://docs.pytest.org/), avec plus d'un millier de
+tests organisés par module.
 
-### Full Test Suite
+### La suite complète
 
 ```bash
 uv run pytest tests/ -v
 ```
 
-### Run a Specific Test File
+### Lancer un fichier de tests précis
 
 ```bash
 uv run pytest tests/core/test_registry.py -v
@@ -71,75 +71,75 @@ uv run pytest tests/engine/test_ollama.py -v
 uv run pytest tests/memory/test_sqlite.py -v
 ```
 
-### Run a Specific Test
+### Lancer un test précis
 
 ```bash
 uv run pytest tests/core/test_registry.py::test_register_and_get -v
 ```
 
-### Run Tests by Module
+### Lancer les tests d'un module
 
 ```bash
-uv run pytest tests/agents/ -v       # All agent tests
-uv run pytest tests/tools/ -v        # All tool tests
-uv run pytest tests/learning/ -v     # All learning tests
+uv run pytest tests/agents/ -v       # Tous les tests d'agents
+uv run pytest tests/tools/ -v        # Tous les tests d'outils
+uv run pytest tests/learning/ -v     # Tous les tests d'apprentissage
 ```
 
-### Test Coverage
+### La couverture
 
 ```bash
 uv run pytest tests/ --cov=diapason --cov-report=html
 ```
 
-### Test Markers
+### Les marqueurs de tests
 
-Tests that require specific hardware or running services are gated behind
-pytest markers. By default, these tests are collected but will skip
-gracefully if the requirement is not met.
+Les tests qui demandent du matériel particulier ou un service en marche sont
+derrière des marqueurs pytest. Par défaut ils sont collectés, mais ils se
+sautent proprement si ce qu'ils demandent manque.
 
-| Marker | Description | Example |
+| Marqueur | Description | Exemple |
 |---|---|---|
-| `live` | Requires a running inference engine (Ollama, vLLM, etc.) | `@pytest.mark.live` |
-| `cloud` | Requires cloud API keys (`OPENAI_API_KEY`, etc.) | `@pytest.mark.cloud` |
-| `nvidia` | Requires an NVIDIA GPU | `@pytest.mark.nvidia` |
-| `amd` | Requires an AMD GPU with ROCm | `@pytest.mark.amd` |
-| `apple` | Requires Apple Silicon | `@pytest.mark.apple` |
-| `slow` | Long-running test | `@pytest.mark.slow` |
+| `live` | Demande un moteur d'inférence en marche (Ollama, vLLM, etc.) | `@pytest.mark.live` |
+| `cloud` | Demande des clés d'API cloud (`OPENAI_API_KEY`, etc.) | `@pytest.mark.cloud` |
+| `nvidia` | Demande une carte graphique NVIDIA | `@pytest.mark.nvidia` |
+| `amd` | Demande une carte graphique AMD avec ROCm | `@pytest.mark.amd` |
+| `apple` | Demande une puce Apple Silicon | `@pytest.mark.apple` |
+| `slow` | Test long | `@pytest.mark.slow` |
 
-Run only tests matching a specific marker:
+Pour ne lancer que les tests d'un marqueur :
 
 ```bash
-uv run pytest tests/ -m live -v          # Only live engine tests
-uv run pytest tests/ -m "not slow" -v    # Skip slow tests
-uv run pytest tests/ -m "not cloud" -v   # Skip cloud tests
+uv run pytest tests/ -m live -v          # Seulement les tests sur moteur en marche
+uv run pytest tests/ -m "not slow" -v    # Saute les tests lents
+uv run pytest tests/ -m "not cloud" -v   # Saute les tests cloud
 ```
 
-!!! info "Registry isolation in tests"
-    The test `conftest.py` includes an `autouse` fixture that clears all
-    registries and resets the event bus before every test. This ensures
-    complete isolation between tests. Modules that need their registrations
-    to survive clearing use the `ensure_registered()` pattern described
-    below.
+!!! info "L'isolation des registres dans les tests"
+    Le `conftest.py` des tests contient une fixture `autouse` qui vide tous
+    les registres et remet le bus d'événements à zéro avant chaque test.
+    L'isolation entre les tests est donc totale. Les modules dont les
+    enregistrements doivent survivre à ce vidage emploient le motif
+    `ensure_registered()` décrit plus bas.
 
 ---
 
-## Linting
+## Le lint
 
-Diapason uses [Ruff](https://docs.astral.sh/ruff/) for linting, configured
-in `pyproject.toml`:
+Diapason passe par [Ruff](https://docs.astral.sh/ruff/) pour le lint, configuré
+dans `pyproject.toml` :
 
 ```bash
 uv run ruff check src/ tests/
 ```
 
-The Ruff configuration targets Python 3.10 and enables the following rule sets:
+La configuration Ruff vise Python 3.10 et active les jeux de règles suivants :
 
-- **E** -- pycodestyle errors
+- **E** -- les erreurs pycodestyle
 - **F** -- Pyflakes
-- **I** -- isort (import ordering)
-- **W** -- pycodestyle warnings
+- **I** -- isort (l'ordre des imports)
+- **W** -- les avertissements pycodestyle
 
-Fix auto-fixable issues:
+Corriger ce qui peut l'être automatiquement :
 
 ```bash
 uv run ruff check src/ tests/ --fix
@@ -147,118 +147,118 @@ uv run ruff check src/ tests/ --fix
 
 ---
 
-## Building Documentation
+## Construire la documentation
 
-The documentation site uses [MkDocs Material](https://squidfunnel.com/mkdocs-material/).
+Le site de documentation est bâti avec [MkDocs Material](https://squidfunnel.com/mkdocs-material/).
 
 ```bash
-# Install docs dependencies
+# Installer les dépendances de la documentation
 uv sync --extra docs
 
-# Serve locally with hot reload
+# Servir en local, avec rechargement à chaud
 uv run mkdocs serve --dev-addr 127.0.0.1:8001
 
-# Build static site
+# Construire le site statique
 uv run mkdocs build
 ```
 
-The site configuration lives in `mkdocs.yml`. API reference pages use
-[mkdocstrings](https://mkdocstrings.github.io/) to auto-generate from
-docstrings with the NumPy docstring style.
+La configuration du site vit dans `mkdocs.yml`. Les pages de référence d'API
+sont générées automatiquement à partir des docstrings par
+[mkdocstrings](https://mkdocstrings.github.io/), au style NumPy.
 
 ---
 
-## Project Structure
+## La structure du projet
 
-The source code is organized under `src/diapason/`:
+Le code source est organisé sous `src/diapason/` :
 
 ```
 src/diapason/
-    __init__.py                 # Package root, __version__
-    sdk.py                      # Diapason class — high-level Python SDK
+    __init__.py                 # Racine du paquet, __version__
+    sdk.py                      # la classe Diapason — le SDK Python de haut niveau
 
-    core/                       # Shared infrastructure
-        config.py               # DiapasonConfig, hardware detection, TOML loader
-        events.py               # EventBus pub/sub system
-        registry.py             # RegistryBase[T] and all typed registries
+    core/                       # Infrastructure partagée
+        config.py               # DiapasonConfig, détection du matériel, chargeur TOML
+        events.py               # le système publication/abonnement EventBus
+        registry.py             # RegistryBase[T] et tous les registres typés
         types.py                # Message, ModelSpec, ToolResult, Trace, etc.
 
-    intelligence/               # Model management and query routing
-        model_catalog.py        # BUILTIN_MODELS, register/merge helpers
+    intelligence/               # Gestion des modèles et aiguillage des requêtes
+        model_catalog.py        # BUILTIN_MODELS, fonctions d'enregistrement et de fusion
         router.py               # HeuristicRouter, build_routing_context
 
-    engine/                     # Inference engine backends
-        _stubs.py               # InferenceEngine ABC
+    engine/                     # Les moteurs d'inférence
+        _stubs.py               # la classe abstraite InferenceEngine
         _base.py                # EngineConnectionError, messages_to_dicts
         _discovery.py           # discover_engines, discover_models, get_engine
-        _openai_compat.py       # OpenAI-compatible wrapper
+        _openai_compat.py       # l'enveloppe compatible OpenAI
         ollama.py               # OllamaEngine
-        openai_compat_engines.py   # Data-driven registration (vLLM, SGLang, llama.cpp, MLX, LM Studio)
+        openai_compat_engines.py   # enregistrement piloté par les données (vLLM, SGLang, llama.cpp, MLX, LM Studio)
         cloud.py                # CloudEngine (OpenAI/Anthropic/Google)
 
-    agents/                     # Agent implementations
-        _stubs.py               # BaseAgent ABC, ToolUsingAgent, AgentContext, AgentResult
-        simple.py               # SimpleAgent — single-turn, no tools
-        orchestrator.py         # OrchestratorAgent — multi-turn tool calling (function_calling + structured)
-        native_react.py         # NativeReActAgent — Thought-Action-Observation loop
-        native_openhands.py     # NativeOpenHandsAgent — CodeAct-style code execution
-        rlm.py                  # RLMAgent — recursive LM with persistent REPL
-        openhands.py            # OpenHandsAgent — wraps real openhands-sdk
-        react.py                # Backward-compat shim (re-exports NativeReActAgent)
-        claude_code.py          # ClaudeCodeAgent — Claude Agent SDK via Node.js subprocess
-        claude_code_runner/     # Bundled Node.js runner for the Claude Agent SDK
+    agents/                     # Les implémentations d'agents
+        _stubs.py               # la classe abstraite BaseAgent, ToolUsingAgent, AgentContext, AgentResult
+        simple.py               # SimpleAgent — un seul tour, sans outils
+        orchestrator.py         # OrchestratorAgent — appels d'outils sur plusieurs tours (function_calling + structured)
+        native_react.py         # NativeReActAgent — boucle Pensée-Action-Observation
+        native_openhands.py     # NativeOpenHandsAgent — exécution de code façon CodeAct
+        rlm.py                  # RLMAgent — modèle de langage récursif avec REPL persistante
+        openhands.py            # OpenHandsAgent — enveloppe le vrai openhands-sdk
+        react.py                # cale de compatibilité (ré-exporte NativeReActAgent)
+        claude_code.py          # ClaudeCodeAgent — le SDK Claude Agent par un sous-processus Node.js
+        claude_code_runner/     # le lanceur Node.js embarqué du SDK Claude Agent
 
-    memory/                     # Memory / retrieval backends
-        _stubs.py               # MemoryBackend ABC, RetrievalResult
-        sqlite.py               # SQLiteMemory — FTS5 default backend
-        faiss_backend.py        # FAISS vector backend
-        colbert_backend.py      # ColBERTv2 backend
-        bm25.py                 # BM25 backend
-        hybrid.py               # Hybrid (RRF fusion) backend
+    memory/                     # Les mémoires et la recherche
+        _stubs.py               # la classe abstraite MemoryBackend, RetrievalResult
+        sqlite.py               # SQLiteMemory — la mémoire par défaut, en FTS5
+        faiss_backend.py        # la mémoire vectorielle FAISS
+        colbert_backend.py      # la mémoire ColBERTv2
+        bm25.py                 # la mémoire BM25
+        hybrid.py               # la mémoire hybride (fusion RRF)
         chunking.py             # ChunkConfig, chunk_text
         context.py              # ContextConfig, inject_context
         ingest.py               # ingest_path, read_document
 
-    tools/                      # Tool system
-        _stubs.py               # BaseTool ABC, ToolSpec, ToolExecutor
-        calculator.py           # CalculatorTool — safe AST math
-        think.py                # ThinkTool — reasoning scratchpad
-        retrieval.py            # RetrievalTool — memory search
-        llm_tool.py             # LLMTool — sub-model calls
-        file_read.py            # FileReadTool — safe file reading
+    tools/                      # Le système d'outils
+        _stubs.py               # la classe abstraite BaseTool, ToolSpec, ToolExecutor
+        calculator.py           # CalculatorTool — calcul sûr, par AST
+        think.py                # ThinkTool — brouillon de raisonnement
+        retrieval.py            # RetrievalTool — recherche en mémoire
+        llm_tool.py             # LLMTool — appels à un sous-modèle
+        file_read.py            # FileReadTool — lecture de fichier sûre
         web_search.py           # WebSearchTool
         code_interpreter.py     # CodeInterpreterTool
 
-    learning/                   # Router policies and reward functions
-        _stubs.py               # RouterPolicy ABC, RewardFunction ABC
-        heuristic_policy.py     # Wire HeuristicRouter to registry
-        trace_policy.py         # TraceDrivenPolicy — learns from traces
-        grpo_policy.py          # GRPORouterPolicy — RL training stub
+    learning/                   # Les politiques d'aiguillage et les fonctions de récompense
+        _stubs.py               # les classes abstraites RouterPolicy et RewardFunction
+        heuristic_policy.py     # branche HeuristicRouter sur le registre
+        trace_policy.py         # TraceDrivenPolicy — apprend des traces
+        grpo_policy.py          # GRPORouterPolicy — ébauche d'entraînement par renforcement
         heuristic_reward.py     # HeuristicRewardFunction
 
-    traces/                     # Full interaction recording
-        store.py                # TraceStore — SQLite persistence
-        collector.py            # TraceCollector — wraps agents
-        analyzer.py             # TraceAnalyzer — aggregated queries
+    traces/                     # L'enregistrement complet des interactions
+        store.py                # TraceStore — persistance SQLite
+        collector.py            # TraceCollector — enveloppe les agents
+        analyzer.py             # TraceAnalyzer — requêtes agrégées
 
-    telemetry/                  # Inference telemetry
-        store.py                # TelemetryStore — SQLite persistence
-        aggregator.py           # TelemetryAggregator — per-model/engine stats
-        wrapper.py              # instrumented_generate() wrapper
+    telemetry/                  # La télémétrie de l'inférence
+        store.py                # TelemetryStore — persistance SQLite
+        aggregator.py           # TelemetryAggregator — statistiques par modèle et par moteur
+        wrapper.py              # l'enveloppe instrumented_generate()
 
-    bench/                      # Benchmarking framework
-        _stubs.py               # BaseBenchmark ABC, BenchmarkSuite
+    bench/                      # Le banc de mesure
+        _stubs.py               # la classe abstraite BaseBenchmark, BenchmarkSuite
         latency.py              # LatencyBenchmark
         throughput.py           # ThroughputBenchmark
 
-    server/                     # OpenAI-compatible API server
-        app.py                  # FastAPI application factory
+    server/                     # Le serveur d'API compatible OpenAI
+        app.py                  # la fabrique d'application FastAPI
         routes.py               # /v1/chat/completions, /v1/models, /health
 
-    mcp/                        # MCP (Model Context Protocol) layer
+    mcp/                        # La couche MCP (Model Context Protocol)
 
-    cli/                        # Click CLI commands
-        __init__.py             # main group
+    cli/                        # Les commandes CLI, en Click
+        __init__.py             # le groupe principal
         ask.py                  # diapason ask
         init_cmd.py             # diapason init
         model.py                # diapason model list/info
@@ -270,22 +270,22 @@ src/diapason/
 
 ---
 
-## Code Conventions
+## Les conventions de code
 
-### File Naming
+### Le nom des fichiers
 
-| Pattern | Purpose | Examples |
+| Motif | Rôle | Exemples |
 |---|---|---|
-| `_stubs.py` | ABC definitions and dataclasses | `engine/_stubs.py`, `agents/_stubs.py`, `tools/_stubs.py` |
-| `_discovery.py` | Auto-detection and probing logic | `engine/_discovery.py` |
-| `_base.py` | Shared utilities and re-exports | `engine/_base.py` |
-| `*_cmd.py` | CLI command modules | `init_cmd.py`, `memory_cmd.py`, `bench_cmd.py` |
+| `_stubs.py` | Définitions de classes abstraites et dataclasses | `engine/_stubs.py`, `agents/_stubs.py`, `tools/_stubs.py` |
+| `_discovery.py` | Détection automatique et sondage | `engine/_discovery.py` |
+| `_base.py` | Utilitaires partagés et ré-exports | `engine/_base.py` |
+| `*_cmd.py` | Modules de commande CLI | `init_cmd.py`, `memory_cmd.py`, `bench_cmd.py` |
 
-### Registry Pattern
+### Le motif de registre
 
-All extensible components use the decorator-based registry pattern. New
-implementations are added by decorating a class -- no factory modifications
-needed:
+Tous les composants extensibles passent par le motif de registre à décorateur.
+On ajoute une implémentation en décorant une classe -- aucune fabrique à
+modifier :
 
 ```python
 from diapason.core.registry import EngineRegistry
@@ -295,52 +295,54 @@ class MyEngine(InferenceEngine):
     ...
 ```
 
-Available registries:
+Les registres disponibles :
 
-| Registry | Stores | Key examples |
+| Registre | Contient | Exemples de clés |
 |---|---|---|
-| `ModelRegistry` | `ModelSpec` objects | `"qwen3:8b"`, `"llama3.1:70b"` |
-| `EngineRegistry` | `InferenceEngine` classes | `"ollama"`, `"vllm"`, `"llamacpp"` |
-| `MemoryRegistry` | `MemoryBackend` classes | `"sqlite"`, `"faiss"`, `"bm25"` |
-| `AgentRegistry` | `BaseAgent` classes | `"simple"`, `"orchestrator"` |
-| `ToolRegistry` | `BaseTool` classes | `"calculator"`, `"think"`, `"retrieval"` |
-| `RouterPolicyRegistry` | `RouterPolicy` classes | `"heuristic"`, `"learned"` |
-| `BenchmarkRegistry` | `BaseBenchmark` classes | `"latency"`, `"throughput"` |
+| `ModelRegistry` | des objets `ModelSpec` | `"qwen3:8b"`, `"llama3.1:70b"` |
+| `EngineRegistry` | des classes `InferenceEngine` | `"ollama"`, `"vllm"`, `"llamacpp"` |
+| `MemoryRegistry` | des classes `MemoryBackend` | `"sqlite"`, `"faiss"`, `"bm25"` |
+| `AgentRegistry` | des classes `BaseAgent` | `"simple"`, `"orchestrator"` |
+| `ToolRegistry` | des classes `BaseTool` | `"calculator"`, `"think"`, `"retrieval"` |
+| `RouterPolicyRegistry` | des classes `RouterPolicy` | `"heuristic"`, `"learned"` |
+| `BenchmarkRegistry` | des classes `BaseBenchmark` | `"latency"`, `"throughput"` |
 
-### Optional Dependencies
+### Les dépendances optionnelles
 
-Backends that depend on optional packages use the `try/except ImportError`
-pattern to fail gracefully when deps are not installed:
+Les composants qui dépendent de paquets optionnels emploient le motif
+`try/except ImportError`, pour échouer proprement quand la dépendance n'est
+pas installée :
 
 ```python
-# In __init__.py — import to trigger registration
+# Dans __init__.py — l'import déclenche l'enregistrement
 try:
     import diapason.memory.faiss_backend  # noqa: F401
 except ImportError:
     pass
 ```
 
-This ensures the package always loads, even if `faiss-cpu` or other optional
-dependencies are not installed.
+Le paquet se charge donc toujours, même si `faiss-cpu` ou une autre dépendance
+optionnelle manque.
 
-### The `ensure_registered()` Pattern
+### Le motif `ensure_registered()`
 
-Benchmark and learning modules use lazy registration so that their entries
-survive registry clearing in tests:
+Les modules du banc de mesure et de l'apprentissage s'enregistrent
+paresseusement, pour que leurs entrées survivent au vidage des registres dans
+les tests :
 
 ```python
 def ensure_registered() -> None:
-    """Register the latency benchmark if not already present."""
+    """Enregistre le banc de latence s'il n'y est pas déjà."""
     if not BenchmarkRegistry.contains("latency"):
         BenchmarkRegistry.register_value("latency", LatencyBenchmark)
 ```
 
-This pattern checks `contains()` before registering, making it safe to call
-multiple times without raising a duplicate-key error.
+Le motif vérifie `contains()` avant d'enregistrer : on peut donc l'appeler
+plusieurs fois sans lever d'erreur de clé en double.
 
-### Dataclass Conventions
+### Les conventions de dataclass
 
-- Use `slots=True` on all dataclasses for memory efficiency:
+- Mets `slots=True` sur toutes les dataclasses, pour économiser la mémoire :
 
 ```python
 @dataclass(slots=True)
@@ -350,66 +352,68 @@ class BenchmarkResult:
     ...
 ```
 
-### Type Hints
+### Les annotations de type
 
-- All function signatures must have type annotations
-- Use `from __future__ import annotations` at the top of every module
-- Use `Optional[X]` for nullable types
-- Use `Sequence` for read-only collections, `List` for mutable ones
+- Toute signature de fonction porte des annotations de type
+- Mets `from __future__ import annotations` en tête de chaque module
+- Utilise `Optional[X]` pour ce qui peut être nul
+- Utilise `Sequence` pour les collections en lecture seule, `List` pour celles qui changent
 
-### Import Style
+### Le style des imports
 
-- Absolute imports only (`from diapason.core.registry import ...`)
-- Sort imports with `ruff` (isort rules enabled)
-- Place `from __future__ import annotations` as the first import
+- Des imports absolus seulement (`from diapason.core.registry import ...`)
+- Trie les imports avec `ruff` (les règles isort sont actives)
+- Place `from __future__ import annotations` en tout premier import
 
 ---
 
-## PR Guidelines
+## Les règles pour une PR
 
-### Before Submitting
+### Avant de soumettre
 
-1. **Run the full test suite** and verify no regressions:
+1. **Lance la suite de tests complète** et vérifie qu'il n'y a pas de régression :
     ```bash
     uv run pytest tests/ -v
     ```
 
-2. **Run the linter** and fix all issues:
+2. **Lance le linter** et corrige tout ce qu'il signale :
     ```bash
     uv run ruff check src/ tests/
     ```
 
-3. **Add tests** for new functionality. Place them in the corresponding
-   `tests/` subdirectory (e.g., new engine tests go in `tests/engine/`).
+3. **Ajoute des tests** pour toute nouveauté. Mets-les dans le sous-dossier
+   `tests/` correspondant (les tests d'un nouveau moteur vont dans
+   `tests/engine/`, par exemple).
 
-4. **Follow the registry pattern** for any new extensible component.
+4. **Suis le motif de registre** pour tout nouveau composant extensible.
 
-### Commit Messages
+### Les messages de commit
 
-- Use the imperative mood (e.g., "Add FAISS memory backend")
-- Keep the first line under 72 characters
-- Reference relevant issues or PRs
+- Emploie l'impératif (« Add FAISS memory backend », par exemple)
+- Garde la première ligne sous 72 caractères
+- Renvoie aux tickets ou aux PR concernés
 
-### What Makes a Good PR
+### Ce qui fait une bonne PR
 
-- **Focused**: One feature, fix, or refactor per PR
-- **Tested**: Include unit tests that cover the new code paths
-- **Documented**: Update docstrings and documentation pages if adding
-  public API
-- **Backwards compatible**: Avoid breaking existing interfaces without
-  discussion
+- **Ciblée** : une fonctionnalité, un correctif ou un remaniement par PR
+- **Testée** : des tests unitaires qui couvrent les nouveaux chemins de code
+- **Documentée** : mets à jour les docstrings et les pages de documentation si
+  tu ajoutes de l'API publique
+- **Rétrocompatible** : ne casse pas une interface existante sans en avoir
+  discuté
 
-### Adding a New Primitive Component
+### Ajouter un nouveau composant primitif
 
-When adding a new engine, memory backend, agent, tool, benchmark, or router
-policy:
+Pour ajouter un moteur, une mémoire, un agent, un outil, un banc de mesure ou
+une politique d'aiguillage :
 
-1. Implement the corresponding ABC
-2. Register with the appropriate `@XRegistry.register("key")` decorator
-3. Add an import in the module's `__init__.py` (with `try/except ImportError`
-   if the component has optional deps)
-4. Add tests in the matching `tests/` subdirectory
-5. Add an entry in `pyproject.toml` under `[project.optional-dependencies]`
-   if the component requires new packages
+1. Implémente la classe abstraite correspondante
+2. Enregistre-le avec le décorateur `@XRegistry.register("key")` qui convient
+3. Ajoute un import dans le `__init__.py` du module (avec `try/except ImportError`
+   si le composant a des dépendances optionnelles)
+4. Ajoute des tests dans le sous-dossier `tests/` correspondant
+5. Ajoute une entrée dans `pyproject.toml` sous `[project.optional-dependencies]`
+   si le composant demande de nouveaux paquets
 
-See the [registry pattern](#registry-pattern) section above for complete examples.
+Voir la section [motif de registre](#registry-pattern) plus haut pour des
+exemples complets.

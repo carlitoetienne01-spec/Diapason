@@ -1,70 +1,73 @@
 ---
-title: Downloads
-description: Download the Diapason desktop app, browser app, CLI, or Python SDK
+title: Téléchargements
+description: Télécharge l'app de bureau Diapason, l'app navigateur, la CLI ou le SDK Python
 ---
 
-# Downloads
+# Téléchargements
 
-Diapason runs entirely on your hardware. Choose the interface that fits your workflow.
+Diapason tourne entièrement sur ta machine. Choisis l'interface qui te convient.
 
 ---
 
-## Desktop App
+## L'app de bureau
 
-The desktop app is a native window for the Diapason chat UI. All inference and backend
-processing happens on your local machine — the app connects to the backend you start locally.
+L'app de bureau est une fenêtre native pour l'interface de discussion. Le modèle et
+tout le traitement s'exécutent chez toi — l'app se connecte au serveur qui tourne
+sur ta machine.
 
 ### macOS (Apple Silicon)
 
-**[Download the latest release](https://github.com/carlitoetienne01-spec/Diapason/releases/latest)** —
-the `Diapason_<version>_aarch64.dmg` file. Open it, drag Diapason to
-Applications, launch it.
+**[Télécharger la dernière version](https://github.com/carlitoetienne01-spec/Diapason/releases/latest)** —
+le fichier `Diapason_<version>_aarch64.dmg`. Ouvre-le, glisse Diapason dans
+Applications, lance-le.
 
-The app installs everything else itself on first launch — `uv`, Ollama, the
-Python backend and the native extension — with a progress screen and no
-terminal. Details: [premier-lancement.md](premier-lancement.md) (French).
-Once installed, new versions show up in the sidebar with a one-click
-**Installer** button.
+L'app installe tout le reste elle-même au premier lancement — `uv`, Ollama, le
+serveur Python et l'extension native — avec un écran de progression et sans
+terminal. Détails : [premier-lancement.md](premier-lancement.md). Une fois
+installée, les nouvelles versions apparaissent dans la barre latérale avec un
+bouton **Installer**.
 
-!!! note "Apple Silicon only, for now"
-    Releases are built on a single Apple Silicon Mac. There is no Intel
-    build and no Windows or Linux installer yet; the workflow is prepared
-    for them but nothing is published.
+!!! note "Apple Silicon seulement, pour l'instant"
+    Les versions sont construites sur un seul Mac Apple Silicon. Il n'y a pas
+    encore de version Intel ni d'installateur Linux ; le workflow est prêt pour
+    eux, mais rien n'est publié.
 
-### "Diapason is damaged and can't be opened"
+### « Diapason est endommagé et ne peut pas être ouvert »
 
-The release is not yet notarized by Apple (no Developer account), so macOS
-Gatekeeper quarantines the downloaded app. If you see that message, run this
-once in Terminal to clear the quarantine flag:
+La version n'est pas encore notariée par Apple (pas de compte Developer), donc
+Gatekeeper met l'app téléchargée en quarantaine. Si tu vois ce message, lance ceci
+une fois dans le Terminal pour lever le drapeau :
 
 ```bash
 xattr -cr /Applications/Diapason.app
 ```
 
-Then open the app normally. If you installed from the DMG but haven't moved it to
-`/Applications` yet, point the command at wherever the `.app` bundle is:
+Ouvre ensuite l'app normalement. Si tu l'as installée depuis le DMG sans l'avoir
+encore déplacée dans `/Applications`, pointe la commande là où se trouve le
+paquet `.app` :
 
 ```bash
 xattr -cr ~/Downloads/Diapason.app
 ```
 
 !!! note
-    This is standard for open-source macOS apps distributed outside the App Store.
-    The command removes the quarantine extended attribute — it does not modify the app.
+    C'est le cas courant des apps macOS open-source distribuées hors de l'App
+    Store. La commande retire l'attribut étendu de quarantaine — elle ne modifie
+    pas l'application.
 
-### What's included
+### Ce qu'elle contient
 
-The desktop app provides:
+L'app de bureau apporte :
 
-- **Full chat UI** — same interface as the browser app, in a native window
-- **Energy monitoring** — real-time power consumption tracking
-- **Telemetry dashboard** — token throughput, latency, and cost comparison vs. cloud models
-- **System tray** — quick access without keeping a terminal open
+- **L'interface de discussion complète** — la même que l'app navigateur, dans une fenêtre native
+- **Le suivi de consommation** — la puissance électrique, en direct
+- **Le tableau de bord** — débit de jetons, latence, et comparaison de coût avec les modèles distants
+- **La barre de menus** — un accès rapide sans garder un terminal ouvert
 
-The backend (Ollama, Python API server, inference) runs on your machine, installed
-by the app itself on first launch.
+Le serveur (Ollama, l'API Python, l'inférence) tourne sur ta machine, installé par
+l'app elle-même au premier lancement.
 
-### Build from source
+### Construire depuis les sources
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -73,16 +76,16 @@ npm install
 npm run tauri:build
 ```
 
-The built installer will be in `frontend/src-tauri/target/release/bundle/`.
+L'installateur construit se trouvera dans `frontend/src-tauri/target/release/bundle/`.
 
 ---
 
-## Browser App
+## L'app navigateur
 
-Run the full chat UI in your browser. Everything stays local — the backend runs on
-your machine and the frontend connects via `localhost`.
+Lance l'interface complète dans ton navigateur. Tout reste local — le serveur
+tourne sur ta machine et l'interface s'y connecte par `localhost`.
 
-### One-command setup
+### Installation en une commande
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -90,19 +93,19 @@ cd Diapason
 ./scripts/quickstart.sh
 ```
 
-The script handles everything:
+Le script s'occupe de tout :
 
-1. Checks for Python 3.10–3.13 and Node.js 18+
-2. Installs Ollama if not present and pulls a starter model
-3. Installs Python and frontend dependencies
-4. Starts the backend API server and frontend dev server
-5. Opens `http://localhost:5173` in your browser
+1. Vérifie que Python 3.10–3.13 et Node.js 18+ sont présents
+2. Installe Ollama s'il manque et télécharge un premier modèle
+3. Installe les dépendances Python et celles de l'interface
+4. Démarre le serveur d'API et le serveur de développement de l'interface
+5. Ouvre `http://localhost:5173` dans ton navigateur
 
-### Manual setup
+### Installation pas à pas
 
-If you prefer to run each step yourself:
+Si tu préfères faire chaque étape toi-même :
 
-=== "Step 1: Clone and install"
+=== "1. Cloner et installer"
 
     ```bash
     git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -111,45 +114,45 @@ If you prefer to run each step yourself:
     cd frontend && npm install && cd ..
     ```
 
-=== "Step 2: Start Ollama"
+=== "2. Démarrer Ollama"
 
     ```bash
-    # Install from https://ollama.com if not already installed
+    # À installer depuis https://ollama.com si ce n'est pas déjà fait
     ollama serve &
     ollama pull qwen3:0.6b
     ```
 
-=== "Step 3: Start backend"
+=== "3. Démarrer le serveur"
 
     ```bash
     uv run diapason serve --port 8000
     ```
 
-=== "Step 4: Start frontend"
+=== "4. Démarrer l'interface"
 
     ```bash
     cd frontend
     npm run dev
     ```
 
-Then open [http://localhost:5173](http://localhost:5173).
+Ouvre ensuite [http://localhost:5173](http://localhost:5173).
 
-### What you get
+### Ce que tu obtiens
 
-- **Chat interface** — markdown rendering, streaming responses, conversation history
-- **Tool use** — calculator, web search, code interpreter, file I/O
-- **System panel** — live telemetry, energy monitoring, cost comparison vs. cloud models
-- **Dashboard** — energy graphs, trace debugging, cost breakdown
-- **Settings** — model selection, agent configuration, theme toggle
+- **L'interface de discussion** — rendu markdown, réponses au fil de l'eau, historique
+- **Les outils** — calculatrice, recherche web, interpréteur de code, lecture et écriture de fichiers
+- **Le panneau système** — télémétrie en direct, consommation, comparaison de coût
+- **Le tableau de bord** — courbes d'énergie, débogage des traces, détail des coûts
+- **Les réglages** — choix du modèle, configuration de l'agent, thème
 
 ---
 
-## CLI
+## La ligne de commande
 
-The command-line interface is the fastest way to interact with Diapason
-programmatically. Every feature is accessible from the terminal.
+La CLI est le chemin le plus direct pour se servir de Diapason par programme.
+Tout est accessible depuis le terminal.
 
-### Install
+### Installer
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -157,47 +160,48 @@ cd Diapason
 uv sync
 ```
 
-### Verify
+### Vérifier
 
 ```bash
 diapason --version
 # diapason, version 0.1.0
 ```
 
-### First commands
+### Premières commandes
 
 ```bash
-# Ask a question
-diapason ask "What is the capital of France?"
+# Poser une question
+diapason ask "Quelle est la capitale de la France ?"
 
-# Use an agent with tools
-diapason ask --agent orchestrator --tools calculator "What is 137 * 42?"
+# Utiliser un agent avec des outils
+diapason ask --agent orchestrator --tools calculator "Combien font 137 * 42 ?"
 
-# Start the API server
+# Démarrer le serveur d'API
 diapason serve --port 8000
 
-# Run diagnostics
+# Lancer un diagnostic
 diapason doctor
 
-# List available models
+# Lister les modèles disponibles
 diapason model list
 
-# Interactive chat
+# Discussion interactive
 diapason chat
 ```
 
-!!! info "Inference backend required"
-    The CLI requires a running inference backend (e.g., Ollama). See the
-    [Installation guide](getting-started/installation.md#setting-up-an-inference-backend)
-    for setup instructions.
+!!! info "Un moteur d'inférence est nécessaire"
+    La CLI a besoin d'un moteur d'inférence en marche (Ollama, par exemple). Voir
+    le [guide d'installation](getting-started/installation.md#setting-up-an-inference-backend)
+    pour la marche à suivre.
 
 ---
 
-## Python SDK
+## Le SDK Python
 
-For programmatic access, the `Diapason` class provides a high-level sync API.
+Pour un accès par programme, la classe `Diapason` offre une API synchrone de haut
+niveau.
 
-### Install
+### Installer
 
 ```bash
 git clone https://github.com/carlitoetienne01-spec/Diapason.git
@@ -205,32 +209,32 @@ cd Diapason
 uv sync
 ```
 
-### Quick example
+### Exemple minimal
 
 ```python
 from diapason import Diapason
 
 j = Diapason()
-print(j.ask("Explain quicksort in two sentences."))
+print(j.ask("Explique le tri rapide en deux phrases."))
 j.close()
 ```
 
-### With agents and tools
+### Avec des agents et des outils
 
 ```python
 result = j.ask_full(
-    "What is the square root of 144?",
+    "Quelle est la racine carrée de 144 ?",
     agent="orchestrator",
     tools=["calculator", "think"],
 )
-print(result["content"])       # "12"
-print(result["tool_results"])  # tool invocations
-print(result["turns"])         # number of agent turns
+print(result["content"])       # « 12 »
+print(result["tool_results"])  # les appels d'outils
+print(result["turns"])         # le nombre de tours d'agent
 ```
 
-### Composition layer
+### La couche de composition
 
-For full control, use the `SystemBuilder`:
+Pour tout contrôler, passe par `SystemBuilder` :
 
 ```python
 from diapason import SystemBuilder
@@ -246,8 +250,8 @@ system = (
     .build()
 )
 
-result = system.ask("Summarize the latest AI news.")
+result = system.ask("Résume l'actualité de l'IA.")
 system.close()
 ```
 
-See the [Python SDK guide](user-guide/python-sdk.md) for the full API reference.
+Voir le [guide du SDK Python](user-guide/python-sdk.md) pour la référence complète.

@@ -1,37 +1,38 @@
-# Heartbeat & routines
+# Le battement de cœur et les routines
 
-Diapason ports Diapason-style ambient automation on top of the existing
-`TaskScheduler` (no second daemon).
+Diapason greffe une automatisation ambiante, dans l'esprit de Diapason, par-dessus
+le `TaskScheduler` déjà en place (pas de second démon).
 
-## Heartbeat
+## Le battement de cœur
 
-Markdown queue at `~/.diapason/workspace/HEARTBEAT.md`.
+Une file d'attente en Markdown, dans `~/.diapason/workspace/HEARTBEAT.md`.
 
 ```bash
-diapason heartbeat add "Check calendar before 11"
+diapason heartbeat add "Vérifier l'agenda avant 11 h"
 diapason heartbeat list
-diapason heartbeat tick --force    # drain first pending item
+diapason heartbeat tick --force    # traite la première entrée en attente
 diapason heartbeat status
 ```
 
-Every `interval_seconds` (default 1800), task `heartbeat:tick` runs and
-processes **one** `- [ ]` under `## Now`. Empty queue = silent no-op.
+Toutes les `interval_seconds` (1800 par défaut), la tâche `heartbeat:tick` se
+réveille et traite **une seule** ligne `- [ ]` sous `## Now`. File vide = rien ne
+se passe, en silence.
 
-## Routines
+## Les routines
 
-Catalog at `~/.diapason/workspace/ROUTINES.json` (builtins: morning-digest,
-calendar-ping, idle-check).
+Le catalogue vit dans `~/.diapason/workspace/ROUTINES.json` (fournies d'office :
+morning-digest, calendar-ping, idle-check).
 
 ```bash
 diapason routines list
 diapason routines run morning-digest --force
 diapason routines enable idle-check
-diapason routines sync             # upsert into scheduler.db
-diapason scheduler start           # daemon that fires cron/interval
+diapason routines sync             # insère ou met à jour dans scheduler.db
+diapason scheduler start           # le démon qui déclenche cron et intervalle
 ```
 
-## Privacy
+## La vie privée
 
-- Quiet hours suppress delivery (default 22:00–07:00).
-- No auto-send email/SMS from heartbeat.
-- `shell` kind disabled unless `[routines] allow_shell = true`.
+- Pendant les heures calmes, rien n'est remis (par défaut de 22 h à 7 h).
+- Aucun courriel ni SMS n'est envoyé automatiquement depuis le battement de cœur.
+- Le type `shell` est désactivé, sauf si `[routines] allow_shell = true`.

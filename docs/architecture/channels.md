@@ -1,24 +1,24 @@
-# Channels Architecture
+# L'architecture des canaux
 
-The channels module provides a transport-agnostic messaging layer for receiving and sending messages through external platforms. The design follows the same registry-plus-ABC pattern used throughout Diapason: a `BaseChannel` interface defines the contract, and concrete implementations for each platform (Telegram, Discord, Slack, WhatsApp, etc.) are registered for runtime discovery.
-
----
-
-## Design Principles
-
-- **Transport-agnostic ABC.** `BaseChannel` defines six abstract methods covering the full lifecycle: connect, disconnect, send, status, list channels, and message handler registration.
-- **Direct platform integration.** Each channel connects directly to its platform API -- there is no intermediate gateway.
-- **Background listener thread.** Incoming messages are delivered via a daemon thread, not an event loop, so channels work from synchronous code without requiring async infrastructure.
-- **Registry-driven discovery.** All channel implementations self-register via `@ChannelRegistry.register("name")` and are discoverable at runtime.
+Le module des canaux fournit une couche de messagerie indépendante du transport, pour recevoir et envoyer des messages par des plateformes externes. La conception suit le même motif registre-plus-ABC qu'ailleurs dans Diapason : une interface `BaseChannel` définit le contrat, et les implémentations concrètes de chaque plateforme (Telegram, Discord, Slack, WhatsApp, etc.) s'enregistrent pour être découvertes à l'exécution.
 
 ---
 
-## BaseChannel ABC
+## Les principes de conception
+
+- **Une ABC indépendante du transport.** `BaseChannel` définit six méthodes abstraites qui couvrent tout le cycle de vie : connexion, déconnexion, envoi, état, liste des canaux et enregistrement d'un gestionnaire de messages.
+- **Une intégration directe à la plateforme.** Chaque canal se connecte directement à l'API de sa plateforme — il n'y a aucune passerelle intermédiaire.
+- **Un fil d'écoute en arrière-plan.** Les messages entrants arrivent par un fil démon, pas par une boucle d'événements : les canaux fonctionnent donc depuis du code synchrone, sans exiger d'infrastructure asynchrone.
+- **Une découverte pilotée par le registre.** Toutes les implémentations de canal s'enregistrent elles-mêmes par `@ChannelRegistry.register("name")` et sont découvrables à l'exécution.
+
+---
+
+## L'ABC BaseChannel
 
 ```mermaid
 classDiagram
     class BaseChannel {
-        <<abstract>>
+        <<abstrait>>
         +channel_id str
         +connect() None
         +disconnect() None
@@ -55,47 +55,47 @@ classDiagram
     BaseChannel <|-- SlackChannel
 ```
 
-All `BaseChannel` subclasses must be registered via `@ChannelRegistry.register("name")` to be discoverable at runtime. For example, `TelegramChannel` is registered as `"telegram"`, `DiscordChannel` as `"discord"`, etc.
+Toutes les sous-classes de `BaseChannel` doivent être enregistrées par `@ChannelRegistry.register("name")` pour être découvrables à l'exécution. `TelegramChannel`, par exemple, est enregistrée sous `"telegram"`, `DiscordChannel` sous `"discord"`, et ainsi de suite.
 
 ---
 
-## Channel Lifecycle
+## Le cycle de vie d'un canal
 
-The connection lifecycle for a typical channel implementation, from instantiation through to disconnection:
+Le cycle de vie de la connexion pour une implémentation de canal ordinaire, de l'instanciation jusqu'à la déconnexion :
 
 ```mermaid
 stateDiagram-v2
     [*] --> DISCONNECTED: __init__
 
-    DISCONNECTED --> CONNECTING: connect() called
-    CONNECTING --> CONNECTED: Platform connection OK\nlistener thread started
-    CONNECTING --> CONNECTED: Platform SDK not installed\nsend-only mode
-    CONNECTING --> ERROR: Exception during connect
+    DISCONNECTED --> CONNECTING: connect() appelé
+    CONNECTING --> CONNECTED: connexion à la plateforme OK\nfil d'écoute démarré
+    CONNECTING --> CONNECTED: SDK de la plateforme absent\nmode envoi seul
+    CONNECTING --> ERROR: exception pendant la connexion
 
-    CONNECTED --> CONNECTING: listener loop error\nreconnect attempt
-    CONNECTING --> CONNECTED: reconnect successful
-    CONNECTING --> ERROR: reconnect failed
+    CONNECTED --> CONNECTING: erreur de la boucle d'écoute\ntentative de reconnexion
+    CONNECTING --> CONNECTED: reconnexion réussie
+    CONNECTING --> ERROR: reconnexion échouée
 
-    CONNECTED --> DISCONNECTED: disconnect() called\nstop_event set\nthread joined
-    ERROR --> DISCONNECTED: disconnect() called
+    CONNECTED --> DISCONNECTED: disconnect() appelé\nstop_event posé\nfil joint
+    ERROR --> DISCONNECTED: disconnect() appelé
 ```
 
-The `ChannelStatus` enum (`CONNECTED`, `DISCONNECTED`, `CONNECTING`, `ERROR`) tracks this state and is exposed via `status()`.
+L'énumération `ChannelStatus` (`CONNECTED`, `DISCONNECTED`, `CONNECTING`, `ERROR`) suit cet état et l'expose par `status()`.
 
 ---
 
-## Listener Loop Pattern
+## Le motif de la boucle d'écoute
 
-Most channel implementations use a background daemon thread for receiving messages. The pattern is consistent across channels:
+La plupart des implémentations de canal reçoivent les messages dans un fil démon d'arrière-plan. Le motif est le même d'un canal à l'autre :
 
-1. The listener thread is started in `connect()`.
-2. It polls or listens for messages from the platform API.
-3. Incoming messages are parsed into `ChannelMessage` dataclass instances.
-4. All registered handlers are called sequentially.
-5. If an `EventBus` is provided, a `CHANNEL_MESSAGE_RECEIVED` event is published.
-6. On disconnect or error, the thread handles reconnection or exits cleanly.
+1. Le fil d'écoute est démarré dans `connect()`.
+2. Il interroge l'API de la plateforme ou s'y met à l'écoute des messages.
+3. Les messages entrants sont analysés en instances de la dataclasse `ChannelMessage`.
+4. Tous les gestionnaires enregistrés sont appelés l'un après l'autre.
+5. Si un `EventBus` est fourni, un événement `CHANNEL_MESSAGE_RECEIVED` est publié.
+6. À la déconnexion ou à l'erreur, le fil gère la reconnexion ou sort proprement.
 
-Handler exceptions are caught individually so that a failing handler does not prevent subsequent handlers from running:
+Les exceptions des gestionnaires sont attrapées une par une, pour qu'un gestionnaire en échec n'empêche pas les suivants de tourner :
 
 ```python
 for handler in self._handlers:
@@ -107,62 +107,62 @@ for handler in self._handlers:
 
 ---
 
-## Event Flow
+## Le parcours des événements
 
-Channel events are published to the `EventBus` using two event types:
+Les événements des canaux sont publiés sur l'`EventBus` sous deux types :
 
-| Event | Published By | When | Payload |
+| Événement | Publié par | Quand | Charge utile |
 |-------|-------------|------|---------|
-| `CHANNEL_MESSAGE_RECEIVED` | Listener loop | Message received from platform | `channel`, `sender`, `content`, `message_id` |
-| `CHANNEL_MESSAGE_SENT` | `send()` | Message successfully delivered | `channel`, `content`, `conversation_id` |
+| `CHANNEL_MESSAGE_RECEIVED` | La boucle d'écoute | Un message est reçu de la plateforme | `channel`, `sender`, `content`, `message_id` |
+| `CHANNEL_MESSAGE_SENT` | `send()` | Un message a bien été remis | `channel`, `content`, `conversation_id` |
 
-These events allow other modules to react to channel activity without depending on the channel implementation directly. For example, a logging subscriber can record all sent and received messages, or an agent can be wired to respond to incoming channel messages by subscribing to `CHANNEL_MESSAGE_RECEIVED`.
+Ces événements permettent aux autres modules de réagir à l'activité des canaux sans dépendre directement de l'implémentation du canal. Un abonné de journalisation peut par exemple consigner tous les messages envoyés et reçus, ou un agent peut être câblé pour répondre aux messages entrants d'un canal en s'abonnant à `CHANNEL_MESSAGE_RECEIVED`.
 
 ```mermaid
 flowchart TB
     A[TelegramChannel / DiscordChannel / ...] -->|CHANNEL_MESSAGE_RECEIVED| B[EventBus]
     A -->|CHANNEL_MESSAGE_SENT| B
-    B --> C[TelemetryStore\nor other subscriber]
-    B --> D[Custom handler\nvia bus.subscribe]
+    B --> C[TelemetryStore\nou autre abonné]
+    B --> D[Gestionnaire maison\nvia bus.subscribe]
 ```
 
 ---
 
-## Handler Registration
+## L'enregistrement des gestionnaires
 
-Multiple handlers can be registered. They are stored in a list and called sequentially within the listener thread. Returning a value from a handler has no effect on message routing -- the return type `Optional[str]` is reserved for future use (for example, auto-reply routing).
+Plusieurs gestionnaires peuvent être enregistrés. Ils sont gardés dans une liste et appelés l'un après l'autre à l'intérieur du fil d'écoute. Rendre une valeur depuis un gestionnaire n'a aucun effet sur l'acheminement du message — le type de retour `Optional[str]` est réservé à un usage futur (l'acheminement d'une réponse automatique, par exemple).
 
 ```python
-# ChannelHandler type alias
+# Alias de type ChannelHandler
 ChannelHandler = Callable[[ChannelMessage], Optional[str]]
 ```
 
 ---
 
-## Threading Model
+## Le modèle des fils d'exécution
 
-Channel implementations use Python's `threading` module rather than asyncio. This is a deliberate choice: Diapason's core inference path is synchronous, and daemon threads are simpler to compose with synchronous code than coroutines.
+Les implémentations de canal utilisent le module `threading` de Python plutôt qu'asyncio. C'est un choix délibéré : le chemin d'inférence au cœur de Diapason est synchrone, et des fils démons se composent plus simplement avec du code synchrone que des coroutines.
 
-| Component | Thread | Notes |
+| Composant | Fil | Notes |
 |-----------|--------|-------|
-| `connect()`, `send()`, `disconnect()` | Caller thread | All public methods are thread-safe |
-| Listener loop | Background daemon thread | Started in `connect()`, joined in `disconnect()` |
-| Handler callbacks | Background daemon thread | Called from listener thread -- use thread-safe data structures |
+| `connect()`, `send()`, `disconnect()` | Le fil appelant | Toutes les méthodes publiques sont sûres entre fils |
+| La boucle d'écoute | Un fil démon d'arrière-plan | Démarré dans `connect()`, joint dans `disconnect()` |
+| Les rappels des gestionnaires | Un fil démon d'arrière-plan | Appelés depuis le fil d'écoute — utilise des structures de données sûres entre fils |
 
-!!! warning "Handler thread safety"
-    Handler callbacks run on the listener thread, not the thread that called `connect()`. If your handler modifies shared state, protect it with a lock or use thread-safe data structures such as `queue.Queue`.
+!!! warning "La sûreté des gestionnaires entre fils"
+    Les rappels des gestionnaires tournent sur le fil d'écoute, pas sur celui qui a appelé `connect()`. Si ton gestionnaire modifie un état partagé, protège-le par un verrou ou utilise des structures de données sûres entre fils, comme `queue.Queue`.
 
 ---
 
-## Adding a New Channel Backend
+## Ajouter un nouveau canal
 
-To add a new channel backend:
+Pour ajouter un nouveau canal :
 
-1. Create a new file in `src/diapason/channels/`.
-2. Subclass `BaseChannel` and implement all six abstract methods.
-3. Set `channel_id` as a class attribute.
-4. Decorate with `@ChannelRegistry.register("name")`.
-5. Add the module name to `_CHANNEL_MODULES` in `channels/__init__.py`.
+1. Crée un fichier dans `src/diapason/channels/`.
+2. Hérite de `BaseChannel` et implémente les six méthodes abstraites.
+3. Pose `channel_id` en attribut de classe.
+4. Décore la classe avec `@ChannelRegistry.register("name")`.
+5. Ajoute le nom du module à `_CHANNEL_MODULES` dans `channels/__init__.py`.
 
 ```python
 from diapason.channels._stubs import BaseChannel, ChannelMessage, ChannelStatus
@@ -180,13 +180,13 @@ class MyPlatformChannel(BaseChannel):
     def on_message(self, handler) -> None: ...
 ```
 
-After registration, the backend is discoverable via `ChannelRegistry.get("my_platform")`.
+Une fois enregistré, le canal est découvrable par `ChannelRegistry.get("my_platform")`.
 
 ---
 
-## See Also
+## Voir aussi
 
-- [User Guide: Channels](../user-guide/channels.md) -- how to use channels in practice
-- [API Reference: Channels](../api-reference/diapason/channels/index.md) -- complete class and type signatures
-- [Architecture: Overview](overview.md) -- where channels fit in the overall system
-- [Architecture: Design Principles](design-principles.md) -- registry pattern and ABC conventions
+- [Guide : les canaux](../user-guide/channels.md) — comment utiliser les canaux en pratique
+- [Référence d'API : channels](../api-reference/diapason/channels/index.md) — toutes les signatures de classes et de types
+- [Architecture : vue d'ensemble](overview.md) — où les canaux se situent dans l'ensemble du système
+- [Architecture : les principes de conception](design-principles.md) — le motif du registre et les conventions des ABC
