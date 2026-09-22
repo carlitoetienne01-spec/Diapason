@@ -1,0 +1,206 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Les guides, en peau « Ardéchine ».
+ *
+ * La même que le thème terminal de l'application et que la vitrine
+ * (frontend/src/index.css, data-terminal-skin='ardechine' ;
+ * deploy/vps/accueil/accueil.css) : un afficheur industriel réfléchissant,
+ * encre sombre sur panneau gris chaud, éclairé du dehors. Strictement
+ * monochrome — le panneau n'a pas de couleur à donner.
+ *
+ * Chargée APRÈS extra.css, dont elle reprend les jetons Material par
+ * surcharge. 22/09/2026 : le site public parlait deux langues visuelles,
+ * l'app une troisième ; qui télécharge après avoir vu ces pages doit
+ * reconnaître ce qu'il ouvre.
+ *
+ * Deux limites de la police pixel, payées à l'écran le 22/09 :
+ *  - Press Start 2P n'a pas les capitales accentuées (« MÉMOIRE » sortait
+ *    « MéMOIRE »). Elle ne porte donc que ce qui n'a pas d'accent — le nom
+ *    du site ; tout le français passe en VT323 ;
+ *  - VT323 a une petite hauteur d'œil : l'échelle monte d'un cran, comme
+ *    html.terminal le fait dans l'app.
+ */
+
+:root,
+[data-md-color-scheme='default'],
+[data-md-color-scheme='slate'] {
+  --ard-panneau:       #beb3a1;
+  --ard-panneau-creux: #b4a997;
+  --ard-surface:       #c5bbaa;
+  --ard-encre:         #14120e;
+  --ard-encre-douce:   #3b362d;
+  --ard-encre-pale:    #6c6456;
+  --ard-trait:         rgba(20, 18, 14, 0.34);
+  --ard-sur-encre:     #c9bfae;
+
+  --md-default-bg-color:             var(--ard-panneau);
+  --md-default-bg-color--light:      var(--ard-panneau-creux);
+  --md-default-bg-color--lighter:    var(--ard-surface);
+  --md-default-fg-color:             var(--ard-encre);
+  --md-default-fg-color--light:      var(--ard-encre-douce);
+  --md-default-fg-color--lighter:    var(--ard-encre-pale);
+  --md-default-fg-color--lightest:   var(--ard-trait);
+
+  --md-primary-fg-color:             var(--ard-encre);
+  --md-primary-fg-color--light:      var(--ard-encre-douce);
+  --md-primary-fg-color--dark:       var(--ard-encre);
+  --md-primary-bg-color:             var(--ard-sur-encre);
+  --md-primary-bg-color--light:      var(--ard-surface);
+
+  /* Monochrome : l'accent est l'encre elle-même. */
+  --md-accent-fg-color:              var(--ard-encre);
+  --md-accent-fg-color--transparent: rgba(20, 18, 14, 0.12);
+  --md-accent-bg-color:              var(--ard-sur-encre);
+
+  --md-typeset-color:                var(--ard-encre);
+  --md-typeset-a-color:              var(--ard-encre);
+  --md-typeset-mark-color:           rgba(20, 18, 14, 0.2);
+  --md-typeset-del-color:            rgba(20, 18, 14, 0.15);
+  --md-typeset-ins-color:            rgba(20, 18, 14, 0.15);
+  --md-typeset-table-color:          var(--ard-trait);
+
+  --md-code-bg-color:                #b1a694;
+  --md-code-fg-color:                var(--ard-encre);
+  --md-footer-bg-color:              var(--ard-encre);
+  --md-footer-bg-color--dark:        #0d0c09;
+  --md-footer-fg-color:              var(--ard-sur-encre);
+  --md-shadow-z1: 0 0 0 1px var(--ard-trait);
+  --md-shadow-z2: 0 0 0 1px var(--ard-trait);
+  --md-shadow-z3: 0 0 0 1px var(--ard-trait);
+
+  --md-text-font-family: 'VT323', 'SF Mono', ui-monospace, monospace;
+  --md-code-font-family: 'VT323', 'SF Mono', ui-monospace, monospace;
+
+  color-scheme: light;
+}
+
+/* VT323 a une petite hauteur d'œil : sans ce cran, les guides se lisent
+   deux tailles trop petit. Même correction que html.terminal dans l'app. */
+html { font-size: 137.5%; }
+body, input, .md-typeset { font-family: 'VT323', 'SF Mono', ui-monospace, monospace; }
+body { letter-spacing: 0.01em; }
+
+/* La grille sombre entre les cellules du panneau réfléchissant. Fixée
+   au-dessus de tout, et n'intercepte jamais un clic. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(20, 18, 14, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 18, 14, 0.09) 1px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.75;
+}
+
+/* Le nom du site : la seule chose en police pixel, parce qu'il n'a pas
+   d'accent. */
+.md-header__topic .md-ellipsis {
+  font-family: 'Press Start 2P', ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.md-header, .md-tabs { background: var(--ard-encre); color: var(--ard-sur-encre); }
+.md-header { box-shadow: 0 1px 0 var(--ard-trait); }
+
+/* Les titres sont des étiquettes sérigraphiées : capitales espacées en
+   VT323 (qui, lui, porte les accents), bloc inversé pour le premier rang. */
+.md-typeset h1 {
+  display: inline-block;
+  font-family: 'VT323', ui-monospace, monospace;
+  font-weight: 400;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--ard-encre);
+  color: var(--ard-sur-encre);
+  padding: 0.14em 0.45em;
+}
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: 'VT323', ui-monospace, monospace;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ard-encre);
+}
+.md-typeset h2 { font-size: 1.3rem; border-bottom: 1px solid var(--ard-trait); padding-bottom: 0.2em; }
+.md-typeset h3 { font-size: 1.12rem; }
+.md-typeset h4 { font-size: 1rem; }
+
+/* DOS : tout est carré, sauf ce qui est délibérément rond. */
+.md-typeset :is(pre, code, table, .admonition, details, .tabbed-set, img, blockquote),
+.md-search__form, .md-search__output, .md-nav__link, .md-button, .md-typeset .highlight {
+  border-radius: 2px !important;
+}
+
+.md-typeset :is(pre, .highlight) { border: 1px solid var(--ard-trait); }
+.md-typeset code { border: 1px solid var(--ard-trait); }
+
+/* Les encadrés perdent leur couleur avec le reste : le panneau n'en a pas.
+   La sévérité se lit au titre inversé, comme les alertes de l'app. */
+.md-typeset .admonition,
+.md-typeset details {
+  border: 1px solid var(--ard-trait);
+  background: var(--ard-surface);
+  box-shadow: none;
+  font-size: inherit;
+}
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background: var(--ard-encre) !important;
+  color: var(--ard-sur-encre) !important;
+  font-family: 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.md-typeset .admonition-title::before,
+.md-typeset summary::before { background-color: var(--ard-sur-encre) !important; }
+
+.md-typeset table:not([class]) { border: 1px solid var(--ard-trait); }
+.md-typeset table:not([class]) th { background: var(--ard-encre); color: var(--ard-sur-encre); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.md-typeset a { text-underline-offset: 0.16em; }
+.md-typeset a:hover { background: var(--ard-encre); color: var(--ard-sur-encre); text-decoration: none; }
+
+.md-nav { font-size: 0.86rem; }
+.md-nav__title { font-family: 'VT323', ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.md-search__input { background: rgba(20, 18, 14, 0.14); color: var(--ard-sur-encre); }
+.md-search__input::placeholder { color: rgba(201, 191, 174, 0.7); }
+
+::selection { background: var(--ard-encre); color: var(--ard-sur-encre); }
+
+/* La coloration syntaxique perçait le monochrome : « cd » sortait en bleu
+ * dans un bloc de code (constaté à l'écran le 22/09). Un panneau n'a pas de
+ * couleur à donner — la distinction se fait sur trois niveaux d'encre, comme
+ * une vraie sérigraphie. Remise à plat d'abord, nuances ensuite. */
+.md-typeset .highlight span,
+.md-typeset .highlight .filename,
+.md-typeset pre code span { color: inherit; background: none; }
+
+.md-typeset .highlight :is(.c, .c1, .cm, .ch, .cs, .cp, .cpf) {
+  color: var(--ard-encre-pale);
+  font-style: italic;
+}
+.md-typeset .highlight :is(.s, .s1, .s2, .sb, .sd, .se, .sh, .si, .sx, .mi, .mf, .mh, .mo) {
+  color: var(--ard-encre-douce);
+}
+.md-typeset .highlight :is(.gd, .gi) { background: rgba(20, 18, 14, 0.12); }
+
+/* Le nom du site seulement. Material empile deux « topics » dans l'en-tête —
+ * le nom et le titre de la page — et les fait se croiser au défilement ; en
+ * police pixel, large, le second débordait par-dessus le premier
+ * (« DIAPASONATI… », 22/09). Le titre de page reste à l'écran. */
+.md-header__topic:not(:first-child) .md-ellipsis {
+  font-family: 'VT323', ui-monospace, monospace;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}

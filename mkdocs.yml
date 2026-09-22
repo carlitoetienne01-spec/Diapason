@@ -16,8 +16,8 @@ theme:
   custom_dir: docs/overrides
   language: en
   font:
-    text: Georgia
-    code: JetBrains Mono
+    text: VT323
+    code: VT323
   features:
     - navigation.tabs
     - navigation.tabs.sticky
@@ -51,6 +51,8 @@ theme:
 
 extra_css:
   - stylesheets/extra.css
+  # La peau « Ardéchine », après extra.css dont elle surcharge les jetons.
+  - stylesheets/ardechine.css
   - https://cdn.jsdelivr.net/npm/@docsearch/css@3
 
 plugins:
