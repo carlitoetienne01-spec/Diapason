@@ -88,7 +88,9 @@ def appel_web(requete="premier ministre du Canada 2026"):
     return {"function": {"name": "web_search", "arguments": {"query": requete}}}
 
 
-def harnais(reponses, *, recherche=RECHERCHE, page=PAGE, historique=()):
+def harnais(
+    reponses, *, recherche=RECHERCHE, page=PAGE, historique=(), max_tool_steps=12
+):
     """Un LLM scripté : chaque élément est un texte ou une liste d'appels."""
     etat = {"i": 0}
     journal = {"executed": [], "rounds": [], "spoken": []}
@@ -123,6 +125,7 @@ def harnais(reponses, *, recherche=RECHERCHE, page=PAGE, historique=()):
         tts=tts,
         tool_executor=executor,
         enable_tools=True,
+        max_tool_steps=max_tool_steps,
     )
     session._history.extend(historique)
     return session, journal
@@ -472,3 +475,258 @@ def test_speakable_ne_prononce_ni_numero_ni_adresse():
         "Selon Wikipédia."
     )
     assert speakable("Deux [2, 3] sources") == "Deux sources"
+
+
+class TestLaLectureSurNonReponseALaVoix:
+    """Banc du 21/09 : « je n'ai pas trouvé le vainqueur » après une
+    recherche — nhl.com était dans les résultats et le 9b n'y allait pas.
+    Le code lit la source la plus prometteuse, puis le modèle reprend."""
+
+    RECHERCHE_HOCKEY = {
+        "ok": True,
+        "content": (
+            "[1] Le Devoir : contrats prolongés — ledevoir.com · 2026-09-19\n"
+            "Source: https://ledevoir.com/a\nExtrait: …\n\n"
+            "[2] 2026 Stanley Cup Final: Game 6 recap — nhl.com · 2026-06-20\n"
+            "Source: https://www.nhl.com/news/x\nExtrait: …"
+        ),
+        "metadata": {
+            "sources": [
+                {
+                    "ref": 1,
+                    "title": "Le Devoir : contrats prolongés",
+                    "url": "https://ledevoir.com/a",
+                    "date": "2026-09-19",
+                },
+                {
+                    "ref": 2,
+                    "title": "2026 Stanley Cup Final: Game 6 recap",
+                    "url": "https://www.nhl.com/news/x",
+                    "date": "2026-06-20",
+                },
+            ]
+        },
+    }
+    PAGE_NHL = {
+        "ok": True,
+        "content": (
+            "[1] 2026 Stanley Cup Final: Game 6 recap — nhl.com · publié 2026-06-20\n"
+            "Source: https://www.nhl.com/news/x\n"
+            "Début : The Florida Panthers won the 2026 Stanley Cup.\n"
+        ),
+        "metadata": {
+            "sources": [
+                {
+                    "ref": 1,
+                    "title": "2026 Stanley Cup Final",
+                    "url": "https://www.nhl.com/news/x",
+                    "date": "2026-06-20",
+                }
+            ]
+        },
+    }
+
+    @pytest.mark.asyncio
+    async def test_le_code_lit_puis_le_modele_reprend_une_fois(self):
+        from diapason.speech.realtime.actualite_vocale import CONSIGNE_PAGE_LUE_VOCALE
+
+        session, journal = harnais(
+            [
+                [appel_web("gagnant Coupe Stanley 2026")],
+                "Je n'ai pas trouvé le vainqueur dans les résultats.",
+                "Selon la LNH, les Panthers de la Floride ont gagné la Coupe Stanley.",
+            ],
+            recherche=self.RECHERCHE_HOCKEY,
+            page=self.PAGE_NHL,
+        )
+        await session._respond_to_text("Qui a gagné la Coupe Stanley en 2026 ?")
+        assert [n for n, _ in journal["executed"]] == ["web_search", "web_read"], (
+            "pas de page du poste pour un vainqueur ; la lecture vient de la "
+            "non-réponse"
+        )
+        assert journal["executed"][1][1]["url"] == "https://www.nhl.com/news/x"
+        reprise = journal["rounds"][2]
+        assert reprise[-2] == {
+            "role": "assistant",
+            "content": "Je n'ai pas trouvé le vainqueur dans les résultats.",
+        }, "la passe prononcée reste dans le fil — sans l'accusé, qui n'affirme rien"
+        assert reprise[-1]["role"] == "system"
+        assert "Florida Panthers won the 2026 Stanley Cup" in reprise[-1]["content"]
+        assert reprise[-1]["content"].endswith(
+            CONSIGNE_PAGE_LUE_VOCALE.format(
+                titre="2026 Stanley Cup Final: Game 6 recap"
+            )
+        )
+        assert " ".join(journal["spoken"]) == (
+            "Je vérifie en ligne. Je n'ai pas trouvé le vainqueur dans les résultats. "
+            "Je lis la source. "
+            "Selon la LNH, les Panthers de la Floride ont gagné la Coupe Stanley."
+        ), "l'aveu reste, « Je lis la source. » couvre le silence, la réponse suit"
+        assert len(journal["rounds"]) == 3, "une lecture, une reprise, pas de boucle"
+
+    @pytest.mark.asyncio
+    async def test_sans_source_prometteuse_une_autre_requete(self):
+        from diapason.speech.realtime.actualite_vocale import (
+            CONSIGNE_AUTRE_REQUETE_VOCALE,
+        )
+
+        session, journal = harnais(
+            [
+                [appel_web("gagnant Coupe Stanley 2026")],
+                "Je n'ai pas trouvé le vainqueur dans les résultats.",
+                "Toujours rien.",
+            ]
+        )
+        await session._respond_to_text("Qui a gagné la Coupe Stanley en 2026 ?")
+        assert [n for n, _ in journal["executed"]] == ["web_search"], (
+            "les titres (Carney, Trudeau) ne reprennent aucun mot de la question"
+        )
+        assert journal["rounds"][2][-1] == {
+            "role": "system",
+            "content": CONSIGNE_AUTRE_REQUETE_VOCALE,
+        }
+        assert "Je lis la source." not in journal["spoken"], (
+            "rien à lire : l'accusé de lecture n'est pas prononcé (revue du 21/09)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sans_budget_ni_accuse_ni_lecture(self):
+        """Revue du 21/09 (22 h) : la recherche avait consommé le seul pas ;
+        « Je lis la source. » était prononcé, la lecture refusée pour budget,
+        et plus rien."""
+        session, journal = harnais(
+            [
+                [appel_web("gagnant Coupe Stanley 2026")],
+                "Je n'ai pas trouvé le vainqueur dans les résultats.",
+                "Toujours rien.",
+            ],
+            recherche=self.RECHERCHE_HOCKEY,
+            page=self.PAGE_NHL,
+            max_tool_steps=1,
+        )
+        await session._respond_to_text("Qui a gagné la Coupe Stanley en 2026 ?")
+        assert [n for n, _ in journal["executed"]] == ["web_search"]
+        assert "Je lis la source." not in journal["spoken"]
+        assert "Je n'ai pas pu lire la source." not in journal["spoken"]
+        assert len(journal["rounds"]) == 2, "sans budget, l'aveu reste le dernier mot"
+
+    @pytest.mark.asyncio
+    async def test_la_page_refuse_et_plus_de_budget_l_accuse_est_corrige(self):
+        """Annoncé « Je lis la source. », la page refuse (403), le budget ne
+        permet plus de chercher : le silence disait que ça avait marché."""
+        session, journal = harnais(
+            [
+                [appel_web("gagnant Coupe Stanley 2026")],
+                "Je n'ai pas trouvé le vainqueur dans les résultats.",
+                "Toujours rien.",
+            ],
+            recherche=self.RECHERCHE_HOCKEY,
+            page={"ok": False, "error": "Lecture impossible : HTTP 403"},
+            max_tool_steps=2,
+        )
+        await session._respond_to_text("Qui a gagné la Coupe Stanley en 2026 ?")
+        assert [n for n, _ in journal["executed"]] == ["web_search", "web_read"], (
+            "un seul essai : le second n'a plus de budget"
+        )
+        assert journal["spoken"][-2:] == [
+            "Je lis la source.",
+            "Je n'ai pas pu lire la source.",
+        ]
+        assert len(journal["rounds"]) == 2
+
+
+class TestLaRelanceVocaleJugeLaDernierePasse:
+    @pytest.mark.asyncio
+    async def test_un_aveu_avant_la_recherche_ne_fait_pas_relire(self):
+        """Revue du 21/09 : « je n'ai pas pu vérifier de mémoire, je cherche »
+        dit avant la recherche faisait relire une page après la bonne réponse,
+        et la répéter."""
+        session, journal = harnais(
+            [
+                "Je n'ai pas trouvé, je cherche.",
+                [appel_web()],
+                "Selon Wikipédia, Mark Carney.",
+            ]
+        )
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert [n for n, _ in journal["executed"]] == ["web_search", "web_read"], (
+            "la page du poste seulement — aucune lecture sur non-réponse"
+        )
+        assert " ".join(journal["spoken"]).count("Mark Carney") == 1
+        assert len(journal["rounds"]) == 3
+
+    def test_deux_essais_puis_rien_sans_budget(self):
+        from diapason.speech.realtime import actualite_vocale as av
+
+        tour = av.TourVocal(question="Qui a gagné la Coupe Stanley en 2026 ?")
+        tour.verification_faite = True
+        tour.sources = [
+            {
+                "ref": 1,
+                "title": "Coupe Stanley 2026 : le bilan",
+                "url": "https://a.ca/x",
+            },
+            {
+                "ref": 2,
+                "title": "2026 Stanley Cup Final",
+                "url": "https://www.nhl.com/y",
+            },
+            {"ref": 3, "title": "Stanley Cup 2026 recap", "url": "https://z.ca/w"},
+        ]
+        tentees = []
+
+        def lire(nom, args):
+            tentees.append(args["url"])
+            return {"ok": False, "error": "Lecture impossible : HTTP 403"}
+
+        budget = {"restant": 3}
+
+        def peut_chercher():
+            return budget["restant"] > 0
+
+        reprise = av.relance_apres_non_reponse(
+            tour, "Je n'ai rien trouvé.", lire, peut_chercher
+        )
+        assert tentees == ["https://a.ca/x", "https://www.nhl.com/y"], "deux essais"
+        assert reprise[-1]["content"] == av.CONSIGNE_AUTRE_REQUETE_VOCALE
+        assert tour.pages_lues == set(), "une page refusée n'est pas « déjà lue »"
+        # Le budget se demande APRÈS les lectures (revue du 21/09, 22 h) : un
+        # booléen pris avant promettait une recherche impayable.
+        tour3 = av.TourVocal(question=tour.question, verification_faite=True)
+        tour3.sources = list(tour.sources)
+        budget["restant"] = 1
+
+        def lire_et_payer(nom, args):
+            budget["restant"] -= 1
+            return {"ok": False, "error": "Lecture impossible : HTTP 403"}
+
+        assert (
+            av.relance_apres_non_reponse(
+                tour3, "Je n'ai rien trouvé.", lire_et_payer, peut_chercher
+            )
+            is None
+        ), "la lecture a pris le dernier pas : pas de consigne « appelle web_search »"
+        tour2 = av.TourVocal(question=tour.question, verification_faite=True)
+        assert (
+            av.relance_apres_non_reponse(tour2, "Je n'ai rien trouvé.", None, False)
+            is None
+        ), "sans budget pour chercher, l'aveu reste tel quel"
+
+
+class TestLEpilogueJugeLaDernierePasse:
+    @pytest.mark.asyncio
+    async def test_un_de_memoire_avant_la_recherche_ne_tait_pas_le_desaccord(self):
+        """Revue du 21/09 (22 h) : « De mémoire, c'est Justin Trudeau. » dit
+        avant la recherche, puis « Justin Trudeau, depuis 2015. » après elle,
+        les sources désignant Mark Carney — et pas un mot (§100)."""
+        session, journal = harnais(
+            [
+                "De mémoire, c'est Justin Trudeau.",
+                [appel_web()],
+                "Justin Trudeau, depuis 2015.",
+            ]
+        )
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert journal["spoken"][-1].startswith(
+            "Attention : les sources désignent Mark Carney"
+        ), "le désaccord se juge sur la dernière passe, pas sur l'aveu d'avant"

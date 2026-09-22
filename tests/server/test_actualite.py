@@ -2292,3 +2292,642 @@ class TestLaNonReponseSeJugeSurLeDernierPassage:
             )
             == "partial"
         )
+
+
+class TestLaSourceLaPlusPrometteuse:
+    """Banc du 21/09 : nhl.com « 2026 Stanley Cup Final » était dans les
+    résultats et le 9b n'y allait pas."""
+
+    SOURCES = [
+        {
+            "ref": 1,
+            "title": "Le Devoir : contrats prolongés",
+            "url": "https://ledevoir.com/a",
+            "date": "2026-09-19",
+        },
+        {
+            "ref": 2,
+            "title": "Coupe Stanley 2025 : les Panthers",
+            "url": "https://journaldequebec.com/b",
+            "date": "2025-10-12",
+        },
+        {
+            "ref": 3,
+            "title": "2026 Stanley Cup Final: Game 6 recap",
+            "url": "https://www.nhl.com/news/x",
+            "date": "2026-06-20",
+        },
+        {
+            "ref": 4,
+            "title": "Finale de la Coupe Stanley 2026 — Wikipédia",
+            "url": "https://fr.wikipedia.org/wiki/Finale_2026",
+            "date": "",
+        },
+    ]
+
+    def test_le_titre_qui_reprend_la_question_de_reference_de_preference(self):
+        from diapason.server.actualite import source_la_plus_prometteuse
+
+        choisie = source_la_plus_prometteuse(
+            self.SOURCES, "Qui a gagné la Coupe Stanley en 2026 ?"
+        )
+        assert choisie is not None and choisie["ref"] == 4, (
+            "coupe, stanley, 2026 (double) + référence : Wikipédia avant nhl.com"
+        )
+        sans_wiki = source_la_plus_prometteuse(
+            self.SOURCES[:3], "Qui a gagné la Coupe Stanley en 2026 ?"
+        )
+        assert sans_wiki is not None and sans_wiki["ref"] == 3, (
+            "stanley + 2026 : nhl.com"
+        )
+
+    def test_une_page_deja_lue_ne_compte_plus_et_sans_mot_commun_rien(self):
+        from diapason.server.actualite import source_la_plus_prometteuse
+
+        choisie = source_la_plus_prometteuse(
+            self.SOURCES,
+            "Qui a gagné la Coupe Stanley en 2026 ?",
+            deja_lues=["https://fr.wikipedia.org/wiki/Finale_2026"],
+        )
+        assert choisie is not None and choisie["ref"] == 3
+        assert (
+            source_la_plus_prometteuse(self.SOURCES, "Quel est le taux directeur ?")
+            is None
+        ), "aucun mot de la question dans les titres : on ne lit pas au hasard"
+        assert source_la_plus_prometteuse([], "Coupe Stanley 2026") is None
+
+    @pytest.mark.asyncio
+    async def test_sur_une_non_reponse_le_code_lit_la_source_puis_le_modele_repond(
+        self,
+    ):
+        from diapason.server.actualite import CONSIGNE_PAGE_LUE
+
+        class RechercheHockey(Outil):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_search",
+                    content=(
+                        "[1] Le Devoir : contrats prolongés — ledevoir.com"
+                        " · 2026-09-19\n"
+                        "Source: https://ledevoir.com/a\nExtrait: …\n\n"
+                        "[2] 2026 Stanley Cup Final: Game 6 recap — nhl.com"
+                        " · 2026-06-20\n"
+                        "Source: https://www.nhl.com/news/x\nExtrait: …"
+                    ),
+                    success=True,
+                    metadata={
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Le Devoir : contrats prolongés",
+                                "url": "https://ledevoir.com/a",
+                                "date": "2026-09-19",
+                            },
+                            {
+                                "ref": 2,
+                                "title": "2026 Stanley Cup Final: Game 6 recap",
+                                "url": "https://www.nhl.com/news/x",
+                                "date": "2026-06-20",
+                            },
+                        ]
+                    },
+                )
+
+        class LectureNhl(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] 2026 Stanley Cup Final: Game 6 recap — nhl.com"
+                        " · publié 2026-06-20\n"
+                        f"Source: {params['url']}\n"
+                        "Début : The Florida Panthers won the 2026 Stanley Cup, "
+                        "beating Edmonton in six games.\n"
+                    ),
+                    success=True,
+                    metadata={
+                        "url": params["url"],
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "2026 Stanley Cup Final",
+                                "url": params["url"],
+                                "date": "2026-06-20",
+                            }
+                        ],
+                    },
+                )
+
+        lecture = LectureNhl()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("gagnant Coupe Stanley 2026")])],
+                [
+                    StreamChunk(
+                        content="Les résultats ne mentionnent pas le vainqueur [1].",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content=(
+                            "Les Panthers de la Floride ont gagné la Coupe "
+                            "Stanley 2026 [2]."
+                        ),
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [RechercheHockey("web_search"), lecture],
+            "Qui a gagné la Coupe Stanley en 2026 ?",
+        )
+        assert lecture.executions == [
+            {
+                "url": "https://www.nhl.com/news/x",
+                "focus": "Qui a gagné la Coupe Stanley en 2026 ?",
+            }
+        ], "la source la plus prometteuse est lue par le code, pas par le modèle"
+        debuts = [
+            d
+            for d in (e.data for e in evts if e.kind == "tool_start")
+            if d["tool"] == "web_read"
+        ]
+        assert debuts and debuts[0]["auto"] is True
+        troisieme = moteur.appels[2][0]
+        outil = next(
+            m for m in troisieme if m.role == Role.TOOL and m.name == "web_search"
+        )
+        assert "Page lue" not in (outil.content or ""), (
+            "le résultat déjà envoyé n'est pas modifié : le préfixe en cache survit"
+        )
+        assert troisieme[-1].role == Role.SYSTEM
+        assert troisieme[-1].content.startswith(
+            "Page lue (web_read) :\n[2] 2026 Stanley Cup Final"
+        ), "la page suit l'aveu, sous son numéro [2]"
+        assert "Florida Panthers won the 2026 Stanley Cup" in troisieme[-1].content
+        assert troisieme[-1].content.endswith(CONSIGNE_PAGE_LUE.format(ref=2))
+        assert texte(evts) == (
+            "Les résultats ne mentionnent pas le vainqueur [1].\n\n"
+            "Les Panthers de la Floride ont gagné la Coupe Stanley 2026 [2]."
+        )
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ], "le dernier passage répond, cité : vérifié"
+        assert len(moteur.appels) == 3, "une lecture, une reprise, pas de boucle"
+
+
+class TestDeuxEssaisDeLecture:
+    @pytest.mark.asyncio
+    async def test_la_premiere_page_refuse_la_seconde_lit(self):
+        """Essai du 21/09 : Le Devoir (frais, « Coupe Stanley cette année »)
+        refusait la lecture, nhl.com juste derrière lisait — et le code
+        renvoyait déjà le modèle chercher autrement."""
+
+        class Recherche2(Outil):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_search",
+                    content=(
+                        "[1] Coupe Stanley 2026 : le bilan — ledevoir.com"
+                        " · 2026-09-19\n"
+                        "Source: https://ledevoir.com/a\nExtrait: …\n\n"
+                        "[2] 2026 Stanley Cup Final — nhl.com · 2026-06-20\n"
+                        "Source: https://www.nhl.com/news/x\nExtrait: …"
+                    ),
+                    success=True,
+                    metadata={
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Coupe Stanley 2026 : le bilan",
+                                "url": "https://ledevoir.com/a",
+                                "date": "2026-09-19",
+                            },
+                            {
+                                "ref": 2,
+                                "title": "2026 Stanley Cup Final",
+                                "url": "https://www.nhl.com/news/x",
+                                "date": "2026-06-20",
+                            },
+                        ]
+                    },
+                )
+
+        class LectureCapricieuse(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                if "ledevoir" in params["url"]:
+                    return ToolResult(
+                        tool_name="web_read",
+                        content="Lecture impossible : HTTP 403",
+                        success=False,
+                    )
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] 2026 Stanley Cup Final — nhl.com\n"
+                        f"Source: {params['url']}\n"
+                        "Début : The Florida Panthers won the 2026 Stanley Cup.\n"
+                    ),
+                    success=True,
+                    metadata={
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "2026 Stanley Cup Final",
+                                "url": params["url"],
+                            }
+                        ]
+                    },
+                )
+
+        lecture = LectureCapricieuse()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("gagnant Coupe Stanley 2026")])],
+                [
+                    StreamChunk(
+                        content="Les résultats ne confirment pas le vainqueur [1].",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content="Les Panthers ont gagné [2].", finish_reason="stop"
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Recherche2("web_search"), lecture],
+            "Qui a gagné la Coupe Stanley en 2026 ?",
+        )
+        assert [p["url"] for p in lecture.executions] == [
+            "https://ledevoir.com/a",
+            "https://www.nhl.com/news/x",
+        ], "la plus prometteuse d'abord (trois points), puis la suivante"
+        fins = [
+            d
+            for d in (e.data for e in evts if e.kind == "tool_end")
+            if d["tool"] == "web_read"
+        ]
+        assert [f["success"] for f in fins] == [False, True]
+        troisieme = moteur.appels[2][0]
+        assert troisieme[-1].role == Role.SYSTEM
+        assert "Florida Panthers won" in troisieme[-1].content
+        assert texte(evts).endswith("Les Panthers ont gagné [2].")
+        assert [e.data for e in evts if e.kind == "verification"] == [
+            {"level": "verified", "searchTried": True}
+        ]
+
+
+class TestCeQueLaRevueDuSoirAFaitCorriger:
+    """Revue du 21/09 sur la lecture après non-réponse."""
+
+    def test_une_question_sans_mot_de_quatre_lettres_ne_plante_pas(self):
+        """sources_prometteuses rendait None au lieu d'une liste : le flux
+        mourait d'un TypeError après avoir affiché l'aveu."""
+        from diapason.server.actualite import sources_prometteuses
+
+        assert (
+            sources_prometteuses(
+                [{"ref": 1, "title": "x", "url": "https://a"}], "Qui est le roi ?"
+            )
+            == []
+        )
+
+    def test_une_vraie_reponse_avec_une_reserve_n_est_pas_relancee(self):
+        from diapason.server.actualite import (
+            est_une_non_reponse,
+            niveau_de_verification,
+        )
+
+        reponse = (
+            "Les Hurricanes ont gagné [7], mais les sources ne précisent pas le score."
+        )
+        assert not est_une_non_reponse(reponse)
+        assert niveau_de_verification(reponse, [{"ref": 7}], True, {}) == "verified"
+
+    def test_le_singulier_et_le_numero_entre_sujet_et_verbe(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        for texte in (
+            "La source [2] ne mentionne pas le vainqueur.",
+            "L'article n'indique pas la date.",
+            "Aucun des articles ne mentionne le score.",
+            "Il semble que les finales n'aient pas encore eu lieu.",
+        ):
+            assert est_une_non_reponse(texte), texte
+
+    def test_la_reprise_doit_citer_pour_etre_verifiee(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        tout = "Je n'ai pas trouvé [1].\n\nLes Hurricanes ont gagné."
+        assert niveau_de_verification(
+            tout, [{"ref": 1}], True, {}, "Les Hurricanes ont gagné."
+        ) == ("partial"), "le [1] de l'aveu ne couvre pas la reprise sans citation"
+
+    def test_sans_annee_dans_la_question_l_annee_en_cours_est_implicite(self):
+        from datetime import date
+
+        from diapason.server.actualite import sources_prometteuses
+
+        annee = date.today().year
+        sources = [
+            {
+                "ref": 1,
+                "title": f"Coupe Stanley {annee - 1} : le bilan",
+                "url": "https://a.ca/x",
+            },
+            {"ref": 2, "title": f"Coupe Stanley {annee}", "url": "https://b.ca/y"},
+            {
+                "ref": 3,
+                "title": f"Coupe Stanley {annee - 2} : les Panthers",
+                "url": "https://c.ca/z",
+            },
+        ]
+        assert [
+            s["ref"]
+            for s in sources_prometteuses(sources, "Qui a gagné la Coupe Stanley ?")
+        ] == [2, 1], (
+            "l'année en cours d'abord ; l'année passée reste candidate (en janvier "
+            "c'est encore la dernière édition, revue du 21/09) ; celle d'avant tombe"
+        )
+
+    def test_un_mot_qui_se_traduit_par_lui_meme_ne_compte_qu_une_fois(self):
+        """« président » → (« president »,) : le même jeton du titre comptait
+        pour le mot ET pour sa traduction, et « Le président Macron en visite »
+        franchissait le seuil sous « Qui est le président du Sénat ? »."""
+        from diapason.server.actualite import sources_prometteuses
+
+        sources = [
+            {
+                "ref": 1,
+                "title": "Le président Macron en visite",
+                "url": "https://a.fr/x",
+            },
+            {
+                "ref": 2,
+                "title": "Président du Sénat : élection",
+                "url": "https://b.fr/y",
+            },
+        ]
+        assert [
+            s["ref"]
+            for s in sources_prometteuses(sources, "Qui est le président du Sénat ?")
+        ] == [2]
+
+    def test_une_date_qui_n_est_pas_iso_ne_vaut_pas_fraicheur(self):
+        from datetime import date
+
+        from diapason.server.actualite import sources_prometteuses
+
+        aujourd_hui = date.today().isoformat()
+        sources = [
+            {
+                "ref": 1,
+                "title": "Coupe Stanley 2026",
+                "url": "https://a.ca/x",
+                "date": "il y a 3 h",
+            },
+            {
+                "ref": 2,
+                "title": "Coupe Stanley 2026",
+                "url": "https://b.ca/y",
+                "date": aujourd_hui,
+            },
+        ]
+        assert [
+            s["ref"] for s in sources_prometteuses(sources, "Coupe Stanley 2026 ?")
+        ] == [2, 1]
+
+    def test_le_lexique_traverse_la_langue_et_un_seul_mot_ne_suffit_pas(self):
+        from diapason.server.actualite import sources_prometteuses
+
+        sources = [
+            {"ref": 1, "title": "Canada Day celebrations", "url": "https://a.ca/x"},
+            {
+                "ref": 2,
+                "title": "Mark Carney sworn in as Prime Minister",
+                "url": "https://b.ca/y",
+            },
+        ]
+        assert [s["ref"] for s in sources_prometteuses(sources, PREMIER_MINISTRE)] == [
+            2
+        ]
+
+    def test_les_mots_entiers_seulement(self):
+        from diapason.server.actualite import sources_prometteuses
+
+        sources = [
+            {
+                "ref": 1,
+                "title": "Printemps 2026 : procès-verbal",
+                "url": "https://a.ca/x",
+            },
+            {
+                "ref": 2,
+                "title": "Quel temps fera-t-il ce soir à Ottawa",
+                "url": "https://b.ca/y",
+            },
+        ]
+        assert [
+            s["ref"]
+            for s in sources_prometteuses(sources, "Quel temps fera-t-il ce soir ?")
+        ] == [2]
+
+    @pytest.mark.asyncio
+    async def test_sans_tour_d_outil_restant_la_page_lue_ne_promet_pas_de_recherche(
+        self,
+    ):
+        """Le modèle a brûlé ses tours d'outil et avoue : la lecture par le
+        code reste possible (elle ne coûte aucun tour), mais la consigne ne
+        promet plus de recherche — le passage suivant est sans outils."""
+        from diapason.server.actualite import CONSIGNE_PAGE_LUE_SANS_OUTIL
+
+        class Recherche2(Outil):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_search",
+                    content=(
+                        "[1] 2026 Stanley Cup Final — nhl.com · 2026-06-20\n"
+                        "Source: https://www.nhl.com/news/x\nExtrait: …"
+                    ),
+                    success=True,
+                    metadata={
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "2026 Stanley Cup Final",
+                                "url": "https://www.nhl.com/news/x",
+                                "date": "2026-06-20",
+                            }
+                        ]
+                    },
+                )
+
+        class LectureNhl(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] 2026 Stanley Cup Final — nhl.com\n"
+                        f"Source: {params['url']}\nDébut : The Hurricanes won.\n"
+                    ),
+                    success=True,
+                    metadata={"sources": [{"ref": 1, "url": params["url"]}]},
+                )
+
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("gagnant Coupe Stanley 2026")])],
+                [
+                    StreamChunk(
+                        content="Je n'ai pas trouvé le vainqueur [1].",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content="Les Hurricanes ont gagné [1].", finish_reason="stop"
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Recherche2("web_search"), LectureNhl()],
+            "Qui a gagné la Coupe Stanley en 2026 ?",
+            max_tool_turns=1,
+        )
+        assert moteur.appels[2][0][-1].content.endswith(
+            CONSIGNE_PAGE_LUE_SANS_OUTIL.format(ref=1)
+        ), "le passage suivant est sans outils : la consigne n'annonce aucune recherche"
+        assert moteur.appels[2][1].get("tools") is None or not moteur.appels[2][1].get(
+            "tools"
+        )
+        assert texte(evts).endswith("Les Hurricanes ont gagné [1].")
+
+
+class TestLAveuQuiPorteSurLaQuestion:
+    """Banc du 21/09 à 22 h : « Quel a été le score du dernier match … ? » →
+    « … victoire … par 4 matchs à 2 [6]. Le score exact … n'est pas spécifié
+    dans les résultats trouvés. » — badge vert, et en.wikipedia « 2026
+    Stanley Cup Final » dans les résultats, jamais lue."""
+
+    SCORE = (
+        "Quel a été le score du dernier match de la finale de la Coupe Stanley 2026 ?"
+    )
+    REPONSE = (
+        "Le dernier match de la finale de la Coupe Stanley 2026 s'est terminé le "
+        "14 juin 2026, avec une victoire des Carolina Hurricanes par 4 matchs à 2 "
+        "[6]. Le score exact du septième et dernier match n'est pas spécifié dans "
+        "les résultats trouvés."
+    )
+
+    def test_l_aveu_sur_le_fait_demande_est_une_non_reponse_malgre_la_citation(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        assert est_une_non_reponse(self.REPONSE, question=self.SCORE), (
+            "« score » est dans la question et dans l'aveu, pas dans la phrase citée"
+        )
+
+    def test_sans_la_question_la_citation_suffit(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        assert not est_une_non_reponse(self.REPONSE)
+
+    def test_le_badge_devient_partiel(self):
+        from diapason.server.actualite import niveau_de_verification
+
+        assert (
+            niveau_de_verification(
+                self.REPONSE, [{"ref": 6}], True, {}, None, self.SCORE
+            )
+            == "partial"
+        )
+
+    def test_une_reserve_sur_autre_chose_reste_une_reponse(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        for reponse in (
+            "Les Hurricanes ont gagné la Coupe Stanley [7], mais les sources ne "
+            "précisent pas le score de la finale de la Coupe Stanley.",
+            "Les Hurricanes ont gagné [7] ; les sources ne précisent pas le score.",
+        ):
+            assert not est_une_non_reponse(
+                reponse, question="Qui a gagné la Coupe Stanley en 2026 ?"
+            ), reponse
+
+    def test_le_mot_repris_dans_la_phrase_citee_ne_compte_pas(self):
+        """« premier ministre » est dans la question, dans l'aveu ET dans la
+        phrase citée : seul « Canada », absent de la phrase citée, tranche."""
+        from diapason.server.actualite import est_une_non_reponse
+
+        question = "Qui est le premier ministre du Canada ?"
+        assert not est_une_non_reponse(
+            "Mark Carney est premier ministre depuis mars 2025 [2]. Les sources ne "
+            "précisent pas la date exacte de son assermentation.",
+            question=question,
+        )
+        assert est_une_non_reponse(
+            "Les sources parlent du premier ministre du Québec [2]. Le premier "
+            "ministre du Canada n'est pas nommé dans les résultats.",
+            question=question,
+        )
+
+
+class TestLaPromesseEnDerniereLigne:
+    """Banc du 21/09 à 22 h : « Le but gagnant a été marqué par Hertl … [4].
+    Cependant, il semble que ce soit un résumé partiel … je vais lire
+    l'article complet. » — et rien ne le lit : la promesse sans l'acte."""
+
+    def test_je_vais_lire_en_fin_de_reponse_declenche_la_lecture(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        reponse = (
+            "Le but gagnant a été marqué par Hertl à 16:36 du match numéro 1 [4]. "
+            "Pour obtenir une information plus précise sur le but gagnant de la "
+            "finale, je vais lire l'article complet."
+        )
+        assert est_une_non_reponse(reponse, question="Qui a marqué le but gagnant ?")
+        assert est_une_non_reponse(reponse), "la promesse compte même sans la question"
+
+    def test_la_promesse_au_milieu_suivie_du_chiffre_est_une_reponse(self):
+        """Banc du 21/09 : « je dois affiner ma recherche : … Selon [10],
+        l'inflation se maintient à 3 % » — la suite a tenu la promesse."""
+        from diapason.server.actualite import est_une_non_reponse
+
+        assert not est_une_non_reponse(
+            "Les résultats parlent du taux directeur (2,25 %) [3]. Pour trouver le "
+            "taux d'inflation, je dois affiner ma recherche :\n\nSelon [10], "
+            "l'inflation se maintient à 3 % en septembre 2026.",
+            question="Quel est le taux d'inflation au Canada ?",
+        )
+
+    def test_les_formes_de_la_promesse(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        for fin in (
+            "Je vais vérifier si d'autres sources confirment.",
+            "Je dois donc relancer la recherche.",
+            "Laissez-moi consulter la page officielle.",
+            "Let me check the official page.",
+        ):
+            assert est_une_non_reponse(f"Les Hurricanes ont gagné [7]. {fin}"), fin
+
+    def test_a_l_oral_aussi(self):
+        from diapason.server.actualite import est_une_non_reponse
+
+        assert est_une_non_reponse(
+            "Les Hurricanes ont gagné. Je vais lire l'article complet.", orale=True
+        )

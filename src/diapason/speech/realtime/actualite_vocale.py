@@ -36,6 +36,7 @@ from diapason.server.actualite import (
     completer_arguments,
     desaccord_sur_le_titulaire,
     est_une_demande_de_verification,
+    est_une_non_reponse,
     note_avant_redaction,
     page_de_reference,
     question_a_verifier,
@@ -44,6 +45,7 @@ from diapason.server.actualite import (
     question_personnelle,
     recherche_concluante,
     renumeroter,
+    sources_prometteuses,
     sous_l_url_demandee,
 )
 from diapason.server.sources_officielles import (
@@ -80,6 +82,23 @@ CONSIGNE_FERME_VOCALE = (
     "les résultats donnent, en nommant la source — si cela contredit ce que "
     "tu viens de dire, dis-le."
 )
+# Après une non-réponse (« je n'ai pas trouvé le vainqueur ») : le code lit
+# la source la plus prometteuse et le modèle reprend d'après elle — ou, sans
+# source qui s'impose, cherche autrement. À l'oral, sans numéro entre crochets.
+CONSIGNE_PAGE_LUE_VOCALE = (
+    "La source « {titre} » a été lue en entier par le code ; son texte est "
+    "ci-dessus. Réponds en une ou deux phrases parlées d'après elle, en la "
+    "nommant ; si le fait n'y est pas non plus, appelle web_search avec une "
+    "requête différente, ou dis que tu n'as pas trouvé. Ne suppose rien sur "
+    "ce qui a eu lieu ou non."
+)
+CONSIGNE_AUTRE_REQUETE_VOCALE = (
+    "Les résultats ne donnaient pas le fait demandé. Appelle web_search "
+    "maintenant avec une requête différente — d'autres mots, en anglais, ou le "
+    "nom du site officiel — sans parler avant l'appel ; puis réponds en une "
+    "phrase parlée en nommant la source, ou dis que tu n'as pas trouvé. Ne "
+    "suppose rien sur ce qui a eu lieu ou non."
+)
 # Ce que la voix dit quand rien n'a été vérifié : court, prononçable, et à
 # la fin — la réponse est déjà sortie des haut-parleurs.
 AVEU_VOCAL = "Je le dis de mémoire, sans avoir pu vérifier en ligne."
@@ -88,6 +107,12 @@ AVEU_VOCAL_REFUS = "Je n'ai pas pu chercher en ligne : je le dis de mémoire."
 # Ce que la voix dit pendant que la recherche tourne — le silence d'une
 # recherche et d'une lecture (une à trois secondes) n'était signalé par rien.
 ACCUSE_RECHERCHE = "Je vérifie en ligne."
+ACCUSE_LECTURE = "Je lis la source."
+# Annoncé, puis rien : la page refusait, ou le budget était épuisé. Le
+# silence après « Je lis la source. » disait « ça a marché » (revue du 21/09).
+ACCUSE_LECTURE_RATEE = "Je n'ai pas pu lire la source."
+# Deux essais de lecture, comme au chat (LECTURES_SUR_NON_REPONSE).
+LECTURES_SUR_NON_REPONSE = 2
 # La réponse porte déjà son aveu : pas de second.
 _DEJA_AVOUE = re.compile(
     r"pas (?:pu|reussi a) (?:le |la |les )?verifier|impossible de verifier|"
@@ -130,6 +155,7 @@ class TourVocal:
     demande: bool = False
     ville: str = ""
     officielle_lue: bool = False
+    relance_lecture_faite: bool = False
     recherche_tentee: bool = False
     recherche_refusee: bool = False
     verification_faite: bool = False
@@ -208,6 +234,87 @@ def relance(tour: TourVocal, parle: str) -> list[dict[str, str]]:
         {"role": "assistant", "content": parle.strip()},
         {"role": "system", "content": CONSIGNE_FERME_VOCALE},
     ]
+
+
+def relance_possible(tour: TourVocal, parle: str) -> bool:
+    """La passe prononcée avoue n'avoir pas trouvé, après une vérification,
+    et aucune relance n'a encore eu lieu."""
+    return (
+        not tour.relance_lecture_faite
+        and tour.verification_faite
+        and est_une_non_reponse(parle, orale=True, question=tour.question)
+    )
+
+
+def lecture_possible(tour: TourVocal) -> bool:
+    """Une source s'impose à lire — ce qui vaut un « Je lis la source. »
+    AVANT le silence de la lecture, et seulement alors : l'accusé était
+    prononcé sans source à lire, puis plus rien (revue du 21/09, 22 h)."""
+    return bool(
+        sources_prometteuses(tour.sources, tour.question, sorted(tour.pages_lues))
+    )
+
+
+def relance_apres_non_reponse(
+    tour: TourVocal,
+    parle: str,
+    lire: Lecteur | None,
+    peut_chercher: bool | Callable[[], bool] = True,
+) -> list[dict[str, str]] | None:
+    """La réponse prononcée avoue n'avoir pas trouvé : le code lit la source
+    la plus prometteuse (deux essais) et le modèle reprend d'après elle —
+    une fois. Sans source qui s'impose, ou pages illisibles : une autre
+    requête, si le budget le permet encore. None quand il n'y a rien à
+    reprendre (banc du 21/09, Coupe Stanley : nhl.com était dans les
+    résultats, le 9b n'y allait pas). ``parle`` est la DERNIÈRE passe, pas
+    tout le tour : un aveu prononcé avant la recherche ne fait pas relire
+    une page après la bonne réponse (revue du 21/09). ``peut_chercher`` se
+    demande APRÈS les lectures, qui consomment le budget : un booléen pris
+    avant promettait un web_search que le tour ne pouvait plus payer (revue
+    du 21/09, 22 h)."""
+    if not relance_possible(tour, parle):
+        return None
+    tour.relance_lecture_faite = True
+    messages: list[dict[str, str]] = [{"role": "assistant", "content": parle.strip()}]
+    if lire is not None:
+        from diapason.tools.web_search import url_canonique
+
+        candidates = sources_prometteuses(
+            tour.sources, tour.question, sorted(tour.pages_lues)
+        )
+        for src in candidates[:LECTURES_SUR_NON_REPONSE]:
+            url = str(src["url"])
+            page = lire("web_read", {"url": url, "focus": tour.question})
+            if not page.get("ok") or not str(page.get("content") or "").strip():
+                if "budget" in str(page.get("error") or "").lower():
+                    return None
+                continue
+            tour.pages_lues.add(url_canonique(url))
+            pmeta = (
+                page.get("metadata") if isinstance(page.get("metadata"), dict) else {}
+            )
+            texte, nouvelles = renumeroter(
+                str(page["content"]),
+                sous_l_url_demandee(list(pmeta.get("sources") or []), url),
+                tour.sources,
+            )
+            tour.sources.extend(nouvelles)
+            tour.corpus += "\n" + texte
+            messages.append(
+                {
+                    "role": "system",
+                    "content": _tronquer(texte)
+                    + "\n\n"
+                    + CONSIGNE_PAGE_LUE_VOCALE.format(
+                        titre=str(src.get("title") or url)[:80]
+                    ),
+                }
+            )
+            return messages
+    if not (peut_chercher() if callable(peut_chercher) else peut_chercher):
+        return None
+    messages.append({"role": "system", "content": CONSIGNE_AUTRE_REQUETE_VOCALE})
+    return messages
 
 
 def preparer_appel(
@@ -385,6 +492,9 @@ def _avec_page_officielle(
     tour.sources.extend(nouvelles)
     tour.corpus += "\n" + texte
     tour.verification_faite = True
+    from diapason.tools.web_search import url_canonique
+
+    tour.pages_lues.add(url_canonique(off.url))
     contenu = str(resultat.get("content") or "")
     return {
         **resultat,
@@ -419,15 +529,31 @@ def _affirme_quelque_chose(reponse: str) -> bool:
     return False
 
 
-def epilogue(tour: TourVocal, reponse: str) -> str:
+def epilogue(tour: TourVocal, reponse: str, derniere_passe: str | None = None) -> str:
     """La phrase à prononcer après la réponse, ou "" : de mémoire, ou en
     désaccord avec les sources sur le titulaire.
 
     Revue vocale du 21/09 : « je le dis de mémoire » était prononcé après une
     réponse vide, après une question de précision, après un aveu déjà dit,
     et après un fait lu à l'horloge locale. Chacun de ces cas se tait ; une
-    réponse vide reçoit l'aveu qui se tient seul.
+    réponse vide reçoit l'aveu qui se tient seul. Le désaccord se juge sur
+    la DERNIÈRE passe : « De mémoire, c'est Justin Trudeau » dit avant la
+    recherche taisait l'avertissement sur « Justin Trudeau, depuis 2015 »
+    dit après elle, les sources désignant Mark Carney (revue du 21/09, 22 h).
     """
+    if tour.verification_faite:
+        desaccord = desaccord_sur_le_titulaire(
+            derniere_passe if derniere_passe is not None else reponse,
+            tour.corpus,
+            tour.question,
+        )
+        if desaccord:
+            return (
+                f"Attention : les sources désignent "
+                f"{', '.join(desaccord['sources'])} comme titulaire, pas "
+                f"{desaccord['answer']}."
+            )
+        return ""
     if _DEJA_AVOUE.search(_plat(reponse)):
         return ""
     if not tour.verification_faite:
@@ -440,16 +566,12 @@ def epilogue(tour: TourVocal, reponse: str) -> str:
         if tour.recherche_refusee:
             return AVEU_VOCAL_REFUS
         return AVEU_VOCAL_RECHERCHE if tour.recherche_tentee else AVEU_VOCAL
-    desaccord = desaccord_sur_le_titulaire(reponse, tour.corpus, tour.question)
-    if desaccord:
-        return (
-            f"Attention : les sources désignent {', '.join(desaccord['sources'])} "
-            f"comme titulaire, pas {desaccord['answer']}."
-        )
     return ""
 
 
 __all__ = [
+    "ACCUSE_LECTURE",
+    "ACCUSE_LECTURE_RATEE",
     "ACCUSE_RECHERCHE",
     "AVEU_VOCAL",
     "AVEU_VOCAL_RECHERCHE",
@@ -461,6 +583,9 @@ __all__ = [
     "consigne",
     "deja_lue",
     "epilogue",
+    "lecture_possible",
+    "relance_apres_non_reponse",
+    "relance_possible",
     "est_une_demande_vocale",
     "note",
     "preparer_appel",

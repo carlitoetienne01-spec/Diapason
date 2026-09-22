@@ -1153,30 +1153,449 @@ _CITATION = re.compile(r"\[(\d+)\]")
 # La réponse dit elle-même qu'elle n'a pas trouvé (banc du 21/09 : « Les
 # résultats de la recherche ne mentionnent pas le vainqueur de la Coupe
 # Stanley 2026 … il faudrait attendre » sous un badge vert, avec trois [N]).
+# Les verbes au singulier et au pluriel, écrits — « (?:nt)? » formait
+# « permetnt », « ditnt », et « Les résultats ne permettent pas de
+# déterminer le vainqueur [1] » était vérifié (revue du 21/09, 22 h).
+_VERBES_D_AVEU = (
+    r"(?:mentionne(?:nt)?|donne(?:nt)?|precise(?:nt)?|indique(?:nt)?|"
+    r"permet(?:tent)?|contien(?:t|nent)|confirme(?:nt)?|revele(?:nt)?|"
+    r"annonce(?:nt)?|di(?:t|sent)|montre(?:nt)?|fourni(?:t|ssent)|"
+    r"repond(?:ent)?|parle(?:nt)?|nomme(?:nt)?|identifie(?:nt)?|"
+    r"rapporte(?:nt)?|specifie(?:nt)?|detaille(?:nt)?|couvre(?:nt)?|"
+    r"abord(?:e|ent)|traite(?:nt)?|evoque(?:nt)?)"
+)
+# Ce qui a été CHERCHÉ : « les prévisions ne mentionnent pas de pluie [6] »
+# est une réponse (revue du 21/09). « données » et « recherches » nus
+# désignent souvent le fait lui-même (« les données ne montrent pas de
+# récession au T2 [1] », revue du 21/09, 22 h) : ils n'entrent qu'avec un
+# qualificatif de recherche, ou avec les verbes de la consultation
+# (mentionne, précise, indique, donne, permet, contient, fournit, nomme).
+_SUJET_D_AVEU = (
+    r"(?:resultats?|sources?|articles?|extraits?|pages?|resumes?|informations?|"
+    r"(?:donnees?|recherches?)(?= (?:\[\d+\] )?(?:de (?:la |ma |cette )?recherche|"
+    r"consult[eé]e?s?|trouv[eé]e?s?|obtenue?s?|fournie?s?|lue?s?|ci.dessus|"
+    r"retourn[eé]e?s?|affich[eé]e?s?|disponibles?|actuel(?:le)?s?)))"
+    r"(?: \[\d+\])?(?: ci.dessus)?"
+    r"(?: (?:de (?:la |ma |cette )?recherche(?: web)?|consult[eé]e?s?|"
+    r"actuel(?:le)?s?|disponibles?|trouv[eé]e?s?|lue?s?|obtenue?s?|fournie?s?|"
+    r"cit[eé]e?s?|retourn[eé]e?s?|affich[eé]e?s?|recueillie?s?)){0,2}"
+)
+_SUJET_FAIBLE = r"(?:donnees?|recherches?)(?: \[\d+\])?"
+_VERBES_DE_CONSULTATION = (
+    r"(?:mentionne(?:nt)?|precise(?:nt)?|indique(?:nt)?|donne(?:nt)?|"
+    r"permet(?:tent)?|contien(?:t|nent)|fourni(?:t|ssent)|nomme(?:nt)?|"
+    r"identifie(?:nt)?|specifie(?:nt)?)"
+)
+_ADVERBES = r"(?: toujours| plus| donc| malheureusement| encore| non plus)?"
+# « Il faut attendre le 29 octobre pour la prochaine décision [1] » est une
+# réponse (revue du 21/09, 22 h) : la date qui suit dit le monde, pas la
+# recherche.
+_PAS_UNE_DATE = (
+    r"(?! (?:le |la |l'|les )?(?:\d|lundi|mardi|mercredi|jeudi|vendredi|samedi|"
+    r"dimanche|janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|"
+    r"octobre|novembre|decembre|demain|ce soir|cette nuit|la semaine|le mois))"
+)
 _NON_REPONSE = re.compile(
-    r"ne (?:mentionnent|donnent|precisent|indiquent|permettent|contiennent)"
-    r"(?: toujours| plus| donc| malheureusement)? pas|"
-    r"n'(?:ai|a|ont) pas (?:trouve|pu trouver|permis)|"
-    r"aucun(?:e)? (?:resultat|source|information|donnee|article) ne|"
-    r"pas de (?:donnees?|resultats?|chiffres?|informations?) (?:precis|exact|sur|pour)|"
-    r"je n'ai pas pu|il faudrait (?:attendre|chercher|consulter)|"
-    r"je dois (?:lire|chercher|relancer)|je vais relancer|"
-    r"n'est pas (?:mentionne|indique|precise|confirme)|"
-    r"do not mention|could not find|no result"
+    _SUJET_D_AVEU
+    + r" n(?:e |')(?:le |la |les |l')?"
+    + _VERBES_D_AVEU
+    + _ADVERBES
+    + r" (?:pas|aucun|rien|ni)|"
+    + _SUJET_FAIBLE
+    + r" n(?:e |')(?:le |la |les |l')?"
+    + _VERBES_DE_CONSULTATION
+    + _ADVERBES
+    + r" (?:pas|aucun|rien)|"
+    r"je n'(?:ai|a) pas (?:trouve|pu trouver|pu obtenir|pu verifier|pu identifier|"
+    r"pu determiner|pu confirmer|reussi a)|"
+    r"je n'ai (?:rien trouve|trouve aucun)|je ne trouve pas|nous n'avons pas trouve|"
+    r"je ne (?:peux|parviens|arrive) pas (?:a )?(?:determiner|confirmer|trouver|"
+    r"identifier|etablir|dire|savoir|repondre)|"
+    r"je ne suis pas en mesure de|il n'est pas possible de (?:determiner|"
+    r"confirmer|trouver|identifier|etablir|savoir|dire)|je ne sais pas|"
+    r"impossible de (?:trouver|determiner|identifier)|"
+    r"impossible de (?:savoir|dire) (?:qui|quel|lequel|laquelle|combien)|"
+    r"aucun(?:e)? (?:(?:des )?(?:resultats?|sources?|articles?|extraits?|"
+    r"informations?|donnees?|pages?) )?ne (?:le |la |les |l')?"
+    + _VERBES_D_AVEU
+    + r"|rien n'indique (?:le |la |les |l'|qui |quel|combien |quand |ou |dans |parmi )|"
+    r"rien ne (?:mentionne|confirme|precise|permet de (?:trouver|determiner|savoir|"
+    r"dire|confirmer|identifier))|"
+    r"n(?:e |')(?:est|sont|apparai(?:t|ssent)|figure(?:nt)?) pas "
+    r"(?:mentionne|indique|precise|confirme|nomme|specifie|detaille|fourni|"
+    r"donne|identifie|clair|disponible|dans les (?:resultats|sources|extraits))"
+    r"(?:e?s?)\b|"
+    r"n(?:e |')(?:apparai(?:t|ssent)|figure(?:nt)?) (?:pas |nulle part )?"
+    r"(?:dans|parmi) les (?:resultats|sources|extraits|articles)|"
+    r"n'(?:ait|aient) pas encore eu lieu|"
+    r"pas (?:d'|de )(?:information|donnee|resultat|chiffre)s? "
+    r"(?:disponible|precis|exact|officiel|sur|pour)|"
+    r"il (?:faudrait|faut|faudra) (?:attendre|chercher|consulter|verifier)"
+    + _PAS_UNE_DATE
+    + r"|je (?:vous |te )?(?:recommande|suggere|conseille|invite a) (?:de )?"
+    r"(?:consulter|verifier|chercher)|"
+    r"results? (?:do|does)(?: not|n't) (?:mention|include|show|give|say)|"
+    r"(?:could|couldn't|can't|cannot|unable to) ?(?:not )?(?:find|determine)|"
+    r"no (?:results?|information) (?:found|available)|"
+    r"(?:is|are) not (?:mentioned|specified|available|listed) in the"
 )
 CONSIGNE_AUTRE_REQUETE = (
     "Les résultats ne donnaient pas le fait demandé. Appelle web_search "
     "maintenant avec une requête DIFFÉRENTE — d'autres mots, en anglais, ou "
-    "le nom du site officiel — ou web_read sur la source la plus prometteuse, "
-    "sans écrire de texte avant l'appel ; puis réponds d'après les nouveaux "
-    "résultats en citant [N], ou dis que tu n'as pas trouvé. Ne suppose rien "
-    "sur ce qui a eu lieu ou non."
+    "le nom du site officiel — sans restreindre la fraîcheur (recency: year, "
+    "news: false), ou web_read sur la source la plus prometteuse, sans écrire "
+    "de texte avant l'appel ; puis réponds d'après les nouveaux résultats en "
+    "citant [N], ou dis que tu n'as pas trouvé. Ne suppose rien sur ce qui a "
+    "eu lieu ou non."
+)
+# La PROMESSE SANS L'ACTE : « je vais lire l'article complet » en fin de
+# réponse (banc du 21/09, but gagnant de la finale), et rien ne le lit.
+# Elle compte même à côté d'une phrase citée — c'est le modèle lui-même qui
+# dit que sa réponse ne suffit pas. « Je vais chercher le score si tu veux »
+# est une offre, pas une promesse (revue du 21/09, 22 h).
+_PROMESSE = re.compile(
+    r"(?:je (?:vais|dois) (?:(?:donc |maintenant |d'abord )?"
+    r"(?:relancer|lire|consulter|ouvrir|verifier|chercher|rechercher|affiner|"
+    r"approfondir|regarder|examiner|effectuer|lancer|faire))|"
+    r"(?:laissez?|permets?|permettez)(?:[- ]moi)? (?:de )?(?:relancer|lire|"
+    r"consulter|verifier|chercher)|"
+    r"let me (?:check|read|search|look)|i (?:will|'ll) (?:check|read|search|look))"
+    r"(?!.*\b(?:si (?:tu|vous) (?:le )?(?:veux|voulez|souhaite[sz])|si besoin|"
+    r"si necessaire|if you (?:want|like|wish)))"
+)
+# Le 9b enchaîne l'aveu et ce dont PARLENT les résultats : « Les articles
+# parlent surtout des contrats des Panthers [1][2] » n'affirme rien sur la
+# question (revue du 21/09, 22 h : cette phrase couvrait l'aveu et rendait
+# « vérifié »).
+_DESCRIPTION_DES_SOURCES = re.compile(
+    r"^(?:ils?|elles?|ces|les|ceux.ci|celles.ci)(?: (?:\w+|\[\d+\])){0,3}? "
+    r"(?:parlent?|portent?|traitent?|concernent?|datent?|evoquent?|"
+    r"se limitent?|se concentrent?|decrivent?|abordent?|couvrent?|"
+    r"ne (?:parlent?|portent?|traitent?) que|sont (?:consacr|centr)e?s? sur|"
+    r"(?:sont|est) (?:des|un|une) (?:articles?|resume|page))"
 )
 
 
-def est_une_non_reponse(reponse: str) -> bool:
-    """La réponse avoue ne pas avoir trouvé le fait dans les sources."""
-    return _NON_REPONSE.search(_plat(reponse)) is not None
+# Une phrase, ou une proposition : « Les Hurricanes ont gagné [7] ; les
+# sources ne précisent pas le score » porte les deux. La virgule coupe
+# devant une réserve (« … 4-2 [1], les sources ne précisent pas le buteur »,
+# revue du 21/09, 22 h : la phrase entière passait pour un aveu).
+_PHRASES = re.compile(
+    r"(?<=[.!?;:])\s+|\n+|\s+[—–]\s+|"
+    r"\s+(?:mais|cependant|toutefois|bien que|alors que|même si|meme si|"
+    r"tandis que|sauf que|néanmoins|neanmoins)\s+|"
+    r",\s+(?=(?:les |la |le |l'|il |ils |elles? |aucun|rien|je |nous |ce ))"
+)
+# Les mots de la question et leurs frères dans l'aveu : « Qui a gagné » →
+# « le vainqueur n'est pas mentionné » (revue du 21/09, 22 h).
+_FRERES = (
+    frozenset(
+        "gagne gagner gagnant gagnante vainqueur vainqueurs champion "
+        "championne champions remporte remporter remporte victoire "
+        "victorieux laureat laureate elu elue winner won winners".split()
+    ),
+    frozenset("score scores pointage marque resultat final".split()),
+    frozenset("date jour quand dates".split()),
+    frozenset("nom nomme appelle prenom name".split()),
+    frozenset("prix cout tarif montant price cost".split()),
+    frozenset("temps meteo previsions weather forecast".split()),
+    frozenset("taux pourcentage rate".split()),
+    frozenset("morts deces victimes bilan decedes tues".split()),
+    frozenset("buteur marqueur marque scorer".split()),
+    frozenset("heure horaire heures".split()),
+)
+
+
+def _frere(mot: str) -> frozenset[str] | None:
+    for famille in _FRERES:
+        if mot in famille:
+            return famille
+    return None
+
+
+def _mots_demandes(question: str) -> set[str]:
+    """Les mots pleins de la question, sans ses noms propres : « Canada »,
+    « Ottawa », « Banque » nomment le cadre, pas le fait demandé (revue du
+    21/09, 22 h : « les sources ne précisent pas le vent à Ottawa » sous
+    « Quel temps fera-t-il à Ottawa ? » passait pour une non-réponse)."""
+    propres: set[str] = set()
+    for rang, brut in enumerate(re.findall(r"[\wÀ-ÿ'’-]+", question)):
+        if rang and brut[:1].isupper():
+            propres.update(_MOT_DE_QUESTION.findall(_plat(brut)))
+    mots = set(_MOT_DE_QUESTION.findall(_plat(question)))
+    mots -= _MOTS_VIDES_DE_QUESTION | _MOTS_GRAMMATICAUX | propres
+    return {m for m in mots if not m.isdigit()}
+
+
+# Ce que l'aveu dit ne pas avoir : après le verbe (« ne précisent pas [le]
+# score »), ou devant « n'est pas mentionné » (« Le score exact du septième
+# match n'est pas… »). Les deux premiers mots pleins.
+_DETERMINANTS = frozenset(
+    "le la les l un une du des de d au aux ce cet cette ces son sa ses leur "
+    "leurs mon ma mes encore toujours exactement clairement explicitement "
+    "precisement vraiment non plus donc pas".split()
+)
+_OBJET_APRES = re.compile(r" (?:pas|aucun|rien|ni)\b(.*)$")
+_SUJET_DEVANT = re.compile(r"^n(?:e |')(?:est|sont|apparai|figure)")
+
+
+def _objet_de_l_aveu(aveu_plat: str) -> set[str]:
+    m = _NON_REPONSE.search(aveu_plat)
+    if not m:
+        return set()
+    portion = m.group(0)
+    texte = ""
+    if _SUJET_DEVANT.match(portion):
+        # « Le score exact du septième match n'est pas spécifié » : l'objet
+        # est le sujet, devant.
+        texte = aveu_plat[: m.start()]
+    else:
+        apres = _OBJET_APRES.search(portion + aveu_plat[m.end() :])
+        if apres and apres.group(1).strip():
+            texte = apres.group(1)
+        elif re.match(r"je n'(?:ai|a) |impossible de|rien n'indique|rien ne ", portion):
+            texte = aveu_plat[m.end() :]
+    jetons = [t.strip("'") for t in re.findall(r"[a-z']+", texte)]
+    jetons = [t for t in jetons if t not in _DETERMINANTS and len(t) >= 3]
+    return set(jetons[:2])
+
+
+def est_une_non_reponse(
+    reponse: str, orale: bool = False, question: str | None = None
+) -> bool:
+    """La réponse avoue ne pas avoir trouvé le fait dans les sources — et
+    n'affirme rien d'autre ; ou elle promet d'aller le chercher.
+
+    Revue du 21/09 : « Les Hurricanes ont gagné [7] ; les sources ne
+    précisent pas le score » déclenchait une lecture, un passage de plus et
+    la réponse en double. Une phrase qui avoue à côté d'une phrase qui
+    affirme (une citation [N] ; à l'oral, un nom, un nombre) est une réponse
+    avec une réserve — SAUF si l'aveu porte sur ce qui était demandé : « Le
+    score exact … n'est pas spécifié dans les résultats » sous « Quel a été
+    le score … ? » (banc du 21/09, 22 h) est une non-réponse malgré le [6]
+    de la phrase d'avant. Le critère : l'OBJET de l'aveu (« le score », « le
+    vainqueur ») est un mot de la question, ou son frère (« gagné »), et
+    n'est pas dans une phrase qui cite. Et une PROMESSE (« je vais lire
+    l'article complet ») en dernière phrase compte toujours : rien ne la
+    tiendra. Ce dont PARLENT les résultats n'est pas une affirmation.
+    """
+    phrases = [ph for ph in _PHRASES.split(reponse or "") if ph.strip()]
+    if not phrases:
+        return False
+    if _PROMESSE.search(_plat(phrases[-1])):
+        return True
+    aveux: list[str] = []
+    affirmations: list[str] = []
+    for ph in phrases:
+        plat = _plat(ph)
+        m = _NON_REPONSE.search(plat)
+        if m or _PROMESSE.search(plat):
+            aveux.append(plat)
+            # « Les Panthers ont gagné 4-2 [1], les sources ne précisent pas
+            # le buteur » : ce qui précède l'aveu dans la même phrase affirme.
+            avant = ph[: m.start()] if m else ""
+            if avant.strip() and _affirme(avant, orale, question):
+                affirmations.append(avant)
+            continue
+        if _DESCRIPTION_DES_SOURCES.match(plat):
+            continue
+        if _affirme(ph, orale, question):
+            affirmations.append(ph)
+    if not aveux:
+        return False
+    if not affirmations:
+        return True
+    return _l_aveu_porte_sur_la_question(aveux, affirmations, question)
+
+
+def _affirme(phrase: str, orale: bool, question: str | None) -> bool:
+    if orale:
+        return _affirme_a_l_oral(phrase, question)
+    return _CITATION.search(phrase) is not None
+
+
+def _l_aveu_porte_sur_la_question(
+    aveux: Sequence[str], affirmations: Sequence[str], question: str | None
+) -> bool:
+    """L'objet d'un aveu est un mot demandé (ou son frère) qu'aucune phrase
+    qui affirme ne porte."""
+    if not question:
+        return False
+    demandes = _mots_demandes(question)
+    if not demandes:
+        return False
+    familles = {m: (_frere(m) or frozenset({m})) for m in demandes}
+    affirmes: set[str] = set()
+    for ph in affirmations:
+        affirmes.update(_MOT_DE_TITRE.findall(_plat(ph)))
+    for aveu in aveux:
+        objet = _objet_de_l_aveu(aveu)
+        for mot, famille in familles.items():
+            if objet & famille and not (famille & affirmes):
+                return True
+    return False
+
+
+# À l'oral le modèle écrit parfois le nombre en lettres (« Quinze degrés »).
+_NOMBRE_DIT = re.compile(
+    r"\b(?:zero|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|"
+    r"treize|quatorze|quinze|seize|vingt|trente|quarante|cinquante|soixante|"
+    r"cent|mille|million|milliard)s?\b"
+)
+
+
+def _affirme_a_l_oral(phrase: str, question: str | None = None) -> bool:
+    """Un nombre, ou un nom propre hors tête de phrase — qui ne soit pas un
+    mot de la question (« Coupe Stanley » redit le sujet, n'affirme rien ;
+    revue du 21/09, 22 h)."""
+    if re.search(r"\d", phrase) or _NOMBRE_DIT.search(_plat(phrase)):
+        return True
+    sujet = set(_MOT_DE_TITRE.findall(_plat(question or "")))
+    mots = phrase.split()
+    return any(
+        re.match(r"^[A-ZÀ-Ý][\wÀ-ÿ'’-]{2,}", m)
+        and not set(_MOT_DE_TITRE.findall(_plat(m))) <= sujet
+        for m in mots[1:]
+    )
+
+
+# Banc du 21/09, « Qui a gagné la Coupe Stanley en 2026 ? » : neuf sources
+# dont nhl.com « 2026 Stanley Cup Final » daté de juin, et le 9b avoue ne pas
+# trouver le vainqueur — il ne va pas le chercher dans la page. Le code y va :
+# la source dont le titre reprend le plus de mots de la question, fraîche et
+# de référence de préférence, pas encore lue.
+_MOT_DE_QUESTION = re.compile(r"[a-z]{4,}|(?:19|20)\d\d")
+_AGREGATEURS = ("msn.com", "news.google.", "flipboard.com", "news.yahoo.")
+_JOURS_RECENTS = 30
+CONSIGNE_PAGE_LUE = (
+    "Le début de la source [{ref}] a été lu par le code : c'est le texte "
+    "ci-dessus. Réponds d'après lui en citant [{ref}] ; si le "
+    "fait n'y est pas non plus, appelle web_search avec une requête "
+    "différente, ou dis que tu n'as pas trouvé. Ne suppose rien sur ce qui a "
+    "eu lieu ou non."
+)
+# Quand il ne reste aucun tour d'outil : pas de « appelle web_search » qu'on
+# n'exécuterait pas (revue du 21/09 : promesse affichée, tour perdu).
+CONSIGNE_PAGE_LUE_SANS_OUTIL = (
+    "Le début de la source [{ref}] a été lu par le code : c'est le texte "
+    "ci-dessus. Réponds d'après lui en citant [{ref}], ou dis "
+    "que tu n'as pas trouvé — n'annonce aucune recherche. Ne suppose rien sur "
+    "ce qui a eu lieu ou non."
+)
+
+
+# Les mots qui traversent la langue : « premier ministre du Canada » doit
+# reconnaître « Prime Minister » et non « Canada Day celebrations ».
+_LEXIQUE = {
+    "coupe": ("cup",),
+    "premier": ("prime",),
+    "ministre": ("minister",),
+    "maire": ("mayor",),
+    "taux": ("rate",),
+    "president": ("president",),
+    "election": ("election",),
+    "elections": ("election",),
+    "championnat": ("championship",),
+    "vainqueur": ("winner", "champion"),
+    "gagnant": ("winner", "champion"),
+    "champion": ("champion", "winner"),
+    "finale": ("final",),
+    "meteo": ("weather", "forecast"),
+    "prix": ("price",),
+    "inflation": ("inflation",),
+    "version": ("version",),
+    "sortie": ("release",),
+}
+_MOT_DE_TITRE = re.compile(r"[a-z]{2,}|(?:19|20)\d\d")
+
+
+def sources_prometteuses(
+    sources: Sequence[dict[str, Any]],
+    question: str,
+    deja_lues: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """Les sources à lire quand la réponse avoue n'avoir pas trouvé, la plus
+    prometteuse d'abord (vide : rien ne s'impose).
+
+    Un point par mot du TITRE atteint par un mot entier de la question
+    (quatre lettres, ou sa traduction du lexique) — entier : « temps » n'est
+    pas dans « printemps » ; par mot du titre, pas de la question : « président »
+    se traduit par lui-même et comptait double (revue du 21/09, 22 h) ; deux
+    par année de la question, et deux de moins pour une AUTRE année (« Coupe
+    Stanley 2025 : les Panthers » gagnait sur « 2026 Stanley Cup Final ») ;
+    sans année dans la question, l'année en cours est implicite : un point
+    pour elle, deux de moins pour une année d'AVANT l'année passée — en
+    janvier, l'édition de l'année passée est encore la dernière (revue du
+    21/09, 22 h : au 15 janvier 2027, « 2026 Stanley Cup Final » était
+    écartée pour un aperçu des séries 2027) ; un point si le site est de
+    référence ; un demi-point si la source a une date ISO de moins de trente
+    jours. Deux points nets au moins avant de lire : un seul mot commun
+    (« Canada ») ne dit pas le sujet. Jamais un agrégateur (MSN ne se lit
+    pas). À égalité, la première pastille.
+    """
+    from datetime import date, timedelta
+
+    from diapason.tools.web_search import url_canonique
+
+    mots = set(_MOT_DE_QUESTION.findall(_plat(question)))
+    mots -= _MOTS_VIDES_DE_QUESTION | _MOTS_GRAMMATICAUX
+    if not mots:
+        return []
+    annees = {m for m in mots if m.isdigit()}
+    lexique = set()
+    for m in mots:
+        lexique.update(_LEXIQUE.get(m, ()))
+    annee_en_cours = str(date.today().year)
+    lues = {url_canonique(u) for u in deja_lues}
+    recent = (date.today() - timedelta(days=_JOURS_RECENTS)).isoformat()
+    classees: list[tuple[float, int, dict[str, Any]]] = []
+    for rang, src in enumerate(sources):
+        if not isinstance(src, dict) or not src.get("url"):
+            continue
+        url = str(src["url"])
+        if url_canonique(url) in lues:
+            continue
+        if any(d in url for d in _AGREGATEURS):
+            continue
+        jetons = set(_MOT_DE_TITRE.findall(_plat(str(src.get("title") or ""))))
+        atteints = {
+            t for t in jetons if (t in mots and not t.isdigit()) or t in lexique
+        }
+        communs = len(atteints)
+        if communs == 0:
+            continue
+        score: float = communs
+        annees_du_titre = {t for t in jetons if t.isdigit()}
+        if annees:
+            score += 2 * len(annees & annees_du_titre)
+            if annees_du_titre - annees:
+                score -= 2
+        else:
+            if annee_en_cours in annees_du_titre:
+                score += 1
+            annee_passee = str(int(annee_en_cours) - 1)
+            if any(a < annee_passee for a in annees_du_titre):
+                score -= 2
+        if any(d in url for d in _DOMAINES_DE_REFERENCE):
+            score += 1
+        if score < 2:
+            continue
+        date_src = str(src.get("date") or "")
+        if _DATE_ISO.fullmatch(date_src) and date_src >= recent:
+            score += 0.5
+        classees.append((score, rang, src))
+    classees.sort(key=lambda t: (-t[0], t[1]))
+    return [src for _score, _rang, src in classees]
+
+
+def source_la_plus_prometteuse(
+    sources: Sequence[dict[str, Any]],
+    question: str,
+    deja_lues: Sequence[str] = (),
+) -> dict[str, Any] | None:
+    """La première de ``sources_prometteuses``, ou None."""
+    classees = sources_prometteuses(sources, question, deja_lues)
+    return classees[0] if classees else None
 
 
 def niveau_de_verification(
@@ -1185,6 +1604,7 @@ def niveau_de_verification(
     verification_faite: bool,
     signal: dict[str, Any] | None = None,
     dernier_passage: str | None = None,
+    question: str | None = None,
 ) -> str:
     """verified / partial / memory.
 
@@ -1204,8 +1624,16 @@ def niveau_de_verification(
     if not _CITATION.sub("", reponse or "").strip():
         return PARTIEL
     # Une réponse qui dit n'avoir pas trouvé n'est pas vérifiée, même citée.
-    if est_une_non_reponse(dernier_passage if dernier_passage is not None else reponse):
+    if est_une_non_reponse(
+        dernier_passage if dernier_passage is not None else reponse, question=question
+    ):
         return PARTIEL
+    # Revue du 21/09 : le [1] de la non-réponse suffisait ; la reprise qui
+    # répond sans citer était « vérifiée ». Le dernier passage cite, lui aussi.
+    if dernier_passage is not None:
+        cites_a_la_fin = {int(n) for n in _CITATION.findall(dernier_passage)}
+        if not cites_a_la_fin or not cites_a_la_fin <= connus:
+            return PARTIEL
     if signal and (
         signal.get("notFound")
         or signal.get("disagreement")

@@ -551,6 +551,77 @@ les extraits — badge partiel, aveu prononcé. Et « Pape à Paris : où voir
 Léon XIV… » (sortiraparis) passait pour la page du poste : seuls les sites
 de référence comptent désormais.
 
+### La lecture sur non-réponse — 21 septembre, nuit
+
+La Coupe Stanley restait partielle : neuf sources dont nhl.com « 2026
+Stanley Cup Final », et le 9b avouait ne pas trouver le vainqueur sans
+aller le chercher dans la page. Trois pièces :
+
+1. **`sources_prometteuses`** (`actualite.py`) : quand la réponse avoue
+   n'avoir pas trouvé (`est_une_non_reponse` — le SUJET est ce qu'on a
+   cherché : « les résultats/sources/articles ne mentionnent pas », « je
+   n'ai pas trouvé », « aucun ne mentionne », « il faut attendre » ; « les
+   prévisions ne mentionnent pas de pluie [6] » est une réponse), le code
+   classe les sources : un point par mot de la question dans le titre, deux
+   par année de la question, deux de moins pour une autre année (« Coupe
+   Stanley 2025 » perd), un point de référence, un demi-point de fraîcheur
+   (« Coupe Stanley cette année » du Devoir, frais mais sans l'année,
+   passait devant nhl.com) ; un mot non numérique en commun au moins
+   (« Ballon d'Or 2026 » était choisi pour son seul « 2026 ») ; jamais un
+   agrégateur (MSN ne se lit pas). Le code lit les deux premières jusqu'à
+   ce qu'une se lise (`_lire_la_page`, événement `web_read · auto`), joint la
+   page au dernier résultat de recherche du fil et pose `CONSIGNE_PAGE_LUE` ;
+   sans page, `CONSIGNE_AUTRE_REQUETE` (autres mots, en anglais, site
+   officiel, sans restreindre la fraîcheur). Une fois par tour. Chat et voix
+   (`actualite_vocale.relance_apres_non_reponse`).
+2. **La variante de recherche est symétrique** (`web_search`) : une requête
+   actualités reçoit aussi le web général — « gagnant Coupe Stanley 2026 »
+   en actualités ne rendait que des articles de septembre sur les
+   contrats ; le web général avait « Séries éliminatoires de la Coupe
+   Stanley 2026 — Wikipédia » et « Les Hurricanes de la Caroline sont
+   champions » (Le Soleil, 15 juin).
+3. Le niveau juge la non-réponse sur le **dernier passage** ; « pas encore
+   disponible » n'en est plus une (« 3,0 % en août ; septembre pas encore
+   publié » est une réponse).
+
+Rejoué : « Qui a gagné la Coupe Stanley en 2026 ? » → « Les Carolina
+Hurricanes … [6][7] … le 14 juin 2026 », vérifié, au premier passage ;
+inflation → 3 % en août [10], vérifié ; « Qui a remporté la Ligue des
+champions 2026 ? » → PSG, finale du 30 mai à Budapest [1][2][4], vérifié.
+
+Deux réponses du banc de 22 h passaient encore : « Quel a été le score du
+dernier match … ? » → « … par 4 matchs à 2 [6]. Le score exact … n'est pas
+spécifié dans les résultats trouvés. », badge vert, en.wikipedia « 2026
+Stanley Cup Final » dans les résultats et jamais lue ; « Qui a marqué le
+but gagnant … ? » → un but du match numéro 1 [4], « il semble que ce soit
+un résumé partiel … je vais lire l'article complet » — et rien ne le lit.
+D'où deux règles de plus dans `est_une_non_reponse` : l'aveu qui porte sur
+ce qui était **demandé** (l'OBJET de l'aveu — « le score », « le vainqueur
+n'est pas mentionné » — est un mot de la question ou son frère (« gagné »
+↔ « vainqueur »), hors noms propres, et n'est dans aucune phrase qui cite)
+est une non-réponse malgré la citation d'à côté — « les sources ne
+précisent pas le score » sous « qui a gagné » reste une réserve, et « les
+sources ne précisent pas le vent à Ottawa » sous « quel temps à Ottawa »
+aussi (la revue de 22 h avait pris neuf réserves sur onze avec « n'importe
+quel mot de la question ») ; et une **promesse** en dernière phrase (« je
+vais lire », « je dois relancer », « laissez-moi consulter », « let me
+check ») compte toujours, la promesse au milieu suivie du chiffre non, et
+« je vais chercher le score si tu veux » est une offre. Ce dont PARLENT les
+résultats (« les articles parlent surtout des contrats [1][2] ») n'est pas
+une affirmation. Les verbes d'aveu sont écrits au singulier et au pluriel :
+« (?:nt)? » formait « permetnt », et « les résultats ne permettent pas de
+déterminer le vainqueur [1] » était vérifié.
+
+La lecture par le code ne coûte aucun tour d'outil : elle reste possible
+quand le 9b a brûlé ses trois recherches, seul le dernier passage la refuse.
+La page lue suit l'aveu dans la consigne SYSTEM, elle ne rejoint plus le
+résultat de recherche déjà envoyé : modifier un message au milieu du fil
+jetait le préfixe qu'Ollama avait en cache. À la voix, « Je lis la source. »
+se décide avant de parler (une source à lire, et de quoi la payer), et « Je
+n'ai pas pu lire la source. » corrige l'accusé quand la page refuse sans
+budget pour chercher autrement ; le désaccord avec les sources se juge sur
+la dernière passe, un « de mémoire » dit avant la recherche ne le tait plus.
+
 Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à

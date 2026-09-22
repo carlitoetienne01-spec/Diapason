@@ -43,6 +43,8 @@ from diapason.server.actualite import (
     CONSIGNE_AUTRE_REQUETE,
     CONSIGNE_DEMANDEE,
     CONSIGNE_FERME,
+    CONSIGNE_PAGE_LUE,
+    CONSIGNE_PAGE_LUE_SANS_OUTIL,
     completer_arguments,
     consigne_actualite,
     desaccord_sur_le_titulaire,
@@ -58,6 +60,7 @@ from diapason.server.actualite import (
     question_personnelle,
     recherche_concluante,
     renumeroter,
+    sources_prometteuses,
     sous_l_url_demandee,
 )
 from diapason.server.questions_chat import (
@@ -92,6 +95,9 @@ DEFAULT_MAX_TOOL_TURNS = 3
 # suivant. On tronque en le disant, plutôt que de laisser le modèle croire
 # qu'il a tout vu.
 MAX_TOOL_RESULT_CHARS = 4000
+# Sur une non-réponse, le code lit au plus deux sources prometteuses avant
+# de renvoyer le modèle chercher autrement (21/09/2026).
+LECTURES_SUR_NON_REPONSE = 2
 
 # Plafond de température des tours qui PROPOSENT des outils.
 #
@@ -193,7 +199,7 @@ def _controle_des_sources(
         if desaccord:
             signal["disagreement"] = desaccord
     signal["level"] = niveau_de_verification(
-        reponse, sources, verification_faite, signal, dernier_passage
+        reponse, sources, verification_faite, signal, dernier_passage, question
     )
     signal["searchTried"] = bool(recherche_tentee)
     return [ToolStreamEvent("verification", signal)]
@@ -437,6 +443,7 @@ async def stream_with_tools(
     index_de_la_note: int | None = None
     lecture_auto_faite = False
     officielle_lue = False
+    pages_lues: list[str] = []
     # Revue du 21/09 : le contrôle ne jugeait que le DERNIER passage du
     # modèle ; « Justin Trudeau [3], depuis 2015 » écrit avant un second
     # outil restait affiché sous un badge vert. On juge ce que la bulle
@@ -699,9 +706,23 @@ async def stream_with_tools(
                 actualite
                 and verification_faite
                 and not relance_recherche_faite
-                and tours_actions < max_tool_turns
-                and est_une_non_reponse(texte_du_tour)
+                and passage < passages - 1
+                and est_une_non_reponse(texte_du_tour, question=question_courante)
             ):
+                # La lecture est faite par le code, pas par le modèle : elle
+                # ne coûte aucun tour d'outil et reste possible quand le 9b a
+                # brûlé ses trois recherches sans trouver (revue du 21/09 :
+                # la garde « tours_actions < max_tool_turns » la refusait
+                # justement dans ce cas-là). Seul le DERNIER passage la
+                # refuse — après lui, la boucle s'arrête sans phrase.
+                # Reste-t-il un tour d'outil APRÈS celui-ci ? Sinon, une
+                # consigne « appelle web_search » serait une impasse : le
+                # passage suivant est sans outils — par les tours d'outil ou
+                # par le budget de passages, la même condition que
+                # dernier_tour (revue du 21/09, 22 h).
+                encore_un_outil = (
+                    tours_actions + 1 < max_tool_turns and passage + 1 < passages - 1
+                )
                 # Banc du 21/09 : « Les résultats ne mentionnent pas le
                 # vainqueur … il faudrait attendre » — puis rien, ou « Je vais
                 # relancer la recherche » sans la relancer. Une seconde
@@ -709,9 +730,74 @@ async def stream_with_tools(
                 # déjà affiché reste, la suite s'ajoute dessous.
                 relance_recherche_faite = True
                 travail.append(Message(role=Role.ASSISTANT, content=texte_du_tour))
-                travail.append(
-                    Message(role=Role.SYSTEM, content=CONSIGNE_AUTRE_REQUETE)
+                # D'abord lire, par le code, la source la plus prometteuse :
+                # nhl.com « 2026 Stanley Cup Final » était dans les résultats
+                # et le 9b n'y allait pas (banc du 21/09). Sans source qui
+                # s'impose, ou si la page ne se lit pas : une autre requête.
+                page_jointe = False
+                candidates = (
+                    sources_prometteuses(sources_du_tour, question_courante, pages_lues)
+                    if "web_read" in trousse.noms
+                    else []
                 )
+                # Deux essais : la première page peut ne pas se lire (essai du
+                # 21/09 : Le Devoir refusait, nhl.com juste derrière lisait).
+                for prometteuse in candidates[:LECTURES_SUR_NON_REPONSE]:
+                    pages_lues.append(str(prometteuse["url"]))
+                    async for evt, texte in _lire_la_page(
+                        executor,
+                        str(prometteuse["url"]),
+                        question_courante,
+                        sources_du_tour,
+                    ):
+                        if evt is not None:
+                            yield evt
+                        if texte:
+                            page_jointe = True
+                            corpus_sources += "\n" + texte
+                            consigne_page = (
+                                CONSIGNE_PAGE_LUE
+                                if encore_un_outil
+                                else CONSIGNE_PAGE_LUE_SANS_OUTIL
+                            )
+                            # La page suit l'aveu, dans la consigne — pas
+                            # dans le résultat de recherche déjà envoyé :
+                            # modifier un message au milieu du fil jetait le
+                            # préfixe qu'Ollama avait en cache, et la
+                            # reprise re-préremplissait extraits, note et
+                            # aveu (revue du 21/09, 22 h).
+                            travail.append(
+                                Message(
+                                    role=Role.SYSTEM,
+                                    content="Page lue (web_read) :\n"
+                                    + _tronquer(texte, MAX_TOOL_RESULT_CHARS * 2)
+                                    + "\n\n"
+                                    + consigne_page.format(ref=prometteuse["ref"]),
+                                )
+                            )
+                    if page_jointe:
+                        break
+                if not page_jointe:
+                    if not encore_un_outil:
+                        # Ni page, ni tour d'outil : l'aveu reste tel quel.
+                        travail.pop()
+                        if actualite or verification_faite:
+                            for evt in _controle_des_sources(
+                                "".join(texte_affiche),
+                                corpus_sources,
+                                question_courante,
+                                donnees_verification,
+                                sources=sources_du_tour,
+                                recherche_tentee=recherche_tentee,
+                                verification_faite=verification_faite,
+                                controle_lexical=actualite,
+                                dernier_passage=texte_du_tour,
+                            ):
+                                yield evt
+                        return
+                    travail.append(
+                        Message(role=Role.SYSTEM, content=CONSIGNE_AUTRE_REQUETE)
+                    )
                 tours_actions += 1
                 continue
             # La PROMESSE SANS L'ACTE, version chat : « je regarde tes
@@ -935,6 +1021,7 @@ async def stream_with_tools(
                         url = page_de_reference(sources_du_tour, question_courante)
                         if url:
                             lecture_auto_faite = True
+                            pages_lues.append(url)
                             async for evt, texte in _lire_la_page(
                                 executor, url, question_courante, sources_du_tour
                             ):
@@ -956,6 +1043,7 @@ async def stream_with_tools(
                 )
                 if off is not None:
                     officielle_lue = True
+                    pages_lues.append(off.url)
                     async for evt, texte in _lire_la_page(
                         executor, off.url, question_courante, sources_du_tour, off
                     ):
@@ -971,6 +1059,7 @@ async def stream_with_tools(
             elif nom == "web_read" and succes:
                 # Une page lue est une source au même titre qu'une recherche.
                 verification_faite = True
+                pages_lues.append(_url_demandee(arguments))
                 meta = getattr(resultat, "metadata", None) or {}
                 contenu, nouvelles = _renumeroter(
                     contenu,

@@ -1917,6 +1917,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # first-token latency past conversational.
             del self._history[:-16]
             spoken: List[str] = []
+            debut_passe = 0
             tool_notes: List[str] = []
             relance_promesse = False
             self._budget.reset()
@@ -1939,6 +1940,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     tokens = self._llm(list(messages))
                 pending = ""
                 tool_calls: List[dict] = []
+                debut_passe = len(spoken)
                 while True:
                     item = await tokens.get()
                     if item is None:
@@ -1969,6 +1971,50 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     )
                     logger.warning("voice actuality answer without search, retrying")
                     continue
+                if (
+                    tour_actualite is not None
+                    and not tool_calls
+                    and actualite_vocale.relance_possible(
+                        tour_actualite, " ".join(spoken[debut_passe:])
+                    )
+                ):
+                    # « Je n'ai pas trouvé le vainqueur » après une recherche :
+                    # le code lit la source la plus prometteuse et le modèle
+                    # reprend d'après elle, une fois (banc du 21/09). Jugé sur
+                    # cette passe seule : un aveu dit AVANT la recherche ne
+                    # fait pas relire une page après la bonne réponse.
+                    passe = " ".join(spoken[debut_passe:])
+                    lire, lectures = self._lecteur_budgete()
+                    # L'accusé se décide AVANT de parler : une source à lire
+                    # et de quoi la payer. « Je lis la source. » puis rien
+                    # (revue du 21/09, 22 h) disait une lecture qui n'avait
+                    # pas lieu.
+                    annonce = (
+                        actualite_vocale.lecture_possible(tour_actualite)
+                        and self._budget.allow()
+                    )
+                    if annonce:
+                        await self._speak_sentence(
+                            actualite_vocale.ACCUSE_LECTURE, spoken
+                        )
+                    reprise = await asyncio.to_thread(
+                        actualite_vocale.relance_apres_non_reponse,
+                        tour_actualite,
+                        passe,
+                        lire if annonce else None,
+                        self._budget.allow,
+                    )
+                    await self._annoncer_lectures(lectures)
+                    if reprise:
+                        messages.extend(reprise)
+                        logger.warning(
+                            "voice actuality non-answer, reading then retrying"
+                        )
+                        continue
+                    if annonce:
+                        await self._speak_sentence(
+                            actualite_vocale.ACCUSE_LECTURE_RATEE, spoken
+                        )
                 if not tool_calls or not self._enable_tools:
                     # La PROMESSE SANS L'ACTE (23 août 2026) : « d'accord, je
                     # cherche du R&B sur YouTube pour toi » — dit, rien fait.
@@ -2055,7 +2101,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if tour_actualite is not None:
                 # §100, prononcé : de mémoire, ou en désaccord avec les sources.
                 epilogue = actualite_vocale.epilogue(
-                    tour_actualite, " ".join(spoken).strip()
+                    tour_actualite,
+                    " ".join(spoken).strip(),
+                    " ".join(spoken[debut_passe:]).strip(),
                 )
                 if epilogue:
                     await self._speak_sentence(epilogue, spoken)
@@ -2204,21 +2252,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             )
         )
         if tour is not None and self._tool_executor is not None:
-            lectures: list[dict] = []
-            executeur = self._tool_executor
-            budget = self._budget
-
-            def lire(nom: str, arguments: dict) -> dict:
-                # La lecture automatique compte dans le budget du tour, comme
-                # un appel du modèle (revue du 21/09 : elle passait à côté).
-                if not budget.allow():
-                    page = {"ok": False, "error": "Voice tool budget exceeded"}
-                else:
-                    budget.consume()
-                    page = executeur(nom, arguments)
-                lectures.append(page)
-                return page
-
+            lire, lectures = self._lecteur_budgete()
             try:
                 result = await asyncio.to_thread(
                     actualite_vocale.absorber_resultat, tour, name, args, result, lire
@@ -2228,22 +2262,44 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     "voice actuality: reading failed: %s", exc, exc_info=True
                 )
                 lectures.append({"ok": False, "error": str(exc)})
-            for page in lectures:
-                await self._queue.put(
-                    SessionEvent(
-                        kind="tool",
-                        tool_name="web_read",
-                        tool_ok=bool(page.get("ok")),
-                        detail=str(page.get("error") or page.get("content") or "")[
-                            :200
-                        ],
-                    )
-                )
+            await self._annoncer_lectures(lectures)
         return {
             "role": "tool",
             "tool_name": name,
             "content": json.dumps(result, ensure_ascii=False, default=str),
         }
+
+    def _lecteur_budgete(self):
+        """Un lecteur de page pour le code, qui compte dans le budget du tour
+        comme un appel du modèle (revue du 21/09 : la lecture automatique
+        passait à côté) et garde chaque page lue pour l'annoncer au panneau."""
+        lectures: list[dict] = []
+        executeur = self._tool_executor
+        budget = self._budget
+
+        def lire(nom: str, arguments: dict) -> dict:
+            if executeur is None:
+                page = {"ok": False, "error": "tools unavailable"}
+            elif not budget.allow():
+                page = {"ok": False, "error": "Voice tool budget exceeded"}
+            else:
+                budget.consume()
+                page = executeur(nom, arguments)
+            lectures.append(page)
+            return page
+
+        return lire, lectures
+
+    async def _annoncer_lectures(self, lectures: list) -> None:
+        for page in lectures:
+            await self._queue.put(
+                SessionEvent(
+                    kind="tool",
+                    tool_name="web_read",
+                    tool_ok=bool(page.get("ok")),
+                    detail=str(page.get("error") or page.get("content") or "")[:200],
+                )
+            )
 
     async def _speak_complete_sentences(self, pending: str, spoken: List[str]) -> str:
         while True:
