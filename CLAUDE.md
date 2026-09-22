@@ -260,6 +260,7 @@ après. Voir `docs/succes-client-mobile.md`.
 | **`X = AutreClasse.methode` fige l'objet fonction** | L'emprunt est fait à la définition de la classe. Patcher `AutreClasse.methode` ensuite n'atteint pas la copie : dans un test, patche la classe qui emprunte, pas celle qui prête. |
 | **Un refus de capacité ne lève PAS d'exception** | `ToolExecutor` transforme un refus en *résultat d'outil* (« Capability 'x' denied »). Le modèle le lit comme n'importe quelle sortie et enchaîne sur une réponse parfaitement fluide. Tout code qui conclut « pas d'exception donc ça a marché » écrit un faux SUCCESS. Le signal existe : l'événement `CAPABILITY_DENIED` sur le bus. |
 | **Aucune migration SQLite** | Six bases dans `~/.diapason/` ; chacune crée son schéma à l'ouverture. |
+| **Le VPS héberge la production de quelqu'un d'autre** | `diapason.flashprime.online` cohabite avec **flashprime.online**, en production sur la même machine (six conteneurs, nginx, PostgreSQL). Ne jamais éditer `sites-available/flashprime` ; `nginx -t` **et son vrai code de retour** avant tout `reload` — un `if nginx -t | sed …` teste le `sed`, pas nginx (22/09/2026). Voir [`deploy/vps/README.md`](deploy/vps/README.md). |
 
 ---
 
