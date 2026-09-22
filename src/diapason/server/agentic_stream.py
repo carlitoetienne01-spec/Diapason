@@ -82,6 +82,7 @@ from diapason.server.sources_officielles import (
     page_officielle,
     source_officielle,
 )
+from diapason.server.suite import avec_rappel
 from diapason.server.trousse_chat import MAX_CHARGEMENTS, TrousseChat
 
 logger = logging.getLogger("diapason.server")
@@ -386,6 +387,11 @@ async def stream_with_tools(
         # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
         # en prose. Le rappel au tour courant a produit le véritable appel.
         travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
+    # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après Haïti
+    # → « de quel pays tu parles ? ». Le rappel du sujet (server/suite.py),
+    # après la consigne des questions — qui se recolle au DERNIER système
+    # du fil, et ce doit être le prompt d'identité.
+    travail = avec_rappel(travail)
     # 20/09/2026 : « Qui est le président actuel du Canada ? » → « Justin
     # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question
     # d'actualité reçoit sa consigne au tour courant, sa réponse est retenue
@@ -556,7 +562,7 @@ async def stream_with_tools(
                     return
             outils_indisponibles = True
             interactive_questions = False
-            travail = consigne_sans_outils(list(messages))
+            travail = consigne_sans_outils(avec_rappel(messages))
             continue
 
         appels = [fragments[i] for i in sorted(fragments)]

@@ -31,6 +31,7 @@ import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
 
 from diapason.core.tool_turn import NO_TOOL_TURN_RE, turn_needs_tools
+from diapason.server.suite import rappel_pour_la_voix
 from diapason.speech.realtime import actualite_vocale
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
 
@@ -1275,6 +1276,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
         messages = hist + extra + [{"role": "user", "content": text}]
+        # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après
+        # Haïti recevait « de quel pays tu parles ? » au chat ; la voix
+        # reçoit le même rappel du sujet (server/suite.py).
+        rappel = rappel_pour_la_voix(hist, text)
+        if rappel is not None:
+            messages.append(rappel)
         # 21/09/2026 : la consigne d'actualité est DANS l'assemblage, donc
         # dans la spéculation aussi — posée seulement à l'adoption, la
         # réponse préparée pendant le silence aurait été bâtie sans elle, et

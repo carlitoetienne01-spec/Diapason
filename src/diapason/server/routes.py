@@ -37,6 +37,7 @@ from diapason.server.reponses_longues import (
     prolonger_flux,
     quantite_du_tour,
 )
+from diapason.server.suite import avec_rappel
 from diapason.server.tour_leger import Routage, choisir_le_modele
 from diapason.telemetry.chat_latency import ChatLatency, measure_response
 
@@ -1252,6 +1253,9 @@ async def _handle_stream(
             app_config,
             client_supplied_system=client_system,
         )
+    # Le rappel du sujet (« ce pays » → l'échange précédent), comme sur le
+    # chemin outillé — voir server/suite.py.
+    messages = avec_rappel(messages)
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     # Last user message — recorded as the trace query.

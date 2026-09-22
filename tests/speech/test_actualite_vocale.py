@@ -730,3 +730,35 @@ class TestLEpilogueJugeLaDernierePasse:
         assert journal["spoken"][-1].startswith(
             "Attention : les sources désignent Mark Carney"
         ), "le désaccord se juge sur la dernière passe, pas sur l'aveu d'avant"
+
+
+class TestLaSuiteHeriteDuSujetALaVoix:
+    @pytest.mark.asyncio
+    async def test_ce_pays_recoit_le_rappel_de_l_echange_precedent(self):
+        """21/09 (23 h) : « Raconte-moi l'histoire de ce pays » après Haïti
+        recevait « de quel pays tu parles ? » au chat ; la voix assemble le
+        même rappel (server/suite.py), dans la spéculation comme à l'adoption."""
+        session, journal = harnais(
+            ["Haïti est devenue indépendante en 1804."],
+            historique=[
+                {"role": "user", "content": "Qui est le président actuel d'Haïti ?"},
+                {
+                    "role": "assistant",
+                    "content": "Il n'y a pas de président élu ; Alix Didier Fils-Aimé "
+                    "dirige le gouvernement intérimaire.",
+                },
+            ],
+        )
+        await session._respond_to_text("Raconte-moi l'histoire de ce pays")
+        premier = journal["rounds"][0]
+        rappels = [
+            m
+            for m in premier
+            if m["role"] == "system"
+            and "La demande renvoie à ce qui précède" in m["content"]
+        ]
+        assert len(rappels) == 1
+        assert "Fils-Aimé" in rappels[0]["content"]
+        assert premier.index(rappels[0]) > premier.index(
+            {"role": "user", "content": "Raconte-moi l'histoire de ce pays"}
+        ), "après la demande"
