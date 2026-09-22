@@ -1,0 +1,55 @@
+# La référence d'API, seule et en anglais.
+#
+# 22/09/2026. Le site est bilingue, et mkdocs-static-i18n construit chaque
+# page dans les deux langues. Pour la référence d'API — 794 pages générées
+# depuis des docstrings anglaises — la copie française est le même texte
+# anglais à une autre adresse, et les deux exemplaires déclarent les mêmes
+# ancres : 1 686 avertissements « Multiple primary URLs found », et des
+# références croisées qui peuvent pointer vers la mauvaise copie.
+#
+# Elle se construit donc à part, sans i18n, et se dépose dans le site
+# principal. Voir deploy/vps/deployer-site.sh.
+#
+#     .venv/bin/python scripts/gen_reference_docs.py
+#     .venv/bin/python -m mkdocs build -f mkdocs.api.yml -d site/api-reference
+
+site_name: Diapason — API Reference
+site_url: https://diapason.flashprime.online/docs/api-reference/
+repo_url: https://github.com/carlitoetienne01-spec/Diapason
+docs_dir: docs/api-reference
+use_directory_urls: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.top
+    - content.code.copy
+  palette:
+    scheme: default
+
+extra_css:
+  - ../stylesheets/extra.css
+  - ../stylesheets/ardechine.css
+
+plugins:
+  - search
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences

@@ -58,10 +58,33 @@ extra_css:
 plugins:
   - search:
       separator: '[\s\-\._]+'
-  - gen-files:
-      scripts:
-        - docs/gen_ref_pages.py
-        - docs/gen_install_script.py
+  # Bilingue (22/09/2026). Pendant le chantier de traduction l'anglais reste
+  # la langue par défaut — le site ne doit pas se casser entre deux pages —
+  # et le français vit sous /fr/. La bascule (français par défaut, anglais
+  # sous /en/) se fera d'un seul coup, quand les 102 pages seront traduites.
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: fr
+          name: Français
+          build: true
+          site_name: Diapason
+          site_description: >-
+            Un assistant personnel dont le modèle, la voix et la vision
+            s'exécutent sur ta machine.
+  # `gen-files` retiré le 22/09/2026 : il fabriquait la référence d'API en
+  # MÉMOIRE, et mkdocs-static-i18n ne voit pas les fichiers virtuels — la
+  # référence disparaissait du site bilingue, avec 1 606 avertissements, quel
+  # que soit l'ordre des deux greffons. Elle s'écrit maintenant sur le disque
+  # avant la construction, et n'est pas versionnée :
+  #     .venv/bin/python scripts/gen_reference_docs.py
   - literate-nav:
       nav_file: SUMMARY.md
   - mkdocstrings:
@@ -154,6 +177,7 @@ extra:
 # télécharger l'application. Le guide de contribution et les validations
 # techniques, eux, restent publiés : ils s'adressent aux contributeurs.
 exclude_docs: |
+  api-reference/
   development/conversations-sync.md
   development/diagnostic-performances-*.md
   development/discussion-verre-satine.md
@@ -199,7 +223,6 @@ nav:
       - Device Mesh: architecture/device-mesh.md
       - Threat Model: security/threat-model.md
       - Design Principles: architecture/design-principles.md
-  - API Reference: api-reference/
   - User Guide:
       - CLI: user-guide/cli.md
       - Pearl CLI: user-guide/pearl.md

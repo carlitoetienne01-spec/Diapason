@@ -150,3 +150,9 @@ oj-debug.*.json
 
 # Intermédiaire du bundle d'overlay ; seul overlay_page.html est versionné.
 frontend/.overlay-build/
+
+# La référence d'API est générée avant chaque construction du site
+# (scripts/gen_reference_docs.py) : 794 pages qui n'ont rien à faire dans
+# l'historique.
+docs/api-reference/
+docs/install.sh

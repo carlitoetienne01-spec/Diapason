@@ -33,8 +33,18 @@ if [ -n "$sales" ]; then
   fi
 fi
 
-echo "→ construction de la documentation"
+echo "→ génération de la référence d'API sur le disque"
+# Elle était fabriquée en mémoire par mkdocs-gen-files, que mkdocs-static-i18n
+# ne voit pas : elle disparaissait du site bilingue (22/09/2026).
+.venv/bin/python scripts/gen_reference_docs.py
+
+echo "→ construction du site bilingue"
 .venv/bin/python -m mkdocs build --clean --quiet
+
+echo "→ construction de la référence d'API (anglais seul)"
+# À part : deux exemplaires d'une même page déclarent les mêmes ancres, et
+# les références croisées pointaient vers la mauvaise copie.
+.venv/bin/python -m mkdocs build -f mkdocs.api.yml -d site/api-reference --quiet
 
 taille="$(du -sh site | cut -f1)"
 fichiers="$(find site -type f | wc -l | tr -d ' ')"
