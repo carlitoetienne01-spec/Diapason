@@ -34,14 +34,16 @@ from pydantic import BaseModel, Field
 from diapason.agents.research_loop import (
     DEFAULT_PLANNER_MODEL,
     ResearchAgent,
+    WebHit,
 )
 from diapason.connectors.embeddings import OllamaEmbedder
 from diapason.connectors.hybrid_search import HybridSearch
 from diapason.connectors.store import KnowledgeStore
 from diapason.core.config import DEFAULT_CONFIG_DIR, DiapasonConfig, load_config
-from diapason.core.types import TelemetryRecord
+from diapason.core.types import Message, Role, TelemetryRecord
 from diapason.engine._base import InferenceEngine
 from diapason.engine._discovery import get_engine
+from diapason.server.suite import rappel_pour_la_voix
 from diapason.telemetry.store import TelemetryStore
 
 logger = logging.getLogger(__name__)
@@ -328,6 +330,11 @@ class _LiveGPUSampler:
 # ---------------------------------------------------------------------------
 
 
+class HistoryMessage(BaseModel):
+    role: str
+    content: str = ""
+
+
 class ResearchRequest(BaseModel):
     query: str = Field(..., description="Natural-language question to research.")
     # Preferred planner model from the active chat selector. Server-side
@@ -336,6 +343,140 @@ class ResearchRequest(BaseModel):
     model: Optional[str] = Field(
         default=None, description="Preferred planner model for this request."
     )
+    # 22/09/2026 : « Donne-moi les liens de ces sites web » partait seul —
+    # sans les tours d'avant, « ces sites » n'avait pas de référent et
+    # l'agent rendait des liens tirés des courriels.
+    history: List[HistoryMessage] = Field(
+        default_factory=list,
+        description="Previous user/assistant turns of the conversation, oldest first.",
+    )
+
+
+# Les tours d'avant qui partent avec la question : assez pour un « ces
+# sites », pas tout le fil (le planificateur a 16 k de contexte).
+HISTORY_TURNS = 6
+HISTORY_CHARS = 1500
+
+# Ce que la demande dit du web : « sites web », « sur internet », « en ligne »,
+# « des liens ». Une ligne de plus pour le planificateur, qui cherchait ces
+# mots dans les courriels (22/09/2026).
+_DEMANDE_LE_WEB = re.compile(
+    # Univoques seulement (revue du 22/09 : « les liens entre Alice et
+    # Bob », « en ligne de compte », « sur Google Drive » recevaient la
+    # consigne web).
+    r"\b(?:sites? (?:web|internet)|pages? web|recherche (?:web|internet)|"
+    r"sur (?:internet|le web|le net|la toile)|"
+    r"(?:cherche|recherche|regarde|trouve|vérifie|verifie)[^.?!]{0,30}\ben ligne|"
+    r"(?:donne|envoie|mets|partage|liste)[^.?!]{0,30}\b(?:les |des |leurs |ses )?"
+    r"(?:liens|urls|adresses web)|"
+    r"online|websites?|on the (?:web|internet)|web search)\b",
+    re.I,
+)
+CONSIGNE_WEB = (
+    "The user asks for the public web (websites, links, online): call "
+    "web_search for this, not only the personal corpus."
+)
+
+
+def _history_messages(history: List[HistoryMessage]) -> List[Message]:
+    out: List[Message] = []
+    for m in history:
+        role = m.role.lower()
+        if role not in ("user", "assistant"):
+            continue
+        content = (m.content or "").strip()
+        if not content:
+            continue
+        if len(content) > HISTORY_CHARS:
+            content = content[:HISTORY_CHARS].rsplit(" ", 1)[0] + "…"
+        out.append(
+            Message(
+                role=Role.USER if role == "user" else Role.ASSISTANT, content=content
+            )
+        )
+    return out[-HISTORY_TURNS:]
+
+
+def _hints(query: str, history: List[HistoryMessage]) -> List[str]:
+    """What the code knows about this query: its referent, and that it
+    names the web."""
+    hints: List[str] = []
+    rappel = rappel_pour_la_voix(
+        [{"role": m.role, "content": m.content} for m in history], query
+    )
+    if rappel is not None:
+        hints.append(rappel["content"])
+    if _DEMANDE_LE_WEB.search(query):
+        hints.append(CONSIGNE_WEB)
+    return hints
+
+
+def _web_searcher():
+    """The public-web search for the planner, on the same tool as the chat
+    (dated results, region ca-fr). None when the tool cannot be built."""
+    try:
+        from diapason.tools.web_search import WebSearchTool
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research: web_search unavailable: %s", exc)
+        return None
+    outil = WebSearchTool(max_results=8)
+
+    def chercher(query: str, recency: Optional[str], news: bool) -> List[WebHit]:
+        params: Dict[str, Any] = {"query": query, "news": news}
+        if recency:
+            params["recency"] = recency
+        resultat = outil.execute(**params)
+        if not resultat.success:
+            # « Zéro moteur joint, c'est une panne ; des moteurs qui
+            # répondent vide, c'est un vide » (web_search.py) : la panne
+            # remonte, elle ne devient pas « 0 résultat » (revue du 22/09).
+            raise RuntimeError((resultat.content or "web_search failed").strip()[:200])
+        extraits = _extraits_par_numero(resultat.content or "")
+        if (resultat.metadata or {}).get("mode") == "fetch":
+            # Une URL dans la requête : web_search a LU la page (web_read),
+            # dont le texte n'a pas de ligne « Extrait: ». Le corps devient
+            # l'extrait de l'unique source (revue du 22/09 : lecture perdue).
+            extraits = {1: _corps_de_page(resultat.content or "")}
+        hits: List[WebHit] = []
+        for src in (resultat.metadata or {}).get("sources") or []:
+            if not isinstance(src, dict) or not src.get("url"):
+                continue
+            hits.append(
+                WebHit(
+                    title=str(src.get("title") or src["url"]),
+                    url=str(src["url"]),
+                    site=str(src.get("sender") or ""),
+                    date=str(src.get("date") or ""),
+                    snippet=extraits.get(int(src.get("ref") or 0), ""),
+                )
+            )
+        return hits
+
+    return chercher
+
+
+_EXTRAIT = re.compile(
+    r"^\[(\d+)\] .*?\nSource: .*?\nExtrait: (.*?)(?=\n\n\[\d+\] |\Z)", re.S | re.M
+)
+
+
+def _extraits_par_numero(contenu: str) -> Dict[int, str]:
+    """Les extraits du texte numéroté de web_search, par [N]."""
+    return {int(n): " ".join(t.split()) for n, t in _EXTRAIT.findall(contenu)}
+
+
+EXTRAIT_DE_PAGE = 1500
+
+
+def _corps_de_page(contenu: str) -> str:
+    """Ce qui suit la ligne « Source: » d'une page lue, borné."""
+    _entete, sep, corps = contenu.partition("\nSource: ")
+    if sep:
+        corps = corps.partition("\n")[2]
+    corps = " ".join(corps.split())
+    if len(corps) > EXTRAIT_DE_PAGE:
+        corps = corps[:EXTRAIT_DE_PAGE].rsplit(" ", 1)[0] + "…"
+    return corps
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +523,7 @@ async def _stream_research(
     active_engine_key: str = "",
     active_model: str = "",
     request_model: str = "",
+    history: Optional[List[HistoryMessage]] = None,
 ) -> AsyncGenerator[str, None]:
     """Drive ResearchAgent on a worker thread; yield SSE frames as they land.
 
@@ -427,7 +569,10 @@ async def _stream_research(
             model=model,
             clarify_handler=lambda question: _WEB_CLARIFY_RESPONSE,
             on_event=on_event,
+            web_search=_web_searcher(),
         )
+        tours_d_avant = _history_messages(list(history or []))
+        indices = _hints(query, list(history or []))
     except Exception as exc:  # noqa: BLE001
         logger.exception("research: setup failed before agent could run: %s", exc)
         yield _sse(
@@ -460,7 +605,7 @@ async def _stream_research(
         t0 = time.time()
         sampler.start()
         try:
-            result = agent.run(query)
+            result = agent.run(query, history=tours_d_avant, hints=indices)
             usage_dict = dict(result.usage)
             totals = sampler.stop()
             # Persist token usage *and* GPU energy/power so /v1/telemetry/energy
@@ -524,10 +669,14 @@ async def _stream_research(
             if etype == "final_answer":
                 final_answer = event.get("text", "")
                 final_sources = list(event.get("sources") or [])
+                # Les sources renumérotées AVANT le texte : le texte cite
+                # déjà [1], [2] au sens de cette liste, et une pastille posée
+                # sur les numéros d'origine pointait vers un courriel (revue
+                # du 22/09 : « CodinGame [1] » → relevé de la Banque
+                # Nationale).
+                yield _sse({"type": "final_sources", "sources": final_sources})
                 for piece in _chunk_synthesis(final_answer or ""):
                     yield _sse({"type": "synthesis", "text": piece})
-                if final_sources:
-                    yield _sse({"type": "final_sources", "sources": final_sources})
                 continue
 
             yield _sse(event)
@@ -587,6 +736,7 @@ async def research(req: ResearchRequest, request: Request) -> StreamingResponse:
             active_engine_key=active_engine_key,
             active_model=active_model,
             request_model=req.model or "",
+            history=req.history,
         ),
         media_type="text/event-stream",
         headers={

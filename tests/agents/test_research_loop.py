@@ -616,3 +616,277 @@ def test_final_answer_event_carries_renumbered_sources(
     # Two cited sources, in the order they appeared in the synthesis.
     assert [s["ref"] for s in final["sources"]] == [1, 2]
     assert [s["title"] for s in final["sources"]] == ["B", "A"]
+
+
+# ---------------------------------------------------------------------------
+# 22/09/2026 : le web, les tours d'avant, les indices
+# ---------------------------------------------------------------------------
+
+
+def _web_call(call_id: str, query: str, **extra: Any) -> Dict[str, Any]:
+    return {
+        "content": "",
+        "tool_calls": [
+            {
+                "id": call_id,
+                "name": "web_search",
+                "arguments": json.dumps({"query": query, **extra}),
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+class TestLeWebDansLaRechercheApprofondie:
+    """« Fais-moi une recherche [sur] des sites web de jeux de programmation »
+    sous la recherche approfondie recevait « votre corpus n'a rien », puis une
+    liste de mémoire avec un site inventé ; « Donne-moi les liens de ces
+    sites » rendait des liens tirés des courriels (22/09/2026)."""
+
+    def test_sans_web_le_planificateur_ne_voit_pas_l_outil(self, stub_search):
+        from diapason.agents.research_loop import WebHit, WebSearcher  # noqa: F401
+
+        engine = _MockEngine([_text_response("Rien dans le corpus.")])
+        ResearchAgent(engine, stub_search, model="mock").run("q")
+        noms = [t["function"]["name"] for t in engine.calls[0]["tools"]]
+        assert noms == ["search", "clarify"]
+        assert "web" not in engine.calls[0]["messages"][0].content.split("\n")[0]
+
+    def test_avec_web_l_outil_est_offert_et_ses_resultats_cites(self, stub_search):
+        from diapason.agents.research_loop import WebHit
+
+        appels: List[Any] = []
+
+        def web(query: str, recency: Any, news: bool) -> List[WebHit]:
+            appels.append((query, recency, news))
+            return [
+                WebHit(
+                    title="CodinGame",
+                    url="https://www.codingame.com/",
+                    site="codingame.com",
+                    date="2026-09-01",
+                    snippet="Learn by playing.",
+                ),
+                WebHit(
+                    title="Codewars",
+                    url="https://www.codewars.com/",
+                    site="codewars.com",
+                ),
+            ]
+
+        engine = _MockEngine(
+            [
+                _web_call("w1", "programming games websites", recency="year"),
+                _text_response("CodinGame [1] et Codewars [2]."),
+            ]
+        )
+        evenements: List[Dict[str, Any]] = []
+        agent = ResearchAgent(
+            engine,
+            stub_search,
+            model="mock",
+            web_search=web,
+            on_event=evenements.append,
+        )
+        result = agent.run(
+            "Fais-moi une recherche de sites web de jeux de programmation"
+        )
+        noms = [t["function"]["name"] for t in engine.calls[0]["tools"]]
+        assert noms == ["search", "web_search", "clarify"]
+        assert appels == [("programming games websites", "year", False)]
+        assert "web_search(query, recency=None, news=False)" in (
+            engine.calls[0]["messages"][0].content
+        )
+        assert "Web rules:" in engine.calls[0]["messages"][0].content
+        assert result.answer == "CodinGame [1] et Codewars [2]."
+        assert result.tool_calls[0].tool_name == "web_search"
+        assert result.tool_calls[0].num_results == 2
+        appel = next(e for e in evenements if e["type"] == "search_call")
+        assert appel["arguments"]["tool"] == "web_search"
+        resultat = next(e for e in evenements if e["type"] == "search_result")
+        assert resultat["tool"] == "web_search"
+        assert resultat["sources"][0] == {
+            "ref": 1,
+            "title": "CodinGame",
+            "sender": "codingame.com",
+            "date": "2026-09-01",
+            "source": "web",
+            "source_id": "",
+            "url": "https://www.codingame.com/",
+        }, "la source web a la forme des sources du corpus, avec son URL"
+        outil = next(m for m in engine.calls[1]["messages"] if m.role.value == "tool")
+        lu = json.loads(outil.content)
+        assert lu["hits"][0]["url"] == "https://www.codingame.com/"
+        assert lu["hits"][0]["snippet"] == "Learn by playing."
+        final = next(e for e in evenements if e["type"] == "final_answer")
+        assert [s["url"] for s in final["sources"]] == [
+            "https://www.codingame.com/",
+            "https://www.codewars.com/",
+        ]
+
+    def test_les_numeros_se_suivent_entre_corpus_et_web(self, stub_search):
+        from diapason.agents.research_loop import WebHit
+
+        stub_search.search.return_value = [
+            _mk_hit(source="gmail", document_id="gmail:abc", title="Un courriel")
+        ]
+        engine = _MockEngine(
+            [
+                _search_call("s1", "jeux"),
+                _web_call("w1", "jeux de programmation"),
+                _text_response("Le courriel [1] et le site [2]."),
+            ]
+        )
+        agent = ResearchAgent(
+            engine,
+            stub_search,
+            model="mock",
+            web_search=lambda q, r, n: [WebHit(title="Site", url="https://s.io/")],
+        )
+        result = agent.run("q")
+        assert result.answer == "Le courriel [1] et le site [2]."
+        outil_web = [m for m in engine.calls[2]["messages"] if m.role.value == "tool"][
+            -1
+        ]
+        assert json.loads(outil_web.content)["hits"][0]["ref"] == 2
+
+    def test_un_echec_du_web_est_une_erreur_lue_par_le_modele_pas_zero_resultat(
+        self, stub_search
+    ):
+        """Revue du 22/09 : moteurs en panne → « 0 résultat », et le modèle
+        concluait « le web n'a rien » (§100)."""
+
+        def web(q, r, n):
+            raise RuntimeError("réseau injoignable")
+
+        engine = _MockEngine(
+            [_web_call("w1", "x"), _text_response("Je n'ai pas pu chercher.")]
+        )
+        evenements: List[Dict[str, Any]] = []
+        agent = ResearchAgent(
+            engine,
+            stub_search,
+            model="mock",
+            web_search=web,
+            on_event=evenements.append,
+        )
+        result = agent.run("q")
+        assert result.tool_calls == [], "un appel qui n'a pas eu lieu ne compte pas"
+        outil = next(m for m in engine.calls[1]["messages"] if m.role.value == "tool")
+        lu = json.loads(outil.content)
+        assert "web_search failed: RuntimeError: réseau injoignable" in lu["error"]
+        assert "never say the web has nothing" in lu["error"]
+        assert "num_results" not in lu
+        resultat = next(e for e in evenements if e["type"] == "search_result")
+        assert resultat["error"] == "RuntimeError: réseau injoignable"
+        assert "num_hits" not in resultat, "pas de « 0 results » pour un pas raté"
+
+    def test_une_requete_vide_ne_cherche_pas_ne_debite_pas_n_affiche_rien(
+        self, stub_search
+    ):
+        appels: List[Any] = []
+        engine = _MockEngine(
+            [
+                {
+                    "content": "",
+                    "tool_calls": [
+                        {"id": "w1", "name": "web_search", "arguments": "{pas du json"}
+                    ],
+                    "usage": {},
+                },
+                _text_response("ok"),
+            ]
+        )
+        evenements: List[Dict[str, Any]] = []
+        agent = ResearchAgent(
+            engine,
+            stub_search,
+            model="mock",
+            web_search=lambda q, r, n: appels.append(q) or [],
+            on_event=evenements.append,
+        )
+        result = agent.run("q")
+        assert appels == [] and result.tool_calls == []
+        assert [e["type"] for e in evenements] == ["final_answer"]
+        outil = next(m for m in engine.calls[1]["messages"] if m.role.value == "tool")
+        assert json.loads(outil.content) == {
+            "error": "web_search needs a non-empty query"
+        }
+
+    def test_web_search_sans_outil_branche_est_un_outil_inconnu(self, stub_search):
+        engine = _MockEngine([_web_call("w1", "x"), _text_response("ok")])
+        ResearchAgent(engine, stub_search, model="mock").run("q")
+        outil = next(m for m in engine.calls[1]["messages"] if m.role.value == "tool")
+        assert "unknown tool 'web_search'" in outil.content
+        assert "'search', 'clarify'" in outil.content
+
+    def test_clarify_apres_une_recherche_web_est_permis(self, stub_search):
+        from diapason.agents.research_loop import WebHit
+
+        engine = _MockEngine(
+            [
+                _web_call("w1", "x"),
+                {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "name": "clarify",
+                            "arguments": json.dumps({"question": "Lequel ?"}),
+                        }
+                    ],
+                    "usage": {},
+                },
+                _text_response("ok"),
+            ]
+        )
+        agent = ResearchAgent(
+            engine,
+            stub_search,
+            model="mock",
+            web_search=lambda q, r, n: [WebHit(title="S", url="https://s.io/")],
+            clarify_handler=lambda q: "celui-là",
+        )
+        agent.run("q")
+        outil = [m for m in engine.calls[2]["messages"] if m.role.value == "tool"][-1]
+        assert json.loads(outil.content)["user_response"] == "celui-là"
+
+
+class TestLesToursDAvantEtLesIndices:
+    def test_l_historique_precede_la_question_et_les_indices_la_suivent(
+        self, stub_search
+    ):
+        from diapason.core.types import Message, Role
+
+        engine = _MockEngine([_text_response("ok")])
+        agent = ResearchAgent(engine, stub_search, model="mock")
+        agent.run(
+            "Donne-moi les liens de ces sites",
+            history=[
+                Message(role=Role.USER, content="Des sites de jeux de programmation ?"),
+                Message(role=Role.ASSISTANT, content="CodinGame, Codewars."),
+                Message(role=Role.SYSTEM, content="pas repris"),
+                Message(role=Role.ASSISTANT, content="   "),
+            ],
+            hints=["« ces sites » : CodinGame, Codewars.", "  ", "web"],
+        )
+        roles = [(m.role.value, m.content) for m in engine.calls[0]["messages"]]
+        assert roles[1:] == [
+            ("user", "Des sites de jeux de programmation ?"),
+            ("assistant", "CodinGame, Codewars."),
+            ("user", "Donne-moi les liens de ces sites"),
+            ("system", "« ces sites » : CodinGame, Codewars."),
+            ("system", "web"),
+        ], "système, tours d'avant, question, indices — rien de vide"
+
+    def test_sans_historique_ni_indice_rien_ne_change(self, stub_search):
+        engine = _MockEngine([_text_response("ok")])
+        ResearchAgent(engine, stub_search, model="mock").run("q")
+        assert [m.role.value for m in engine.calls[0]["messages"]] == ["system", "user"]
+
+    def test_la_synthese_rappelle_qu_une_suite_porte_sur_le_sujet_d_avant(
+        self, stub_search
+    ):
+        engine = _MockEngine([_text_response("ok")])
+        ResearchAgent(engine, stub_search, model="mock").run("q")
+        assert "A follow-up" in engine.calls[0]["messages"][0].content

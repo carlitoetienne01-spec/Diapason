@@ -87,9 +87,12 @@ export interface ResearchSearchTrace {
   query: string;
   person?: string;
   timeRange?: TimeRange | string;
+  // 22/09/2026 : la recherche approfondie va aussi sur le web ; le pas le dit.
+  tool?: string;
   status: 'pending' | 'complete';
   numHits?: number;
   topTitles?: string[];
+  error?: string;
 }
 
 export type ResearchEvent =
@@ -99,14 +102,22 @@ export type ResearchEvent =
         query: string;
         person?: string;
         time_range?: TimeRange | string;
+        tool?: string;
       };
     }
   | {
       type: 'search_result';
-      num_hits: number;
+      num_hits?: number;
       top_titles?: string[];
       sources?: ResearchSource[];
+      tool?: string;
+      // 22/09/2026 : une recherche web qui n'a pas pu se faire n'est pas
+      // une recherche qui n'a rien trouvé.
+      error?: string;
     }
+  // 22/09/2026 : la liste renumérotée que le texte cite — envoyée AVANT
+  // le texte ; sans elle, la pastille [1] d'un site pointait vers un courriel.
+  | { type: 'final_sources'; sources: ResearchSource[] }
   | { type: 'synthesis'; text: string }
   | {
       type: 'system_metrics';
@@ -114,7 +125,7 @@ export type ResearchEvent =
       energy_j: number;
       duration_s: number;
     }
-  | { type: 'done'; usage?: TokenUsage }
+  | { type: 'done'; usage?: TokenUsage; sources?: ResearchSource[] }
   | { type: 'error'; message: string };
 
 export interface LiveEnergyMetrics {

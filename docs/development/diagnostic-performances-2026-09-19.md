@@ -622,7 +622,31 @@ n'ai pas pu lire la source. » corrige l'accusé quand la page refuse sans
 budget pour chercher autrement ; le désaccord avec les sources se juge sur
 la dernière passe, un « de mémoire » dit avant la recherche ne le tait plus.
 
-Ce que le 9b hybride (couches SSM + attention) ajoute : chaque tour
+### La recherche approfondie sans le web ni la suite — 22 septembre
+
+Dans l'app, bouton « Recherche approfondie » enclenché : « Fais-moi une
+recherche [sur] des sites web qui proposent des jeux de programmation » →
+« La recherche dans votre corpus personnel n'a pas retourné de résultats
+pertinents », puis une liste « basée sur mes connaissances générales »
+avec « Sweatco » (inventé) et Codewars deux fois ; « Donne-moi les liens de
+ces sites web » → « Voici les liens de sites web trouvés dans vos
+documents » : l'installateur de Diapason, une issue GitHub, la Banque
+Nationale, Mobbin. Deux causes : `/api/research` ne recevait que la
+question (« ces sites » sans référent), et l'agent n'avait que le corpus
+(`search`) et `clarify` — le web lui était fermé, et son prompt lui
+interdisait sa mémoire, qu'il a utilisée quand même.
+
+Trois pièces : la requête porte les six derniers tours (`history`, 1 500
+caractères par tour) et l'agent les place avant la question ; le rappel du
+sujet de `server/suite.py` et une consigne « the user asks for the web »
+(`_DEMANDE_LE_WEB` : sites web, sur internet, en ligne, des liens…) suivent
+la question ; l'agent reçoit `web_search` (le même outil que le chat,
+résultats datés, région ca-fr) avec les règles : le corpus est la vie de
+l'utilisateur, le monde public va au web, un corpus vide appelle le web
+avant toute réponse, jamais la mémoire. Les résultats web sont des sources
+comme les autres (`source: "web"`, l'URL dans `url`), numérotés à la suite
+du corpus ; le pas de la chronologie dit « Web search ».
+
 retraite ce qui suit le dernier point de contrôle utilisable, environ 700 à
 1 000 jetons (contexte frais + dernier échange), d'où le plancher de 2,7 à
 3,0 s. Sur huit tours de 180 à 220 jetons de réponse chacun (historique de

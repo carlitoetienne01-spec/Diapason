@@ -69,6 +69,10 @@ export async function* streamResearch(
   query: string,
   model?: string,
   signal?: AbortSignal,
+  // 22/09/2026 : « Donne-moi les liens de ces sites web » partait seul —
+  // sans les tours d'avant, « ces sites » n'avait pas de référent et la
+  // recherche rendait des liens tirés des courriels.
+  history: Array<{ role: string; content: string }> = [],
 ): AsyncGenerator<ResearchEvent> {
   // /api/research is mounted at the server root — strip any trailing /v1
   // from the base so configurations like "http://host:8000/v1" still resolve.
@@ -76,7 +80,7 @@ export async function* streamResearch(
   const response = await fetch(`${base}/api/research`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query, ...(model ? { model } : {}) }),
+    body: JSON.stringify({ query, history, ...(model ? { model } : {}) }),
     signal,
   });
 

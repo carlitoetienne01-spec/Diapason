@@ -87,7 +87,7 @@ function TimelineStep({
           color: active ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
         }}
       >
-        Search {index}
+        {trace.tool === 'web_search' ? 'Web search' : 'Search'} {index}
       </div>
 
       <div
@@ -115,6 +115,13 @@ function TimelineStep({
             className="research-shimmer absolute inset-y-0 w-1/4"
             style={{ background: 'var(--color-accent)' }}
           />
+        </div>
+      ) : trace.error ? (
+        <div
+          className="text-[11px] mt-1"
+          style={{ color: 'var(--color-error)' }}
+        >
+          failed: {trace.error}
         </div>
       ) : trace.numHits != null ? (
         <div

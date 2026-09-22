@@ -2,6 +2,8 @@
 
 A multi-hop research agent that searches across your indexed documents, cross-references information, and returns answers with citations. It reasons through complex queries step by step, pulling context from multiple sources in your local knowledge base.
 
+In the desktop app (the **Deep Research** toggle next to the input), the agent also has `web_search`: questions about the public world — websites, links, news, "on the internet" — go to the web, and a corpus search that returns nothing relevant is followed by a web search rather than an answer from the model's memory. Web results are cited like corpus hits, with their URL. The previous turns of the conversation travel with each research request, so a follow-up such as "give me the links of these sites" refers to what was just discussed (22 September 2026: it used to be sent alone, and came back with links pulled from e-mails).
+
 ## Quickstart (5 minutes)
 
 ### 1. Install and initialize

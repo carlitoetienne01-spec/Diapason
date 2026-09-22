@@ -4,7 +4,15 @@ A small, self-contained planner-executor loop:
 
 * the planner is supplied by the caller (the web endpoint resolves it from
   config, falling back to ``gemma4:31b`` on Ollama for legacy installs),
-* the only tool it can call is :meth:`HybridSearch.search`,
+* it can call :meth:`HybridSearch.search` over the corpus and — when the
+  caller wires one — a ``web_search`` over the public web (22 Sept 2026:
+  « Fais-moi une recherche [sur] des sites web qui proposent des jeux de
+  programmation » under Deep Research got « your corpus has nothing »,
+  then a list from the model's memory with an invented site; the
+  follow-up « Donne-moi les liens de ces sites » got links pulled from
+  the user's e-mails — the request was stateless and web-less),
+* it receives the previous turns of the conversation (``history``) so a
+  follow-up like « ces sites » has a referent,
 * it gets up to ``max_iterations`` tool calls,
 * tool results are trimmed before re-entering the context window, and
 * the final reply must cite specific hits.
@@ -22,7 +30,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from diapason.connectors.hybrid_search import HybridSearch, SearchHit
 from diapason.core.types import Message, Role, ToolCall
@@ -127,15 +135,46 @@ SEARCH_TOOL_SPEC: Dict[str, Any] = {
 }
 
 
-SYSTEM_PROMPT = """You are a research assistant with access to the user's personal knowledge corpus.
+WEB_SEARCH_TOOL_SPEC: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": (
+            "Search the public web (news and general pages). Use it when the "
+            "question is about the world rather than the user's own documents, "
+            "when the user asks for websites, links, or 'on the web', or when "
+            "the corpus search returned nothing relevant. Returns numbered "
+            "results with title, site, date and URL; cite them as [N]."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query."},
+                "recency": {
+                    "type": "string",
+                    "enum": ["day", "week", "month", "year"],
+                    "description": "Only results from the last day/week/month/year.",
+                },
+                "news": {
+                    "type": "boolean",
+                    "description": "Search news outlets first (dated articles).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+SYSTEM_PROMPT = """You are a research assistant with access to the user's personal knowledge corpus{and_the_web}.
 
 The user's corpus contains data from these sources only:
 {available_sources}
 
-You answer questions by calling two tools:
+You answer questions by calling these tools:
 
     search(query, person=None, time_range=None, sources=None, limit=20)
-    clarify(question)
+{web_search_line}    clarify(question)
 
 Strategy:
   1. If the user names a person, ALWAYS pass `person=` rather than relying on lexical match. Hybrid search will fuzzy-match name or address fragments.
@@ -147,15 +186,27 @@ Strategy:
   6. If the first structured search returns nothing useful, broaden with a semantic query and drop filters one at a time.
   7. You have a clarify tool. Only use it AFTER at least one search attempt. Use it when: you found multiple ambiguous matches (e.g. 3 different people named John), search returned zero results and the query might need reframing, or the scope is too broad to synthesize meaningfully. Never use clarify before searching — always try first.
   8. After receiving a clarify response, use the information to construct a precise search with the correct person, time_range, sources, and query parameters. Only use an empty query when structured filters carry the request; never send a search with no concrete parameters. Extract every concrete signal from the user's reply (names, dates, topics, sources) and put it on the call.
-  9. Tool calls — search AND clarify — share a budget of 5 total. Spend wisely.
-
+  9. Tool calls — search, web_search AND clarify — share a budget of 5 total. Spend wisely.
+{web_search_rules}
 Synthesis rules:
   - Cite sources as individual numbers in square brackets. Always separate — write [4] [7] [20], never [4, 7, 20]. Never format citations as markdown links. Just the number in brackets: [1]. The `ref` field on each hit is the citation number.
   - Quote sender / date / subject when relevant — the user wants attribution.
   - If the search returned nothing relevant, say so plainly. Do not invent results.
   - Only state facts that appear in the retrieved search results. Never supplement with your own knowledge or training data. If you are unsure whether a fact came from the search results, do not include it.
+  - A follow-up ("these sites", "his address", "that meeting") refers to the previous turns of the conversation shown above: answer about THAT subject; never answer with unrelated records that merely match the words.
 
 Today's date is {today}.
+"""
+
+# The corpus is the user's own life; the web is everything else. Without
+# this rule the planner searched e-mails for "programming game websites"
+# and, finding nothing, answered from memory (22 Sept 2026).
+WEB_SEARCH_RULES = """
+Web rules:
+  - The corpus holds the user's OWN mail, notes, meetings and files. Questions about the public world — products, websites, news, people the user does not correspond with, "give me the links" — go to web_search, not to the corpus.
+  - When the user asks for websites, links, "on the web" or "on the internet", call web_search first.
+  - When a corpus search returns nothing relevant, call web_search before answering — never fill the gap from memory.
+  - Web results carry a `url`: when the user asks for links, give the URL of each cited result.
 """
 
 
@@ -412,12 +463,67 @@ def build_sources_for_client(
 
 
 @dataclass
+class WebHit:
+    """One public-web result, as the router's ``web_search`` callable returns it."""
+
+    title: str
+    url: str
+    site: str = ""
+    date: str = ""
+    snippet: str = ""
+
+
+WebSearcher = Callable[[str, Optional[str], bool], List["WebHit"]]
+
+
+def shape_web_results_for_model(
+    hits: List[WebHit], *, ref_offset: int = 0, total_cap: int = 10
+) -> Dict[str, Any]:
+    visible = hits[:total_cap]
+    return {
+        "num_results": len(hits),
+        "shown": len(visible),
+        "hits": [
+            {
+                "ref": i + 1 + ref_offset,
+                "title": h.title,
+                "site": h.site,
+                "date": h.date,
+                "url": h.url,
+                "snippet": h.snippet,
+            }
+            for i, h in enumerate(visible)
+        ],
+    }
+
+
+def build_web_sources_for_client(
+    hits: List[WebHit], *, ref_offset: int = 0, total_cap: int = 10
+) -> List[Dict[str, Any]]:
+    """Same shape as :func:`build_sources_for_client`; ``source`` is ``web``
+    and ``sender`` the site, so the client renders a web hit like any other."""
+    return [
+        {
+            "ref": i + 1 + ref_offset,
+            "title": h.title,
+            "sender": h.site,
+            "date": h.date,
+            "source": "web",
+            "source_id": "",
+            "url": h.url,
+        }
+        for i, h in enumerate(hits[:total_cap])
+    ]
+
+
+@dataclass
 class ToolInvocation:
     """One tool call together with what the planner asked for and got.
 
-    ``tool_name`` is ``"search"`` or ``"clarify"``. For search calls,
-    ``num_results``, ``top_titles`` and ``raw_hits`` are populated; for
-    clarify calls, ``response`` holds the user's answer.
+    ``tool_name`` is ``"search"``, ``"web_search"`` or ``"clarify"``. For
+    search calls, ``num_results``, ``top_titles`` and ``raw_hits`` are
+    populated (``web_hits`` for the web); for clarify calls, ``response``
+    holds the user's answer.
     """
 
     arguments: Dict[str, Any]
@@ -426,6 +532,12 @@ class ToolInvocation:
     raw_hits: List[SearchHit] = field(default_factory=list)
     tool_name: str = "search"
     response: str = ""
+    web_hits: List[WebHit] = field(default_factory=list)
+    # A web search that could not be made (engines down, module missing) is
+    # not a web search that found nothing — the planner must read the
+    # difference, or "the web has nothing" becomes a false negative (§100,
+    # review of 22 Sept 2026).
+    error: str = ""
 
 
 def _default_clarify_handler(question: str) -> str:
@@ -467,6 +579,9 @@ class ResearchAgent:
         Hard ceiling on tool calls before the loop is forced into synthesis.
     temperature, max_tokens, num_ctx:
         Generation parameters passed through to ``engine.generate``.
+    web_search:
+        Optional ``(query, recency, news) -> [WebHit]``. When given, the
+        planner gets a ``web_search`` tool next to the corpus ``search``.
     on_event:
         Optional callback fired at loop milestones so callers (e.g. the SSE
         research router) can stream progress without rewriting the loop.
@@ -492,9 +607,13 @@ class ResearchAgent:
         clarify_handler: Optional[Callable[[str], str]] = None,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
         available_sources: Optional[List[str]] = None,
+        web_search: Optional[WebSearcher] = None,
     ) -> None:
         self._engine = engine
         self._search = search
+        # ``web_search(query, recency, news) -> [WebHit]``; None keeps the
+        # agent corpus-only (CLI presets, tests).
+        self._web_search = web_search
         self._model = model
         self._max_iterations = int(max_iterations)
         self._temperature = float(temperature)
@@ -597,6 +716,29 @@ class ResearchAgent:
             response=answer,
         )
 
+    def _execute_web_search(self, args: Dict[str, Any]) -> ToolInvocation:
+        query = str(args.get("query", "") or "").strip()
+        recency = str(args.get("recency") or "").lower() or None
+        if recency not in (None, "day", "week", "month", "year"):
+            recency = None
+        news = bool(args.get("news"))
+        hits: List[WebHit] = []
+        error = ""
+        if self._web_search is not None:
+            try:
+                hits = list(self._web_search(query, recency, news))
+            except Exception as exc:  # noqa: BLE001 - never a crash, never "0 results"
+                logger.warning("research: web_search failed: %s", exc)
+                error = f"{type(exc).__name__}: {exc}"
+        return ToolInvocation(
+            tool_name="web_search",
+            arguments={"query": query, "recency": recency, "news": news},
+            num_results=len(hits),
+            top_titles=[h.title or h.url for h in hits[:5]],
+            web_hits=hits,
+            error=error,
+        )
+
     # ------------------------------------------------------------------
     # Loop
     # ------------------------------------------------------------------
@@ -619,8 +761,20 @@ class ResearchAgent:
             logger.debug("distinct_sources() failed: %s", exc)
             return []
 
-    def run(self, query: str) -> ResearchResult:
-        """Run the loop end-to-end and return the synthesis plus a trace."""
+    def run(
+        self,
+        query: str,
+        *,
+        history: Optional[Sequence[Message]] = None,
+        hints: Optional[Sequence[str]] = None,
+    ) -> ResearchResult:
+        """Run the loop end-to-end and return the synthesis plus a trace.
+
+        ``history`` — the previous user/assistant turns, placed before the
+        query so a follow-up has its referent. ``hints`` — system lines the
+        caller established about THIS query (what « ces sites » refers to,
+        that the user asked for the web), placed right after it.
+        """
         sources_list = self._resolve_available_sources()
         if sources_list:
             sources_blurb = ", ".join(sources_list)
@@ -629,6 +783,7 @@ class ResearchAgent:
                 "(no connected sources — tell the user to connect a "
                 "connector before searching)"
             )
+        with_web = self._web_search is not None
         sys_msg = Message(
             role=Role.SYSTEM,
             content=SYSTEM_PROMPT.format(
@@ -637,9 +792,30 @@ class ResearchAgent:
                 # déduit — des réunions terminées ressortaient « à venir ».
                 today=datetime.now().astimezone().isoformat(timespec="minutes"),
                 available_sources=sources_blurb,
+                and_the_web=" and to the public web" if with_web else "",
+                web_search_line=(
+                    "    web_search(query, recency=None, news=False)\n"
+                    if with_web
+                    else ""
+                ),
+                web_search_rules=WEB_SEARCH_RULES if with_web else "",
             ),
         )
-        messages: List[Message] = [sys_msg, Message(role=Role.USER, content=query)]
+        messages: List[Message] = [sys_msg]
+        for prior in history or ():
+            if (
+                prior.role in (Role.USER, Role.ASSISTANT)
+                and (prior.content or "").strip()
+            ):
+                messages.append(Message(role=prior.role, content=prior.content))
+        messages.append(Message(role=Role.USER, content=query))
+        for hint in hints or ():
+            if hint and hint.strip():
+                messages.append(Message(role=Role.SYSTEM, content=hint.strip()))
+        specs: List[Dict[str, Any]] = [SEARCH_TOOL_SPEC]
+        if with_web:
+            specs.append(WEB_SEARCH_TOOL_SPEC)
+        specs.append(CLARIFY_TOOL_SPEC)
 
         invocations: List[ToolInvocation] = []
         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -657,11 +833,7 @@ class ResearchAgent:
         iterations = 0
         for _ in range(self._max_iterations + 1):
             iterations += 1
-            tools_arg = (
-                [SEARCH_TOOL_SPEC, CLARIFY_TOOL_SPEC]
-                if len(invocations) < self._max_iterations
-                else None
-            )
+            tools_arg = specs if len(invocations) < self._max_iterations else None
             result = self._engine.generate(
                 messages,
                 model=self._model,
@@ -766,12 +938,76 @@ class ResearchAgent:
                         shape_results_for_model(inv.raw_hits, ref_offset=offset),
                         ensure_ascii=False,
                     )
+                elif name == "web_search" and with_web:
+                    if not str(args.get("query", "") or "").strip():
+                        # No call, no event, no budget: an empty query (a
+                        # malformed arguments blob, review of 22 Sept 2026)
+                        # would otherwise read as "the web has nothing".
+                        tool_output = json.dumps(
+                            {"error": "web_search needs a non-empty query"}
+                        )
+                    else:
+                        self._emit(
+                            {
+                                "type": "search_call",
+                                "arguments": {"tool": "web_search", **args},
+                            }
+                        )
+                        inv = self._execute_web_search(args)
+                        if inv.error:
+                            # A search that could not be made: the planner
+                            # reads an error, the client a failed step, and
+                            # the budget is not charged.
+                            self._emit(
+                                {
+                                    "type": "search_result",
+                                    "tool": "web_search",
+                                    "error": inv.error,
+                                    "sources": [],
+                                }
+                            )
+                            tool_output = json.dumps(
+                                {
+                                    "error": (
+                                        f"web_search failed: {inv.error}. The web "
+                                        "was NOT searched — say so if you cannot "
+                                        "answer from the corpus; never say the "
+                                        "web has nothing."
+                                    )
+                                }
+                            )
+                        else:
+                            invocations.append(inv)
+                            offset = next_ref - 1
+                            sources_for_web = build_web_sources_for_client(
+                                inv.web_hits, ref_offset=offset
+                            )
+                            self._emit(
+                                {
+                                    "type": "search_result",
+                                    "tool": "web_search",
+                                    "num_hits": inv.num_results,
+                                    "top_titles": inv.top_titles,
+                                    "sources": sources_for_web,
+                                }
+                            )
+                            for src in sources_for_web:
+                                ref_to_source[int(src["ref"])] = src
+                            next_ref += len(sources_for_web)
+                            tool_output = json.dumps(
+                                shape_web_results_for_model(
+                                    inv.web_hits, ref_offset=offset
+                                ),
+                                ensure_ascii=False,
+                            )
                 elif name == "clarify":
                     # Enforce the "search first" rule at runtime so we don't
                     # surprise the user with a clarification before showing any
                     # work. If the planner jumps to clarify with no searches
                     # behind it, return an error and let the loop try again.
-                    if not any(i.tool_name == "search" for i in invocations):
+                    if not any(
+                        i.tool_name in ("search", "web_search") for i in invocations
+                    ):
                         tool_output = json.dumps(
                             {
                                 "error": (
@@ -801,11 +1037,14 @@ class ResearchAgent:
                             }
                         )
                 else:
+                    disponibles = ", ".join(
+                        repr(sp["function"]["name"]) for sp in specs
+                    )
                     tool_output = json.dumps(
                         {
                             "error": (
                                 f"unknown tool {name!r}; available tools are "
-                                "'search' and 'clarify'"
+                                f"{disponibles}"
                             )
                         }
                     )
@@ -879,10 +1118,16 @@ __all__ = [
     "ResearchAgent",
     "ResearchResult",
     "ToolInvocation",
+    "WebHit",
+    "WebSearcher",
     "SEARCH_TOOL_SPEC",
+    "WEB_SEARCH_TOOL_SPEC",
     "CLARIFY_TOOL_SPEC",
     "SYSTEM_PROMPT",
+    "WEB_SEARCH_RULES",
     "DEFAULT_PLANNER_MODEL",
     "shape_results_for_model",
+    "shape_web_results_for_model",
     "build_sources_for_client",
+    "build_web_sources_for_client",
 ]

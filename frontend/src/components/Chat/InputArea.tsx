@@ -5,6 +5,7 @@ import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversa
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
 import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
+import { historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 import { fetchSavings, getBase, isTauri, finalizeDictation, apiFetch } from '../../lib/api';
 import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
@@ -572,6 +573,7 @@ export function InputArea() {
           content,
           selectedModel,
           controller.signal,
+          historiqueDeRecherche(apiMessages),
         )) {
           if (ev.type !== 'synthesis' && ev.type !== 'system_metrics') publication.vider();
           if (ev.type === 'search_call') {
@@ -580,6 +582,7 @@ export function InputArea() {
               query: ev.arguments?.query ?? '',
               person: ev.arguments?.person,
               timeRange: ev.arguments?.time_range,
+              tool: ev.arguments?.tool,
               status: 'pending',
             };
             researchTraces.push(trace);
@@ -606,6 +609,7 @@ export function InputArea() {
               pending.status = 'complete';
               pending.numHits = ev.num_hits;
               pending.topTitles = ev.top_titles;
+              pending.error = ev.error;
             }
             if (ev.sources) {
               for (const src of ev.sources) {
@@ -614,6 +618,18 @@ export function InputArea() {
                 }
               }
             }
+            updateLastAssistant(
+              convId,
+              accumulatedContent,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              [...researchTraces],
+              flushSources(),
+            );
+          } else if (ev.type === 'final_sources') {
+            remplacerLesSources(researchSourcesByRef, ev.sources);
             updateLastAssistant(
               convId,
               accumulatedContent,
@@ -654,6 +670,7 @@ export function InputArea() {
             });
             toast.error(msg, { duration: 8000 });
           } else if (ev.type === 'done') {
+            if (ev.sources && ev.sources.length) remplacerLesSources(researchSourcesByRef, ev.sources);
             if (ev.usage) {
               usage = {
                 prompt_tokens: ev.usage.prompt_tokens ?? 0,

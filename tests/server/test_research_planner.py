@@ -249,6 +249,8 @@ def test_research_route_passes_live_engine_and_selected_model(
         "active_engine_key": "lmstudio",
         "active_model": "server-model",
         "request_model": "selected-model",
+        # 22/09/2026 : les tours d'avant voyagent avec la question.
+        "history": [],
     }
 
 
