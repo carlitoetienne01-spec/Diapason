@@ -294,7 +294,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
 
   return (
     <div className={`group mb-6${halo}`} data-message-id={message.id}>
-      <TerminalExecution appels={appels} enDirect={isLive} reception={message.reception} sources={message.researchSources} />
+      {appels.length > 0 && <TerminalExecution appels={appels} enDirect={isLive} reception={message.reception} sources={message.researchSources} />}
 
       {/* Audio player (e.g. morning digest) */}
       {message.audio?.url && <AudioPlayer src={message.audio.url} />}

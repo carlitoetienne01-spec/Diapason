@@ -17,7 +17,9 @@ interface Props {
 export const TerminalExecution = memo(function TerminalExecution({ appels, enDirect, reception, sources }: Props) {
   const { t, locale } = useTranslation();
   const panneauId = useId();
-  const existe = enDirect || !!reception || appels.length > 0;
+  // 23/09/2026 : la réception seule ouvrait un grand terminal « chat »
+  // sans outil exécuté. Ce panneau est réservé aux véritables appels.
+  const existe = appels.length > 0;
   const surface = useSurfaceVitree<HTMLElement>(false, existe);
   const journal = useRef<HTMLDivElement>(null);
   const suivre = useRef(true);
@@ -80,7 +82,7 @@ export const TerminalExecution = memo(function TerminalExecution({ appels, enDir
       <div className="terminal-corners" aria-hidden="true" />
       <header className="terminal-entete">
         <Terminal size={17} aria-hidden="true" />
-        <span><strong>diapason</strong><span className="terminal-chemin"> / {appels.length ? 'tools' : 'chat'}</span></span>
+        <span><strong>diapason</strong><span className="terminal-chemin"> / tools</span></span>
         <span className="terminal-horloge" title={t('chat.terminal.clientTime')}>{heure}<i data-live={enDirect} /></span>
       </header>
       <div className="terminal-repli" data-open={ouvert} id={panneauId} inert={!ouvert} aria-hidden={!ouvert}>
