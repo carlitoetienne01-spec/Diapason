@@ -74,6 +74,35 @@ _METEO = re.compile(
 _TAUX_DIRECTEUR = re.compile(r"\btaux (?:directeur|cible)\b|\bpolicy rate\b")
 _BANQUE_DU_CANADA = "https://www.banqueducanada.ca/grandes-fonctions/politique-monetaire/taux-directeur/"
 
+# Le défaut fondateur du chantier (21/09) : « Qui est le premier ministre du
+# Canada ? » → « Justin Trudeau [3] », cité et daté. Aucun des cinq extraits
+# ne nommait le titulaire — brave rend un passage pris au hasard. Le Cabinet
+# du Premier ministre, lui, TITRE sa page du nom du titulaire : sondé le
+# 22/09, `pm.gc.ca/fr` rend « Le très honorable Mark Carney », et son corps
+# le répète à chaque communiqué.
+#
+# Il faut le Canada dans la question : un « premier ministre » nu peut être
+# celui du Québec, de la France ou du Japon, et §34 interdit de deviner.
+# « premier ministre du Québec » ne porte pas « Canada » et ne passe donc
+# pas ici — la recherche générale lui reste seule, comme avant.
+_PREMIER_MINISTRE = re.compile(r"\b(?:premi(?:er|ere) ministre|prime minister|pm)\b")
+_CANADA = re.compile(r"\bcanad(?:a|ien|ienne|ian)\b")
+_PM_GC = "https://www.pm.gc.ca/fr"
+
+# Les taux de change quotidiens : un vrai tableau rendu côté serveur, en
+# en-tête les cinq derniers jours ouvrables, et « Dollar (États-Unis) |
+# 1,3947 | … | 1,4064 » en ligne (sondé le 22/09). La dernière colonne est
+# celle du jour — l'en-tête la date, le modèle n'a pas à le deviner.
+_TAUX_DE_CHANGE = re.compile(
+    r"\btaux de change\b|\bexchange rate\b|"
+    r"\bcombien vaut\b.{0,40}\b(?:dollar|euro|livre|yen|peso|franc|roupie)\b|"
+    r"\bcours (?:du|de l'|de la)\s?(?:dollar|euro|livre|yen|peso|franc)\b|"
+    r"\b(?:convertir|conversion)\b.{0,30}\b(?:dollar|euro|livre|yen)\b"
+)
+_TAUX_DE_CHANGE_BDC = (
+    "https://www.banqueducanada.ca/taux/taux-de-change/taux-de-change-quotidiens/"
+)
+
 
 @dataclass(frozen=True)
 class PageOfficielle:
@@ -83,6 +112,13 @@ class PageOfficielle:
     titre: str
     focus: str
     domaine: str
+    titre_de_la_page: bool = False
+    """Le titre de la page porte le fait — le garder.
+
+    Vrai pour `pm.gc.ca`, dont le titre est le nom du titulaire. Le reste du
+    temps l'étiquette fixe vaut mieux : « Ottawa — Prévision 7 jours » dit ce
+    qu'on lit, là où le titre de la page dit « Météo - Environnement Canada ».
+    """
 
 
 def _plat(texte: str) -> str:
@@ -129,6 +165,24 @@ def page_officielle(question: str, ville_par_defaut: str = "") -> PageOfficielle
             focus="ce soir cette nuit demain prévisions émises " + question,
             domaine="meteo.gc.ca",
         )
+    if _PREMIER_MINISTRE.search(plat) and _CANADA.search(plat):
+        return PageOfficielle(
+            url=_PM_GC,
+            titre="Premier ministre du Canada",
+            focus="premier ministre titulaire le très honorable " + question,
+            domaine="pm.gc.ca",
+            titre_de_la_page=True,
+        )
+    if _TAUX_DE_CHANGE.search(plat):
+        return PageOfficielle(
+            url=_TAUX_DE_CHANGE_BDC,
+            titre="Taux de change quotidiens — Banque du Canada",
+            # Le tableau porte une ligne par devise ; les fenêtres du lecteur
+            # se posent sur le nom de la devise demandée, puis sur les deux
+            # plus courantes.
+            focus="Dollar (États-Unis) Euro (Europe) devise " + question,
+            domaine="banqueducanada.ca",
+        )
     if _TAUX_DIRECTEUR.search(plat):
         return PageOfficielle(
             url=_BANQUE_DU_CANADA,
@@ -139,19 +193,35 @@ def page_officielle(question: str, ville_par_defaut: str = "") -> PageOfficielle
     return None
 
 
-def entete_officielle(page: PageOfficielle, ref: int) -> str:
+def _titre(page: PageOfficielle, titre_lu: str = "") -> str:
+    """L'étiquette de la page, augmentée du titre lu quand celui-ci PORTE le
+    fait.
+
+    Remplacer le titre de `pm.gc.ca` par le nôtre jetait la réponse : la page
+    s'appelle « Le très honorable Mark Carney ». Le garder seul ne dirait pas
+    de quel poste il s'agit. Les deux : « Premier ministre du Canada : Le très
+    honorable Mark Carney »."""
+    lu = (titre_lu or "").strip()
+    if page.titre_de_la_page and lu and lu.casefold() != page.titre.casefold():
+        return f"{page.titre} : {lu}"
+    return page.titre
+
+
+def entete_officielle(page: PageOfficielle, ref: int, titre_lu: str = "") -> str:
     """L'en-tête numéroté d'une page officielle, datée du jour de sa lecture :
     une page vivante n'a pas de date de publication qui compte."""
     return (
-        f"[{ref}] {page.titre} — {page.domaine} · source officielle · "
+        f"[{ref}] {_titre(page, titre_lu)} — {page.domaine} · source officielle · "
         f"consultée le {date.today().isoformat()}"
     )
 
 
-def source_officielle(page: PageOfficielle, ref: int) -> dict[str, object]:
+def source_officielle(
+    page: PageOfficielle, ref: int, titre_lu: str = ""
+) -> dict[str, object]:
     return {
         "ref": ref,
-        "title": page.titre,
+        "title": _titre(page, titre_lu),
         "url": page.url,
         "date": date.today().isoformat(),
         "sender": page.domaine,

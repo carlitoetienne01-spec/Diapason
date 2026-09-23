@@ -2043,6 +2043,101 @@ class TestLaPageOfficielle:
             "ne prend pas sa place"
         )
 
+    @staticmethod
+    def lecture_pm():
+        class PM(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] Le très honorable Mark Carney — pm.gc.ca"
+                        " · modifié 2025-04-04\n"
+                        f"Source: {params['url']}\n"
+                        "Début : Le premier ministre Carney rencontre…\n"
+                    ),
+                    success=True,
+                    metadata={
+                        "url": params["url"],
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Le très honorable Mark Carney",
+                                "url": params["url"],
+                                "date": "2025-04-04",
+                                "sender": "pm.gc.ca",
+                            }
+                        ],
+                    },
+                )
+
+        return PM()
+
+    @pytest.mark.asyncio
+    async def test_le_cabinet_repond_quand_la_recherche_ne_rend_rien(self):
+        """Le défaut fondateur du chantier, dans le cas où la recherche est
+        muette (ddgs est intermittent) : `pm.gc.ca` TITRE sa page du nom du
+        titulaire, et ce titre rejoint l'étiquette au lieu d'être écrasé par
+        elle — l'écraser jetait la réponse."""
+        from datetime import date
+
+        lecture = self.lecture_pm()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web()])],
+                [
+                    StreamChunk(
+                        content="Mark Carney [1].",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        vide = Outil("web_search", reponse="No results found.")
+        evts = await collecter(moteur, [vide, lecture], PREMIER_MINISTRE)
+        assert [e["url"] for e in lecture.executions] == ["https://www.pm.gc.ca/fr"]
+        sources = [
+            s for lot in (e.data for e in evts if e.kind == "sources") for s in lot
+        ]
+        assert sources == [
+            {
+                "ref": 1,
+                "title": "Premier ministre du Canada : Le très honorable Mark Carney",
+                "url": "https://www.pm.gc.ca/fr",
+                "date": date.today().isoformat(),
+                "sender": "pm.gc.ca",
+                "official": True,
+            }
+        ]
+        outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
+        assert (
+            "[1] Premier ministre du Canada : Le très honorable Mark Carney — pm.gc.ca"
+        ) in (outil.content or "")
+
+    @pytest.mark.asyncio
+    async def test_une_seule_lecture_automatique_par_tour(self):
+        """Ollama tourne à un créneau (`-np 1`) : deux allers au réseau pour
+        un seul fait se paient en silence. La page du poste passe d'abord —
+        son infobox porte « depuis le 14 mars 2025 », que le titre de
+        pm.gc.ca ne donne pas."""
+        lecture = Lecture()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web()])],
+                [
+                    StreamChunk(
+                        content="Mark Carney [2], depuis le 14 mars 2025.",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        await collecter(moteur, [Recherche("web_search"), lecture], PREMIER_MINISTRE)
+        urls = [e["url"] for e in lecture.executions]
+        assert urls == ["https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada"], (
+            f"une seule lecture, celle qui porte la date : {urls}"
+        )
+
 
 class TestDemainEtLeFutur:
     """Essai du 21/09 : « Va-t-il pleuvoir demain à Montréal ? » passait sans

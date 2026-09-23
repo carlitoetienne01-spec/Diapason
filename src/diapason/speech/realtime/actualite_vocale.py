@@ -466,8 +466,15 @@ def _avec_page_officielle(
 ) -> dict[str, Any]:
     """P6 (21/09) : la prévision d'Environnement Canada, le taux de la Banque
     du Canada — la page officielle du sujet, lue en complément de la
-    recherche, que celle-ci ait rendu quelque chose ou non."""
-    if lire is None or tour.officielle_lue:
+    recherche, que celle-ci ait rendu quelque chose ou non.
+
+    UNE seule lecture automatique par tour (22/09) : `tour.lecture_faite` dit
+    que la page du poste a déjà été lue, et depuis que `pm.gc.ca` est dans la
+    table, « Qui est le premier ministre du Canada ? » déclenchait les deux.
+    La page du poste passe d'abord — elle porte la date d'entrée en fonction ;
+    la page officielle reste le recours quand la recherche n'a rien rendu,
+    c'est-à-dire là où elle vaut le plus."""
+    if lire is None or tour.officielle_lue or tour.lecture_faite:
         return resultat
     off = page_officielle(tour.question, tour.ville)
     if off is None:
@@ -484,9 +491,10 @@ def _avec_page_officielle(
     )
     if nouvelles:
         ref = int(nouvelles[0]["ref"])
-        nouvelles = [source_officielle(off, ref)]
+        titre_lu = str(nouvelles[0].get("title") or "")
+        nouvelles = [source_officielle(off, ref, titre_lu)]
         lignes = texte.split("\n", 1)
-        texte = entete_officielle(off, ref) + (
+        texte = entete_officielle(off, ref, titre_lu) + (
             "\n" + lignes[1] if len(lignes) > 1 else ""
         )
     tour.sources.extend(nouvelles)

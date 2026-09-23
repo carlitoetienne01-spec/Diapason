@@ -227,13 +227,48 @@ class TestLaGardeVocale:
 
     @pytest.mark.asyncio
     async def test_une_recherche_vide_est_dite_telle_quelle(self):
+        """Sur un sujet que la table des pages officielles ne couvre pas :
+        22/09, cette épreuve portait sur le premier ministre du Canada, qui a
+        depuis sa page officielle — une recherche vide y trouve désormais sa
+        réponse, et l'aveu qu'on vérifiait ici ne s'y dit plus."""
         vide = {"ok": True, "content": "No results found.", "metadata": {}}
-        session, journal = harnais([[appel_web()], "Justin Trudeau."], recherche=vide)
-        await session._respond_to_text(PREMIER_MINISTRE)
+        session, journal = harnais(
+            [[appel_web()], "Le Canadien a gagné."], recherche=vide
+        )
+        await session._respond_to_text("Qui a gagné le match hier soir ?")
         assert journal["spoken"][-1] == AVEU_VOCAL_RECHERCHE
         assert [n for n, _ in journal["executed"]] == ["web_search"], (
             "rien à lire quand la recherche n'a rien rendu"
         )
+
+    @pytest.mark.asyncio
+    async def test_une_recherche_vide_n_avoue_plus_quand_la_page_officielle_repond(
+        self,
+    ):
+        """C'est le cas où la page officielle vaut le plus (22/09) : ddgs est
+        intermittent, et une recherche à blanc laissait la voix avouer alors
+        que pm.gc.ca répondait. Avouer là serait un faux aveu — aussi faux
+        qu'un faux SUCCESS (§100)."""
+        vide = {"ok": True, "content": "No results found.", "metadata": {}}
+        session, journal = harnais([[appel_web()], "Mark Carney [1]."], recherche=vide)
+        await session._respond_to_text(PREMIER_MINISTRE)
+        lus = [a.get("url") for n, a in journal["executed"] if n == "web_read"]
+        assert lus == ["https://www.pm.gc.ca/fr"], (
+            "la page officielle est lue même sans un seul résultat de recherche"
+        )
+        assert AVEU_VOCAL_RECHERCHE not in journal["spoken"]
+
+    @pytest.mark.asyncio
+    async def test_une_seule_lecture_automatique_par_tour(self):
+        """Ollama tourne à un créneau : deux allers au réseau pour un seul
+        fait se paient en silence. La page du poste passe d'abord — elle
+        porte la date d'entrée en fonction que le titre de pm.gc.ca n'a
+        pas."""
+        session, journal = harnais([[appel_web()], "Mark Carney [3], depuis 2025."])
+        await session._respond_to_text(PREMIER_MINISTRE)
+        lus = [a.get("url") for n, a in journal["executed"] if n == "web_read"]
+        assert len(lus) == 1, f"deux lectures pour une question : {lus}"
+        assert "wikipedia" in lus[0], "la page du poste, pas la page officielle"
 
     @pytest.mark.asyncio
     async def test_la_reponse_qui_contredit_les_sources_est_corrigee_a_voix_haute(self):

@@ -256,9 +256,12 @@ async def _lire_la_page(
             )
             if officielle is not None and nouvelles:
                 ref = int(nouvelles[0]["ref"])
-                nouvelles = [source_officielle(officielle, ref)]
+                # Le titre lu AVANT d'écraser la carte : celui de pm.gc.ca est
+                # le nom du titulaire, c'est-à-dire la réponse.
+                titre_lu = str(nouvelles[0].get("title") or "")
+                nouvelles = [source_officielle(officielle, ref, titre_lu)]
                 lignes = texte.split("\n", 1)
-                texte = entete_officielle(officielle, ref) + (
+                texte = entete_officielle(officielle, ref, titre_lu) + (
                     "\n" + lignes[1] if len(lignes) > 1 else ""
                 )
             if nouvelles:
@@ -1036,7 +1039,22 @@ async def stream_with_tools(
                                 if texte:
                                     page_lue = texte
                                     corpus_sources += "\n" + texte
-            if nom == "web_search" and actualite and not officielle_lue:
+            if (
+                nom == "web_search"
+                and actualite
+                and not officielle_lue
+                # UNE seule lecture automatique par tour. Depuis que
+                # `pm.gc.ca` est dans la table (22/09), « Qui est le premier
+                # ministre du Canada ? » déclenchait les deux : la page du
+                # poste ci-dessus ET la page officielle, soit deux allers au
+                # réseau pour un seul fait, sur un moteur à un créneau. La
+                # page du poste passe d'abord parce qu'elle porte la DATE
+                # d'entrée en fonction (« depuis le 14 mars 2025 ») que le
+                # titre de pm.gc.ca ne donne pas ; la page officielle reste
+                # le recours quand la recherche n'a rien rendu — et c'est
+                # exactement le cas où elle vaut le plus.
+                and not lecture_auto_faite
+            ):
                 # P6 (21/09) : la page officielle du sujet — la prévision
                 # d'Environnement Canada, le taux de la Banque du Canada —
                 # lue en complément de la recherche, que celle-ci ait rendu
