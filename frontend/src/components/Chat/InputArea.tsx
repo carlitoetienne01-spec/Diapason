@@ -6,6 +6,18 @@ import { creerCadenceFlux } from '../../lib/cadenceFlux';
 import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
 import { historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
+import {
+  NOMBRE_MAX as IMAGES_MAX,
+  imagesDeLEvenement,
+  lire as lirePieceJointe,
+  pourLeFil,
+  messagesPourLApi,
+  resume as resumePieces,
+  trier as trierPieces,
+  type PieceJointe,
+} from './piecesJointes';
+import { cloreAppels, terminerAppel, texteRecu } from './etatExecution';
+import { creerReception, recevoirOctets } from './receptionTerminal';
 import { fetchSavings, getBase, isTauri, finalizeDictation, apiFetch } from '../../lib/api';
 import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
@@ -100,6 +112,32 @@ export function InputArea() {
   const surfaceVitree = useSurfaceVitree(true);
   const { t, locale } = useTranslation();
   const [input, setInput] = useState('');
+  // 22/09/2026 : les images jointes au message en cours de rédaction.
+  const [pieces, setPieces] = useState<PieceJointe[]>([]);
+  const [survolDepot, setSurvolDepot] = useState(false);
+  const champFichiers = useRef<HTMLInputElement>(null);
+
+  // Un seul chemin pour les trois gestes — le bouton, le collage, le dépôt :
+  // ce qui est refusé doit l'être avec la même phrase et pour la même raison.
+  const joindre = useCallback(
+    async (fichiers: File[]) => {
+      if (fichiers.length === 0) return;
+      const { acceptees, refus } = trierPieces(fichiers, pieces.length);
+      for (const r of refus) toast.error(`${r.fichier} — ${r.raison}`);
+      if (acceptees.length === 0) return;
+      try {
+        const lues = await Promise.all(acceptees.map(lirePieceJointe));
+        setPieces((avant) => [...avant, ...lues].slice(0, IMAGES_MAX));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Lecture impossible.');
+      }
+    },
+    [pieces.length],
+  );
+
+  const retirerPiece = useCallback((id: string) => {
+    setPieces((avant) => avant.filter((p) => p.id !== id));
+  }, []);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -481,28 +519,36 @@ export function InputArea() {
       convId = createConversation(selectedModel);
     }
 
+    // 22/09/2026 : les images partent avec CE message et sont retirées du
+    // composeur aussitôt — les garder ferait qu'un second envoi les
+    // renverrait sans que rien ne le dise.
+    const imagesDuTour = pieces;
     const userMsg: ChatMessage = {
       id: generateId(),
       role: 'user',
       content,
       timestamp: Date.now(),
+      ...(imagesDuTour.length > 0 ? { images: pourLeFil(imagesDuTour) } : {}),
       ...(envoi ? { questionReply: envoi.reply } : {}),
     };
     addMessage(convId, userMsg);
+    if (imagesDuTour.length > 0) setPieces([]);
 
     // Build API messages before adding assistant placeholder
     const currentMessages = useAppStore.getState().messages;
-    const apiMessages = currentMessages.map((m) => {
+    const apiMessages = messagesPourLApi(currentMessages, (m) => {
       const cadrage = m.role === 'assistant' ? lireQuestions(m.questions) : null;
-      return { role: m.role, content: cadrage ? texteQuestions(cadrage) : m.content };
+      return cadrage ? texteQuestions(cadrage) : m.content;
     });
 
+    const reception = creerReception(Date.now());
     const assistantMsg: ChatMessage = {
       id: generateId(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
       isResearch: recherche || undefined,
+      reception: { ...reception, samples: [] },
     };
     addMessage(convId, assistantMsg);
 
@@ -539,8 +585,14 @@ export function InputArea() {
         researchTraces.length ? researchTraces : undefined,
         researchSourcesByRef.size ? flushSources() : undefined,
         questions,
+        undefined,
+        reception,
       );
     });
+    const surOctets = (octets: Uint8Array) => {
+      recevoirOctets(reception, octets, Date.now());
+      publication.demander();
+    };
     const sauvegarderEnSortant = () => {
       publication.vider();
       viderSauvegardeConversations();
@@ -574,6 +626,7 @@ export function InputArea() {
           selectedModel,
           controller.signal,
           historiqueDeRecherche(apiMessages),
+          surOctets,
         )) {
           if (ev.type !== 'synthesis' && ev.type !== 'system_metrics') publication.vider();
           if (ev.type === 'search_call') {
@@ -584,6 +637,7 @@ export function InputArea() {
               timeRange: ev.arguments?.time_range,
               tool: ev.arguments?.tool,
               status: 'pending',
+              startedAtMs: Date.now(),
             };
             researchTraces.push(trace);
             setStreamState({ phase: t('chat.stream.searching', { query: trace.query }) });
@@ -607,10 +661,12 @@ export function InputArea() {
             const pending = [...researchTraces].reverse().find((t) => t.status === 'pending');
             if (pending) {
               pending.status = 'complete';
+              pending.endedAtMs = Date.now();
               pending.numHits = ev.num_hits;
               pending.topTitles = ev.top_titles;
               pending.error = ev.error;
             }
+            if (!researchTraces.some(trace => trace.status === 'pending')) setStreamState({ phase: '' });
             if (ev.sources) {
               for (const src of ev.sources) {
                 if (src && typeof src.ref === 'number' && !researchSourcesByRef.has(src.ref)) {
@@ -641,6 +697,8 @@ export function InputArea() {
               flushSources(),
             );
           } else if (ev.type === 'synthesis') {
+            reception.firstTextAtMs ??= Date.now();
+            reception.lastTextAtMs = Date.now();
             if (!ttftMs) ttftMs = Date.now() - startTime;
             accumulatedContent += ev.text;
             publication.demander();
@@ -653,6 +711,7 @@ export function InputArea() {
               duration_s: ev.duration_s,
             });
           } else if (ev.type === 'error') {
+            reception.status = 'error';
             // Backend setup/worker failure (Ollama down, planner model
             // missing, KnowledgeStore locked, etc.). Without surfacing the
             // message, the user sees only the generic "No response was
@@ -712,6 +771,7 @@ export function InputArea() {
           ...(options?.verifyOnline ? { verifyOnline: true } : {}),
         },
         controller.signal,
+        surOctets,
       )) {
         const eventName = sseEvent.event;
 
@@ -735,14 +795,16 @@ export function InputArea() {
         } else if (eventName === 'tool_call_start') {
           try {
             const data = JSON.parse(sseEvent.data);
+            if (typeof data.tool !== 'string' || !data.tool.trim()) continue;
             // Wake the approval bell now instead of waiting for its safety
             // poll. Harmless for tools that do not require confirmation.
             window.dispatchEvent(new CustomEvent('diapason-approval-possible'));
             const tc: ToolCallInfo = {
               id: generateId(),
               tool: data.tool,
-              arguments: data.arguments || '',
+              arguments: texteRecu(data.arguments),
               status: 'running',
+              startedAtMs: Date.now(),
               ...(data.auto === true ? { auto: true } : {}),
             };
             toolCalls.push(tc);
@@ -777,16 +839,10 @@ export function InputArea() {
         } else if (eventName === 'tool_call_end') {
           try {
             const data = JSON.parse(sseEvent.data);
-            const tc = toolCalls.find(
-              (t) => t.tool === data.tool && t.status === 'running',
-            );
-            if (tc) {
-              tc.status = data.success ? 'success' : 'error';
-              tc.latency = data.latency;
-              tc.result = data.result;
-            }
+            terminerAppel(toolCalls, data, Date.now());
+            const actif = toolCalls.find(appel => appel.status === 'running');
             setStreamState({
-              phase: t('chat.stream.generating'),
+              phase: actif ? t('chat.stream.callingTool', { tool: actif.tool }) : '',
               activeToolCalls: [...toolCalls],
             });
             updateLastAssistant(convId, accumulatedContent, [...toolCalls]);
@@ -801,6 +857,8 @@ export function InputArea() {
             if (typeof data.model === 'string' && data.model) modeleServeur = data.model;
             if (data.routing) routageServeur = data.routing;
             if (delta?.content) {
+              reception.firstTextAtMs ??= Date.now();
+              reception.lastTextAtMs = Date.now();
               if (!ttftMs) ttftMs = Date.now() - startTime;
               accumulatedContent += delta.content;
               publication.demander();
@@ -811,6 +869,7 @@ export function InputArea() {
       }
       }
     } catch (err: any) {
+      reception.status = err.name === 'AbortError' ? 'interrupted' : 'error';
       if (err.name === 'AbortError') {
         // User cancelled or model switch — keep whatever was accumulated
         if (!accumulatedContent) accumulatedContent = t('chat.input.generationStopped');
@@ -827,6 +886,9 @@ export function InputArea() {
       // numbers don't get stuck on the last sample.
       useAppStore.getState().setLiveEnergy(null);
     } finally {
+      reception.endedAtMs = Date.now();
+      if (reception.status === 'open') reception.status = 'closed';
+      cloreAppels(toolCalls);
       if (!accumulatedContent) {
         accumulatedContent = t('chat.input.noResponse');
       }
@@ -863,6 +925,7 @@ export function InputArea() {
         researchSourcesByRef.size > 0 ? flushSources() : undefined,
         questions,
         verification,
+        reception,
       );
       clearInterval(timer);
       if (timerRef.current === timer) timerRef.current = null;
@@ -1001,13 +1064,89 @@ export function InputArea() {
           {t('chat.input.searchingOverSuffix', { count: corpusSync.itemsSynced })}
         </div>
       )}
-      <div ref={surfaceVitree} className="composer-glass flex flex-col px-4 py-3">
+      <div
+        ref={surfaceVitree}
+        className="composer-glass flex flex-col px-4 py-3"
+        // Le dépôt se prend sur le composeur ENTIER, pas sur le seul champ de
+        // texte : on dépose « sur la boîte », pas sur une ligne de vingt
+        // pixels. Le preventDefault sur dragOver est ce qui autorise le
+        // dépôt — sans lui, le navigateur ouvre l'image à la place.
+        onDragOver={(e) => {
+          if (!e.dataTransfer?.types?.includes('Files')) return;
+          e.preventDefault();
+          setSurvolDepot(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+          setSurvolDepot(false);
+        }}
+        onDrop={(e) => {
+          // Tous les fichiers déposés, PAS seulement les images : déposer un
+          // PDF est un geste explicite, et il ne faisait RIEN, sans un mot
+          // (constaté à l'écran le 22/09). `trier` sait dire pourquoi il
+          // refuse ; le filtrage en amont l'en empêchait. Le collage, lui,
+          // reste filtré : intercepter un collage de texte le casserait.
+          const fichiers = Array.from(e.dataTransfer?.files ?? []);
+          if (fichiers.length === 0) return;
+          e.preventDefault();
+          setSurvolDepot(false);
+          void joindre(fichiers);
+        }}
+        style={
+          survolDepot
+            ? { outline: '2px dashed var(--color-accent)', outlineOffset: '2px' }
+            : undefined
+        }
+      >
+        {pieces.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pb-2">
+            {pieces.map((piece) => (
+              <div key={piece.id} className="relative">
+                <img
+                  src={piece.donnees}
+                  alt={piece.nom}
+                  title={piece.nom}
+                  className="h-14 w-14 object-cover"
+                  style={{
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => retirerPiece(piece.id)}
+                  aria-label={t('chat.input.removeImage', { name: piece.nom })}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 flex items-center justify-center text-xs cursor-pointer"
+                  style={{
+                    borderRadius: '9999px',
+                    background: 'var(--color-text)',
+                    color: 'var(--color-bg)',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+              {resumePieces(pieces)}
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
+          // Une capture d'écran collée arrive dans `items`, sans nom de
+          // fichier. On n'intercepte que s'il y a vraiment une image, sinon
+          // on casserait le collage de texte ordinaire.
+          onPaste={(e) => {
+            const images = imagesDeLEvenement(e.clipboardData);
+            if (images.length === 0) return;
+            e.preventDefault();
+            void joindre(images);
+          }}
           placeholder={
             selectedModel ? t('chat.input.placeholder') : t('chat.input.placeholderNoModel')
           }
@@ -1032,6 +1171,32 @@ export function InputArea() {
           </button>
         ) : (
           <div className="composer-glass-actions flex items-center gap-2">
+            {/* 22/09/2026 : le troisième chemin vers une image, après le
+                collage et le dépôt. Le champ reste caché — un <input
+                type="file"> ne se met pas au goût d'un thème. */}
+            <input
+              ref={champFichiers}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              multiple
+              hidden
+              onChange={(e) => {
+                void joindre(Array.from(e.target.files ?? []));
+                // Remis à zéro : sans ça, rejoindre LA MÊME image deux fois
+                // de suite ne déclenche pas d'événement.
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => champFichiers.current?.click()}
+              disabled={compositeurBloque || pieces.length >= IMAGES_MAX}
+              className="composer-glass-action p-2 shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-40"
+              title={t('chat.input.attachImage')}
+              aria-label={t('chat.input.attachImage')}
+            >
+              <Paperclip size={16} />
+            </button>
             <MicButton
               state={liveMode ? (liveListening ? 'recording' : 'idle') : speechState}
               onClick={handleMicClick}

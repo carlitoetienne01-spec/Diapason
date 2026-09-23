@@ -3,7 +3,11 @@ import { getBase, authHeaders } from './api';
 
 export interface ChatRequest {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  // 22/09/2026 : `images` porte du base64 avec son en-tête `data:` ; le
+  // serveur la retire et vérifie le format dans les octets. JSON base64 et
+  // jamais multipart : la fenêtre Tauri est une WKWebView, qui échoue sur
+  // un corps binaire avec un « Load failed » opaque (CLAUDE.md).
+  messages: Array<{ role: string; content: string; images?: string[] }>;
   stream: true;
   temperature?: number;
   max_tokens?: number;
@@ -17,6 +21,7 @@ export interface ChatRequest {
 export async function* streamChat(
   request: ChatRequest,
   signal?: AbortSignal,
+  recevoir?: (octets: Uint8Array) => void,
 ): AsyncGenerator<SSEEvent> {
   const base = getBase();
   const response = await fetch(`${base}/v1/chat/completions`, {
@@ -39,6 +44,8 @@ export async function* streamChat(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      recevoir?.(value);
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -73,6 +80,7 @@ export async function* streamResearch(
   // sans les tours d'avant, « ces sites » n'avait pas de référent et la
   // recherche rendait des liens tirés des courriels.
   history: Array<{ role: string; content: string }> = [],
+  recevoir?: (octets: Uint8Array) => void,
 ): AsyncGenerator<ResearchEvent> {
   // /api/research is mounted at the server root — strip any trailing /v1
   // from the base so configurations like "http://host:8000/v1" still resolve.
@@ -96,6 +104,8 @@ export async function* streamResearch(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      recevoir?.(value);
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');

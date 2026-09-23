@@ -8,8 +8,9 @@ import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import { Copy, Check, Globe } from 'lucide-react';
 import { AudioPlayer } from './AudioPlayer';
-import { ToolCallCard } from './ToolCallCard';
-import { ResearchTimeline } from './ResearchTimeline';
+import { TerminalExecution } from './TerminalExecution';
+import { appelsDeRecherche } from './etatExecution';
+import { GravureReponse } from './GravureReponse';
 import { rehypeCitations } from '../../lib/rehype-citations';
 import { XRayFooter } from './XRayFooter';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -183,6 +184,10 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
 
   const questions = useMemo(() => lireQuestions(message.questions), [message.questions]);
   const cleanContent = useMemo(() => questions ? texteQuestions(questions) : stripThinkTags(message.content), [message.content, questions]);
+  const appels = useMemo(() => [
+    ...(message.toolCalls ?? []),
+    ...appelsDeRecherche(message.researchTraces ?? []),
+  ], [message.toolCalls, message.researchTraces]);
 
   // Build a ref→source lookup once per render. Memoized so the rehype plugin
   // identity stays stable until the source list actually changes.
@@ -222,6 +227,26 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
               wordBreak: 'break-word',
             }}
           >
+            {/* 22/09/2026 : les images jointes, au-dessus du texte — c'est
+                l'ordre dans lequel elles ont été montrées au modèle, et
+                celui dans lequel on les relit. Sans elles, une conversation
+                relue ne dit plus SUR QUOI portait la question. */}
+            {message.images && message.images.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {message.images.map((image, i) => (
+                  <img
+                    key={i}
+                    src={image}
+                    alt=""
+                    className="max-h-40 max-w-[12rem] object-contain"
+                    style={{
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)',
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {message.content}
           </div>
         </div>
@@ -231,29 +256,14 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
 
   return (
     <div className={`group mb-6${halo}`} data-message-id={message.id}>
-      {/* Deep Research timeline (steps + status) */}
-      {(message.isResearch || (message.researchTraces && message.researchTraces.length > 0)) && (
-        <ResearchTimeline
-          traces={message.researchTraces ?? []}
-          isLive={isLive}
-          hasContent={cleanContent.length > 0}
-        />
-      )}
-
-      {/* Tool calls */}
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="mb-3 flex flex-col gap-2">
-          {message.toolCalls.map((tc) => (
-            <ToolCallCard key={tc.id} toolCall={tc} />
-          ))}
-        </div>
-      )}
+      <TerminalExecution appels={appels} enDirect={isLive} reception={message.reception} sources={message.researchSources} />
 
       {/* Audio player (e.g. morning digest) */}
       {message.audio?.url && <AudioPlayer src={message.audio.url} />}
 
       {/* Assistant message */}
-      {questions ? <QuestionsDiscussion key={questions.id} messageId={message.id} demande={questions} /> : cleanContent && (
+      {questions ? <QuestionsDiscussion key={questions.id} messageId={message.id} demande={questions} /> : (
+        <GravureReponse texte={cleanContent} enDirect={isLive} contenu={rendu} arrivee={message.reception?.lastTextAtMs}>
         <div ref={rendu} className="prose max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
@@ -265,6 +275,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
             {cleanContent}
           </ReactMarkdown>
         </div>
+        </GravureReponse>
       )}
 
       {/* Sources d'une recherche (20/09/2026) : toutes, cliquables, datées. */}

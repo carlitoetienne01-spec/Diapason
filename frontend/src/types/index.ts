@@ -39,12 +39,29 @@ export interface ToolCallInfo {
   id: string;
   tool: string;
   arguments: string;
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'success' | 'error' | 'unconfirmed';
   result?: string;
+  /** Durée serveur en SECONDES, comme tool_call_end (22/09/2026). */
   latency?: number;
   // 21/09/2026 : le serveur lit lui-même la page d'un poste après une
   // recherche. La carte le dit : ce que le modèle n'a pas demandé se voit.
   auto?: boolean;
+  /** Instants de réception côté client ; distincts de la durée serveur. */
+  startedAtMs?: number;
+  endedAtMs?: number;
+}
+
+export interface ChatReception {
+  startedAtMs: number;
+  endedAtMs?: number;
+  lastTextAtMs?: number;
+  lastReceivedAtMs?: number;
+  firstTextAtMs?: number;
+  status: 'open' | 'closed' | 'interrupted' | 'error';
+  receivedBytes: number;
+  /** Octets SSE réellement lus, regroupés en secondes ; fenêtre bornée. */
+  samples: Array<{ second: number; bytes: number }>;
+  tailHex: string;
 }
 
 export interface TokenUsage {
@@ -93,6 +110,8 @@ export interface ResearchSearchTrace {
   numHits?: number;
   topTitles?: string[];
   error?: string;
+  startedAtMs?: number;
+  endedAtMs?: number;
 }
 
 export type ResearchEvent =
@@ -139,6 +158,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  reception?: ChatReception;
   toolCalls?: ToolCallInfo[];
   researchTraces?: ResearchSearchTrace[];
   researchSources?: ResearchSource[];
@@ -146,6 +166,10 @@ export interface ChatMessage {
   usage?: TokenUsage;
   telemetry?: MessageTelemetry;
   audio?: { url: string };
+  // 22/09/2026 : les images jointes au message, en base64 avec leur en-tête
+  // `data:` — c'est ce que rend FileReader et c'est ce que l'aperçu affiche.
+  // Le serveur la retire avant Ollama (server/pieces_jointes.py).
+  images?: string[];
   questions?: import('../lib/questionsChat').QuestionsChat;
   questionReply?: import('../lib/questionsChat').ReponsesQuestions;
   // 20/09/2026 : ce que la réponse affirme et que ses sources ne portent pas

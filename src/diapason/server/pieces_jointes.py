@@ -33,9 +33,12 @@ logger = logging.getLogger(__name__)
 # devient le goulot. Quatre mégaoctets couvrent une capture d'écran Retina
 # en PNG et une photo en JPEG de bonne qualité.
 TAILLE_MAX = 4 * 1024 * 1024
-# Chaque image coûte des centaines de jetons de contexte au modèle. Sur un
-# 9b en 32 Ko de fenêtre, trois est déjà généreux.
-NOMBRE_MAX = 3
+# Chaque image coûte des centaines de jetons de contexte au modèle — sept
+# peuvent en manger plusieurs milliers avant même la question, sur une
+# fenêtre de 32 Ko. Sept est le choix de Carlito (22/09/2026), en
+# connaissance de ce coût : une planche de captures d'écran vaut mieux
+# qu'un plafond qui la coupe en trois envois.
+NOMBRE_MAX = 7
 
 # Les octets de tête qui disent le format, puisqu'on ne peut pas se fier au
 # nom d'un fichier qui n'en a plus. PNG, JPEG, GIF, WebP : ce que les
