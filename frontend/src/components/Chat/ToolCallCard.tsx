@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, CircleDashed } from 'lucide-react';
 import type { ToolCallInfo } from '../../types';
+import { dureeOutil, dureeValide } from './etatExecution';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
   toolCall: ToolCallInfo;
@@ -10,6 +12,7 @@ const statusConfig = {
   running: { icon: Loader2, color: 'var(--color-accent)' },
   success: { icon: CheckCircle2, color: 'var(--color-success)' },
   error: { icon: XCircle, color: 'var(--color-error)' },
+  unconfirmed: { icon: CircleDashed, color: 'var(--color-text-secondary)' },
 };
 
 function previewArgs(raw: string): string {
@@ -32,6 +35,7 @@ function previewArgs(raw: string): string {
 }
 
 export function ToolCallCard({ toolCall }: Props) {
+  const { locale } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const config = statusConfig[toolCall.status];
   const StatusIcon = config.icon;
@@ -81,7 +85,7 @@ export function ToolCallCard({ toolCall }: Props) {
           </span>
         )}
         <div className="flex-1" />
-        {toolCall.latency != null && (
+        {dureeValide(toolCall.latency) && (
           <span
             style={{
               color: 'var(--color-text-tertiary)',
@@ -89,9 +93,7 @@ export function ToolCallCard({ toolCall }: Props) {
               flexShrink: 0,
             }}
           >
-            {toolCall.latency < 1000
-              ? `${Math.round(toolCall.latency)}ms`
-              : `${(toolCall.latency / 1000).toFixed(1)}s`}
+            {dureeOutil(toolCall.latency, locale)}
           </span>
         )}
       </button>

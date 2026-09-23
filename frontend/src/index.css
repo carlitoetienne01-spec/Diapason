@@ -1256,15 +1256,6 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   /* Keep project radius tokens — don't override with shadcn calc values */
 }
 
-/* Deep Research timeline — pending-step shimmer */
-@keyframes diapason-research-shimmer {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(420%); }
-}
-.research-shimmer {
-  animation: diapason-research-shimmer 1.6s ease-in-out infinite;
-}
-
 /* Sync progress pulse — fires on each items_synced bump so the
    "12,450 / 99,840" label visibly breathes between polls. */
 @keyframes diapason-sync-bump {

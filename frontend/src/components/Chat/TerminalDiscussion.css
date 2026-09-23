@@ -1,0 +1,113 @@
+/* 22/09/2026 : le prototype montrait un vrai terminal, l'intégration le
+   remplaçait par des cartes. Même composition, données reçues uniquement. */
+.terminal-execution, .gravure-reponse {
+  --terminal-signal: var(--color-accent);
+  --terminal-core: color-mix(in srgb, var(--terminal-signal) 40%, white);
+}
+/* La capture approuvée porte un faisceau ambré sur le papier Ardéchine.
+   Son accent noir rendait le premier « laser » presque invisible. */
+:root.terminal[data-terminal-skin='ardechine'] :is(.terminal-execution, .gravure-reponse) {
+  --terminal-signal: #80531b;
+  --terminal-core: #ffe0a6;
+}
+.terminal-execution {
+  container-type: inline-size;
+  position: relative; min-width: 0; margin-bottom: 1rem;
+  color: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .8125rem; line-height: 1.6; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--color-border); border-radius: 4px;
+  background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text) 7%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.terminal-corners { position: absolute; inset: -1px; pointer-events: none; }
+.terminal-corners::before, .terminal-corners::after { content: ''; position: absolute; width: 17px; height: 17px; border-color: var(--terminal-signal); }
+.terminal-corners::before { top: 0; left: 0; border-top: 2px solid; border-left: 2px solid; color: var(--terminal-signal); }
+.terminal-corners::after { bottom: 0; right: 0; border-bottom: 2px solid; border-right: 2px solid; color: var(--terminal-signal); }
+.terminal-execution :focus-visible { outline: 2px solid var(--terminal-signal); outline-offset: -3px; }
+.terminal-entete { display: flex; align-items: center; gap: .65rem; padding: .85rem 1rem; border-bottom: 1px solid var(--color-border); }
+.terminal-entete > svg { color: var(--terminal-signal); flex-shrink: 0; }
+.terminal-entete strong { font-weight: 500; }
+.terminal-chemin, .terminal-horloge { color: var(--color-text-tertiary); }
+.terminal-horloge { display: flex; align-items: center; gap: .6rem; margin-left: auto; white-space: nowrap; font-size: .75rem; }
+.terminal-horloge i { width: 4px; height: 4px; background: var(--terminal-signal); }
+.terminal-horloge i[data-live='true'] { box-shadow: 0 0 8px var(--terminal-signal); }
+.terminal-repli { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 300ms ease; }
+.terminal-repli[data-open='true'] { grid-template-rows: 1fr; }
+.terminal-repli-interieur { min-height: 0; overflow: hidden; }
+.terminal-commande { display: flex; align-items: baseline; gap: .6rem; padding: .8rem 1rem; max-height: min(5rem, 12dvh); overflow: auto; }
+.terminal-commande > span { color: var(--terminal-signal); font-size: 1.3em; }
+.terminal-commande code { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal-circuit { border-top: 1px solid var(--color-border); padding: .6rem 1rem 0; }
+.terminal-circuit > div { display: flex; justify-content: space-between; gap: .5rem; color: var(--color-text-tertiary); font-size: .6875rem; }
+.terminal-circuit svg { width: 100%; height: 27px; display: block; overflow: visible; }
+.terminal-circuit path { fill: none; vector-effect: non-scaling-stroke; stroke-width: 1; }
+.terminal-fil { stroke: var(--color-border); }
+.terminal-circuit circle { fill: var(--color-bg-secondary); stroke: var(--terminal-signal); vector-effect: non-scaling-stroke; }
+.terminal-impulsion { stroke: var(--terminal-core); stroke-width: 2 !important; stroke-dasharray: .045 .955; filter: drop-shadow(0 0 3px var(--terminal-signal)); animation: terminal-paquet 600ms ease-out both; }
+.terminal-execution[data-live='false'] .terminal-impulsion { animation: none; opacity: 0; }
+.terminal-colonnes { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--color-border); }
+.terminal-journal { min-width: 0; height: 12rem; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: .65rem 1rem; }
+.terminal-ligne { display: grid; grid-template-columns: 2rem 3.3rem minmax(0, 1fr); gap: .5rem; padding: .2rem 0; font-size: .75rem; align-items: baseline; }
+.terminal-numero { color: var(--color-text-tertiary); }
+.terminal-tag { color: var(--terminal-signal); }
+.terminal-ligne[data-tag='FAIL'] .terminal-tag { color: var(--color-error); }
+.terminal-ligne-texte { position: relative; white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal-ligne-laser { display: none; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--terminal-core); box-shadow: 0 0 3px var(--terminal-signal), 0 0 10px var(--terminal-signal); pointer-events: none; }
+.terminal-ligne[data-fresh='true'] .terminal-ligne-laser { display: block; animation: terminal-ligne 500ms ease-out both; }
+.terminal-attente { color: var(--color-text-tertiary); margin: .5rem 0; }
+.terminal-mesures { min-width: 0; border-top: 1px solid var(--color-border); padding: .75rem 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-content: start; }
+.terminal-mesures small { color: var(--color-text-tertiary); font-size: .625rem; }
+.terminal-graphe { position: relative; margin: 0; min-width: 0; }
+.terminal-graphe figcaption, .terminal-legende { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; font-size: .6875rem; color: var(--color-text-secondary); }
+.terminal-graphe figcaption span { color: var(--color-text); white-space: nowrap; }
+.terminal-graphe figcaption { flex-wrap: wrap; }
+.terminal-graphe figcaption .terminal-graphe-titre { color: var(--color-text-secondary); }
+.terminal-graphe svg { display: block; width: calc(100% - 1.4rem); height: 65px; margin: .5rem 0 .1rem 1.4rem; overflow: visible; }
+.terminal-axes { display: flex; position: absolute; inset: 1.6rem auto 1.4rem 0; flex-direction: column; justify-content: space-between; font-size: .5rem; color: var(--color-text-tertiary); }
+.terminal-grille { fill: none; stroke: var(--color-border-subtle); stroke-width: .6; }
+.terminal-courbe { fill: none; stroke: var(--terminal-signal); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.terminal-aire { fill: color-mix(in srgb, var(--terminal-signal) 12%, transparent); }
+.terminal-executions { min-width: 0; }
+.terminal-mesure { display: grid; grid-template-columns: minmax(0,1fr) minmax(28px,.7fr) auto; gap: .45rem; align-items: center; font-size: .625rem; margin-top: .4rem; }
+.terminal-mesure > span:first-child { color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; }
+.terminal-regle { height: 4px; background: var(--color-border-subtle); }
+.terminal-regle i { display: block; height: 100%; width: var(--longueur); background: var(--terminal-signal); }
+.terminal-regle[data-running='true'] { border-bottom: 1px dashed var(--terminal-signal); background: none; }
+.terminal-octets { display: none; border-top: 1px solid var(--color-border); padding-top: .65rem; color: var(--color-text-tertiary); font-size: .6875rem; }
+.terminal-octets code { display: block; font: inherit; line-height: 1.8; margin: .4rem 0; overflow-wrap: anywhere; }
+.terminal-octets > span:last-child { display: flex; justify-content: space-between; }
+.terminal-octets b { color: var(--color-text-secondary); font-weight: 400; }
+.terminal-pied { display: flex; align-items: center; gap: .6rem; width: 100%; border: 0; border-top: 1px solid var(--color-border); background: transparent; padding: .7rem 1rem; text-align: left; cursor: pointer; color: var(--color-text-secondary); font: inherit; font-size: .6875rem; }
+.terminal-pied > span { flex: 1; }
+.terminal-pied > b { font-weight: 400; color: var(--terminal-signal); }
+.terminal-chevron { flex-shrink: 0; transition: transform 240ms ease; }
+.terminal-chevron[data-open='true'] { transform: rotate(180deg); }
+@container (min-width: 600px) {
+  .terminal-colonnes { grid-template-columns: minmax(0, 1fr) 200px; }
+  /* Le corps ne doit pas repousser toute la réponse hors d'une fenêtre
+     courte : les deux colonnes défilent dans la même hauteur bornée. */
+  .terminal-journal, .terminal-mesures { height: clamp(8rem, 32dvh, 19rem); }
+  .terminal-mesures { display: flex; flex-direction: column; gap: .8rem; border-top: 0; border-left: 1px solid var(--color-border); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .terminal-octets { display: block; }
+}
+@container (max-width: 400px) {
+  .terminal-entete, .terminal-commande, .terminal-journal, .terminal-mesures, .terminal-pied { padding-left: .65rem; padding-right: .65rem; }
+  .terminal-ligne { grid-template-columns: 1.5rem 2.7rem minmax(0,1fr); gap: .35rem; font-size: .6875rem; }
+  .terminal-mesures { grid-template-columns: 1fr; }
+  .terminal-graphe { display: none; }
+  .terminal-journal { height: 9rem; }
+  .terminal-horloge { font-size: .625rem; }
+}
+.gravure-reponse { position: relative; min-width: 0; }
+.gravure-laser { position: absolute; left: 0; top: 0; width: 2px; background: var(--terminal-core); border-radius: 1px; box-shadow: 0 0 2px var(--terminal-signal), 0 0 12px var(--terminal-signal); pointer-events: none; z-index: 1; transition: transform 60ms linear; }
+.gravure-laser::before { content: ''; position: absolute; inset: 0 0 0 -48px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--terminal-signal) 22%, transparent)); }
+.gravure-laser::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 4px; height: 4px; background: var(--terminal-core); border-radius: 50%; box-shadow: 0 0 8px var(--terminal-signal); }
+.gravure-laser[hidden] { display: none; }
+@keyframes terminal-paquet { 0% { opacity: 0; stroke-dashoffset: .05; } 10%, 90% { opacity: 1; } 100% { opacity: 0; stroke-dashoffset: -1; } }
+@keyframes terminal-ligne { 0% { left: 0; opacity: 1; } 85% { left: 100%; opacity: 1; } 100% { left: 100%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .terminal-execution *, .gravure-laser { animation: none !important; transition: none !important; }
+  .terminal-impulsion, .terminal-ligne-laser, .gravure-laser { display: none !important; }
+}

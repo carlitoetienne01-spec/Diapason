@@ -16,6 +16,25 @@ function fournisseur(morceaux: string[]) {
   return annuler;
 }
 describe('réception et fermeture du flux', () => {
+  it('publie le début d’outil avant la réponse et mesure les octets UTF-8 reçus', async () => {
+    let controleur!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(c) { controleur = c; } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+    const mesurer = vi.fn();
+    const flux = streamChat(request, undefined, mesurer);
+    const debut = flux.next();
+    const appel = new TextEncoder().encode('event: tool_call_start\ndata: {"tool":"web_search","arguments":"écriture"}\n\n');
+    controleur.enqueue(appel);
+    const recu = await debut;
+    expect(recu.value?.event).toBe('tool_call_start');
+    expect(mesurer.mock.calls[0][0].byteLength).toBe(appel.byteLength);
+    // La fin n'existe pas encore. Un consommateur qui mettrait en tampon
+    // jusqu'à la réponse finale ne pourrait pas satisfaire cette assertion.
+    const suivant = flux.next();
+    controleur.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Réponse"}}]}\n\n'));
+    expect((await suivant).value?.data).toContain('Réponse');
+    await flux.return(undefined);
+  });
   it('transmet les questions fragmentées et conserve le refus de reposer le formulaire au tour suivant', async () => {
     fournisseur(['event: questions\n', 'data: {"id":"q"}\n\n', 'data: [DONE]\n\n']);
     const resultats = [];

@@ -1654,7 +1654,7 @@ function stepToToolCall(
       typeof args === 'string' ? args : args != null ? JSON.stringify(args) : '',
     status: 'success',
     result,
-    latency: step.duration ? step.duration * 1000 : undefined,
+    latency: step.duration ?? undefined,
   };
 }
 
@@ -1789,7 +1789,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
                       typeof data.result === 'string' ? data.result : it.tool.result,
                     latency:
                       typeof data.latency === 'number'
-                        ? data.latency * 1000
+                        ? data.latency
                         : it.tool.latency,
                   },
                 };
