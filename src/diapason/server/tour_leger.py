@@ -60,10 +60,11 @@ _IMPERATIF = re.compile(
     r"je voudrais que tu|can you|could you|please)\s+)?"
     r"(?:me |m'|nous |te |lui )?"
     r"(?:redig|ecri|prepar|conc|elabor|gener|cre|construi|develop|implement|"
-    r"cod|programm|script|resum|synthetis|analys|compar|expliqu|demontr|prouv|"
+    r"dessin|trac|illustr|visualis|cod|programm|script|resum|synthetis|"
+    r"analys|compar|expliqu|demontr|prouv|"
     r"resou|corrig|reformul|amelior|invent|imagin|compos|propos|fais|fait|faire|"
     r"write|draft|generate|create|build|implement|code|explain|analy[sz]|compare|"
-    r"summari[sz]|prove|solve|compose|make|design)\w*\b"
+    r"draw|plot|illustrate|visuali[sz]e|summari[sz]|prove|solve|compose|make|design)\w*\b"
 )
 # Raisonnement demandé, où qu'il soit dans la phrase.
 _RAISONNEMENT = re.compile(

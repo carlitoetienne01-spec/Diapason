@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef, type RefObject } from 'react';
+import { memo, lazy, Suspense, createContext, useContext, useState, useMemo, useRef, type RefObject } from 'react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -28,6 +28,11 @@ import {
 } from './notesDeVerification';
 import { useAppStore } from '../../lib/store';
 import { isCloudModel } from '../../lib/cloud-models';
+import { libellesVisuel } from './visuels/libelles';
+import { genreVisuel, remarkVisuels } from './visuels/formatVisuel';
+
+const VisuelDiscussion = lazy(() => import('./visuels/VisuelDiscussion'));
+const VisuelEnDirect = createContext(false);
 
 function stripThinkTags(text: string): string {
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/gi, '');
@@ -56,14 +61,23 @@ function getTextContent(node: any): string {
   return '';
 }
 
-function CodeBlockPre({ children, ...props }: any) {
-  const { t } = useTranslation();
+function CodeBlockPre({ children, node: _node, ...props }: any) {
+  const enDirect = useContext(VisuelEnDirect);
+  const { t, locale } = useTranslation();
   const [copied, setCopied] = useState(false);
   const codeElement = Array.isArray(children) ? children[0] : children;
   const className = codeElement?.props?.className || '';
   const match = /language-([\w-]+)/.exec(className);
   const lang = match ? match[1] : '';
   const code = getTextContent(codeElement?.props?.children).replace(/\n$/, '');
+
+  const genre = genreVisuel(lang);
+  if (genre && codeElement?.props?.['data-visual-complete']) {
+    return <Suspense fallback={<div role="status">{libellesVisuel(locale).waiting}</div>}>
+      <VisuelDiscussion genre={genre} source={code} enDirect={enDirect}
+        complet={codeElement.props['data-visual-complete'] === 'yes'} />
+    </Suspense>;
+  }
 
   const handleCopy = async () => {
     try {
@@ -289,8 +303,9 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
       {questions ? <QuestionsDiscussion key={questions.id} messageId={message.id} demande={questions} /> : (
         <GravureReponse texte={cleanContent} enDirect={isLive} contenu={rendu} arrivee={message.reception?.lastTextAtMs}>
         <div ref={rendu} className="prose max-w-none">
+          <VisuelEnDirect.Provider value={!!isLive}>
           <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
+            remarkPlugins={[remarkGfm, remarkMath, remarkVisuels]}
             rehypePlugins={rehypePlugins}
             components={{
               pre: CodeBlockPre,
@@ -298,6 +313,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
           >
             {cleanContent}
           </ReactMarkdown>
+          </VisuelEnDirect.Provider>
         </div>
         </GravureReponse>
       )}

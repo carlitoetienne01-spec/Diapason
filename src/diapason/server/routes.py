@@ -41,6 +41,7 @@ from diapason.server.reponses_longues import (
 )
 from diapason.server.suite import avec_rappel
 from diapason.server.tour_leger import Routage, choisir_le_modele
+from diapason.server.visuels_chat import instruire_visuels
 from diapason.telemetry.chat_latency import ChatLatency, measure_response
 
 router = APIRouter()
@@ -760,7 +761,12 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # à qui venait de lui en joindre une (22/09/2026). Le chemin direct, lui,
     # passe le Message entier au moteur, qui transmet les images à Ollama.
     porte_des_images = any(getattr(m, "images", None) for m in request_body.messages)
-    if agent is not None and not request_body.tools and not porte_des_images:
+    if (
+        agent is not None
+        and not request_body.tools
+        and not porte_des_images
+        and not request_body.visuals
+    ):
         response = await asyncio.to_thread(
             _handle_agent,
             agent,
@@ -920,6 +926,8 @@ def _handle_direct(
     messages = _ensure_identity_prompt(
         messages, app_config, client_supplied_system=client_system
     )
+    if req.visuals:
+        messages = instruire_visuels(messages)
     kwargs: dict[str, Any] = {}
     if req.tools:
         kwargs["tools"] = req.tools
@@ -1141,6 +1149,8 @@ async def _handle_stream_tools(
             app_config,
             client_supplied_system=client_system,
         )
+    if req.visuals:
+        messages = instruire_visuels(messages)
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     use_cloud = is_cloud_model(model)
 
@@ -1293,6 +1303,8 @@ async def _handle_stream(
         )
     # Le rappel du sujet (« ce pays » → l'échange précédent), comme sur le
     # chemin outillé — voir server/suite.py.
+    if req.visuals:
+        messages = instruire_visuels(messages)
     messages = avec_rappel(messages)
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 

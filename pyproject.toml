@@ -94,6 +94,7 @@ memory-pdf = ["pdfplumber>=0.10"]
 documents = ["pdfplumber>=0.10", "python-docx>=1.1"]
 memory-bm25 = ["rank-bm25>=0.2.2"]
 server = [
+    "matplotlib>=3.10,<4",
     "fastapi>=0.110",
     "uvicorn>=0.30",
     "pydantic>=2.0",
@@ -103,6 +104,7 @@ server = [
     "zeroconf>=0.150,<0.151",
 ]
 desktop = [
+    "matplotlib>=3.10,<4",
     "fastapi>=0.110",
     "uvicorn>=0.30",
     "pydantic>=2.0",

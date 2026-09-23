@@ -9,7 +9,7 @@ export function dernierTexteVisible(racine: HTMLElement): { noeud: Text; fin: nu
   for (let noeud: Node | null = parcours.currentNode; noeud && noeud !== racine; noeud = parcours.previousNode()) {
     const texte = noeud.textContent?.trimEnd() ?? '';
     const parent = noeud.parentElement;
-    if (!texte || !parent || parent.closest('button, [aria-hidden="true"], .katex-mathml, [hidden]')) continue;
+    if (!texte || !parent || parent.closest('button, [aria-hidden="true"], .katex-mathml, .visuel-discussion, [hidden]')) continue;
     return { noeud: noeud as Text, fin: texte.length };
   }
   return null;

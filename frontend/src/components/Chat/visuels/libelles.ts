@@ -1,0 +1,33 @@
+const fr = {
+  svg: 'Illustration', mermaid: 'Diagramme', 'diapason-chart': 'Graphique',
+  'diapason-matplotlib': 'Figure scientifique', 'diapason-plotly': 'Graphique interactif', 'diapason-plotly3d': 'Vue 3D',
+  interactive3D: 'Glisse pour tourner la vue. Exports PNG/PDF comme image, selon l’angle affiché.',
+  interactive: 'Survole pour lire les valeurs. Trace une zone pour zoomer ; Recentrer rétablit la vue.',
+  waiting: 'Préparation du visuel…', incomplete: 'Le dessin reçu est incomplet.',
+  error: 'Ce visuel ne peut pas être affiché. Son code reste disponible.',
+  zoomIn: 'Agrandir', zoomOut: 'Réduire', reset: 'Recentrer', full: 'Plein écran', close: 'Fermer',
+  more: 'Options du visuel', replay: 'Rejouer le tracé', code: 'Voir le code', hideCode: 'Masquer le code',
+  copy: 'Copier le code', copied: 'Code copié', svgExport: 'Exporter en SVG', pngExport: 'Exporter en PNG',
+  pdfExport: 'Exporter en PDF', retry: 'Réessayer le rendu', inkscape: 'Modifier dans Inkscape', inkscapeMissing: 'Inkscape n’est pas installé.', inkscapeStarted: 'Ouverture demandée à Inkscape',
+  note: 'Ajouter dans une note', chooseNote: 'Choisir une note', noteDone: 'Visuel ajouté à la note',
+  noNotes: 'Aucune note disponible.', operationError: 'L’opération a échoué. Réessaie.', exportError: 'L’export a échoué.', noteFull: 'Cette note est trop volumineuse.',
+  sample: 'Données d’exemple', source: 'Origine indiquée', noSource: 'Origine des données non précisée',
+  data: 'Voir les données', hideData: 'Masquer les données', saved: 'Visuel enregistré',
+};
+const en: typeof fr = {
+  svg: 'Illustration', mermaid: 'Diagram', 'diapason-chart': 'Chart',
+  'diapason-matplotlib': 'Scientific figure', 'diapason-plotly': 'Interactive chart', 'diapason-plotly3d': '3D view',
+  interactive3D: 'Drag to rotate. PNG/PDF exports contain an image of the current view.',
+  interactive: 'Hover to read values. Drag an area to zoom; Reset view restores the axes.',
+  waiting: 'Preparing visual…', incomplete: 'The received drawing is incomplete.',
+  error: 'This visual could not be displayed. Its source is still available.',
+  zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Reset view', full: 'Full screen', close: 'Close',
+  more: 'Visual options', replay: 'Replay drawing', code: 'View source', hideCode: 'Hide source',
+  copy: 'Copy source', copied: 'Source copied', svgExport: 'Export SVG', pngExport: 'Export PNG',
+  pdfExport: 'Export PDF', retry: 'Retry rendering', inkscape: 'Edit in Inkscape', inkscapeMissing: 'Inkscape is not installed.', inkscapeStarted: 'Opening requested in Inkscape',
+  note: 'Add to a note', chooseNote: 'Choose a note', noteDone: 'Visual added to the note',
+  noNotes: 'No notes available.', operationError: 'The operation failed. Please try again.', exportError: 'Export failed.', noteFull: 'This note is too large.',
+  sample: 'Example data', source: 'Stated origin', noSource: 'Data origin not specified',
+  data: 'View data', hideData: 'Hide data', saved: 'Visual saved',
+};
+export const libellesVisuel = (locale: string) => locale.startsWith('fr') ? fr : en;

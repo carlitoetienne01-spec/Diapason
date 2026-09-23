@@ -7,6 +7,7 @@ export function htmlDeLaReponse(contenu: HTMLElement): string {
     const pre = bloc.querySelector('pre');
     if (pre) bloc.replaceWith(pre);
   });
+  copie.querySelectorAll('.visuel-secondaire, .visuel-outils, .visuel-laser, .visuel-statut').forEach(el => el.remove());
   copie.querySelectorAll('button, input, script, style').forEach((el) => el.remove());
   // Les couleurs du thème sombre ne doivent pas devenir de l'encre blanche
   // sur le papier d'une note. La destination fournit sa police et son thème.

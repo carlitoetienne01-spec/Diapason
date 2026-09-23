@@ -773,16 +773,18 @@ class SuccesPhotosStore(SuccesFinancesStore):
 
     @staticmethod
     def write_export(chemin: Any, data_base64: str) -> dict[str, Any]:
-        """Écrire un export (PDF) là où l'utilisateur l'a demandé.
+        """Enregistrer un PDF ou un visuel validé dans le dossier personnel."""
+        from diapason.succes.export_visuel import verifier_export
 
-        Le chemin vient du dialogue « Enregistrer sous » de l'app ; on refuse
-        tout de même ce qui sort du dossier personnel, et tout ce qui n'est
-        pas un `.pdf` : une route qui écrit n'importe où est une route qui
-        écrira un jour dans `~/Library`.
-        """
         cible = Path(str(chemin or "")).expanduser()
-        if not cible.is_absolute() or cible.suffix.lower() != ".pdf":
-            raise SuccesError("L'export doit être un fichier .pdf à un chemin complet.")
+        if not cible.is_absolute() or cible.suffix.lower() not in {
+            ".pdf",
+            ".svg",
+            ".png",
+        }:
+            raise SuccesError(
+                "L'export exige un chemin complet et un fichier .pdf, .svg ou .png."
+            )
         maison = Path.home().resolve()
         try:
             resolu = cible.parent.resolve(strict=True)
@@ -793,9 +795,11 @@ class SuccesPhotosStore(SuccesFinancesStore):
         data = decoder_base64(
             data_base64, champ="Le fichier", maximum=EXPORT_OCTETS_MAX
         )
-        if data[:5] != b"%PDF-":
-            raise SuccesError("Ce fichier n'est pas un PDF.")
-        (resolu / cible.name).write_bytes(data)
+        verifier_export(data, cible.suffix.lower())
+        destination = resolu / cible.name
+        if destination.is_symlink():
+            raise SuccesError("L'export ne remplace pas un lien symbolique.")
+        destination.write_bytes(data)
         return {"path": str(resolu / cible.name), "bytes": len(data)}
 
     def delete_photo(self, photo_id: str) -> None:

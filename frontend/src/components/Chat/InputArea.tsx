@@ -809,6 +809,7 @@ export function InputArea() {
           // Le tour qui reçoit les réponses réalise la demande ; il ne rouvre
           // pas un questionnaire identique sous l'effet du rappel d'interface.
           interactiveQuestions: !envoi,
+          visuals: true,
           ...(options?.verifyOnline ? { verifyOnline: true } : {}),
         },
         controller.signal,

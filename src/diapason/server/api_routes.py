@@ -1083,6 +1083,12 @@ def include_all_routes(app) -> None:
 
     app.include_router(approval_router)
     app.include_router(succes_router)
+    from diapason.server.graphiques_scientifiques import router as graphiques_router
+
+    app.include_router(graphiques_router)
+    from diapason.server.editeur_visuel import router as editeur_visuel_router
+
+    app.include_router(editeur_visuel_router)
     app.include_router(mesh_router)
 
     # Le transfert de fichiers (Spatial Mesh, 25/08/2026) : routes à part,
