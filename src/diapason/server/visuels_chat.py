@@ -1,6 +1,9 @@
 """Les formats que le chat sait réellement rendre, sans exécuter de code."""
 
-from diapason.core.types import Message
+import re
+import unicodedata
+
+from diapason.core.types import Message, Role
 from diapason.server.questions_chat import ajouter_consigne
 
 CONSIGNE_VISUELS = """VISUELS DANS LE CHAT
@@ -43,7 +46,22 @@ fichier inexistant et ne demande pas d'installer un logiciel. Choisis :
   Une surface prend type="surface", matrix rectangulaire de hauteurs
   (2×2 à 20×20), sans series ; X/Y sont alors les indices de la grille.
   Nombres finis entre -1e12 et 1e12, aucune formule ou code.
+  Pour des ENSEMBLES CONCEPTUELS en relief (Ikigai, zones qui se recoupent),
+  utilise type="venn3d", PAS scatter3d ni des axes chiffrés :
+  {"title":"Relations","type":"venn3d",
+   "sets":[{"id":"a","label":"Créativité"},{"id":"b","label":"Technique"}],
+   "intersections":[],"centerLabel":"Création"}.
+  De 2 à 4 ensembles, identifiants uniques, libellés de 80 caractères maximum.
+  Ils sont disposés depuis le haut dans le sens antihoraire. Pour 3 ou 4
+  ensembles : intersections facultatives ENTRE DEUX VOISINS, avec
+  {"sets":["a","b"],"label":"Relation"}. Pas de doublons ni de paires opposées.
+  centerLabel nomme la zone commune. Relations et centre : 40 caractères max.
+  source facultative. Aucun champ series, matrix, sample ou axe pour venn3d.
+  La profondeur est illustrative : ce schéma ne mesure pas des concepts.
   La vue 3D s'exporte en IMAGE PNG/PDF, pas en SVG vectoriel.
+Un point isolé ne représente PAS un diagramme conceptuel. Vérifie avant de
+répondre que chaque ensemble et chaque relation décrits figurent dans le
+dessin. Ne décris pas une couleur précise : le rendu l'adapte au thème.
 Ne fabrique pas des chiffres réels : utilise les données fournies/reçues,
 cite leur origine dans source ; sample=false pour des mesures fournies,
 sample=true UNIQUEMENT pour des valeurs fictives de simulation/exemple.
@@ -60,7 +78,55 @@ N'emploie JAMAIS ```json pour un graphique à afficher. Exemple COMPLET :
 ```
 """
 
+# Le 23/09/2026, le modèle a appelé « Ikigai » un point (0,0,0), puis
+# décrit quatre éléments absents du dessin. Cet exemple structurel fournit
+# les relations du schéma populaire, sans inventer les réponses de Carlito.
+EXEMPLE_IKIGAI = """POUR LE DIAGRAMME IKIGAI DEMANDÉ
+Utilise le schéma populaire à QUATRE dimensions distinctes : aimer,
+être doué, être rémunéré, besoins du monde. Ne fusionne pas deux dimensions
+dans un axe Z. Ce schéma est une interprétation populaire de l'ikigai,
+pas sa définition complète ni une mesure de la personne.
+Voici le bloc complet qui rend réellement les quatre zones et leurs liens.
+Adapte les libellés à la langue du demandeur. N'invente pas ses réponses
+personnelles. Ne substitue pas un nuage de points à ces ensembles :
+```diapason-plotly3d
+{"title":"Ikigai — quatre dimensions","type":"venn3d",
+ "sets":[{"id":"aimer","label":"Ce que tu aimes"},
+         {"id":"talent","label":"Ce pour quoi tu es doué"},
+         {"id":"revenu","label":"Ce pour quoi tu peux être rémunéré"},
+         {"id":"besoin","label":"Ce dont le monde a besoin"}],
+ "intersections":[{"sets":["aimer","talent"],"label":"Passion"},
+                  {"sets":["talent","revenu"],"label":"Profession"},
+                  {"sets":["revenu","besoin"],"label":"Vocation"},
+                  {"sets":["besoin","aimer"],"label":"Mission"}],
+ "centerLabel":"Ikigai",
+ "source":"Interprétation populaire à quatre cercles"}
+```
+Explique brièvement le schéma déjà produit, au présent. Ne dis pas seulement
+que tu vas le générer. La profondeur est illustrative, sans axes numériques.
+"""
+
+
+def demande_ikigai_3d(messages: list[Message]) -> bool:
+    """Seul le dernier tour utilisateur active cet exemple spécialisé."""
+    dernier = next(
+        (m.content or "" for m in reversed(messages) if m.role == Role.USER), ""
+    )
+    plat = "".join(
+        c
+        for c in unicodedata.normalize("NFKD", dernier.casefold())
+        if not unicodedata.combining(c)
+    )
+    return bool(
+        re.search(r"\bikigai\b", plat)
+        and re.search(r"\b(?:3\s*d|trois dimensions|three.dimensions?|relief)\b", plat)
+        and re.search(r"\b(?:diagramme|schema|dessin|diagram|draw|illustr\w*)\b", plat)
+    )
+
 
 def instruire_visuels(messages: list[Message]) -> list[Message]:
     """Le client doit annoncer son rendu, l'API texte reste compatible."""
-    return ajouter_consigne(messages, CONSIGNE_VISUELS)
+    consigne = CONSIGNE_VISUELS
+    if demande_ikigai_3d(messages):
+        consigne += "\n" + EXEMPLE_IKIGAI
+    return ajouter_consigne(messages, consigne)

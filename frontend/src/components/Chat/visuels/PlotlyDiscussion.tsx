@@ -1,6 +1,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type PlotlyType from 'plotly.js-cartesian-dist-min';
 import { estFigure3D, traces3D, type Figure3D } from './figure3D';
+import { sceneEnsembles3D } from './ensembles3D';
 import { tracesPlotly, textePlotly, type FigureScientifique } from './figureScientifique';
 import { nettoyerSvg, type PaletteVisuel, type SvgPret } from './svgSur';
 
@@ -18,14 +19,16 @@ export default function PlotlyDiscussion({ figure, palette, origine, commandes, 
     const axe = { color: palette.texte, gridcolor: palette.bord, zerolinecolor: palette.bord, automargin: true };
     const largeur = el.clientWidth;
     const trois = estFigure3D(figure);
+    const conceptuel = figure.type === 'venn3d';
+    const sceneConcept = conceptuel ? sceneEnsembles3D(figure, palette, largeur) : null;
     let Plotly: typeof PlotlyType;
-    const cameraInitiale = { eye: { x: 1.25, y: 1.25, z: 1.25 } };
-    const layout = { autosize: true, height: conteneur.clientHeight, margin: { l: 48, r: 18, t: 20, b: 75 },
+    let cameraInitiale = sceneConcept?.camera ?? { eye: { x: 1.25, y: 1.25, z: 1.25 } };
+    const layout = { autosize: true, height: conteneur.clientHeight, margin: conceptuel ? { l: 0, r: 0, t: 0, b: 0 } : { l: 48, r: 18, t: 20, b: 75 },
       paper_bgcolor: palette.fond, plot_bgcolor: palette.fond, font: { family: palette.police, color: palette.texte, size: 11 },
       xaxis: { ...axe, title: { text: textePlotly(figure.xLabel) }, nticks: largeur < 400 ? 4 : 7 },
       yaxis: { ...axe, title: { text: textePlotly(figure.yLabel) } },
-      legend: { orientation: 'h', y: -.2 }, barmode: 'overlay', dragmode: trois ? 'orbit' : 'zoom', showlegend: true,
-      ...(trois ? { scene: { bgcolor: palette.fond, camera: cameraInitiale,
+      legend: { orientation: 'h', y: -.2 }, barmode: 'overlay', dragmode: trois ? 'orbit' : 'zoom', showlegend: !conceptuel,
+      ...(trois ? { scene: sceneConcept ?? { bgcolor: palette.fond, camera: cameraInitiale,
         xaxis: { ...axe, title: { text: textePlotly(figure.xLabel) } },
         yaxis: { ...axe, title: { text: textePlotly(figure.yLabel) } },
         zaxis: { ...axe, title: { text: textePlotly(figure.zLabel) } } } } : {}) };
@@ -95,8 +98,21 @@ export default function PlotlyDiscussion({ figure, palette, origine, commandes, 
       onReady(true);
     }).catch(() => { if (!annule) onError(); });
     const observer = new ResizeObserver(() => {
-      clearTimeout(timer); timer = setTimeout(() => { if (!annule && commandes.current && conteneur.clientWidth) void Plotly.relayout(el,
-        { width: conteneur.clientWidth, height: conteneur.clientHeight, ...(trois ? {} : { 'xaxis.nticks': conteneur.clientWidth < 400 ? 4 : 7 }) }).catch(() => { if (!annule) onError(); }); }, 80);
+      clearTimeout(timer); timer = setTimeout(() => {
+        if (annule || !commandes.current || !conteneur.clientWidth) return;
+        const ajustement: Record<string, unknown> = { width: conteneur.clientWidth, height: conteneur.clientHeight };
+        if (conceptuel) {
+          const scene = sceneEnsembles3D(figure, palette, conteneur.clientWidth);
+          ajustement['scene.annotations'] = scene.annotations;
+          const rapport = scene.camera.eye.z / cameraInitiale.eye.z;
+          if (rapport !== 1) {
+            const eye = (el as HTMLElement & { _fullLayout?: { scene?: { camera?: { eye?: { x: number; y: number; z: number } } } } })._fullLayout?.scene?.camera?.eye || cameraInitiale.eye;
+            ajustement['scene.camera.eye'] = { x: eye.x * rapport, y: eye.y * rapport, z: eye.z * rapport };
+          }
+          cameraInitiale = scene.camera;
+        } else if (!trois) ajustement['xaxis.nticks'] = conteneur.clientWidth < 400 ? 4 : 7;
+        void Plotly.relayout(el, ajustement).catch(() => { if (!annule) onError(); });
+      }, 80);
     });
     observer.observe(conteneur);
     return () => {
@@ -106,5 +122,7 @@ export default function PlotlyDiscussion({ figure, palette, origine, commandes, 
       void preparation.catch(() => {}).then(() => Plotly?.purge(el));
     };
   }, [figure, palette, origine, commandes, onReady, onError]);
-  return <div ref={hote} className="visuel-plotly" role="img" aria-label={figure.title} />;
+  return <div ref={hote} className={`visuel-plotly${figure.type === 'venn3d' ? ' visuel-ensembles3d' : ''}`} role="img" aria-label={figure.type === 'venn3d'
+    ? `${figure.title}. ${figure.sets.map(s => s.label).join(' ; ')}. ${figure.intersections.map(r => `${r.sets.map(id => figure.sets.find(s => s.id === id)!.label).join(' + ')} : ${r.label}`).join('. ')}. ${figure.centerLabel}`
+    : figure.title} />;
 }

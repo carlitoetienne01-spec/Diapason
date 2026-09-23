@@ -61,7 +61,9 @@ export default function VisuelDiscussion({ genre, source, complet, enDirect }: {
   const pret = affichable && (!estPlotly || plotlyPret);
   const titre = graphique?.title || figure?.title || rendu?.title || l[genre];
   const valeurs = graphique || figure;
-  const origine = `${valeurs?.sample ? l.sample + ' · ' : ''}${valeurs?.source ? l.source + ' : ' + valeurs.source : l.noSource}`;
+  const origine = figure?.type === 'venn3d'
+    ? `${l.conceptual}${figure.source ? ' · ' + l.source + ' : ' + figure.source : ''}`
+    : `${valeurs?.sample ? l.sample + ' · ' : ''}${valeurs?.source ? l.source + ' : ' + valeurs.source : l.noSource}`;
   const url = useMemo(() => rendu ? urlSvg(rendu.svg) : '', [rendu]);
 
   useEffect(() => {

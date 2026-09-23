@@ -6,10 +6,42 @@ import pytest
 
 from diapason.core.types import Message, Role
 from diapason.server.models import ChatCompletionRequest
-from diapason.server.visuels_chat import CONSIGNE_VISUELS, instruire_visuels
+from diapason.server.visuels_chat import (
+    CONSIGNE_VISUELS,
+    EXEMPLE_IKIGAI,
+    instruire_visuels,
+)
 
 
 class TestVisuelsDuChat:
+    @pytest.mark.parametrize(
+        "demande",
+        [
+            "fait moi un diagramme ikigai en 3D",
+            "Dessine un schéma Ikigaï en relief",
+            "Draw an ikigai diagram in 3D",
+        ],
+    )
+    def test_ikigai_recoit_un_contrat_a_quatre_dimensions(self, demande):
+        origine = [Message(role=Role.USER, content=demande)]
+        resultat = instruire_visuels(origine)
+        assert EXEMPLE_IKIGAI in resultat[0].content, (
+            "§5 : un point 3D ne remplace pas les ensembles demandés"
+        )
+        assert resultat[-1].content == demande, "la demande n'est pas réécrite"
+
+    def test_l_exemple_ikigai_ne_contamine_pas_la_demande_suivante(self):
+        resultat = instruire_visuels(
+            [
+                Message(role=Role.USER, content="Diagramme Ikigai en 3D"),
+                Message(role=Role.ASSISTANT, content="Le voici"),
+                Message(role=Role.USER, content="Trace une mesure au point 0,0,0"),
+            ]
+        )
+        assert EXEMPLE_IKIGAI not in resultat[0].content, (
+            "les mesures légitimes restent des graphiques numériques"
+        )
+
     def test_la_consigne_preserve_l_identite_et_l_historique(self):
         origine = [
             Message(role=Role.SYSTEM, content="Identité"),
@@ -62,6 +94,7 @@ class TestVisuelsDuChat:
         "Trace une courbe",
         "Draw a diagram",
         "Illustre ce concept",
+        "fait moi un diagramme ikigai en 3D",
     ],
 )
 def test_la_creation_visuelle_garde_le_modele_choisi(texte):

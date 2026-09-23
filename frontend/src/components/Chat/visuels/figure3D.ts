@@ -1,12 +1,14 @@
 import { SOURCE_MAX } from './limitesVisuels';
 import { textePlotly } from './figureScientifique';
 import type { PaletteVisuel } from './svgSur';
+import { lireEnsembles3D, tracesEnsembles3D, type FigureEnsembles3D } from './ensembles3D';
 
-export interface Figure3D {
+export interface FigureCoordonnees3D {
   title: string; type: 'scatter3d' | 'surface'; xLabel: string; yLabel: string; zLabel: string;
   series: { name: string; x: number[]; y: number[]; z: number[] }[];
   matrix?: number[][]; source?: string; sample: boolean;
 }
+export type Figure3D = FigureCoordonnees3D | FigureEnsembles3D;
 const erreur = (): never => { throw new Error('figure3d'); };
 function objet(v: unknown, cles: string[]): Record<string, unknown> {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !cles.includes(k))) return erreur();
@@ -19,10 +21,12 @@ function vecteur(v: unknown, max = 300): number[] {
 }
 export function lireFigure3D(source: string): Figure3D {
   if (source.length > SOURCE_MAX) return erreur();
-  const d = objet(JSON.parse(source), ['title', 'type', 'xLabel', 'yLabel', 'zLabel', 'series', 'matrix', 'source', 'sample']);
+  const brut: unknown = JSON.parse(source);
+  if (brut && typeof brut === 'object' && 'type' in brut && brut.type === 'venn3d') return lireEnsembles3D(brut);
+  const d = objet(brut, ['title', 'type', 'xLabel', 'yLabel', 'zLabel', 'series', 'matrix', 'source', 'sample']);
   const title = texte(d.title, 180);
   if (!title.trim() || (d.type !== 'scatter3d' && d.type !== 'surface') || (d.sample !== undefined && typeof d.sample !== 'boolean')) return erreur();
-  const series: Figure3D['series'] = [];
+  const series: FigureCoordonnees3D['series'] = [];
   let matrix: number[][] | undefined;
   if (d.type === 'scatter3d') {
     if (d.matrix !== undefined || !Array.isArray(d.series) || !d.series.length || d.series.length > 6) return erreur();
@@ -43,9 +47,10 @@ export function lireFigure3D(source: string): Figure3D {
     ...(d.source === undefined ? {} : { source: texte(d.source, 500) }), sample: d.sample === true };
 }
 export function traces3D(f: Figure3D, p: PaletteVisuel): unknown[] {
+  if (f.type === 'venn3d') return tracesEnsembles3D(f, p);
   if (f.type === 'surface') return [{ type: 'surface', z: f.matrix!.map(l => [...l]), colorscale: [[0, p.fond], [1, p.accent]], showscale: false }];
   const couleurs = [p.accent, '#4287ab', '#ac7449', '#8470a6', '#58956b', '#b56576'];
   return f.series.map((s, i) => ({ type: 'scatter3d', mode: 'markers', name: textePlotly(s.name),
     x: [...s.x], y: [...s.y], z: [...s.z], marker: { size: 5, color: couleurs[i] } }));
 }
-export const estFigure3D = (f: { type: string }): f is Figure3D => f.type === 'scatter3d' || f.type === 'surface';
+export const estFigure3D = (f: { type: string }): f is Figure3D => ['scatter3d', 'surface', 'venn3d'].includes(f.type);

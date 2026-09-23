@@ -194,3 +194,53 @@ L'automatisation de la fenêtre native s'est bloquée avant le contrôle
 complet principal/mini-panneau ; ce contrôle ne peut donc pas être annoncé
 comme réussi. La discussion temporaire de test a été retirée. Le test HTTP
 supplémentaire confirme 409 sur conflit et un ajout unique après rejeu.
+
+## Diagrammes conceptuels en relief
+
+Défaut observé le 23 septembre : « fait moi un diagramme ikigai en 3D »
+rendait un unique point (0,0,0), puis décrivait quatre dimensions absentes
+du dessin. Le contrat proposait seulement des points et des hauteurs.
+Un graphique numérique valide n'était donc pas forcément un schéma pertinent.
+
+`diapason-plotly3d` accepte maintenant `type: "venn3d"` : 2 à 4 `sets`
+(`id`, `label`), `centerLabel`, `intersections` facultatives entre deux
+voisins et `source` facultative. L'ordre part du haut, dans le sens
+antihoraire. Les quatre ensembles de l'Ikigai sont amour, talent,
+rémunération et besoin ; les relations sont Passion, Profession, Vocation
+et Mission. Les identifiants uniques et les références sont validés ; une
+relation dupliquée, inconnue, opposée ou réflexive est refusée.
+
+Ce rendu est un **schéma qualitatif en relief**, pas un diagramme de Venn
+mathématique exhaustif ni un graphique de mesures. Les disques translucides
+ont une profondeur illustrative et des libellés explicites ; les axes,
+graduations, survols de coordonnées et mentions de données fictives sont
+absents. `series`, `matrix`, `sample` et les axes sont refusés dans ce format.
+Chaque volume compte 98 sommets et 192 triangles, soit 768 triangles pour
+quatre zones. Le modèle n'envoie ni maillage ni code à exécuter.
+
+Le schéma à quatre cercles est une interprétation populaire, pas la
+définition complète de l'ikigai : [présentation du gouvernement japonais](https://www.japan.go.jp/kizuna/2022/03/ikigai_japanese_secret_to_a_joyful_life.html).
+Le contrat système ajoute un exemple complet pour une demande explicite
+d'Ikigai en 3D et interdit les descriptions de couleurs non maîtrisées.
+Les mesures numériques, même uniques, gardent leur rendu antérieur. Cela
+améliore la génération sans garantir la pertinence de chaque réponse future
+de chaque modèle. Aucun ancien message n'est réécrit.
+
+La vue s'adapte au thème et à 340 px. Lors d'un changement de largeur,
+le cadrage conserve l'orientation et le zoom relatif. Rotation, zoom,
+recentrage, plein écran et exports PNG/PDF utilisent le moteur existant.
+Le libellé accessible décrit aussi les ensembles et leurs relations.
+Références : [maillage Plotly](https://plotly.com/javascript/3d-mesh/),
+[axes 3D Plotly](https://plotly.com/javascript/3d-axes/).
+
+Vérification du 23 septembre : 1 114 tests Vitest, TypeScript, 12 tests
+Python du contrat visuel. Le test croisé charge l'exemple Python dans le
+parseur TypeScript et vérifie ses quatre volumes et neuf libellés.
+Qwen 3.5 9b a produit le format attendu en 17,2 s en appel local direct,
+puis via le vrai flux du serveur en 57 s (premier texte à 46,3 s). Ce
+dernier résultat a été affiché dans le vrai MessageBubble : thèmes
+ardechine/phosphore, largeur 340 px, rotation, zoom/recentrage, plein
+écran/Échap et exports PNG/PDF relus (neuf libellés et provenance présents).
+La correction a été intégrée à l'app Mac 1.0.5, reconstruite et relancée ;
+le serveur local a été rechargé. L'ancienne réponse erronée reste dans
+l'historique : une nouvelle demande utilise le contrat corrigé.
