@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "Diapason"
-version = "1.0.4"
+version = "1.0.5"
 description = "Diapason — modular AI assistant backend with composable intelligence primitives"
 readme = "README.md"
 # Upper bound: numpy 2.2.x (pinned transitively via datasets/pandas) ships no

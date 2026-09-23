@@ -43,7 +43,7 @@ ALLOWED_LEGACY_PATHS = {
     "src/diapason/cli/migrate_cmd.py",
 }
 ALLOWED_LEGACY_PREFIXES = ("tests/",)
-EXPECTED_VERSION = "1.0.4"
+EXPECTED_VERSION = "1.0.5"
 
 
 def project_files() -> list[Path]:
