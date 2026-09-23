@@ -651,6 +651,62 @@ n'ai pas pu lire la source. » corrige l'accusé quand la page refuse sans
 budget pour chercher autrement ; le désaccord avec les sources se juge sur
 la dernière passe, un « de mémoire » dit avant la recherche ne le tait plus.
 
+### Les pages officielles élargies, et ce qu'une recherche a rendu — 22 septembre
+
+Deux sujets de plus dans la table de P6, sondés avec le vrai lecteur avant
+d'entrer : **le premier ministre du Canada** (`pm.gc.ca/fr` TITRE sa page du
+nom du titulaire — « Le très honorable Mark Carney ») et **les taux de change
+quotidiens** de la Banque du Canada (un vrai tableau rendu côté serveur,
+en-tête daté compris). Deux candidates écartées faute de répondre : les jours
+fériés (404 sur deux adresses canada.ca, et le sujet est provincial autant que
+fédéral) et l'IPC de Statistique Canada (délai d'attente, puis 500).
+
+`PageOfficielle.titre_de_la_page` compose l'étiquette et le titre lu —
+« Premier ministre du Canada : Le très honorable Mark Carney » — parce que
+l'écraser jetait la réponse, et le garder seul ne dirait pas de quel poste il
+s'agit. Il faut le Canada dans la question : un « premier ministre » nu peut
+être celui du Québec ou de la France (§34).
+
+**Une seule lecture automatique par tour.** L'entrée nouvelle a créé son
+propre défaut, attrapé par dix tests : la page du poste (P3/P5, choisie parmi
+les résultats de recherche) et la page officielle se déclenchaient toutes deux
+sur la même question — deux allers au réseau pour un seul fait, sur un moteur
+à un créneau. La page du poste passe d'abord : son infobox porte la date
+d'entrée en fonction que le titre de pm.gc.ca ne donne pas. La page officielle
+reste le recours quand la recherche n'a RIEN rendu, et c'est le cas où elle
+vaut le plus. Mesuré : « taux de change du dollar américain » → « 1,4064 [7] »
+(la colonne du jour), badge vérifié ; « premier ministre du Canada » → « Mark
+Carney, depuis le 14 mars 2025 [2] », une seule lecture.
+
+**S2 — ce qu'une recherche a rendu se voit.** `web_search` savait depuis le
+20/09 quel moteur avait répondu (`engine` = « brave/news ») et combien de
+résultats (`numResults`) ; rien ne les faisait traverser. La carte affichait
+« web_search · 0,8 s », le terminal une ligne `OK` verte : une recherche VIDE
+sortait en succès, indiscernable d'une recherche fructueuse. `details_du_fil`
+les recopie dans `tool_end` ; la carte peint le zéro en couleur d'alerte, et
+le terminal écrit « web_search · brave/news · 0 rés. ». Le zéro est le cas
+pour lequel ceci existe — un `if not nombre` l'aurait jeté.
+
+Restent de **P7** : le journal des recherches de la conversation proprement
+dit (une liste par conversation, et relancer la requête exacte). Les cartes
+d'outils, maintenant qu'elles disent le moteur et le compte, en portent la
+moitié utile ; la seconde moitié est une surface d'interaction nouvelle.
+
+Deux défauts repérés au passage, hors de ces thèmes :
+
+- une page officielle DÉJÀ présente dans les résultats de recherche est
+  dédoublonnée, donc sa carte perd la mention « officiel » (constaté sur
+  « taux directeur » le 22/09 : la page de la Banque du Canada était la
+  source [1] de la recherche, lue par le code, et marquée comme une source
+  ordinaire). Marquer la carte existante demande que le client accepte une
+  MISE À JOUR de source : il ignore aujourd'hui tout `ref` déjà connu ;
+- `tests/tools/test_scan_chunks.py::test_registered` échoue par intermittence
+  sous `-n auto`. Il APPELLE `register_value` avant d'affirmer que la clé est
+  enregistrée, et `register_value` lève quand l'entrée est déjà résolue. Un
+  test qui met en place ce qu'il vérifie ne vérifie rien, et celui-ci rougit
+  la commande de vérification du dépôt. Vérifié sur l'arbre remisé : le défaut
+  préexiste au travail du 22/09.
+
 ### La recherche approfondie sans le web ni la suite — 22 septembre
 
 Dans l'app, bouton « Recherche approfondie » enclenché : « Fais-moi une
