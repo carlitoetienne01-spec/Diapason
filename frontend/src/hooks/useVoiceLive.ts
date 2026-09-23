@@ -11,6 +11,12 @@ import {
 import { refreshLocalApiKey } from '../lib/api';
 import { LectureVocale } from '../lib/lectureVocale';
 import { creerCaptureVocale, type CaptureVocale } from '../lib/captureVocale';
+// Le même lecteur et le même badge qu'au chat : deux calculs du même niveau
+// finiraient par diverger, et c'est celui qu'on oublierait qui mentirait.
+import {
+  lireVerification,
+  type Verification,
+} from '../components/Chat/notesDeVerification';
 
 export type VoiceLiveState =
   | 'idle'
@@ -57,6 +63,11 @@ export function useVoiceLive() {
   const [provider, setProvider] = useState<VoiceLiveProvider>('local');
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolEventLine[]>([]);
+  // Le niveau de vérification du dernier tour d'actualité (22/09/2026). Le
+  // panneau n'avait rien : l'épilogue parlé ne se prononce QUE lorsqu'il a
+  // quelque chose à avouer, donc son silence disait aussi bien « vérifié en
+  // ligne » que « personne n'a rien vérifié ».
+  const [verification, setVerification] = useState<Verification | undefined>(undefined);
   // Paroles et outils arrivent par deux canaux : sans rang commun, le fil
   // affiché ne peut pas respecter l'ordre réellement vécu.
   const seqRef = useRef(0);
@@ -179,6 +190,7 @@ export function useVoiceLive() {
       setError(null);
       setTranscripts([]);
       setToolEvents([]);
+      setVerification(undefined);
 
       const chosen = opts?.provider || provider;
 
@@ -351,6 +363,12 @@ export function useVoiceLive() {
               ]);
               setStatusLabel(`Tool · ${msg.name || '…'}`);
               break;
+            case 'verification':
+              // Un tour sans niveau lisible EFFACE le précédent : garder la
+              // pastille du tour d'avant sous la réponse d'à côté serait la
+              // pire des lectures.
+              setVerification(lireVerification(msg));
+              break;
             case 'error':
               console.error('[voice-live] server session error', {
                 provider: chosen,
@@ -464,6 +482,7 @@ export function useVoiceLive() {
     setProvider: chooseProvider,
     transcripts,
     toolEvents,
+    verification,
     statusLabel,
     outputNode,
     micNode,

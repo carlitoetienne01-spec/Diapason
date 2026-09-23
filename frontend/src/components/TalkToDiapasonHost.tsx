@@ -140,6 +140,7 @@ export function TalkToDiapasonHost() {
       provider={voice.provider}
       transcripts={voice.transcripts}
       toolEvents={voice.toolEvents}
+      verification={voice.verification}
       screenSharing={screenSharing}
       audioSource={voice.outputNode}
       micSource={voice.micNode}

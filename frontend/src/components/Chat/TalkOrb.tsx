@@ -6,6 +6,7 @@ import { useLiveDictation } from '../../hooks/useLiveDictation';
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
 import { useAppStore } from '../../lib/store';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { badgeDeVerification, type Verification } from './notesDeVerification';
 import './ComposerGlass.css';
 import '../Glass/CarteVitree.css';
 import './TalkOrb.css';
@@ -26,6 +27,11 @@ interface TalkOrbProps {
   provider: VoiceLiveProvider;
   transcripts: TranscriptLine[];
   toolEvents?: ToolEventLine[];
+  /** Le niveau du dernier tour d'actualité — la pastille que le panneau
+   *  n'avait pas (22/09/2026). L'épilogue parlé ne se prononce QUE lorsqu'il
+   *  a quelque chose à avouer : son silence disait aussi bien « vérifié en
+   *  ligne » que « personne n'a rien vérifié ». */
+  verification?: Verification;
   screenSharing?: boolean;
   audioSource?: AudioNode | null;
   micSource?: AudioNode | null;
@@ -66,7 +72,7 @@ function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: strin
 
 export function TalkOrb({
   open, state, statusLabel, error, serviceReady, checkingService, provider,
-  transcripts, toolEvents = [], screenSharing = false, audioSource = null,
+  transcripts, toolEvents = [], verification, screenSharing = false, audioSource = null,
   micSource = null, onStart, onStop, onInterrupt, onClose,
 }: TalkOrbProps) {
   const { t, locale } = useTranslation();
@@ -80,6 +86,9 @@ export function TalkOrb({
     ...transcripts.map((l) => ({ kind: 'msg' as const, ...l })),
     ...toolEvents.map((e) => ({ kind: 'tool' as const, ...e })),
   ].sort((a, b) => a.at - b.at);
+  // Le MÊME calcul qu'au chat : deux façons de décider du même niveau
+  // finiraient par diverger, et c'est celle qu'on oublierait qui mentirait.
+  const badge = badgeDeVerification(verification);
   const derniere = fil[fil.length - 1];
   const dernierTexte = derniere ? `${fil.length}:${derniere.kind === 'msg' ? derniere.text : derniere.name}` : '';
   useEffect(() => {
@@ -223,6 +232,7 @@ export function TalkOrb({
               </div>
               <p>{entree.text}{!entree.final && <span className="resonance-en-cours"> ▍</span>}</p>
             </div>)}
+            {badge && <p className="resonance-verification" data-ton={badge.ton}>{t(badge.cle)}</p>}
           </div>
         </section>}
       </div>

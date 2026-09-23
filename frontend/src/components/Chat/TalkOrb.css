@@ -75,6 +75,12 @@
 .resonance-outil svg { flex: none; }
 .resonance-outil[data-ok='false'] { color: var(--res-erreur); }
 .resonance-en-cours { color: var(--res-accent); }
+/* La pastille de vérification, sous la dernière réponse. Le ton porte le
+   sens : l'accent quand c'est vérifié, la couleur d'erreur quand ça ne
+   l'est pas — un badge qui se lit pareil dans les deux cas ne dirait
+   rien. */
+.resonance-verification { margin: 12px 0 0; font-size: 12px; color: var(--res-accent); }
+.resonance-verification[data-ton='warn'] { color: var(--res-erreur); }
 @media (max-width: 680px) {
   .resonance-rideau { padding: 10px; }
   .composer-glass.carte-vitree.resonance-dialogue { max-height: calc(100dvh - 20px); --carte-verre-rayon: 20px; }

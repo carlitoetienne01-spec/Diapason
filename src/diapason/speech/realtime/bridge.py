@@ -39,6 +39,10 @@ def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
             "ok": event.tool_ok,
             "detail": event.detail,
         }
+    if event.kind == "verification":
+        # Les clés restent celles du chat : le client les lit avec le même
+        # `lireVerification`, qui ne connaît que l'anglais camelCase.
+        return {"type": "verification", **(event.verification or {})}
     if event.kind == "error":
         return {"type": "error", "detail": event.detail or "unknown error"}
     if event.kind == "closed":

@@ -141,3 +141,44 @@ describe('§78 / §100 — la capture appartient à la session, pas à sa lectur
     expect(rendu().state).toBe('error');
   });
 });
+
+describe('§5 — la pastille de vérification du panneau vocal', () => {
+  // 22/09/2026 : le panneau n'avait rien. L'épilogue parlé ne se prononce QUE
+  // lorsqu'il a quelque chose à avouer, donc son silence disait aussi bien
+  // « vérifié en ligne » que « personne n'a rien vérifié ».
+  it('retient le niveau que le serveur envoie', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'verification', level: 'verified', searchTried: true });
+    expect(rendu().verification).toEqual({
+      notFound: [],
+      level: 'verified',
+      searchTried: true,
+    });
+  });
+
+  it('distingue « de mémoire » de « de mémoire, recherche sans résultat »', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'verification', level: 'memory' });
+    expect(rendu().verification).toEqual({ notFound: [], level: 'memory' });
+    socket.message({ type: 'verification', level: 'memory', searchTried: true });
+    expect(rendu().verification?.searchTried).toBe(true);
+  });
+
+  it('efface la pastille quand le tour suivant n’en porte pas', async () => {
+    // Garder celle du tour d'avant sous la réponse d'à côté serait la pire
+    // des lectures : un badge vert sur une réponse que rien n'a vérifiée.
+    const socket = await connecter();
+    socket.message({ type: 'verification', level: 'verified', searchTried: true });
+    socket.message({ type: 'verification' });
+    expect(rendu().verification).toBeUndefined();
+  });
+
+  it('ne garde rien d’une session à l’autre', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'verification', level: 'partial', searchTried: true });
+    expect(rendu().verification?.level).toBe('partial');
+    rendu().stop();
+    await connecter();
+    expect(rendu().verification).toBeUndefined();
+  });
+});

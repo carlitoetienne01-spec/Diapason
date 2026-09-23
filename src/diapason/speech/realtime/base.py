@@ -14,6 +14,7 @@ EventKind = Literal[
     "error",
     "closed",
     "tool",
+    "verification",
 ]
 
 
@@ -36,6 +37,12 @@ class SessionEvent:
     detail: str = ""
     tool_name: str = ""
     tool_ok: bool = False
+    # Le niveau de vérification du tour (22/09/2026), tel que le chat
+    # l'envoie : {"level": "verified"|"partial"|"memory", "searchTried": bool}.
+    # Le panneau vocal n'avait pas de pastille, et l'épilogue ne parle que
+    # lorsqu'il a quelque chose à avouer : son silence disait à la fois
+    # « vérifié » et « rien vérifié ».
+    verification: Optional[dict[str, Any]] = None
     raw: Optional[dict[str, Any]] = field(default=None, repr=False)
 
 

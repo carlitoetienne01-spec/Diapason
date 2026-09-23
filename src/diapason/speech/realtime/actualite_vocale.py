@@ -577,6 +577,44 @@ def epilogue(tour: TourVocal, reponse: str, derniere_passe: str | None = None) -
     return ""
 
 
+def niveau_vocal(
+    tour: TourVocal, reponse: str, derniere_passe: str | None = None
+) -> dict[str, Any]:
+    """Ce que le panneau vocal affiche en pastille : les mêmes trois niveaux
+    que le chat, jugés sur ce que la VOIX possède.
+
+    22/09/2026. La limite écrite le 21 au soir : « pas de badge dans le
+    panneau vocal, l'épilogue en tient lieu. » Il n'en tenait pas lieu. La
+    voix ne parle QUE lorsqu'elle a quelque chose à avouer — une réponse
+    vérifiée ne dit rien, une réponse partielle non plus, et rien à l'écran
+    ne distinguait « vérifié en ligne » de « personne n'a rien vérifié »
+    (§5 : un état qui ne s'affiche pas se fait supposer). Le silence de
+    l'épilogue portait donc deux sens opposés.
+
+    Le niveau n'est PAS délégué à `niveau_de_verification` : celui du chat
+    déclasse en « partiel » toute réponse qui ne cite aucun `[N]`, or la
+    consigne vocale INTERDIT les crochets — Kokoro prononçait « Mark Carney
+    deux, depuis mars deux mille vingt-cinq ». Déléguer aurait mis
+    « Partiellement vérifié » sous chaque réponse vocale correcte, c'est-à-dire
+    un badge qui ment dans le cas ordinaire. Ce qui reste vrai des deux côtés
+    est jugé ici : rien de cherché, c'est de mémoire ; une non-réponse ou un
+    désaccord avec les sources, c'est partiel ; le reste est vérifié.
+
+    Les clés partent en anglais camelCase comme celles du chat : le client
+    les lit avec `lireVerification`, qui ne connaît que celles-là.
+    """
+    derniere = derniere_passe if derniere_passe is not None else (reponse or "")
+    if not tour.verification_faite:
+        niveau = "memory"
+    elif est_une_non_reponse(derniere, question=tour.question) or (
+        desaccord_sur_le_titulaire(derniere, tour.corpus, tour.question)
+    ):
+        niveau = "partial"
+    else:
+        niveau = "verified"
+    return {"level": niveau, "searchTried": bool(tour.recherche_tentee)}
+
+
 __all__ = [
     "ACCUSE_LECTURE",
     "ACCUSE_LECTURE_RATEE",
@@ -591,6 +629,7 @@ __all__ = [
     "consigne",
     "deja_lue",
     "epilogue",
+    "niveau_vocal",
     "lecture_possible",
     "relance_apres_non_reponse",
     "relance_possible",

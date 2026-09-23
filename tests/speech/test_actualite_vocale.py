@@ -315,6 +315,83 @@ class TestLaGardeVocale:
         assert outils == ["web_search", "web_read"], "rien ne se fait en cachette (§5)"
 
 
+class TestLaPastilleDuPanneauVocal:
+    """22/09/2026. Jusqu'ici : « pas de badge dans le panneau vocal, l'épilogue
+    en tient lieu. » Il n'en tenait pas lieu — l'épilogue ne parle que lorsqu'il
+    a quelque chose à avouer, donc son silence disait à la fois « vérifié en
+    ligne » et « personne n'a rien vérifié » (§5)."""
+
+    @staticmethod
+    def niveaux(session):
+        sortie = []
+        while not session._queue.empty():
+            e = session._queue.get_nowait()
+            if e.kind == "verification":
+                sortie.append(e.verification)
+        return sortie
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_cherchee_et_lue_est_vérifiée(self):
+        session, _ = harnais([[appel_web()], "Mark Carney, depuis mars 2025."])
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert self.niveaux(session) == [{"level": "verified", "searchTried": True}]
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_sans_crochets_reste_verifiee(self):
+        """La consigne vocale INTERDIT les « [1] » — Kokoro prononçait « Mark
+        Carney deux ». Déléguer au niveau du chat, qui déclasse toute réponse
+        sans citation, aurait mis « Partiellement vérifié » sous chaque bonne
+        réponse vocale."""
+        session, journal = harnais(
+            [[appel_web()], "C'est Mark Carney, selon Wikipédia, depuis mars 2025."]
+        )
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert "[" not in " ".join(journal["spoken"]), "rien à prononcer entre crochets"
+        assert self.niveaux(session) == [{"level": "verified", "searchTried": True}]
+
+    @pytest.mark.asyncio
+    async def test_sans_recherche_la_pastille_dit_de_memoire(self):
+        session, _ = harnais(["Mark Carney."] * 3)
+        await session._respond_to_text(PREMIER_MINISTRE)
+        (niveau,) = self.niveaux(session)
+        assert niveau["level"] == "memory"
+
+    @pytest.mark.asyncio
+    async def test_une_recherche_vide_dit_de_memoire_et_qu_on_a_cherche(self):
+        vide = {"ok": True, "content": "No results found.", "metadata": {}}
+        session, _ = harnais([[appel_web()], "Le Canadien a gagné."], recherche=vide)
+        await session._respond_to_text("Qui a gagné le match hier soir ?")
+        assert self.niveaux(session) == [{"level": "memory", "searchTried": True}]
+
+    @pytest.mark.asyncio
+    async def test_un_desaccord_avec_les_sources_n_est_pas_verifie(self):
+        """Le cas où un badge vert serait un faux SUCCESS (§100) : la voix
+        avertit déjà à l'oral, la pastille ne doit pas dire le contraire."""
+        session, journal = harnais([[appel_web()], "Justin Trudeau, depuis 2015."])
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert "Mark Carney" in journal["spoken"][-1], "l'avertissement est prononcé"
+        (niveau,) = self.niveaux(session)
+        assert niveau["level"] == "partial", "la pastille ne contredit pas la voix"
+
+    @pytest.mark.asyncio
+    async def test_la_pastille_juge_la_reponse_et_non_l_aveu(self):
+        """`_speak_sentence` ajoute l'épilogue à ce qui a été dit : juger le
+        tout reviendrait à juger le verdict au lieu de la réponse."""
+        session, journal = harnais([[appel_web()], "Mark Carney, depuis mars 2025."])
+        await session._respond_to_text(PREMIER_MINISTRE)
+        assert journal["spoken"][-1] == "Mark Carney, depuis mars 2025.", (
+            "rien n'est ajouté après une réponse vérifiée"
+        )
+        assert self.niveaux(session)[0]["level"] == "verified"
+
+    @pytest.mark.asyncio
+    async def test_rien_hors_d_une_question_d_actualite(self):
+        """Une pastille sur « écris-moi un poème » ne voudrait rien dire."""
+        session, _ = harnais(["Les feuilles tombent."])
+        await session._respond_to_text("Écris-moi un haïku.")
+        assert self.niveaux(session) == []
+
+
 class TestLesPiecesDuTour:
     def test_preparer_tour(self):
         assert preparer_tour("Qui est le pape ?", []).question == "Qui est le pape ?"

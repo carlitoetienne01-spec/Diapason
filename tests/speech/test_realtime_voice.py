@@ -128,6 +128,20 @@ def test_event_to_client_json():
         "ok": True,
         "detail": "Focused",
     }
+    # Le niveau de vérification du tour (22/09/2026) : les clés restent celles
+    # du chat, en anglais camelCase — le client les lit avec le même
+    # `lireVerification`, qui ne connaît qu'elles. Un `level` en français y
+    # entrerait comme `undefined`, en silence.
+    verif = event_to_client_json(
+        SessionEvent(
+            kind="verification",
+            verification={"level": "verified", "searchTried": True},
+        )
+    )
+    assert verif == {"type": "verification", "level": "verified", "searchTried": True}
+    assert event_to_client_json(SessionEvent(kind="verification")) == {
+        "type": "verification"
+    }, "un événement sans niveau ne fabrique pas de clés vides"
 
 
 def test_voice_tool_budget():

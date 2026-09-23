@@ -489,10 +489,39 @@ déplacés, partagés par les deux chemins) :
 
 `web_read` entre dans la trousse vocale ; le tour vocal passe `num_ctx`
 comme le chat (sans lui, Ollama prenait sa fenêtre, et deux fenêtres font
-deux modèles chargés). Limites : pas de badge dans le panneau vocal,
-l'épilogue en tient lieu ; le texte de l'épilogue est fixe ; un nom de
-personne privée dans la question à vérifier n'est pas reconnu comme
-personnel.
+deux modèles chargés). Limites : ~~pas de badge dans le panneau vocal,
+l'épilogue en tient lieu~~ (levé le 22/09, voir ci-dessous) ; le texte de
+l'épilogue est fixe ; un nom de personne privée dans la question à vérifier
+n'est pas reconnu comme personnel.
+
+### La pastille du panneau vocal — 22 septembre
+
+« L'épilogue en tient lieu » était faux. L'épilogue ne se prononce QUE
+lorsqu'il a quelque chose à avouer : une réponse vérifiée ne dit rien, une
+réponse partielle non plus, et rien à l'écran ne distinguait « vérifié en
+ligne » de « personne n'a rien vérifié ». Le silence portait deux sens
+opposés (§5 : un état qui ne s'affiche pas se fait supposer).
+
+Un événement `verification` de plus sur le fil vocal (`{level, searchTried}`,
+clés anglaises comme au chat), et la même pastille sous la dernière réponse
+du panneau — `badgeDeVerification` et `lireVerification` sont ceux du chat,
+importés : deux calculs du même niveau finiraient par diverger, et c'est
+celui qu'on oublierait qui mentirait.
+
+Le niveau, lui, n'est PAS celui du chat. `niveau_de_verification` déclasse en
+« partiel » toute réponse qui ne cite aucun `[N]`, or la consigne vocale
+INTERDIT les crochets (Kokoro prononçait « Mark Carney deux »). Déléguer
+aurait mis « Partiellement vérifié » sous chaque réponse vocale correcte —
+un badge qui ment dans le cas ordinaire. `niveau_vocal` juge donc ce que la
+voix possède : rien de cherché, c'est de mémoire ; une non-réponse ou un
+désaccord de titulaire, c'est partiel ; le reste est vérifié. Le jugement
+porte sur ce que le MODÈLE a dit, pris avant l'épilogue — `_speak_sentence`
+ajoute celui-ci à ce qui a été prononcé, et juger le tout reviendrait à
+juger le verdict au lieu de la réponse.
+
+Limite : le panneau ne se pilote pas sans micro, donc la pastille est
+vérifiée des deux côtés du fil (sérialisation Python, état du hook) mais pas
+à l'œil dans une session vocale réelle.
 
 ### Les pages officielles — 21 septembre, nuit (P6)
 

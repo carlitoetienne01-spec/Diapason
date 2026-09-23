@@ -2107,13 +2107,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
             if tour_actualite is not None:
                 # §100, prononcé : de mémoire, ou en désaccord avec les sources.
+                dit = " ".join(spoken).strip()
+                derniere_passe = " ".join(spoken[debut_passe:]).strip()
                 epilogue = actualite_vocale.epilogue(
-                    tour_actualite,
-                    " ".join(spoken).strip(),
-                    " ".join(spoken[debut_passe:]).strip(),
+                    tour_actualite, dit, derniere_passe
+                )
+                # Le même niveau que le chat, en pastille (22/09/2026). Jugé
+                # sur ce que le MODÈLE a dit, pris avant l'épilogue :
+                # `_speak_sentence` ajoute celui-ci à `spoken`, et juger
+                # « Attention : les sources désignent Mark Carney… » reviendrait
+                # à juger le verdict au lieu de la réponse.
+                niveau = actualite_vocale.niveau_vocal(
+                    tour_actualite, dit, derniere_passe
                 )
                 if epilogue:
                     await self._speak_sentence(epilogue, spoken)
+                await self._queue.put(
+                    SessionEvent(kind="verification", verification=niveau)
+                )
             answer = " ".join(spoken).strip()
             if tool_notes:
                 # The raw tool payloads stay per-turn (see above), but a
