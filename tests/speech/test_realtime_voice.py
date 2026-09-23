@@ -142,6 +142,29 @@ def test_event_to_client_json():
     assert event_to_client_json(SessionEvent(kind="verification")) == {
         "type": "verification"
     }, "un événement sans niveau ne fabrique pas de clés vides"
+    # 22/09/2026 : une recherche à zéro résultat arrivait au panneau vocal en
+    # ok=true, detail="" — indiscernable d'une recherche fructueuse.
+    vide = event_to_client_json(
+        SessionEvent(
+            kind="tool",
+            tool_name="web_search",
+            tool_ok=True,
+            tool_details={"engine": "brave/news", "numResults": 0},
+        )
+    )
+    assert vide == {
+        "type": "tool",
+        "name": "web_search",
+        "ok": True,
+        "detail": "",
+        "engine": "brave/news",
+        "numResults": 0,
+    }, "le zéro traverse : c'est le cas pour lequel ces champs existent"
+    assert event_to_client_json(
+        SessionEvent(kind="tool", tool_name="focus_app", tool_ok=True)
+    ) == {"type": "tool", "name": "focus_app", "ok": True, "detail": ""}, (
+        "un outil qui ne cherche pas n'ajoute aucune clé"
+    )
 
 
 def test_voice_tool_budget():

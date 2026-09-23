@@ -7,6 +7,7 @@ import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine }
 import { useAppStore } from '../../lib/store';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import { badgeDeVerification, type Verification } from './notesDeVerification';
+import { resumeDeRecherche } from './etatExecution';
 import './ComposerGlass.css';
 import '../Glass/CarteVitree.css';
 import './TalkOrb.css';
@@ -226,6 +227,13 @@ export function TalkOrb({
             {fil.map((entree) => entree.kind === 'tool' ? <div key={`t-${entree.at}`} className="resonance-outil" data-ok={entree.ok}>
               {entree.ok ? <Check size={14} /> : <X size={14} />}
               <span>{entree.name}{entree.detail ? ` — ${entree.detail}` : ''}</span>
+              {(() => {
+                // Le même résumé qu'au chat : « brave/news · 0 rés. ». Une
+                // recherche vide RÉUSSIT — le crochet reste vert ; c'est le
+                // compte qui alerte, et lui seul.
+                const r = resumeDeRecherche(entree);
+                return r ? <span className="resonance-resume" data-vide={r.vide}>{r.texte}</span> : null;
+              })()}
             </div> : <div key={`m-${entree.at}`} className="resonance-message" data-role={entree.role}>
               <div className="resonance-auteur"><span>{entree.role === 'user' ? t('common.you') : 'Diapason'}</span>
                 <CopieTranscript texte={entree.text} etiquette={t('chat.message.copy')} />

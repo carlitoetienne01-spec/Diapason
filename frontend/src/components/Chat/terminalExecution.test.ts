@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolCallInfo } from '../../types';
 import { appelsDeRecherche, bilanExecution, cloreAppels, dureeOutil, dureeValide, etatExecution, resumeDeRecherche, terminerAppel, texteRecu } from './etatExecution';
-import { finDOutil } from './receptionTerminal';
+import { journalExecution, creerReception } from './receptionTerminal';
 import { dernierTexteVisible } from './GravureReponse';
 
 const appel = (id = 'a', outil = 'web_search'): ToolCallInfo => ({ id, tool: outil, arguments: '{}', status: 'running' });
@@ -141,12 +141,37 @@ describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
     expect(resumeDeRecherche({})).toBeNull();
   });
 
-  it('écrit le vide dans la ligne de fin du terminal', () => {
+  it('porte le résumé À PART sur la ligne de fin, pour qu’il soit peint', () => {
     // Une recherche vide sort en OK comme une autre : l'appel a réussi, il
-    // n'a rien trouvé. Sans le compte, le terminal montrait un succès vert
-    // là où la réponse ne repose sur rien.
-    expect(finDOutil(fini({ engine: 'brave/news', numResults: 0 })))
-      .toBe('web_search · brave/news · 0 rés.');
-    expect(finDOutil(fini({}))).toBe('web_search');
+    // n'a rien trouvé. Collé dans `texte`, le compte sortait de la même
+    // couleur qu'un succès ordinaire — un zéro affiché comme un huit n'est
+    // pas affiché (§5). Le tag reste OK : le peindre en erreur mentirait
+    // dans l'autre sens.
+    const appels = [appel()];
+    terminerAppel(appels, { tool: 'web_search', success: true, latency: 0.8, engine: 'brave/news', numResults: 0 });
+    appels[0].endedAtMs = 400;
+    const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'OK');
+    expect(fin).toBeDefined();
+    expect(fin!.texte).toBe('web_search');
+    expect(fin!.resume).toBe('brave/news · 0 rés.');
+    expect(fin!.vide).toBe(true);
+  });
+
+  it('ne pose ni résumé ni drapeau sur un outil qui ne cherche pas', () => {
+    const appels: ToolCallInfo[] = [{ id: 'a', tool: 'read_file', arguments: '{}', status: 'running' }];
+    terminerAppel(appels, { tool: 'read_file', success: true, latency: 0.1 });
+    appels[0].endedAtMs = 400;
+    const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'OK');
+    expect(fin!.resume).toBeUndefined();
+    expect(fin!.vide).toBeUndefined();
+  });
+
+  it('une recherche fructueuse porte son résumé sans lever le drapeau', () => {
+    const appels = [appel()];
+    terminerAppel(appels, { tool: 'web_search', success: true, latency: 0.8, engine: 'brave/news', numResults: 8 });
+    appels[0].endedAtMs = 400;
+    const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'OK');
+    expect(fin!.resume).toBe('brave/news · 8 rés.');
+    expect(fin!.vide).toBe(false);
   });
 });

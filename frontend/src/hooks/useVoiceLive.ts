@@ -40,6 +40,11 @@ export interface ToolEventLine {
   name: string;
   ok: boolean;
   detail: string;
+  // 22/09/2026 : une recherche à zéro résultat arrivait ici en ok=true,
+  // detail='' — indiscernable d'une recherche fructueuse. Mêmes clés qu'au
+  // chat, même fonction d'affichage (`resumeDeRecherche`).
+  engine?: string;
+  numResults?: number;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -359,6 +364,10 @@ export function useVoiceLive() {
                   name: msg.name || 'tool',
                   ok: !!msg.ok,
                   detail: msg.detail || '',
+                  ...(typeof msg.engine === 'string' && msg.engine ? { engine: msg.engine } : {}),
+                  // `0` passe ; `Number.isInteger` écarte NaN et Infinity,
+                  // qui s'afficheraient tels quels.
+                  ...(Number.isInteger(msg.numResults) ? { numResults: msg.numResults as number } : {}),
                 },
               ]);
               setStatusLabel(`Tool · ${msg.name || '…'}`);

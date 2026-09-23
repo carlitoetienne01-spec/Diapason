@@ -47,20 +47,18 @@ export interface LigneTerminal {
   texte: string;
   atMs?: number;
   etat?: string;
+  // 22/09/2026, corrigé le même soir. Ce qu'une recherche a rendu —
+  // « brave/news · 0 rés. » — voyage À PART de `texte` pour que le terminal
+  // puisse le PEINDRE. Le premier jet le collait dans `texte` : la ligne
+  // entière sortait alors de la même couleur qu'un succès ordinaire, et
+  // `vide` n'avait pour seul lecteur que ToolCallCard, qui n'est rendu que
+  // dans AgentsPage — jamais dans le chat. Un zéro affiché comme un huit
+  // n'est pas affiché (§5).
+  /** « brave/news · 8 rés. », pour un outil qui cherche. */
+  resume?: string;
+  /** La recherche n'a RIEN rendu. C'est le cas pour lequel tout ceci existe. */
+  vide?: boolean;
 }
-/** La ligne de fin d'un outil : son nom, et pour une recherche ce qu'elle a
- *  rendu — « web_search · brave/news · 0 rés. ».
- *
- *  22/09/2026 (S2 du jury). Une recherche vide sort en `OK` comme une autre :
- *  l'appel a réussi, il n'a simplement rien trouvé. Sans le compte, le
- *  terminal montrait donc un succès vert là où la réponse qui suit ne repose
- *  sur rien (§5). Le moteur est dit aussi : trois moteurs se relaient, et
- *  savoir lequel a répondu explique un vide autant qu'il le date. */
-export function finDOutil(appel: ToolCallInfo): string {
-  const resume = resumeDeRecherche(appel);
-  return resume ? `${appel.tool} · ${resume.texte}` : appel.tool;
-}
-
 export function journalExecution(appels: ToolCallInfo[], reception: ChatReception | undefined, direct: boolean): LigneTerminal[] {
   const lignes: LigneTerminal[] = [];
   if (reception) lignes.push({ id: 'request', tag: 'REQ', texte: 'request', atMs: reception.startedAtMs });
@@ -72,10 +70,14 @@ export function journalExecution(appels: ToolCallInfo[], reception: ChatReceptio
       }
     }
     const etat = etatExecution(appel, direct);
-    if (etat !== 'running') lignes.push({
-      id: `${appel.id}:end`, tag: etat === 'success' ? 'OK' : etat === 'error' ? 'FAIL' : 'WAIT',
-      texte: finDOutil(appel), atMs: appel.endedAtMs, etat,
-    });
+    if (etat !== 'running') {
+      const recherche = resumeDeRecherche(appel);
+      lignes.push({
+        id: `${appel.id}:end`, tag: etat === 'success' ? 'OK' : etat === 'error' ? 'FAIL' : 'WAIT',
+        texte: appel.tool, atMs: appel.endedAtMs, etat,
+        ...(recherche ? { resume: recherche.texte, vide: recherche.vide } : {}),
+      });
+    }
   }
   if (reception?.firstTextAtMs != null) lignes.push({ id: 'text', tag: 'TEXT', texte: 'text', atMs: reception.firstTextAtMs });
   if (reception?.endedAtMs != null) lignes.push({ id: 'close', tag: reception.status === 'closed' ? 'CLOSE' : 'STOP', texte: reception.status, atMs: reception.endedAtMs });

@@ -54,6 +54,11 @@
 .terminal-tag { color: var(--terminal-signal); }
 .terminal-ligne[data-tag='FAIL'] .terminal-tag { color: var(--color-error); }
 .terminal-ligne-texte { position: relative; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Ce qu'une recherche a rendu. Le tag reste OK — l'appel a réussi, il n'a
+   rien trouvé : le peindre en erreur mentirait dans l'autre sens. C'est le
+   COMPTE qui alerte, et lui seul. */
+.terminal-resume { color: var(--terminal-signal); }
+.terminal-resume[data-vide='true'] { color: var(--color-warning); font-weight: 600; }
 .terminal-ligne-laser { display: none; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--terminal-core); box-shadow: 0 0 3px var(--terminal-signal), 0 0 10px var(--terminal-signal); pointer-events: none; }
 .terminal-ligne[data-fresh='true'] .terminal-ligne-laser { display: block; animation: terminal-ligne 500ms ease-out both; }
 .terminal-attente { color: var(--color-text-tertiary); margin: .5rem 0; }

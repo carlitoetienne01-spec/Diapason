@@ -182,3 +182,31 @@ describe('§5 — la pastille de vérification du panneau vocal', () => {
     expect(rendu().verification).toBeUndefined();
   });
 });
+
+describe('§5 — une recherche vide se voit aussi au panneau vocal', () => {
+  // 22/09/2026 : le panneau recevait {name, ok, detail} et rien d'autre. Une
+  // recherche à zéro résultat y arrivait en ok=true, detail='' —
+  // indiscernable d'une recherche qui a rendu huit sources.
+  it('garde le moteur et le compte de la recherche', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'tool', name: 'web_search', ok: true, detail: '', engine: 'brave/news', numResults: 0 });
+    const [ligne] = rendu().toolEvents;
+    expect(ligne.engine).toBe('brave/news');
+    expect(ligne.numResults).toBe(0);
+  });
+
+  it('n’ajoute rien à un outil qui ne cherche pas', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'tool', name: 'focus_app', ok: true, detail: 'Focused' });
+    const [ligne] = rendu().toolEvents;
+    expect('engine' in ligne).toBe(false);
+    expect('numResults' in ligne).toBe(false);
+  });
+
+  it('refuse un compte qui n’est pas entier', async () => {
+    // Number.isInteger écarte NaN et Infinity, qui s'afficheraient tels quels.
+    const socket = await connecter();
+    socket.message({ type: 'tool', name: 'web_search', ok: true, numResults: Number.NaN });
+    expect('numResults' in rendu().toolEvents[0]).toBe(false);
+  });
+});

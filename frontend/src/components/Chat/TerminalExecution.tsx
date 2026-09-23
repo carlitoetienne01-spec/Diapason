@@ -104,7 +104,9 @@ export const TerminalExecution = memo(function TerminalExecution({ appels, enDir
                 data-fresh={ligne.atMs != null && Math.abs(Date.now() - ligne.atMs) < 1500}>
                 <span className="terminal-numero" aria-hidden="true">{String(i + 1).padStart(3, '0')}</span>
                 <span className="terminal-tag">{ligne.tag}</span>
-                <span className="terminal-ligne-texte">{texteLigne(ligne)}<i className="terminal-ligne-laser" aria-hidden="true" /></span>
+                <span className="terminal-ligne-texte">{texteLigne(ligne)}
+                  {ligne.resume && <span className="terminal-resume" data-vide={ligne.vide}> · {ligne.resume}</span>}
+                  <i className="terminal-ligne-laser" aria-hidden="true" /></span>
               </div>)}
               {!lignes.length && <p className="terminal-attente">{t('chat.terminal.waiting')}</p>}
             </div>

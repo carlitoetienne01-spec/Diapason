@@ -37,6 +37,11 @@ class SessionEvent:
     detail: str = ""
     tool_name: str = ""
     tool_ok: bool = False
+    # Ce qu'une recherche a rendu (22/09/2026) : {"engine", "numResults"},
+    # les mêmes clés qu'au chat. Sans elles, une recherche à zéro résultat
+    # arrivait au panneau vocal en ok=true, detail="" — indiscernable d'une
+    # recherche fructueuse.
+    tool_details: Optional[dict[str, Any]] = None
     # Le niveau de vérification du tour (22/09/2026), tel que le chat
     # l'envoie : {"level": "verified"|"partial"|"memory", "searchTried": bool}.
     # Le panneau vocal n'avait pas de pastille, et l'épilogue ne parle que

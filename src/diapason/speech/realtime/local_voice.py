@@ -2261,12 +2261,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._budget.consume()
             result = await asyncio.to_thread(self._tool_executor, name, args)
 
+        from diapason.server.details_outils import details_du_fil
+
         await self._queue.put(
             SessionEvent(
                 kind="tool",
                 tool_name=name,
                 tool_ok=bool(result.get("ok")),
                 detail=str(result.get("error") or "")[:200],
+                # Le même calcul qu'au chat, jamais une seconde copie : `0`
+                # doit passer, et un booléen n'est pas un compte.
+                tool_details=details_du_fil(result) or None,
             )
         )
         if tour is not None and self._tool_executor is not None:

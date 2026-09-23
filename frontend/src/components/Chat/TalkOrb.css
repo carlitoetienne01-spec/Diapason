@@ -74,6 +74,11 @@
 .resonance-outil { display: flex; gap: 8px; align-items: baseline; margin-top: 22px; color: var(--res-accent); font-size: 12px; overflow-wrap: anywhere; }
 .resonance-outil svg { flex: none; }
 .resonance-outil[data-ok='false'] { color: var(--res-erreur); }
+/* Ce qu'une recherche a rendu. Une recherche vide RÉUSSIT : le crochet reste
+   vert, et seul le compte porte l'alerte — l'inverse mentirait dans l'autre
+   sens. */
+.resonance-resume { margin-left: auto; padding-left: 8px; flex: none; opacity: .85; }
+.resonance-resume[data-vide='true'] { color: var(--color-warning); opacity: 1; font-weight: 600; }
 .resonance-en-cours { color: var(--res-accent); }
 /* La pastille de vérification, sous la dernière réponse. Le ton porte le
    sens : l'accent quand c'est vérifié, la couleur d'erreur quand ça ne

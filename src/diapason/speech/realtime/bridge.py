@@ -38,6 +38,9 @@ def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
             "name": event.tool_name,
             "ok": event.tool_ok,
             "detail": event.detail,
+            # Clés anglaises camelCase, comme au chat : le client les lit avec
+            # le même `resumeDeRecherche`.
+            **(event.tool_details or {}),
         }
     if event.kind == "verification":
         # Les clés restent celles du chat : le client les lit avec le même
