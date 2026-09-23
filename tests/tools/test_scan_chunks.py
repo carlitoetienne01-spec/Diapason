@@ -66,7 +66,31 @@ def test_scan_empty_store(tmp_path: Path) -> None:
 
 
 def test_registered() -> None:
+    """L'outil est dans le registre — que l'import l'y ait mis ou non.
+
+    La seconde moitié du défaut corrigé pour `knowledge_sql` le 13 septembre
+    2026, restée sur place : `scan_chunks.py:22` porte
+    `@ToolRegistry.register("scan_chunks")`, donc l'import enregistre — et ce
+    test réenregistrait ensuite sans regarder, alors que `register_value`
+    refuse un doublon (`core/registry.py:66`).
+
+    Ce qui décide, c'est la fixture autouse `_clean_registries`
+    (`tests/conftest.py:78`) : elle vide le registre avant CHAQUE test, et
+    l'import de la ligne suivante est un no-op quand un test antérieur du même
+    fil a déjà chargé le module. Fil vierge → l'import réenregistre → le test
+    levait « already has an entry » ; fil déjà chargé → le registre est vide →
+    il passait. Mesuré le 22 septembre 2026 : SEUL, il échouait 3 fois sur 3 ;
+    avec le fichier entier, 4 passed — son voisin charge le module à sa place.
+
+    Retirer l'appel ne suffirait pas : après le `clear()`, un import déjà fait
+    n'enregistre plus rien, et le test affirmerait « enregistré » sans que
+    rien ne le soit (§100 — la preuve vient du récepteur, pas de l'appelant).
+    """
     from diapason.tools.scan_chunks import ScanChunksTool
 
-    ToolRegistry.register_value("scan_chunks", ScanChunksTool)
-    assert ToolRegistry.contains("scan_chunks")
+    if not ToolRegistry.contains("scan_chunks"):
+        ToolRegistry.register_value("scan_chunks", ScanChunksTool)
+    assert ToolRegistry.contains("scan_chunks"), "l'outil doit être enregistré"
+    assert ToolRegistry.get("scan_chunks") is ScanChunksTool, (
+        "la clé doit pointer sur LA classe, pas seulement exister"
+    )
