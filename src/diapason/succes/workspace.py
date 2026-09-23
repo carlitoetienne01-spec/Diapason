@@ -7,6 +7,7 @@ that phase one deliberately preserved inside archived Life OS snapshots.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -23,6 +24,7 @@ from diapason.succes.project_kits import (
 )
 from diapason.succes.store import (
     SuccesError,
+    SuccesNoteConflict,
     SuccesNotFound,
     SuccesStore,
     _clean_text,
@@ -1475,6 +1477,7 @@ class SuccesWorkspaceStore(SuccesStore):
             "id": row["id"],
             "title": row["title"],
             "content": row["content"],
+            "contentHash": hashlib.sha256(row["content"].encode()).hexdigest(),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "updatedAtMs": row["updated_at_ms"],
@@ -1659,8 +1662,6 @@ class SuccesWorkspaceStore(SuccesStore):
     def update_note(
         self, note_id: str, patch: Mapping[str, Any], *, op_id: str | None = None
     ) -> dict[str, Any]:
-        current = self.get_note(note_id)
-        title, content, meta = self._note_fields({**current, **patch})
         request = {"action": "update_note", "noteId": note_id, "patch": dict(patch)}
         timestamp = now_ms()
         iso_time = date.today().isoformat()
@@ -1668,8 +1669,27 @@ class SuccesWorkspaceStore(SuccesStore):
             replay = self._replayed_entity(conn, op_id, request, self._load_note)
             if replay is not None:
                 return replay
-            if self._load_note(conn, note_id) is None:
+            current = self._load_note(conn, note_id)
+            if current is None:
                 raise SuccesNotFound("Cette note n'existe pas ou a été supprimée.")
+            # 23/09/2026 : lire avant BEGIN IMMEDIATE perdait aussi les champs
+            # non modifiés. L'ajout d'un visuel et les sauvegardes concurrentes
+            # doivent décider sur le même contenu que celui qu'ils écrivent.
+            if (
+                "content" in patch
+                and patch.get("expectedContentHash") is not None
+                and patch["expectedContentHash"] != current["contentHash"]
+            ):
+                raise SuccesNoteConflict(
+                    "Cette note a été modifiée dans une autre fenêtre. "
+                    "Ton brouillon est conservé ; enregistre-le comme copie."
+                )
+            valeurs = {**current, **patch}
+            if "appendContent" in patch:
+                if "content" in patch:
+                    raise SuccesError("Choisis l'ajout ou le remplacement du contenu.")
+                valeurs["content"] = current["content"] + str(patch["appendContent"])
+            title, content, meta = self._note_fields(valeurs)
             conn.execute(
                 """UPDATE succes_notes SET title=?,content=?,updated_at=?,
                    updated_at_ms=?,page_format=?,page_size=?,page_orientation=?,

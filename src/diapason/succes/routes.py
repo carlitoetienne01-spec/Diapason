@@ -11,7 +11,12 @@ from pydantic import BaseModel, Field
 from diapason.succes.continuity import SuccesContinuityStore
 from diapason.succes.dates import normalize_time, resolve_date_expression
 from diapason.succes.notes_resume import resumer_note
-from diapason.succes.store import SuccesError, SuccesNotFound, SuccesStore
+from diapason.succes.store import (
+    SuccesError,
+    SuccesNoteConflict,
+    SuccesNotFound,
+    SuccesStore,
+)
 from diapason.succes.sync import MAX_SYNC_BATCH, SuccesSyncStore
 from diapason.succes.workspace import (
     HABIT_FREQUENCIES,
@@ -213,6 +218,8 @@ class NoteCreate(BaseModel):
 
 
 class NotePatch(BaseModel):
+    expectedContentHash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    appendContent: str | None = Field(default=None, max_length=NOTE_CONTENT_MAX)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=NOTE_CONTENT_MAX)
     pageFormat: str | None = None
@@ -317,6 +324,8 @@ def _sync_store() -> SuccesSyncStore:
 
 
 def _domain_error(exc: SuccesError) -> HTTPException:
+    if isinstance(exc, SuccesNoteConflict):
+        return HTTPException(409, detail={"code": "note_conflict", "message": str(exc)})
     return HTTPException(
         status_code=404 if isinstance(exc, SuccesNotFound) else 409, detail=str(exc)
     )

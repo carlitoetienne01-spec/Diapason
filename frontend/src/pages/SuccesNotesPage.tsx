@@ -28,6 +28,7 @@ import {
   listSuccesNoteResumes,
   getSuccesNote,
   updateSuccesNote,
+  SuccesApiError,
 } from '../features/succes/api';
 import { NOTE_DOC_LANGS, miseEnPageDeLaNote } from '../features/succes/noteFormats';
 import {
@@ -172,6 +173,7 @@ export function SuccesNotesPage() {
   const fileEcritures = useRef(creerFileEcritures()).current;
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
+  const versionNoteRef = useRef<{ id: string; hash?: string } | null>(null);
 
   // Lu au moment de la réponse, pas capturé : `load` dépendait d'`activeId`
   // et chaque note ouverte relançait la liste entière (924 Ko) 180 ms plus
@@ -275,6 +277,7 @@ export function SuccesNotesPage() {
   }, [notes, sort]);
 
   const afficherNote = (note: SuccesNote) => {
+    versionNoteRef.current = { id: note.id, hash: note.contentHash };
     setActiveId(note.id);
     setDraftTitle(note.title);
     setDraftContent(note.content);
@@ -651,8 +654,10 @@ export function SuccesNotesPage() {
         ...snapshot.meta,
       };
       const saved = snapshot.activeId
-        ? await updateSuccesNote(snapshot.activeId, payload)
+        ? await updateSuccesNote(snapshot.activeId, { ...payload,
+          expectedContentHash: versionNoteRef.current?.id === snapshot.activeId ? versionNoteRef.current.hash : undefined })
         : await createSuccesNote(payload);
+      if (draftRef.current.activeId === snapshot.activeId) versionNoteRef.current = { id: saved.id, hash: saved.contentHash };
       // Le retour d'une sauvegarde ne remplace jamais la frappe suivante.
       const courant = draftRef.current;
       const identique = courant.activeId === snapshot.activeId
@@ -684,6 +689,21 @@ export function SuccesNotesPage() {
       }
       return identique ? saved : null;
     } catch (error) {
+      if (error instanceof SuccesApiError && (error.detail as { code?: string })?.code === 'note_conflict') {
+        toast.error(error.message, { id: 'note-conflict', duration: Infinity,
+          action: { label: 'Enregistrer une copie', onClick: () => { void (async () => {
+            const brouillon = draftRef.current;
+            if (brouillon.activeId !== snapshot.activeId) return;
+            try {
+              const copie = await createSuccesNote({ title: `${brouillon.title.slice(0, 190)} (copie)`,
+                content: sanitizeNoteHtml(brouillon.content), ...brouillon.meta });
+              if (draftRef.current === brouillon) afficherNote(copie);
+              setNotes(prev => [copie, ...prev]); toast.dismiss('note-conflict');
+              toast.success('La copie a été enregistrée. L’autre version est conservée.');
+            } catch { toast.error("La copie n’a pas pu être enregistrée ; ton brouillon est conservé."); }
+          })(); } } });
+        return null;
+      }
       toast.error("La note n'a pas été enregistrée.", {
         description: error instanceof Error ? error.message : String(error),
       });

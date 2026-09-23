@@ -659,7 +659,7 @@ export async function updateSuccesNote(
       | 'projectId'
       | 'order'
     >
-  >,
+  > & { expectedContentHash?: string; appendContent?: string; opId?: string },
 ): Promise<SuccesNote> {
   const payload = await request<{ note: SuccesNote }>(
     `/v1/succes/notes/${encodeURIComponent(noteId)}`,

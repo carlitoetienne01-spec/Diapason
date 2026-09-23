@@ -242,6 +242,7 @@ export type SuccesNotePageBackground =
 export type SuccesNoteDocLang = 'fr' | 'ht';
 
 export interface SuccesNote {
+  contentHash?: string;
   id: string;
   title: string;
   content: string;

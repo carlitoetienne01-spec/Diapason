@@ -53,6 +53,10 @@ class SuccesNotFound(SuccesError):
     """Requested Succès entity was not found."""
 
 
+class SuccesNoteConflict(SuccesError):
+    """Une fenêtre a modifié le texte lu par l'autre."""
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
