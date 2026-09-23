@@ -54,15 +54,25 @@ def test_read_document_utf8_fallback(tmp_path: Path):
     assert "caf" in text
 
 
-def test_read_document_pdf_missing_dep(tmp_path: Path):
+def test_read_document_pdf_casse_dit_pourquoi(tmp_path: Path):
+    """Un PDF illisible lève une erreur qui le dit — il ne rend pas du vide.
+
+    22/09/2026 : ce test admettait deux états, « pdfplumber absent » ou
+    « PDF valide », et laissait passer silencieusement tout le reste. Une
+    fois la dépendance installée (extra « documents »), un faux PDF est
+    tombé dans le troisième cas : une erreur d'analyse que rien n'attendait.
+    Rendre du texte vide serait pire — un document illisible passerait pour
+    un document sans contenu.
+    """
     p = tmp_path / "doc.pdf"
     p.write_bytes(b"%PDF-1.4 fake pdf content")
-    # Should raise ImportError when pdfplumber not installed
-    # or succeed if it IS installed — either way just check it's handled
-    try:
+    with pytest.raises(Exception) as erreur:
         read_document(p)
-    except ImportError as exc:
-        assert "pdfplumber" in str(exc)
+    message = str(erreur.value)
+    if isinstance(erreur.value, ImportError):
+        assert "pdfplumber" in message, "sans la dépendance, le message la nomme"
+    else:
+        assert message.strip(), "une erreur muette n'apprend rien à l'appelant"
 
 
 def test_read_document_not_found(tmp_path: Path):

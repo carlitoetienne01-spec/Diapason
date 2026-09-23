@@ -170,6 +170,10 @@ export interface ChatMessage {
   // `data:` — c'est ce que rend FileReader et c'est ce que l'aperçu affiche.
   // Le serveur la retire avant Ollama (server/pieces_jointes.py).
   images?: string[];
+  // 22/09/2026 : les documents joints, DÉJÀ extraits par le serveur —
+  // le message porte leur texte, pas le fichier. Relire un PDF à chaque
+  // tour coûterait une seconde par tour pour un résultat identique.
+  documents?: Array<{ nom: string; texte: string; pages?: number; tronque?: boolean }>;
   questions?: import('../lib/questionsChat').QuestionsChat;
   questionReply?: import('../lib/questionsChat').ReponsesQuestions;
   // 20/09/2026 : ce que la réponse affirme et que ses sources ne portent pas

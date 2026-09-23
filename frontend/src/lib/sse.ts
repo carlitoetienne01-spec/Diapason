@@ -7,7 +7,12 @@ export interface ChatRequest {
   // serveur la retire et vérifie le format dans les octets. JSON base64 et
   // jamais multipart : la fenêtre Tauri est une WKWebView, qui échoue sur
   // un corps binaire avec un « Load failed » opaque (CLAUDE.md).
-  messages: Array<{ role: string; content: string; images?: string[] }>;
+  messages: Array<{
+    role: string;
+    content: string;
+    images?: string[];
+    documents?: Array<{ nom: string; texte: string; pages?: number; tronque?: boolean }>;
+  }>;
   stream: true;
   temperature?: number;
   max_tokens?: number;

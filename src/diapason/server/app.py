@@ -422,6 +422,12 @@ def create_app(
     app.include_router(create_screen_share_router())
     app.include_router(create_trigger_router())
     app.include_router(upload_router)
+    # 22/09/2026 : lire un document JOINT à un message, qui n'est pas
+    # l'ingérer dans le corpus — « regarde ce PDF » et « ajoute ce PDF à
+    # ta bibliothèque » sont deux gestes différents.
+    from diapason.server.documents_routes import router as documents_router
+
+    app.include_router(documents_router)
     app.include_router(research_router)
     app.include_router(analytics_router)
     include_all_routes(app)

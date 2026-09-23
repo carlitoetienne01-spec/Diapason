@@ -17,6 +17,7 @@ from diapason.core.paths import get_config_dir
 from diapason.core.types import Message, Role, ToolCall
 from diapason.engine.scheduling import interactive_turn
 from diapason.server.contexte_chat import inserer_au_tour_courant
+from diapason.server.documents_joints import composer as composer_documents
 from diapason.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -295,7 +296,11 @@ def _to_messages(chat_messages) -> list[Message]:
         messages.append(
             Message(
                 role=role,
-                content=m.content or "",
+                # Les documents passent DEVANT la question : « voici la pièce,
+                # voici ce que j'en demande » est l'ordre dans lequel on lit.
+                content=composer_documents(
+                    m.content or "", getattr(m, "documents", None)
+                ),
                 name=m.name,
                 tool_calls=appels or None,
                 tool_call_id=m.tool_call_id,
@@ -1035,8 +1040,21 @@ def _handle_agent(
         for m in prior:
             ctx.conversation.add(m)
 
-    # Last message is the input
-    input_text = req.messages[-1].content if req.messages else ""
+    # Last message is the input.
+    #
+    # 22/09/2026 : les documents joints se composent ICI aussi. `agent.run()`
+    # prend une chaîne, et prendre `content` brut laissait le document hors
+    # du texte — le modèle a répondu « environ 14,95 $ » à une question dont
+    # la réponse, 148 200 $, était dans le .docx qu'il n'avait pas reçu.
+    # Contrairement aux images, un document EST du texte : l'agent peut le
+    # recevoir, il n'y a pas à détourner la requête.
+    input_text = (
+        composer_documents(
+            req.messages[-1].content or "", getattr(req.messages[-1], "documents", None)
+        )
+        if req.messages
+        else ""
+    )
 
     # Override agent model for this request if the caller specified one
     original_model = agent._model

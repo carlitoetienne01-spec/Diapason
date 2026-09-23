@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { Copy, Check, Globe } from 'lucide-react';
+import { Copy, Check, Globe, FileText } from 'lucide-react';
 import { AudioPlayer } from './AudioPlayer';
 import { TerminalExecution } from './TerminalExecution';
 import { appelsDeRecherche } from './etatExecution';
@@ -244,6 +244,30 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
                       border: '1px solid var(--color-border)',
                     }}
                   />
+                ))}
+              </div>
+            )}
+            {/* 22/09/2026 : une pastille, pas le texte. Un PDF de cent pages
+                dans la bulle noierait la question qu'on lui a posée — et
+                c'est la question qu'on relit. La coupure, elle, est dite. */}
+            {message.documents && message.documents.length > 0 && (
+              <div className="flex flex-col gap-1 mb-2">
+                {message.documents.map((doc, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 text-xs px-2 py-1"
+                    style={{
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)',
+                    }}
+                  >
+                    <FileText size={12} style={{ flexShrink: 0 }} />
+                    <span className="truncate">
+                      {doc.nom}
+                      {doc.pages ? ` · ${doc.pages} page${doc.pages > 1 ? 's' : ''}` : ''}
+                      {doc.tronque ? ' · extrait seulement' : ''}
+                    </span>
+                  </div>
                 ))}
               </div>
             )}

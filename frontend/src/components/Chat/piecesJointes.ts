@@ -14,6 +14,91 @@
 export const TAILLE_MAX = 4 * 1024 * 1024;
 export const NOMBRE_MAX = 7;
 
+// Les documents (22/09/2026) suivent le même chemin que les images, mais
+// sont lus par le SERVEUR — pdfplumber et python-docx n'ont pas d'équivalent
+// dans un navigateur. Deux suffisent pour comparer ; trois remplissent la
+// fenêtre du modèle.
+export const DOCUMENT_TAILLE_MAX = 10 * 1024 * 1024;
+export const DOCUMENTS_MAX = 2;
+export const EXTENSIONS_DOCUMENT = ['.txt', '.md', '.csv', '.pdf', '.docx'] as const;
+
+export interface DocumentJoint {
+  id: string;
+  nom: string;
+  /** Le texte extrait par le serveur — c'est lui qui part au modèle. */
+  texte: string;
+  pages?: number;
+  caracteres: number;
+  tronque: boolean;
+}
+
+/** Un fichier est-il un document plutôt qu'une image ? */
+export function estUnDocument(fichier: File): boolean {
+  const nom = fichier.name.toLowerCase();
+  return (EXTENSIONS_DOCUMENT as readonly string[]).some((e) => nom.endsWith(e));
+}
+
+/** Sépare un lot mêlé : les images d'un côté, les documents de l'autre. */
+export function separer(fichiers: File[]): { images: File[]; documents: File[] } {
+  const images: File[] = [];
+  const documents: File[] = [];
+  for (const f of fichiers) {
+    if (f.type.startsWith('image/')) images.push(f);
+    else if (estUnDocument(f)) documents.push(f);
+    else images.push(f); // refusé plus loin, avec sa raison
+  }
+  return { images, documents };
+}
+
+/** Ce qu'on peut joindre comme document, et pourquoi pas le reste. */
+export function trierDocuments(fichiers: File[], dejaJoints: number): Tri {
+  const acceptees: File[] = [];
+  const refus: Refus[] = [];
+  for (const f of fichiers) {
+    if (!estUnDocument(f)) {
+      refus.push({
+        fichier: f.name,
+        raison: 'Format non pris en charge (.txt, .md, .csv, .pdf, .docx).',
+      });
+      continue;
+    }
+    if (f.size > DOCUMENT_TAILLE_MAX) {
+      const mo = Math.round((f.size / 1024 / 1024) * 10) / 10;
+      refus.push({ fichier: f.name, raison: `Trop lourd : ${mo} Mo, maximum 10 Mo.` });
+      continue;
+    }
+    if (dejaJoints + acceptees.length >= DOCUMENTS_MAX) {
+      refus.push({ fichier: f.name, raison: `Maximum ${DOCUMENTS_MAX} documents par message.` });
+      continue;
+    }
+    acceptees.push(f);
+  }
+  return { acceptees, refus };
+}
+
+/** Ce qui part sur le fil : le texte extrait, pas le fichier. */
+export function documentsPourLeFil(
+  documents: DocumentJoint[],
+): Array<{ nom: string; texte: string; pages?: number; tronque?: boolean }> | undefined {
+  if (documents.length === 0) return undefined;
+  return documents.map((d) => ({
+    nom: d.nom,
+    texte: d.texte,
+    ...(d.pages ? { pages: d.pages } : {}),
+    ...(d.tronque ? { tronque: true } : {}),
+  }));
+}
+
+/** « bail.pdf · 12 pages » ou « note.docx · 3 200 caractères ». */
+export function resumeDocument(d: DocumentJoint): string {
+  const detail = d.pages
+    ? `${d.pages} page${d.pages > 1 ? 's' : ''}`
+    : `${d.caracteres.toLocaleString('fr-CA')} caractères`;
+  // La coupure se dit ici aussi : l'usager doit savoir que sa question porte
+  // sur un extrait avant de la poser, pas après avoir lu la réponse.
+  return d.tronque ? `${d.nom} · ${detail} · extrait seulement` : `${d.nom} · ${detail}`;
+}
+
 // Ce que les modèles de vision savent lire. Le serveur revérifie dans les
 // octets : le type que le navigateur annonce vient du nom du fichier.
 export const FORMATS = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
@@ -39,7 +124,15 @@ export function trier(fichiers: File[], dejaJointes: number): Tri {
   const refus: Refus[] = [];
   for (const f of fichiers) {
     if (!(FORMATS as readonly string[]).includes(f.type)) {
-      refus.push({ fichier: f.name, raison: 'Format non pris en charge (PNG, JPEG, GIF, WebP).' });
+      // Le composeur accepte DEUX familles. Ne nommer que les images faisait
+      // répondre à un .zip — et à un .pptx — que seuls PNG, JPEG, GIF et
+      // WebP passent, ce qui est faux : constaté au navigateur le
+      // 22/09/2026, un .zip déposé s'entendait refuser au nom d'une liste
+      // qui omettait .pdf et .docx.
+      refus.push({
+        fichier: f.name,
+        raison: 'Format non pris en charge. Images : PNG, JPEG, GIF, WebP. Documents : .txt, .md, .csv, .pdf, .docx.',
+      });
       continue;
     }
     if (f.size > TAILLE_MAX) {
@@ -122,13 +215,68 @@ export function resume(pieces: PieceJointe[]): string {
  * avec SON message, et n'apparaître que là où il y en a.
  */
 export function messagesPourLApi<
-  T extends { role: string; content: string; images?: string[] },
->(messages: T[], texteDe: (m: T) => string): Array<{ role: string; content: string; images?: string[] }> {
+  T extends {
+    role: string;
+    content: string;
+    images?: string[];
+    documents?: Array<{ nom: string; texte: string; pages?: number; tronque?: boolean }>;
+  },
+>(
+  messages: T[],
+  texteDe: (m: T) => string,
+): Array<{
+  role: string;
+  content: string;
+  images?: string[];
+  documents?: Array<{ nom: string; texte: string; pages?: number; tronque?: boolean }>;
+}> {
   return messages.map((m) => ({
     role: m.role,
     content: texteDe(m),
     // Un champ vide sur chaque message de texte gonflerait la requête pour
     // rien, et Ollama n'en veut pas.
     ...(m.images && m.images.length > 0 ? { images: m.images } : {}),
+    ...(m.documents && m.documents.length > 0 ? { documents: m.documents } : {}),
   }));
+}
+
+/**
+ * Fait lire un document par le serveur, et rend ce qu'il en a tiré.
+ *
+ * L'extraction est faite UNE fois, ici, quand l'usager joint le fichier :
+ * le message ne porte ensuite que le texte. Relire un PDF de cent pages à
+ * chaque tour de la conversation coûterait une seconde par tour pour un
+ * résultat identique.
+ *
+ * pdfplumber et python-docx n'ont pas d'équivalent dans un navigateur — le
+ * serveur est le seul à pouvoir lire ces formats.
+ */
+export async function lireDocument(
+  fichier: File,
+  poster: (chemin: string, init: RequestInit) => Promise<Response>,
+): Promise<DocumentJoint> {
+  const donnees = await lire(fichier); // le base64, avec son en-tête data:
+  const reponse = await poster('/v1/chat/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: fichier.name, contenu: donnees.donnees }),
+  });
+  if (!reponse.ok) {
+    // Le serveur dit CE QUI est refusé — « scan.pdf : aucun texte lisible ».
+    // L'afficher tel quel vaut mieux qu'un « erreur 400 » qui n'apprend rien.
+    const detail = await reponse
+      .json()
+      .then((d) => d?.detail)
+      .catch(() => null);
+    throw new Error(detail || `${fichier.name} : lecture impossible.`);
+  }
+  const lu = await reponse.json();
+  return {
+    id: donnees.id,
+    nom: String(lu.nom ?? fichier.name),
+    texte: String(lu.texte ?? ''),
+    pages: typeof lu.pages === 'number' ? lu.pages : undefined,
+    caracteres: Number(lu.characters ?? 0),
+    tronque: Boolean(lu.truncated),
+  };
 }

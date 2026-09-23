@@ -13,7 +13,7 @@ MATURIN := .venv/bin/maturin
 setup:
 	uv sync --extra dev --extra framework-comparison --extra server \
 	  --extra desktop --extra tools-search --extra speech --extra voice-local \
-	  --extra speech-wake \
+	  --extra speech-wake --extra documents \
 	  --group dev --group desktop-native
 	@# sherpa-onnx perd ses dylibs à CHAQUE sync (constaté deux fois les
 	@# 24 et 25 août 2026) : la roue s'installe, la bibliothèque native

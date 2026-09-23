@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Square, Paperclip, Brain } from 'lucide-react';
+import { Send, Square, Paperclip, Brain, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversations } from '../../lib/store';
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
@@ -7,13 +7,20 @@ import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQu
 import { streamChat, streamResearch } from '../../lib/sse';
 import { historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 import {
+  DOCUMENTS_MAX,
   NOMBRE_MAX as IMAGES_MAX,
+  documentsPourLeFil,
   imagesDeLEvenement,
   lire as lirePieceJointe,
-  pourLeFil,
+  lireDocument,
   messagesPourLApi,
+  pourLeFil,
   resume as resumePieces,
+  resumeDocument,
+  separer,
   trier as trierPieces,
+  trierDocuments,
+  type DocumentJoint,
   type PieceJointe,
 } from './piecesJointes';
 import { cloreAppels, terminerAppel, texteRecu } from './etatExecution';
@@ -114,6 +121,11 @@ export function InputArea() {
   const [input, setInput] = useState('');
   // 22/09/2026 : les images jointes au message en cours de rédaction.
   const [pieces, setPieces] = useState<PieceJointe[]>([]);
+  // 22/09/2026 : les documents, lus par le SERVEUR (pdfplumber et
+  // python-docx n'ont pas d'équivalent dans un navigateur) ; le message ne
+  // porte ensuite que leur texte.
+  const [documents, setDocuments] = useState<DocumentJoint[]>([]);
+  const [lectureEnCours, setLectureEnCours] = useState(0);
   const [survolDepot, setSurvolDepot] = useState(false);
   const champFichiers = useRef<HTMLInputElement>(null);
 
@@ -122,18 +134,48 @@ export function InputArea() {
   const joindre = useCallback(
     async (fichiers: File[]) => {
       if (fichiers.length === 0) return;
-      const { acceptees, refus } = trierPieces(fichiers, pieces.length);
-      for (const r of refus) toast.error(`${r.fichier} — ${r.raison}`);
-      if (acceptees.length === 0) return;
-      try {
-        const lues = await Promise.all(acceptees.map(lirePieceJointe));
-        setPieces((avant) => [...avant, ...lues].slice(0, IMAGES_MAX));
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Lecture impossible.');
+      // Un lot peut mêler une capture d'écran et un PDF : chacun suit sa
+      // voie, et chacun dit pourquoi il est refusé le cas échéant.
+      const { images: entrantes, documents: entrants } = separer(fichiers);
+
+      const tri = trierPieces(entrantes, pieces.length);
+      for (const r of tri.refus) toast.error(`${r.fichier} — ${r.raison}`);
+      if (tri.acceptees.length > 0) {
+        try {
+          const lues = await Promise.all(tri.acceptees.map(lirePieceJointe));
+          setPieces((avant) => [...avant, ...lues].slice(0, IMAGES_MAX));
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Lecture impossible.');
+        }
+      }
+
+      const triDocs = trierDocuments(entrants, documents.length);
+      for (const r of triDocs.refus) toast.error(`${r.fichier} — ${r.raison}`);
+      for (const fichier of triDocs.acceptees) {
+        // Un PDF de cent pages prend une seconde à lire : le compteur dit
+        // que ça travaille, plutôt que de laisser le composeur muet.
+        setLectureEnCours((n) => n + 1);
+        try {
+          const lu = await lireDocument(fichier, apiFetch);
+          setDocuments((avant) => [...avant, lu].slice(0, DOCUMENTS_MAX));
+          if (lu.tronque) {
+            toast(`${lu.nom} — seul le début sera lu par le modèle.`, { icon: '✂️' });
+          }
+        } catch (e) {
+          toast.error(
+            e instanceof Error ? e.message : `${fichier.name} : lecture impossible.`,
+          );
+        } finally {
+          setLectureEnCours((n) => n - 1);
+        }
       }
     },
-    [pieces.length],
+    [pieces.length, documents.length],
   );
+
+  const retirerDocument = useCallback((id: string) => {
+    setDocuments((avant) => avant.filter((d) => d.id !== id));
+  }, []);
 
   const retirerPiece = useCallback((id: string) => {
     setPieces((avant) => avant.filter((p) => p.id !== id));
@@ -523,16 +565,21 @@ export function InputArea() {
     // composeur aussitôt — les garder ferait qu'un second envoi les
     // renverrait sans que rien ne le dise.
     const imagesDuTour = pieces;
+    const documentsDuTour = documents;
     const userMsg: ChatMessage = {
       id: generateId(),
       role: 'user',
       content,
       timestamp: Date.now(),
       ...(imagesDuTour.length > 0 ? { images: pourLeFil(imagesDuTour) } : {}),
+      ...(documentsDuTour.length > 0
+        ? { documents: documentsPourLeFil(documentsDuTour) }
+        : {}),
       ...(envoi ? { questionReply: envoi.reply } : {}),
     };
     addMessage(convId, userMsg);
     if (imagesDuTour.length > 0) setPieces([]);
+    if (documentsDuTour.length > 0) setDocuments([]);
 
     // Build API messages before adding assistant placeholder
     const currentMessages = useAppStore.getState().messages;
@@ -1132,6 +1179,40 @@ export function InputArea() {
             </span>
           </div>
         )}
+        {(documents.length > 0 || lectureEnCours > 0) && (
+          <div className="flex flex-col gap-1 pb-2">
+            {documents.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-center gap-2 text-xs px-2 py-1"
+                style={{
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-bg-secondary)',
+                }}
+              >
+                <FileText size={13} style={{ flexShrink: 0 }} />
+                <span className="truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                  {resumeDocument(doc)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => retirerDocument(doc.id)}
+                  aria-label={t('chat.input.removeImage', { name: doc.nom })}
+                  className="ml-auto cursor-pointer"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {lectureEnCours > 0 && (
+              <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+                {t('chat.input.readingDocument')}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2">
         <textarea
           ref={textareaRef}
@@ -1177,7 +1258,7 @@ export function InputArea() {
             <input
               ref={champFichiers}
               type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
+              accept="image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.pdf,.docx"
               multiple
               hidden
               onChange={(e) => {
@@ -1190,7 +1271,7 @@ export function InputArea() {
             <button
               type="button"
               onClick={() => champFichiers.current?.click()}
-              disabled={compositeurBloque || pieces.length >= IMAGES_MAX}
+              disabled={compositeurBloque || (pieces.length >= IMAGES_MAX && documents.length >= DOCUMENTS_MAX)}
               className="composer-glass-action p-2 shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-40"
               title={t('chat.input.attachImage')}
               aria-label={t('chat.input.attachImage')}

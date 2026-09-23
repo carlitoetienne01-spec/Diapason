@@ -25,6 +25,12 @@ class ChatMessage(BaseModel):
     # ce champ manquait ici, donc le navigateur ne pouvait rien envoyer.
     # Validées par server/pieces_jointes.py avant d'atteindre le modèle.
     images: Optional[List[str]] = None
+    # 22/09/2026 : les documents joints, DÉJÀ extraits — {nom, texte, pages,
+    # tronque}. L'extraction se fait une seule fois, quand l'usager joint le
+    # fichier (POST /v1/chat/documents) ; relire un PDF à chaque tour de la
+    # conversation coûterait une seconde par tour pour un résultat identique.
+    # Le serveur les compose devant la question avant de l'envoyer au modèle.
+    documents: Optional[List[Dict[str, Any]]] = None
 
 
 class ChatCompletionRequest(BaseModel):
