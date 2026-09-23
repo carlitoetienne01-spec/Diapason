@@ -19,6 +19,12 @@ class ChatMessage(BaseModel):
     name: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
     tool_call_id: Optional[str] = None
+    # 22/09/2026 : les images jointes, en base64 (avec ou sans l'en-tête
+    # « data: » que rend FileReader). Le serveur les transmettait déjà à
+    # Ollama depuis engine/_base.py, et qwen3.5:9b annonce « vision » — mais
+    # ce champ manquait ici, donc le navigateur ne pouvait rien envoyer.
+    # Validées par server/pieces_jointes.py avant d'atteindre le modèle.
+    images: Optional[List[str]] = None
 
 
 class ChatCompletionRequest(BaseModel):

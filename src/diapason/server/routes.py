@@ -30,6 +30,7 @@ from diapason.server.models import (
     StreamChoice,
     UsageInfo,
 )
+from diapason.server.pieces_jointes import PieceJointeRefusee, normaliser_toutes
 from diapason.server.reponses_longues import (
     SEUIL_REPRISE,
     budget_quantite,
@@ -298,6 +299,10 @@ def _to_messages(chat_messages) -> list[Message]:
                 name=m.name,
                 tool_calls=appels or None,
                 tool_call_id=m.tool_call_id,
+                # Refusée ici plutôt que plus bas : une image illisible ou
+                # trop lourde doit être dite à l'usager, pas découverte par
+                # le moteur d'inférence trente secondes plus tard.
+                images=normaliser_toutes(getattr(m, "images", None)),
             )
         )
     return messages
@@ -476,6 +481,15 @@ def _ensure_identity_prompt(
 @router.post("/v1/chat/completions")
 async def chat_completions(request_body: ChatCompletionRequest, request: Request):
     """Handle chat completion requests (streaming and non-streaming)."""
+    # Une image refusée se dit tout de suite, et en français : l'usager doit
+    # savoir CE QUI est refusé (trop lourde, format inconnu), pas recevoir
+    # une erreur 500 trente secondes plus tard (22/09/2026).
+    try:
+        for _m in request_body.messages:
+            normaliser_toutes(getattr(_m, "images", None))
+    except PieceJointeRefusee as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
@@ -735,7 +749,13 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # ``engine.generate()``) both make blocking upstream calls; run them in a
     # worker thread so a slow/wedged non-streaming request can't stall the
     # event loop and every other concurrent request with it.
-    if agent is not None and not request_body.tools:
+    # Même cas que les outils ci-dessus, et même remède : `agent.run()` prend
+    # une CHAÎNE, donc le dernier message est réduit à son texte et ses images
+    # tombent par terre — le modèle répondait « je n'ai pas accès à l'image »
+    # à qui venait de lui en joindre une (22/09/2026). Le chemin direct, lui,
+    # passe le Message entier au moteur, qui transmet les images à Ollama.
+    porte_des_images = any(getattr(m, "images", None) for m in request_body.messages)
+    if agent is not None and not request_body.tools and not porte_des_images:
         response = await asyncio.to_thread(
             _handle_agent,
             agent,
