@@ -2115,6 +2115,112 @@ class TestLaPageOfficielle:
         ) in (outil.content or "")
 
     @pytest.mark.asyncio
+    async def test_la_page_officielle_deja_rendue_par_la_recherche_garde_sa_mention(
+        self,
+    ):
+        """Le cas OBSERVÉ en direct le 22/09 sur « Quel est le taux
+        directeur ? » : la page de la Banque du Canada était déjà la source
+        [1] de la recherche, donc `renumeroter` la dédoublonnait,
+        `nouvelles` sortait vide, et tout le bloc qui pose « officiel ·
+        consultée le <aujourd'hui> » sautait. La page lue à l'instant
+        s'affichait comme une source ordinaire datée de dix-huit mois —
+        c'est-à-dire la seule affordance de P6, perdue dans le cas le plus
+        fréquent (une page officielle est bien indexée)."""
+        from datetime import date
+
+        url = (
+            "https://www.banqueducanada.ca/grandes-fonctions/"
+            "politique-monetaire/taux-directeur/"
+        )
+
+        class RechercheQuiRendLaPageOfficielle(Outil):
+            @property
+            def metadata_sources(self):
+                return None
+
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_search",
+                    content=f"[1] Taux directeur - Banque du Canada\nSource: {url}\n",
+                    success=True,
+                    metadata={
+                        "engine": "brave/text",
+                        "numResults": 1,
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Taux directeur - Banque du Canada",
+                                "url": url,
+                                "date": "2025-03-12",
+                                "sender": "banqueducanada.ca",
+                                "snippet": "Le taux cible du financement à un jour",
+                            }
+                        ],
+                    },
+                )
+
+        class LectureDuTaux(Lecture):
+            def execute(self, **params):
+                self.executions.append(params)
+                return ToolResult(
+                    tool_name="web_read",
+                    content=(
+                        "[1] Taux directeur - Banque du Canada — "
+                        "banqueducanada.ca · modifié 2025-03-12\n"
+                        f"Source: {params['url']}\n"
+                        "Début : Le taux cible est de 2,25 %.\n"
+                    ),
+                    success=True,
+                    metadata={
+                        "url": params["url"],
+                        "sources": [
+                            {
+                                "ref": 1,
+                                "title": "Taux directeur - Banque du Canada",
+                                "url": params["url"],
+                                "date": "2025-03-12",
+                                "sender": "banqueducanada.ca",
+                            }
+                        ],
+                    },
+                )
+
+        lecture = LectureDuTaux()
+        moteur = Moteur(
+            [
+                [StreamChunk(tool_calls=[appel_web("taux directeur 2026")])],
+                [StreamChunk(content="2,25 % [1].", finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [RechercheQuiRendLaPageOfficielle("web_search"), lecture],
+            "Quel est le taux directeur ?",
+        )
+        cartes = {
+            s["ref"]: s
+            for lot in (e.data for e in evts if e.kind == "sources")
+            for s in lot
+        }
+        assert 1 in cartes, "la page garde SA pastille, pas une neuve"
+        assert cartes[1].get("official") is True, (
+            "une page officielle lue par le code le DIT, même déjà indexée"
+        )
+        assert cartes[1]["date"] == date.today().isoformat(), (
+            "une page vivante est datée du jour de sa lecture, pas de 2025"
+        )
+        assert cartes[1]["snippet"] == "Le taux cible du financement à un jour", (
+            "la fusion garde ce que la recherche avait apporté"
+        )
+        assert len(cartes) == 1, "aucune pastille en double pour la même page"
+        outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
+        assert "source officielle · consultée le" in (outil.content or ""), (
+            "le modèle cesse de lire une date de publication ancienne collée "
+            "à un contenu du jour qu'on lui dit de croire"
+        )
+
+    @pytest.mark.asyncio
     async def test_une_seule_lecture_automatique_par_tour(self):
         """Ollama tourne à un créneau (`-np 1`) : deux allers au réseau pour
         un seul fait se paient en silence. La page du poste passe d'abord —

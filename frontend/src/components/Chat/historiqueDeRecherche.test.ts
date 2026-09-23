@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { TOURS_D_AVANT, historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
+import { TOURS_D_AVANT, fusionnerLesSources, historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 
 describe('historiqueDeRecherche', () => {
   it("écarte la demande courante et garde les tours d'avant", () => {
@@ -66,5 +66,48 @@ describe('remplacerLesSources', () => {
     const parRef = new Map<number, { ref: number }>([[1, { ref: 1 }]]);
     remplacerLesSources(parRef, []);
     expect(parRef.size).toBe(0);
+  });
+});
+
+describe('fusionnerLesSources', () => {
+  // 22/09/2026 : les deux sites qui recevaient un lot écartaient toute
+  // pastille DÉJÀ connue. Sans effet tant qu'aucun émetteur ne réémettait un
+  // numéro — puis le serveur a voulu dire « cette source est officielle, lue
+  // aujourd'hui » sur une page que la recherche avait déjà rendue, et la
+  // mise à jour se perdait en silence.
+  type Source = { ref: number; title?: string; url?: string; snippet?: string; official?: boolean; date?: string };
+
+  it('ajoute ce qui est nouveau', () => {
+    const parRef = new Map<number, Source>();
+    fusionnerLesSources(parRef, [{ ref: 1, title: 'Banque du Canada' }]);
+    expect(parRef.get(1)).toEqual({ ref: 1, title: 'Banque du Canada' });
+  });
+
+  it('met à jour une pastille déjà connue au lieu de l’ignorer', () => {
+    const parRef = new Map<number, Source>([[1, { ref: 1, title: 'Taux directeur', date: '2025-03-12' }]]);
+    fusionnerLesSources(parRef, [{ ref: 1, official: true, date: '2026-09-22' }]);
+    expect(parRef.get(1)?.official).toBe(true);
+    expect(parRef.get(1)?.date).toBe('2026-09-22');
+  });
+
+  it('FUSIONNE : une carte partielle n’efface pas ce qu’on avait déjà', () => {
+    // Une carte officielle ne porte que six champs, une source de recherche
+    // en porte davantage.
+    const parRef = new Map<number, Source>([[1, { ref: 1, title: 'x', snippet: 'à garder' }]]);
+    fusionnerLesSources(parRef, [{ ref: 1, official: true }]);
+    expect(parRef.get(1)?.snippet).toBe('à garder');
+  });
+
+  it('ignore ce qui n’a pas la forme attendue, sans faire tomber la réception', () => {
+    const parRef = new Map<number, Source>();
+    fusionnerLesSources(parRef, [null, 'texte', { pas: 'de ref' }, { ref: '2' }, { ref: 3 }]);
+    expect([...parRef.keys()]).toEqual([3]);
+  });
+
+  it('ne casse pas sur un lot qui n’est pas un tableau', () => {
+    const parRef = new Map<number, Source>([[1, { ref: 1 }]]);
+    fusionnerLesSources(parRef, null);
+    fusionnerLesSources(parRef, { ref: 9 });
+    expect([...parRef.keys()]).toEqual([1]);
   });
 });

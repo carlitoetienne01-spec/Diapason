@@ -5,7 +5,7 @@ import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversa
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
 import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
+import { fusionnerLesSources, historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 import {
   DOCUMENTS_MAX,
   NOMBRE_MAX as IMAGES_MAX,
@@ -714,13 +714,7 @@ export function InputArea() {
               pending.error = ev.error;
             }
             if (!researchTraces.some(trace => trace.status === 'pending')) setStreamState({ phase: '' });
-            if (ev.sources) {
-              for (const src of ev.sources) {
-                if (src && typeof src.ref === 'number' && !researchSourcesByRef.has(src.ref)) {
-                  researchSourcesByRef.set(src.ref, src);
-                }
-              }
-            }
+            if (ev.sources) fusionnerLesSources(researchSourcesByRef, ev.sources);
             updateLastAssistant(
               convId,
               accumulatedContent,
@@ -876,12 +870,10 @@ export function InputArea() {
           // pastilles cliquables et leur infobulle (titre · média · date)
           // existaient déjà pour Deep Research, il manquait l'événement.
           try {
-            const lot = JSON.parse(sseEvent.data);
-            for (const src of Array.isArray(lot) ? lot : []) {
-              if (src && typeof src.ref === 'number' && !researchSourcesByRef.has(src.ref)) {
-                researchSourcesByRef.set(src.ref, src);
-              }
-            }
+            // 22/09/2026 : la boucle d'origine écartait toute pastille déjà
+            // connue, donc « cette source est officielle, lue aujourd'hui »
+            // se perdait sur une page que la recherche avait déjà rendue.
+            fusionnerLesSources(researchSourcesByRef, JSON.parse(sseEvent.data));
           } catch {}
         } else if (eventName === 'tool_call_end') {
           try {

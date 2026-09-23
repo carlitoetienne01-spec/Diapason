@@ -79,9 +79,9 @@ from diapason.server.questions_chat import (
 from diapason.server.reponses_longues import prolonger_flux
 from diapason.server.sources_officielles import (
     PageOfficielle,
+    carte_officielle,
     entete_officielle,
     page_officielle,
-    source_officielle,
 )
 from diapason.server.suite import avec_rappel
 from diapason.server.trousse_chat import MAX_CHARGEMENTS, TrousseChat
@@ -252,21 +252,36 @@ async def _lire_la_page(
         contenu = observation(resultat)
         if succes:
             meta = getattr(resultat, "metadata", None) or {}
-            texte, nouvelles = _renumeroter(
-                contenu, _sous_l_url_demandee(meta.get("sources") or [], url), deja
-            )
-            if officielle is not None and nouvelles:
-                ref = int(nouvelles[0]["ref"])
-                # Le titre lu AVANT d'écraser la carte : celui de pm.gc.ca est
-                # le nom du titulaire, c'est-à-dire la réponse.
-                titre_lu = str(nouvelles[0].get("title") or "")
-                nouvelles = [source_officielle(officielle, ref, titre_lu)]
-                lignes = texte.split("\n", 1)
-                texte = entete_officielle(officielle, ref, titre_lu) + (
-                    "\n" + lignes[1] if len(lignes) > 1 else ""
-                )
+            lues = _sous_l_url_demandee(meta.get("sources") or [], url)
+            texte, nouvelles = _renumeroter(contenu, lues, deja)
+            if officielle is not None:
+                # Le titre lu vient des métadonnées du LECTEUR, pas de
+                # `nouvelles` : quand la recherche avait déjà rendu la page,
+                # `renumeroter` la dédoublonne et `nouvelles` sort vide — or
+                # la page a bien été lue, et son titre est la réponse pour
+                # pm.gc.ca. Le prendre dans `nouvelles` faisait afficher deux
+                # étiquettes différentes pour la même page selon que la
+                # recherche l'avait rendue ou non.
+                titre_lu = str(lues[0].get("title") or "") if lues else ""
+                carte, ref = carte_officielle(officielle, nouvelles, deja, titre_lu)
+                if carte is not None and ref is not None:
+                    lignes = texte.split("\n", 1)
+                    texte = entete_officielle(officielle, ref, titre_lu) + (
+                        "\n" + lignes[1] if len(lignes) > 1 else ""
+                    )
+                    nouvelles = [carte]
+            for carte in nouvelles:
+                # Une carte dont la pastille existe DÉJÀ remplace la sienne :
+                # c'est la page officielle que la recherche avait rendue, et
+                # sa date devient celle du jour. Le cas ordinaire (pastille
+                # neuve) tombe dans le `else` et se contente d'ajouter.
+                for i, connue in enumerate(deja):
+                    if connue.get("ref") == carte.get("ref"):
+                        deja[i] = carte
+                        break
+                else:
+                    deja.append(carte)
             if nouvelles:
-                deja.extend(nouvelles)
                 yield ToolStreamEvent("sources", list(nouvelles)), ""
     except Exception as exc:  # noqa: BLE001 - une page illisible n'arrête pas le tour
         logger.warning("lecture automatique de %s en échec : %s", url, exc)

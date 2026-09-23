@@ -216,6 +216,49 @@ def entete_officielle(page: PageOfficielle, ref: int, titre_lu: str = "") -> str
     )
 
 
+def carte_officielle(
+    page: PageOfficielle,
+    nouvelles: list[dict[str, object]],
+    deja: list[dict[str, object]],
+    titre_lu: str = "",
+) -> tuple[dict[str, object] | None, int | None]:
+    """La carte de source d'une page officielle et son numéro — que la
+    recherche l'ait déjà rendue ou non.
+
+    22/09/2026. P6 promettait qu'une page officielle se dise « officiel ·
+    consultée le <aujourd'hui> ». Elle ne le disait QUE lorsque la recherche
+    avait échoué. Sinon la page figurait déjà parmi les résultats,
+    `renumeroter` la dédoublonnait, `nouvelles` sortait vide, et tout le bloc
+    qui pose l'étiquette sautait : la Banque du Canada, lue par le code à
+    l'instant, s'affichait comme une source ordinaire datée de dix-huit mois
+    (constaté en direct sur « Quel est le taux directeur ? »). Le cas raté
+    est le plus fréquent : une page officielle est bien indexée, donc la
+    recherche la rend.
+
+    La carte est FUSIONNÉE sur l'entrée existante, jamais substituée : une
+    source de recherche porte plus de champs que les six d'une carte
+    officielle, et le `title` alimente le score de `sources_prometteuses`,
+    qui décide quelle page relire quand la réponse avoue. Rien ne mute ici ;
+    l'appelant décide d'ajouter ou de remplacer.
+    """
+    from diapason.tools.web_search import url_canonique
+
+    if nouvelles:
+        ref = int(nouvelles[0]["ref"])  # type: ignore[arg-type]
+        return {**nouvelles[0], **source_officielle(page, ref, titre_lu)}, ref
+    # La page était déjà connue : retrouver SA pastille, pas une autre. Une
+    # autre lecture du même tour (la page du poste) peut aussi être dans la
+    # liste — seule l'URL canonique de CETTE page compte.
+    cible = url_canonique(page.url)
+    for d in deja:
+        if not isinstance(d, dict) or not isinstance(d.get("ref"), int):
+            continue
+        if url_canonique(str(d.get("url") or "")) == cible:
+            ref = int(d["ref"])
+            return {**d, **source_officielle(page, ref, titre_lu)}, ref
+    return None, None
+
+
 def source_officielle(
     page: PageOfficielle, ref: int, titre_lu: str = ""
 ) -> dict[str, object]:
@@ -231,6 +274,7 @@ def source_officielle(
 
 __all__ = [
     "VILLES",
+    "carte_officielle",
     "PageOfficielle",
     "entete_officielle",
     "page_officielle",

@@ -7,6 +7,7 @@ import pytest
 
 from diapason.server.sources_officielles import (
     VILLES,
+    carte_officielle,
     entete_officielle,
     page_officielle,
     source_officielle,
@@ -151,3 +152,85 @@ class TestLaPageOfficielle:
             "sender": "meteo.gc.ca",
             "official": True,
         }
+
+
+class TestLaCarteQuandLaRechercheAvaitDejaLaPage:
+    """22/09/2026. P6 promettait « officiel · consultée le <aujourd'hui> ».
+    Elle ne le tenait QUE lorsque la recherche avait échoué : sinon la page
+    figurait déjà parmi les résultats, `renumeroter` la dédoublonnait,
+    `nouvelles` sortait vide, et tout le bloc qui pose l'étiquette sautait.
+    Constaté en direct sur « Quel est le taux directeur ? » : la Banque du
+    Canada, lue par le code à l'instant, s'affichait comme une source
+    ordinaire datée de dix-huit mois."""
+
+    @staticmethod
+    def page_du_taux():
+        page = page_officielle("Quel est le taux directeur ?")
+        assert page is not None
+        return page
+
+    def test_la_pastille_deja_rendue_par_la_recherche_est_retrouvee(self):
+        page = self.page_du_taux()
+        deja = [
+            {
+                "ref": 1,
+                "title": "Taux directeur - Banque du Canada",
+                "url": page.url,
+                "date": "2025-03-12",
+                "sender": "banqueducanada.ca",
+                "snippet": "Le taux cible du financement à un jour…",
+            },
+            {"ref": 2, "title": "Un article", "url": "https://exemple.ca/a"},
+        ]
+        carte, ref = carte_officielle(page, [], deja)
+        assert ref == 1, "la carte garde SA pastille, pas une neuve"
+        assert carte is not None and carte["official"] is True
+        assert carte["date"] == date.today().isoformat(), (
+            "une page vivante est datée du jour de sa lecture"
+        )
+
+    def test_la_fusion_garde_ce_que_la_recherche_avait_apporte(self):
+        """Une carte officielle ne porte que six champs ; une source de
+        recherche en porte davantage, et son `title` alimente le score de
+        `sources_prometteuses`, qui décide quelle page relire."""
+        page = self.page_du_taux()
+        deja = [{"ref": 1, "title": "x", "url": page.url, "snippet": "à garder"}]
+        carte, _ = carte_officielle(page, [], deja)
+        assert carte is not None and carte["snippet"] == "à garder"
+
+    def test_une_autre_page_lue_du_meme_tour_n_est_pas_prise_pour_elle(self):
+        """La page du poste peut déjà être dans la liste : seule l'URL
+        canonique de CETTE page compte (§34 — on ne devine pas)."""
+        page = self.page_du_taux()
+        deja = [
+            {
+                "ref": 1,
+                "title": "Premier ministre du Canada — Wikipédia",
+                "url": "https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada",
+            },
+        ]
+        assert carte_officielle(page, [], deja) == (None, None)
+
+    def test_sans_rien_de_connu_ni_de_neuf_la_carte_n_existe_pas(self):
+        assert carte_officielle(self.page_du_taux(), [], []) == (None, None)
+
+    def test_une_pastille_neuve_garde_le_comportement_d_avant(self):
+        page = self.page_du_taux()
+        nouvelles = [{"ref": 7, "title": "Taux directeur", "url": page.url}]
+        carte, ref = carte_officielle(page, nouvelles, [], "Taux directeur")
+        assert ref == 7 and carte is not None and carte["official"] is True
+
+    def test_le_titre_lu_traverse_les_deux_chemins(self):
+        """Sans cela, pm.gc.ca s'afficherait différemment selon que la
+        recherche l'avait rendu ou non — deux étiquettes pour une page."""
+        pm = page_officielle("Qui est le premier ministre du Canada ?")
+        assert pm is not None
+        attendu = "Premier ministre du Canada : Le très honorable Mark Carney"
+        neuve, _ = carte_officielle(
+            pm, [{"ref": 1, "url": pm.url}], [], "Le très honorable Mark Carney"
+        )
+        connue, _ = carte_officielle(
+            pm, [], [{"ref": 1, "url": pm.url}], "Le très honorable Mark Carney"
+        )
+        assert neuve is not None and connue is not None
+        assert neuve["title"] == connue["title"] == attendu

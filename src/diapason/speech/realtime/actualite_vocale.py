@@ -49,9 +49,9 @@ from diapason.server.actualite import (
     sous_l_url_demandee,
 )
 from diapason.server.sources_officielles import (
+    carte_officielle,
     entete_officielle,
     page_officielle,
-    source_officielle,
 )
 
 # La consigne du chat demandait de citer « [1] » : Kokoro prononçait « Mark
@@ -484,20 +484,26 @@ def _avec_page_officielle(
     if not page.get("ok") or not str(page.get("content") or "").strip():
         return resultat
     pmeta = page.get("metadata") if isinstance(page.get("metadata"), dict) else {}
-    texte, nouvelles = renumeroter(
-        str(page["content"]),
-        sous_l_url_demandee(list(pmeta.get("sources") or []), off.url),
-        tour.sources,
-    )
-    if nouvelles:
-        ref = int(nouvelles[0]["ref"])
-        titre_lu = str(nouvelles[0].get("title") or "")
-        nouvelles = [source_officielle(off, ref, titre_lu)]
+    lues = sous_l_url_demandee(list(pmeta.get("sources") or []), off.url)
+    texte, nouvelles = renumeroter(str(page["content"]), lues, tour.sources)
+    # Le titre lu vient du LECTEUR, pas de `nouvelles` : quand la recherche
+    # avait déjà rendu la page, elle est dédoublonnée et `nouvelles` sort
+    # vide, alors que la page a bien été lue (22/09/2026).
+    titre_lu = str(lues[0].get("title") or "") if lues else ""
+    carte, ref = carte_officielle(off, nouvelles, tour.sources, titre_lu)
+    if carte is not None and ref is not None:
         lignes = texte.split("\n", 1)
         texte = entete_officielle(off, ref, titre_lu) + (
             "\n" + lignes[1] if len(lignes) > 1 else ""
         )
-    tour.sources.extend(nouvelles)
+        nouvelles = [carte]
+    for carte in nouvelles:
+        for i, connue in enumerate(tour.sources):
+            if connue.get("ref") == carte.get("ref"):
+                tour.sources[i] = carte
+                break
+        else:
+            tour.sources.append(carte)
     tour.corpus += "\n" + texte
     tour.verification_faite = True
     from diapason.tools.web_search import url_canonique

@@ -23,6 +23,33 @@ export function historiqueDeRecherche(
 // (« CodinGame [3] » devient « [1] ») et envoie la liste correspondante ;
 // le client gardait les numéros d'origine, et la pastille [1] sous CodinGame
 // ouvrait le relevé de la Banque Nationale (ref 1 de la recherche corpus).
+/** Les sources d'un lot rejoignent celles qu'on a déjà, par numéro.
+ *
+ *  22/09/2026. Les deux sites qui recevaient un lot écartaient toute pastille
+ *  DÉJÀ connue (`!parRef.has(src.ref)`). C'était sans effet tant qu'aucun
+ *  émetteur ne réémettait un numéro — et le jour où le serveur a voulu dire
+ *  « cette source-là est officielle, lue aujourd'hui » sur une page que la
+ *  recherche avait déjà rendue, la mise à jour se perdait en silence.
+ *
+ *  FUSION, pas remplacement : une carte officielle ne porte que six champs,
+ *  une source de recherche en porte davantage. Les écraser jetterait ce
+ *  qu'on avait déjà reçu.
+ *
+ *  Le lot arrive du réseau : chaque entrée est vérifiée, et une forme
+ *  inattendue est ignorée plutôt que de faire tomber la réception. */
+export function fusionnerLesSources<T extends { ref: number }>(
+  parRef: Map<number, T>,
+  lot: unknown,
+): void {
+  for (const src of Array.isArray(lot) ? lot : []) {
+    if (!src || typeof src !== 'object') continue;
+    const candidat = src as T;
+    if (typeof candidat.ref !== 'number') continue;
+    const connue = parRef.get(candidat.ref);
+    parRef.set(candidat.ref, connue ? { ...connue, ...candidat } : candidat);
+  }
+}
+
 export function remplacerLesSources<T extends { ref: number }>(
   parRef: Map<number, T>,
   finales: ReadonlyArray<T> | undefined,
