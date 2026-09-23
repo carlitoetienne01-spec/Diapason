@@ -189,10 +189,13 @@ describe('§5 — une recherche vide se voit aussi au panneau vocal', () => {
   // indiscernable d'une recherche qui a rendu huit sources.
   it('garde le moteur et le compte de la recherche', async () => {
     const socket = await connecter();
-    socket.message({ type: 'tool', name: 'web_search', ok: true, detail: '', engine: 'brave/news', numResults: 0 });
-    const [ligne] = rendu().toolEvents;
-    expect(ligne.engine).toBe('brave/news');
-    expect(ligne.numResults).toBe(0);
+    socket.message({ type: 'tool', name: 'web_search', ok: true, detail: '', engine: 'brave/news', numResults: 8 });
+    // Une recherche vide n'a pas de moteur (web_search.py:427).
+    socket.message({ type: 'tool', name: 'web_search', ok: true, detail: '', numResults: 0 });
+    const [plein, vide] = rendu().toolEvents;
+    expect(plein.engine).toBe('brave/news');
+    expect(plein.numResults).toBe(8);
+    expect(vide.numResults).toBe(0);
   });
 
   it('n’ajoute rien à un outil qui ne cherche pas', async () => {
@@ -204,9 +207,16 @@ describe('§5 — une recherche vide se voit aussi au panneau vocal', () => {
   });
 
   it('refuse un compte qui n’est pas entier', async () => {
-    // Number.isInteger écarte NaN et Infinity, qui s'afficheraient tels quels.
+    // Le banc sérialise en JSON, comme le vrai fil : NaN et Infinity y
+    // deviennent `null`, que `typeof === 'number'` écarterait déjà. Ce que la
+    // garde doit vraiment refuser et qu'un `typeof` laisserait passer, c'est
+    // un DÉCIMAL — `resumeDeRecherche` afficherait « 2.5 rés. ».
     const socket = await connecter();
-    socket.message({ type: 'tool', name: 'web_search', ok: true, numResults: Number.NaN });
+    socket.message({ type: 'tool', name: 'web_search', ok: true, numResults: 2.5 });
     expect('numResults' in rendu().toolEvents[0]).toBe(false);
+    socket.message({ type: 'tool', name: 'web_search', ok: true, numResults: Number.NaN });
+    expect('numResults' in rendu().toolEvents[1]).toBe(false);
+    socket.message({ type: 'tool', name: 'web_search', ok: true, numResults: '8' });
+    expect('numResults' in rendu().toolEvents[2]).toBe(false);
   });
 });

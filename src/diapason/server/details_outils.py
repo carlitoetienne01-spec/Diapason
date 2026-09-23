@@ -7,6 +7,14 @@ rendus. Rien ne le faisait traverser : la carte affichait « web_search ·
 donc exactement comme une qui en rend huit, et la réponse bâtie sur ce vide
 ne s'annonçait pas (§5).
 
+Une recherche vide n'a PAS de moteur : `_ddgs_search` ne retient un plan
+que s'il a rendu quelque chose (`if not resultats: continue`, web_search.py
+:427), donc `numResults == 0` implique `plans == []` implique `engine ==
+""`. La ligne d'une recherche vide se lit « web_search · 0 rés. », jamais
+« web_search · brave/news · 0 rés. » — cette dernière est une chaîne que le
+système ne peut pas produire, et l'avoir écrite en exemple dans le premier
+commit était une fiction.
+
 Le calcul vit ICI, une seule fois, parce que ses deux pièges le méritent :
 `0` doit passer — c'est même le cas pour lequel tout ceci existe — et
 `isinstance(True, int)` est vrai en Python, donc un drapeau deviendrait
@@ -31,10 +39,19 @@ def details_du_fil(resultat: Any) -> dict[str, Any]:
     modèle, lui, n'a pas à lire ça — il lit déjà le texte numéroté.
     """
     if isinstance(resultat, dict):
-        meta = resultat.get("metadata")
+        meta, reussi = resultat.get("metadata"), bool(resultat.get("ok"))
     else:
         meta = getattr(resultat, "metadata", None)
-    if not isinstance(meta, dict):
+        reussi = bool(getattr(resultat, "success", False))
+    # Un outil qui a ÉCHOUÉ n'a pas de compte : il a une panne. Quand aucun
+    # moteur n'est joignable, `web_search` rend success=False avec
+    # `{"engine": "", "numResults": 0}` (web_search.py:640) — sans cette
+    # garde, la ligne du terminal écrivait « FAIL web_search · 0 rés. », le
+    # zéro peint comme un vide, c'est-à-dire « cherché, rien trouvé » pour un
+    # tour où RIEN n'a été cherché. Le dépôt a déjà tranché cette distinction
+    # dans web_search.py : « Zéro moteur joint, c'est une panne ; des moteurs
+    # qui répondent vide, c'est un vide. » (22/09/2026, revue du soir.)
+    if not reussi or not isinstance(meta, dict):
         return {}
     details: dict[str, Any] = {}
     moteur = meta.get("engine")

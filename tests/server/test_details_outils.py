@@ -12,25 +12,37 @@ from diapason.server.details_outils import details_du_fil
 
 
 class TestCeQuiTraverse:
+    """Ce qu'une carte d'outil doit pouvoir dire d'une recherche."""
+
     def test_le_moteur_et_le_compte(self):
+        """§5 : sans eux, « web_search · 0,8 s » se lisait pareil que la
+        recherche qui a rendu huit sources."""
         resultat = ToolResult(
             tool_name="web_search",
             content="[1] …",
             success=True,
             metadata={"engine": "brave/news", "numResults": 8, "sources": []},
         )
-        assert details_du_fil(resultat) == {"engine": "brave/news", "numResults": 8}
+        assert details_du_fil(resultat) == {
+            "engine": "brave/news",
+            "numResults": 8,
+        }, "le moteur et son vertical traversent tels quels"
 
     def test_zero_traverse_aussi(self):
         """C'est le cas pour lequel ceci existe : un `if not nombre` l'aurait
         jeté, et le vide se serait lu comme un succès."""
+        # Une recherche vide n'a PAS de moteur : `_ddgs_search` ne retient un
+        # plan que s'il a rendu quelque chose (web_search.py:427), donc
+        # `numResults == 0` implique `plans == []` implique `engine == ""`.
         vide = ToolResult(
             tool_name="web_search",
             content="No results found.",
             success=True,
-            metadata={"engine": "duckduckgo/text", "numResults": 0},
+            metadata={"engine": "", "numResults": 0},
         )
-        assert details_du_fil(vide)["numResults"] == 0
+        assert details_du_fil(vide) == {"numResults": 0}, (
+            "le zéro traverse, et seul : une recherche vide n'a pas de moteur"
+        )
 
     def test_la_boucle_vocale_porte_des_dicts(self):
         """Le chat manipule un ToolResult, la voix des dicts. Deux calculs des
@@ -46,19 +58,45 @@ class TestCeQuiTraverse:
 
 
 class TestCeQuiNeTraversePas:
+    """Ce qui n'est pas un compte ne doit pas s'afficher comme un compte."""
+
     def test_un_outil_ordinaire_n_ajoute_rien(self):
         assert (
             details_du_fil(ToolResult(tool_name="read_file", content="x", success=True))
             == {}
+        ), "un outil sans métadonnée de recherche ne fabrique aucune clé"
+
+    def test_une_panne_n_est_pas_un_vide(self):
+        """Revue du 22/09 au soir. Quand aucun moteur n'est joignable,
+        `web_search` rend `success=False` avec `{"engine": "", "numResults":
+        0}` (web_search.py:640). Sans cette garde, le terminal écrivait
+        « FAIL web_search · 0 rés. », le zéro peint comme un vide —
+        c'est-à-dire « cherché, rien trouvé » pour un tour où RIEN n'a été
+        cherché. Le dépôt a déjà tranché : « Zéro moteur joint, c'est une
+        panne ; des moteurs qui répondent vide, c'est un vide. »"""
+        panne = ToolResult(
+            tool_name="web_search",
+            content="Search error: aucun moteur n'a répondu (réseau ?).",
+            success=False,
+            metadata={"engine": "", "numResults": 0, "plans": []},
         )
+        assert details_du_fil(panne) == {}, "une panne n'a pas de compte"
+        assert (
+            details_du_fil(
+                {"ok": False, "metadata": {"engine": "brave/news", "numResults": 0}}
+            )
+            == {}
+        ), "même règle pour la boucle vocale, qui porte des dicts"
 
     def test_un_outil_qui_leve_n_a_pas_de_resultat(self):
         """L'appelant nomme `resultat` avant son `try` : sans cela, la carte
         d'un outil cassé serait un NameError au lieu d'un échec."""
-        assert details_du_fil(None) == {}
+        assert details_du_fil(None) == {}, "pas de résultat, pas de carte"
 
     def test_une_metadonnee_qui_n_en_est_pas_une(self):
-        assert details_du_fil({"ok": True, "metadata": "pas un dict"}) == {}
+        assert details_du_fil({"ok": True, "metadata": "pas un dict"}) == {}, (
+            "une métadonnée mal formée est ignorée, pas dépliée"
+        )
 
     def test_un_booleen_n_est_pas_un_compte(self):
         """`isinstance(True, int)` est vrai en Python : « 1 rés. » pour un
@@ -70,9 +108,9 @@ class TestCeQuiNeTraversePas:
                 success=True,
                 metadata={"numResults": True},
             )
-        )
+        ), "un drapeau serait devenu « 1 rés. »"
 
     def test_un_moteur_vide_ne_fabrique_pas_de_cle(self):
-        assert details_du_fil({"metadata": {"engine": "", "numResults": 0}}) == {
-            "numResults": 0
-        }
+        assert details_du_fil(
+            {"ok": True, "metadata": {"engine": "", "numResults": 0}}
+        ) == {"numResults": 0}, "un moteur vide ne fabrique pas de clé vide"

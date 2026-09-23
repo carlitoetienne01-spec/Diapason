@@ -117,17 +117,36 @@ def test_filter_by_source(store: KnowledgeStore) -> None:
 
 
 def test_registered() -> None:
-    """L'outil est dans le registre — que l'import l'y ait mis ou non.
+    """Le MODULE inscrit son outil au registre, et sous sa vraie classe.
 
-    Le décorateur enregistre à l'import ; ce test réenregistrait ensuite sans
-    regarder, et `register_value` refuse un doublon. Selon le fil que
-    `pytest -n auto` lui donne — un fil où un autre module a vidé le registre
-    après l'import, ou un fil vierge — il passait ou levait « already has an
-    entry » (CI rouge le 13 septembre 2026, vert au commit d'avant).
+    Deux corrections successives d'un même test creux. Le 13 septembre 2026
+    pour `knowledge_sql`, le 22 au soir pour `scan_chunks` : l'appel nu à
+    `register_value` a été mis sous garde (`if not contains(...)`), ce qui a
+    bien rendu le test déterministe — et l'a rendu INCAPABLE d'échouer. La
+    fixture autouse `_clean_registries` (`tests/conftest.py:78`) vide le
+    registre avant CHAQUE test, et un module déjà chargé ne réexécute pas son
+    décorateur : la clé est donc toujours absente à l'entrée, la garde la pose
+    elle-même, et les assertions relisent ce que le test vient d'écrire.
+
+    Éprouvé le 22/09 au soir par un greffon qui neutralise
+    `@ToolRegistry.register` pour ces deux clés : les deux tests restaient
+    VERTS. §100 — la preuve vient du récepteur, pas de l'appelant.
+
+    Le registre est vidé JUSTE AVANT le rechargement — explicitement, sans se
+    fier à l'ordre des fixtures — pour que le décorateur du module soit la
+    seule chose au monde qui puisse poser cette clé. Sans ce vidage, le
+    rechargement d'un module encore absent de `sys.modules` se heurtait à
+    l'inscription que son propre import venait de faire.
     """
-    from diapason.tools.knowledge_sql import KnowledgeSQLTool
+    import importlib
 
-    if not ToolRegistry.contains("knowledge_sql"):
-        ToolRegistry.register_value("knowledge_sql", KnowledgeSQLTool)
-    assert ToolRegistry.contains("knowledge_sql"), "l'outil doit être enregistré"
-    assert ToolRegistry.get("knowledge_sql") is KnowledgeSQLTool
+    charge = importlib.import_module("diapason.tools.knowledge_sql")
+    ToolRegistry.clear()
+    module = importlib.reload(charge)
+
+    assert ToolRegistry.contains("knowledge_sql"), (
+        "l'import du module doit SUFFIRE à enregistrer l'outil"
+    )
+    assert ToolRegistry.get("knowledge_sql") is module.KnowledgeSQLTool, (
+        "la clé doit pointer sur LA classe du module, pas sur autre chose"
+    )

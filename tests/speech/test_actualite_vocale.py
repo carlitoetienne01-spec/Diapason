@@ -442,6 +442,80 @@ class TestLesPiecesDuTour:
             "https://fr.wikipedia.org/wiki/Premier_ministre_du_Canada"
         ], "un prix ne lit aucune page"
 
+    def test_la_page_officielle_deja_rendue_par_la_recherche_garde_sa_mention(self):
+        """Le pendant vocal du test du chat. La couverture le 22/09 au soir
+        montrait les lignes de la branche « pastille déjà connue » jamais
+        atteintes : tous les tests vocaux partaient d'un `tour.sources` vide,
+        c'est-à-dire du seul cas qui marchait DÉJÀ avant le correctif. Le
+        chemin est recopié à la main depuis `agentic_stream` ; rien
+        n'empêcherait les deux de diverger, et la divergence chat/voix est le
+        défaut classique de ce dépôt."""
+        from datetime import date
+
+        url = (
+            "https://www.banqueducanada.ca/grandes-fonctions/"
+            "politique-monetaire/taux-directeur/"
+        )
+        tour = actualite_vocale.TourVocal(question="Quel est le taux directeur ?")
+        # La recherche a DÉJÀ rendu la page officielle : c'est le cas
+        # fréquent, une page officielle étant bien indexée.
+        tour.sources.append(
+            {
+                "ref": 1,
+                "title": "Taux directeur - Banque du Canada",
+                "url": url,
+                "date": "2025-03-12",
+                "sender": "banqueducanada.ca",
+                "snippet": "Le taux cible du financement à un jour",
+            }
+        )
+
+        def lire(nom, args):
+            return {
+                "ok": True,
+                "content": (
+                    "[1] Taux directeur - Banque du Canada — banqueducanada.ca"
+                    " · modifié 2025-03-12\n"
+                    f"Source: {args['url']}\nLe taux cible est de 2,25 %.\n"
+                ),
+                "metadata": {
+                    "sources": [
+                        {
+                            "ref": 1,
+                            "title": "Taux directeur - Banque du Canada",
+                            "url": args["url"],
+                            "date": "2025-03-12",
+                            "sender": "banqueducanada.ca",
+                        }
+                    ]
+                },
+            }
+
+        resultat = actualite_vocale.absorber_resultat(
+            tour,
+            "web_search",
+            {},
+            {"ok": True, "content": "[1] Taux directeur\n", "metadata": {}},
+            lire,
+        )
+        assert len(tour.sources) == 1, (
+            "aucun SECOND numéro n'est créé pour une page déjà connue"
+        )
+        (carte,) = tour.sources
+        assert carte["official"] is True, (
+            "une page officielle lue par le code le DIT, même déjà indexée"
+        )
+        assert carte["date"] == date.today().isoformat(), (
+            "une page vivante est datée du jour de sa lecture, pas de 2025"
+        )
+        assert carte["snippet"] == "Le taux cible du financement à un jour", (
+            "la fusion garde ce que la recherche avait apporté"
+        )
+        assert "source officielle · consultée le" in resultat["content"], (
+            "le modèle cesse de lire une date de publication ancienne collée "
+            "à un contenu du jour qu'on lui dit de croire"
+        )
+
     def test_la_page_officielle_est_lue_meme_sans_resultat_de_recherche(self):
         """P6 à la voix : la prévision d'Environnement Canada pour la ville de
         la config, jointe au résultat, datée du jour et dite officielle."""

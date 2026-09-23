@@ -149,7 +149,8 @@ def test_event_to_client_json():
             kind="tool",
             tool_name="web_search",
             tool_ok=True,
-            tool_details={"engine": "brave/news", "numResults": 0},
+            # Une recherche vide n'a pas de moteur (web_search.py:427).
+            tool_details={"numResults": 0},
         )
     )
     assert vide == {
@@ -157,7 +158,6 @@ def test_event_to_client_json():
         "name": "web_search",
         "ok": True,
         "detail": "",
-        "engine": "brave/news",
         "numResults": 0,
     }, "le zéro traverse : c'est le cas pour lequel ces champs existent"
     assert event_to_client_json(

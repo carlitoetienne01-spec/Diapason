@@ -17,12 +17,6 @@ export function historiqueDeRecherche(
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
-// Les sources renumérotées du serveur remplacent celles des recherches.
-//
-// 22/09/2026 : le serveur renumérote les [N] du texte par ordre d'apparition
-// (« CodinGame [3] » devient « [1] ») et envoie la liste correspondante ;
-// le client gardait les numéros d'origine, et la pastille [1] sous CodinGame
-// ouvrait le relevé de la Banque Nationale (ref 1 de la recherche corpus).
 /** Les sources d'un lot rejoignent celles qu'on a déjà, par numéro.
  *
  *  22/09/2026. Les deux sites qui recevaient un lot écartaient toute pastille
@@ -50,6 +44,12 @@ export function fusionnerLesSources<T extends { ref: number }>(
   }
 }
 
+// Les sources renumérotées du serveur remplacent celles des recherches.
+//
+// 22/09/2026 : le serveur renumérote les [N] du texte par ordre d'apparition
+// (« CodinGame [3] » devient « [1] ») et envoie la liste correspondante ;
+// le client gardait les numéros d'origine, et la pastille [1] sous CodinGame
+// ouvrait le relevé de la Banque Nationale (ref 1 de la recherche corpus).
 export function remplacerLesSources<T extends { ref: number }>(
   parRef: Map<number, T>,
   finales: ReadonlyArray<T> | undefined,

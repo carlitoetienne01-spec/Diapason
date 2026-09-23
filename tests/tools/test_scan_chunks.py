@@ -66,31 +66,36 @@ def test_scan_empty_store(tmp_path: Path) -> None:
 
 
 def test_registered() -> None:
-    """L'outil est dans le registre — que l'import l'y ait mis ou non.
+    """Le MODULE inscrit son outil au registre, et sous sa vraie classe.
 
-    La seconde moitié du défaut corrigé pour `knowledge_sql` le 13 septembre
-    2026, restée sur place : `scan_chunks.py:22` porte
-    `@ToolRegistry.register("scan_chunks")`, donc l'import enregistre — et ce
-    test réenregistrait ensuite sans regarder, alors que `register_value`
-    refuse un doublon (`core/registry.py:66`).
+    Deux corrections successives d'un même test creux. Le 13 septembre 2026
+    pour `knowledge_sql`, le 22 au soir pour `scan_chunks` : l'appel nu à
+    `register_value` a été mis sous garde (`if not contains(...)`), ce qui a
+    bien rendu le test déterministe — et l'a rendu INCAPABLE d'échouer. La
+    fixture autouse `_clean_registries` (`tests/conftest.py:78`) vide le
+    registre avant CHAQUE test, et un module déjà chargé ne réexécute pas son
+    décorateur : la clé est donc toujours absente à l'entrée, la garde la pose
+    elle-même, et les assertions relisent ce que le test vient d'écrire.
 
-    Ce qui décide, c'est la fixture autouse `_clean_registries`
-    (`tests/conftest.py:78`) : elle vide le registre avant CHAQUE test, et
-    l'import de la ligne suivante est un no-op quand un test antérieur du même
-    fil a déjà chargé le module. Fil vierge → l'import réenregistre → le test
-    levait « already has an entry » ; fil déjà chargé → le registre est vide →
-    il passait. Mesuré le 22 septembre 2026 : SEUL, il échouait 3 fois sur 3 ;
-    avec le fichier entier, 4 passed — son voisin charge le module à sa place.
+    Éprouvé le 22/09 au soir par un greffon qui neutralise
+    `@ToolRegistry.register` pour ces deux clés : les deux tests restaient
+    VERTS. §100 — la preuve vient du récepteur, pas de l'appelant.
 
-    Retirer l'appel ne suffirait pas : après le `clear()`, un import déjà fait
-    n'enregistre plus rien, et le test affirmerait « enregistré » sans que
-    rien ne le soit (§100 — la preuve vient du récepteur, pas de l'appelant).
+    Le registre est vidé JUSTE AVANT le rechargement — explicitement, sans se
+    fier à l'ordre des fixtures — pour que le décorateur du module soit la
+    seule chose au monde qui puisse poser cette clé. Sans ce vidage, le
+    rechargement d'un module encore absent de `sys.modules` se heurtait à
+    l'inscription que son propre import venait de faire.
     """
-    from diapason.tools.scan_chunks import ScanChunksTool
+    import importlib
 
-    if not ToolRegistry.contains("scan_chunks"):
-        ToolRegistry.register_value("scan_chunks", ScanChunksTool)
-    assert ToolRegistry.contains("scan_chunks"), "l'outil doit être enregistré"
-    assert ToolRegistry.get("scan_chunks") is ScanChunksTool, (
-        "la clé doit pointer sur LA classe, pas seulement exister"
+    charge = importlib.import_module("diapason.tools.scan_chunks")
+    ToolRegistry.clear()
+    module = importlib.reload(charge)
+
+    assert ToolRegistry.contains("scan_chunks"), (
+        "l'import du module doit SUFFIRE à enregistrer l'outil"
+    )
+    assert ToolRegistry.get("scan_chunks") is module.ScanChunksTool, (
+        "la clé doit pointer sur LA classe du module, pas sur autre chose"
     )

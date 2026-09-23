@@ -48,7 +48,7 @@ export interface LigneTerminal {
   atMs?: number;
   etat?: string;
   // 22/09/2026, corrigé le même soir. Ce qu'une recherche a rendu —
-  // « brave/news · 0 rés. » — voyage À PART de `texte` pour que le terminal
+  // « 0 rés. » — voyage À PART de `texte` pour que le terminal
   // puisse le PEINDRE. Le premier jet le collait dans `texte` : la ligne
   // entière sortait alors de la même couleur qu'un succès ordinaire, et
   // `vide` n'avait pour seul lecteur que ToolCallCard, qui n'est rendu que

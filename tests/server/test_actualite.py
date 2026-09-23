@@ -2134,10 +2134,6 @@ class TestLaPageOfficielle:
         )
 
         class RechercheQuiRendLaPageOfficielle(Outil):
-            @property
-            def metadata_sources(self):
-                return None
-
             def execute(self, **params):
                 self.executions.append(params)
                 return ToolResult(
@@ -2213,7 +2209,9 @@ class TestLaPageOfficielle:
         assert cartes[1]["snippet"] == "Le taux cible du financement à un jour", (
             "la fusion garde ce que la recherche avait apporté"
         )
-        assert len(cartes) == 1, "aucune pastille en double pour la même page"
+        assert len(cartes) == 1, (
+            "aucun SECOND numéro n'est créé pour une page déjà connue"
+        )
         outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
         assert "source officielle · consultée le" in (outil.content or ""), (
             "le modèle cesse de lire une date de publication ancienne collée "

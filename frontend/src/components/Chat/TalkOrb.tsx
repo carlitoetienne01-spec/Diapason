@@ -228,7 +228,7 @@ export function TalkOrb({
               {entree.ok ? <Check size={14} /> : <X size={14} />}
               <span>{entree.name}{entree.detail ? ` — ${entree.detail}` : ''}</span>
               {(() => {
-                // Le même résumé qu'au chat : « brave/news · 0 rés. ». Une
+                // Le même résumé qu'au chat : « brave/news · 8 rés. ». Une
                 // recherche vide RÉUSSIT — le crochet reste vert ; c'est le
                 // compte qui alerte, et lui seul.
                 const r = resumeDeRecherche(entree);

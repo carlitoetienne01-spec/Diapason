@@ -108,9 +108,13 @@ describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
   };
 
   it('recopie le moteur et le compte que le serveur envoie', () => {
-    const a = fini({ engine: 'brave/news', numResults: 0 });
+    const a = fini({ engine: 'brave/news', numResults: 8 });
     expect(a.engine).toBe('brave/news');
-    expect(a.numResults).toBe(0);
+    expect(a.numResults).toBe(8);
+    // Une recherche vide n'a PAS de moteur : `_ddgs_search` ne retient un
+    // plan que s'il a rendu quelque chose (web_search.py:427). Le fil ne
+    // peut pas produire « brave/news · 0 rés. ».
+    expect(fini({ numResults: 0 }).numResults).toBe(0);
   });
 
   it('laisse vides les champs qu’un outil ordinaire n’envoie pas', () => {
@@ -130,8 +134,8 @@ describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
     expect(resumeDeRecherche({ engine: 'brave/news', numResults: 8 })).toEqual({
       texte: 'brave/news · 8 rés.', vide: false,
     });
-    expect(resumeDeRecherche({ engine: 'brave/news', numResults: 0 })).toEqual({
-      texte: 'brave/news · 0 rés.', vide: true,
+    expect(resumeDeRecherche({ numResults: 0 })).toEqual({
+      texte: '0 rés.', vide: true,
     });
   });
 
@@ -148,12 +152,12 @@ describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
     // pas affiché (§5). Le tag reste OK : le peindre en erreur mentirait
     // dans l'autre sens.
     const appels = [appel()];
-    terminerAppel(appels, { tool: 'web_search', success: true, latency: 0.8, engine: 'brave/news', numResults: 0 });
+    terminerAppel(appels, { tool: 'web_search', success: true, latency: 0.8, numResults: 0 });
     appels[0].endedAtMs = 400;
     const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'OK');
     expect(fin).toBeDefined();
     expect(fin!.texte).toBe('web_search');
-    expect(fin!.resume).toBe('brave/news · 0 rés.');
+    expect(fin!.resume).toBe('0 rés.');
     expect(fin!.vide).toBe(true);
   });
 
@@ -162,6 +166,20 @@ describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
     terminerAppel(appels, { tool: 'read_file', success: true, latency: 0.1 });
     appels[0].endedAtMs = 400;
     const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'OK');
+    expect(fin!.resume).toBeUndefined();
+    expect(fin!.vide).toBeUndefined();
+  });
+
+  it('un outil en PANNE n’apporte aucun compte', () => {
+    // Revue du 22/09 au soir : quand aucun moteur n'est joignable,
+    // web_search rend success=false avec numResults: 0, et la ligne écrivait
+    // « FAIL web_search · 0 rés. » — « cherché, rien trouvé » pour un tour où
+    // rien n'a été cherché. Le serveur ne transmet plus rien sur un échec ;
+    // le client n'a donc aucun compte à afficher.
+    const appels = [appel()];
+    terminerAppel(appels, { tool: 'web_search', success: false, latency: 5.0 });
+    appels[0].endedAtMs = 400;
+    const fin = journalExecution(appels, creerReception(100), false).find(l => l.tag === 'FAIL');
     expect(fin!.resume).toBeUndefined();
     expect(fin!.vide).toBeUndefined();
   });
