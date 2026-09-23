@@ -687,25 +687,59 @@ les recopie dans `tool_end` ; la carte peint le zéro en couleur d'alerte, et
 le terminal écrit « web_search · brave/news · 0 rés. ». Le zéro est le cas
 pour lequel ceci existe — un `if not nombre` l'aurait jeté.
 
-Restent de **P7** : le journal des recherches de la conversation proprement
-dit (une liste par conversation, et relancer la requête exacte). Les cartes
-d'outils, maintenant qu'elles disent le moteur et le compte, en portent la
-moitié utile ; la seconde moitié est une surface d'interaction nouvelle.
+### ~~P7 — journal des recherches de la conversation~~ — abandonné le 22 septembre
 
-Deux défauts repérés au passage, hors de ces thèmes :
+Une enquête à trois agents, chacun contre-vérifié par un quatrième chargé de
+le RÉFUTER, a conclu de ne pas le construire. Trois raisons, dans l'ordre de
+poids :
 
-- une page officielle DÉJÀ présente dans les résultats de recherche est
-  dédoublonnée, donc sa carte perd la mention « officiel » (constaté sur
-  « taux directeur » le 22/09 : la page de la Banque du Canada était la
-  source [1] de la recherche, lue par le code, et marquée comme une source
-  ordinaire). Marquer la carte existante demande que le client accepte une
-  MISE À JOUR de source : il ignore aujourd'hui tout `ref` déjà connu ;
-- `tests/tools/test_scan_chunks.py::test_registered` échoue par intermittence
-  sous `-n auto`. Il APPELLE `register_value` avant d'affirmer que la clé est
-  enregistrée, et `register_value` lève quand l'entrée est déjà résolue. Un
-  test qui met en place ce qu'il vérifie ne vérifie rien, et celui-ci rougit
-  la commande de vérification du dépôt. Vérifié sur l'arbre remisé : le défaut
-  préexiste au travail du 22/09.
+1. **La moitié « relancer la requête exacte » contredit une décision déjà
+   prise.** `frontend/src/components/Chat/notesDeVerification.ts:114` dit
+   depuis le 21/09 : jamais de relance après une recherche qui n'a rien
+   rendu, « relancer la même boucle sur Ollama (`-np 1`) pour rien ». C'est
+   exactement le cas que P7 prétendait servir.
+2. **La requête exacte est déjà à l'écran, non tronquée.** Le terminal de
+   chaque bulle (`MessageBubble.tsx:283` → `TerminalExecution`) écrit la
+   ligne `CALL web_search({"query":"…"})`, en `white-space: pre-wrap`.
+3. **§82 est déjà satisfait** : le journal s'ouvre au clic et au clavier, la
+   relance se tape, se dicte, ou passe par « Vérifie ça ».
+
+L'enquête proposait en repli une ouverture automatique du terminal sur une
+recherche vide. La contre-épreuve l'a réfutée : sa condition est un
+sous-ensemble strict de ce qui ouvre DÉJÀ le panneau en direct
+(`TerminalExecution.tsx:26`). Ce qui a été fait à la place — rendre le vide
+visible là où il se lit — est ci-dessous.
+
+### Ce que l'enquête a trouvé au passage, et qui est corrigé
+
+- **Le zéro n'était peint nulle part.** Le commit qui livrait S2 annonçait
+  « la carte peint le zéro en couleur d'alerte » : vrai seulement dans
+  `ToolCallCard`, dont les deux usages sont dans `AgentsPage` — le chat ne le
+  rend jamais. `LigneTerminal` porte désormais `resume` et `vide` À PART de
+  `texte`, et le terminal les peint. Le tag reste `OK` : une recherche vide
+  RÉUSSIT, la peindre en erreur mentirait dans l'autre sens.
+- **Le panneau vocal ne recevait que `{name, ok, detail}`** : une recherche à
+  zéro résultat y arrivait en `ok=true, detail=""`. `SessionEvent` porte
+  `tool_details`, et `details_du_fil` quitte `agentic_stream.py` pour
+  `server/details_outils.py` — un seul calcul pour les deux chemins, parce
+  que ses deux pièges le méritent (`0` doit passer ; `isinstance(True, int)`
+  est vrai en Python).
+- **Une page officielle déjà rendue par la recherche perdait sa mention.**
+  Voir le commit dédié : `carte_officielle`, fusion et non substitution, et
+  les DEUX gardes clientes qui écartaient toute mise à jour de pastille.
+- **`test_scan_chunks::test_registered`** appelait `register_value` avant
+  d'affirmer que la clé était enregistrée. Mesuré : SEUL il échouait 3 fois
+  sur 3 (et non « il passe seul », comme on l'avait d'abord écrit) ; avec le
+  fichier entier il passait, son voisin chargeant le module à sa place.
+  Corrigé par la forme déjà adoptée pour `knowledge_sql` le 13 septembre.
+
+**Reste ouvert, et plus gros que le test :** `import diapason.tools` ne met
+NI `scan_chunks` NI `knowledge_sql` dans le registre (88 entrées, aucune des
+deux). `diapason tool list/run`, le serveur MCP et la route d'outils du chat
+ne les voient donc pas, et `agents/executor.py:321` saute un outil absent
+sans `else` ni journal — alors que `personal_deep_research.toml` en demande
+quatre. La recherche approfondie ne marche que parce
+qu'`agent_manager_routes.py:617` les construit à la main.
 
 ### La recherche approfondie sans le web ni la suite — 22 septembre
 
