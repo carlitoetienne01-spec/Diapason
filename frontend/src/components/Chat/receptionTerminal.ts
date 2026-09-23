@@ -1,5 +1,5 @@
 import type { ChatReception, ToolCallInfo } from '../../types';
-import { etatExecution } from './etatExecution';
+import { etatExecution, resumeDeRecherche } from './etatExecution';
 
 // Une minute conservée : 60 nombres au maximum, pas tous les jetons du fil.
 const FENETRE_S = 60;
@@ -48,6 +48,19 @@ export interface LigneTerminal {
   atMs?: number;
   etat?: string;
 }
+/** La ligne de fin d'un outil : son nom, et pour une recherche ce qu'elle a
+ *  rendu — « web_search · brave/news · 0 rés. ».
+ *
+ *  22/09/2026 (S2 du jury). Une recherche vide sort en `OK` comme une autre :
+ *  l'appel a réussi, il n'a simplement rien trouvé. Sans le compte, le
+ *  terminal montrait donc un succès vert là où la réponse qui suit ne repose
+ *  sur rien (§5). Le moteur est dit aussi : trois moteurs se relaient, et
+ *  savoir lequel a répondu explique un vide autant qu'il le date. */
+export function finDOutil(appel: ToolCallInfo): string {
+  const resume = resumeDeRecherche(appel);
+  return resume ? `${appel.tool} · ${resume.texte}` : appel.tool;
+}
+
 export function journalExecution(appels: ToolCallInfo[], reception: ChatReception | undefined, direct: boolean): LigneTerminal[] {
   const lignes: LigneTerminal[] = [];
   if (reception) lignes.push({ id: 'request', tag: 'REQ', texte: 'request', atMs: reception.startedAtMs });
@@ -61,7 +74,7 @@ export function journalExecution(appels: ToolCallInfo[], reception: ChatReceptio
     const etat = etatExecution(appel, direct);
     if (etat !== 'running') lignes.push({
       id: `${appel.id}:end`, tag: etat === 'success' ? 'OK' : etat === 'error' ? 'FAIL' : 'WAIT',
-      texte: appel.tool, atMs: appel.endedAtMs, etat,
+      texte: finDOutil(appel), atMs: appel.endedAtMs, etat,
     });
   }
   if (reception?.firstTextAtMs != null) lignes.push({ id: 'text', tag: 'TEXT', texte: 'text', atMs: reception.firstTextAtMs });

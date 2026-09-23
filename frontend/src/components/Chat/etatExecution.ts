@@ -34,7 +34,33 @@ export function terminerAppel(appels: ToolCallInfo[], donnees: Record<string, un
   appel.latency = dureeValide(donnees.latency) ? donnees.latency : undefined;
   appel.result = donnees.result == null ? undefined : texteRecu(donnees.result);
   appel.endedAtMs = maintenant;
+  appel.engine = typeof donnees.engine === 'string' && donnees.engine ? donnees.engine : undefined;
+  // `0` passe : c'est le cas pour lequel ce champ existe. `typeof` seul
+  // laisserait entrer NaN et Infinity, qui s'afficheraient tels quels.
+  appel.numResults = Number.isInteger(donnees.numResults) ? (donnees.numResults as number) : undefined;
   return true;
+}
+
+/** Ce qu'une carte de recherche dit d'elle-même : « brave/news · 8 rés. ».
+ *
+ *  22/09/2026 (S2 du jury). `web_search` sait depuis le 20/09 quel moteur a
+ *  répondu et combien de résultats il a rendus, mais rien ne le faisait
+ *  traverser : la carte affichait la durée, et rien d'autre. Une recherche
+ *  vide se lisait exactement comme une recherche fructueuse — et la réponse
+ *  qui suit repose alors sur du vide sans que rien ne le dise (§5).
+ *
+ *  `vide` est porté à part pour que l'appelant le PEIGNE : un zéro de la
+ *  même couleur qu'un huit ne se remarque pas. */
+export function resumeDeRecherche(
+  appel: Pick<ToolCallInfo, 'engine' | 'numResults'>,
+): { texte: string; vide: boolean } | null {
+  const morceaux: string[] = [];
+  if (appel.engine) morceaux.push(appel.engine);
+  if (appel.numResults !== undefined) {
+    morceaux.push(appel.numResults === 1 ? '1 rés.' : `${appel.numResults} rés.`);
+  }
+  if (morceaux.length === 0) return null;
+  return { texte: morceaux.join(' · '), vide: appel.numResults === 0 };
 }
 
 export function cloreAppels(appels: ToolCallInfo[]): void {

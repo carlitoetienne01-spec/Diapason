@@ -284,6 +284,34 @@ async def _lire_la_page(
     )
 
 
+def details_du_fil(resultat: Any) -> dict[str, Any]:
+    """Ce qu'une carte d'outil doit pouvoir dire d'une recherche : QUEL moteur
+    a répondu, et COMBIEN de résultats (S2 du jury, 22/09/2026).
+
+    `web_search` le sait depuis le 20/09 — `engine` vaut « brave/news », le
+    moteur et son vertical — mais rien ne le faisait traverser : la carte
+    affichait « web_search · 0,8 s » et rien d'autre. Une recherche qui rend
+    ZÉRO résultat se lisait donc exactement comme une qui en rend huit, et
+    une réponse bâtie sur du vide ne s'annonçait pas (§5). Le modèle, lui,
+    n'a pas à lire ça : il lit déjà le texte numéroté.
+
+    Les clés sont recopiées telles quelles — elles sont déjà en anglais
+    camelCase dans la métadonnée, donc sur le fil aussi.
+    """
+    meta = getattr(resultat, "metadata", None)
+    if not isinstance(meta, dict):
+        return {}
+    details: dict[str, Any] = {}
+    moteur = meta.get("engine")
+    if isinstance(moteur, str) and moteur:
+        details["engine"] = moteur
+    nombre = meta.get("numResults")
+    # `0` compte : c'est même le cas pour lequel ceci existe.
+    if isinstance(nombre, int) and not isinstance(nombre, bool):
+        details["numResults"] = nombre
+    return details
+
+
 def observation(resultat: Any) -> str:
     """Ce que le MODÈLE lit d'un résultat d'outil.
 
@@ -987,6 +1015,9 @@ async def stream_with_tools(
 
             un_outil_a_tourne = True
             debut = time.time()
+            # Nommé avant le try : un outil qui lève n'a pas de résultat, et
+            # la carte doit pouvoir le dire sans que le nom manque.
+            resultat: Any = None
             try:
                 if nom not in trousse.noms:
                     raise ValueError(
@@ -1112,6 +1143,7 @@ async def stream_with_tools(
                     "success": succes,
                     "latency": round(latence, 3),
                     "result": contenu[:1000],
+                    **details_du_fil(resultat),
                 },
             )
 

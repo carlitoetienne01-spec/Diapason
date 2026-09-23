@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, CircleDashed } from 'lucide-react';
 import type { ToolCallInfo } from '../../types';
-import { dureeOutil, dureeValide } from './etatExecution';
+import { dureeOutil, dureeValide, resumeDeRecherche } from './etatExecution';
 import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
@@ -40,6 +40,7 @@ export function ToolCallCard({ toolCall }: Props) {
   const config = statusConfig[toolCall.status];
   const StatusIcon = config.icon;
   const preview = previewArgs(toolCall.arguments);
+  const recherche = resumeDeRecherche(toolCall);
 
   return (
     <div
@@ -74,6 +75,18 @@ export function ToolCallCard({ toolCall }: Props) {
         {toolCall.auto && (
           <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10.5, flexShrink: 0 }}>
             · auto
+          </span>
+        )}
+        {recherche && (
+          <span
+            style={{
+              // Un zéro de la même couleur qu'un huit ne se remarque pas.
+              color: recherche.vide ? 'var(--color-warning, #b45309)' : 'var(--color-text-tertiary)',
+              fontSize: 10.5,
+              flexShrink: 0,
+            }}
+          >
+            · {recherche.texte}
           </span>
         )}
         {preview && !expanded && (

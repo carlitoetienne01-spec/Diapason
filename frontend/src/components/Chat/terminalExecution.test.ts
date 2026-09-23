@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolCallInfo } from '../../types';
-import { appelsDeRecherche, bilanExecution, cloreAppels, dureeOutil, dureeValide, etatExecution, terminerAppel, texteRecu } from './etatExecution';
+import { appelsDeRecherche, bilanExecution, cloreAppels, dureeOutil, dureeValide, etatExecution, resumeDeRecherche, terminerAppel, texteRecu } from './etatExecution';
+import { finDOutil } from './receptionTerminal';
 import { dernierTexteVisible } from './GravureReponse';
 
 const appel = (id = 'a', outil = 'web_search'): ToolCallInfo => ({ id, tool: outil, arguments: '{}', status: 'running' });
@@ -92,5 +93,60 @@ describe('La gravure ne retape ni ne modifie la réponse', () => {
     expect(dernierTexteVisible(el)?.noeud.textContent).toBe('Réponse');
     el.innerHTML = '<p> </p>';
     expect(dernierTexteVisible(el)).toBeNull();
+  });
+});
+
+describe('Une recherche vide se voit (S2, 22/09/2026)', () => {
+  // La carte disait « web_search · 0,8 s » et rien d'autre. Une recherche qui
+  // rend ZÉRO résultat se lisait exactement comme une qui en rend huit, et la
+  // réponse bâtie sur ce vide ne s'annonçait pas (§5). Le serveur savait
+  // depuis le 20/09 quel moteur avait répondu ; rien ne le faisait traverser.
+  const fini = (donnees: Record<string, unknown>): ToolCallInfo => {
+    const appels = [appel()];
+    terminerAppel(appels, { tool: 'web_search', success: true, latency: 0.8, ...donnees });
+    return appels[0];
+  };
+
+  it('recopie le moteur et le compte que le serveur envoie', () => {
+    const a = fini({ engine: 'brave/news', numResults: 0 });
+    expect(a.engine).toBe('brave/news');
+    expect(a.numResults).toBe(0);
+  });
+
+  it('laisse vides les champs qu’un outil ordinaire n’envoie pas', () => {
+    const a = fini({});
+    expect(a.engine).toBeUndefined();
+    expect(a.numResults).toBeUndefined();
+  });
+
+  it('refuse un compte qui n’est pas entier', () => {
+    // `typeof === "number"` laisserait entrer NaN et Infinity, qui
+    // s'afficheraient tels quels dans la carte.
+    expect(fini({ numResults: Number.NaN }).numResults).toBeUndefined();
+    expect(fini({ numResults: 2.5 }).numResults).toBeUndefined();
+  });
+
+  it('dit le moteur et le nombre, et marque le vide', () => {
+    expect(resumeDeRecherche({ engine: 'brave/news', numResults: 8 })).toEqual({
+      texte: 'brave/news · 8 rés.', vide: false,
+    });
+    expect(resumeDeRecherche({ engine: 'brave/news', numResults: 0 })).toEqual({
+      texte: 'brave/news · 0 rés.', vide: true,
+    });
+  });
+
+  it('accorde le singulier et supporte un champ manquant', () => {
+    expect(resumeDeRecherche({ numResults: 1 })?.texte).toBe('1 rés.');
+    expect(resumeDeRecherche({ engine: 'tavily' })?.texte).toBe('tavily');
+    expect(resumeDeRecherche({})).toBeNull();
+  });
+
+  it('écrit le vide dans la ligne de fin du terminal', () => {
+    // Une recherche vide sort en OK comme une autre : l'appel a réussi, il
+    // n'a rien trouvé. Sans le compte, le terminal montrait un succès vert
+    // là où la réponse ne repose sur rien.
+    expect(finDOutil(fini({ engine: 'brave/news', numResults: 0 })))
+      .toBe('web_search · brave/news · 0 rés.');
+    expect(finDOutil(fini({}))).toBe('web_search');
   });
 });

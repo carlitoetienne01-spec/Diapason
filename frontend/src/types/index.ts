@@ -31,6 +31,10 @@ export interface ToolCallEndEvent {
   tool: string;
   success: boolean;
   latency: number;
+  /** Le moteur qui a répondu et son vertical — « brave/news » (22/09/2026). */
+  engine?: string;
+  /** Combien de résultats. `0` est le cas pour lequel ce champ existe. */
+  numResults?: number;
 }
 
 // --- Chat Types ---
@@ -49,6 +53,13 @@ export interface ToolCallInfo {
   /** Instants de réception côté client ; distincts de la durée serveur. */
   startedAtMs?: number;
   endedAtMs?: number;
+  // 22/09/2026 : la carte disait « web_search · 0,8 s » et rien d'autre. Une
+  // recherche qui rend ZÉRO résultat se lisait comme une qui en rend huit, et
+  // une réponse bâtie sur du vide ne s'annonçait pas (§5).
+  /** Le moteur qui a répondu et son vertical — « brave/news ». */
+  engine?: string;
+  /** Combien de résultats ; `0` compte. */
+  numResults?: number;
 }
 
 export interface ChatReception {
