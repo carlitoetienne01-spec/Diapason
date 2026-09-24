@@ -244,3 +244,44 @@ ardechine/phosphore, largeur 340 px, rotation, zoom/recentrage, plein
 La correction a été intégrée à l'app Mac 1.0.5, reconstruite et relancée ;
 le serveur local a été rechargé. L'ancienne réponse erronée reste dans
 l'historique : une nouvelle demande utilise le contrat corrigé.
+
+## Référence à quatre cercles — correction du 24 septembre 2026
+
+Carlito a rejeté les volumes colorés et les encadrés du premier rendu,
+puis fourni une référence : quatre cercles blancs vides sur fond noir,
+des libellés dans leurs zones et leur seule intersection centrale rouge.
+Cette section remplace donc les choix de représentation décrits ci-dessus,
+sans effacer le diagnostic du 23 septembre.
+
+Le même contrat `venn3d` affiche désormais une **vue de face SVG** par
+défaut. Aucun message existant n'est réécrit : les anciens schémas de ce
+type adoptent le nouveau dessin à l'affichage. Les anciens nuages de points
+restent, eux, des graphiques numériques. L'exemple d'Ikigai est proposé au
+modèle pour une demande de diagramme, même sans la mention « 3D ».
+
+Les centres sont espacés de 0,8 rayon autour de l'origine. Le contour rouge
+est calculé comme l'intersection réelle des disques : chacun de ses 128
+points appartient à tous les cercles et à la frontière d'au moins l'un
+d'eux. Les huit libellés n'ont ni fond ni bordure ; le nom du centre reste
+dans la légende et la description accessible. La palette noir/blanc/rouge
+appartient au dessin de référence ; le cadre conserve le thème de l'app.
+
+« Tourner en 3D » reste dans les options, avec la même géométrie en contours.
+Si WebGL manque, le schéma revient à sa vue SVG. Cette vue s'exporte en SVG,
+PNG ou PDF vectoriel ; la vue orientable conserve ses exports en image.
+La vérification PDF a aussi révélé que le moteur mesurait une police de
+repli avant d'écrire en DejaVu : la police embarquée est maintenant chargée
+pour les mesures du navigateur, ce qui garde les textes centrés.
+
+Preuves du 24 septembre : 1 117 tests Vitest sur la suite complète, puis
+56 tests visuels ciblés après ajustement des libellés et du PDF ; TypeScript
+et 14 tests Python du contrat visuel réussis. Le vrai flux local a rendu
+quatre ensembles et quatre relations en 25,1 s. Vérification du vrai
+MessageBubble dans le navigateur : ardechine et thème clair, largeur 340 px,
+zoom/recentrage, plein écran/Échap, aller-retour 3D/vue de face et repli sans
+WebGL. PNG et PDF exportés puis relus visuellement : huit libellés et centre
+rouge à leur place. Cela ne remplace pas un essai natif sur le PC Windows.
+
+Application Mac 1.0.5 reconstruite, signée avec l'identité locale et relancée ;
+interface web du serveur synchronisée, processus installé présent et santé
+du serveur HTTP 200 après installation.

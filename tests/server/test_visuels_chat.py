@@ -20,6 +20,8 @@ class TestVisuelsDuChat:
             "fait moi un diagramme ikigai en 3D",
             "Dessine un schéma Ikigaï en relief",
             "Draw an ikigai diagram in 3D",
+            "Fais-moi un ikigai",
+            "Dessine un diagramme Ikigai comme la référence",
         ],
     )
     def test_ikigai_recoit_un_contrat_a_quatre_dimensions(self, demande):

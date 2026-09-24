@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { lireFigure3D, estFigure3D, traces3D } from './figure3D';
 import { lireEnsembles3D, sceneEnsembles3D } from './ensembles3D';
+import { PALETTE_ENSEMBLES } from './dessinEnsembles';
 import { reconnaitreVisuel } from './formatVisuel';
 import type { PaletteVisuel } from './svgSur';
 
@@ -25,18 +26,20 @@ describe('Les ensembles conceptuels ne deviennent plus un point chiffré', () =>
     expect(f.sample).toBe(false);
     const traces = traces3D(f, palette) as Record<string, any>[];
     const volumes = traces.filter(t => t.type === 'mesh3d');
-    expect(volumes).toHaveLength(4);
+    expect(volumes).toHaveLength(1);
+    expect(traces.filter(t => t.mode === 'lines')).toHaveLength(4);
+    expect(volumes[0].color).toBe(PALETTE_ENSEMBLES.accent);
     for (const volume of volumes) {
       expect(volume.i.length).toBeGreaterThan(100);
       expect(volume.x.every(Number.isFinite)).toBe(true);
       expect(volume.i.concat(volume.j, volume.k).every((i: number) => i >= 0 && i < volume.x.length)).toBe(true);
-      expect(Math.max(...volume.z) - Math.min(...volume.z)).toBeGreaterThan(0);
+      expect(volume.z.every((z: number) => z === 0)).toBe(true);
       expect(volume.hoverinfo).toBe('skip');
     }
     const scene = sceneEnsembles3D(f, palette, 340);
-    expect(scene.annotations).toHaveLength(9);
+    expect(scene.annotations).toHaveLength(8);
     for (const axe of [scene.xaxis, scene.yaxis, scene.zaxis]) expect(axe.visible).toBe(false);
-    expect(scene.annotations.every(a => a.font.color === palette.texte)).toBe(true);
+    expect(scene.annotations.every(a => a.font.color === PALETTE_ENSEMBLES.texte)).toBe(true);
   });
   it('refuse un ensemble incomplet, les identifiants ambigus et les relations impossibles', () => {
     const invalides = [
@@ -56,15 +59,16 @@ describe('Les ensembles conceptuels ne deviennent plus un point chiffré', () =>
     for (const n of [2, 3]) {
       const f = lireEnsembles3D({ title: 'Concepts', type: 'venn3d', sets: donnees.sets.slice(0, n), centerLabel: 'En commun' });
       expect(f.sets).toHaveLength(n);
-      expect(sceneEnsembles3D(f, palette, 600).annotations).toHaveLength(n + 1);
+      expect(sceneEnsembles3D(f, palette, 600).annotations).toHaveLength(n);
     }
     const mesure = lireFigure3D(JSON.stringify({ title: 'Mesure unique', type: 'scatter3d', series: [{ name: 'Capteur', x: [2], y: [4], z: [8] }] }));
     expect(mesure.series[0].z).toEqual([8]);
   });
   it('échappe les libellés HTML et adapte la typographie sans modifier le sens', () => {
-    const f = lireEnsembles3D({ ...donnees, centerLabel: '<b>Centre</b>' });
+    const f = lireEnsembles3D({ ...donnees, sets: donnees.sets.map((s: object, i: number) => i ? s : { id: 'aimer', label: '<b>Aimer</b>' }) });
     const petit = sceneEnsembles3D(f, palette, 320), grand = sceneEnsembles3D(f, palette, 800);
-    expect(petit.annotations[petit.annotations.length - 1].text).toBe('&lt;b&gt;Centre&lt;/b&gt;');
+    expect(petit.annotations[0].text).toBe('&lt;b&gt;Aimer&lt;/b&gt;');
+    expect(petit.annotations.every(a => a.borderwidth === 0 && a.bgcolor === 'rgba(0,0,0,0)')).toBe(true);
     expect(petit.annotations.map(a => a.text.replace(/<br>/g, ' '))).toEqual(grand.annotations.map(a => a.text.replace(/<br>/g, ' ')));
     expect(petit.annotations[0].font.size).toBeLessThan(grand.annotations[0].font.size);
     expect(donnees.sets[0].label).toBe('Ce que tu aimes');

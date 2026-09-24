@@ -32,5 +32,6 @@
 .visuel-graphique svg { overflow: visible; }
 .visuel-plotly { width: 100%; min-width: 0; height: clamp(260px, 50dvh, 400px); }
 .visuel-ensembles3d { height: clamp(290px, 55dvh, 530px); max-height: calc(var(--visuel-hauteur) - 2rem); }
+.visuel-ensembles-face { width: 100%; max-width: calc((var(--visuel-hauteur) - 2rem) * .9375 + 2rem); margin-inline: auto; }
 @media (max-width: 420px) { .visuel-entete { padding: .4rem; gap: .25rem; } .visuel-outils button { padding: .4rem; } .visuel-entete > svg { display: none; } .visuel-plan { padding: .5rem; } }
 @media (prefers-reduced-motion: reduce) { .visuel-dessin { clip-path: none !important; } .visuel-laser { display: none; } }

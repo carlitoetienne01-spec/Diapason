@@ -46,7 +46,7 @@ fichier inexistant et ne demande pas d'installer un logiciel. Choisis :
   Une surface prend type="surface", matrix rectangulaire de hauteurs
   (2×2 à 20×20), sans series ; X/Y sont alors les indices de la grille.
   Nombres finis entre -1e12 et 1e12, aucune formule ou code.
-  Pour des ENSEMBLES CONCEPTUELS en relief (Ikigai, zones qui se recoupent),
+  Pour des ENSEMBLES CONCEPTUELS (Ikigai, zones qui se recoupent),
   utilise type="venn3d", PAS scatter3d ni des axes chiffrés :
   {"title":"Relations","type":"venn3d",
    "sets":[{"id":"a","label":"Créativité"},{"id":"b","label":"Technique"}],
@@ -57,11 +57,14 @@ fichier inexistant et ne demande pas d'installer un logiciel. Choisis :
   {"sets":["a","b"],"label":"Relation"}. Pas de doublons ni de paires opposées.
   centerLabel nomme la zone commune. Relations et centre : 40 caractères max.
   source facultative. Aucun champ series, matrix, sample ou axe pour venn3d.
-  La profondeur est illustrative : ce schéma ne mesure pas des concepts.
+  Vue de face vectorielle par défaut : cercles vides aux contours blancs
+  sur fond noir, leur zone commune en rouge, textes sans encadrés. La
+  rotation 3D est accessible dans les options. Aucune échelle quantitative.
   La vue 3D s'exporte en IMAGE PNG/PDF, pas en SVG vectoriel.
 Un point isolé ne représente PAS un diagramme conceptuel. Vérifie avant de
 répondre que chaque ensemble et chaque relation décrits figurent dans le
-dessin. Ne décris pas une couleur précise : le rendu l'adapte au thème.
+dessin. Ne décris pas une couleur précise des données : le rendu l'adapte
+au thème. Exception : venn3d a une zone commune rouge, par convention.
 Ne fabrique pas des chiffres réels : utilise les données fournies/reçues,
 cite leur origine dans source ; sample=false pour des mesures fournies,
 sample=true UNIQUEMENT pour des valeurs fictives de simulation/exemple.
@@ -103,11 +106,13 @@ personnelles. Ne substitue pas un nuage de points à ces ensembles :
  "source":"Interprétation populaire à quatre cercles"}
 ```
 Explique brièvement le schéma déjà produit, au présent. Ne dis pas seulement
-que tu vas le générer. La profondeur est illustrative, sans axes numériques.
+que tu vas le générer. La zone rouge est l'intersection des QUATRE cercles,
+pas un point ni un carré décoratif. Aucun volume rempli, cartouche de texte
+ou axe chiffré. La vue de face s'affiche d'abord ; la rotation reste optionnelle.
 """
 
 
-def demande_ikigai_3d(messages: list[Message]) -> bool:
+def demande_diagramme_ikigai(messages: list[Message]) -> bool:
     """Seul le dernier tour utilisateur active cet exemple spécialisé."""
     dernier = next(
         (m.content or "" for m in reversed(messages) if m.role == Role.USER), ""
@@ -119,14 +124,17 @@ def demande_ikigai_3d(messages: list[Message]) -> bool:
     )
     return bool(
         re.search(r"\bikigai\b", plat)
-        and re.search(r"\b(?:3\s*d|trois dimensions|three.dimensions?|relief)\b", plat)
-        and re.search(r"\b(?:diagramme|schema|dessin|diagram|draw|illustr\w*)\b", plat)
+        and re.search(
+            r"\b(?:diagramme|schema|dessin\w*|diagram|draw|illustr\w*|"
+            r"fais|fait|cree|genere|trace|represente|create|generate)\b",
+            plat,
+        )
     )
 
 
 def instruire_visuels(messages: list[Message]) -> list[Message]:
     """Le client doit annoncer son rendu, l'API texte reste compatible."""
     consigne = CONSIGNE_VISUELS
-    if demande_ikigai_3d(messages):
+    if demande_diagramme_ikigai(messages):
         consigne += "\n" + EXEMPLE_IKIGAI
     return ajouter_consigne(messages, consigne)

@@ -1,4 +1,5 @@
 import { textePlotly } from './figureScientifique';
+import { positionsEnsembles, contourCommun, etiquettesEnsembles, lignesLibelle, PALETTE_ENSEMBLES } from './dessinEnsembles';
 import type { PaletteVisuel } from './svgSur';
 
 export interface FigureEnsembles3D {
@@ -53,66 +54,24 @@ export function lireEnsembles3D(brut: unknown): FigureEnsembles3D {
     sample: false, xLabel: '', yLabel: '', zLabel: '', series: [] };
 }
 
-function centres(f: FigureEnsembles3D) {
-  return f.sets.map((_, i) => {
-    const a = Math.PI / 2 + i * 2 * Math.PI / f.sets.length;
-    return { x: .72 * Math.cos(a), y: .72 * Math.sin(a) };
-  });
-}
-
-// 48 segments × 2 faces : un disque arrondi en relief reste fluide dans
-// le mini-panneau ; aucune coordonnée de cette géométrie n'est une mesure.
-export function tracesEnsembles3D(f: FigureEnsembles3D, p: PaletteVisuel): unknown[] {
-  const couleurs = [p.accent, '#568eab', '#a87d53', '#7e9a73'];
-  return centres(f).flatMap((c, indice) => {
-    const x: number[] = [], y: number[] = [], z: number[] = [];
-    const i: number[] = [], j: number[] = [], k: number[] = [];
-    const segments = 48, rayon = 1.04, epaisseur = .08;
-    for (let face = 0; face < 2; face++) {
-      for (let n = 0; n < segments; n++) {
-        const a = n * Math.PI * 2 / segments;
-        x.push(c.x + rayon * Math.cos(a)); y.push(c.y + rayon * Math.sin(a)); z.push(face ? epaisseur : -epaisseur);
-      }
-      x.push(c.x); y.push(c.y); z.push(face ? epaisseur : -epaisseur);
-    }
-    for (let n = 0; n < segments; n++) {
-      const suivant = (n + 1) % segments, haut = segments + 1;
-      i.push(segments, haut + segments, n, n);
-      j.push(suivant, haut + n, suivant, haut + suivant);
-      k.push(n, haut + suivant, haut + suivant, haut + n);
-    }
-    const nom = textePlotly(f.sets[indice].label), couleur = couleurs[indice];
-    const contour = Array.from({ length: segments + 1 }, (_, n) => n % segments);
-    return [
-      { type: 'mesh3d', name: nom, x, y, z, i, j, k, color: couleur, opacity: .19,
-        flatshading: false, lighting: { ambient: .9, diffuse: .3, specular: .1 },
-        hoverinfo: 'skip', showlegend: false },
-      { type: 'scatter3d', mode: 'lines', name: nom,
-        x: contour.map(n => x[n]), y: contour.map(n => y[n]), z: contour.map(() => epaisseur),
-        line: { width: 3, color: couleur }, hoverinfo: 'skip', showlegend: false },
-    ];
-  });
-}
-
-function lignes(texte: string, limite: number) {
-  const mots = texte.split(/\s+/), lignes: string[] = [''];
-  for (const mot of mots) {
-    const n = lignes.length - 1;
-    if (lignes[n] && lignes[n].length + mot.length + 1 > limite) lignes.push(mot);
-    else lignes[n] += (lignes[n] ? ' ' : '') + mot;
+export function tracesEnsembles3D(f: FigureEnsembles3D, _p: PaletteVisuel): unknown[] {
+  const contour = contourCommun(f.sets.length);
+  const traces: unknown[] = [{ type: 'mesh3d', name: textePlotly(f.centerLabel),
+    x: [0, ...contour.map(p => p.x)], y: [0, ...contour.map(p => p.y)], z: [0, ...contour.map(() => 0)],
+    i: contour.map(() => 0), j: contour.map((_, n) => n + 1), k: contour.map((_, n) => (n + 1) % contour.length + 1),
+    color: PALETTE_ENSEMBLES.accent, opacity: 1, lighting: { ambient: 1, diffuse: 0, specular: 0 },
+    hoverinfo: 'skip', showlegend: false }];
+  for (const [i, c] of positionsEnsembles(f.sets.length).entries()) {
+    const angles = Array.from({ length: 129 }, (_, n) => n * Math.PI * 2 / 128);
+    traces.push({ type: 'scatter3d', mode: 'lines', name: textePlotly(f.sets[i].label),
+      x: angles.map(a => c.x + Math.cos(a)), y: angles.map(a => c.y + Math.sin(a)), z: angles.map(() => .005),
+      line: { width: 2, color: PALETTE_ENSEMBLES.bord }, hoverinfo: 'skip', showlegend: false });
   }
-  return lignes.map(textePlotly).join('<br>');
+  return traces;
 }
 
-export function sceneEnsembles3D(f: FigureEnsembles3D, p: PaletteVisuel, largeur: number) {
-  const positions = centres(f), petit = largeur < 420;
-  const annotation = (x: number, y: number, texte: string, centre = false) => ({
-    x, y, z: .12, text: lignes(texte, centre ? 18 : petit ? 14 : 17), showarrow: false,
-    xanchor: 'center', yanchor: 'middle', align: 'center',
-    font: { family: p.police, size: petit ? (centre ? 13 : 11) : (centre ? 16 : 13), color: p.texte },
-    bgcolor: p.fond, borderpad: centre ? 6 : 3,
-    ...(centre ? { bordercolor: p.accent, borderwidth: 1 } : {}),
-  });
+export function sceneEnsembles3D(f: FigureEnsembles3D, _p: PaletteVisuel, largeur: number) {
+  const p = PALETTE_ENSEMBLES, petit = largeur < 420;
   return {
     bgcolor: p.fond,
     camera: { eye: petit ? { x: .052, y: -.52, z: 1.625 } : { x: .04, y: -.4, z: 1.25 }, up: { x: 0, y: 1, z: 0 } },
@@ -120,14 +79,11 @@ export function sceneEnsembles3D(f: FigureEnsembles3D, p: PaletteVisuel, largeur
     xaxis: { visible: false, range: [-1.85, 1.85], fixedrange: true },
     yaxis: { visible: false, range: [-1.85, 1.85], fixedrange: true },
     zaxis: { visible: false, range: [-.22, .22], fixedrange: true },
-    annotations: [
-      ...f.sets.map((s, i) => annotation(positions[i].x * (petit ? 1.9 : 1.72), positions[i].y * (petit ? 1.9 : 1.72), s.label)),
-      ...f.intersections.map(r => {
-        const a = positions[f.sets.findIndex(s => s.id === r.sets[0])];
-        const b = positions[f.sets.findIndex(s => s.id === r.sets[1])];
-        return annotation((a.x + b.x) * .87, (a.y + b.y) * .87, r.label);
-      }),
-      annotation(0, 0, f.centerLabel, true),
-    ],
+    annotations: etiquettesEnsembles(f).map(t => ({
+      x: t.x, y: t.y, z: .01, text: lignesLibelle(t.texte, t.relation ? 13 : Math.abs(t.x) > .8 ? 11 : 12).map(textePlotly).join('<br>'),
+      showarrow: false, xanchor: 'center', yanchor: 'middle', align: 'center',
+      font: { family: p.police, size: petit ? (t.relation ? 9 : 10) : 13, color: p.texte },
+      bgcolor: 'rgba(0,0,0,0)', borderwidth: 0, borderpad: 0,
+    })),
   };
 }
