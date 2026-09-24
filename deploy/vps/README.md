@@ -24,9 +24,19 @@ jour. Un agent Monarx surveille la machine.
 1. **Ne jamais éditer `sites-available/flashprime`.** Diapason a son fichier.
 2. **`nginx -t` avant tout `reload`.** Une configuration refusée qui part en
    rechargement, et flashprime.online tombe.
-3. **Un instantané avant chaque étape qui installe ou modifie** (panneau
-   Hostinger → « Snapshot et sauvegardes »). Les sauvegardes automatiques sont
-   hebdomadaires : entre deux, il n'y a que l'instantané.
+3. **L'instantané Hostinger appartient à la machine entière — jamais sans le
+   propriétaire de Flashprime.** Cette règle disait l'inverse jusqu'au
+   24 septembre 2026 (« un instantané avant chaque étape ») et elle était
+   dangereuse. D'après les pages de support Hostinger relevées par la revue
+   d'exploitation — à confirmer dans le panneau —, un VPS ne garde **qu'un
+   seul** instantané : en créer un écrase celui qui existe, peut-être celui de
+   Flashprime. Et **restaurer réécrit tout le disque** : PostgreSQL, l'API, le
+   web, l'admin, MinIO et Redis de Flashprime reviendraient en arrière avec
+   Diapason. Un instantané n'est donc pas un retour arrière pour Diapason.
+   Chaque étape de Diapason sur ce VPS a son propre retour arrière local,
+   idempotent, essayé d'abord sur une VM jetable (voir
+   `docs/development/compte-chiffre.md`, §3.9). Les sauvegardes automatiques
+   de Hostinger sont hebdomadaires et couvrent, elles aussi, toute la machine.
 4. **Ne pas redémarrer sans prévenir Flashprime.** Le 24 septembre 2026, la
    bannière de connexion affiche « System restart required » et trente mises
    à jour en attente. Redémarrer coupe aussi flashprime.online : c'est à
