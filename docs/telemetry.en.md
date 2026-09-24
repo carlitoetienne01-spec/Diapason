@@ -1,13 +1,14 @@
 # Telemetry
 
-Diapason ships **anonymous usage telemetry** by default so the team can
-see where the product breaks, what features people actually use, and
-how to make it better. This page documents exactly what is and isn't
-collected, where the data goes, and how to opt out.
+Diapason can send **anonymous usage telemetry** so the team can see
+where the product breaks, what features people actually use, and how to
+make it better. It is **off by default**: nothing is sent until you turn
+it on. This page documents exactly what would and wouldn't be collected,
+where the data would go, and how to turn it on or off.
 
 ## TL;DR
 
-- **On by default**, anonymous, no chat content.
+- **Off by default** (`[analytics] enabled = false`), and `local_only` blocks it anyway; anonymous, no chat content.
 - **Anonymous** — one random UUID per install, no email, no name, no IP.
 - **No chat content, ever.** Only counts, timings, and feature names.
 - **Self-hosted backend** on the Diapason team's PostHog instance —

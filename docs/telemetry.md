@@ -1,13 +1,14 @@
 # Télémétrie
 
-Diapason envoie par défaut une **télémétrie d'usage anonyme**, pour que
-l'équipe voie où le produit casse, quelles fonctionnalités servent vraiment,
-et comment l'améliorer. Cette page dit exactement ce qui est collecté et ce
-qui ne l'est pas, où vont les données, et comment s'y soustraire.
+Diapason sait envoyer une **télémétrie d'usage anonyme**, pour que l'équipe
+voie où le produit casse, quelles fonctionnalités servent vraiment, et comment
+l'améliorer. Elle est **désactivée par défaut** : rien ne part tant que vous ne
+l'activez pas. Cette page dit exactement ce qui serait collecté et ce qui ne
+l'est pas, où iraient les données, et comment l'activer ou la couper.
 
 ## En bref
 
-- **Activée par défaut**, anonyme, aucun contenu de discussion.
+- **Désactivée par défaut** (`[analytics] enabled = false`), et `local_only` la bloque de toute façon ; anonyme, aucun contenu de discussion.
 - **Anonyme** — un UUID tiré au hasard par installation, pas d'adresse
   courriel, pas de nom, pas d'IP.
 - **Aucun contenu de discussion, jamais.** Seulement des comptes, des durées
