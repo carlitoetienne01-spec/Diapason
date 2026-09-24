@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conditions — Diapason</title>
+<meta name="description" content="Les conditions du compte Diapason : un service gratuit, fourni tel quel, qui synchronise sans sauvegarder.">
+<meta name="theme-color" content="#beb3a1">
+<link rel="stylesheet" href="accueil.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎵</text></svg>">
+<!-- Les pages légales ne chargent AUCUNE ressource distante : une police
+     tirée de Google Fonts annoncerait chaque lecteur de la politique de
+     confidentialité à un tiers qu'elle ne nomme pas (24/09/2026). Tant que
+     VT323 n'est pas auto-hébergée, la page retombe sur la chasse fixe du
+     système — c'est voulu. -->
+<style>
+  .legal { padding: clamp(2.2rem, 7vh, 4rem) var(--marge) clamp(2.4rem, 6vh, 3.6rem); }
+  .legal > header { margin-bottom: 2.4rem; }
+  .legal h1 { font-size: clamp(1.9rem, 4.6vw, 2.8rem); max-width: 24ch; margin-bottom: 1rem; }
+  .legal section { padding: 2rem 0 0.6rem; border-top: 1px solid var(--trait); max-width: var(--colonne); }
+  .legal section + section { border-top: 1px solid var(--trait); }
+  .legal h2 { margin-bottom: 1.1rem; }
+  .legal h3 {
+    font-family: var(--ecran); font-weight: 400; font-size: 1.1rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin: 1.6rem 0 0.6rem; padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--trait-tenu);
+  }
+  .legal p, .legal li { max-width: var(--colonne); }
+  .legal p { margin: 0 0 0.9rem; }
+  .legal ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  .legal ul ul { margin: 0.3rem 0 0.5rem; }
+  .legal li { margin: 0 0 0.35rem; }
+  .legal li::marker { content: '▪ '; }
+  .legal code { font-family: var(--ecran); background: var(--panneau-creux); padding: 0 0.25em; overflow-wrap: anywhere; }
+  .legal strong {
+    font-weight: 400; background: var(--encre); color: var(--sur-encre);
+    padding: 0.02em 0.3em; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
+  .legal .version { color: var(--encre-pale); }
+  [data-valeur] { overflow-wrap: anywhere; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin-bottom: 0.6rem; }
+</style>
+</head>
+<body>
+
+<a class="saut" href="#principal">Aller au contenu</a>
+
+<header class="barre">
+  <a class="marque" href="/">Diapason</a>
+  <nav>
+    <a href="/docs/">Guides</a>
+    <a href="https://github.com/carlitoetienne01-spec/Diapason">Code source</a>
+  </nav>
+</header>
+
+<main id="principal">
+<article class="legal">
+
+  <header>
+    <h1>Conditions d'utilisation du compte</h1>
+    <p class="version">Version <span data-valeur="service.versionConditions">1</span>, en
+    vigueur le <span data-valeur="publication.enVigueurLe">[à fournir : date d'entrée en vigueur, lue après « le »]</span>. Ce que le serveur voit de vous est
+    dit dans la <a href="/confidentialite">politique de confidentialité</a>.</p>
+  </header>
+
+  <section id="objet">
+    <h2>Ce que couvrent ces conditions</h2>
+    <p>Elles couvrent le compte Diapason et la synchronisation de vos conversations entre
+    vos appareils. Le compte est facultatif : l'application fonctionne sans lui, et elle
+    est distribuée sous licence Apache 2.0, qui s'applique seule à son code.</p>
+  </section>
+
+  <section id="service">
+    <h2>Un service gratuit, fourni tel quel</h2>
+    <p>Le service est gratuit et fourni tel quel, sans garantie de disponibilité, de durée
+    ni d'adéquation à un usage particulier.</p>
+    <p>Les places sont limitées. Le serveur refuse toute nouvelle écriture quand sa base
+    atteint <span data-valeur="service.gardeBase">2 Go</span> ou que le disque qu'il
+    partage vient à manquer, et les inscriptions peuvent être fermées à tout moment.</p>
+  </section>
+
+  <section id="pas-une-sauvegarde">
+    <h2>La synchronisation n'est pas une sauvegarde</h2>
+    <p>La synchronisation n'est pas une sauvegarde. Elle recopie sur vos autres appareils ce
+    que vous faites sur l'un d'eux, suppressions et erreurs comprises. Gardez vos propres
+    copies de ce qui compte.</p>
+  </section>
+
+  <section id="secrets">
+    <h2>Vous seul détenez vos secrets</h2>
+    <p>Vous êtes seul dépositaire de votre mot de passe et de votre clé de récupération.
+    Personne, nous compris, ne peut les retrouver, ni vous rendre les données qu'ils
+    protègent si vous les perdez tous les deux sans autre appareil resté déverrouillé.</p>
+  </section>
+
+  <section id="hebergement">
+    <h2>Un hébergement chez un tiers</h2>
+    <p><strong>Le service est hébergé chez un tiers, qui peut l'interrompre sans préavis ; vos données restent sur vos appareils.</strong></p>
+    <p>La perte du serveur efface les comptes, pas les données des appareils.</p>
+  </section>
+
+  <section id="quotas">
+    <h2>Quotas et usage acceptable</h2>
+    <ul>
+      <li>Par compte : <span data-valeur="service.quotaCompte">256 Mio</span> au total,
+      <span data-valeur="service.objetsMax">50 000</span> objets de
+      <span data-valeur="service.objetMax">4 Mio</span> au plus, et
+      <span data-valeur="service.piecesMax">5 000</span> images de
+      <span data-valeur="service.pieceMax">10 Mio</span> au plus. Au-delà, le serveur refuse
+      l'écriture ; rien n'est perdu sur vos appareils.</li>
+      <li>Le compte est personnel. Il sert à synchroniser vos propres conversations.</li>
+      <li>Il est interdit de créer des comptes de façon automatisée, de contourner les
+      limites du service, d'y stocker autre chose que ce que l'application y envoie, ou de
+      gêner les autres services hébergés sur la même machine.</li>
+    </ul>
+  </section>
+
+  <section id="resiliation">
+    <h2>Résiliation</h2>
+    <p>Vous pouvez supprimer votre compte à tout moment depuis l'application, avec votre
+    mot de passe ; la suppression est immédiate, et ce qui en reste, et pour combien de
+    temps, est dit dans la politique de confidentialité.</p>
+    <p>Le service peut cesser. Les données de vos appareils ne sont alors pas touchées.</p>
+  </section>
+
+  <section id="age-et-droit">
+    <h2>Âge minimum et droit applicable</h2>
+    <p>Il faut avoir au moins <span data-valeur="conditions.ageMinimum">[à fournir : âge minimum pour créer un compte]</span> pour créer un
+    compte. Ces conditions sont régies par
+    <span data-valeur="conditions.droitApplicable">[à fournir : droit applicable, lu après « régies par »]</span>.</p>
+  </section>
+
+  <section id="version">
+    <h2>Version et acceptation</h2>
+    <p>Ces conditions portent un numéro entier, ici
+    <span data-valeur="service.versionConditions">1</span>. En créant un compte, vous
+    acceptez cette version ; le serveur garde son numéro et le jour de création du compte.
+    Une nouvelle version portera un numéro plus élevé.</p>
+    <p>Pour toute question :
+    <span data-valeur="contact.adresse">[à fournir : adresse courriel de contact, lue par quelqu'un (D17)]</span>.</p>
+  </section>
+
+</article>
+</main>
+
+<footer>
+  <nav>
+    <a href="/">Accueil</a>
+    <a href="/confidentialite">Confidentialité</a>
+    <a href="/conditions">Conditions</a>
+    <a href="/docs/">Guides</a>
+  </nav>
+  <p class="signature">Diapason donne le la : une référence stable, posée contre ton
+  ordinateur pour résonner.</p>
+</footer>
+
+</body>
+</html>

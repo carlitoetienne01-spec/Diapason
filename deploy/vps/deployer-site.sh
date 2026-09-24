@@ -18,6 +18,46 @@ case "$RACINE" in
   *) echo "✗ RACINE inattendue : $RACINE" >&2; exit 1 ;;
 esac
 
+# Le verrou des pages légales (24/09/2026, compte-chiffre.md §5 et étape 6).
+# Ce script publie TOUT accueil/ à chaque mise en ligne de la documentation :
+# /confidentialite et /conditions, commitées des semaines avant l'ouverture
+# des comptes, partiraient alors en ligne à côté d'un accueil qui jure « il
+# n'y a pas de serveur » — l'une des deux pages mentirait, et la politique
+# décrirait un serveur qui n'existe pas encore. Sans le drapeau
+# accueil/.publier-legal (créé dans le commit unique de l'étape 13), elles
+# restent donc sur le Mac. Avec lui, on refuse TOUT le déploiement tant que
+# gen_privacy_md.py --verifier trouve un fait non relevé (hebergeur.json),
+# une page périmée, un PRIVACY.md divergent ou un accueil contradictoire.
+# Le drapeau lui-même ne part jamais : nginx servirait un fichier caché.
+#
+# 24/09/2026 : le §5 veut « un seul commit » pour les pages, l'accueil,
+# PRIVACY.md et mkdocs.yml ; or le site part de l'ARBRE DE TRAVAIL, et seul
+# docs/ était regardé. Un drapeau ou une page modifiés à la main, jamais
+# commités, seraient partis en ligne. Avec le drapeau, ces chemins doivent
+# être propres — sans dérogation possible, contrairement à docs/.
+ACCUEIL="$DEPOT/deploy/vps/accueil"
+EXCLUSIONS_ACCUEIL=(--exclude "/docs" --exclude "/.publier-legal")
+PUBLIER_LEGAL=0
+if [ -e "$ACCUEIL/.publier-legal" ]; then
+  PUBLIER_LEGAL=1
+  echo "→ drapeau accueil/.publier-legal : vérification des pages légales"
+  sales_legal="$(git -C "$DEPOT" status --porcelain -- deploy/vps/accueil deploy/vps/comptes \
+    deploy/vps/nginx PRIVACY.md mkdocs.yml mkdocs.api.yml | head -20)"
+  if [ -n "$sales_legal" ]; then
+    echo "✗ Publication refusée : les pages légales partent d'un seul commit (§5)," >&2
+    echo "  et ceci n'est pas commité :" >&2
+    echo "$sales_legal" | sed 's/^/    /' >&2
+    exit 1
+  fi
+  if ! "$DEPOT/.venv/bin/python" "$DEPOT/scripts/gen_privacy_md.py" --verifier; then
+    echo "✗ Publication refusée : les pages légales ne sont pas publiables." >&2
+    exit 1
+  fi
+else
+  EXCLUSIONS_ACCUEIL+=(--exclude "/confidentialite.html" --exclude "/conditions.html")
+  echo "→ pages légales retenues sur le Mac : pas de drapeau accueil/.publier-legal"
+fi
+
 # Le site se construit depuis l'ARBRE DE TRAVAIL : tout ce qui traîne dans
 # docs/ part en ligne, commité ou non. Le 22/09/2026, le document de
 # conception d'une autre session — non commité, absent de GitHub — s'est
@@ -46,6 +86,17 @@ echo "→ construction de la référence d'API (anglais seul)"
 # les références croisées pointaient vers la mauvaise copie.
 .venv/bin/python -m mkdocs build -f mkdocs.api.yml -d site/api-reference --quiet
 
+# La politique dit qu'aucune page de ce site ne charge de police ni de
+# script chez un tiers. mkdocs.yml ne dit pas tout (Material tire Mermaid
+# d'unpkg.com sans qu'aucune ligne ne le nomme) : c'est le site construit
+# qui est lu, avant tout contact avec le serveur (24/09/2026).
+if [ "$PUBLIER_LEGAL" = "1" ]; then
+  if ! .venv/bin/python scripts/gen_privacy_md.py --verifier-site site; then
+    echo "✗ Publication refusée : le site contredirait /confidentialite." >&2
+    exit 1
+  fi
+fi
+
 taille="$(du -sh site | cut -f1)"
 fichiers="$(find site -type f | wc -l | tr -d ' ')"
 echo "  $fichiers fichiers, $taille"
@@ -58,7 +109,14 @@ ssh "$HOTE" "mkdir -p $RACINE /var/www/diapason-acme && chown -R www-data:www-da
 # Les guides sous docs/, la vitrine à la racine. L'exclusion est vitale :
 # sans elle, le --delete de la vitrine emporterait les 945 fichiers des guides.
 rsync -az --delete --stats "$DEPOT/site/" "$HOTE:$RACINE/docs/" | grep -E "files transferred|Total transferred" || true
-rsync -az --delete --exclude "/docs" --stats "$DEPOT/deploy/vps/accueil/" "$HOTE:$RACINE/" | grep -E "files transferred|Total transferred" || true
+rsync -az --delete "${EXCLUSIONS_ACCUEIL[@]}" --stats "$DEPOT/deploy/vps/accueil/" "$HOTE:$RACINE/" | grep -E "files transferred|Total transferred" || true
+# « --delete » épargne ce qui est exclu : sans drapeau, des pages légales
+# déjà en ligne y restaient — retirer le drapeau ne dépubliait rien
+# (24/09/2026). Elles sont donc retirées explicitement ; RACINE est vérifiée
+# plus haut.
+if [ "$PUBLIER_LEGAL" != "1" ]; then
+  ssh "$HOTE" "rm -f $RACINE/confidentialite.html $RACINE/conditions.html"
+fi
 ssh "$HOTE" "chown -R www-data:www-data $RACINE"
 
 echo "→ vérification"

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confidentialité — Diapason</title>
+<meta name="description" content="Ce que Diapason garde sur votre ordinateur, ce que son serveur de comptes voit et ne voit pas, et pour combien de temps.">
+<meta name="theme-color" content="#beb3a1">
+<link rel="stylesheet" href="accueil.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎵</text></svg>">
+<!-- Les pages légales ne chargent AUCUNE ressource distante : une police
+     tirée de Google Fonts annoncerait chaque lecteur de la politique de
+     confidentialité à un tiers qu'elle ne nomme pas (24/09/2026). Tant que
+     VT323 n'est pas auto-hébergée, la page retombe sur la chasse fixe du
+     système — c'est voulu. -->
+<style>
+  .legal { padding: clamp(2.2rem, 7vh, 4rem) var(--marge) clamp(2.4rem, 6vh, 3.6rem); }
+  .legal > header { margin-bottom: 2.4rem; }
+  .legal h1 { font-size: clamp(1.9rem, 4.6vw, 2.8rem); max-width: 24ch; margin-bottom: 1rem; }
+  .legal section { padding: 2rem 0 0.6rem; border-top: 1px solid var(--trait); max-width: var(--colonne); }
+  .legal section + section { border-top: 1px solid var(--trait); }
+  .legal h2 { margin-bottom: 1.1rem; }
+  .legal h3 {
+    font-family: var(--ecran); font-weight: 400; font-size: 1.1rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin: 1.6rem 0 0.6rem; padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--trait-tenu);
+  }
+  .legal p, .legal li { max-width: var(--colonne); }
+  .legal p { margin: 0 0 0.9rem; }
+  .legal ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  .legal ul ul { margin: 0.3rem 0 0.5rem; }
+  .legal li { margin: 0 0 0.35rem; }
+  .legal li::marker { content: '▪ '; }
+  .legal code { font-family: var(--ecran); background: var(--panneau-creux); padding: 0 0.25em; overflow-wrap: anywhere; }
+  .legal strong {
+    font-weight: 400; background: var(--encre); color: var(--sur-encre);
+    padding: 0.02em 0.3em; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
+  .legal .version { color: var(--encre-pale); }
+  [data-valeur] { overflow-wrap: anywhere; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin-bottom: 0.6rem; }
+</style>
+</head>
+<body>
+
+<a class="saut" href="#principal">Aller au contenu</a>
+
+<header class="barre">
+  <a class="marque" href="/">Diapason</a>
+  <nav>
+    <a href="/docs/">Guides</a>
+    <a href="https://github.com/carlitoetienne01-spec/Diapason">Code source</a>
+  </nav>
+</header>
+
+<main id="principal">
+<article class="legal">
+
+  <header>
+    <h1>Politique de confidentialité</h1>
+    <p class="version">En vigueur le <span data-valeur="publication.enVigueurLe">[à fournir : date d'entrée en vigueur, lue après « le »]</span>.
+    Les <a href="/conditions">conditions d'utilisation du compte</a> sont sur une page à part.</p>
+  </header>
+
+  <section id="en-bref">
+    <h2>En bref</h2>
+    <ul>
+      <li>Diapason tourne sur votre ordinateur. Le modèle qui répond, la voix et la vision
+      s'y exécutent, et vos conversations y sont gardées.</li>
+      <li><strong>Le compte est facultatif. Sans compte, rien ne part vers le serveur de comptes.</strong></li>
+      <li>Avec un compte, vos conversations sont chiffrées sur votre appareil avant de partir.
+      Le serveur les garde sans pouvoir les lire tant que votre mot de passe n'est pas
+      deviné : un mot de passe long est votre protection. Personne, nous compris, ne peut
+      vous les rendre si vous perdez à la fois votre mot de passe et vos moyens de secours.</li>
+      <li>Ni ce site ni le serveur de comptes ne portent d'analytique ou de publicité, et
+      aucune de leurs pages ne charge de police ni de script chez un tiers. Rien n'est
+      revendu. La télémétrie de l'application est désactivée par défaut (voir « Ce qui sort
+      quand même »).</li>
+    </ul>
+  </section>
+
+  <section id="sur-l-appareil">
+    <h2>Sur votre appareil</h2>
+
+    <h3>Où vivent les données</h3>
+    <p>Tout est stocké localement, dans le dossier <code>~/.diapason/</code> de
+    l'utilisateur (<code>%USERPROFILE%\.diapason\</code> sous Windows) : conversations,
+    mémoire, index de recherche, réglages, jetons d'accès. Rien de tout cela n'est
+    téléversé — sauf vos conversations si vous activez un compte, et seulement chiffrées.</p>
+
+    <h3>Le modèle et la voix restent sur la machine</h3>
+    <p>La compréhension du langage (Ollama), la reconnaissance vocale (Whisper), la
+    synthèse vocale (Kokoro) et la description d'écran s'exécutent localement. Les
+    paroles et les captures d'écran ne quittent pas l'ordinateur.</p>
+
+    <h3>Ce que Diapason perçoit de la machine</h3>
+    <p>Pour agir à propos, Diapason lit l'état du bureau : l'application au premier
+    plan, les applications en marche, le titre de la fenêtre active et, si un
+    navigateur est devant, le titre de son onglet actif. Ces informations entrent
+    dans le contexte du modèle <strong>local</strong> et n'en sortent pas. Le contenu de
+    l'écran n'est lu que par <code>screen_describe</code>, sur autorisation explicite et
+    par un modèle local, et reste désactivé tant que <code>[desktop.vision] enabled</code>
+    ne vaut pas <code>true</code>.</p>
+
+    <h3>Ce qui sort quand même</h3>
+    <ul>
+      <li>Au premier lancement, l'application télécharge le moteur qui exécute le modèle,
+      puis le modèle lui-même.</li>
+      <li>L'application de bureau vérifie régulièrement auprès de GitHub si une nouvelle
+      version existe. Cette vérification ne dépend pas du verrou local : elle a son propre
+      interrupteur dans les Réglages.</li>
+      <li>Quand vous demandez à voix haute d'ouvrir une vidéo, Diapason envoie votre
+      recherche à YouTube pour trouver la vidéo, puis l'ouvre dans votre navigateur.</li>
+      <li>Quand le verrou local est levé, les fonctions que vous utilisez contactent les
+      services dont elles ont besoin : la recherche sur le web interroge un moteur de
+      recherche, et les connecteurs parlent aux services que vous avez connectés.</li>
+      <li>La télémétrie d'usage est désactivée par défaut, et le verrou local la bloque de
+      toute façon. Si vous l'activez, elle envoie des événements anonymes, sans aucun
+      contenu de discussion, décrits sur la page <a href="/docs/telemetry/">Télémétrie</a>.</li>
+    </ul>
+
+    <h3>Les données Google</h3>
+    <p>Quand l'utilisateur connecte lui-même ses comptes Google, Diapason lit, <strong>depuis
+    sa propre machine et avec ses propres identifiants OAuth</strong>, ce qu'il a autorisé :</p>
+    <ul>
+      <li><strong>Gmail</strong> (<code>gmail.modify</code>) — lire ses messages pour les
+      indexer et les rechercher ; archiver ou mettre à la corbeille uniquement sur sa
+      demande explicite.</li>
+      <li><strong>Google Calendar</strong> (<code>calendar</code>) — lire ses événements ; en
+      créer ou y répondre uniquement sur sa demande explicite.</li>
+      <li><strong>Google Contacts</strong> (<code>contacts.readonly</code>) — lire ses contacts
+      pour retrouver une personne par son nom.</li>
+      <li><strong>Google Drive</strong> (<code>drive.readonly</code>) — lire ses documents pour
+      les indexer.</li>
+      <li><strong>Google Tasks</strong> (<code>tasks.readonly</code>) — lire ses tâches.</li>
+    </ul>
+    <p>Ces données sont écrites dans l'index local de recherche et <strong>ne sont
+    transmises à personne</strong>. Elles ne servent ni à entraîner un modèle, ni à de la
+    publicité, ni à aucun traitement hors de la machine. Les échanges réseau ont lieu
+    exclusivement entre l'ordinateur de l'utilisateur et les serveurs de Google. Si vous
+    activez un compte, ce que l'assistant en a cité dans une conversation voyage avec
+    cette conversation, chiffré de bout en bout comme elle. L'index lui-même ne se
+    synchronise pas.</p>
+
+    <h3>Suppression et révocation</h3>
+    <ul>
+      <li>Révoquer l'accès à tout moment :
+      <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+      <li>Supprimer les jetons locaux : effacer <code>~/.diapason/connectors/</code>.</li>
+      <li>Supprimer les données indexées : effacer <code>~/.diapason/knowledge.db</code>.</li>
+      <li>Tout supprimer : effacer le dossier <code>~/.diapason/</code>.</li>
+    </ul>
+  </section>
+
+  <section id="verrou-local">
+    <h2>Le verrou local</h2>
+    <p>Le réglage <code>[privacy] local_only</code> est actif par défaut. Il gouverne ce
+    que Diapason envoie de lui-même, et il est appliqué sur tous ces chemins, pas
+    seulement sur certains : ses appels, ses envois et ses récupérations en tâche de fond.
+    Il laisse passer, et seulement cela :</p>
+    <ul>
+      <li>le trafic du compte, après que vous avez activé un compte : votre adresse, la
+      preuve de votre mot de passe, les codes reçus par courriel et vos données déjà
+      chiffrées, vers le serveur de comptes. Cet envoi se fait en tâche de fond ;</li>
+      <li>la vérification des mises à jour, qui a son propre interrupteur ;</li>
+      <li>le premier téléchargement du moteur et du modèle ;</li>
+      <li>la recherche envoyée à YouTube quand vous demandez d'ouvrir une vidéo ;</li>
+      <li>les échanges avec vos propres appareils appairés, sur votre réseau local, et une
+      page que vous demandez d'ouvrir dans votre propre navigateur.</li>
+    </ul>
+  </section>
+
+  <section id="compte">
+    <h2>Si vous créez un compte</h2>
+    <p>Un compte ne sert qu'à retrouver vos conversations sur un autre ordinateur. Elles
+    sont chiffrées sur cet appareil avant de partir ; le serveur les garde sans pouvoir
+    les lire, à moins de deviner votre mot de passe (voir « Si le serveur était
+    compromis »). Le chiffrement se fait dans Diapason, sur votre appareil, avec des clés
+    tirées de votre mot de passe ou protégées par lui. Aucune ne quitte l'appareil
+    autrement que chiffrée, sauf <code>authKey</code>, qui prouve au serveur que vous
+    connaissez le mot de passe sans le lui révéler.</p>
+    <p>Le serveur vous écrit pour vous envoyer un code, pour vous signaler chaque nouvelle
+    connexion (sans adresse IP ni lieu), et à chaque changement qui touche la sécurité du
+    compte. Diapason ne vous demandera jamais votre mot de passe ni votre clé de
+    récupération par courriel : seule l'application vous les demande.</p>
+
+    <h3>Ce que le serveur ne voit jamais</h3>
+    <ul>
+      <li>votre mot de passe, votre clé de récupération, ni aucune des clés qui en
+      découlent ou qu'ils protègent, <code>authKey</code> excepté ;</li>
+      <li>les titres, les messages, les images, le modèle employé, les épingles et les
+      dates internes de vos conversations ;</li>
+      <li>les identifiants locaux, les noms de collection et les noms de vos appareils.</li>
+    </ul>
+
+    <h3>Ce qu'il voit quand même</h3>
+    <ul>
+      <li><strong>Compte</strong> :
+        <ul>
+          <li>l'adresse courriel, chiffrée au repos, mais déchiffrée par le service pour écrire ;</li>
+          <li>le jour de création ;</li>
+          <li>la version des conditions ;</li>
+          <li><code>kdfVersion</code> et le sel ;</li>
+          <li>les vérificateurs et enveloppes, opaques.</li>
+        </ul>
+      </li>
+      <li><strong>Données</strong> :
+        <ul>
+          <li>le nombre d'objets et de pièces, et leurs tailles arrondies ;</li>
+          <li>le nombre de révisions par objet ;</li>
+          <li>quels objets changent ensemble ;</li>
+          <li>l'identité de deux envois d'une même image dans une même époque ;</li>
+          <li><strong>qu'une conversation a vraisemblablement été supprimée</strong>, à la chute de sa taille et aux pièces libérées ensuite ;</li>
+          <li>le moment des rotations.</li>
+        </ul>
+      </li>
+      <li><strong>Activité</strong> :
+        <ul>
+          <li>l'ordre (<code>seq</code>) et le moment des requêtes ;</li>
+          <li>l'adresse IP, en mémoire du limiteur. Après un échec de connexion, un condensé
+          de son préfixe (/24 ou /48), lié à votre adresse courriel, est aussi écrit dans la
+          base : voir « Combien de temps » ;</li>
+          <li>les journaux nginx : les accès, sans adresse IP ni chaîne de requête ; les
+          erreurs graves seulement, qui peuvent porter l'adresse IP de la connexion en
+          cause ;</li>
+          <li>journald, <span data-valeur="service.journald">7 jours</span> ;</li>
+          <li>un compteur global d'écritures (<code>globalSeq</code>), qui révèle l'activité agrégée du service.</li>
+        </ul>
+      </li>
+      <li><strong>Sessions</strong> : leur nombre, et leur jour de création et de dernière activité.</li>
+      <li><strong>Authentification</strong> : <code>authKey</code> à chaque connexion. Un serveur hostile peut donc se connecter au compte, sans pouvoir le déchiffrer.</li>
+    </ul>
+    <p>Les mots techniques ci-dessus, en clair :</p>
+    <ul>
+      <li><code>kdfVersion</code> et le sel : les paramètres, publics, du calcul qui
+      transforme votre mot de passe en clés ;</li>
+      <li><code>authKey</code> : une valeur tirée de votre mot de passe, qui prouve au serveur
+      que vous le connaissez sans le lui donner ;</li>
+      <li>vérificateurs et enveloppes : de quoi reconnaître cette preuve, et vos clés
+      chiffrées, que le serveur garde sans pouvoir les ouvrir sans votre mot de passe ;</li>
+      <li>objets et pièces : vos conversations et leurs images, chiffrées ;</li>
+      <li>une époque, une rotation : les clés changent quand vous changez de mot de passe,
+      de clé de récupération, ou déconnectez un appareil ; une époque va d'un changement au
+      suivant ;</li>
+      <li><code>seq</code> et <code>globalSeq</code> : les numéros d'ordre des écritures,
+      pour votre compte et pour tout le service.</li>
+    </ul>
+
+    <h3>Savoir si une adresse a un compte</h3>
+    <p>Le serveur répond de la même façon, dans le même temps, qu'une adresse ait un compte
+    ou non. Cette résistance vaut à un instant donné : le seul changement observable dans
+    le temps serait la version des paramètres de mot de passe (<code>kdfVersion</code>), le
+    jour où une deuxième version existera.</p>
+  </section>
+
+  <section id="serveur-compromis">
+    <h2>Si le serveur était compromis</h2>
+    <p>Par son administrateur, par l'hébergeur, ou par quiconque contrôle le domaine et
+    peut donc obtenir un certificat. Voici ce qu'il pourrait tenter :</p>
+    <ul>
+      <li>deviner votre mot de passe hors ligne, au prix d'un calcul coûteux par essai :
+      seule la longueur de votre mot de passe vous protège alors. S'il le devine, il lit
+      tout ce que le compte garde, conversations comprises ;</li>
+      <li>couper le service, ou l'effacer ;</li>
+      <li>voir tout ce qui est listé ci-dessus ;</li>
+      <li>se connecter à votre compte, puisqu'il voit <code>authKey</code>, lire le chiffré
+      et écraser vos données : vos appareils réparent un écrasement ;</li>
+      <li>cacher une suppression à un appareil qui ne l'a jamais vue ;</li>
+      <li>simuler un retour en arrière pour vous faire saisir un ancien mot de passe.</li>
+    </ul>
+    <p>Et ce qu'il n'obtiendrait pas, tant qu'il n'a pas deviné votre mot de passe : lire
+    vos conversations ; fabriquer ou permuter un enregistrement. Ni, dans aucun cas : faire
+    accepter à un appareil une version plus ancienne que celle qu'il connaît, ou une
+    conversation qu'il sait supprimée ; affaiblir le calcul qui protège votre mot de passe.
+    Ce qui est écrit après un changement de mot de passe échappe à qui ne connaissait que
+    l'ancien.</p>
+  </section>
+
+  <section id="oubli">
+    <h2>Personne ne peut restituer vos données</h2>
+    <p>Personne, nous compris, ne peut vous rendre vos données, ni les lire sans votre mot
+    de passe. Si vous oubliez votre mot de passe, deux choses permettent d'en choisir un
+    nouveau : votre clé de récupération, ou un autre de vos appareils resté déverrouillé,
+    avec un code reçu par courriel.</p>
+    <p>Sans l'une ni l'autre, vous pouvez réinitialiser le compte. La demande se confirme
+    par un code reçu par courriel ; chacun de vos appareils connectés l'annonce alors, et
+    peut l'annuler, pendant <span data-valeur="service.delaiReinit">72 heures</span> — ou
+    <span data-valeur="service.delaiReinitActif">7 jours</span> si une session a été vue
+    ces <span data-valeur="service.fenetreActivite">30 derniers jours</span>. Passé ce
+    délai, rien ne s'efface de soi-même : la personne qui a fait la demande peut la
+    terminer, depuis l'appareil qui l'a faite et avec un nouveau code. La copie du serveur
+    est alors effacée et remplacée par les données de cet appareil. Quelqu'un qui contrôle
+    votre boîte courriel pourrait le faire aussi : c'est pourquoi vos appareils connectés
+    l'annoncent. Ce qui est sur vos appareils n'est pas perdu.</p>
+  </section>
+
+  <section id="copie-de-la-machine">
+    <h2>Ce qu'une copie de la machine permet</h2>
+    <p>Une copie du seul fichier de base ne permet pas de deviner les mots de passe. Une copie de toute la machine, par exemple une sauvegarde de l'hébergeur, le permet, au prix d'un calcul coûteux par essai.</p>
+    <p>Les adresses courriel y sont aussi lisibles : la clé qui les chiffre au repos est sur
+    le même disque. Il en va de même du préfixe d'adresse IP des échecs de connexion
+    récents, pour qui connaît déjà votre adresse courriel. Vos conversations, elles,
+    restent illisibles tant que votre mot de passe n'est pas deviné : un mot de passe long
+    est la seule protection.</p>
+  </section>
+
+  <section id="restauration">
+    <h2>Ce qu'une restauration peut ramener</h2>
+    <ul>
+      <li>Si nous restaurons la base de comptes depuis une de nos sauvegardes, un journal
+      rejoue ce qui s'est passé depuis : un compte supprimé est supprimé de nouveau, un mot
+      de passe changé reste changé, et toutes les sessions sont fermées. Vos appareils vous
+      redemandent votre mot de passe actuel.</li>
+      <li>Si l'hébergeur restaure la machine entière à une date antérieure, ce journal recule
+      avec elle. Vos appareils le détectent et vous le disent. Jusqu'au renouvellement des
+      clés qui suit, le serveur accepte de nouveau le mot de passe en vigueur à la date
+      restaurée, et un compte supprimé depuis peut y réapparaître. Vos appareils refusent
+      tout ce qui est plus ancien que ce qu'ils connaissent déjà.</li>
+      <li>Si le serveur est perdu, les comptes le sont avec lui ; les données de vos
+      appareils restent intactes.</li>
+    </ul>
+  </section>
+
+  <section id="sous-traitants">
+    <h2>Qui d'autre y a accès, et où</h2>
+    <ul>
+      <li><span data-valeur="hebergeur.nom">[à fournir : nom de l'hébergeur (D3)]</span> héberge le serveur de comptes, à
+      <span data-valeur="hebergeur.lieuServeur">[à fournir : ville et pays du serveur, lus après « à » (D3)]</span>. Il détient la machine et peut en copier le
+      disque. Ses sauvegardes : <span data-valeur="sauvegardes.frequence">[à fournir : fréquence des sauvegardes de l'hébergeur]</span>, conservées
+      <span data-valeur="sauvegardes.conservation">[à fournir : durée de conservation des sauvegardes de l'hébergeur, lue après « conservées »]</span>, à
+      <span data-valeur="sauvegardes.lieu">[à fournir : lieu des sauvegardes de l'hébergeur, lu après « à »]</span>.
+      <span data-valeur="instantane.description">[à fournir : phrase complète : l'instantané de l'hébergeur existe-t-il, combien de temps, pour qui]</span></li>
+      <li><span data-valeur="hebergeur.tiersAdministrateur">[à fournir : phrase complète : qui d'autre administre la machine et contrôle le domaine (D3)]</span></li>
+      <li>L'agent de sécurité Monarx, présent sur la machine, qui en analyse les fichiers.</li>
+      <li>Resend, aux États-Unis, envoie les courriels du service. Il voit votre adresse et
+      le contenu des courriels, donc les codes, et les garde
+      <span data-valeur="resend.conservation">[à fournir : combien de temps Resend garde l'adresse et le contenu des courriels, codes compris, lu après « les garde »]</span>.
+      <span data-valeur="resend.suiviVerifie">[à fournir : phrase complète : le suivi des ouvertures et des clics est-il désactivé sur le domaine d'envoi, qui l'a vérifié dans le tableau de bord Resend, et quand (D12)]</span>
+      Aucun courriel ne porte d'image ni de lien de connexion.</li>
+      <li>La copie de la base hors du serveur :
+      <span data-valeur="copieHorsVps.description">[à fournir : phrase complète : où va la copie quotidienne de la base et du journal hors du serveur, qui la détient, combien de temps elle y reste, sauvegardes de cette machine comprises (D18)]</span></li>
+    </ul>
+    <p>Chacun d'eux ne voit, au plus, que ce que le serveur voit lui-même.</p>
+    <p>Ce site, lui, est servi par la même machine. Aucune de ses pages ne charge de police
+    ni de script chez un tiers. Les pages de guides interrogent seulement GitHub, depuis
+    votre navigateur, pour afficher la dernière version et le nombre d'étoiles du dépôt ;
+    les téléchargements de l'application passent aussi par GitHub. GitHub voit alors votre
+    adresse IP.</p>
+  </section>
+
+  <section id="transferts">
+    <h2>Transferts hors du Canada</h2>
+    <p>Les données du compte, chiffrées, et les métadonnées décrites plus haut sont
+    conservées à <span data-valeur="hebergeur.lieuServeur">[à fournir : ville et pays du serveur, lus après « à » (D3)]</span>. Votre adresse courriel et les
+    codes passent par Resend, aux États-Unis. Là où elles se trouvent, les lois locales
+    s'appliquent, y compris l'accès des autorités de ces pays ; le chiffrement de bout en
+    bout fait qu'elles n'y obtiennent que ce que le serveur voit, tant que votre mot de
+    passe n'est pas deviné.</p>
+  </section>
+
+  <section id="durees">
+    <h2>Combien de temps</h2>
+    <ul>
+      <li>Votre compte et ses données chiffrées : jusqu'à ce que vous le supprimiez.</li>
+      <li>Une session expire après <span data-valeur="service.sessionInactivite">90 jours</span>
+      sans activité. Sa trace (ses jours de création et de dernière activité, le nom chiffré
+      de l'appareil) reste dans la base jusqu'à votre première connexion
+      <span data-valeur="service.graceSession">30 jours</span> au moins après cette
+      expiration, ou jusqu'à la suppression du compte.</li>
+      <li>La version précédente de chaque objet, pour réparer un écrasement :
+      <span data-valeur="service.versionPrecedente">30 jours</span> au moins. Elle est
+      effacée à la première synchronisation de votre compte après ce délai, ou avec le
+      compte.</li>
+      <li>Une image que plus aucune conversation n'emploie :
+      <span data-valeur="service.piecesOrphelines">30 jours</span> au moins, effacée de la
+      même façon.</li>
+      <li>Un code envoyé par courriel : valable <span data-valeur="service.codeValidite">15 minutes</span>.</li>
+      <li>Les sauvegardes de Diapason : une copie par jour, <span data-valeur="service.sauvegardes">14 jours</span> au plus.
+      Si les copies récentes échouent, la dernière copie valide est gardée plus longtemps,
+      jusqu'à ce qu'une nouvelle copie réussisse.</li>
+      <li>Le journal de sécurité du serveur, qui sert à rejouer une restauration : chiffré,
+      mais avec sa clé sur le même disque. Chaque ligne y reste jusqu'à ce qu'une sauvegarde
+      valide ait plus d'un jour de plus qu'elle : un à deux jours d'ordinaire, davantage si
+      les sauvegardes échouent.</li>
+      <li>La copie de la base hors du serveur :
+      <span data-valeur="copieHorsVps.description">[à fournir : phrase complète : où va la copie quotidienne de la base et du journal hors du serveur, qui la détient, combien de temps elle y reste, sauvegardes de cette machine comprises (D18)]</span></li>
+      <li>Les sauvegardes de l'hébergeur : conservées
+      <span data-valeur="sauvegardes.conservation">[à fournir : durée de conservation des sauvegardes de l'hébergeur, lue après « conservées »]</span>.
+      <span data-valeur="instantane.description">[à fournir : phrase complète : l'instantané de l'hébergeur existe-t-il, combien de temps, pour qui]</span></li>
+      <li>Chez Resend, votre adresse et le contenu des courriels :
+      <span data-valeur="resend.conservation">[à fournir : combien de temps Resend garde l'adresse et le contenu des courriels, codes compris, lu après « les garde »]</span>.</li>
+      <li>Les journaux nginx : <span data-valeur="service.journauxNginx">environ 15 jours</span>.
+      Les journaux d'accès du site et du service n'ont pas d'adresse IP. Les journaux
+      d'erreurs ne gardent que les erreurs graves, qui peuvent porter l'adresse IP de la
+      connexion en cause, et une connexion qui échoue avant d'atteindre Diapason peut être
+      notée dans le journal d'erreurs général de la machine.</li>
+      <li>Les journaux du système (journald) : <span data-valeur="service.journald">7 jours</span>.</li>
+      <li>Votre adresse IP complète n'est écrite dans aucun journal d'accès. Après un échec
+      de connexion, un condensé de son préfixe (/24 ou /48), lié à votre adresse courriel,
+      est gardé dans la base au moins 24 heures, jusqu'au prochain échec de connexion sur
+      le service après ce délai, et se retrouve dans les sauvegardes. La clé de ce condensé
+      est sur le même disque : quelqu'un qui aurait une copie de toute la machine et
+      connaîtrait votre adresse courriel pourrait retrouver ce préfixe.</li>
+      <li>Les compteurs d'envoi de courriels, sous un condensé de votre adresse : 24 heures
+      au moins, jusqu'au prochain envoi après ce délai.</li>
+    </ul>
+  </section>
+
+  <section id="suppression">
+    <h2>Supprimer le compte</h2>
+    <p>La suppression se fait depuis l'application, avec votre mot de passe, et prend effet
+    immédiatement dans la base. En sont effacés : l'adresse, les enveloppes, les données
+    chiffrées et les sessions. Si vous avez perdu votre mot de passe et votre clé de
+    récupération, il faut d'abord réinitialiser le compte, avec le délai dit plus haut,
+    puis le supprimer. Restent :</p>
+    <ul>
+      <li>les données en clair de vos appareils ;</li>
+      <li>le journal de sécurité du serveur : votre adresse chiffrée, la preuve de votre
+      mot de passe et vos clés enveloppées, plus une trace de la suppression sous un
+      condensé de votre adresse, pour la durée dite plus haut ;</li>
+      <li>les compteurs de délais de connexion et d'envoi de courriels, 24 heures au
+      moins ;</li>
+      <li>les sauvegardes de Diapason, <span data-valeur="service.sauvegardes">14 jours</span> au plus,
+      plus longtemps si les copies récentes échouent ;</li>
+      <li>la copie de la base hors du serveur, dans les limites dites plus haut ;</li>
+      <li>les sauvegardes et l'instantané de l'hébergeur, dans les limites dites plus haut ;</li>
+      <li>les journaux nginx, <span data-valeur="service.journauxNginx">environ 15 jours</span> ;</li>
+      <li>journald, <span data-valeur="service.journald">7 jours</span>.</li>
+    </ul>
+    <p>Si nous devions restaurer la base de comptes, le journal efface de nouveau un compte
+    supprimé. Ce n'est pas vrai pour une restauration de toute la machine par l'hébergeur.</p>
+  </section>
+
+  <section id="droits">
+    <h2>Vos droits, et qui contacter</h2>
+    <p>Vous pouvez demander à accéder à ce que le serveur garde sur vous, le faire effacer,
+    retirer votre consentement ou vous plaindre. Ce que nous pouvons vous communiquer se
+    limite à ce que le serveur voit, listé plus haut : nous n'avons pas de quoi déchiffrer le
+    reste. Voici comment chaque demande s'exerce aujourd'hui :</p>
+    <ul>
+      <li>Accéder : l'application montre, dans ses réglages de compte, votre adresse et vos
+      appareils connectés, avec leurs jours de création et de dernière activité. Pour le
+      reste de ce que le serveur voit, écrivez à l'adresse ci-dessous ; la réponse est
+      préparée à la main.</li>
+      <li>Effacer : supprimez le compte vous-même, dans l'application. Sans mot de passe ni
+      clé de récupération, réinitialisez-le d'abord, puis supprimez-le.</li>
+      <li>Retirer votre consentement : supprimez le compte ; l'application continue de
+      fonctionner sans lui.</li>
+    </ul>
+    <p>Une demande écrite n'est traitée qu'une fois prouvé qu'elle vient du titulaire du
+    compte : nous répondons seulement à l'adresse du compte, et n'agissons que sur votre
+    confirmation depuis cette adresse. Changer d'adresse courriel n'est pas encore
+    possible : il faut supprimer le compte et en créer un autre.</p>
+    <p>La personne responsable de la protection des renseignements personnels :
+    <span data-valeur="contact.responsable">[à fournir : nom ou titre de la personne responsable des renseignements personnels (Loi 25)]</span>. Pour toute demande, écrivez à
+    <span data-valeur="contact.adresse">[à fournir : adresse courriel de contact, lue par quelqu'un (D17)]</span> ; cette adresse est lue. Une page publique,
+    comme un ticket sur GitHub, n'est pas le bon endroit pour une question qui vous
+    concerne.</p>
+    <p>Vous pouvez aussi vous adresser à la Commission d'accès à l'information du Québec,
+    au Commissariat à la protection de la vie privée du Canada ou, dans l'Union
+    européenne, à l'autorité de protection des données de votre pays.</p>
+  </section>
+
+  <section id="cadre">
+    <h2>Le cadre</h2>
+    <p>Cette politique est écrite au regard de la Loi 25 du Québec, de la loi fédérale
+    canadienne (LPRPDE) et du règlement européen (RGPD). Aucune analytique, aucune
+    publicité, aucune revente : ni sur ce site, ni sur le serveur de comptes.</p>
+    <p>Toute modification change la date en tête de page. Les versions précédentes restent
+    lisibles dans l'historique du <a href="https://github.com/carlitoetienne01-spec/Diapason">dépôt public</a>.</p>
+  </section>
+
+</article>
+</main>
+
+<footer>
+  <nav>
+    <a href="/">Accueil</a>
+    <a href="/confidentialite">Confidentialité</a>
+    <a href="/conditions">Conditions</a>
+    <a href="/docs/">Guides</a>
+  </nav>
+  <p class="signature">Diapason donne le la : une référence stable, posée contre ton
+  ordinateur pour résonner.</p>
+</footer>
+
+</body>
+</html>

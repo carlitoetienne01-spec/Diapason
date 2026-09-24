@@ -1,0 +1,46 @@
+{
+  "_lisezmoi": [
+    "Les faits que les pages /confidentialite et /conditions citent sans pouvoir les savoir d'elles-mêmes.",
+    "Chaque null est un fait NON RELEVÉ : scripts/gen_privacy_md.py refuse de produire les pages, et deploy/vps/deployer-site.sh refuse de les publier, tant qu'il en reste un.",
+    "Ne jamais remplir un champ d'une valeur supposée : un lieu, une durée ou une adresse inventés seraient promis en ligne à des inconnus.",
+    "Les valeurs Hostinger se relèvent dans le panneau, avec le propriétaire du compte (compte-chiffre.md, étape 0) ; celles de Resend dans son tableau de bord. D3 (qui héberge), D17 (adresse de contact) et D18 (copie hors du VPS) appartiennent à Carlito.",
+    "Ce que chaque champ veut dire : CHAMPS dans scripts/gen_privacy_md.py. Après modification : .venv/bin/python scripts/gen_privacy_md.py"
+  ],
+  "hebergeur": {
+    "nom": null,
+    "lieuServeur": null,
+    "tiersAdministrateur": null
+  },
+  "sauvegardes": {
+    "frequence": null,
+    "conservation": null,
+    "lieu": null
+  },
+  "instantane": {
+    "description": null
+  },
+  "copieHorsVps": {
+    "description": null
+  },
+  "resend": {
+    "conservation": null,
+    "suiviVerifie": null
+  },
+  "contact": {
+    "adresse": null,
+    "responsable": null
+  },
+  "conditions": {
+    "ageMinimum": null,
+    "droitApplicable": null
+  },
+  "publication": {
+    "origineSite": null,
+    "enVigueurLe": null,
+    "validationJuridique": null
+  },
+  "releve": {
+    "le": null,
+    "par": null
+  }
+}

@@ -179,7 +179,13 @@ extra:
 # dépôt, pour qui les cherche ; elles ne s'adressent pas à quelqu'un venu
 # télécharger l'application. Le guide de contribution et les validations
 # techniques, eux, restent publiés : ils s'adressent aux contributeurs.
+# /confidentialite.md (24/09/2026) : elle renvoie vers /confidentialite, qui ne
+# part en ligne qu'à l'ouverture des comptes (drapeau accueil/.publier-legal,
+# compte-chiffre.md étape 13) ; publiée avant, elle pointerait vers un 404.
+# Le commit de l'étape 13 retire cette ligne — gen_privacy_md.py --verifier
+# refuse la publication tant qu'elle est là.
 exclude_docs: |
+  /confidentialite.md
   api-reference/
   development/compte-chiffre.md
   development/conversations-sync.md
