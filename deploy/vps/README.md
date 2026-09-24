@@ -19,7 +19,7 @@ sur 80/443 avec `/etc/nginx/sites-available/flashprime` (six blocs `server`,
 `www.`, `admin.` et `api.`. `certbot.timer` est actif et passe deux fois par
 jour. Un agent Monarx surveille la machine.
 
-## Trois règles
+## Quatre règles
 
 1. **Ne jamais éditer `sites-available/flashprime`.** Diapason a son fichier.
 2. **`nginx -t` avant tout `reload`.** Une configuration refusée qui part en
@@ -27,6 +27,10 @@ jour. Un agent Monarx surveille la machine.
 3. **Un instantané avant chaque étape qui installe ou modifie** (panneau
    Hostinger → « Snapshot et sauvegardes »). Les sauvegardes automatiques sont
    hebdomadaires : entre deux, il n'y a que l'instantané.
+4. **Ne pas redémarrer sans prévenir Flashprime.** Le 24 septembre 2026, la
+   bannière de connexion affiche « System restart required » et trente mises
+   à jour en attente. Redémarrer coupe aussi flashprime.online : c'est à
+   planifier avec son propriétaire, à une heure creuse.
 
 ## Pourquoi les fichiers nginx commencent par `zz-`
 
@@ -45,6 +49,69 @@ l'ordre des fichiers qui tranche. Un fichier nommé `diapason` passerait avant
   renouvellement.
 - `/etc/nginx/sites-available/zz-diapason` — la configuration, liée depuis
   `sites-enabled/`.
+- `/etc/diapason/mail.env` — la clé d'API Resend (permission *Sending access*,
+  restreinte au domaine `diapason.flashprime.online`) et `MAIL_FROM`, en
+  `600 root:root` dans un dossier `700`. Déposée le 24 septembre 2026 par
+  Carlito lui-même, sans passer par une session. **Ne jamais l'afficher**
+  (`cat`), et ne pas la `source`r en bash : la valeur de `MAIL_FROM` contient
+  `<` et `>`, que bash lit comme des redirections. Le format `CLÉ=valeur` est
+  celui de systemd (`EnvironmentFile=`), de Docker (`--env-file`) et de
+  python-dotenv. Pour vérifier la clé sans la lire, appeler
+  `GET https://api.resend.com/domains` avec elle : une clé valide et limitée
+  à l'envoi répond `restricted_api_key`. Une clé douteuse ne se répare pas :
+  on la supprime dans Resend et on en crée une autre.
+
+## Le courrier — la zone DNS est partagée, elle aussi
+
+La zone `flashprime.online` est chez Hostinger (serveurs de noms
+`helios.dns-parking.com` et `aster.dns-parking.com`), et **Flashprime y envoie
+déjà son courrier par Resend, depuis l'apex**. Constaté le 24 septembre 2026,
+avant la première saisie pour Diapason :
+
+| Nom | Type et valeur | À qui |
+|---|---|---|
+| `@` | MX `10 inbound-smtp.us-east-1.amazonaws.com` | Flashprime — courrier entrant |
+| `resend._domainkey` | TXT, clé DKIM | Flashprime |
+| `send` | MX `10 feedback-smtp.us-east-1.amazonses.com` | Flashprime — rebonds |
+| `send` | TXT `v=spf1 include:amazonses.com ~all` | Flashprime — SPF |
+| `_dmarc` | TXT `v=DMARC1; p=none;` | Flashprime, et le sous-domaine par héritage |
+| `diapason` | A `2.24.81.241` | Diapason — le site |
+| `resend._domainkey.diapason` | TXT, clé DKIM | Diapason |
+| `send.diapason` | CNAME `send.forge.rmta.net` | Diapason — Return-Path |
+| `rsend.diapason` | CNAME `rsend.forge.rmta.net` | Diapason — Return-Path de secours |
+
+Les noms de Diapason ne diffèrent de ceux de Flashprime que par `.diapason`,
+et c'est là que tout peut casser :
+
+- **Un TXT tapé `resend._domainkey`, sans le suffixe, n'est pas refusé.** Le
+  DNS accepte plusieurs TXT sur un même nom : la clé s'ajouterait à côté de
+  celle de Flashprime, dont la signature DKIM échouerait alors. Hostinger ne
+  refuse qu'un CNAME en conflit — le seul cas où le filet existe.
+- **En cas de conflit, la documentation de Resend conseille de supprimer
+  l'existant.** Sur `send`, ce serait le SPF et les rebonds de Flashprime. On
+  ne suit pas ce conseil ici : on corrige le nom tapé.
+- Le guide Hostinger de Resend décrit l'ancien format (MX + TXT sur `send`),
+  et son tableau DKIM indique le nom `send` par erreur. Seul l'onglet
+  *Records* du domaine dans Resend fait foi.
+
+Règles, en plus des quatre ci-dessus :
+
+- **Ajouter, jamais modifier ni supprimer** une ligne de Flashprime.
+- **Photographier la zone avant, comparer après**, sur les DEUX serveurs
+  autoritaires et sans récursion (`dig +norec @aster.dns-parking.com …`).
+  Le numéro de série SOA de Hostinger n'augmente pas forcément après une
+  saisie (resté à `2026092401` le 24/09) : on juge sur les lignes elles-mêmes.
+  La clé DKIM de Diapason commence par les mêmes quarante caractères que
+  celle de Flashprime : on compare octet par octet, jamais à l'œil.
+- **Pas de MX sur `diapason`** tant que Diapason ne traite pas le courrier
+  entrant. Chaque courriel reçu compte dans le quota de Resend, et accepter du
+  courrier que personne ne lit est une promesse en attente (§5). Sans MX, un
+  courriel adressé à `…@diapason.flashprime.online` expire en quelques jours :
+  rien n'écoute sur le port 25, et ufw ne l'ouvre pas. Les courriels envoyés
+  porteront donc un `Reply-To` vers une boîte réellement lue.
+
+Le domaine `diapason.flashprime.online` est **vérifié chez Resend depuis le
+24 septembre 2026** — envoi seul, réception désactivée.
 
 ## Publier
 
