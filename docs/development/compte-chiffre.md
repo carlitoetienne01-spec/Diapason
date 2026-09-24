@@ -213,15 +213,15 @@ KEYRING = {"v":1, "currentEpoch":e, "epochs":{"1":b64(DEK_1), …, "e":b64(DEK_e
 |---|---|
 | objet | `{"a":accountId,"e":keyEpoch,"i":incarnation,"o":objectId,"r":rev,"t":"object","v":1}` |
 | pièce | `{"a":…,"e":…,"i":…,"o":pieceId,"t":"attachment","v":1}` |
-| AMK sous mot de passe | `{"a":…,"k":kdfVersion,"t":"amk","u":"password","w":vaultVersion}` |
-| AMK scellée (récupération) | `{"a":…,"t":"amk","u":"recovery","w":vaultVersion}` |
-| trousseau | `{"a":…,"r":keyringVersion,"t":"keyring","v":1,"w":vaultVersion}` |
+| AMK sous mot de passe | `{"a":…,"i":incarnation,"k":kdfVersion,"t":"amk","u":"password","w":vaultVersion}` |
+| AMK scellée (récupération) | `{"a":…,"i":incarnation,"t":"amk","u":"recovery","w":vaultVersion}` |
+| trousseau | `{"a":…,"i":incarnation,"r":keyringVersion,"t":"keyring","v":1,"w":vaultVersion}` |
 | nom d'appareil | `{"a":…,"s":sessionId,"t":"deviceName","v":1}` |
 
 **Pourquoi `w` et `i` ont été ajoutés.**
 
 - `w` (`vaultVersion`) dans les enveloppes AMK et le trousseau. Sans lui, un appareil ne pouvait pas distinguer une enveloppe périmée, ramenée par une restauration, de l'enveloppe courante (revue cryptographie).
-- `i` (`incarnation`) dans les objets. Un blob d'avant une réinitialisation ne peut plus passer pour un blob d'après.
+- `i` (`incarnation`) dans les objets, puis, le 24/09/2026, dans les enveloppes AMK et le trousseau (Constat 19, §6 bis). Un blob d'avant une réinitialisation ne peut plus passer pour un blob d'après — coffre compris, alors même qu'il repart à `vaultVersion = 1` et que les planchers de l'appareil sont vidés — **à une condition** : l'incarnation passée à l'ouverture est celle que l'appareil tient pour courante et qu'aucune valeur serveur ne fait reculer, jamais celle que `/login`, `/recovery/unwrap` ou `meta` annoncent. Un VPS qui rejoue le coffre d'avant annonce aussi l'incarnation d'avant ; ouverte avec SA valeur, l'AAD concorde. Seul le nom d'appareil (type 04) ne la porte pas : il est lié à `sessionId`, qu'une réinitialisation révoque, et scellé sous `K_noms`, tirée de l'AMK neuve.
 
 **Rembourrage.** Le cadre du clair est `uint32 BE(L) ‖ clair ‖ zéros`, complété jusqu'à `max(plancher, padme(4 + L))`. Le plancher vaut 1 024 o pour un objet et 4 096 o pour une pièce. Les zéros sont **vérifiés** au déchiffrement. On n'utilise jamais `rstrip(b"\x00")` (`scellement.py:444-456`), qui mangerait les octets d'une image.
 
@@ -1485,7 +1485,10 @@ La matrice `test-windows` exécute `tests/compte/` et `tests/diapason_comptes/`.
 1. `bump-desktop-version.sh`, puis le tag `desktop-v*` (dmg et NSIS).
 2. Déploiement des étapes 5 et 11 sur le VPS.
 3. **Le commit unique du §5**, avec les pages légales, l'accueil et `PRIVACY.md`, et `accueil/.publier-legal`. Puis `deployer-site.sh`.
-4. `INSCRIPTIONS_OUVERTES=1`.
+4. `INSCRIPTIONS_OUVERTES=1` sur le VPS **et**, dans le même commit que l'app
+   publiée, `COMPTES_OUVERTS = True` dans `src/diapason/compte/service.py`,
+   avec la mise à jour de `test_la_constante_du_module_est_fermee`
+   (`tests/compte/test_ouverture.py`), fil déclencheur délibéré.
 5. CAPABILITY_MATRIX et roadmap mis à jour.
 6. Une ligne de pièges dans CLAUDE.md : « jamais de 401 local ; aucun secret de compte en environnement ; l'instantané Hostinger n'est pas un retour arrière ». Puis régénération d'`AGENTS.md` dans le même commit.
 
@@ -1610,15 +1613,59 @@ code et ses tests font foi sur ces points** ; le reste du document est inchangé
 
 **Décidé par la session principale**
 
-- **Constat 19 — l'incarnation entre dans l'AAD des types 03, 05 et 06.** Après
-  `reset/complete`, le coffre repart à `vaultVersion = 1`, et l'état de
-  l'appareil, lié à `(compte, incarnation)`, vide ses planchers : une enveloppe
-  de l'incarnation précédente, rejouée par le VPS à ce moment-là, n'était
-  distinguée de la nouvelle par rien. Les objets portaient déjà `i` ; le coffre
-  aussi, désormais. Changer le format est gratuit tant qu'aucun compte n'existe,
-  et ne le sera plus ensuite. **À faire avant l'étape 8**, avec les vecteurs
-  régénérés dans le même commit — pas encore fait au moment où ces lignes sont
-  écrites.
+- **Constat 19 — l'incarnation est entrée dans l'AAD des types 03, 05 et 06
+  (fait le 24/09/2026).** Après `reset/complete`, le coffre repartait à
+  `vaultVersion = 1`, et l'état de l'appareil, lié à `(compte, incarnation)`,
+  vidait ses planchers : une enveloppe de l'incarnation précédente, rejouée par
+  le VPS à ce moment-là, n'était distinguée de la nouvelle par rien. `i` est
+  désormais dans l'AAD de l'AMK sous mot de passe et du trousseau, et dans
+  l'`info` HPKE de l'AMK scellée vers la récupération (tableau du §2.5).
+  `incarnation` est un paramètre nommé et **sans défaut** partout où ces
+  enveloppes se scellent ou s'ouvrent (`enveloppe.py`, et dans `trousseau.py`
+  `creer_coffre`, `faire_tourner_les_cles`, `ouvrir_trousseau`, `ouvrir_coffre`,
+  `ouvrir_coffre_par_recuperation`) : un défaut à 1 aurait rouvert le trou pour
+  toute incarnation suivante. Des tests refusent une enveloppe 03, 05 ou 06
+  scellée pour l'incarnation 1 et ouverte pour la 2, et réciproquement, ainsi
+  que le coffre entier rejoué après une réinitialisation, à versions et KEK
+  égales ; des témoins positifs rouvrent sous l'incarnation 2, par le mot de
+  passe comme par la récupération, un coffre créé puis tourné sous elle. Les
+  vecteurs ont été régénérés dans le même changement (les
+  enveloppes `amkPassword` et `keyring`, l'`info` et le blob HPKE ;
+  `recoverySealed` porte désormais `incarnation`). L'incarnation des vecteurs
+  vaut 5 et non 1 : à 1, elle valait `k` et `v`, et un portage qui l'écrivait
+  en dur ou la confondait avec `kdfVersion` reproduisait tous les vecteurs ; un
+  test refuse qu'elle se confonde avec un autre champ. Les tailles d'enveloppe
+  n'ont pas bougé : le service du VPS, qui ne lit pas l'AAD, n'a pas été
+  modifié.
+
+  **Ce que l'AAD ne fait pas seule.** Elle ferme le rejeu à la condition que
+  le paramètre `incarnation` soit celui de l'appareil, jamais celui que le VPS
+  rend : un coffre de l'incarnation 1, rejoué avec `incarnation: 1` dans
+  `/login` ou `meta`, s'ouvre avec 1, et l'AAD concorde (contre-épreuve du
+  24/09/2026). Or la spécification fait lire l'incarnation au serveur (§3), et
+  `planchers_compte` (§4.2) ne tient que `vault_version_max`,
+  `keyring_version_max` et `key_epoch_max`. **Exigé de l'étape 8** : un
+  `incarnation_max` que ni une réinitialisation ni une `generation` nouvelle
+  ne vident pour un même `accountId` ; une incarnation annoncée **inférieure**
+  refusée (`serverRolledBack`) **avant tout essai de clé** — sinon le rejeu
+  se lit `envelopeUnreadable`, indiscernable d'un mauvais mot de passe — et
+  seule une incarnation **supérieure** menant à `accountReset`, là où le §4.3
+  écrit un simple « ≠ ». Les §4.2, §4.3, §4.4 et §4.12 restent à corriger en
+  conséquence.
+
+**Décidé par la session principale — les comptes restent fermés sur l'appareil**
+
+La conception ne fermait les inscriptions que côté serveur
+(`INSCRIPTIONS_OUVERTES=0`), en supposant que l'interface sortirait avec
+l'ouverture. Or l'app se reconstruit depuis `main` au fil de l'eau, et le service
+n'est déployé nulle part : l'écran d'accueil (D13) proposait un compte qu'aucun
+serveur ne pouvait créer, et l'inscription échouait au premier appel réseau.
+`COMPTES_OUVERTS = False` (`compte/service.py`) : le statut local rend
+`accountsOpen: false`, l'écran d'accueil ne s'affiche pas, la section des
+Réglages dit « Les comptes ne sont pas encore ouverts », et l'inscription, la
+connexion, la récupération et la réinitialisation sont refusées en 503
+`accountsNotOpen` AVANT tout appel réseau. Ni la configuration ni
+l'environnement ne l'ouvrent : seul le commit d'ouverture (étape 13, point 4).
 
 **Reste ouvert**
 
