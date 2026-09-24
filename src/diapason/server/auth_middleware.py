@@ -164,6 +164,15 @@ def est_route_de_transfert(path: str) -> bool:
     return bool(_TRANSFERT_RE.match(path or ""))
 
 
+def est_route_du_compte(path: str) -> bool:
+    """Une route locale du compte chiffré (``/v1/account/*``, §3.8).
+
+    Toutes restent derrière la clé locale : ce prédicat ne sert qu'au
+    limiteur, jamais à ``_requires_auth``.
+    """
+    return (path or "").startswith("/v1/account/")
+
+
 # The mesh routes that authenticate by signature or invitation rather than by
 # the API key. Listed once, here, because being outside the key wall and being
 # outside the limiter used to be the same condition — and nobody meant the
@@ -270,6 +279,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         )
 
+        # Le seau du COMPTE (compte-chiffre.md §3.8, 24/09/2026). Le seau
+        # commun (60/min, rafale 10) est vidé par le poller vocal : une
+        # inscription tapée pendant que le panneau vocal sonde aurait
+        # rebondi en 429 au milieu du code reçu par courriel. Chaque route
+        # est un geste humain — un parcours complet (P1) en fait six — d'où
+        # un seau large en nombre mais distinct : 120/min, rafale 20.
+        # Le vrai garde-fou n'est pas ici : ``unlock`` compte ses ÉCHECS
+        # dans le service (5, puis 30 s), le serveur de comptes a ses
+        # propres délais, et ``GET /v1/account/status`` — sondé par chaque
+        # vue — n'entre dans aucun seau.
+        self._account_limiter = RateLimiter(
+            RateLimitConfig(
+                requests_per_minute=max(120, requests_per_minute * 2),
+                burst_size=max(20, burst_size * 2),
+                enabled=enabled,
+            )
+        )
+
     async def dispatch(self, request: Request, call_next):  # noqa: ANN001
         # Preflight requests are browser permission checks, not data-plane API
         # calls. Let CORSMiddleware answer them and rate-limit the authenticated
@@ -310,6 +337,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path.startswith("/v1/conversations"):
             return await call_next(request)
         if path == "/v1/voice/live/health":
+            return await call_next(request)
+        # Le compte : l'état est sondé par chaque vue (exempté), le reste a
+        # son seau. La phrase « seule route exemptée » de la conception
+        # précédente était fausse (§3.8) : voir la liste ci-dessus.
+        if path == "/v1/account/status" and request.method == "GET":
+            return await call_next(request)
+        if est_route_du_compte(path):
+            client = request.client.host if request.client else "unknown"
+            allowed, wait_seconds = self._account_limiter.check(f"{client}:account")
+            if not allowed:
+                return _too_many(wait_seconds, request)
             return await call_next(request)
         # Same shape, same reason, for the two mesh surfaces the local UI
         # polls: the inbox (another device asked us to open a screen) and the

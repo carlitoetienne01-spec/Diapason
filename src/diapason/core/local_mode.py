@@ -60,8 +60,42 @@ This is narrower than it sounds, and the narrowness is what makes it safe:
 
 The check lives in ``mesh/transport.py`` — ``assert_may_reach_device`` — so
 this exemption cannot be claimed by any other code path merely by importing
-something. Everything else about the contract is unchanged: turning
-``local_only`` on still means Diapason itself sends nothing outward.
+something.
+
+The account server (third boundary, 24/09/2026)
+-----------------------------------------------
+
+Decision D1 of ``docs/development/compte-chiffre.md`` (§3.12), taken by
+default and reversible by Carlito: the encrypted account may reach ITS
+server under local-only. This boundary is narrower still, and every
+condition is required:
+
+* the origin is a constant of the code (``compte/transport.SERVEUR_COMPTES``).
+  An override through ``DIAPASON_SERVEUR_COMPTES`` is NOT exempt — under
+  local-only it is refused like any other host; changing the origin takes a
+  new version of the app. Nor can the environment reroute it: the account's
+  HTTP client reads no ``HTTPS_PROXY``, ``SSL_CERT_FILE`` or ``.netrc``
+  (``trust_env=False``, 24/09/2026 — with httpx's default, those two
+  variables together intercepted the address, ``authKey`` and the token);
+* nothing leaves until the user has made an explicit gesture from a screen
+  that names the destination (sign-up, sign-in, recovery, reset), or already
+  holds an account on this device. Without an account, nothing is sent;
+* synchronisation carries ``EnveloppeChiffree`` only — blobs encrypted on
+  this device before they leave. The transport refuses any other type.
+
+What this boundary does NOT make true, said plainly: the account's own
+traffic is not only ciphertext. Sign-up, sign-in and recovery send the email
+address, ``authKey`` (derived from the password; a hostile server that sees
+it can sign in, never decrypt) and the codes received by email. The check
+lives in ``compte/transport.py`` — ``assert_may_reach_account_server`` — and,
+like the mesh's, cannot be claimed by importing anything else.
+
+So the old sentence « turning ``local_only`` on means Diapason sends nothing
+outward » is no longer true as written. Three exemptions exist: the user's
+own browser at their command, their paired devices on the local network,
+and — once they have activated one — their account server. The update
+check, the first model download and the YouTube search the user asks for
+also pass the lock through their own paths (§6 bis of the design).
 """
 
 from __future__ import annotations

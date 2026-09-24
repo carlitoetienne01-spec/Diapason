@@ -375,6 +375,73 @@ def _isoler_les_conversations(tmp_path_factory):
         mp.undo()
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isoler_le_compte(tmp_path_factory):
+    """Aucun test n'écrit dans le VRAI ``~/.diapason/compte`` ni dans le VRAI
+    trousseau de session macOS.
+
+    24/09/2026, étape 8 de compte-chiffre.md. Ce Mac est aussi le runner de
+    la CI : un test qui créerait ``compte/etat.key`` chez Carlito ferait
+    croire à son magasin de conversations qu'un compte existe — la purge
+    des tombales s'arrête dès que ce fichier est là
+    (``conversations_store._compte_present``) — et un test qui rangerait
+    une AMK sous « Diapason Compte » laisserait dans son trousseau un
+    secret que rien n'efface.
+
+    Même modèle que ``_isoler_les_conversations`` juste au-dessus, et pour
+    la même raison en portée SESSION : une fixture de portée module qui
+    construit ``create_app`` passerait avant une garde de portée fonction.
+    Trois choses sont redirigées dans ``diapason.compte.service``, et une
+    dans ``diapason.compte.transport`` :
+
+    - la racine du compte : un dossier jetable de la session ;
+    - la préparation du dossier : sans ``tmutil addexclusion`` sur ce
+      dossier jetable (une exclusion Time Machine collante posée sur
+      /private/var/folders, et jusqu'à 30 s d'attente par appel) ;
+    - le protecteur : ``ProtecteurMemoire``, qui ne survit pas au processus ;
+    - le client HTTP par défaut : un refus. Un test qui oublie d'injecter
+      son ``httpx.MockTransport`` échoue, au lieu d'envoyer une adresse et
+      un ``authKey`` au vrai serveur de comptes.
+
+    Les tests ``live`` du gardien (``tests/compte/test_gardien.py``)
+    touchent le vrai trousseau : ils construisent LEUR protecteur
+    eux-mêmes, sans passer par ce qui est redirigé ici, et la CI les exclut
+    par ``-m "not live"``.
+    """
+    try:
+        from diapason.compte import service as _service
+        from diapason.compte import transport as _transport
+        from diapason.compte.gardien import (
+            ProtecteurMemoire,
+            preparer_dossier_compte,
+        )
+    except ImportError:
+        # cryptography absent : aucun compte possible, rien à isoler.
+        yield
+        return
+
+    racine = tmp_path_factory.mktemp("compte-racine")
+
+    def _dossier_de_test(chemin):  # noqa: ANN001, ANN202
+        return preparer_dossier_compte(chemin, plateforme="linux")
+
+    def _aucun_reseau_reel():  # noqa: ANN202
+        raise RuntimeError(
+            "un test a voulu joindre le VRAI serveur de comptes : injectez un "
+            "httpx.Client(transport=httpx.MockTransport(...))"
+        )
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(_service, "racine_du_compte", lambda: racine)
+    mp.setattr(_service, "preparer_dossier", _dossier_de_test)
+    mp.setattr(_service, "fabriquer_protecteur", lambda _dossier: ProtecteurMemoire())
+    mp.setattr(_transport, "client_http_par_defaut", _aucun_reseau_reel)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
 @pytest.fixture(autouse=True)
 def _isoler_le_profil_vocal(monkeypatch, tmp_path):
     """Aucun test ne touche l'empreinte vocale RÉELLE du propriétaire.

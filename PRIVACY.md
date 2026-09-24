@@ -1,6 +1,6 @@
 # Politique de confidentialité — Diapason
 
-*Dernière mise à jour : 24 août 2026*
+*Dernière mise à jour : 24 septembre 2026*
 
 Diapason est un assistant personnel qui tourne **sur la machine de son
 utilisateur**. Il n'y a pas de serveur Diapason, pas de compte Diapason, et
@@ -59,9 +59,24 @@ exclusivement entre l'ordinateur de l'utilisateur et les serveurs de Google.
 
 ## Le verrou local
 
-Le réglage `[privacy] local_only` bloque, quand il est actif, **toute** sortie
-réseau des connecteurs — la promesse est appliquée sur tous les chemins, pas
-seulement sur certains.
+Le réglage `[privacy] local_only` est actif par défaut. Il gouverne ce que
+Diapason envoie de lui-même — ses appels, ses envois, ses récupérations en tâche
+de fond, connecteurs compris — et il est appliqué sur tous ces chemins, pas
+seulement sur certains. Il ne bloque pas tout, et voici ce qu'il laisse passer :
+
+- la vérification des mises à jour, qui a son propre interrupteur ;
+- le premier téléchargement du moteur et du modèle ;
+- la recherche envoyée à YouTube quand vous demandez d'ouvrir une vidéo ;
+- les échanges avec vos propres appareils appairés, sur votre réseau local, et
+  une page que vous demandez d'ouvrir dans votre propre navigateur.
+
+Une exception de plus est écrite dans le code (24 septembre 2026), et ne sert
+encore à personne : un compte chiffré, facultatif, que l'application ne propose
+pas encore et dont le serveur n'est pas ouvert. Une fois activé par vous, son
+trafic passera le verrou, vers une
+seule adresse fixée dans le code : votre adresse courriel, la preuve de votre
+mot de passe, les codes reçus par courriel, et vos données chiffrées sur votre
+appareil avant de partir. Cette politique sera réécrite avant son ouverture.
 
 ## Contact
 

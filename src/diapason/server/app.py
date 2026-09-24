@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from diapason.server.analytics_routes import router as analytics_router
 from diapason.server.api_routes import include_all_routes
 from diapason.server.comparison import comparison_router
+from diapason.server.compte_routes import AccesCompte, create_compte_router
 from diapason.server.config_routes import create_config_router
 from diapason.server.connectors_router import create_connectors_router
 from diapason.server.conversations_routes import create_conversations_router
@@ -29,6 +30,41 @@ from diapason.server.trigger_routes import create_trigger_router
 from diapason.server.upload_router import router as upload_router
 
 logger = logging.getLogger(__name__)
+
+
+def _service_compte(config, conversations_store):  # noqa: ANN001, ANN202
+    """Le service du compte, relié au magasin des conversations.
+
+    Le nombre de conversations (P3 : « Cet appareil a déjà 3
+    conversations ») est lu par une connexion en LECTURE SEULE, à part :
+    ``store.list()`` décode tous les messages de toutes les conversations,
+    et ``/v1/account/status`` est sondé par chaque vue. Les conversations
+    vierges (``messages = '[]'``) ne comptent pas, comme dans la liste du
+    bundle (``discussions.ts:57``).
+    """
+    import sqlite3
+
+    from diapason.compte.service import ServiceCompte
+
+    chemin = getattr(conversations_store, "chemin", "")
+
+    def compter() -> int:
+        if not chemin or chemin == ":memory:":
+            return 0
+        # ``as_uri`` échappe les espaces (« Application Support ») qu'une
+        # URI ``file:`` écrite à la main aurait laissés casser le chemin.
+        uri = pathlib.Path(chemin).resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=1.0)
+        try:
+            (nombre,) = conn.execute(
+                "SELECT COUNT(*) FROM conversations "
+                "WHERE deleted_at IS NULL AND messages != '[]'"
+            ).fetchone()
+        finally:
+            conn.close()
+        return int(nombre)
+
+    return ServiceCompte(config=config, compter_conversations=compter)
 
 
 async def _mesh_heartbeat(app: FastAPI) -> None:
@@ -295,6 +331,12 @@ def create_app(
                     conversations.close()
                 except Exception:
                     pass
+            compte = getattr(application.state, "compte", None)
+            if compte is not None:
+                try:
+                    compte.fermer()
+                except Exception:
+                    pass
 
     app = FastAPI(
         title="Diapason API",
@@ -419,6 +461,13 @@ def create_app(
     conversations_store = ConversationsStore()
     app.state.conversations_store = conversations_store
     app.include_router(create_conversations_router(conversations_store))
+    # Le compte chiffré (compte-chiffre.md §3.8), à côté des conversations et
+    # derrière la même clé locale ; jamais sur la sous-app lan. Le service
+    # n'est construit qu'à la première requête : ce constructeur tourne dans
+    # chaque test du serveur, et aucun ne doit toucher compte/ ni le
+    # trousseau sans l'avoir demandé.
+    app.state.compte = AccesCompte(lambda: _service_compte(config, conversations_store))
+    app.include_router(create_compte_router(app.state.compte))
     app.include_router(create_screen_share_router())
     app.include_router(create_trigger_router())
     app.include_router(upload_router)

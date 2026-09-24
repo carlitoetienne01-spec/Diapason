@@ -49,6 +49,14 @@ cli/model.py
 # destination tierce, aucune donnée envoyée.
 cli/serve.py
 cli/serve_service_cmd.py
+# compte/transport.py — la seule porte du compte vers le serveur de comptes
+# (24/09/2026, étape 8 de compte-chiffre.md). Derrière
+# assert_may_reach_account_server : sous local_only, seule l'origine
+# CONSTANTE SERVEUR_COMPTES passe, après un geste explicite ou avec un
+# compte enregistré ; une liste blanche de chemins ; les routes de données
+# n'acceptent que des EnveloppeChiffree ; client sans proxy ni magasin de
+# certificats venus de l'environnement (trust_env=False).
+compte/transport.py
 connectors/dropbox.py
 connectors/embeddings.py
 connectors/gcalendar.py
