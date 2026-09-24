@@ -1,0 +1,38 @@
+/*
+ * L'impression de la clé de récupération (compte-chiffre.md §3.11, étape 4).
+ *
+ * Sans ces règles, « Imprimer » imprimait la fenêtre entière : la barre
+ * latérale, les conversations visibles derrière le voile — et la clé au
+ * milieu, sur une page qui disait tout ce qu'il ne fallait pas. Les règles
+ * ne s'appliquent QUE pendant l'impression demandée depuis le bloc de la clé
+ * (`data-impression-cle` posé sur <html> puis retiré) : un Cmd+P dans une
+ * note (index.css, `@media print`) n'est pas touché.
+ */
+@media print {
+  html[data-impression-cle] body * {
+    visibility: hidden !important;
+  }
+  html[data-impression-cle] .impression-cle,
+  html[data-impression-cle] .impression-cle * {
+    visibility: visible !important;
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+  html[data-impression-cle] .impression-cle {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    padding: 24px !important;
+  }
+  html[data-impression-cle] .impression-cle .masque-impression {
+    display: none !important;
+  }
+  html[data-impression-cle] .impression-cle .seulement-impression {
+    display: block !important;
+  }
+}
+
+.impression-cle .seulement-impression {
+  display: none;
+}

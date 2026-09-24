@@ -25,6 +25,17 @@ import {
   demanderLeFocusDuCompositeur,
 } from './lib/panneau';
 import { discussionVoisine, type SensVoisine } from './lib/discussions';
+import { EcranCompte } from './features/compte/EcranCompte';
+import { lireStatutCompte } from './features/compte/api';
+import { doitAfficherAccueil } from './lib/compte';
+
+/**
+ * Ce que l'écran d'activation du compte peut retarder l'app, au plus. Même
+ * budget que la présélection du modèle (SetupScreen) : c'est une question
+ * posée une fois, jamais une porte — un serveur local lent ou ancien (sans
+ * `/v1/account`) laisse passer l'app au lieu de la retenir.
+ */
+const ACCUEIL_COMPTE_BUDGET_MS = 2500;
 
 /**
  * ⌘⇧[ ou ⌘⇧] ? Le sens, ou null. Les crochets portent aussi leur `code` :
@@ -99,6 +110,38 @@ export default function App() {
       track('setup_completed', { preset: 'default' });
     }
   }, []);
+  // D13 (compte-chiffre.md §3.11 P1) : l'écran du compte s'affiche UNE fois,
+  // dans la fenêtre de bureau, après l'installation et le modèle — donc
+  // après SetupScreen. Le drapeau vit dans compte/accueil.json côté serveur,
+  // jamais dans le localStorage : la fenêtre et le mini-panneau n'ont pas la
+  // même origine (CLAUDE.md §3).
+  const [accueilCompte, setAccueilCompte] = useState<'verification' | 'afficher' | 'passer'>(
+    () => (isTauri() && !estCompact ? 'verification' : 'passer'),
+  );
+  useEffect(() => {
+    if (!setupDone || accueilCompte !== 'verification') return;
+    const controle = new AbortController();
+    // Le budget épuisé fait passer l'app ; un démontage (double montage de
+    // StrictMode compris) ne décide RIEN — sinon le premier montage, annulé,
+    // concluait « passer » avant que le second ait lu le statut.
+    let demonte = false;
+    const minuteur = setTimeout(() => controle.abort(), ACCUEIL_COMPTE_BUDGET_MS);
+    lireStatutCompte(controle.signal)
+      .then((statut) => {
+        if (!demonte) setAccueilCompte(doitAfficherAccueil(statut, true) ? 'afficher' : 'passer');
+      })
+      .catch(() => {
+        if (!demonte) setAccueilCompte('passer');
+      })
+      .finally(() => clearTimeout(minuteur));
+    return () => {
+      demonte = true;
+      clearTimeout(minuteur);
+      controle.abort();
+    };
+  }, [setupDone, accueilCompte]);
+  const fermerAccueilCompte = useCallback(() => setAccueilCompte('passer'), []);
+
   const prevModelRef = useRef<string>('');
   const setModels = useAppStore((s) => s.setModels);
   const setModelsLoading = useAppStore((s) => s.setModelsLoading);
@@ -349,6 +392,18 @@ export default function App() {
 
   if (!setupDone) {
     return <SetupScreen onReady={handleSetupReady} />;
+  }
+
+  if (accueilCompte === 'verification') {
+    return <div className="fixed inset-0" style={{ background: 'var(--color-bg)' }} aria-busy="true" />;
+  }
+
+  if (accueilCompte === 'afficher') {
+    return (
+      <ConfirmProvider>
+        <EcranCompte contexte="accueil" onFermer={fermerAccueilCompte} />
+      </ConfirmProvider>
+    );
   }
 
   return (

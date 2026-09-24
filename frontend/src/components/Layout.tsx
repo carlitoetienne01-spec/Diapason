@@ -10,6 +10,7 @@ import { signalerPanneauOuvert } from '../lib/panneau';
 import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
 import { useSondeVisible } from '../lib/useSondeVisible';
+import { BandeauCompte } from '../features/compte/BandeauCompte';
 
 export function Layout() {
   const { t } = useTranslation();
@@ -82,6 +83,10 @@ export function Layout() {
           // ~24 px du haut : on les réserve, sinon l'en-tête passe dessous.
           style={{ background: 'transparent', paddingTop: 'var(--surplomb-panneau, 0px)' }}
         >
+          {/* D14 (compte-chiffre.md §3.11) : le mini-panneau montre l'état du
+              compte et permet de le déverrouiller — seul bandeau admis ici,
+              et seulement quand il a quelque chose à dire. */}
+          <BandeauCompte compact />
           <Outlet />
         </main>
       </div>
@@ -121,6 +126,8 @@ export function Layout() {
           </button>
         </div>
       )}
+
+      <BandeauCompte />
 
       <div className="flex flex-1 min-h-0 relative z-10">
         <Sidebar />

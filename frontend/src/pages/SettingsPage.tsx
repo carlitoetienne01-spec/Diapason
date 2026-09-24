@@ -54,6 +54,7 @@ import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
+import { SectionCompte } from '../features/compte/SectionCompte';
 
 const CLOUD_KEY_STATUS_CHANGED = 'diapason-cloud-key-status-changed';
 
@@ -725,6 +726,9 @@ export function SettingsPage() {
               />
             </SettingRow>
           </Section>
+
+          {/* Compte et chiffrement — après Connexion (compte-chiffre.md §3.11). */}
+          <SectionCompte />
 
           {/* Inference source */}
           <Section title={t('settings.inference.title')}>
