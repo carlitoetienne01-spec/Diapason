@@ -106,10 +106,34 @@ class TestLesVecteursSOuvrent:
             rec.cles_recuperation(r).cle_privee,
             bytes.fromhex(v["blob"]),
             account_id=v["accountId"],
+            incarnation=v["incarnation"],
             vault_version=v["vaultVersion"],
             plancher_vault_version=v["vaultVersion"],
         )
         assert amk.hex() == v["amk"], "l'AMK scellée doit se rouvrir avec R"
+
+    def test_l_incarnation_ne_se_confond_avec_aucun_autre_champ(self):
+        """§2.5 et §6 bis (Constat 19) — les vecteurs couvrent « i » en
+        VALEUR, pas seulement en présence. À 1, comme « k » et « v », un
+        portage qui écrivait l'incarnation en dur, ou lisait kdfVersion à sa
+        place, passait tous les vecteurs et scellait après la première
+        réinitialisation un coffre illisible pour l'appareil Python."""
+        incarnation = VECTEURS["recoverySealed"]["incarnation"]
+        assert incarnation != 1, "l'incarnation des vecteurs ne doit pas valoir 1"
+        assert incarnation != VECTEURS["recoverySealed"]["vaultVersion"], (
+            "l'incarnation de l'AMK scellée ne doit pas valoir vaultVersion"
+        )
+        for v in VECTEURS["envelopes"]:
+            champs = v["aadFields"]
+            if "i" not in champs:
+                continue
+            assert champs["i"] == incarnation, f"{v['name']} : une seule incarnation"
+            autres = {
+                c: x for c, x in champs.items() if c != "i" and isinstance(x, int)
+            }
+            assert incarnation not in autres.values(), (
+                f"{v['name']} : i se confond avec {autres}"
+            )
 
     def test_les_trois_ecritures_du_mot_de_passe_sont_distinctes(self):
         """§2.4 — un éditeur qui normaliserait le fichier en NFC viderait le

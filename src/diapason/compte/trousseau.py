@@ -316,6 +316,7 @@ def _sceller_coffre(
     *,
     kek: bytes,
     account_id: str,
+    incarnation: int,
     kdf_version: int,
     vault_version: int,
     keyring_version: int,
@@ -326,6 +327,7 @@ def _sceller_coffre(
             trousseau.recovery_public_key,
             amk,
             account_id=account_id,
+            incarnation=incarnation,
             vault_version=vault_version,
         )
     return Coffre(
@@ -337,6 +339,7 @@ def _sceller_coffre(
             kek,
             amk,
             account_id=account_id,
+            incarnation=incarnation,
             kdf_version=kdf_version,
             vault_version=vault_version,
         ),
@@ -345,6 +348,7 @@ def _sceller_coffre(
             cle_trousseau(amk),
             serialiser(trousseau),
             account_id=account_id,
+            incarnation=incarnation,
             keyring_version=keyring_version,
             vault_version=vault_version,
         ),
@@ -352,14 +356,21 @@ def _sceller_coffre(
 
 
 def creer_coffre(
-    kek: bytes, *, account_id: str, kdf_version: int, recovery_public_key: bytes | None
+    kek: bytes,
+    *,
+    account_id: str,
+    incarnation: int,
+    kdf_version: int,
+    recovery_public_key: bytes | None,
 ) -> Coffre:
-    """Le coffre d'un compte neuf : AMK_1, trousseau 1, époque 1."""
+    """Le coffre d'un compte neuf, ou d'une incarnation neuve après
+    ``reset/complete`` : AMK_1, trousseau 1, époque 1, sous CETTE incarnation."""
     return _sceller_coffre(
         os.urandom(LONGUEUR_CLE),
         nouveau_trousseau(recovery_public_key),
         kek=kek,
         account_id=account_id,
+        incarnation=incarnation,
         kdf_version=kdf_version,
         vault_version=1,
         keyring_version=1,
@@ -371,6 +382,7 @@ def faire_tourner_les_cles(
     *,
     kek: bytes,
     account_id: str,
+    incarnation: int,
     kdf_version: int,
     vault_version: int,
     keyring_version: int,
@@ -380,7 +392,9 @@ def faire_tourner_les_cles(
 
     ``kek`` est celle du NOUVEAU mot de passe (ou de l'actuel, pour une
     révocation). ``vault_version`` et ``keyring_version`` sont les versions
-    COURANTES : le coffre rendu porte ``+1`` à chacune.
+    COURANTES : le coffre rendu porte ``+1`` à chacune. ``incarnation`` ne
+    bouge pas : seule une réinitialisation en ouvre une nouvelle, et elle
+    passe par :func:`creer_coffre`.
     """
     if trousseau.current_epoch >= EPOQUE_MAX:
         raise TrousseauInvalide("plus aucune époque disponible")
@@ -402,6 +416,7 @@ def faire_tourner_les_cles(
         nouveau,
         kek=kek,
         account_id=account_id,
+        incarnation=incarnation,
         kdf_version=kdf_version,
         vault_version=entier(vault_version, "vaultVersion") + 1,
         keyring_version=entier(keyring_version, "keyringVersion") + 1,
@@ -413,6 +428,7 @@ def ouvrir_trousseau(
     blob: bytes,
     *,
     account_id: str,
+    incarnation: int,
     keyring_version: int,
     vault_version: int,
     plancher_keyring_version: int,
@@ -423,6 +439,7 @@ def ouvrir_trousseau(
             cle_trousseau(amk),
             blob,
             account_id=account_id,
+            incarnation=incarnation,
             keyring_version=keyring_version,
             vault_version=vault_version,
             plancher_keyring_version=plancher_keyring_version,
@@ -437,6 +454,7 @@ def ouvrir_coffre(
     enveloppe_amk: bytes,
     enveloppe_trousseau: bytes,
     account_id: str,
+    incarnation: int,
     kdf_version: int,
     vault_version: int,
     keyring_version: int,
@@ -450,6 +468,7 @@ def ouvrir_coffre(
         kek,
         enveloppe_amk,
         account_id=account_id,
+        incarnation=incarnation,
         kdf_version=kdf_version,
         vault_version=vault_version,
         plancher_vault_version=plancher_vault_version,
@@ -458,6 +477,7 @@ def ouvrir_coffre(
         amk,
         enveloppe_trousseau,
         account_id=account_id,
+        incarnation=incarnation,
         keyring_version=keyring_version,
         vault_version=vault_version,
         plancher_keyring_version=plancher_keyring_version,
@@ -471,6 +491,7 @@ def ouvrir_coffre_par_recuperation(
     enveloppe_amk_recuperation: bytes,
     enveloppe_trousseau: bytes,
     account_id: str,
+    incarnation: int,
     vault_version: int,
     keyring_version: int,
     plancher_vault_version: int,
@@ -497,6 +518,7 @@ def ouvrir_coffre_par_recuperation(
         cle_privee,
         enveloppe_amk_recuperation,
         account_id=account_id,
+        incarnation=incarnation,
         vault_version=vault_version,
         plancher_vault_version=plancher_vault_version,
     )
@@ -504,6 +526,7 @@ def ouvrir_coffre_par_recuperation(
         amk,
         enveloppe_trousseau,
         account_id=account_id,
+        incarnation=incarnation,
         keyring_version=keyring_version,
         vault_version=vault_version,
         plancher_keyring_version=plancher_keyring_version,

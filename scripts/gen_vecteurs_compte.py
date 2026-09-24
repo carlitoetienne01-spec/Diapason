@@ -46,7 +46,13 @@ MOT_DE_PASSE_PLEINE_CHASSE = (
     "\u3000\u00e9\uff54\u00e9\u3000\uff12\uff10\uff12\uff16\u3000\uff01"
 )
 ACCOUNT_ID = "acc_vecteur_0001"
-INCARNATION = 1
+# 5, et non 1 : à 1, « i » valait « k » (kdfVersion) et « v », et un portage
+# Dart ou TypeScript qui l'écrivait en dur ou le confondait avec eux
+# reproduisait tous les vecteurs octet pour octet, puis scellait après la
+# première réinitialisation un coffre qu'aucun appareil Python n'ouvrait
+# (24/09/2026). Aucun autre champ d'AAD des vecteurs ne vaut 5 : e et w
+# valent 2, r 2 ou 3, k et v 1.
+INCARNATION = 5
 SESSION_ID = "ses_vecteur_0001"
 COLLECTION = "conversations"
 ID_LOCAL = "conv-vecteur-1"
@@ -90,6 +96,7 @@ def _hpke(amk: bytes, r: bytes, vault_version: int, existant: str | None) -> str
                     cle_privee,
                     bytes.fromhex(existant),
                     account_id=ACCOUNT_ID,
+                    incarnation=INCARNATION,
                     vault_version=vault_version,
                     plancher_vault_version=vault_version,
                 )
@@ -101,7 +108,11 @@ def _hpke(amk: bytes, r: bytes, vault_version: int, existant: str | None) -> str
     pk = recuperation.cles_recuperation(r).cle_publique
     return _hex(
         enveloppe.sceller_amk_recuperation(
-            pk, amk, account_id=ACCOUNT_ID, vault_version=vault_version
+            pk,
+            amk,
+            account_id=ACCOUNT_ID,
+            incarnation=INCARNATION,
+            vault_version=vault_version,
         )
     )
 
@@ -219,11 +230,19 @@ def calculer_vecteurs(hpke_existant: str | None = None) -> dict:
         enveloppe.TYPE_AMK_MOT_DE_PASSE,
         role.kek,
         amk,
-        {"a": ACCOUNT_ID, "k": 1, "t": "amk", "u": "password", "w": 2},
+        {
+            "a": ACCOUNT_ID,
+            "i": INCARNATION,
+            "k": 1,
+            "t": "amk",
+            "u": "password",
+            "w": 2,
+        },
         lambda s, n: enveloppe.envelopper_amk(
             role.kek,
             amk,
             account_id=ACCOUNT_ID,
+            incarnation=INCARNATION,
             kdf_version=1,
             vault_version=2,
             sel=s,
@@ -252,11 +271,19 @@ def calculer_vecteurs(hpke_existant: str | None = None) -> dict:
         enveloppe.TYPE_TROUSSEAU,
         k_trousseau,
         clair_trousseau,
-        {"a": ACCOUNT_ID, "r": 2, "t": "keyring", "v": 1, "w": 2},
+        {
+            "a": ACCOUNT_ID,
+            "i": INCARNATION,
+            "r": 2,
+            "t": "keyring",
+            "v": 1,
+            "w": 2,
+        },
         lambda s, n: enveloppe.sceller_trousseau_brut(
             k_trousseau,
             clair_trousseau,
             account_id=ACCOUNT_ID,
+            incarnation=INCARNATION,
             keyring_version=2,
             vault_version=2,
             sel=s,
@@ -334,13 +361,14 @@ def calculer_vecteurs(hpke_existant: str | None = None) -> dict:
         "recoverySealed": {
             "type": enveloppe.TYPE_AMK_RECUPERATION,
             "accountId": ACCOUNT_ID,
+            "incarnation": INCARNATION,
             "vaultVersion": 2,
             "amk": _hex(amk),
             # Pris du code, jamais recalculé à part : la première passe
             # l'écrivait en dur, et un ``info`` changé dans ``enveloppe``
             # laissait ici un ``info`` périmé sans qu'aucun test ne rougisse
             # (24/09/2026).
-            "info": _hex(enveloppe.info_recuperation(ACCOUNT_ID, 2)),
+            "info": _hex(enveloppe.info_recuperation(ACCOUNT_ID, INCARNATION, 2)),
             "blob": _hpke(amk, r, 2, hpke_existant),
         },
     }

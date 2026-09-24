@@ -15,7 +15,8 @@ Conception : ``docs/development/compte-chiffre.md`` §2.5.
 Chaque enveloppe des types 01 à 05 est scellée sous une sous-clé HKDF à
 usage unique, tirée d'un sel aléatoire. L'AAD lie l'en-tête et le contexte
 (compte, objet, révision, époque, incarnation…) : un blob déplacé d'un
-compte, d'un objet ou d'une révision à l'autre ne s'ouvre plus.
+compte, d'un objet, d'une révision ou d'une incarnation à l'autre ne
+s'ouvre plus — coffre compris (types 03, 05 et 06).
 
 Sel et nonce peuvent être INJECTÉS, pour les vecteurs de contrat seulement ;
 par défaut, ils viennent toujours d'``os.urandom``.
@@ -416,9 +417,27 @@ def ouvrir_piece(
 # ----------------------------------------------------------------------
 
 
-def _champs_amk_mdp(account_id: str, kdf_version: int, vault_version: int) -> dict:
+# L'incarnation « i » dans l'AAD des types 03, 05 et 06 (Constat 19,
+# 24/09/2026). Après ``reset/complete``, le coffre repart à ``vaultVersion``
+# 1 et l'état de l'appareil, lié à ``(compte, incarnation)``, vide ses
+# planchers : une enveloppe de l'incarnation précédente, rejouée par le VPS à
+# ce moment-là, n'était distinguée de la nouvelle par rien — ni ``w``, ni
+# ``r``, ni un plancher. Les objets portaient déjà ``i`` ; le coffre aussi,
+# désormais. Le paramètre est nommé et SANS défaut : un défaut à 1 aurait
+# refait le trou pour toute incarnation suivante, sans erreur.
+# La porte n'est fermée que si l'appelant passe SON incarnation — celle
+# qu'aucune valeur serveur ne fait reculer — et jamais celle que ``/login``
+# ou ``meta`` annoncent : le VPS qui rejoue le coffre d'avant annonce aussi
+# l'incarnation d'avant, et l'AAD concorde alors (contre-épreuve du
+# 24/09/2026 ; plancher ``incarnation_max`` exigé de l'étape 8, §6 bis).
+
+
+def _champs_amk_mdp(
+    account_id: str, incarnation: int, kdf_version: int, vault_version: int
+) -> dict:
     return {
         "a": _texte(account_id, "accountId"),
+        "i": entier(incarnation, "incarnation"),
         "k": entier(kdf_version, "kdfVersion"),
         "t": "amk",
         "u": "password",
@@ -431,6 +450,7 @@ def envelopper_amk(
     amk: bytes,
     *,
     account_id: str,
+    incarnation: int,
     kdf_version: int,
     vault_version: int,
     sel: bytes | None = None,
@@ -438,7 +458,7 @@ def envelopper_amk(
 ) -> bytes:
     parametres_kdf(kdf_version)
     amk = en_octets(amk, "AMK", LONGUEUR_CLE)
-    champs = _champs_amk_mdp(account_id, kdf_version, vault_version)
+    champs = _champs_amk_mdp(account_id, incarnation, kdf_version, vault_version)
     return _chiffrer(
         TYPE_AMK_MOT_DE_PASSE, kek, encadrer(amk, 0), champs, 0, sel, nonce
     )
@@ -449,6 +469,7 @@ def ouvrir_amk(
     blob: bytes,
     *,
     account_id: str,
+    incarnation: int,
     kdf_version: int,
     vault_version: int,
     plancher_vault_version: int,
@@ -462,7 +483,7 @@ def ouvrir_amk(
     """
     parametres_kdf(kdf_version)
     _plancher_de_version("vaultVersion", vault_version, plancher_vault_version)
-    champs = _champs_amk_mdp(account_id, kdf_version, vault_version)
+    champs = _champs_amk_mdp(account_id, incarnation, kdf_version, vault_version)
     _, cadre = _dechiffrer(TYPE_AMK_MOT_DE_PASSE, kek, blob, champs)
     amk = desencadrer(cadre, 0)
     if len(amk) != LONGUEUR_CLE:
@@ -526,10 +547,11 @@ def ouvrir_nom_appareil(
 
 
 def _champs_trousseau(
-    account_id: str, keyring_version: int, vault_version: int
+    account_id: str, incarnation: int, keyring_version: int, vault_version: int
 ) -> dict:
     return {
         "a": _texte(account_id, "accountId"),
+        "i": entier(incarnation, "incarnation"),
         "r": entier(keyring_version, "keyringVersion"),
         "t": "keyring",
         "v": 1,
@@ -542,13 +564,14 @@ def sceller_trousseau_brut(
     clair: bytes,
     *,
     account_id: str,
+    incarnation: int,
     keyring_version: int,
     vault_version: int,
     sel: bytes | None = None,
     nonce: bytes | None = None,
 ) -> bytes:
     """Le trousseau déjà sérialisé (``trousseau.serialiser``)."""
-    champs = _champs_trousseau(account_id, keyring_version, vault_version)
+    champs = _champs_trousseau(account_id, incarnation, keyring_version, vault_version)
     return _chiffrer(
         TYPE_TROUSSEAU, k_trousseau, encadrer(clair, 0), champs, 0, sel, nonce
     )
@@ -559,6 +582,7 @@ def ouvrir_trousseau_brut(
     blob: bytes,
     *,
     account_id: str,
+    incarnation: int,
     keyring_version: int,
     vault_version: int,
     plancher_keyring_version: int,
@@ -566,7 +590,7 @@ def ouvrir_trousseau_brut(
 ) -> bytes:
     _plancher_de_version("keyringVersion", keyring_version, plancher_keyring_version)
     _plancher_de_version("vaultVersion", vault_version, plancher_vault_version)
-    champs = _champs_trousseau(account_id, keyring_version, vault_version)
+    champs = _champs_trousseau(account_id, incarnation, keyring_version, vault_version)
     _, cadre = _dechiffrer(TYPE_TROUSSEAU, k_trousseau, blob, champs)
     return desencadrer(cadre, 0)
 
@@ -576,7 +600,7 @@ def ouvrir_trousseau_brut(
 # ----------------------------------------------------------------------
 
 
-def info_recuperation(account_id: str, vault_version: int) -> bytes:
+def info_recuperation(account_id: str, incarnation: int, vault_version: int) -> bytes:
     """L'API HPKE n'a pas de paramètre ``aad`` : tout le contexte passe par ``info``.
 
     Publique pour que le générateur de vecteurs écrive CETTE valeur : il la
@@ -585,6 +609,7 @@ def info_recuperation(account_id: str, vault_version: int) -> bytes:
     """
     champs = {
         "a": _texte(account_id, "accountId"),
+        "i": entier(incarnation, "incarnation"),
         "t": "amk",
         "u": "recovery",
         "w": entier(vault_version, "vaultVersion"),
@@ -593,7 +618,12 @@ def info_recuperation(account_id: str, vault_version: int) -> bytes:
 
 
 def sceller_amk_recuperation(
-    cle_publique: bytes, amk: bytes, *, account_id: str, vault_version: int
+    cle_publique: bytes,
+    amk: bytes,
+    *,
+    account_id: str,
+    incarnation: int,
+    vault_version: int,
 ) -> bytes:
     """Scelle vers ``pk_rec`` SANS connaître ``R`` — c'est ce qui permet de
     faire tourner l'AMK alors que ``R`` n'est jamais stockée (§2.2).
@@ -604,7 +634,7 @@ def sceller_amk_recuperation(
     pk = X25519PublicKey.from_public_bytes(
         en_octets(cle_publique, "pk_rec", LONGUEUR_CLE)
     )
-    info = info_recuperation(account_id, vault_version)
+    info = info_recuperation(account_id, incarnation, vault_version)
     amk = en_octets(amk, "AMK", LONGUEUR_CLE)
     return info[:LONGUEUR_EN_TETE_COURT] + SUITE_HPKE.encrypt(amk, pk, info)
 
@@ -614,6 +644,7 @@ def ouvrir_amk_recuperation(
     blob: bytes,
     *,
     account_id: str,
+    incarnation: int,
     vault_version: int,
     plancher_vault_version: int,
 ) -> bytes:
@@ -623,7 +654,7 @@ def ouvrir_amk_recuperation(
         raise EnveloppeIllisible("en-tête de type 06 attendu")
     if len(blob) != LONGUEUR_AMK_SCELLEE:
         raise EnveloppeIllisible("AMK scellée de longueur inattendue")
-    info = info_recuperation(account_id, vault_version)
+    info = info_recuperation(account_id, incarnation, vault_version)
     if blob[:LONGUEUR_EN_TETE_COURT] != info[:LONGUEUR_EN_TETE_COURT]:
         raise EnveloppeIllisible("en-tête modifié")
     try:

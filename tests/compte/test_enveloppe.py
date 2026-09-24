@@ -7,9 +7,11 @@ servir : permuté, retouché, tronqué ou ramené d'une restauration.
 
 from __future__ import annotations
 
+import inspect
 import struct
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from diapason.compte import enveloppe as env
 
@@ -243,7 +245,7 @@ class TestLAmkSousLaKek:
         """§2.5 — type 03 : 66 + 4 + 32 o, et l'AMK revient."""
         amk = bytes([5]) * 32
         blob = env.envelopper_amk(
-            KEK, amk, account_id="acc_1", kdf_version=1, vault_version=3
+            KEK, amk, account_id="acc_1", incarnation=1, kdf_version=1, vault_version=3
         )
         assert len(blob) == 102, "une AMK sous KEK fait 102 o"
         assert (
@@ -251,6 +253,7 @@ class TestLAmkSousLaKek:
                 KEK,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 kdf_version=1,
                 vault_version=3,
                 plancher_vault_version=3,
@@ -262,13 +265,19 @@ class TestLAmkSousLaKek:
         """§4.4 — une restauration du VPS ramène l'enveloppe d'hier avec sa
         vraie vaultVersion ; elle s'ouvrirait avec l'ancien mot de passe."""
         blob = env.envelopper_amk(
-            KEK, bytes(32), account_id="acc_1", kdf_version=1, vault_version=1
+            KEK,
+            bytes(32),
+            account_id="acc_1",
+            incarnation=1,
+            kdf_version=1,
+            vault_version=1,
         )
         with pytest.raises(env.CleServeurPerimee) as exc:
             env.ouvrir_amk(
                 KEK,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 kdf_version=1,
                 vault_version=1,
                 plancher_vault_version=2,
@@ -281,13 +290,19 @@ class TestLAmkSousLaKek:
         qui parle. Essayer d'abord dirait « mot de passe incorrect » à qui
         tape le bon, face à un coffre restauré."""
         blob = env.envelopper_amk(
-            KEK, bytes(32), account_id="acc_1", kdf_version=1, vault_version=1
+            KEK,
+            bytes(32),
+            account_id="acc_1",
+            incarnation=1,
+            kdf_version=1,
+            vault_version=1,
         )
         with pytest.raises(env.CleServeurPerimee):
             env.ouvrir_amk(
                 bytes([9]) * 32,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 kdf_version=1,
                 vault_version=1,
                 plancher_vault_version=2,
@@ -297,13 +312,19 @@ class TestLAmkSousLaKek:
         """§2.5 — ``w`` est dans l'AAD : la même enveloppe présentée comme
         vaultVersion 2 ne s'ouvre pas."""
         blob = env.envelopper_amk(
-            KEK, bytes(32), account_id="acc_1", kdf_version=1, vault_version=1
+            KEK,
+            bytes(32),
+            account_id="acc_1",
+            incarnation=1,
+            kdf_version=1,
+            vault_version=1,
         )
         with pytest.raises(env.EnveloppeIllisible):
             env.ouvrir_amk(
                 KEK,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 kdf_version=1,
                 vault_version=2,
                 plancher_vault_version=2,
@@ -312,18 +333,161 @@ class TestLAmkSousLaKek:
     def test_un_kdf_declasse_est_refuse_a_l_ouverture(self):
         """§4.12 — une enveloppe annoncée sous kdfVersion 0 est refusée."""
         blob = env.envelopper_amk(
-            KEK, bytes(32), account_id="acc_1", kdf_version=1, vault_version=1
+            KEK,
+            bytes(32),
+            account_id="acc_1",
+            incarnation=1,
+            kdf_version=1,
+            vault_version=1,
         )
         with pytest.raises(env.ErreurCompte) as exc:
             env.ouvrir_amk(
                 KEK,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 kdf_version=0,
                 vault_version=1,
                 plancher_vault_version=1,
             )
         assert exc.value.code == "kdfDowngrade", "le code doit être kdfDowngrade"
+
+
+_SK_REC = X25519PrivateKey.from_private_bytes(bytes([7]) * 32)
+K_TROUSSEAU = bytes([6]) * 32
+AMK = bytes([5]) * 32
+
+
+def _sceller_coffre(type_: int, incarnation: int) -> bytes:
+    """Une enveloppe du coffre (03, 05 ou 06) à ``w`` = ``r`` = 1 — l'état
+    exact d'un coffre juste après ``reset/complete``."""
+    if type_ == env.TYPE_AMK_MOT_DE_PASSE:
+        return env.envelopper_amk(
+            KEK,
+            AMK,
+            account_id="acc_1",
+            incarnation=incarnation,
+            kdf_version=1,
+            vault_version=1,
+        )
+    if type_ == env.TYPE_TROUSSEAU:
+        return env.sceller_trousseau_brut(
+            K_TROUSSEAU,
+            b'{"v":1}',
+            account_id="acc_1",
+            incarnation=incarnation,
+            keyring_version=1,
+            vault_version=1,
+        )
+    return env.sceller_amk_recuperation(
+        _SK_REC.public_key().public_bytes_raw(),
+        AMK,
+        account_id="acc_1",
+        incarnation=incarnation,
+        vault_version=1,
+    )
+
+
+def _ouvrir_coffre(type_: int, blob: bytes, incarnation: int) -> bytes:
+    """Planchers à 0 : ceux d'un appareil dont l'état vient d'être vidé."""
+    if type_ == env.TYPE_AMK_MOT_DE_PASSE:
+        return env.ouvrir_amk(
+            KEK,
+            blob,
+            account_id="acc_1",
+            incarnation=incarnation,
+            kdf_version=1,
+            vault_version=1,
+            plancher_vault_version=0,
+        )
+    if type_ == env.TYPE_TROUSSEAU:
+        return env.ouvrir_trousseau_brut(
+            K_TROUSSEAU,
+            blob,
+            account_id="acc_1",
+            incarnation=incarnation,
+            keyring_version=1,
+            vault_version=1,
+            plancher_keyring_version=0,
+            plancher_vault_version=0,
+        )
+    return env.ouvrir_amk_recuperation(
+        _SK_REC,
+        blob,
+        account_id="acc_1",
+        incarnation=incarnation,
+        vault_version=1,
+        plancher_vault_version=0,
+    )
+
+
+_TYPES_DU_COFFRE = [
+    pytest.param(env.TYPE_AMK_MOT_DE_PASSE, id="03-amk-mot-de-passe"),
+    pytest.param(env.TYPE_TROUSSEAU, id="05-trousseau"),
+    pytest.param(env.TYPE_AMK_RECUPERATION, id="06-amk-recuperation"),
+]
+
+
+class TestLIncarnationDuCoffre:
+    @pytest.mark.parametrize("type_", _TYPES_DU_COFFRE)
+    @pytest.mark.parametrize(
+        ("scellee", "ouverte"), [(1, 2), (2, 1)], ids=["1-vers-2", "2-vers-1"]
+    )
+    def test_une_enveloppe_d_une_autre_incarnation_est_refusee(
+        self, type_, scellee, ouverte
+    ):
+        """§2.5 et §6 bis (Constat 19) — après ``reset/complete``, le coffre
+        repart à ``w`` = 1 et l'appareil vide ses planchers : le coffre de
+        l'incarnation précédente, rejoué par le VPS, n'était distingué du
+        nouveau par rien. Même clé, mêmes versions : seul ``i`` le refuse."""
+        blob = _sceller_coffre(type_, scellee)
+        assert _ouvrir_coffre(type_, blob, scellee), (
+            "témoin : l'enveloppe s'ouvre sous sa propre incarnation"
+        )
+        with pytest.raises(env.EnveloppeIllisible):
+            _ouvrir_coffre(type_, blob, ouverte)
+
+    @pytest.mark.parametrize("type_", _TYPES_DU_COFFRE)
+    def test_la_taille_ne_depend_pas_de_l_incarnation(self, type_):
+        """§2.5 — ``i`` est dans l'AAD, pas dans le blob : le VPS, qui
+        vérifie les tailles sans lire l'AAD, n'a rien à changer."""
+        assert len(_sceller_coffre(type_, 1)) == len(_sceller_coffre(type_, 7)), (
+            "une incarnation plus grande ne doit pas allonger l'enveloppe"
+        )
+
+    @pytest.mark.parametrize(
+        "fonction",
+        [
+            env.envelopper_amk,
+            env.ouvrir_amk,
+            env.sceller_trousseau_brut,
+            env.ouvrir_trousseau_brut,
+            env.sceller_amk_recuperation,
+            env.ouvrir_amk_recuperation,
+        ],
+        ids=lambda f: f.__name__,
+    )
+    def test_l_incarnation_est_nommee_et_sans_defaut(self, fonction):
+        """§6 bis (Constat 19) — un défaut à 1 refermerait le trou pour la
+        première incarnation seulement, et le rouvrirait en silence pour
+        toutes les suivantes."""
+        parametre = inspect.signature(fonction).parameters["incarnation"]
+        assert parametre.kind is inspect.Parameter.KEYWORD_ONLY, (
+            f"{fonction.__name__} : incarnation doit être nommée"
+        )
+        assert parametre.default is inspect.Parameter.empty, (
+            f"{fonction.__name__} : incarnation ne doit pas avoir de défaut"
+        )
+
+    def test_info_recuperation_porte_l_incarnation(self):
+        """§2.3 — l'API HPKE n'a pas d'AAD : si ``i`` n'entrait pas dans
+        ``info``, le type 06 resterait rejouable d'une incarnation à l'autre."""
+        assert env.info_recuperation("acc_1", 1, 1) != env.info_recuperation(
+            "acc_1", 2, 1
+        ), "info doit changer avec l'incarnation"
+        assert b'"i":2' in env.info_recuperation("acc_1", 2, 1), (
+            "i figure dans le JSON canonique de info"
+        )
 
 
 class TestLeNomDAppareil:

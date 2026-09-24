@@ -123,13 +123,18 @@ class TestLeScellementHpke:
         pk_rec seule, et seule R, ressaisie, rouvre."""
         pk = rec.cles_recuperation(R).cle_publique
         blob = env.sceller_amk_recuperation(
-            pk, AMK, account_id="acc_1", vault_version=4
+            pk, AMK, account_id="acc_1", incarnation=1, vault_version=4
         )
         assert len(blob) == 86, "§2.5 : 86 o pour une AMK"
         r_ressaisie = rec.lire_cle_recuperation(rec.formater_cle_recuperation(R))
         sk = rec.cles_recuperation(r_ressaisie).cle_privee
         ouverte = env.ouvrir_amk_recuperation(
-            sk, blob, account_id="acc_1", vault_version=4, plancher_vault_version=4
+            sk,
+            blob,
+            account_id="acc_1",
+            incarnation=1,
+            vault_version=4,
+            plancher_vault_version=4,
         )
         assert ouverte == AMK, "R doit rouvrir l'AMK scellée vers pk_rec"
 
@@ -137,7 +142,7 @@ class TestLeScellementHpke:
         """§2.7 — une clé de récupération remplacée ne rouvre plus."""
         pk = rec.cles_recuperation(R).cle_publique
         blob = env.sceller_amk_recuperation(
-            pk, AMK, account_id="acc_1", vault_version=1
+            pk, AMK, account_id="acc_1", incarnation=1, vault_version=1
         )
         autre = rec.cles_recuperation(bytes(16)).cle_privee
         with pytest.raises(env.EnveloppeIllisible):
@@ -145,6 +150,7 @@ class TestLeScellementHpke:
                 autre,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 vault_version=1,
                 plancher_vault_version=1,
             )
@@ -152,16 +158,19 @@ class TestLeScellementHpke:
     @pytest.mark.parametrize(
         "contexte",
         [
-            {"account_id": "acc_2", "vault_version": 1},
-            {"account_id": "acc_1", "vault_version": 2},
+            {"account_id": "acc_2", "incarnation": 1, "vault_version": 1},
+            {"account_id": "acc_1", "incarnation": 1, "vault_version": 2},
+            {"account_id": "acc_1", "incarnation": 2, "vault_version": 1},
         ],
+        ids=["compte", "vaultVersion", "incarnation"],
     )
     def test_le_contexte_passe_par_info(self, contexte):
-        """§2.3 — l'API HPKE n'a pas d'AAD : compte et vaultVersion passent
-        par ``info``, sinon une AMK scellée d'un compte ouvrirait l'autre."""
+        """§2.3 — l'API HPKE n'a pas d'AAD : compte, incarnation et
+        vaultVersion passent par ``info``, sinon une AMK scellée d'un compte
+        ouvrirait l'autre, ou celle d'avant une réinitialisation la suivante."""
         pk = rec.cles_recuperation(R).cle_publique
         blob = env.sceller_amk_recuperation(
-            pk, AMK, account_id="acc_1", vault_version=1
+            pk, AMK, account_id="acc_1", incarnation=1, vault_version=1
         )
         with pytest.raises(env.EnveloppeIllisible):
             env.ouvrir_amk_recuperation(
@@ -176,13 +185,14 @@ class TestLeScellementHpke:
         restauration, donnerait l'ancienne AMK à qui a l'ancienne R."""
         pk = rec.cles_recuperation(R).cle_publique
         blob = env.sceller_amk_recuperation(
-            pk, AMK, account_id="acc_1", vault_version=1
+            pk, AMK, account_id="acc_1", incarnation=1, vault_version=1
         )
         with pytest.raises(env.CleServeurPerimee):
             env.ouvrir_amk_recuperation(
                 rec.cles_recuperation(R).cle_privee,
                 blob,
                 account_id="acc_1",
+                incarnation=1,
                 vault_version=1,
                 plancher_vault_version=2,
             )
@@ -192,7 +202,9 @@ class TestLeScellementHpke:
         """§4.12 — en-tête, enc, chiffré et tag sont tous authentifiés."""
         pk = rec.cles_recuperation(R).cle_publique
         blob = bytearray(
-            env.sceller_amk_recuperation(pk, AMK, account_id="acc_1", vault_version=1)
+            env.sceller_amk_recuperation(
+                pk, AMK, account_id="acc_1", incarnation=1, vault_version=1
+            )
         )
         blob[position] ^= 0x01
         with pytest.raises(env.EnveloppeIllisible):
@@ -200,6 +212,7 @@ class TestLeScellementHpke:
                 rec.cles_recuperation(R).cle_privee,
                 bytes(blob),
                 account_id="acc_1",
+                incarnation=1,
                 vault_version=1,
                 plancher_vault_version=1,
             )

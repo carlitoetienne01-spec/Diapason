@@ -124,6 +124,7 @@ def amk_mdp(account_id: str, vault_version: int = 1) -> bytes:
         os.urandom(32),
         os.urandom(32),
         account_id=account_id,
+        incarnation=1,
         kdf_version=1,
         vault_version=vault_version,
     )
@@ -132,7 +133,11 @@ def amk_mdp(account_id: str, vault_version: int = 1) -> bytes:
 def amk_recup(account_id: str, vault_version: int = 1) -> bytes:
     pk = X25519PrivateKey.generate().public_key().public_bytes_raw()
     return env.sceller_amk_recuperation(
-        pk, os.urandom(32), account_id=account_id, vault_version=vault_version
+        pk,
+        os.urandom(32),
+        account_id=account_id,
+        incarnation=1,
+        vault_version=vault_version,
     )
 
 
@@ -144,6 +149,7 @@ def trousseau(
         os.urandom(32),
         clair,
         account_id=account_id,
+        incarnation=1,
         keyring_version=keyring_version,
         vault_version=vault_version,
     )

@@ -9,6 +9,7 @@ appareil perdu donnait accès aux données présentes ET futures.
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import os
 import re
@@ -22,6 +23,7 @@ from diapason.compte import recuperation as rec
 from diapason.compte import trousseau as tr
 
 COMPTE = "acc_1"
+INCARNATION = 1
 R = bytes(range(16))
 IMAGE = b"\x89PNG" + bytes(range(60)) + bytes(8)
 
@@ -45,6 +47,7 @@ def _coffre_initial() -> tr.Coffre:
     return tr.creer_coffre(
         KEK_ANCIENNE,
         account_id=COMPTE,
+        incarnation=INCARNATION,
         kdf_version=1,
         recovery_public_key=rec.cles_recuperation(R).cle_publique,
     )
@@ -55,6 +58,7 @@ def _tourner(coffre: tr.Coffre, **options) -> tr.Coffre:
         coffre.trousseau,
         kek=options.pop("kek", KEK_NOUVELLE),
         account_id=COMPTE,
+        incarnation=options.pop("incarnation", INCARNATION),
         kdf_version=1,
         vault_version=coffre.vault_version,
         keyring_version=coffre.keyring_version,
@@ -68,6 +72,7 @@ def _ouvrir(kek: bytes, coffre: tr.Coffre, plancher: int):
         enveloppe_amk=coffre.enveloppe_amk,
         enveloppe_trousseau=coffre.enveloppe_trousseau,
         account_id=COMPTE,
+        incarnation=INCARNATION,
         kdf_version=1,
         vault_version=coffre.vault_version,
         keyring_version=coffre.keyring_version,
@@ -104,6 +109,7 @@ class TestLaRotation:
             avant.amk,
             avant.enveloppe_trousseau,
             account_id=COMPTE,
+            incarnation=INCARNATION,
             keyring_version=1,
             vault_version=1,
             plancher_keyring_version=0,
@@ -115,6 +121,7 @@ class TestLaRotation:
                 avant.amk,
                 apres.enveloppe_trousseau,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 keyring_version=apres.keyring_version,
                 vault_version=apres.vault_version,
                 plancher_keyring_version=0,
@@ -206,6 +213,7 @@ class TestLaRotation:
             enveloppe_amk_recuperation=apres.enveloppe_amk_recuperation,
             enveloppe_trousseau=apres.enveloppe_trousseau,
             account_id=COMPTE,
+            incarnation=INCARNATION,
             vault_version=apres.vault_version,
             keyring_version=apres.keyring_version,
             plancher_vault_version=apres.vault_version,
@@ -233,6 +241,7 @@ class TestLaRotation:
                 rec.cles_recuperation(R).cle_privee,
                 apres.enveloppe_amk_recuperation,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 vault_version=apres.vault_version,
                 plancher_vault_version=0,
             )
@@ -258,12 +267,17 @@ class TestLaRecuperationForgee:
         )
         w = honnete.vault_version + 1
         env_06 = env.sceller_amk_recuperation(
-            cr.cle_publique, amk_forgee, account_id=COMPTE, vault_version=w
+            cr.cle_publique,
+            amk_forgee,
+            account_id=COMPTE,
+            incarnation=INCARNATION,
+            vault_version=w,
         )
         env_05 = env.sceller_trousseau_brut(
             cles.cle_trousseau(amk_forgee),
             tr.serialiser(forge),
             account_id=COMPTE,
+            incarnation=INCARNATION,
             keyring_version=w,
             vault_version=w,
         )
@@ -273,6 +287,7 @@ class TestLaRecuperationForgee:
                 enveloppe_amk_recuperation=env_06,
                 enveloppe_trousseau=env_05,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 vault_version=w,
                 keyring_version=w,
                 plancher_vault_version=honnete.vault_version,
@@ -288,12 +303,17 @@ class TestLaRecuperationForgee:
         amk = bytes([0xAA]) * 32
         forge = tr.nouveau_trousseau(None)
         env_06 = env.sceller_amk_recuperation(
-            cr.cle_publique, amk, account_id=COMPTE, vault_version=1
+            cr.cle_publique,
+            amk,
+            account_id=COMPTE,
+            incarnation=INCARNATION,
+            vault_version=1,
         )
         env_05 = env.sceller_trousseau_brut(
             cles.cle_trousseau(amk),
             tr.serialiser(forge),
             account_id=COMPTE,
+            incarnation=INCARNATION,
             keyring_version=1,
             vault_version=1,
         )
@@ -303,6 +323,7 @@ class TestLaRecuperationForgee:
                 enveloppe_amk_recuperation=env_06,
                 enveloppe_trousseau=env_05,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 vault_version=1,
                 keyring_version=1,
                 plancher_vault_version=1,
@@ -320,6 +341,7 @@ class TestLePlancherDuTrousseau:
                 coffre.amk,
                 coffre.enveloppe_trousseau,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 keyring_version=1,
                 vault_version=1,
                 plancher_keyring_version=2,
@@ -337,11 +359,197 @@ class TestLePlancherDuTrousseau:
                 coffre.amk,
                 coffre.enveloppe_trousseau,
                 account_id=COMPTE,
+                incarnation=INCARNATION,
                 keyring_version=1,
                 vault_version=1,
                 plancher_keyring_version=1,
                 plancher_vault_version=2,
             )
+
+
+class TestLaReinitialisation:
+    def test_le_coffre_de_l_incarnation_precedente_est_refuse(self):
+        """§6 bis (Constat 19) — après ``reset/complete``, le coffre neuf
+        repart à ``w`` = ``r`` = 1 et l'appareil, lié à ``(compte,
+        incarnation)``, vide ses planchers. Le VPS rejoue alors le coffre
+        d'avant : mêmes versions, et même KEK si le mot de passe n'a pas
+        changé. Seule l'incarnation dans l'AAD le distingue du nouveau —
+        pourvu que l'appareil passe la SIENNE, jamais celle que le VPS
+        annonce. Chaque enveloppe doit refuser par elle-même : un trousseau
+        qui refuse ne prouve rien de l'AMK qui l'accompagne."""
+        ancien = _coffre_initial()
+        neuf = tr.creer_coffre(
+            KEK_ANCIENNE,
+            account_id=COMPTE,
+            incarnation=INCARNATION + 1,
+            kdf_version=1,
+            recovery_public_key=rec.cles_recuperation(R).cle_publique,
+        )
+        assert (ancien.vault_version, ancien.keyring_version) == (
+            neuf.vault_version,
+            neuf.keyring_version,
+        ), "les deux coffres portent w = r = 1 : les versions ne les séparent pas"
+        contexte = {
+            "account_id": COMPTE,
+            "incarnation": INCARNATION + 1,
+            "kdf_version": 1,
+            "vault_version": 1,
+            "keyring_version": 1,
+            "plancher_vault_version": 0,
+            "plancher_keyring_version": 0,
+        }
+        amk, _ = tr.ouvrir_coffre(
+            KEK_ANCIENNE,
+            enveloppe_amk=neuf.enveloppe_amk,
+            enveloppe_trousseau=neuf.enveloppe_trousseau,
+            **contexte,
+        )
+        assert amk == neuf.amk, "témoin : le coffre neuf s'ouvre"
+        with pytest.raises(env.EnveloppeIllisible):
+            tr.ouvrir_coffre(
+                KEK_ANCIENNE,
+                enveloppe_amk=ancien.enveloppe_amk,
+                enveloppe_trousseau=ancien.enveloppe_trousseau,
+                **contexte,
+            )
+        with pytest.raises(env.EnveloppeIllisible):
+            env.ouvrir_amk(
+                KEK_ANCIENNE,
+                ancien.enveloppe_amk,
+                account_id=COMPTE,
+                incarnation=INCARNATION + 1,
+                kdf_version=1,
+                vault_version=1,
+                plancher_vault_version=0,
+            )
+        with pytest.raises(env.EnveloppeIllisible):
+            tr.ouvrir_trousseau(
+                ancien.amk,
+                ancien.enveloppe_trousseau,
+                **{k: v for k, v in contexte.items() if k != "kdf_version"},
+            )
+
+    def test_la_rotation_garde_l_incarnation_qu_on_lui_donne(self):
+        """§6 bis (Constat 19) — la première rotation après une
+        réinitialisation (changement de mot de passe, appareil déconnecté,
+        D21) scelle sous l'incarnation courante. Scellé sous 1 en dur, le
+        coffre tourné ne s'ouvrirait plus sous la 2 (compte bloqué), ou
+        s'ouvrirait sous la 1 et le rejeu du coffre d'avant serait rouvert,
+        dans les deux cas en silence."""
+        incarnation = INCARNATION + 1
+        neuf = tr.creer_coffre(
+            KEK_ANCIENNE,
+            account_id=COMPTE,
+            incarnation=incarnation,
+            kdf_version=1,
+            recovery_public_key=rec.cles_recuperation(R).cle_publique,
+        )
+        tourne = _tourner(neuf, incarnation=incarnation)
+        assert (tourne.vault_version, tourne.keyring_version) == (2, 2), (
+            "la rotation monte w et r de 1"
+        )
+        contexte = {
+            "account_id": COMPTE,
+            "kdf_version": 1,
+            "vault_version": 2,
+            "keyring_version": 2,
+            "plancher_vault_version": 2,
+            "plancher_keyring_version": 2,
+        }
+        amk, _ = tr.ouvrir_coffre(
+            KEK_NOUVELLE,
+            enveloppe_amk=tourne.enveloppe_amk,
+            enveloppe_trousseau=tourne.enveloppe_trousseau,
+            incarnation=incarnation,
+            **contexte,
+        )
+        assert amk == tourne.amk, "le coffre tourné s'ouvre sous l'incarnation 2"
+        amk_r, _ = tr.ouvrir_coffre_par_recuperation(
+            rec.cles_recuperation(R).cle_privee,
+            enveloppe_amk_recuperation=tourne.enveloppe_amk_recuperation,
+            enveloppe_trousseau=tourne.enveloppe_trousseau,
+            incarnation=incarnation,
+            **{k: v for k, v in contexte.items() if k != "kdf_version"},
+        )
+        assert amk_r == tourne.amk, "R rouvre le coffre tourné sous l'incarnation 2"
+        with pytest.raises(env.EnveloppeIllisible):
+            tr.ouvrir_coffre(
+                KEK_NOUVELLE,
+                enveloppe_amk=tourne.enveloppe_amk,
+                enveloppe_trousseau=tourne.enveloppe_trousseau,
+                incarnation=INCARNATION,
+                **contexte,
+            )
+
+    def test_la_recuperation_de_l_incarnation_precedente_est_refusee(self):
+        """§6 bis (Constat 19) — la même R survit à une réinitialisation
+        qui la garde : l'AMK d'avant, scellée vers elle, ne doit pas se
+        rouvrir sous l'incarnation nouvelle. Le témoin positif d'abord : un
+        refus seul se satisfait aussi d'une R qui n'ouvre plus RIEN après la
+        réinitialisation, et les Réglages afficheraient encore « 1 moyen de
+        secours » (§5, ne jamais faire semblant)."""
+        cle_privee = rec.cles_recuperation(R).cle_privee
+        ancien = _coffre_initial()
+        neuf = tr.creer_coffre(
+            KEK_NOUVELLE,
+            account_id=COMPTE,
+            incarnation=INCARNATION + 1,
+            kdf_version=1,
+            recovery_public_key=rec.cles_recuperation(R).cle_publique,
+        )
+        contexte = {
+            "account_id": COMPTE,
+            "incarnation": INCARNATION + 1,
+            "vault_version": 1,
+            "keyring_version": 1,
+            "plancher_vault_version": 0,
+            "plancher_keyring_version": 0,
+        }
+        amk, _ = tr.ouvrir_coffre_par_recuperation(
+            cle_privee,
+            enveloppe_amk_recuperation=neuf.enveloppe_amk_recuperation,
+            enveloppe_trousseau=neuf.enveloppe_trousseau,
+            **contexte,
+        )
+        assert amk == neuf.amk, "témoin : R rouvre le coffre de l'incarnation 2"
+        with pytest.raises(env.EnveloppeIllisible):
+            tr.ouvrir_coffre_par_recuperation(
+                cle_privee,
+                enveloppe_amk_recuperation=ancien.enveloppe_amk_recuperation,
+                enveloppe_trousseau=ancien.enveloppe_trousseau,
+                **contexte,
+            )
+        with pytest.raises(env.EnveloppeIllisible):
+            env.ouvrir_amk_recuperation(
+                cle_privee,
+                ancien.enveloppe_amk_recuperation,
+                account_id=COMPTE,
+                incarnation=INCARNATION + 1,
+                vault_version=1,
+                plancher_vault_version=0,
+            )
+
+    @pytest.mark.parametrize(
+        "fonction",
+        [
+            tr.creer_coffre,
+            tr.faire_tourner_les_cles,
+            tr.ouvrir_trousseau,
+            tr.ouvrir_coffre,
+            tr.ouvrir_coffre_par_recuperation,
+        ],
+        ids=lambda f: f.__name__,
+    )
+    def test_l_incarnation_est_nommee_et_sans_defaut(self, fonction):
+        """§6 bis (Constat 19) — un défaut à 1 aurait scellé chaque coffre
+        après une réinitialisation sous l'incarnation 1, en silence."""
+        parametre = inspect.signature(fonction).parameters["incarnation"]
+        assert parametre.kind is inspect.Parameter.KEYWORD_ONLY, (
+            f"{fonction.__name__} : incarnation doit être nommée"
+        )
+        assert parametre.default is inspect.Parameter.empty, (
+            f"{fonction.__name__} : incarnation ne doit pas avoir de défaut"
+        )
 
 
 class TestRienNeSImprime:
