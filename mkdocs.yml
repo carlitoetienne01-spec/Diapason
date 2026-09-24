@@ -181,6 +181,7 @@ extra:
 # techniques, eux, restent publiés : ils s'adressent aux contributeurs.
 exclude_docs: |
   api-reference/
+  development/compte-chiffre.md
   development/conversations-sync.md
   development/diagnostic-performances-*.md
   development/discussion-verre-satine.md
