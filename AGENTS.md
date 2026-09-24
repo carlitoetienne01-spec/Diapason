@@ -238,6 +238,7 @@ répond `UNSUPPORTED`, statut accepté.
 | `tests/contract/mesh_api_surface.json` | `scripts/gen_mesh_surface.py` |
 | `tests/contract/succes_api_surface.json` | `scripts/gen_succes_surface.py` |
 | `canonical_vectors.json` (dépôt Succès) | `scripts/gen_canonical_vectors.py` |
+| `tests/contract/vecteurs_compte.json` | `scripts/gen_vecteurs_compte.py` |
 
 Régénère **dans le même commit** que le changement qui l'a causé, jamais
 après. Voir `docs/succes-client-mobile.md`.

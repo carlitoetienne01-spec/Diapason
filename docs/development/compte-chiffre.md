@@ -356,6 +356,30 @@ La version précédente se trompait : le trousseau est **inclus** dans Time Mach
 
 **Redémarrage.** Chez les autres utilisateurs, le serveur meurt avec l'app (`lib.rs:680-688`, `:5770-5774`). Au démarrage suivant, il relit lui-même l'AMK si elle est mémorisée. Sinon, l'état est `locked`.
 
+### 2.11 bis Ce que l'étape 1 a appris (24/09/2026)
+
+La contre-épreuve de l'étape 1 a trouvé et fait corriger un défaut sérieux, et
+laissé trois limites qui relèvent d'étapes suivantes :
+
+- **Corrigé.** `ouvrir_coffre_par_recuperation` acceptait un coffre forgé par
+  l'appareil perdu et un VPS complice : une AMK à eux, et un trousseau dont
+  `recoveryPublicKey` était LEUR clé. La rotation suivante, qui garde la
+  récupération par défaut, leur aurait scellé l'AMK neuve. Un trousseau qui ne
+  nomme pas la clé tirée de `R` est désormais refusé (`serverKeyInvalid`).
+- **Reste, étape 8.** HPKE en mode Base n'authentifie pas l'expéditeur : un
+  appareil perdu peut encore forger un coffre qui porte la VRAIE `pk_rec`,
+  avec des DEK choisies par lui. Après une récupération par `R`, l'appareil
+  **fait tourner les clés avant toute écriture**, et tient l'historique ouvert
+  par ce chemin pour non authentifié.
+- **Reste, étape 10.** Le trousseau garde les anciennes DEK pour lire
+  l'historique : un porteur d'une ancienne DEK peut donc encore faire accepter
+  un objet forgé d'une époque passée. Le moteur de synchronisation met en
+  quarantaine tout blob d'époque inférieure à `keyEpochMax` dont la révision
+  dépasse la révision maximale connue.
+- **Décision à prendre (Carlito).** Le nom d'appareil (type 04) n'a pas de
+  plancher de rembourrage : Padmé seul laisse deviner au VPS l'ordre de
+  grandeur du nom. Un plancher de 64 ou 256 o change le format et les vecteurs.
+
 ### 2.12 Vecteurs de contrat
 
 `scripts/gen_vecteurs_compte.py` produit `tests/contract/vecteurs_compte.json`, régénéré **dans le même commit** que tout changement de format. Il contient :

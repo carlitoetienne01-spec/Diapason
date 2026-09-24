@@ -31,7 +31,12 @@ dependencies = [
     "click>=8",
     # Ed25519 for device identity: the mesh cannot treat its own identity as
     # optional, so this moved out of the `security-signing` extra.
-    "cryptography>=43",
+    # 24/09/2026 : le compte chiffré de bout en bout (src/diapason/compte/)
+    # s'appuie sur Argon2id et HPKE. Le plancher « >=43 » laissait un
+    # `pip install` hors de uv tirer une version qui n'a pas Argon2id ; la
+    # contrainte « >=50.0.0 » plus bas ne vaut que pour uv. 50 est la version
+    # contre laquelle les vecteurs de contrat sont figés.
+    "cryptography>=50",
     "datasets>=4.5.0",
     "ddgs>=9.11.4",
     "httpx>=0.27",

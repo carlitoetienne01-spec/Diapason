@@ -21,3 +21,9 @@ paths = [
   '''(^|/)scratch/''',
   '''^src/diapason/server/static/''',
 ]
+
+[[allowlists]]
+description = "Vecteurs de contrat du compte chiffré : clés de TEST dérivées de graines fixes par scripts/gen_vecteurs_compte.py, aucun secret réel. Leur entropie (3,75 à 3,95) déclencherait la règle generic-api-key sur une vingtaine de lignes."
+paths = [
+  '''^tests/contract/vecteurs_compte\.json$''',
+]
