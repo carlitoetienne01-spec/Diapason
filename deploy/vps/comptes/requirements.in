@@ -1,0 +1,48 @@
+# Dépendances du service de comptes sur le VPS (src/diapason_comptes/).
+# Conception : docs/development/compte-chiffre.md §3.1, §3.9 et D19.
+#
+# Compiler (Python 3.12.3 du VPS, x86_64, glibc 2.39 d'Ubuntu 24.04) :
+#   uv pip compile deploy/vps/comptes/requirements.in \
+#     --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --generate-hashes -o deploy/vps/comptes/requirements.txt
+# Installer (deployer-comptes.sh, étape 7) :
+#   pip install --require-hashes -r deploy/vps/comptes/requirements.txt
+#
+# Les versions sont celles contre lesquelles tests/diapason_comptes/ passe
+# dans le venv du dépôt : une version différente sur le VPS serait un
+# service que personne n'a testé.
+
+# D19 (décision par défaut du 24/09/2026) : cryptography gardé sur le VPS,
+# pour AES-256-GCM au repos SEULEMENT, épinglé par empreinte dans
+# requirements.txt. 50.0.0 est la version contre laquelle les vecteurs du
+# client sont figés (tests/contract/vecteurs_compte.json).
+cryptography==50.0.0
+
+fastapi==0.136.3
+starlette==1.6.0
+
+# Sans l'extra [standard] : uvloop, httptools et watchfiles apporteraient
+# trois roues compilées de plus à croire, pour un service à 10 requêtes par
+# minute derrière nginx.
+uvicorn==0.52.1
+
+# anyio est importé DIRECTEMENT par routes_synchro (anyio.from_thread) depuis
+# l'étape 5 : le laisser parmi les transitives, c'était laisser une mise à
+# jour de starlette l'emporter sans que personne ne voie qu'on en dépend.
+anyio==4.14.2
+
+# Dépendances transitives, épinglées elles aussi sur le venv du dépôt :
+# laissées libres, uv choisissait pydantic 2.13.5 et anyio 4.15.1 quand les
+# tests tournaient sous 2.13.4 et 4.14.2 (relevé du 24/09/2026). Monter
+# l'une d'elles se fait ici ET dans le venv, dans le même commit.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+cffi==2.1.1
+click==8.4.2
+h11==0.16.0
+idna==3.18
+pycparser==3.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+typing-extensions==4.16.0
+typing-inspection==0.4.4

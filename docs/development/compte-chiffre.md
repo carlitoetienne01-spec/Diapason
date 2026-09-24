@@ -1507,6 +1507,129 @@ La matrice `test-windows` exécute `tests/compte/` et `tests/diapason_comptes/`.
 
 ---
 
+## 6 bis. Écarts de l'implémentation, étapes 4 à 6 (24/09/2026)
+
+Les étapes 4 à 6 ont été écrites puis réfutées par des contre-épreuves
+(sécurité, vérité des tests, exploitation, honnêteté). Ce qui suit est ce que le
+code fait et que les §2, §3 et §5 ne disaient pas, ou disaient autrement. **Le
+code et ses tests font foi sur ces points** ; le reste du document est inchangé.
+
+**Identité et secrets du serveur (§2.2, §3.2, §3.3)**
+
+- `kdfSalt = HMAC(GRAINE_SEL, "sel\0" ‖ E)`, sans passer par le poivre : le poivre
+  tourne (§3.2), et la formule d'origine aurait changé le sel des adresses
+  inconnues pendant que celui des comptes restait fixe. Le client ne voit qu'un
+  sel opaque.
+- `sel_kdf` est scellé sous `CLE_REPOS` (AAD `accountId|sel_kdf`), et
+  `login/params` ne le lit plus : une base volée, croisée avec la route publique,
+  livrait sinon la liste des adresses inscrites.
+- Chaque valeur poivrée ou sur-chiffrée porte en tête un octet de version de
+  secret. `secrets_version` vaut la plus vieille version encore nécessaire :
+  `verif_recup` ne se réécrit qu'à `recovery/unwrap`, donc un vieux poivre ne se
+  retire pas tant qu'un compte garde une clé de récupération inutilisée depuis
+  la rotation.
+- Le `signupToken` transporte l'adresse scellée sous `CLE_REPOS` : le schéma n'a
+  aucune colonne pour la garder entre `verify` et `complete`.
+
+**Journal et restauration (§3.3, §3.6, §3.10)**
+
+- Types d'entrée ajoutés : `accountCreated`, `resetScheduled`, `resetCancelled`,
+  `entryAborted`. Chaque entrée porte un `id` unique. Le rejeu se décide sur
+  `(incarnation, vaultVersion)`, pas sur l'heure, et il est idempotent. Sans
+  `resetScheduled`/`resetCancelled`, une restauration ressuscitait une
+  réinitialisation annulée (constat de la contre-épreuve).
+- Après une suppression de compte, le journal ne garde que la trace de
+  suppression sous l'index HMAC — ni adresse chiffrée ni enveloppes.
+- Après une restauration logique, `serverSeq` revient à celui de la copie mais
+  `globalSeq` ne recule pas : **le client compare `generation` avant
+  `serverSeq` et son curseur**, sinon une restauration se lit comme
+  `serverRolledBack`.
+
+**Sessions et coffre (§3.4, §3.7)**
+
+- `vault/commit` révoque TOUTES les sessions, la courante comprise, et la
+  réponse en porte une neuve.
+- Un jeton de récupération (10 min) ne survit plus au retrait ou au
+  remplacement de la clé, ni à `reset/complete` : il permettait de reprendre le
+  compte pendant dix minutes (constat de la contre-épreuve).
+- `401 accountDeleted` n'est jamais émis : un jeton inconnu vaut
+  `sessionRevoked`, qui déclenche le même effacement côté appareil. Les sessions
+  expirées ne sont purgées qu'après 30 jours de grâce, pour qu'un appareil revenu
+  le lendemain lise `sessionExpired` et non `sessionRevoked`.
+- 50 sessions au plus par compte.
+
+**Courriels et limites (§3.5, D12)**
+
+- « Compte existant » compte comme un code (plafonds 1/min et 3/h). Les avis de
+  sécurité ont un plafond de 10 par jour et par adresse, sur un compteur séparé ;
+  « nouvelle connexion » ne peut prendre que la moitié du budget réservé.
+  **Risque résiduel** : plusieurs comptes qui bouclent sur `vault/commit`
+  peuvent encore épuiser l'autre moitié.
+- « Connexions bloquées » ne part plus vers une adresse sans compte en affirmant
+  « votre compte Diapason ».
+- La garde 507 s'applique à `signup/complete` et `PUT /sessions/current`, pas à
+  `vault/commit`, `reset/complete` ni `account/delete` : refuser la révocation
+  d'un appareil perdu faute de place serait pire.
+- Variables d'environnement sans valeur par défaut inventée :
+  `COMPTES_BUDGET_CODES_JOUR`, `COMPTES_BUDGET_SECURITE_JOUR` (D12),
+  `COURRIEL_REPONSE` (D17), `COMPTES_ORIGINE_PUBLIQUE` (D3). Le service refuse de
+  démarrer sans elles. `INSCRIPTIONS_OUVERTES` vaut 0 par défaut.
+
+**Synchronisation et pièces (§3.4, §4)**
+
+- Codes : `deferred` (à renvoyer), `serverBusy` (503, `retryAfterS`),
+  `serverBehind` (409, remettre le curseur à zéro), `invalidEnvelope`,
+  `objectTooLarge`, `507 quotaExceeded`. Résultats par objet de la forme
+  `{status: …}`. `meta` accompagne toute réponse authentifiée de `/sync/*`,
+  refus compris ; seuls le 401 et le 503 s'en passent. Le client reprend à
+  `until`, pas au seq du dernier élément, et tire jusqu'à `until` avant tout
+  `DELETE /pieces`.
+- Le quota ne refuse que ce qui fait grossir la version courante : une tombale
+  passe au-delà du quota (constat : elle était refusée, et une suppression
+  devenait impossible au quota). Le dépassement est borné à deux fois la plus
+  grande version courante de chaque objet.
+- `PUT` d'une pièce existante rend 200 ; celui d'une orpheline purgée dans la
+  même transaction rend 201 (il rendait 200 « déjà là » sur une pièce effacée).
+- La base restaurée par `diapason-comptes-admin` est créée en 0600 (elle
+  naissait en 0644 : `UMask=0077` ne vaut que pour l'unité systemd).
+
+**Pages légales (§5, §3.9, §3.12)**
+
+- D11 vaut pour TOUT `zz-diapason.conf`, le bloc 443 du site statique compris :
+  il enregistre aujourd'hui l'IP des visiteurs, et la page ne peut pas dire le
+  contraire tant que l'étape 7 ne l'a pas changé.
+- La phrase du §3.12 « `local_only` bloque toute sortie, sauf l'envoi de données
+  déjà chiffrées » est fausse : les mises à jour, le premier téléchargement du
+  modèle, la recherche YouTube, l'adresse, `authKey` et les codes du compte
+  sortent aussi. Les pages ne la portent pas.
+- Les pages refusent de se générer tant que manquent : l'hébergeur et son lieu
+  (D3), les sauvegardes, la copie hors du VPS (D18), l'adresse de contact (D17),
+  la conservation et le suivi chez Resend (D12). Elles refusent de se publier
+  tant que le site charge une police ou un script distant (Google Fonts,
+  jsDelivr, Mermaid).
+
+**Décidé par la session principale**
+
+- **Constat 19 — l'incarnation entre dans l'AAD des types 03, 05 et 06.** Après
+  `reset/complete`, le coffre repart à `vaultVersion = 1`, et l'état de
+  l'appareil, lié à `(compte, incarnation)`, vide ses planchers : une enveloppe
+  de l'incarnation précédente, rejouée par le VPS à ce moment-là, n'était
+  distinguée de la nouvelle par rien. Les objets portaient déjà `i` ; le coffre
+  aussi, désormais. Changer le format est gratuit tant qu'aucun compte n'existe,
+  et ne le sera plus ensuite. **À faire avant l'étape 8**, avec les vecteurs
+  régénérés dans le même commit — pas encore fait au moment où ces lignes sont
+  écrites.
+
+**Reste ouvert**
+
+- `compte_api_surface.json` ne fige que méthodes et chemins, pas les champs des
+  réponses : un champ en snake_case glisserait sans que le contrat le voie.
+- `deploy/vps/comptes/requirements.txt` n'est audité par rien (`uv audit` ne lit
+  que `uv.lock`).
+- Aucun outil n'exporte ni ne supprime un compte sur demande de son titulaire :
+  les droits d'accès et d'effacement se traitent à la main tant qu'il n'existe
+  pas.
+
 ## 7. Décisions qui appartiennent à Carlito
 
 Le champ `decisionsPourCarlito` porte la liste complète, avec une recommandation pour chacune. Voici celles qui bloquent :
