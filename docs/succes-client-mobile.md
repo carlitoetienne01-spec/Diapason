@@ -8,7 +8,7 @@ Ce ne sont pas pour autant deux projets voisins : c'est un cerveau et un
 corps. Ce document dit où passe la frontière et ce qui la garde.
 
 ```
-Diapason (ce dépôt)                    Succès (~/Desktop/Porfolio/Succes)
+Diapason (ce dépôt)                    Diapason mobile (~/Projets/diapason_mobile)
 ├── src/diapason/succes/    8 602 l.   ├── lib/            23 028 l. Dart
 │   ├── store, workspace              │   ├── services/mesh/
 │   ├── continuity, finances          │   └── screens/
@@ -31,8 +31,8 @@ l'implémentation Python réelle.
 .venv/bin/python scripts/gen_canonical_vectors.py
 ```
 
-Écrit dans `~/Desktop/Porfolio/Succes/test/mesh/canonical_vectors.json`, à
-commiter **dans le dépôt Succès**.
+Écrit dans `~/Projets/diapason_mobile/test/mesh/canonical_vectors.json`, à
+commiter **dans le dépôt diapason_mobile**.
 
 ### 2. Les 73 routes `/v1/succes`
 
@@ -51,13 +51,16 @@ se manifester au téléphone, loin du commit qui l'a causée.
 
 | Le test échoue quand… | Ce qu'il faut faire |
 |---|---|
-| `canonical_bytes` a changé sans régénération | relancer `gen_canonical_vectors.py`, commiter côté Succès |
+| `canonical_bytes` a changé sans régénération | relancer `gen_canonical_vectors.py`, commiter côté diapason_mobile |
 | une route `/v1/succes` disparaît ou est renommée | régénérer l'instantané **dans le même commit**, et prévoir la version mobile qui cessera de fonctionner |
 | une route neuve n'est pas dans l'instantané | régénérer — ajouter est inoffensif, mais l'instantané doit rester un miroir exact |
 
-Les tests de vecteurs se **sautent** proprement quand le dépôt Succès est
-absent (machine de CI, clone de Diapason seul) : leur silence est alors
-l'absence d'une vérification, pas un succès.
+Les tests de vecteurs **échouent** quand le dépôt mobile est absent de
+`~/Projets/diapason_mobile`, et ne se **sautent** que si la variable
+d'environnement `CI` est posée (le runner Windows `pc-bureau` n'a que
+Diapason). Avant le 25/09/2026 ils se sautaient partout : le déménagement du
+dépôt depuis `~/Desktop/Porfolio/Succes` les avait rendus muets sans que
+rien ne le dise.
 
 ## Faire évoluer les deux ensemble
 

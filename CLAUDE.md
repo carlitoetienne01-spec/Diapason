@@ -24,11 +24,11 @@ souhaité. Le serveur FastAPI écoute **127.0.0.1** et vit comme agent launchd
 (`com.diapason.serve`).
 
 ```
-Diapason (ce dépôt)                    Succès (~/Desktop/Porfolio/Succes)
+Diapason (ce dépôt)                    Diapason mobile (~/Projets/diapason_mobile)
 ├── src/diapason/     Python 3.13      └── lib/   Dart/Flutter, client mobile
 │   ├── mesh/         maillage d'appareils           (Android construit,
-│   ├── server/       FastAPI                         iOS à moitié préparé,
-│   ├── desktop/      macOS : Vision, OCR, gestes     le reste : squelettes)
+│   ├── server/       FastAPI                         iOS à moitié préparé ;
+│   ├── desktop/      macOS : Vision, OCR, gestes     ex-« Succès »)
 │   ├── speech/       Whisper, Kokoro, claps
 │   ├── succes/       73 routes métier
 │   └── tools/        ~100 outils
@@ -216,7 +216,7 @@ Python et en TypeScript, toute mutation date son écriture) dans
 
 ## 4. Ce qui casse le client mobile — à ne pas enfreindre
 
-Le Dart de *Succès* réimplémente l'encodage canonique et n'applique qu'un
+Le Dart de *Diapason mobile* réimplémente l'encodage canonique et n'applique qu'un
 contrôle sur onze. Trois règles ne se négocient pas :
 
 1. **Aucun flottant dans une enveloppe signée.** Python écrit `1e-07`, Dart
@@ -237,7 +237,7 @@ répond `UNSUPPORTED`, statut accepté.
 |---|---|
 | `tests/contract/mesh_api_surface.json` | `scripts/gen_mesh_surface.py` |
 | `tests/contract/succes_api_surface.json` | `scripts/gen_succes_surface.py` |
-| `canonical_vectors.json` (dépôt Succès) | `scripts/gen_canonical_vectors.py` |
+| `canonical_vectors.json` (dépôt `diapason_mobile`) | `scripts/gen_canonical_vectors.py` |
 | `tests/contract/vecteurs_compte.json` | `scripts/gen_vecteurs_compte.py` |
 | `tests/contract/compte_api_surface.json` | `scripts/gen_compte_surface.py` |
 

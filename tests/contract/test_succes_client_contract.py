@@ -1,4 +1,4 @@
-"""Le contrat entre Diapason et son client mobile Succès.
+"""Le contrat entre Diapason et son client mobile (diapason_mobile, ex-Succès).
 
 Les deux vivent dans des dépôts séparés — Succès doit rester présentable
 seul — et communiquent par deux surfaces : l'encodage canonique du maillage
@@ -15,17 +15,19 @@ tests échouent DU CÔTÉ où le changement est fait.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import pytest
 
 from diapason.mesh.identity import canonical_bytes
 
-# Le dépôt Flutter, à côté. Absent sur une machine de CI ou chez quelqu'un
-# qui n'a que Diapason : les tests concernés se sautent alors proprement,
-# plutôt que d'échouer pour une raison qui n'est pas un défaut.
-SUCCES = pathlib.Path.home() / "Desktop/Porfolio/Succes"
-VECTEURS = SUCCES / "test/mesh/canonical_vectors.json"
+# Le dépôt Flutter, à côté. Déménagé de ~/Desktop/Porfolio/Succes le
+# 25/09/2026 : l'ancien chemin a fait SAUTER ces tests en silence dès le
+# déménagement — le cliquet se taisait exactement quand plus rien ne le
+# vérifiait. Hors CI, son absence est donc un ÉCHEC (voir _vecteurs).
+MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+VECTEURS = MOBILE / "test/mesh/canonical_vectors.json"
 
 
 def _lisible(chemin: pathlib.Path) -> bool:
@@ -45,13 +47,31 @@ def _lisible(chemin: pathlib.Path) -> bool:
     return True
 
 
-besoin_du_flutter = pytest.mark.skipif(
-    not _lisible(VECTEURS),
-    reason=(
-        "dépôt Succès absent ou illisible (autorisation macOS) — contrat "
-        "vérifié là où les deux coexistent ET sont lisibles"
-    ),
-)
+def _en_ci() -> bool:
+    return os.environ.get("CI", "").strip().lower() not in ("", "0", "false")
+
+
+def _vecteurs() -> pathlib.Path:
+    """Le fichier de vecteurs du dépôt mobile — ou un échec qui le dit.
+
+    Seule la CI a le droit de s'en passer : le runner Windows pc-bureau n'a
+    que Diapason. Partout ailleurs, un dépôt mobile absent ou illisible
+    veut dire que le chemin ci-dessus est faux, et un saut maquillerait
+    cette panne en « contrat respecté ».
+    """
+    if _lisible(VECTEURS):
+        return VECTEURS
+    if _en_ci():
+        pytest.skip(
+            f"{VECTEURS} absent du runner de CI — contrat vérifié là où les "
+            "deux dépôts coexistent"
+        )
+    pytest.fail(
+        f"{VECTEURS} introuvable ou illisible. Le dépôt mobile doit vivre dans "
+        f"{MOBILE} (clone-le, ou corrige MOBILE ici et dans "
+        "scripts/gen_canonical_vectors.py s'il a déménagé). Hors CI, son "
+        "absence n'est pas un saut : c'est le contrat qui n'est plus vérifié."
+    )
 
 
 class TestLEncodageCanoniqueNeDerivePas:
@@ -64,9 +84,8 @@ class TestLEncodageCanoniqueNeDerivePas:
     qu'aucun message n'explique pourquoi.
     """
 
-    @besoin_du_flutter
     def test_les_vecteurs_livres_correspondent_a_l_implementation(self):
-        livres = json.loads(VECTEURS.read_text(encoding="utf-8"))
+        livres = json.loads(_vecteurs().read_text(encoding="utf-8"))
         assert livres, "le fichier de vecteurs est vide"
 
         derives = [
@@ -78,16 +97,15 @@ class TestLEncodageCanoniqueNeDerivePas:
             f"{len(derives)} vecteur(s) périmé(s) — canonical_bytes a changé "
             "sans régénération. Lance :\n"
             "  .venv/bin/python scripts/gen_canonical_vectors.py\n"
-            "puis commite le fichier dans le dépôt Succès.\n"
+            "puis commite le fichier dans le dépôt diapason_mobile.\n"
             f"Premier écart : {derives[0]['payload']}"
         )
 
-    @besoin_du_flutter
     def test_le_jeu_couvre_les_pieges_connus(self):
         """Un vecteur ne protège que ce qu'il exerce. Ces quatre-là sont les
         écarts d'encodage qui cassent une signature sans rien dire."""
         payloads = [
-            v["payload"] for v in json.loads(VECTEURS.read_text(encoding="utf-8"))
+            v["payload"] for v in json.loads(_vecteurs().read_text(encoding="utf-8"))
         ]
         texte = json.dumps(payloads, ensure_ascii=False)
 

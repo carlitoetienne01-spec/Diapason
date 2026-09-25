@@ -46,7 +46,7 @@ out = [
 path = pathlib.Path(
     sys.argv[1]
     if len(sys.argv) > 1
-    else "~/Desktop/Porfolio/Succes/test/mesh/canonical_vectors.json"
+    else "~/Projets/diapason_mobile/test/mesh/canonical_vectors.json"
 ).expanduser()
 path.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
 print(f"{len(out)} vecteurs ecrits depuis l'implementation Python reelle")

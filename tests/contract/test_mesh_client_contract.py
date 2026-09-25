@@ -1,6 +1,6 @@
 """Les routes du maillage sont un contrat avec un dépôt qu'on ne compile pas.
 
-Spatial Mesh, 25 août 2026. Le client Flutter (~/Desktop/Porfolio/Succes)
+Spatial Mesh, 25 août 2026. Le client Flutter (~/Projets/diapason_mobile)
 écrit quatre URL EN DUR dans ``mesh_api.dart`` et ne détient aucune clé
 d'API : ces quatre routes sont sa seule porte. Or elles n'étaient figées
 par aucun instantané — le cliquet existant surveille ``/v1/succes``, que le
