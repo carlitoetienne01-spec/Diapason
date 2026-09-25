@@ -190,6 +190,7 @@ exclude_docs: |
   development/compte-chiffre.md
   development/conversations-sync.md
   development/diagnostic-performances-*.md
+  development/diapason-mobile.md
   development/discussion-verre-satine.md
   development/mesures-performances-*.json
   development/mini-panneau-responsive.md
