@@ -32,3 +32,20 @@ def _isolate_traces_db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(_config, "load_config", _patched_load_config)
     return db_path
+
+
+@pytest.fixture(autouse=True)
+def _isoler_le_foyer(tmp_path, monkeypatch):
+    """Aucun test serveur n'ouvre le VRAI ``~/.diapason``.
+
+    Constaté le 26/09/2026 par une contre-épreuve lancée avec un HOME
+    factice : ``_isolate_traces_db`` ne couvre que ``load_config``, or un
+    test qui passe un ``DiapasonConfig()`` direct à ``create_app`` le
+    contourne. Deux tests (le micro de la boucle locale dans
+    test_passerelle_tailnet.py, le chat 404 de test_app_lan.py) créaient
+    ainsi ``traces.db``, ``digest.db``, ``mesh.db`` et l'identité du
+    maillage dans le foyer réel — et le vrai ``mesh.db`` de Carlito porte
+    depuis les deux tables de session que seule la branche chantier/phase2
+    déclare. Un test qui pose son propre ``DIAPASON_HOME`` le remplace.
+    """
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "foyer-de-test"))

@@ -380,7 +380,7 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 *Risque silencieux :* un `tailscale serve 8000` lancé « pour essayer » exposerait toute l'API locale. Le téléphone y arriverait de 127.0.0.1 et hériterait du pilotage du Mac (`routes.py:260`).
 *Preuve :* en données mobiles, `http://<nom>:8001/` rend un 404 JSON, et `tailscale funnel status` est vide.
 
-**1. « Rien ne représentait une session d'appareil ».** On crée `mesh/sessions.py` (en anglais, comme le reste de `mesh/`) et, dans le `_SCHEMA` de `DeviceRegistry`, deux tables :
+~~**1. « Rien ne représentait une session d'appareil ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `7b96aaf` ; tests renforcés par `09be227` après contre-épreuve), avec `tests/mesh/test_sessions.py`. Deux ajouts au plan : `revoke()` efface aussi les sessions et tickets de l'appareil, dans la même transaction (la jointure sur `TRUSTED` reste le vrai verrou, et un test l'éprouve sans passer par `revoke()`) ; `close_device_sessions()` et `list_sessions()` existent déjà pour l'étape 9, qui n'aura plus qu'à les exposer. La dernière activité (`last_used_at_ms`) n'est réécrite qu'une fois par minute, pour ne pas faire de chaque GET une écriture sur `mesh.db`.* On crée `mesh/sessions.py` (en anglais, comme le reste de `mesh/`) et, dans le `_SCHEMA` de `DeviceRegistry`, deux tables :
 - `mesh_sessions` : `session_hash` sha256, `device_id` avec `REFERENCES mesh_devices ON DELETE CASCADE`, et des dates en millisecondes entières ;
 - `mesh_session_tickets` : à usage unique, valables 60 s, avec la garde `UPDATE … WHERE redeemed IS NULL`.
 
@@ -388,11 +388,13 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 *Risque silencieux :* un cache de validité rendrait une révocation sans effet. Oublier `PRAGMA foreign_keys=ON` laisserait des sessions orphelines, qu'un réappairage sous le même identifiant retrouverait.
 *Preuve :* la session est refusée juste après `revoke()` ; `forget()` efface ses lignes ; le jeton en clair est introuvable dans la base ; deux échanges concurrents du même ticket ne donnent qu'un seul gagnant.
 
-**2. « Aucune enveloppe ne permettait d'ouvrir une session ».** C'est un type d'enveloppe distinct de celui des commandes : `purpose: "webview-session"`, `audience` = identifiant du Mac, validité de 60 s au plus, nonce consommé dans `mesh_nonces`, et seulement des entiers et des chaînes. On ajoute un vecteur à `scripts/gen_canonical_vectors.py` et on régénère `diapason_mobile/test/mesh/canonical_vectors.json` en même temps, dans les deux dépôts.
+**2. « Aucune enveloppe ne permettait d'ouvrir une session ».** *~~Côté Python, commité le 26/09/2026 (branche `chantier/phase2`, `4017bbe` ; la forme exacte — une clé en trop refusée — éprouvée par `09be227`) : `build_session_request` et `verify_session_request` dans `mesh/sessions.py`, avec `tests/mesh/test_session_request.py`. Champs signés, dans cet ordre de liste : `version` (propre à cette enveloppe, `SESSION_REQUEST_VERSION = 1`), `purpose`, `ownerId`, `deviceId`, `audience`, `issuedAtMs`, `expiresAtMs`, `nonce` ; l'ensemble des clés doit être exactement celui-là plus `signature`.~~ **Reste pour la partie mobile : le vecteur de `scripts/gen_canonical_vectors.py`**, qui vient avec le Dart, dans le même commit, sinon le test de contrat contre `diapason_mobile` casserait. `POST /v1/appareil/session` (étape 3) lit cette enveloppe depuis `c838184`.* C'est un type d'enveloppe distinct de celui des commandes : `purpose: "webview-session"`, `audience` = identifiant du Mac, validité de 60 s au plus, nonce consommé dans `mesh_nonces`, et seulement des entiers et des chaînes. On ajoute un vecteur à `scripts/gen_canonical_vectors.py` et on régénère `diapason_mobile/test/mesh/canonical_vectors.json` en même temps, dans les deux dépôts.
 *Risque silencieux :* un flottant rend toutes les signatures invalides (`1e-07` contre `1e-7`). Réutiliser l'enveloppe des commandes ferait accepter un ordre comme une ouverture de session.
 *Preuve :* sont refusés le rejeu, une audience étrangère, un appareil révoqué, une expiration trop lointaine et un flottant. `git diff` ne touche aucune des quatre constantes du §4.
 
-**3. « Une requête venue du tailnet aurait hérité des droits de la boucle locale ».** Nouveau fichier `server/passerelle_tailnet.py`, qui enveloppe l'app principale sans toucher `app.py`.
+~~**3. « Une requête venue du tailnet aurait hérité des droits de la boucle locale ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `c838184`) : `server/passerelle_tailnet.py`, le classement dans `server/portee_tailnet.py`, l'instantané `tests/contract/tailnet_portee.json` (410 clés alors ; 412 depuis l'étape 9 et la contre-épreuve : 12 ouvertes, 171 sous session, 229 refusées) et son générateur `scripts/gen_tailnet_portee.py`. Écarts au plan : la voix (`/v1/voice/*`) est REFUSÉE, pas sous session — §78 exige sa coupure automatique avant de l'ouvrir au téléphone (phase 4) ; l'alias `/v1/succes` et la synchronisation `/v1/vie/sync/*` sont refusés ; le marquage vaut aussi pour les portes sans session (`diapason.tailnet`, `client = tailnet`), et `_host_actions_allowed` refuse sur ce marqueur, avant même `allow_remote`. L'Origin est comparée à `https://<Host>` ET à `[tailnet] adresse` : si `tailscale serve` réécrit Host (non vérifié), l'adresse posée suffit. Une origine `null` n'est admise que sur `/v1/appareil/ouvrir` (loadRequest d'Android). Le jeton de session est retiré du `Cookie` transmis à l'application, comme `X-Forwarded-*` et `Tailscale-*`. La clé `[tailnet] adresse` (étape 9) est introduite ici, puisque la passerelle la lit la première.*
+
+*Corrigé après contre-épreuve (26/09/2026) — **le refus des routes de l'écran était décoratif** : la Discussion, ouverte au téléphone, portait `screen_read_text`, `screen_describe`, `screen_snap` et `clipboard_read` sans confirmation, plus `open_anything`, `app_install`, `file_trash`, `mail_send`… sous une cloche que le téléphone peut approuver lui-même (`566381d`). Le plafond descend jusqu'à l'exécuteur d'outils : `core/origine_telephone.py`, une variable de contexte que SEULE la passerelle pose, et `OUTILS_DU_TELEPHONE`, liste d'autorisation de 16 outils de données (heure, calcul, agenda en lecture, les 7 outils de vie, mémoire, profil, savoir, web). `ToolExecutor.execute` refuse le reste (et publie `CAPABILITY_DENIED`, capacité « tailnet »), l'enveloppe de chaque `BaseTool` aussi. Le chat du téléphone ne reçoit ni les schémas refusés, ni le cliché du bureau (onglet et fenêtre au premier plan du Mac), ni la page ouverte dans Diapason, ni la main du mode gestes. Douze routes qui créent, modifient ou lancent un agent sont refusées (un agent tourne ensuite dans un `threading.Thread` ou au battement suivant, hors du plafond). Les tests des défenses de la passerelle ont été renforcés (`1a52f23`) : onze mutants survivaient.* Nouveau fichier `server/passerelle_tailnet.py`, qui enveloppe l'app principale sans toucher `app.py`.
 - **Portes sans session :** `/health`, les 9 portes LAN, `POST /v1/appareil/session` et `POST /v1/appareil/ouvrir`. Cette dernière pose le cookie `diapason_appareil` (`HttpOnly; Secure; SameSite=Strict`, 12 h), puis répond 303.
 - **Tout le reste exige le cookie.** Une clé locale reçue ici est refusée.
 - **Marquage.** La passerelle pose `scope['diapason.appareil']`, remplace `client` par `appareil:<id>` et force `scheme='https'`.
@@ -412,7 +414,9 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 - 8000 garde `microphone=()` ;
 - la suite existante passe inchangée.
 
-**4. « Le serveur n'avait que deux sockets ».** `diapason serve --tailnet-port 8002` et `serve-service install --tailnet` :
+~~**4. « Le serveur n'avait que deux sockets ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `ff80768`). `_servir_deux_sockets` devient `_servir_les_sockets(prises)` ; `_prises()` construit la liste, et la prise du tailnet n'a AUCUNE option d'hôte (`_HOTE_DU_TAILNET = "127.0.0.1"`). `--tailnet-port` refuse aussi le `--lan-port` par défaut (8001) même sans `--lan-host`. Banc réel du 26/09/2026 (`serve --port 18410 --lan-host 127.0.0.1 --lan-port 18411 --tailnet-port 18412`, foyer de test, moteur factice) : `lsof` montre les trois sockets sur 127.0.0.1 ; une seule tâche de battement du maillage et une seule du compte ; jumelage par le socket tailnet (`join_fleet`), session ouverte (303, cookie `HttpOnly; Max-Age=43200; Path=/; SameSite=strict; Secure`), `/v1/models` 401 / 401 avec la clé / 200 avec le cookie, `POST /v1/mesh/pairings` 403, `/v1/voice/live` refusée à la poignée de main (HTTP 403, le 1008 d'avant l'accept), `action_mode=auto` → `lightning: null` ; une commande `notifications.show` livrée à 18412 rend SUCCESS et apparaît dans `/v1/mesh/inbox` lue sur 18410 ; SIGTERM arrête les trois sockets et le processus. Non vu : la page 401 de `/` (le foyer de banc n'a pas de bundle construit : 404).*
+
+*Corrigé après contre-épreuve (26/09/2026) : un port secondaire (tailnet ou maillage) déjà tenu faisait mourir TOUT le serveur en code 3, API locale comprise, en boucle sous launchd — il est désormais écarté en le disant, et `serve-service install` avertit (`d7f2097`) ; un WebSocket `/v1/agents/events` tenu par le téléphone retenait l'arrêt jusqu'au SIGKILL — le handler entend la déconnexion, et la prise du tailnet a `timeout_graceful_shutdown = 5 s` (`4655deb`, banc réel : plus de 10 s bloqué avant, 0,35 s après) ; un refus d'argument qui régresserait faisait pendre la suite (`7f8e587`).* `diapason serve --tailnet-port 8002` et `serve-service install --tailnet` :
 - `_servir_deux_sockets` (`serve.py:237`) est généralisé à N sockets ;
 - 8002 écoute sur `127.0.0.1` seulement, avec `lifespan="off"` et `proxy_headers=False` ;
 - un port égal à `--port` ou à `--lan-port` est refusé.
@@ -437,11 +441,11 @@ Le piège `proxy_headers` d'uvicorn entre au §5 de CLAUDE.md, puis dans AGENTS.
 *Risque silencieux :* `true` sans dialogue ferait du contrôle n°10 une formalité.
 *Preuve :* en Python, une enveloppe `desktop.open` signée par le téléphone avec `true` passe le contrôle n°10, et avec `false` elle rend `DENIED`. En Dart, le texte affiché est égal au `userSafeMessage` simulé, y compris quand c'est un échec.
 
-**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».** `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
+~~**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `c400701`). L'IPv6 de Tailscale (`fd7a:115c:a1e0::/48`) était déjà privée pour Python (dans `fc00::/7`). Resserré après contre-épreuve (`0726116`) : le /10 est aussi le NAT des opérateurs, et `join.py` lit la même fonction. Une adresse du /10 n'est privée que si le noyau la route par l'interface du tailnet (Tailscale n'installe qu'une route /32 par pair : le téléphone part de 100.90.245.46, 100.100.1.1 part de 192.168.0.104 par en0).* `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
 *Risque silencieux :* sans ce changement, un envoi poussé du Mac vers le PC par Tailscale est refusé en mode `local_only`.
-*Preuve :* `address_is_private('100.100.1.1')` rend `True`, et `8.8.8.8` reste public.
+*Preuve :* `address_is_private('100.100.1.1')` rend `True` quand le noyau la route par le tailnet (`False` sinon, depuis `0726116`), et `8.8.8.8` reste public.
 
-**9. « La page Appareils ne montrait pas les sessions ouvertes ».** Pour chaque appareil : ses sessions, sa dernière activité, et un bouton « Fermer ses sessions » distinct de la révocation. L'adresse à saisir vient d'une clé `[tailnet] adresse`, posée par Carlito et jamais devinée. `tests/contract/mesh_api_surface.json` est régénéré dans ce même commit.
+**9. « La page Appareils ne montrait pas les sessions ouvertes ».** *~~Côté serveur, commité le 26/09/2026 (branche `chantier/phase2`, `9cf3de7`) : `GET /v1/mesh/devices/{device_id}/sessions` (`sessions`, `count`, `lastUsedAtMs` — jamais le jeton) et `POST /v1/mesh/devices/{device_id}/sessions/close` (`closed`), derrière la clé locale, refusés par la passerelle comme toute la famille `/v1/mesh/` ; `POST /v1/mesh/pairings` rend `tailnetAddress`, lu dans `[tailnet] adresse` (null tant que Carlito ne l'a pas posée ; `load_config` est en cache : la clé vaut au redémarrage suivant du serveur). `mesh_api_surface.json` et `tailnet_portee.json` régénérés dans ce commit.~~ **Reste la page Appareils (frontend) et son vitest** — voir « Ce qui reste de la phase 2 » plus bas.* Pour chaque appareil : ses sessions, sa dernière activité, et un bouton « Fermer ses sessions » distinct de la révocation. L'adresse à saisir vient d'une clé `[tailnet] adresse`, posée par Carlito et jamais devinée. `tests/contract/mesh_api_surface.json` est régénéré dans ce même commit.
 *Risque silencieux :* un instantané régénéré plus tard par une autre session, qui ne saurait pas pourquoi il a bougé.
 *Preuve :* un vitest sur une fonction pure de formatage (aucun test de composant). Fermer les sessions depuis le Mac fait répondre 401 à la requête suivante.
 
@@ -450,6 +454,42 @@ Le piège `proxy_headers` d'uvicorn entre au §5 de CLAUDE.md, puis dans AGENTS.
 *Preuve :* le tableau des mesures, daté, dans ce document.
 
 Pour la phase 4 : aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live` (DÉDUIT par un lecteur, non revérifié). §78 l'exige avant d'ouvrir la voix au téléphone.
+
+#### Les contre-épreuves du côté Diapason (26/09/2026)
+
+Quinze constats sur les étapes 1 à 4, 8 et 9. Chacun a été revérifié avant d'être traité ; un correctif porte le test qui l'aurait attrapé, et ce test échoue sans lui.
+
+| # | Constat | Verdict | Commit |
+|---|---|---|---|
+| 1 | La Discussion du téléphone lisait l'écran et le presse-papiers du Mac | corrigé (plafond d'outils, perception retirée du prompt, agents refusés) | `566381d` |
+| 2 | 100.64.0.0/10 est aussi le NAT des opérateurs | corrigé (route du noyau exigée) | `0726116` |
+| 3 | Aucun vrai WebSocket éprouvé avec une session | tests ajoutés | `1a52f23` |
+| 4 | « 30 s au plus » figé par rien | tests ajoutés | `1a52f23` |
+| 5 | Le test d'Origin réussissait pour une mauvaise raison | test remplacé, deux cas ajoutés | `1a52f23` |
+| 6 | Les `asyncio.to_thread` retirables sans échec (§5) | tests de battement ajoutés | `1a52f23` |
+| 7 | Des tests écrivaient dans le vrai `~/.diapason` | corrigé (foyer jetable) | `71c67dd` |
+| 8 | Le contrôle TRUSTED de `redeem_ticket` non éprouvé seul | test ajouté | `09be227` |
+| 9 | « Fermer » sans effacer les tickets passait | test ajouté | `09be227` |
+| 10 | Une clé en trop dans l'enveloppe non éprouvée | test ajouté | `09be227` |
+| 11 | Plafond de corps, `sessionId`, flux HTTP, 404/405 sans test | tests ajoutés | `09be227`, `1a52f23` |
+| 12 | Un refus d'argument régressé faisait pendre la suite | corrigé | `7f8e587` |
+| 13 | Un port du tailnet pris faisait tomber l'API locale | corrigé | `d7f2097` |
+| 14 | `/v1/agents/events` bloquait l'arrêt du serveur | corrigé | `4655deb` |
+| 15 | Le bundle interroge sans relâche des routes refusées | reporté à la phase 3 (frontend) | — |
+
+**À dire à Carlito (constat 7)** : le vrai `~/.diapason/mesh.db` porte déjà `mesh_sessions` et `mesh_session_tickets`, vides (lu en `immutable=1`, 26/09/2026). Seule cette branche les déclare : un test l'a lancée contre le vrai foyer (`tests/cli/test_mesh_send.py` le faisait encore). Elles sont additives et sans effet sur le serveur en service ; rien n'a été touché.
+
+#### Ce qui reste de la phase 2 — la partie mobile
+
+Tout ceci attend que l'autre chantier ait fini dans `diapason_mobile`, et la page Appareils que le chantier du bundle ait libéré le frontend.
+
+1. **Le vecteur commun de l'enveloppe de session** (étape 2) : un cas dans `scripts/gen_canonical_vectors.py`, régénéré dans `diapason_mobile/test/mesh/canonical_vectors.json` **dans le même commit que le Dart qui le vérifie**. Seulement des entiers et des chaînes.
+2. **Le Dart** (étapes 6 et 7) : `normalizeBase` (rien d'ajouté à une adresse https, `:8001` à une adresse http sans port), `network_security_config.xml` sans trafic en clair hors variante dev, `MeshApi.openSession()` (signe l'enveloppe, rend le ticket, poste le ticket vers `/v1/appareil/ouvrir`), les échecs distingués (injoignable / 502 / 401-403), `requiresConfirmation: true` après un dialogue sur le téléphone, et le `userSafeMessage` du Mac toujours affiché. Le jumelage par la passerelle rend encore `host.address` = l'adresse du LAN : le Dart doit l'ignorer et garder `https://atelier.tail6efbba.ts.net`, que `tailnetAddress` rend une fois `[tailnet] adresse` posée.
+3. **La page Appareils** (étape 9, frontend) : sessions, dernière activité, « Fermer ses sessions » distinct de la révocation, l'adresse `tailnetAddress` à saisir — et son vitest sur une fonction pure de formatage.
+4. **Le signal « servi par le tailnet » au bundle** (constat 15, phase 3) : sans lui, le bundle interroge sans relâche `/v1/account/status`, `/v1/triggers/poll`, `/v1/mesh/inbox`, `/v1/vie/sync/status`, `/v1/voice/live/health` et `POST /v1/context/view`, tous refusés ; et `crossorigin="use-credentials"` sur le lien du manifeste si la PWA doit s'installer depuis le téléphone.
+5. **Le banc sur le vrai téléphone** (étape 10), après la commande de Carlito ci-dessous.
+
+Décisions à confirmer par Carlito, prises par défaut dans ce chantier : la liste des 16 outils permis au téléphone (le courrier, les messages, `find_files` et l'écriture dans Notes, Rappels et Calendrier en sont exclus jusqu'à la phase 6) ; les agents consultables mais ni créés, ni modifiés, ni lancés depuis le téléphone ; la mémoire, l'ingestion de fichiers, la dictée et `speech/transcribe` (un clip envoyé, pas une écoute continue) sous session.
 
 ---
 
@@ -643,9 +683,26 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 7. Android : installer Tailscale avec la même identité ; « VPN permanent » est facultatif. Si les noms `.ts.net` ne se résolvent pas, passer le DNS privé sur Automatique (DÉDUIT).
 8. Test : Wi-Fi coupé, `http://<nom>:8001/` rend un 404 JSON, rien de plus.
 
-**Pendant la phase 2**
-- Après le commit du troisième socket : `.venv/bin/python -m diapason.cli serve-service install --tailnet` (nom exact à confirmer à ce commit), puis `tailscale serve --bg 8002`. Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
-- Test : en données mobiles, `https://<nom>.<tailnet>.ts.net/health` répond ; poser `[tailnet] adresse` ; créer une invitation et appairer la nouvelle app avec cette adresse.
+**Pendant la phase 2** — le côté Diapason est prêt (branche `chantier/phase2`) ; dans cet ordre, **une fois la branche fusionnée dans `main`** (le LaunchAgent lance le code de l'arbre principal) :
+1. Console Tailscale → DNS → « HTTPS Certificates » → **Enable** (pas encore fait au 26/09/2026). Rien de ce qui suit ne sert avant.
+2. Dans `~/.diapason/config.toml`, poser l'adresse, jamais devinée par le code :
+   ```toml
+   [tailnet]
+   adresse = "atelier.tail6efbba.ts.net"
+   ```
+3. Depuis `/Users/carlito.e/Projets/Diapason` :
+   ```bash
+   .venv/bin/python -m diapason.cli serve-service install --maillage-reseau --tailnet
+   ```
+   `--maillage-reseau` garde le socket 8001 du plist actuel — sans lui, l'installation le retire : le téléphone neuf passe par https, mais l'ancienne app « Succès » vise encore 8001. Le plist obtenu porte `--host 127.0.0.1 --port 8000 --lan-host 0.0.0.0 --lan-port 8001 --tailnet-port 8002`. Si un port secondaire est déjà tenu, la commande le dit ; le serveur démarre alors sans ce socket au lieu de tomber.
+4. Vérifier : `lsof -nP -iTCP:8002 -sTCP:LISTEN` montre **127.0.0.1** seulement.
+5. Puis :
+   ```bash
+   tailscale serve --bg 8002
+   ```
+   Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` (https://atelier.tail6efbba.ts.net → http://127.0.0.1:8002) et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
+6. Test, Wi-Fi coupé sur le téléphone : `https://atelier.tail6efbba.ts.net/health` répond 200 ; `/` rend « Ouvre Diapason depuis l'app » ; serveur arrêté, 502. À vérifier au passage : si `tailscale serve` réécrit l'en-tête Host, l'adresse posée à l'étape 2 suffit à l'Origin ; sans elle, les écritures et les WebSockets du téléphone rendraient 403.
+7. Ensuite seulement : créer une invitation depuis la page Appareils et appairer la nouvelle app avec cette adresse (partie mobile).
 - Après chaque commit mobile : reconstruire et réinstaller l'APK avec `tool/flutter_avec_secrets.sh`.
 
 **Pendant la phase 3**

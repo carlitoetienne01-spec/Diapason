@@ -21,6 +21,8 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+from fastapi import Request  # noqa: E402
+
 from diapason.server.app import _PORTES_LAN, create_lan_app  # noqa: E402
 from diapason.server.auth_middleware import AuthMiddleware  # noqa: E402
 
@@ -222,7 +224,7 @@ class TestLesDeuxSocketsDemarrent:
         import httpx
         from fastapi import FastAPI
 
-        from diapason.cli.serve import _servir_deux_sockets
+        from diapason.cli.serve import _Prise, _servir_les_sockets
 
         def _port_libre() -> int:
             p = socket.socket()
@@ -250,8 +252,14 @@ class TestLesDeuxSocketsDemarrent:
 
         arret = threading.Event()
         fil = threading.Thread(
-            target=_servir_deux_sockets,
-            args=(principal, "127.0.0.1", maison, lan, "127.0.0.1", reseau, arret),
+            target=_servir_les_sockets,
+            args=(
+                [
+                    _Prise("principal", principal, "127.0.0.1", maison),
+                    _Prise("maillage", lan, "127.0.0.1", reseau),
+                ],
+                arret,
+            ),
             daemon=True,
         )
         fil.start()
@@ -286,3 +294,298 @@ class TestLesDeuxSocketsDemarrent:
             arret.set()
             fil.join(timeout=5)
             assert not fil.is_alive(), "les deux sockets ont survécu au test"
+
+
+class TestLesTroisSocketsDemarrent:
+    """Le troisième socket, la passerelle du tailnet (26/09/2026, étape 4).
+
+    Même processus que les deux autres — une commande reçue par le tailnet
+    doit tomber dans la même boîte que celle lue en loopback —, mais avec
+    un cycle de vie éteint et sans croire les en-têtes de relais.
+    """
+
+    @staticmethod
+    def _port_libre() -> int:
+        import socket
+
+        p = socket.socket()
+        p.bind(("127.0.0.1", 0))
+        n = p.getsockname()[1]
+        p.close()
+        return n
+
+    def test_la_prise_du_tailnet_est_bornee_a_la_boucle_sans_cycle_ni_relais(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _prises
+        from diapason.server.passerelle_tailnet import PasserelleTailnet
+
+        app = FastAPI()
+        prises = _prises(
+            app,
+            "127.0.0.1",
+            8000,
+            lan_host="0.0.0.0",
+            lan_port=8001,
+            tailnet_port=8002,
+            adresse_tailnet="",
+        )
+        assert [p.nom for p in prises] == ["principal", "maillage", "tailnet"]
+        tailnet = prises[-1]
+        assert tailnet.host == "127.0.0.1", (
+            "sur 0.0.0.0, la passerelle serait joignable en HTTP clair par le Wi-Fi"
+        )
+        assert tailnet.port == 8002
+        assert tailnet.lifespan == "off"
+        assert tailnet.proxy_headers is False
+        assert isinstance(tailnet.app, PasserelleTailnet)
+        assert tailnet.app.app is app, "la passerelle doit envelopper l'app principale"
+        # « La révocation coupe les WebSockets en 30 s au plus » : tous les
+        # tests de coupure injectent 50 ms ; seul celui-ci lit l'intervalle
+        # que la production reçoit (contre-épreuve du 26/09/2026 : 3 600 s
+        # passaient inaperçues).
+        assert tailnet.app._intervalle_s <= 30, tailnet.app._intervalle_s
+        assert tailnet.timeout_graceful_shutdown is not None
+        assert tailnet.timeout_graceful_shutdown <= 10, (
+            "le socket du tailnet s'arrête le premier : sans borne, un flux "
+            "tenu par le téléphone retient l'API locale jusqu'au SIGKILL"
+        )
+        # Les sockets d'avant ne changent pas de forme.
+        assert (prises[0].lifespan, prises[0].proxy_headers) == ("auto", True)
+        assert prises[0].timeout_graceful_shutdown is None
+
+    def test_un_port_secondaire_tenu_ne_fait_pas_tomber_l_api_locale(self):
+        """26/09/2026 (contre-épreuve) : un socket occupait le port du
+        tailnet ; le serveur mourait en code 3 (uvicorn, Errno 48) sans que
+        l'API locale ait jamais servi — et launchd l'aurait relancé toutes
+        les dix secondes. Le téléphone injoignable ne doit pas priver le Mac
+        de son serveur."""
+        import socket
+        import threading
+        import time
+
+        import httpx
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _Prise, _servir_les_sockets
+
+        maison = self._port_libre()
+        occupant = socket.socket()
+        occupant.bind(("127.0.0.1", 0))
+        occupant.listen(1)
+        tenu = occupant.getsockname()[1]
+
+        principal = FastAPI()
+
+        @principal.get("/vivant")
+        def _vivant():
+            return {"ok": True}
+
+        arret = threading.Event()
+        erreurs: list[BaseException] = []
+
+        def _servir():
+            try:
+                _servir_les_sockets(
+                    [
+                        _Prise("principal", principal, "127.0.0.1", maison),
+                        _Prise(
+                            "tailnet",
+                            FastAPI(),
+                            "127.0.0.1",
+                            tenu,
+                            lifespan="off",
+                            proxy_headers=False,
+                        ),
+                    ],
+                    arret,
+                )
+            except BaseException as exc:  # noqa: BLE001 - SystemExit compris
+                erreurs.append(exc)
+
+        fil = threading.Thread(target=_servir, daemon=True)
+        fil.start()
+        reponse = None
+        try:
+            for _ in range(100):
+                try:
+                    reponse = httpx.get(f"http://127.0.0.1:{maison}/vivant", timeout=1)
+                    break
+                except Exception:  # noqa: BLE001 - le serveur monte encore
+                    if not fil.is_alive():
+                        break
+                    time.sleep(0.05)
+        finally:
+            arret.set()
+            fil.join(timeout=10)
+            occupant.close()
+        assert not fil.is_alive(), "les sockets ont survécu au test"
+        assert reponse is not None and reponse.status_code == 200, (
+            f"l'API locale n'a jamais servi ; le serveur est tombé : {erreurs}"
+        )
+        assert erreurs == [], f"le serveur est sorti en erreur : {erreurs}"
+
+    def test_un_port_secondaire_tenu_est_ecarte_avant_de_servir(self):
+        """Le constat se dit en français, port et occupant nommés — pas en
+        « [Errno 48] address already in use » au milieu du journal."""
+        import io
+
+        from fastapi import FastAPI
+        from rich.console import Console
+
+        from diapason.cli.serve import _Prise, _prises_liables
+        from diapason.core import ports
+
+        sortie = io.StringIO()
+        prises = [
+            _Prise("principal", FastAPI(), "127.0.0.1", 8000),
+            _Prise("maillage", FastAPI(), "0.0.0.0", 8001),
+            _Prise("tailnet", FastAPI(), "127.0.0.1", 8002),
+        ]
+        etats = {
+            8000: (ports.OCCUPE, "PID 1 sur 127.0.0.1"),
+            8001: (ports.LIBRE, ""),
+            8002: (ports.OCCUPE, "PID 4242 sur 127.0.0.1"),
+        }
+        gardees = _prises_liables(
+            prises,
+            console=Console(file=sortie, width=200),
+            etat_du_port=lambda port: etats[port],
+        )
+        assert [p.nom for p in gardees] == ["principal", "maillage"], (
+            "le principal reste à attendre_le_port ; seul le tailnet tenu part"
+        )
+        texte = sortie.getvalue()
+        assert "8002" in texte and "PID 4242" in texte, texte
+        assert "téléphone" in texte, texte
+
+    def test_sans_option_aucune_passerelle(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _prises
+
+        prises = _prises(
+            FastAPI(),
+            "127.0.0.1",
+            8000,
+            lan_host=None,
+            lan_port=8001,
+            tailnet_port=None,
+        )
+        assert [p.nom for p in prises] == ["principal"]
+
+    def test_trois_sockets_un_seul_cycle_de_vie_et_aucun_relais_cru(
+        self, tmp_path, monkeypatch
+    ):
+        """Le banc à événement `arret`, étendu à trois sockets.
+
+        Sans lifespan="off", le démarrage de l'app aurait couru deux fois.
+        Sans proxy_headers=False, un X-Forwarded-For posé par n'importe quel
+        processus local réécrirait `request.client`.
+        """
+        import dataclasses
+        import os
+        import threading
+        import time
+        from contextlib import asynccontextmanager
+
+        import httpx
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _Prise, _prises, _servir_les_sockets
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        demarrages: list[int] = []
+        arrets: list[int] = []
+
+        @asynccontextmanager
+        async def _cycle(_app):
+            demarrages.append(os.getpid())
+            yield
+            arrets.append(os.getpid())
+
+        principal = FastAPI(lifespan=_cycle)
+        vu: dict = {}
+
+        @principal.get("/qui")
+        def _qui(request: Request):
+            vu.setdefault("clients", []).append(request.client.host)
+            return {"pid": os.getpid()}
+
+        lan = FastAPI()
+
+        @lan.get("/porte")
+        def _porte():
+            return {"pid": os.getpid()}
+
+        maison, reseau, tailnet = (self._port_libre() for _ in range(3))
+        # La prise telle que `serve` la construit, avec l'app témoin à la
+        # place de la passerelle : c'est la CONFIGURATION du socket qu'on
+        # éprouve ici, la passerelle a ses propres tests.
+        (prise_tailnet,) = [
+            p
+            for p in _prises(
+                principal,
+                "127.0.0.1",
+                maison,
+                lan_host=None,
+                lan_port=reseau,
+                tailnet_port=tailnet,
+                adresse_tailnet="",
+            )
+            if p.nom == "tailnet"
+        ]
+        prise_tailnet = dataclasses.replace(prise_tailnet, app=principal)
+        arret = threading.Event()
+        fil = threading.Thread(
+            target=_servir_les_sockets,
+            args=(
+                [
+                    _Prise("principal", principal, "127.0.0.1", maison),
+                    _Prise("maillage", lan, "127.0.0.1", reseau),
+                    prise_tailnet,
+                ],
+                arret,
+            ),
+            daemon=True,
+        )
+        fil.start()
+        for _ in range(100):
+            try:
+                httpx.get(f"http://127.0.0.1:{tailnet}/qui", timeout=1)
+                break
+            except Exception:  # noqa: BLE001 - les serveurs montent encore
+                time.sleep(0.05)
+        vu.clear()
+        try:
+            forge = {"X-Forwarded-For": "203.0.113.7"}
+            par_tailnet = httpx.get(
+                f"http://127.0.0.1:{tailnet}/qui", headers=forge, timeout=5
+            )
+            par_maison = httpx.get(
+                f"http://127.0.0.1:{maison}/qui", headers=forge, timeout=5
+            )
+            par_reseau = httpx.get(f"http://127.0.0.1:{reseau}/porte", timeout=5)
+        finally:
+            arret.set()
+            fil.join(timeout=10)
+        assert not fil.is_alive(), "les trois sockets ont survécu au test"
+        assert par_tailnet.status_code == 200, par_tailnet.text
+        assert par_maison.status_code == 200, par_maison.text
+        assert par_tailnet.json()["pid"] == par_maison.json()["pid"] == os.getpid()
+        assert par_reseau.status_code == 200
+        assert demarrages == [os.getpid()], (
+            f"le cycle de vie a démarré {len(demarrages)} fois pour trois sockets"
+        )
+        assert arrets == [os.getpid()], "l'arrêt doit courir une fois, et courir"
+        client_tailnet, client_maison = vu["clients"]
+        assert client_tailnet == "127.0.0.1", (
+            "le socket du tailnet a cru un X-Forwarded-For forgé"
+        )
+        # Le contraste qui montre ce que l'option change : le socket
+        # principal, lui, garde le défaut d'uvicorn (piège du §5).
+        assert client_maison == "203.0.113.7"

@@ -119,9 +119,18 @@ def whoami() -> dict[str, Any]:
 @router.post("/pairings")
 def create_pairing(body: PairingCreate) -> dict[str, Any]:
     try:
-        return get_registry().create_pairing(body.deviceName)
+        invitation = get_registry().create_pairing(body.deviceName)
     except MeshError as exc:
         raise _fail(exc) from exc
+    # The address to type on the phone, next to the code (phase 2 step 9,
+    # 26/09/2026). Read from `[tailnet] adresse`, which Carlito sets by hand
+    # and nothing ever guesses: a guessed name that is wrong sends the phone
+    # knocking on a door that does not exist, and the failure reads
+    # « network ». Null until it is set — the Devices page then says so
+    # instead of showing an address it made up.
+    from diapason.server.passerelle_tailnet import adresse_du_tailnet
+
+    return {**invitation, "tailnetAddress": adresse_du_tailnet()}
 
 
 @router.post("/pairings/redeem")
@@ -291,6 +300,59 @@ def forget_device(device_id: str) -> dict[str, Any]:
     """Erase a device outright — the only way back from revocation."""
     get_registry().forget(device_id)
     return {"ok": True, "deviceId": device_id}
+
+
+# ── device sessions (the phone's WebView, through the tailnet gateway) ───
+#
+# 26/09/2026, phase 2 step 9. A paired phone opens 12-hour sessions through
+# server/passerelle_tailnet.py. Without these two routes, the Mac could see
+# nothing of them and end them only by revoking the phone outright — which
+# also throws away its key and forces a new pairing. Both routes live behind
+# the local key, on the loopback app only: the gateway refuses the whole
+# /v1/mesh/ family (server/portee_tailnet.py), so a phone cannot list or
+# close sessions, its own or another's.
+
+
+@router.get("/devices/{device_id}/sessions")
+def list_device_sessions(device_id: str) -> dict[str, Any]:
+    """Live sessions of one device and its last activity. Never a token."""
+    from diapason.mesh.sessions import DeviceSessions
+
+    registry = get_registry()
+    try:
+        registry.get(device_id)
+    except MeshError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    sessions = DeviceSessions(registry).list_sessions(device_id)
+    return {
+        "deviceId": device_id,
+        "sessions": sessions,
+        "count": len(sessions),
+        # The newest touch across sessions; null when none is open. Precise
+        # to the minute at best (SESSION_TOUCH_INTERVAL_MS), which is how a
+        # person reads « vu il y a 3 min ».
+        "lastUsedAtMs": max((s["lastUsedAtMs"] for s in sessions), default=None),
+    }
+
+
+@router.post("/devices/{device_id}/sessions/close")
+def close_device_sessions(device_id: str) -> dict[str, Any]:
+    """Log a device out everywhere, WITHOUT revoking it.
+
+    Its very next request through the gateway answers 401, and an open
+    WebSocket is closed within INTERVALLE_DE_CONTROLE_S. The device stays
+    paired: it can open a new session with its key, which revocation would
+    forbid.
+    """
+    from diapason.mesh.sessions import DeviceSessions
+
+    registry = get_registry()
+    try:
+        registry.get(device_id)
+    except MeshError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    closed = DeviceSessions(registry).close_device_sessions(device_id)
+    return {"ok": True, "deviceId": device_id, "closed": closed}
 
 
 # ── commands ─────────────────────────────────────────────────────────────

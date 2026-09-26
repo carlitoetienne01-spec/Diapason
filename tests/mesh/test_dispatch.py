@@ -9,6 +9,7 @@ on the difference.
 from __future__ import annotations
 
 import base64
+import ipaddress
 
 import pytest
 
@@ -400,6 +401,66 @@ class TestPrivacyBoundary:
         # Link-local is where cloud metadata services live.
         assert not address_is_private("http://169.254.169.254")
         assert not address_is_private("")
+
+    def test_le_tailnet_est_un_reseau_prive(self, monkeypatch):
+        """Étape 8 du plan mobile (26/09/2026) : ipaddress tient 100.64.0.0/10
+        pour ni privé ni public, et un envoi par Tailscale était refusé en
+        local_only comme s'il partait sur Internet. Ici le noyau route le /10
+        par l'interface du tailnet (source 100.90.245.46, celle d'atelier)."""
+        from diapason.mesh import transport
+
+        monkeypatch.setattr(
+            transport, "_source_address_for", lambda _ip: "100.90.245.46"
+        )
+        assert address_is_private("100.100.1.1"), "une adresse Tailscale"
+        assert address_is_private("http://100.90.245.46:8001")
+        assert address_is_private("100.64.0.1"), "premier du /10"
+        assert address_is_private("100.127.255.254"), "dernier du /10"
+        assert address_is_private("http://[fd7a:115c:a1e0::1]:8001"), "Tailscale IPv6"
+        assert not address_is_private("100.63.255.255"), "juste avant le /10"
+        assert not address_is_private("100.128.0.1"), "juste après le /10"
+        assert not address_is_private("8.8.8.8"), "8.8.8.8 doit rester public"
+
+    @pytest.mark.parametrize("source", ["192.168.0.104", None])
+    def test_le_nat_des_operateurs_n_est_pas_le_tailnet(self, monkeypatch, source):
+        """100.64.0.0/10 est AUSSI le NAT des opérateurs (RFC 6598). Constaté
+        le 26/09/2026 sur atelier : Tailscale ne route que ses pairs (le
+        téléphone, 100.74.116.36, part de 100.90.245.46), et 100.100.1.1
+        part de 192.168.0.104 par en0 — vers le fournisseur, pas le
+        tailnet. Une telle adresse n'est pas « le réseau de l'utilisateur »,
+        ni pour pousser une commande, ni pour jumeler sous local_only."""
+        from diapason.mesh import transport
+
+        monkeypatch.setattr(transport, "_source_address_for", lambda _ip: source)
+        assert not address_is_private("100.100.1.1"), (
+            "une adresse du /10 que le noyau ne route pas par le tailnet "
+            "a été tenue pour privée"
+        )
+        assert address_is_private("http://192.168.1.42:8000"), "le LAN reste privé"
+
+    def test_la_sonde_de_route_ne_demande_rien_au_reseau(self):
+        """Un connect UDP ne fait que consulter la table de routage : aucun
+        paquet ne part. Vers la boucle locale, la source est la boucle."""
+        from diapason.mesh.transport import _source_address_for
+
+        assert _source_address_for(ipaddress.ip_address("127.0.0.1")) == "127.0.0.1"
+
+    def test_une_adresse_tailscale_ne_suffit_pas_sans_confiance(self, monkeypatch):
+        """L'adresse n'est que la moitié de l'exemption, l'appairage reste
+        exigé."""
+        from diapason.core import local_mode
+        from diapason.mesh import transport
+
+        monkeypatch.setattr(
+            transport, "_source_address_for", lambda _ip: "100.90.245.46"
+        )
+
+        monkeypatch.setattr(local_mode, "local_only", lambda config=None: True)
+        assert_may_reach_device({"trustLevel": "TRUSTED"}, "http://100.100.1.1:8001")
+        with pytest.raises(local_mode.LocalOnlyError, match="pas appairé"):
+            assert_may_reach_device(
+                {"trustLevel": "REVOKED"}, "http://100.100.1.1:8001"
+            )
 
     def test_an_untrusted_device_gets_no_exemption(self, monkeypatch):
         from diapason.core import local_mode

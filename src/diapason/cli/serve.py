@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from dataclasses import dataclass
 from typing import Callable, Iterable
 
 import click
@@ -298,49 +299,191 @@ def _announce_exposure(bind_host: str, bind_port: int) -> None:
     )
 
 
-def _servir_deux_sockets(
+# La passerelle du tailnet n'écoute QUE la boucle locale, et ce n'est pas un
+# réglage : c'est `tailscale serve` qui la relaie en HTTPS. Sur 0.0.0.0 elle
+# serait joignable en HTTP clair par tout le Wi-Fi, cookie de session compris
+# (26/09/2026, phase 2 du plan mobile). Aucune option ne la déplace.
+_HOTE_DU_TAILNET = "127.0.0.1"
+
+
+@dataclass(frozen=True)
+class _Prise:
+    """Un socket d'écoute : l'application qu'il sert, et ce qu'uvicorn y croit.
+
+    ``lifespan`` et ``proxy_headers`` gardent les défauts d'uvicorn pour les
+    sockets d'avant ; seule la passerelle du tailnet les change.
+    """
+
+    nom: str
+    app: object
+    host: str
+    port: int
+    lifespan: str = "auto"
+    proxy_headers: bool = True
+    timeout_graceful_shutdown: float | None = None
+
+
+def _prises(
     app: object,
     host: str,
     port: int,
-    lan_app: object,
-    lan_host: str,
+    *,
+    lan_host: str | None,
     lan_port: int,
-    arret: object | None = None,
-) -> None:
-    """Deux sockets, UN SEUL PROCESSUS — et ce n'est pas un détail.
+    tailnet_port: int | None,
+    adresse_tailnet: str | None = None,
+) -> list[_Prise]:
+    """Les sockets que ce serveur ouvre, dans l'ordre où ils démarrent."""
+    prises = [_Prise("principal", app, host, port)]
+    if lan_host:
+        from diapason.server.app import create_lan_app
+
+        prises.append(_Prise("maillage", create_lan_app(), lan_host, lan_port))
+    if tailnet_port is not None:
+        from diapason.server.passerelle_tailnet import PasserelleTailnet
+
+        prises.append(
+            _Prise(
+                "tailnet",
+                PasserelleTailnet(app, adresse=adresse_tailnet),
+                _HOTE_DU_TAILNET,
+                tailnet_port,
+                # Le lifespan de l'app tourne déjà sur le socket principal.
+                # Un second départ ferait deux battements du maillage, deux
+                # tâches de synchronisation du compte, et fermerait deux fois
+                # le magasin des conversations à l'arrêt.
+                lifespan="off",
+                # uvicorn croit X-Forwarded-For venu de 127.0.0.1 — or
+                # tailscaled, et tout processus local, arrivent de là. Sur ce
+                # socket, c'est le socket et la session qui disent « qui »,
+                # jamais un en-tête (CLAUDE.md §5).
+                proxy_headers=False,
+                # 26/09/2026 : ce socket reçoit le signal d'arrêt le PREMIER
+                # (chaîne des gestionnaires d'uvicorn) et fait attendre les
+                # deux autres. Un flux qu'un téléphone garde ouvert et qui
+                # n'entend pas la fermeture (/v1/agents/events le faisait)
+                # retenait l'API locale jusqu'au SIGKILL de launchd, vingt
+                # secondes plus tard. Cinq secondes bornent l'attente et en
+                # laissent quinze au socket principal pour fermer ses bases.
+                timeout_graceful_shutdown=5.0,
+            )
+        )
+    return prises
+
+
+# Ce que perd le Mac quand un socket secondaire ne s'ouvre pas — dit dans
+# le journal au lieu de « [Errno 48] address already in use ».
+_CE_QUI_MANQUE = {
+    "maillage": "les appareils du réseau local ne joindront pas ce Mac",
+    "tailnet": "le téléphone ne joindra pas ce Mac par le tailnet",
+}
+
+
+def _prises_liables(
+    prises: list[_Prise],
+    *,
+    console: Console,
+    etat_du_port: Callable[[int], tuple[str, str]] = ports.port_state,
+) -> list[_Prise]:
+    """Écarte, en le disant, un socket SECONDAIRE dont le port est tenu.
+
+    26/09/2026 (contre-épreuve) : un port du tailnet déjà pris faisait
+    mourir tout le serveur en code 3, API locale comprise, avant qu'elle ait
+    servi une seule requête — et launchd (KeepAlive, ThrottleInterval 10)
+    l'aurait relancé toutes les dix secondes. Le défaut existait déjà pour
+    le maillage (--lan-port) depuis le 26 août. Le socket principal, lui,
+    reste à ``attendre_le_port`` : sans lui, il n'y a pas de serveur.
+    """
+    gardees: list[_Prise] = []
+    for prise in prises:
+        if prise.nom != "principal":
+            etat, detail = etat_du_port(prise.port)
+            if etat == ports.OCCUPE:
+                manque = _CE_QUI_MANQUE.get(prise.nom, "ce socket reste fermé")
+                console.print(
+                    f"[yellow]Le port {prise.port} ({prise.nom}) est déjà tenu "
+                    f"({detail}) : ce socket ne s'ouvre pas, et {manque}. "
+                    "L'API locale démarre quand même.[/yellow]\n"
+                    f"  Pour l'identifier : lsof -nP -iTCP:{prise.port} "
+                    "-sTCP:LISTEN — puis relancer le service."
+                )
+                logger.warning(
+                    "socket %s : port %s tenu (%s), non ouvert",
+                    prise.nom,
+                    prise.port,
+                    detail,
+                )
+                continue
+        gardees.append(prise)
+    return gardees
+
+
+def _servir_les_sockets(prises: list[_Prise], arret: object | None = None) -> None:
+    """N sockets, UN SEUL PROCESSUS — et ce n'est pas un détail.
 
     La boîte de réception des commandes (`mesh/executor.py`) et les sessions
     de transfert (`mesh/files_routes.py`) vivent dans des globales en
-    mémoire. Deux processus, et une commande reçue sur le réseau
-    n'apparaîtrait jamais dans l'inbox lue en loopback ; un morceau de
-    fichier rendrait 404 parce que son offre a ouvert la session ailleurs.
+    mémoire. Deux processus, et une commande reçue sur le réseau — ou par le
+    tailnet — n'apparaîtrait jamais dans l'inbox lue en loopback ; un
+    morceau de fichier rendrait 404 parce que son offre a ouvert la session
+    ailleurs.
     """
     import asyncio
 
     import uvicorn
 
-    async def _les_deux() -> None:
-        principal = uvicorn.Server(
-            uvicorn.Config(app, host=host, port=port, log_level="info")
-        )
-        reseau = uvicorn.Server(
-            uvicorn.Config(lan_app, host=lan_host, port=lan_port, log_level="info")
-        )
-        if arret is None:
-            await asyncio.gather(principal.serve(), reseau.serve())
-            return
-        # Le banc à deux sockets survivait à pytest : les serveurs étaient
-        # enfermés ici, donc le test ne pouvait poser `should_exit` sur aucun
-        # des deux. L'événement est injecté uniquement pour rendre leur cycle
-        # de vie observable ; le service de production garde le même chemin.
-        principal_task = asyncio.create_task(principal.serve())
-        reseau_task = asyncio.create_task(reseau.serve())
-        await asyncio.to_thread(arret.wait)
-        principal.should_exit = True
-        reseau.should_exit = True
-        await asyncio.gather(principal_task, reseau_task)
+    async def _servir(prise: _Prise, serveur: "uvicorn.Server") -> None:
+        try:
+            await serveur.serve()
+        except SystemExit:
+            # uvicorn sort en 3 quand le bind échoue. Pour le socket
+            # principal, c'est la fin du serveur ; pour un socket secondaire
+            # pris entre _prises_liables et son bind, c'était AUSSI la fin du
+            # principal (26/09/2026). Il se dit, et le reste continue.
+            if prise.nom == "principal" or serveur.started:
+                raise
+            logger.error(
+                "socket %s (%s:%s) non ouvert : %s. L'API locale continue.",
+                prise.nom,
+                prise.host,
+                prise.port,
+                _CE_QUI_MANQUE.get(prise.nom, "ce socket reste fermé"),
+            )
 
-    asyncio.run(_les_deux())
+    async def _toutes() -> None:
+        serveurs = [
+            uvicorn.Server(
+                uvicorn.Config(
+                    prise.app,
+                    host=prise.host,
+                    port=prise.port,
+                    log_level="info",
+                    lifespan=prise.lifespan,
+                    proxy_headers=prise.proxy_headers,
+                    timeout_graceful_shutdown=prise.timeout_graceful_shutdown,
+                )
+            )
+            for prise in prises
+        ]
+        if arret is None:
+            await asyncio.gather(
+                *(_servir(prise, serveur) for prise, serveur in zip(prises, serveurs))
+            )
+            return
+        # Le banc à plusieurs sockets survivait à pytest : les serveurs étaient
+        # enfermés ici, donc le test ne pouvait poser `should_exit` sur aucun
+        # d'eux. L'événement est injecté uniquement pour rendre leur cycle
+        # de vie observable ; le service de production garde le même chemin.
+        taches = [
+            asyncio.create_task(_servir(prise, serveur))
+            for prise, serveur in zip(prises, serveurs)
+        ]
+        await asyncio.to_thread(arret.wait)
+        for serveur in serveurs:
+            serveur.should_exit = True
+        await asyncio.gather(*taches)
+
+    asyncio.run(_toutes())
 
 
 @click.command()
@@ -366,6 +509,16 @@ def _servir_deux_sockets(
     type=int,
     help="Port du second socket. Doit différer de --port.",
 )
+@click.option(
+    "--tailnet-port",
+    default=None,
+    type=click.IntRange(1, 65535),
+    help=(
+        "Port de la passerelle du tailnet (ex. 8002), sur 127.0.0.1 "
+        "seulement : c'est là que `tailscale serve` relaie le téléphone. "
+        "Session d'appareil exigée, clé locale refusée."
+    ),
+)
 @click.option("-e", "--engine", "engine_key", default=None, help="Engine backend.")
 @click.option("-m", "--model", "model_name", default=None, help="Default model.")
 @click.option(
@@ -382,6 +535,7 @@ def serve(
     port: int | None,
     lan_host: str | None,
     lan_port: int,
+    tailnet_port: int | None,
     engine_key: str | None,
     model_name: str | None,
     agent_name: str | None,
@@ -432,6 +586,16 @@ def serve(
             "[red]--lan-port doit différer de --port : deux serveurs sur le "
             "même port se lient en silence sur macOS et échouent sur "
             "Linux.[/red]"
+        )
+        raise SystemExit(2)
+    if tailnet_port is not None and tailnet_port in (bind_port, lan_port):
+        # --lan-port compte même sans --lan-host : c'est le port du maillage,
+        # et l'ouvrir plus tard ferait entrer en collision deux sockets qu'on
+        # croyait distincts (26/09/2026).
+        console.print(
+            "[red]--tailnet-port doit différer de --port et de --lan-port : "
+            "la passerelle du tailnet est un socket à part, jamais celui de "
+            "l'API locale ni celui du maillage.[/red]"
         )
         raise SystemExit(2)
 
@@ -1046,6 +1210,12 @@ def serve(
             f"  Maillage : [cyan]http://{lan_host}:{lan_port}[/cyan] — "
             "neuf routes, créance d'appareil exigée"
         )
+    if tailnet_port is not None:
+        console.print(
+            f"  Tailnet  : [cyan]http://{_HOTE_DU_TAILNET}:{tailnet_port}[/cyan] — "
+            f"à relayer par `tailscale serve --bg {tailnet_port}` ; session "
+            "d'appareil exigée, clé locale refusée"
+        )
 
     # Log credential status at startup
     from diapason.core.credentials import TOOL_CREDENTIALS, get_credential_status
@@ -1118,14 +1288,25 @@ def serve(
 
     import uvicorn
 
-    if not lan_host:
+    if not lan_host and tailnet_port is None:
         # Le chemin par défaut, mot pour mot comme avant. Un serveur qui
         # tourne ne doit pas changer de forme parce qu'une option existe.
         uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
         return
 
-    from diapason.server.app import create_lan_app
+    from diapason.server.passerelle_tailnet import adresse_du_tailnet
 
-    _servir_deux_sockets(
-        app, bind_host, bind_port, create_lan_app(), lan_host, lan_port
+    _servir_les_sockets(
+        _prises_liables(
+            _prises(
+                app,
+                bind_host,
+                bind_port,
+                lan_host=lan_host,
+                lan_port=lan_port,
+                tailnet_port=tailnet_port,
+                adresse_tailnet=adresse_du_tailnet(config),
+            ),
+            console=console,
+        )
     )

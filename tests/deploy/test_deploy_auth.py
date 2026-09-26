@@ -20,6 +20,32 @@ def _read(rel: str) -> str:
     return (DEPLOY / rel).read_text()
 
 
+class _ServeAllaitPlusLoin(AssertionError):
+    """Le refus d'argument attendu n'a pas eu lieu."""
+
+
+@pytest.fixture
+def serve_sans_suite(tmp_path, monkeypatch):
+    """Un refus d'argument qui régresse doit ÉCHOUER, pas démarrer un serveur.
+
+    26/09/2026 (contre-épreuve) : le refus --tailnet-port 8001 retiré, le
+    test ne sortait plus en 2 — il poursuivait dans le vrai ``serve`` et
+    attendait sans fin que le serveur launchd rende le port 8000, avec le
+    vrai HOME. Au premier pas après les contrôles, on lève.
+    """
+    import importlib
+
+    # `import diapason.cli.serve as module` rend la COMMANDE click que le
+    # paquet ré-exporte sous ce nom, pas le module.
+    module = importlib.import_module("diapason.cli.serve")
+
+    def _plus_loin(*_args, **_kwargs):
+        raise _ServeAllaitPlusLoin("serve a dépassé le contrôle des arguments")
+
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "foyer"))
+    monkeypatch.setattr(module, "attendre_le_port", _plus_loin)
+
+
 def test_docker_compose_requires_api_key():
     text = _read("docker/docker-compose.yml")
     # The container binds 0.0.0.0, so the key must be a *required* variable
@@ -176,7 +202,9 @@ def test_le_nom_du_plist_livre_suit_son_etiquette():
     assert chemin.name == f"{donnees['Label']}.plist"
 
 
-def test_le_port_venu_de_la_configuration_est_verifie_aussi(monkeypatch):
+def test_le_port_venu_de_la_configuration_est_verifie_aussi(
+    monkeypatch, serve_sans_suite
+):
     """Le port peut venir de la configuration, pas de la ligne de commande.
 
     Le contrôle porte donc sur les valeurs RÉSOLUES, et il est placé juste
@@ -235,3 +263,30 @@ def test_l_installateur_windows_ne_promet_pas_une_url_morte():
         "le README propose encore une URL GitHub Pages hors encadré "
         f"d'avertissement : {lignes_actives}"
     )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--port", "8000", "--tailnet-port", "8000"],
+        ["--port", "8000", "--tailnet-port", "8001"],
+        ["--port", "8000", "--lan-port", "8010", "--tailnet-port", "8010"],
+    ],
+)
+def test_la_passerelle_du_tailnet_ne_partage_aucun_port(arguments, serve_sans_suite):
+    """26/09/2026, phase 2 (étape 4) : la passerelle est un socket à part.
+
+    Sur le port de l'API, elle se lierait en silence sous macOS à côté de
+    l'app ENTIÈRE ; sur celui du maillage, ouvrir le LAN plus tard ferait
+    entrer en collision deux sockets qu'on croyait distincts. Refusé avant
+    la recherche d'un moteur, comme --lan-port.
+    """
+    from click.testing import CliRunner
+
+    from diapason.cli.serve import serve
+
+    resultat = CliRunner().invoke(serve, ["--host", "127.0.0.1", *arguments])
+    sortie = resultat.output or ""
+    assert resultat.exit_code == 2, f"attendu 2, obtenu {resultat.exit_code}"
+    assert "--tailnet-port doit différer" in sortie, sortie[-200:]
+    assert "No inference engine" not in sortie

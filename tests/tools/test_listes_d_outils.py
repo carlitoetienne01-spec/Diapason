@@ -52,8 +52,11 @@ for ligne in oral_prompt.TOOL_ORAL_HINT.splitlines():
         # description n'en est pas un.
         gras += re.findall(r"\*\*([a-z_]+)\*\*", ligne.split(" — ")[0])
 
+from diapason.core.origine_telephone import OUTILS_DU_TELEPHONE
+
 rapport = {
     "chat": absents(_TROUSSE_ASSISTANT),
+    "telephone": absents(OUTILS_DU_TELEPHONE),
     "groupes": absents(n for _, noms in trousse_chat._GROUPES for n in noms),
     "lectures": absents(trousse_chat._LECTURES),
     "prompt_vocal": absents(gras),
@@ -148,6 +151,15 @@ class TestChaqueNomCiteExiste:
             f"_TROUSSE_ASSISTANT (server/routes.py) cite {rapport['chat']}, que "
             "`import diapason.tools` n'enregistre pas : le chat les écarte en "
             "silence. Importe leur module dans diapason/tools/__init__.py."
+        )
+
+    def test_le_plafond_du_telephone(self, rapport):
+        """26/09/2026 : un nom mal écrit dans OUTILS_DU_TELEPHONE ne refuse
+        rien de plus — il retire en silence un outil de données au
+        téléphone."""
+        assert rapport["telephone"] == [], (
+            f"OUTILS_DU_TELEPHONE (core/origine_telephone.py) cite "
+            f"{rapport['telephone']}, que le registre ne connaît pas"
         )
 
     def test_les_groupes_de_prechargement(self, rapport):

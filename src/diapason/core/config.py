@@ -1803,6 +1803,22 @@ class MeshConfig:
 
 
 @dataclass(slots=True)
+class TailnetConfig:
+    """Comment le téléphone joint ce Mac hors de la maison (phase 2, 26/09/2026).
+
+    ``adresse`` est l'URL https que ``tailscale serve`` publie pour ce Mac,
+    par exemple ``https://atelier.tail6efbba.ts.net``. Posée par Carlito,
+    JAMAIS devinée : ni ``tailscale status`` ni le nom de la machine ne sont
+    lus pour la remplir, parce qu'un nom deviné qui se trompe envoie le
+    téléphone frapper à une porte qui n'existe pas — et l'échec s'affiche
+    « réseau ». Vide, rien ne l'annonce ; la passerelle se fie alors à
+    l'en-tête Host pour reconnaître sa propre origine.
+    """
+
+    adresse: str = ""
+
+
+@dataclass(slots=True)
 class PrivacyConfig:
     """The single, authoritative answer to "may this leave the machine?".
 
@@ -1847,6 +1863,7 @@ class DiapasonConfig:
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     mesh: MeshConfig = field(default_factory=MeshConfig)
+    tailnet: TailnetConfig = field(default_factory=TailnetConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
@@ -2142,6 +2159,7 @@ def load_config(path: Optional[Path] = None) -> DiapasonConfig:
             "security",
             "privacy",
             "mesh",
+            "tailnet",
             "channel",
             "tools",
             "sandbox",

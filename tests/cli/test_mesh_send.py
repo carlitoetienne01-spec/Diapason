@@ -14,9 +14,24 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from diapason.cli.mesh_cmd import mesh
+
+
+@pytest.fixture(autouse=True)
+def _foyer_jetable(tmp_path, monkeypatch):
+    """Le registre que la commande ouvre est celui d'un foyer jetable.
+
+    Ces tests patchent ``list_devices`` mais pas la construction du
+    registre : ``DeviceRegistry()`` ouvrait le VRAI ``~/.diapason/mesh.db``
+    et y créait le schéma du code testé. Constaté le 26/09/2026 avec un
+    HOME factice : ce fichier est le seul de tests/cli à créer mesh.db, et
+    sous la branche chantier/phase2 il ajoutait mesh_sessions et
+    mesh_session_tickets à la base réelle de Carlito.
+    """
+    monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "foyer-de-test"))
 
 
 def _appareil(nom="PC du bureau", identifiant="dev_pc"):

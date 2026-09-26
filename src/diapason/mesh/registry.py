@@ -79,6 +79,30 @@ CREATE TABLE IF NOT EXISTS mesh_pairings (
     expires_at_ms INTEGER NOT NULL,
     redeemed_at_ms INTEGER
 );
+
+-- Device sessions (mesh/sessions.py), 26/09/2026. The foreign keys are what
+-- make `forget()` take a device's sessions with it: without the cascade, a
+-- phone re-paired under the same device id would find its old sessions
+-- still open. It only works because `_connect` turns foreign_keys ON.
+CREATE TABLE IF NOT EXISTS mesh_sessions (
+    session_hash TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL
+        REFERENCES mesh_devices(device_id) ON DELETE CASCADE,
+    created_at_ms INTEGER NOT NULL,
+    last_used_at_ms INTEGER NOT NULL,
+    expires_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mesh_sessions_device_idx
+    ON mesh_sessions(device_id, expires_at_ms);
+
+CREATE TABLE IF NOT EXISTS mesh_session_tickets (
+    ticket_hash TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL
+        REFERENCES mesh_devices(device_id) ON DELETE CASCADE,
+    created_at_ms INTEGER NOT NULL,
+    expires_at_ms INTEGER NOT NULL,
+    redeemed_at_ms INTEGER
+);
 PRAGMA user_version = 1;
 """
 
@@ -655,6 +679,14 @@ class DeviceRegistry:
                 "UPDATE mesh_devices SET trust_level=?, revoked_at_ms=? "
                 "WHERE device_id=?",
                 (TRUST_REVOKED, now_ms(), device_id),
+            )
+            # 26/09/2026. `verify_session` already refuses a revoked device
+            # on its own; its sessions are deleted in the same transaction
+            # anyway, so that no later reader of mesh_sessions — a listing,
+            # a future cache — can mistake them for live ones.
+            conn.execute("DELETE FROM mesh_sessions WHERE device_id=?", (device_id,))
+            conn.execute(
+                "DELETE FROM mesh_session_tickets WHERE device_id=?", (device_id,)
             )
             conn.commit()
         if cursor.rowcount == 0:
