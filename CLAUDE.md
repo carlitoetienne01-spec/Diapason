@@ -248,6 +248,7 @@ jusqu'à ce que l'app et l'APK reconstruites l'acceptent.
 | `canonical_vectors.json` (dépôt `diapason_mobile`) | `scripts/gen_canonical_vectors.py` |
 | `tests/contract/vecteurs_compte.json` | `scripts/gen_vecteurs_compte.py` |
 | `tests/contract/compte_api_surface.json` | `scripts/gen_compte_surface.py` |
+| `tests/contract/tailnet_portee.json` (ce que le téléphone atteint par le tailnet : chaque route classée, une route non classée est refusée) | `scripts/gen_tailnet_portee.py`, APRÈS l'avoir classée dans `server/portee_tailnet.py` |
 
 Régénère **dans le même commit** que le changement qui l'a causé, jamais
 après. Voir [`docs/client-mobile.md`](docs/client-mobile.md).

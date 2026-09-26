@@ -261,6 +261,16 @@ _MOIS = (
 
 def _host_actions_allowed(request: Request, config) -> bool:
     """Allow desktop control from loopback unless remote access is explicit."""
+    # 26/09/2026 (phase 2 du plan mobile) : tout ce qui arrive par la
+    # passerelle du tailnet est refusé ICI, avant même `allow_remote`.
+    # tailscaled se connecte depuis 127.0.0.1 : sans ce refus explicite, le
+    # téléphone n'était tenu à l'écart que par hasard — la passerelle
+    # remplace `client` par « appareil:<id> », et c'est la ValueError
+    # d'ip_address qui disait non. Les actions sur le Mac depuis la
+    # Discussion du téléphone attendent la phase 6.
+    scope = getattr(request, "scope", None)
+    if isinstance(scope, dict) and scope.get("diapason.tailnet"):
+        return False
     lightning = getattr(getattr(config, "desktop", None), "lightning", None)
     if bool(getattr(lightning, "allow_remote", False)):
         return True

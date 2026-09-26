@@ -51,6 +51,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        # 26/09/2026 (phase 2 du plan mobile) : une requête qui porte ce
+        # marqueur a déjà montré une session d'appareil valide à la
+        # passerelle du tailnet (server/passerelle_tailnet.py). Seule la
+        # passerelle le pose, dans la portée ASGI — ni un en-tête ni une
+        # adresse, rien qu'un client puisse écrire. Sans cette exemption,
+        # le téléphone aurait dû présenter la clé locale, le secret partagé
+        # que la phase 2 existe pour ne jamais lui donner.
+        if request.scope.get("diapason.appareil"):
+            return await call_next(request)
+
         if self._api_key and self._requires_auth(request.url.path):
             auth = request.headers.get("Authorization", "")
             if not auth:
@@ -576,6 +586,12 @@ def websocket_authorized(websocket, expected_key: str) -> bool:  # noqa: ANN001
     its credential in the request URL.
     """
     if not expected_key:
+        return True
+    # La session d'appareil vérifiée par la passerelle du tailnet (voir
+    # AuthMiddleware.dispatch) : même marqueur, même raison. La passerelle
+    # a déjà refusé toute clé locale sur ce chemin.
+    scope = getattr(websocket, "scope", None)
+    if isinstance(scope, dict) and scope.get("diapason.appareil"):
         return True
     token = websocket.query_params.get("token", "")
     if not token:
