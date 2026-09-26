@@ -136,6 +136,7 @@ export function RoueNavigation() {
   const [mode, setMode] = useState<'roue' | 'liste'>(lireMode);
   const [allume, setAllume] = useState(0);
 
+  const racineRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
   const boutonRef = useRef<HTMLButtonElement>(null);
   const arcRef = useRef<SVGCircleElement>(null);
@@ -309,6 +310,23 @@ export function RoueNavigation() {
     if (!pontNatif) return;
     void demanderAuTelephone('bordRoue', chargeBordRoue(cote)).catch(() => {});
   }, [cote]);
+
+  // Roue ouverte, la page dessous est inerte. `aria-modal` seul ne suffisait
+  // pas : au banc (arbre d'accessibilité de Chromium, 26/09/2026), 44
+  // boutons de la page des Tâches et la cloche restaient exposés sous
+  // l'écran « Aller à », et un lecteur d'écran y passait en balayant.
+  useEffect(() => {
+    const moi = racineRef.current;
+    const parent = moi?.parentElement;
+    if (!ouverte || !moi || !parent) return undefined;
+    const autres = [...parent.children].filter(
+      (el): el is HTMLElement => el !== moi && el instanceof HTMLElement && !el.inert,
+    );
+    for (const el of autres) el.inert = true;
+    return () => {
+      for (const el of autres) el.inert = false;
+    };
+  }, [ouverte]);
 
   // Le bouton retour d'Android ferme d'abord la roue (verbe `retour`).
   useEffect(() => {
@@ -493,7 +511,7 @@ export function RoueNavigation() {
   const courant = indexDeLaPage(pathname);
 
   return (
-    <div data-roue="" style={{ display: 'contents' }}>
+    <div ref={racineRef} data-roue="" style={{ display: 'contents' }}>
       {/* Toujours montée : le glissé qui ouvre la roue continue de la
           tourner, et un pointeur capturé par un élément démonté se perd. */}
       <div
