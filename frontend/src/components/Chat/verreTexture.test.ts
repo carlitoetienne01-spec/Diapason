@@ -27,6 +27,8 @@ const calques = (masque: ReturnType<typeof masqueTexture>) => {
 };
 const lireMasque = () => document.documentElement.style.getPropertyValue('--diapason-verre-masque');
 const lirePositions = () => document.documentElement.style.getPropertyValue('--diapason-verre-position');
+/** La mesure part en microtâche, après le rendu et avant la peinture (26/09/2026). */
+const microtache = () => new Promise<void>((resoudre) => queueMicrotask(resoudre));
 
 describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -103,7 +105,7 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     expect(calques(masque)).toHaveLength(1 + 9 * 6);
   });
 
-  it('suit les ancêtres et enlève le masque lorsque Discussion se ferme', () => {
+  it('suit les ancêtres et enlève le masque lorsque Discussion se ferme', async () => {
     const observer = { observe: vi.fn(), disconnect: vi.fn() };
     vi.stubGlobal('ResizeObserver', class { observe = observer.observe; disconnect = observer.disconnect; });
     const parent = document.createElement('div');
@@ -113,6 +115,7 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     let x = 20;
     vi.spyOn(panneau, 'getBoundingClientRect').mockImplementation(() => ({ left: x, top: 600, width: 700, height: 100 }) as DOMRect);
     const enlever = inscrireSurfaceVitree(panneau);
+    await microtache();
     try {
       expect(observer.observe).toHaveBeenCalledWith(parent);
       expect(lireSurfacesVitrees()[0].x).toBe(20);
@@ -130,7 +133,7 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     expect(lireMasque()).toBe('');
   });
 
-  it('garde le suivi du panneau quand son menu se ferme', () => {
+  it('garde le suivi du panneau quand son menu se ferme', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     const panneau = document.createElement('div');
     const menu = document.createElement('div');
@@ -140,11 +143,13 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({ left: 30, top: 550, width: 260, height: 120 } as DOMRect);
     const enleverPanneau = inscrireSurfaceVitree(panneau);
     const enleverMenu = inscrireSurfaceVitree(menu);
+    await microtache();
     try {
       // jsdom ne calcule pas de rayon : un trou = colonne + rangée.
       const nbCalques = () => listeCss(lireMasque()).length;
       expect(nbCalques()).toBe(1 + 2 * 2);
       enleverMenu();
+      await microtache();
       expect(nbCalques()).toBe(1 + 2);
       x = 100;
       window.dispatchEvent(new Event('resize'));
@@ -158,7 +163,7 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     expect(lireMasque()).toBe('');
   });
 
-  it('suit le défilement réel du panneau et oublie ses cartes au démontage', () => {
+  it('suit le défilement réel du panneau et oublie ses cartes au démontage', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     const panneau = document.createElement('div');
     panneau.setAttribute('data-verre-defilement', '');
@@ -172,6 +177,7 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     let y = 80;
     vi.spyOn(carte, 'getBoundingClientRect').mockImplementation(() => ({ left: 720, top: y, width: 240, height: 60 }) as DOMRect);
     const enlever = inscrireSurfaceVitree(carte);
+    await microtache();
     try {
       expect(lireSurfacesVitrees()[0].limite).toEqual({ x: 701, y: 40, largeur: 280, hauteur: 600 });
       y = -50;
@@ -180,6 +186,30 @@ describe('verre — §5, la texture ne doit pas simuler une vitre opaque', () =>
     } finally {
       enlever();
       panneau.remove();
+    }
+    expect(lireSurfacesVitrees()).toEqual([]);
+  });
+
+  it('ne mesure qu’une fois chaque vitre quand un rendu en pose douze, au lieu de reforcer la mise en page à chacune', async () => {
+    // 26/09/2026 : la revisite du Planificateur (12 vitres) passait 57 ms
+    // dans getBoundingClientRect, au processeur ×4 — 78 mesures pour 12.
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const vitres = Array.from({ length: 12 }, (_, i) => {
+      const el = document.createElement('div');
+      document.body.append(el);
+      return { el, mesure: vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20 + i * 50, width: 300, height: 40 } as DOMRect) };
+    });
+    const retraits = vitres.map(({ el }) => inscrireSurfaceVitree(el));
+    const avantPeinture = vitres.reduce((n, v) => n + v.mesure.mock.calls.length, 0);
+    expect(avantPeinture, 'aucune mesure pendant les effets de mise en page du rendu').toBe(0);
+    await microtache();
+    try {
+      for (const { mesure } of vitres) expect(mesure, 'une mesure par vitre, pas une par inscription').toHaveBeenCalledTimes(1);
+      expect(lireSurfacesVitrees(), 'les douze sont dans la géométrie avant la peinture').toHaveLength(12);
+    } finally {
+      for (const retirer of retraits) retirer();
+      for (const { el } of vitres) el.remove();
+      await microtache();
     }
     expect(lireSurfacesVitrees()).toEqual([]);
   });

@@ -163,6 +163,29 @@ function actualiser() {
   dernierMasque = empreinte;
 }
 
+/**
+ * Une seule mesure pour toutes les vitres posées dans le même rendu.
+ *
+ * 26/09/2026, chantier de la fluidité (lot 2) : chaque vitre qui s'inscrivait
+ * relançait `actualiser` sur-le-champ, dans l'effet de mise en page de React.
+ * Or `actualiser` mesure TOUTES les vitres puis réécrit cinq propriétés sur
+ * <html> : la vitre suivante reforçait style et mise en page du document
+ * entier. Au banc (4G simulée, processeur ×4), la revisite du Planificateur
+ * (12 vitres) passait 57 ms dans `getBoundingClientRect`, d'un seul tenant,
+ * juste après son premier affichage — le toucher suivant et les lectures de
+ * la page attendaient derrière. La microtâche part après le rendu et AVANT la
+ * peinture : le masque est posé à la même image qu'avant.
+ */
+let actualisationPrevue = false;
+function actualiserAvantPeinture() {
+  if (actualisationPrevue) return;
+  actualisationPrevue = true;
+  queueMicrotask(() => {
+    actualisationPrevue = false;
+    actualiser();
+  });
+}
+
 export function inscrireSurfaceVitree(surface: HTMLElement): () => void {
   surfaces.add(surface);
   const observation = new ResizeObserver(actualiser);
@@ -175,11 +198,11 @@ export function inscrireSurfaceVitree(surface: HTMLElement): () => void {
     window.addEventListener('resize', actualiser);
     window.addEventListener('scroll', actualiser, true);
   }
-  actualiser();
+  actualiserAvantPeinture();
   return () => {
     observation.disconnect();
     surfaces.delete(surface);
-    if (surfaces.size) actualiser();
+    if (surfaces.size) actualiserAvantPeinture();
     else {
       window.removeEventListener('resize', actualiser);
       window.removeEventListener('scroll', actualiser, true);
