@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, CheckCircle, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react';
 import { approveAction, denyAction, fetchPendingApprovals } from '../lib/api';
 import type { PendingApproval } from '../lib/api';
+import { pontNatif } from '../lib/natif';
+import { ouvrirLaCloche } from '../lib/ouvrirLaCloche';
 import { useTranslation } from '../i18n/useTranslation';
 import type { MessageKey } from '../i18n/translate';
 
@@ -69,6 +71,24 @@ export function ApprovalBell() {
       return !o;
     });
   };
+
+  // 26/09/2026, phase 5 du plan mobile : une notification d'approbation
+  // touchée sur le téléphone ouvre ICI, par le verbe `approbations` de la
+  // coquille — relue d'abord, jamais décidée (lib/ouvrirLaCloche.ts).
+  useEffect(() => {
+    if (!pontNatif) return undefined;
+    return pontNatif.surApprobations(() =>
+      ouvrirLaCloche({
+        lire: fetchPendingApprovals,
+        afficher: setApprovals,
+        ouvrir: () => {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) setPlacement(placerMenu(rect, window.innerHeight));
+          setOpen(true);
+        },
+      }),
+    );
+  }, []);
 
   const load = useCallback(async () => {
     try {

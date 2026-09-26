@@ -34,8 +34,15 @@ export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne'] as cons
  * maillage (`app.navigate`, `app.show_resource`) arrive à la coquille, pas à
  * la boîte du Mac ; la coquille traduit la route et demande l'écran. Il ne
  * rend qu'un chemin déjà connu d'elle — aucun secret.
+ *
+ * `approbations` (26/09/2026, phase 5) : la notification d'approbation
+ * touchée ouvre la cloche — jamais une décision : la coquille ne rapporte
+ * que le nombre de demandes affichées.
  */
-export const VERBES_ENTRANTS = ['retour', 'naviguer'] as const;
+export const VERBES_ENTRANTS = ['retour', 'naviguer', 'approbations'] as const;
+
+/** Les verbes entrants qui attendent la page (réponse différée, un gestionnaire). */
+type VerbeEntrantDiffere = Exclude<VerbeEntrant, 'retour'>;
 
 export type VerbeSortant = (typeof VERBES_SORTANTS)[number];
 export type VerbeEntrant = (typeof VERBES_ENTRANTS)[number];
@@ -196,7 +203,7 @@ export class PontNatif {
   private readonly emis = new Set<string>();
   private readonly enAvance = new Map<string, ReponseNatif>();
   private readonly retours: Array<() => boolean> = [];
-  private navigateur: ((donnees: unknown) => Promise<unknown>) | null = null;
+  private readonly differes = new Map<VerbeEntrantDiffere, (donnees: unknown) => Promise<unknown>>();
   /** Expirés, avec leur verbe : une réponse tardive se dit encore. */
   private readonly expirees = new Map<string, VerbeSortant>();
   private readonly canal: CanalNatif;
@@ -307,9 +314,25 @@ export class PontNatif {
    * coquille — puis à l'appareil qui a demandé. Rend la désinscription.
    */
   surNaviguer(gestionnaire: (donnees: unknown) => Promise<unknown>): () => void {
-    this.navigateur = gestionnaire;
+    return this.inscrire('naviguer', gestionnaire);
+  }
+
+  /**
+   * Qui ouvre la cloche quand une notification d'approbation est touchée
+   * (26/09/2026, phase 5). Le gestionnaire rend `{nombre}` une fois la
+   * cloche OUVERTE sur les demandes lues — il ne décide jamais rien.
+   */
+  surApprobations(gestionnaire: (donnees: unknown) => Promise<unknown>): () => void {
+    return this.inscrire('approbations', gestionnaire);
+  }
+
+  private inscrire(
+    verbe: VerbeEntrantDiffere,
+    gestionnaire: (donnees: unknown) => Promise<unknown>,
+  ): () => void {
+    this.differes.set(verbe, gestionnaire);
     return () => {
-      if (this.navigateur === gestionnaire) this.navigateur = null;
+      if (this.differes.get(verbe) === gestionnaire) this.differes.delete(verbe);
     };
   }
 
@@ -322,8 +345,8 @@ export class PontNatif {
   }
 
   private repondreA(demande: DemandeNatif): void {
-    if (demande.verbe === 'naviguer') {
-      void this.naviguer(demande);
+    if (demande.verbe === 'naviguer' || demande.verbe === 'approbations') {
+      void this.differer(demande.verbe, demande);
       return;
     }
     let reponse: ReponseNatif;
@@ -345,9 +368,9 @@ export class PontNatif {
     this.poster(reponse);
   }
 
-  private async naviguer(demande: DemandeNatif): Promise<void> {
-    const navigateur = this.navigateur;
-    if (!navigateur) {
+  private async differer(verbe: VerbeEntrantDiffere, demande: DemandeNatif): Promise<void> {
+    const gestionnaire = this.differes.get(verbe);
+    if (!gestionnaire) {
       // Le bundle n'est pas encore monté (ou plus) : le dire tout de suite,
       // plutôt que laisser la coquille attendre son délai pour un écran qui
       // ne s'ouvrira pas.
@@ -355,7 +378,7 @@ export class PontNatif {
       return;
     }
     try {
-      const donnees = await navigateur(demande.donnees);
+      const donnees = await gestionnaire(demande.donnees);
       this.poster({ type: 'reponse', id: demande.id, ok: true, donnees });
     } catch (exc) {
       const erreur = exc instanceof Error && exc.message ? exc.message : String(exc);
