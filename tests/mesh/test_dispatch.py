@@ -619,6 +619,49 @@ class TestTheExecutorVerdictIsRead:
         assert result["status"] == "FAILED"
         assert result["errorCode"] == "EXECUTOR_SILENT"
 
+    def test_an_unknown_route_travels_back_as_unsupported(self, mesh, tmp_path):
+        """25/09/2026: the real executor, end to end. `success://reglages`
+        was answered SUCCESS / « Écran ouvert » while no screen could open."""
+        from diapason.mesh import executor as ex
+
+        registry, queue, identity_module = mesh
+        ex.pending_navigations(drain=True)  # a window is collecting
+        try:
+            result = receive_command(
+                _signed_envelope(registry, identity_module, route="success://reglages"),
+                registry=registry,
+                queue=queue,
+                nonces=NonceStore(tmp_path / "mesh.db"),
+                executor=ex.local_executor,
+            )
+        finally:
+            ex._pending.clear()
+            ex._last_collection_ms = None
+        assert result["status"] == "UNSUPPORTED", (
+            "a screen this device does not have is UNSUPPORTED, the status the "
+            "sender already knows how to explain — not FAILED, never SUCCESS"
+        )
+        assert result["errorCode"] == "UNKNOWN_ROUTE"
+
+    @pytest.mark.parametrize("claimed", ["SUCCESS", "DENIED", "EXPIRED", "RUNNING"])
+    def test_an_executor_cannot_claim_any_other_status(self, mesh, tmp_path, claimed):
+        """Only UNSUPPORTED may be named by an executor: SUCCESS would let a
+        refusal talk its way up, DENIED and EXPIRED belong to verification."""
+        result = self._receive(
+            mesh,
+            tmp_path,
+            lambda cmd: {"ok": False, "status": claimed, "userSafeMessage": "x"},
+        )
+        assert result["status"] == "FAILED", f"« {claimed} » claimed with ok=False"
+
+    def test_unsupported_without_ok_false_changes_nothing(self, mesh, tmp_path):
+        result = self._receive(
+            mesh,
+            tmp_path,
+            lambda cmd: {"ok": True, "status": "UNSUPPORTED", "userSafeMessage": "x"},
+        )
+        assert result["status"] == "SUCCESS", "the verdict is ok, not status"
+
     def test_an_executor_that_succeeded_still_succeeds(self, mesh, tmp_path):
         result = self._receive(
             mesh, tmp_path, lambda cmd: {"ok": True, "userSafeMessage": "C'est ouvert."}

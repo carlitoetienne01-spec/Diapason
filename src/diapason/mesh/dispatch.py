@@ -520,9 +520,15 @@ def receive_command(
             result=verdict or None,
         )
     if not verdict["ok"]:
+        # 25/09/2026: a route this device does not know is not a failure of
+        # the action, it is an action this device does not have. Only
+        # UNSUPPORTED may be claimed this way — never SUCCESS, and never the
+        # verdicts that belong to verification (DENIED, EXPIRED) — and only
+        # together with ok=False, so an executor cannot talk its way UP.
+        status = "UNSUPPORTED" if verdict.get("status") == "UNSUPPORTED" else "FAILED"
         return queue.mark(
             command.command_id,
-            "FAILED",
+            status,
             user_message=str(
                 verdict.get("userSafeMessage") or "L'action a échoué sur cet appareil."
             ),

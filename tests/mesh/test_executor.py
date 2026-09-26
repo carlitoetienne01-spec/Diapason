@@ -245,3 +245,109 @@ class TestUneFilePleineNeMentPasNonPlus:
             "si la file devenait plus grande que ce qu'un battement livre, "
             "ce test deviendrait tautologique — il garde le cas RÉEL"
         )
+
+
+class TestUneRouteInconnueNOuvreRien:
+    """25/09/2026, §100. `_navigate` rendait « Écran ouvert : … » dès que la
+    route était mise en file, sans l'avoir regardée.
+
+    La fenêtre rencontrait ensuite une route qu'elle ne connaît pas,
+    `resolveSuccessRoute` rendait null et rien ne s'ouvrait — pendant que
+    l'émetteur affichait SUCCESS. La bascule de schéma prévue (`vie://`)
+    aurait reproduit ce mensonge sur tout bureau resté sur l'ancienne table.
+    """
+
+    def test_une_route_inconnue_est_non_prise_en_charge(self):
+        ex.pending_navigations(drain=True)
+        resultat = ex._navigate(a_command("app.navigate", route="success://reglages"))
+        assert resultat["ok"] is False, "aucun écran « reglages » n'existe ici"
+        assert resultat["status"] == "UNSUPPORTED", (
+            "ce n'est pas un échec de l'action : cet appareil n'a pas l'écran"
+        )
+        assert resultat["errorCode"] == "UNKNOWN_ROUTE"
+        assert ex._pending == [], "une route refusée ne se met pas en file"
+
+    def test_la_route_est_verifiee_meme_sans_fenetre(self):
+        """Un écran absent l'est qu'une fenêtre soit ouverte ou non ; dire
+        « aucune fenêtre » enverrait ouvrir une fenêtre pour rien."""
+        resultat = ex._navigate(a_command("app.navigate", route="success://reglages"))
+        assert resultat["errorCode"] == "UNKNOWN_ROUTE"
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            "diapason://research/42",
+            "https://example.com",
+            "",
+            "success://tasks/../../etc/passwd",
+            "success://notes/%",
+            "success://notes/%zz",
+            "success://projects/%E0%A4%A",
+            "success://projects/%E0%A4",
+            # U+017F et U+212A : le `/i` de JavaScript ne les replie pas dans
+            # [a-z], le repli Unicode de Python si. Sans re.ASCII, ce côté-ci
+            # accepterait une route que la fenêtre refuse.
+            "success://\u017ftasks",
+            "success://tas\u212a\u212a",
+        ],
+    )
+    def test_ce_que_la_fenetre_refuse_ce_cote_le_refuse(self, route):
+        ex.pending_navigations(drain=True)
+        resultat = ex._navigate(a_command("app.navigate", route=route))
+        assert resultat.get("status") == "UNSUPPORTED", (
+            f"« {route} » ne s'ouvre pas dans la fenêtre : l'annoncer ouvert "
+            "serait un faux SUCCESS"
+        )
+
+    @pytest.mark.parametrize(
+        "route,attendu",
+        [
+            ("success://today", ("today", "")),
+            ("  success://today/  ", ("today", "")),
+            ("SUCCESS://TODAY", ("today", "")),
+            ("success://projects/p-1", ("projects", "p-1")),
+            ("success://notes/n%20espace", ("notes", "n espace")),
+            ("success://habits/h7", ("habits", "h7")),
+            ("success://tasks", ("tasks", "")),
+            # Une fin de ligne est un blanc : `trim()` l'ôte, strip() aussi.
+            ("success://today\n", ("today", "")),
+        ],
+    )
+    def test_les_formes_qu_un_vrai_emetteur_produit_passent(self, route, attendu):
+        assert ex.parse_mesh_route(route) == attendu, (
+            f"« {route} » s'ouvre dans la fenêtre (routes.test.ts) : ce côté "
+            "doit l'accepter aussi"
+        )
+
+    def test_une_route_connue_reste_ouverte(self):
+        ex.pending_navigations(drain=True)
+        resultat = ex._navigate(a_command("app.navigate", route="success://notes/n1"))
+        assert resultat["ok"] is True
+        assert ex._pending[0]["route"] == "success://notes/n1"
+
+    def test_un_type_de_ressource_inconnu_n_est_pas_affiche(self):
+        """`_show_resource` fabrique sa route à partir de deux chaînes libres :
+        elle se vérifie comme une route reçue."""
+        ex.pending_navigations(drain=True)
+        resultat = ex._show_resource(
+            a_command("app.show_resource", resourceType="settings", resourceId="x")
+        )
+        assert resultat["status"] == "UNSUPPORTED"
+        assert ex._pending == []
+
+    def test_un_identifiant_avec_une_barre_n_est_pas_affiche(self):
+        ex.pending_navigations(drain=True)
+        resultat = ex._show_resource(
+            a_command("app.show_resource", resourceType="note", resourceId="a/b")
+        )
+        assert resultat["status"] == "UNSUPPORTED", (
+            "« success://notes/a/b » ne correspond à aucune route de la fenêtre"
+        )
+
+    @pytest.mark.parametrize("genre", ["task", "project", "note", "habit"])
+    def test_chaque_ressource_du_vocabulaire_s_affiche(self, genre):
+        ex.pending_navigations(drain=True)
+        resultat = ex._show_resource(
+            a_command("app.show_resource", resourceType=genre, resourceId="id-1")
+        )
+        assert resultat["ok"] is True, f"une ressource « {genre} » doit s'afficher"

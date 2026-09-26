@@ -15,14 +15,18 @@ disagree eventually.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
+from urllib.parse import unquote
 
 from diapason.mesh.commands import RemoteCommand, now_ms
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "MESH_ROUTE_KINDS",
     "local_executor",
+    "parse_mesh_route",
     "pending_navigations",
     "push_shell_event",
     "push_navigation",
@@ -148,8 +152,80 @@ def _no_shell() -> dict[str, Any]:
     }
 
 
+# The screens a `success://` route may name — the keys of `PATHS` in
+# `frontend/src/features/mesh/routes.ts`, which is what the shell below us
+# actually opens, and of `_views` in the mobile client's `mesh_routes.dart`.
+# `tests/contract/test_routes_du_maillage.py` reads both files and fails the
+# moment one of the three drifts.
+#
+# 25/09/2026: `_navigate` answered "Écran ouvert : success://reglages." the
+# instant a route was queued, without ever checking it. The shell then met a
+# route it did not know, `resolveSuccessRoute` returned null, and nothing
+# opened — while the sender had been told SUCCESS (§100). The scheme switch
+# planned for `vie://` would have turned every desktop still on the old table
+# into exactly that lie.
+MESH_ROUTE_KINDS = frozenset({"today", "tasks", "projects", "habits", "notes"})
+
+# The same pattern as `routes.ts` and `mesh_routes.dart`, character for
+# character. `re.ASCII` because JavaScript's `/i` without `u` does not fold
+# `ſ` (U+017F) or the Kelvin sign into `[a-z]`, and Python's default Unicode
+# folding does: without it, this side would accept a route the shell refuses.
+# `fullmatch` rather than `$`, which in Python also matches before a final
+# newline.
+_MESH_ROUTE = re.compile(r"success://([a-z]+)(?:/([^/?#]+))?/?", re.I | re.ASCII)
+
+# `decodeURIComponent` throws on a `%` not followed by two hex digits; Python's
+# `unquote` lets it through untouched. The shell would treat such an id as an
+# unknown route, so this side must too.
+_BROKEN_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+
+def parse_mesh_route(route: str) -> tuple[str, str] | None:
+    """(kind, decoded id) for a route the shell will open, else None.
+
+    None is the honest answer, as on the two other sides of the wire:
+    opening an approximate screen would make the command look honoured.
+    """
+    match = _MESH_ROUTE.fullmatch(str(route or "").strip())
+    if match is None:
+        return None
+    kind = match.group(1).lower()
+    if kind not in MESH_ROUTE_KINDS:
+        return None
+    raw_id = match.group(2) or ""
+    if not raw_id:
+        return kind, ""
+    if _BROKEN_ESCAPE.search(raw_id):
+        return None
+    try:
+        return kind, unquote(raw_id, errors="strict")
+    except UnicodeDecodeError:
+        # `%E0%A4` alone: well-formed escapes, invalid UTF-8. The shell's
+        # decoder throws on it too.
+        return None
+
+
+def _unknown_route(route: str) -> dict[str, Any]:
+    """UNSUPPORTED, not FAILED: nothing went wrong here, this device simply
+    has no such screen — the same answer an unknown tool gets (spec §6)."""
+    return {
+        "ok": False,
+        "status": "UNSUPPORTED",
+        "errorCode": "UNKNOWN_ROUTE",
+        "route": route,
+        "userSafeMessage": (
+            f"Cet appareil ne connaît pas l'écran « {route or '(vide)'} » : "
+            "rien n'a été ouvert."
+        ),
+    }
+
+
 def _navigate(command: RemoteCommand) -> dict[str, Any]:
     route = str(command.arguments.get("route") or "")
+    # Checked before the shell: a screen this device does not have is missing
+    # whether or not a window happens to be open.
+    if parse_mesh_route(route) is None:
+        return _unknown_route(route)
     if not shell_is_collecting():
         return _no_shell()
     place = push_navigation(
@@ -177,6 +253,11 @@ def _show_resource(command: RemoteCommand) -> dict[str, Any]:
         "habit": "habits",
     }
     route = f"success://{plural.get(kind, kind)}/{resource_id}"
+    # The route is built here from two free strings, so it is checked like
+    # any received one: a `resourceType` of "settings", or an id holding a
+    # "/", gives a route the shell cannot open.
+    if parse_mesh_route(route) is None:
+        return _unknown_route(route)
     if not shell_is_collecting():
         return _no_shell()
     place = push_navigation(
