@@ -12,12 +12,15 @@ import {
   Tablet,
   Trash2,
   Globe,
+  LogOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
   announceMeshPresence,
+  closeDeviceSessions,
   createMeshPairing,
+  fetchDeviceSessions,
   fetchMeshIdentity,
   forgetMeshDevice,
   listMeshDevices,
@@ -31,10 +34,17 @@ import type {
   MeshPairingInvitation,
   MeshPresenceState,
 } from '../features/mesh/types';
+import {
+  adresseDInvitation,
+  phraseDeFermeture,
+  resumeDesSessions,
+  type EtatSessions,
+} from '../features/mesh/sessions';
 import { useConfirm } from '../components/ConfirmDialog';
 import { PanneauGestes } from '../features/gestes/PanneauGestes';
 import { estMobile } from '../lib/natif';
 import { useTranslation } from '../i18n/useTranslation';
+import type { Locale } from '../i18n/locale';
 
 const DEVICE_ICONS: Record<MeshDeviceType, typeof Monitor> = {
   DESKTOP: Monitor,
@@ -66,7 +76,7 @@ function formatDate(value: number | null | undefined) {
 
 export function DevicesPage() {
   const confirm = useConfirm();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [identity, setIdentity] = useState<MeshIdentity | null>(null);
   const [devices, setDevices] = useState<MeshDeviceWithPresence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +86,33 @@ export function DevicesPage() {
   const [invitation, setInvitation] = useState<MeshPairingInvitation | null>(null);
   const [copied, setCopied] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const [sessions, setSessions] = useState<Record<string, EtatSessions>>({});
+  const [adresseCopiee, setAdresseCopiee] = useState(false);
+
+  /**
+   * Les sessions ouvertes par le tailnet, appareil par appareil (plan mobile,
+   * phase 2, étape 9 — 26/09/2026). Un appareil retiré n'en a plus :
+   * `revoke()` les efface dans la même transaction, et le relire coûterait
+   * une requête par appareil mort à chaque battement de vingt secondes.
+   * Une lecture qui échoue garde son erreur À CÔTÉ de l'appareil au lieu de
+   * le faire passer pour « aucune session ».
+   */
+  const loadSessions = useCallback(async (fleet: MeshDeviceWithPresence[]) => {
+    const vivants = fleet.filter((device) => device.trustLevel !== 'REVOKED');
+    const lus = await Promise.all(
+      vivants.map(async (device): Promise<[string, EtatSessions]> => {
+        try {
+          return [device.deviceId, { etat: 'lu', lecture: await fetchDeviceSessions(device.deviceId) }];
+        } catch (error) {
+          return [
+            device.deviceId,
+            { etat: 'erreur', message: error instanceof Error ? error.message : String(error) },
+          ];
+        }
+      }),
+    );
+    setSessions(Object.fromEntries(lus));
+  }, []);
 
   /**
    * @param quiet background refreshes stay silent. A toast on every failed
@@ -87,6 +124,7 @@ export function DevicesPage() {
       try {
         const fleet = await listMeshDevices({ includeRevoked: showRevoked });
         setDevices(fleet);
+        await loadSessions(fleet);
       } catch (error) {
         if (!quiet) {
           toast.error('La liste des appareils est indisponible.', {
@@ -97,7 +135,7 @@ export function DevicesPage() {
         setLoading(false);
       }
     },
-    [showRevoked],
+    [showRevoked, loadSessions],
   );
 
   // Fetched once: this machine's identity is fixed for the life of the
@@ -128,6 +166,7 @@ export function DevicesPage() {
       const created = await createMeshPairing(name);
       setInvitation(created);
       setCopied(false);
+      setAdresseCopiee(false);
     } catch (error) {
       toast.error("L'invitation n'a pas pu être créée.", {
         description: error instanceof Error ? error.message : String(error),
@@ -147,6 +186,47 @@ export function DevicesPage() {
       toast.success('Code copié');
     } catch {
       toast.error('Le code n’a pas pu être copié.');
+    }
+  };
+
+  const copyAddress = async (adresse: string) => {
+    try {
+      await navigator.clipboard.writeText(adresse);
+      setAdresseCopiee(true);
+      toast.success(t('appareils.invitation.adresseCopiee'));
+    } catch {
+      toast.error(t('appareils.invitation.copieImpossible'));
+    }
+  };
+
+  /**
+   * Déconnecter sans retirer : distinct de la révocation, qui jette la clé
+   * et force un nouvel appairage. La phrase dit ce que le SERVEUR a fermé
+   * (§100), puis la ligne est relue plutôt que remise à zéro ici.
+   */
+  const closeSessions = async (device: MeshDeviceWithPresence) => {
+    setWorking(true);
+    try {
+      const result = await closeDeviceSessions(device.deviceId);
+      toast.success(phraseDeFermeture(result.closed, device.name, t));
+    } catch (error) {
+      toast.error(t('appareils.sessions.echecFermeture'), {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      try {
+        const lu = await fetchDeviceSessions(device.deviceId);
+        setSessions((avant) => ({ ...avant, [device.deviceId]: { etat: 'lu', lecture: lu } }));
+      } catch (error) {
+        setSessions((avant) => ({
+          ...avant,
+          [device.deviceId]: {
+            etat: 'erreur',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        }));
+      }
+      setWorking(false);
     }
   };
 
@@ -384,6 +464,11 @@ export function DevicesPage() {
                   {copied ? 'Copié' : 'Copier'}
                 </button>
               </div>
+              <AdresseAInviter
+                invitation={invitation}
+                copiee={adresseCopiee}
+                onCopier={(adresse) => void copyAddress(adresse)}
+              />
             </div>
           )}
         </section>
@@ -499,6 +584,15 @@ export function DevicesPage() {
                         Peut : {device.capabilities.join(', ')}
                       </p>
                     )}
+                    {!revoked && (
+                      <LigneSessions
+                        etat={sessions[device.deviceId] ?? { etat: 'chargement' }}
+                        maintenant={Date.now()}
+                        locale={locale}
+                        occupe={working}
+                        onFermer={() => void closeSessions(device)}
+                      />
+                    )}
                     {device.declaredCapabilities.length > device.capabilities.length && (
                       // The gap between what a device claims and what it is
                       // granted is the whole explanation for "il ne peut pas
@@ -550,6 +644,98 @@ export function DevicesPage() {
           })}
         </ul>
       </main>
+    </div>
+  );
+}
+
+/**
+ * L'adresse que l'invitation rend, à côté du code. Jamais devinée : sans
+ * `[tailnet] adresse`, la page le dit au lieu d'inventer un nom.
+ */
+function AdresseAInviter({
+  invitation,
+  copiee,
+  onCopier,
+}: {
+  invitation: MeshPairingInvitation;
+  copiee: boolean;
+  onCopier: (adresse: string) => void;
+}) {
+  const { t } = useTranslation();
+  const lue = adresseDInvitation(invitation);
+  if (lue.type !== 'adresse') {
+    return (
+      <p className="text-xs mt-3" style={{ color: 'var(--color-warning)' }}>
+        {t(
+          lue.type === 'nonPosee'
+            ? 'appareils.invitation.adresseNonPosee'
+            : 'appareils.invitation.adresseServeurAncien',
+        )}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3">
+      <p className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+        {t('appareils.invitation.adresse')}
+      </p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 text-xs font-mono break-all" style={{ color: 'var(--color-text)' }}>
+          {lue.adresse}
+        </code>
+        <button
+          type="button"
+          onClick={() => onCopier(lue.adresse)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs cursor-pointer"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+        >
+          {copiee ? <Check size={13} /> : <Clipboard size={13} />}
+          {t('appareils.invitation.copierAdresse')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LigneSessions({
+  etat,
+  maintenant,
+  locale,
+  occupe,
+  onFermer,
+}: {
+  etat: EtatSessions;
+  maintenant: number;
+  locale: Locale;
+  occupe: boolean;
+  onFermer: () => void;
+}) {
+  const { t } = useTranslation();
+  const resume = resumeDesSessions(etat, maintenant, t, locale);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-xs">
+      <span
+        className="min-w-0"
+        style={{
+          color: resume.ton === 'erreur' ? 'var(--color-error)' : 'var(--color-text-secondary)',
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {resume.texte}
+      </span>
+      {resume.fermable && (
+        <button
+          type="button"
+          onClick={onFermer}
+          disabled={occupe}
+          title={t('appareils.sessions.fermerAide')}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer disabled:opacity-50"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+        >
+          <LogOut size={12} />
+          {t('appareils.sessions.fermer')}
+        </button>
+      )}
     </div>
   );
 }

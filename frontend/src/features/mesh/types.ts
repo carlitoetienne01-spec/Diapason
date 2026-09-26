@@ -68,6 +68,37 @@ export interface MeshPairingInvitation {
   deviceName: string;
   expiresAtMs: number;
   expiresInSeconds: number;
+  /**
+   * The https address to type in the phone app, read by the server from
+   * `[tailnet] adresse` and never guessed. `null` while it is not set;
+   * absent (undefined) from a server older than phase 2 step 9.
+   */
+  tailnetAddress?: string | null;
+}
+
+/** One session a paired device opened through the tailnet gateway. */
+export interface MeshSession {
+  /** 16 hex characters of the stored hash — a name, never the token. */
+  sessionId: string;
+  createdAtMs: number;
+  /** Rewritten at most once a minute by the server. */
+  lastUsedAtMs: number;
+  expiresAtMs: number;
+}
+
+export interface MeshDeviceSessions {
+  deviceId: string;
+  sessions: MeshSession[];
+  count: number;
+  /** The newest touch across sessions; null when none is open. */
+  lastUsedAtMs: number | null;
+}
+
+export interface MeshSessionsClosed {
+  ok: boolean;
+  deviceId: string;
+  /** How many sessions the server actually deleted. */
+  closed: number;
 }
 
 export interface MeshFileReceived {

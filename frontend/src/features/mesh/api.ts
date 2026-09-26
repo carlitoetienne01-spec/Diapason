@@ -4,8 +4,10 @@ import type {
   MeshDevice,
   MeshDeviceWithPresence,
   MeshIdentity,
+  MeshDeviceSessions,
   MeshInboxEntry,
   MeshPairingInvitation,
+  MeshSessionsClosed,
 } from './types';
 
 /**
@@ -129,6 +131,24 @@ export async function forgetMeshDevice(deviceId: string): Promise<void> {
     `/v1/mesh/devices/${encodeURIComponent(deviceId)}`,
     { method: 'DELETE' },
   );
+}
+
+/**
+ * The sessions a device opened through the tailnet gateway, and its last
+ * activity. Never a token: the server names each session by a hash prefix.
+ */
+export function fetchDeviceSessions(deviceId: string): Promise<MeshDeviceSessions> {
+  return request(`/v1/mesh/devices/${encodeURIComponent(deviceId)}/sessions`);
+}
+
+/**
+ * Log a device out everywhere WITHOUT revoking it: it stays paired and can
+ * open a new session with its key. The count is the server's, not ours.
+ */
+export function closeDeviceSessions(deviceId: string): Promise<MeshSessionsClosed> {
+  return request(`/v1/mesh/devices/${encodeURIComponent(deviceId)}/sessions/close`, {
+    method: 'POST',
+  });
 }
 
 /**
