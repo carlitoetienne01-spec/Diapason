@@ -76,6 +76,43 @@ def _comptes(chemin: Path) -> dict[str, int]:
         }
 
 
+# Les colonnes que la migration réécrit exprès (chemins de photos) : leurs
+# propres tests les vérifient, l'empreinte ne doit pas les confondre avec une
+# altération.
+_COLONNES_REECRITES = {"file_path", "thumb_path"}
+
+
+def _empreintes(chemin: Path) -> dict[str, str]:
+    """sha256 des lignes de chaque table, sous le nom SANS préfixe.
+
+    25/09/2026 : l'égalité des comptes ne voyait pas le contenu. Contre-épreuve :
+    vider titres et contenus des notes, mettre à 0 les montants, changer le
+    device_id de la table meta (qui scinderait l'identité du maillage), le tout
+    après les ALTER de renommer_tables — 346 tests verts. Lignes triées : le
+    renommage n'a pas à garder un ordre physique, seulement chaque octet."""
+    import hashlib
+
+    with closing(sqlite3.connect(chemin)) as conn:
+        empreintes: dict[str, str] = {}
+        for table in _tables(conn):
+            colonnes = [
+                row[1]
+                for row in conn.execute(f'PRAGMA table_info("{table}")')
+                if row[1] not in _COLONNES_REECRITES
+            ]
+            liste = ", ".join(f'"{c}"' for c in colonnes)
+            lignes = sorted(
+                repr(tuple(row))
+                for row in conn.execute(
+                    f'SELECT {liste} FROM "{table}"'  # noqa: S608 - noms tirés du schéma
+                )
+            )
+            empreintes[table.split("_", 1)[1]] = hashlib.sha256(
+                "\n".join(lignes).encode()
+            ).hexdigest()
+        return empreintes
+
+
 def _schema(conn: sqlite3.Connection) -> set[tuple[str, str, str, str]]:
     """sqlite_master sans ses guillemets ni ses blancs, pour comparer."""
     return {
@@ -541,12 +578,16 @@ class TestLeRenommageDesTables:
         _base_riche(chemin)
         vieillir(chemin)
         avant, sequence = _comptes(chemin), _sequence(chemin)
+        empreintes = _empreintes(chemin)
         assert len(avant) == 26 and sum(1 for n in avant.values() if n) == 25, avant
 
         resultat = migrer_base_vie(donnees)
 
         assert resultat.etat == "migree", resultat
         assert _comptes(donnees / NOM_BASE) == avant, "mêmes lignes, table par table"
+        apres = _empreintes(donnees / NOM_BASE)
+        alterees = sorted(t for t in empreintes if apres.get(t) != empreintes[t])
+        assert alterees == [], f"le renommage a changé le contenu de : {alterees}"
         assert _sequence(donnees / NOM_BASE) == sequence, (
             "le compteur AUTOINCREMENT de vie_operations doit suivre"
         )
