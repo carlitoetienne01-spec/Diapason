@@ -11,8 +11,8 @@ Ces deux routes disent ce que le SERVEUR voit :
 
 - ``GET /v1/cloud/keys`` : pour chaque nom de clé que l'app de bureau gère,
   présente ou absente (``set``), jamais sa valeur. « Présente » veut dire
-  que ``get_cloud_key`` la trouve — environnement, puis trousseau —, donc
-  que le serveur peut s'en servir.
+  dans l'environnement du serveur, ou dans le trousseau — dont on ne lit
+  que les attributs, jamais le secret (``cloud_key_present``).
 - ``GET /v1/inference/source`` : ``inference.json``, que l'app de bureau
   écrit, avec la même règle qu'elle : un fichier absent ou illisible vaut
   Ollama. L'hôte est réduit à schéma, nom et port : ni identifiants, ni
@@ -33,7 +33,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter
 
-from diapason.core.cloud_keys import get_cloud_key
+from diapason.core.cloud_keys import cloud_key_present
 from diapason.core.paths import get_config_dir
 
 # Miroir de MANAGED_CLOUD_KEY_NAMES (frontend/src-tauri/src/lib.rs). Un test
@@ -133,14 +133,14 @@ def noms_de_cles_geres(source: dict[str, Any] | None = None) -> list[str]:
 def create_lecture_reglages_router() -> APIRouter:
     router = APIRouter()
 
-    # Routes SYNCHRONES à dessein : `get_cloud_key` lance `security` (jusqu'à
-    # 5 s par clé si le trousseau hésite). Dans une route `async`, ce serait
+    # Routes SYNCHRONES à dessein : `cloud_key_present` lance `security`
+    # (jusqu'à 5 s par clé si le trousseau hésite). Dans une route `async`, ce serait
     # sur la boucle d'événements et tout le serveur gèlerait (CLAUDE.md §5).
     @router.get("/v1/cloud/keys")
     def statut_des_cles_cloud() -> dict[str, Any]:
         return {
             "keys": [
-                {"key": nom, "set": bool(get_cloud_key(nom))}
+                {"key": nom, "set": cloud_key_present(nom)}
                 for nom in noms_de_cles_geres()
             ]
         }

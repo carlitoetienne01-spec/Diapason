@@ -43,7 +43,9 @@ def maison(tmp_path, monkeypatch):
     monkeypatch.delenv("LM_STUDIO_API_KEY", raising=False)
     # Jamais le vrai trousseau dans un test.
     monkeypatch.setattr(cloud_keys, "_read_keychain", lambda _nom: None)
+    monkeypatch.setattr(cloud_keys, "_keychain_has", lambda _nom: False)
     cloud_keys._cache.clear()
+    cloud_keys._presence_cache.clear()
     return tmp_path
 
 
@@ -69,16 +71,58 @@ class TestLesClesCloud:
         assert set(etats) == set(NOMS_DE_CLES_GERES)
 
     def test_une_cle_du_trousseau_compte_comme_presente(self, client, monkeypatch):
-        """Le serveur launchd lit le trousseau quand l'environnement est vide."""
+        """Le serveur launchd voit le trousseau quand l'environnement est vide."""
         monkeypatch.setattr(
-            cloud_keys,
-            "_read_keychain",
-            lambda nom: SECRET if nom == "GEMINI_API_KEY" else None,
+            cloud_keys, "_keychain_has", lambda nom: nom == "GEMINI_API_KEY"
         )
         reponse = client.get("/v1/cloud/keys")
-        assert SECRET not in reponse.text
         etats = {ligne["key"]: ligne["set"] for ligne in reponse.json()["keys"]}
         assert etats["GEMINI_API_KEY"] is True
+
+    def test_le_statut_ne_lit_jamais_un_secret_du_trousseau(self, client, monkeypatch):
+        """26/09/2026 : dire « présente » lisait chaque secret, une fois par
+        clé et par ouverture de la palette — autant de demandes d'accès
+        possibles sur le Mac pour des clés que le serveur n'utilise pas."""
+        lus: list[str] = []
+        monkeypatch.setattr(
+            cloud_keys, "_read_keychain", lambda nom: lus.append(nom) or SECRET
+        )
+        monkeypatch.setattr(cloud_keys, "_keychain_has", lambda _nom: True)
+
+        client.get("/v1/cloud/keys")
+        client.get("/v1/cloud/keys")
+
+        assert lus == [], f"le statut a lu des secrets : {lus}"
+
+    def test_la_presence_n_est_demandee_qu_une_fois_par_rafale(
+        self, client, monkeypatch
+    ):
+        demandes: list[str] = []
+        monkeypatch.setattr(
+            cloud_keys, "_keychain_has", lambda nom: demandes.append(nom) or False
+        )
+
+        for _ in range(4):
+            client.get("/v1/cloud/keys")
+
+        assert len(demandes) == len(NOMS_DE_CLES_GERES), (
+            "quatre ouvertures rapprochées ne relancent pas `security` par clé"
+        )
+
+    def test_la_commande_ne_demande_pas_le_secret(self, monkeypatch):
+        """Sans ``-w``, ``security`` rend les attributs, pas le mot de passe."""
+        vus: list[list[str]] = []
+
+        class Fini:
+            returncode = 0
+
+        monkeypatch.setattr(cloud_keys.sys, "platform", "darwin")
+        monkeypatch.setattr(
+            cloud_keys.subprocess, "run", lambda args, **_k: vus.append(args) or Fini()
+        )
+
+        assert cloud_keys._keychain_has("OPENAI_API_KEY") is True
+        assert vus and "-w" not in vus[0] and "-g" not in vus[0], vus
 
     def test_une_source_personnalisee_ajoute_la_cle_de_son_moteur(self, maison, client):
         """Comme `managed_cloud_key_names` : le moteur choisi a sa clé."""

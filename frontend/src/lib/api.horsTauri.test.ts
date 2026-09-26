@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getCloudKeyStatus, getInferenceSource, lireStatutCles, saveCloudKey, setInferenceSource } from './api';
+import {
+  getCloudKeyStatus,
+  getInferenceSource,
+  lireStatutCles,
+  oublierStatutDesCles,
+  saveCloudKey,
+  setInferenceSource,
+} from './api';
 
 // Hors de Tauri — le téléphone, un navigateur — ces fonctions inventaient
 // leur réponse : `{}` pour les clés, `ollama` pour la source (26/09/2026).
@@ -18,6 +25,7 @@ function reponseJson(corps: unknown, status = 200): Response {
 beforeEach(() => {
   fetchMock.mockReset();
   globalThis.fetch = fetchMock;
+  oublierStatutDesCles();
 });
 
 afterEach(() => {
@@ -43,6 +51,22 @@ describe('Hors de Tauri, les réglages du Mac se lisent sur le serveur', () => {
     );
     await expect(getCloudKeyStatus()).resolves.toEqual({ ANTHROPIC_API_KEY: true, OPENAI_API_KEY: false });
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/v1\/cloud\/keys$/);
+  });
+
+  it('un serveur qui échoue fait échouer l’état des clés au lieu de rendre `{}`', async () => {
+    // Échec évité (26/09/2026) : rendre `{}` sur un 500 disait « aucune
+    // clé » pour un Mac qui en a — aucun test ne le gardait.
+    fetchMock.mockResolvedValue(reponseJson({}, 500));
+    await expect(getCloudKeyStatus()).rejects.toThrow();
+  });
+
+  it('une rafale de lectures ne fait qu’un appel ; un échec n’est pas gardé', async () => {
+    fetchMock.mockResolvedValueOnce(reponseJson({}, 500));
+    await expect(getCloudKeyStatus()).rejects.toThrow();
+    fetchMock.mockResolvedValue(reponseJson({ keys: [{ key: 'OPENAI_API_KEY', set: true }] }));
+    const lectures = await Promise.all([getCloudKeyStatus(), getCloudKeyStatus(), getCloudKeyStatus()]);
+    expect(lectures.every((l) => l.OPENAI_API_KEY === true)).toBe(true);
+    expect(fetchMock, 'un échec, puis UNE lecture pour trois demandes').toHaveBeenCalledTimes(2);
   });
 
   it('écrire reste l’affaire de l’app de bureau, et le dit dans la langue affichée', async () => {

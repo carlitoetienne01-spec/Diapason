@@ -32,11 +32,39 @@ export function lireStatutCles(rows: unknown): CloudKeyStatus {
 // rendait `{}` : aucune clé, donc aucun modèle cloud proposé, même quand le
 // Mac en avait. Elle lit désormais le serveur, qui ne dit que « présente »
 // ou « absente » — jamais une valeur.
+//
+// Une seule lecture pour toute une rafale (26/09/2026) : la page Réglages
+// monte quatre pastilles et une douzaine de champs de clé, la palette
+// relit à chaque ouverture — autant de GET /v1/cloud/keys, chacun lançant
+// `security` sur le Mac. Une lecture réussie vaut 30 s ; un échec n'est
+// pas gardé.
+const STATUT_CLES_VALIDITE_MS = 30_000;
+let statutClesPartage: { depuis: number; promesse: Promise<CloudKeyStatus> } | null = null;
+
+/** Oublier la lecture partagée (un test, ou une clé changée). */
+export function oublierStatutDesCles(): void {
+  statutClesPartage = null;
+}
+
+async function lireStatutClesDuServeur(): Promise<CloudKeyStatus> {
+  const res = await apiFetch('/v1/cloud/keys');
+  if (!res.ok) throw new Error(traduire('models.cloudKeyStatusFailed'));
+  return lireStatutCles((await res.json())?.keys);
+}
+
 export async function getCloudKeyStatus(): Promise<CloudKeyStatus> {
   if (!isTauri()) {
-    const res = await apiFetch('/v1/cloud/keys');
-    if (!res.ok) throw new Error(traduire('models.cloudKeyStatusFailed'));
-    return lireStatutCles((await res.json())?.keys);
+    const maintenant = Date.now();
+    if (statutClesPartage && maintenant - statutClesPartage.depuis < STATUT_CLES_VALIDITE_MS) {
+      return statutClesPartage.promesse;
+    }
+    const promesse = lireStatutClesDuServeur();
+    const partage = { depuis: maintenant, promesse };
+    statutClesPartage = partage;
+    promesse.catch(() => {
+      if (statutClesPartage === partage) statutClesPartage = null;
+    });
+    return promesse;
   }
   try {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -1318,6 +1346,8 @@ export type InferenceSource = {
   model?: string;
   host?: string;
   engine?: string;
+  /** Le serveur n'a pas pu lire une adresse sûre dans la source du Mac. */
+  hostIllisible?: boolean;
 };
 
 // 26/09/2026 : hors de Tauri, cette fonction rendait « ollama » sans rien
