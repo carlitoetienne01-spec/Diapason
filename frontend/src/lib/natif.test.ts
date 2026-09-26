@@ -8,6 +8,8 @@ import {
   VERBES_SORTANTS,
   demanderAuTelephone,
   detecterCanal,
+  doitPasserParLaCoquille,
+  installerPont,
   estMobile,
   type CanalNatif,
 } from './natif';
@@ -187,5 +189,128 @@ describe('La langue des erreurs hors de React', () => {
   it('retombe sur la détection quand lang est absent ou inconnu', () => {
     expect(localeDuDocument(null, ['fr-CA'])).toBe('fr');
     expect(localeDuDocument('de', ['en-GB'])).toBe('en');
+  });
+});
+
+describe('Le pont se branche sur la fenêtre que la coquille a préparée', () => {
+  /** Une fausse fenêtre munie du canal, et un faux document qui garde ses écouteurs. */
+  function fenetreDeTelephone() {
+    const { canal, envoyes } = canalEspion();
+    const attributs: Record<string, string> = {};
+    const ecouteurs: Array<(e: MouseEvent) => void> = [];
+    const fenetre: Record<string, unknown> = {
+      DiapasonNatif: canal,
+      location: { origin: 'https://atelier.exemple.ts.net' },
+    };
+    const doc = {
+      documentElement: { setAttribute: (n: string, v: string) => (attributs[n] = v) },
+      addEventListener: (_t: 'click', fn: (e: MouseEvent) => void) => ecouteurs.push(fn),
+    };
+    return { fenetre, doc, envoyes, attributs, ecouteurs };
+  }
+
+  it('pose le point d’entrée : une réponse de la coquille résout la demande', async () => {
+    // Échec évité (26/09/2026) : sans `diapasonNatifRecevoir`, chaque
+    // `enregistrer` attendait deux minutes pour échouer — et retirer
+    // l'affectation laissait toute la suite verte.
+    const { fenetre, doc, envoyes, attributs } = fenetreDeTelephone();
+    const pont = installerPont(fenetre, doc);
+    expect(pont).not.toBeNull();
+    expect(attributs['data-diapason-mobile']).toBe('1');
+    const promesse = pont!.demander('enregistrer', { nom: 'a.json' });
+    const recevoir = fenetre.diapasonNatifRecevoir as (m: unknown) => void;
+    expect(typeof recevoir).toBe('function');
+    recevoir(JSON.stringify({ type: 'reponse', id: envoyes[0].id, ok: true, donnees: { nom: 'a.json' } }));
+    await expect(promesse).resolves.toMatchObject({ ok: true });
+  });
+
+  it('le retour d’Android arrive par le même point d’entrée', () => {
+    const { fenetre, doc, envoyes } = fenetreDeTelephone();
+    const pont = installerPont(fenetre, doc)!;
+    pont.surRetour(() => true);
+    (fenetre.diapasonNatifRecevoir as (m: unknown) => void)({ type: 'demande', id: 'c1', verbe: 'retour' });
+    expect(envoyes[envoyes.length - 1]).toEqual({ type: 'reponse', id: 'c1', ok: true, donnees: { traite: true } });
+  });
+
+  it('ne fait rien sans canal : ni attribut, ni point d’entrée', () => {
+    const fenetre: Record<string, unknown> = {};
+    const attributs: Record<string, string> = {};
+    const doc = {
+      documentElement: { setAttribute: (n: string, v: string) => (attributs[n] = v) },
+      addEventListener: () => {},
+    };
+    expect(installerPont(fenetre, doc)).toBeNull();
+    expect(fenetre.diapasonNatifRecevoir).toBeUndefined();
+    expect(attributs).toEqual({});
+  });
+
+  it('envoie un lien vers une autre origine à la coquille au lieu de le suivre', () => {
+    const { fenetre, doc, envoyes, ecouteurs } = fenetreDeTelephone();
+    installerPont(fenetre, doc);
+    const lien = { getAttribute: () => 'https://exemple.org/source' };
+    let empeche = false;
+    const clic = {
+      defaultPrevented: false,
+      target: { closest: () => lien },
+      preventDefault: () => (empeche = true),
+    } as unknown as MouseEvent;
+    ecouteurs[0](clic);
+    expect(empeche, 'la WebView ne doit pas suivre le lien elle-même').toBe(true);
+    expect(envoyes[0]).toMatchObject({
+      verbe: 'ouvrirExterne',
+      donnees: { url: 'https://exemple.org/source' },
+    });
+  });
+});
+
+describe('Quels liens la coquille ouvre', () => {
+  const mac = 'https://atelier.exemple.ts.net';
+  it('une autre origine en http(s) : oui', () => {
+    expect(doitPasserParLaCoquille('https://exemple.org/a', mac)).toBe(true);
+    expect(doitPasserParLaCoquille('http://exemple.org', mac)).toBe(true);
+  });
+  it('l’origine du Mac, un chemin relatif, un schéma étranger : non', () => {
+    expect(doitPasserParLaCoquille('/vie/tasks', mac)).toBe(false);
+    expect(doitPasserParLaCoquille(`${mac}/settings`, mac)).toBe(false);
+    expect(doitPasserParLaCoquille('javascript:alert(1)', mac)).toBe(false);
+    expect(doitPasserParLaCoquille('mailto:a@b.c', mac)).toBe(false);
+    expect(doitPasserParLaCoquille('#ancre', mac)).toBe(false);
+  });
+});
+
+describe('Les identifiants et les réponses tardives', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('deux chargements n’émettent pas le même premier identifiant', () => {
+    // Échec évité (26/09/2026) : `b1` à chaque chargement — une réponse en
+    // route à travers un rechargement aurait résolu la nouvelle `b1`.
+    const a = canalEspion();
+    const b = canalEspion();
+    void new PontNatif(a.canal).demander('theme', {}).catch(() => undefined);
+    void new PontNatif(b.canal).demander('theme', {}).catch(() => undefined);
+    expect(a.envoyes[0].id).not.toBe(b.envoyes[0].id);
+  });
+
+  it('une réponse arrivée après le délai se dit, sans résoudre autre chose', async () => {
+    // Échec évité (26/09/2026) : un `ok` arrivé après les deux minutes
+    // d'`enregistrer` était jeté — « pas de réponse » pour un fichier écrit.
+    const { canal, envoyes } = canalEspion();
+    const tardives: Array<[string, unknown]> = [];
+    const pont = new PontNatif(canal, {
+      delais: { enregistrer: 50 },
+      surReponseTardive: (verbe, r) => tardives.push([verbe, r.donnees]),
+    });
+    const promesse = pont.demander('enregistrer', {});
+    const echec = expect(promesse).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(50);
+    await echec;
+    pont.recevoir({ type: 'reponse', id: envoyes[0].id, ok: true, donnees: { nom: 'x.pdf' } });
+    pont.recevoir({ type: 'reponse', id: envoyes[0].id, ok: true, donnees: { nom: 'x.pdf' } });
+    expect(tardives, 'dite une fois, pas deux').toEqual([['enregistrer', { nom: 'x.pdf' }]]);
   });
 });

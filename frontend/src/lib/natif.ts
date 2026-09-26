@@ -71,7 +71,35 @@ export type OptionsPont = {
   /** Le texte de l'erreur de délai ; par défaut, dans la langue affichée. */
   messageDelai?: (verbe: VerbeSortant, secondes: number) => string;
   delais?: Partial<Record<VerbeSortant, number>>;
+  /** Le préfixe des identifiants ; par défaut, un aléa tiré au chargement. */
+  prefixe?: string;
+  /**
+   * Une réponse arrivée APRÈS le délai de sa demande. La promesse a déjà
+   * échoué ; ce qui a eu lieu doit pourtant se dire (§100).
+   */
+  surReponseTardive?: (verbe: VerbeSortant, reponse: ReponseNatif) => void;
 };
+
+/**
+ * Un préfixe propre à ce chargement de la page.
+ *
+ * 26/09/2026 : les identifiants repartaient de `b1` à chaque chargement.
+ * Une réponse de la coquille encore en route à travers un rechargement
+ * aurait résolu la NOUVELLE `b1` — un « enregistré » rendu à une demande de
+ * thème, ou l'inverse.
+ */
+export function tirerPrefixe(): string {
+  try {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    if (c?.randomUUID) return `b${c.randomUUID().slice(0, 8)}`;
+  } catch {
+    // Pas d'aléa cryptographique : le repli suffit, ce n'est pas un secret.
+  }
+  return `b${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Combien d'identifiants expirés on se rappelle, pour une réponse tardive. */
+const EXPIREES_MAX = 32;
 
 /** Un objet qui ressemble au canal injecté — et rien d'autre ne compte. */
 export function detecterCanal(fenetre: unknown): CanalNatif | null {
@@ -127,12 +155,16 @@ export class PontNatif {
   private readonly emis = new Set<string>();
   private readonly enAvance = new Map<string, ReponseNatif>();
   private readonly retours: Array<() => boolean> = [];
+  /** Expirés, avec leur verbe : une réponse tardive se dit encore. */
+  private readonly expirees = new Map<string, VerbeSortant>();
   private readonly canal: CanalNatif;
   private readonly options: OptionsPont;
+  private readonly prefixe: string;
 
   constructor(canal: CanalNatif, options: OptionsPont = {}) {
     this.canal = canal;
     this.options = options;
+    this.prefixe = options.prefixe ?? tirerPrefixe();
   }
 
   demander(verbe: VerbeSortant, donnees?: unknown): Promise<ReponseNatif> {
@@ -140,7 +172,7 @@ export class PontNatif {
       return Promise.reject(new Error(`verbe inconnu : ${String(verbe)}`));
     }
     this.suivant += 1;
-    const id = `b${this.suivant}`;
+    const id = `${this.prefixe}-${this.suivant}`;
     this.emis.add(id);
     try {
       this.canal.postMessage(JSON.stringify({ type: 'demande', id, verbe, donnees }));
@@ -160,6 +192,10 @@ export class PontNatif {
       const minuteur = setTimeout(() => {
         this.attentes.delete(id);
         this.emis.delete(id);
+        this.expirees.set(id, verbe);
+        if (this.expirees.size > EXPIREES_MAX) {
+          this.expirees.delete(this.expirees.keys().next().value as string);
+        }
         const secondes = Math.round(delai / 1000);
         const texte = this.options.messageDelai
           ? this.options.messageDelai(verbe, secondes)
@@ -186,8 +222,24 @@ export class PontNatif {
       attente.resoudre(message);
       return;
     }
-    if (this.emis.has(message.id)) this.enAvance.set(message.id, message);
-    // Sinon : identifiant inconnu ou expiré — ignoré.
+    if (this.emis.has(message.id)) {
+      this.enAvance.set(message.id, message);
+      return;
+    }
+    const verbe = this.expirees.get(message.id);
+    if (verbe) {
+      // 26/09/2026 : jetée, une réponse `ok` arrivée après les deux minutes
+      // d'`enregistrer` (sélecteur d'Android laissé ouvert) laissait la page
+      // dire « le téléphone n'a pas répondu » alors que le fichier était
+      // écrit. Elle ne résout rien — la promesse a échoué —, mais elle se dit.
+      this.expirees.delete(message.id);
+      try {
+        this.options.surReponseTardive?.(verbe, message);
+      } catch {
+        // Un annonceur qui échoue ne casse pas le pont.
+      }
+    }
+    // Sinon : identifiant inconnu — ignoré.
   }
 
   /**
@@ -228,19 +280,106 @@ export class PontNatif {
   }
 }
 
-const canal = typeof window === 'undefined' ? null : detecterCanal(window);
+/**
+ * Un lien que la WebView ne doit pas suivre elle-même : http(s) vers une
+ * AUTRE origine que celle du Mac.
+ *
+ * 26/09/2026 : seuls trois points d'appel passaient par `ouvrirExterne`. Les
+ * sources d'une recherche, les pastilles de citation, les liens des
+ * réponses, ceux des Réglages, des Agents et des Sources étaient des
+ * `<a target="_blank">` bruts : dans la WebView d'Android, ils naviguent
+ * dans la même vue, que la coquille refuse (elle ne laisse passer que
+ * l'origine du Mac) — un lien mort, sans un mot. Et tant que la coquille
+ * n'est pas écrite, rien ne garantit ce refus : une page tierce chargée
+ * dans la WebView verrait le canal `DiapasonNatif`.
+ */
+export function doitPasserParLaCoquille(href: string, origine: string): boolean {
+  try {
+    const url = new URL(href, origine);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    return url.origin !== new URL(origine).origin;
+  } catch {
+    return false;
+  }
+}
 
-/** Vrai dans la coquille du téléphone, et seulement là. */
-export const estMobile = canal !== null;
+type FenetreNatif = {
+  DiapasonNatif?: unknown;
+  diapasonNatifRecevoir?: (message: unknown) => void;
+  location?: { origin?: string };
+};
+
+type DocumentNatif = {
+  documentElement: { setAttribute(nom: string, valeur: string): void };
+  addEventListener(type: 'click', ecouteur: (e: MouseEvent) => void, capture: boolean): void;
+};
+
+/**
+ * Brancher le pont sur une fenêtre : rend le pont, ou `null` sans canal.
+ *
+ * Pose `data-diapason-mobile`, le point d'entrée de la coquille
+ * (`window.diapasonNatifRecevoir`) — SANS lui, chaque `enregistrer`
+ * attendait deux minutes pour échouer et le retour d'Android n'était
+ * jamais traité — et l'écouteur qui envoie les liens externes à la coquille.
+ * Une fonction, pas du code de module, pour qu'un test l'éprouve sur une
+ * fausse fenêtre (26/09/2026 : retirer l'affectation laissait les 1 340
+ * tests verts).
+ */
+export function installerPont(
+  fenetre: FenetreNatif,
+  doc: DocumentNatif | null,
+  options: OptionsPont = {},
+): PontNatif | null {
+  const canal = detecterCanal(fenetre);
+  if (!canal) return null;
+  const pont = new PontNatif(canal, options);
+  fenetre.diapasonNatifRecevoir = (message: unknown) => pont.recevoir(message);
+  if (doc) {
+    doc.documentElement.setAttribute('data-diapason-mobile', '1');
+    const origine = fenetre.location?.origin ?? '';
+    // En capture : avant que la WebView ne suive le lien. Les boutons qui
+    // appellent déjà `ouvrirLienExterne` ne sont pas des liens `<a>`.
+    doc.addEventListener(
+      'click',
+      (e: MouseEvent) => {
+        if (e.defaultPrevented) return;
+        const cible = e.target as { closest?: (s: string) => Element | null } | null;
+        const lien = cible?.closest?.('a[href]') as HTMLAnchorElement | null | undefined;
+        const href = lien?.getAttribute('href');
+        if (!href || !doitPasserParLaCoquille(href, origine)) return;
+        e.preventDefault();
+        const url = new URL(href, origine).toString();
+        void pont.demander('ouvrirExterne', { url }).catch(() => undefined);
+      },
+      true,
+    );
+  }
+  return pont;
+}
+
+/** Ce qu'un enregistrement arrivé trop tard a finalement écrit, dit une fois. */
+function annoncerEnregistrementTardif(verbe: VerbeSortant, reponse: ReponseNatif): void {
+  if (verbe !== 'enregistrer' || !reponse.ok) return;
+  const nom = (reponse.donnees as { nom?: unknown } | undefined)?.nom;
+  void import('sonner').then(({ toast }) =>
+    toast.success(traduire('natif.enregistreTardif'), {
+      description: typeof nom === 'string' && nom.trim() ? nom : undefined,
+    }),
+  );
+}
 
 /** Le pont, ou `null` hors du téléphone. */
-export const pontNatif: PontNatif | null = canal ? new PontNatif(canal) : null;
+export const pontNatif: PontNatif | null =
+  typeof window === 'undefined'
+    ? null
+    : installerPont(
+        window as unknown as FenetreNatif,
+        typeof document === 'undefined' ? null : (document as unknown as DocumentNatif),
+        { surReponseTardive: annoncerEnregistrementTardif },
+      );
 
-if (pontNatif && typeof document !== 'undefined') {
-  document.documentElement.setAttribute('data-diapason-mobile', '1');
-  (window as unknown as { diapasonNatifRecevoir?: (m: unknown) => void }).diapasonNatifRecevoir =
-    (message: unknown) => pontNatif.recevoir(message);
-}
+/** Vrai dans la coquille du téléphone, et seulement là. */
+export const estMobile = pontNatif !== null;
 
 /** Demander à la coquille, ou échouer lisiblement hors du téléphone. */
 export function demanderAuTelephone(
