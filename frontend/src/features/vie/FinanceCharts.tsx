@@ -17,6 +17,17 @@ import {
 } from 'recharts';
 
 import type { FinanceCategoryBreakdown, FinanceSeriesPoint } from './types';
+import { estMobile } from '../../lib/natif';
+
+/**
+ * Au téléphone, les graphiques s'affichent tracés, sans l'animation d'entrée
+ * de recharts (26/09/2026, chantier de la fluidité, lot 3). Au banc (4G
+ * simulée, processeur ×4), la page des Finances avait fini ses lectures à
+ * ~460 ms mais restait en mouvement jusqu'à 2 415 ms : un `<g>` du SVG
+ * reconstruit à chaque image pendant 1,9 s, à CHAQUE visite. Le Mac garde
+ * son animation.
+ */
+const ANIMER = !estMobile;
 
 // L'inclinaison 3D (perspective + rotateX 6°) n'existe qu'à partir de `sm` :
 // dans le mini-panneau (~140 px de haut utile), elle floutait les ticks de
@@ -142,6 +153,7 @@ export function CategoryDonutChart({ data }: { data: FinanceCategoryBreakdown[] 
             outerRadius={78}
             paddingAngle={empty ? 0 : 2}
             stroke="transparent"
+            isAnimationActive={ANIMER}
           >
             {slices.map((slice) => (
               <Cell key={`${slice.categoryId}-${slice.name}`} fill={slice.color} />
@@ -192,8 +204,8 @@ export function IncomeExpenseBarChart({ data }: { data: FinanceSeriesPoint[] }) 
             labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
             formatter={(value) => formatCad(Number(value ?? 0))}
           />
-          <Bar dataKey="income" name="Revenus" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="expense" name="Dépenses" fill="var(--color-error)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="income" name="Revenus" fill="var(--color-success)" radius={[4, 4, 0, 0]} isAnimationActive={ANIMER} />
+          <Bar dataKey="expense" name="Dépenses" fill="var(--color-error)" radius={[4, 4, 0, 0]} isAnimationActive={ANIMER} />
         </BarChart>
       </ResponsiveContainer>
     </ChartShell>
@@ -248,6 +260,7 @@ export function NetEvolutionChart({ data }: { data: FinanceSeriesPoint[] }) {
             stroke="var(--color-accent)"
             fill="url(#financeNetFill)"
             strokeWidth={2}
+            isAnimationActive={ANIMER}
           />
         </AreaChart>
       </ResponsiveContainer>
