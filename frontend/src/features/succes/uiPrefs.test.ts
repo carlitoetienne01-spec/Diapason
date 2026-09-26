@@ -45,7 +45,7 @@ describe('la vue du réseau retenue', () => {
   });
 
   it('ignore une valeur inconnue écrite à la main dans le stockage', () => {
-    localStorage.setItem('diapason-succes-ui-prefs', JSON.stringify({ reseauVue: 'carte' }));
+    localStorage.setItem('diapason-vie-ui-prefs', JSON.stringify({ reseauVue: 'carte' }));
     expect(loadReseauVue()).toBeUndefined();
   });
 });

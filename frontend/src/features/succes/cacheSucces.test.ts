@@ -214,11 +214,11 @@ describe('La persistance', () => {
     store.setItem(PREFIXE_STOCKAGE + 'habits?date=2026-09-11', enveloppe([], EMPREINTE, VERSION_SCHEMA + 1));
     store.setItem(PREFIXE_STOCKAGE + 'quotes', '{corrompu');
     store.setItem(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-18', enveloppe({ x: 2 }));
-    store.setItem('diapason-succes-ui-prefs', '{"tasksViewMode":"week"}');
+    store.setItem('diapason-vie-ui-prefs', '{"tasksViewMode":"week"}');
     monter(store);
     expect([...store.entrees.keys()].sort()).toEqual([
       PREFIXE_STOCKAGE + 'dashboard?date=2026-09-18',
-      'diapason-succes-ui-prefs',
+      'diapason-vie-ui-prefs',
     ]);
   });
 
@@ -275,7 +275,7 @@ describe('La persistance', () => {
 
   it('fait de la place parmi ses propres entrées quand le quota est VRAIMENT plein, et jamais ailleurs', () => {
     const store = new StockageFactice();
-    store.setItem('diapason-succes-ui-prefs', '{"tasksViewMode":"week"}');
+    store.setItem('diapason-vie-ui-prefs', '{"tasksViewMode":"week"}');
     const { cache, plan } = monter(store);
     cache.ecrireCache('habits?date=2026-09-17', 'x'.repeat(60));
     plan.tic();
@@ -285,7 +285,7 @@ describe('La persistance', () => {
     expect(cache.lireCache('dashboard?date=2026-09-18'), 'la mémoire garde toujours la valeur').toBe('y'.repeat(60));
     expect(store.entrees.has(PREFIXE_STOCKAGE + 'dashboard?date=2026-09-18'), 'écrite après purge').toBe(true);
     expect(store.entrees.has(PREFIXE_STOCKAGE + 'habits?date=2026-09-17'), 'la nôtre est sacrifiée').toBe(false);
-    expect(store.entrees.get('diapason-succes-ui-prefs'), 'les préférences sont intouchées').toBe(
+    expect(store.entrees.get('diapason-vie-ui-prefs'), 'les préférences sont intouchées').toBe(
       '{"tasksViewMode":"week"}',
     );
   });

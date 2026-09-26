@@ -58,7 +58,12 @@ export const VERSION_SCHEMA = 1;
  */
 export const EMPREINTE_BUNDLE: string = typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : 'dev';
 
-export const PREFIXE_STOCKAGE = 'diapason-succes-cache:';
+/**
+ * `diapason-succes-cache:` jusqu'au 25/09/2026 : les entrées sous l'ancien
+ * préfixe sont supprimées à l'amorçage par `migrerStockage` — laissées là,
+ * leurs 1,7 Mo s'ajoutaient au budget ci-dessous et dépassaient le quota.
+ */
+export const PREFIXE_STOCKAGE = 'diapason-vie-cache:';
 
 /**
  * Les tailles se comptent en OCTETS UTF-16, deux par unité de code : WebKit

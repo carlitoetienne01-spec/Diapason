@@ -9,7 +9,9 @@ import { listSuccesHabits } from './api';
 import { localIsoDate } from './habitCalendar';
 import type { SuccesHabit } from './types';
 
-const FIRED_STORAGE_KEY = 'diapason-succes-habit-reminder-fired';
+// 25/09/2026 : `diapason-succes-habit-reminder-fired` jusque-là ; recopiée par
+// `migrerStockage`, sinon les rappels déjà envoyés aujourd'hui repartaient.
+const FIRED_STORAGE_KEY = 'diapason-vie-habit-reminder-fired';
 const HOURLY_START = 10;
 const HOURLY_END = 23;
 const POLL_MS = 60_000;

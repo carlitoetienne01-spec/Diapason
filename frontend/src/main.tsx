@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
 import { initApiBase } from './lib/api';
+import { migrerStockage, stockageDeLOrigine } from './features/succes/migrerStockage';
 import { initAnalytics } from './lib/analytics';
 // Les treize polices du menu des notes, embarquées EN LOCAL.
 //
@@ -78,6 +79,10 @@ function applyTheme() {
   } catch { /* use system default */ }
 }
 
+// AVANT tout rendu : les pages lisent leurs préférences sous le nouveau nom
+// dès leur montage (25/09/2026, `diapason-succes-*` → `diapason-vie-*`).
+// Une fois par origine : la fenêtre et le mini-panneau ont chacun la leur.
+migrerStockage(stockageDeLOrigine());
 applyTheme();
 
 // Fetch the API base URL from the Tauri backend before rendering.
