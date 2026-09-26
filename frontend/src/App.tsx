@@ -18,6 +18,7 @@ import { fetchModels, fetchServerInfo, fetchSavings, isTauri } from './lib/api';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { MeshHost } from './components/MeshHost';
 import { NavigationDuTelephone } from './components/NavigationDuTelephone';
+import { PartageDuTelephone } from './components/PartageDuTelephone';
 import { pagesAffichees } from './lib/pagesAffichees';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
@@ -508,6 +509,9 @@ export default function App() {
       {/* Au téléphone, c'est la coquille qui reçoit les commandes du maillage
           et demande l'écran ici (verbe « naviguer », 26/09/2026). */}
       {estMobile && <NavigationDuTelephone />}
+      {/* Et un « Partager vers Diapason » fait depuis une autre app (verbe
+          « partager », phase 5). */}
+      {estMobile && <PartageDuTelephone />}
       {HOTES.contexteDeLaVue && <ContexteVueHost />}
       <VoyantGestes />
       {commandPaletteOpen && <CommandPalette />}

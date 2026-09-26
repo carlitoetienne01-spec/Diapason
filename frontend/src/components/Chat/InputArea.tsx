@@ -38,6 +38,8 @@ import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
 import { EVENEMENT_VERIFIER_EN_LIGNE, lireVerification, type DemandeDeVerification } from './notesDeVerification';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
+import { boiteDuPartage, fichiersDuPartage } from '../../lib/partageEntrant';
+import { traduire } from '../../i18n/translate';
 import {
   EVENEMENT_DEPOSER_TEXTE,
   EVENEMENT_FOCUS_COMPOSITEUR,
@@ -524,6 +526,36 @@ export function InputArea() {
     window.addEventListener(EVENEMENT_DEPOSER_TEXTE, deposer);
     return () => window.removeEventListener(EVENEMENT_DEPOSER_TEXTE, deposer);
   }, []);
+
+  // 26/09/2026, phase 5 du plan mobile : « Partager vers Diapason » depuis
+  // une autre app du téléphone. Le partage atterrit ICI — texte à la suite
+  // du brouillon, fichiers par le même `joindre` que le trombone, avec ses
+  // refus dits un par un — et n'est JAMAIS envoyé : la personne relit et
+  // envoie. L'accusé rendu à la coquille dit ce qui a été déposé
+  // (lib/partageEntrant.ts), pas ce qui a été partagé.
+  const joindreCourant = useRef(joindre);
+  useEffect(() => {
+    joindreCourant.current = joindre;
+  }, [joindre]);
+  useEffect(
+    () =>
+      boiteDuPartage.ecouter((partage) => {
+        const fichiers = fichiersDuPartage(partage);
+        if (partage.texte) {
+          setInput((prev) => (prev ? prev + '\n' + partage.texte : partage.texte));
+        }
+        if (fichiers.length > 0) void joindreCourant.current(fichiers);
+        toast(traduire('natif.partage.depose'));
+        window.requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el || el.disabled) return;
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        });
+        return { texte: partage.texte.length > 0, fichiers: fichiers.length };
+      }),
+    [],
+  );
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();

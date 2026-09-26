@@ -56,7 +56,7 @@ describe('Aucun verbe ne rend un secret au JavaScript', () => {
     // ou `jeton` le rendrait lisible par toute page chargée dans la WebView.
     // Ajouter un verbe doit être une décision, donc un test à changer.
     expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne']);
-    expect([...VERBES_ENTRANTS]).toEqual(['retour', 'naviguer', 'approbations']);
+    expect([...VERBES_ENTRANTS]).toEqual(['retour', 'naviguer', 'approbations', 'partager']);
   });
 
   it('refuse un verbe hors de la liste sans rien poster', async () => {
@@ -267,10 +267,10 @@ describe('La coquille demande un écran (naviguer, phase 3 étape 9)', () => {
   });
 });
 
-describe('La coquille ouvre la cloche (phase 5)', () => {
-  // 26/09/2026 : un verbe entrant de plus, avec SON gestionnaire : inscrire
-  // la cloche ne doit pas remplacer le navigateur, ni l'inverse — sinon une
-  // notification touchée répondrait avec l'écran du maillage.
+describe('La coquille ouvre la cloche et dépose un partage (phase 5)', () => {
+  // 26/09/2026 : deux verbes entrants de plus. Chacun a SON gestionnaire :
+  // inscrire la cloche ne doit pas remplacer le navigateur, ni l'inverse —
+  // sinon une notification touchée répondrait avec l'écran du maillage.
   const attendreLeCanal = () => new Promise((r) => setTimeout(r, 0));
 
   it('rend le décompte de la cloche une fois qu’elle l’a rendu', async () => {
@@ -282,20 +282,46 @@ describe('La coquille ouvre la cloche (phase 5)', () => {
     expect(envoyes).toEqual([{ type: 'reponse', id: 'a1', ok: true, donnees: { nombre: 2 } }]);
   });
 
+  it('rend l’accusé du compositeur, ou la phrase de son échec', async () => {
+    const { canal, envoyes } = canalEspion();
+    const pont = new PontNatif(canal);
+    let fois = 0;
+    pont.surPartager(async () => {
+      fois += 1;
+      if (fois === 2) throw new Error('La Discussion ne s’est pas ouverte sur le téléphone : rien n’y a été déposé.');
+      return { texte: true, fichiers: 1 };
+    });
+    pont.recevoir({ type: 'demande', id: 'p1', verbe: 'partager', donnees: { texte: 'x' } });
+    pont.recevoir({ type: 'demande', id: 'p2', verbe: 'partager', donnees: { texte: 'x' } });
+    await attendreLeCanal();
+    expect(envoyes).toEqual([
+      { type: 'reponse', id: 'p1', ok: true, donnees: { texte: true, fichiers: 1 } },
+      {
+        type: 'reponse',
+        id: 'p2',
+        ok: false,
+        erreur: 'La Discussion ne s’est pas ouverte sur le téléphone : rien n’y a été déposé.',
+      },
+    ]);
+  });
+
   it('chaque verbe garde son gestionnaire', async () => {
     const { canal, envoyes } = canalEspion();
     const pont = new PontNatif(canal);
     pont.surNaviguer(async () => ({ path: '/vie/tasks', selection: null }));
-    const retirerCloche = pont.surApprobations(async () => ({ nombre: 0 }));
-    retirerCloche();
+    pont.surApprobations(async () => ({ nombre: 0 }));
+    const retirerPartage = pont.surPartager(async () => ({ texte: true, fichiers: 0 }));
+    retirerPartage();
     pont.recevoir({ type: 'demande', id: 'n1', verbe: 'naviguer', donnees: {} });
     pont.recevoir({ type: 'demande', id: 'a1', verbe: 'approbations' });
+    pont.recevoir({ type: 'demande', id: 'p1', verbe: 'partager', donnees: {} });
     await attendreLeCanal();
     // « pasPret » part sans attendre ; l'ordre d'arrivée ne dit rien ici.
     const parId = [...envoyes].sort((a, b) => String(a.id).localeCompare(String(b.id)));
     expect(parId).toEqual([
-      { type: 'reponse', id: 'a1', ok: false, erreur: 'pasPret' },
+      { type: 'reponse', id: 'a1', ok: true, donnees: { nombre: 0 } },
       { type: 'reponse', id: 'n1', ok: true, donnees: { path: '/vie/tasks', selection: null } },
+      { type: 'reponse', id: 'p1', ok: false, erreur: 'pasPret' },
     ]);
   });
 });

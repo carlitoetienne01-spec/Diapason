@@ -35,11 +35,13 @@ export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne'] as cons
  * la boîte du Mac ; la coquille traduit la route et demande l'écran. Il ne
  * rend qu'un chemin déjà connu d'elle — aucun secret.
  *
- * `approbations` (26/09/2026, phase 5) : la notification d'approbation
- * touchée ouvre la cloche — jamais une décision : la coquille ne rapporte
- * que le nombre de demandes affichées.
+ * `approbations` et `partager` (26/09/2026, phase 5) : la notification
+ * d'approbation touchée ouvre la cloche — jamais une décision : la coquille
+ * ne rapporte que le nombre de demandes affichées — ; un « Partager vers
+ * Diapason » dépose texte et fichiers dans le compositeur de la Discussion,
+ * sans rien envoyer. Aucun des deux ne rend autre chose qu'un décompte.
  */
-export const VERBES_ENTRANTS = ['retour', 'naviguer', 'approbations'] as const;
+export const VERBES_ENTRANTS = ['retour', 'naviguer', 'approbations', 'partager'] as const;
 
 /** Les verbes entrants qui attendent la page (réponse différée, un gestionnaire). */
 type VerbeEntrantDiffere = Exclude<VerbeEntrant, 'retour'>;
@@ -326,6 +328,15 @@ export class PontNatif {
     return this.inscrire('approbations', gestionnaire);
   }
 
+  /**
+   * Qui reçoit un « Partager vers Diapason » (26/09/2026, phase 5). Le
+   * gestionnaire rend son accusé une fois le texte et les fichiers DÉPOSÉS
+   * dans le compositeur ; rien n'est envoyé sans le geste de la personne.
+   */
+  surPartager(gestionnaire: (donnees: unknown) => Promise<unknown>): () => void {
+    return this.inscrire('partager', gestionnaire);
+  }
+
   private inscrire(
     verbe: VerbeEntrantDiffere,
     gestionnaire: (donnees: unknown) => Promise<unknown>,
@@ -345,7 +356,11 @@ export class PontNatif {
   }
 
   private repondreA(demande: DemandeNatif): void {
-    if (demande.verbe === 'naviguer' || demande.verbe === 'approbations') {
+    if (
+      demande.verbe === 'naviguer' ||
+      demande.verbe === 'approbations' ||
+      demande.verbe === 'partager'
+    ) {
       void this.differer(demande.verbe, demande);
       return;
     }
