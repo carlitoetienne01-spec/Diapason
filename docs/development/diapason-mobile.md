@@ -437,7 +437,7 @@ Le piège `proxy_headers` d'uvicorn entre au §5 de CLAUDE.md, puis dans AGENTS.
 *Risque silencieux :* `true` sans dialogue ferait du contrôle n°10 une formalité.
 *Preuve :* en Python, une enveloppe `desktop.open` signée par le téléphone avec `true` passe le contrôle n°10, et avec `false` elle rend `DENIED`. En Dart, le texte affiché est égal au `userSafeMessage` simulé, y compris quand c'est un échec.
 
-**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».** `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
+~~**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`). L'IPv6 de Tailscale (`fd7a:115c:a1e0::/48`) était déjà privée pour Python (dans `fc00::/7`). Effet de bord voulu : `join.py`, qui lit la même fonction, laisse aussi rejoindre un hôte en 100.x en mode `local_only`.* `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
 *Risque silencieux :* sans ce changement, un envoi poussé du Mac vers le PC par Tailscale est refusé en mode `local_only`.
 *Preuve :* `address_is_private('100.100.1.1')` rend `True`, et `8.8.8.8` reste public.
 

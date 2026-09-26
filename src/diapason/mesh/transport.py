@@ -61,8 +61,21 @@ class RemoteRefusal(TransportError):
         self.retryable = status_code == 429 or status_code >= 500
 
 
+# The tailnet's own range. 26/09/2026: `ipaddress` does not count
+# 100.64.0.0/10 as private (it is RFC 6598 shared address space, which
+# Python files under neither private nor global), so a push from the Mac to
+# a paired PC over Tailscale was refused in local_only mode exactly as if it
+# were bound for the Internet. Tailscale's IPv6 range (fd7a:115c:a1e0::/48)
+# needs nothing: it sits inside fc00::/7, which Python already calls private.
+#
+# The same /10 is also carrier-grade NAT. That is acceptable here because
+# this is only HALF of the exemption: the device must also be TRUSTED, and
+# every command it receives is signed and addressed to it.
+_TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+
 def address_is_private(address: str) -> bool:
-    """True for loopback and RFC1918 — the network the user is standing on.
+    """True for loopback, RFC1918 and the tailnet — the user's own networks.
 
     A hostname we cannot resolve to a private literal is treated as public:
     a destination we cannot vouch for is not one we quietly trust.
@@ -83,6 +96,8 @@ def address_is_private(address: str) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
+    if ip.version == 4 and ip in _TAILNET_V4:
+        return True
     return bool(ip.is_loopback or ip.is_private) and not ip.is_link_local
 
 

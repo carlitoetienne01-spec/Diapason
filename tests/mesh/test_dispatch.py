@@ -401,6 +401,31 @@ class TestPrivacyBoundary:
         assert not address_is_private("http://169.254.169.254")
         assert not address_is_private("")
 
+    def test_le_tailnet_est_un_reseau_prive(self):
+        """Étape 8 du plan mobile (26/09/2026) : ipaddress tient 100.64.0.0/10
+        pour ni privé ni public, et un envoi par Tailscale était refusé en
+        local_only comme s'il partait sur Internet."""
+        assert address_is_private("100.100.1.1"), "une adresse Tailscale"
+        assert address_is_private("http://100.90.245.46:8001")
+        assert address_is_private("100.64.0.1"), "premier du /10"
+        assert address_is_private("100.127.255.254"), "dernier du /10"
+        assert address_is_private("http://[fd7a:115c:a1e0::1]:8001"), "Tailscale IPv6"
+        assert not address_is_private("100.63.255.255"), "juste avant le /10"
+        assert not address_is_private("100.128.0.1"), "juste après le /10"
+        assert not address_is_private("8.8.8.8"), "8.8.8.8 doit rester public"
+
+    def test_une_adresse_tailscale_ne_suffit_pas_sans_confiance(self, monkeypatch):
+        """Le /10 est aussi le NAT des opérateurs : l'adresse n'est que la
+        moitié de l'exemption, l'appairage reste exigé."""
+        from diapason.core import local_mode
+
+        monkeypatch.setattr(local_mode, "local_only", lambda config=None: True)
+        assert_may_reach_device({"trustLevel": "TRUSTED"}, "http://100.100.1.1:8001")
+        with pytest.raises(local_mode.LocalOnlyError, match="pas appairé"):
+            assert_may_reach_device(
+                {"trustLevel": "REVOKED"}, "http://100.100.1.1:8001"
+            )
+
     def test_an_untrusted_device_gets_no_exemption(self, monkeypatch):
         from diapason.core import local_mode
 
