@@ -348,8 +348,14 @@ class TestLesTroisSocketsDemarrent:
         # que la production reçoit (contre-épreuve du 26/09/2026 : 3 600 s
         # passaient inaperçues).
         assert tailnet.app._intervalle_s <= 30, tailnet.app._intervalle_s
+        assert tailnet.timeout_graceful_shutdown is not None
+        assert tailnet.timeout_graceful_shutdown <= 10, (
+            "le socket du tailnet s'arrête le premier : sans borne, un flux "
+            "tenu par le téléphone retient l'API locale jusqu'au SIGKILL"
+        )
         # Les sockets d'avant ne changent pas de forme.
         assert (prises[0].lifespan, prises[0].proxy_headers) == ("auto", True)
+        assert prises[0].timeout_graceful_shutdown is None
 
     def test_un_port_secondaire_tenu_ne_fait_pas_tomber_l_api_locale(self):
         """26/09/2026 (contre-épreuve) : un socket occupait le port du

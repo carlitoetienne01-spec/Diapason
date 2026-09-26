@@ -9,6 +9,7 @@ from typing import Any
 from diapason.core.events import Event, EventBus, EventType
 
 try:
+    import anyio
     from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 except ImportError:  # pragma: no cover
     pass  # FastAPI is optional; create_ws_router will fail at call time
@@ -79,12 +80,36 @@ def create_ws_router(event_bus: EventBus) -> Any:
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         loop = asyncio.get_running_loop()
         clients[websocket] = (queue, loop)
-        try:
+
+        async def emettre(portee: Any) -> None:
+            try:
+                while True:
+                    payload = await queue.get()
+                    await websocket.send_json(payload)
+            except WebSocketDisconnect:
+                pass
+            portee.cancel()
+
+        async def ecouter(portee: Any) -> None:
+            # 26/09/2026 : ce flux n'écoutait jamais le client. Sans
+            # événement à émettre, il ne voyait ni un client parti ni le
+            # 1012 d'un arrêt d'uvicorn, et l'arrêt du serveur attendait
+            # cette tâche jusqu'au SIGKILL de launchd — depuis que la
+            # passerelle ouvre ce flux au téléphone, un téléphone qui le
+            # garde ouvert suffisait à bloquer l'API locale.
             while True:
-                payload = await queue.get()
-                await websocket.send_json(payload)
-        except WebSocketDisconnect:
-            pass
+                message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+            portee.cancel()
+
+        try:
+            # Un groupe anyio plutôt que deux tâches asyncio nues : l'annulation
+            # (arrêt d'uvicorn, client de test) traverse la portée sans se
+            # perdre dans un gather en cours de nettoyage.
+            async with anyio.create_task_group() as groupe:
+                groupe.start_soon(emettre, groupe.cancel_scope)
+                groupe.start_soon(ecouter, groupe.cancel_scope)
         finally:
             clients.pop(websocket, None)
 

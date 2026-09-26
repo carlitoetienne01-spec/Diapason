@@ -320,6 +320,7 @@ class _Prise:
     port: int
     lifespan: str = "auto"
     proxy_headers: bool = True
+    timeout_graceful_shutdown: float | None = None
 
 
 def _prises(
@@ -357,6 +358,14 @@ def _prises(
                 # socket, c'est le socket et la session qui disent « qui »,
                 # jamais un en-tête (CLAUDE.md §5).
                 proxy_headers=False,
+                # 26/09/2026 : ce socket reçoit le signal d'arrêt le PREMIER
+                # (chaîne des gestionnaires d'uvicorn) et fait attendre les
+                # deux autres. Un flux qu'un téléphone garde ouvert et qui
+                # n'entend pas la fermeture (/v1/agents/events le faisait)
+                # retenait l'API locale jusqu'au SIGKILL de launchd, vingt
+                # secondes plus tard. Cinq secondes bornent l'attente et en
+                # laissent quinze au socket principal pour fermer ses bases.
+                timeout_graceful_shutdown=5.0,
             )
         )
     return prises
@@ -451,6 +460,7 @@ def _servir_les_sockets(prises: list[_Prise], arret: object | None = None) -> No
                     log_level="info",
                     lifespan=prise.lifespan,
                     proxy_headers=prise.proxy_headers,
+                    timeout_graceful_shutdown=prise.timeout_graceful_shutdown,
                 )
             )
             for prise in prises
