@@ -32,6 +32,117 @@ from diapason.server.upload_router import router as upload_router
 logger = logging.getLogger(__name__)
 
 
+class _VeilleurSynchro:
+    """Tout ce qui existe du moteur de synchronisation tant qu'aucun compte
+    n'est déverrouillé : une référence au magasin et un réveil.
+
+    24/09/2026 (étape 10 de compte-chiffre.md) : les comptes sont FERMÉS
+    sur l'appareil (``service.COMPTES_OUVERTS``) et le resteront jusqu'à
+    l'étape 13. Un moteur qui sonderait, importerait ``cryptography`` ou
+    ouvrirait ``compte/`` au démarrage ferait payer à chaque lancement — et
+    à chaque fermeture de l'app — une synchronisation que personne n'a. Ce
+    veilleur ne fait rien : la tâche du lifespan attend son ``asyncio.Event``
+    sans délai, et seul le service du compte, une fois une serrure ouverte,
+    le déclenche (``ServiceCompte.sur_ouverture``).
+    """
+
+    def __init__(self, magasin) -> None:  # noqa: ANN001
+        self.magasin = magasin
+        self.service = None
+        self.urgent = False
+        self.reveils = 0
+        self.tours = 0
+        self._boucle: asyncio.AbstractEventLoop | None = None
+        self._reveil: asyncio.Event | None = None
+
+    def attacher(
+        self, boucle: asyncio.AbstractEventLoop, reveil: asyncio.Event
+    ) -> None:
+        self._boucle, self._reveil = boucle, reveil
+
+    def detacher(self) -> None:
+        self._boucle = self._reveil = None
+
+    def reveiller(self, *, urgent: bool = True) -> None:
+        """Depuis n'importe quel fil. ``urgent`` : un geste (ouverture,
+        consentement) — pas de calme à attendre, contrairement à une
+        écriture du chat."""
+        boucle, reveil = self._boucle, self._reveil
+        if boucle is None or reveil is None:
+            return
+        self.reveils += 1
+        if urgent:
+            self.urgent = True
+        try:
+            boucle.call_soon_threadsafe(reveil.set)
+        except RuntimeError:
+            # La boucle est fermée : le serveur s'arrête, rien à réveiller.
+            pass
+
+    def arreter(self) -> None:
+        moteur = getattr(self.service, "moteur", None)
+        if moteur is not None:
+            moteur.arreter()
+
+    def compte_sur_le_disque(self) -> bool:
+        """Le signe qu'un compte existe, sans rien importer : le fichier
+        ``compte/etat.key`` à côté de la base des conversations — la règle
+        même du magasin (``conversations_store._compte_present``), qui
+        n'existe qu'avec un compte (``compte/etat.py``)."""
+        chemin = getattr(self.magasin, "chemin", "")
+        if not isinstance(chemin, str) or not chemin or chemin == ":memory:":
+            return False
+        return (pathlib.Path(chemin).parent / "compte" / "etat.key").is_file()
+
+
+async def _synchroniser_le_compte(application: FastAPI) -> None:
+    """La tâche du lifespan (compte-chiffre.md §4.3), ENDORMIE sans compte.
+
+    Sans ``compte/etat.key`` : un seul ``await`` sur un événement que rien
+    ne pose — aucune requête, aucun fil, aucun import du paquet ``compte``,
+    et l'annulation à la fermeture la termine sur-le-champ. Le moteur
+    (``diapason.compte.synchro``) n'est importé qu'au premier réveil.
+    """
+    veilleur: _VeilleurSynchro = application.state.synchro_compte
+    reveil = asyncio.Event()
+    veilleur.attacher(asyncio.get_running_loop(), reveil)
+    try:
+        # Un seul ``stat``, sur la boucle et non dans un fil : sans compte,
+        # ``asyncio.to_thread`` aurait démarré l'exécuteur par défaut — un fil
+        # qui existerait pour rien à chaque lancement.
+        if veilleur.compte_sur_le_disque():
+            # Un compte existe : construire le service rouvre l'AMK
+            # mémorisée (§2.11, « au démarrage suivant, il relit lui-même
+            # l'AMK »), et l'ouverture réveille le moteur. Sur le Mac de
+            # Carlito, le serveur launchd synchronise ainsi même app fermée
+            # (§4.10). Dans un fil : Argon2id n'y tourne pas, mais le
+            # trousseau de session et SQLite bloquent.
+            await asyncio.to_thread(_ouvrir_le_compte, application)
+        await reveil.wait()
+        veilleur.tours += 1
+        from diapason.compte.synchro import servir
+
+        await servir(veilleur, reveil)
+    finally:
+        veilleur.detacher()
+
+
+def _ouvrir_le_compte(application: FastAPI) -> None:
+    # Comptes fermés (§6 bis) : un ``etat.key`` hérité d'un banc ne fait
+    # construire ni le service ni le moteur au démarrage (24/09/2026). Lu
+    # ici, dans le fil, et seulement quand ce fichier existe : sans compte,
+    # rien de ``diapason.compte`` n'est importé.
+    from diapason.compte import service as module_service
+
+    if not module_service.COMPTES_OUVERTS:
+        return
+    try:
+        service = application.state.compte()
+        service.etat  # noqa: B018 - la préparation rouvre l'AMK mémorisée
+    except Exception:  # noqa: BLE001 - un compte illisible n'empêche pas de servir
+        logger.exception("compte : ouverture au démarrage impossible")
+
+
 def _service_compte(config, conversations_store):  # noqa: ANN001, ANN202
     """Le service du compte, relié au magasin des conversations.
 
@@ -65,6 +176,39 @@ def _service_compte(config, conversations_store):  # noqa: ANN001, ANN202
         return int(nombre)
 
     return ServiceCompte(config=config, compter_conversations=compter)
+
+
+def _service_synchronise(config, conversations_store, veilleur):  # noqa: ANN001, ANN202
+    """Le service du compte, plus son moteur de synchronisation.
+
+    Comptes FERMÉS (``COMPTES_OUVERTS``, §6 bis) : pas de moteur du tout —
+    ``diapason.compte.synchro`` n'est pas importé, le statut dit
+    ``disabled`` et ``sync-now`` ``syncUnavailable``. 24/09/2026 : le
+    premier sondage de ``/v1/account/status`` par une vue importait le
+    moteur et le construisait, alors que sa docstring jurait le contraire.
+
+    Comptes ouverts, le service existe : ``cryptography`` est déjà chargé,
+    et le moteur ne coûte plus qu'un objet. Il reste endormi tant que la
+    serrure ne s'ouvre pas (``sur_ouverture``). Séparé de
+    :func:`_service_compte`, que des tests remplacent par un service relié à
+    leur serveur de comptes en mémoire : le moteur s'y branche pareil.
+    """
+    service = _service_compte(config, conversations_store)
+    if not getattr(service, "comptes_ouverts", False):
+        return service
+    chemin = getattr(conversations_store, "chemin", "")
+    if isinstance(chemin, str) and chemin and chemin != ":memory:":
+        from diapason.compte.collections.conversations import (
+            CollectionConversations,
+        )
+        from diapason.compte.synchro import MoteurSynchro
+
+        service.moteur = MoteurSynchro(
+            service, [CollectionConversations(conversations_store)]
+        )
+        service.sur_ouverture = veilleur.reveiller
+        veilleur.service = service
+    return service
 
 
 async def _mesh_heartbeat(app: FastAPI) -> None:
@@ -299,10 +443,23 @@ def create_app(
         # le rejouer toutes les dix minutes le garde chaud pour la question
         # qui suivra la pause. Voir server/prechauffage.py.
         prefixe_task = asyncio.create_task(entretenir_le_prefixe(application))
+        # La synchronisation du compte (compte-chiffre.md §4.3) : endormie
+        # tant qu'aucun compte n'est déverrouillé, voir _VeilleurSynchro.
+        synchro_task = asyncio.create_task(_synchroniser_le_compte(application))
+        application.state.tache_synchro = synchro_task
         try:
             yield
         finally:
-            for task in (prewarm_task, heartbeat_task, discovery_task, prefixe_task):
+            # Le cycle en cours rend la main au prochain lot plutôt que de
+            # tenir la fermeture jusqu'au bout d'un envoi.
+            application.state.synchro_compte.arreter()
+            for task in (
+                prewarm_task,
+                heartbeat_task,
+                discovery_task,
+                prefixe_task,
+                synchro_task,
+            ):
                 if not task.done():
                     task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -466,7 +623,12 @@ def create_app(
     # n'est construit qu'à la première requête : ce constructeur tourne dans
     # chaque test du serveur, et aucun ne doit toucher compte/ ni le
     # trousseau sans l'avoir demandé.
-    app.state.compte = AccesCompte(lambda: _service_compte(config, conversations_store))
+    app.state.synchro_compte = _VeilleurSynchro(conversations_store)
+    app.state.compte = AccesCompte(
+        lambda: _service_synchronise(
+            config, conversations_store, app.state.synchro_compte
+        )
+    )
     app.include_router(create_compte_router(app.state.compte))
     app.include_router(create_screen_share_router())
     app.include_router(create_trigger_router())

@@ -965,7 +965,25 @@ describe('partagé avec le serveur local : la source Python fait foi', () => {
     // section « illisible », le bandeau muet, l'accueil sauté sans un mot.
     const service = lire('src/diapason/compte/service.py');
     const corps = service.match(/\n {4}def statut\(self\)[\s\S]*?\n {8}return \{([\s\S]*?)\n {8}\}\n/)?.[1] ?? '';
-    const python = new Set([...corps.matchAll(/"(\w+)":/g)].map((m) => m[1]));
+    const cles = (source: string) => [...source.matchAll(/"(\w+)":/g)].map((m) => m[1]);
+    // Depuis le moteur (étape 10, 25/09/2026), le bloc `sync` n'est plus
+    // écrit dans statut() : il vient de _synchro_sans_moteur() ou de
+    // MoteurSynchro.resume(). Ne lire que statut() faisait croire que Python
+    // ne rendait plus aucun de ses champs ; ne lire qu'un des deux laisserait
+    // l'autre diverger en silence — lireStatut rendrait alors null.
+    const sansMoteur = cles(
+      service.match(/\ndef _synchro_sans_moteur\([\s\S]*?\n {4}return \{([\s\S]*?)\n {4}\}\n/)?.[1] ?? '',
+    );
+    const avecMoteur = cles(
+      lire('src/diapason/compte/synchro.py').match(
+        /\n {4}def resume\([\s\S]*?\n {8}bloc: dict\[str, Any\] = \{([\s\S]*?)\n {8}\}\n/,
+      )?.[1] ?? '',
+    );
+    expect(sansMoteur.length, '_synchro_sans_moteur() introuvable dans service.py').toBeGreaterThan(5);
+    expect([...avecMoteur].sort(), 'le moteur et le service rendent le même bloc sync').toEqual(
+      [...sansMoteur].sort(),
+    );
+    const python = new Set([...cles(corps), ...sansMoteur]);
     expect(python.size, 'le dict rendu par statut() introuvable dans service.py').toBeGreaterThan(10);
     const brut = statutBrut();
     const ici = new Set(

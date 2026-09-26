@@ -672,6 +672,7 @@ const MESSAGES_PAR_CODE: Record<string, MessageKey> = {
   invalidEnvelope: 'compte.erreur.serverRejected',
   payloadTooLarge: 'compte.erreur.payloadTooLarge',
   objectTooLarge: 'compte.erreur.payloadTooLarge',
+  pieceUnreadable: 'compte.erreur.pieceUnreadable',
   internal: 'compte.erreur.serverError',
   serverBehind: 'compte.erreur.vaultConflict',
   keyEpochChanged: 'compte.erreur.vaultConflict',

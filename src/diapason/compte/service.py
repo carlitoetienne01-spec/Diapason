@@ -90,8 +90,10 @@ from diapason.compte.trousseau import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ATTENTE_SYNCHRO_MAINTENANT_S",
     "DUREE_EN_ATTENTE_S",
     "ETATS",
+    "ETATS_POSES",
     "EtatRefuse",
     "ExtraitFaux",
     "MotDePasseFaux",
@@ -153,7 +155,19 @@ _ETATS_POSES = frozenset(
     }
 )
 
+# Ce que le moteur de synchronisation (étape 10) lit pour s'arrêter : un
+# état posé par le serveur suspend toute synchronisation jusqu'au geste qui
+# le lève. Nom public parce que ``compte/synchro.py`` en a besoin, et qu'une
+# copie de la liste là-bas divergerait de celle-ci au premier état ajouté.
+ETATS_POSES = _ETATS_POSES
+
 _NOM_APPAREIL_MAX = 64
+
+# « Synchroniser maintenant » attend au plus 2 s qu'un cycle en cours finisse
+# (§4.3 : les deux ne se chevauchent jamais). La fermeture de l'app (P10) ne
+# donne que 3 s à toute l'opération : attendre plus longtemps le verrou
+# laisserait la dernière poussée sans temps pour partir.
+ATTENTE_SYNCHRO_MAINTENANT_S = 2.0
 
 
 # ----------------------------------------------------------------------
@@ -379,6 +393,15 @@ class ServiceCompte:
         self._nouvelle_cle: _NouvelleCle | None = None
         self._etat: EtatLocal | None = None
         self._client: ClientComptes | None = None
+        # Posés par ``server/app.py`` quand le serveur local construit ce
+        # service ; ``None`` dans les tests de l'étape 8 et partout où aucun
+        # moteur n'existe — la synchronisation s'y dit alors ``disabled``.
+        self.moteur: Any = None
+        self.sur_ouverture: Callable[[], None] | None = None
+        # Quand une vue a sondé ``status`` pour la dernière fois (horloge
+        # monotone) : le moteur tire toutes les 30 s si c'est récent, toutes
+        # les 5 min sinon (§4.3, ``_TIRAGE_S``).
+        self.dernier_sondage: float | None = None
 
     # ------------------------------------------------------------------
     # Préparation, fermeture
@@ -463,6 +486,9 @@ class ServiceCompte:
         return self._dossier
 
     def fermer(self) -> None:
+        moteur = self.moteur
+        if moteur is not None:
+            moteur.fermer()
         self.serrure.fermer()
         with self._operation:
             for attente in (self._inscription, self._nouvelle_cle):
@@ -525,15 +551,21 @@ class ServiceCompte:
                 conversations = int(self._compter_conversations())
             except Exception:  # noqa: BLE001 - un compte n'est pas un magasin
                 conversations = None
-        if etat != "unlocked" and connecte:
-            synchro = "paused"
+        self.dernier_sondage = self._mono()
+        moteur = self.moteur
+        if moteur is not None:
+            bloc_synchro = moteur.resume(valeurs, conversations)
+        elif etat != "unlocked" and connecte:
+            bloc_synchro = _synchro_sans_moteur("paused")
         elif (
             connecte and valeurs.get("consentement") != "1" and (conversations or 0) > 0
         ):
-            synchro = "needsConsent"
+            bloc_synchro = _synchro_sans_moteur("needsConsent")
         else:
-            # Aucun moteur à l'étape 8 : « désactivée » est la seule vérité.
-            synchro = "disabled"
+            # Aucun moteur (étape 8, ou service construit hors du serveur
+            # local) : « désactivée » est la seule vérité.
+            bloc_synchro = _synchro_sans_moteur("disabled")
+        ecart = valeurs.get("clockSkewMs") if moteur is not None else None
         return {
             "state": etat,
             "unlocked": self.serrure.ouverte,
@@ -552,16 +584,8 @@ class ServiceCompte:
             },
             "onboarding": "done" if accueil_fait(self.dossier) else "pending",
             "localConversations": conversations,
-            "sync": {
-                "state": synchro,
-                "serverSeq": None,
-                "lastConfirmedAt": None,
-                "pendingCount": None,
-                "quarantinedCount": None,
-                "repairedCount": None,
-                "errorCode": None,
-            },
-            "clockSkewMs": None,
+            "sync": bloc_synchro,
+            "clockSkewMs": int(ecart) if ecart else None,
             "pendingResetAt": int(attente) if attente else None,
             # Faux tant que les comptes ne sont pas ouverts : l'interface ne
             # propose alors ni l'écran d'accueil ni l'inscription.
@@ -899,6 +923,7 @@ class ServiceCompte:
         self.serrure.ouvrir(
             amk, trousseau, account_id=account_id, incarnation=incarnation
         )
+        self._signaler_ouverture()
 
     def _installer(
         self,
@@ -969,6 +994,7 @@ class ServiceCompte:
         self.serrure.ouvrir(
             amk, trousseau, account_id=account_id, incarnation=incarnation
         )
+        self._signaler_ouverture()
 
     def _nommer_session(self) -> None:
         """Le nom de cet appareil, scellé sous ``K_noms`` (type 04). Au mieux :
@@ -1456,6 +1482,7 @@ class ServiceCompte:
             self.serrure.ouvrir(
                 amk, trousseau, account_id=account_id, incarnation=incarnation
             )
+            self._signaler_ouverture()
 
     def verrouiller(self) -> None:
         """Verrouiller oublie aussi l'AMK mémorisée : un appareil qu'on
@@ -2030,13 +2057,92 @@ class ServiceCompte:
             self._preparer()
             self._exiger_compte()
             self.etat.ecrire(consentement=True)
+        self._signaler_ouverture()
 
-    def synchroniser_maintenant(self) -> None:
-        # Le moteur arrive à l'étape 10. Rendre 200 ici ferait croire à la
-        # fermeture de l'app (P10) que ses modifications sont parties.
-        raise EtatRefuse("syncUnavailable", "la synchronisation n'existe pas encore")
+    def synchroniser_maintenant(self) -> str:
+        """``POST /v1/account/sync-now`` : un cycle, tout de suite, et son
+        issue. La route rend le statut recalculé APRÈS le cycle : son
+        ``sync.state`` dit ``syncing`` si un autre cycle tenait encore le
+        verrou, ``offline`` ou ``pending`` si rien n'a été confirmé, et
+        ``pendingCount`` ce qui reste — jamais un « Synchronisé » que le
+        cycle n'a pas obtenu.
+
+        Sans moteur, ``syncUnavailable`` : rendre 200 ferait croire à la
+        fermeture de l'app (P10) que ses modifications sont parties. Hors de
+        ``_operation`` : un cycle attend le réseau, et « Verrouiller » ne
+        doit pas attendre avec lui.
+        """
+        moteur = self.moteur
+        if moteur is None:
+            raise EtatRefuse(
+                "syncUnavailable", "la synchronisation n'existe pas sur ce serveur"
+            )
+        with self._operation:
+            self._preparer()
+            self._exiger_ouverture()
+        return moteur.cycle(attente_s=ATTENTE_SYNCHRO_MAINTENANT_S)
+
+    # ------------------------------------------------------------------
+    # Ce que le moteur de synchronisation lit et signale (étape 10)
+    # ------------------------------------------------------------------
+
+    def jeton_de_session(self) -> str | None:
+        """Le jeton, relu à CHAQUE requête : une rotation faite ici pendant
+        un cycle le remplace, et le moteur ne doit pas garder l'ancien."""
+        return self._jeton()
+
+    @property
+    def comptes_ouverts(self) -> bool:
+        """``COMPTES_OUVERTS`` tel que ce service l'a lu : le moteur ne
+        touche au réseau que si c'est vrai (§6 bis)."""
+        return self._ouverts
+
+    def session_refusee(self, code: str, account_id: str) -> bool:
+        """Un 401 reçu par le moteur : le même traitement qu'une route
+        (§3.7) — ``sessionRevoked`` efface AMK mémorisée, jeton et enveloppe
+        locale. Rend ``False`` sans rien toucher si ``account_id`` n'est
+        plus le compte de cet appareil.
+
+        Sous ``_operation`` (24/09/2026) : « Se déconnecter » ferme la
+        session sur le VPS, puis détruit ``etat.key`` ; le cycle en vol
+        recevait le 401 de sa requête suivante et ``_session_perdue``
+        recréait le fichier (``etat.ecrire``), sans compte. Le verrou fait
+        attendre la fin de la déconnexion, et la relecture de
+        ``accountId`` voit alors qu'il n'y a plus rien à effacer."""
+        with self._operation:
+            if not self.etat.existe() or self.etat.lire("accountId") != account_id:
+                return False
+            self._session_perdue(code)
+            return True
+
+    def _signaler_ouverture(self) -> None:
+        """Réveille le moteur : la serrure vient de s'ouvrir, ou le
+        consentement d'arriver. Tant que rien de cela n'arrive, le moteur
+        dort sans rien coûter (24/09/2026)."""
+        rappel = self.sur_ouverture
+        if rappel is None:
+            return
+        try:
+            rappel()
+        except Exception:  # noqa: BLE001 - un réveil manqué ne défait pas l'ouverture
+            logger.exception("compte : réveil du moteur de synchronisation manqué")
 
     def accueil_termine(self) -> None:
         with self._operation:
             self._preparer()
             marquer_accueil(self.dossier)
+
+
+def _synchro_sans_moteur(etat: str) -> dict[str, Any]:
+    """Le bloc ``sync`` quand aucun moteur n'existe : tous les nombres à
+    ``null``. Un 0 supposé ferait écrire « Synchronisé » à ``libelleSynchro``
+    chez quelqu'un dont rien n'est jamais parti (§100)."""
+    return {
+        "state": etat,
+        "serverSeq": None,
+        "lastConfirmedAt": None,
+        "pendingCount": None,
+        "quarantinedCount": None,
+        "repairedCount": None,
+        "errorCode": None,
+    }
