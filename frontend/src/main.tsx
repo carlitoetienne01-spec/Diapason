@@ -12,6 +12,8 @@ import { initApiBase } from './lib/api';
 import './lib/natif';
 import { migrerStockage, stockageDeLOrigine } from './features/vie/migrerStockage';
 import { initAnalytics } from './lib/analytics';
+import { gererLeServiceWorker } from './lib/serviceWorker';
+import { serviParLeTailnet } from './lib/tailnet';
 // Les treize polices du menu des notes, embarquées EN LOCAL.
 //
 // 30 août 2026 : deux seulement étaient installées, les deux polices pixel.
@@ -88,6 +90,20 @@ function applyTheme() {
 // Une fois par origine : la fenêtre et le mini-panneau ont chacun la leur.
 migrerStockage(stockageDeLOrigine());
 applyTheme();
+
+// Le service worker, à `load` comme le faisait `registerSW.js` : inscrit sur
+// le Mac et dans le mini-panneau, désinscrit au téléphone, où le bundle doit
+// toujours être celui que le Mac sert (lib/serviceWorker.ts, 26/09/2026).
+function serviceWorker() {
+  void gererLeServiceWorker({
+    conteneur: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
+    caches: typeof caches === 'undefined' ? null : caches,
+    servi: serviParLeTailnet(),
+    actif: import.meta.env.PROD && __PWA_ACTIF__,
+  }).catch((erreur: unknown) => console.warn('[pwa] service worker', erreur));
+}
+if (document.readyState === 'complete') serviceWorker();
+else window.addEventListener('load', serviceWorker, { once: true });
 
 // Fetch the API base URL from the Tauri backend before rendering.
 // This keeps the API port and generated local credential in the Rust backend.

@@ -27,6 +27,9 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkgVersion),
     __BUILD_STAMP__: JSON.stringify(buildStamp),
+    // Vrai quand la construction publie un service worker (le plugin PWA
+    // ci-dessous) : main.tsx l'inscrit lui-même (lib/serviceWorker.ts).
+    __PWA_ACTIF__: JSON.stringify(!isTauriBuild),
   },
   resolve: {
     alias: {
@@ -48,6 +51,10 @@ export default defineConfig({
         // ni nom, ni icône, ni couleur de thème. Même origine sur le Mac :
         // l'attribut n'y change rien.
         useCredentials: true,
+        // 26/09/2026 : plus de `registerSW.js` injecté, qui inscrivait le
+        // service worker à chaque chargement, téléphone compris — où il doit
+        // rester désinscrit. main.tsx l'inscrit, sauf servi par le tailnet.
+        injectRegister: false,
         manifest: {
           name: 'Diapason',
           short_name: 'Diapason',
