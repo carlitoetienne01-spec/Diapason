@@ -187,6 +187,26 @@ export function VieNotesPage() {
   const load = useCallback(async () => {
     const actuelle = lecture.commencer();
     setRafraichit(true);
+    // L'ordre des sections et les projets (pour la pastille et le menu).
+    // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
+    // Partis EN MÊME TEMPS qu'elle : jusqu'au 26/09/2026 ils attendaient sa
+    // réponse, un aller-retour de plus à chaque visite — au banc (4G
+    // simulée, 110 ms), les résumés finissaient à 336 ms et ces deux-là ne
+    // partaient qu'à 337 ms.
+    void listNoteCategories()
+      .then((suivantes) => {
+        if (!actuelle()) return;
+        ecrireCache(clesVie.categoriesNotes(), suivantes);
+        setCategories(suivantes);
+      })
+      .catch(() => {});
+    void listVieProjects()
+      .then((suivants) => {
+        if (!actuelle()) return;
+        ecrireCache(clesVie.projets(), suivants);
+        setProjects(suivants);
+      })
+      .catch(() => {});
     try {
       const next = await listVieNoteResumes(search);
       if (!actuelle()) return;
@@ -196,22 +216,6 @@ export function VieNotesPage() {
       chargeReussi.current = true;
       // Rien de choisi encore : le glisser d'hier EST la préférence.
       if (loadNotesSort() === undefined) setSortState(triInitialDesNotes(undefined, next));
-      // L'ordre des sections et les projets (pour la pastille et le menu).
-      // Non bloquants : la liste des notes vaut mieux seule que pas du tout.
-      void listNoteCategories()
-        .then((suivantes) => {
-          if (!actuelle()) return;
-          ecrireCache(clesVie.categoriesNotes(), suivantes);
-          setCategories(suivantes);
-        })
-        .catch(() => {});
-      void listVieProjects()
-        .then((suivants) => {
-          if (!actuelle()) return;
-          ecrireCache(clesVie.projets(), suivants);
-          setProjects(suivants);
-        })
-        .catch(() => {});
       const ouverte = activeIdRef.current;
       if (ouverte && !next.some((note) => note.id === ouverte)) {
         setActiveId(null);

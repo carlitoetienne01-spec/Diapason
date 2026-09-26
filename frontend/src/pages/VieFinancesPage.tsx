@@ -280,16 +280,28 @@ export function VieFinancesPage() {
   const load = useCallback(async () => {
     setRafraichit(true);
     try {
+      // Les transactions dépendent des bornes de la période, que l'aperçu
+      // rend. Elles l'attendaient à chaque visite : un aller-retour de plus
+      // (banc du 26/09/2026, 4G simulée : aperçu fini à 336 ms,
+      // transactions parties à 339 ms). Les bornes ne dépendent que de la
+      // période et du jour : celles de l'aperçu en cache pour la même clé
+      // les donnent d'avance, et la réponse de l'aperçu les CONTRÔLE — si
+      // elles diffèrent, on relit avec les bonnes.
+      const apercuConnu = lireCache<FinanceOverview>(clesVie.financesApercu(period, today));
+      const lireTransactions = (bornes: { from: string; to: string }) =>
+        listFinanceTransactions({ from: bornes.from, to: bornes.to, limit: 200 });
+      const anticipees = apercuConnu ? lireTransactions(apercuConnu) : null;
+      // Un rejet anticipé ne doit jamais rester « non géré » si l'aperçu échoue d'abord.
+      anticipees?.catch(() => {});
       const [nextOverview, nextCategories, nextSubs] = await Promise.all([
         fetchFinanceOverview(period, today),
         listFinanceCategories(),
         listFinanceSubscriptions(),
       ]);
-      const nextTxns = await listFinanceTransactions({
-        from: nextOverview.from,
-        to: nextOverview.to,
-        limit: 200,
-      });
+      const nextTxns =
+        anticipees && apercuConnu && apercuConnu.from === nextOverview.from && apercuConnu.to === nextOverview.to
+          ? await anticipees.catch(() => lireTransactions(nextOverview))
+          : await lireTransactions(nextOverview);
       // Une seule entrée persistée par ressource datée (aperçu, transactions) :
       // une par jour et par période s'accumulaient sans que rien ne les
       // relise ni ne les retire (revue du cache, 18 sept. 2026).

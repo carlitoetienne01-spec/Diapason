@@ -1,6 +1,6 @@
 import { useDerniereLecture } from '../features/vie/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarCheck2,
   ChevronLeft,
@@ -33,6 +33,7 @@ import {
   filtrer,
   grilleDuMois,
   libelleDuJour,
+  listeEnRetardSurLeJour,
   pastillesLocales,
   resumeDuJour,
   type FiltrePlanner,
@@ -126,6 +127,23 @@ export function ViePlannerPage() {
   const [tasks, setTasks] = useState<VieTask[]>(() => lireCache<VieTask[]>(clesVie.taches()) ?? []);
   /** Les points du calendrier, servis par le serveur ; null tant qu'ils n'ont pas répondu. */
   const [pastilles, setPastilles] = useState<Record<string, Pastille> | null>(null);
+  /** Le mois affiché, lu par `load` ; posé plus bas, une fois la grille calculée. */
+  const moisAffiche = useRef<{ days: string[] } | null>(null);
+  /** Les bornes de la DERNIÈRE demande de pastilles : seule sa réponse s'applique. */
+  const pastillesDemandees = useRef<string | null>(null);
+  const lirePastilles = useCallback((days: string[]) => {
+    const debut = days[0];
+    const fin = days[days.length - 1];
+    const demande = `${debut}|${fin}`;
+    pastillesDemandees.current = demande;
+    fetchPlannerPastilles(debut, fin)
+      .then((reponse) => {
+        if (pastillesDemandees.current === demande) setPastilles(reponse.days);
+      })
+      .catch(() => {
+        if (pastillesDemandees.current === demande) setPastilles(null);
+      });
+  }, []);
   const [loading, setLoading] = useState(() => lireCache(clesVie.taches()) === null);
   const [saving, setSaving] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
@@ -160,14 +178,27 @@ export function ViePlannerPage() {
   const lecture = useDerniereLecture(selectedDate);
   const load = useCallback(async () => {
     const actuelle = lecture.commencer();
+    // Les pastilles partent avec le reste : le serveur les projette, il n'a
+    // pas besoin que le planificateur ait matérialisé quoi que ce soit.
+    // Elles attendaient la liste (effet sur `tasks`) : planificateur, liste,
+    // pastilles, trois allers-retours l'un après l'autre (banc du
+    // 26/09/2026, 4G simulée : 131 → 529 ms à chaque visite).
+    if (moisAffiche.current) lirePastilles(moisAffiche.current.days);
     try {
-      // D'ABORD le planificateur, ENSUITE la liste : le premier matérialise
-      // les récurrences du jour ; chargés en parallèle, la liste pouvait
-      // arriver avant elles et contredire les points du calendrier.
-      await fetchViePlanner(selectedDate).catch(() => null);
+      // Le planificateur matérialise les récurrences du jour ; la liste lue
+      // EN MÊME TEMPS peut le précéder. Elle n'est relue que si elle manque
+      // une tâche que lui rend — la première ouverture du jour, pas les
+      // suivantes (`listeEnRetardSurLeJour`).
+      const [plan, lue] = await Promise.all([
+        fetchViePlanner(selectedDate).catch(() => null),
+        listVieTasks({ includeDone: true }),
+      ]);
       if (!actuelle()) return;
-      const nextTasks = await listVieTasks({ includeDone: true });
-      if (!actuelle()) return;
+      let nextTasks = lue;
+      if (plan && listeEnRetardSurLeJour(lue, plan.tasks)) {
+        nextTasks = await listVieTasks({ includeDone: true });
+        if (!actuelle()) return;
+      }
       ecrireCache(clesVie.taches(), nextTasks);
       setTasks(nextTasks);
     } catch (error) {
@@ -183,7 +214,7 @@ export function ViePlannerPage() {
     } finally {
       if (actuelle()) setLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, lirePastilles]);
 
   useEffect(() => {
     void load();
@@ -335,21 +366,13 @@ export function ViePlannerPage() {
   // Les points viennent du serveur : lui seul connaît les récurrences pas
   // encore matérialisées. En attendant sa réponse (ou s'il échoue), le
   // calcul local — mêmes règles, sans projection — évite un calendrier nu.
+  // `load` les relit à chaque chargement ; ici, seulement quand on change
+  // de mois — le montage est déjà servi par le premier `load`.
+  moisAffiche.current = month;
   useEffect(() => {
-    let visible = true;
-    const debut = month.days[0];
-    const fin = month.days[month.days.length - 1];
-    fetchPlannerPastilles(debut, fin)
-      .then((reponse) => {
-        if (visible) setPastilles(reponse.days);
-      })
-      .catch(() => {
-        if (visible) setPastilles(null);
-      });
-    return () => {
-      visible = false;
-    };
-  }, [month, tasks]);
+    const demande = `${month.days[0]}|${month.days[month.days.length - 1]}`;
+    if (pastillesDemandees.current !== demande) lirePastilles(month.days);
+  }, [month, lirePastilles]);
   const points = pastilles ?? pastillesLocales(tasks);
 
   const visibleTasks = useMemo(

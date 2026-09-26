@@ -112,6 +112,24 @@ export function tachesDuJour(taches: VieTask[], jour: string): VieTask[] {
   return [...ouvertes, ...terminees];
 }
 
+/**
+ * Vrai si le planificateur rend, pour son jour, une tâche que la liste lue
+ * EN MÊME TEMPS n'a pas : une récurrence qu'il vient de matérialiser
+ * pendant que la liste était déjà lue. Il faut alors la relire.
+ *
+ * 26/09/2026, chantier de la fluidité (lot 2) : planificateur, puis liste,
+ * puis pastilles attendaient chacun le précédent — trois allers-retours de
+ * 110 ms en 4G. Lus ensemble, la liste peut précéder la matérialisation et
+ * contredire les points du calendrier (la raison de l'ordre, contre-revue
+ * du 17 sept. 2026) ; ce contrôle ne repaie l'aller-retour que ce jour-là,
+ * à la première ouverture qui matérialise.
+ */
+export function listeEnRetardSurLeJour(liste: readonly VieTask[], jour: readonly VieTask[]): boolean {
+  if (!jour.length) return false;
+  const connues = new Set(liste.map((t) => t.id));
+  return jour.some((t) => !connues.has(t.id));
+}
+
 /** Les ouvertes dont le jour est passé — celles que rien ne montrait. */
 export function enRetard(taches: VieTask[], aujourdHui: string): VieTask[] {
   return taches

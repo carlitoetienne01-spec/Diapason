@@ -8,6 +8,7 @@ import {
   filtrer,
   grilleDuMois,
   libelleDuJour,
+  listeEnRetardSurLeJour,
   lundiDeLaSemaine,
   pastillesLocales,
   resumeDuJour,
@@ -186,5 +187,23 @@ describe('le libellé du premier onglet', () => {
   it('dit « Aujourd’hui » chez soi, la date ailleurs', () => {
     expect(libelleDuJour(AUJOURDHUI, AUJOURDHUI)).toBe('Aujourd’hui');
     expect(libelleDuJour('2026-09-10', AUJOURDHUI)).toMatch(/10/);
+  });
+});
+
+describe('listeEnRetardSurLeJour', () => {
+  it("demande de relire la liste quand le planificateur vient de matérialiser une récurrence qu'elle n'a pas", () => {
+    const a = tache({ date: '2026-09-26' });
+    const recurrence = tache({ date: '2026-09-26', title: 'Arroser' });
+    expect(
+      listeEnRetardSurLeJour([a], [a, recurrence]),
+      'la liste lue en même temps précède la matérialisation : relire',
+    ).toBe(true);
+  });
+
+  it('ne relit rien quand la liste a déjà toutes les tâches du jour — le cas de chaque visite après la première', () => {
+    const a = tache({ date: '2026-09-26' });
+    const b = tache({ date: '2026-09-27' });
+    expect(listeEnRetardSurLeJour([a, b], [a]), 'aucun aller-retour de plus').toBe(false);
+    expect(listeEnRetardSurLeJour([a], []), 'un jour vide ne demande rien').toBe(false);
   });
 });
