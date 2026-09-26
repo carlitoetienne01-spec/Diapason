@@ -55,7 +55,7 @@ describe('Aucun verbe ne rend un secret au JavaScript', () => {
     // Le secret de session est un cookie HttpOnly (phase 2) : un verbe `cle`
     // ou `jeton` le rendrait lisible par toute page chargée dans la WebView.
     // Ajouter un verbe doit être une décision, donc un test à changer.
-    expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue']);
+    expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp']);
     expect([...VERBES_ENTRANTS]).toEqual(['retour', 'naviguer', 'approbations', 'partager']);
   });
 

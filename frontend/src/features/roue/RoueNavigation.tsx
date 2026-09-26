@@ -27,6 +27,7 @@ import {
   Rocket,
   ScrollText,
   Settings,
+  Smartphone,
   Trophy,
   Bot,
   Wallet,
@@ -55,6 +56,7 @@ import {
   type Cote,
   type Geometrie,
 } from './geometrieRoue';
+import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
 import './roue.css';
 
@@ -135,6 +137,9 @@ export function RoueNavigation() {
   const [ouverte, setOuverte] = useState(false);
   const [mode, setMode] = useState<'roue' | 'liste'>(lireMode);
   const [allume, setAllume] = useState(0);
+  // Le bouton « Menu de l'app » : seulement quand la coquille a répondu
+  // qu'elle sait l'ouvrir (menuDeLApp.ts).
+  const [menuApp, setMenuApp] = useState(false);
 
   const racineRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -310,6 +315,20 @@ export function RoueNavigation() {
     if (!pontNatif) return;
     void demanderAuTelephone('bordRoue', chargeBordRoue(cote)).catch(() => {});
   }, [cote]);
+
+  // La coquille retire sa barre native de 40 px quand la page porte le
+  // menu de l'app (lot 4, 26/09/2026) ; le bouton n'apparaît qu'après son
+  // `ok`, sans quoi il n'ouvrirait rien.
+  useEffect(() => {
+    if (!pontNatif) return;
+    let vivant = true;
+    void annoncerLeMenuDeLApp((verbe, donnees) => demanderAuTelephone(verbe, donnees)).then((ok) => {
+      if (vivant) setMenuApp(ok);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, []);
 
   // Roue ouverte, la page dessous est inerte. `aria-modal` seul ne suffisait
   // pas : au banc (arbre d'accessibilité de Chromium, 26/09/2026), 44
@@ -554,6 +573,19 @@ export function RoueNavigation() {
               <AudioLines size={16} aria-hidden="true" />
               {t('chat.talk.navLabel')}
             </button>
+            {menuApp && (
+              <button
+                type="button"
+                className="roue-action"
+                onClick={() => {
+                  fermer();
+                  void demanderAuTelephone('menuApp', OUVRIR_MENU_APP).catch(() => {});
+                }}
+              >
+                <Smartphone size={16} aria-hidden="true" />
+                {t('roue.menuApp')}
+              </button>
+            )}
           </div>
         </div>
 

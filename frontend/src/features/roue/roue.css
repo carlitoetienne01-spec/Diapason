@@ -100,6 +100,7 @@
 .roue-actions {
   margin-top: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .roue-action {

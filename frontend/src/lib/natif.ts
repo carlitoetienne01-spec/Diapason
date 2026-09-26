@@ -34,8 +34,15 @@ import { traduire } from '../i18n/translate';
  * navigation par gestes, le glissé depuis le bord droit était pris par le
  * système pour un « retour » et n'atteignait jamais la page. Il ne rend
  * rien — aucun secret.
+ *
+ * `menuApp` (26/09/2026, lot 4 de la fluidité) : `{ ouvrir: boolean }`. Au
+ * montage de la roue, `ouvrir: false` annonce que le bundle porte le bouton
+ * du menu de l'app, et la coquille retire sa barre native de 40 px ; le
+ * bouton « Menu de l'app » de l'écran « Aller à » envoie `ouvrir: true`, et
+ * la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils,
+ * Importer). Il ne rend que `ok` — aucun secret.
  */
-export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue'] as const;
+export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp'] as const;
 /**
  * Ce que la coquille demande au bundle.
  *
@@ -74,6 +81,7 @@ export const DELAIS_MS: Record<VerbeSortant, number> = {
   theme: 10_000,
   ouvrirExterne: 10_000,
   bordRoue: 10_000,
+  menuApp: 10_000,
 };
 
 export interface CanalNatif {
