@@ -410,16 +410,12 @@ class TestLesRefus:
                 ws.receive_text()
         assert refus.value.code == 1008
 
-    def test_la_voix_reste_fermee_avec_une_session(self, banc):
-        """§78 : aucune coupure automatique n'existe encore pour la voix ;
-        elle n'ouvre au téléphone qu'en phase 4."""
-        with pytest.raises(WebSocketDisconnect) as refus:
-            with banc.websocket_connect(
-                "/v1/voice/live", headers=_ws(banc.jeton)
-            ) as ws:
-                ws.receive_text()
-        assert refus.value.code == 1008
-        assert "phase 4" in refus.value.reason, refus.value.reason
+    def test_la_voix_s_ouvre_avec_une_session(self, banc):
+        """Phase 4 (26/09/2026) : rouverte une fois la coupure serveur posée
+        et la séance du téléphone bornée (TestLaVoixDuTelephone, plus bas)."""
+        with banc.websocket_connect("/v1/voice/live", headers=_ws(banc.jeton)) as ws:
+            ws.send_text("allô")
+            assert ws.receive_text() == "écho:allô"
 
     def test_le_flux_du_chat_sans_cookie_1008(self, monde):
         app, _ = _vraie_app()
@@ -599,6 +595,144 @@ class TestLeTelephoneNePilotePasLeMac:
         assert reponse.status_code == 200, reponse.text
         app.state.lightning_actions.handle.assert_not_called()
         telephone.engine.generate.assert_called_once()
+
+
+class TestLaVoixDuTelephone:
+    """La voix du Mac par la VRAIE passerelle, avec une vraie session
+    d'appareil (phase 4, 26/09/2026). Whisper, Kokoro et Ollama sont
+    remplacés par un banc ; le reste — la route, la fabrique, la séance
+    locale, l'exécuteur d'outils, le plafond — est le vrai."""
+
+    @pytest.fixture
+    def banc_vocal(self, telephone, monkeypatch):
+        import asyncio
+
+        from diapason.core.registry import ToolRegistry
+        from diapason.speech.realtime import local_voice, tools
+        from diapason.speech.realtime.local_voice import LocalVoiceSession
+
+        espions = {}
+        for nom in ("clipboard_read", "screen_read_text", "current_time"):
+            espions[nom] = _espion_d_outil(nom)
+            espions[nom].executions = []
+            ToolRegistry.register_value(nom, espions[nom])
+        monkeypatch.setattr(tools, "_executeurs", {})
+        monkeypatch.setattr(local_voice, "ollama_reachable", lambda *_a, **_k: True)
+        tours: list = []
+
+        def llm(messages):
+            tours.append(messages)
+            file: asyncio.Queue = asyncio.Queue()
+            if len(tours) == 1:
+                appel = {"function": {"name": "clipboard_read", "arguments": {}}}
+                file.put_nowait(("tools", [appel]))
+            else:
+                file.put_nowait("Pas depuis le téléphone.")
+            file.put_nowait(None)
+            return file
+
+        class _SeanceDeBanc(LocalVoiceSession):
+            def __init__(self, **options):
+                super().__init__(
+                    stt=lambda _a: "",
+                    llm=llm,
+                    tts=lambda _t: b"\x00\x00" * 240,
+                    **options,
+                )
+
+        monkeypatch.setattr(local_voice, "LocalVoiceSession", _SeanceDeBanc)
+        # Une séance qui ne finit pas son tour est coupée en 5 s au lieu de
+        # 120 : le test échoue vite au lieu de pendre deux minutes.
+        monkeypatch.setattr("diapason.speech.realtime.bridge.SILENCE_MAX_S", 5.0)
+        telephone.espions = espions  # type: ignore[attr-defined]
+        telephone.tours = tours  # type: ignore[attr-defined]
+        return telephone
+
+    @staticmethod
+    def _demarrer(ws, **trame) -> None:
+        ws.send_json({"type": "start", "include_memory": False, **trame})
+
+    def test_le_presse_papiers_du_mac_ne_se_lit_pas_a_la_voix(self, banc_vocal):
+        """Le client demande clipboard_read (tools: …) et le modèle l'appelle :
+        l'outil rend ok=false et ne s'exécute pas. Sans le plafond, « qu'est-ce
+        que j'ai copié ? » dit au téléphone rendait le presse-papiers du Mac."""
+        with banc_vocal.websocket_connect(
+            "/v1/voice/live", headers=_ws(banc_vocal.jeton)
+        ) as ws:
+            # current_time garde les outils allumés : sans lui, la trousse du
+            # téléphone serait vide et les outils coupés avant tout appel.
+            self._demarrer(
+                ws,
+                provider="local",
+                tools="clipboard_read,screen_read_text,current_time",
+            )
+            assert ws.receive_json() == {"type": "ready"}
+            ws.send_json({"type": "text", "text": "qu'est-ce que j'ai copié ?"})
+            recus = []
+            while len(recus) < 60:
+                message = ws.receive_json()
+                recus.append(message)
+                fin = message["type"] == "transcript" and message["role"] == "assistant"
+                if (fin and message.get("final")) or message["type"] == "error":
+                    break
+            ws.send_json({"type": "stop"})
+        outils = [m for m in recus if m["type"] == "tool"]
+        assert outils and outils[0]["name"] == "clipboard_read", recus
+        assert outils[0]["ok"] is False, "l'outil du Mac a répondu au téléphone"
+        assert banc_vocal.espions["clipboard_read"].executions == [], (
+            "le presse-papiers du Mac a été lu depuis le téléphone"
+        )
+        premier_tour = " ".join(str(m.get("content")) for m in banc_vocal.tours[0])
+        assert "screen_read_text" not in premier_tour
+
+    def test_un_fournisseur_distant_est_refuse(self, banc_vocal):
+        with banc_vocal.websocket_connect(
+            "/v1/voice/live", headers=_ws(banc_vocal.jeton)
+        ) as ws:
+            self._demarrer(ws, provider="gemini")
+            refus = ws.receive_json()
+        assert refus["type"] == "error"
+        assert "téléphone" in refus["detail"], refus
+
+    def test_la_voix_muette_du_telephone_est_coupee_par_le_mac(
+        self, banc_vocal, monkeypatch
+    ):
+        """§78 : la coupure vit sur le Mac. Le téléphone qui ne dit plus rien
+        — ou qu'on a mis en poche — est coupé, et la dernière trame dit
+        pourquoi."""
+        monkeypatch.setattr("diapason.speech.realtime.bridge.SILENCE_MAX_S", 0.3)
+        with banc_vocal.websocket_connect(
+            "/v1/voice/live", headers=_ws(banc_vocal.jeton)
+        ) as ws:
+            self._demarrer(ws, provider="local")
+            assert ws.receive_json() == {"type": "ready"}
+            assert ws.receive_json() == {"type": "closed", "reason": "inactivity"}
+            with pytest.raises(WebSocketDisconnect) as fin:
+                ws.receive_json()
+        assert fin.value.code == 1000
+
+    def test_la_sante_ne_promet_au_telephone_que_la_voix_locale(
+        self, telephone, monkeypatch
+    ):
+        from diapason.core.origine_telephone import OUTILS_DU_TELEPHONE
+        from diapason.speech.realtime import local_voice
+
+        monkeypatch.setattr(
+            local_voice, "local_voice_readiness", lambda *_a, **_k: (True, "ready")
+        )
+        # Des clés présentes sur le Mac : le téléphone ne doit pas les voir
+        # comme une voix qu'il peut démarrer.
+        monkeypatch.setattr(
+            "diapason.core.cloud_keys.get_cloud_key", lambda *_noms: "cle-du-mac"
+        )
+        reponse = telephone.get("/v1/voice/live/health")
+        assert reponse.status_code == 200, reponse.text
+        sante = reponse.json()
+        assert sante["default_provider"] == "local"
+        assert sante["providers"]["gemini"]["configured"] is False
+        assert sante["providers"]["openai"]["configured"] is False
+        assert sante["providers"]["local"]["configured"] is True
+        assert set(sante["tools"]) <= OUTILS_DU_TELEPHONE, sante["tools"]
 
 
 class TestLaDicteeDuTelephone:

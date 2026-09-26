@@ -50,7 +50,6 @@ const ERREURS = {
   'local-components-missing': 'talk.localComponentsMissing',
   'voice-auth-unavailable': 'talk.authUnavailable',
   'voice-service-unavailable': 'talk.serviceUnavailable',
-  'voice-phone-later': 'tailnet.voix',
   'voice-connection-failed': 'talk.connectionFailed',
   'microphone-denied': 'talk.microphoneDenied',
   'voice-session-failed': 'talk.sessionFailed',

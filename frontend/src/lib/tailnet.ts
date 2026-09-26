@@ -8,6 +8,9 @@
 // toutes les 5 s, /v1/account/status toutes les 30 s, /v1/vie/sync/status à
 // chaque liste de tâches — des 403 à la chaîne, dont chacun passe par la
 // session, le classement des routes et une écriture possible sur mesh.db.
+// (La santé de la voix est rouverte depuis la phase 4 : elle n'est plus
+// retenue, mais sa relève toutes les 5 s reste coupée au téléphone,
+// hooks/useVoiceLive.ts.)
 //
 // Deux signaux, l'un OU l'autre :
 // - le pont natif (`estMobile`), présent dès le chargement ;
@@ -65,7 +68,6 @@ export const SONDES_REFUSEES = [
   'GET /v1/triggers/poll',
   'GET /v1/vie/sync/operations',
   'GET /v1/vie/sync/status',
-  'GET /v1/voice/live/health',
   'GET /webhooks/whatsapp',
   'POST /v1/context/view',
 ] as const;

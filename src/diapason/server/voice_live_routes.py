@@ -301,10 +301,17 @@ def _sante_de_la_voix(app_state: Any) -> dict[str, Any]:
                 tool_ids = outils_vocaux_du_telephone(tool_ids) if tool_ids else []
         except Exception:
             tool_ids = []
+    default_provider = defaults.get("provider", "gemini")
+    if depuis_le_telephone():
+        # Depuis le téléphone, la fabrique refuse tout fournisseur distant
+        # (26/09/2026). Les dire « configurés » ferait choisir au téléphone
+        # une séance que le Mac refuserait au démarrage.
+        gemini = openai = False
+        default_provider = "local"
     return {
         "available": defaults.get("enabled", True) and (gemini or openai or local),
         "enabled": defaults.get("enabled", True),
-        "default_provider": defaults.get("provider", "gemini"),
+        "default_provider": default_provider,
         "enable_tools": defaults.get("enable_tools", True),
         "max_tool_steps": defaults.get("max_tool_steps", 6),
         "tools": tool_ids,

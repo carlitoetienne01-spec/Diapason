@@ -135,9 +135,55 @@ Détaillées plus bas, au §4.
 
 ### Phase 4 — La voix
 
-Aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live`
+~~Aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live`
 (déduit par la conception, à revérifier) : §78 l'exige avant d'ouvrir la voix
-au téléphone.
+au téléphone.~~ *Revérifié le 26/09/2026 : vrai — ni délai sans parole, ni
+durée maximale, côté serveur comme côté client ; seul un WebSocket fermé
+proprement arrêtait la séance. Fait le même jour, branche `chantier/phases45`,
+six commits de `9a59c808` au commit qui barre ces lignes :*
+
+1. *La coupure vit côté SERVEUR (`speech/realtime/bridge.py`) : 120 s sans
+   parole, 600 s au plus. La parole = une phrase finale de l'utilisateur, la
+   voix de l'assistant jusqu'à la fin de sa LECTURE, un outil, une
+   interruption, un texte tapé ; jamais une trame de micro ni un partiel
+   (la télévision). 120 laisse 30 s après le désengagement de 90 s pour
+   rappeler Diapason par son nom et couvre les 45 s de la cloche vocale ; 600
+   est le plafond du mode gestes. Un WebSocket perdu sans fermeture tombe
+   sous la même règle. Le serveur envoie `{"type": "closed", "reason":
+   "inactivity" | "maxDuration"}` puis ferme en 1000 ; le bundle coupe le
+   micro (le voyant d'Android s'éteint) et dit pourquoi, en fr et en en.
+   **Elle s'applique aussi au bureau** : une orbe ouverte sur le Mac se tait
+   après deux minutes de silence (§78 ne distingue pas les appareils).*
+2. *Le fil de ToolExecutor hérite du contexte (`contextvars.copy_context`) :
+   l'outil permis au téléphone gardait le plafond pour lui, pas pour ce
+   qu'il lançait.*
+3. *La séance née du téléphone RESTE du téléphone : la marque est lue à la
+   construction de `LocalVoiceSession`. Trousse bornée à
+   `OUTILS_DU_TELEPHONE` (vide = outils coupés), chemin rapide
+   (`execute_voice_action`, hors de ToolExecutor : « ouvre Safari » ouvrait
+   Safari sur le Mac) sauté, perceptions du Mac (app au premier plan, page de
+   Diapason, partage d'écran, main tenue) retirées du tour, prompt du
+   téléphone (`TOOL_ORAL_HINT_TELEPHONE`), fournisseurs distants refusés par
+   la fabrique, exécuteur qui repose la marque dans son fil.*
+4. *La dictée du téléphone (`POST /v1/dictation/finalize`, ouverte en phase
+   2) EXÉCUTAIT les ordres dictés sur le Mac par `execute_voice_action` :
+   depuis le téléphone, une dictée reste du texte, et `execute_voice_action`
+   refuse sous la marque.*
+5. *La santé de la voix, la lecture des instructions et la sonde d'Ollama au
+   démarrage passaient en ligne dans du code async (jusqu'à 1,5 s de boucle
+   gelée) : `asyncio.to_thread`.*
+6. *`WS /v1/voice/live` et `GET /v1/voice/live/health` classées `session`
+   (la famille `/v1/voice/` reste refusée) ; au téléphone, la santé ne
+   promet que la voix locale. Le bundle ne retient plus la santé et n'a
+   plus la garde « la voix n'est pas encore ouverte au téléphone » ; la
+   relève toutes les 5 s reste coupée au téléphone.*
+
+*La preuve passe par la VRAIE passerelle et une vraie session d'appareil
+(`TestLaVoixDuTelephone`, `TestLaDicteeDuTelephone`) : le modèle demande
+`clipboard_read`, l'outil rend `ok=false` et l'espion ne s'exécute pas ;
+`?provider=gemini` est refusé ; une séance muette est coupée avec son motif.
+**Reste le banc sur le téléphone** (plus bas, « Le banc de la voix »), une
+fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
 
 ### Phase 5 — Photo, partage, notifications, verrou
 
@@ -453,7 +499,7 @@ Le piège `proxy_headers` d'uvicorn entre au §5 de CLAUDE.md, puis dans AGENTS.
 *Risque silencieux :* déclarer la phase livrée sur la foi des tests ASGI. Ni le passage du SSE à travers serve, ni la CSP `wss` dans la WebView Android, ni le micro ne se vérifient ailleurs que sur l'appareil.
 *Preuve :* le tableau des mesures, daté, dans ce document.
 
-Pour la phase 4 : aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live` (DÉDUIT par un lecteur, non revérifié). §78 l'exige avant d'ouvrir la voix au téléphone.
+~~Pour la phase 4 : aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live` (DÉDUIT par un lecteur, non revérifié). §78 l'exige avant d'ouvrir la voix au téléphone.~~ *Revérifié et fait le 26/09/2026 : voir la phase 4 au §3.*
 
 #### Les contre-épreuves du côté Diapason (26/09/2026)
 
@@ -792,4 +838,10 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 
 *Après le banc* : le tableau daté (étape → vu / pas vu → remarque) va à l'étape 10 de la phase 2 ci-dessus, `CAPABILITY_MATRIX.md` est mis à jour, et seulement alors les étapes 10 et 11 de la phase 3 (retirer l'Entité, puis Nocturne et la Life OS native) peuvent commencer.
 
-**À dire à Carlito (constat 19 de la seconde contre-épreuve)** : ouvert SANS la coquille (un navigateur sur l'adresse https, après un cookie posé), le bundle envoie une fois au premier chargement `POST /v1/context/view` et `GET /v1/voice/live/health`, que la passerelle refuse en 403 — avant d'avoir vu l'en-tête `X-Diapason-Passerelle`. Ensuite, plus rien. Au téléphone, le pont existe avant tout module : 0 réponse 403 sur 24 routes au banc. La coquille est le seul client prévu ; ce n'est pas corrigé.
+*Le banc de la voix (phase 4)* — seulement après la fusion de `chantier/phases45` dans `main`, `npm run build` et le redémarrage du serveur ; la dictée et l'étape 10 ci-dessus restent valables jusque-là. Wi-Fi coupé, Tailscale actif :
+18. **Parler.** Toucher « Parler » (l'orbe) : la séance démarre sans que les Réglages disent « pas encore ouverte au téléphone » ; le voyant vert d'Android s'allume. « Diapason, quelle heure est-il ? » → la réponse est dite par le téléphone.
+19. **La coupure.** Ne plus rien dire pendant deux minutes : la voix se coupe seule, le voyant S'ÉTEINT, et l'orbe dit « La voix s'est coupée seule après un long silence ». Noter la durée mesurée.
+20. **Le plafond.** « Diapason, ouvre Safari » → rien ne s'ouvre sur le Mac, la voix dit que ce n'est pas possible depuis le téléphone. « Qu'est-ce que j'ai copié ? » → même refus, jamais le presse-papiers du Mac. Dans la Discussion, dicter « ouvre Safari » → le texte arrive dans le compositeur, rien ne s'ouvre sur le Mac.
+21. **L'arrière-plan.** Pendant une séance, verrouiller le téléphone : noter si le voyant reste allumé et combien de temps (la coupure serveur le borne à deux minutes).
+
+**À dire à Carlito (constat 19 de la seconde contre-épreuve)** : ouvert SANS la coquille (un navigateur sur l'adresse https, après un cookie posé), le bundle envoie une fois au premier chargement `POST /v1/context/view` et `GET /v1/voice/live/health` (celle-ci rouverte en phase 4, 26/09/2026 : elle rend désormais 200), que la passerelle refuse en 403 — avant d'avoir vu l'en-tête `X-Diapason-Passerelle`. Ensuite, plus rien. Au téléphone, le pont existe avant tout module : 0 réponse 403 sur 24 routes au banc. La coquille est le seul client prévu ; ce n'est pas corrigé.

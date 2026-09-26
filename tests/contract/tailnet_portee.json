@@ -193,7 +193,7 @@
  "GET /v1/vie/templates": "session",
  "GET /v1/vie/year-review": "session",
  "GET /v1/visuals/inkscape": "session",
- "GET /v1/voice/live/health": "refusee",
+ "GET /v1/voice/live/health": "session",
  "GET /webhooks/whatsapp": "refusee",
  "GET /{full_path:path}": "session",
  "MOUNT /assets": "session",
@@ -412,5 +412,5 @@
  "PUT /v1/vie/sync/relay": "refusee",
  "WS /v1/agents/events": "session",
  "WS /v1/chat/stream": "session",
- "WS /v1/voice/live": "refusee"
+ "WS /v1/voice/live": "session"
 }

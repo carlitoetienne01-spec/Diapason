@@ -133,7 +133,6 @@ class TestLesRefusDuPlan:
             "POST /v1/account/login",
             "POST /v1/gestures/frame",
             "GET /v1/actions/capabilities",
-            "WS /v1/voice/live",
             "GET /v1/succes/tasks",
             "POST /v1/vie/sync/pair",
             "GET /openapi.json",
@@ -147,3 +146,16 @@ class TestLesRefusDuPlan:
         /v1/vie/ n'est PAS ouverte parce que ses voisines le sont."""
         assert classer("GET /v1/vie/route-inventee-demain") is None
         assert classer("GET /v1/chat/route-inventee-demain") is None
+
+
+class TestLaVoixDuMac:
+    """Phase 4 (26/09/2026) : la voix rouverte au téléphone, et elle seule."""
+
+    def test_la_seance_et_sa_sante_sont_sous_session(self, actuelle):
+        assert actuelle["WS /v1/voice/live"] == SESSION
+        assert actuelle["GET /v1/voice/live/health"] == SESSION
+
+    def test_une_route_de_voix_ajoutee_demain_reste_refusee(self):
+        """La famille /v1/voice/ garde son refus : ouvrir la séance n'ouvre
+        pas la prochaine route qu'on y mettra."""
+        assert classer("GET /v1/voice/route-inventee-demain") == REFUSEE

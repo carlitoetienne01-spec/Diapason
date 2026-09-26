@@ -191,6 +191,11 @@ _VIE = _lignes(
 # afficher. ``GET /v1/cloud/keys`` et ``GET /v1/inference/source`` (26/09/2026)
 # ne disent que « présente ou absente » et le schéma, le nom et le port : sans
 # elles, les Réglages du téléphone inventaient l'état du Mac.
+# La voix du Mac (phase 4, 26/09/2026) : ``WS /v1/voice/live`` et sa santé,
+# rouvertes une fois la coupure serveur posée (§78 : 120 s sans parole,
+# 600 s au plus, speech/realtime/bridge.py) et la séance du téléphone bornée
+# à OUTILS_DU_TELEPHONE, sans chemin rapide, sans perception du Mac et sans
+# fournisseur distant (speech/realtime/local_voice.py, factory.py).
 _PRODUIT = _lignes(
     """
     GET /{full_path:path}
@@ -277,6 +282,8 @@ _PRODUIT = _lignes(
     GET /v1/visuals/inkscape
     POST /v1/visuals/inkscape
     POST /v1/visuals/matplotlib
+    WS /v1/voice/live
+    GET /v1/voice/live/health
     """
 )
 
@@ -294,10 +301,9 @@ _MOTIF_ACTIONS = (
     "Les actions sur le Mac ne se commandent pas encore depuis le téléphone "
     "(phase 6 du plan mobile)."
 )
-_MOTIF_VOIX = (
-    "La voix n'est pas encore ouverte au téléphone : elle attend sa coupure "
-    "automatique (phase 4 du plan mobile, §78)."
-)
+# La famille reste refusée : seules la séance et sa santé sont ouvertes
+# (plus haut). Une route de voix ajoutée demain n'y entre pas d'elle-même.
+_MOTIF_VOIX = "Cette route de la voix n'a pas été ouverte au téléphone."
 # 26/09/2026 : un agent créé, modifié ou relancé depuis le téléphone
 # tourne ENSUITE sur le Mac — dans un threading.Thread à nu ou au prochain
 # battement — hors du contexte de la requête, donc hors du plafond d'outils

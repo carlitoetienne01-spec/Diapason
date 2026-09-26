@@ -94,8 +94,8 @@ describe('cleDeSonde — reconnaître une route au gabarit près', () => {
   });
 
   it('lit une adresse absolue', () => {
-    expect(cleDeSonde('GET', 'https://atelier.tail6efbba.ts.net/v1/voice/live/health')).toBe(
-      'GET /v1/voice/live/health',
+    expect(cleDeSonde('GET', 'https://atelier.tail6efbba.ts.net/v1/account/status')).toBe(
+      'GET /v1/account/status',
     );
   });
 
@@ -191,12 +191,21 @@ describe('garderLaSonde — ne pas envoyer, et le dire une fois', () => {
     const etat = creerEtatDuTailnet(true);
     let levee: unknown = null;
     try {
-      garderLaSonde('GET', '/v1/voice/live/health', etat, () => true);
+      garderLaSonde('GET', '/v1/account/status', etat, () => true);
     } catch (e) {
       levee = e;
     }
     expect(levee).toBeInstanceOf(SondeNonEnvoyee);
-    expect((levee as SondeNonEnvoyee).cle).toBe('GET /v1/voice/live/health');
+    expect((levee as SondeNonEnvoyee).cle).toBe('GET /v1/account/status');
+  });
+
+  it('laisse partir la santé de la voix, rouverte au téléphone en phase 4 (26/09/2026)', () => {
+    // Retenue, elle faisait dire aux Réglages et à l'orbe « pas encore
+    // ouverte au téléphone » alors que la passerelle l'accepte.
+    expect(
+      () => garderLaSonde('GET', '/v1/voice/live/health', creerEtatDuTailnet(true), () => true),
+      'la santé de la voix doit atteindre le Mac',
+    ).not.toThrow();
   });
 
   it('laisse passer ce que la passerelle permet', () => {
