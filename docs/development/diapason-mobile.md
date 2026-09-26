@@ -133,7 +133,13 @@ et qui ne devait pas casser en silence :
 
 Détaillées plus bas, au §4.
 
-### Phase 4 — La voix
+### ~~Phase 4 — La voix~~ — faite le 26/09/2026
+
+*Commits : ici (`chantier/phases45`) `9a59c808`, `5c26d71b`, `aac160c7`,
+`2f38a8c2`, `9cb9f716`, `2299ed8c` ; après la troisième contre-épreuve
+(§4, « Les contre-épreuves des phases 4 et 5 ») `9becaa3f` (le battement et
+la garde du client), `fd4f0d6f`, `2c0a08ac`. Côté mobile, rien : la voix
+passe par la WebView. Reste le banc sur le téléphone (étapes 18 à 21, 27).*
 
 ~~Aucune coupure automatique n'existe aujourd'hui pour `/v1/voice/live`
 (déduit par la conception, à revérifier) : §78 l'exige avant d'ouvrir la voix
@@ -153,7 +159,14 @@ six commits de `9a59c808` au commit qui barre ces lignes :*
    "inactivity" | "maxDuration"}` puis ferme en 1000 ; le bundle coupe le
    micro (le voyant d'Android s'éteint) et dit pourquoi, en fr et en en.
    **Elle s'applique aussi au bureau** : une orbe ouverte sur le Mac se tait
-   après deux minutes de silence (§78 ne distingue pas les appareils).*
+   après deux minutes de silence (§78 ne distingue pas les appareils).
+   Troisième contre-épreuve (`9becaa3f`) : cette coupure n'atteint pas un
+   téléphone HORS RÉSEAU — ni la trame `closed` ni la fermeture ne lui
+   arrivent, et son TCP retransmet ~15 min. Le Mac bat donc (`{"type":
+   "alive"}` toutes les 15 s une fois la séance prête) et le bundle coupe
+   lui-même son micro après 45 s sans aucune trame d'un Mac qui a battu,
+   quand 1 Mo attend l'envoi, ou à 630 s ; il dit « Le Mac ne répond
+   plus ».*
 2. *Le fil de ToolExecutor hérite du contexte (`contextvars.copy_context`) :
    l'outil permis au téléphone gardait le plafond pour lui, pas pour ce
    qu'il lançait.*
@@ -185,7 +198,15 @@ six commits de `9a59c808` au commit qui barre ces lignes :*
 **Reste le banc sur le téléphone** (plus bas, « Le banc de la voix »), une
 fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
 
-### Phase 5 — Photo, partage, notifications, verrou
+### ~~Phase 5 — Photo, partage, notifications, verrou~~ — faite le 26/09/2026
+
+*Commits : ici (`chantier/phases45`) `491ae0b7`, `a081cd78`, `2b74b865`,
+`9bc7afa7`, `fa56415d`, puis `db4bf86c`, `8b799b9d`, `3ca36c57`, `930107f1`,
+`1693273e` ; mobile (`main`) `60192fd`, `4f80e31`, `810fd57`, `7efd44f`,
+`f2e9e5c`, puis `61bda29`, `d703208`, `d97735a`, `6cb2a18`, `8c9ff14`,
+`46b5e28`, `7826383`, `2786599`. Reste le banc sur le téléphone (étapes 22
+à 26, 28 à 32) et deux limites dites plus bas (le `singleTask`, la tâche de
+fond sans réseau).*
 
 *Fait le 26/09/2026 (branche `chantier/phases45` ici, `main` de
 `diapason_mobile`). Quatre ajouts, et deux défauts du Mac trouvés en les
@@ -198,11 +219,15 @@ fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
    s'arrête en veille profonde). Le cadenas couvre TOUTE l'app, menu natif
    compris ; la coquille ne sonde, n'ouvre de session ni ne charge rien avant
    le premier déverrouillage ; un échec, quel qu'il soit, ne donne rien — un
-   téléphone sans aucun verrou le dit et Diapason reste fermé. Limite dite :
-   la vignette des apps récentes peut garder la dernière image de la page
-   (le cadenas est posé au départ, sans garantie qu'Android le redessine à
-   temps ; `FLAG_SECURE` interdirait aussi les captures d'écran — non posé,
-   à décider).*
+   téléphone sans aucun verrou le dit et Diapason reste fermé. ~~Limite
+   dite : la vignette des apps récentes peut garder la dernière image de la
+   page~~ — elle la gardait À COUP SÛR (Flutter ne dessine plus rien après
+   `hidden`) : `setRecentsScreenshotEnabled(false)` la retire depuis mobile
+   `d703208` (Android 13 et plus), captures d'écran toujours permises
+   (`FLAG_SECURE`, non posé, reste à décider). Sous le cadenas, la page
+   n'est plus ni peinte, ni dans l'arbre d'accessibilité, ni focalisable, et
+   le micro est refusé (mobile `61bda29`) : TalkBack la lisait et y touchait
+   « Approuver ».*
 2. *Approbations (mobile `4f80e31`, bundle `a081cd78`) : la session native
    lit `GET /v1/approvals/pending` toutes les **30 s** app au premier plan
    (une confirmation d'outil refuse seule au bout de 120 s : il reste 90 s),
@@ -222,7 +247,18 @@ fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
    la tâche de l'app qui partage. Le partage attend le verrou et la page,
    puis le verbe `partager` le DÉPOSE dans le compositeur de la Discussion en
    cours (texte à la suite du brouillon, fichiers par le trombone) ; rien
-   n'est envoyé.*
+   n'est envoyé. Depuis `3ca36c57` : sur un brouillon non vide, le partage
+   vient après une ligne vide, SÉLECTIONNÉ, et la phrase dit « à la suite de
+   votre brouillon » (une app peut forger un partage) ; l'accusé compte les
+   fichiers que le compositeur ACCEPTE. **Limite, non corrigée
+   (troisième contre-épreuve, constat 14, déduite de l'AOSP, pas vue)** :
+   en `singleTask`, rouvrir Diapason par son icône, une notification ou un
+   partage détruit ce qui est posé au-dessus d'elle dans sa tâche —
+   l'appareil photo ou le sélecteur ouverts pour une pièce jointe, et la
+   photo avec. Étape 32 du banc ; si c'est confirmé, revenir à `singleTop` et
+   recevoir les partages par une activité relais (qui a son propre défaut :
+   un partage fait pendant que l'appareil photo de Diapason est ouvert
+   ajouterait une seconde activité par-dessus).*
 4. *Appareil photo vers les piles (mobile `7efd44f`) : rien à corriger, vu
    sur l'émulateur ; l'`accept` exact de la pile est désormais tenu par un
    test.*
@@ -625,7 +661,7 @@ Vingt et un constats sur les lots 1 à 4 (appairage, coquille, import, rappels, 
 | # | Constat | Verdict | Commits |
 |---|---|---|---|
 | 1 | Le Dart postait en clair (appairage, ticket, cookie, import) vers toute adresse http, même dans l'app publiée | corrigé : `refusDuTransport`, http seulement en variante dev vers localhost / 127.0.0.1 / 10.0.2.2 | mobile `f6a1b52` |
-| 2 | Un `<form method=post>` de la page du Mac pouvait emmener la coquille chez un tiers (POST sans `shouldOverrideUrlLoading`) | corrigé côté passerelle : `form-action 'self'` ; côté coquille le 26/09/2026 (`chantier/phases45`) : canal lié à l'origine du Mac (`PontLie.kt`, `WebViewCompat.addWebMessageListener`), vu sur l'émulateur — voir « Le canal lié » plus bas | ici `9275e6c7` et le commit du canal lié, mobile `6430a3f` |
+| 2 | ~~Un `<form method=post>` de la page du Mac pouvait emmener la coquille chez un tiers (POST sans `shouldOverrideUrlLoading`)~~ | **résolu** : côté passerelle `form-action 'self'` ; côté coquille le 26/09/2026 (`chantier/phases45`) : canal lié à l'origine du Mac (`PontLie.kt`, `WebViewCompat.addWebMessageListener`), vu sur l'émulateur — voir « Le canal lié » plus bas ; la règle d'origine est tenue par un test de source depuis la troisième contre-épreuve (`setOf("*")` laissait tout vert) | ici `9275e6c7`, `2eeb264d`, mobile `6430a3f`, `d97735a` |
 | 3 | La branche « cadre » de `deciderNavigation` décidait pour des cadres que le greffon ne lui passe jamais | corrigé : branche retirée ; la CSP, seule garde, est tenue par un test Python | mobile `7ded737`, ici `9275e6c7` |
 | 4 | Toute app Android pouvait ouvrir `/import` ou `/appareils` par une intention | corrigé : `flutter_deeplinking_enabled=false`, `getInitialRoute()` = « / » | mobile `2b5c612` |
 | 5 | « Quitter l'appairage » laissait deux sessions de 12 h sur le téléphone | corrigé (coffre natif, cookies de la WebView) ; la fermeture côté Mac reste à la page Appareils | mobile `0220111` |
@@ -645,6 +681,30 @@ Vingt et un constats sur les lots 1 à 4 (appairage, coquille, import, rappels, 
 | 19 | Sans pont, le bundle servi par la passerelle envoie deux sondes refusées au premier chargement | non corrigé, dit ici : la coquille pose le pont avant tout module ; au banc AVEC pont, 0 réponse 403 sur 24 routes | — |
 | 20 | FOREGROUND_SERVICE déclarée sans usage ; deux permissions d'alarme exacte | FOREGROUND_SERVICE retirée du manifeste de l'app (WorkManager 2.10.2 la déclare lui-même : l'APK ne change pas) ; les alarmes exactes, à trancher après le banc | mobile `c8d0d09` |
 | 21 | Les tests de contrat lisaient l'arbre vivant du dépôt mobile | `DIAPASON_MOBILE` désigne une copie ; `docs/client-mobile.md` le dit | ici `bef119f7` |
+
+#### Les contre-épreuves des phases 4 et 5 (26/09/2026, troisième tour)
+
+Quinze constats sur les lots voix, pont lié et ajouts mobiles. Chacun revérifié ; un correctif porte le test qui l'aurait attrapé, et ce test échoue sans lui (mutant nommé dans chaque message de commit). « Ici » = `chantier/phases45` ; « mobile » = `diapason_mobile`.
+
+| # | Constat | Verdict | Commits |
+|---|---|---|---|
+| 1 | Sous le cadenas, la page restait lisible et touchable par l'accessibilité (TalkBack approuvait), son champ recevait la saisie, et le micro s'accordait | corrigé : `Offstage`, `ExcludeSemantics`, `ExcludeFocus`, `BlockSemantics` ; micro refusé sous le cadenas | mobile `61bda29` |
+| 2 | Hors réseau, le micro du téléphone restait armé : la coupure du Mac ne l'atteint pas | corrigé : battement du Mac (15 s) et garde du client (45 s sans trame, 1 Mo en attente, 630 s) ; « en 120 s au plus » corrigé dans `bridge.py` | ici `9becaa3f` |
+| 3 | La vignette des apps récentes gardait à coup sûr la page du Mac | corrigé : `setRecentsScreenshotEnabled(false)` ; pas de voile sur `inactive` (le volet des notifications et les invites le poseraient sur une app qu'on regarde) | mobile `d703208` |
+| 4 | Un partage forgé s'ajoutait en silence au brouillon | corrigé : ligne vide, texte sélectionné, phrase distincte. La lecture d'un `content://` sans délai (un fournisseur qui ne rend jamais la main bloque le partage, et lui seul) : **non corrigée** — un délai sûr demande de fermer le flux depuis un autre fil et un fil par lecture | ici `3ca36c57` |
+| 5 | La règle d'origine du pont lié tenue par aucun test | tests de source (d20, d21, d22, d23 tués) | mobile `d97735a` |
+| 6 | Le cadenas à l'écran pouvait disparaître sans test rouge | le vrai `VerrouDeLApp` monté (d9 tué) ; d7 équivalente, comme dit | mobile `61bda29` |
+| 7 | Le prompt réellement reçu par la voix du téléphone non testé | deux tests par la vraie passerelle, `include_memory: true` (t11, t25 tués) | ici `fd4f0d6f` |
+| 8 | Le test des deux décisions simultanées ne voyait la perte du verrou qu'une fois sur 5 à 10 | rendez-vous après la lecture : 20 rouges sur 20 sous le mutant | ici `db4bf86c` |
+| 9 | Rien ne tenait « rien n'est envoyé », la pièce jointe, ni « la notification n'approuve pas » | `deposerDansLeCompositeur` (fonction pure) et tests de source d'`InputArea` et d'`ApprovalBell` (f22, f23, f24 tués) ; l'accusé compte les fichiers acceptés | ici `3ca36c57`, `930107f1` |
+| 10 | Une demande remise sans réponse pouvait être renvoyée | test ajouté (d16 tué) | mobile `6cb2a18` |
+| 11 | Le test de l'appareil photo de la pile recopiait l'`accept` | test de contrat qui confronte les deux dépôts (f25 tué) | ici `1693273e`, mobile `7826383` |
+| 12 | Interruption, outil et vérification non tenus comme parole | quatre cas (b13, b14 tués) | ici `2c0a08ac` |
+| 13 | Gardes secondaires | f10, d27, d28 tués ; la cloche demandée pendant un dépôt attendait la page suivante : corrigé (et la garde de vol unique, qui laissait partir deux livraisons, aussi) ; les fins de ligne de `notification_payloads.dart` (CRLF → LF dans `4f80e31`) : notées, historique non réécrit | ici `3ca36c57`, mobile `6cb2a18`, `8c9ff14`, `46b5e28` |
+| 14 | `singleTask` peut fermer l'appareil photo ouvert pour une pièce jointe | **reporté au banc** (étape 32) : déduit de l'AOSP, pas vu ; la correction proposée a son propre défaut (voir la phase 5) | — |
+| 15 | Tout le trafic du téléphone partagerait un seul seau `127.0.0.1:unauthenticated` | **faux** : la passerelle réécrit le client en `appareil:<id>` avant le limiteur — le seau est déjà celui de l'appareil (sonde : une seule clé vue, `appareil:…:unauthenticated`). Le commentaire de 9bc7afa7, source de l'erreur, est corrigé et la clé figée par un test. Une décision rend 429 si la page du MÊME téléphone vient de vider son seau, comme au bureau | ici `8b799b9d` |
+
+**À dire à Carlito (troisième tour)** : deux messages de commit portent un chiffre faux, non corrigés pour ne pas réécrire l'historique — mobile `61bda29` dit « 94 tests de la coquille verts », il y en avait 153 ; et l'APK c8d0d09 que tu installes est conservé sous `build/app/outputs/flutter-apk/app-debug-c8d0d09.apk`, parce que la construction finale écrit au même endroit.
 
 **À dire à Carlito (constat 21)** : pendant la revue, l'arbre de `diapason_mobile` a porté tour à tour des mutants non commités d'autres sessions (`mesh_api.dart` sans le cas 502, `requiresConfirmation: false`…), chacun avec un `.mutbak`. Le runner auto-hébergé lit ce même arbre : une session de mutation doit restaurer ses fichiers avant qu'une CI ne parte.
 
@@ -932,15 +992,23 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 18. **Parler.** Toucher « Parler » (l'orbe) : la séance démarre sans que les Réglages disent « pas encore ouverte au téléphone » ; le voyant vert d'Android s'allume. « Diapason, quelle heure est-il ? » → la réponse est dite par le téléphone.
 19. **La coupure.** Ne plus rien dire pendant deux minutes : la voix se coupe seule, le voyant S'ÉTEINT, et l'orbe dit « La voix s'est coupée seule après un long silence ». Noter la durée mesurée.
 20. **Le plafond.** « Diapason, ouvre Safari » → rien ne s'ouvre sur le Mac, la voix dit que ce n'est pas possible depuis le téléphone. « Qu'est-ce que j'ai copié ? » → même refus, jamais le presse-papiers du Mac. Dans la Discussion, dicter « ouvre Safari » → le texte arrive dans le compositeur, rien ne s'ouvre sur le Mac.
-21. **L'arrière-plan.** Pendant une séance, verrouiller le téléphone : noter si le voyant reste allumé et combien de temps (la coupure serveur le borne à deux minutes).
+21. **L'arrière-plan.** Pendant une séance, verrouiller le téléphone : noter si le voyant reste allumé et combien de temps (la coupure serveur le borne à deux minutes TANT QUE le réseau passe ; hors réseau, voir l'étape 27).
 
 *Le pont lié (constat 2)* — seulement avec un APK construit à partir de mobile `6430a3f` ou après, et seulement après la fusion ci-dessus (un bundle plus ancien n'écoute pas le canal lié) :
 22. **Le pont.** Refaire les étapes 8 (le retour d'Android ferme d'abord le tiroir) et 11 (un export arrive dans Téléchargements et son nom s'affiche). Aucune bande « pont coupé » au-dessus de la page ; si elle apparaît, noter sa phrase et la version d'« Android System WebView » (Réglages → Applis).
 
 *Le banc de la phase 5* — seulement avec un APK construit à partir de mobile `810fd57` ou après, et après la fusion de `chantier/phases45` (le bundle doit connaître `approbations` et `partager`, le Mac l'exemption du limiteur) :
-23. **Le verrou.** Lancer l'app : l'invite d'Android « Ouvrir Diapason » vient avant toute page du Mac. L'annuler : « Déverrouillage annulé : Diapason reste fermé », et le menu « ⋮ » n'est pas atteignable. Déverrouiller (empreinte, puis une fois avec le code). Joindre une photo par l'appareil photo : au retour, rien n'est redemandé. Laisser l'app plus de deux minutes en arrière-plan : au retour, l'invite revient. Noter ce que montre la vignette de Diapason dans les apps récentes.
+23. **Le verrou.** Lancer l'app : l'invite d'Android « Ouvrir Diapason » vient avant toute page du Mac. L'annuler : « Déverrouillage annulé : Diapason reste fermé », et le menu « ⋮ » n'est pas atteignable. Déverrouiller (empreinte, puis une fois avec le code). Joindre une photo par l'appareil photo : au retour, rien n'est redemandé. Laisser l'app plus de deux minutes en arrière-plan : au retour, l'invite revient. Noter ce que montre la vignette de Diapason dans les apps récentes (avec un APK de mobile `d703208` ou après : aucune image de la page, voir l'étape 29).
 24. **L'approbation.** Sur le Mac, provoquer une demande (une Discussion qui veut lancer un outil à confirmer). App ouverte : dans les 30 s, « Le Mac attend ton accord » ; la toucher → la cloche s'ouvre, relue. Décider depuis le téléphone ; sur le Mac, la cloche se vide. App en arrière-plan : noter l'heure de la demande et celle de la notification (15 min au mieux ; une confirmation d'outil aura expiré avant).
 25. **Le partage.** Depuis Chrome, partager une page → « Diapason dev » : le titre et le lien dans le compositeur, rien d'envoyé. Depuis Photos, une photo ; depuis Fichiers, un PDF : pièces jointes au compositeur. Un fichier de plus de 10 Mo : sa phrase. Vérifier dans les apps récentes qu'il n'y a qu'un Diapason.
 26. **L'appareil photo vers une pile.** Projets → un projet → une pile → « Ajouter des photos » → Appareil photo → la photo est dans la pile.
+
+*Le banc de la troisième contre-épreuve* — seulement avec l'APK construit à mobile `2786599` (ci-dessous) et après la fusion de `chantier/phases45` jusqu'à `1693273e` au moins (le Mac doit battre, le bundle connaître la garde du micro et le dépôt sélectionné). L'APK : `~/Projets/diapason_mobile/build/app/outputs/flutter-apk/app-debug.apk` (copie : `app-debug-2786599.apk` dans le même dossier), 191 829 248 octets, sha256 `cf740cfcac45e87a8fc0762b29741a74f601a8f69a997ac7fe4468d4656bab9d`, `com.diapason.mobile.dev`, versionCode 2002, versionName 1.0.0-dev, construit avec `config/secrets.json`. Il s'installe PAR-DESSUS l'APK précédent (même signature de débogage) : rien à désinstaller, l'appairage reste.
+27. **La voix hors réseau (constat 2).** Pendant une séance « Parler », passer le téléphone en mode avion sans rien dire. Attendu : dans les 45 à 50 s, l'orbe dit « Le Mac ne répond plus : la voix s'est coupée et le micro est fermé », et le voyant vert S'ÉTEINT. Noter la durée mesurée. Réseau revenu : « Parler » relance une séance.
+28. **Le cadenas et l'accessibilité (constat 1).** Réglages → Accessibilité → TalkBack : l'activer. Ouvrir Diapason, déverrouiller, aller sur la Discussion, puis laisser l'app plus de deux minutes en arrière-plan et revenir en annulant l'invite. Parcourir l'écran au doigt (balayages) : TalkBack ne doit dire QUE « Diapason est verrouillé », la phrase et « Déverrouiller » — jamais un message de la Discussion, jamais « Approuver ». Aucun clavier ne s'ouvre. Désactiver TalkBack ensuite.
+29. **La vignette (constat 3).** App déverrouillée sur la Discussion : ouvrir les apps récentes. La carte de Diapason ne montre PAS la page (une carte vide ou l'icône). Une capture d'écran faite app ouverte reste possible.
+30. **Les approbations, suite.** Une demande en attente : décider depuis le téléphone ET, dans la même seconde, depuis la cloche du Mac. Une seule décision passe (la base garde celle qui a répondu 200) ; sur l'autre appareil, le serveur répond 409 et la cloche ne dit AUCUNE phrase — la demande disparaît à la relecture suivante (lu dans `ApprovalBell.tsx`, non corrigé ici) : noter ce qui se voit. Puis : partager une photo vers Diapason et, pendant que la coquille la dépose, toucher une notification d'approbation → la cloche s'ouvre juste après le dépôt, sans recharger.
+31. **Le partage sur un brouillon (constat 4).** Taper un brouillon dans la Discussion, sans l'envoyer. Depuis Chrome, partager une page vers « Diapason dev ». Attendu : le brouillon intact, une ligne vide, le lien SÉLECTIONNÉ en dessous, et « …ajouté À LA SUITE de votre brouillon (sélectionné) — relisez avant d'envoyer ». Rien n'est parti. Partager ensuite une image de plus de 4 Mo : le compositeur la refuse avec sa phrase, et la coquille ne dit pas qu'elle a été déposée.
+32. **L'appareil photo et l'icône (constat 14).** Projets → une pile → « Ajouter des photos » → Appareil photo ; SANS déclencher, appuyer sur Accueil, puis rouvrir Diapason par son ICÔNE. Noter : l'appareil photo est-il encore là ? Recommencer en revenant par les apps récentes (attendu : il y est), puis par une notification d'approbation. S'il a disparu par l'icône, c'est le défaut du `singleTask` : le dire, la correction est à trancher (phase 5).
 
 **À dire à Carlito (constat 19 de la seconde contre-épreuve)** : ouvert SANS la coquille (un navigateur sur l'adresse https, après un cookie posé), le bundle envoie une fois au premier chargement `POST /v1/context/view` et `GET /v1/voice/live/health` (celle-ci rouverte en phase 4, 26/09/2026 : elle rend désormais 200), que la passerelle refuse en 403 — avant d'avoir vu l'en-tête `X-Diapason-Passerelle`. Ensuite, plus rien. Au téléphone, le pont existe avant tout module : 0 réponse 403 sur 24 routes au banc. La coquille est le seul client prévu ; ce n'est pas corrigé.
