@@ -145,3 +145,45 @@ class TestLaMarque:
             "apply_patch",
         }
         assert not (OUTILS_DU_TELEPHONE & interdits), OUTILS_DU_TELEPHONE & interdits
+
+
+class TestLeFilDeLOutil:
+    """ToolExecutor exécute chaque outil dans un threading.Thread (pour son
+    délai). Un fil à nu ne copie aucun contexte : l'outil permis au
+    téléphone s'exécutait sans la marque, et ce qu'il lançait à son tour se
+    croyait sur le Mac (CLAUDE.md §5, « Refuser une route… »)."""
+
+    def test_l_outil_permis_voit_encore_la_marque_dans_son_fil(self):
+        vu: list[bool] = []
+
+        class _Temoin(_Espion):
+            def execute(self, **params) -> ToolResult:
+                vu.append(depuis_le_telephone())
+                return super().execute(**params)
+
+        executeur = ToolExecutor(
+            [_Temoin("vie_tasks")], autoload_capability_policy=False
+        )
+        with marquer_le_telephone():
+            assert _executer(executeur, "vie_tasks").success is True
+        assert vu == [True], "le fil de l'outil a perdu la marque du téléphone"
+
+    def test_ce_qu_un_outil_permis_lance_a_son_tour_reste_borne(self):
+        """Un outil de données qui appellerait un outil du Mac — ici en
+        direct, comme api_routes ou welcome_runner — ne doit pas rouvrir ce
+        que le plafond ferme."""
+        ecran = _Espion("screen_read_text")
+        rendu: list[ToolResult] = []
+
+        class _Relais(_Espion):
+            def execute(self, **params) -> ToolResult:
+                rendu.append(ecran.execute())
+                return super().execute(**params)
+
+        executeur = ToolExecutor(
+            [_Relais("vie_tasks")], autoload_capability_policy=False
+        )
+        with marquer_le_telephone():
+            _executer(executeur, "vie_tasks")
+        assert ecran.executions == [], "l'écran du Mac a été lu depuis le téléphone"
+        assert rendu and rendu[0].success is False

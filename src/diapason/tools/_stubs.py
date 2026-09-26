@@ -7,6 +7,7 @@ Each tool is registered via ``@ToolRegistry.register("name")`` and implements
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import json
 import logging
@@ -520,8 +521,15 @@ class ToolExecutor:
             finally:
                 finished.set()
 
+        # Le fil de l'outil HÉRITE du contexte de l'appelant (26/09/2026). Un
+        # threading.Thread à nu n'en copie aucun : l'outil permis au
+        # téléphone s'exécutait sans la marque de la passerelle, et tout ce
+        # qu'il lançait à son tour (un Tool().execute, un autre exécuteur)
+        # se croyait sur le Mac — hors du plafond de core/origine_telephone.
+        contexte = contextvars.copy_context()
         worker = threading.Thread(
-            target=_invoke,
+            target=contexte.run,
+            args=(_invoke,),
             name=f"diapason-tool-{tool_call.name}",
             daemon=True,
         )
