@@ -21,6 +21,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 
 import pytest
 
@@ -89,5 +90,20 @@ class TestLaReponseDuMacLivreeAuTelephoneEstLaVraie:
         dart = _lire("lib/services/vie/rappels_du_mac.dart")
         for _nom, chemin, requete in gen.LECTURES:
             assert f"'{chemin}'" in dart, f"{chemin} n'est plus lu par l'adaptateur"
-            for cle in requete:
+            for cle, valeur in requete.items():
                 assert f"'{cle}'" in dart, f"le paramètre {cle} manque au Dart"
+                # 26/09/2026, contre-épreuve : seuls les NOMS étaient lus ;
+                # `'include_done': 'true'` côté Dart laissait ce test vert. Une
+                # valeur écrite en dur dans le Dart doit être celle du
+                # générateur ; une valeur calculée (`'from': du`) ne se lit
+                # pas ici, et le banc live_rappels.dart la montre.
+                litterales = re.findall(rf"'{re.escape(cle)}':\s*'([^']*)'", dart)
+                assert all(v == valeur for v in litterales), (
+                    f"{cle} vaut {litterales} dans le Dart et {valeur!r} dans "
+                    "le générateur : les rappels ne liraient pas ce que le "
+                    "fichier commun prouve"
+                )
+                if cle == "include_done":
+                    assert litterales == [valeur], (
+                        "include_done doit être écrit en dur, et égal au générateur"
+                    )
