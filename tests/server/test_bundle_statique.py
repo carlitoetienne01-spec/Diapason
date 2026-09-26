@@ -166,7 +166,20 @@ class TestLeCache:
             "GraphiqueDiscussion-D9Rjhn52.js",
         ):
             assert porte_une_empreinte(nom), nom
-        for nom in ("index.html", "sw.js", "manifest.webmanifest", "app.js", "a-b.js"):
+        for nom in (
+            "index.html",
+            "sw.js",
+            "manifest.webmanifest",
+            "app.js",
+            "a-b.js",
+            # Un mot de huit lettres n'est pas une empreinte (26/09/2026).
+            "icon-maskable.png",
+            "pwa-maskable.png",
+            # Ni cinq, sept ou neuf caractères : Vite en pose huit.
+            "app-Ab1c2.js",
+            "app-Ab1cD2e.js",
+            "app-Ab1cD2eF9.js",
+        ):
             assert not porte_une_empreinte(nom), nom
 
 
@@ -255,6 +268,65 @@ class TestLesVariantesPrecomprimees:
         assert installe.index("precomprimer.mjs", rsync) > rsync, (
             "la copie de dist/ efface les variantes : il faut les reposer après"
         )
+
+
+class TestLesGardeFousDuBundle:
+    """26/09/2026, contre-épreuve : chacune de ces règles survivait seule à
+    son retrait, la suite restant verte."""
+
+    def test_le_disque_n_est_jamais_lu_sur_la_boucle(self, bundle, monkeypatch):
+        """§5 : une route ``async`` qui lit le disque en ligne gèle le flux du
+        chat et la voix. Le choix de la variante (des ``stat``) et la
+        recherche du fichier de l'attrape-tout passent par un fil."""
+        import asyncio
+
+        from diapason.server import bundle_statique as bs
+
+        fils: list[str] = []
+        origine = asyncio.to_thread
+
+        async def espion(fonction, *args, **kwargs):
+            fils.append(getattr(fonction, "__name__", "?"))
+            return await origine(fonction, *args, **kwargs)
+
+        monkeypatch.setattr(bs.asyncio, "to_thread", espion)
+        client = _client(bundle)
+        assert client.get("/assets/index-Ab1_cD-2.js").status_code == 200
+        assert "_variante" in fils, "la variante d'un fichier d'/assets"
+        fils.clear()
+        assert client.get("/vie/tasks").status_code == 200
+        assert "fichier_du_bundle" in fils, "la recherche de l'attrape-tout"
+        assert "_variante" in fils, "la variante de l'index"
+
+    def test_une_reponse_qui_n_est_pas_un_200_ne_devient_jamais_304(self, bundle):
+        """Un 404 servi avec la page d'un fichier revalidé : un 304 dirait au
+        navigateur de garder ce qu'il a, et masquerait l'erreur."""
+        from diapason.server.bundle_statique import CACHE_REVALIDE, ReponseDuBundle
+
+        app = FastAPI()
+        fichier = bundle / "sw.js"
+
+        @app.get("/absent")
+        def absent():
+            return ReponseDuBundle(fichier, CACHE_REVALIDE, status_code=404)
+
+        client = TestClient(app)
+        etag = client.get("/absent").headers["etag"]
+        reponse = client.get("/absent", headers={"If-None-Match": etag})
+        assert reponse.status_code == 404, "un 404 reste un 404, même ETag"
+
+    def test_une_variante_qui_n_est_pas_un_fichier_est_ignoree(self, bundle):
+        """Un dossier (ou un tube) nommé comme une variante ne se sert pas :
+        FileResponse échouerait au milieu de l'envoi."""
+        br = bundle / "assets" / "index-Ab1_cD-2.js.br"
+        br.unlink()
+        br.mkdir()
+        reponse = _client(bundle).get(
+            "/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": "br, gzip"}
+        )
+        assert reponse.status_code == 200
+        assert reponse.headers["content-encoding"] == "gzip", "la suivante"
+        assert reponse.text == JS_V1
 
 
 class TestLAcceptEncoding:

@@ -75,8 +75,15 @@ CACHE_REVALIDE = "no-cache"
 CACHE_DOCUMENT = "no-store"
 
 # L'empreinte que Vite pose par défaut : huit caractères base64url avant
-# l'extension (« index-DP3oxbgi.css », « KaTeX_Main-Regular-CTRA-rTL.woff »).
-_EMPREINTE_RE = re.compile(r"-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
+# l'extension (« index-DP3oxbgi.css », « KaTeX_Main-Regular-CTRA-rTL.woff »),
+# dont au moins une majuscule ou un chiffre. Sans cette exigence
+# (26/09/2026, contre-épreuve), tout mot de huit lettres passait pour une
+# empreinte : « icon-maskable.png » serait resté figé un an au téléphone.
+# Une vraie empreinte sans majuscule ni chiffre (une chance sur ~750 par
+# fichier) est seulement revalidée : un 304, jamais un fichier périmé.
+_EMPREINTE_RE = re.compile(
+    r"-(?=[A-Za-z0-9_-]{0,7}[A-Z0-9])[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$"
+)
 
 # Les extensions que precomprimer.mjs traite — la même liste des deux côtés,
 # vérifiée par tests/server/test_bundle_statique.py. Les woff2, png et autres
