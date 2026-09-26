@@ -148,6 +148,57 @@ class TestLesTroisTablesDisentLesMemesEcrans:
         )
 
 
+def _corps_canonique(motif: str) -> str:
+    """Le motif sans ses ancres ni l'échappement de `/` propre au littéral
+    JavaScript : `fullmatch` en Python vaut `^…$` ailleurs."""
+    corps = motif.replace("\\/", "/")
+    if corps.startswith("^"):
+        corps = corps[1:]
+    if corps.endswith("$"):
+        corps = corps[:-1]
+    return corps
+
+
+def drapeaux_ts(source: str) -> str:
+    return re.search(r"const SUCCESS_ROUTE = /.+/([a-z]*);", source).group(1)
+
+
+class TestLesTroisMotifsSontLeMeme:
+    """25/09/2026 : le test des schémas ne comparait que l'alternative avant
+    `:`. Contre-épreuve : un Dart sans `caseSensitive: false` (D3), ou dont
+    le chemin s'élargit à `([a-z_0-9]+)` (D4), laissait tout vert — alors que
+    le commentaire d'executor.py promet le même motif « character for
+    character ». Flutter ne tourne pas dans la CI de Diapason : ce test est le
+    seul à voir le Dart depuis ici."""
+
+    def test_le_corps_du_motif_est_identique_dans_les_trois_langues(self):
+        python = _corps_canonique(_MESH_ROUTE.pattern)
+        ts = _corps_canonique(motif_ts(ROUTES_TS.read_text(encoding="utf-8")))
+        dart = _corps_canonique(motif_dart(_source_dart()))
+        assert python == ts == dart, (
+            f"motifs divergents —\n  Python : {python}\n  TypeScript : {ts}\n"
+            f"  Dart : {dart}"
+        )
+
+    def test_les_trois_ignorent_la_casse_sans_repli_unicode(self):
+        """Insensible à la casse partout (`VIE://tasks` s'ouvre), mais sans
+        repli Unicode : `ſuccess://` ne doit valoir `success://` nulle part.
+        JavaScript `/iu` et Dart `unicode: true` replieraient ſ en s."""
+        drapeaux = _MESH_ROUTE.flags
+        assert drapeaux & re.I and drapeaux & re.ASCII, (
+            "Python : re.I | re.ASCII attendus"
+        )
+        assert drapeaux_ts(ROUTES_TS.read_text(encoding="utf-8")) == "i", (
+            "routes.ts : le drapeau /i seul (ni u, ni v)"
+        )
+        dart = _bloc_regex_dart(_source_dart())
+        assert re.search(r"caseSensitive:\s*false", dart), (
+            "mesh_routes.dart : caseSensitive: false manque — VIE://tasks y "
+            "serait refusé, accepté ailleurs"
+        )
+        assert "unicode:" not in dart, "mesh_routes.dart : pas de repli Unicode"
+
+
 class TestLaLectureDesSourcesNeSeTaitPas:
     """Un extracteur qui ne trouve rien rendrait les tests ci-dessus vrais
     pour de mauvaises raisons — ou faux sans dire pourquoi."""
@@ -171,6 +222,12 @@ class TestLaLectureDesSourcesNeSeTaitPas:
         amputee = re.sub(r"^\s*'notes':.*\n", "", source, count=1, flags=re.M)
         assert amputee != source, "la ligne « 'notes': » de _views a changé de forme"
         assert cles_dart(amputee) != set(MESH_ROUTE_KINDS)
+
+    def test_la_normalisation_ne_confond_que_les_ecritures_equivalentes(self):
+        assert _corps_canonique(r"^a:\/\/b$") == _corps_canonique("a://b")
+        assert _corps_canonique(r"^a://([a-z]+)$") != _corps_canonique(
+            r"^a://([a-z_0-9]+)$"
+        ), "un chemin élargi doit rester visible"
 
     def test_les_schemas_se_lisent_aussi_sous_leur_forme_a_venir(self):
         assert _schemas(r"^(?:success|vie)://([a-z]+)") == {"success", "vie"}

@@ -167,7 +167,8 @@ def _no_shell() -> dict[str, Any]:
 MESH_ROUTE_KINDS = frozenset({"today", "tasks", "projects", "habits", "notes"})
 
 # The same pattern as `routes.ts` and `mesh_routes.dart`, character for
-# character. `re.ASCII` because JavaScript's `/i` without `u` does not fold
+# character, flags included (tests/contract/test_routes_du_maillage.py
+# compares all three). `re.ASCII` because JavaScript's `/i` without `u` does not fold
 # `ſ` (U+017F) or the Kelvin sign into `[a-z]`, and Python's default Unicode
 # folding does: without it, this side would accept a route the shell refuses.
 # `fullmatch` rather than `$`, which in Python also matches before a final
